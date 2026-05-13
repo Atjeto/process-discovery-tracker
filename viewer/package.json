@@ -13,7 +13,12 @@
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {},
+  "dependencies": {
+    "bpmn-js": "^17.9.1",
+    "cytoscape": "^3.30.0",
+    "cytoscape-dagre": "^2.5.0",
+    "dagre": "^0.8.5"
+  },
   "devDependencies": {
     "@electron/packager": "^20.0.0",
     "electron": "^33.2.0",
@@ -27,11 +32,10 @@
       "main.js",
       "python-runner.js",
       "index.html",
-      "session-view.html",
-      "aggregate-view.html",
       "renderer.js",
-      "session-view.js",
-      "aggregate-view.js",
+      "charts.js",
+      "dfg-viewer.js",
+      "bpmn-viewer.js",
       "styles.css",
       "package.json",
       "node_modules/**/*"

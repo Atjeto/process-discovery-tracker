@@ -39,8 +39,25 @@ function startTracker({ sessionId, eventsFile, onTick }) {
   let pollHandle = null;
   let markerStack = []; // for tray/status only; case IDs are derived in normalization
 
+  /* Live counters and a small ring buffer for the status window. None
+     of this affects the durable JSONL; it's UI state derived from the
+     append pipeline. */
+  const sessionStartMs = Date.now();
+  let eventCount = 0;
+  let markerCount = 0;
+  let screenshotCount = 0;
+  const RECENT_BUFFER_SIZE = 16;
+  const recentEvents = [];
+
   function appendEvent(ev) {
     fs.appendFileSync(eventsFile, JSON.stringify(ev) + "\n");
+    eventCount += 1;
+    if (ev.type === "marker") markerCount += 1;
+    if (ev.type === "system" && (ev.data.kind === "screenshot" || ev.data.kind === "screenshot_manual")) {
+      screenshotCount += 1;
+    }
+    recentEvents.push(ev);
+    if (recentEvents.length > RECENT_BUFFER_SIZE) recentEvents.shift();
   }
 
   function closeRun(endMs) {
@@ -134,6 +151,12 @@ function startTracker({ sessionId, eventsFile, onTick }) {
       currentTitle: currentRun ? currentRun.title : null,
       markerDepth: markerStack.length,
       openMarkers: markerStack.map((m) => m.label),
+      eventCount,
+      markerCount,
+      screenshotCount,
+      sessionStartMs,
+      elapsedMs: Date.now() - sessionStartMs,
+      recentEvents: recentEvents.slice(),
     };
   }
 

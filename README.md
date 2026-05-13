@@ -95,7 +95,16 @@ Per §13 of the design (open items / explicitly deferred):
 - Taxonomy promotion workflow (§13)
 - ML capabilities (§10, v1.5+)
 - Storage retention policy (§13)
-- BPMN graphical rendering inside the viewer (DFG renders as edge list; BPMN exports but doesn't draw)
-- Charts in statistics panel (tables only)
-- Marker rename / boundary edit / merge / split UIs (annotations infrastructure is in place; UI is not)
+- Marker rename / boundary edit / merge / split UIs (annotations infrastructure is in place; only free-text notes are wired)
 - Production python-embeddable bundle (analyst side currently uses system Python via `pip install`)
+
+## UI / UX in this pass
+
+- **Capture** ships a live status window (toggle from tray) -- recording indicator, session timer, open-marker stack with nesting, event/marker/screenshot counters, recent-events feed, quick actions (pause, manual screenshot, end session).
+- **Viewer** renders the discovered process map two ways: BPMN diagram via `bpmn-js`, DFG via `cytoscape` with `dagre` layout. Tabbed inside one panel so you can flip between them.
+- **Viewer statistics** panels render as inline SVG horizontal bar charts (activity frequency with total duration label, case durations with active + wall-clock overlay). Tables for variants / outliers / rework.
+- **Session timeline** has zoom in / out / reset, click-to-seek, hover tooltips, nested case bands, screenshot dots, marker labels, video playhead sync, and an event filter (by type, text).
+- **Recent sessions** persisted in localStorage and surfaced on the empty state of session view.
+- **Keyboard shortcuts**: `1` / `2` switch tabs, `Space` play/pause video, `← →` scrub 5s (`Shift` for 10s), `+ - 0` zoom timeline.
+- **Annotation sidebar** has three tabs: notes, screenshots grid, marker list -- all click-to-seek.
+- **Empty states + toast notifications** so the app is usable when no data is loaded yet.

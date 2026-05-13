@@ -4,138 +4,224 @@
 <meta charset="utf-8" />
 <title>Process Discovery Viewer</title>
 <link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/diagram-js.css" />
+<link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/bpmn-js.css" />
+<link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/bpmn-font/css/bpmn.css" />
+<script src="node_modules/cytoscape/dist/cytoscape.min.js"></script>
+<script src="node_modules/dagre/dist/dagre.min.js"></script>
+<script src="node_modules/cytoscape-dagre/cytoscape-dagre.js"></script>
+<script src="node_modules/bpmn-js/dist/bpmn-viewer.production.min.js"></script>
 </head>
 <body>
 
 <div class="app">
   <header class="topbar">
-    <h1>Process Discovery Viewer</h1>
+    <div class="brand">
+      <div class="logo"></div>
+      <div><h1>Process Discovery</h1><div class="tagline">Capture · Mine · Synthesize</div></div>
+    </div>
     <nav class="tabs">
-      <button class="tab active" data-view="session">Session view</button>
-      <button class="tab" data-view="aggregate">Aggregate view</button>
+      <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
+      <button class="tab" data-view="aggregate"><span class="kbd">2</span> Aggregate</button>
     </nav>
+    <div class="topbar-meta" id="topbar-meta"></div>
   </header>
 
   <main id="view-host">
-    <!-- Session view -->
+
+    <!-- ========= Session view ========= -->
     <section class="view active" id="view-session">
-      <div class="actions-bar">
-        <button id="btn-open-session">Open session folder...</button>
-        <button id="btn-normalize" disabled>Run normalization</button>
-        <label class="cb"><input type="checkbox" id="cb-mine" /> &nbsp;Also mine BPMN + DFG</label>
-        <span class="meta" id="session-meta">(no session loaded)</span>
+
+      <div class="empty-state" id="session-empty">
+        <div class="empty-icon">⌬</div>
+        <h2>No session loaded</h2>
+        <p>Open a session folder produced by the capture tracker to begin.</p>
+        <button class="primary" id="btn-open-session-hero">Open session folder...</button>
+        <div class="recent-sessions">
+          <h3>Recent</h3>
+          <ul id="recent-list-session"></ul>
+        </div>
       </div>
 
-      <div class="session-layout">
-        <div class="video-pane">
-          <video id="video" controls preload="metadata"></video>
-          <div class="no-video" id="no-video">Video not loaded. (manifest.obs.recording_path is missing or unreachable)</div>
+      <div class="loaded" id="session-loaded" style="display:none">
+        <div class="actions-bar">
+          <button id="btn-open-session">Open another</button>
+          <button id="btn-normalize" class="primary">Run normalization</button>
+          <label class="cb"><input type="checkbox" id="cb-mine" checked /> Mine BPMN + DFG</label>
+          <span class="flex-spacer"></span>
+          <div class="session-pills" id="session-pills"></div>
         </div>
-        <div class="timeline-pane">
-          <div class="timeline-header">
-            <strong>Timeline</strong>
-            <span id="timeline-summary" class="meta"></span>
+
+        <div class="session-layout">
+          <div class="video-pane">
+            <video id="video" controls preload="metadata"></video>
+            <div class="no-video" id="no-video">
+              <div class="nv-icon">▶</div>
+              <div>No OBS recording linked.</div>
+              <div class="hint">Capture without OBS still produces a full timeline -- click bands to focus.</div>
+            </div>
+            <div class="video-overlay" id="video-overlay"></div>
           </div>
-          <div class="timeline" id="timeline"></div>
-          <div class="legend">
-            <span class="lg-activity">activity</span>
-            <span class="lg-marker">marker</span>
-            <span class="lg-idle">idle</span>
-            <span class="lg-screenshot">screenshot</span>
+
+          <div class="timeline-pane">
+            <div class="timeline-header">
+              <strong>Timeline</strong>
+              <span id="timeline-summary" class="meta"></span>
+              <div class="timeline-controls">
+                <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)">−</button>
+                <button class="icon-btn" id="btn-zoom-reset" title="Reset zoom (0)">⊙</button>
+                <button class="icon-btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
+              </div>
+            </div>
+            <div class="timeline-scroll">
+              <div class="timeline" id="timeline"></div>
+            </div>
+            <div class="legend">
+              <span class="lg-activity">activity</span>
+              <span class="lg-idle">idle</span>
+              <span class="lg-marker">marker</span>
+              <span class="lg-screenshot">screenshot</span>
+              <span class="legend-shortcuts">Space play/pause · ←→ scrub · 1/2 tabs</span>
+            </div>
           </div>
+
+          <aside class="annotations-pane">
+            <div class="anno-tabs">
+              <button class="anno-tab active" data-anno="notes">Notes</button>
+              <button class="anno-tab" data-anno="screens">Screenshots</button>
+              <button class="anno-tab" data-anno="markers">Markers</button>
+            </div>
+            <div class="anno-panel" data-panel="notes">
+              <div id="annotations-list"></div>
+              <textarea id="anno-note" placeholder="Anchor a note to the current playback time..."></textarea>
+              <button id="btn-save-note">Save note at current time</button>
+            </div>
+            <div class="anno-panel" data-panel="screens" style="display:none">
+              <div id="screenshots-grid" class="screens-grid"></div>
+            </div>
+            <div class="anno-panel" data-panel="markers" style="display:none">
+              <div id="markers-list" class="markers-list"></div>
+            </div>
+          </aside>
         </div>
-        <aside class="annotations-pane">
-          <h3>Annotations</h3>
-          <p class="hint">Click a marker on the timeline to rename or adjust. Notes write to <code>annotations.json</code> in the session folder.</p>
-          <div id="annotations-list"></div>
-          <textarea id="anno-note" placeholder="Free-text note anchored to current playback time"></textarea>
-          <button id="btn-save-note">Save note at current time</button>
-        </aside>
+
+        <details class="event-table-host">
+          <summary>Raw events (<span id="event-count">0</span>)</summary>
+          <div class="event-filter">
+            <input type="text" id="event-filter" placeholder="Filter by app, label, or kind..." />
+            <label class="cb"><input type="checkbox" id="cb-show-activity" checked /> activity</label>
+            <label class="cb"><input type="checkbox" id="cb-show-marker" checked /> marker</label>
+            <label class="cb"><input type="checkbox" id="cb-show-system" checked /> system</label>
+          </div>
+          <div class="event-table-scroll">
+            <table class="event-table" id="event-table">
+              <thead><tr><th>time</th><th>type</th><th>label / app</th><th>detail</th><th>dur</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </details>
+
+        <details class="log-host" id="log-host" style="display:none">
+          <summary>Normalization log</summary>
+          <pre id="normalize-log"></pre>
+        </details>
       </div>
-
-      <details class="event-table-host">
-        <summary>Raw events (<span id="event-count">0</span>)</summary>
-        <table class="event-table" id="event-table">
-          <thead><tr><th>ts</th><th>type</th><th>app / label</th><th>title</th><th>dur</th><th>case</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </details>
-
-      <details class="log-host">
-        <summary>Normalization log</summary>
-        <pre id="normalize-log"></pre>
-      </details>
     </section>
 
-    <!-- Aggregate view -->
+    <!-- ========= Aggregate view ========= -->
     <section class="view" id="view-aggregate">
-      <div class="actions-bar">
-        <button id="btn-open-multi">Open sessions...</button>
-        <button id="btn-normalize-all" disabled>Normalize + mine all</button>
-        <span class="meta" id="aggregate-meta">(no sessions loaded)</span>
+
+      <div class="empty-state" id="aggregate-empty">
+        <div class="empty-icon">⌬</div>
+        <h2>No sessions loaded</h2>
+        <p>Open one or more session folders, or an engagement folder containing sessions.</p>
+        <button class="primary" id="btn-open-multi-hero">Open sessions...</button>
       </div>
 
-      <div class="aggregate-grid">
-        <div class="panel">
-          <h3>Discovered process map (DFG)</h3>
-          <div id="dfg-host" class="dfg-host"></div>
+      <div class="loaded" id="aggregate-loaded" style="display:none">
+        <div class="actions-bar">
+          <button id="btn-open-multi">Open more</button>
+          <button id="btn-normalize-all" class="primary">Normalize + mine all</button>
+          <span class="flex-spacer"></span>
+          <div class="session-pills" id="aggregate-pills"></div>
         </div>
-        <div class="panel">
-          <h3>Activity statistics</h3>
-          <div class="stats-table-host">
-            <table class="stats-table" id="activity-stats">
-              <thead><tr><th>activity</th><th>freq</th><th>total (s)</th><th>median (s)</th><th>p90 (s)</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="panel">
-          <h3>Case statistics</h3>
-          <div class="stats-table-host">
-            <table class="stats-table" id="case-stats">
-              <thead><tr><th>case</th><th>label</th><th>wall (s)</th><th>active (s)</th><th>reason</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="panel">
-          <h3>Trace variants</h3>
-          <div class="stats-table-host">
-            <table class="stats-table" id="variants">
-              <thead><tr><th>frequency</th><th>length</th><th>variant</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="panel">
-          <h3>App outliers (&lt;5% of cases)</h3>
-          <div class="stats-table-host">
-            <table class="stats-table" id="outliers">
-              <thead><tr><th>app</th><th>cases</th><th>case %</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="panel">
-          <h3>Rework loops</h3>
-          <div class="stats-table-host">
-            <table class="stats-table" id="rework">
-              <thead><tr><th>activity</th><th>repeats</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
 
-      <div class="actions-bar">
-        <button id="btn-export-bpmn" disabled>Export BPMN 2.0 XML</button>
-        <button id="btn-export-xes" disabled>Export combined XES</button>
-        <button id="btn-export-stats" disabled>Export stats.json</button>
+        <div class="aggregate-grid">
+          <div class="panel panel-wide">
+            <div class="panel-header">
+              <h3>Process map</h3>
+              <div class="panel-tabs">
+                <button class="panel-tab active" data-map="bpmn">BPMN</button>
+                <button class="panel-tab" data-map="dfg">DFG</button>
+              </div>
+            </div>
+            <div class="map-host">
+              <div class="map-pane active" id="bpmn-host"></div>
+              <div class="map-pane" id="dfg-host" style="display:none"></div>
+              <div class="map-empty" id="map-empty">
+                <div class="empty-icon-sm">⌖</div>
+                <div>Run "Normalize + mine all" to discover a process map.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Activity frequency</h3>
+            <div id="activity-chart" class="chart-host"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Case durations</h3>
+            <div id="case-chart" class="chart-host"></div>
+          </div>
+
+          <div class="panel panel-wide">
+            <h3>Trace variants</h3>
+            <div class="stats-table-host">
+              <table class="stats-table" id="variants">
+                <thead><tr><th>freq</th><th>len</th><th>variant</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>App outliers (&lt;5%)</h3>
+            <div class="stats-table-host">
+              <table class="stats-table" id="outliers">
+                <thead><tr><th>app</th><th>cases</th><th>%</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Rework loops</h3>
+            <div class="stats-table-host">
+              <table class="stats-table" id="rework">
+                <thead><tr><th>activity</th><th>repeats</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-bar">
+          <span class="meta">Exports:</span>
+          <button id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
+          <button id="btn-export-xes" disabled>XES</button>
+          <button id="btn-export-stats" disabled>stats.json</button>
+        </div>
       </div>
     </section>
   </main>
+
+  <div class="toast" id="toast"></div>
 </div>
 
+<script src="charts.js"></script>
+<script src="dfg-viewer.js"></script>
+<script src="bpmn-viewer.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

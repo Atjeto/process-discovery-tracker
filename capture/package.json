@@ -37,6 +37,11 @@
       "tracker.js",
       "session.js",
       "events.js",
+      "config.js",
+      "obs.js",
+      "screenshots.js",
+      "status-window.js",
+      "sample-config.yaml",
       "tray-icon.png",
       "package.json",
       "node_modules/**/*"

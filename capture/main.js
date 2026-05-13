@@ -46,6 +46,7 @@ const {
   writeSyncFile,
 } = require("./obs.js");
 const { captureScreenshot } = require("./screenshots.js");
+const { showStatusWindow } = require("./status-window.js");
 
 const DEBUG = process.env.PDT_DEBUG === "1";
 function bootLog(msg) {
@@ -78,11 +79,13 @@ let tracker = null;
 let session = null;
 let lastStatus = null;
 let labelPickerWindow = null;
+let statusWindow = null;
 let obs = null;
 let obsConnected = false;
 let config = null;
 let configSourcePath = null;
 let baseDir = null;
+let recoveredCount = 0;
 
 // Idle monitor state
 let idleMonitorHandle = null;
@@ -435,6 +438,65 @@ render();
 
 ipcMain.handle("pdt:fireStart", (_e, label) => fireStartMarker(label));
 
+/* --- Status window IPC -------------------------------------------- */
+
+ipcMain.handle("pdt:status", () => {
+  if (!tracker) {
+    return {
+      tracking: false,
+      paused: false,
+      obsConnected: false,
+      idle: false,
+      recovered: recoveredCount > 0,
+      screenshotsEnabled: !!(config && config.screenshots && config.screenshots.enabled),
+    };
+  }
+  const s = tracker.getStatus();
+  return {
+    tracking: true,
+    paused: s.paused,
+    obsConnected,
+    idle: isIdle,
+    recovered: recoveredCount > 0,
+    currentApp: s.currentApp,
+    currentTitle: s.currentTitle,
+    openMarkers: s.openMarkers,
+    markerDepth: s.markerDepth,
+    eventCount: s.eventCount,
+    markerCount: s.markerCount,
+    screenshotCount: s.screenshotCount,
+    elapsedMs: s.elapsedMs,
+    recentEvents: s.recentEvents,
+    screenshotsEnabled: !!(config && config.screenshots && config.screenshots.enabled),
+  };
+});
+
+ipcMain.handle("pdt:togglePause", () => {
+  if (!tracker) return null;
+  const s = tracker.getStatus();
+  if (s.paused) tracker.resume(); else tracker.pause();
+  lastStatus = tracker.getStatus();
+  refreshTray();
+  return lastStatus;
+});
+
+ipcMain.handle("pdt:manualScreenshot", () => fireManualScreenshot());
+ipcMain.handle("pdt:endSession", async () => {
+  const f = await endSession();
+  refreshTray();
+  return f;
+});
+
+function toggleStatusWindow() {
+  if (statusWindow && !statusWindow.isDestroyed()) {
+    statusWindow.close();
+    statusWindow = null;
+    return;
+  }
+  statusWindow = showStatusWindow();
+  statusWindow.on("closed", () => { statusWindow = null; });
+}
+
 function statusLine() {
   if (!tracker) return "Idle -- right-click to start a session";
   if (lastStatus && lastStatus.paused) return `Paused (${lastStatus.markerDepth} open)`;
@@ -508,6 +570,10 @@ function buildMenu() {
     });
   }
   items.push({ type: "separator" });
+  items.push({
+    label: statusWindow ? "Hide status window" : "Show status window",
+    click: () => toggleStatusWindow(),
+  });
   items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
   if (configSourcePath) {
     items.push({
@@ -546,6 +612,7 @@ app.whenReady().then(() => {
   bootLog(`config loaded from ${configSourcePath || "(defaults)"}`);
 
   const orphans = findOrphanedSessions(baseDir);
+  recoveredCount = orphans.length;
   for (const o of orphans) {
     markSessionRecovered({ sessionFolder: o.sessionFolder });
     bootLog(`marked orphan recovered: ${o.sessionFolder}`);
