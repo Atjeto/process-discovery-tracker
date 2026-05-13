@@ -1,0 +1,101 @@
+"use strict";
+
+const fs = require("node:fs");
+const path = require("node:path");
+const crypto = require("node:crypto");
+
+function pad(n) { return String(n).padStart(2, "0"); }
+
+function sessionTimestampFolder() {
+  const d = new Date();
+  return (
+    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+  );
+}
+
+function createSession({ baseDir, engagementId, config }) {
+  const sessionId = crypto.randomUUID();
+  const engagement = engagementId || "default";
+  const sessionFolder = path.join(baseDir, engagement, sessionTimestampFolder());
+  fs.mkdirSync(sessionFolder, { recursive: true });
+  fs.mkdirSync(path.join(sessionFolder, "screenshots"), { recursive: true });
+  fs.mkdirSync(path.join(sessionFolder, "obs"), { recursive: true });
+
+  const eventsFile = path.join(sessionFolder, "events.jsonl");
+  const manifestFile = path.join(sessionFolder, "manifest.json");
+  const configFile = path.join(sessionFolder, "config.yaml");
+
+  fs.writeFileSync(eventsFile, "");
+
+  const manifest = {
+    session_id: sessionId,
+    engagement_id: engagement,
+    started_at: new Date().toISOString(),
+    ended_at: null,
+    status: "active",
+    config: config || {},
+    obs: { recording_path: null, recording_start_ts: null, offset_ms: null },
+    recovered: false,
+  };
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
+
+  return {
+    sessionId,
+    sessionFolder,
+    eventsFile,
+    manifestFile,
+    configFile,
+    manifest,
+  };
+}
+
+function closeSession({ sessionFolder, status }) {
+  const manifestFile = path.join(sessionFolder, "manifest.json");
+  if (!fs.existsSync(manifestFile)) return;
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+  manifest.ended_at = new Date().toISOString();
+  manifest.status = status || "closed";
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
+}
+
+function markSessionRecovered({ sessionFolder }) {
+  const manifestFile = path.join(sessionFolder, "manifest.json");
+  if (!fs.existsSync(manifestFile)) return;
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+  manifest.recovered = true;
+  manifest.status = "recovered";
+  manifest.ended_at = manifest.ended_at || new Date().toISOString();
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
+}
+
+function findOrphanedSessions(baseDir) {
+  if (!fs.existsSync(baseDir)) return [];
+  const orphans = [];
+  for (const ent of fs.readdirSync(baseDir, { withFileTypes: true })) {
+    if (!ent.isDirectory()) continue;
+    const engDir = path.join(baseDir, ent.name);
+    for (const s of fs.readdirSync(engDir, { withFileTypes: true })) {
+      if (!s.isDirectory()) continue;
+      const sFolder = path.join(engDir, s.name);
+      const manifestFile = path.join(sFolder, "manifest.json");
+      if (!fs.existsSync(manifestFile)) continue;
+      try {
+        const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+        if (m.status === "active" && !m.ended_at) {
+          orphans.push({ sessionFolder: sFolder, started_at: m.started_at });
+        }
+      } catch (_) {
+        /* skip malformed */
+      }
+    }
+  }
+  return orphans;
+}
+
+module.exports = {
+  createSession,
+  closeSession,
+  markSessionRecovered,
+  findOrphanedSessions,
+};
