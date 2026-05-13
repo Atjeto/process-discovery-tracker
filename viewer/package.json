@@ -1,0 +1,46 @@
+{
+  "name": "process-discovery-tracker-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Analyst-side viewer for process discovery sessions. Session view (video-synced timeline) + aggregate view (mined map + statistics + BPMN export).",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "package": "electron-packager . \"Process Discovery Viewer\" --platform=win32 --arch=x64 --overwrite --out=dist",
+    "dist": "electron-builder --win --x64 --publish=never"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@electron/packager": "^20.0.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.processdiscovery.viewer",
+    "productName": "Process Discovery Viewer",
+    "npmRebuild": false,
+    "files": [
+      "main.js",
+      "python-runner.js",
+      "index.html",
+      "session-view.html",
+      "aggregate-view.html",
+      "renderer.js",
+      "session-view.js",
+      "aggregate-view.js",
+      "styles.css",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

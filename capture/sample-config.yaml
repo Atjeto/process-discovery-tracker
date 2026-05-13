@@ -1,0 +1,51 @@
+# Per-session config for the Process Discovery Tracker.
+# Copy to a known location and set PDT_CONFIG=path/to/this.yaml before launch.
+# Anything omitted falls back to defaults in config.js.
+
+engagement_id: "demo-2026-05"
+engagement_name: "Demo engagement"
+
+worker:
+  id: "rasha"
+  bu: "Operations"
+  role: "SME"
+
+# Session lifecycle
+auto_end_idle_minutes: 30
+poll_interval_seconds: 5
+idle_threshold_seconds: 60
+
+# Labels shown in the tray menu and label picker
+process_labels:
+  - "Order entry"
+  - "Ticket triage"
+  - "Refund flow"
+  - "Identity check"
+  - "Account setup"
+
+# OBS integration. Set required: true in production so a session fails
+# fast if OBS isn't reachable. Leave false during local development.
+obs:
+  required: false
+  websocket_url: "ws://127.0.0.1:4455"
+  websocket_password: null
+  scene_name: "Process Discovery -- Default"
+  auto_create_scene: true
+
+# Global hotkeys (Electron Accelerator syntax)
+hotkeys:
+  start_picker: "Control+Shift+S"
+  end_innermost: "Control+Shift+E"
+  manual_screenshot: "Control+Shift+P"
+
+# Taxonomy version this session was captured against. Stamped into
+# manifest.json so re-normalization can reproduce or upgrade results.
+taxonomy_version: "v0"
+
+# Event-triggered screenshot capture (§3.4)
+screenshots:
+  enabled: true
+  quality: 60                 # JPEG quality 1-100
+  on_app_switch: true
+  on_marker_fire: true
+  on_idle_resume_minutes: 5   # minimum idle duration before resume triggers a screenshot

@@ -101,7 +101,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
     }
   }
 
-  function fireMarker({ markerType, label }) {
+  function fireMarker({ markerType, label, reason }) {
     if (markerType !== "start" && markerType !== "end") {
       throw new Error('fireMarker requires markerType "start" or "end"');
     }
@@ -109,7 +109,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
        duration math doesn't span the marker. The next tick will start
        a fresh run. */
     closeRun(Date.now());
-    const ev = markerEvent(sessionId, { markerType, label });
+    const ev = markerEvent(sessionId, { markerType, label, reason });
     appendEvent(ev);
     if (markerType === "start") {
       markerStack.push({ label: label || "(unlabeled)", t: ev.timestamp });

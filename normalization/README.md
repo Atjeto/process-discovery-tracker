@@ -1,28 +1,58 @@
 # Normalization
 
-Python service that turns raw `events.jsonl` from a captured session into a normalized XES + CSV event log (§7 of the design). Runs on the analyst's machine.
+Python pipeline that turns a captured session into XES + CSV + statistics + (optional) mined BPMN.
 
-## Status
+Runs on the analyst's machine. Re-runnable against an updated taxonomy without recapture (§6.3).
 
-Stub. Not implemented in v0.
+## Install
 
-## Planned scope (iteration 2)
+Python 3.10+. From this folder:
 
-1. Load `events.jsonl` from a session folder.
-2. Sort by timestamp (defensive).
-3. Walk marker events, build case tree, assign case IDs (§5.2).
-4. Stamp every activity event with its `case_ids` stack.
-5. Apply taxonomy classification rules (§7.2).
-6. Extract transaction identifiers from window titles.
-7. Collapse adjacent identical events.
-8. Emit `events.xes` (IEEE 1849-2016) and `events.csv`.
+```
+pip install -r requirements.txt
+```
 
-## Install topology
+Per §11.5 the production install will be a python-embeddable folder shipped alongside the viewer (no admin install required); for development plain `pip` is fine.
 
-Per §11.5, the planned distribution is a python-embeddable folder shipped alongside the viewer -- no admin install required, no PyPI access at runtime, preloaded with PM4Py and dependencies (numpy, pandas, networkx, graphviz).
+## Usage
 
-The viewer invokes normalization as a subprocess against a session folder. The contract is: in = path to session folder + taxonomy version, out = `events.xes` + `events.csv` written into the same folder.
+```
+python normalize.py path/to/session/folder \
+    --taxonomy sample-taxonomy.yaml \
+    --mine
+```
 
-## When v0 capture lands
+Outputs land alongside the input:
 
-You can manually inspect raw `events.jsonl` with `jq` or by piping through `Get-Content -Wait` in PowerShell to see events streaming live. That's the v0 inspection workflow until normalization ships.
+| File | Contents |
+|---|---|
+| `events.xes` | IEEE 1849-2016 event log, one trace per top-level case |
+| `events.csv` | Flat CSV of activity events for Excel / non-XES tooling |
+| `stats.json` | Per-activity + per-case + variants + outliers + rework |
+| `process_map.bpmn` | (--mine only) PM4Py inductive miner output, BPMN 2.0 XML |
+| `dfg.json` | (--mine only) Directly-Follows Graph for the viewer's first-pass map |
+
+`events.jsonl` is never modified. Re-run with a different taxonomy whenever the classification rules improve.
+
+## Pipeline
+
+1. Load `events.jsonl`, sort by timestamp (defensive).
+2. Walk the marker stream, build the case tree, stamp every activity event with `case_ids` (innermost first).
+3. Apply taxonomy classification -- first match wins; unmatched events get `Unclassified -- <app>`.
+4. Extract `transaction_id` from window titles where the rule defines one.
+5. Collapse adjacent identical activity events (same app, title, label, case_ids) with summed duration.
+6. Emit XES (PM4Py exporter) + CSV (pandas).
+7. Compute statistics.
+8. (Optional) Run PM4Py inductive miner, emit BPMN + DFG.
+
+## Code map
+
+| File | Role |
+|---|---|
+| `normalize.py` | CLI entry; orchestrates the pipeline |
+| `case_assignment.py` | Marker stream walk + case_id stamping (§5.2) |
+| `classification.py` | Taxonomy rules + collapse |
+| `xes_export.py` | XES + CSV emission |
+| `mining.py` | PM4Py wrappers (inductive, heuristics, DFG, BPMN) |
+| `statistics.py` | Per-activity, per-case, variants, outliers, rework |
+| `sample-taxonomy.yaml` | Example classification rules |

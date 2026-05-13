@@ -1,0 +1,94 @@
+# Sample taxonomy. Maintained centrally and version-controlled (§6.1).
+# Rules are evaluated in order; first match wins.
+
+version: "v0"
+
+rules:
+  # Browsers
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*Salesforce.*"
+    label: "CRM -- Salesforce"
+    extract:
+      transaction_id: "Case #(\\d+)"
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*Outlook.*Office.*"
+    label: "Email -- Outlook Web"
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*Confluence.*"
+    label: "Docs -- Confluence"
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*"
+    label: "Browser -- Chrome (other)"
+
+  - match:
+      app: "msedge.exe"
+      title_regex: ".*"
+    label: "Browser -- Edge (other)"
+
+  # Office
+  - match:
+      app: "OUTLOOK.EXE"
+      title_regex: ".*"
+    label: "Email -- Outlook Desktop"
+
+  - match:
+      app: "EXCEL.EXE"
+      title_regex: ".*"
+    label: "Spreadsheet -- Excel"
+
+  - match:
+      app: "WINWORD.EXE"
+      title_regex: ".*"
+    label: "Document -- Word"
+
+  - match:
+      app: "POWERPNT.EXE"
+      title_regex: ".*"
+    label: "Slides -- PowerPoint"
+
+  # SAP variants
+  - match:
+      app: "saplogon.exe"
+      title_regex: ".*Order Entry.*"
+    label: "SAP -- Order Entry"
+    extract:
+      transaction_id: "Order #(\\w+)"
+
+  - match:
+      app: "saplogon.exe"
+      title_regex: ".*"
+    label: "SAP -- Other"
+
+  # Comms
+  - match:
+      app: "Teams.exe"
+      title_regex: ".*"
+    label: "Comms -- Teams"
+
+  - match:
+      app: "Slack.exe"
+      title_regex: ".*"
+    label: "Comms -- Slack"
+
+  # Dev tools
+  - match:
+      app: "Code.exe"
+      title_regex: ".*"
+    label: "Dev -- VS Code"
+
+  - match:
+      app: "WindowsTerminal.exe"
+      title_regex: ".*"
+    label: "Dev -- Terminal"
+
+  - match:
+      app: "explorer.exe"
+      title_regex: ".*"
+    label: "OS -- File Explorer"

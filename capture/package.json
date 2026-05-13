@@ -14,7 +14,10 @@
     "node": ">=18"
   },
   "dependencies": {
-    "active-win": "^8.2.1"
+    "active-win": "^8.2.1",
+    "js-yaml": "^4.1.0",
+    "obs-websocket-js": "^5.0.6",
+    "screenshot-desktop": "^1.15.0"
   },
   "devDependencies": {
     "@electron/packager": "^20.0.0",

@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Process Discovery Viewer</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <h1>Process Discovery Viewer</h1>
+    <nav class="tabs">
+      <button class="tab active" data-view="session">Session view</button>
+      <button class="tab" data-view="aggregate">Aggregate view</button>
+    </nav>
+  </header>
+
+  <main id="view-host">
+    <!-- Session view -->
+    <section class="view active" id="view-session">
+      <div class="actions-bar">
+        <button id="btn-open-session">Open session folder...</button>
+        <button id="btn-normalize" disabled>Run normalization</button>
+        <label class="cb"><input type="checkbox" id="cb-mine" /> &nbsp;Also mine BPMN + DFG</label>
+        <span class="meta" id="session-meta">(no session loaded)</span>
+      </div>
+
+      <div class="session-layout">
+        <div class="video-pane">
+          <video id="video" controls preload="metadata"></video>
+          <div class="no-video" id="no-video">Video not loaded. (manifest.obs.recording_path is missing or unreachable)</div>
+        </div>
+        <div class="timeline-pane">
+          <div class="timeline-header">
+            <strong>Timeline</strong>
+            <span id="timeline-summary" class="meta"></span>
+          </div>
+          <div class="timeline" id="timeline"></div>
+          <div class="legend">
+            <span class="lg-activity">activity</span>
+            <span class="lg-marker">marker</span>
+            <span class="lg-idle">idle</span>
+            <span class="lg-screenshot">screenshot</span>
+          </div>
+        </div>
+        <aside class="annotations-pane">
+          <h3>Annotations</h3>
+          <p class="hint">Click a marker on the timeline to rename or adjust. Notes write to <code>annotations.json</code> in the session folder.</p>
+          <div id="annotations-list"></div>
+          <textarea id="anno-note" placeholder="Free-text note anchored to current playback time"></textarea>
+          <button id="btn-save-note">Save note at current time</button>
+        </aside>
+      </div>
+
+      <details class="event-table-host">
+        <summary>Raw events (<span id="event-count">0</span>)</summary>
+        <table class="event-table" id="event-table">
+          <thead><tr><th>ts</th><th>type</th><th>app / label</th><th>title</th><th>dur</th><th>case</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </details>
+
+      <details class="log-host">
+        <summary>Normalization log</summary>
+        <pre id="normalize-log"></pre>
+      </details>
+    </section>
+
+    <!-- Aggregate view -->
+    <section class="view" id="view-aggregate">
+      <div class="actions-bar">
+        <button id="btn-open-multi">Open sessions...</button>
+        <button id="btn-normalize-all" disabled>Normalize + mine all</button>
+        <span class="meta" id="aggregate-meta">(no sessions loaded)</span>
+      </div>
+
+      <div class="aggregate-grid">
+        <div class="panel">
+          <h3>Discovered process map (DFG)</h3>
+          <div id="dfg-host" class="dfg-host"></div>
+        </div>
+        <div class="panel">
+          <h3>Activity statistics</h3>
+          <div class="stats-table-host">
+            <table class="stats-table" id="activity-stats">
+              <thead><tr><th>activity</th><th>freq</th><th>total (s)</th><th>median (s)</th><th>p90 (s)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Case statistics</h3>
+          <div class="stats-table-host">
+            <table class="stats-table" id="case-stats">
+              <thead><tr><th>case</th><th>label</th><th>wall (s)</th><th>active (s)</th><th>reason</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Trace variants</h3>
+          <div class="stats-table-host">
+            <table class="stats-table" id="variants">
+              <thead><tr><th>frequency</th><th>length</th><th>variant</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>App outliers (&lt;5% of cases)</h3>
+          <div class="stats-table-host">
+            <table class="stats-table" id="outliers">
+              <thead><tr><th>app</th><th>cases</th><th>case %</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Rework loops</h3>
+          <div class="stats-table-host">
+            <table class="stats-table" id="rework">
+              <thead><tr><th>activity</th><th>repeats</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-bar">
+        <button id="btn-export-bpmn" disabled>Export BPMN 2.0 XML</button>
+        <button id="btn-export-xes" disabled>Export combined XES</button>
+        <button id="btn-export-stats" disabled>Export stats.json</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

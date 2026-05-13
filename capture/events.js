@@ -25,10 +25,11 @@ function activityEvent(sessionId, { app, title, pid, durationMs }) {
   });
 }
 
-function markerEvent(sessionId, { markerType, label }) {
+function markerEvent(sessionId, { markerType, label, reason }) {
   return makeEvent("marker", sessionId, {
     marker_type: markerType,
     label: label || null,
+    ...(reason ? { reason } : {}),
   });
 }
 

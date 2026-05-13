@@ -47,13 +47,14 @@ The envelope is the contract; the `data` shape varies by `type`.
 ```json
 {
   "marker_type": "start" | "end",
-  "label": "Order entry" | null
+  "label": "Order entry" | null,
+  "reason": "auto_end_idle" | null
 }
 ```
 
-`case_id` and `parent_case_id` are NOT set by capture. The normalization layer walks the marker stream, builds the case tree, and stamps every activity event with the stack of open case IDs at the moment it was captured (§5.2).
+`case_id` and `parent_case_id` are NOT set by capture. The normalization layer walks the marker stream, builds the case tree, and stamps every activity event with the stack of open case IDs at the moment it was captured (§5.2). After normalization, marker events also carry `case_id` and `parent_case_id` so downstream consumers don't need to re-walk.
 
-End markers carry `null` label by convention; they close the innermost open Start.
+End markers carry `null` label by convention; they close the innermost open Start. `reason` is set when an end was auto-fired (e.g. `auto_end_idle` from §3.3).
 
 ### `system` data
 
@@ -67,11 +68,18 @@ End markers carry `null` label by convention; they close the innermost open Star
 }
 ```
 
-Additional kind-specific fields:
+Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`.
 
-- `screenshot` and `screenshot_manual`: `{ path: "screenshots/<timestamp>.jpg" }`
-- `obs_recording_start`: `{ recording_path: "...", obs_start_ts: "..." }`
-- `idle_start` / `idle_end`: `{ last_input_ts: "..." }`
+Kind-specific payloads:
+
+| Kind | Payload |
+|---|---|
+| `idle_start` | `{ idle_seconds }` |
+| `idle_end` | `{ duration_seconds }` |
+| `auto_end_idle` | `{ idle_seconds }` (fired after auto-closing all open markers, §3.3) |
+| `screenshot` / `screenshot_manual` | `{ path: "screenshots/<file>.jpg" }` (relative to session folder) |
+| `obs_recording_start` / `obs_recording_stop` | (empty; full OBS sync details live in `obs/sync.json` and `manifest.json.obs`) |
+| `session_start` / `session_end` / `paused` / `resumed` | (empty) |
 
 ## manifest.json
 
@@ -100,7 +108,21 @@ Additional kind-specific fields:
 
 ## Invariants
 
-- Events are immutable once written. Corrections live in `annotations.json` (planned, §9.3).
+- Events are immutable once written. Corrections live in `annotations.json` (§9.3 -- the viewer writes notes here; marker edit / merge / split UIs are deferred).
 - `event_id` is unique within a session.
 - `events.jsonl` is sorted by `timestamp` in practice (single-writer append) but normalization sorts defensively (§7.1 step 2).
 - Adjacent identical activity events (same app, title, label, case_ids) are collapsed during normalization (§7.1 step 7).
+
+## Post-normalization artifacts
+
+The normalization layer writes the following alongside `events.jsonl`:
+
+| File | Contents |
+|---|---|
+| `events.xes` | IEEE 1849-2016 event log, one trace per top-level case |
+| `events.csv` | Flat CSV of activity events |
+| `stats.json` | `{ activity_stats, case_stats, trace_variants, app_outliers, rework_loops }` |
+| `process_map.bpmn` | BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
+| `dfg.json` | Directly-Follows Graph as `{ edges, start_activities, end_activities }` (with `--mine`) |
+| `annotations.json` | Analyst-authored notes + future marker edits |
+| `obs/sync.json` | `{ tracker_session_start_ts, obs_recording_start_ts, offset_ms, recording_path }` |

@@ -1,15 +1,16 @@
 /*
- * Process Discovery Tracker -- Electron tray + hotkeys (CJS).
+ * Process Discovery Tracker -- capture-side Electron main process.
  *
- * Capture-side entry point. Runs in the worker's system tray. Manages
- * session lifecycle, registers global hotkeys for Start/End markers,
- * and shows a Spotlight-style label picker for Start markers.
+ * Wires up:
+ *   - Tray UI + global hotkeys (label picker, end marker, manual screenshot)
+ *   - Session lifecycle with per-session config (YAML)
+ *   - Active-window polling (tracker.js)
+ *   - Idle detection via powerMonitor.getSystemIdleTime (§3.3)
+ *   - Auto-end of open markers on long idle (§3.3)
+ *   - Event-triggered screenshots (§3.4)
+ *   - OBS recording lifecycle via obs-websocket (§4)
  *
- * Patterns reused from pocket-tracker/desktop-tracker/main.js:
- *   - Single-instance lock, boot.log diagnostic, before-quit flush
- *   - Tray icon + context menu, optional BrowserWindow UI
- *   - nodeIntegration:true / contextIsolation:false in trusted internal
- *     BrowserWindows (label picker) -- acceptable for first-party HTML
+ * Patterns reused from pocket-tracker/desktop-tracker (§3.6).
  */
 
 "use strict";
@@ -24,9 +25,11 @@ const {
   dialog,
   globalShortcut,
   ipcMain,
+  powerMonitor,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+
 const { startTracker } = require("./tracker.js");
 const {
   createSession,
@@ -34,6 +37,15 @@ const {
   markSessionRecovered,
   findOrphanedSessions,
 } = require("./session.js");
+const { loadConfig, writeConfigSnapshot } = require("./config.js");
+const {
+  connectOBS,
+  ensureScene,
+  startRecording,
+  stopRecording,
+  writeSyncFile,
+} = require("./obs.js");
+const { captureScreenshot } = require("./screenshots.js");
 
 const DEBUG = process.env.PDT_DEBUG === "1";
 function bootLog(msg) {
@@ -45,9 +57,7 @@ function bootLog(msg) {
       path.join(dir, "boot.log"),
       `${new Date().toISOString()} ${msg}\n`
     );
-  } catch (_e) {
-    /* ignore -- boot logging is best-effort */
-  }
+  } catch (_e) { /* best-effort */ }
 }
 process.on("uncaughtException", (e) =>
   bootLog(`uncaughtException: ${(e && e.stack) || e}`)
@@ -61,7 +71,6 @@ if (!gotLock) {
   app.quit();
   process.exit(0);
 }
-
 if (process.platform === "darwin" && app.dock) app.dock.hide();
 
 let tray = null;
@@ -69,25 +78,19 @@ let tracker = null;
 let session = null;
 let lastStatus = null;
 let labelPickerWindow = null;
+let obs = null;
+let obsConnected = false;
+let config = null;
+let configSourcePath = null;
+let baseDir = null;
 
-/* v0 config -- hard-coded for the prototype. Per-session YAML config
-   (§6.2 of the design) lands in iteration 2; for now we ship the
-   process labels and hotkeys inline. */
-const CONFIG = {
-  engagementId: process.env.PDT_ENGAGEMENT || "default",
-  baseDir: null, // set in whenReady (depends on app.getPath)
-  processLabels: [
-    "Order entry",
-    "Ticket triage",
-    "Refund flow",
-    "Identity check",
-    "Account setup",
-  ],
-  hotkeys: {
-    startPicker: "Control+Shift+S",
-    endInnermost: "Control+Shift+E",
-  },
-};
+// Idle monitor state
+let idleMonitorHandle = null;
+let isIdle = false;
+let idleStartMs = null;
+
+// App-switch screenshot tracking
+let lastTrackedApp = null;
 
 function trayIconImage() {
   const candidates = [
@@ -103,33 +106,192 @@ function trayIconImage() {
   return nativeImage.createEmpty();
 }
 
-function startSession() {
+async function fireScreenshot(kind) {
+  if (!tracker || !session || !config.screenshots.enabled) return;
+  try {
+    const relPath = await captureScreenshot({
+      screenshotsFolder: path.join(session.sessionFolder, "screenshots"),
+      quality: config.screenshots.quality,
+    });
+    if (relPath) tracker.fireSystem(kind || "screenshot", { path: relPath });
+  } catch (e) {
+    bootLog(`screenshot failed: ${e && e.message}`);
+  }
+}
+
+async function onTickHandler(status) {
+  lastStatus = status;
+  refreshTray();
+  /* App-switch screenshot trigger -- detect new currentApp value and
+     fire a screenshot. lastTrackedApp persists across ticks. */
+  if (
+    config &&
+    config.screenshots.enabled &&
+    config.screenshots.on_app_switch &&
+    status.currentApp &&
+    status.currentApp !== lastTrackedApp
+  ) {
+    lastTrackedApp = status.currentApp;
+    /* skip the very first set so we don't take a screenshot at session
+       start for every session; the manual launch is well-known */
+    if (lastTrackedApp !== null) fireScreenshot("screenshot");
+  }
+}
+
+function startIdleMonitor() {
+  stopIdleMonitor();
+  idleMonitorHandle = setInterval(() => {
+    if (!tracker) return;
+    if (lastStatus && lastStatus.paused) return;
+    const idleSecs = powerMonitor.getSystemIdleTime();
+    const threshold = config.idle_threshold_seconds || 60;
+    const autoEndSecs = (config.auto_end_idle_minutes || 30) * 60;
+
+    if (!isIdle && idleSecs >= threshold) {
+      isIdle = true;
+      idleStartMs = Date.now();
+      tracker.fireSystem("idle_start", { idle_seconds: idleSecs });
+      bootLog(`idle_start at ${idleSecs}s`);
+    } else if (isIdle && idleSecs < threshold) {
+      isIdle = false;
+      const durationSecs = Math.round((Date.now() - idleStartMs) / 1000);
+      tracker.fireSystem("idle_end", { duration_seconds: durationSecs });
+      idleStartMs = null;
+      bootLog(`idle_end after ${durationSecs}s`);
+      const minResume =
+        (config.screenshots.on_idle_resume_minutes || 5) * 60;
+      if (durationSecs >= minResume) fireScreenshot("screenshot");
+    } else if (isIdle && idleSecs >= autoEndSecs) {
+      /* Auto-close any open markers and log the cause (§3.3). */
+      while (lastStatus && lastStatus.markerDepth > 0) {
+        tracker.fireMarker({ markerType: "end", reason: "auto_end_idle" });
+        lastStatus = tracker.getStatus();
+      }
+      tracker.fireSystem("auto_end_idle", { idle_seconds: idleSecs });
+      refreshTray();
+    }
+  }, 5000);
+}
+
+function stopIdleMonitor() {
+  if (idleMonitorHandle) clearInterval(idleMonitorHandle);
+  idleMonitorHandle = null;
+  isIdle = false;
+  idleStartMs = null;
+}
+
+async function setupOBS() {
+  if (!config.obs || !config.obs.websocket_url) return false;
+  try {
+    obs = await connectOBS({
+      websocketUrl: config.obs.websocket_url,
+      password: config.obs.websocket_password,
+    });
+    obsConnected = true;
+    bootLog("OBS connected");
+    if (config.obs.auto_create_scene) {
+      try {
+        await ensureScene(obs, config.obs.scene_name);
+        bootLog(`scene ensured: ${config.obs.scene_name}`);
+      } catch (e) {
+        bootLog(`scene bootstrap failed: ${e && e.message}`);
+      }
+    }
+    return true;
+  } catch (e) {
+    bootLog(`OBS connect failed: ${e && e.message}`);
+    obs = null;
+    obsConnected = false;
+    if (config.obs.required) {
+      dialog.showErrorBox(
+        "OBS not reachable",
+        `Could not connect to OBS at ${config.obs.websocket_url}.\n\n` +
+          `${e && e.message}\n\n` +
+          `Per session config, OBS is required. Launch OBS (with WebSocket enabled) and try again.`
+      );
+      return false;
+    }
+    return true; // proceed without OBS in non-strict mode
+  }
+}
+
+async function startSession() {
   if (session) return session;
-  fs.mkdirSync(CONFIG.baseDir, { recursive: true });
+  fs.mkdirSync(baseDir, { recursive: true });
+
+  /* OBS preflight before creating the session folder so a failed OBS
+     start in strict mode doesn't litter the filesystem. */
+  if (config.obs && config.obs.required) {
+    const ok = await setupOBS();
+    if (!ok) return null;
+  } else if (config.obs && config.obs.websocket_url) {
+    await setupOBS(); // best effort
+  }
+
   session = createSession({
-    baseDir: CONFIG.baseDir,
-    engagementId: CONFIG.engagementId,
-    config: {
-      engagement_id: CONFIG.engagementId,
-      process_labels: CONFIG.processLabels,
-      hotkeys: CONFIG.hotkeys,
-    },
+    baseDir,
+    engagementId: config.engagement_id,
+    config,
   });
+  writeConfigSnapshot(session.sessionFolder, config);
+
+  /* Start OBS recording after the folder exists so we can write sync.json
+     immediately. */
+  if (obsConnected && obs) {
+    try {
+      const sync = await startRecording(obs);
+      writeSyncFile(path.join(session.sessionFolder, "obs"), sync);
+      const manifestFile = path.join(session.sessionFolder, "manifest.json");
+      const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+      m.obs.recording_path = sync.recording_path;
+      m.obs.recording_start_ts = sync.obs_recording_start_ts;
+      m.obs.offset_ms = sync.offset_ms;
+      fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2));
+    } catch (e) {
+      bootLog(`OBS startRecording failed: ${e && e.message}`);
+    }
+  }
+
   tracker = startTracker({
     sessionId: session.sessionId,
     eventsFile: session.eventsFile,
-    onTick: (status) => {
-      lastStatus = status;
-      refreshTray();
-    },
+    onTick: onTickHandler,
   });
+  if (obsConnected) {
+    tracker.fireSystem("obs_recording_start");
+  }
+  lastTrackedApp = null;
   lastStatus = tracker.getStatus();
+  startIdleMonitor();
   bootLog(`session started: ${session.sessionFolder}`);
   return session;
 }
 
 async function endSession() {
   if (!tracker) return null;
+  stopIdleMonitor();
+
+  if (obsConnected && obs) {
+    try {
+      tracker.fireSystem("obs_recording_stop");
+      const r = await stopRecording(obs);
+      if (r && r.outputPath) {
+        /* If OBS reported a final path after stop, update the manifest. */
+        const manifestFile = path.join(session.sessionFolder, "manifest.json");
+        try {
+          const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+          m.obs.recording_path = r.outputPath;
+          fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2));
+        } catch (_e) {}
+      }
+    } catch (e) {
+      bootLog(`OBS stopRecording failed: ${e && e.message}`);
+    }
+    try { await obs.disconnect(); } catch (_e) {}
+    obs = null;
+    obsConnected = false;
+  }
+
   await tracker.stop();
   closeSession({ sessionFolder: session.sessionFolder, status: "closed" });
   bootLog(`session ended: ${session.sessionFolder}`);
@@ -140,9 +302,15 @@ async function endSession() {
   return oldFolder;
 }
 
-function fireStartMarker(label) {
-  if (!tracker) startSession();
+async function fireStartMarker(label) {
+  if (!tracker) {
+    const s = await startSession();
+    if (!s) return;
+  }
   tracker.fireMarker({ markerType: "start", label: label || "(unlabeled)" });
+  if (config.screenshots.enabled && config.screenshots.on_marker_fire) {
+    fireScreenshot("screenshot");
+  }
   lastStatus = tracker.getStatus();
   refreshTray();
 }
@@ -151,8 +319,16 @@ function fireEndMarker() {
   if (!tracker) return;
   if (!lastStatus || lastStatus.markerDepth === 0) return;
   tracker.fireMarker({ markerType: "end" });
+  if (config.screenshots.enabled && config.screenshots.on_marker_fire) {
+    fireScreenshot("screenshot");
+  }
   lastStatus = tracker.getStatus();
   refreshTray();
+}
+
+function fireManualScreenshot() {
+  if (!tracker || !session) return;
+  fireScreenshot("screenshot_manual");
 }
 
 function showLabelPicker() {
@@ -180,9 +356,7 @@ function showLabelPicker() {
   labelPickerWindow.loadURL(
     "data:text/html;charset=utf-8," + encodeURIComponent(buildPickerHtml())
   );
-  labelPickerWindow.on("closed", () => {
-    labelPickerWindow = null;
-  });
+  labelPickerWindow.on("closed", () => { labelPickerWindow = null; });
   labelPickerWindow.on("blur", () => {
     if (labelPickerWindow && !labelPickerWindow.isDestroyed()) {
       labelPickerWindow.close();
@@ -191,7 +365,7 @@ function showLabelPicker() {
 }
 
 function buildPickerHtml() {
-  const labels = JSON.stringify(CONFIG.processLabels);
+  const labels = JSON.stringify(config.process_labels || []);
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Start marker</title>
 <style>
@@ -213,7 +387,7 @@ function buildPickerHtml() {
 <h1>Start marker</h1>
 <input id="q" placeholder="Type label or pick from list, Enter to fire" autofocus />
 <ul id="list"></ul>
-<div class="hint">Enter: fire · Esc: cancel · &uarr;&darr;: navigate</div>
+<div class="hint">Enter: fire &middot; Esc: cancel &middot; &uarr;&darr;: navigate</div>
 <script>
 const { ipcRenderer } = require("electron");
 const all = ${labels};
@@ -224,7 +398,9 @@ function filtered() {
   const term = q.value.toLowerCase();
   const matched = all.filter(l => l.toLowerCase().includes(term));
   const typed = q.value.trim();
-  if (typed && !matched.includes(typed)) matched.push(typed + "  (new)");
+  if (typed && !matched.some(l => l.toLowerCase() === typed.toLowerCase())) {
+    matched.push(typed + "  (new)");
+  }
   return matched;
 }
 function render() {
@@ -257,18 +433,16 @@ render();
 </script></body></html>`;
 }
 
-ipcMain.handle("pdt:fireStart", (_e, label) => {
-  fireStartMarker(label);
-});
+ipcMain.handle("pdt:fireStart", (_e, label) => fireStartMarker(label));
 
 function statusLine() {
   if (!tracker) return "Idle -- right-click to start a session";
-  if (lastStatus && lastStatus.paused) {
-    return `Paused (${lastStatus.markerDepth} open)`;
-  }
+  if (lastStatus && lastStatus.paused) return `Paused (${lastStatus.markerDepth} open)`;
   const appName = (lastStatus && lastStatus.currentApp) || "(no window)";
   const depth = (lastStatus && lastStatus.markerDepth) || 0;
-  return `Tracking: ${appName} - ${depth} open marker(s)`;
+  const obsTag = obsConnected ? " - OBS" : "";
+  const idleTag = isIdle ? " - idle" : "";
+  return `Tracking: ${appName} - ${depth} open${obsTag}${idleTag}`;
 }
 
 function buildMenu() {
@@ -279,18 +453,15 @@ function buildMenu() {
   if (!tracker) {
     items.push({
       label: "Start capture session",
-      click: () => {
-        startSession();
-        refreshTray();
-      },
+      click: async () => { await startSession(); refreshTray(); },
     });
   } else {
     items.push({
       label: "Fire Start marker...",
-      accelerator: CONFIG.hotkeys.startPicker,
+      accelerator: config.hotkeys.start_picker,
       click: () => showLabelPicker(),
     });
-    const quickStart = CONFIG.processLabels.map((label) => ({
+    const quickStart = (config.process_labels || []).map((label) => ({
       label,
       click: () => fireStartMarker(label),
     }));
@@ -301,9 +472,15 @@ function buildMenu() {
         : null;
     items.push({
       label: innermost ? `Fire End marker (closes "${innermost}")` : "Fire End marker",
-      accelerator: CONFIG.hotkeys.endInnermost,
+      accelerator: config.hotkeys.end_innermost,
       enabled: !!innermost,
       click: () => fireEndMarker(),
+    });
+    items.push({
+      label: "Manual screenshot",
+      accelerator: config.hotkeys.manual_screenshot,
+      enabled: !!config.screenshots.enabled,
+      click: () => fireManualScreenshot(),
     });
     items.push({ type: "separator" });
     items.push({
@@ -331,10 +508,15 @@ function buildMenu() {
     });
   }
   items.push({ type: "separator" });
-  items.push({
-    label: "Open sessions folder",
-    click: () => shell.openPath(CONFIG.baseDir),
-  });
+  items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+  if (configSourcePath) {
+    items.push({
+      label: `Config: ${path.basename(configSourcePath)}`,
+      enabled: false,
+    });
+  } else {
+    items.push({ label: "Config: defaults (set PDT_CONFIG to override)", enabled: false });
+  }
   items.push({ type: "separator" });
   items.push({
     label: "Quit",
@@ -355,11 +537,15 @@ function refreshTray() {
 
 app.whenReady().then(() => {
   bootLog("app ready");
-  CONFIG.baseDir = path.join(app.getPath("userData"), "sessions");
+  baseDir = path.join(app.getPath("userData"), "sessions");
 
-  /* Recover orphaned sessions (§3.7 option a -- mark recovered;
-     normalization layer reconciles open markers later). */
-  const orphans = findOrphanedSessions(CONFIG.baseDir);
+  const cfgPath = process.env.PDT_CONFIG || null;
+  const loaded = loadConfig(cfgPath);
+  config = loaded.config;
+  configSourcePath = loaded.sourcePath;
+  bootLog(`config loaded from ${configSourcePath || "(defaults)"}`);
+
+  const orphans = findOrphanedSessions(baseDir);
   for (const o of orphans) {
     markSessionRecovered({ sessionFolder: o.sessionFolder });
     bootLog(`marked orphan recovered: ${o.sessionFolder}`);
@@ -371,14 +557,16 @@ app.whenReady().then(() => {
   tray.on("right-click", () => tray.popUpContextMenu());
   tray.on("click", () => tray.popUpContextMenu());
 
-  const okStart = globalShortcut.register(CONFIG.hotkeys.startPicker, () => {
-    if (!tracker) startSession();
+  const okStart = globalShortcut.register(config.hotkeys.start_picker, async () => {
+    if (!tracker) {
+      const s = await startSession();
+      if (!s) return;
+    }
     showLabelPicker();
   });
-  const okEnd = globalShortcut.register(CONFIG.hotkeys.endInnermost, () => {
-    fireEndMarker();
-  });
-  bootLog(`hotkeys: start=${okStart} end=${okEnd}`);
+  const okEnd = globalShortcut.register(config.hotkeys.end_innermost, () => fireEndMarker());
+  const okShot = globalShortcut.register(config.hotkeys.manual_screenshot, () => fireManualScreenshot());
+  bootLog(`hotkeys: start=${okStart} end=${okEnd} shot=${okShot}`);
 }).catch((e) => bootLog(`whenReady failed: ${(e && e.stack) || e}`));
 
 app.on("window-all-closed", (e) => {
