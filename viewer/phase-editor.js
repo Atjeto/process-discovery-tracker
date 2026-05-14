@@ -104,7 +104,10 @@
       const width = Math.max(0.5, ((endMs - startMs) / total) * 100);
       const color = PHASE_PALETTE[pi++ % PHASE_PALETTE.length];
       const band = document.createElement("div");
-      band.className = "phase-band" + (opts.selectedId === p.phase_id ? " selected" : "");
+      const dimmed = opts.dimmedIds && opts.dimmedIds.has(p.phase_id);
+      band.className = "phase-band"
+        + (opts.selectedId === p.phase_id ? " selected" : "")
+        + (dimmed ? " dimmed" : "");
       band.style.left = left + "%";
       band.style.width = width + "%";
       band.style.background = color + "14";

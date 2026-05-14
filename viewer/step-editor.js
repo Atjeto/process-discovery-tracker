@@ -183,7 +183,10 @@
       const width = Math.max(0.5, ((end - start) / total) * 100);
       const color = colorByName.get(s.name || s.step_id);
       const block = document.createElement("div");
-      block.className = "step-block" + (opts.selectedId === s.step_id ? " selected" : "");
+      const dimmed = opts.dimmedIds && opts.dimmedIds.has(s.step_id);
+      block.className = "step-block"
+        + (opts.selectedId === s.step_id ? " selected" : "")
+        + (dimmed ? " dimmed" : "");
       block.style.left = left + "%";
       block.style.width = width + "%";
       block.style.background = color + "1F";

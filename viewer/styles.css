@@ -629,6 +629,40 @@ main { flex: 1; overflow: auto; }
 @media (max-width: 1100px) {
   .editor-split { grid-template-columns: 1fr; }
 }
+/* Reusable filter widget for long lists (steps, markers, phases). */
+.list-filter {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 0; border-bottom: 1px solid var(--rule); margin-bottom: 4px;
+}
+.list-filter-compact { padding: 4px 0; }
+.list-filter-input {
+  flex: 1; min-width: 100px; padding: 5px 8px;
+  background: var(--bg-3); border: 1px solid var(--rule); border-radius: 3px;
+  color: var(--fg); font-size: 11px; font-family: inherit; outline: none;
+}
+.list-filter-input::-webkit-search-cancel-button { filter: invert(0.5); }
+.list-filter-input:focus { border-color: var(--accent-2); }
+.list-filter-chips { display: flex; gap: 2px; }
+.list-filter-chips .chip {
+  padding: 4px 6px; background: var(--bg-3); border: 1px solid var(--rule);
+  border-radius: 3px; cursor: pointer; opacity: 0.45; transition: all 0.1s;
+  display: flex; align-items: center; min-width: 24px; justify-content: center;
+}
+.list-filter-chips .chip:hover { opacity: 0.75; background: var(--bg-4); }
+.list-filter-chips .chip.active { opacity: 1; background: var(--bg-4); border-color: var(--fg-4); }
+.list-filter-chips .chip .state-icon { margin: 0; }
+.list-filter-case {
+  background: var(--bg-3); color: var(--fg); border: 1px solid var(--rule);
+  border-radius: 3px; padding: 4px 6px; font-size: 11px; font-family: inherit;
+  outline: none; max-width: 160px;
+}
+.list-filter-meta {
+  font-family: var(--font-mono); font-size: 10px; color: var(--fg-4);
+  margin-left: auto; white-space: nowrap;
+}
+/* Mini-timeline dimming: blocks whose step is filtered out fade back. */
+.step-block.dimmed, .phase-band.dimmed { opacity: 0.15; }
+
 .editor-list-pane, .editor-detail-pane {
   background: var(--bg-1); border: 1px solid var(--rule);
   border-radius: var(--radius-sm); padding: 8px 10px; overflow: auto;

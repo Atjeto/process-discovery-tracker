@@ -162,12 +162,58 @@ function decorateDrift(steps) {
   return (steps || []).map(s => byStep[s.step_id] ? { ...s, drift: byStep[s.step_id] } : s);
 }
 
+/* Filter state for the long lists. Lives in renderer scope so it
+   survives across re-renders. Each surface re-derives "visible vs
+   dimmed" sets from these. */
+const listFilters = {
+  step:   { text: "", states: new Set(), caseId: "" },
+  phase:  { text: "", caseId: "" },
+  marker: { text: "" },
+};
+
+function uniqueCaseIds(steps) {
+  const seen = new Map();
+  for (const s of (steps || [])) {
+    if (s.case_id && !seen.has(s.case_id)) seen.set(s.case_id, s.case_id);
+  }
+  return Array.from(seen.values());
+}
+
+function syncCaseDropdown(selectEl, cases, currentValue) {
+  if (!selectEl) return;
+  const want = ['<option value="">All cases</option>']
+    .concat(cases.map(c => `<option value="${c}"${c === currentValue ? " selected" : ""}>${c}</option>`))
+    .join("");
+  if (selectEl.innerHTML !== want) selectEl.innerHTML = want;
+}
+
+function stepMatchesFilter(s, f) {
+  if (f.text && !(s.name || "").toLowerCase().includes(f.text.toLowerCase())) return false;
+  if (f.states && f.states.size > 0 && !f.states.has(s.state)) return false;
+  if (f.caseId && s.case_id !== f.caseId) return false;
+  return true;
+}
+
 function renderStepsLevel() {
   if (!currentSession || !window.PdtSteps) return;
-  const steps = decorateDrift((currentSession.annotations && currentSession.annotations.steps) || []);
-  $("#steps-badge").textContent = String(steps.length);
-  if ($("#steps-pane-count")) $("#steps-pane-count").textContent = String(steps.length);
-  window.PdtSteps.renderStepList($("#step-list"), steps, selectedStepId,
+  const allSteps = decorateDrift((currentSession.annotations && currentSession.annotations.steps) || []);
+  const f = listFilters.step;
+  const filtered = allSteps.filter(s => stepMatchesFilter(s, f));
+  const filteredIds = new Set(filtered.map(s => s.step_id));
+
+  syncCaseDropdown($("#step-filter-case"), uniqueCaseIds(allSteps), f.caseId);
+  const meta = $("#step-filter-meta");
+  if (meta) meta.textContent = filtered.length === allSteps.length
+    ? `${allSteps.length} steps`
+    : `${filtered.length} of ${allSteps.length}`;
+  // Reflect active state chips
+  for (const chip of document.querySelectorAll("#step-filter-states .chip")) {
+    chip.classList.toggle("active", f.states.has(chip.dataset.state));
+  }
+
+  $("#steps-badge").textContent = String(allSteps.length);
+  if ($("#steps-pane-count")) $("#steps-pane-count").textContent = String(allSteps.length);
+  window.PdtSteps.renderStepList($("#step-list"), filtered, selectedStepId,
     (sid) => { selectedStepId = sid; renderStepsLevel(); },
     (sid) => {
       if (multiSelectedStepIds.has(sid)) multiSelectedStepIds.delete(sid);
@@ -181,7 +227,7 @@ function renderStepsLevel() {
     inlineRenameStep,
     multiSelectedStepIds,
   );
-  const selected = steps.find(s => s.step_id === selectedStepId) || null;
+  const selected = allSteps.find(s => s.step_id === selectedStepId) || null;
   window.PdtSteps.renderStepDetail($("#step-detail"), selected, {
     onSave: saveStep,
     onDelete: deleteStep,
@@ -191,10 +237,15 @@ function renderStepsLevel() {
   });
   const span = getSpan();
   if (span) {
-    window.PdtSteps.renderStepTimeline($("#timeline-steps"), steps,
+    // Mini-timeline keeps the full set as context; non-matching blocks
+    // are dimmed via the dimmedIds option so the filter still localises.
+    const dimmedIds = new Set();
+    for (const s of allSteps) if (!filteredIds.has(s.step_id)) dimmedIds.add(s.step_id);
+    window.PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
       currentSession.events.filter(e => e.type === "interaction"), span, {
         zoom: stepZoom,
         selectedId: selectedStepId,
+        dimmedIds,
         onSelect: (sid) => { selectedStepId = sid; renderStepsLevel(); },
       });
     const range = $("#steps-timeline-range");
@@ -204,6 +255,40 @@ function renderStepsLevel() {
     }
   }
 }
+
+/* Wire the step filter inputs once on load. The actual filter state
+   sits in listFilters; renderStepsLevel reads it every re-render. */
+(function wireStepFilter() {
+  const txt = document.getElementById("step-filter-text");
+  if (txt) {
+    let t;
+    txt.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        listFilters.step.text = txt.value.trim();
+        renderStepsLevel();
+      }, 120);
+    });
+  }
+  const stateGrp = document.getElementById("step-filter-states");
+  if (stateGrp) {
+    stateGrp.addEventListener("click", (e) => {
+      const chip = e.target.closest(".chip");
+      if (!chip) return;
+      const st = chip.dataset.state;
+      const set = listFilters.step.states;
+      if (set.has(st)) set.delete(st); else set.add(st);
+      renderStepsLevel();
+    });
+  }
+  const caseSel = document.getElementById("step-filter-case");
+  if (caseSel) {
+    caseSel.addEventListener("change", () => {
+      listFilters.step.caseId = caseSel.value;
+      renderStepsLevel();
+    });
+  }
+})();
 
 // Zoom state for the Steps + Phases mini-timelines. Mirrors the Flow
 // timeline zoom contract: 1 = fit-to-width, higher = zoomed in, scroll
@@ -379,13 +464,32 @@ if ($("#btn-add-manual-step")) {
 
 /* ============ Phases view rendering =============================== */
 
+function phaseMatchesFilter(p, steps, f) {
+  if (f.text && !(p.name || "").toLowerCase().includes(f.text.toLowerCase())) return false;
+  if (f.caseId) {
+    const contained = (p.step_ids || []).map(sid => steps.find(s => s.step_id === sid)).filter(Boolean);
+    if (!contained.some(s => s.case_id === f.caseId)) return false;
+  }
+  return true;
+}
+
 function renderPhasesLevel() {
   if (!currentSession || !window.PdtPhases) return;
   const phases = (currentSession.annotations && currentSession.annotations.phases) || [];
   const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
+  const f = listFilters.phase;
+  const filtered = phases.filter(p => phaseMatchesFilter(p, steps, f));
+  const filteredIds = new Set(filtered.map(p => p.phase_id));
+
+  syncCaseDropdown($("#phase-filter-case"), uniqueCaseIds(steps), f.caseId);
+  const meta = $("#phase-filter-meta");
+  if (meta) meta.textContent = filtered.length === phases.length
+    ? `${phases.length} phases`
+    : `${filtered.length} of ${phases.length}`;
+
   $("#phases-badge").textContent = String(phases.length);
   if ($("#phases-pane-count")) $("#phases-pane-count").textContent = String(phases.length);
-  window.PdtPhases.renderPhaseList($("#phase-list"), phases, selectedPhaseId,
+  window.PdtPhases.renderPhaseList($("#phase-list"), filtered, selectedPhaseId,
     (pid) => { selectedPhaseId = pid; renderPhasesLevel(); });
   const selected = phases.find(p => p.phase_id === selectedPhaseId) || null;
   window.PdtPhases.renderPhaseDetail($("#phase-detail"), selected, steps, {
@@ -395,9 +499,12 @@ function renderPhasesLevel() {
   });
   const span = getSpan();
   if (span) {
+    const dimmedIds = new Set();
+    for (const p of phases) if (!filteredIds.has(p.phase_id)) dimmedIds.add(p.phase_id);
     window.PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span, {
       zoom: phaseZoom,
       selectedId: selectedPhaseId,
+      dimmedIds,
       onSelect: (pid) => { selectedPhaseId = pid; renderPhasesLevel(); },
     });
     const range = $("#phases-timeline-range");
@@ -407,6 +514,41 @@ function renderPhasesLevel() {
     }
   }
 }
+
+(function wireMarkerFilter() {
+  const txt = document.getElementById("marker-filter-text");
+  if (txt) {
+    let t;
+    txt.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        listFilters.marker.text = txt.value.trim();
+        if (currentSession) renderMarkersList();
+      }, 120);
+    });
+  }
+})();
+
+(function wirePhaseFilter() {
+  const txt = document.getElementById("phase-filter-text");
+  if (txt) {
+    let t;
+    txt.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        listFilters.phase.text = txt.value.trim();
+        renderPhasesLevel();
+      }, 120);
+    });
+  }
+  const caseSel = document.getElementById("phase-filter-case");
+  if (caseSel) {
+    caseSel.addEventListener("change", () => {
+      listFilters.phase.caseId = caseSel.value;
+      renderPhasesLevel();
+    });
+  }
+})();
 
 async function savePhase(updatedPhase) {
   const anno = ensureAnnoShape(currentSession.annotations);
@@ -1539,9 +1681,23 @@ function effectiveTimestamp(markerEvent) {
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
-  const markers = (currentSession.events || []).filter((e) => e.type === "marker");
-  if (!markers.length) {
+  const allMarkers = (currentSession.events || []).filter((e) => e.type === "marker");
+  if (!allMarkers.length) {
     host.innerHTML = '<p class="hint">No markers fired in this session.</p>';
+    return;
+  }
+  const f = listFilters.marker;
+  const query = (f.text || "").toLowerCase();
+  const markers = query
+    ? allMarkers.filter(m => (effectiveLabel(m) || "").toLowerCase().includes(query)
+        || (m.data.reason || "").toLowerCase().includes(query))
+    : allMarkers;
+  const meta = $("#marker-filter-meta");
+  if (meta) meta.textContent = markers.length === allMarkers.length
+    ? `${allMarkers.length} markers`
+    : `${markers.length} of ${allMarkers.length}`;
+  if (!markers.length) {
+    host.innerHTML = '<p class="hint">No markers match the filter.</p>';
     return;
   }
   const hint = document.createElement("p");

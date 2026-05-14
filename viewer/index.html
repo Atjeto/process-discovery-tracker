@@ -191,6 +191,10 @@
                 <div id="screenshots-grid" class="screens-grid"></div>
               </div>
               <div class="anno-panel" data-panel="markers" style="display:none">
+                <div class="list-filter list-filter-compact">
+                  <input type="search" class="list-filter-input" id="marker-filter-text" placeholder="Filter markers..." />
+                  <span class="list-filter-meta" id="marker-filter-meta"></span>
+                </div>
                 <div id="markers-list" class="markers-list"></div>
               </div>
             </aside>
@@ -223,6 +227,17 @@
           <div class="editor-split">
             <div class="editor-list-pane">
               <div class="editor-pane-title">Steps · <span id="steps-pane-count">0</span></div>
+              <div class="list-filter" id="step-list-filter">
+                <input type="search" class="list-filter-input" id="step-filter-text" placeholder="Filter steps by name..." />
+                <div class="list-filter-chips" id="step-filter-states">
+                  <button class="chip" data-state="auto_suggested" title="auto-suggested"><span class="state-icon state-auto_suggested"></span></button>
+                  <button class="chip" data-state="auto_matched" title="auto-matched"><span class="state-icon state-auto_matched"></span></button>
+                  <button class="chip" data-state="manually_authored" title="manually authored"><span class="state-icon state-manually_authored"></span></button>
+                  <button class="chip" data-state="edited" title="edited"><span class="state-icon state-edited"></span></button>
+                </div>
+                <select class="list-filter-case" id="step-filter-case"><option value="">All cases</option></select>
+                <span class="list-filter-meta" id="step-filter-meta"></span>
+              </div>
               <div id="step-list"></div>
             </div>
             <div class="editor-detail-pane">
@@ -259,6 +274,11 @@
           <div class="editor-split">
             <div class="editor-list-pane">
               <div class="editor-pane-title">Phases · <span id="phases-pane-count">0</span></div>
+              <div class="list-filter" id="phase-list-filter">
+                <input type="search" class="list-filter-input" id="phase-filter-text" placeholder="Filter phases by name..." />
+                <select class="list-filter-case" id="phase-filter-case"><option value="">All cases</option></select>
+                <span class="list-filter-meta" id="phase-filter-meta"></span>
+              </div>
               <div id="phase-list"></div>
             </div>
             <div class="editor-detail-pane">
