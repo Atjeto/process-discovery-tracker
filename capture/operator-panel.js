@@ -18,7 +18,9 @@ const { BrowserWindow } = require("electron");
 function buildOperatorHtml(config) {
   const labels = JSON.stringify((config && config.process_labels) || []);
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>PDT - Operator Panel</title>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>PDT - Operator Panel</title>
 <style>
   :root { color-scheme: dark;
     --bg: #14131A; --bg-2: #1B1A24; --bg-3: #25232F; --bg-4: #2F2D3A;
@@ -235,12 +237,20 @@ function showOperatorPanel(config) {
     backgroundColor: "#14131A",
     skipTaskbar: false,
     webPreferences: {
+      /* Trusted first-party HTML loaded via a data: URL. CSP in the
+         page restricts what the renderer can do. */
       nodeIntegration: true,
       contextIsolation: false,
       sandbox: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      spellcheck: false,
     },
   });
   win.removeMenu();
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.loadURL(
     "data:text/html;charset=utf-8," + encodeURIComponent(buildOperatorHtml(config))
   );

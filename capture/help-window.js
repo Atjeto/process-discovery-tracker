@@ -12,7 +12,9 @@ const { BrowserWindow } = require("electron");
 
 function buildHelpHtml() {
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>PDT - Help</title>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>PDT - Help</title>
 <style>
   :root { color-scheme: dark;
     --bg: #14131A; --bg-2: #1B1A24; --bg-3: #25232F;
@@ -177,12 +179,20 @@ function showHelpWindow() {
     autoHideMenuBar: true,
     backgroundColor: "#14131A",
     webPreferences: {
+      /* Help is static read-only content; we run it under the
+         strictest mode: sandboxed renderer with no Node access. */
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      spellcheck: false,
     },
   });
   win.removeMenu();
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.loadURL(
     "data:text/html;charset=utf-8," + encodeURIComponent(buildHelpHtml())
   );

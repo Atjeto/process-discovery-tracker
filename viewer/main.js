@@ -25,10 +25,25 @@ function createMainWindow() {
     title: "Process Discovery Viewer",
     backgroundColor: "#13121A",
     webPreferences: {
+      /* The renderer loads only first-party HTML/CSS/JS from disk and
+         uses require() for bpmn-js + cytoscape. nodeIntegration is
+         required for that pattern; CSP and the deny-all window-open
+         handler below mitigate the residual risk. */
       nodeIntegration: true,
       contextIsolation: false,
       sandbox: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      spellcheck: false,
     },
+  });
+  /* Block any attempt to open external URLs from rendered content
+     (e.g. malformed BPMN with an embedded link). */
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  /* Block in-page navigation away from the loaded index.html. */
+  mainWindow.webContents.on("will-navigate", (e, url) => {
+    if (!url.startsWith("file://")) e.preventDefault();
   });
   mainWindow.loadFile(path.join(__dirname, "index.html"));
   mainWindow.on("closed", () => { mainWindow = null; });
@@ -83,8 +98,12 @@ ipcMain.handle("viewer:loadMultipleSessions", (_e, folders) => {
 
 ipcMain.handle("viewer:runNormalize", async (_e, { sessionFolder, mine }) => {
   try {
+    const root = path.resolve(sessionFolder);
+    if (!fs.existsSync(path.join(root, "manifest.json"))) {
+      throw new Error("Not a session folder; refusing to normalize.");
+    }
     const result = await runNormalize({
-      sessionFolder,
+      sessionFolder: root,
       mine: !!mine,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", text),
     });
@@ -110,6 +129,13 @@ ipcMain.handle("viewer:openExternal", (_e, p) => shell.openPath(p));
 /* --- Session loading ---------------------------------------------- */
 
 function loadSessionData(sessionFolder) {
+  /* Normalize and resolve to an absolute path so downstream file
+     accesses are anchored to a known root. */
+  const root = path.resolve(sessionFolder);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    throw new Error(`Session folder not found: ${root}`);
+  }
+  sessionFolder = root;
   const manifestPath = path.join(sessionFolder, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Not a session folder (no manifest.json): ${sessionFolder}`);
@@ -162,7 +188,15 @@ function loadOptionalJson(p) {
 /* --- Annotations write-back --------------------------------------- */
 
 ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) => {
-  const annoPath = path.join(sessionFolder, "annotations.json");
+  /* Anchor the write to an absolute session folder; reject if the
+     resolved path doesn't contain a manifest (i.e. is not actually a
+     session folder). Prevents accidental writes to arbitrary paths
+     via a manipulated IPC payload. */
+  const root = path.resolve(sessionFolder);
+  if (!fs.existsSync(path.join(root, "manifest.json"))) {
+    throw new Error("Refusing to write annotations: not a session folder");
+  }
+  const annoPath = path.join(root, "annotations.json");
   fs.writeFileSync(annoPath, JSON.stringify(annotations, null, 2));
   return annoPath;
 });

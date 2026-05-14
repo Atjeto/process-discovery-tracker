@@ -1,0 +1,16 @@
+Process Discovery Tracker - Internal use license
+
+Copyright (c) 2026
+
+This software is an internal tool. It is not licensed for redistribution
+outside the organization that develops and operates it. Within the
+organization it may be freely copied, modified, and deployed by employees
+in the course of their work for the organization.
+
+Third-party dependencies retain their respective licenses. See the
+generated SBOM (scripts/generate-sbom.js -> dist/SBOM.json) for the
+authoritative list, or each dependency's LICENSE file inside node_modules
+and the Python embeddable site-packages directory.
+
+No warranty is provided. Operate within the security and data-handling
+boundaries documented in SECURITY.md.

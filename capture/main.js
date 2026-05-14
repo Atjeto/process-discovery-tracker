@@ -356,11 +356,19 @@ function showLabelPicker() {
     skipTaskbar: false,
     backgroundColor: "#1a1a1f",
     webPreferences: {
+      /* Trusted first-party HTML loaded via a data: URL. CSP in the
+         page restricts what the renderer can do. */
       nodeIntegration: true,
       contextIsolation: false,
       sandbox: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      spellcheck: false,
     },
   });
+  labelPickerWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  labelPickerWindow.webContents.on("will-navigate", (e) => e.preventDefault());
   labelPickerWindow.loadURL(
     "data:text/html;charset=utf-8," + encodeURIComponent(buildPickerHtml())
   );
@@ -375,7 +383,9 @@ function showLabelPicker() {
 function buildPickerHtml() {
   const labels = JSON.stringify(config.process_labels || []);
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>Start marker</title>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Start marker</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; padding: 16px; background: #1a1a1f; color: #e8e8ea;
@@ -402,6 +412,10 @@ const all = ${labels};
 const q = document.getElementById("q");
 const list = document.getElementById("list");
 let sel = 0;
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 function filtered() {
   const term = q.value.toLowerCase();
   const matched = all.filter(l => l.toLowerCase().includes(term));
@@ -415,8 +429,10 @@ function render() {
   const items = filtered();
   if (sel >= items.length) sel = items.length - 1;
   if (sel < 0) sel = 0;
+  /* XSS guard: labels come from user typing and from config; both are
+     escaped before being injected via innerHTML. */
   list.innerHTML = items.map((l, i) =>
-    '<li class="' + (i === sel ? 'sel' : '') + '" data-i="' + i + '">' + l + '</li>'
+    '<li class="' + (i === sel ? 'sel' : '') + '" data-i="' + i + '">' + esc(l) + '</li>'
   ).join('');
   list.querySelectorAll('li').forEach(li => {
     li.addEventListener('click', () => { sel = Number(li.dataset.i); fire(); });
