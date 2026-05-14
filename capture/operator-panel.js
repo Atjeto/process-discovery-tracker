@@ -56,6 +56,12 @@ function buildOperatorHtml(config) {
   .timer  { font-family: var(--mono); font-size: 14px; color: var(--fg-2); }
   .now    { font-size: 12px; color: var(--fg-2); padding-left: 20px; min-height: 16px;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill   { font-size: 10px; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--border);
+            color: var(--fg-2); background: var(--bg-2); }
+  .pill.on    { color: var(--accent); border-color: var(--accent); }
+  .pill.warn  { color: var(--warn);   border-color: var(--warn); }
+  .pill.bad   { color: var(--danger); border-color: var(--danger); }
+  .pill.off   { color: var(--fg-3);   border-color: var(--fg-3); }
 
   /* Sub-section label */
   .lbl { font-size: 11px; color: var(--fg-3); margin-bottom: 6px; }
@@ -120,6 +126,7 @@ function buildOperatorHtml(config) {
 <header>
   <div class="dot" id="dot"></div>
   <div class="state" id="state">Idle</div>
+  <span class="pill" id="rec-pill" style="display:none"></span>
   <div class="timer" id="timer">00:00:00</div>
 </header>
 <div class="now" id="now"></div>
@@ -226,6 +233,18 @@ async function tick() {
   const btnShot       = document.getElementById("btn-screenshot");
   const btnSync       = document.getElementById("btn-sync");
   const btnEndSession = document.getElementById("btn-end-session");
+
+  const recPill = document.getElementById("rec-pill");
+  const rstate = s && s.recorder_state;
+  if (!rstate || rstate === "disabled") {
+    recPill.style.display = "none";
+  } else {
+    recPill.style.display = "";
+    recPill.textContent = "recorder " + rstate;
+    recPill.className = "pill " +
+      (rstate === "on" ? "on" : rstate === "paused" ? "warn" :
+       rstate === "dead" ? "bad" : "off");
+  }
 
   if (!s || !s.tracking) {
     dot.className = "dot";

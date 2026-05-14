@@ -90,10 +90,20 @@ Write-Host ""
 Write-Host "[2/5] Staging normalization/ into viewer\normalization\" -ForegroundColor Yellow
 if (Test-Path $viewerNormStage) { Remove-Item -Recurse -Force $viewerNormStage }
 New-Item -ItemType Directory -Path $viewerNormStage | Out-Null
+# Top-level .py/.yaml/.yml/.txt/.md files
 Get-ChildItem -Path $normalizationDir -File | Where-Object {
   $_.Extension -in ".py", ".yaml", ".yml", ".txt", ".md"
 } | ForEach-Object {
   Copy-Item -Force $_.FullName $viewerNormStage
+}
+# Subdirectories: ml/, canonical/. Skip __pycache__ and test/.
+foreach ($sub in @("ml", "canonical")) {
+  $src = Join-Path $normalizationDir $sub
+  if (Test-Path $src) {
+    $dst = Join-Path $viewerNormStage $sub
+    & robocopy $src $dst /E /XD __pycache__ /NFL /NDL /NJH /NJS /NC /NS /NP /R:1 /W:1 | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "staging $sub failed (exit $LASTEXITCODE)" }
+  }
 }
 
 # Step 3: Capture

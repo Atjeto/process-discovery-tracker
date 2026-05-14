@@ -91,6 +91,9 @@ let config = null;
 let configSourcePath = null;
 let baseDir = null;
 let recoveredCount = 0;
+let recorder = null;
+let recorderRestartCount = 0;
+let recorderPermanentlyDead = false;
 
 // Idle monitor state
 let idleMonitorHandle = null;
@@ -271,13 +274,87 @@ async function startSession() {
   lastTrackedApp = null;
   lastStatus = tracker.getStatus();
   startIdleMonitor();
+
+  if (config.interactions && config.interactions.enabled) {
+    const ok = await startRecorderForSession();
+    if (!ok && config.interactions.required) {
+      // Strict mode: required recorder failed - tear down the session.
+      await endSession();
+      return null;
+    }
+  }
+
   bootLog(`session started: ${session.sessionFolder}`);
   return session;
+}
+
+async function startRecorderForSession() {
+  try {
+    recorder = require("./recorder.js").spawnRecorder({
+      sessionId: session.sessionId,
+      onEvent: (data) => {
+        if (!tracker) return;
+        try { tracker.fireInteraction(data); }
+        catch (e) { bootLog(`fireInteraction failed: ${e && e.message}`); }
+      },
+      onWarning: (w) => bootLog(`[recorder] ${w.msg || ""}: ${w.detail || ""}`),
+      onStats: (s) => bootLog(`[recorder.stats] queued=${s.queued} dropped=${s.dropped_total} emitted=${s.emitted_total}`),
+      onExit: (info) => handleRecorderExit(info),
+      bootLog,
+    });
+    if (tracker) tracker.fireSystem("recorder_start");
+    recorderRestartCount = 0;
+    recorderPermanentlyDead = false;
+    return true;
+  } catch (e) {
+    bootLog(`recorder spawn failed: ${e && e.message}`);
+    if (config.interactions.required) {
+      dialog.showErrorBox(
+        "Interaction recorder unavailable",
+        `${e && e.message}\n\nPer session config the recorder is required.`
+      );
+      return false;
+    }
+    return false;
+  }
+}
+
+function handleRecorderExit(info) {
+  if (!tracker) {
+    recorder = null;
+    return;
+  }
+  tracker.fireSystem("recorder_died", {
+    code: info.code, signal: info.signal, restart_count: recorderRestartCount,
+  });
+  recorder = null;
+  if (
+    config.interactions &&
+    config.interactions.auto_restart &&
+    recorderRestartCount < (config.interactions.max_restarts_per_session || 3)
+  ) {
+    recorderRestartCount += 1;
+    setTimeout(() => {
+      if (!tracker) return;
+      startRecorderForSession();
+    }, 5000);
+  } else {
+    recorderPermanentlyDead = true;
+    tracker.fireSystem("recorder_dead_permanent");
+  }
 }
 
 async function endSession() {
   if (!tracker) return null;
   stopIdleMonitor();
+
+  if (recorder) {
+    try { tracker.fireSystem("recorder_stop"); } catch (_e) {}
+    try { await recorder.stop({ drainTimeoutMs: 1500 }); } catch (_e) {}
+    recorder = null;
+  }
+  recorderRestartCount = 0;
+  recorderPermanentlyDead = false;
 
   if (obsConnected && obs) {
     try {
@@ -473,6 +550,13 @@ ipcMain.handle("pdt:fireStart", (_e, label) => fireStartMarker(label));
 
 /* --- Status window IPC -------------------------------------------- */
 
+function recorderStateLabel(paused) {
+  if (!config || !config.interactions || !config.interactions.enabled) return "disabled";
+  if (recorderPermanentlyDead) return "dead";
+  if (!recorder) return "off";
+  return paused ? "paused" : "on";
+}
+
 ipcMain.handle("pdt:status", () => {
   if (!tracker) {
     return {
@@ -482,6 +566,8 @@ ipcMain.handle("pdt:status", () => {
       idle: false,
       recovered: recoveredCount > 0,
       screenshotsEnabled: !!(config && config.screenshots && config.screenshots.enabled),
+      recorder_state: recorderStateLabel(false),
+      interactionCount: 0,
     };
   }
   const s = tracker.getStatus();
@@ -498,9 +584,11 @@ ipcMain.handle("pdt:status", () => {
     eventCount: s.eventCount,
     markerCount: s.markerCount,
     screenshotCount: s.screenshotCount,
+    interactionCount: s.interactionCount || 0,
     elapsedMs: s.elapsedMs,
     recentEvents: s.recentEvents,
     screenshotsEnabled: !!(config && config.screenshots && config.screenshots.enabled),
+    recorder_state: recorderStateLabel(s.paused),
   };
 });
 
@@ -509,6 +597,9 @@ ipcMain.handle("pdt:togglePause", () => {
   const s = tracker.getStatus();
   if (s.paused) tracker.resume(); else tracker.pause();
   lastStatus = tracker.getStatus();
+  if (recorder) {
+    try { lastStatus.paused ? recorder.pause() : recorder.resume(); } catch (_e) {}
+  }
   refreshTray();
   return lastStatus;
 });
@@ -575,7 +666,12 @@ function statusLine() {
   const depth = (lastStatus && lastStatus.markerDepth) || 0;
   const obsTag = obsConnected ? " - OBS" : "";
   const idleTag = isIdle ? " - idle" : "";
-  return `Tracking: ${appName} - ${depth} open${obsTag}${idleTag}`;
+  let recTag = "";
+  if (config && config.interactions && config.interactions.enabled) {
+    if (recorderPermanentlyDead) recTag = " - recorder DEAD";
+    else if (!recorder) recTag = " - recorder OFF";
+  }
+  return `Tracking: ${appName} - ${depth} open${obsTag}${idleTag}${recTag}`;
 }
 
 function buildMenu() {
@@ -625,6 +721,9 @@ function buildMenu() {
         if (lastStatus && lastStatus.paused) tracker.resume();
         else tracker.pause();
         lastStatus = tracker.getStatus();
+        if (recorder) {
+          try { lastStatus.paused ? recorder.pause() : recorder.resume(); } catch (_e) {}
+        }
         refreshTray();
       },
     });

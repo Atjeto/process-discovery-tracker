@@ -66,6 +66,7 @@ No data leaves the device unless the operator explicitly moves a session folder.
 | Screenshots | Uses Electron's built-in `desktopCapturer` API. Does NOT use bundled helper executables. No third-party screen-capture binaries shipped. |
 | Global hotkeys | Registered via Electron `globalShortcut`. Default Ctrl+Shift+S/E/P/Y. Configurable. |
 | OBS control | JSON-RPC over WebSocket to `127.0.0.1:4455` only. Authenticatable. |
+| Interaction recording | Subscribes to Windows UI Automation events via the in-box `UIAutomationCore.dll`. Same API used by Narrator, NVDA, Inspect.exe. No `SetWindowsHookEx`, no DLL injection, no keyboard / mouse hooks. C# sidecar runs as a separate process, NDJSON over stdio to the Electron main process. |
 | Process injection | None. |
 | DLL hooking | None. |
 | Driver loading | None. |
@@ -152,6 +153,16 @@ Build-time advisories (dev dependencies, never shipped):
 | viewer | 10 high, 2 low (same root cause: electron-builder + winCodeSign cache extraction libraries). Do not ship in the .exe. |
 
 Run `npm audit --omit=dev` in each app folder to reproduce the runtime numbers.
+
+## Bundled binaries and models
+
+The shipped `dist/` for v0.2 includes:
+
+- `recorder/recorder.exe` (~70 MB, .NET 8 self-contained, UIA event subscriber - source under `capture/recorder/`)
+- `ml_models/all-MiniLM-L6-v2/` (~90 MB, sentence-transformer embeddings exported once to ONNX)
+- `ml_models/classifier.pkl` (~5 MB, per-team classifier trained from your taxonomy)
+
+None of these phone home. The recorder uses only Microsoft's in-box UI Automation API. The ML stack runs entirely on CPU via ONNX Runtime; the classifier is trained locally from your taxonomy rules.
 
 ## Code signing
 

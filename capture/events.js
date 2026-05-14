@@ -40,4 +40,20 @@ function systemEvent(sessionId, kind, payload) {
   });
 }
 
-module.exports = { activityEvent, markerEvent, systemEvent, nowIso };
+function interactionEvent(sessionId, data) {
+  if (!data || typeof data.kind !== "string") {
+    throw new Error("interactionEvent requires data.kind");
+  }
+  const allowed = new Set([
+    "kind", "control_type", "automation_id", "name", "class_name",
+    "framework_id", "window_title", "process_name", "pid",
+    "selected_value", "toggle_state", "value",
+  ]);
+  const shaped = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (allowed.has(k) && v !== null && v !== undefined) shaped[k] = v;
+  }
+  return makeEvent("interaction", sessionId, shaped);
+}
+
+module.exports = { activityEvent, markerEvent, systemEvent, interactionEvent, nowIso };

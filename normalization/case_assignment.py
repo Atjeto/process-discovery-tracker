@@ -56,7 +56,7 @@ def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 out.append(new_ev)
             else:
                 out.append(ev)
-        elif etype == "activity":
+        elif etype == "activity" or etype == "interaction":
             case_ids = [s["case_id"] for s in reversed(stack)]
             new_ev = dict(ev)
             new_ev["data"] = {**ev["data"], "case_ids": case_ids}

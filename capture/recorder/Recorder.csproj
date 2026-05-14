@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>false</UseWindowsForms>
+    <!-- UseWPF must be true to surface UIAutomationClient / UIAutomationTypes
+         (System.Windows.Automation lives in the WPF framework reference set).
+         We don't use WPF UI types; trimming is off so this only adds the
+         reference assemblies, not arbitrary WPF runtime code. -->
+    <UseWPF>true</UseWPF>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>Pdt.Recorder</RootNamespace>
+    <AssemblyName>recorder</AssemblyName>
+  </PropertyGroup>
+</Project>

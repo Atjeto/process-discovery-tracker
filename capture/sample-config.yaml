@@ -46,3 +46,11 @@ screenshots:
   on_app_switch: true
   on_marker_fire: true
   on_idle_resume_minutes: 5   # minimum idle duration before resume triggers a screenshot
+
+# Interaction recording (UIA event subscription via C# sidecar)
+interactions:
+  enabled: true
+  required: false
+  auto_restart: true
+  max_restarts_per_session: 3
+  exclude_processes: []

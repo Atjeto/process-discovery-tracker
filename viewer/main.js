@@ -160,6 +160,7 @@ function loadSessionData(sessionFolder) {
   const dfg = loadOptionalJson(path.join(sessionFolder, "dfg.json"));
   const annotations = loadOptionalJson(path.join(sessionFolder, "annotations.json"));
   const obsSync = loadOptionalJson(path.join(sessionFolder, "obs", "sync.json"));
+  const mlSuggestions = loadOptionalJson(path.join(sessionFolder, "ml_suggestions.json"));
 
   /* Locate the OBS recording. The manifest may point at an absolute
      path written by OBS; if missing or unreachable, the viewer renders
@@ -174,6 +175,7 @@ function loadSessionData(sessionFolder) {
     stats,
     dfg,
     annotations,
+    mlSuggestions,
     obsSync,
     recordingPath,
     recordingAvailable,
@@ -184,6 +186,92 @@ function loadOptionalJson(p) {
   if (!fs.existsSync(p)) return null;
   try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch (_e) { return null; }
 }
+
+/* --- Canonical YAML IPC ------------------------------------------- */
+
+ipcMain.handle("viewer:openCanonicalFile", async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: "Open canonical YAML",
+    properties: ["openFile"],
+    filters: [{ name: "YAML", extensions: ["yaml", "yml"] }],
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  return { path: r.filePaths[0], content: fs.readFileSync(r.filePaths[0], "utf-8") };
+});
+
+ipcMain.handle("viewer:saveCanonicalFile", (_e, { path: p, content }) => {
+  fs.writeFileSync(p, content, "utf-8");
+  return { path: p };
+});
+
+ipcMain.handle("viewer:testCanonicalMatch", async (_e, { canonicalPath, sessionFolder }) => {
+  try {
+    const root = path.resolve(sessionFolder);
+    if (!fs.existsSync(path.join(root, "manifest.json"))) {
+      return { ok: false, error: "Not a session folder" };
+    }
+    const result = await runNormalize({
+      sessionFolder: root,
+      mine: false,
+      canonical: canonicalPath,
+      onLog: () => {},
+    });
+    // Read the freshly written stats.json for the match rate.
+    const stats = loadOptionalJson(path.join(root, "stats.json")) || {};
+    const meta = stats.meta || {};
+    return {
+      ok: true,
+      match_rate: meta.match_rate || 0,
+      matched: meta.matched_interactions || 0,
+      total: meta.interaction_count || 0,
+      ...result,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
+  try {
+    const root = path.resolve(opts.sessionFolder);
+    if (!fs.existsSync(path.join(root, "manifest.json"))) {
+      throw new Error("Not a session folder; refusing to normalize.");
+    }
+    const result = await runNormalize({
+      sessionFolder: root,
+      mine: !!opts.mine,
+      canonical: opts.canonical || null,
+      pddOut: opts.pddOut || null,
+      stepBpmnOut: opts.stepBpmnOut || null,
+      phaseBpmnOut: opts.phaseBpmnOut || null,
+      stepCsvOut: opts.stepCsvOut || null,
+      onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", text),
+    });
+    const stats = loadOptionalJson(path.join(root, "stats.json")) || {};
+    const meta = stats.meta || {};
+    return { ok: true, drift_count: meta.drift_count || 0, ...result };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("viewer:retrainClassifier", async () => {
+  try {
+    const r = await runNormalize({ retrainClassifier: true, onLog: () => {} });
+    return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("viewer:runClusterReview", async (_e, { sessionFolders }) => {
+  try {
+    const r = await runNormalize({ clusterReview: sessionFolders, onLog: () => {} });
+    return { ok: true, clusters: (r && r.clusters) || [] };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 /* --- Annotations write-back --------------------------------------- */
 

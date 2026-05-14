@@ -90,6 +90,556 @@ function activateTab(name) {
   }
 }
 
+/* ============ Session level switcher (Flow / Steps / Phases) ====== */
+
+let currentLevel = "flow";
+let selectedStepId = null;
+let multiSelectedStepIds = new Set();
+let selectedPhaseId = null;
+
+$$("#level-switcher .level-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    $$("#level-switcher .level-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    setLevel(btn.dataset.level);
+  });
+});
+
+function setLevel(name) {
+  currentLevel = name;
+  const tl = $("#timeline");
+  const tlSteps = $("#timeline-steps");
+  const tlPhases = $("#timeline-phases");
+  if (tl)        tl.style.display       = name === "flow" ? "" : "none";
+  if (tlSteps)   tlSteps.style.display  = name === "steps" ? "" : "none";
+  if (tlPhases)  tlPhases.style.display = name === "phases" ? "" : "none";
+  if (name === "steps") {
+    activateAnnoTab("steps");
+    renderStepsLevel();
+  } else if (name === "phases") {
+    activateAnnoTab("phases");
+    renderPhasesLevel();
+  }
+}
+
+function activateAnnoTab(name) {
+  $$(".anno-tab").forEach((t) => t.classList.toggle("active", t.dataset.anno === name));
+  $$(".anno-panel").forEach((p) =>
+    p.style.display = p.dataset.panel === name ? "" : "none"
+  );
+}
+
+/* ============ Steps view rendering ================================ */
+
+function getSpan() {
+  const evs = (currentSession && currentSession.events) || [];
+  if (!evs.length) return null;
+  return {
+    startMs: new Date(evs[0].timestamp).getTime(),
+    endMs:   new Date(evs[evs.length - 1].timestamp).getTime(),
+  };
+}
+
+function decorateDrift(steps) {
+  const drifts = (currentSession.annotations && currentSession.annotations.drift_markers) || [];
+  const byStep = {};
+  for (const d of drifts) {
+    byStep[d.step_id] = d;
+  }
+  return (steps || []).map(s => byStep[s.step_id] ? { ...s, drift: byStep[s.step_id] } : s);
+}
+
+function renderStepsLevel() {
+  if (!currentSession || !window.PdtSteps) return;
+  const steps = decorateDrift((currentSession.annotations && currentSession.annotations.steps) || []);
+  $("#steps-badge").textContent = String(steps.length);
+  window.PdtSteps.renderStepList($("#step-list"), steps, selectedStepId,
+    (sid) => { selectedStepId = sid; renderStepsLevel(); },
+    (sid) => {
+      if (multiSelectedStepIds.has(sid)) multiSelectedStepIds.delete(sid);
+      else multiSelectedStepIds.add(sid);
+      $("#btn-group-into-phase").disabled = multiSelectedStepIds.size < 2;
+    }
+  );
+  const selected = steps.find(s => s.step_id === selectedStepId) || null;
+  window.PdtSteps.renderStepDetail($("#step-detail"), selected, {
+    onSave: saveStep,
+    onDelete: deleteStep,
+    onSplit: splitStep,
+    onMerge: mergeStepWithNext,
+  });
+  const span = getSpan();
+  if (span) {
+    window.PdtSteps.renderStepTimeline($("#timeline-steps"), steps,
+      currentSession.events.filter(e => e.type === "interaction"), span);
+  }
+}
+
+async function saveStep(updatedStep) {
+  if (!currentSession) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const idx = anno.steps.findIndex(s => s.step_id === updatedStep.step_id);
+  if (idx >= 0) anno.steps[idx] = updatedStep;
+  else anno.steps.push(updatedStep);
+  await persistAnnotations(anno);
+  renderStepsLevel();
+  toast("Step saved", "success");
+}
+
+async function deleteStep(stepId) {
+  if (!currentSession) return;
+  if (!confirm("Delete this step?")) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  anno.steps = anno.steps.filter(s => s.step_id !== stepId);
+  await persistAnnotations(anno);
+  if (selectedStepId === stepId) selectedStepId = null;
+  renderStepsLevel();
+  toast("Step deleted", "success");
+}
+
+async function splitStep(stepId) {
+  if (!currentSession) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const idx = anno.steps.findIndex(s => s.step_id === stepId);
+  if (idx < 0) return;
+  const s = anno.steps[idx];
+  const ids = s.evidence.interaction_event_ids || [];
+  if (ids.length < 2) { toast("Need ≥2 interactions to split", "error"); return; }
+  const mid = Math.floor(ids.length / 2);
+  const firstIds = ids.slice(0, mid);
+  const secondIds = ids.slice(mid);
+  const interMap = Object.fromEntries(currentSession.events.filter(e => e.type === "interaction").map(e => [e.event_id, e]));
+  const firstEvents = firstIds.map(id => interMap[id]).filter(Boolean);
+  const secondEvents = secondIds.map(id => interMap[id]).filter(Boolean);
+  if (!firstEvents.length || !secondEvents.length) { toast("Could not split step", "error"); return; }
+  const second = { ...s, step_id: cryptoRandomId(),
+    name: s.name + " (split 2)",
+    time_range: { start: secondEvents[0].timestamp, end: secondEvents[secondEvents.length - 1].timestamp },
+    evidence: { ...s.evidence, interaction_event_ids: secondIds },
+    state: "edited" };
+  const first = { ...s, name: s.name + " (split 1)",
+    time_range: { start: firstEvents[0].timestamp, end: firstEvents[firstEvents.length - 1].timestamp },
+    evidence: { ...s.evidence, interaction_event_ids: firstIds },
+    state: "edited" };
+  anno.steps.splice(idx, 1, first, second);
+  await persistAnnotations(anno);
+  renderStepsLevel();
+  toast("Step split", "success");
+}
+
+async function mergeStepWithNext(stepId) {
+  if (!currentSession) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const sorted = anno.steps.slice().sort((a, b) =>
+    (a.time_range && a.time_range.start || "").localeCompare(b.time_range && b.time_range.start || ""));
+  const idx = sorted.findIndex(s => s.step_id === stepId);
+  if (idx < 0 || idx === sorted.length - 1) { toast("No next step to merge with", "error"); return; }
+  const cur = sorted[idx];
+  const next = sorted[idx + 1];
+  const merged = {
+    ...cur,
+    name: cur.name + " + " + next.name,
+    time_range: { start: cur.time_range.start, end: next.time_range.end },
+    evidence: {
+      ...cur.evidence,
+      interaction_event_ids: [...(cur.evidence.interaction_event_ids || []), ...(next.evidence.interaction_event_ids || [])],
+      screenshot_refs: [...(cur.evidence.screenshot_refs || []), ...(next.evidence.screenshot_refs || [])],
+    },
+    state: "edited",
+  };
+  anno.steps = anno.steps.filter(s => s.step_id !== cur.step_id && s.step_id !== next.step_id);
+  anno.steps.push(merged);
+  await persistAnnotations(anno);
+  selectedStepId = merged.step_id;
+  renderStepsLevel();
+  toast("Steps merged", "success");
+}
+
+async function addManualStep() {
+  if (!currentSession) return;
+  const name = prompt("Step name:");
+  if (!name) return;
+  const video = $("#video");
+  const tsNow = videoTimeToSessionTs(video.currentTime) || new Date().toISOString();
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const step = {
+    step_id: cryptoRandomId(),
+    session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+    case_id: null,
+    name,
+    description: "",
+    time_range: { start: tsNow, end: tsNow },
+    evidence: { interaction_event_ids: [], screenshot_refs: [], video_timecode_range: null, manual_notes: "" },
+    state: "manually_authored",
+    canonical_step_id: null,
+    flags: { conditional: false, condition_text: null, exception_path: false, waste: false, automation_candidate: false },
+    phase_id: null,
+  };
+  anno.steps.push(step);
+  await persistAnnotations(anno);
+  selectedStepId = step.step_id;
+  renderStepsLevel();
+  toast("Manual step added", "success");
+}
+
+if ($("#btn-add-manual-step")) {
+  $("#btn-add-manual-step").addEventListener("click", addManualStep);
+}
+
+/* ============ Phases view rendering =============================== */
+
+function renderPhasesLevel() {
+  if (!currentSession || !window.PdtPhases) return;
+  const phases = (currentSession.annotations && currentSession.annotations.phases) || [];
+  const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
+  $("#phases-badge").textContent = String(phases.length);
+  window.PdtPhases.renderPhaseList($("#phase-list"), phases, selectedPhaseId,
+    (pid) => { selectedPhaseId = pid; renderPhasesLevel(); });
+  const selected = phases.find(p => p.phase_id === selectedPhaseId) || null;
+  window.PdtPhases.renderPhaseDetail($("#phase-detail"), selected, steps, {
+    onSave: savePhase,
+    onDelete: deletePhase,
+    onRemoveStep: removeStepFromPhase,
+  });
+  const span = getSpan();
+  if (span) {
+    window.PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span);
+  }
+}
+
+async function savePhase(updatedPhase) {
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const idx = anno.phases.findIndex(p => p.phase_id === updatedPhase.phase_id);
+  if (idx >= 0) anno.phases[idx] = updatedPhase;
+  else anno.phases.push(updatedPhase);
+  await persistAnnotations(anno);
+  renderPhasesLevel();
+  toast("Phase saved", "success");
+}
+
+async function deletePhase(phaseId) {
+  if (!confirm("Delete this phase?")) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  anno.phases = anno.phases.filter(p => p.phase_id !== phaseId);
+  // Detach phase_id from contained steps
+  for (const s of anno.steps) if (s.phase_id === phaseId) s.phase_id = null;
+  await persistAnnotations(anno);
+  if (selectedPhaseId === phaseId) selectedPhaseId = null;
+  renderPhasesLevel();
+  toast("Phase deleted", "success");
+}
+
+async function removeStepFromPhase(phaseId, stepId) {
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const phase = anno.phases.find(p => p.phase_id === phaseId);
+  if (!phase) return;
+  phase.step_ids = (phase.step_ids || []).filter(id => id !== stepId);
+  phase.state = phase.state === "manually_authored" ? "manually_authored" : "edited";
+  const s = anno.steps.find(x => x.step_id === stepId);
+  if (s) s.phase_id = null;
+  await persistAnnotations(anno);
+  renderPhasesLevel();
+}
+
+async function addManualPhase() {
+  if (!currentSession) return;
+  const name = prompt("Phase name:");
+  if (!name) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const phase = {
+    phase_id: cryptoRandomId(),
+    session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+    case_id: null,
+    name,
+    description: "",
+    step_ids: [],
+    state: "manually_authored",
+    canonical_phase_id: null,
+  };
+  anno.phases.push(phase);
+  await persistAnnotations(anno);
+  selectedPhaseId = phase.phase_id;
+  renderPhasesLevel();
+  toast("Manual phase added", "success");
+}
+
+async function groupIntoPhase() {
+  if (!currentSession) return;
+  const ids = Array.from(multiSelectedStepIds);
+  if (ids.length < 2) return;
+  const name = prompt("Phase name:");
+  if (!name) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const phase = {
+    phase_id: cryptoRandomId(),
+    session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+    case_id: null,
+    name,
+    description: "",
+    step_ids: ids,
+    state: "manually_authored",
+    canonical_phase_id: null,
+  };
+  anno.phases.push(phase);
+  for (const sid of ids) {
+    const s = anno.steps.find(x => x.step_id === sid);
+    if (s) s.phase_id = phase.phase_id;
+  }
+  await persistAnnotations(anno);
+  multiSelectedStepIds.clear();
+  selectedPhaseId = phase.phase_id;
+  $("#btn-group-into-phase").disabled = true;
+  activateAnnoTab("phases");
+  renderPhasesLevel();
+  toast("Steps grouped into phase", "success");
+}
+
+if ($("#btn-add-manual-phase"))   $("#btn-add-manual-phase").addEventListener("click", addManualPhase);
+if ($("#btn-group-into-phase"))   $("#btn-group-into-phase").addEventListener("click", groupIntoPhase);
+
+/* ============ Annotation shape helper ============================ */
+
+function ensureAnnoShape(anno) {
+  const a = anno || {};
+  a.version = 1;
+  a.steps = a.steps || [];
+  a.phases = a.phases || [];
+  a.annotations = a.annotations || [];
+  a.notes = a.notes || [];
+  a.marker_edits = a.marker_edits || [];
+  a.drift_markers = a.drift_markers || [];
+  if (currentSession) a.session_id = (currentSession.manifest && currentSession.manifest.session_id) || a.session_id || "";
+  currentSession.annotations = a;
+  return a;
+}
+
+/* ============ ML suggestions panel ================================ */
+
+function renderMlSuggestions() {
+  const host = $("#ml-suggestions-list");
+  if (!host) return;
+  const suggestions = (currentSession.mlSuggestions && currentSession.mlSuggestions.suggestions) || [];
+  $("#ml-badge").textContent = String(suggestions.length);
+  if (!suggestions.length) {
+    host.innerHTML = '<p class="hint">No ML suggestions. Run normalization with the classifier trained to populate this list.</p>';
+    return;
+  }
+  host.innerHTML = "";
+  for (const sug of suggestions) {
+    const row = document.createElement("div");
+    row.className = "ml-suggestion-row";
+    const confPct = Math.round((sug.confidence || 0) * 100);
+    row.innerHTML = `
+      <span class="ml-kind">${escapeHtml(sug.kind || "")}</span>
+      <span class="ml-label">${escapeHtml(sug.suggested_label || "")}</span>
+      <span class="ml-conf">${confPct}%</span>
+      <span class="ml-actions">
+        <button class="primary" data-act="accept">Accept</button>
+        <button data-act="reject">Reject</button>
+      </span>
+    `;
+    row.querySelector('[data-act="accept"]').addEventListener("click", () =>
+      acceptMlSuggestion(sug));
+    row.querySelector('[data-act="reject"]').addEventListener("click", () =>
+      rejectMlSuggestion(sug));
+    host.appendChild(row);
+  }
+}
+
+async function acceptMlSuggestion(sug) {
+  const anno = ensureAnnoShape(currentSession.annotations);
+  anno.ml_accepted = anno.ml_accepted || [];
+  anno.ml_accepted.push({ event_id: sug.event_id, label: sug.suggested_label, ts: new Date().toISOString() });
+  if (currentSession.mlSuggestions) {
+    currentSession.mlSuggestions.suggestions = (currentSession.mlSuggestions.suggestions || []).filter(s => s.event_id !== sug.event_id);
+  }
+  await persistAnnotations(anno);
+  renderMlSuggestions();
+  toast("Suggestion accepted (re-run normalization to apply downstream)", "success");
+}
+
+async function rejectMlSuggestion(sug) {
+  if (currentSession.mlSuggestions) {
+    currentSession.mlSuggestions.suggestions = (currentSession.mlSuggestions.suggestions || []).filter(s => s.event_id !== sug.event_id);
+  }
+  renderMlSuggestions();
+}
+
+/* ============ Aggregate level switcher ============================ */
+
+let aggregateLevel = "flow";
+$$("#agg-level-switcher .agg-level-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    $$("#agg-level-switcher .agg-level-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    aggregateLevel = btn.dataset.level;
+    renderAggregate();
+  });
+});
+
+/* ============ Canonical view IPC ================================== */
+
+let canonicalState = { path: null, content: null, parsed: null, exemplarFolder: null };
+
+if ($("#btn-open-canonical")) {
+  $("#btn-open-canonical").addEventListener("click", async () => {
+    const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
+    if (!r) return;
+    canonicalState.path = r.path;
+    canonicalState.content = r.content;
+    $("#canonical-yaml").value = r.content;
+    $("#canonical-meta").textContent = "Loaded " + r.path;
+    $("#btn-save-canonical").disabled = false;
+    renderCanonicalStepList();
+  });
+}
+if ($("#btn-save-canonical")) {
+  $("#btn-save-canonical").addEventListener("click", async () => {
+    if (!canonicalState.path) return;
+    const content = $("#canonical-yaml").value;
+    await ipcRenderer.invoke("viewer:saveCanonicalFile", { path: canonicalState.path, content });
+    canonicalState.content = content;
+    toast("Canonical YAML saved", "success");
+    renderCanonicalStepList();
+  });
+}
+if ($("#btn-load-exemplar")) {
+  $("#btn-load-exemplar").addEventListener("click", async () => {
+    const folder = await ipcRenderer.invoke("viewer:openSessionFolder");
+    if (!folder) return;
+    canonicalState.exemplarFolder = folder;
+    if (canonicalState.path) {
+      const r = await ipcRenderer.invoke("viewer:testCanonicalMatch", {
+        canonicalPath: canonicalState.path, sessionFolder: folder,
+      });
+      if (r && r.ok) {
+        $("#exemplar-match-rate").textContent =
+          "Match rate: " + Math.round((r.match_rate || 0) * 100) + "% (" + r.matched + "/" + r.total + ")";
+      }
+    }
+    $("#btn-promote-from-exemplar").disabled = false;
+  });
+}
+
+function renderCanonicalStepList() {
+  const host = $("#canonical-step-list");
+  if (!host) return;
+  // Lightweight YAML parse: count steps by indent-aware regex
+  const content = canonicalState.content || "";
+  const stepMatches = content.match(/^\s*- step_id:\s*"?([^"\n]+)"?\s*$/gm) || [];
+  if (!stepMatches.length) {
+    host.innerHTML = '<p class="hint">No steps defined yet. Edit the YAML on the right.</p>';
+    return;
+  }
+  host.innerHTML = stepMatches.map((s) =>
+    '<div class="canonical-step-row">' + escapeHtml(s.trim()) + '</div>'
+  ).join("");
+}
+
+/* ============ Step / phase / PDD exports ========================= */
+
+async function exportArtifact(kind) {
+  if (!currentSession && !aggregateSessions.length) return;
+  const filtered = aggregateSessions.length ? filteredAggregateSessions() : [currentSession];
+  if (!filtered.length) return;
+  const target = filtered[0];
+  // Run normalize with the corresponding --*-out flag against a temp path
+  const os = require("os");
+  let ext = "bpmn";
+  if (kind === "pdd") ext = "docx";
+  else if (kind === "step-csv") ext = "csv";
+  const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + "." + ext);
+  const opts = { sessionFolder: target.sessionFolder, mine: false };
+  if (kind === "step-bpmn")  opts.stepBpmnOut  = tmpPath;
+  if (kind === "phase-bpmn") opts.phaseBpmnOut = tmpPath;
+  if (kind === "pdd")        opts.pddOut       = tmpPath;
+  if (kind === "step-csv")   opts.stepCsvOut   = tmpPath;
+  const r = await ipcRenderer.invoke("viewer:runNormalizeExtended", opts);
+  if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
+  const suggested = "process." + kind + "." + ext;
+  const out = await ipcRenderer.invoke("viewer:exportFile", { sourcePath: tmpPath, suggestedName: suggested });
+  if (out) {
+    await ipcRenderer.invoke("viewer:revealFile", out);
+    toast("Exported: " + path.basename(out), "success");
+  }
+  try { fs.unlinkSync(tmpPath); } catch (_) {}
+}
+
+if ($("#btn-export-bpmn-step"))  $("#btn-export-bpmn-step").addEventListener("click", () => exportArtifact("step-bpmn"));
+if ($("#btn-export-bpmn-phase")) $("#btn-export-bpmn-phase").addEventListener("click", () => exportArtifact("phase-bpmn"));
+if ($("#btn-export-pdd"))        $("#btn-export-pdd").addEventListener("click", () => exportArtifact("pdd"));
+if ($("#btn-export-step-csv"))   $("#btn-export-step-csv").addEventListener("click", () => exportArtifact("step-csv"));
+
+/* ============ Cluster review + retrain classifier ================= */
+
+if ($("#btn-retrain-classifier")) {
+  $("#btn-retrain-classifier").addEventListener("click", async () => {
+    const r = await ipcRenderer.invoke("viewer:retrainClassifier");
+    if (r && r.ok) toast("Classifier retrained", "success");
+    else toast("Retrain failed: " + ((r && r.error) || "unknown"), "error");
+  });
+}
+
+if ($("#btn-cluster-review")) {
+  $("#btn-cluster-review").addEventListener("click", async () => {
+    if (!aggregateSessions.length) return;
+    const r = await ipcRenderer.invoke("viewer:runClusterReview", {
+      sessionFolders: aggregateSessions.map((s) => s.sessionFolder),
+    });
+    if (!r || !r.ok) { toast("Cluster review failed", "error"); return; }
+    showClusterModal(r.clusters || []);
+  });
+}
+
+function showClusterModal(clusters) {
+  // Minimal modal: list clusters + sample text. Accept apply-one-label.
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.style.display = "";
+  backdrop.innerHTML = `
+    <div class="modal">
+      <header class="modal-header">
+        <h2>Cluster review</h2>
+        <button class="icon-btn modal-close" id="cluster-close">✕</button>
+      </header>
+      <div class="modal-body">
+        ${(clusters || []).map(c => `
+          <div class="cluster-row" data-cid="${c.cluster_id}">
+            <div class="cluster-meta">cluster ${c.cluster_id} · ${c.count} events</div>
+            <div class="cluster-sample">${escapeHtml(c.sample_text || "")}</div>
+            <input type="text" placeholder="Label for this cluster" />
+            <button class="primary">Apply</button>
+          </div>
+        `).join("") || '<p class="hint">No clusters found.</p>'}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.querySelector("#cluster-close").addEventListener("click", () =>
+    backdrop.remove());
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+}
+
+/* ============ Re-normalize to canonical =========================== */
+
+if ($("#btn-renormalize-canonical")) {
+  $("#btn-renormalize-canonical").addEventListener("click", async () => {
+    const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
+    if (!r) return;
+    if (!aggregateSessions.length) { toast("Load sessions first", "error"); return; }
+    let driftCount = 0;
+    for (const s of aggregateSessions) {
+      const result = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
+        sessionFolder: s.sessionFolder, mine: true, canonical: r.path,
+      });
+      if (result && result.ok && result.drift_count) driftCount += result.drift_count;
+    }
+    const folders = aggregateSessions.map((s) => s.sessionFolder);
+    aggregateSessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
+    aggregateSessions = aggregateSessions.filter((s) => !s.error);
+    renderAggregate();
+    toast(`Re-normalized; ${driftCount} drift marker(s)`, driftCount ? "warn" : "success");
+  });
+}
+
 /* ============ Annotation sub-tabs ================================= */
 
 $$(".anno-tab").forEach((tab) => {
@@ -197,6 +747,14 @@ async function loadSessionIntoView(folder) {
   renderScreenshots();
   renderMarkersList();
   renderTimelineSummary();
+  // Phase B+ surfaces
+  selectedStepId = null;
+  selectedPhaseId = null;
+  multiSelectedStepIds = new Set();
+  if ($("#btn-group-into-phase")) $("#btn-group-into-phase").disabled = true;
+  renderStepsLevel();
+  renderPhasesLevel();
+  renderMlSuggestions();
 }
 
 function renderSessionPills() {
@@ -457,6 +1015,7 @@ function renderEventTable() {
   const showAct = $("#cb-show-activity").checked;
   const showMark = $("#cb-show-marker").checked;
   const showSys = $("#cb-show-system").checked;
+  const showInter = $("#cb-show-interaction") ? $("#cb-show-interaction").checked : true;
   const tbody = $("#event-table tbody");
   tbody.innerHTML = "";
   let count = 0;
@@ -464,15 +1023,20 @@ function renderEventTable() {
     if (ev.type === "activity" && !showAct) continue;
     if (ev.type === "marker" && !showMark) continue;
     if (ev.type === "system" && !showSys) continue;
+    if (ev.type === "interaction" && !showInter) continue;
     const lbl = ev.type === "activity"
       ? (ev.data.activity_label || ev.data.app || "")
       : ev.type === "marker"
         ? (ev.data.marker_type + ": " + (ev.data.label || ""))
+      : ev.type === "interaction"
+        ? ((ev.data.kind || "") + ": " + (ev.data.name || ev.data.automation_id || ev.data.control_type || ""))
         : (ev.data.kind || "");
     const detail = ev.type === "activity"
       ? (ev.data.title || "")
       : ev.type === "marker"
         ? (ev.data.reason ? "reason: " + ev.data.reason : "")
+      : ev.type === "interaction"
+        ? ((ev.data.window_title || "") + (ev.data.process_name ? " · " + ev.data.process_name : ""))
         : JSON.stringify(ev.data).slice(0, 120);
     if (filter && !lbl.toLowerCase().includes(filter) && !detail.toLowerCase().includes(filter)) continue;
     const tr = document.createElement("tr");
@@ -504,6 +1068,7 @@ $("#event-filter").addEventListener("input", () => renderEventTable());
 $("#cb-show-activity").addEventListener("change", () => renderEventTable());
 $("#cb-show-marker").addEventListener("change", () => renderEventTable());
 $("#cb-show-system").addEventListener("change", () => renderEventTable());
+if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("change", () => renderEventTable());
 
 /* ============ Annotations / screenshots / markers ================= */
 
@@ -977,6 +1542,63 @@ function renderAggregate() {
      Unclassified activity labels in its stats. */
   $("#btn-export-promotions").disabled = !allStats.some((st) =>
     (st.activity_stats || []).some((r) => /^Unclassified/.test(r.activity_label || "")));
+
+  // Phase E export buttons: enabled when at least one session has step data.
+  const haveSteps = filtered.some((s) =>
+    (s.annotations && (s.annotations.steps || []).length));
+  if ($("#btn-export-bpmn-step"))  $("#btn-export-bpmn-step").disabled  = !haveSteps;
+  if ($("#btn-export-bpmn-phase")) $("#btn-export-bpmn-phase").disabled = !haveSteps;
+  if ($("#btn-export-pdd"))        $("#btn-export-pdd").disabled        = !haveSteps;
+  if ($("#btn-export-step-csv"))   $("#btn-export-step-csv").disabled   = !haveSteps;
+
+  // Version-spread banner
+  const versions = new Set();
+  for (const s of filtered) {
+    const v = ((s.stats || {}).meta || {}).canonical_version;
+    if (v != null) versions.add(v);
+  }
+  const banner = $("#agg-version-spread");
+  if (banner) {
+    if (versions.size > 1) {
+      const latest = Math.max(...[...versions].filter(v => typeof v === "number"));
+      banner.style.display = "";
+      banner.innerHTML =
+        `Loaded sessions span ${versions.size} canonical versions ` +
+        `(${[...versions].join(", ")}). Statistics may be inconsistent. ` +
+        `<button id="btn-renormalize-to-latest">Re-normalize all to v${latest}</button>`;
+      const reBtn = $("#btn-renormalize-to-latest");
+      if (reBtn) reBtn.addEventListener("click", () => $("#btn-renormalize-canonical").click());
+    } else {
+      banner.style.display = "none";
+      banner.innerHTML = "";
+    }
+  }
+
+  // Drift panel
+  const driftPanel = $("#drift-panel");
+  if (driftPanel) {
+    const totalDrift = filtered.reduce((acc, s) =>
+      acc + (((s.annotations || {}).drift_markers || []).length), 0);
+    if (totalDrift > 0) {
+      driftPanel.style.display = "";
+      const rateRows = filtered.map((s) => ({
+        folder: s.sessionFolder.split(/[\\/]/).pop(),
+        match_rate: ((s.stats || {}).meta || {}).match_rate || 0,
+        drift: ((s.annotations || {}).drift_markers || []).length,
+      }));
+      $("#drift-content").innerHTML = `
+        <table class="stats-table">
+          <thead><tr><th>session</th><th>match rate</th><th>drift markers</th></tr></thead>
+          <tbody>
+            ${rateRows.map(r => `<tr><td>${escapeHtml(r.folder)}</td>
+              <td class="num">${Math.round((r.match_rate || 0) * 100)}%</td>
+              <td class="num">${r.drift}</td></tr>`).join("")}
+          </tbody>
+        </table>`;
+    } else {
+      driftPanel.style.display = "none";
+    }
+  }
 }
 
 /* ============ Drill-down from aggregate to session ================ */
@@ -1201,6 +1823,24 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "1") activateTab("session");
   else if (e.key === "2") activateTab("aggregate");
+  else if (e.key === "3") activateTab("canonical");
+  // Step editor shortcuts (only when on session view and steps panel)
+  else if (currentLevel === "steps" && currentSession) {
+    const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
+    if (e.key === "j" || e.key === "ArrowDown") {
+      const idx = steps.findIndex(s => s.step_id === selectedStepId);
+      if (idx < steps.length - 1) { selectedStepId = steps[Math.max(0, idx + 1)].step_id; renderStepsLevel(); e.preventDefault(); }
+    } else if (e.key === "k" || e.key === "ArrowUp") {
+      const idx = steps.findIndex(s => s.step_id === selectedStepId);
+      if (idx > 0) { selectedStepId = steps[idx - 1].step_id; renderStepsLevel(); e.preventDefault(); }
+    } else if (e.key === "n") {
+      addManualStep(); e.preventDefault();
+    } else if (e.key === "s") {
+      if (selectedStepId) { splitStep(selectedStepId); e.preventDefault(); }
+    } else if (e.key === "m") {
+      if (selectedStepId) { mergeStepWithNext(selectedStepId); e.preventDefault(); }
+    }
+  }
   else if (e.key === " ") {
     const video = $("#video");
     if (video && video.src) {

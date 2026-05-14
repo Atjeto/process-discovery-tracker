@@ -71,6 +71,7 @@ function buildStatusHtml() {
   .tag.on   { color: var(--accent); border-color: var(--accent); }
   .tag.warn { color: var(--warn);   border-color: var(--warn); }
   .tag.bad  { color: var(--danger); border-color: var(--danger); }
+  .tag.off  { color: var(--fg-3);   border-color: var(--fg-3); }
 
   /* Markers stack */
   .markers { display: flex; flex-direction: column; gap: 3px; max-height: 90px; overflow: auto; }
@@ -79,7 +80,7 @@ function buildStatusHtml() {
     border-radius: 0 3px 3px 0; font-size: 12px; }
 
   /* Counters */
-  .counters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .counters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .counter { text-align: center; padding: 6px 4px; background: var(--bg-2);
     border: 1px solid var(--border); border-radius: 3px; }
   .counter .v { font-family: var(--mono); font-size: 16px; color: var(--fg); }
@@ -93,6 +94,7 @@ function buildStatusHtml() {
   .feed .activity { color: var(--fg-2); }
   .feed .marker { color: var(--accent); }
   .feed .system { color: var(--fg-3); }
+  .feed .interaction { color: var(--fg-2); }
 
   /* Actions */
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
@@ -139,6 +141,7 @@ function buildStatusHtml() {
     <div class="counter"><div class="v" id="c-events">0</div><div class="k">events</div></div>
     <div class="counter"><div class="v" id="c-markers">0</div><div class="k">markers</div></div>
     <div class="counter"><div class="v" id="c-shots">0</div><div class="k">shots</div></div>
+    <div class="counter"><div class="v" id="c-interactions">0</div><div class="k">interactions</div></div>
   </div>
 </div>
 
@@ -206,6 +209,12 @@ async function tick() {
   else                tags.innerHTML += '<span class="tag">no OBS</span>';
   if (s.idle)         tags.innerHTML += '<span class="tag warn">idle</span>';
   if (s.recovered)    tags.innerHTML += '<span class="tag bad">recovered</span>';
+  const rstate = s.recorder_state;
+  if (rstate === "on")        tags.innerHTML += '<span class="tag on">recorder</span>';
+  else if (rstate === "paused") tags.innerHTML += '<span class="tag warn">recorder paused</span>';
+  else if (rstate === "dead") tags.innerHTML += '<span class="tag bad">recorder dead</span>';
+  else if (rstate === "off")  tags.innerHTML += '<span class="tag off">recorder off</span>';
+  // "disabled" -> no badge
 
   const m = document.getElementById("markers");
   if (!s.openMarkers || !s.openMarkers.length) {
@@ -217,9 +226,10 @@ async function tick() {
     ).join("");
   }
 
-  document.getElementById("c-events").textContent  = s.eventCount      || 0;
-  document.getElementById("c-markers").textContent = s.markerCount     || 0;
-  document.getElementById("c-shots").textContent   = s.screenshotCount || 0;
+  document.getElementById("c-events").textContent       = s.eventCount       || 0;
+  document.getElementById("c-markers").textContent      = s.markerCount      || 0;
+  document.getElementById("c-shots").textContent        = s.screenshotCount  || 0;
+  document.getElementById("c-interactions").textContent = s.interactionCount || 0;
 
   const feed = document.getElementById("feed");
   const recent = (s.recentEvents || []).slice(-8).reverse();
@@ -229,6 +239,11 @@ async function tick() {
     if (ev.type === "activity")     label = short(ev.data.app || "", 28);
     else if (ev.type === "marker")  label = (ev.data.marker_type || "?") + ": " + short(ev.data.label || "", 22);
     else if (ev.type === "system")  label = ev.data.kind || "";
+    else if (ev.type === "interaction") {
+      const kind = ev.data.kind || "?";
+      const name = ev.data.name || ev.data.automation_id || ev.data.control_type || "";
+      label = kind + ": " + short(name, 22);
+    }
     return '<div class="ev"><span class="ts">' + fmtTs(ev.timestamp) + '</span>' +
            '<span class="' + cls + '">' + escapeHtml(label) + '</span></div>';
   }).join("");

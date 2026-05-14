@@ -37,6 +37,13 @@ const DEFAULTS = {
     on_marker_fire: true,
     on_idle_resume_minutes: 5,
   },
+  interactions: {
+    enabled: true,
+    required: false,
+    auto_restart: true,
+    max_restarts_per_session: 3,
+    exclude_processes: [],
+  },
 };
 
 function deepMerge(base, override) {

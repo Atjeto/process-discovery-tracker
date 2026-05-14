@@ -264,7 +264,7 @@ content.push(
   h1("2. Installation"),
   p("All three components are installed once, then reused across engagements."),
   h2("2.1 Capture (worker machine)"),
-  p("Requirements: Windows 10 or 11. No admin install is required. OBS Studio is required only if you intend to record screens during the session."),
+  p("Requirements: Windows 10 or 11. No admin install is required. OBS Studio is required only if you intend to record screens during the session. The interaction recorder (Phase A) ships as a .NET 8 self-contained executable inside the packaged capture folder; no separate .NET install is needed on the worker machine."),
   numbered("Copy the packaged capture folder to a known location, for example C:\\Tools\\PDT\\capture\\."),
   numbered("Optional but recommended: install OBS Studio (free) from obsproject.com. Enable the WebSocket server inside OBS via Tools, WebSocket Server Settings."),
   numbered("Optional: create a Start Menu shortcut to the capture executable, or pin the tray app to the taskbar after launch."),
@@ -601,9 +601,141 @@ content.push(
   ], [3200, 6160]),
 );
 
-/* 13. Appendix */
+/* 13. Interaction Recording (Phase A) */
 content.push(
-  h1("13. Appendix: File Formats"),
+  h1("13. Interaction Recording"),
+  p("v0.2 adds UI-element-level interaction recording alongside the foreground-window polling. The recorder is a .NET 8 sidecar process spawned by the capture app at session start. It subscribes to Windows UI Automation events on the desktop root and emits one JSON line per fired event over stdio."),
+  p("The recorder uses Microsoft's in-box UI Automation event API. It does not install keyboard hooks, mouse hooks, or DLLs. The same API is used by Narrator, NVDA, and Inspect.exe; corporate IT teams that allow accessibility tools allow the recorder by transit."),
+  h2("13.1 What gets recorded"),
+  bullet("Button clicks (Invoked events)"),
+  bullet("Selection changes (combo boxes, list items)"),
+  bullet("Value changes (text inputs, sliders, range controls; values are length-clamped to 256 chars)"),
+  bullet("Toggle changes (checkboxes, radio buttons)"),
+  bullet("Focus changes (each newly focused element)"),
+  bullet("Text-change notifications (no payload - signal only)"),
+  h2("13.2 Configuration"),
+  p("Per-session config supports an interactions block:"),
+  code(`interactions:
+  enabled: true
+  required: false        # strict mode: refuse to start if the sidecar fails
+  auto_restart: true     # respawn the sidecar if it crashes mid-session
+  max_restarts_per_session: 3`),
+  p("In strict mode (required: true), a sidecar failure aborts the session start. In non-strict mode, the capture continues with foreground-window polling only and emits a recorder_dead_permanent system event after the restart budget is exhausted."),
+  h2("13.3 Privacy posture"),
+  p("Interaction events carry control name, automation ID, window title, and process name. They do not capture keystrokes, mouse movement, screen pixels, clipboard contents, or process memory. The recorder does not bypass DPI virtualization or RDP isolation; events from Citrix-or-RDP-hosted apps are not visible (the remote host would need its own recorder)."),
+);
+
+/* 14. Steps and Phases */
+content.push(
+  h1("14. Steps and Phases"),
+  p("v0.2 introduces two additional levels of process abstraction above raw activity events:"),
+  bullet("Step: a contiguous block of interactions that constitutes one logical action (Search customer, Fill onboarding form). Auto-suggested from interaction events; auto-matched against a canonical step set; or manually authored."),
+  bullet("Phase: an ordered set of steps that together represent a milestone of the process (Validate, Onboard, Activate)."),
+  h2("14.1 Level switcher"),
+  p("The session view's timeline header has a three-way switcher: Flow (activity-level, the legacy view), Steps, Phases. Each level renders its own annotation panel on the right with a list/detail editor."),
+  h2("14.2 Auto-suggested vs canonical-matched"),
+  p("Without a canonical YAML, normalize.py auto-suggests steps by walking interaction events in time order, splitting on idle gaps, window changes, and process changes. State: auto_suggested."),
+  p("With --canonical pointing at a canonical step set YAML, every interaction is tested against the step's match rules. Matched interactions form auto_matched steps; unmatched interactions fall back to auto-suggestion. The canonical_step_id is stamped on every auto_matched step."),
+  h2("14.3 Authoring states"),
+  buildTable([
+    ["State", "Origin", "Survives re-normalization"],
+    ["auto_suggested", "Derived from interactions, no canonical match", "Replaced by fresh suggestions"],
+    ["auto_matched", "Matched against canonical YAML", "Replaced by fresh matches"],
+    ["manually_authored", "Analyst added via the editor", "Preserved"],
+    ["edited", "Analyst modified an auto_* step", "Preserved"],
+  ], [2200, 4500, 2500]),
+  h2("14.4 Step editor shortcuts"),
+  buildTable([
+    ["Key", "Action"],
+    ["J / DownArrow", "Select next step"],
+    ["K / UpArrow", "Select previous step"],
+    ["N", "Add manual step"],
+    ["S", "Split selected step at midpoint"],
+    ["M", "Merge selected step with next"],
+    ["Ctrl+Click", "Multi-select steps; then Group into phase"],
+  ], [2500, 6700]),
+);
+
+/* 15. Canonical Step Sets */
+content.push(
+  h1("15. Canonical Step Sets"),
+  p("A canonical step set is a YAML file that defines the expected steps and phases for one named process. It is owned by the process owner (typically tooling lead or ops lead). The Process Discovery Tracker uses it to:"),
+  bullet("Match new captures into recognizable steps automatically"),
+  bullet("Roll matched steps up into phases"),
+  bullet("Detect drift when the captured process diverges from the canonical version"),
+  h2("15.1 File shape"),
+  p("A canonical YAML has a single top-level canonical_process key with phases, steps, and an id + version pair:"),
+  code(`canonical_process:
+  id: "customer-onboarding-v3"
+  name: "Customer Onboarding"
+  version: 7
+  phases:
+    - phase_id: "validate"
+      name: "Validate customer"
+      step_ids: ["check-crm", "credit-check"]
+  steps:
+    - step_id: "check-crm"
+      name: "Check existing customer record"
+      match:
+        - process_name: "chrome.exe"
+          window_title_regex: ".*Salesforce.*Search.*"
+          interaction:
+            control_type: "Edit"
+            automation_id: "searchInput"`),
+  p("Match rules are checked in order; first match wins. A rule can constrain process_name, window_title_regex, and interaction sub-fields (control_type, automation_id, name). An optional end_when block forces the step to close when a specific interaction fires."),
+  h2("15.2 Canonical authoring view"),
+  p("The viewer's third top-level tab (Canonical) lets the analyst load, edit, save, and test a canonical YAML against an exemplar session. Loaded steps are listed on the left; the YAML opens in a code editor on the right; the exemplar match rate appears below."),
+);
+
+/* 16. Exports including PDD and three-mode BPMN */
+content.push(
+  h1("16. Exports"),
+  p("From the aggregate view's exports bar:"),
+  buildTable([
+    ["Export", "What it is", "When to use"],
+    ["BPMN 2.0 XML", "Inductive miner output from PM4Py (flow level)", "Generic process discovery handoff"],
+    ["Step BPMN", "Canonical step set rendered as a task chain", "PDD walkthroughs, automation candidate review"],
+    ["Phase BPMN", "Canonical phases as collapsible sub-processes", "Executive overviews, scope diagrams"],
+    ["PDD (.docx)", "Process Definition Document with phases, steps, screenshots, and statistics", "Formal deliverable to operations / RPA team"],
+    ["Step CSV", "Flat per-step row export", "Spreadsheet analysis, automation scoring"],
+    ["XES", "IEEE 1849-2016 event log", "Import into any process mining tool"],
+    ["stats.json", "Statistics + meta block", "Pipeline consumers"],
+    ["Markdown report", "Confluence-friendly aggregate summary", "Draft a write-up"],
+    ["Taxonomy promotions", "YAML stub of unclassified apps", "Iterate the central taxonomy"],
+  ], [1800, 4500, 2900]),
+);
+
+/* 17. ML Suggestions */
+content.push(
+  h1("17. ML Suggestions"),
+  p("v0.2 ships a local ML stack that suggests activity labels for events the taxonomy could not classify. The stack runs entirely on CPU, with no network calls, using a bundled sentence-transformer (all-MiniLM-L6-v2) exported once to ONNX."),
+  h2("17.1 Training the classifier"),
+  p("One time after taxonomy changes, run:"),
+  code("python normalize.py --retrain-classifier --taxonomy normalization/sample-taxonomy.yaml"),
+  p("The viewer's aggregate view also has a Retrain classifier button that invokes the same path."),
+  h2("17.2 Reviewing suggestions"),
+  p("After normalization, suggestions land in ml_suggestions.json inside the session folder. The session view's ML suggestions sub-tab on the right lists each one with a confidence score. Accept to apply the label; reject to dismiss."),
+  h2("17.3 Cluster review"),
+  p("For batch labeling of many similar events, the Cluster review button on the aggregate view runs HDBSCAN over the embeddings of uncovered events and presents clusters with sample text. Applying one label across a cluster updates all matched events."),
+  h2("17.4 Failure modes"),
+  p("ML is best-effort. If the ONNX model fails to load or the classifier file is missing, normalization continues with the rule-based pipeline and a single ML disabled log line."),
+);
+
+/* 18. Drift and Re-normalization */
+content.push(
+  h1("18. Drift and Re-normalization"),
+  p("When a canonical step set is updated, captured sessions can drift: a step that the analyst manually authored or edited may now match against a different canonical step, or the match rate against the new version may have dropped."),
+  h2("18.1 Drift markers"),
+  p("Drift is recorded per-step in annotations.json under drift_markers. Each marker carries the previous and new canonical_step_id and the timestamp it was detected. The step editor surfaces a drift indicator on affected rows."),
+  h2("18.2 Aggregate drift panel"),
+  p("The aggregate view's Drift panel shows match rate trends, per-session drift counts, and a re-normalize-all button. A version-spread banner appears when loaded sessions span multiple canonical versions."),
+  h2("18.3 Re-normalize all to latest"),
+  p("Clicking Re-normalize to canonical re-runs normalize.py --canonical against every loaded session. auto_matched and auto_suggested steps are replaced with fresh matches; manually_authored and edited steps are preserved (drift markers are added when their canonical assignment changes)."),
+);
+
+/* 19. Appendix */
+content.push(
+  h1("19. Appendix: File Formats"),
   p("This is a reference for analysts and developers who need to consume the captured data without going through the viewer."),
   h2("13.1 Session folder layout"),
   code(`sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
@@ -619,23 +751,24 @@ content.push(
   process_map.bpmn    # BPMN 2.0 XML (with --mine)
   dfg.json            # directly-follows graph (with --mine)
   annotations.json    # analyst notes and marker edits`),
-  h2("13.2 Event envelope"),
+  h2("19.2 Event envelope"),
   p("Every event in events.jsonl follows the same shape:"),
   code(`{
   "event_id": "uuid",
-  "type": "activity" | "marker" | "system",
+  "type": "activity" | "marker" | "system" | "interaction",
   "timestamp": "2026-05-14T09:23:11.482Z",
   "session_id": "uuid",
   "data": { ... type-specific ... }
 }`),
-  h2("13.3 Type-specific data fields"),
+  h2("19.3 Type-specific data fields"),
   buildTable([
     ["Type", "Fields"],
     ["activity", "app, title, pid, duration_ms"],
     ["marker", "marker_type (start or end), label, reason (optional, e.g. auto_end_idle); case_id and parent_case_id added by normalization"],
-    ["system", "kind (one of session_start, session_end, paused, resumed, idle_start, idle_end, auto_end_idle, screenshot, screenshot_manual, obs_recording_start, obs_recording_stop) plus kind-specific payload"],
+    ["system", "kind (one of session_start, session_end, paused, resumed, idle_start, idle_end, auto_end_idle, screenshot, screenshot_manual, obs_recording_start, obs_recording_stop, sync_marker, recorder_start, recorder_stop, recorder_died, recorder_dead_permanent) plus kind-specific payload"],
+    ["interaction", "kind (invoked, selection_changed, value_changed, toggle_changed, text_changed, focus_changed), control_type, automation_id, name, class_name, framework_id, window_title, process_name, pid, plus kind-specific fields"],
   ], [1800, 7560]),
-  h2("13.4 stats.json meta block"),
+  h2("19.4 stats.json meta block"),
   p("The meta block in stats.json records what produced the stats:"),
   bullet("normalization_run_at: ISO 8601 timestamp"),
   bullet("taxonomy_version: from the taxonomy YAML"),

@@ -16,7 +16,7 @@
 "use strict";
 
 const fs = require("node:fs");
-const { activityEvent, markerEvent, systemEvent } = require("./events.js");
+const { activityEvent, markerEvent, systemEvent, interactionEvent } = require("./events.js");
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -46,6 +46,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
   let eventCount = 0;
   let markerCount = 0;
   let screenshotCount = 0;
+  let interactionCount = 0;
   const RECENT_BUFFER_SIZE = 16;
   const recentEvents = [];
 
@@ -53,6 +54,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
     fs.appendFileSync(eventsFile, JSON.stringify(ev) + "\n");
     eventCount += 1;
     if (ev.type === "marker") markerCount += 1;
+    if (ev.type === "interaction") interactionCount += 1;
     if (ev.type === "system" && (ev.data.kind === "screenshot" || ev.data.kind === "screenshot_manual")) {
       screenshotCount += 1;
     }
@@ -142,6 +144,12 @@ function startTracker({ sessionId, eventsFile, onTick }) {
     return ev;
   }
 
+  function fireInteraction(data) {
+    const ev = interactionEvent(sessionId, data);
+    appendEvent(ev);
+    return ev;
+  }
+
   function getStatus() {
     return {
       paused,
@@ -154,6 +162,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
       eventCount,
       markerCount,
       screenshotCount,
+      interactionCount,
       sessionStartMs,
       elapsedMs: Date.now() - sessionStartMs,
       recentEvents: recentEvents.slice(),
@@ -186,7 +195,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
   pollHandle = setInterval(tick, POLL_INTERVAL_MS);
   tick();
 
-  return { fireMarker, fireSystem, getStatus, pause, resume, stop };
+  return { fireMarker, fireSystem, fireInteraction, getStatus, pause, resume, stop };
 }
 
 module.exports = { startTracker, POLL_INTERVAL_MS };

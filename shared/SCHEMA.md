@@ -20,7 +20,7 @@ Each line is one JSON object:
 ```json
 {
   "event_id": "uuid",
-  "type": "activity" | "marker" | "system",
+  "type": "activity" | "marker" | "system" | "interaction",
   "timestamp": "ISO 8601 with millisecond precision",
   "session_id": "uuid",
   "data": { ...type-specific... }
@@ -68,7 +68,7 @@ End markers carry `null` label by convention; they close the innermost open Star
 }
 ```
 
-Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`.
+Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`, `recorder_start`, `recorder_stop`, `recorder_died`, `recorder_dead_permanent`.
 
 Kind-specific payloads:
 
@@ -80,11 +80,54 @@ Kind-specific payloads:
 | `screenshot` / `screenshot_manual` | `{ path: "screenshots/<file>.jpg" }` (relative to session folder) |
 | `obs_recording_start` / `obs_recording_stop` | (empty; full OBS sync details live in `obs/sync.json` and `manifest.json.obs`) |
 | `sync_marker` | `{ sync_id }` -- shared identifier across machines for cross-machine timeline alignment in shift reviews |
+| `recorder_start` / `recorder_stop` / `recorder_dead_permanent` | (empty) |
+| `recorder_died` | `{ code, signal, restart_count }` |
 | `session_start` / `session_end` / `paused` / `resumed` | (empty) |
+
+### `interaction` data
+
+Sourced from Windows UI Automation via the C# sidecar recorder. See `docs/interaction-recorder.md`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `kind` | string | `invoked` \| `selection_changed` \| `value_changed` \| `toggle_changed` \| `text_changed` \| `focus_changed` |
+| `control_type` | string | e.g. `Button`, `Edit`, `ListItem` |
+| `automation_id` | string | Developer-assigned ID |
+| `name` | string | Visible label |
+| `class_name` | string | Win32 class name |
+| `framework_id` | string | `Win32`, `WinForm`, `WPF`, `XAML`, `Chrome`, others |
+| `window_title` | string | Top-level window title |
+| `process_name` | string | Owning process .exe name |
+| `pid` | int | Owning process PID |
+| `selected_value` | string | `selection_changed` only |
+| `toggle_state` | string | `toggle_changed` only - `on` \| `off` \| `indeterminate` |
+| `value` | string | `value_changed` only, length-clamped to 256 chars |
+
+Fields are omitted (not nulled) when the underlying UIA property throws on access.
 
 ## Annotation file (annotations.json)
 
 Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are never mutated. Re-normalization consumes this file (§9.3 option b) before case assignment.
+
+```json
+{
+  "version": 1,
+  "session_id": "uuid",
+  "steps": [],
+  "phases": [],
+  "annotations": [],
+  "marker_edits": [],
+  "notes": [],
+  "drift_markers": [],
+  "matched_against": null,
+  "last_modified": null,
+  "last_modified_by": null
+}
+```
+
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `version`, `session_id`, `last_modified`, `last_modified_by`) are additive; missing files are treated as empty.
+
+Legacy entries inside the two original arrays:
 
 ```json
 {
@@ -96,6 +139,65 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
     { "id": "uuid", "event_id": "<marker_event_id>", "field": "timestamp", "value": "<new ISO>",    "previous": "...", "ts": "..." },
     { "id": "uuid", "event_id": "<marker_event_id>", "op":    "delete",                                                  "ts": "..." }
   ]
+}
+```
+
+### Step entity (`steps[]`)
+
+```json
+{
+  "step_id": "uuid",
+  "session_id": "uuid",
+  "case_id": "uuid or null",
+  "name": "string",
+  "description": "string",
+  "time_range": { "start": "iso", "end": "iso" },
+  "evidence": {
+    "interaction_event_ids": ["uuid"],
+    "screenshot_refs": ["screenshots/file.jpg"],
+    "video_timecode_range": [0, 0],
+    "manual_notes": "string"
+  },
+  "state": "auto_suggested|auto_matched|manually_authored|edited",
+  "canonical_step_id": "uuid or null",
+  "flags": {
+    "conditional": false,
+    "condition_text": null,
+    "exception_path": false,
+    "waste": false,
+    "automation_candidate": false
+  },
+  "phase_id": "uuid or null"
+}
+```
+
+### Phase entity (`phases[]`)
+
+```json
+{
+  "phase_id": "uuid",
+  "session_id": "uuid",
+  "case_id": "uuid",
+  "name": "Validate customer",
+  "description": "",
+  "step_ids": ["uuid", "uuid"],
+  "state": "manually_authored|auto_matched|edited",
+  "canonical_phase_id": "uuid or null"
+}
+```
+
+Phases derive their `time_range` from the union of contained steps (not stored).
+
+### Drift marker (`drift_markers[]`)
+
+```json
+{
+  "marker_id": "uuid",
+  "kind": "canonical_drift",
+  "step_id": "uuid",
+  "previous_canonical_step_id": "uuid or null",
+  "new_canonical_step_id": "uuid or null",
+  "ts": "iso"
 }
 ```
 

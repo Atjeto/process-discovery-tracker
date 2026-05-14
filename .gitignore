@@ -5,6 +5,18 @@ dist-packaged/
 build/
 out/
 
+# Python bytecode caches
+__pycache__/
+*.pyc
+
+# C# recorder build artifacts (also in capture/recorder/.gitignore)
+capture/recorder/bin/
+capture/recorder/obj/
+capture/recorder/publish/
+
+# Locally-trained ML models (built by --retrain-classifier + first ML run)
+normalization/ml_models/
+
 # Bundled python embeddable (built by scripts/build-python-embeddable.ps1 -- ~450 MB)
 viewer/python/
 

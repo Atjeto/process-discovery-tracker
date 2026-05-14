@@ -60,14 +60,33 @@ function resolveDefaultTaxonomy() {
   return null;
 }
 
-function runNormalize({ sessionFolder, taxonomyPath, mine, onLog }) {
+function runNormalize(opts) {
+  const {
+    sessionFolder, taxonomyPath, mine, onLog,
+    canonical, pddOut, stepBpmnOut, phaseBpmnOut, stepCsvOut,
+    retrainClassifier, clusterReview,
+  } = opts || {};
   return new Promise((resolve, reject) => {
     const python = resolvePython();
     const script = resolveNormalizeScript();
     const tax = taxonomyPath || resolveDefaultTaxonomy();
-    const args = [script, sessionFolder];
-    if (tax) args.push("--taxonomy", tax);
-    if (mine) args.push("--mine");
+    const args = [script];
+    if (retrainClassifier) {
+      args.push("--retrain-classifier");
+      if (tax) args.push("--taxonomy", tax);
+    } else if (clusterReview && clusterReview.length) {
+      args.push("--cluster-review");
+      for (const f of clusterReview) args.push(f);
+    } else {
+      args.push(sessionFolder);
+      if (tax) args.push("--taxonomy", tax);
+      if (mine) args.push("--mine");
+      if (canonical) args.push("--canonical", canonical);
+      if (pddOut) args.push("--pdd-out", pddOut);
+      if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
+      if (phaseBpmnOut) args.push("--phase-bpmn-out", phaseBpmnOut);
+      if (stepCsvOut) args.push("--step-csv-out", stepCsvOut);
+    }
 
     const proc = spawn(python, args, {
       cwd: path.dirname(script),
@@ -101,7 +120,7 @@ function runNormalize({ sessionFolder, taxonomyPath, mine, onLog }) {
           summary = JSON.parse(trimmed.slice(lastBrace));
         } catch (_e) { /* keep null */ }
       }
-      resolve({ summary, stdout, stderr });
+      resolve({ summary, clusters: summary && summary.clusters, stdout, stderr });
     });
   });
 }

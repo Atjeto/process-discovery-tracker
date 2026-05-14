@@ -7,7 +7,9 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "package": "electron-packager . \"Process Discovery Tracker\" --platform=win32 --arch=x64 --overwrite --out=dist --ignore=^/dist --ignore=^/dist-electron --extra-resource=tray-icon.png",
+    "build:recorder": "dotnet publish recorder/Recorder.csproj -c Release -o recorder/publish",
+    "prepackage": "npm run build:recorder",
+    "package": "electron-packager . \"Process Discovery Tracker\" --platform=win32 --arch=x64 --overwrite --out=dist --ignore=^/dist --ignore=^/dist-electron --ignore=^/recorder/bin --ignore=^/recorder/obj --ignore=^/recorder/publish --extra-resource=tray-icon.png --extra-resource=recorder/publish",
     "dist": "electron-builder --win --x64 --publish=never"
   },
   "engines": {
@@ -50,6 +52,8 @@
       "status-window.js",
       "help-window.js",
       "operator-panel.js",
+      "recorder.js",
+      "recorder/publish/**/*",
       "sample-config.yaml",
       "tray-icon.png",
       "package.json",
@@ -59,6 +63,10 @@
       {
         "from": "tray-icon.png",
         "to": "tray-icon.png"
+      },
+      {
+        "from": "recorder/publish",
+        "to": "recorder"
       }
     ],
     "win": {

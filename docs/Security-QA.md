@@ -105,6 +105,18 @@ Internal: DM the automation team lead or open a private issue. Do not file a pub
 
 `scripts/preflight.ps1` runs `npm audit --omit=dev` against both apps and fails on any high/critical advisory. Run it before commit and before tagging a release. The build script (`scripts/build-distribution.ps1`) regenerates the SBOM as part of every dist build.
 
+## 21. Does the interaction recorder install kernel hooks or low-level keyboard hooks?
+
+**No.** Uses Microsoft's in-box UI Automation event API (`AddAutomationEventHandler`, `AddAutomationPropertyChangedEventHandler`, `AddAutomationFocusChangedEventHandler`) from `UIAutomationCore.dll`. Same APIs accessibility tools (Narrator, NVDA) use. No `SetWindowsHookEx`, no `WH_KEYBOARD_LL`, no `WH_MOUSE_LL`, no DLL injection.
+
+The recorder is a separate process (`recorder.exe`, .NET 8 self-contained, ~70 MB) spawned by the Electron main process. It communicates via NDJSON over stdio - one line per UIA event. The shape is documented in `shared/SCHEMA.md` under the `interaction` event type. Per-element fields that throw on UIA access are silently omitted (no privileged access required).
+
+## 22. What does the ML layer do? Does it phone home?
+
+**Embeddings + classifier inference, all local.** Sentence-transformer model (`sentence-transformers/all-MiniLM-L6-v2`, ~90 MB) bundled in the dist, loaded into ONNX runtime, runs on CPU. The classifier is trained locally against the team's own taxonomy rules; the trained `classifier.pkl` (~5 MB) lives in the dist as well.
+
+No network calls at runtime. The model download happens once during `scripts/build-python-embeddable.ps1` (build-time, from the public sentence-transformers repo on Hugging Face); from then on, runtime inference is entirely local. ONNX Runtime is configured with `CPUExecutionProvider` only - no GPU, no cloud endpoints. See `SECURITY.md` "Bundled binaries and models" for the full list.
+
 ---
 
 If your tooling needs anything else (specific format for SBOM, signed releases, evidence of unit tests, etc.), let the automation team know what to produce and we will add it.

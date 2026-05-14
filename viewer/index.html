@@ -24,6 +24,7 @@
     <nav class="tabs">
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
       <button class="tab" data-view="aggregate"><span class="kbd">2</span> Aggregate</button>
+      <button class="tab" data-view="canonical"><span class="kbd">3</span> Canonical</button>
     </nav>
     <div class="topbar-meta">
       <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
@@ -73,6 +74,11 @@
             <div class="timeline-header">
               <strong>Timeline</strong>
               <span id="timeline-summary" class="meta"></span>
+              <div class="level-switcher" id="level-switcher">
+                <button class="level-btn active" data-level="flow">Flow</button>
+                <button class="level-btn" data-level="steps">Steps</button>
+                <button class="level-btn" data-level="phases">Phases</button>
+              </div>
               <div class="timeline-controls">
                 <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)">−</button>
                 <button class="icon-btn" id="btn-zoom-reset" title="Reset zoom (0)">⊙</button>
@@ -81,6 +87,8 @@
             </div>
             <div class="timeline-scroll">
               <div class="timeline" id="timeline"></div>
+              <div class="timeline timeline-steps" id="timeline-steps" style="display:none"></div>
+              <div class="timeline timeline-phases" id="timeline-phases" style="display:none"></div>
             </div>
             <div class="legend">
               <span class="lg-activity">activity</span>
@@ -96,6 +104,9 @@
               <button class="anno-tab active" data-anno="notes">Notes</button>
               <button class="anno-tab" data-anno="screens">Screenshots</button>
               <button class="anno-tab" data-anno="markers">Markers</button>
+              <button class="anno-tab" data-anno="steps">Steps <span class="badge" id="steps-badge">0</span></button>
+              <button class="anno-tab" data-anno="phases">Phases <span class="badge" id="phases-badge">0</span></button>
+              <button class="anno-tab" data-anno="ml">ML <span class="badge" id="ml-badge">0</span></button>
             </div>
             <div class="anno-panel" data-panel="notes">
               <div id="annotations-list"></div>
@@ -108,6 +119,33 @@
             <div class="anno-panel" data-panel="markers" style="display:none">
               <div id="markers-list" class="markers-list"></div>
             </div>
+            <div class="anno-panel" data-panel="steps" style="display:none">
+              <div class="step-editor-grid">
+                <div class="step-list-pane">
+                  <div class="step-list-actions">
+                    <button id="btn-add-manual-step">+ Add manual step</button>
+                  </div>
+                  <div id="step-list"></div>
+                </div>
+                <div class="step-detail-pane" id="step-detail"></div>
+              </div>
+            </div>
+            <div class="anno-panel" data-panel="phases" style="display:none">
+              <div class="phase-editor-grid">
+                <div class="phase-list-pane">
+                  <div class="phase-list-actions">
+                    <button id="btn-add-manual-phase">+ Add manual phase</button>
+                    <button id="btn-group-into-phase" disabled>Group selected steps</button>
+                  </div>
+                  <div id="phase-list"></div>
+                </div>
+                <div class="phase-detail-pane" id="phase-detail"></div>
+              </div>
+            </div>
+            <div class="anno-panel" data-panel="ml" style="display:none">
+              <div id="ml-suggestions-list"></div>
+              <p class="hint">Suggestions from <code>ml_suggestions.json</code>. Accept to apply the label and optionally promote it as a taxonomy rule.</p>
+            </div>
           </aside>
         </div>
 
@@ -118,6 +156,7 @@
             <label class="cb"><input type="checkbox" id="cb-show-activity" checked /> activity</label>
             <label class="cb"><input type="checkbox" id="cb-show-marker" checked /> marker</label>
             <label class="cb"><input type="checkbox" id="cb-show-system" checked /> system</label>
+            <label class="cb"><input type="checkbox" id="cb-show-interaction" checked /> interaction</label>
           </div>
           <div class="event-table-scroll">
             <table class="event-table" id="event-table">
@@ -149,12 +188,21 @@
         <div class="actions-bar">
           <button id="btn-open-multi">Open more</button>
           <button id="btn-normalize-all" class="primary">Normalize + mine all</button>
+          <button id="btn-renormalize-canonical">Re-normalize to canonical...</button>
+          <button id="btn-retrain-classifier">Retrain classifier</button>
+          <button id="btn-cluster-review">Cluster review</button>
           <input type="search" id="agg-filter" placeholder="Filter by activity, app, or worker..." />
           <label class="cb">From <input type="date" id="agg-from" /></label>
           <label class="cb">To <input type="date" id="agg-to" /></label>
+          <div class="agg-level-switcher" id="agg-level-switcher">
+            <button class="agg-level-btn active" data-level="flow">Flow</button>
+            <button class="agg-level-btn" data-level="steps">Steps</button>
+            <button class="agg-level-btn" data-level="phases">Phases</button>
+          </div>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="aggregate-pills"></div>
         </div>
+        <div class="alert" id="agg-version-spread" style="display:none"></div>
 
         <div class="aggregate-grid">
           <div class="panel panel-wide">
@@ -219,10 +267,48 @@
         <div class="actions-bar">
           <span class="meta">Exports:</span>
           <button id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
+          <button id="btn-export-bpmn-step" disabled>Step BPMN</button>
+          <button id="btn-export-bpmn-phase" disabled>Phase BPMN</button>
+          <button id="btn-export-pdd" disabled>PDD (.docx)</button>
+          <button id="btn-export-step-csv" disabled>Step CSV</button>
           <button id="btn-export-xes" disabled>XES</button>
           <button id="btn-export-stats" disabled>stats.json</button>
           <button id="btn-export-md" disabled>Markdown report</button>
           <button id="btn-export-promotions" disabled>Taxonomy promotions</button>
+        </div>
+
+        <div class="panel panel-wide" id="drift-panel" style="display:none">
+          <h3>Drift</h3>
+          <div id="drift-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========= Canonical view ========= -->
+    <section class="view" id="view-canonical">
+      <div class="loaded" id="canonical-loaded">
+        <div class="actions-bar">
+          <button id="btn-open-canonical">Open canonical YAML...</button>
+          <button id="btn-save-canonical" disabled>Save changes</button>
+          <button id="btn-promote-from-exemplar" disabled>Promote selected steps from exemplar</button>
+          <span class="flex-spacer"></span>
+          <span class="meta" id="canonical-meta"></span>
+        </div>
+        <div class="canonical-grid">
+          <div class="panel">
+            <h3>Canonical steps</h3>
+            <div id="canonical-step-list"></div>
+          </div>
+          <div class="panel">
+            <h3>Step rules (YAML)</h3>
+            <textarea id="canonical-yaml" spellcheck="false"></textarea>
+          </div>
+          <div class="panel">
+            <h3>Exemplar session</h3>
+            <button id="btn-load-exemplar">Load exemplar session...</button>
+            <div id="exemplar-events"></div>
+            <p class="meta" id="exemplar-match-rate"></p>
+          </div>
         </div>
       </div>
     </section>
@@ -407,6 +493,8 @@
 <script src="dfg-viewer.js"></script>
 <script src="bpmn-viewer.js"></script>
 <script src="report-md.js"></script>
+<script src="step-editor.js"></script>
+<script src="phase-editor.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>
