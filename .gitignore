@@ -9,9 +9,7 @@ node_modules/
 /dist-packaged/
 /build/
 /out/
-capture/dist/
 capture/dist-electron/
-viewer/dist/
 viewer/dist-electron/
 
 # Python bytecode caches
