@@ -163,6 +163,7 @@ function renderStepsLevel() {
   if (!currentSession || !window.PdtSteps) return;
   const steps = decorateDrift((currentSession.annotations && currentSession.annotations.steps) || []);
   $("#steps-badge").textContent = String(steps.length);
+  if ($("#steps-pane-count")) $("#steps-pane-count").textContent = String(steps.length);
   window.PdtSteps.renderStepList($("#step-list"), steps, selectedStepId,
     (sid) => { selectedStepId = sid; renderStepsLevel(); },
     (sid) => {
@@ -303,6 +304,7 @@ function renderPhasesLevel() {
   const phases = (currentSession.annotations && currentSession.annotations.phases) || [];
   const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
   $("#phases-badge").textContent = String(phases.length);
+  if ($("#phases-pane-count")) $("#phases-pane-count").textContent = String(phases.length);
   window.PdtPhases.renderPhaseList($("#phase-list"), phases, selectedPhaseId,
     (pid) => { selectedPhaseId = pid; renderPhasesLevel(); });
   const selected = phases.find(p => p.phase_id === selectedPhaseId) || null;
@@ -2014,6 +2016,14 @@ function selectHelpSection(name) {
   $$(".help-section").forEach((s) => s.classList.toggle("active", s.dataset.section === name));
 }
 $("#btn-help").addEventListener("click", () => openHelp());
+/* Inline "What is a step?" / "What is a phase?" links in the toolbar
+   open the help modal at the right section. */
+document.addEventListener("click", (e) => {
+  const t = e.target.closest && e.target.closest(".link-help");
+  if (!t) return;
+  e.preventDefault();
+  openHelp(t.dataset.helpSection || "stepsphases");
+});
 $("#btn-help-close").addEventListener("click", closeHelp);
 $$(".help-nav-item").forEach((b) =>
   b.addEventListener("click", () => selectHelpSection(b.dataset.section))

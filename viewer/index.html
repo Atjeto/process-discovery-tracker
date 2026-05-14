@@ -165,56 +165,44 @@
           </aside>
         </div>
 
-        <!-- ========= STEPS view (full-width editor) ========= -->
+        <!-- ========= STEPS view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
-          <div class="explainer">
-            <strong>What is a step?</strong>
-            <span>A step is a logical action (like "Search customer", "Fill onboarding form") made up of one or more captured UI interactions. Steps are auto-suggested when you record clicks, or auto-matched against a Process Template if one is loaded. You can rename them, split or merge them, add manual steps, and flag them as waste or automation candidates.</span>
-          </div>
-          <div class="timeline-band-host">
-            <div class="band-label">Step timeline</div>
-            <div class="timeline timeline-steps" id="timeline-steps"></div>
-          </div>
-          <div class="editor-actions">
-            <button id="btn-add-manual-step" class="primary">+ Add manual step</button>
+          <div class="editor-toolbar">
+            <button id="btn-add-manual-step" class="primary">+ Add step</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
-            <span class="hint">Tip: J / K to navigate · S split · M merge · N new · Ctrl+click multi-select</span>
+            <span class="hint">J / K navigate · S split · M merge · N new · Ctrl+click multi-select · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
+          <div class="timeline timeline-steps" id="timeline-steps"></div>
           <div class="editor-split">
             <div class="editor-list-pane">
-              <h3 class="editor-pane-title">Steps in this session</h3>
+              <div class="editor-pane-title">Steps · <span id="steps-pane-count">0</span></div>
               <div id="step-list"></div>
             </div>
             <div class="editor-detail-pane">
-              <h3 class="editor-pane-title">Selected step</h3>
+              <div class="editor-pane-title">Selected step</div>
               <div id="step-detail"></div>
             </div>
           </div>
         </div>
 
-        <!-- ========= PHASES view (full-width editor) ========= -->
+        <!-- ========= PHASES view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-phases" style="display:none">
-          <div class="explainer">
-            <strong>What is a phase?</strong>
-            <span>A phase groups related steps into a milestone (like "Validate customer", "Provision account"). Phases come from a Process Template's phase definitions, or you can build them manually: in the Steps view, Ctrl+click to multi-select steps, then click "Group selected steps". A step belongs to at most one phase.</span>
-          </div>
-          <div class="timeline-band-host">
-            <div class="band-label">Phase timeline</div>
-            <div class="timeline timeline-phases" id="timeline-phases"></div>
-          </div>
-          <div class="editor-actions">
-            <button id="btn-add-manual-phase" class="primary">+ Add manual phase</button>
-            <button id="btn-group-into-phase" disabled>Group selected steps into phase</button>
+          <div class="editor-toolbar">
+            <button id="btn-add-manual-phase" class="primary">+ Add phase</button>
+            <button id="btn-group-into-phase" disabled>Group selected steps</button>
             <span class="meta" id="phases-summary"></span>
+            <span class="flex-spacer"></span>
+            <span class="hint"><a href="#" class="link-help" data-help-section="stepsphases">What is a phase?</a></span>
           </div>
+          <div class="timeline timeline-phases" id="timeline-phases"></div>
           <div class="editor-split">
             <div class="editor-list-pane">
-              <h3 class="editor-pane-title">Phases in this session</h3>
+              <div class="editor-pane-title">Phases · <span id="phases-pane-count">0</span></div>
               <div id="phase-list"></div>
             </div>
             <div class="editor-detail-pane">
-              <h3 class="editor-pane-title">Selected phase</h3>
+              <div class="editor-pane-title">Selected phase</div>
               <div id="phase-detail"></div>
             </div>
           </div>
