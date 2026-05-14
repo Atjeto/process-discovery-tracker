@@ -71,23 +71,34 @@ def apply_marker_edits(
     events: list[dict[str, Any]],
     annotations: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], int]:
-    """§9.3 option b -- apply annotation overrides during normalization.
+    """§9.3 option b: apply annotation overrides during normalization.
 
-    Currently supports `field: "label"` rename edits. Returns the
-    edit-applied event list plus the count of edits applied. Raw
-    events.jsonl is never modified; this builds a derived stream.
+    Supported edit shapes (last-write-wins per event_id+field/op):
+      { event_id, field: "label", value }       - rename
+      { event_id, field: "timestamp", value }   - adjust marker timestamp
+      { event_id, op: "delete" }                - drop the marker entirely
+
+    Returns (edited_events, applied_count). Raw events.jsonl never
+    modified; this builds a derived stream that downstream stages walk.
     """
     edits = (annotations or {}).get("marker_edits") or []
     if not edits:
         return events, 0
-    # Last-write-wins per (event_id, field)
-    overrides: dict[tuple[str, str], Any] = {}
+    label_over: dict[str, Any] = {}
+    ts_over: dict[str, Any] = {}
+    deleted: set[str] = set()
     for e in edits:
         evid = e.get("event_id")
-        field = e.get("field")
-        if not evid or not field:
+        if not evid:
             continue
-        overrides[(evid, field)] = e.get("value")
+        if e.get("op") == "delete":
+            deleted.add(evid)
+            continue
+        field = e.get("field")
+        if field == "label":
+            label_over[evid] = e.get("value")
+        elif field == "timestamp":
+            ts_over[evid] = e.get("value")
     applied = 0
     out: list[dict[str, Any]] = []
     for ev in events:
@@ -95,14 +106,26 @@ def apply_marker_edits(
             out.append(ev)
             continue
         evid = ev.get("event_id")
-        new_label = overrides.get((evid, "label"))
-        if new_label is None:
+        if evid in deleted:
+            applied += 1
+            continue
+        new_label = label_over.get(evid)
+        new_ts = ts_over.get(evid)
+        if new_label is None and new_ts is None:
             out.append(ev)
             continue
         new_ev = dict(ev)
-        new_ev["data"] = {**ev["data"], "label": new_label}
+        new_data = dict(ev["data"])
+        if new_label is not None:
+            new_data["label"] = new_label
+        new_ev["data"] = new_data
+        if new_ts is not None:
+            new_ev["timestamp"] = new_ts
         out.append(new_ev)
         applied += 1
+    # If we changed any timestamps, sort again so downstream sees order
+    if ts_over:
+        out.sort(key=lambda e: e.get("timestamp", ""))
     return out, applied
 
 

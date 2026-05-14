@@ -52,6 +52,7 @@
           <button id="btn-open-session">Open another</button>
           <button id="btn-normalize" class="primary">Run normalization</button>
           <label class="cb"><input type="checkbox" id="cb-mine" checked /> Mine BPMN + DFG</label>
+          <button id="btn-session-md">Export Markdown</button>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="session-pills"></div>
         </div>
@@ -148,6 +149,8 @@
           <button id="btn-open-multi">Open more</button>
           <button id="btn-normalize-all" class="primary">Normalize + mine all</button>
           <input type="search" id="agg-filter" placeholder="Filter by activity, app, or worker..." />
+          <label class="cb">From <input type="date" id="agg-from" /></label>
+          <label class="cb">To <input type="date" id="agg-to" /></label>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="aggregate-pills"></div>
         </div>
@@ -217,6 +220,8 @@
           <button id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
           <button id="btn-export-xes" disabled>XES</button>
           <button id="btn-export-stats" disabled>stats.json</button>
+          <button id="btn-export-md" disabled>Markdown report</button>
+          <button id="btn-export-promotions" disabled>Taxonomy promotions</button>
         </div>
       </div>
     </section>
@@ -276,14 +281,15 @@
             <li><strong>Raw events</strong> (collapsible at the bottom): filter by text or by type checkboxes. Click any row to seek.</li>
           </ul>
           <h3>Working with markers</h3>
-          <p>Markers bracket business activities. Captured markers are immutable. To rename:</p>
-          <ol class="help-steps">
-            <li>Open the <em>Markers</em> sub-tab on the right</li>
-            <li>Double-click a Start marker row</li>
-            <li>Type the new label, press Enter</li>
-            <li>Re-run normalization to flow the rename into the XES + stats</li>
-          </ol>
-          <p class="help-hint">The edit lands in <code>annotations.json</code> under <code>marker_edits[]</code>. The next normalization run reads these edits and applies them before case assignment.</p>
+          <p>Markers bracket business activities. Captured markers are immutable in <code>events.jsonl</code>; edits live in <code>annotations.json</code> and are layered in by re-normalization (§9.3).</p>
+          <p>From the <em>Markers</em> sub-tab on the right:</p>
+          <ul class="help-list">
+            <li><strong>Rename</strong>: double-click a Start marker row, type the new label, press Enter.</li>
+            <li><strong>Adjust timestamp</strong>: hover a row, click the clock icon. Sets the marker's timestamp to the current video time (or prompts for an ISO timestamp if there is no video).</li>
+            <li><strong>Delete</strong>: hover a row, click the X icon. The marker is dropped from the normalized stream; raw events stay untouched.</li>
+          </ul>
+          <p>After any edit, re-run normalization to push the change into XES, CSV, and statistics.</p>
+          <p class="help-hint">Boundary adjustment + delete give you everything needed to merge or split cases in practice. To merge two adjacent same-label cases, delete the inner End and the following Start. To split a long case, adjust its End earlier and (with a future UI) insert a new Start - for now you can edit annotations.json directly until that lands.</p>
         </section>
 
         <section class="help-section" data-section="aggregate">
@@ -306,8 +312,17 @@
             <li><strong>App outliers</strong>: apps appearing in &lt;5% of cases - exceptions or misuse.</li>
             <li><strong>Rework loops</strong>: activities revisited within a single case.</li>
           </ul>
-          <h3>Filter</h3>
-          <p>The search box at the top filters activity chart, case chart, variants, outliers, and rework simultaneously. Plain substring match.</p>
+          <h3>Filtering</h3>
+          <ul class="help-list">
+            <li><strong>Text filter</strong>: substring match across activity chart, case chart, variants, outliers, and rework.</li>
+            <li><strong>Date range</strong>: <em>From</em> / <em>To</em> date inputs filter the loaded sessions by their <code>started_at</code> field. The pills show "filtered from N" when a range is active.</li>
+          </ul>
+          <h3>Exports</h3>
+          <ul class="help-list">
+            <li><strong>BPMN 2.0 XML / XES / stats.json</strong>: copy the per-session artifact from the first loaded session that has it.</li>
+            <li><strong>Markdown report</strong>: a Confluence-friendly summary of the currently-filtered sessions (activity table, case table, top transitions). Use it as a paste-ready draft for a Process Definition Document.</li>
+            <li><strong>Taxonomy promotions</strong>: emits a YAML stub with one rule candidate per app that appears as "Unclassified" in the loaded sessions. Refine labels and regexes, then append to the central taxonomy.</li>
+          </ul>
         </section>
 
         <section class="help-section" data-section="capture">
@@ -371,6 +386,15 @@
 
             <dt>Hotkey didn't register in capture</dt>
             <dd>Another app may have the same global shortcut. Enable <code>PDT_DEBUG=1</code> in the capture launch env and check <code>%APPDATA%\process-discovery-tracker\boot.log</code> for "hotkeys: start=false". Edit your <code>config.yaml</code> to use different keys.</dd>
+
+            <dt>Citrix or remote-desktop session shows one band labelled "Citrix Workspace.exe"</dt>
+            <dd>active-win cannot see inside Citrix windows from the local host. Either run the capture tracker inside the Citrix session, or accept that local capture will not classify inner apps and rely on markers + the OBS video for context.</dd>
+
+            <dt>Multi-machine shift review: timelines from different workers do not line up</dt>
+            <dd>Have each worker fire a sync marker (default Ctrl+Shift+Y in capture) at agreed moments with the same sync_id. The aggregate view treats these as alignment anchors.</dd>
+
+            <dt>Aggregate report or taxonomy promotion exports nothing useful</dt>
+            <dd>Both work off normalized sessions. Click "Normalize + mine all" first so every loaded session has stats.json. Taxonomy promotion needs at least one event classified as Unclassified - that means there is an app the central taxonomy does not yet cover.</dd>
           </dl>
         </section>
       </div>
@@ -381,6 +405,7 @@
 <script src="charts.js"></script>
 <script src="dfg-viewer.js"></script>
 <script src="bpmn-viewer.js"></script>
+<script src="report-md.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

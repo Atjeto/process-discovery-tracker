@@ -48,6 +48,8 @@ const {
 const { captureScreenshot } = require("./screenshots.js");
 const { showStatusWindow } = require("./status-window.js");
 const { showHelpWindow } = require("./help-window.js");
+const { showOperatorPanel } = require("./operator-panel.js");
+const crypto = require("node:crypto");
 
 const DEBUG = process.env.PDT_DEBUG === "1";
 function bootLog(msg) {
@@ -82,6 +84,7 @@ let lastStatus = null;
 let labelPickerWindow = null;
 let statusWindow = null;
 let helpWindow = null;
+let operatorWindow = null;
 let obs = null;
 let obsConnected = false;
 let config = null;
@@ -494,6 +497,19 @@ ipcMain.handle("pdt:endSession", async () => {
   return f;
 });
 
+ipcMain.handle("pdt:fireEnd", () => { fireEndMarker(); });
+
+ipcMain.handle("pdt:fireSync", (_e, syncId) => {
+  /* Cross-machine sync marker (§13). Workers fire this at agreed
+     moments (transaction handoffs, hourly ticks). The shared sync_id
+     lets the analyst correlate timelines across machines later. */
+  if (!tracker) return null;
+  const id = (syncId && String(syncId).trim()) ||
+    `sync-${new Date().toISOString().replace(/[:.]/g, "")}-${crypto.randomBytes(3).toString("hex")}`;
+  tracker.fireSystem("sync_marker", { sync_id: id });
+  return id;
+});
+
 function toggleStatusWindow() {
   if (statusWindow && !statusWindow.isDestroyed()) {
     statusWindow.close();
@@ -512,6 +528,16 @@ function showHelp() {
   }
   helpWindow = showHelpWindow();
   helpWindow.on("closed", () => { helpWindow = null; });
+}
+
+function toggleOperatorPanel() {
+  if (operatorWindow && !operatorWindow.isDestroyed()) {
+    operatorWindow.close();
+    operatorWindow = null;
+    return;
+  }
+  operatorWindow = showOperatorPanel(config);
+  operatorWindow.on("closed", () => { operatorWindow = null; });
 }
 
 function statusLine() {
@@ -591,6 +617,10 @@ function buildMenu() {
     label: statusWindow ? "Hide status window" : "Show status window",
     click: () => toggleStatusWindow(),
   });
+  items.push({
+    label: operatorWindow ? "Hide operator panel" : "Show operator panel",
+    click: () => toggleOperatorPanel(),
+  });
   items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
   items.push({ label: "Help - How to use", click: () => showHelp() });
   if (configSourcePath) {
@@ -651,7 +681,15 @@ app.whenReady().then(() => {
   });
   const okEnd = globalShortcut.register(config.hotkeys.end_innermost, () => fireEndMarker());
   const okShot = globalShortcut.register(config.hotkeys.manual_screenshot, () => fireManualScreenshot());
-  bootLog(`hotkeys: start=${okStart} end=${okEnd} shot=${okShot}`);
+  let okSync = false;
+  if (config.hotkeys.sync_marker) {
+    okSync = globalShortcut.register(config.hotkeys.sync_marker, () => {
+      if (!tracker) return;
+      const id = `sync-${new Date().toISOString().replace(/[:.]/g, "")}-${crypto.randomBytes(3).toString("hex")}`;
+      tracker.fireSystem("sync_marker", { sync_id: id });
+    });
+  }
+  bootLog(`hotkeys: start=${okStart} end=${okEnd} shot=${okShot} sync=${okSync}`);
 }).catch((e) => bootLog(`whenReady failed: ${(e && e.stack) || e}`));
 
 app.on("window-all-closed", (e) => {

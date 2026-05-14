@@ -122,6 +122,26 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li><code>obs/sync.json</code> - clock-sync data (if OBS was connected)</li>
 </ul>
 
+<h2>Operator panel and sync markers</h2>
+<p>The <em>Show operator panel</em> tray item opens a larger always-on-top window for the PM during a walkthrough. Big labeled buttons fire markers without using the hotkey + picker flow. It also exposes the sync-marker button.</p>
+<p>The <strong>sync marker</strong> (default <span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">Y</span>) emits a system event with a shared <code>sync_id</code>. Use it at agreed moments during multi-machine shift reviews so the analyst can correlate timelines across workers later. Without a custom ID, one is auto-generated; pass a known ID when you want two machines to share it (the operator panel prompts for one).</p>
+
+<h2>Citrix and remote desktop notes</h2>
+<p>The <code>active-win</code> library that powers polling has known limitations on Citrix: the foreground window is reported as the Citrix client, not the inner app. If your worker runs an app inside Citrix:</p>
+<ul>
+  <li>Run the capture tracker <em>inside</em> the Citrix session so it polls inner windows. Requires the Citrix profile to permit running unsigned Electron apps.</li>
+  <li>If that is not possible, run capture on the local machine; you will get one band labelled <code>Citrix Workspace.exe</code> for the duration. OBS still records the visible content. Use markers and annotations heavily; classification of inner apps must be done by the analyst.</li>
+  <li>Validate behavior on a representative machine before scoping a Citrix-heavy engagement.</li>
+</ul>
+
+<h2>Storage retention</h2>
+<p>Sessions accumulate in <code>%APPDATA%\\process-discovery-tracker\\sessions\\</code> over time. There is a CLI script at <code>scripts/prune-sessions.py</code> that lists or deletes sessions older than N days:</p>
+<ul>
+  <li><code>python scripts/prune-sessions.py --older-than 90</code> (lists candidates)</li>
+  <li><code>python scripts/prune-sessions.py --older-than 90 --apply</code> (deletes)</li>
+  <li><code>--keep-recovered</code> skips orphan-recovered sessions that may need analyst attention</li>
+</ul>
+
 <h2>Troubleshooting</h2>
 <dl>
   <dt>Hotkey didn't register</dt>

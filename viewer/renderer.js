@@ -608,45 +608,128 @@ function effectiveLabel(markerEvent) {
   return markerEvent.data.label;
 }
 
+function isDeletedMarker(eventId) {
+  const edits = (currentSession.annotations && currentSession.annotations.marker_edits) || [];
+  return edits.some((e) => e.event_id === eventId && e.op === "delete");
+}
+
+function effectiveTimestamp(markerEvent) {
+  const edits = (currentSession.annotations && currentSession.annotations.marker_edits) || [];
+  let latest = null;
+  for (const e of edits) {
+    if (e.event_id === markerEvent.event_id && e.field === "timestamp") latest = e.value;
+  }
+  return latest || markerEvent.timestamp;
+}
+
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
   const markers = (currentSession.events || []).filter((e) => e.type === "marker");
   if (!markers.length) {
-    host.innerHTML = '<p class="hint">No markers fired in this session. Double-click any row here to rename a marker (saved to annotations.json).</p>';
+    host.innerHTML = '<p class="hint">No markers fired in this session.</p>';
     return;
   }
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "Double-click a Start marker to rename. Edits save to annotations.json (raw events untouched).";
+  hint.textContent = "Double-click a Start to rename. Use the row buttons to adjust the timestamp or delete. Edits save to annotations.json; re-run normalization to apply downstream.";
   host.appendChild(hint);
   let depth = 0;
   for (const m of markers) {
     const row = document.createElement("div");
-    row.className = "marker-row " + m.data.marker_type;
+    const deleted = isDeletedMarker(m.event_id);
+    row.className = "marker-row " + m.data.marker_type + (deleted ? " deleted" : "");
     if (m.data.marker_type === "end") depth = Math.max(0, depth - 1);
     const lbl = effectiveLabel(m) || "(unlabeled)";
-    const edited = getMarkerEdit(m.event_id) ? ' <span class="meta">· edited</span>' : '';
+    const editedNote = (getMarkerEdit(m.event_id) || effectiveTimestamp(m) !== m.timestamp)
+      ? ' <span class="meta">· edited</span>' : '';
+    const deletedNote = deleted ? ' <span class="meta bad">· deleted</span>' : '';
     row.innerHTML =
-      '<span class="ts">' + escapeHtml(m.timestamp.slice(11, 19)) + '</span>' +
+      '<span class="ts">' + escapeHtml(effectiveTimestamp(m).slice(11, 19)) + '</span>' +
       '<span class="dir">' + (m.data.marker_type === "start" ? "▶" : "■") + '</span>' +
       '<span class="lbl">' + escapeHtml(lbl) +
         (m.data.reason ? ' <span class="meta">(' + escapeHtml(m.data.reason) + ')</span>' : '') +
-        edited +
+        editedNote + deletedNote +
       '</span>' +
-      '<span class="depth">L' + depth + '</span>';
+      '<span class="depth">L' + depth + '</span>' +
+      '<span class="marker-actions">' +
+        '<button class="icon-btn xs" data-act="adjust" title="Adjust to current video time">◷</button>' +
+        '<button class="icon-btn xs" data-act="delete" title="Delete marker (from normalization)">✕</button>' +
+      '</span>';
     if (m.data.marker_type === "start") depth += 1;
-    row.addEventListener("click", () => seekToTimestamp(m.timestamp));
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".marker-actions")) return;
+      seekToTimestamp(effectiveTimestamp(m));
+    });
     if (m.data.marker_type === "start") {
-      row.addEventListener("dblclick", async () => {
+      row.addEventListener("dblclick", async (e) => {
+        if (e.target.closest(".marker-actions")) return;
         const current = effectiveLabel(m) || "";
         const next = prompt("Rename marker label", current);
         if (next == null || next.trim() === "" || next === current) return;
         await renameMarker(m, next.trim());
       });
     }
+    row.querySelector('[data-act="adjust"]').addEventListener("click", () =>
+      adjustMarkerToVideoTime(m));
+    row.querySelector('[data-act="delete"]').addEventListener("click", () =>
+      deleteMarker(m));
     host.appendChild(row);
   }
+}
+
+async function persistAnnotations(anno) {
+  await ipcRenderer.invoke("viewer:saveAnnotations", {
+    sessionFolder: currentSession.sessionFolder,
+    annotations: anno,
+  });
+  currentSession.annotations = anno;
+}
+
+async function adjustMarkerToVideoTime(markerEvent) {
+  if (!currentSession) return;
+  const video = $("#video");
+  const obsStartTs = currentSession.manifest.obs && currentSession.manifest.obs.recording_start_ts;
+  let newTs;
+  if (obsStartTs && video && video.src) {
+    newTs = new Date(new Date(obsStartTs).getTime() + (video.currentTime || 0) * 1000).toISOString();
+  } else {
+    const input = prompt("Enter ISO 8601 timestamp (e.g. 2026-05-14T09:23:11.482Z):",
+      effectiveTimestamp(markerEvent));
+    if (!input) return;
+    newTs = input.trim();
+  }
+  const anno = currentSession.annotations || { notes: [], marker_edits: [] };
+  anno.marker_edits = anno.marker_edits || [];
+  anno.marker_edits.push({
+    id: cryptoRandomId(),
+    event_id: markerEvent.event_id,
+    field: "timestamp",
+    value: newTs,
+    previous: markerEvent.timestamp,
+    ts: new Date().toISOString(),
+  });
+  await persistAnnotations(anno);
+  renderMarkersList();
+  renderTimeline();
+  toast("Marker timestamp adjusted", "success");
+}
+
+async function deleteMarker(markerEvent) {
+  if (!currentSession) return;
+  if (!confirm(`Delete this ${markerEvent.data.marker_type} marker from normalization output?\n\nRaw events.jsonl is not touched; the delete is recorded in annotations.json.`)) return;
+  const anno = currentSession.annotations || { notes: [], marker_edits: [] };
+  anno.marker_edits = anno.marker_edits || [];
+  anno.marker_edits.push({
+    id: cryptoRandomId(),
+    event_id: markerEvent.event_id,
+    op: "delete",
+    ts: new Date().toISOString(),
+  });
+  await persistAnnotations(anno);
+  renderMarkersList();
+  renderTimeline();
+  toast("Marker marked for deletion (re-run normalization)", "success");
 }
 
 async function renameMarker(markerEvent, newLabel) {
@@ -708,8 +791,18 @@ $("#btn-normalize-all").addEventListener("click", async () => {
 });
 
 let aggregateFilter = "";
+let aggregateFromDate = "";
+let aggregateToDate = "";
 $("#agg-filter").addEventListener("input", (e) => {
   aggregateFilter = (e.target.value || "").toLowerCase().trim();
+  renderAggregate();
+});
+$("#agg-from").addEventListener("change", (e) => {
+  aggregateFromDate = e.target.value || "";
+  renderAggregate();
+});
+$("#agg-to").addEventListener("change", (e) => {
+  aggregateToDate = e.target.value || "";
   renderAggregate();
 });
 
@@ -718,15 +811,36 @@ function matchesFilter(text) {
   return String(text || "").toLowerCase().includes(aggregateFilter);
 }
 
-function renderAggregate() {
-  // Pills
-  const numNormalized = aggregateSessions.filter((s) => !!s.stats).length;
-  $("#aggregate-pills").innerHTML =
-    '<div class="pill ok"><span class="dot"></span><span class="lbl">sessions</span>' + aggregateSessions.length + '</div>' +
-    '<div class="pill' + (numNormalized === aggregateSessions.length ? ' ok' : '') + '">' +
-      '<span class="dot"></span><span class="lbl">normalized</span>' + numNormalized + ' / ' + aggregateSessions.length + '</div>';
+function sessionInDateRange(s) {
+  /* Use manifest.started_at against [from, to] inclusive when set.
+     A session with no started_at is conservatively included. */
+  if (!aggregateFromDate && !aggregateToDate) return true;
+  const startedAt = (s.manifest || {}).started_at;
+  if (!startedAt) return true;
+  const day = startedAt.slice(0, 10); // YYYY-MM-DD
+  if (aggregateFromDate && day < aggregateFromDate) return false;
+  if (aggregateToDate && day > aggregateToDate) return false;
+  return true;
+}
 
-  const allStats = aggregateSessions.map((s) => s.stats).filter(Boolean);
+function filteredAggregateSessions() {
+  return aggregateSessions.filter(sessionInDateRange);
+}
+
+function renderAggregate() {
+  // Pills - count filtered + total
+  const filtered = filteredAggregateSessions();
+  const numNormalized = filtered.filter((s) => !!s.stats).length;
+  const rangeNote = (aggregateFromDate || aggregateToDate)
+    ? ` (filtered from ${aggregateSessions.length})` : "";
+  $("#aggregate-pills").innerHTML =
+    '<div class="pill ok"><span class="dot"></span><span class="lbl">sessions</span>' +
+      filtered.length + escapeHtml(rangeNote) + '</div>' +
+    '<div class="pill' + (numNormalized === filtered.length && filtered.length ? ' ok' : '') + '">' +
+      '<span class="dot"></span><span class="lbl">normalized</span>' +
+      numNormalized + ' / ' + filtered.length + '</div>';
+
+  const allStats = filtered.map((s) => s.stats).filter(Boolean);
   if (!allStats.length) {
     $("#map-empty").style.display = "";
     $("#activity-chart").innerHTML = '<div class="chart-empty">no data</div>';
@@ -813,17 +927,18 @@ function renderAggregate() {
   fillTable("#rework", reworkRows);
 
   // BPMN + DFG render from the first available session
-  const sessionWithBpmn = aggregateSessions.find((s) =>
+  const sessionWithBpmn = filtered.find((s) =>
     fs.existsSync(path.join(s.sessionFolder, "process_map.bpmn")));
   if (sessionWithBpmn && window.PdtBpmn) {
     window.PdtBpmn.render($("#bpmn-host"),
-      path.join(sessionWithBpmn.sessionFolder, "process_map.bpmn"));
+      path.join(sessionWithBpmn.sessionFolder, "process_map.bpmn"),
+      { onNodeClick: (activityLabel) => drillToActivity(activityLabel) });
   }
-  // Merge DFG edges across sessions
+  // Merge DFG edges across the filtered sessions
   const edgeMap = new Map();
   const starts = new Map();
   const ends = new Map();
-  for (const s of aggregateSessions) {
+  for (const s of filtered) {
     if (!s.dfg) continue;
     for (const e of (s.dfg.edges || [])) {
       const k = e.source + "\x00" + e.target;
@@ -851,12 +966,17 @@ function renderAggregate() {
   }
 
   // Export buttons
-  const firstWithBpmn = aggregateSessions.find((s) =>
+  const firstWithBpmn = filtered.find((s) =>
     fs.existsSync(path.join(s.sessionFolder, "process_map.bpmn")));
   $("#btn-export-bpmn").disabled = !firstWithBpmn;
-  $("#btn-export-xes").disabled = !aggregateSessions.find((s) =>
+  $("#btn-export-xes").disabled = !filtered.find((s) =>
     fs.existsSync(path.join(s.sessionFolder, "events.xes")));
   $("#btn-export-stats").disabled = !allStats.length;
+  $("#btn-export-md").disabled = !filtered.length;
+  /* Taxonomy promotion is enabled when any normalized session has
+     Unclassified activity labels in its stats. */
+  $("#btn-export-promotions").disabled = !allStats.some((st) =>
+    (st.activity_stats || []).some((r) => /^Unclassified/.test(r.activity_label || "")));
 }
 
 /* ============ Drill-down from aggregate to session ================ */
@@ -920,6 +1040,130 @@ function findFirstActivityByLabel(session, activityLabel) {
 $("#btn-export-bpmn").addEventListener("click", () => exportFirst("process_map.bpmn"));
 $("#btn-export-xes").addEventListener("click", () => exportFirst("events.xes"));
 $("#btn-export-stats").addEventListener("click", () => exportFirst("stats.json"));
+
+$("#btn-export-md").addEventListener("click", async () => {
+  if (!window.PdtReport) return;
+  const filtered = filteredAggregateSessions();
+  if (!filtered.length) return;
+  /* Re-merge activity stats and cases across the filtered set so the
+     report matches what the panels show. */
+  const actMap = new Map();
+  for (const s of filtered) {
+    for (const r of ((s.stats || {}).activity_stats || [])) {
+      const e = actMap.get(r.activity_label) || { activity_label: r.activity_label, frequency: 0, total_duration_ms: 0 };
+      e.frequency += r.frequency;
+      e.total_duration_ms += r.total_duration_ms;
+      actMap.set(r.activity_label, e);
+    }
+  }
+  const mergedActivity = [...actMap.values()].sort((a, b) => b.frequency - a.frequency);
+  const mergedCases = [];
+  for (const s of filtered) {
+    for (const r of ((s.stats || {}).case_stats || [])) {
+      if (!r.parent_case_id) mergedCases.push(r);
+    }
+  }
+  mergedCases.sort((a, b) => (b.active_ms || 0) - (a.active_ms || 0));
+  const edgeMap = new Map();
+  for (const s of filtered) {
+    for (const e of ((s.dfg || {}).edges || [])) {
+      const k = e.source + "\x00" + e.target;
+      edgeMap.set(k, (edgeMap.get(k) || 0) + (e.frequency || 1));
+    }
+  }
+  const dfg = { edges: [...edgeMap.entries()].map(([k, freq]) => {
+    const [source, target] = k.split("\x00");
+    return { source, target, frequency: freq };
+  })};
+  const md = window.PdtReport.buildAggregateReport(filtered, mergedActivity, mergedCases, dfg);
+  await saveMarkdownReport(md, "aggregate-report.md");
+});
+
+$("#btn-session-md").addEventListener("click", async () => {
+  if (!currentSession || !window.PdtReport) return;
+  const md = window.PdtReport.buildSessionReport(currentSession);
+  const name = "session-" + (currentSession.sessionFolder.split(/[\\/]/).slice(-1)[0] || "report") + ".md";
+  await saveMarkdownReport(md, name);
+});
+
+async function saveMarkdownReport(md, suggestedName) {
+  /* Write into a temp file, then ask main.js to copy it via the
+     export-file dialog so the user picks the destination. */
+  const tmpDir = require("os").tmpdir();
+  const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-" + suggestedName);
+  fs.writeFileSync(tmpPath, md, "utf-8");
+  const out = await ipcRenderer.invoke("viewer:exportFile", {
+    sourcePath: tmpPath,
+    suggestedName,
+  });
+  if (out) {
+    await ipcRenderer.invoke("viewer:revealFile", out);
+    toast("Markdown report saved: " + path.basename(out), "success");
+  }
+  try { fs.unlinkSync(tmpPath); } catch (_) {}
+}
+
+$("#btn-export-promotions").addEventListener("click", async () => {
+  /* Taxonomy promotion (§13). Walk normalized sessions for events
+     classified as "Unclassified - <app>". Emit a YAML stub with one
+     rule per unique app, ready for the analyst to refine and append
+     to the central taxonomy. */
+  const filtered = filteredAggregateSessions();
+  const apps = new Map(); // app -> { firstTitle, count }
+  for (const sess of filtered) {
+    for (const ev of (sess.events || [])) {
+      if (ev.type !== "activity") continue;
+      const label = ev.data.activity_label || "";
+      if (!/^Unclassified/.test(label)) continue;
+      const app = ev.data.app || "unknown";
+      const entry = apps.get(app) || { firstTitle: ev.data.title || "", count: 0 };
+      entry.count += 1;
+      apps.set(app, entry);
+    }
+  }
+  /* Also include unclassified activity_stats entries (which may be the
+     only signal if events aren't loaded for older sessions). */
+  for (const sess of filtered) {
+    for (const r of (((sess.stats || {}).activity_stats) || [])) {
+      if (!/^Unclassified/.test(r.activity_label || "")) continue;
+      const app = (r.activity_label.split("-").pop() || "").trim();
+      if (!apps.has(app)) apps.set(app, { firstTitle: "", count: r.frequency || 0 });
+    }
+  }
+  if (!apps.size) {
+    toast("No Unclassified activities found in the loaded sessions", "");
+    return;
+  }
+  const sorted = [...apps.entries()].sort((a, b) => b[1].count - a[1].count);
+  const lines = [
+    "# Taxonomy promotion candidates",
+    "# Generated by Process Discovery Viewer on " + new Date().toISOString(),
+    "# Review and append to the central taxonomy YAML. Edit `label` to taste,",
+    "# refine `title_regex` if you want stricter matching, and add `extract` rules where useful.",
+    "",
+    "rules:",
+  ];
+  for (const [app, info] of sorted) {
+    lines.push("  - match:");
+    lines.push("      app: \"" + app.replace(/"/g, "\\\"") + "\"");
+    lines.push("      title_regex: \".*\"");
+    lines.push("    label: \"TODO - " + app.replace(/"/g, "\\\"") + "\"  # " + info.count + " unclassified events" +
+      (info.firstTitle ? "; sample title: " + JSON.stringify(info.firstTitle.slice(0, 60)) : ""));
+  }
+  const yaml = lines.join("\n") + "\n";
+  const tmpDir = require("os").tmpdir();
+  const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-taxonomy-promotions.yaml");
+  fs.writeFileSync(tmpPath, yaml, "utf-8");
+  const out = await ipcRenderer.invoke("viewer:exportFile", {
+    sourcePath: tmpPath,
+    suggestedName: "taxonomy-promotions.yaml",
+  });
+  if (out) {
+    await ipcRenderer.invoke("viewer:revealFile", out);
+    toast(`Promoted ${sorted.length} app(s) as taxonomy candidates`, "success");
+  }
+  try { fs.unlinkSync(tmpPath); } catch (_) {}
+});
 
 async function exportFirst(filename) {
   const s = aggregateSessions.find((x) =>

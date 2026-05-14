@@ -83,20 +83,18 @@ Documented here so they're easy to revisit:
 | §9.3 Annotations re-norm | Write to `annotations.json` sidecar; raw events immutable | `viewer/main.js`, `capture/session.js` |
 | §11.5 Install topology | Worker: packaged Electron .exe. Analyst: `python-runner.js` resolves `PDT_PYTHON` -> python-embeddable sibling -> system `python` | `viewer/python-runner.js` |
 
-## What's NOT done in this pass
+## What's still deferred
 
-Per §13 of the design (open items / explicitly deferred):
+Items the design explicitly punts to v1.5+ or beyond:
 
-- Cross-machine aggregation with cross-machine clock alignment (§13)
-- Operator panel for PM-driven marker firing during walkthroughs (§13)
-- Citrix / remote desktop capture validation (§13)
-- Integration with downstream pipeline (Confluence, ticketing) (§13)
-- Multi-analyst concurrent editing (§13, "out of scope for v1")
-- Taxonomy promotion workflow (§13)
-- ML capabilities (§10, v1.5+)
-- Storage retention policy (§13)
-- Marker rename / boundary edit / merge / split UIs (annotations infrastructure is in place; only free-text notes are wired)
-- Production python-embeddable bundle (analyst side currently uses system Python via `pip install`)
+- **ML capabilities** (§10). Activity equivalence / variant merging via sentence-transformer embeddings + HDBSCAN, case-boundary inference for unbracketed sessions via change-point detection, transaction ID auto-extraction via pattern mining, screen understanding via vision-language models. All v1.5 to v3+.
+- **Multi-analyst concurrent editing** of the same session (§13). Single-analyst editing only.
+- **Marker split via UI**. The schema supports it (delete + insert), and rename / adjust-timestamp / delete are wired. Inserting a synthetic Start mid-case via the viewer UI is not yet exposed; analysts edit annotations.json directly until that ships.
+
+## Tooling
+
+- `scripts/build-python-embeddable.ps1` - downloads the Python embeddable distribution, enables site-packages, bootstraps pip, installs `normalization/requirements.txt`, and lands a self-contained `viewer/python/` folder that the viewer's `python-runner.js` auto-discovers. Production install topology per §11.5 option (a).
+- `scripts/prune-sessions.py` - storage retention CLI. Lists or deletes captured session folders older than N days. Defaults to a dry-run; pass `--apply` to delete. Optional `--keep-recovered` skips orphan-recovered sessions.
 
 ## UI / UX in this pass
 

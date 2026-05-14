@@ -12,7 +12,8 @@
   let viewer = null;
   const fs = require("node:fs");
 
-  async function render(host, bpmnFilePath) {
+  async function render(host, bpmnFilePath, opts) {
+    opts = opts || {};
     host.innerHTML = "";
     if (typeof BpmnJS === "undefined") {
       host.innerHTML = '<div class="map-empty-inline">bpmn-js failed to load. ' +
@@ -39,6 +40,20 @@
         note.className = "bpmn-warning";
         note.textContent = `${warnings.length} BPMN parse warning(s) -- diagram may be imperfect.`;
         host.appendChild(note);
+      }
+      /* Drill-down: click a task / activity node to drill back to the
+         source session at the matching activity. Filter by element
+         type so panning the canvas doesn't fire drills. */
+      if (opts.onNodeClick) {
+        const eventBus = viewer.get("eventBus");
+        eventBus.on("element.click", (e) => {
+          const el = e.element;
+          if (!el || !el.businessObject) return;
+          const t = el.type || "";
+          if (!t.includes("Task") && !t.includes("Activity") && !t.includes("CallActivity")) return;
+          const label = el.businessObject.name || el.id;
+          opts.onNodeClick(label);
+        });
       }
     } catch (e) {
       host.innerHTML = '<div class="map-empty-inline">BPMN render failed: ' +

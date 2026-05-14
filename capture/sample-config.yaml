@@ -37,6 +37,7 @@ hotkeys:
   start_picker: "Control+Shift+S"
   end_innermost: "Control+Shift+E"
   manual_screenshot: "Control+Shift+P"
+  sync_marker: "Control+Shift+Y"        # cross-machine sync marker for multi-machine shift reviews
 
 # Taxonomy version this session was captured against. Stamped into
 # manifest.json so re-normalization can reproduce or upgrade results.

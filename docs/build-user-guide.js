@@ -468,6 +468,8 @@ content.push(
     ["BPMN 2.0 XML", "process_map.bpmn (per session)", "Import directly into Adonis or any BPMN-aware tool. Edit positioning, gateways, and pool/lane structure there."],
     ["XES", "events.xes (per session)", "Open in PM4Py, Apromore, Disco, ProM, Celonis, or any process mining tool that accepts XES."],
     ["stats.json", "stats.json (per session)", "Reproducible inspection of the same statistics shown in the viewer. Diff between sessions, archive snapshots, or feed into downstream reporting."],
+    ["Markdown report", "session-<folder>.md (per session) OR aggregate-report.md (across loaded sessions)", "Confluence-friendly summary with marker timeline, activity stats, case table, and top transitions. Use as a paste-ready draft for a Process Definition Document."],
+    ["Taxonomy promotions", "taxonomy-promotions.yaml", "YAML stub with one rule candidate per app that appears as Unclassified across the loaded sessions. Refine the labels and regexes, then append to the central taxonomy."],
   ], [2200, 3200, 4800]),
   p("Additional artifacts that do not have an explicit export button but are easy to copy from the session folder:"),
   bullet("events.csv: flat CSV of activity events for Excel inspection"),
@@ -485,8 +487,10 @@ content.push(
     ["Annotation", "Saved as", "Effect"],
     ["Free-text note at a timestamp", "notes[]", "Surfaced in the Notes sub-tab; click to seek"],
     ["Marker label rename", "marker_edits[] with field=label", "Renames the marker in the viewer; consumed by re-normalization to update XES, CSV, and stats"],
+    ["Marker timestamp adjustment", "marker_edits[] with field=timestamp", "Shifts the marker's effective timestamp; re-normalization re-sorts the marker stream and recomputes case assignment"],
+    ["Marker delete", "marker_edits[] with op=delete", "Drops the marker from the normalized stream; useful to merge two adjacent same-label cases (delete the inner End and the following Start)"],
   ], [3200, 3000, 4000]),
-  p("Marker boundary adjustment, merge, split, and other edits are designed but not yet wired in v1. The annotation file shape already supports them; future viewer versions will expose the UI."),
+  p("Marker split via UI is not yet exposed. Workaround: edit annotations.json directly to add the equivalent timestamp adjustment plus a synthetic marker entry."),
   h2("9.2 The re-normalization contract"),
   p("Raw events.jsonl is immutable. Annotation edits are applied as a derived layer during normalization, before case assignment. If the taxonomy is updated, or the analyst makes new edits, re-run normalization to refresh the downstream artifacts."),
   p("The number of edits applied per run is recorded in the meta block of stats.json under marker_edits_applied so you can audit what changed."),
@@ -514,7 +518,21 @@ content.push(
     ["Ctrl + Shift + S", "Open the Start-marker label picker (also auto-starts a session if none is running)"],
     ["Ctrl + Shift + E", "Fire End marker for the innermost open marker"],
     ["Ctrl + Shift + P", "Manual screenshot, flagged as screenshot_manual"],
+    ["Ctrl + Shift + Y", "Fire a sync marker for cross-machine timeline alignment in multi-machine shift reviews"],
   ], [3200, 6160]),
+);
+
+content.push(
+  h1("10.1 Operator Panel and Sync Markers"),
+  h2("Operator panel"),
+  p("For PM-driven walkthroughs, open the Operator Panel from the capture tray menu. It is a larger always-on-top window with big labeled buttons for each configured process label, plus a custom-label input. The PM uses this on the SME's machine during the walkthrough; markers fire on click instead of via the hotkey + picker."),
+  p("The panel also shows the live recording indicator, session timer, current app, open marker stack, and convenient buttons for pause, manual screenshot, sync marker, and end-session."),
+  h2("Sync markers (cross-machine alignment)"),
+  p("When a shift review captures multiple machines in parallel, timelines from different workers do not align automatically (each machine has its own clock, and there is no shared timebase). Sync markers provide explicit alignment anchors:"),
+  numbered("At an agreed moment (transaction handoff, hourly tick, start of shift), each worker fires the sync hotkey (default Ctrl+Shift+Y)."),
+  numbered("Each tracker emits a system event of kind sync_marker with a sync_id payload."),
+  numbered("If you want two machines to share the same anchor, pass a known ID via the Operator Panel's sync button (it prompts for one). Otherwise an auto-generated ID is used per worker."),
+  numbered("In aggregate analysis, sync events with matching sync_id values let the analyst correlate timelines or compute offsets between machines."),
 );
 
 /* 11. Install topology */
@@ -537,6 +555,16 @@ content.push(
   numbered("PDT_PYTHON environment variable, if set and the path exists"),
   numbered("A sibling python-embeddable/ folder next to the viewer executable"),
   numbered("System python on PATH"),
+  h2("11.4 Building the embeddable bundle"),
+  p("From the repo root on a Windows machine with network access to python.org and pypi.org:"),
+  code("powershell -ExecutionPolicy Bypass -File .\\scripts\\build-python-embeddable.ps1"),
+  p("The script downloads the Python embeddable distribution, enables site-packages, bootstraps pip, installs the normalization dependencies, and produces viewer/python/ ready to ship alongside the viewer. The viewer's python-runner.js auto-discovers this folder. Pass -PythonVersion to pin a specific version and -Force to overwrite an existing bundle."),
+  h2("11.5 Storage retention"),
+  p("Sessions accumulate over time on whichever machine ran capture. A CLI script lets you prune old folders:"),
+  code(`python scripts/prune-sessions.py --older-than 90              # list candidates
+python scripts/prune-sessions.py --older-than 90 --apply      # delete
+python scripts/prune-sessions.py --older-than 30 --keep-recovered --apply`),
+  p("--keep-recovered skips sessions whose status is recovered (orphans from a previous crash that may still need analyst attention). --root overrides the default sessions location if you store them elsewhere. --json emits machine-readable output for automation."),
 );
 
 /* 12. Troubleshooting */
@@ -550,6 +578,8 @@ content.push(
     ["OBS will not connect", "OBS not running, or WebSocket server not enabled, or wrong port/password. Verify Tools, WebSocket Server Settings in OBS. Set obs.required=false to proceed without OBS."],
     ["Session shows as recovered on next launch", "Previous session ended without a clean close. Open markers stay in events.jsonl for normalization to reconcile. Not an error."],
     ["Screenshots not firing", "Check that screenshots.enabled is true in your config. The screenshot library spawns a helper exe on first run, which can take 2 to 3 seconds."],
+    ["Citrix shows one band labelled Citrix Workspace.exe", "active-win cannot see inside Citrix windows from the local host. Run capture inside the Citrix session, or accept that local capture will not classify inner apps."],
+    ["Multi-machine timelines do not align", "Have each worker fire the sync hotkey (Ctrl+Shift+Y) at agreed moments with the same sync_id. Pass a shared ID via the Operator Panel when you want two machines to share an anchor."],
     ["Where does my data go", "%APPDATA%\\process-discovery-tracker\\sessions\\ on Windows. The tray menu has an Open sessions folder item."],
   ], [3200, 6160]),
   h2("Normalization"),

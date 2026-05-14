@@ -68,7 +68,7 @@ End markers carry `null` label by convention; they close the innermost open Star
 }
 ```
 
-Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`.
+Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`.
 
 Kind-specific payloads:
 
@@ -79,7 +79,33 @@ Kind-specific payloads:
 | `auto_end_idle` | `{ idle_seconds }` (fired after auto-closing all open markers, §3.3) |
 | `screenshot` / `screenshot_manual` | `{ path: "screenshots/<file>.jpg" }` (relative to session folder) |
 | `obs_recording_start` / `obs_recording_stop` | (empty; full OBS sync details live in `obs/sync.json` and `manifest.json.obs`) |
+| `sync_marker` | `{ sync_id }` -- shared identifier across machines for cross-machine timeline alignment in shift reviews |
 | `session_start` / `session_end` / `paused` / `resumed` | (empty) |
+
+## Annotation file (annotations.json)
+
+Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are never mutated. Re-normalization consumes this file (§9.3 option b) before case assignment.
+
+```json
+{
+  "notes": [
+    { "id": "uuid", "type": "note", "timestamp": "...", "video_offset_s": 0, "text": "..." }
+  ],
+  "marker_edits": [
+    { "id": "uuid", "event_id": "<marker_event_id>", "field": "label",     "value": "New label",    "previous": "Old", "ts": "..." },
+    { "id": "uuid", "event_id": "<marker_event_id>", "field": "timestamp", "value": "<new ISO>",    "previous": "...", "ts": "..." },
+    { "id": "uuid", "event_id": "<marker_event_id>", "op":    "delete",                                                  "ts": "..." }
+  ]
+}
+```
+
+Supported edits:
+
+- `field: "label"` - rename a marker
+- `field: "timestamp"` - shift a marker's timestamp
+- `op: "delete"` - drop a marker from the normalized stream (raw event remains)
+
+Last-write-wins per `(event_id, field|op)`. Order of edits within the array does not matter for application.
 
 ## manifest.json
 

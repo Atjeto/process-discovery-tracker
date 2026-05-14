@@ -42,6 +42,7 @@
       "screenshots.js",
       "status-window.js",
       "help-window.js",
+      "operator-panel.js",
       "sample-config.yaml",
       "tray-icon.png",
       "package.json",
