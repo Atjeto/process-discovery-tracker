@@ -49,6 +49,7 @@ const { captureScreenshot } = require("./screenshots.js");
 const { showStatusWindow } = require("./status-window.js");
 const { showHelpWindow } = require("./help-window.js");
 const { showOperatorPanel } = require("./operator-panel.js");
+const { showObsSettingsWindow } = require("./obs-settings-window.js");
 const crypto = require("node:crypto");
 
 const DEBUG = process.env.PDT_DEBUG === "1";
@@ -191,48 +192,76 @@ function stopIdleMonitor() {
   idleStartMs = null;
 }
 
-async function showObsSetupDialog() {
-  const obsCfg = (config && config.obs) || {};
-  const url = obsCfg.websocket_url || "ws://127.0.0.1:4455";
-  let testResult = "Click 'Test connection' to verify OBS is reachable.";
-  /* Try a quick test first so the dialog has live state on open. */
+function obsSettingsPath() {
+  return path.join(app.getPath("userData"), "obs-settings.json");
+}
+function loadObsSettings() {
   try {
-    const probe = await connectOBS({
-      websocketUrl: url,
-      password: obsCfg.websocket_password,
-    });
-    try { await probe.disconnect(); } catch (_e) {}
-    testResult = `OBS reachable at ${url}. You're all set - start a capture session and recording begins automatically.`;
-  } catch (e) {
-    testResult = `OBS NOT reachable at ${url}: ${e && e.message}\n\nFollow the steps below.`;
-  }
-  const detail =
-    `Status:\n${testResult}\n\n` +
-    `Setup steps (one time):\n` +
-    `1. Install OBS Studio 28+ from obsproject.com.\n` +
-    `2. In OBS, open Tools -> WebSocket Server Settings.\n` +
-    `3. Tick "Enable WebSocket server", leave port at 4455.\n` +
-    `4. Click OK. Leave OBS running.\n` +
-    `5. Start a capture session here. Recording starts automatically.\n\n` +
-    `You don't need to click record in OBS. You also don't need to keep OBS in the foreground.\n\n` +
-    `If you set a WebSocket password, copy it into your per-session config under obs.websocket_password.\n\n` +
-    `To require OBS (fail-fast on connect error), set obs.required: true in your config.yaml.`;
-  await dialog.showMessageBox({
-    type: "info",
-    title: "OBS recording setup",
-    message: "How to record your captured sessions with OBS",
-    detail,
-    buttons: ["Close"],
-    defaultId: 0,
-  });
+    const p = obsSettingsPath();
+    if (!fs.existsSync(p)) return {};
+    return JSON.parse(fs.readFileSync(p, "utf-8")) || {};
+  } catch (_e) { return {}; }
+}
+function saveObsSettings(s) {
+  try {
+    const p = obsSettingsPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(s, null, 2));
+  } catch (e) { bootLog(`obs-settings write failed: ${e && e.message}`); }
+}
+function effectiveObsCfg() {
+  /* Layered config: per-session YAML provides defaults; userData
+     obs-settings.json overrides URL and password since those are
+     workstation-specific and the user can edit them from the tray. */
+  const base = (config && config.obs) || {};
+  const override = loadObsSettings();
+  return {
+    ...base,
+    websocket_url: override.url || base.websocket_url || "ws://127.0.0.1:4455",
+    websocket_password: override.password || base.websocket_password || null,
+  };
 }
 
+let obsSettingsWindow = null;
+function showObsSetupDialog() {
+  if (obsSettingsWindow && !obsSettingsWindow.isDestroyed()) {
+    obsSettingsWindow.show();
+    obsSettingsWindow.focus();
+    return;
+  }
+  obsSettingsWindow = showObsSettingsWindow();
+  obsSettingsWindow.on("closed", () => { obsSettingsWindow = null; });
+}
+
+ipcMain.handle("pdt:obsGet", () => {
+  const eff = effectiveObsCfg();
+  return { url: eff.websocket_url, password: eff.websocket_password || "" };
+});
+
+ipcMain.handle("pdt:obsTest", async (_e, { url, password }) => {
+  try {
+    const probe = await connectOBS({ websocketUrl: url, password: password || undefined });
+    try { await probe.disconnect(); } catch (_x) {}
+    return { ok: true, message: `Reachable at ${url}. Scene control and recording will work.` };
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    return { ok: false, message: msg };
+  }
+});
+
+ipcMain.handle("pdt:obsSave", (_e, { url, password }) => {
+  saveObsSettings({ url, password });
+  bootLog("obs-settings saved");
+  return { saved: true };
+});
+
 async function setupOBS() {
-  if (!config.obs || !config.obs.websocket_url) return false;
+  const eff = effectiveObsCfg();
+  if (!eff.websocket_url) return false;
   try {
     obs = await connectOBS({
-      websocketUrl: config.obs.websocket_url,
-      password: config.obs.websocket_password,
+      websocketUrl: eff.websocket_url,
+      password: eff.websocket_password,
     });
     obsConnected = true;
     bootLog("OBS connected");
@@ -252,9 +281,10 @@ async function setupOBS() {
     if (config.obs.required) {
       dialog.showErrorBox(
         "OBS not reachable",
-        `Could not connect to OBS at ${config.obs.websocket_url}.\n\n` +
+        `Could not connect to OBS at ${eff.websocket_url}.\n\n` +
           `${e && e.message}\n\n` +
-          `Per session config, OBS is required. Launch OBS (with WebSocket enabled) and try again.`
+          `Per session config, OBS is required. Launch OBS (with WebSocket enabled) and try again.\n\n` +
+          `If OBS has authentication enabled, set the password via tray menu -> Set up OBS recording.`
       );
       return false;
     }
