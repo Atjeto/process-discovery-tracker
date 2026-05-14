@@ -199,30 +199,47 @@ def export_bpmn(bpmn_obj, out_path: str) -> None:
         node_id[id(n)] = nid
         node_cls[nid] = type(n).__name__
 
-    for n in nodes:
-        cls = type(n).__name__
-        tag = _NODE_TAG.get(cls, "task")
-        attrs = {"id": node_id[id(n)]}
-        name = n.get_name() if hasattr(n, "get_name") else ""
-        if name:
-            attrs["name"] = name
-        ET.SubElement(proc, f"{{{_BPMN_NS}}}{tag}", attrs)
-
-    # Track flow id per (src_id, tgt_id) so the BPMNDI section can
-    # reference each sequence flow with the exact id we emit here.
+    # First pass: resolve every flow's (id, src, tgt) so we can attach
+    # <bpmn:incoming>/<bpmn:outgoing> children to each flow node. BPMN
+    # 2.0 requires each flowNode to declare which sequence flows enter
+    # and leave it -- bpmn-js emits a parse warning per missing pair
+    # if these references are absent.
     flow_records: list[tuple[str, str, str]] = []
+    incoming: dict[str, list[str]] = {nid: [] for nid in node_id.values()}
+    outgoing: dict[str, list[str]] = {nid: [] for nid in node_id.values()}
     for i, f in enumerate(flows):
         src, tgt = f.get_source(), f.get_target()
         if id(src) not in node_id or id(tgt) not in node_id:
             continue
         sid, tid = node_id[id(src)], node_id[id(tgt)]
         fid = f"flow_{i}"
+        flow_records.append((fid, sid, tid))
+        outgoing[sid].append(fid)
+        incoming[tid].append(fid)
+
+    for n in nodes:
+        cls = type(n).__name__
+        tag = _NODE_TAG.get(cls, "task")
+        nid = node_id[id(n)]
+        attrs = {"id": nid}
+        name = n.get_name() if hasattr(n, "get_name") else ""
+        if name:
+            attrs["name"] = name
+        node_el = ET.SubElement(proc, f"{{{_BPMN_NS}}}{tag}", attrs)
+        # BPMN spec order: <incoming> before <outgoing>.
+        for fid in incoming[nid]:
+            inc = ET.SubElement(node_el, f"{{{_BPMN_NS}}}incoming")
+            inc.text = fid
+        for fid in outgoing[nid]:
+            out = ET.SubElement(node_el, f"{{{_BPMN_NS}}}outgoing")
+            out.text = fid
+
+    for fid, sid, tid in flow_records:
         ET.SubElement(
             proc,
             f"{{{_BPMN_NS}}}sequenceFlow",
             {"id": fid, "sourceRef": sid, "targetRef": tid},
         )
-        flow_records.append((fid, sid, tid))
 
     # ---- BPMNDI layout ----
     sizes = {nid: _shape_size(node_cls[nid]) for nid in node_id.values()}
