@@ -58,9 +58,21 @@ _NODE_TAG = {
 }
 
 _BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+_BPMNDI_NS = "http://www.omg.org/spec/BPMN/20100524/DI"
+_DC_NS = "http://www.omg.org/dd/20100524/DC"
+_DI_NS = "http://www.omg.org/dd/20100524/DI"
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 
 _XML_ID_BAD = re.compile(r"[^A-Za-z0-9_\-]")
+
+# Shape dimensions for the layout. Tasks and subprocesses get one
+# rectangle; events get a square; gateways get a diamond bbox.
+_NODE_W = 110
+_NODE_H = 70
+_EVENT_SIZE = 36
+_GW_SIZE = 50
+_H_GAP = 80
+_V_GAP = 30
 
 
 def _safe_id(prefix: str, idx: int, raw: str | None) -> str:
@@ -72,17 +84,95 @@ def _safe_id(prefix: str, idx: int, raw: str | None) -> str:
     return f"{prefix}_{idx}"
 
 
+def _shape_size(node_cls: str) -> tuple[int, int]:
+    """Pick a sensible bbox per BPMN element family."""
+    if "Event" in node_cls:
+        return _EVENT_SIZE, _EVENT_SIZE
+    if "Gateway" in node_cls:
+        return _GW_SIZE, _GW_SIZE
+    return _NODE_W, _NODE_H
+
+
+def _layout(node_ids: list[str],
+            edges: list[tuple[str, str]],
+            sizes: dict[str, tuple[int, int]]) -> dict[str, tuple[int, int, int, int]]:
+    """Hierarchical left-to-right Sugiyama-style layout.
+
+    1. Topologically rank nodes by max-depth from a root (a node with
+       no incoming edge). Cycles fall back to rank 0.
+    2. Group nodes by rank into columns.
+    3. Within a column, distribute vertically. X is rank * (col_width).
+       Column width tracks the widest node in that rank.
+
+    Output: { node_id: (x, y, w, h) } -- top-left corner + bbox.
+    Adequate for the inductive-miner output sizes (under ~50 nodes)
+    and good enough for Adonis or bpmn-js to render without further
+    layout work.
+    """
+    in_edges: dict[str, list[str]] = {nid: [] for nid in node_ids}
+    out_edges: dict[str, list[str]] = {nid: [] for nid in node_ids}
+    for src, tgt in edges:
+        if src in in_edges and tgt in in_edges:
+            out_edges[src].append(tgt)
+            in_edges[tgt].append(src)
+
+    rank: dict[str, int] = {}
+    roots = [n for n in node_ids if not in_edges[n]]
+    if not roots and node_ids:
+        roots = [node_ids[0]]
+    for r in roots:
+        rank[r] = 0
+    # Iterate until stable, capped to avoid pathological cycles.
+    for _ in range(len(node_ids) + 1):
+        changed = False
+        for nid in node_ids:
+            parent_ranks = [rank[p] for p in in_edges[nid] if p in rank]
+            if not parent_ranks:
+                continue
+            new_rank = max(parent_ranks) + 1
+            if rank.get(nid, -1) < new_rank:
+                rank[nid] = new_rank
+                changed = True
+        if not changed:
+            break
+    for nid in node_ids:
+        rank.setdefault(nid, 0)
+
+    by_rank: dict[int, list[str]] = {}
+    for nid in node_ids:
+        by_rank.setdefault(rank[nid], []).append(nid)
+
+    positions: dict[str, tuple[int, int, int, int]] = {}
+    x_cursor = 50
+    for r in sorted(by_rank.keys()):
+        col_nodes = by_rank[r]
+        col_w = max(sizes[n][0] for n in col_nodes)
+        # Center each column's nodes around y=200.
+        total_h = sum(sizes[n][1] for n in col_nodes) + _V_GAP * (len(col_nodes) - 1)
+        y_cursor = max(50, 200 - total_h // 2)
+        for nid in col_nodes:
+            w, h = sizes[nid]
+            x = x_cursor + (col_w - w) // 2
+            positions[nid] = (x, y_cursor, w, h)
+            y_cursor += h + _V_GAP
+        x_cursor += col_w + _H_GAP
+    return positions
+
+
 def export_bpmn(bpmn_obj, out_path: str) -> None:
-    """Serialize a BPMN object to BPMN 2.0 XML without layout info.
+    """Serialize a BPMN 2.0 file with a computed BPMNDI layout.
 
     PM4Py's built-in `write_bpmn` invokes Graphviz `dot` to compute
-    BPMNDI coordinates. That makes BPMN export a hard binary
-    dependency, which is a no-go on locked-down machines. We emit a
-    layout-free BPMN 2.0 file instead -- bpmn-js and Adonis both
-    auto-layout on import, so the visual result is identical for the
-    downstream consumers we care about.
+    BPMNDI coordinates, which makes BPMN export a hard binary
+    dependency we can't rely on (IT-locked machines). This emits the
+    semantic process plus a hierarchical Sugiyama-style layout
+    computed in pure Python -- enough for bpmn-js Viewer to render
+    and Adonis to display without re-layout.
     """
     ET.register_namespace("bpmn", _BPMN_NS)
+    ET.register_namespace("bpmndi", _BPMNDI_NS)
+    ET.register_namespace("dc", _DC_NS)
+    ET.register_namespace("di", _DI_NS)
     ET.register_namespace("xsi", _XSI_NS)
     defs = ET.Element(
         f"{{{_BPMN_NS}}}definitions",
@@ -101,10 +191,13 @@ def export_bpmn(bpmn_obj, out_path: str) -> None:
     flows = list(bpmn_obj.get_flows())
 
     # Stable id per node so flows can reference them.
-    node_id = {}
+    node_id: dict[int, str] = {}
+    node_cls: dict[str, str] = {}
     for i, n in enumerate(nodes):
         name = n.get_name() if hasattr(n, "get_name") else ""
-        node_id[id(n)] = _safe_id("node", i, name)
+        nid = _safe_id("node", i, name)
+        node_id[id(n)] = nid
+        node_cls[nid] = type(n).__name__
 
     for n in nodes:
         cls = type(n).__name__
@@ -115,22 +208,57 @@ def export_bpmn(bpmn_obj, out_path: str) -> None:
             attrs["name"] = name
         ET.SubElement(proc, f"{{{_BPMN_NS}}}{tag}", attrs)
 
+    # Track flow id per (src_id, tgt_id) so the BPMNDI section can
+    # reference each sequence flow with the exact id we emit here.
+    flow_records: list[tuple[str, str, str]] = []
     for i, f in enumerate(flows):
         src, tgt = f.get_source(), f.get_target()
         if id(src) not in node_id or id(tgt) not in node_id:
             continue
+        sid, tid = node_id[id(src)], node_id[id(tgt)]
+        fid = f"flow_{i}"
         ET.SubElement(
             proc,
             f"{{{_BPMN_NS}}}sequenceFlow",
-            {
-                "id": f"flow_{i}",
-                "sourceRef": node_id[id(src)],
-                "targetRef": node_id[id(tgt)],
-            },
+            {"id": fid, "sourceRef": sid, "targetRef": tid},
         )
+        flow_records.append((fid, sid, tid))
+
+    # ---- BPMNDI layout ----
+    sizes = {nid: _shape_size(node_cls[nid]) for nid in node_id.values()}
+    layout = _layout(
+        node_ids=list(node_id.values()),
+        edges=[(s, t) for (_, s, t) in flow_records],
+        sizes=sizes,
+    )
+
+    diagram = ET.SubElement(
+        defs, f"{{{_BPMNDI_NS}}}BPMNDiagram", {"id": "BPMNDiagram_1"})
+    plane = ET.SubElement(
+        diagram, f"{{{_BPMNDI_NS}}}BPMNPlane",
+        {"id": "BPMNPlane_1", "bpmnElement": "Process_1"})
+
+    for nid in node_id.values():
+        x, y, w, h = layout[nid]
+        shape = ET.SubElement(
+            plane, f"{{{_BPMNDI_NS}}}BPMNShape",
+            {"id": f"Shape_{nid}", "bpmnElement": nid})
+        ET.SubElement(shape, f"{{{_DC_NS}}}Bounds",
+                      {"x": str(x), "y": str(y), "width": str(w), "height": str(h)})
+
+    for fid, sid, tid in flow_records:
+        sx, sy, sw, sh = layout[sid]
+        tx, ty, tw, th = layout[tid]
+        # Edge from right-middle of source to left-middle of target.
+        edge = ET.SubElement(
+            plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
+            {"id": f"Edge_{fid}", "bpmnElement": fid})
+        ET.SubElement(edge, f"{{{_DI_NS}}}waypoint",
+                      {"x": str(sx + sw), "y": str(sy + sh // 2)})
+        ET.SubElement(edge, f"{{{_DI_NS}}}waypoint",
+                      {"x": str(tx),      "y": str(ty + th // 2)})
 
     tree = ET.ElementTree(defs)
-    # ElementTree 3.9+ supports indent for readable output.
     if hasattr(ET, "indent"):
         ET.indent(tree, space="  ")
     tree.write(out_path, xml_declaration=True, encoding="utf-8")
