@@ -334,7 +334,124 @@ async function setupOBS() {
   }
 }
 
-async function startSession() {
+function promptForAppName() {
+  /* Tiny modal prompt window. The label picker pattern is overkill;
+     this is one input + Start/Cancel. Returns a promise that resolves
+     to the typed app name or null on cancel. */
+  return new Promise((resolve) => {
+    let resolved = false;
+    const w = new BrowserWindow({
+      width: 460,
+      height: 280,
+      title: "Prep app vocabulary",
+      resizable: false, frame: true,
+      autoHideMenuBar: true,
+      backgroundColor: "#1a1a1a",
+      modal: false,
+      webPreferences: {
+        nodeIntegration: true, contextIsolation: false, sandbox: false,
+        webSecurity: true, allowRunningInsecureContent: false,
+        experimentalFeatures: false, spellcheck: false,
+      },
+    });
+    w.removeMenu();
+    w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    w.webContents.on("will-navigate", (e) => e.preventDefault());
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+      <style>
+        :root{color-scheme:dark;--bg:#1a1a1a;--bg-2:#232323;--bg-3:#2c2c2c;
+          --border:#3a3a3a;--fg:#e6e6e6;--fg-2:#a8a8a8;--fg-3:#6e6e6e;--accent:#3a86ff}
+        *{box-sizing:border-box}
+        html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+          font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:13px;line-height:1.5}
+        body{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+        h1{font-size:14px;margin:0;font-weight:600}
+        .sub{color:var(--fg-3);font-size:12px}
+        label{display:block;font-size:11px;color:var(--fg-3);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+        input{width:100%;padding:9px 11px;background:var(--bg-2);border:1px solid var(--border);
+          color:var(--fg);border-radius:3px;font-size:13px;outline:none}
+        input:focus{border-color:var(--accent)}
+        .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:auto}
+        button{padding:8px 16px;background:var(--bg-3);color:var(--fg);
+          border:1px solid var(--border);border-radius:3px;cursor:pointer;font-family:inherit;font-size:12px}
+        button:hover{background:#363636;border-color:var(--accent)}
+        button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+        button.primary:hover{filter:brightness(1.1)}
+        .hint{color:var(--fg-3);font-size:11px}
+      </style></head><body>
+      <div>
+        <h1>Prep app vocabulary</h1>
+        <div class="sub">Capture a session focused on one app. Click through every button, menu, and form field you want named. When you end the session, the viewer will offer to bootstrap an App Vocabulary YAML.</div>
+      </div>
+      <div>
+        <label for="app">App name</label>
+        <input id="app" placeholder="e.g., Salesforce, Outlook, SAP" autofocus>
+        <p class="hint">Plain English. The id (lower-case, hyphenated) is derived automatically.</p>
+      </div>
+      <div class="actions">
+        <button id="cancel">Cancel</button>
+        <button id="start" class="primary">Start prep session</button>
+      </div>
+      <script>
+        const { ipcRenderer } = require("electron");
+        const ip = document.getElementById("app");
+        document.getElementById("start").addEventListener("click", () => {
+          const v = (ip.value || "").trim();
+          if (!v) return;
+          ipcRenderer.send("pdt:prepAppResult", v);
+          window.close();
+        });
+        document.getElementById("cancel").addEventListener("click", () => {
+          ipcRenderer.send("pdt:prepAppResult", null);
+          window.close();
+        });
+        ip.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") document.getElementById("start").click();
+          else if (e.key === "Escape") document.getElementById("cancel").click();
+        });
+      </script></body></html>`;
+    w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+    const handler = (_e, value) => {
+      if (resolved) return;
+      resolved = true;
+      try { ipcMain.removeListener("pdt:prepAppResult", handler); } catch (_) {}
+      resolve(value);
+    };
+    ipcMain.on("pdt:prepAppResult", handler);
+    w.on("closed", () => {
+      if (!resolved) { resolved = true; resolve(null); }
+      try { ipcMain.removeListener("pdt:prepAppResult", handler); } catch (_) {}
+    });
+  });
+}
+
+async function startAppPrepSession() {
+  const appName = await promptForAppName();
+  if (!appName) return null;
+  const prepApp = appName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
+  const s = await startSession({ purpose: "app_prep", prepApp });
+  if (!s) return null;
+  /* Helpful starter marker so the analyst sees clear timeline boundaries
+     during the prep walkthrough. */
+  try {
+    tracker.fireMarker({ markerType: "start", label: `Prep: ${appName}` });
+    lastStatus = tracker.getStatus();
+  } catch (_e) {}
+  dialog.showMessageBox({
+    type: "info",
+    title: "Prep session started",
+    message: `Recording app vocabulary prep for "${appName}"`,
+    detail:
+      "Click through every button, menu, and form field in the app that you want named.\n\n" +
+      "When you're done, end the session from the tray. The viewer will offer to bootstrap " +
+      "the App Vocabulary YAML automatically.",
+    buttons: ["OK"],
+  });
+  return s;
+}
+
+async function startSession(opts) {
   if (session) return session;
   fs.mkdirSync(baseDir, { recursive: true });
 
@@ -347,10 +464,16 @@ async function startSession() {
     await setupOBS(); // best effort
   }
 
+  /* App-prep sessions get parked under engagement_id="vocab-prep" so
+     they don't pollute the engagement's process captures. The prep_app
+     name is recorded on the manifest for downstream auto-naming. */
+  const isPrep = !!(opts && opts.purpose === "app_prep");
   session = createSession({
     baseDir,
-    engagementId: config.engagement_id,
+    engagementId: isPrep ? "vocab-prep" : config.engagement_id,
     config,
+    purpose: opts && opts.purpose,
+    prepApp: opts && opts.prepApp,
   });
   writeConfigSnapshot(session.sessionFolder, config);
 
@@ -815,6 +938,10 @@ function buildMenu() {
     items.push({
       label: "Start capture session",
       click: async () => { await startSession(); refreshTray(); },
+    });
+    items.push({
+      label: "Start app vocabulary prep session...",
+      click: async () => { await startAppPrepSession(); refreshTray(); },
     });
   } else {
     items.push({

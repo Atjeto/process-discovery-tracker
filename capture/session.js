@@ -14,7 +14,7 @@ function sessionTimestampFolder() {
   );
 }
 
-function createSession({ baseDir, engagementId, config }) {
+function createSession({ baseDir, engagementId, config, purpose, prepApp }) {
   const sessionId = crypto.randomUUID();
   const engagement = engagementId || "default";
   const sessionFolder = path.join(baseDir, engagement, sessionTimestampFolder());
@@ -34,6 +34,12 @@ function createSession({ baseDir, engagementId, config }) {
     started_at: new Date().toISOString(),
     ended_at: null,
     status: "active",
+    /* purpose:
+       - undefined / "process": ordinary business process capture (default)
+       - "app_prep":            curating an App Vocabulary; prep_app names the target
+    */
+    purpose: purpose || "process",
+    prep_app: prepApp || null,
     config: config || {},
     obs: { recording_path: null, recording_start_ts: null, offset_ms: null },
     recovered: false,

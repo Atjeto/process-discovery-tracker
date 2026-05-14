@@ -61,6 +61,17 @@
           <div class="session-pills" id="session-pills"></div>
         </div>
 
+        <!-- Prep-session CTA: visible when this session was captured to
+             prepare an App Vocabulary. Replaces generic onboarding. -->
+        <div class="prep-cta-card" id="prep-session-cta" style="display:none">
+          <div class="prep-cta-icon">▣</div>
+          <div class="prep-cta-body">
+            <strong>App vocabulary prep session: <span id="prep-app-name"></span></strong>
+            <span class="prep-cta-detail">This session was captured to build the App Vocabulary for <code id="prep-app-id"></code>. Click below to bootstrap a starter YAML from every unique interaction in the capture. Open the file in your editor, fill in the <code>name:</code> fields, and drop it into <code>normalization/app_vocabularies/</code>.</span>
+          </div>
+          <button id="btn-prep-bootstrap" class="primary">Build vocabulary from this session</button>
+        </div>
+
         <!-- First-run guidance: visible until the session has been analyzed -->
         <div class="onboarding-card" id="onboarding-card" style="display:none">
           <div class="onboarding-step">

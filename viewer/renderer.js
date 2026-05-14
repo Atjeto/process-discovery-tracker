@@ -466,31 +466,51 @@ function ensureAnnoShape(anno) {
 
 /* ============ Save App Vocabulary from this session ================ */
 
+async function buildVocabFromSession(suggestedName) {
+  if (!currentSession) return;
+  const vocabName = suggestedName || prompt("App vocabulary name (e.g., 'Salesforce'):", "");
+  if (!vocabName) return;
+  const vocabId = vocabName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const r = await ipcRenderer.invoke("viewer:bootstrapAppVocab", {
+    sessionFolder: currentSession.sessionFolder,
+    vocabId, vocabName,
+  });
+  if (!r || !r.ok) {
+    toast("Vocabulary bootstrap failed: " + ((r && r.error) || "unknown"), "error");
+    return;
+  }
+  const out = await ipcRenderer.invoke("viewer:saveAppVocab", {
+    defaultName: vocabId + ".yaml",
+    content: r.yaml,
+    /* Default to the shipped vocab dir so the analyst doesn't have to
+       hunt for it. Falls back to the user's Documents folder if the
+       shipped dir isn't writable (e.g., installed under Program Files). */
+    preferAppVocabDir: true,
+  });
+  if (out) {
+    await ipcRenderer.invoke("viewer:revealFile", out);
+    toast("Saved starter vocabulary - edit the `name:` fields and re-analyze any session.", "success");
+  }
+}
+
 const btnSaveVocab = $("#btn-save-vocab");
 if (btnSaveVocab) {
   btnSaveVocab.addEventListener("click", async () => {
-    if (!currentSession) return;
-    const vocabName = prompt("App vocabulary name (e.g., 'Salesforce'):", "");
-    if (!vocabName) return;
-    const vocabId = vocabName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     btnSaveVocab.disabled = true;
-    const r = await ipcRenderer.invoke("viewer:bootstrapAppVocab", {
-      sessionFolder: currentSession.sessionFolder,
-      vocabId, vocabName,
-    });
+    await buildVocabFromSession();
     btnSaveVocab.disabled = false;
-    if (!r || !r.ok) {
-      toast("Vocabulary bootstrap failed: " + ((r && r.error) || "unknown"), "error");
-      return;
-    }
-    const out = await ipcRenderer.invoke("viewer:saveAppVocab", {
-      defaultName: vocabId + ".yaml",
-      content: r.yaml,
-    });
-    if (out) {
-      await ipcRenderer.invoke("viewer:revealFile", out);
-      toast("Saved starter vocabulary - edit the `name:` fields, then drop into normalization/app_vocabularies/", "success");
-    }
+  });
+}
+
+const btnPrepBootstrap = $("#btn-prep-bootstrap");
+if (btnPrepBootstrap) {
+  btnPrepBootstrap.addEventListener("click", async () => {
+    if (!currentSession) return;
+    const m = currentSession.manifest || {};
+    const friendly = (m.prep_app || "").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    btnPrepBootstrap.disabled = true;
+    await buildVocabFromSession(friendly || null);
+    btnPrepBootstrap.disabled = false;
   });
 }
 
@@ -835,6 +855,15 @@ function renderSessionPills() {
     if (meta.canonical_process_id) {
       pills.push({ label: "template", val: meta.canonical_process_id, cls: "ok" });
     }
+    const vocabs = meta.app_vocabularies || [];
+    if (vocabs.length) {
+      const hits = meta.app_vocabulary_matches || 0;
+      pills.push({
+        label: vocabs.length === 1 ? "vocab" : "vocabs",
+        val: `${vocabs.map(v => v.id).join(", ")} · ${hits} hits`,
+        cls: hits > 0 ? "ok" : "",
+      });
+    }
   } else {
     pills.push({ label: "analyzed", val: "no", cls: "warn" });
   }
@@ -849,6 +878,26 @@ function renderSessionPills() {
   const onboarding = $("#onboarding-card");
   if (onboarding) {
     onboarding.style.display = currentSession.stats ? "none" : "";
+  }
+
+  /* Prep-session CTA: when the manifest tags this as an app-vocab prep
+     capture, replace the generic onboarding with a one-button path to
+     bootstrap the vocabulary. The button below the toolbar is dedicated
+     to this so the analyst doesn't have to hunt for it. */
+  const prepCta = $("#prep-session-cta");
+  const isPrep = m.purpose === "app_prep" && m.prep_app;
+  if (prepCta) {
+    if (isPrep) {
+      prepCta.style.display = "";
+      const appName = m.prep_app
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, c => c.toUpperCase());
+      $("#prep-app-name").textContent = appName;
+      $("#prep-app-id").textContent = m.prep_app;
+      if (onboarding) onboarding.style.display = "none"; // CTA replaces generic onboarding
+    } else {
+      prepCta.style.display = "none";
+    }
   }
 
   // Update the Match button label to reflect a remembered template.

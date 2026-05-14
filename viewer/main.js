@@ -307,16 +307,89 @@ ipcMain.handle("viewer:bootstrapAppVocab", async (_e, { sessionFolder, vocabId, 
   }
 });
 
-ipcMain.handle("viewer:saveAppVocab", async (_e, { defaultName, content }) => {
+function appVocabDefaultDir() {
+  /* Probe the shipped + dev locations for normalization/app_vocabularies/
+     in priority order. The first writable one becomes the default save
+     target for the analyst's bootstrap output. */
+  const candidates = [
+    path.resolve(__dirname, "..", "normalization", "app_vocabularies"),
+    path.join(process.resourcesPath || "", "normalization", "app_vocabularies"),
+    path.join(__dirname, "normalization", "app_vocabularies"),
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) {
+        // Quick write probe: try fs.accessSync with W_OK.
+        fs.accessSync(c, fs.constants.W_OK);
+        return c;
+      }
+    } catch (_) { /* not writable - try next */ }
+  }
+  return null;
+}
+
+ipcMain.handle("viewer:saveAppVocab", async (_e, { defaultName, content, preferAppVocabDir }) => {
+  let defaultPath = defaultName || "app-vocabulary.yaml";
+  if (preferAppVocabDir) {
+    const dir = appVocabDefaultDir();
+    if (dir) defaultPath = path.join(dir, defaultName || "app-vocabulary.yaml");
+  }
   const r = await dialog.showSaveDialog(mainWindow, {
     title: "Save App Vocabulary YAML",
-    defaultPath: defaultName || "app-vocabulary.yaml",
+    defaultPath,
     filters: [{ name: "YAML", extensions: ["yaml", "yml"] }],
   });
   if (r.canceled || !r.filePath) return null;
   fs.writeFileSync(r.filePath, content, "utf-8");
   return r.filePath;
 });
+
+ipcMain.handle("viewer:listAppVocabs", () => {
+  /* List vocabs currently shipped with this dist + any extras via env
+     var, so the viewer can show what's loaded. */
+  const dirs = [];
+  const def = appVocabDefaultDir();
+  if (def) dirs.push(def);
+  const extra = process.env.PDT_APP_VOCABULARIES || "";
+  if (extra) {
+    for (const raw of extra.split(/[;:]/)) {
+      const t = raw.trim();
+      if (t && fs.existsSync(t) && !dirs.includes(t)) dirs.push(t);
+    }
+  }
+  const out = [];
+  for (const d of dirs) {
+    let entries;
+    try { entries = fs.readdirSync(d); } catch (_) { continue; }
+    for (const f of entries) {
+      if (!/\.(ya?ml)$/i.test(f)) continue;
+      const full = path.join(d, f);
+      try {
+        const stat = fs.statSync(full);
+        const text = fs.readFileSync(full, "utf-8");
+        // Parse just enough to get id, name, version, interaction count.
+        // Use a tolerant regex pass so we don't pull in a yaml dep here.
+        const idM = text.match(/^\s*id:\s*["']?([^"'#\n]+?)["']?\s*$/m);
+        const nameM = text.match(/^\s*name:\s*["']?([^"'#\n]+?)["']?\s*$/m);
+        const verM = text.match(/^\s*version:\s*(\d+)/m);
+        const interactionCount = (text.match(/^\s*- signature:/gm) || []).length;
+        out.push({
+          path: full,
+          dir: d,
+          file: f,
+          id: idM ? idM[1].trim() : f.replace(/\.ya?ml$/i, ""),
+          name: nameM ? nameM[1].trim() : "",
+          version: verM ? parseInt(verM[1], 10) : 1,
+          interaction_count: interactionCount,
+          modified: stat.mtime.toISOString(),
+        });
+      } catch (_) { /* skip bad file */ }
+    }
+  }
+  return { dirs, vocabs: out };
+});
+
+ipcMain.handle("viewer:openVocabFile", (_e, p) => shell.openPath(p));
 
 /* --- Annotations write-back --------------------------------------- */
 

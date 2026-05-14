@@ -747,3 +747,27 @@ main { flex: 1; overflow: auto; }
   display: block; margin-top: 4px;
   color: var(--fg-2); font-size: 12px; line-height: 1.6;
 }
+
+/* ===== Prep-session CTA (purpose=app_prep) ===== */
+.prep-cta-card {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 20px; margin: 0 0 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--accent-3); border-radius: var(--radius);
+  position: relative;
+}
+.prep-cta-card::before {
+  content: "Prep session"; position: absolute; top: -10px; left: 16px;
+  padding: 1px 10px; background: var(--bg); color: var(--accent-3);
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  border: 1px solid var(--accent-3); border-radius: 4px;
+}
+.prep-cta-icon {
+  flex: 0 0 36px; height: 36px; line-height: 36px; text-align: center;
+  background: var(--bg-3); color: var(--accent-3);
+  border-radius: 6px; font-size: 18px;
+}
+.prep-cta-body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.prep-cta-body strong { color: var(--fg); font-size: 13px; }
+.prep-cta-detail { color: var(--fg-2); font-size: 12px; line-height: 1.55; }
+.prep-cta-card button { flex: 0 0 auto; }
