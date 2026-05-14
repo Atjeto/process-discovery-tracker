@@ -82,11 +82,14 @@
       callbacks.onSplit && callbacks.onSplit(phase.phase_id));
   }
 
+  /* Muted phase palette -- very low chroma. Phases sit beneath the step
+     row so the tint must stay quiet to not overpower the step bands. */
+  const PHASE_PALETTE = ["#5A7488","#6E6A88","#886A78","#887A5A","#5A8870","#787058"];
+
   function renderPhaseTimeline(host, phases, steps, span) {
     host.innerHTML = "";
     if (!phases || !phases.length || !span || span.endMs <= span.startMs) return;
     const total = span.endMs - span.startMs;
-    const palette = ["#3a86ff","#8338ec","#ff006e","#fb5607","#ffbe0b","#06d6a0"];
     let pi = 0;
     for (const p of phases) {
       const contained = (p.step_ids || []).map(sid =>
@@ -96,11 +99,14 @@
       const endMs = Math.max(...contained.map(s => new Date(s.time_range.end).getTime()));
       const left = ((startMs - span.startMs) / total) * 100;
       const width = Math.max(0.5, ((endMs - startMs) / total) * 100);
+      const color = PHASE_PALETTE[pi++ % PHASE_PALETTE.length];
       const band = document.createElement("div");
       band.className = "phase-band";
       band.style.left = left + "%";
       band.style.width = width + "%";
-      band.style.background = palette[pi++ % palette.length];
+      band.style.background = color + "14";
+      band.style.borderColor = color + "44";
+      band.style.color = color;
       band.title = `${p.name} (${p.state})`;
       band.dataset.phaseId = p.phase_id;
       band.innerHTML = `<span class="phase-band-label">${escapeHtml(p.name)}</span>`;

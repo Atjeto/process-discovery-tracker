@@ -41,7 +41,7 @@ function createMainWindow() {
     width: 1400,
     height: 900,
     title: "Process Discovery Viewer",
-    backgroundColor: "#13121A",
+    backgroundColor: "#08080A",
     webPreferences: {
       /* The renderer loads only first-party HTML/CSS/JS from disk and
          uses require() for bpmn-js + cytoscape. nodeIntegration is

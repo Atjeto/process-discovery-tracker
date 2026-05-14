@@ -151,16 +151,19 @@
       callbacks.onMerge && callbacks.onMerge(step.step_id));
   }
 
+  /* Muted palette per design intent -- desaturated, distinguishable but
+     quiet. Same name = same color across the session. */
+  const STEP_PALETTE = ["#5A7488","#6E6A88","#886A78","#887A5A","#5A8870","#787058","#5E6878"];
+
   function renderStepTimeline(host, steps, interactions, span) {
     host.innerHTML = "";
     if (!steps || !steps.length || !span || span.endMs <= span.startMs) return;
     const total = span.endMs - span.startMs;
-    const palette = ["#3a86ff","#8338ec","#ff006e","#fb5607","#ffbe0b","#06d6a0","#118ab2"];
     const colorByName = new Map();
     let pi = 0;
     for (const s of steps) {
       const name = s.name || s.step_id;
-      if (!colorByName.has(name)) colorByName.set(name, palette[pi++ % palette.length]);
+      if (!colorByName.has(name)) colorByName.set(name, STEP_PALETTE[pi++ % STEP_PALETTE.length]);
     }
     for (const s of steps) {
       if (!s.time_range) continue;
@@ -168,13 +171,21 @@
       const end = new Date(s.time_range.end).getTime();
       const left = ((start - span.startMs) / total) * 100;
       const width = Math.max(0.5, ((end - start) / total) * 100);
+      const color = colorByName.get(s.name || s.step_id);
       const block = document.createElement("div");
       block.className = "step-block";
       block.style.left = left + "%";
       block.style.width = width + "%";
-      block.style.background = colorByName.get(s.name || s.step_id);
+      // Outlined treatment: faint tint + colored border + colored label
+      block.style.background = color + "1F";
+      block.style.borderColor = color + "55";
+      block.style.color = color;
       block.title = `${s.name} (${s.state})`;
       block.dataset.stepId = s.step_id;
+      const label = document.createElement("span");
+      label.className = "step-block-label";
+      label.textContent = s.name || "";
+      block.appendChild(label);
       host.appendChild(block);
     }
   }
