@@ -9,7 +9,15 @@
   function renderPhaseList(host, phases, selectedId, onSelect) {
     host.innerHTML = "";
     if (!phases || !phases.length) {
-      host.innerHTML = '<p class="hint">No phases yet. Group steps under the Steps tab, or run normalization against a canonical YAML with phases defined.</p>';
+      host.innerHTML = `
+        <div class="empty-pane">
+          <p><strong>No phases yet.</strong></p>
+          <p>Phases group steps into milestones. Two ways to create them:</p>
+          <ol>
+            <li>Switch to <strong>Steps</strong>, Ctrl+click two or more steps, then click <em>Group selected steps into phase</em>.</li>
+            <li>Load a Process Template with phases defined, then re-normalize the session.</li>
+          </ol>
+        </div>`;
       return;
     }
     for (const p of phases) {
@@ -28,7 +36,10 @@
 
   function renderPhaseDetail(host, phase, steps, callbacks) {
     if (!phase) {
-      host.innerHTML = '<p class="hint">Select a phase to edit.</p>';
+      host.innerHTML = `
+        <div class="empty-pane">
+          <p>Pick a phase on the left to rename it, see which steps it contains, or remove steps from it.</p>
+        </div>`;
       return;
     }
     const containedSteps = (phase.step_ids || []).map(sid =>

@@ -6,7 +6,7 @@ canonical_process:
 
   phases:
     - phase_id: "validate"
-      name: "Validate customer"
+      name: "Validate customers"
       step_ids: ["check-crm", "credit-check", "kyc-verify"]
     - phase_id: "onboard"
       name: "Provision account"

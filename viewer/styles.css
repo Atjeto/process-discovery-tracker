@@ -396,6 +396,18 @@ main { flex: 1; overflow: auto; }
 .help-dl dt { font-weight: 500; color: var(--fg); margin-top: 14px; font-size: 12px; }
 .help-dl dt:first-child { margin-top: 0; }
 .help-dl dd { margin: 4px 0 0; color: var(--fg-2); font-size: 12px; line-height: 1.55; }
+.help-section pre {
+  background: #08070C; padding: 14px; border-radius: var(--radius-sm);
+  overflow-x: auto; margin: 8px 0 16px;
+}
+.help-section pre code {
+  background: transparent; padding: 0; font-size: 11px;
+  color: var(--fg-2); white-space: pre;
+}
+.help-section .state-icon {
+  display: inline-block; width: 9px; height: 9px;
+  border-radius: 50%; margin-right: 4px; vertical-align: middle;
+}
 
 /* ===== Scrollbars ===== */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -414,18 +426,118 @@ main { flex: 1; overflow: auto; }
   .aggregate-grid { grid-template-columns: 1fr; }
 }
 
-/* ===== Level switcher (Flow / Steps / Phases) ===== */
-.level-switcher, .agg-level-switcher {
+/* ===== View-mode bar (prominent top-of-session Flow/Steps/Phases) ===== */
+.view-mode-bar {
+  display: flex; align-items: stretch; gap: 10px;
+  padding: 12px 16px; margin: 0 0 14px;
+  background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius);
+}
+.view-mode-label {
+  display: flex; align-items: center;
+  font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--fg-3); padding-right: 6px;
+}
+.view-mode-btn {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 10px 20px; min-width: 160px;
+  background: var(--bg-3); color: var(--fg-2);
+  border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  font-family: inherit; cursor: pointer; transition: all 0.15s;
+  position: relative; text-align: left;
+}
+.view-mode-btn:hover { background: var(--bg-4); color: var(--fg); border-color: var(--accent-2); }
+.view-mode-btn.active {
+  background: var(--accent); color: var(--bg); border-color: var(--accent);
+  font-weight: 500;
+}
+.view-mode-btn.active .view-mode-desc { color: rgba(0,0,0,0.55); }
+.view-mode-btn .view-mode-icon {
+  font-size: 16px; font-weight: 600; margin-right: 6px; display: inline-block;
+}
+.view-mode-btn .view-mode-desc {
+  font-size: 10px; color: var(--fg-3); text-transform: lowercase; letter-spacing: 0.3px;
+}
+.view-mode-btn .badge { position: absolute; top: 8px; right: 10px; }
+.view-mode-help {
+  display: flex; align-items: center;
+  font-size: 11px; color: var(--fg-3);
+  max-width: 380px; text-align: right; font-style: italic;
+}
+
+/* Aggregate level switcher (kept compact for the dense aggregate toolbar) */
+.agg-level-switcher {
   display: inline-flex; gap: 0; margin: 0 8px;
   border: 1px solid var(--rule); border-radius: var(--radius-sm); overflow: hidden;
 }
-.level-switcher .level-btn, .agg-level-switcher .agg-level-btn {
+.agg-level-switcher .agg-level-btn {
   padding: 4px 12px; background: transparent; border: 0; border-radius: 0;
   color: var(--fg-2); font-size: 11px; cursor: pointer;
 }
-.level-switcher .level-btn.active, .agg-level-switcher .agg-level-btn.active {
+.agg-level-switcher .agg-level-btn.active {
   background: var(--accent); color: var(--bg);
 }
+
+/* ===== Full-width Steps / Phases layouts ===== */
+.session-layout-stepsphases {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.explainer {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px 18px;
+  background: var(--bg-2); border-left: 3px solid var(--accent-2);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13px; line-height: 1.6;
+}
+.explainer strong { color: var(--fg); font-size: 13px; }
+.explainer span { color: var(--fg-2); }
+.timeline-band-host {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-1); border: 1px solid var(--rule);
+  border-radius: var(--radius-sm); padding: 10px 14px;
+}
+.timeline-band-host .band-label {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--fg-3); font-family: var(--font-mono);
+}
+.editor-actions {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
+}
+.editor-split {
+  display: grid; grid-template-columns: 380px 1fr; gap: 14px;
+  min-height: 460px;
+}
+@media (max-width: 1100px) {
+  .editor-split { grid-template-columns: 1fr; }
+}
+.editor-list-pane, .editor-detail-pane {
+  background: var(--bg-1); border: 1px solid var(--rule);
+  border-radius: var(--radius-sm); padding: 14px 16px; overflow: auto;
+  min-height: 400px;
+}
+.editor-pane-title {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--fg-3); font-family: var(--font-mono);
+  margin: 0 0 12px;
+}
+.empty-pane {
+  padding: 12px 4px; color: var(--fg-2); font-size: 13px; line-height: 1.65;
+}
+.empty-pane p { margin: 0 0 10px; }
+.empty-pane strong { color: var(--fg); }
+.empty-pane ul, .empty-pane ol { margin: 6px 0 10px 22px; padding: 0; }
+.empty-pane li { margin-bottom: 6px; }
+.empty-pane .meta { font-size: 11px; color: var(--fg-3); }
+.empty-pane code { background: var(--bg-3); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+.template-explainer {
+  padding: 18px 22px; margin: 0 0 16px;
+  background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.template-explainer h2 { margin: 0 0 10px; color: var(--fg); font-size: 18px; }
+.template-explainer p { margin: 0 0 10px; font-size: 13px; line-height: 1.65; color: var(--fg-2); }
+.template-explainer em { color: var(--accent); font-style: normal; font-weight: 500; }
 
 /* ===== Step + phase timelines ===== */
 .timeline-steps, .timeline-phases {
@@ -448,48 +560,73 @@ main { flex: 1; overflow: auto; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* ===== Step / phase list + detail ===== */
-.step-editor-grid, .phase-editor-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; height: 100%;
-}
-.step-list-pane, .phase-list-pane,
-.step-detail-pane, .phase-detail-pane {
-  background: var(--bg-1); border: 1px solid var(--rule);
-  border-radius: var(--radius-sm); padding: 8px; overflow: auto;
-}
-.step-list-actions, .phase-list-actions {
-  display: flex; gap: 4px; margin-bottom: 6px;
-}
+/* ===== Step / phase list rows ===== */
 .step-row, .phase-row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  border: 1px solid transparent; margin-bottom: 3px;
 }
-.step-row:hover, .phase-row:hover { background: var(--bg-2); }
-.step-row.selected, .phase-row.selected { background: var(--bg-3); }
-.step-row .step-name, .phase-row .phase-name { flex: 1; }
-.step-row .step-time, .phase-row .phase-count { color: var(--fg-3); font-family: var(--font-mono); font-size: 10px; }
-.state-icon { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-3); flex: 0 0 auto; }
+.step-row:hover, .phase-row:hover { background: var(--bg-2); border-color: var(--rule); }
+.step-row.selected, .phase-row.selected {
+  background: var(--bg-3); border-color: var(--accent);
+}
+.step-row .step-name, .phase-row .phase-name {
+  flex: 1; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.step-row .step-time, .phase-row .phase-count {
+  color: var(--fg-3); font-family: var(--font-mono); font-size: 10px;
+  flex-shrink: 0;
+}
+.state-icon {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--fg-3); flex: 0 0 auto;
+}
 .state-icon.state-auto_suggested    { background: var(--fg-3); }
 .state-icon.state-auto_matched      { background: var(--accent); }
 .state-icon.state-manually_authored { background: var(--accent-2); }
 .state-icon.state-edited            { background: var(--accent-3); }
 
-.step-detail-pane label, .phase-detail-pane label {
-  display: block; margin-bottom: 8px; font-size: 11px; color: var(--fg-3);
+/* ===== Step / phase detail editor (now lives in the full-width editor pane) ===== */
+.editor-detail-pane label {
+  display: block; margin-bottom: 12px; font-size: 11px;
+  letter-spacing: 0.5px; text-transform: uppercase; color: var(--fg-3);
 }
-.step-detail-pane input[type=text], .step-detail-pane textarea,
-.phase-detail-pane input[type=text], .phase-detail-pane textarea {
-  width: 100%; padding: 6px 8px; background: var(--bg-2);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg); font-family: inherit; font-size: 12px;
+.editor-detail-pane label input[type=text],
+.editor-detail-pane label textarea {
+  display: block; width: 100%; margin-top: 5px;
+  padding: 8px 10px; background: var(--bg-2);
+  border: 1px solid var(--rule); border-radius: 4px;
+  color: var(--fg); font-family: inherit; font-size: 13px;
+  text-transform: none; letter-spacing: 0;
 }
-.step-detail-pane textarea, .phase-detail-pane textarea { min-height: 60px; }
-.step-detail-pane .flags label { display: inline-flex; gap: 4px; margin-right: 8px; align-items: center; }
-.step-detail-pane .actions, .phase-detail-pane .actions {
-  display: flex; gap: 6px; margin-top: 8px;
+.editor-detail-pane label input[type=text]:focus,
+.editor-detail-pane label textarea:focus {
+  outline: none; border-color: var(--accent);
 }
-.step-detail-pane .danger, .phase-detail-pane .danger {
+.editor-detail-pane textarea { min-height: 70px; resize: vertical; }
+.editor-detail-pane .flags {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 14px 0;
+  padding: 12px; background: var(--bg-2); border-radius: 4px;
+}
+.editor-detail-pane .flags label {
+  display: inline-flex; gap: 6px; align-items: center;
+  margin: 0; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--fg);
+}
+.editor-detail-pane .evidence {
+  margin: 14px 0; padding: 10px 12px;
+  background: var(--bg-2); border-left: 2px solid var(--accent-2);
+  border-radius: 0 4px 4px 0; font-size: 12px;
+}
+.editor-detail-pane .evidence p { margin: 4px 0; color: var(--fg-2); }
+.editor-detail-pane .actions {
+  display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;
+}
+.editor-detail-pane .danger {
   background: transparent; border-color: var(--bad); color: var(--bad);
+}
+.editor-detail-pane .danger:hover:not(:disabled) {
+  background: var(--bad); color: #fff;
 }
 .drift-indicator { color: var(--warn); margin-left: 4px; }
 .drift-note { color: var(--warn); font-size: 11px; }

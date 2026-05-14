@@ -14,7 +14,12 @@
   function renderStepList(host, steps, selectedId, onSelect, onMultiSelect) {
     host.innerHTML = "";
     if (!steps || !steps.length) {
-      host.innerHTML = '<p class="hint">No steps yet. Run normalization or right-click the timeline to add a manual step.</p>';
+      host.innerHTML = `
+        <div class="empty-pane">
+          <p><strong>No steps yet.</strong></p>
+          <p>Steps appear after you run normalization (the "Run normalization" button at the top). If the session had interaction events recorded, you'll see auto-suggested steps here. If a Process Template was matched, you'll see auto-matched steps named after the template.</p>
+          <p>You can also build steps yourself with the <strong>+ Add manual step</strong> button above.</p>
+        </div>`;
       return;
     }
     for (const s of steps) {
@@ -41,7 +46,17 @@
 
   function renderStepDetail(host, step, callbacks) {
     if (!step) {
-      host.innerHTML = '<p class="hint">Select a step to edit.</p>';
+      host.innerHTML = `
+        <div class="empty-pane">
+          <p>Pick a step on the left to see its details, rename it, or flag it.</p>
+          <p class="meta">Each step has a name, an optional description, a list of UI interactions that made it up, and four flags you can toggle:</p>
+          <ul class="meta">
+            <li><strong>Conditional</strong>: this step only happens sometimes (branching path)</li>
+            <li><strong>Exception path</strong>: this step represents an error or workaround</li>
+            <li><strong>Waste</strong>: this step shouldn't be needed (rework, duplicate effort)</li>
+            <li><strong>Automation candidate</strong>: this step could be replaced by a bot</li>
+          </ul>
+        </div>`;
       return;
     }
     const flags = step.flags || {};

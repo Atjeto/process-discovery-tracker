@@ -24,7 +24,7 @@
     <nav class="tabs">
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
       <button class="tab" data-view="aggregate"><span class="kbd">2</span> Aggregate</button>
-      <button class="tab" data-view="canonical"><span class="kbd">3</span> Canonical</button>
+      <button class="tab" data-view="canonical"><span class="kbd">3</span> Process Template</button>
     </nav>
     <div class="topbar-meta">
       <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
@@ -59,7 +59,29 @@
           <div class="session-pills" id="session-pills"></div>
         </div>
 
-        <div class="session-layout">
+        <!-- View-mode bar: prominent, controls what the whole session view shows -->
+        <div class="view-mode-bar">
+          <span class="view-mode-label">View:</span>
+          <button class="view-mode-btn active" data-level="flow" title="Timeline of every captured event">
+            <span class="view-mode-icon">≡</span> Flow
+            <span class="view-mode-desc">raw event timeline</span>
+          </button>
+          <button class="view-mode-btn" data-level="steps" title="Logical actions grouped from interactions">
+            <span class="view-mode-icon">▣</span> Steps
+            <span class="view-mode-desc">logical actions</span>
+            <span class="badge" id="steps-badge">0</span>
+          </button>
+          <button class="view-mode-btn" data-level="phases" title="Milestones grouped from steps">
+            <span class="view-mode-icon">▦</span> Phases
+            <span class="view-mode-desc">milestones</span>
+            <span class="badge" id="phases-badge">0</span>
+          </button>
+          <span class="flex-spacer"></span>
+          <span class="view-mode-help" id="view-mode-help"></span>
+        </div>
+
+        <!-- ========= FLOW view (timeline + video + annotation tabs) ========= -->
+        <div class="session-layout" id="session-layout-flow">
           <div class="video-pane">
             <video id="video" controls preload="metadata"></video>
             <div class="no-video" id="no-video">
@@ -74,11 +96,6 @@
             <div class="timeline-header">
               <strong>Timeline</strong>
               <span id="timeline-summary" class="meta"></span>
-              <div class="level-switcher" id="level-switcher">
-                <button class="level-btn active" data-level="flow">Flow</button>
-                <button class="level-btn" data-level="steps">Steps</button>
-                <button class="level-btn" data-level="phases">Phases</button>
-              </div>
               <div class="timeline-controls">
                 <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)">−</button>
                 <button class="icon-btn" id="btn-zoom-reset" title="Reset zoom (0)">⊙</button>
@@ -87,8 +104,6 @@
             </div>
             <div class="timeline-scroll">
               <div class="timeline" id="timeline"></div>
-              <div class="timeline timeline-steps" id="timeline-steps" style="display:none"></div>
-              <div class="timeline timeline-phases" id="timeline-phases" style="display:none"></div>
             </div>
             <div class="legend">
               <span class="lg-activity">activity</span>
@@ -104,8 +119,6 @@
               <button class="anno-tab active" data-anno="notes">Notes</button>
               <button class="anno-tab" data-anno="screens">Screenshots</button>
               <button class="anno-tab" data-anno="markers">Markers</button>
-              <button class="anno-tab" data-anno="steps">Steps <span class="badge" id="steps-badge">0</span></button>
-              <button class="anno-tab" data-anno="phases">Phases <span class="badge" id="phases-badge">0</span></button>
               <button class="anno-tab" data-anno="ml">ML <span class="badge" id="ml-badge">0</span></button>
             </div>
             <div class="anno-panel" data-panel="notes">
@@ -119,34 +132,66 @@
             <div class="anno-panel" data-panel="markers" style="display:none">
               <div id="markers-list" class="markers-list"></div>
             </div>
-            <div class="anno-panel" data-panel="steps" style="display:none">
-              <div class="step-editor-grid">
-                <div class="step-list-pane">
-                  <div class="step-list-actions">
-                    <button id="btn-add-manual-step">+ Add manual step</button>
-                  </div>
-                  <div id="step-list"></div>
-                </div>
-                <div class="step-detail-pane" id="step-detail"></div>
-              </div>
-            </div>
-            <div class="anno-panel" data-panel="phases" style="display:none">
-              <div class="phase-editor-grid">
-                <div class="phase-list-pane">
-                  <div class="phase-list-actions">
-                    <button id="btn-add-manual-phase">+ Add manual phase</button>
-                    <button id="btn-group-into-phase" disabled>Group selected steps</button>
-                  </div>
-                  <div id="phase-list"></div>
-                </div>
-                <div class="phase-detail-pane" id="phase-detail"></div>
-              </div>
-            </div>
             <div class="anno-panel" data-panel="ml" style="display:none">
               <div id="ml-suggestions-list"></div>
-              <p class="hint">Suggestions from <code>ml_suggestions.json</code>. Accept to apply the label and optionally promote it as a taxonomy rule.</p>
+              <p class="hint">Auto-suggested activity labels for events the taxonomy did not classify. Train the classifier from the Aggregate view first.</p>
             </div>
           </aside>
+        </div>
+
+        <!-- ========= STEPS view (full-width editor) ========= -->
+        <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
+          <div class="explainer">
+            <strong>What is a step?</strong>
+            <span>A step is a logical action (like "Search customer", "Fill onboarding form") made up of one or more captured UI interactions. Steps are auto-suggested when you record clicks, or auto-matched against a Process Template if one is loaded. You can rename them, split or merge them, add manual steps, and flag them as waste or automation candidates.</span>
+          </div>
+          <div class="timeline-band-host">
+            <div class="band-label">Step timeline</div>
+            <div class="timeline timeline-steps" id="timeline-steps"></div>
+          </div>
+          <div class="editor-actions">
+            <button id="btn-add-manual-step" class="primary">+ Add manual step</button>
+            <span class="meta" id="steps-summary"></span>
+            <span class="flex-spacer"></span>
+            <span class="hint">Tip: J / K to navigate · S split · M merge · N new · Ctrl+click multi-select</span>
+          </div>
+          <div class="editor-split">
+            <div class="editor-list-pane">
+              <h3 class="editor-pane-title">Steps in this session</h3>
+              <div id="step-list"></div>
+            </div>
+            <div class="editor-detail-pane">
+              <h3 class="editor-pane-title">Selected step</h3>
+              <div id="step-detail"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========= PHASES view (full-width editor) ========= -->
+        <div class="session-layout-stepsphases" id="session-layout-phases" style="display:none">
+          <div class="explainer">
+            <strong>What is a phase?</strong>
+            <span>A phase groups related steps into a milestone (like "Validate customer", "Provision account"). Phases come from a Process Template's phase definitions, or you can build them manually: in the Steps view, Ctrl+click to multi-select steps, then click "Group selected steps". A step belongs to at most one phase.</span>
+          </div>
+          <div class="timeline-band-host">
+            <div class="band-label">Phase timeline</div>
+            <div class="timeline timeline-phases" id="timeline-phases"></div>
+          </div>
+          <div class="editor-actions">
+            <button id="btn-add-manual-phase" class="primary">+ Add manual phase</button>
+            <button id="btn-group-into-phase" disabled>Group selected steps into phase</button>
+            <span class="meta" id="phases-summary"></span>
+          </div>
+          <div class="editor-split">
+            <div class="editor-list-pane">
+              <h3 class="editor-pane-title">Phases in this session</h3>
+              <div id="phase-list"></div>
+            </div>
+            <div class="editor-detail-pane">
+              <h3 class="editor-pane-title">Selected phase</h3>
+              <div id="phase-detail"></div>
+            </div>
+          </div>
         </div>
 
         <details class="event-table-host">
@@ -188,7 +233,7 @@
         <div class="actions-bar">
           <button id="btn-open-multi">Open more</button>
           <button id="btn-normalize-all" class="primary">Normalize + mine all</button>
-          <button id="btn-renormalize-canonical">Re-normalize to canonical...</button>
+          <button id="btn-renormalize-canonical">Re-match to Process Template...</button>
           <button id="btn-retrain-classifier">Retrain classifier</button>
           <button id="btn-cluster-review">Cluster review</button>
           <input type="search" id="agg-filter" placeholder="Filter by activity, app, or worker..." />
@@ -284,11 +329,16 @@
       </div>
     </section>
 
-    <!-- ========= Canonical view ========= -->
+    <!-- ========= Process Template view ========= -->
     <section class="view" id="view-canonical">
       <div class="loaded" id="canonical-loaded">
+        <div class="template-explainer">
+          <h2>Process Template</h2>
+          <p>A Process Template is a reusable definition of an expected process: its steps, phases, and the UI patterns that identify each one. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
+          <p class="meta">Templates live as YAML files. Edit them here, save, then re-match sessions from the Aggregate view.</p>
+        </div>
         <div class="actions-bar">
-          <button id="btn-open-canonical">Open canonical YAML...</button>
+          <button id="btn-open-canonical" class="primary">Open template YAML...</button>
           <button id="btn-save-canonical" disabled>Save changes</button>
           <button id="btn-promote-from-exemplar" disabled>Promote selected steps from exemplar</button>
           <span class="flex-spacer"></span>
@@ -296,15 +346,15 @@
         </div>
         <div class="canonical-grid">
           <div class="panel">
-            <h3>Canonical steps</h3>
+            <h3>Template steps</h3>
             <div id="canonical-step-list"></div>
           </div>
           <div class="panel">
-            <h3>Step rules (YAML)</h3>
+            <h3>Template definition (YAML)</h3>
             <textarea id="canonical-yaml" spellcheck="false"></textarea>
           </div>
           <div class="panel">
-            <h3>Exemplar session</h3>
+            <h3>Test against exemplar session</h3>
             <button id="btn-load-exemplar">Load exemplar session...</button>
             <div id="exemplar-events"></div>
             <p class="meta" id="exemplar-match-rate"></p>
@@ -326,6 +376,8 @@
       <nav class="help-nav">
         <button class="help-nav-item active" data-section="start">Getting started</button>
         <button class="help-nav-item" data-section="session">Session view</button>
+        <button class="help-nav-item" data-section="stepsphases">Steps &amp; Phases</button>
+        <button class="help-nav-item" data-section="template">Process Templates</button>
         <button class="help-nav-item" data-section="aggregate">Aggregate view</button>
         <button class="help-nav-item" data-section="capture">Capture workflow</button>
         <button class="help-nav-item" data-section="shortcuts">Shortcuts</button>
@@ -377,6 +429,76 @@
           </ul>
           <p>After any edit, re-run normalization to push the change into XES, CSV, and statistics.</p>
           <p class="help-hint">Boundary adjustment + delete give you everything needed to merge or split cases in practice. To merge two adjacent same-label cases, delete the inner End and the following Start. To split a long case, adjust its End earlier and (with a future UI) insert a new Start - for now you can edit annotations.json directly until that lands.</p>
+        </section>
+
+        <section class="help-section" data-section="stepsphases">
+          <h3>Three views of the same session</h3>
+          <p>At the top of every loaded session you'll see a <strong>View</strong> bar with three buttons. They show the same captured data at different levels of abstraction:</p>
+          <ul class="help-list">
+            <li><strong>Flow</strong>: raw events as they were captured. Use this to understand what actually happened, second-by-second. Video, timeline, screenshots, notes.</li>
+            <li><strong>Steps</strong>: the same data grouped into logical actions. A "step" is what a process analyst would call one named thing the worker did. <em>Search customer in Salesforce</em> is one step, even if it took 14 clicks underneath.</li>
+            <li><strong>Phases</strong>: steps grouped into milestones. A "phase" is what an exec would call one chunk of the process. <em>Validate customer</em> is a phase that contains the Search step, the Credit check step, and the KYC step.</li>
+          </ul>
+          <h3>How steps get created</h3>
+          <p>You have three choices and you don't have to pick one:</p>
+          <ol class="help-steps">
+            <li><strong>Auto-suggested</strong>: normalize.py walks the interaction stream and splits on idle gaps, app switches, and window changes. Cheap and works on any session. Quality depends on how clean the workflow was.</li>
+            <li><strong>Auto-matched</strong>: if you've loaded a Process Template, every captured interaction is tested against the template's match rules. Matched interactions roll up into steps that get the template's names. Much better quality, but only works for processes you've templated.</li>
+            <li><strong>Manually authored</strong>: click <em>+ Add manual step</em> in the Steps view and define one yourself. Useful for the long tail of processes that don't have a template yet.</li>
+          </ol>
+          <h3>What state means</h3>
+          <p>Every step has a colored dot indicating where it came from:</p>
+          <ul class="help-list">
+            <li><span class="state-icon state-auto_suggested"></span> <strong>auto-suggested</strong> - heuristic guess from interactions. Replaced on every re-normalization.</li>
+            <li><span class="state-icon state-auto_matched"></span> <strong>auto-matched</strong> - matched a Process Template. Replaced when you re-match against a newer template version.</li>
+            <li><span class="state-icon state-manually_authored"></span> <strong>manually authored</strong> - you typed it. Survives re-normalization.</li>
+            <li><span class="state-icon state-edited"></span> <strong>edited</strong> - you modified an auto-suggested or auto-matched step. Survives re-normalization.</li>
+          </ul>
+          <h3>Flags</h3>
+          <p>Each step can be tagged. These don't change the data but they show up in exports and statistics:</p>
+          <ul class="help-list">
+            <li><strong>Conditional</strong>: the step happens only sometimes (branching path)</li>
+            <li><strong>Exception path</strong>: an error or workaround, not the happy path</li>
+            <li><strong>Waste</strong>: shouldn't be needed (rework, duplicate effort, fixing someone else's mistake)</li>
+            <li><strong>Automation candidate</strong>: this step could be replaced by a bot or integration</li>
+          </ul>
+          <h3>Building phases manually</h3>
+          <ol class="help-steps">
+            <li>Switch to <strong>Steps</strong> view.</li>
+            <li>Ctrl+click two or more step rows to multi-select.</li>
+            <li>Switch to <strong>Phases</strong> view. The <em>Group selected steps into phase</em> button is now enabled.</li>
+            <li>Click it, give the phase a name. Done.</li>
+          </ol>
+        </section>
+
+        <section class="help-section" data-section="template">
+          <h3>What a Process Template is</h3>
+          <p>A Process Template is a YAML file that says: "<em>This is what Customer Onboarding looks like. It has three phases. The first phase has three steps. Here's how to recognize each step when you see it in a captured session.</em>"</p>
+          <p>The third tab at the top of the viewer (<strong>Process Template</strong>) is where you open, edit, and test templates. A sample one ships at <code>normalization/canonical/sample-customer-onboarding-v3.yaml</code>.</p>
+          <h3>Why bother</h3>
+          <p>Without a template, the viewer can only auto-suggest steps from interaction patterns. The names it picks are generic ("App: 4 actions"). With a template, every matched interaction gets the right name ("Search existing customer record"), groups into the right step, and the steps roll up into named phases. The PDD export, the step BPMN export, and the aggregate statistics all become hugely more useful.</p>
+          <h3>The minimal shape</h3>
+          <pre><code>canonical_process:
+  id: "customer-onboarding-v3"
+  name: "Customer Onboarding"
+  version: 7
+  phases:
+    - phase_id: "validate"
+      name: "Validate customer"
+      step_ids: ["check-crm", "credit-check"]
+  steps:
+    - step_id: "check-crm"
+      name: "Check existing customer record"
+      match:
+        - process_name: "chrome.exe"
+          window_title_regex: ".*Salesforce.*Search.*"
+          interaction:
+            control_type: "Edit"
+            automation_id: "searchInput"</code></pre>
+          <h3>Matching against a captured session</h3>
+          <p>From the Process Template tab, load the YAML, click <em>Load exemplar session</em>, and the match rate shows up. Aim for 80% or higher; below that you need to refine the match rules until they cover the real patterns the SME hit.</p>
+          <h3>Versioning + drift</h3>
+          <p>Templates have a <code>version</code> field. When you change a template and re-normalize old sessions, any step the analyst edited manually that now maps to a different canonical step gets a <strong>drift marker</strong> (you'll see a ⚠ icon in the Steps view). The aggregate Drift panel shows the trend across loaded sessions.</p>
         </section>
 
         <section class="help-section" data-section="aggregate">

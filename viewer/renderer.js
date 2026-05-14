@@ -90,35 +90,46 @@ function activateTab(name) {
   }
 }
 
-/* ============ Session level switcher (Flow / Steps / Phases) ====== */
+/* ============ Session view-mode switcher (Flow / Steps / Phases) ===
+   The view-mode bar at the top of the loaded session swaps between
+   three top-level layouts:
+     #session-layout-flow    - video + timeline + annotations
+     #session-layout-steps   - full-width step editor with timeline band
+     #session-layout-phases  - full-width phase editor with timeline band
+   This is a much bigger change than the original "toggle which timeline
+   strip is visible" approach because users couldn't find the cramped
+   editor inside the narrow annotations panel. */
 
 let currentLevel = "flow";
 let selectedStepId = null;
 let multiSelectedStepIds = new Set();
 let selectedPhaseId = null;
 
-$$("#level-switcher .level-btn").forEach((btn) => {
+$$(".view-mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    $$("#level-switcher .level-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
     setLevel(btn.dataset.level);
   });
 });
 
+const VIEW_MODE_HELP = {
+  flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
+  steps:  "Steps view: rename, split, merge, or flag the logical actions captured in this session.",
+  phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
+};
+
 function setLevel(name) {
   currentLevel = name;
-  const tl = $("#timeline");
-  const tlSteps = $("#timeline-steps");
-  const tlPhases = $("#timeline-phases");
-  if (tl)        tl.style.display       = name === "flow" ? "" : "none";
-  if (tlSteps)   tlSteps.style.display  = name === "steps" ? "" : "none";
-  if (tlPhases)  tlPhases.style.display = name === "phases" ? "" : "none";
-  if (name === "steps") {
-    activateAnnoTab("steps");
-    renderStepsLevel();
-  } else if (name === "phases") {
-    activateAnnoTab("phases");
-    renderPhasesLevel();
+  const layouts = ["flow", "steps", "phases"];
+  for (const l of layouts) {
+    const el = document.getElementById("session-layout-" + l);
+    if (el) el.style.display = l === name ? "" : "none";
   }
+  const help = document.getElementById("view-mode-help");
+  if (help) help.textContent = VIEW_MODE_HELP[name] || "";
+  if (name === "steps")  renderStepsLevel();
+  if (name === "phases") renderPhasesLevel();
+  if (name === "flow")   renderTimeline();
 }
 
 function activateAnnoTab(name) {
@@ -522,6 +533,14 @@ if ($("#btn-load-exemplar")) {
 function renderCanonicalStepList() {
   const host = $("#canonical-step-list");
   if (!host) return;
+  if (!canonicalState.path) {
+    host.innerHTML = `
+      <div class="empty-pane">
+        <p>No template loaded. Click <strong>Open template YAML...</strong> above.</p>
+        <p class="meta">A sample template ships with the tool at <code>normalization/canonical/sample-customer-onboarding-v3.yaml</code> - open it to see how one looks.</p>
+      </div>`;
+    return;
+  }
   // Lightweight YAML parse: count steps by indent-aware regex
   const content = canonicalState.content || "";
   const stepMatches = content.match(/^\s*- step_id:\s*"?([^"\n]+)"?\s*$/gm) || [];
@@ -532,6 +551,11 @@ function renderCanonicalStepList() {
   host.innerHTML = stepMatches.map((s) =>
     '<div class="canonical-step-row">' + escapeHtml(s.trim()) + '</div>'
   ).join("");
+}
+
+// Render the empty state immediately so the Template tab isn't blank.
+if (typeof window !== "undefined") {
+  setTimeout(() => renderCanonicalStepList(), 0);
 }
 
 /* ============ Step / phase / PDD exports ========================= */
