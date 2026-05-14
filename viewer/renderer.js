@@ -844,7 +844,59 @@ async function loadSessionIntoView(folder) {
   if ($("#btn-group-into-phase")) $("#btn-group-into-phase").disabled = true;
   renderStepsLevel();
   renderPhasesLevel();
+  updateProcessMapStatus();
 }
+
+/* Surface the per-session BPMN output produced by `normalize.py --mine`.
+   Reads process_map.bpmn from the loaded session folder, counts flow
+   nodes, and exposes Open / Reveal affordances in the actions bar. */
+function updateProcessMapStatus() {
+  const wrap = document.getElementById("process-map-status");
+  if (!wrap) return;
+  if (!currentSession || !currentSession.sessionFolder) {
+    wrap.style.display = "none";
+    return;
+  }
+  const bpmnPath = path.join(currentSession.sessionFolder, "process_map.bpmn");
+  let xml = "";
+  try {
+    if (!fs.existsSync(bpmnPath)) {
+      wrap.style.display = "none";
+      return;
+    }
+    xml = fs.readFileSync(bpmnPath, "utf8");
+  } catch (_) {
+    wrap.style.display = "none";
+    return;
+  }
+  // Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix.
+  const nodeRe = /<(?:[\w-]+:)?(task|userTask|serviceTask|manualTask|scriptTask|sendTask|receiveTask|businessRuleTask|callActivity|subProcess|startEvent|endEvent|intermediateThrowEvent|intermediateCatchEvent|exclusiveGateway|parallelGateway|inclusiveGateway|eventBasedGateway|complexGateway)\b/g;
+  const matches = xml.match(nodeRe) || [];
+  const nodeCount = matches.length;
+  const detail = document.getElementById("process-map-detail");
+  if (detail) detail.textContent = nodeCount + (nodeCount === 1 ? " node" : " nodes");
+  wrap.style.display = "";
+  wrap.dataset.bpmnPath = bpmnPath;
+}
+
+(function wireProcessMapButtons() {
+  const open = document.getElementById("btn-open-bpmn");
+  const reveal = document.getElementById("btn-reveal-bpmn");
+  function currentBpmnPath() {
+    const wrap = document.getElementById("process-map-status");
+    return wrap && wrap.dataset.bpmnPath;
+  }
+  if (open) open.addEventListener("click", async () => {
+    const p = currentBpmnPath();
+    if (!p) return;
+    const err = await ipcRenderer.invoke("viewer:openExternal", p);
+    if (err) toast("Could not open: " + err, "error");
+  });
+  if (reveal) reveal.addEventListener("click", () => {
+    const p = currentBpmnPath();
+    if (p) ipcRenderer.invoke("viewer:revealFile", p);
+  });
+})();
 
 function renderSessionPills() {
   const m = currentSession.manifest || {};
@@ -2267,11 +2319,6 @@ function renderVocabInteractions() {
       '<label>automation_id<input type="text" data-sig="automation_id" value="' + escapeAttr(sig.automation_id || "") + '"></label>' +
       '<label>name (raw)<input type="text" data-sig="name" value="' + escapeAttr(sig.name || "") + '"></label>' +
       '<label>window_title_regex<input type="text" data-sig="window_title_regex" value="' + escapeAttr(sig.window_title_regex || "") + '"></label>' +
-      '</div>' +
-      '<div class="vocab-int-flags">' +
-      '<label><input type="checkbox" data-flag="waste"' + (flags.waste ? " checked" : "") + '> Waste</label>' +
-      '<label><input type="checkbox" data-flag="automation_candidate"' + (flags.automation_candidate ? " checked" : "") + '> Automation candidate</label>' +
-      '<label><input type="checkbox" data-flag="exception_path"' + (flags.exception_path ? " checked" : "") + '> Exception path</label>' +
       '</div>' +
       '</div>';
     row.querySelector(".vocab-int-remove").addEventListener("click", () => removeInteraction(i));

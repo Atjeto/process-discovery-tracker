@@ -5,8 +5,9 @@
  * verifies / creates the standard scene + timestamp overlay, starts
  * recording, captures the tracker<->OBS clock offset for §4.3 sync.
  *
- * Library is ESM-only so we use lazy dynamic import to match the
- * active-win pattern.
+ * obs-websocket-js ships dual ESM/CJS exports. We use require() instead
+ * of dynamic import() because Node's ESM resolver does not find files
+ * reliably inside an electron-packager asar archive.
  */
 
 "use strict";
@@ -17,9 +18,8 @@ const path = require("node:path");
 let OBSWebSocketPromise = null;
 function getOBSWebSocket() {
   if (!OBSWebSocketPromise) {
-    OBSWebSocketPromise = import("obs-websocket-js").then(
-      (m) => m.default || m.OBSWebSocket
-    );
+    const m = require("obs-websocket-js");
+    OBSWebSocketPromise = Promise.resolve(m.default || m.OBSWebSocket || m);
   }
   return OBSWebSocketPromise;
 }

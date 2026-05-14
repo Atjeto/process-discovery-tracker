@@ -58,6 +58,13 @@
           <button id="btn-save-vocab" title="Generate a starter App Vocabulary YAML from this session's captured interactions. Edit names afterward; once saved into normalization/app_vocabularies/, future sessions auto-use it.">Save App Vocabulary...</button>
           <button id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
           <label class="cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
+          <span class="map-status" id="process-map-status" style="display:none">
+            <span class="map-status-dot"></span>
+            <span class="map-status-label">Process map:</span>
+            <span class="map-status-detail" id="process-map-detail">—</span>
+            <button class="link-btn" id="btn-open-bpmn" title="Open process_map.bpmn in the system default app">Open</button>
+            <button class="link-btn" id="btn-reveal-bpmn" title="Show process_map.bpmn in File Explorer">Reveal in folder</button>
+          </span>
           <button id="btn-session-md">Export Markdown</button>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="session-pills"></div>
