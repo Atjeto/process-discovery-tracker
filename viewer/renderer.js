@@ -163,13 +163,207 @@ function decorateDrift(steps) {
 }
 
 /* Filter state for the long lists. Lives in renderer scope so it
-   survives across re-renders. Each surface re-derives "visible vs
-   dimmed" sets from these. */
+   survives across re-renders. Case scope is now session-wide (see
+   currentCaseScope below) so per-list caseId fields are gone. */
 const listFilters = {
-  step:   { text: "", states: new Set(), caseId: "" },
-  phase:  { text: "", caseId: "" },
+  step:   { text: "", states: new Set() },
+  phase:  { text: "" },
   marker: { text: "" },
 };
+
+/* Session-wide case scope. null/"" = all cases; otherwise the case_id
+   that the Flow timeline, Steps mini-timeline, and Phases mini-timeline
+   should all scope to. Drives dimming everywhere. */
+let currentCaseScope = "";
+
+/* Build the canonical list of cases for the loaded session. Pairs
+   step.case_id ranges (the data-side source of truth) with marker
+   labels (the user-recognizable name) so the dropdown shows e.g.
+   "Order #12345" instead of "c001". */
+function deriveCases(session) {
+  if (!session) return [];
+  const steps = (session.annotations && session.annotations.steps) || [];
+  const markers = (session.events || []).filter(e => e.type === "marker");
+
+  const byCase = new Map();
+  for (const s of steps) {
+    if (!s.case_id || !s.time_range) continue;
+    const startMs = new Date(s.time_range.start).getTime();
+    const endMs = new Date(s.time_range.end).getTime();
+    if (!byCase.has(s.case_id)) {
+      byCase.set(s.case_id, { id: s.case_id, label: s.case_id, startMs, endMs });
+    } else {
+      const c = byCase.get(s.case_id);
+      c.startMs = Math.min(c.startMs, startMs);
+      c.endMs = Math.max(c.endMs, endMs);
+    }
+  }
+
+  // Best-effort marker-label enrichment: match a case whose range
+  // begins within 5s of a start-marker, adopt the marker's label.
+  const stack = [];
+  for (const ev of markers) {
+    const t = new Date(ev.timestamp).getTime();
+    if (ev.data.marker_type === "start") {
+      stack.push({ label: ev.data.label, startMs: t });
+    } else if (ev.data.marker_type === "end" && stack.length) {
+      const opened = stack.pop();
+      if (!opened.label) continue;
+      for (const c of byCase.values()) {
+        if (Math.abs(c.startMs - opened.startMs) < 5000) {
+          c.label = opened.label;
+        }
+      }
+    }
+  }
+
+  return Array.from(byCase.values()).sort((a, b) => a.startMs - b.startMs);
+}
+
+function currentScopeRange() {
+  if (!currentCaseScope || !currentSession) return null;
+  const cases = deriveCases(currentSession);
+  return cases.find(c => c.id === currentCaseScope) || null;
+}
+
+function populateCaseScope() {
+  const sel = document.getElementById("case-scope-select");
+  if (!sel) return;
+  const cases = currentSession ? deriveCases(currentSession) : [];
+  const opts = ['<option value="">All cases</option>']
+    .concat(cases.map(c => {
+      const label = c.label && c.label !== c.id ? `${c.label}` : c.id;
+      return `<option value="${c.id}"${c.id === currentCaseScope ? " selected" : ""}>${label}</option>`;
+    }));
+  sel.innerHTML = opts.join("");
+  // Wrapper picks up the visual cue that scoping is active.
+  const wrap = sel.closest(".case-scope");
+  if (wrap) wrap.classList.toggle("scoped", !!currentCaseScope);
+}
+
+(function wireCaseScope() {
+  const sel = document.getElementById("case-scope-select");
+  if (!sel) return;
+  sel.addEventListener("change", () => {
+    currentCaseScope = sel.value || "";
+    const wrap = sel.closest(".case-scope");
+    if (wrap) wrap.classList.toggle("scoped", !!currentCaseScope);
+    // Re-render whatever's currently on screen
+    if (currentLevel === "flow")   renderTimeline();
+    if (currentLevel === "steps")  renderStepsLevel();
+    if (currentLevel === "phases") renderPhasesLevel();
+  });
+})();
+
+/* Command palette provider: union of cases / steps / markers /
+   commands, scored by case-insensitive substring match. Capped per
+   bucket so a single huge session doesn't drown out the commands. */
+function commandPaletteProvider(rawQuery) {
+  const q = (rawQuery || "").toLowerCase().trim();
+  const out = [];
+
+  function pushIfMatch(label, hint, type, run, score) {
+    if (q && !label.toLowerCase().includes(q) && !(hint || "").toLowerCase().includes(q)) return;
+    out.push({ label, hint, type, run, _score: score });
+  }
+
+  // 1) Cases -- prominent navigation primitive
+  if (currentSession) {
+    const cases = deriveCases(currentSession);
+    for (const c of cases) {
+      const dur = c.endMs - c.startMs;
+      const durStr = dur < 60000 ? `${Math.round(dur / 1000)}s`
+                    : dur < 3600000 ? `${Math.round(dur / 60000)}m`
+                    : `${(dur / 3600000).toFixed(1)}h`;
+      pushIfMatch(c.label, durStr, "case", () => {
+        currentCaseScope = c.id;
+        populateCaseScope();
+        if (currentLevel === "flow")   renderTimeline();
+        if (currentLevel === "steps")  renderStepsLevel();
+        if (currentLevel === "phases") renderPhasesLevel();
+      }, 5);
+    }
+  }
+
+  // 2) Steps -- the long-tail surface that needs find-by-name most
+  if (currentSession) {
+    const allSteps = (currentSession.annotations && currentSession.annotations.steps) || [];
+    let n = 0;
+    for (const s of allSteps) {
+      if (n >= 80) break;
+      const time = s.time_range && s.time_range.start ? s.time_range.start.slice(11, 19) : "";
+      if (q && !(s.name || "").toLowerCase().includes(q)) continue;
+      out.push({
+        type: "step",
+        label: s.name || s.step_id,
+        hint: `${s.state || ""}${time ? " · " + time : ""}`,
+        run: () => {
+          selectedStepId = s.step_id;
+          setLevel("steps");
+          // Activate the steps view-mode button so the UI catches up
+          const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
+          if (btn && !btn.classList.contains("active")) btn.click();
+        },
+        _score: 3,
+      });
+      n++;
+    }
+  }
+
+  // 3) Markers -- case boundaries by label
+  if (currentSession) {
+    const markers = (currentSession.events || []).filter(e => e.type === "marker" && e.data.marker_type === "start");
+    let n = 0;
+    for (const m of markers) {
+      if (n >= 40) break;
+      const lbl = (m.data && m.data.label) || "(unlabeled)";
+      if (q && !lbl.toLowerCase().includes(q)) continue;
+      const time = m.timestamp ? m.timestamp.slice(11, 19) : "";
+      out.push({
+        type: "marker",
+        label: lbl,
+        hint: time,
+        run: () => {
+          const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
+          if (flowBtn) flowBtn.click();
+          seekToTimestamp(m.timestamp);
+        },
+        _score: 2,
+      });
+      n++;
+    }
+  }
+
+  // 4) Top-level commands -- always available
+  const commands = [
+    { label: "Analyze session", hint: "Re-run normalize", run: () => $("#btn-normalize") && $("#btn-normalize").click() },
+    { label: "Match Process Template…", hint: "", run: () => $("#btn-match-template") && $("#btn-match-template").click() },
+    { label: "Open another session…", hint: "", run: () => $("#btn-open-session") && $("#btn-open-session").click() },
+    { label: "Switch to Aggregate", hint: "Tab 2", run: () => activateTab("aggregate") },
+    { label: "Switch to Session", hint: "Tab 1", run: () => activateTab("session") },
+    { label: "Switch to Process Template", hint: "Tab 3", run: () => activateTab("canonical") },
+    { label: "Switch to Vocabularies", hint: "Tab 4", run: () => activateTab("vocabularies") },
+    { label: "Clear case scope", hint: "Show all cases", run: () => {
+        currentCaseScope = "";
+        populateCaseScope();
+        if (currentLevel === "flow")   renderTimeline();
+        if (currentLevel === "steps")  renderStepsLevel();
+        if (currentLevel === "phases") renderPhasesLevel();
+      } },
+    { label: "Open help", hint: "?", run: () => $("#btn-help") && $("#btn-help").click() },
+  ];
+  for (const cmd of commands) {
+    pushIfMatch(cmd.label, cmd.hint, "command", cmd.run, 1);
+  }
+
+  // Sort by score (cases first, then steps/markers, commands last on ties)
+  out.sort((a, b) => (b._score || 0) - (a._score || 0));
+  return out.slice(0, 50);
+}
+
+if (window.PdtPalette) {
+  window.PdtPalette.setProvider(commandPaletteProvider);
+}
 
 function uniqueCaseIds(steps) {
   const seen = new Map();
@@ -187,10 +381,10 @@ function syncCaseDropdown(selectEl, cases, currentValue) {
   if (selectEl.innerHTML !== want) selectEl.innerHTML = want;
 }
 
-function stepMatchesFilter(s, f) {
+function stepMatchesFilter(s, f, scopeCaseId) {
+  if (scopeCaseId && s.case_id !== scopeCaseId) return false;
   if (f.text && !(s.name || "").toLowerCase().includes(f.text.toLowerCase())) return false;
   if (f.states && f.states.size > 0 && !f.states.has(s.state)) return false;
-  if (f.caseId && s.case_id !== f.caseId) return false;
   return true;
 }
 
@@ -198,10 +392,9 @@ function renderStepsLevel() {
   if (!currentSession || !window.PdtSteps) return;
   const allSteps = decorateDrift((currentSession.annotations && currentSession.annotations.steps) || []);
   const f = listFilters.step;
-  const filtered = allSteps.filter(s => stepMatchesFilter(s, f));
+  const filtered = allSteps.filter(s => stepMatchesFilter(s, f, currentCaseScope));
   const filteredIds = new Set(filtered.map(s => s.step_id));
 
-  syncCaseDropdown($("#step-filter-case"), uniqueCaseIds(allSteps), f.caseId);
   const meta = $("#step-filter-meta");
   if (meta) meta.textContent = filtered.length === allSteps.length
     ? `${allSteps.length} steps`
@@ -278,13 +471,6 @@ function renderStepsLevel() {
       const st = chip.dataset.state;
       const set = listFilters.step.states;
       if (set.has(st)) set.delete(st); else set.add(st);
-      renderStepsLevel();
-    });
-  }
-  const caseSel = document.getElementById("step-filter-case");
-  if (caseSel) {
-    caseSel.addEventListener("change", () => {
-      listFilters.step.caseId = caseSel.value;
       renderStepsLevel();
     });
   }
@@ -464,11 +650,11 @@ if ($("#btn-add-manual-step")) {
 
 /* ============ Phases view rendering =============================== */
 
-function phaseMatchesFilter(p, steps, f) {
+function phaseMatchesFilter(p, steps, f, scopeCaseId) {
   if (f.text && !(p.name || "").toLowerCase().includes(f.text.toLowerCase())) return false;
-  if (f.caseId) {
+  if (scopeCaseId) {
     const contained = (p.step_ids || []).map(sid => steps.find(s => s.step_id === sid)).filter(Boolean);
-    if (!contained.some(s => s.case_id === f.caseId)) return false;
+    if (!contained.some(s => s.case_id === scopeCaseId)) return false;
   }
   return true;
 }
@@ -478,10 +664,9 @@ function renderPhasesLevel() {
   const phases = (currentSession.annotations && currentSession.annotations.phases) || [];
   const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
   const f = listFilters.phase;
-  const filtered = phases.filter(p => phaseMatchesFilter(p, steps, f));
+  const filtered = phases.filter(p => phaseMatchesFilter(p, steps, f, currentCaseScope));
   const filteredIds = new Set(filtered.map(p => p.phase_id));
 
-  syncCaseDropdown($("#phase-filter-case"), uniqueCaseIds(steps), f.caseId);
   const meta = $("#phase-filter-meta");
   if (meta) meta.textContent = filtered.length === phases.length
     ? `${phases.length} phases`
@@ -539,13 +724,6 @@ function renderPhasesLevel() {
         listFilters.phase.text = txt.value.trim();
         renderPhasesLevel();
       }, 120);
-    });
-  }
-  const caseSel = document.getElementById("phase-filter-case");
-  if (caseSel) {
-    caseSel.addEventListener("change", () => {
-      listFilters.phase.caseId = caseSel.value;
-      renderPhasesLevel();
     });
   }
 })();
@@ -1029,6 +1207,14 @@ async function loadSessionIntoView(folder) {
   renderStepsLevel();
   renderPhasesLevel();
   updateProcessMapStatus();
+  // Refresh case-scope dropdown -- clear scope if the new session no
+  // longer contains the previously-selected case.
+  populateCaseScope();
+  const cases = deriveCases(currentSession).map(c => c.id);
+  if (currentCaseScope && !cases.includes(currentCaseScope)) {
+    currentCaseScope = "";
+    populateCaseScope();
+  }
 }
 
 /* Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix. */
@@ -1296,22 +1482,25 @@ function renderTimeline() {
   host.style.minHeight = Math.max(120, caseTop + caseH + 30) + "px";
 
   // Activity bands -- coloured per app, with inline title + duration
-  // labels so analysts can read the timeline without hovering.
+  // labels so analysts can read the timeline without hovering. Out-of
+  // -scope bands (case scope active and this band's midpoint outside
+  // the case range) are dimmed via .out-of-scope so context survives.
   const observedApps = new Set();
+  const scopeRange = currentScopeRange();
   for (const ev of evs) {
     if (ev.type !== "activity") continue;
     const t = new Date(ev.timestamp).getTime();
     const dur = ev.data.duration_ms || 0;
     const x = ((t - first) / span) * 100;
     const w = Math.max(0.15, (dur / span) * 100);
+    const inScope = !scopeRange ||
+      (t + dur / 2 >= scopeRange.startMs && t + dur / 2 <= scopeRange.endMs);
     const band = document.createElement("div");
-    band.className = "tl-band tl-activity";
+    band.className = "tl-band tl-activity" + (inScope ? "" : " out-of-scope");
     band.style.left = x + "%";
     band.style.width = w + "%";
     band.style.top = activityTop + "px";
     band.style.height = activityH + "px";
-    // Append alpha (AA = ~67%) to keep the muted look while letting
-    // inline labels read at full opacity (band opacity would cascade).
     band.style.background = appColor(ev.data.app) + "AA";
     band.dataset.app = ev.data.app || "";
     if (ev.data.app) observedApps.add(ev.data.app);

@@ -125,6 +125,10 @@
             <span class="badge" id="phases-badge">0</span>
           </button>
           <span class="flex-spacer"></span>
+          <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, Phases mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
+            <span class="case-scope-label">Case:</span>
+            <select id="case-scope-select"><option value="">All cases</option></select>
+          </label>
           <span class="view-mode-help" id="view-mode-help"></span>
         </div>
 
@@ -237,7 +241,6 @@
                   <button class="chip" data-state="manually_authored" title="manually authored"><span class="state-icon state-manually_authored"></span></button>
                   <button class="chip" data-state="edited" title="edited"><span class="state-icon state-edited"></span></button>
                 </div>
-                <select class="list-filter-case" id="step-filter-case"><option value="">All cases</option></select>
                 <span class="list-filter-meta" id="step-filter-meta"></span>
               </div>
               <div id="step-list"></div>
@@ -277,7 +280,6 @@
               <div class="editor-pane-title">Phases · <span id="phases-pane-count">0</span></div>
               <div class="list-filter" id="phase-list-filter">
                 <input type="search" class="list-filter-input" id="phase-filter-text" placeholder="Filter phases by name..." />
-                <select class="list-filter-case" id="phase-filter-case"><option value="">All cases</option></select>
                 <span class="list-filter-meta" id="phase-filter-meta"></span>
               </div>
               <div id="phase-list"></div>
@@ -745,6 +747,7 @@
 <script src="step-editor.js"></script>
 <script src="phase-editor.js"></script>
 <script src="layout-controls.js"></script>
+<script src="command-palette.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

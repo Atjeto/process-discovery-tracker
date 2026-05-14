@@ -41,6 +41,7 @@
       "step-editor.js",
       "phase-editor.js",
       "layout-controls.js",
+      "command-palette.js",
       "styles.css",
       "package.json",
       "node_modules/**/*"

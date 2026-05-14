@@ -651,6 +651,92 @@ main { flex: 1; overflow: auto; }
 @media (max-width: 1100px) {
   .editor-split { grid-template-columns: 1fr; }
 }
+/* Command palette: Ctrl+K overlay for cross-surface navigation. */
+#cmdpalette-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.55);
+  display: none; align-items: flex-start; justify-content: center;
+  padding-top: 10vh;
+  backdrop-filter: blur(2px);
+}
+#cmdpalette-overlay.open { display: flex; }
+.cmdpalette {
+  width: 640px; max-width: 92vw; max-height: 70vh;
+  background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: var(--radius); box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column; overflow: hidden;
+  font-family: var(--font-ui);
+}
+.cmdpalette-input-wrap {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; border-bottom: 1px solid var(--rule);
+}
+.cmdpalette-input-wrap input {
+  flex: 1; background: transparent; border: 0; outline: none;
+  color: var(--fg); font-size: 14px; font-family: inherit;
+}
+.cmdpalette-input-wrap input::placeholder { color: var(--fg-4); }
+.cmdpalette-kbd, .cmdpalette-footer kbd {
+  display: inline-block; padding: 0 6px; min-width: 18px; height: 18px;
+  font-family: var(--font-mono); font-size: 10px; line-height: 18px;
+  text-align: center; background: var(--bg-4);
+  border: 1px solid var(--rule); border-radius: 3px;
+  color: var(--fg-3);
+}
+.cmdpalette-list {
+  flex: 1; overflow-y: auto; min-height: 0; padding: 4px 0;
+}
+.cmdpalette-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 14px; cursor: pointer;
+  font-size: 12px; color: var(--fg-2);
+}
+.cmdpalette-row.selected { background: var(--bg-3); color: var(--fg); }
+.cmdpalette-row .cmdpalette-type {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.5px;
+  padding: 2px 6px; border-radius: 3px; flex-shrink: 0;
+  background: var(--bg-4); color: var(--fg-3); min-width: 38px; text-align: center;
+}
+.cmdpalette-row .cmdpalette-type-step    { color: var(--accent); }
+.cmdpalette-row .cmdpalette-type-marker  { color: var(--warn); }
+.cmdpalette-row .cmdpalette-type-case    { color: var(--accent-2); }
+.cmdpalette-row .cmdpalette-type-command { color: var(--fg-3); }
+.cmdpalette-row .cmdpalette-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdpalette-row .cmdpalette-hint {
+  font-family: var(--font-mono); font-size: 10px; color: var(--fg-4);
+  white-space: nowrap; margin-left: auto;
+}
+.cmdpalette-empty {
+  padding: 24px; text-align: center; color: var(--fg-4); font-size: 12px;
+}
+.cmdpalette-footer {
+  display: flex; gap: 14px; padding: 8px 14px;
+  border-top: 1px solid var(--rule); font-size: 10px; color: var(--fg-4);
+}
+
+/* Top-level case scope selector in the view-mode-bar. Sits to the
+   right of Flow/Steps/Phases so the analyst sees "what I'm viewing"
+   and "what slice I'm scoping to" together. */
+.case-scope {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--fg-3);
+}
+.case-scope-label {
+  font-family: var(--font-mono); letter-spacing: 0.5px;
+  text-transform: uppercase; font-size: 10px; color: var(--fg-4);
+}
+.case-scope select {
+  background: var(--bg-3); color: var(--fg);
+  border: 1px solid var(--rule); border-radius: 3px;
+  padding: 4px 8px; font-size: 11px; font-family: inherit;
+  outline: none; max-width: 220px;
+}
+.case-scope select:hover { border-color: var(--fg-4); }
+.case-scope.scoped select { border-color: var(--accent); color: var(--fg); }
+
+/* Flow timeline activity bands dimmed when out of the scoped case. */
+.tl-activity.out-of-scope { opacity: 0.15; filter: grayscale(0.4); }
+
 /* Reusable filter widget for long lists (steps, markers, phases). */
 .list-filter {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
