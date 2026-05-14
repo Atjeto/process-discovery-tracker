@@ -37,6 +37,7 @@ from case_assignment import assign_case_ids, collect_cases
 from classification import classify_events, collapse_adjacent, load_taxonomy
 from xes_export import build_event_log, export_xes, export_csv
 from step_suggest import auto_suggest_steps
+import app_vocab
 import stats_compute as stats
 
 
@@ -231,6 +232,17 @@ def normalize(
     cases = collect_cases(with_cases)
     print(f"[normalize] identified {len(cases)} cases")
 
+    # App vocabulary enrichment (ADR-0002). Non-destructive: adds
+    # meaningful_name / screen_id / vocab_flags / vocab_source onto each
+    # matched interaction event. Step suggestion below picks these up.
+    vocabs = app_vocab.load_vocabularies()
+    if vocabs:
+        with_cases, vocab_summary = app_vocab.enrich_events(with_cases, vocabs)
+        print(f"[normalize] app vocabs: {vocab_summary['matched']}/{vocab_summary['total']} "
+              f"interactions enriched ({len(vocabs)} vocab(s) loaded)")
+    else:
+        vocab_summary = {"matched": 0, "total": 0, "vocabs_loaded": [], "vocabs_hit": {}}
+
     # Step matching / suggestion (Phase B + C)
     session_id_str = manifest.get("session_id", "")
     existing_anno = dict(annotations) if isinstance(annotations, dict) else {}
@@ -337,6 +349,9 @@ def normalize(
         "canonical_version": (canonical.get("version") if canonical else None),
         "drift_count": len(existing_anno.get("drift_markers") or []),
         "phase_count": len(existing_anno.get("phases") or []),
+        "app_vocabularies": vocab_summary.get("vocabs_loaded") or [],
+        "app_vocabulary_matches": vocab_summary.get("matched", 0),
+        "app_vocabulary_hits_by_id": vocab_summary.get("vocabs_hit") or {},
     }
     stats_path = session_folder / "stats.json"
     with open(stats_path, "w", encoding="utf-8") as f:
@@ -426,32 +441,6 @@ def normalize(
         except Exception as e:
             print(f"[normalize] WARNING: step CSV export failed: {e}")
 
-    # Phase F: ML pass (best-effort, non-fatal)
-    try:
-        from ml.classifier import predict as ml_predict
-        uncovered = [
-            e for e in classified
-            if e.get("type") == "activity" and
-            (e["data"].get("activity_label") or "").startswith("Unclassified")
-        ]
-        if uncovered:
-            texts = [f"{e['data'].get('app','')} | {e['data'].get('title','')}" for e in uncovered]
-            preds = ml_predict(texts, min_confidence=0.55)
-            ml_suggestions = []
-            for ev, (label, conf) in zip(uncovered, preds):
-                if label is not None:
-                    ml_suggestions.append({
-                        "kind": "classification",
-                        "event_id": ev["event_id"],
-                        "suggested_label": label,
-                        "confidence": conf,
-                    })
-            if ml_suggestions:
-                _write_ml_suggestions(session_folder, ml_suggestions)
-                print(f"[normalize] wrote {len(ml_suggestions)} ML suggestion(s)")
-    except Exception as e:
-        print(f"[normalize] ML pass skipped: {e}")
-
     return {
         "session_folder": str(session_folder),
         "events_in": len(raw),
@@ -463,16 +452,6 @@ def normalize(
             "stats": str(stats_path),
         },
     }
-
-
-def _write_ml_suggestions(session_folder: Path, suggestions: list[dict]) -> None:
-    out = {
-        "version": 1,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "suggestions": suggestions,
-    }
-    with open(session_folder / "ml_suggestions.json", "w", encoding="utf-8") as f:
-        json.dump(out, f, indent=2)
 
 
 def main():
@@ -495,49 +474,27 @@ def main():
                         help="Write phase-level BPMN to this path.")
     parser.add_argument("--step-csv-out", type=str, default=None,
                         help="Write step CSV to this path.")
-    parser.add_argument("--retrain-classifier", action="store_true",
-                        help="Retrain the local ML classifier from the taxonomy and exit.")
-    parser.add_argument("--cluster-review", nargs="+", default=None,
-                        help="Run HDBSCAN cluster review over interaction events in the given session folders.")
+    parser.add_argument("--bootstrap-vocab-out", type=str, default=None,
+                        help="Generate a starter App Vocabulary YAML from this session's "
+                             "interactions and write to the given path. Skips full normalization.")
+    parser.add_argument("--vocab-id", type=str, default="untitled",
+                        help="Vocabulary id (used with --bootstrap-vocab-out).")
+    parser.add_argument("--vocab-name", type=str, default="Untitled",
+                        help="Vocabulary display name (used with --bootstrap-vocab-out).")
     args = parser.parse_args()
 
-    if args.retrain_classifier:
-        if not args.taxonomy:
-            print("ERROR: --taxonomy required for --retrain-classifier", file=sys.stderr)
+    if args.bootstrap_vocab_out:
+        if not args.session_folder or not args.session_folder.is_dir():
+            print(f"ERROR: session folder required for --bootstrap-vocab-out", file=sys.stderr)
             sys.exit(2)
-        try:
-            from ml.classifier import train_from_taxonomy
-            train_from_taxonomy(args.taxonomy)
-            print(json.dumps({"ok": True, "retrained": True}, indent=2))
-        except Exception as e:
-            print(f"ERROR: retrain failed: {e}", file=sys.stderr)
-            sys.exit(2)
-        return
-
-    if args.cluster_review:
-        try:
-            from ml.cluster import cluster_uncovered
-            all_events = []
-            for f in args.cluster_review:
-                p = Path(f) / "events.jsonl"
-                if not p.exists():
-                    continue
-                with open(p, encoding="utf-8") as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            ev = json.loads(line)
-                            if ev.get("type") == "interaction":
-                                all_events.append(ev)
-                        except json.JSONDecodeError:
-                            pass
-            clusters = cluster_uncovered(all_events)
-            print(json.dumps({"ok": True, "clusters": clusters}, indent=2))
-        except Exception as e:
-            print(f"ERROR: cluster review failed: {e}", file=sys.stderr)
-            sys.exit(2)
+        events = load_events(args.session_folder / "events.jsonl")
+        doc = app_vocab.bootstrap_from_session(
+            events, vocab_id=args.vocab_id, vocab_name=args.vocab_name)
+        yaml_text = app_vocab.to_yaml(doc)
+        with open(args.bootstrap_vocab_out, "w", encoding="utf-8") as f:
+            f.write(yaml_text)
+        print(json.dumps({"ok": True, "vocab_path": args.bootstrap_vocab_out,
+                          "interactions": len(doc["app_vocabulary"].get("interactions") or [])}, indent=2))
         return
 
     if not args.session_folder or not args.session_folder.is_dir():

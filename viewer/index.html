@@ -54,6 +54,7 @@
           <button id="btn-open-session">Open another</button>
           <button id="btn-normalize" class="primary" title="Build the timeline, classify activities, compute statistics, and discover a process map.">Analyze session</button>
           <button id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
+          <button id="btn-save-vocab" title="Generate a starter App Vocabulary YAML from this session's captured interactions. Edit names afterward; once saved into normalization/app_vocabularies/, future sessions auto-use it.">Save App Vocabulary...</button>
           <label class="cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
           <button id="btn-session-md">Export Markdown</button>
           <span class="flex-spacer"></span>
@@ -106,18 +107,8 @@
           <span class="view-mode-help" id="view-mode-help"></span>
         </div>
 
-        <!-- ========= FLOW view (timeline + video + annotation tabs) ========= -->
+        <!-- ========= FLOW view (full-width timeline on top, video+annotations below) ========= -->
         <div class="session-layout" id="session-layout-flow">
-          <div class="video-pane">
-            <video id="video" controls preload="metadata"></video>
-            <div class="no-video" id="no-video">
-              <div class="nv-icon">▶</div>
-              <div>No OBS recording linked.</div>
-              <div class="hint">Capture without OBS still produces a full timeline -- click bands to focus.</div>
-            </div>
-            <div class="video-overlay" id="video-overlay"></div>
-          </div>
-
           <div class="timeline-pane">
             <div class="timeline-header">
               <strong>Timeline</strong>
@@ -131,6 +122,7 @@
             <div class="timeline-scroll">
               <div class="timeline" id="timeline"></div>
             </div>
+            <div class="resize-v" id="resize-timeline" title="Drag to resize timeline height"></div>
             <div class="legend">
               <span class="lg-activity">activity</span>
               <span class="lg-idle">idle</span>
@@ -140,29 +132,49 @@
             </div>
           </div>
 
-          <aside class="annotations-pane">
-            <div class="anno-tabs">
-              <button class="anno-tab active" data-anno="notes">Notes</button>
-              <button class="anno-tab" data-anno="screens">Screenshots</button>
-              <button class="anno-tab" data-anno="markers">Markers</button>
-              <button class="anno-tab" data-anno="ml">ML <span class="badge" id="ml-badge">0</span></button>
+          <div class="lower-workspace" id="lower-workspace">
+            <div class="video-pane" id="video-pane">
+              <div class="video-controls">
+                <div class="vc-status"><span id="vc-status-text">VIDEO</span></div>
+                <div class="vc-buttons">
+                  <button id="btn-video-expand" title="Expand video to 70% width">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+                  </button>
+                  <button id="btn-video-fullscreen" title="Fullscreen video">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3h5v2H5v3H3z"/><path d="M16 3h5v5h-2V5h-3z"/><path d="M21 16v5h-5v-2h3v-3z"/><path d="M3 16v5h5v-2H5v-3z"/></svg>
+                  </button>
+                </div>
+              </div>
+              <video id="video" controls preload="metadata"></video>
+              <div class="no-video" id="no-video">
+                <div class="nv-icon">▶</div>
+                <div>No OBS recording linked.</div>
+                <div class="hint">Capture without OBS still produces a full timeline -- click bands to focus.</div>
+              </div>
+              <div class="video-overlay" id="video-overlay"></div>
             </div>
-            <div class="anno-panel" data-panel="notes">
-              <div id="annotations-list"></div>
-              <textarea id="anno-note" placeholder="Anchor a note to the current playback time..."></textarea>
-              <button id="btn-save-note">Save note at current time</button>
-            </div>
-            <div class="anno-panel" data-panel="screens" style="display:none">
-              <div id="screenshots-grid" class="screens-grid"></div>
-            </div>
-            <div class="anno-panel" data-panel="markers" style="display:none">
-              <div id="markers-list" class="markers-list"></div>
-            </div>
-            <div class="anno-panel" data-panel="ml" style="display:none">
-              <div id="ml-suggestions-list"></div>
-              <p class="hint">Auto-suggested activity labels for events the taxonomy did not classify. Train the classifier from the Aggregate view first.</p>
-            </div>
-          </aside>
+
+            <div class="resize-h" id="resize-video" title="Drag to resize video width"></div>
+
+            <aside class="annotations-pane">
+              <div class="anno-tabs">
+                <button class="anno-tab active" data-anno="notes">Notes</button>
+                <button class="anno-tab" data-anno="screens">Screenshots</button>
+                <button class="anno-tab" data-anno="markers">Markers</button>
+              </div>
+              <div class="anno-panel" data-panel="notes">
+                <div id="annotations-list"></div>
+                <textarea id="anno-note" placeholder="Anchor a note to the current playback time..."></textarea>
+                <button id="btn-save-note">Save note at current time</button>
+              </div>
+              <div class="anno-panel" data-panel="screens" style="display:none">
+                <div id="screenshots-grid" class="screens-grid"></div>
+              </div>
+              <div class="anno-panel" data-panel="markers" style="display:none">
+                <div id="markers-list" class="markers-list"></div>
+              </div>
+            </aside>
+          </div>
         </div>
 
         <!-- ========= STEPS view (full-width editor, tight) ========= -->
@@ -248,8 +260,6 @@
           <button id="btn-open-multi">Open more</button>
           <button id="btn-normalize-all" class="primary" title="Analyze every loaded session: build timelines, classify activities, mine the process map.">Analyze all sessions</button>
           <button id="btn-renormalize-canonical">Re-match to Process Template...</button>
-          <button id="btn-retrain-classifier">Retrain classifier</button>
-          <button id="btn-cluster-review">Cluster review</button>
           <input type="search" id="agg-filter" placeholder="Filter by activity, app, or worker..." />
           <label class="cb">From <input type="date" id="agg-from" /></label>
           <label class="cb">To <input type="date" id="agg-to" /></label>
@@ -270,6 +280,13 @@
               <div class="panel-tabs">
                 <button class="panel-tab active" data-map="bpmn">BPMN</button>
                 <button class="panel-tab" data-map="dfg">DFG</button>
+              </div>
+              <div class="map-zoom" id="map-zoom" style="display:none">
+                <span class="map-zoom-pct" id="map-zoom-pct">100%</span>
+                <button class="icon-btn xs" id="btn-dfg-zoom-out" title="Zoom out">−</button>
+                <button class="icon-btn xs" id="btn-dfg-zoom-fit" title="Fit to view">fit</button>
+                <button class="icon-btn xs" id="btn-dfg-zoom-in" title="Zoom in">+</button>
+                <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
               </div>
             </div>
             <div class="map-host">
@@ -631,6 +648,7 @@
 <script src="report-md.js"></script>
 <script src="step-editor.js"></script>
 <script src="phase-editor.js"></script>
+<script src="layout-controls.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

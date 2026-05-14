@@ -64,19 +64,18 @@ function runNormalize(opts) {
   const {
     sessionFolder, taxonomyPath, mine, onLog,
     canonical, pddOut, stepBpmnOut, phaseBpmnOut, stepCsvOut,
-    retrainClassifier, clusterReview,
+    bootstrapVocabOut, vocabId, vocabName,
   } = opts || {};
   return new Promise((resolve, reject) => {
     const python = resolvePython();
     const script = resolveNormalizeScript();
     const tax = taxonomyPath || resolveDefaultTaxonomy();
     const args = [script];
-    if (retrainClassifier) {
-      args.push("--retrain-classifier");
-      if (tax) args.push("--taxonomy", tax);
-    } else if (clusterReview && clusterReview.length) {
-      args.push("--cluster-review");
-      for (const f of clusterReview) args.push(f);
+    if (bootstrapVocabOut) {
+      args.push(sessionFolder);
+      args.push("--bootstrap-vocab-out", bootstrapVocabOut);
+      if (vocabId) args.push("--vocab-id", vocabId);
+      if (vocabName) args.push("--vocab-name", vocabName);
     } else {
       args.push(sessionFolder);
       if (tax) args.push("--taxonomy", tax);

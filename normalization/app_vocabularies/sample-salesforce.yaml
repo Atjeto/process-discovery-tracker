@@ -1,0 +1,85 @@
+# Sample App Vocabulary for Salesforce (ADR-0002).
+#
+# This file demonstrates the shape. Adapt it to your team's apps.
+# Each app you care about gets its own *.yaml in this folder.
+#
+# Bootstrap a starter file from a real captured session:
+#   python normalize.py <session_folder> --bootstrap-vocab-out salesforce.yaml --vocab-id salesforce --vocab-name "Salesforce"
+
+app_vocabulary:
+  id: "salesforce"
+  name: "Salesforce"
+  version: 1
+  owner: "tooling-lead@team"
+
+  # Scope: only interactions matching both of these enter this vocab's
+  # domain. Leave empty to match every interaction (rarely what you want).
+  scope:
+    process_name: "chrome.exe"
+    window_title_regex: ".*Salesforce.*"
+
+  # Optional named screens. Useful for grouping interactions by page
+  # in reports and for analyst-level narrower signatures.
+  screens:
+    - id: "account-search"
+      name: "Account Search"
+      window_title_regex: ".*Search Accounts.*"
+    - id: "account-detail"
+      name: "Account Detail"
+      window_title_regex: ".*Account: .+ Salesforce.*"
+    - id: "case-detail"
+      name: "Case Detail"
+      window_title_regex: ".*Case #.*"
+
+  # Per-interaction annotations. Each signature's fields are AND-ed.
+  # Most-specific match (most non-empty signature fields) wins. Ties
+  # broken by first-defined.
+  interactions:
+    - signature:
+        control_type: "Edit"
+        automation_id: "searchInput"
+      name: "Enter customer search query"
+      screen: "account-search"
+
+    - signature:
+        control_type: "Button"
+        name: "Search"
+        window_title_regex: ".*Salesforce.*Search.*"
+      name: "Run customer search"
+      screen: "account-search"
+
+    - signature:
+        control_type: "Button"
+        name: "New"
+      name: "Create new account"
+
+    - signature:
+        control_type: "Edit"
+        automation_id: "accountName"
+      name: "Enter account name"
+      screen: "account-detail"
+
+    - signature:
+        control_type: "Button"
+        name: "Save"
+        window_title_regex: ".*Account.*"
+      name: "Save account record"
+
+    - signature:
+        control_type: "Button"
+        name: "Save & New"
+      name: "Save account and start a new one"
+      flags:
+        automation_candidate: true
+
+    - signature:
+        control_type: "Button"
+        name: "Convert"
+      name: "Convert lead to account"
+
+    - signature:
+        control_type: "Button"
+        name: "Log a Call"
+      name: "Log call activity"
+      flags:
+        automation_candidate: true

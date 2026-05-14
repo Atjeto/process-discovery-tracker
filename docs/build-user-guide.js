@@ -705,20 +705,44 @@ content.push(
   ], [1800, 4500, 2900]),
 );
 
-/* 17. ML Suggestions */
+/* 17. App Vocabularies */
 content.push(
-  h1("17. ML Suggestions"),
-  p("v0.2 ships a local ML stack that suggests activity labels for events the taxonomy could not classify. The stack runs entirely on CPU, with no network calls, using a bundled sentence-transformer (all-MiniLM-L6-v2) exported once to ONNX."),
-  h2("17.1 Training the classifier"),
-  p("One time after taxonomy changes, run:"),
-  code("python normalize.py --retrain-classifier --taxonomy normalization/sample-taxonomy.yaml"),
-  p("The viewer's aggregate view also has a Retrain classifier button that invokes the same path."),
-  h2("17.2 Reviewing suggestions"),
-  p("After normalization, suggestions land in ml_suggestions.json inside the session folder. The session view's ML suggestions sub-tab on the right lists each one with a confidence score. Accept to apply the label; reject to dismiss."),
-  h2("17.3 Cluster review"),
-  p("For batch labeling of many similar events, the Cluster review button on the aggregate view runs HDBSCAN over the embeddings of uncovered events and presents clusters with sample text. Applying one label across a cluster updates all matched events."),
-  h2("17.4 Failure modes"),
-  p("ML is best-effort. If the ONNX model fails to load or the classifier file is missing, normalization continues with the rule-based pipeline and a single ML disabled log line."),
+  h1("17. App Vocabularies"),
+  p("App Vocabularies are per-app YAML files that map UI element signatures (the button's automation_id, control type, or visible name) to analyst-curated meaningful names and default flags. They sit below Process Templates and above the central taxonomy."),
+  p("Concretely: in Salesforce, the Search button always means 'Run customer search', whether the analyst is mapping Customer Onboarding, Refund Claim, or Account Setup. Each app gets one vocabulary, curated once. Every future session that touches the app picks up the names automatically."),
+  h2("17.1 The three layers"),
+  p("There are now three layers of named meaning the tool consults during analysis:"),
+  buildTable([
+    ["Layer", "What it names", "Authored where"],
+    ["Taxonomy", "Activity label for a window (\"this window is Salesforce\")", "normalization/sample-taxonomy.yaml"],
+    ["App Vocabulary", "Meaningful name for one UI element (\"this button is Search Customer\")", "normalization/app_vocabularies/*.yaml"],
+    ["Process Template", "Step + phase structure for a specific business process", "normalization/canonical/*.yaml"],
+  ], [2000, 4800, 2900]),
+  h2("17.2 Bootstrap a vocabulary from a captured session"),
+  p("The fastest way to start: open a captured session in the viewer, click 'Save App Vocabulary...' in the session toolbar, name it after the app, and pick a save destination. The tool walks the session's interactions, deduplicates by signature, and writes a starter YAML with the signatures filled in and the name fields blank. The analyst opens the YAML, fills in the names, and drops the file into normalization/app_vocabularies/. From then on, the names auto-apply."),
+  h2("17.3 The YAML shape"),
+  code(`app_vocabulary:
+  id: "salesforce"
+  name: "Salesforce"
+  version: 1
+  scope:
+    process_name: "chrome.exe"
+    window_title_regex: ".*Salesforce.*"
+  interactions:
+    - signature:
+        control_type: "Button"
+        automation_id: "searchBtn"
+      name: "Run customer search"
+    - signature:
+        control_type: "Button"
+        name: "Save"
+        window_title_regex: ".*Account.*"
+      name: "Save account record"
+      flags:
+        automation_candidate: true`),
+  p("Most-specific signature wins (more non-empty fields = higher score). Ties broken by first-defined. See ADR-0002 for the design rationale."),
+  h2("17.4 Where vocabularies live"),
+  p("Default: normalization/app_vocabularies/*.yaml, shipped with the tool. Set the PDT_APP_VOCABULARIES environment variable to a path (or semicolon-separated paths on Windows) to load additional vocabularies from a shared team share without rebuilding."),
 );
 
 /* 18. Drift and Re-normalization */

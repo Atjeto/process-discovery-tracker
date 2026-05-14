@@ -127,10 +127,28 @@
     if (onNodeClick) {
       cy.on("tap", "node", (e) => onNodeClick(e.target.data("id")));
     }
-    setTimeout(() => { try { cy.fit(undefined, 24); } catch (_) {} }, 50);
+    if (opts.onZoomChange) {
+      cy.on("zoom", () => opts.onZoomChange(cy.zoom()));
+    }
+    setTimeout(() => {
+      try { cy.fit(undefined, 24); } catch (_) {}
+      if (opts.onZoomChange && cy) opts.onZoomChange(cy.zoom());
+    }, 50);
   }
 
   function fit() { if (cy) { try { cy.fit(undefined, 24); } catch (_) {} } }
+  function zoomIn() {
+    if (!cy) return;
+    const c = cy.extent();
+    cy.zoom({ level: cy.zoom() * 1.25,
+              renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
+  }
+  function zoomOut() {
+    if (!cy) return;
+    cy.zoom({ level: cy.zoom() / 1.25,
+              renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
+  }
+  function getZoom() { return cy ? cy.zoom() : 1; }
 
-  window.PdtDfg = { render, fit };
+  window.PdtDfg = { render, fit, zoomIn, zoomOut, getZoom };
 })();

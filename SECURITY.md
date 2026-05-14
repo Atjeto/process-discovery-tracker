@@ -154,15 +154,15 @@ Build-time advisories (dev dependencies, never shipped):
 
 Run `npm audit --omit=dev` in each app folder to reproduce the runtime numbers.
 
-## Bundled binaries and models
+## Bundled binaries
 
 The shipped `dist/` for v0.2 includes:
 
 - `recorder/recorder.exe` (~70 MB, .NET 8 self-contained, UIA event subscriber - source under `capture/recorder/`)
-- `ml_models/all-MiniLM-L6-v2/` (~90 MB, sentence-transformer embeddings exported once to ONNX)
-- `ml_models/classifier.pkl` (~5 MB, per-team classifier trained from your taxonomy)
 
-None of these phone home. The recorder uses only Microsoft's in-box UI Automation API. The ML stack runs entirely on CPU via ONNX Runtime; the classifier is trained locally from your taxonomy rules.
+The recorder uses only Microsoft's in-box UI Automation API. No network calls.
+
+The earlier v0.2 plan included an optional local ML stack (sentence-transformer embeddings + classifier). It was dropped after design review: the per-team App Vocabulary layer (see `docs/adr/0002-app-vocabularies.md`) covers the same naming-uncovered-events use case deterministically, without the ~500 MB of Python deps or the first-run model download.
 
 ## Code signing
 

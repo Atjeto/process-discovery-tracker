@@ -185,7 +185,6 @@ function loadSessionData(sessionFolder) {
   const dfg = loadOptionalJson(path.join(sessionFolder, "dfg.json"));
   const annotations = loadOptionalJson(path.join(sessionFolder, "annotations.json"));
   const obsSync = loadOptionalJson(path.join(sessionFolder, "obs", "sync.json"));
-  const mlSuggestions = loadOptionalJson(path.join(sessionFolder, "ml_suggestions.json"));
 
   /* Locate the OBS recording. The manifest may point at an absolute
      path written by OBS; if missing or unreachable, the viewer renders
@@ -200,7 +199,6 @@ function loadSessionData(sessionFolder) {
     stats,
     dfg,
     annotations,
-    mlSuggestions,
     obsSync,
     recordingPath,
     recordingAvailable,
@@ -280,22 +278,44 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
   }
 });
 
-ipcMain.handle("viewer:retrainClassifier", async () => {
+ipcMain.handle("viewer:bootstrapAppVocab", async (_e, { sessionFolder, vocabId, vocabName }) => {
+  /* Generate a starter App Vocabulary YAML from the captured
+     interactions in this session. Writes to a temp file; renderer
+     prompts the user for a save destination via viewer:exportFile. */
   try {
-    const r = await runNormalize({ retrainClassifier: true, onLog: () => {} });
-    return { ok: true, ...r };
+    const root = path.resolve(sessionFolder);
+    if (!fs.existsSync(path.join(root, "manifest.json"))) {
+      return { ok: false, error: "Not a session folder" };
+    }
+    const os = require("os");
+    const tmpOut = path.join(os.tmpdir(), `pdt-vocab-${Date.now()}.yaml`);
+    const r = await runNormalize({
+      sessionFolder: root,
+      bootstrapVocabOut: tmpOut,
+      vocabId: vocabId || "untitled",
+      vocabName: vocabName || "Untitled",
+      onLog: () => {},
+    });
+    if (!fs.existsSync(tmpOut)) {
+      return { ok: false, error: "bootstrap produced no output" };
+    }
+    const yamlText = fs.readFileSync(tmpOut, "utf-8");
+    try { fs.unlinkSync(tmpOut); } catch (_) {}
+    return { ok: true, yaml: yamlText, summary: r && r.summary };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 
-ipcMain.handle("viewer:runClusterReview", async (_e, { sessionFolders }) => {
-  try {
-    const r = await runNormalize({ clusterReview: sessionFolders, onLog: () => {} });
-    return { ok: true, clusters: (r && r.clusters) || [] };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
+ipcMain.handle("viewer:saveAppVocab", async (_e, { defaultName, content }) => {
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: "Save App Vocabulary YAML",
+    defaultPath: defaultName || "app-vocabulary.yaml",
+    filters: [{ name: "YAML", extensions: ["yaml", "yml"] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  fs.writeFileSync(r.filePath, content, "utf-8");
+  return r.filePath;
 });
 
 /* --- Annotations write-back --------------------------------------- */

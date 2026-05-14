@@ -37,6 +37,9 @@
       "dfg-viewer.js",
       "bpmn-viewer.js",
       "report-md.js",
+      "step-editor.js",
+      "phase-editor.js",
+      "layout-controls.js",
       "styles.css",
       "package.json",
       "node_modules/**/*"

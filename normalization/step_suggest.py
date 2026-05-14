@@ -65,11 +65,7 @@ def auto_suggest_steps(
                 },
                 "state": "auto_suggested",
                 "canonical_step_id": None,
-                "flags": {
-                    "conditional": False, "condition_text": None,
-                    "exception_path": False, "waste": False,
-                    "automation_candidate": False,
-                },
+                "flags": _aggregate_vocab_flags(candidate),
                 "phase_id": None,
             })
             candidate.clear()
@@ -101,6 +97,9 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
     """Derive a useful name from the actual interactions captured.
 
     Strategy, in priority order:
+      0. If any interaction carries an App Vocabulary `meaningful_name`
+         and it's an Invoked action, use it directly -- analyst-curated
+         names always beat heuristics.
       1. The window title's app prefix + the most semantically loaded
          interaction's control name. Most of the time the last
          user-meaningful interaction is an Invoked Button -- that's the
@@ -114,9 +113,13 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
     last = interactions[-1]["data"]
     app = _short_app(last)
 
-    # Find the last button-like invocation. Cheap heuristic: kind=invoked
-    # with a non-empty name. This is almost always the action that
-    # completed the step.
+    # 0. Analyst-curated meaningful name on an Invoked action wins.
+    for ev in reversed(interactions):
+        d = ev["data"]
+        if d.get("kind") == "invoked" and d.get("meaningful_name"):
+            return _trim(f"{app}: {d['meaningful_name']}")
+
+    # 1. Last invoked button's raw name.
     for ev in reversed(interactions):
         d = ev["data"]
         if d.get("kind") == "invoked" and d.get("name"):
@@ -134,9 +137,11 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
             if v:
                 last_val = v[:40]
                 break
+        # Prefer meaningful_name (analyst-curated) over raw control name.
         named_fields = [
-            (i["data"].get("name") or "").strip()
-            for i in interactions if (i["data"].get("name") or "").strip()
+            ((i["data"].get("meaningful_name") or i["data"].get("name") or "").strip())
+            for i in interactions
+            if (i["data"].get("meaningful_name") or i["data"].get("name") or "").strip()
         ]
         if named_fields:
             uniq = list(dict.fromkeys(named_fields))  # preserve order, dedup
@@ -178,6 +183,24 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
 
 
 # --- Helpers -----------------------------------------------------------
+
+def _aggregate_vocab_flags(interactions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Roll up vocab_flags from constituent interactions into a step flag
+    set. Any interaction flagged as automation_candidate or waste lifts
+    the whole step (it's the conservative interpretation; analyst can
+    override per-step)."""
+    out = {
+        "conditional": False, "condition_text": None,
+        "exception_path": False, "waste": False,
+        "automation_candidate": False,
+    }
+    for ev in interactions:
+        vf = (ev.get("data") or {}).get("vocab_flags") or {}
+        for k in ("exception_path", "waste", "automation_candidate", "conditional"):
+            if vf.get(k):
+                out[k] = True
+    return out
+
 
 _VERB_HINTS = {
     "Button": None,             # the button's name is the verb already

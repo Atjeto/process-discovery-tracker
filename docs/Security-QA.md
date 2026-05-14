@@ -113,9 +113,7 @@ The recorder is a separate process (`recorder.exe`, .NET 8 self-contained, ~70 M
 
 ## 22. What does the ML layer do? Does it phone home?
 
-**Embeddings + classifier inference, all local.** Sentence-transformer model (`sentence-transformers/all-MiniLM-L6-v2`, ~90 MB) bundled in the dist, loaded into ONNX runtime, runs on CPU. The classifier is trained locally against the team's own taxonomy rules; the trained `classifier.pkl` (~5 MB) lives in the dist as well.
-
-No network calls at runtime. The model download happens once during `scripts/build-python-embeddable.ps1` (build-time, from the public sentence-transformers repo on Hugging Face); from then on, runtime inference is entirely local. ONNX Runtime is configured with `CPUExecutionProvider` only - no GPU, no cloud endpoints. See `SECURITY.md` "Bundled binaries and models" for the full list.
+**There is no ML layer in the shipped product.** The earlier v0.2 plan included a local sentence-transformer classifier and HDBSCAN clustering of uncovered events. The team replaced it with the **App Vocabulary** layer (see ADR-0002): per-app YAML files mapping UI element signatures to analyst-curated names. Deterministic, reviewable in version control, no model download, no Python deps beyond the existing pm4py/pandas/pyyaml/networkx/python-docx set. No network calls at any pipeline stage.
 
 ---
 

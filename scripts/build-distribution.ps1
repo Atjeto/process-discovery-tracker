@@ -96,8 +96,8 @@ Get-ChildItem -Path $normalizationDir -File | Where-Object {
 } | ForEach-Object {
   Copy-Item -Force $_.FullName $viewerNormStage
 }
-# Subdirectories: ml/, canonical/. Skip __pycache__ and test/.
-foreach ($sub in @("ml", "canonical")) {
+# Subdirectories: canonical/, app_vocabularies/. Skip __pycache__ and test/.
+foreach ($sub in @("canonical", "app_vocabularies")) {
   $src = Join-Path $normalizationDir $sub
   if (Test-Path $src) {
     $dst = Join-Path $viewerNormStage $sub

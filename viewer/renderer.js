@@ -464,56 +464,34 @@ function ensureAnnoShape(anno) {
   return a;
 }
 
-/* ============ ML suggestions panel ================================ */
+/* ============ Save App Vocabulary from this session ================ */
 
-function renderMlSuggestions() {
-  const host = $("#ml-suggestions-list");
-  if (!host) return;
-  const suggestions = (currentSession.mlSuggestions && currentSession.mlSuggestions.suggestions) || [];
-  $("#ml-badge").textContent = String(suggestions.length);
-  if (!suggestions.length) {
-    host.innerHTML = '<p class="hint">No ML suggestions. Run normalization with the classifier trained to populate this list.</p>';
-    return;
-  }
-  host.innerHTML = "";
-  for (const sug of suggestions) {
-    const row = document.createElement("div");
-    row.className = "ml-suggestion-row";
-    const confPct = Math.round((sug.confidence || 0) * 100);
-    row.innerHTML = `
-      <span class="ml-kind">${escapeHtml(sug.kind || "")}</span>
-      <span class="ml-label">${escapeHtml(sug.suggested_label || "")}</span>
-      <span class="ml-conf">${confPct}%</span>
-      <span class="ml-actions">
-        <button class="primary" data-act="accept">Accept</button>
-        <button data-act="reject">Reject</button>
-      </span>
-    `;
-    row.querySelector('[data-act="accept"]').addEventListener("click", () =>
-      acceptMlSuggestion(sug));
-    row.querySelector('[data-act="reject"]').addEventListener("click", () =>
-      rejectMlSuggestion(sug));
-    host.appendChild(row);
-  }
-}
-
-async function acceptMlSuggestion(sug) {
-  const anno = ensureAnnoShape(currentSession.annotations);
-  anno.ml_accepted = anno.ml_accepted || [];
-  anno.ml_accepted.push({ event_id: sug.event_id, label: sug.suggested_label, ts: new Date().toISOString() });
-  if (currentSession.mlSuggestions) {
-    currentSession.mlSuggestions.suggestions = (currentSession.mlSuggestions.suggestions || []).filter(s => s.event_id !== sug.event_id);
-  }
-  await persistAnnotations(anno);
-  renderMlSuggestions();
-  toast("Suggestion accepted (re-run normalization to apply downstream)", "success");
-}
-
-async function rejectMlSuggestion(sug) {
-  if (currentSession.mlSuggestions) {
-    currentSession.mlSuggestions.suggestions = (currentSession.mlSuggestions.suggestions || []).filter(s => s.event_id !== sug.event_id);
-  }
-  renderMlSuggestions();
+const btnSaveVocab = $("#btn-save-vocab");
+if (btnSaveVocab) {
+  btnSaveVocab.addEventListener("click", async () => {
+    if (!currentSession) return;
+    const vocabName = prompt("App vocabulary name (e.g., 'Salesforce'):", "");
+    if (!vocabName) return;
+    const vocabId = vocabName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    btnSaveVocab.disabled = true;
+    const r = await ipcRenderer.invoke("viewer:bootstrapAppVocab", {
+      sessionFolder: currentSession.sessionFolder,
+      vocabId, vocabName,
+    });
+    btnSaveVocab.disabled = false;
+    if (!r || !r.ok) {
+      toast("Vocabulary bootstrap failed: " + ((r && r.error) || "unknown"), "error");
+      return;
+    }
+    const out = await ipcRenderer.invoke("viewer:saveAppVocab", {
+      defaultName: vocabId + ".yaml",
+      content: r.yaml,
+    });
+    if (out) {
+      await ipcRenderer.invoke("viewer:revealFile", out);
+      toast("Saved starter vocabulary - edit the `name:` fields, then drop into normalization/app_vocabularies/", "success");
+    }
+  });
 }
 
 /* ============ Aggregate level switcher ============================ */
@@ -633,55 +611,6 @@ if ($("#btn-export-bpmn-phase")) $("#btn-export-bpmn-phase").addEventListener("c
 if ($("#btn-export-pdd"))        $("#btn-export-pdd").addEventListener("click", () => exportArtifact("pdd"));
 if ($("#btn-export-step-csv"))   $("#btn-export-step-csv").addEventListener("click", () => exportArtifact("step-csv"));
 
-/* ============ Cluster review + retrain classifier ================= */
-
-if ($("#btn-retrain-classifier")) {
-  $("#btn-retrain-classifier").addEventListener("click", async () => {
-    const r = await ipcRenderer.invoke("viewer:retrainClassifier");
-    if (r && r.ok) toast("Classifier retrained", "success");
-    else toast("Retrain failed: " + ((r && r.error) || "unknown"), "error");
-  });
-}
-
-if ($("#btn-cluster-review")) {
-  $("#btn-cluster-review").addEventListener("click", async () => {
-    if (!aggregateSessions.length) return;
-    const r = await ipcRenderer.invoke("viewer:runClusterReview", {
-      sessionFolders: aggregateSessions.map((s) => s.sessionFolder),
-    });
-    if (!r || !r.ok) { toast("Cluster review failed", "error"); return; }
-    showClusterModal(r.clusters || []);
-  });
-}
-
-function showClusterModal(clusters) {
-  // Minimal modal: list clusters + sample text. Accept apply-one-label.
-  const backdrop = document.createElement("div");
-  backdrop.className = "modal-backdrop";
-  backdrop.style.display = "";
-  backdrop.innerHTML = `
-    <div class="modal">
-      <header class="modal-header">
-        <h2>Cluster review</h2>
-        <button class="icon-btn modal-close" id="cluster-close">✕</button>
-      </header>
-      <div class="modal-body">
-        ${(clusters || []).map(c => `
-          <div class="cluster-row" data-cid="${c.cluster_id}">
-            <div class="cluster-meta">cluster ${c.cluster_id} · ${c.count} events</div>
-            <div class="cluster-sample">${escapeHtml(c.sample_text || "")}</div>
-            <input type="text" placeholder="Label for this cluster" />
-            <button class="primary">Apply</button>
-          </div>
-        `).join("") || '<p class="hint">No clusters found.</p>'}
-      </div>
-    </div>
-  `;
-  document.body.appendChild(backdrop);
-  backdrop.querySelector("#cluster-close").addEventListener("click", () =>
-    backdrop.remove());
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
-}
 
 /* ============ Re-normalize to canonical =========================== */
 
@@ -718,17 +647,43 @@ $$(".anno-tab").forEach((tab) => {
 
 /* ============ Map sub-tabs ======================================== */
 
+function setMapZoomVisible(visible) {
+  const wrap = document.getElementById("map-zoom");
+  if (wrap) wrap.style.display = visible ? "" : "none";
+}
+function setMapZoomPct(z) {
+  const el = document.getElementById("map-zoom-pct");
+  if (el) el.textContent = Math.round((z || 1) * 100) + "%";
+}
+
 $$(".panel-tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     $$(".panel-tab").forEach((t) => t.classList.toggle("active", t === tab));
     const which = tab.dataset.map;
     $("#bpmn-host").style.display = which === "bpmn" ? "" : "none";
     $("#dfg-host").style.display = which === "dfg" ? "" : "none";
+    setMapZoomVisible(which === "dfg");
     setTimeout(() => {
       if (which === "bpmn" && window.PdtBpmn) window.PdtBpmn.fit();
-      if (which === "dfg" && window.PdtDfg) window.PdtDfg.fit();
+      if (which === "dfg" && window.PdtDfg) {
+        window.PdtDfg.fit();
+        setMapZoomPct(window.PdtDfg.getZoom());
+      }
     }, 50);
   });
+});
+
+const btnDfgZoomIn = document.getElementById("btn-dfg-zoom-in");
+const btnDfgZoomOut = document.getElementById("btn-dfg-zoom-out");
+const btnDfgZoomFit = document.getElementById("btn-dfg-zoom-fit");
+if (btnDfgZoomIn) btnDfgZoomIn.addEventListener("click", () => {
+  if (window.PdtDfg) { window.PdtDfg.zoomIn(); setMapZoomPct(window.PdtDfg.getZoom()); }
+});
+if (btnDfgZoomOut) btnDfgZoomOut.addEventListener("click", () => {
+  if (window.PdtDfg) { window.PdtDfg.zoomOut(); setMapZoomPct(window.PdtDfg.getZoom()); }
+});
+if (btnDfgZoomFit) btnDfgZoomFit.addEventListener("click", () => {
+  if (window.PdtDfg) { window.PdtDfg.fit(); setMapZoomPct(window.PdtDfg.getZoom()); }
 });
 
 /* ============ Session view: open + normalize ====================== */
@@ -861,7 +816,6 @@ async function loadSessionIntoView(folder) {
   if ($("#btn-group-into-phase")) $("#btn-group-into-phase").disabled = true;
   renderStepsLevel();
   renderPhasesLevel();
-  renderMlSuggestions();
 }
 
 function renderSessionPills() {
@@ -950,7 +904,8 @@ function renderTimeline() {
   const activityH = 70;
   const caseTop = activityH + 24;
   const caseH = 26;
-  host.style.height = Math.max(220, caseTop + caseH + 30) + "px";
+  // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
+  host.style.minHeight = Math.max(120, caseTop + caseH + 30) + "px";
 
   // Activity bands
   for (const ev of evs) {
@@ -1660,7 +1615,11 @@ function renderAggregate() {
     };
     window.PdtDfg.render($("#dfg-host"), dfg, {
       onNodeClick: (activityLabel) => drillToActivity(activityLabel),
+      onZoomChange: (z) => setMapZoomPct(z),
     });
+    // Show zoom controls if the DFG tab is currently active
+    const dfgTabActive = document.querySelector('.panel-tab.active')?.dataset.map === "dfg";
+    setMapZoomVisible(dfgTabActive);
   }
 
   // Export buttons
