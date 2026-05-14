@@ -15,13 +15,9 @@ auto_end_idle_minutes: 30
 poll_interval_seconds: 5
 idle_threshold_seconds: 60
 
-# Labels shown in the tray menu and label picker
-process_labels:
-  - "Order entry"
-  - "Ticket triage"
-  - "Refund flow"
-  - "Identity check"
-  - "Account setup"
+# Labels surfaced in the operator panel, tray Quick-start submenu, and
+# label picker. Set per engagement. Leave empty to type labels freely.
+process_labels: []
 
 # OBS integration. Set required: true in production so a session fails
 # fast if OBS isn't reachable. Leave false during local development.

@@ -15,13 +15,7 @@ const DEFAULTS = {
   auto_end_idle_minutes: 30,
   poll_interval_seconds: 5,
   idle_threshold_seconds: 60,
-  process_labels: [
-    "Order entry",
-    "Ticket triage",
-    "Refund flow",
-    "Identity check",
-    "Account setup",
-  ],
+  process_labels: [],
   obs: {
     required: false,
     websocket_url: "ws://127.0.0.1:4455",

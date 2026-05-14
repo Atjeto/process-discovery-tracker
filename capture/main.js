@@ -354,7 +354,7 @@ function showLabelPicker() {
     alwaysOnTop: true,
     autoHideMenuBar: true,
     skipTaskbar: false,
-    backgroundColor: "#1a1a1f",
+    backgroundColor: "#1a1a1a",
     webPreferences: {
       /* Trusted first-party HTML loaded via a data: URL. CSP in the
          page restricts what the renderer can do. */
@@ -387,25 +387,37 @@ function buildPickerHtml() {
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Start marker</title>
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; padding: 16px; background: #1a1a1f; color: #e8e8ea;
+  :root {
+    color-scheme: dark;
+    --bg:       #1a1a1a;
+    --bg-2:     #232323;
+    --bg-3:     #2c2c2c;
+    --bg-hover: #363636;
+    --border:   #3a3a3a;
+    --fg:       #e6e6e6;
+    --fg-2:     #a8a8a8;
+    --fg-3:     #6e6e6e;
+    --accent:   #3a86ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
          font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 13px; }
-  h1 { font-size: 10px; margin: 0 0 10px; letter-spacing: 1.5px;
-       text-transform: uppercase; color: #888; }
-  input { width: 100%; padding: 10px; box-sizing: border-box; background: #25252c;
-          border: 1px solid #38383f; color: #fff; border-radius: 4px;
-          font-family: inherit; font-size: 14px; }
-  input:focus { outline: none; border-color: #6a8caf; }
-  ul { list-style: none; padding: 0; margin: 10px 0 0; max-height: 220px; overflow-y: auto; }
-  li { padding: 8px 10px; border-radius: 4px; cursor: pointer; color: #c8c8d0; }
-  li.sel { background: #2c3a48; color: #fff; }
-  li:hover { background: #25252c; }
-  .hint { font-size: 10px; color: #666; margin-top: 10px; }
+  .lbl { font-size: 11px; margin: 0 0 8px; color: var(--fg-3); }
+  input { width: 100%; padding: 9px 11px; background: var(--bg-2);
+          border: 1px solid var(--border); color: var(--fg);
+          border-radius: 3px; font-family: inherit; font-size: 13px; outline: none; }
+  input:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--fg-3); }
+  ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 220px; overflow-y: auto; }
+  li { padding: 7px 10px; border-radius: 3px; cursor: pointer; color: var(--fg-2); font-size: 13px; }
+  li.sel { background: var(--accent); color: #fff; }
+  li:hover:not(.sel) { background: var(--bg-3); color: var(--fg); }
+  .hint { font-size: 11px; color: var(--fg-3); margin-top: 10px; }
 </style></head><body>
-<h1>Start marker</h1>
-<input id="q" placeholder="Type label or pick from list, Enter to fire" autofocus />
+<div class="lbl">Start marker</div>
+<input id="q" placeholder="Type a label, Enter to fire" autofocus />
 <ul id="list"></ul>
-<div class="hint">Enter: fire &middot; Esc: cancel &middot; &uarr;&darr;: navigate</div>
+<div class="hint">Enter to fire · Esc to cancel · ↑↓ to navigate</div>
 <script>
 const { ipcRenderer } = require("electron");
 const all = ${labels};
@@ -582,11 +594,13 @@ function buildMenu() {
       accelerator: config.hotkeys.start_picker,
       click: () => showLabelPicker(),
     });
-    const quickStart = (config.process_labels || []).map((label) => ({
-      label,
-      click: () => fireStartMarker(label),
-    }));
-    items.push({ label: "Quick start", submenu: quickStart });
+    if (config.process_labels && config.process_labels.length) {
+      const quickStart = config.process_labels.map((label) => ({
+        label,
+        click: () => fireStartMarker(label),
+      }));
+      items.push({ label: "Quick start", submenu: quickStart });
+    }
     const innermost =
       lastStatus && lastStatus.markerDepth > 0
         ? lastStatus.openMarkers[lastStatus.openMarkers.length - 1]

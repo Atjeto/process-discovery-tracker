@@ -14,43 +14,63 @@ function buildHelpHtml() {
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>PDT - Help</title>
+<title>PDT Help</title>
 <style>
-  :root { color-scheme: dark;
-    --bg: #14131A; --bg-2: #1B1A24; --bg-3: #25232F;
-    --fg: #EDE7D3; --fg-2: #C4BBA8; --fg-3: #8A8278;
-    --accent: #8BA17A; --accent-2: #6A8CAF; --warn: #D4A24C;
-    --rule: #2F2A34; }
+  :root {
+    color-scheme: dark;
+    --bg:       #1a1a1a;
+    --bg-2:     #232323;
+    --bg-3:     #2c2c2c;
+    --border:   #3a3a3a;
+    --fg:       #e6e6e6;
+    --fg-2:     #a8a8a8;
+    --fg-3:     #6e6e6e;
+    --accent:   #3a86ff;
+    --mono:     ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
-    font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 13px; line-height: 1.55; }
-  body { padding: 20px 26px; overflow-y: auto; }
-  h1 { font-size: 16px; margin: 0 0 4px; }
-  .sub { color: var(--fg-3); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
-    font-family: "IBM Plex Mono", monospace; margin-bottom: 18px; }
-  h2 { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--fg-3);
-    font-family: "IBM Plex Mono", monospace; margin: 22px 0 10px; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.55;
+  }
+  body { padding: 22px 28px; overflow-y: auto; max-width: 720px; }
+
+  h1 { font-size: 17px; margin: 0 0 4px; font-weight: 600; }
+  .sub { color: var(--fg-3); font-size: 12px; margin-bottom: 22px; }
+  h2 { font-size: 13px; font-weight: 600; color: var(--fg);
+       margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
   p { margin: 6px 0 12px; color: var(--fg-2); }
   ol, ul { margin: 6px 0 14px; padding-left: 22px; }
-  li { margin-bottom: 6px; color: var(--fg-2); }
-  code { font-family: "IBM Plex Mono", monospace; font-size: 11px;
-    background: var(--bg-3); padding: 1px 5px; border-radius: 3px; color: var(--fg); }
+  li { margin-bottom: 5px; color: var(--fg-2); }
+
+  code { font-family: var(--mono); font-size: 12px;
+         background: var(--bg-2); padding: 1px 5px; border-radius: 3px;
+         color: var(--fg); border: 1px solid var(--border); }
   .kbd { display: inline-block; padding: 1px 6px; min-width: 18px; height: 18px;
-    font-family: "IBM Plex Mono", monospace; font-size: 10px; line-height: 16px; text-align: center;
-    background: var(--bg-3); border: 1px solid var(--rule); border-radius: 3px;
-    color: var(--fg); vertical-align: middle; }
+         font-family: var(--mono); font-size: 11px; line-height: 16px; text-align: center;
+         background: var(--bg-2); border: 1px solid var(--border); border-radius: 3px;
+         color: var(--fg); vertical-align: middle; }
+
   table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
-  td { padding: 6px 10px; border-bottom: 1px solid var(--rule); font-size: 12px; vertical-align: top; }
-  td:first-child { width: 170px; }
-  .hint { background: var(--bg-2); border-left: 3px solid var(--accent-2);
-    padding: 8px 12px; border-radius: 0 4px 4px 0; color: var(--fg-2); font-size: 12px; }
-  dl dt { font-weight: 500; color: var(--fg); margin-top: 12px; font-size: 12px; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border);
+       font-size: 12px; color: var(--fg-2); vertical-align: top; }
+  td:first-child { width: 180px; }
+
+  .hint { background: var(--bg-2); border-left: 2px solid var(--accent);
+          padding: 8px 12px; border-radius: 0 3px 3px 0;
+          color: var(--fg-2); font-size: 12px; margin: 8px 0 14px; }
+
+  dl dt { font-weight: 600; color: var(--fg); margin-top: 14px; font-size: 12px; }
   dl dt:first-child { margin-top: 0; }
   dl dd { margin: 4px 0 0; color: var(--fg-2); font-size: 12px; line-height: 1.55; }
-  hr { border: none; border-top: 1px solid var(--rule); margin: 20px 0; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+  .footer { color: var(--fg-3); font-size: 11px; text-align: center; }
 </style></head><body>
 
-<h1>Process Discovery Tracker - Help</h1>
+<h1>Process Discovery Tracker — Help</h1>
 <div class="sub">Capture side · v0.1</div>
 
 <h2>What this app does</h2>
@@ -61,7 +81,7 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <ol>
   <li>(Optional) Launch OBS with WebSocket enabled. <em>Tools → WebSocket Server Settings → Enable</em>, port 4455.</li>
   <li>(Optional) Set <code>PDT_CONFIG=path\\to\\your-config.yaml</code> before launch. See <code>sample-config.yaml</code> for the schema.</li>
-  <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey - the session auto-starts.</li>
+  <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey — the session auto-starts.</li>
   <li>Open the live status window from the tray to see what's being captured.</li>
   <li>Fire markers as the SME walks through processes. Tray → <em>End capture session</em> when done.</li>
 </ol>
@@ -71,32 +91,32 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">S</span></td>
       <td>Open the Start-marker label picker. Auto-starts a session if none running.</td></tr>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">E</span></td>
-      <td>Fire End marker - closes innermost open.</td></tr>
+      <td>Fire End marker — closes innermost open.</td></tr>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span></td>
-      <td>Manual screenshot - annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
+      <td>Manual screenshot — annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
 </table>
 <p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>.</p>
 
 <h2>The label picker</h2>
-<p>Opened by the Start hotkey or the tray <em>Fire Start marker...</em> action. Type to filter the configured labels, or type a free-form label and press Enter to fire. Use ↑ / ↓ to navigate.</p>
+<p>Opened by the Start hotkey or the tray <em>Fire Start marker…</em> action. Type a label and press Enter to fire. If <code>process_labels</code> is configured for this engagement, those entries appear as filterable suggestions; otherwise the picker is a free-form input.</p>
 
 <h2>Tray menu (when a session is running)</h2>
 <ul>
-  <li><strong>Fire Start marker...</strong> - Spotlight-style picker</li>
-  <li><strong>Quick start</strong> - submenu of preconfigured labels (skip the picker)</li>
-  <li><strong>Fire End marker</strong> - closes innermost open Start</li>
-  <li><strong>Manual screenshot</strong> - capture regardless of trigger config</li>
+  <li><strong>Fire Start marker…</strong> — label picker</li>
+  <li><strong>Quick start</strong> — submenu of <code>process_labels</code> entries (hidden when none configured)</li>
+  <li><strong>Fire End marker</strong> — closes innermost open Start</li>
+  <li><strong>Manual screenshot</strong> — capture regardless of trigger config</li>
   <li><strong>Pause / Resume polling</strong></li>
-  <li><strong>End capture session</strong> - close out, finalize manifest, stop OBS recording</li>
-  <li><strong>Show / Hide status window</strong> - toggle the live dashboard</li>
-  <li><strong>Open sessions folder</strong> - jump to <code>%APPDATA%\\process-discovery-tracker\\sessions\\</code></li>
+  <li><strong>End capture session</strong> — close out, finalize manifest, stop OBS recording</li>
+  <li><strong>Show / Hide status window</strong> — toggle the live dashboard</li>
+  <li><strong>Open sessions folder</strong> — jump to <code>%APPDATA%\\process-discovery-tracker\\sessions\\</code></li>
 </ul>
 
 <h2>Status window</h2>
 <p>Optional live dashboard. Shows:</p>
 <ul>
-  <li>Recording dot - red pulse while OBS is recording, yellow when paused, grey when idle</li>
-  <li>Session timer - wall-clock elapsed since session start</li>
+  <li>Recording dot — red while OBS is recording, yellow when paused, grey when idle</li>
+  <li>Session timer — wall-clock elapsed since session start</li>
   <li>Current app + title</li>
   <li>Open marker stack with nesting indentation</li>
   <li>Event / marker / screenshot counters</li>
@@ -110,22 +130,22 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <h2>OBS integration</h2>
 <ul>
   <li>Set <code>obs.required: true</code> in config to fail fast when OBS isn't reachable. Default is <code>false</code> for development.</li>
-  <li>First connection auto-creates a scene named per config (default: "Process Discovery -- Default") with a timestamp overlay browser source.</li>
+  <li>First connection auto-creates a scene named per config (default: "Process Discovery — Default") with a timestamp overlay browser source.</li>
   <li>The recording's start timestamp and tracker↔OBS offset are written to <code>obs/sync.json</code> so the viewer can map any tracker timestamp to a video offset.</li>
 </ul>
 
 <h2>Output</h2>
 <p>Each session writes a self-contained folder under <code>%APPDATA%\\process-discovery-tracker\\sessions\\&lt;engagement&gt;\\&lt;YYYYMMDD-HHMMSS&gt;\\</code>:</p>
 <ul>
-  <li><code>events.jsonl</code> - one JSON event per line, append-only, the durable artifact</li>
-  <li><code>manifest.json</code> - session metadata, status, OBS reference</li>
-  <li><code>config.yaml</code> - snapshot of the config used</li>
-  <li><code>screenshots/</code> - event-triggered captures</li>
-  <li><code>obs/sync.json</code> - clock-sync data (if OBS was connected)</li>
+  <li><code>events.jsonl</code> — one JSON event per line, append-only, the durable artifact</li>
+  <li><code>manifest.json</code> — session metadata, status, OBS reference</li>
+  <li><code>config.yaml</code> — snapshot of the config used</li>
+  <li><code>screenshots/</code> — event-triggered captures</li>
+  <li><code>obs/sync.json</code> — clock-sync data (if OBS was connected)</li>
 </ul>
 
 <h2>Operator panel and sync markers</h2>
-<p>The <em>Show operator panel</em> tray item opens a larger always-on-top window for the PM during a walkthrough. Big labeled buttons fire markers without using the hotkey + picker flow. It also exposes the sync-marker button.</p>
+<p>The <em>Show operator panel</em> tray item opens a larger always-on-top window for the analyst during a walkthrough. Type a marker label, hit Enter — implicitly starts the session and fires the Start marker in one step. Also exposes the sync-marker button.</p>
 <p>The <strong>sync marker</strong> (default <span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">Y</span>) emits a system event with a shared <code>sync_id</code>. Use it at agreed moments during multi-machine shift reviews so the analyst can correlate timelines across workers later. Without a custom ID, one is auto-generated; pass a known ID when you want two machines to share it (the operator panel prompts for one).</p>
 
 <h2>Citrix and remote desktop notes</h2>
@@ -166,18 +186,18 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 </dl>
 
 <hr />
-<p style="color: var(--fg-3); font-size: 11px; text-align: center;">Full design doc: <code>process_discovery_tracker_design.md</code> in the repo root.</p>
+<div class="footer">Full design doc: <code>process_discovery_tracker_design.md</code> in the repo root.</div>
 
 </body></html>`;
 }
 
 function showHelpWindow() {
   const win = new BrowserWindow({
-    width: 720,
+    width: 760,
     height: 760,
-    title: "PDT - Help",
+    title: "PDT Help",
     autoHideMenuBar: true,
-    backgroundColor: "#14131A",
+    backgroundColor: "#1a1a1a",
     webPreferences: {
       /* Help is static read-only content; we run it under the
          strictest mode: sandboxed renderer with no Node access. */
