@@ -592,7 +592,7 @@ function buildMenu() {
     click: () => toggleStatusWindow(),
   });
   items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
-  items.push({ label: "Help — How to use", click: () => showHelp() });
+  items.push({ label: "Help - How to use", click: () => showHelp() });
   if (configSourcePath) {
     items.push({
       label: `Config: ${path.basename(configSourcePath)}`,

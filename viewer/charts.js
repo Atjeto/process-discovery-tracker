@@ -111,7 +111,7 @@ function renderBarChart(host, data, opts) {
 }
 
 function fmtDurationS(s) {
-  if (s == null) return "—";
+  if (s == null) return "-";
   if (s < 1) return `${(s * 1000).toFixed(0)}ms`;
   if (s < 60) return `${s.toFixed(1)}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m${Math.round(s % 60)}s`;

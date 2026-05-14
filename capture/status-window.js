@@ -21,7 +21,7 @@ const { BrowserWindow } = require("electron");
 
 function buildStatusHtml() {
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>PDT — Status</title>
+<html><head><meta charset="utf-8"><title>PDT - Status</title>
 <style>
   :root { color-scheme: dark;
     --bg: #14131A; --bg-2: #1B1A24; --bg-3: #25232F;
@@ -141,7 +141,7 @@ function short(s, n) { if (!s) return ""; return s.length > n ? s.slice(0, n - 1
 async function tick() {
   const s = await ipcRenderer.invoke("pdt:status");
   if (!s) {
-    document.getElementById("state").textContent = "Idle — no session";
+    document.getElementById("state").textContent = "Idle - no session";
     document.getElementById("dot").className = "rec-dot";
     document.getElementById("timer").textContent = "00:00:00";
     return;
@@ -161,7 +161,7 @@ async function tick() {
   }
   document.getElementById("timer").textContent = fmtTimer(s.elapsedMs);
   // Now-app
-  document.getElementById("now-app").textContent = s.currentApp || "—";
+  document.getElementById("now-app").textContent = s.currentApp || "-";
   document.getElementById("now-title").textContent = short(s.currentTitle || "", 56);
   // Tags
   const tags = document.getElementById("tags");
@@ -244,7 +244,7 @@ function showStatusWindow(opts) {
   const win = new BrowserWindow({
     width: 340,
     height: 720,
-    title: "PDT — Status",
+    title: "PDT - Status",
     resizable: false,
     minimizable: true,
     maximizable: false,

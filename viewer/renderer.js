@@ -274,7 +274,7 @@ function renderTimeline() {
     band.style.width = w + "%";
     band.style.top = activityTop + "px";
     band.style.height = activityH + "px";
-    band.title = (ev.data.app || "") + " — " + (ev.data.title || "") +
+    band.title = (ev.data.app || "") + " - " + (ev.data.title || "") +
       "\n" + new Date(t).toLocaleTimeString() + " (" + formatDuration(dur) + ")";
     band.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(ev.timestamp); });
     host.appendChild(band);
@@ -337,7 +337,7 @@ function renderTimeline() {
     dot.className = "tl-screenshot";
     dot.style.left = "calc(" + x + "% - 3px)";
     dot.style.top = (activityTop + activityH - 4) + "px";
-    dot.title = ev.data.kind + " — " + new Date(t).toLocaleTimeString() +
+    dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
       "\n" + (ev.data.path || "");
     dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
     host.appendChild(dot);
@@ -892,7 +892,7 @@ async function drillToActivity(activityLabel) {
       seekToTimestamp(target.timestamp);
       toast("Drilled to " + activityLabel + " in " + sess.sessionFolder.split(/[\\/]/).pop(), "success");
     } else {
-      toast("Opened session — couldn't pinpoint timestamp", "");
+      toast("Opened session - couldn't pinpoint timestamp", "");
     }
     return;
   }

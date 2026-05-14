@@ -12,7 +12,7 @@ const { BrowserWindow } = require("electron");
 
 function buildHelpHtml() {
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>PDT — Help</title>
+<html><head><meta charset="utf-8"><title>PDT - Help</title>
 <style>
   :root { color-scheme: dark;
     --bg: #14131A; --bg-2: #1B1A24; --bg-3: #25232F;
@@ -48,7 +48,7 @@ function buildHelpHtml() {
   hr { border: none; border-top: 1px solid var(--rule); margin: 20px 0; }
 </style></head><body>
 
-<h1>Process Discovery Tracker — Help</h1>
+<h1>Process Discovery Tracker - Help</h1>
 <div class="sub">Capture side · v0.1</div>
 
 <h2>What this app does</h2>
@@ -59,7 +59,7 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <ol>
   <li>(Optional) Launch OBS with WebSocket enabled. <em>Tools → WebSocket Server Settings → Enable</em>, port 4455.</li>
   <li>(Optional) Set <code>PDT_CONFIG=path\\to\\your-config.yaml</code> before launch. See <code>sample-config.yaml</code> for the schema.</li>
-  <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey — the session auto-starts.</li>
+  <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey - the session auto-starts.</li>
   <li>Open the live status window from the tray to see what's being captured.</li>
   <li>Fire markers as the SME walks through processes. Tray → <em>End capture session</em> when done.</li>
 </ol>
@@ -69,9 +69,9 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">S</span></td>
       <td>Open the Start-marker label picker. Auto-starts a session if none running.</td></tr>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">E</span></td>
-      <td>Fire End marker — closes innermost open.</td></tr>
+      <td>Fire End marker - closes innermost open.</td></tr>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span></td>
-      <td>Manual screenshot — annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
+      <td>Manual screenshot - annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
 </table>
 <p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>.</p>
 
@@ -80,21 +80,21 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 
 <h2>Tray menu (when a session is running)</h2>
 <ul>
-  <li><strong>Fire Start marker...</strong> — Spotlight-style picker</li>
-  <li><strong>Quick start</strong> — submenu of preconfigured labels (skip the picker)</li>
-  <li><strong>Fire End marker</strong> — closes innermost open Start</li>
-  <li><strong>Manual screenshot</strong> — capture regardless of trigger config</li>
+  <li><strong>Fire Start marker...</strong> - Spotlight-style picker</li>
+  <li><strong>Quick start</strong> - submenu of preconfigured labels (skip the picker)</li>
+  <li><strong>Fire End marker</strong> - closes innermost open Start</li>
+  <li><strong>Manual screenshot</strong> - capture regardless of trigger config</li>
   <li><strong>Pause / Resume polling</strong></li>
-  <li><strong>End capture session</strong> — close out, finalize manifest, stop OBS recording</li>
-  <li><strong>Show / Hide status window</strong> — toggle the live dashboard</li>
-  <li><strong>Open sessions folder</strong> — jump to <code>%APPDATA%\\process-discovery-tracker\\sessions\\</code></li>
+  <li><strong>End capture session</strong> - close out, finalize manifest, stop OBS recording</li>
+  <li><strong>Show / Hide status window</strong> - toggle the live dashboard</li>
+  <li><strong>Open sessions folder</strong> - jump to <code>%APPDATA%\\process-discovery-tracker\\sessions\\</code></li>
 </ul>
 
 <h2>Status window</h2>
 <p>Optional live dashboard. Shows:</p>
 <ul>
-  <li>Recording dot — red pulse while OBS is recording, yellow when paused, grey when idle</li>
-  <li>Session timer — wall-clock elapsed since session start</li>
+  <li>Recording dot - red pulse while OBS is recording, yellow when paused, grey when idle</li>
+  <li>Session timer - wall-clock elapsed since session start</li>
   <li>Current app + title</li>
   <li>Open marker stack with nesting indentation</li>
   <li>Event / marker / screenshot counters</li>
@@ -115,11 +115,11 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <h2>Output</h2>
 <p>Each session writes a self-contained folder under <code>%APPDATA%\\process-discovery-tracker\\sessions\\&lt;engagement&gt;\\&lt;YYYYMMDD-HHMMSS&gt;\\</code>:</p>
 <ul>
-  <li><code>events.jsonl</code> — one JSON event per line, append-only, the durable artifact</li>
-  <li><code>manifest.json</code> — session metadata, status, OBS reference</li>
-  <li><code>config.yaml</code> — snapshot of the config used</li>
-  <li><code>screenshots/</code> — event-triggered captures</li>
-  <li><code>obs/sync.json</code> — clock-sync data (if OBS was connected)</li>
+  <li><code>events.jsonl</code> - one JSON event per line, append-only, the durable artifact</li>
+  <li><code>manifest.json</code> - session metadata, status, OBS reference</li>
+  <li><code>config.yaml</code> - snapshot of the config used</li>
+  <li><code>screenshots/</code> - event-triggered captures</li>
+  <li><code>obs/sync.json</code> - clock-sync data (if OBS was connected)</li>
 </ul>
 
 <h2>Troubleshooting</h2>
@@ -150,7 +150,7 @@ function showHelpWindow() {
   const win = new BrowserWindow({
     width: 720,
     height: 760,
-    title: "PDT — Help",
+    title: "PDT - Help",
     autoHideMenuBar: true,
     backgroundColor: "#14131A",
     webPreferences: {
