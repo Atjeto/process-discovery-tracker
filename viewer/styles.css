@@ -611,7 +611,23 @@ main { flex: 1; overflow: auto; }
   border-radius: var(--radius-sm);
 }
 .mini-timeline-scroll .timeline {
-  position: relative; height: 44px; min-width: 100%;
+  position: relative; min-height: 60px; min-width: 100%;
+}
+
+/* Time axis below the lane area in mini-timelines */
+.tl-time-axis {
+  position: absolute; left: 0; right: 0;
+  border-top: 1px solid var(--rule);
+  pointer-events: none;
+}
+.tl-tick {
+  position: absolute; top: 0; bottom: 0;
+  width: 1px; background: var(--rule);
+}
+.tl-tick-label {
+  position: absolute; top: 1px; left: 2px;
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--fg-4); white-space: nowrap;
 }
 /* Selected block is brighter and gets a thicker border. */
 .step-block.selected, .phase-band.selected {
