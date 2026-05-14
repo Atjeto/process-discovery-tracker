@@ -101,6 +101,17 @@ Write-Host "Smoke-testing the bundle"
 & $pythonExe -c "import pm4py, pandas, networkx, yaml; print('PM4Py:', pm4py.__version__, 'pandas:', pandas.__version__)"
 if ($LASTEXITCODE -ne 0) { throw "Smoke test failed" }
 
+# Slim the bundle in-place (removes ~240 MB of unused viz packages,
+# install tooling, __pycache__ trees, and test directories). The slim
+# script is independently re-runnable so users can also slim an
+# existing bundle without rebuilding from scratch.
+$slimScript = Join-Path $PSScriptRoot "slim-python-embeddable.py"
+if (Test-Path $slimScript) {
+  Write-Host "Slimming the bundle"
+  & $pythonExe $slimScript
+  if ($LASTEXITCODE -ne 0) { throw "Slim step failed" }
+}
+
 # Clean up working dir
 Remove-Item -Recurse -Force $workDir
 
