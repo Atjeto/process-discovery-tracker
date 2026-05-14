@@ -369,22 +369,15 @@ def normalize(
             print(f"[normalize] wrote {dfg_path}")
         except Exception as e:
             print(f"[normalize] WARNING: DFG mining failed: {e}")
-        # BPMN export - PM4Py's BPMN write path invokes Graphviz `dot` for
-        # layout. Non-fatal when missing; the viewer's DFG renders fine
-        # without BPMN.
+        # BPMN export - layout-free serialization (no Graphviz needed).
+        # bpmn-js and Adonis auto-layout on import.
         try:
             bpmn = mining_mod.discover_inductive(log, noise_threshold=0.2)
             bpmn_path = session_folder / "process_map.bpmn"
             mining_mod.export_bpmn(bpmn, str(bpmn_path))
             print(f"[normalize] wrote {bpmn_path}")
         except Exception as e:
-            msg = str(e)
-            if "dot" in msg.lower() or "graphviz" in msg.lower():
-                print("[normalize] WARNING: BPMN export skipped - Graphviz `dot` not on PATH. "
-                      "Install Graphviz from graphviz.org if you need BPMN files. "
-                      "The DFG (dfg.json) renders in the viewer regardless.")
-            else:
-                print(f"[normalize] WARNING: BPMN mining failed: {msg}")
+            print(f"[normalize] WARNING: BPMN mining failed: {e}")
 
     # Phase E exports
     if pdd_out:
