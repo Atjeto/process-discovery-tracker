@@ -59,8 +59,8 @@ _NODE_TAG = {
 
 _BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 _BPMNDI_NS = "http://www.omg.org/spec/BPMN/20100524/DI"
-_DC_NS = "http://www.omg.org/dd/20100524/DC"
-_DI_NS = "http://www.omg.org/dd/20100524/DI"
+_DC_NS = "http://www.omg.org/spec/DD/20100524/DC"
+_DI_NS = "http://www.omg.org/spec/DD/20100524/DI"
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 
 _XML_ID_BAD = re.compile(r"[^A-Za-z0-9_\-]")
