@@ -707,19 +707,61 @@ $("#btn-normalize").addEventListener("click", async () => {
   $("#btn-normalize").disabled = true;
   $("#log-host").style.display = "";
   $("#normalize-log").textContent = "";
-  const r = await ipcRenderer.invoke("viewer:runNormalize", {
+  // If a Process Template was previously matched, re-use its path automatically.
+  const remembered = (currentSession.annotations &&
+    currentSession.annotations.matched_against &&
+    currentSession.annotations.matched_against.template_path) || null;
+  const r = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
     sessionFolder: currentSession.sessionFolder,
     mine,
+    canonical: remembered,
   });
   $("#btn-normalize").disabled = false;
   if (!r.ok) {
     $("#normalize-log").textContent += "\nERROR: " + r.error;
-    toast("Normalization failed: " + r.error, "error");
+    toast("Analysis failed: " + r.error, "error");
     return;
   }
-  toast("Normalization complete", "success");
+  toast(remembered ? "Re-analyzed with template" : "Analysis complete", "success");
   await loadSessionIntoView(currentSession.sessionFolder);
 });
+
+const btnMatchTemplate = $("#btn-match-template");
+if (btnMatchTemplate) {
+  btnMatchTemplate.addEventListener("click", async () => {
+    if (!currentSession) return;
+    const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
+    if (!r) return;
+    btnMatchTemplate.disabled = true;
+    $("#btn-normalize").disabled = true;
+    $("#log-host").style.display = "";
+    $("#normalize-log").textContent = "";
+    const mine = $("#cb-mine").checked;
+    const result = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
+      sessionFolder: currentSession.sessionFolder,
+      mine,
+      canonical: r.path,
+    });
+    btnMatchTemplate.disabled = false;
+    $("#btn-normalize").disabled = false;
+    if (!result || !result.ok) {
+      toast("Template match failed: " + ((result && result.error) || "unknown"), "error");
+      return;
+    }
+    // Persist template path into annotations.json so future re-analyses remember it.
+    try {
+      const a = currentSession.annotations || {};
+      a.matched_against = a.matched_against || {};
+      a.matched_against.template_path = r.path;
+      await ipcRenderer.invoke("viewer:saveAnnotations", {
+        sessionFolder: currentSession.sessionFolder,
+        annotations: a,
+      });
+    } catch (_) {}
+    toast("Matched against Process Template", "success");
+    await loadSessionIntoView(currentSession.sessionFolder);
+  });
+}
 
 ipcRenderer.on("viewer:normalizeLog", (_e, text) => {
   const pre = $("#normalize-log");
@@ -787,14 +829,19 @@ function renderSessionPills() {
   pills.push({ label: "events", val: currentSession.events.length, cls: "ok" });
   pills.push({ label: "status", val: m.status || "?",
     cls: m.status === "recovered" ? "warn" : (m.status === "closed" ? "ok" : "") });
-  if (m.obs && m.obs.recording_path) pills.push({ label: "OBS", val: "linked", cls: "ok" });
-  else pills.push({ label: "OBS", val: "none" });
+  if (m.obs && m.obs.recording_path) pills.push({ label: "video", val: "OBS linked", cls: "ok" });
+  else pills.push({ label: "video", val: "no recording" });
   if (currentSession.stats) {
-    pills.push({ label: "normalized", val: "✓", cls: "ok" });
+    pills.push({ label: "analyzed", val: "✓", cls: "ok" });
     const meta = currentSession.stats.meta || {};
     if (meta.taxonomy_version) {
       pills.push({ label: "taxonomy", val: meta.taxonomy_version });
     }
+    if (meta.canonical_process_id) {
+      pills.push({ label: "template", val: meta.canonical_process_id, cls: "ok" });
+    }
+  } else {
+    pills.push({ label: "analyzed", val: "no", cls: "warn" });
   }
   const editCount = ((currentSession.annotations || {}).marker_edits || []).length;
   if (editCount > 0) pills.push({ label: "edits", val: editCount, cls: "warn" });
@@ -802,6 +849,27 @@ function renderSessionPills() {
     '<div class="pill' + (p.cls ? " " + p.cls : "") + '"><span class="dot"></span>' +
     '<span class="lbl">' + escapeHtml(p.label) + '</span>' + escapeHtml(String(p.val)) + '</div>'
   ).join("");
+
+  // Show onboarding card until the session is analyzed.
+  const onboarding = $("#onboarding-card");
+  if (onboarding) {
+    onboarding.style.display = currentSession.stats ? "none" : "";
+  }
+
+  // Update the Match button label to reflect a remembered template.
+  const btnMatch = $("#btn-match-template");
+  if (btnMatch) {
+    const tmpl = (currentSession.annotations &&
+      currentSession.annotations.matched_against &&
+      currentSession.annotations.matched_against.template_path);
+    if (tmpl) {
+      btnMatch.textContent = "Change Process Template...";
+      btnMatch.title = "Currently matched against: " + tmpl;
+    } else {
+      btnMatch.textContent = "Match Process Template...";
+      btnMatch.title = "Pick a Process Template YAML and match this session against it.";
+    }
+  }
 }
 
 function setVideoOverlay(text) {

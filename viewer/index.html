@@ -52,11 +52,37 @@
       <div class="loaded" id="session-loaded" style="display:none">
         <div class="actions-bar">
           <button id="btn-open-session">Open another</button>
-          <button id="btn-normalize" class="primary">Run normalization</button>
-          <label class="cb"><input type="checkbox" id="cb-mine" checked /> Mine BPMN + DFG</label>
+          <button id="btn-normalize" class="primary" title="Build the timeline, classify activities, compute statistics, and discover a process map.">Analyze session</button>
+          <button id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
+          <label class="cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
           <button id="btn-session-md">Export Markdown</button>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="session-pills"></div>
+        </div>
+
+        <!-- First-run guidance: visible until the session has been analyzed -->
+        <div class="onboarding-card" id="onboarding-card" style="display:none">
+          <div class="onboarding-step">
+            <span class="onboarding-num">1</span>
+            <div>
+              <strong>Click <em>Analyze session</em></strong>
+              <span class="onboarding-detail">Builds the timeline, classifies every activity using the team's taxonomy (Salesforce, Outlook, Excel, etc.), groups events into cases, computes statistics, and discovers a process map. Takes 5-20 seconds for a typical session. You can re-run it any time without losing your edits.</span>
+            </div>
+          </div>
+          <div class="onboarding-step">
+            <span class="onboarding-num">2</span>
+            <div>
+              <strong>Optional: <em>Match Process Template...</em></strong>
+              <span class="onboarding-detail">If a teammate has built a Process Template for this workflow (a YAML file describing the expected steps and phases), point at it here. The viewer will auto-name the captured steps to match the template instead of producing generic guesses.</span>
+            </div>
+          </div>
+          <div class="onboarding-step">
+            <span class="onboarding-num">3</span>
+            <div>
+              <strong>Review the timeline, switch to Steps or Phases</strong>
+              <span class="onboarding-detail">Once analysis finishes, the three buttons under "View:" let you look at the session at three levels of abstraction. Flow = raw events. Steps = logical actions. Phases = milestones.</span>
+            </div>
+          </div>
         </div>
 
         <!-- View-mode bar: prominent, controls what the whole session view shows -->
@@ -212,7 +238,7 @@
         </details>
 
         <details class="log-host" id="log-host" style="display:none">
-          <summary>Normalization log</summary>
+          <summary>Analysis log</summary>
           <pre id="normalize-log"></pre>
         </details>
       </div>
@@ -232,7 +258,7 @@
       <div class="loaded" id="aggregate-loaded" style="display:none">
         <div class="actions-bar">
           <button id="btn-open-multi">Open more</button>
-          <button id="btn-normalize-all" class="primary">Normalize + mine all</button>
+          <button id="btn-normalize-all" class="primary" title="Analyze every loaded session: build timelines, classify activities, mine the process map.">Analyze all sessions</button>
           <button id="btn-renormalize-canonical">Re-match to Process Template...</button>
           <button id="btn-retrain-classifier">Retrain classifier</button>
           <button id="btn-cluster-review">Cluster review</button>
@@ -263,7 +289,7 @@
               <div class="map-pane" id="dfg-host" style="display:none"></div>
               <div class="map-empty" id="map-empty">
                 <div class="empty-icon-sm">⌖</div>
-                <div>Run "Normalize + mine all" to discover a process map.</div>
+                <div>Click "Analyze all sessions" to discover a process map.</div>
               </div>
             </div>
           </div>
@@ -391,7 +417,7 @@
             <li><strong>Capture</strong> a session on the worker machine: tray app polls active window, fires marker events on hotkey or tray, optionally drives OBS to record the screen.</li>
             <li><strong>Move</strong> the session folder to the analyst's machine (network share, USB, however you already move OBS recordings).</li>
             <li><strong>Open</strong> the session in this viewer: Session view → <em>Open session folder...</em></li>
-            <li><strong>Normalize</strong>: click <em>Run normalization</em>. Tick <em>Mine BPMN + DFG</em> to also discover a process map.</li>
+            <li><strong>Analyze</strong>: click <em>Analyze session</em>. Tick <em>Build process map</em> to also discover a BPMN diagram.</li>
             <li><strong>Annotate</strong>: rename markers, add timestamped notes. Edits save to <code>annotations.json</code>; raw events stay immutable.</li>
             <li><strong>Aggregate</strong> across sessions (Tab 2) when you want statistics, variants, and a combined process map.</li>
           </ol>
@@ -427,7 +453,7 @@
             <li><strong>Adjust timestamp</strong>: hover a row, click the clock icon. Sets the marker's timestamp to the current video time (or prompts for an ISO timestamp if there is no video).</li>
             <li><strong>Delete</strong>: hover a row, click the X icon. The marker is dropped from the normalized stream; raw events stay untouched.</li>
           </ul>
-          <p>After any edit, re-run normalization to push the change into XES, CSV, and statistics.</p>
+          <p>After any edit, click <em>Analyze session</em> again to push the change into XES, CSV, and statistics.</p>
           <p class="help-hint">Boundary adjustment + delete give you everything needed to merge or split cases in practice. To merge two adjacent same-label cases, delete the inner End and the following Start. To split a long case, adjust its End earlier and (with a future UI) insert a new Start - for now you can edit annotations.json directly until that lands.</p>
         </section>
 
@@ -603,7 +629,7 @@
             <dd>Have each worker fire a sync marker (default Ctrl+Shift+Y in capture) at agreed moments with the same sync_id. The aggregate view treats these as alignment anchors.</dd>
 
             <dt>Aggregate report or taxonomy promotion exports nothing useful</dt>
-            <dd>Both work off normalized sessions. Click "Normalize + mine all" first so every loaded session has stats.json. Taxonomy promotion needs at least one event classified as Unclassified - that means there is an app the central taxonomy does not yet cover.</dd>
+            <dd>Both work off analyzed sessions. Click "Analyze all sessions" first so every loaded session has stats.json. Taxonomy promotion needs at least one event classified as Unclassified - that means there is an app the central taxonomy does not yet cover.</dd>
           </dl>
         </section>
       </div>

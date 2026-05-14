@@ -127,11 +127,22 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <h2>Per-session config</h2>
 <p>Optional YAML loaded by setting <code>PDT_CONFIG=path\\to\\config.yaml</code> before launch. Controls process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, and engagement metadata. See <code>capture/sample-config.yaml</code> in the repo for the full schema with comments.</p>
 
-<h2>OBS integration</h2>
+<h2>OBS recording: first-time setup (5 minutes)</h2>
+<p>OBS is optional but recommended. With OBS running, the capture app automatically starts a screen recording when you start a session, stops it when you end, and writes a tiny <code>obs/sync.json</code> file so the analyst's viewer can sync the timeline to the video.</p>
+<ol>
+  <li><strong>Install OBS Studio</strong> from <code>obsproject.com</code> (version 28 or later). One-time.</li>
+  <li><strong>Open OBS</strong> and go to <em>Tools → WebSocket Server Settings</em>.</li>
+  <li><strong>Tick "Enable WebSocket server"</strong>. Leave the port at <code>4455</code>. Leave authentication disabled for ease of use on internal machines (or set a password and copy it into your config's <code>obs.websocket_password</code> field). Click OK. OBS doesn't need a restart.</li>
+  <li><strong>Leave OBS running</strong> when you start a capture session. The tracker connects automatically, creates a scene named "Process Discovery — Default" the first time, starts recording on session start, and stops on session end.</li>
+</ol>
+<p>You don't need to click record in OBS yourself. The capture app does it. You also don't need to leave OBS in the foreground — minimize it after step 4 and you'll never need to look at it again unless you want to verify the recording.</p>
+<h2>OBS integration details</h2>
 <ul>
-  <li>Set <code>obs.required: true</code> in config to fail fast when OBS isn't reachable. Default is <code>false</code> for development.</li>
-  <li>First connection auto-creates a scene named per config (default: "Process Discovery — Default") with a timestamp overlay browser source.</li>
-  <li>The recording's start timestamp and tracker↔OBS offset are written to <code>obs/sync.json</code> so the viewer can map any tracker timestamp to a video offset.</li>
+  <li>Connection: <code>ws://127.0.0.1:4455</code> (localhost only). No network exposure.</li>
+  <li>Set <code>obs.required: true</code> in your per-session config to fail fast when OBS isn't reachable. Default is <code>false</code> so capture can run without OBS for ad-hoc testing.</li>
+  <li>First connection auto-creates a scene per config (default: "Process Discovery — Default") with a timestamp overlay browser source. The burned-in clock helps you verify sync if anything ever drifts.</li>
+  <li>The recording's start timestamp and tracker↔OBS offset are written to <code>obs/sync.json</code> so the viewer can map any tracker event to a video seek position.</li>
+  <li>Where the video lands depends on OBS's own <em>Settings → Output → Recording Path</em>. The session's <code>manifest.json</code> records the absolute path so the analyst's viewer can find it after you move the session folder.</li>
 </ul>
 
 <h2>Output</h2>

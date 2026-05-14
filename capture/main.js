@@ -191,6 +191,42 @@ function stopIdleMonitor() {
   idleStartMs = null;
 }
 
+async function showObsSetupDialog() {
+  const obsCfg = (config && config.obs) || {};
+  const url = obsCfg.websocket_url || "ws://127.0.0.1:4455";
+  let testResult = "Click 'Test connection' to verify OBS is reachable.";
+  /* Try a quick test first so the dialog has live state on open. */
+  try {
+    const probe = await connectOBS({
+      websocketUrl: url,
+      password: obsCfg.websocket_password,
+    });
+    try { await probe.disconnect(); } catch (_e) {}
+    testResult = `OBS reachable at ${url}. You're all set - start a capture session and recording begins automatically.`;
+  } catch (e) {
+    testResult = `OBS NOT reachable at ${url}: ${e && e.message}\n\nFollow the steps below.`;
+  }
+  const detail =
+    `Status:\n${testResult}\n\n` +
+    `Setup steps (one time):\n` +
+    `1. Install OBS Studio 28+ from obsproject.com.\n` +
+    `2. In OBS, open Tools -> WebSocket Server Settings.\n` +
+    `3. Tick "Enable WebSocket server", leave port at 4455.\n` +
+    `4. Click OK. Leave OBS running.\n` +
+    `5. Start a capture session here. Recording starts automatically.\n\n` +
+    `You don't need to click record in OBS. You also don't need to keep OBS in the foreground.\n\n` +
+    `If you set a WebSocket password, copy it into your per-session config under obs.websocket_password.\n\n` +
+    `To require OBS (fail-fast on connect error), set obs.required: true in your config.yaml.`;
+  await dialog.showMessageBox({
+    type: "info",
+    title: "OBS recording setup",
+    message: "How to record your captured sessions with OBS",
+    detail,
+    buttons: ["Close"],
+    defaultId: 0,
+  });
+}
+
 async function setupOBS() {
   if (!config.obs || !config.obs.websocket_url) return false;
   try {
@@ -270,6 +306,30 @@ async function startSession() {
   });
   if (obsConnected) {
     tracker.fireSystem("obs_recording_start");
+  } else if (config.obs && config.obs.websocket_url && !config.obs.required) {
+    /* One-time info hint: tell the user the session is running without
+       video and how to enable it. The flag lives in a tiny JSON file in
+       userData so it persists across sessions and only fires once. */
+    try {
+      const flagPath = path.join(app.getPath("userData"), "obs-hint-shown.json");
+      if (!fs.existsSync(flagPath)) {
+        fs.writeFileSync(flagPath, JSON.stringify({ shown_at: new Date().toISOString() }));
+        dialog.showMessageBox({
+          type: "info",
+          title: "Recording without OBS video",
+          message: "This session is running without video.",
+          detail:
+            "You'll still get a full timeline, screenshots, and interaction events. " +
+            "If you'd like screen recording too:\n\n" +
+            "1. Install OBS Studio (obsproject.com).\n" +
+            "2. Tools -> WebSocket Server Settings -> tick Enable, leave port 4455.\n" +
+            "3. End this session, then start a new one with OBS running.\n\n" +
+            "You can also click 'Set up OBS recording...' in the tray menu any time.\n\n" +
+            "This hint only shows once.",
+          buttons: ["OK"],
+        });
+      }
+    } catch (_e) { /* best-effort */ }
   }
   lastTrackedApp = null;
   lastStatus = tracker.getStatus();
@@ -751,6 +811,7 @@ function buildMenu() {
     click: () => toggleOperatorPanel(),
   });
   items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+  items.push({ label: "Set up OBS recording...", click: () => showObsSetupDialog() });
   items.push({ label: "Help - How to use", click: () => showHelp() });
   if (configSourcePath) {
     items.push({
