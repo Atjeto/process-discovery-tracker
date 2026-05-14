@@ -985,6 +985,64 @@ function setVideoOverlay(text) {
 
 let zoomFactor = 1;
 
+/* Muted per-app color palette. Known apps get fixed assignments so the
+   same color is stable across sessions; unknown apps get a deterministic
+   slot via a small hash so they stay stable too. All tones desaturated
+   to keep the timeline instrument-like (no decorative color). */
+const APP_COLOR_MAP = {
+  "chrome.exe":   "#5C7080",
+  "msedge.exe":   "#5C7080",
+  "firefox.exe":  "#5C7080",
+  "SAPGUI.exe":   "#807060",
+  "saplogon.exe": "#807060",
+  "EXCEL.EXE":    "#607868",
+  "OUTLOOK.EXE":  "#705C78",
+  "winword.exe":  "#6A6878",
+  "powerpnt.exe": "#8C6A5C",
+  "Teams.exe":    "#5C6A88",
+};
+const APP_PALETTE = [
+  "#5C7080", "#807060", "#607868", "#705C78",
+  "#685E58", "#5E6878", "#586E70", "#787058",
+];
+function _hashAppIdx(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % APP_PALETTE.length;
+}
+function appColor(app) {
+  if (!app) return "#505050";
+  if (APP_COLOR_MAP[app]) return APP_COLOR_MAP[app];
+  return APP_PALETTE[_hashAppIdx(app.toLowerCase())];
+}
+
+/* Friendly display name for known executables; falls back to the raw
+   process name so unmapped apps remain identifiable in the legend. */
+const APP_LABELS = {
+  "chrome.exe": "Chrome", "msedge.exe": "Edge", "firefox.exe": "Firefox",
+  "SAPGUI.exe": "SAP", "saplogon.exe": "SAP",
+  "EXCEL.EXE": "Excel", "OUTLOOK.EXE": "Outlook",
+  "winword.exe": "Word", "powerpnt.exe": "PowerPoint", "Teams.exe": "Teams",
+};
+function appLabel(app) { return APP_LABELS[app] || (app || "unknown").replace(/\.exe$/i, ""); }
+
+function renderLegend(observedApps) {
+  const host = document.getElementById("legend-apps");
+  if (!host) return;
+  host.innerHTML = "";
+  const apps = Array.from(observedApps || []).sort();
+  for (const app of apps) {
+    const span = document.createElement("span");
+    span.className = "legend-app";
+    const sw = document.createElement("span");
+    sw.className = "legend-swatch";
+    sw.style.background = appColor(app);
+    span.appendChild(sw);
+    span.appendChild(document.createTextNode(appLabel(app)));
+    host.appendChild(span);
+  }
+}
+
 $("#btn-zoom-in").addEventListener("click", () => { zoomFactor *= 1.5; renderTimeline(); });
 $("#btn-zoom-out").addEventListener("click", () => { zoomFactor = Math.max(1, zoomFactor / 1.5); renderTimeline(); });
 $("#btn-zoom-reset").addEventListener("click", () => { zoomFactor = 1; renderTimeline(); });
@@ -1016,7 +1074,8 @@ function renderTimeline() {
   // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
   host.style.minHeight = Math.max(120, caseTop + caseH + 30) + "px";
 
-  // Activity bands
+  // Activity bands -- coloured per app so the timeline reads instantly
+  const observedApps = new Set();
   for (const ev of evs) {
     if (ev.type !== "activity") continue;
     const t = new Date(ev.timestamp).getTime();
@@ -1029,11 +1088,15 @@ function renderTimeline() {
     band.style.width = w + "%";
     band.style.top = activityTop + "px";
     band.style.height = activityH + "px";
+    band.style.background = appColor(ev.data.app);
+    band.dataset.app = ev.data.app || "";
+    if (ev.data.app) observedApps.add(ev.data.app);
     band.title = (ev.data.app || "") + " - " + (ev.data.title || "") +
       "\n" + new Date(t).toLocaleTimeString() + " (" + formatDuration(dur) + ")";
     band.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(ev.timestamp); });
     host.appendChild(band);
   }
+  renderLegend(observedApps);
 
   // Idle bands
   let idleStart = null;
