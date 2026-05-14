@@ -237,10 +237,46 @@ main { flex: 1; overflow: auto; }
 .timeline { position: relative; height: 100%; min-height: 80px;
   cursor: crosshair; min-width: 100%; }
 .tl-row { position: absolute; left: 0; right: 0; }
-.tl-band { position: absolute; top: 0; bottom: 0; transition: filter 0.15s, opacity 0.15s; }
+.tl-band { position: absolute; top: 0; bottom: 0; transition: filter 0.15s, opacity 0.15s;
+  overflow: hidden; }
 .tl-band:hover { filter: brightness(1.35); cursor: pointer; }
-.tl-activity { background: var(--accent); opacity: 0.6; border-right: 1px solid var(--bg-2); border-radius: 2px; }
-.tl-activity:hover { opacity: 0.85; }
+.tl-activity { background: var(--accent); border-right: 1px solid var(--bg-2); border-radius: 2px; }
+.tl-activity:hover { filter: brightness(1.25); }
+
+/* Inline labels inside activity bands -- two-line stack: app + title,
+   plus duration pinned to bottom-right. Children clip if there's no
+   room, so narrow bands collapse gracefully to colored slivers. */
+.tl-activity-label {
+  position: absolute; inset: 4px 6px; pointer-events: none;
+  display: flex; flex-direction: column; gap: 1px; overflow: hidden;
+  color: var(--fg); font-family: var(--font-ui);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+}
+.tl-act-app {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0.95;
+}
+.tl-act-title {
+  font-size: 10px; font-weight: 400;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0.8;
+}
+.tl-act-dur {
+  position: absolute; bottom: 2px; right: 4px;
+  font-family: var(--font-mono); font-size: 9px; opacity: 0.7;
+  background: rgba(0,0,0,0.35); padding: 0 4px; border-radius: 2px;
+  color: var(--fg);
+}
+/* Hide labels when band is too narrow to read (use container queries
+   on the band itself via :has() so labels disappear without JS). */
+.tl-activity { container-type: inline-size; }
+@container (max-width: 70px) {
+  .tl-act-title, .tl-act-dur { display: none; }
+}
+@container (max-width: 36px) {
+  .tl-act-app { display: none; }
+}
 .tl-idle { background: var(--fg-4); opacity: 0.45; }
 .tl-marker { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warn);
   opacity: 0.85; pointer-events: none; }
@@ -277,7 +313,7 @@ main { flex: 1; overflow: auto; }
 .lg-screenshot::before { background: var(--accent-2); border-radius: 50% !important; width: 7px !important; height: 7px !important; }
 .legend-apps { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .legend-app { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-3); }
-.legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; opacity: 0.65; }
+.legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; opacity: 0.7; }
 .legend-shortcuts { margin-left: auto; font-family: var(--font-mono); color: var(--fg-4); font-size: 9px; }
 
 /* ===== Annotations pane ===== */

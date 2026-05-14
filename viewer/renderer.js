@@ -1074,7 +1074,8 @@ function renderTimeline() {
   // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
   host.style.minHeight = Math.max(120, caseTop + caseH + 30) + "px";
 
-  // Activity bands -- coloured per app so the timeline reads instantly
+  // Activity bands -- coloured per app, with inline title + duration
+  // labels so analysts can read the timeline without hovering.
   const observedApps = new Set();
   for (const ev of evs) {
     if (ev.type !== "activity") continue;
@@ -1088,11 +1089,32 @@ function renderTimeline() {
     band.style.width = w + "%";
     band.style.top = activityTop + "px";
     band.style.height = activityH + "px";
-    band.style.background = appColor(ev.data.app);
+    // Append alpha (AA = ~67%) to keep the muted look while letting
+    // inline labels read at full opacity (band opacity would cascade).
+    band.style.background = appColor(ev.data.app) + "AA";
     band.dataset.app = ev.data.app || "";
     if (ev.data.app) observedApps.add(ev.data.app);
     band.title = (ev.data.app || "") + " - " + (ev.data.title || "") +
       "\n" + new Date(t).toLocaleTimeString() + " (" + formatDuration(dur) + ")";
+
+    // Label: app name (top line, bold-ish) + window title (second line, dim).
+    // Duration pinned to bottom-right. CSS hides children that don't fit.
+    const lbl = document.createElement("div");
+    lbl.className = "tl-activity-label";
+    const appName = document.createElement("span");
+    appName.className = "tl-act-app";
+    appName.textContent = appLabel(ev.data.app);
+    const titleEl = document.createElement("span");
+    titleEl.className = "tl-act-title";
+    titleEl.textContent = ev.data.title || "";
+    const durEl = document.createElement("span");
+    durEl.className = "tl-act-dur";
+    durEl.textContent = formatDuration(dur);
+    lbl.appendChild(appName);
+    lbl.appendChild(titleEl);
+    lbl.appendChild(durEl);
+    band.appendChild(lbl);
+
     band.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(ev.timestamp); });
     host.appendChild(band);
   }
