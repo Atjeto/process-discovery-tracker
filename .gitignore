@@ -1,9 +1,18 @@
+# Repo-root build outputs ONLY -- patterns leading with / so that
+# `dist/`, `build/`, `out/`, etc. inside node_modules/<pkg>/ survive
+# the asar packaging step (electron-packager honors .gitignore here
+# and silently strips matching subfolders from the bundle, which left
+# obs-websocket-js, bpmn-js, and cytoscape broken in packaged builds).
 node_modules/
-dist/
-dist-electron/
-dist-packaged/
-build/
-out/
+/dist/
+/dist-electron/
+/dist-packaged/
+/build/
+/out/
+capture/dist/
+capture/dist-electron/
+viewer/dist/
+viewer/dist-electron/
 
 # Python bytecode caches
 __pycache__/

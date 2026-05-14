@@ -1,7 +1,11 @@
 node_modules/
-dist/
-dist-electron/
-out/
+# Leading slashes anchor these patterns to capture/ root so they
+# don't match node_modules/<pkg>/dist/ etc. (electron-packager honors
+# .gitignore when building the asar, and unanchored `dist/` previously
+# stripped obs-websocket-js's compiled output from the bundle).
+/dist/
+/dist-electron/
+/out/
 *.log
 boot.log
 tray-icon.ico
