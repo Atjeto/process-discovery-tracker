@@ -88,6 +88,12 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .map-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .map-status-label { color: var(--fg-3); }
 .map-status-detail { color: var(--fg); }
+.map-status-select {
+  background: var(--bg-3); color: var(--fg);
+  border: 1px solid var(--rule); border-radius: 3px;
+  padding: 1px 4px; font-size: 10px; font-family: var(--font-mono);
+  outline: none; max-width: 180px;
+}
 .link-btn { background: transparent; border: 0; padding: 2px 4px; color: var(--accent);
   font-family: inherit; font-size: 11px; cursor: pointer; text-decoration: underline;
   text-underline-offset: 2px; transition: color 0.12s; }

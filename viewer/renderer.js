@@ -1031,9 +1031,17 @@ async function loadSessionIntoView(folder) {
   updateProcessMapStatus();
 }
 
+/* Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix. */
+function countBpmnNodes(xml) {
+  const nodeRe = /<(?:[\w-]+:)?(task|userTask|serviceTask|manualTask|scriptTask|sendTask|receiveTask|businessRuleTask|callActivity|subProcess|startEvent|endEvent|intermediateThrowEvent|intermediateCatchEvent|exclusiveGateway|parallelGateway|inclusiveGateway|eventBasedGateway|complexGateway)\b/g;
+  return (xml.match(nodeRe) || []).length;
+}
+
 /* Surface the per-session BPMN output produced by `normalize.py --mine`.
    Reads process_map.bpmn from the loaded session folder, counts flow
-   nodes, and exposes Open / Reveal affordances in the actions bar. */
+   nodes, and exposes Open / Reveal affordances in the actions bar.
+   Also detects per-case BPMNs under process_maps/ and exposes them
+   via a dropdown so multi-case sessions are first-class. */
 function updateProcessMapStatus() {
   const wrap = document.getElementById("process-map-status");
   if (!wrap) return;
@@ -1053,14 +1061,43 @@ function updateProcessMapStatus() {
     wrap.style.display = "none";
     return;
   }
-  // Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix.
-  const nodeRe = /<(?:[\w-]+:)?(task|userTask|serviceTask|manualTask|scriptTask|sendTask|receiveTask|businessRuleTask|callActivity|subProcess|startEvent|endEvent|intermediateThrowEvent|intermediateCatchEvent|exclusiveGateway|parallelGateway|inclusiveGateway|eventBasedGateway|complexGateway)\b/g;
-  const matches = xml.match(nodeRe) || [];
-  const nodeCount = matches.length;
+  const nodeCount = countBpmnNodes(xml);
   const detail = document.getElementById("process-map-detail");
   if (detail) detail.textContent = nodeCount + (nodeCount === 1 ? " node" : " nodes");
   wrap.style.display = "";
   wrap.dataset.bpmnPath = bpmnPath;
+
+  // Per-case BPMNs (if normalize.py --mine wrote any)
+  const perCaseDir = path.join(currentSession.sessionFolder, "process_maps");
+  const sel = document.getElementById("process-map-case-select");
+  if (!sel) return;
+  let perCaseFiles = [];
+  try {
+    if (fs.existsSync(perCaseDir)) {
+      perCaseFiles = fs.readdirSync(perCaseDir)
+        .filter(f => f.toLowerCase().endsWith(".bpmn"))
+        .sort();
+    }
+  } catch (_) {}
+  if (!perCaseFiles.length) {
+    sel.style.display = "none";
+    return;
+  }
+  sel.style.display = "";
+  const opts = ['<option value="">Aggregate (all cases)</option>']
+    .concat(perCaseFiles.map(f => `<option value="${f}">${f.replace(/\.bpmn$/i, "")}</option>`));
+  sel.innerHTML = opts.join("");
+  sel.onchange = () => {
+    const v = sel.value;
+    wrap.dataset.bpmnPath = v
+      ? path.join(perCaseDir, v)
+      : bpmnPath;
+    try {
+      const x = fs.readFileSync(wrap.dataset.bpmnPath, "utf8");
+      const n = countBpmnNodes(x);
+      if (detail) detail.textContent = n + (n === 1 ? " node" : " nodes");
+    } catch (_) {}
+  };
 }
 
 (function wireProcessMapButtons() {

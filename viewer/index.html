@@ -62,8 +62,9 @@
             <span class="map-status-dot"></span>
             <span class="map-status-label">Process map:</span>
             <span class="map-status-detail" id="process-map-detail">—</span>
-            <button class="link-btn" id="btn-open-bpmn" title="Open process_map.bpmn in the system default app">Open</button>
-            <button class="link-btn" id="btn-reveal-bpmn" title="Show process_map.bpmn in File Explorer">Reveal in folder</button>
+            <select id="process-map-case-select" class="map-status-select" title="Aggregate model across all cases, or pick a single case" style="display:none"></select>
+            <button class="link-btn" id="btn-open-bpmn" title="Open the selected BPMN file in the system default app">Open</button>
+            <button class="link-btn" id="btn-reveal-bpmn" title="Show the BPMN file in File Explorer">Reveal in folder</button>
           </span>
           <button id="btn-session-md">Export Markdown</button>
           <span class="flex-spacer"></span>

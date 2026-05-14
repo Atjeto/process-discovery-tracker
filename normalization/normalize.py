@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import sys
 from datetime import datetime, timezone
@@ -360,6 +361,7 @@ def normalize(
 
     if mine:
         import mining as mining_mod
+        from pm4py.objects.log.obj import EventLog
         # DFG first - pure data, no Graphviz needed. Always emit if possible.
         try:
             dfg, starts, ends = mining_mod.discover_dfg(log)
@@ -369,8 +371,9 @@ def normalize(
             print(f"[normalize] wrote {dfg_path}")
         except Exception as e:
             print(f"[normalize] WARNING: DFG mining failed: {e}")
-        # BPMN export - layout-free serialization (no Graphviz needed).
-        # bpmn-js and Adonis auto-layout on import.
+        # Aggregate BPMN: one model fitting ALL traces together. Right
+        # answer when every case in the session is an instance of the
+        # same underlying process.
         try:
             bpmn = mining_mod.discover_inductive(log, noise_threshold=0.2)
             bpmn_path = session_folder / "process_map.bpmn"
@@ -378,6 +381,36 @@ def normalize(
             print(f"[normalize] wrote {bpmn_path}")
         except Exception as e:
             print(f"[normalize] WARNING: BPMN mining failed: {e}")
+        # Per-case BPMN: one model per individual case. Right answer
+        # when the session contains MIXED processes (the aggregate would
+        # mash them into one nonsense model), or for instance-to-instance
+        # comparison. Output dir: process_maps/<case_id>.bpmn next to
+        # the session folder so the analyst can see all of them at a
+        # glance without cluttering the top level.
+        if len(log) > 1:
+            per_case_dir = session_folder / "process_maps"
+            per_case_dir.mkdir(exist_ok=True)
+            wrote = 0
+            for trace in log:
+                case_id = (trace.attributes.get("case:id")
+                           or trace.attributes.get("concept:name")
+                           or f"case_{wrote}")
+                safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(case_id))[:80]
+                if len(trace) < 2:
+                    # PM4Py's inductive miner needs at least 2 events to
+                    # produce a meaningful model; single-event traces
+                    # collapse to a degenerate task.
+                    continue
+                try:
+                    sub_log = EventLog([trace])
+                    case_bpmn = mining_mod.discover_inductive(sub_log, noise_threshold=0.2)
+                    case_path = per_case_dir / f"{safe}.bpmn"
+                    mining_mod.export_bpmn(case_bpmn, str(case_path))
+                    wrote += 1
+                except Exception as e:
+                    print(f"[normalize] WARNING: per-case BPMN failed for {case_id}: {e}")
+            if wrote:
+                print(f"[normalize] wrote {wrote} per-case BPMNs to {per_case_dir}")
 
     # Phase E exports
     if pdd_out:
