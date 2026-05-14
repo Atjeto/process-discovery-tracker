@@ -74,7 +74,11 @@ Write-Host "Patching $($pthFile.Name) to enable site-packages"
 $content = Get-Content -Raw -Path $pthFile.FullName
 $content = $content -replace '(?m)^#?\s*import\s+site\s*$', "import site"
 if ($content -notmatch "import site") { $content += "`r`nimport site`r`n" }
-Set-Content -Path $pthFile.FullName -Value $content -Encoding UTF8
+# CRITICAL: Python embeddable parser breaks on UTF-8 BOM in ._pth files.
+# PowerShell 5.x's Set-Content -Encoding UTF8 writes a BOM; bypass it via
+# WriteAllText with a no-BOM UTF8 encoding.
+$noBomUtf8 = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($pthFile.FullName, $content, $noBomUtf8)
 
 # Bootstrap pip via get-pip.py
 $getPip = Join-Path $workDir "get-pip.py"

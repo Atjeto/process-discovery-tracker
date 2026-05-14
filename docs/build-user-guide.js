@@ -281,6 +281,7 @@ content.push(
   numbered("Copy the packaged viewer folder to a known location, for example C:\\Tools\\PDT\\viewer\\."),
   numbered("Make sure either the normalization/ folder is a sibling of viewer/, OR the viewer is configured to find Python with the normalization scripts. The viewer searches in this order: PDT_PYTHON env var, then a sibling python-embeddable/ folder, then system python on PATH."),
   numbered("Launch the viewer (Process Discovery Viewer.exe in a packaged build, or `npm start` in dev)."),
+  note("Optional: install Graphviz from graphviz.org and add its bin folder to PATH if you need BPMN file export. The DFG view in the aggregate panel renders without Graphviz; only the BPMN file generation requires Graphviz's `dot` executable. Without it, normalize.py emits dfg.json + stats + XES + CSV but skips process_map.bpmn with a friendly warning."),
 );
 
 /* 3. Configuration */

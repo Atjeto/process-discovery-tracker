@@ -93,8 +93,45 @@ Items the design explicitly punts to v1.5+ or beyond:
 
 ## Tooling
 
+- `scripts/build-distribution.ps1` - orchestrates the complete ship-ready build (see "Building for distribution" below).
 - `scripts/build-python-embeddable.ps1` - downloads the Python embeddable distribution, enables site-packages, bootstraps pip, installs `normalization/requirements.txt`, and lands a self-contained `viewer/python/` folder that the viewer's `python-runner.js` auto-discovers. Production install topology per §11.5 option (a).
 - `scripts/prune-sessions.py` - storage retention CLI. Lists or deletes captured session folders older than N days. Defaults to a dry-run; pass `--apply` to delete. Optional `--keep-recovered` skips orphan-recovered sessions.
+
+## Building for distribution
+
+One command produces zip-and-ship Windows folders for both apps, with the bundled Python and normalization scripts already inside the viewer's `resources/`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-distribution.ps1
+```
+
+Output lands in `dist/`:
+
+```
+dist/
+  capture/<Process Discovery Tracker-win32-x64>/
+    Process Discovery Tracker.exe
+    resources/
+    ...
+  viewer/<Process Discovery Viewer-win32-x64>/
+    Process Discovery Viewer.exe
+    resources/
+      python/python.exe          (PM4Py, pandas, networkx, pyyaml preinstalled)
+      normalization/normalize.py (normalization pipeline)
+    ...
+  User-Guide.docx
+  DISTRIBUTION.md
+```
+
+To ship: zip each app folder and copy to the target machine. Recipients unzip and run the .exe directly. No install, no admin rights, no Python install required on the analyst side.
+
+Flags:
+- `-SkipPython` - skip rebuilding `viewer/python/` if it already exists. Saves 3-5 minutes.
+- `-Clean` - wipe `dist/` and per-app `dist/` folders before building.
+
+The build uses `electron-packager` rather than `electron-builder` to avoid the Windows symlink requirement during winCodeSign cache extraction. If you want NSIS installers, enable Developer Mode in Windows Settings (or run as admin) and the per-app `npm run dist` scripts will produce them via electron-builder.
+
+Pre-build prerequisites: Node 18+, npm, PowerShell. The script downloads the Python embeddable and the Electron binaries on first run; subsequent runs use the cache.
 
 ## UI / UX in this pass
 

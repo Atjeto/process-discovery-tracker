@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "package": "electron-packager . \"Process Discovery Viewer\" --platform=win32 --arch=x64 --overwrite --out=dist",
+    "package": "electron-packager . \"Process Discovery Viewer\" --platform=win32 --arch=x64 --overwrite --out=dist --ignore=^/dist --ignore=^/dist-electron --ignore=^/python --ignore=^/normalization --extra-resource=python --extra-resource=normalization",
     "dist": "electron-builder --win --x64 --publish=never"
   },
   "engines": {
@@ -36,15 +36,50 @@
       "charts.js",
       "dfg-viewer.js",
       "bpmn-viewer.js",
+      "report-md.js",
       "styles.css",
       "package.json",
       "node_modules/**/*"
     ],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "extraResources": [
+      {
+        "from": "../normalization",
+        "to": "normalization",
+        "filter": [
+          "**/*.py",
+          "*.yaml",
+          "*.txt",
+          "!__pycache__/**"
+        ]
+      },
+      {
+        "from": "python",
+        "to": "python"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Process Discovery Viewer"
     }
   }
 }

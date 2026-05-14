@@ -158,6 +158,9 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 
   <dt>Where does my data go?</dt>
   <dd><code>%APPDATA%\\process-discovery-tracker\\sessions\\</code> on Windows. The tray has an "Open sessions folder" item.</dd>
+
+  <dt>BPMN export skipped during normalization</dt>
+  <dd>PM4Py's BPMN file writer invokes Graphviz <code>dot</code> for layout. Install Graphviz from graphviz.org and add its bin folder to PATH if you need BPMN files. The DFG view in the viewer renders without Graphviz; only the BPMN file generation requires it.</dd>
 </dl>
 
 <hr />

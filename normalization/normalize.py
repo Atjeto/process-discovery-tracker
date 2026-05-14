@@ -27,10 +27,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# Python embeddable distributions do not auto-add the script's directory
+# to sys.path (the ._pth file overrides default behavior). Add it ourselves
+# so sibling modules (case_assignment, classification, ...) import cleanly
+# whether we run under regular Python or the bundled embeddable.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from case_assignment import assign_case_ids, collect_cases
 from classification import classify_events, collapse_adjacent, load_taxonomy
 from xes_export import build_event_log, export_xes, export_csv
-import statistics as stats
+import stats_compute as stats
 
 
 def load_events(events_file: Path) -> list[dict[str, Any]]:
@@ -193,20 +199,32 @@ def normalize(
     print(f"[normalize] wrote {stats_path}")
 
     if mine:
+        import mining as mining_mod
+        # DFG first - pure data, no Graphviz needed. Always emit if possible.
         try:
-            import mining as mining_mod
-            bpmn = mining_mod.discover_inductive(log, noise_threshold=0.2)
-            bpmn_path = session_folder / "process_map.bpmn"
-            mining_mod.export_bpmn(bpmn, str(bpmn_path))
-            print(f"[normalize] wrote {bpmn_path}")
-
             dfg, starts, ends = mining_mod.discover_dfg(log)
             dfg_path = session_folder / "dfg.json"
             with open(dfg_path, "w", encoding="utf-8") as f:
                 json.dump(mining_mod.dfg_to_dict(dfg, starts, ends), f, indent=2)
             print(f"[normalize] wrote {dfg_path}")
         except Exception as e:
-            print(f"[normalize] WARNING: mining failed: {e}")
+            print(f"[normalize] WARNING: DFG mining failed: {e}")
+        # BPMN export - PM4Py's BPMN write path invokes Graphviz `dot` for
+        # layout. Non-fatal when missing; the viewer's DFG renders fine
+        # without BPMN.
+        try:
+            bpmn = mining_mod.discover_inductive(log, noise_threshold=0.2)
+            bpmn_path = session_folder / "process_map.bpmn"
+            mining_mod.export_bpmn(bpmn, str(bpmn_path))
+            print(f"[normalize] wrote {bpmn_path}")
+        except Exception as e:
+            msg = str(e)
+            if "dot" in msg.lower() or "graphviz" in msg.lower():
+                print("[normalize] WARNING: BPMN export skipped - Graphviz `dot` not on PATH. "
+                      "Install Graphviz from graphviz.org if you need BPMN files. "
+                      "The DFG (dfg.json) renders in the viewer regardless.")
+            else:
+                print(f"[normalize] WARNING: BPMN mining failed: {msg}")
 
     return {
         "session_folder": str(session_folder),

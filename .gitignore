@@ -5,6 +5,12 @@ dist-packaged/
 build/
 out/
 
+# Bundled python embeddable (built by scripts/build-python-embeddable.ps1 -- ~450 MB)
+viewer/python/
+
+# Staged at distribution-build time, deleted after; never checked in
+viewer/normalization/
+
 # Captured sessions are local data, not source
 sessions/
 
