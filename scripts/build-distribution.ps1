@@ -53,10 +53,23 @@ Write-Host "Process Discovery Tracker - Distribution build" -ForegroundColor Cya
 Write-Host "Repo: $repoRoot"
 Write-Host ""
 
+function Remove-LongPathFolder([string]$folder) {
+  #PowerShell's Remove-Item -Recurse hits MAX_PATH on deep pm4py
+  #__pycache__ trees. cmd's rmdir /S /Q handles long paths via the
+  #native Windows shell.
+  if (-not (Test-Path $folder)) { return }
+  & cmd /c "rmdir /S /Q `"$folder`"" | Out-Null
+  if (Test-Path $folder) {
+    #Fallback: try the PowerShell path in case rmdir failed for a
+    #different reason.
+    Remove-Item -Recurse -Force -LiteralPath $folder -ErrorAction SilentlyContinue
+  }
+}
+
 if ($Clean) {
   Write-Host "Cleaning previous build outputs..."
   foreach ($d in @($distDir, (Join-Path $captureDir "dist"), (Join-Path $viewerDir "dist"), $viewerNormStage)) {
-    if (Test-Path $d) { Remove-Item -Recurse -Force $d }
+    Remove-LongPathFolder $d
   }
 }
 
@@ -111,7 +124,7 @@ if (Test-Path $viewerNormStage) { Remove-Item -Recurse -Force $viewerNormStage }
 # Step 5: Assemble dist/
 Write-Host ""
 Write-Host "[5/5] Assembling dist/" -ForegroundColor Yellow
-if (Test-Path $distDir) { Remove-Item -Recurse -Force $distDir }
+Remove-LongPathFolder $distDir
 New-Item -ItemType Directory -Path $distDir | Out-Null
 
 $captureBuild = Get-ChildItem (Join-Path $captureDir "dist") -Directory | Select-Object -First 1
