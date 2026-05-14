@@ -100,7 +100,7 @@ Items the design explicitly punts to v1.5+ or beyond:
 
 ## Security posture
 
-See [SECURITY.md](SECURITY.md) for the threat model, network behavior, Electron hardening, input-validation matrix, dependency audit status, and vulnerability reporting process. The short version:
+See [SECURITY.md](SECURITY.md) for the full threat model and [docs/Security-QA.md](docs/Security-QA.md) for the one-page Q&A you can paste into a corp security ticket. Run `powershell -ExecutionPolicy Bypass -File .\scripts\preflight.ps1` before any commit or release to fail-fast on runtime advisory regressions. The short version:
 
 - No network egress at runtime (only OBS on `ws://127.0.0.1:4455`).
 - No telemetry, no update checks.

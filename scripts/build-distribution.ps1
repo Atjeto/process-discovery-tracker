@@ -133,10 +133,26 @@ function Copy-WithRobocopy([string]$src, [string]$dst) {
 Copy-WithRobocopy $captureBuild.FullName (Join-Path $distDir "capture")
 Copy-WithRobocopy $viewerBuild.FullName (Join-Path $distDir "viewer")
 
+# Generate SBOM into dist/
+Write-Host ""
+Write-Host "Generating SBOM..." -ForegroundColor Yellow
+& node (Join-Path $repoRoot "scripts\generate-sbom.js") | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "WARNING: SBOM generation failed; continuing anyway." -ForegroundColor Yellow
+}
+
 # User guide
 $userGuide = Join-Path $repoRoot "docs\User-Guide.docx"
 if (Test-Path $userGuide) {
   Copy-Item $userGuide (Join-Path $distDir "User-Guide.docx")
+}
+
+# Security docs that recipients / security teams want
+foreach ($doc in @("SECURITY.md", "LICENSE", "docs\Security-QA.md")) {
+  $src = Join-Path $repoRoot $doc
+  if (Test-Path $src) {
+    Copy-Item $src (Join-Path $distDir (Split-Path -Leaf $src))
+  }
 }
 
 # DISTRIBUTION.md
@@ -169,6 +185,12 @@ and the normalization pipeline already installed in ``resources\``.
 Complete user guide covering installation, configuration, OBS setup,
 running a session, reviewing in the viewer, aggregate analysis, exports,
 annotations, keyboard shortcuts, install topology, and troubleshooting.
+
+### Security artifacts (for corp security review)
+- ``SECURITY.md`` - threat model, data flows, network behavior, Electron hardening, input validation, dependency audit status, vulnerability reporting.
+- ``Security-QA.md`` - one-page Q&A for fast-track security review.
+- ``LICENSE`` - internal-use license.
+- ``SBOM.json`` - CycloneDX 1.5 software bill of materials, ~400 components covering both apps and the bundled Python.
 
 ## Installation
 
