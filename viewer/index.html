@@ -25,6 +25,7 @@
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
       <button class="tab" data-view="aggregate"><span class="kbd">2</span> Aggregate</button>
       <button class="tab" data-view="canonical"><span class="kbd">3</span> Process Template</button>
+      <button class="tab" data-view="vocabularies"><span class="kbd">4</span> Vocabularies</button>
     </nav>
     <div class="topbar-meta">
       <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
@@ -55,6 +56,7 @@
           <button id="btn-normalize" class="primary" title="Build the timeline, classify activities, compute statistics, and discover a process map.">Analyze session</button>
           <button id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
           <button id="btn-save-vocab" title="Generate a starter App Vocabulary YAML from this session's captured interactions. Edit names afterward; once saved into normalization/app_vocabularies/, future sessions auto-use it.">Save App Vocabulary...</button>
+          <button id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
           <label class="cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
           <button id="btn-session-md">Export Markdown</button>
           <span class="flex-spacer"></span>
@@ -400,6 +402,33 @@
             <button id="btn-load-exemplar">Load exemplar session...</button>
             <div id="exemplar-events"></div>
             <p class="meta" id="exemplar-match-rate"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========= Vocabularies view (form editor, no YAML) ========= -->
+    <section class="view" id="view-vocabularies">
+      <div class="loaded">
+        <div class="template-explainer">
+          <h2>App Vocabularies</h2>
+          <p>Each app you record gets one vocabulary file that maps its UI elements (Save button, Search field, etc.) to meaningful names. The names roll into step names automatically on every future session that touches the app. Edit them as a form here - no YAML required.</p>
+          <p class="meta">Underlying storage is YAML at <code>normalization/app_vocabularies/</code>. You can edit those files directly if you prefer, or use this form. Both write to the same place.</p>
+        </div>
+        <div class="actions-bar">
+          <button id="btn-vocab-new" class="primary">+ New vocabulary</button>
+          <button id="btn-vocab-reload">Reload list</button>
+          <button id="btn-vocab-open-yaml" disabled>Open YAML in editor</button>
+          <span class="flex-spacer"></span>
+          <span class="meta" id="vocab-list-meta"></span>
+        </div>
+        <div class="vocab-grid">
+          <div class="panel vocab-list-panel">
+            <div class="editor-pane-title">Vocabularies on disk</div>
+            <div id="vocab-list"></div>
+          </div>
+          <div class="panel vocab-editor-panel">
+            <div id="vocab-editor"></div>
           </div>
         </div>
       </div>

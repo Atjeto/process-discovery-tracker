@@ -17,7 +17,8 @@
     "bpmn-js": "^17.9.1",
     "cytoscape": "^3.30.0",
     "cytoscape-dagre": "^2.5.0",
-    "dagre": "^0.8.5"
+    "dagre": "^0.8.5",
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
     "@electron/packager": "^20.0.0",

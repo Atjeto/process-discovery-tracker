@@ -88,6 +88,9 @@ function activateTab(name) {
       if (window.PdtDfg) window.PdtDfg.fit();
     }, 100);
   }
+  if (name === "vocabularies") {
+    reloadVocabList();
+  }
 }
 
 /* ============ Session view-mode switcher (Flow / Steps / Phases) ===
@@ -1108,13 +1111,27 @@ function positionPlayhead() {
   const first = new Date(currentSession.events[0].timestamp).getTime();
   const last = new Date(currentSession.events[currentSession.events.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
-  const obsStartTs = currentSession.manifest.obs && currentSession.manifest.obs.recording_start_ts;
+  const obsStartTs = videoStartTs();
   if (!obsStartTs) { ph.style.display = "none"; return; }
   const playT = new Date(obsStartTs).getTime() + video.currentTime * 1000;
   const x = ((playT - first) / span) * 100;
   ph.style.left = x + "%";
   ph.style.display = "";
   setVideoOverlay(formatPlayback(video.currentTime, video.duration));
+}
+
+/* The "video start timestamp" -- i.e. the wall clock at video t=0.
+   Priority: external-video offset (Teams recording etc.), else OBS's
+   recording_start_ts. Returns ISO string or null. */
+function videoStartTs() {
+  if (!currentSession) return null;
+  // External video override: session started_at + offsetMs = wall-clock when video t=0.
+  if (currentSession.externalVideoOffsetMs != null && currentSession.manifest && currentSession.manifest.started_at) {
+    const ms = new Date(currentSession.manifest.started_at).getTime()
+             + Number(currentSession.externalVideoOffsetMs);
+    return new Date(ms).toISOString();
+  }
+  return (currentSession.manifest.obs && currentSession.manifest.obs.recording_start_ts) || null;
 }
 
 function formatPlayback(curS, durS) {
@@ -1130,7 +1147,7 @@ function formatPlayback(curS, durS) {
 function seekToTimestamp(ts) {
   if (!currentSession) return;
   const video = $("#video");
-  const obsStartTs = currentSession.manifest.obs && currentSession.manifest.obs.recording_start_ts;
+  const obsStartTs = videoStartTs();
   if (!obsStartTs || !video.src) return;
   const offsetS = (new Date(ts).getTime() - new Date(obsStartTs).getTime()) / 1000;
   if (offsetS < 0) return;
@@ -1139,8 +1156,7 @@ function seekToTimestamp(ts) {
 }
 
 function videoTimeToSessionTs(seconds) {
-  if (!currentSession) return null;
-  const obsStartTs = currentSession.manifest.obs && currentSession.manifest.obs.recording_start_ts;
+  const obsStartTs = videoStartTs();
   if (!obsStartTs) return null;
   return new Date(new Date(obsStartTs).getTime() + seconds * 1000).toISOString();
 }
@@ -1391,7 +1407,7 @@ async function persistAnnotations(anno) {
 async function adjustMarkerToVideoTime(markerEvent) {
   if (!currentSession) return;
   const video = $("#video");
-  const obsStartTs = currentSession.manifest.obs && currentSession.manifest.obs.recording_start_ts;
+  const obsStartTs = videoStartTs();
   let newTs;
   if (obsStartTs && video && video.src) {
     newTs = new Date(new Date(obsStartTs).getTime() + (video.currentTime || 0) * 1000).toISOString();
@@ -1965,6 +1981,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "1") activateTab("session");
   else if (e.key === "2") activateTab("aggregate");
   else if (e.key === "3") activateTab("canonical");
+  else if (e.key === "4") activateTab("vocabularies");
   // Step editor shortcuts (only when on session view and steps panel)
   else if (currentLevel === "steps" && currentSession) {
     const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
@@ -2089,3 +2106,328 @@ $("#topbar-meta").textContent = "v0.1 · " + new Date().toLocaleDateString();
 ipcRenderer.on("viewer:openInitialSession", (_e, folder) => {
   if (folder) loadSessionIntoView(folder);
 });
+
+/* ============ Vocabularies tab (form editor, no YAML) ============= */
+
+let vocabState = {
+  list: [],
+  selectedPath: null,
+  current: null,
+  dirty: false,
+};
+
+async function reloadVocabList() {
+  const r = await ipcRenderer.invoke("viewer:listAppVocabs");
+  vocabState.list = (r && r.vocabs) || [];
+  const meta = $("#vocab-list-meta");
+  if (meta) {
+    if (vocabState.list.length) {
+      meta.textContent = vocabState.list.length + " vocab(s) across " + ((r.dirs || []).length) + " folder(s)";
+    } else {
+      meta.textContent = "no vocabularies yet";
+    }
+  }
+  renderVocabList();
+  if (vocabState.selectedPath && !vocabState.list.some(v => v.path === vocabState.selectedPath)) {
+    vocabState.selectedPath = null;
+    vocabState.current = null;
+    renderVocabEditor();
+  } else if (vocabState.selectedPath) {
+    await selectVocab(vocabState.selectedPath);
+  } else {
+    renderVocabEditor();
+  }
+}
+
+function renderVocabList() {
+  const host = $("#vocab-list");
+  if (!host) return;
+  if (!vocabState.list.length) {
+    host.innerHTML =
+      '<div class="empty-pane">' +
+      '<p><strong>No vocabularies yet.</strong></p>' +
+      '<p>Two ways to start:</p>' +
+      '<ol>' +
+      '<li>Click <strong>+ New vocabulary</strong> above to start an empty one.</li>' +
+      '<li>Capture a prep session from the tracker tray (<em>Start app vocabulary prep session...</em>), then bootstrap from it.</li>' +
+      '</ol>' +
+      '</div>';
+    return;
+  }
+  host.innerHTML = "";
+  for (const v of vocabState.list) {
+    const row = document.createElement("div");
+    row.className = "vocab-row" + (v.path === vocabState.selectedPath ? " selected" : "");
+    row.innerHTML =
+      '<div class="vocab-row-head">' +
+      '<span class="vocab-row-name">' + escapeHtml(v.name || v.id) + '</span>' +
+      '<span class="vocab-row-count">' + v.interaction_count + '</span>' +
+      '</div>' +
+      '<div class="vocab-row-meta">' + escapeHtml(v.id) + ' · v' + v.version + ' · ' + escapeHtml(v.file) + '</div>';
+    row.addEventListener("click", () => selectVocab(v.path));
+    host.appendChild(row);
+  }
+}
+
+async function selectVocab(p) {
+  if (vocabState.dirty) {
+    if (!confirm("You have unsaved changes. Discard them?")) return;
+  }
+  vocabState.selectedPath = p;
+  vocabState.dirty = false;
+  const v = await ipcRenderer.invoke("viewer:readVocab", p);
+  if (!v) {
+    vocabState.current = null;
+    toast("Could not read vocab file", "error");
+  } else if (v._error) {
+    vocabState.current = null;
+    toast("Vocab YAML parse error: " + v._error, "error");
+  } else {
+    vocabState.current = v;
+  }
+  renderVocabList();
+  renderVocabEditor();
+  const btn = $("#btn-vocab-open-yaml");
+  if (btn) btn.disabled = !p;
+}
+
+function renderVocabEditor() {
+  const host = $("#vocab-editor");
+  if (!host) return;
+  const v = vocabState.current;
+  if (!v) {
+    host.innerHTML =
+      '<div class="empty-pane">' +
+      '<p>Pick a vocabulary on the left to edit it, or click <strong>+ New vocabulary</strong> above to create one.</p>' +
+      '<p class="meta">The editor renders the YAML as a form. The underlying file is rewritten on save; you can also edit the YAML directly with <em>Open YAML in editor</em>.</p>' +
+      '</div>';
+    return;
+  }
+  const interactions = v.interactions || [];
+  const scope = v.scope || {};
+  host.innerHTML =
+    '<div class="vocab-head">' +
+    '<label>Display name<input type="text" id="vocab-name" value="' + escapeAttr(v.name || "") + '" placeholder="e.g., Salesforce"></label>' +
+    '<label>Internal id<input type="text" id="vocab-id" value="' + escapeAttr(v.id || "") + '" placeholder="salesforce"></label>' +
+    '<label>Version<input type="number" id="vocab-version" value="' + escapeAttr(v.version || 1) + '" min="1" step="1"></label>' +
+    '</div>' +
+    '<div class="vocab-head">' +
+    '<label>Scope: process name (.exe)<input type="text" id="vocab-scope-proc" value="' + escapeAttr(scope.process_name || "") + '" placeholder="chrome.exe"></label>' +
+    '<label>Scope: window title regex (optional)<input type="text" id="vocab-scope-title" value="' + escapeAttr(scope.window_title_regex || "") + '" placeholder=".*Salesforce.*"></label>' +
+    '</div>' +
+    '<div class="vocab-toolbar">' +
+    '<strong>Interactions (' + interactions.length + ')</strong>' +
+    '<span class="flex-spacer"></span>' +
+    '<button id="btn-vocab-add-interaction">+ Add interaction</button>' +
+    '<button id="btn-vocab-save" class="primary">Save vocabulary</button>' +
+    '</div>' +
+    '<div id="vocab-interactions"></div>';
+  renderVocabInteractions();
+  $("#vocab-name").addEventListener("input", markDirty);
+  $("#vocab-id").addEventListener("input", markDirty);
+  $("#vocab-version").addEventListener("input", markDirty);
+  $("#vocab-scope-proc").addEventListener("input", markDirty);
+  $("#vocab-scope-title").addEventListener("input", markDirty);
+  $("#btn-vocab-add-interaction").addEventListener("click", addInteraction);
+  $("#btn-vocab-save").addEventListener("click", saveVocab);
+}
+
+function renderVocabInteractions() {
+  const host = $("#vocab-interactions");
+  if (!host) return;
+  const interactions = (vocabState.current && vocabState.current.interactions) || [];
+  if (!interactions.length) {
+    host.innerHTML = '<p class="hint">No interactions yet. Click + Add interaction, or bootstrap from a prep session in the tracker tray.</p>';
+    return;
+  }
+  host.innerHTML = "";
+  for (let i = 0; i < interactions.length; i++) {
+    const ent = interactions[i];
+    const sig = ent.signature || {};
+    const flags = ent.flags || {};
+    const sigParts = [sig.control_type, sig.automation_id, sig.name].filter(Boolean);
+    const sigSummary = sigParts.length ? sigParts.join(" · ") : "(unset signature)";
+    const row = document.createElement("div");
+    row.className = "vocab-int";
+    row.dataset.idx = String(i);
+    row.innerHTML =
+      '<div class="vocab-int-head">' +
+      '<span class="vocab-int-num">' + (i + 1) + '</span>' +
+      '<div class="vocab-int-sig">' + escapeHtml(sigSummary) + '</div>' +
+      '<button class="icon-btn vocab-int-remove" title="Remove">✕</button>' +
+      '</div>' +
+      '<div class="vocab-int-body">' +
+      '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
+      '<div class="vocab-int-sig-fields">' +
+      '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
+      '<label>automation_id<input type="text" data-sig="automation_id" value="' + escapeAttr(sig.automation_id || "") + '"></label>' +
+      '<label>name (raw)<input type="text" data-sig="name" value="' + escapeAttr(sig.name || "") + '"></label>' +
+      '<label>window_title_regex<input type="text" data-sig="window_title_regex" value="' + escapeAttr(sig.window_title_regex || "") + '"></label>' +
+      '</div>' +
+      '<div class="vocab-int-flags">' +
+      '<label><input type="checkbox" data-flag="waste"' + (flags.waste ? " checked" : "") + '> Waste</label>' +
+      '<label><input type="checkbox" data-flag="automation_candidate"' + (flags.automation_candidate ? " checked" : "") + '> Automation candidate</label>' +
+      '<label><input type="checkbox" data-flag="exception_path"' + (flags.exception_path ? " checked" : "") + '> Exception path</label>' +
+      '</div>' +
+      '</div>';
+    row.querySelector(".vocab-int-remove").addEventListener("click", () => removeInteraction(i));
+    row.querySelectorAll("[data-field], [data-sig], [data-flag]").forEach(el => {
+      el.addEventListener("input", collectAndMark);
+      el.addEventListener("change", collectAndMark);
+    });
+    host.appendChild(row);
+  }
+}
+
+function collectAndMark() {
+  const v = vocabState.current;
+  if (!v) return;
+  v.name = $("#vocab-name").value.trim();
+  v.id = $("#vocab-id").value.trim();
+  v.version = parseInt($("#vocab-version").value, 10) || 1;
+  v.scope = v.scope || {};
+  const proc = $("#vocab-scope-proc").value.trim();
+  const titleR = $("#vocab-scope-title").value.trim();
+  if (proc) v.scope.process_name = proc; else delete v.scope.process_name;
+  if (titleR) v.scope.window_title_regex = titleR; else delete v.scope.window_title_regex;
+  const rows = document.querySelectorAll("#vocab-interactions .vocab-int");
+  v.interactions = [];
+  rows.forEach(row => {
+    const sig = {};
+    row.querySelectorAll("[data-sig]").forEach(el => {
+      const k = el.dataset.sig;
+      const val = el.value.trim();
+      if (val) sig[k] = val;
+    });
+    const ent = {
+      signature: sig,
+      name: row.querySelector('[data-field="name"]').value.trim() || "",
+    };
+    const flags = {};
+    row.querySelectorAll("[data-flag]").forEach(el => {
+      if (el.checked) flags[el.dataset.flag] = true;
+    });
+    if (Object.keys(flags).length) ent.flags = flags;
+    v.interactions.push(ent);
+  });
+  markDirty();
+}
+
+function markDirty() {
+  vocabState.dirty = true;
+  const btn = $("#btn-vocab-save");
+  if (btn) btn.textContent = "Save vocabulary*";
+}
+
+function addInteraction() {
+  const v = vocabState.current;
+  if (!v) return;
+  v.interactions = v.interactions || [];
+  v.interactions.push({ signature: { control_type: "Button", name: "" }, name: "" });
+  renderVocabInteractions();
+  markDirty();
+}
+
+function removeInteraction(idx) {
+  const v = vocabState.current;
+  if (!v) return;
+  v.interactions.splice(idx, 1);
+  renderVocabInteractions();
+  markDirty();
+}
+
+async function saveVocab() {
+  if (!vocabState.selectedPath || !vocabState.current) return;
+  collectAndMark();
+  const r = await ipcRenderer.invoke("viewer:writeVocab", {
+    path: vocabState.selectedPath,
+    vocab: vocabState.current,
+  });
+  if (!r || !r.ok) {
+    toast("Save failed: " + ((r && r.error) || "unknown"), "error");
+    return;
+  }
+  vocabState.dirty = false;
+  const btn = $("#btn-vocab-save");
+  if (btn) btn.textContent = "Save vocabulary";
+  toast("Vocabulary saved - re-analyze any session to apply", "success");
+  reloadVocabList();
+}
+
+if ($("#btn-vocab-new")) {
+  $("#btn-vocab-new").addEventListener("click", async () => {
+    const name = prompt("App name (e.g., 'Salesforce'):", "");
+    if (!name) return;
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const p = await ipcRenderer.invoke("viewer:newVocabFile", { suggestedId: id });
+    if (!p) return;
+    await reloadVocabList();
+    await selectVocab(p);
+    toast("New vocabulary created - fill in interactions and save", "success");
+  });
+}
+if ($("#btn-vocab-reload")) {
+  $("#btn-vocab-reload").addEventListener("click", reloadVocabList);
+}
+if ($("#btn-vocab-open-yaml")) {
+  $("#btn-vocab-open-yaml").addEventListener("click", () => {
+    if (vocabState.selectedPath) ipcRenderer.invoke("viewer:openVocabFile", vocabState.selectedPath);
+  });
+}
+
+/* ============ Attach external video (Teams recording, etc.) ======= */
+
+function parseHmsToMs(s) {
+  if (typeof s !== "string") return null;
+  s = s.trim();
+  const sign = s.startsWith("-") ? -1 : 1;
+  if (s.startsWith("-") || s.startsWith("+")) s = s.slice(1);
+  const m = s.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
+  if (!m) return null;
+  const ms = (Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])) * 1000
+           + (m[4] ? Number(m[4].padEnd(3, "0").slice(0, 3)) : 0);
+  return sign * ms;
+}
+
+async function attachExternalVideo() {
+  if (!currentSession) return;
+  const r = await ipcRenderer.invoke("viewer:attachExternalVideo", {
+    sessionFolder: currentSession.sessionFolder,
+  });
+  if (!r) return;
+  const m = currentSession.manifest || {};
+  const started_at = m.started_at;
+  if (!started_at) {
+    toast("Session manifest has no started_at; can't compute video offset", "error");
+    return;
+  }
+  const ans = prompt(
+    "When did the video recording start, relative to this session's start (HH:MM:SS, can be negative)?\n\n" +
+    "Session started at: " + started_at + "\n\n" +
+    "If the recording started a few seconds BEFORE the session, use -00:00:05.\n" +
+    "If the recording started AFTER the session, use 00:00:12.\n" +
+    "If they started together, leave 00:00:00.",
+    "00:00:00"
+  );
+  if (ans == null) return;
+  const offsetMs = parseHmsToMs(ans);
+  if (offsetMs === null) {
+    toast("Couldn't parse offset; try 00:00:05 or -00:01:30", "error");
+    return;
+  }
+  const saved = await ipcRenderer.invoke("viewer:saveExternalVideoSync", {
+    sessionFolder: currentSession.sessionFolder,
+    videoPath: r.path,
+    offsetMs,
+  });
+  if (!saved || !saved.ok) {
+    toast("Video attach failed: " + ((saved && saved.error) || "unknown"), "error");
+    return;
+  }
+  toast("Video attached - reloading session", "success");
+  await loadSessionIntoView(currentSession.sessionFolder);
+}
+
+if ($("#btn-attach-video")) {
+  $("#btn-attach-video").addEventListener("click", attachExternalVideo);
+}

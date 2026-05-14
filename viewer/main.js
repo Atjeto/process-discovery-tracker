@@ -186,10 +186,19 @@ function loadSessionData(sessionFolder) {
   const annotations = loadOptionalJson(path.join(sessionFolder, "annotations.json"));
   const obsSync = loadOptionalJson(path.join(sessionFolder, "obs", "sync.json"));
 
-  /* Locate the OBS recording. The manifest may point at an absolute
-     path written by OBS; if missing or unreachable, the viewer renders
-     the timeline without video. */
+  /* Locate the recording. Priority: an analyst-attached external video
+     (annotations.external_video, set via the Attach video flow for
+     Teams recordings etc.) wins over the manifest's OBS path. The OBS
+     path is the auto-captured default. */
   let recordingPath = manifest.obs && manifest.obs.recording_path;
+  let externalVideoOffsetMs = null;
+  if (annotations && annotations.external_video && annotations.external_video.path) {
+    const ext = annotations.external_video;
+    if (fs.existsSync(ext.path)) {
+      recordingPath = ext.path;
+      externalVideoOffsetMs = ext.offset_ms || 0;
+    }
+  }
   let recordingAvailable = !!(recordingPath && fs.existsSync(recordingPath));
 
   return {
@@ -202,6 +211,7 @@ function loadSessionData(sessionFolder) {
     obsSync,
     recordingPath,
     recordingAvailable,
+    externalVideoOffsetMs,
   };
 }
 
@@ -390,6 +400,98 @@ ipcMain.handle("viewer:listAppVocabs", () => {
 });
 
 ipcMain.handle("viewer:openVocabFile", (_e, p) => shell.openPath(p));
+
+ipcMain.handle("viewer:readVocab", (_e, p) => {
+  /* Parse a vocab YAML into a structured object for the editor.
+     Returns null if the file is missing or malformed. */
+  try {
+    if (!p || !fs.existsSync(p)) return null;
+    const yaml = require("js-yaml");
+    const raw = yaml.load(fs.readFileSync(p, "utf-8"));
+    if (!raw || typeof raw !== "object") return null;
+    return raw.app_vocabulary || null;
+  } catch (e) {
+    return { _error: e.message };
+  }
+});
+
+ipcMain.handle("viewer:writeVocab", (_e, { path: p, vocab }) => {
+  /* Serialize a vocab object back to YAML and write atomically.
+     The renderer is responsible for not destroying fields it didn't
+     intend to (the read-write cycle preserves everything). */
+  try {
+    const yaml = require("js-yaml");
+    const doc = { app_vocabulary: vocab };
+    const text = yaml.dump(doc, { lineWidth: 120, noRefs: true, sortKeys: false });
+    fs.writeFileSync(p, text, "utf-8");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("viewer:newVocabFile", async (_e, { suggestedId }) => {
+  /* Create a new empty vocab file. Returns the path or null on cancel. */
+  let defaultPath = (suggestedId || "new-app") + ".yaml";
+  const dir = appVocabDefaultDir();
+  if (dir) defaultPath = path.join(dir, defaultPath);
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: "New App Vocabulary",
+    defaultPath,
+    filters: [{ name: "YAML", extensions: ["yaml", "yml"] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  const yaml = require("js-yaml");
+  const id = (suggestedId || path.basename(r.filePath, path.extname(r.filePath))).toLowerCase();
+  const seed = {
+    app_vocabulary: {
+      id, name: id, version: 1,
+      scope: { process_name: "" },
+      interactions: [],
+    },
+  };
+  fs.writeFileSync(r.filePath, yaml.dump(seed, { sortKeys: false }), "utf-8");
+  return r.filePath;
+});
+
+/* External video attach (Teams recording, screen capture from any tool).
+   Stored on the session's annotations under external_video so the raw
+   manifest stays untouched. */
+ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder }) => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: "Attach external video",
+    properties: ["openFile"],
+    filters: [{ name: "Video", extensions: ["mp4", "mkv", "webm", "mov", "avi"] }],
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  return { path: r.filePaths[0] };
+});
+
+ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, offsetMs }) => {
+  /* Write to annotations.json under external_video; preserve all other
+     annotation state. */
+  try {
+    const root = path.resolve(sessionFolder);
+    if (!fs.existsSync(path.join(root, "manifest.json"))) {
+      return { ok: false, error: "Not a session folder" };
+    }
+    const annoPath = path.join(root, "annotations.json");
+    let anno = {};
+    if (fs.existsSync(annoPath)) {
+      try { anno = JSON.parse(fs.readFileSync(annoPath, "utf-8")) || {}; }
+      catch (_) { anno = {}; }
+    }
+    anno.external_video = {
+      path: videoPath,
+      offset_ms: offsetMs || 0,
+      attached_at: new Date().toISOString(),
+    };
+    fs.writeFileSync(annoPath, JSON.stringify(anno, null, 2));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 /* --- Annotations write-back --------------------------------------- */
 
