@@ -123,6 +123,7 @@
       </div>
       <div class="actions">
         <button id="btn-step-save" class="primary">Save</button>
+        <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
         <button id="btn-step-split">Split</button>
         <button id="btn-step-merge">Merge with next</button>
         <button id="btn-step-delete" class="danger">Delete</button>
@@ -149,16 +150,25 @@
       callbacks.onSplit && callbacks.onSplit(step.step_id));
     document.getElementById("btn-step-merge").addEventListener("click", () =>
       callbacks.onMerge && callbacks.onMerge(step.step_id));
+    const jumpBtn = document.getElementById("btn-step-jump");
+    if (jumpBtn) {
+      jumpBtn.addEventListener("click", () => callbacks.onJumpToFlow && callbacks.onJumpToFlow(step));
+      jumpBtn.disabled = !(step.time_range && step.time_range.start);
+    }
   }
 
   /* Muted palette per design intent -- desaturated, distinguishable but
      quiet. Same name = same color across the session. */
   const STEP_PALETTE = ["#5A7488","#6E6A88","#886A78","#887A5A","#5A8870","#787058","#5E6878"];
 
-  function renderStepTimeline(host, steps, interactions, span) {
+  function renderStepTimeline(host, steps, interactions, span, opts) {
+    opts = opts || {};
     host.innerHTML = "";
     if (!steps || !steps.length || !span || span.endMs <= span.startMs) return;
     const total = span.endMs - span.startMs;
+    const zoom = Math.max(1, opts.zoom || 1);
+    // Width scales with zoom so the scroll container can pan horizontally.
+    host.style.width = (100 * zoom) + "%";
     const colorByName = new Map();
     let pi = 0;
     for (const s of steps) {
@@ -173,10 +183,9 @@
       const width = Math.max(0.5, ((end - start) / total) * 100);
       const color = colorByName.get(s.name || s.step_id);
       const block = document.createElement("div");
-      block.className = "step-block";
+      block.className = "step-block" + (opts.selectedId === s.step_id ? " selected" : "");
       block.style.left = left + "%";
       block.style.width = width + "%";
-      // Outlined treatment: faint tint + colored border + colored label
       block.style.background = color + "1F";
       block.style.borderColor = color + "55";
       block.style.color = color;
@@ -186,7 +195,24 @@
       label.className = "step-block-label";
       label.textContent = s.name || "";
       block.appendChild(label);
+      if (opts.onSelect) {
+        block.addEventListener("click", (e) => {
+          e.stopPropagation();
+          opts.onSelect(s.step_id);
+        });
+      }
       host.appendChild(block);
+    }
+    // Auto-scroll the selected block into view (centered) so jumping to
+    // a step in the list keeps it on-screen at any zoom level.
+    if (opts.selectedId) {
+      const sel = host.querySelector(`.step-block[data-step-id="${opts.selectedId}"]`);
+      const scroll = host.parentElement;
+      if (sel && scroll) {
+        const sl = sel.offsetLeft, sw = sel.offsetWidth;
+        const target = sl + sw / 2 - scroll.clientWidth / 2;
+        scroll.scrollLeft = Math.max(0, target);
+      }
     }
   }
 

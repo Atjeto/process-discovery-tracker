@@ -86,10 +86,13 @@
      row so the tint must stay quiet to not overpower the step bands. */
   const PHASE_PALETTE = ["#5A7488","#6E6A88","#886A78","#887A5A","#5A8870","#787058"];
 
-  function renderPhaseTimeline(host, phases, steps, span) {
+  function renderPhaseTimeline(host, phases, steps, span, opts) {
+    opts = opts || {};
     host.innerHTML = "";
     if (!phases || !phases.length || !span || span.endMs <= span.startMs) return;
     const total = span.endMs - span.startMs;
+    const zoom = Math.max(1, opts.zoom || 1);
+    host.style.width = (100 * zoom) + "%";
     let pi = 0;
     for (const p of phases) {
       const contained = (p.step_ids || []).map(sid =>
@@ -101,7 +104,7 @@
       const width = Math.max(0.5, ((endMs - startMs) / total) * 100);
       const color = PHASE_PALETTE[pi++ % PHASE_PALETTE.length];
       const band = document.createElement("div");
-      band.className = "phase-band";
+      band.className = "phase-band" + (opts.selectedId === p.phase_id ? " selected" : "");
       band.style.left = left + "%";
       band.style.width = width + "%";
       band.style.background = color + "14";
@@ -110,7 +113,21 @@
       band.title = `${p.name} (${p.state})`;
       band.dataset.phaseId = p.phase_id;
       band.innerHTML = `<span class="phase-band-label">${escapeHtml(p.name)}</span>`;
+      if (opts.onSelect) {
+        band.addEventListener("click", (e) => {
+          e.stopPropagation();
+          opts.onSelect(p.phase_id);
+        });
+      }
       host.appendChild(band);
+    }
+    if (opts.selectedId) {
+      const sel = host.querySelector(`.phase-band[data-phase-id="${opts.selectedId}"]`);
+      const scroll = host.parentElement;
+      if (sel && scroll) {
+        const sl = sel.offsetLeft, sw = sel.offsetWidth;
+        scroll.scrollLeft = Math.max(0, sl + sw / 2 - scroll.clientWidth / 2);
+      }
     }
   }
 

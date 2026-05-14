@@ -187,13 +187,46 @@ function renderStepsLevel() {
     onDelete: deleteStep,
     onSplit: splitStep,
     onMerge: mergeStepWithNext,
+    onJumpToFlow: jumpToStepInFlow,
   });
   const span = getSpan();
   if (span) {
     window.PdtSteps.renderStepTimeline($("#timeline-steps"), steps,
-      currentSession.events.filter(e => e.type === "interaction"), span);
+      currentSession.events.filter(e => e.type === "interaction"), span, {
+        zoom: stepZoom,
+        selectedId: selectedStepId,
+        onSelect: (sid) => { selectedStepId = sid; renderStepsLevel(); },
+      });
+    const range = $("#steps-timeline-range");
+    if (range) {
+      const fmt = (ms) => new Date(ms).toLocaleTimeString();
+      range.textContent = `${fmt(span.startMs)} → ${fmt(span.endMs)} · ${formatDuration(span.endMs - span.startMs)}`;
+    }
   }
 }
+
+// Zoom state for the Steps + Phases mini-timelines. Mirrors the Flow
+// timeline zoom contract: 1 = fit-to-width, higher = zoomed in, scroll
+// container handles overflow.
+let stepZoom = 1;
+let phaseZoom = 1;
+function bindMiniTimelineZoom(prefix, getZoom, setZoom, rerender) {
+  const buttons = [
+    ["zoom-in",    () => setZoom(Math.min(20, getZoom() * 1.5))],
+    ["zoom-out",   () => setZoom(Math.max(1, getZoom() / 1.5))],
+    ["zoom-reset", () => setZoom(1)],
+  ];
+  for (const [suffix, fn] of buttons) {
+    const btn = document.getElementById(`btn-${prefix}-${suffix}`);
+    if (btn) btn.addEventListener("click", () => { fn(); rerender(); });
+  }
+}
+bindMiniTimelineZoom("steps",
+  () => stepZoom, (v) => { stepZoom = v; },
+  () => renderStepsLevel());
+bindMiniTimelineZoom("phases",
+  () => phaseZoom, (v) => { phaseZoom = v; },
+  () => renderPhasesLevel());
 
 async function inlineRenameStep(stepId, newName, advance) {
   // Special command: "open-next:<id>" means just re-render and trigger
@@ -362,7 +395,16 @@ function renderPhasesLevel() {
   });
   const span = getSpan();
   if (span) {
-    window.PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span);
+    window.PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span, {
+      zoom: phaseZoom,
+      selectedId: selectedPhaseId,
+      onSelect: (pid) => { selectedPhaseId = pid; renderPhasesLevel(); },
+    });
+    const range = $("#phases-timeline-range");
+    if (range) {
+      const fmt = (ms) => new Date(ms).toLocaleTimeString();
+      range.textContent = `${fmt(span.startMs)} → ${fmt(span.endMs)} · ${formatDuration(span.endMs - span.startMs)}`;
+    }
   }
 }
 
@@ -1295,6 +1337,18 @@ function seekToTimestamp(ts) {
   if (offsetS < 0) return;
   video.currentTime = offsetS;
   video.play().catch(() => {});
+}
+
+/* Steps/Phases detail panel -> Flow view. Switches the active level
+   and seeks the video to the start of the step (if a recording is
+   linked) or scrolls the Flow timeline playhead there. */
+function jumpToStepInFlow(step) {
+  if (!step || !step.time_range || !step.time_range.start) return;
+  // Switch view-mode bar back to Flow
+  const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
+  if (flowBtn) flowBtn.click();
+  // Seek if we have a recording, else just nudge the playhead to land at the right column
+  seekToTimestamp(step.time_range.start);
 }
 
 function videoTimeToSessionTs(seconds) {

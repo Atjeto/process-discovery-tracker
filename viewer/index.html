@@ -205,7 +205,21 @@
             <span class="flex-spacer"></span>
             <span class="hint">J / K navigate · S split · M merge · N new · Ctrl+click multi-select · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
-          <div class="timeline timeline-steps" id="timeline-steps"></div>
+          <div class="mini-timeline-pane">
+            <div class="mini-timeline-header">
+              <strong>Step timeline</strong>
+              <span class="meta" id="steps-timeline-range"></span>
+              <span class="flex-spacer"></span>
+              <div class="timeline-controls">
+                <button class="icon-btn" id="btn-steps-zoom-out" title="Zoom out (-)">−</button>
+                <button class="icon-btn" id="btn-steps-zoom-reset" title="Reset zoom (0)">⊙</button>
+                <button class="icon-btn" id="btn-steps-zoom-in" title="Zoom in (+)">+</button>
+              </div>
+            </div>
+            <div class="mini-timeline-scroll">
+              <div class="timeline timeline-steps" id="timeline-steps"></div>
+            </div>
+          </div>
           <div class="editor-split">
             <div class="editor-list-pane">
               <div class="editor-pane-title">Steps · <span id="steps-pane-count">0</span></div>
@@ -227,7 +241,21 @@
             <span class="flex-spacer"></span>
             <span class="hint"><a href="#" class="link-help" data-help-section="stepsphases">What is a phase?</a></span>
           </div>
-          <div class="timeline timeline-phases" id="timeline-phases"></div>
+          <div class="mini-timeline-pane">
+            <div class="mini-timeline-header">
+              <strong>Phase timeline</strong>
+              <span class="meta" id="phases-timeline-range"></span>
+              <span class="flex-spacer"></span>
+              <div class="timeline-controls">
+                <button class="icon-btn" id="btn-phases-zoom-out" title="Zoom out (-)">−</button>
+                <button class="icon-btn" id="btn-phases-zoom-reset" title="Reset zoom (0)">⊙</button>
+                <button class="icon-btn" id="btn-phases-zoom-in" title="Zoom in (+)">+</button>
+              </div>
+            </div>
+            <div class="mini-timeline-scroll">
+              <div class="timeline timeline-phases" id="timeline-phases"></div>
+            </div>
+          </div>
           <div class="editor-split">
             <div class="editor-list-pane">
               <div class="editor-pane-title">Phases · <span id="phases-pane-count">0</span></div>
