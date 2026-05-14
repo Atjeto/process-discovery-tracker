@@ -939,10 +939,22 @@ async function exportFirst(filename) {
 /* ============ Keyboard shortcuts ================================== */
 
 document.addEventListener("keydown", (e) => {
-  // Don't intercept while typing in inputs
+  // Esc closes the help modal regardless of focus, since the modal
+  // captures itself rather than the input fields beneath it.
+  if (e.key === "Escape" && $("#help-modal").style.display !== "none") {
+    closeHelp();
+    e.preventDefault();
+    return;
+  }
+  // Don't intercept other shortcuts while typing in inputs
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;
 
+  if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+    openHelp();
+    e.preventDefault();
+    return;
+  }
   if (e.key === "1") activateTab("session");
   else if (e.key === "2") activateTab("aggregate");
   else if (e.key === " ") {
@@ -1013,6 +1025,26 @@ function cryptoRandomId() {
   if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
   return "id-" + Math.random().toString(36).slice(2);
 }
+
+/* ============ Help modal ========================================== */
+
+function openHelp(section) {
+  $("#help-modal").style.display = "";
+  if (section) selectHelpSection(section);
+}
+function closeHelp() { $("#help-modal").style.display = "none"; }
+function selectHelpSection(name) {
+  $$(".help-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === name));
+  $$(".help-section").forEach((s) => s.classList.toggle("active", s.dataset.section === name));
+}
+$("#btn-help").addEventListener("click", () => openHelp());
+$("#btn-help-close").addEventListener("click", closeHelp);
+$$(".help-nav-item").forEach((b) =>
+  b.addEventListener("click", () => selectHelpSection(b.dataset.section))
+);
+$("#help-modal").addEventListener("click", (e) => {
+  if (e.target.id === "help-modal") closeHelp();
+});
 
 /* ============ Boot ================================================ */
 

@@ -47,6 +47,7 @@ const {
 } = require("./obs.js");
 const { captureScreenshot } = require("./screenshots.js");
 const { showStatusWindow } = require("./status-window.js");
+const { showHelpWindow } = require("./help-window.js");
 
 const DEBUG = process.env.PDT_DEBUG === "1";
 function bootLog(msg) {
@@ -80,6 +81,7 @@ let session = null;
 let lastStatus = null;
 let labelPickerWindow = null;
 let statusWindow = null;
+let helpWindow = null;
 let obs = null;
 let obsConnected = false;
 let config = null;
@@ -502,6 +504,16 @@ function toggleStatusWindow() {
   statusWindow.on("closed", () => { statusWindow = null; });
 }
 
+function showHelp() {
+  if (helpWindow && !helpWindow.isDestroyed()) {
+    helpWindow.show();
+    helpWindow.focus();
+    return;
+  }
+  helpWindow = showHelpWindow();
+  helpWindow.on("closed", () => { helpWindow = null; });
+}
+
 function statusLine() {
   if (!tracker) return "Idle -- right-click to start a session";
   if (lastStatus && lastStatus.paused) return `Paused (${lastStatus.markerDepth} open)`;
@@ -580,6 +592,7 @@ function buildMenu() {
     click: () => toggleStatusWindow(),
   });
   items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+  items.push({ label: "Help — How to use", click: () => showHelp() });
   if (configSourcePath) {
     items.push({
       label: `Config: ${path.basename(configSourcePath)}`,

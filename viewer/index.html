@@ -24,7 +24,10 @@
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
       <button class="tab" data-view="aggregate"><span class="kbd">2</span> Aggregate</button>
     </nav>
-    <div class="topbar-meta" id="topbar-meta"></div>
+    <div class="topbar-meta">
+      <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
+      <span id="topbar-meta"></span>
+    </div>
   </header>
 
   <main id="view-host">
@@ -37,6 +40,7 @@
         <h2>No session loaded</h2>
         <p>Open a session folder produced by the capture tracker to begin.</p>
         <button class="primary" id="btn-open-session-hero">Open session folder...</button>
+        <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
         <div class="recent-sessions">
           <h3>Recent</h3>
           <ul id="recent-list-session"></ul>
@@ -136,6 +140,7 @@
         <h2>No sessions loaded</h2>
         <p>Open one or more session folders, or an engagement folder containing sessions.</p>
         <button class="primary" id="btn-open-multi-hero">Open sessions...</button>
+        <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
       </div>
 
       <div class="loaded" id="aggregate-loaded" style="display:none">
@@ -218,6 +223,159 @@
   </main>
 
   <div class="toast" id="toast"></div>
+
+  <!-- ========= Help modal ========= -->
+  <div class="modal-backdrop" id="help-modal" style="display:none">
+    <div class="modal" role="dialog" aria-labelledby="help-title">
+      <header class="modal-header">
+        <h2 id="help-title">How to use</h2>
+        <button class="icon-btn modal-close" id="btn-help-close" title="Close (Esc)">✕</button>
+      </header>
+      <nav class="help-nav">
+        <button class="help-nav-item active" data-section="start">Getting started</button>
+        <button class="help-nav-item" data-section="session">Session view</button>
+        <button class="help-nav-item" data-section="aggregate">Aggregate view</button>
+        <button class="help-nav-item" data-section="capture">Capture workflow</button>
+        <button class="help-nav-item" data-section="shortcuts">Shortcuts</button>
+        <button class="help-nav-item" data-section="trouble">Troubleshooting</button>
+      </nav>
+      <div class="help-body">
+
+        <section class="help-section active" data-section="start">
+          <h3>End-to-end flow</h3>
+          <ol class="help-steps">
+            <li><strong>Capture</strong> a session on the worker machine: tray app polls active window, fires marker events on hotkey or tray, optionally drives OBS to record the screen.</li>
+            <li><strong>Move</strong> the session folder to the analyst's machine (network share, USB, however you already move OBS recordings).</li>
+            <li><strong>Open</strong> the session in this viewer: Session view → <em>Open session folder...</em></li>
+            <li><strong>Normalize</strong>: click <em>Run normalization</em>. Tick <em>Mine BPMN + DFG</em> to also discover a process map.</li>
+            <li><strong>Annotate</strong>: rename markers, add timestamped notes. Edits save to <code>annotations.json</code>; raw events stay immutable.</li>
+            <li><strong>Aggregate</strong> across sessions (Tab 2) when you want statistics, variants, and a combined process map.</li>
+          </ol>
+          <h3>What the viewer expects in a session folder</h3>
+          <ul class="help-list">
+            <li><code>events.jsonl</code> — one JSON event per line; the durable artifact</li>
+            <li><code>manifest.json</code> — session metadata + OBS recording reference</li>
+            <li><code>screenshots/</code> — event-triggered captures, optional</li>
+            <li><code>obs/sync.json</code> — tracker↔OBS time offset, optional</li>
+            <li>After normalization: <code>events.xes</code>, <code>events.csv</code>, <code>stats.json</code>, <code>process_map.bpmn</code>, <code>dfg.json</code></li>
+          </ul>
+        </section>
+
+        <section class="help-section" data-section="session">
+          <h3>Session view layout</h3>
+          <ul class="help-list">
+            <li><strong>Video pane</strong> (top left): OBS recording if linked in the manifest. Standard HTML5 controls; click any timeline event to seek.</li>
+            <li><strong>Timeline</strong> (top right): activity bands (green), idle gaps (grey), marker bars (orange), screenshot dots (blue), nested case overlays below.</li>
+            <li><strong>Annotations</strong> (right column) with three sub-tabs:
+              <ul>
+                <li><em>Notes</em> — anchor text to current playback time</li>
+                <li><em>Screenshots</em> — thumbnail grid; click to seek the video</li>
+                <li><em>Markers</em> — full list; <strong>double-click a Start marker to rename it</strong> (edit saved to <code>annotations.json</code>)</li>
+              </ul>
+            </li>
+            <li><strong>Raw events</strong> (collapsible at the bottom): filter by text or by type checkboxes. Click any row to seek.</li>
+          </ul>
+          <h3>Working with markers</h3>
+          <p>Markers bracket business activities. Captured markers are immutable. To rename:</p>
+          <ol class="help-steps">
+            <li>Open the <em>Markers</em> sub-tab on the right</li>
+            <li>Double-click a Start marker row</li>
+            <li>Type the new label, press Enter</li>
+            <li>Re-run normalization to flow the rename into the XES + stats</li>
+          </ol>
+          <p class="help-hint">The edit lands in <code>annotations.json</code> under <code>marker_edits[]</code>. The next normalization run reads these edits and applies them before case assignment.</p>
+        </section>
+
+        <section class="help-section" data-section="aggregate">
+          <h3>Loading multiple sessions</h3>
+          <p><em>Open sessions...</em> lets you pick:</p>
+          <ul class="help-list">
+            <li>One or more individual session folders</li>
+            <li>An <em>engagement folder</em> containing many sessions — they auto-expand</li>
+          </ul>
+          <h3>Process map</h3>
+          <ul class="help-list">
+            <li><strong>BPMN</strong> tab: the inductive miner's output rendered with bpmn-js. Pan/zoom with mouse. Export the source file via the BPMN export button below.</li>
+            <li><strong>DFG</strong> tab: directly-follows graph. Node green border = start activity, orange border = end activity. Edge thickness ~ frequency. <strong>Click any node to drill back to the first session containing that activity, at the matching timestamp.</strong></li>
+          </ul>
+          <h3>Statistics</h3>
+          <ul class="help-list">
+            <li><strong>Activity frequency</strong>: SVG bar chart, top 12 by frequency. Hover the value to see total time.</li>
+            <li><strong>Case durations</strong>: active duration (filled bar) with wall-clock as a thin overlay so you can spot heavy idle inside cases. Top 12 cases.</li>
+            <li><strong>Trace variants</strong>: distinct activity sequences ranked by frequency. Top 80.</li>
+            <li><strong>App outliers</strong>: apps appearing in &lt;5% of cases — exceptions or misuse.</li>
+            <li><strong>Rework loops</strong>: activities revisited within a single case.</li>
+          </ul>
+          <h3>Filter</h3>
+          <p>The search box at the top filters activity chart, case chart, variants, outliers, and rework simultaneously. Plain substring match.</p>
+        </section>
+
+        <section class="help-section" data-section="capture">
+          <h3>Running a capture session</h3>
+          <ol class="help-steps">
+            <li>(One-time) Launch OBS with WebSocket enabled (<em>Tools → WebSocket Server Settings → Enable</em>, port 4455).</li>
+            <li>(Optional) Set <code>PDT_CONFIG=path\to\your-config.yaml</code> to load engagement-specific labels, hotkeys, OBS settings. See <code>capture/sample-config.yaml</code>.</li>
+            <li>Launch the capture tray app (<code>npm start</code> in capture/).</li>
+            <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey — the session auto-starts.</li>
+            <li>Show the status window (tray menu) for the live dashboard.</li>
+            <li>Fire markers as the SME walks through processes. End the session when done.</li>
+          </ol>
+          <h3>Default hotkeys</h3>
+          <table class="help-table">
+            <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Open the Start-marker label picker. Auto-starts a session if none running.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>Fire End marker — closes innermost open.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Manual screenshot — annotated as <code>screenshot_manual</code>.</td></tr>
+          </table>
+          <p class="help-hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>.</p>
+        </section>
+
+        <section class="help-section" data-section="shortcuts">
+          <h3>Viewer keyboard shortcuts</h3>
+          <table class="help-table">
+            <tr><td><span class="kbd">1</span> / <span class="kbd">2</span></td><td>Session view / Aggregate view</td></tr>
+            <tr><td><span class="kbd">Space</span></td><td>Play / pause video</td></tr>
+            <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Scrub 5 seconds (hold <span class="kbd">Shift</span> for 10s)</td></tr>
+            <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>
+            <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
+            <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
+          </table>
+          <h3>Click behaviors</h3>
+          <ul class="help-list">
+            <li>Any timeline band, marker, screenshot dot, or event row → seek the video</li>
+            <li>DFG node in aggregate → drill to first matching session at the activity timestamp</li>
+            <li>Marker row in the sidebar → seek; <strong>double-click a Start marker</strong> → rename</li>
+            <li>Recent session in the empty state → reload that session</li>
+          </ul>
+        </section>
+
+        <section class="help-section" data-section="trouble">
+          <h3>Common issues</h3>
+          <dl class="help-dl">
+            <dt>Normalization fails with "normalize.py not found"</dt>
+            <dd>The viewer expects <code>normalization/</code> as a sibling of <code>viewer/</code> in dev, or under <code>resources/normalization/</code> in a packaged build. Override with <code>PDT_PYTHON</code> if needed.</dd>
+
+            <dt>"ModuleNotFoundError: pm4py" during normalization</dt>
+            <dd>Run <code>pip install -r normalization/requirements.txt</code> against the Python interpreter the viewer uses.</dd>
+
+            <dt>BPMN map shows "bpmn-js failed to load"</dt>
+            <dd>The BPMN file is still on disk under the session folder — importable into Adonis directly. The in-viewer preview is a nice-to-have.</dd>
+
+            <dt>No video in session view</dt>
+            <dd>Capture ran without OBS, or the OBS recording path in <code>manifest.json</code> is unreachable. Timeline + statistics still work; click-to-seek is just a no-op.</dd>
+
+            <dt>Empty event table</dt>
+            <dd>Check the type checkboxes (activity / marker / system) and clear the text filter.</dd>
+
+            <dt>Drill-down landed on a session but the wrong moment</dt>
+            <dd>The drill uses a heuristic match on app/title to find the first activity event matching the label. For exact precision, click directly on the timeline bands.</dd>
+
+            <dt>Hotkey didn't register in capture</dt>
+            <dd>Another app may have the same global shortcut. Enable <code>PDT_DEBUG=1</code> in the capture launch env and check <code>%APPDATA%\process-discovery-tracker\boot.log</code> for "hotkeys: start=false". Edit your <code>config.yaml</code> to use different keys.</dd>
+          </dl>
+        </section>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="charts.js"></script>
