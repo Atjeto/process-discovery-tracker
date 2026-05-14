@@ -623,6 +623,9 @@ async function addManualStep() {
   if (!name) return;
   const video = $("#video");
   const tsNow = videoTimeToSessionTs(video.currentTime) || new Date().toISOString();
+  // Default duration so manual steps render with a non-zero width
+  // in the mini-timeline; the analyst can edit the time range later.
+  const endTs = new Date(new Date(tsNow).getTime() + 5000).toISOString();
   const anno = ensureAnnoShape(currentSession.annotations);
   const step = {
     step_id: cryptoRandomId(),
@@ -630,7 +633,7 @@ async function addManualStep() {
     case_id: null,
     name,
     description: "",
-    time_range: { start: tsNow, end: tsNow },
+    time_range: { start: tsNow, end: endTs },
     evidence: { interaction_event_ids: [], screenshot_refs: [], video_timecode_range: null, manual_notes: "" },
     state: "manually_authored",
     canonical_step_id: null,

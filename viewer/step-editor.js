@@ -186,27 +186,37 @@
 
   /* Lane-pack steps so overlapping time ranges don't pile up on a
      single row. Greedy: try to place each step on the lowest-numbered
-     lane whose latest end is <= this step's start. Capped at MAX_LANES;
-     anything beyond falls back to the last lane. */
+     lane whose latest "visual end" is <= this step's start. Capped at
+     MAX_LANES; anything beyond falls back to the last lane.
+
+     "Visual end" accounts for the block's minimum rendered width
+     (~0.5% of the span). Two steps fired within a few ms of each
+     other have mathematically non-overlapping time ranges but the
+     rendered blocks DO overlap once each is padded to its min width.
+     Lane-pack against the visual footprint, not the raw timestamp,
+     so rapid successive clicks land on separate rows. */
   function assignLanes(steps, span, maxLanes) {
     const sorted = [...steps].filter(s => s.time_range)
       .sort((a, b) => new Date(a.time_range.start) - new Date(b.time_range.start));
+    const total = span.endMs - span.startMs;
+    const MIN_VISUAL_MS = Math.max(1, total * 0.005); // matches Math.max(0.5, ...) in renderer
     const laneEnds = [];
     const out = new Map();
     for (const s of sorted) {
       const startMs = new Date(s.time_range.start).getTime();
-      const endMs = new Date(s.time_range.end).getTime();
+      const rawEnd = new Date(s.time_range.end).getTime();
+      const visualEnd = Math.max(rawEnd, startMs + MIN_VISUAL_MS);
       let lane = laneEnds.findIndex(e => e <= startMs);
       if (lane === -1) {
         if (laneEnds.length < maxLanes) {
           lane = laneEnds.length;
-          laneEnds.push(endMs);
+          laneEnds.push(visualEnd);
         } else {
           lane = maxLanes - 1;
-          laneEnds[lane] = Math.max(laneEnds[lane], endMs);
+          laneEnds[lane] = Math.max(laneEnds[lane], visualEnd);
         }
       } else {
-        laneEnds[lane] = endMs;
+        laneEnds[lane] = visualEnd;
       }
       out.set(s.step_id, lane);
     }

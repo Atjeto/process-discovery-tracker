@@ -379,22 +379,44 @@ def _common_prefix(strings: list[str]) -> str:
 # --- YAML emission -----------------------------------------------------
 
 def to_yaml(doc: dict[str, Any]) -> str:
-    """Emit the vocabulary as YAML, lifting `_hint` into a trailing
-    comment per interaction so the analyst sees the raw signal."""
-    base = yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=120)
+    """Emit the vocabulary as YAML, lifting `_hint` into a comment
+    on the entry it belongs to so the analyst sees the raw signal
+    inline without `_hint` polluting the data structure.
+
+    width=inf prevents PyYAML from wrapping long string values across
+    multiple lines, which broke the previous line-by-line
+    post-processor (continuation lines for a wrapped `_hint:` value
+    became orphan content and produced "bad indentation" parse errors
+    on reload).
+    """
+    base = yaml.safe_dump(
+        doc, sort_keys=False, allow_unicode=True, width=float("inf"),
+    )
     lines = base.splitlines()
     out: list[str] = []
-    pending_hint = None
+    # Track the index in `out` of the current interaction's
+    # `- signature:` line so when we hit its `_hint:` we can insert
+    # the comment right above that signature -- attached to the
+    # correct entry, not the next one.
+    current_sig_idx: int | None = None
     for line in lines:
         stripped = line.strip()
+        if stripped.startswith("- signature:"):
+            current_sig_idx = len(out)
+            out.append(line)
+            continue
         if stripped.startswith("_hint:"):
-            pending_hint = stripped[len("_hint:"):].strip().strip("'\"")
+            raw = stripped[len("_hint:"):].strip()
+            # Strip YAML quoting layers: outer ' or ", then unescape
+            # YAML single-quote doubling ('' -> ').
+            if (raw.startswith("'") and raw.endswith("'")) or \
+               (raw.startswith('"') and raw.endswith('"')):
+                raw = raw[1:-1]
+            raw = raw.replace("''", "'")
+            if current_sig_idx is not None and raw:
+                indent = out[current_sig_idx][: len(out[current_sig_idx]) - len(out[current_sig_idx].lstrip())]
+                out.insert(current_sig_idx, f"{indent}# {raw}")
+                current_sig_idx += 1  # signature line shifted by 1
             continue
         out.append(line)
-        if pending_hint and stripped.startswith("- signature:"):
-            # Hint applies to the entry just opened.
-            indent = line[: len(line) - len(line.lstrip())]
-            out.append(f"{indent}  # {pending_hint}")
-            pending_hint = None
-    # Any orphan hint at the end -- ignore.
     return "\n".join(out) + ("\n" if not base.endswith("\n") else "")
