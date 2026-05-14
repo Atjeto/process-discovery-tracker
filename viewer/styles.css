@@ -478,38 +478,35 @@ main { flex: 1; overflow: auto; }
   .aggregate-grid { grid-template-columns: 1fr; }
 }
 
-/* ===== View-mode bar (prominent top-of-session Flow/Steps/Phases) ===== */
+/* ===== View-mode bar (compact toolbar, not a hero block) ===== */
 .view-mode-bar {
-  display: flex; align-items: stretch; gap: 10px;
-  padding: 12px 16px; margin: 0 0 14px;
-  background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius);
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; margin: 0 0 10px;
+  background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius-sm);
 }
 .view-mode-label {
   display: flex; align-items: center;
-  font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
-  color: var(--fg-3); padding-right: 6px;
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--fg-3); padding-right: 4px;
 }
 .view-mode-btn {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
-  padding: 10px 20px; min-width: 160px;
-  background: var(--bg-3); color: var(--fg-2);
-  border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  font-family: inherit; cursor: pointer; transition: all 0.15s;
-  position: relative; text-align: left;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px;
+  background: transparent; color: var(--fg-2);
+  border: 1px solid transparent; border-radius: 4px;
+  font-family: inherit; font-size: 12px; cursor: pointer; transition: all 0.12s;
+  position: relative;
 }
-.view-mode-btn:hover { background: var(--bg-4); color: var(--fg); border-color: var(--accent-2); }
+.view-mode-btn:hover { background: var(--bg-3); color: var(--fg); }
 .view-mode-btn.active {
   background: var(--accent); color: var(--bg); border-color: var(--accent);
   font-weight: 500;
 }
-.view-mode-btn.active .view-mode-desc { color: rgba(0,0,0,0.55); }
-.view-mode-btn .view-mode-icon {
-  font-size: 16px; font-weight: 600; margin-right: 6px; display: inline-block;
-}
-.view-mode-btn .view-mode-desc {
-  font-size: 10px; color: var(--fg-3); text-transform: lowercase; letter-spacing: 0.3px;
-}
-.view-mode-btn .badge { position: absolute; top: 8px; right: 10px; }
+.view-mode-btn .view-mode-icon { font-size: 13px; }
+/* Hide the long descriptions in the compact bar; tooltip on each btn
+   already explains. Keep markup so renderer/HTML doesn't need editing. */
+.view-mode-btn .view-mode-desc { display: none; }
+.view-mode-btn .badge { position: static; margin-left: 4px; }
 .view-mode-help {
   display: flex; align-items: center;
   font-size: 11px; color: var(--fg-3);
@@ -882,3 +879,126 @@ main { flex: 1; overflow: auto; }
   display: inline-flex; gap: 6px; align-items: center;
   color: var(--fg); font-size: 11px;
 }
+
+/* ===== Multi-select feedback on step rows ===== */
+.step-row .multi-check {
+  flex: 0 0 14px; width: 14px; height: 14px;
+  border: 1.5px solid var(--fg-4); border-radius: 3px;
+  background: transparent;
+  position: relative;
+}
+.step-row.multi-selected .multi-check {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+.step-row.multi-selected .multi-check::after {
+  content: "✓"; position: absolute; inset: -3px 0 0 1px;
+  color: var(--bg); font-size: 11px; font-weight: 700;
+}
+.step-row.multi-selected {
+  background: rgba(90, 116, 136, 0.08);
+  border-color: var(--accent-2);
+}
+
+/* ===== promptModal (replaces broken window.prompt) ===== */
+.modal-prompt {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-prompt .modal {
+  background: var(--bg-1); border: 1px solid var(--rule);
+  border-radius: var(--radius); width: min(480px, calc(100vw - 40px));
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.modal-prompt .modal-sm { width: min(440px, calc(100vw - 40px)); }
+.modal-prompt .modal-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--rule);
+}
+.modal-prompt .modal-header h2 { flex: 1; font-size: 14px; color: var(--fg); margin: 0; }
+.modal-prompt .modal-close {
+  background: transparent; border: 0; color: var(--fg-3);
+  font-size: 14px; cursor: pointer; padding: 2px 8px;
+}
+.modal-prompt .modal-close:hover { color: var(--fg); }
+.modal-prompt .modal-body { padding: 16px 18px; }
+.modal-prompt .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 6px; }
+.modal-prompt .modal-detail { color: var(--fg-3); font-size: 11px; margin: 0 0 12px; line-height: 1.55; }
+.modal-prompt .modal-input {
+  width: 100%; padding: 9px 12px; background: var(--bg-2);
+  border: 1px solid var(--rule); border-radius: 4px;
+  color: var(--fg); font-family: inherit; font-size: 14px; outline: none;
+}
+.modal-prompt .modal-input:focus { border-color: var(--accent); }
+.modal-prompt .modal-footer {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 12px 18px; border-top: 1px solid var(--rule);
+}
+
+/* ===== Timeline accessibility ===== */
+/* Activity bands: alternating subtle stripes so adjacent runs are
+   distinguishable instead of a single green wall. Hover lifts. */
+.tl-band.tl-activity {
+  background: var(--accent);
+  opacity: 0.65;
+  border-right: 1px solid var(--bg);
+  transition: opacity 0.12s;
+}
+.tl-band.tl-activity:hover { opacity: 0.95; outline: 1px solid var(--fg-2); }
+.tl-band.tl-activity:nth-of-type(even) { background: var(--accent); opacity: 0.55; }
+.tl-band.tl-idle {
+  background: repeating-linear-gradient(
+    45deg, var(--bg-3) 0 4px, var(--bg-4) 4px 8px
+  );
+  opacity: 0.8;
+}
+
+/* Screenshot dots: dramatically more visible. The original 6px circle
+   with low contrast was invisible against the green wall. */
+.tl-screenshot {
+  position: absolute;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent-2);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent-2);
+  cursor: pointer; z-index: 5;
+  transition: transform 0.12s;
+}
+.tl-screenshot:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 0 2px var(--accent-2), 0 0 8px rgba(90, 116, 136, 0.6);
+}
+
+/* Marker bars: bolder so they stand out against the activity wall */
+.tl-marker {
+  position: absolute;
+  width: 3px;
+  background: var(--accent-3);
+  z-index: 4;
+}
+.tl-marker-label {
+  position: absolute;
+  background: var(--accent-3); color: var(--bg);
+  padding: 1px 6px; border-radius: 3px;
+  font-size: 10px; font-weight: 600;
+  white-space: nowrap; z-index: 6;
+}
+
+/* Legend: better contrast, color swatches */
+.legend { display: flex; gap: 14px; padding: 6px 4px 0;
+  font-size: 10px; color: var(--fg-3); letter-spacing: 0.5px; }
+.legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.legend > span::before {
+  content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+}
+.legend .lg-activity::before { background: var(--accent); opacity: 0.65; }
+.legend .lg-idle::before {
+  background: repeating-linear-gradient(45deg, var(--bg-3) 0 3px, var(--bg-4) 3px 6px);
+}
+.legend .lg-marker::before { background: var(--accent-3); width: 3px; }
+.legend .lg-screenshot::before {
+  background: var(--accent-2); border-radius: 50%; border: 1px solid var(--bg);
+}
+.legend-shortcuts { color: var(--fg-4); margin-left: auto; font-style: italic; }

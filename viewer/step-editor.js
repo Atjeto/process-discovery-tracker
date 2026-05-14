@@ -11,24 +11,30 @@
     return `${tr.start.slice(11,19)} - ${tr.end.slice(11,19)}`;
   }
 
-  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename) {
+  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet) {
     host.innerHTML = "";
     if (!steps || !steps.length) {
       host.innerHTML = `
         <div class="empty-pane">
           <p><strong>No steps yet.</strong></p>
-          <p>Steps appear after you run normalization (the "Run normalization" button at the top). If the session had interaction events recorded, you'll see auto-suggested steps here. If a Process Template was matched, you'll see auto-matched steps named after the template.</p>
-          <p>You can also build steps yourself with the <strong>+ Add manual step</strong> button above.</p>
+          <p>Steps appear after you click <em>Analyze session</em>. If the session had interaction events recorded, you'll see auto-suggested steps here. If a Process Template was matched, you'll see auto-matched steps named after the template.</p>
+          <p>You can also build steps yourself with the <strong>+ Add step</strong> button above.</p>
         </div>`;
       return;
     }
+    const ms = multiSelectedSet || new Set();
     for (const s of steps) {
       const row = document.createElement("div");
-      row.className = "step-row" + (s.step_id === selectedId ? " selected" : "");
+      const isMulti = ms.has(s.step_id);
+      const isSel = s.step_id === selectedId;
+      row.className = "step-row" +
+        (isSel ? " selected" : "") +
+        (isMulti ? " multi-selected" : "");
       row.dataset.stepId = s.step_id;
       const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(s.state)}"></span>
+        <span class="multi-check" title="Ctrl+click to multi-select for phase grouping"></span>
         <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
         ${driftTag}
         <span class="step-time">${escapeHtml(formatTimeRange(s.time_range))}</span>

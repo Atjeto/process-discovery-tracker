@@ -172,9 +172,14 @@ function renderStepsLevel() {
     (sid) => {
       if (multiSelectedStepIds.has(sid)) multiSelectedStepIds.delete(sid);
       else multiSelectedStepIds.add(sid);
-      $("#btn-group-into-phase").disabled = multiSelectedStepIds.size < 2;
+      const btn = $("#btn-group-into-phase");
+      if (btn) btn.disabled = multiSelectedStepIds.size < 2;
+      // Re-render so the user sees the multi-selected state -- otherwise
+      // Ctrl+click feels broken because nothing visibly changes.
+      renderStepsLevel();
     },
     inlineRenameStep,
+    multiSelectedStepIds,
   );
   const selected = steps.find(s => s.step_id === selectedStepId) || null;
   window.PdtSteps.renderStepDetail($("#step-detail"), selected, {
@@ -310,7 +315,7 @@ async function mergeStepWithNext(stepId) {
 
 async function addManualStep() {
   if (!currentSession) return;
-  const name = prompt("Step name:");
+  const name = await promptModal({ title: "Add manual step", message: "Name this step", placeholder: "e.g., Search customer in CRM", okLabel: "Add step" });
   if (!name) return;
   const video = $("#video");
   const tsNow = videoTimeToSessionTs(video.currentTime) || new Date().toISOString();
@@ -397,7 +402,7 @@ async function removeStepFromPhase(phaseId, stepId) {
 
 async function addManualPhase() {
   if (!currentSession) return;
-  const name = prompt("Phase name:");
+  const name = await promptModal({ title: "Add phase", message: "Name this phase", placeholder: "e.g., Validate customer", okLabel: "Add phase" });
   if (!name) return;
   const anno = ensureAnnoShape(currentSession.annotations);
   const phase = {
@@ -421,7 +426,7 @@ async function groupIntoPhase() {
   if (!currentSession) return;
   const ids = Array.from(multiSelectedStepIds);
   if (ids.length < 2) return;
-  const name = prompt("Phase name:");
+  const name = await promptModal({ title: "Add phase", message: "Name this phase", placeholder: "e.g., Validate customer", okLabel: "Add phase" });
   if (!name) return;
   const anno = ensureAnnoShape(currentSession.annotations);
   const phase = {
@@ -1383,7 +1388,7 @@ function renderMarkersList() {
       row.addEventListener("dblclick", async (e) => {
         if (e.target.closest(".marker-actions")) return;
         const current = effectiveLabel(m) || "";
-        const next = prompt("Rename marker label", current);
+        const next = await promptModal({ title: "Rename marker", message: "New label", defaultValue: current, okLabel: "Rename" });
         if (next == null || next.trim() === "" || next === current) return;
         await renameMarker(m, next.trim());
       });
@@ -1412,8 +1417,7 @@ async function adjustMarkerToVideoTime(markerEvent) {
   if (obsStartTs && video && video.src) {
     newTs = new Date(new Date(obsStartTs).getTime() + (video.currentTime || 0) * 1000).toISOString();
   } else {
-    const input = prompt("Enter ISO 8601 timestamp (e.g. 2026-05-14T09:23:11.482Z):",
-      effectiveTimestamp(markerEvent));
+    const input = await promptModal({ title: "Adjust marker timestamp", message: "New ISO 8601 timestamp", detail: "e.g., 2026-05-14T09:23:11.482Z", defaultValue: effectiveTimestamp(markerEvent), okLabel: "Save" });
     if (!input) return;
     newTs = input.trim();
   }
@@ -2356,7 +2360,7 @@ async function saveVocab() {
 
 if ($("#btn-vocab-new")) {
   $("#btn-vocab-new").addEventListener("click", async () => {
-    const name = prompt("App name (e.g., 'Salesforce'):", "");
+    const name = await promptModal({ title: "New App Vocabulary", message: "What app is this vocabulary for?", placeholder: "e.g., Salesforce", okLabel: "Create" });
     if (!name) return;
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const p = await ipcRenderer.invoke("viewer:newVocabFile", { suggestedId: id });
@@ -2401,14 +2405,14 @@ async function attachExternalVideo() {
     toast("Session manifest has no started_at; can't compute video offset", "error");
     return;
   }
-  const ans = prompt(
-    "When did the video recording start, relative to this session's start (HH:MM:SS, can be negative)?\n\n" +
-    "Session started at: " + started_at + "\n\n" +
-    "If the recording started a few seconds BEFORE the session, use -00:00:05.\n" +
-    "If the recording started AFTER the session, use 00:00:12.\n" +
-    "If they started together, leave 00:00:00.",
-    "00:00:00"
-  );
+  const ans = await promptModal({
+    title: "Align video to session",
+    message: "When did the recording start, relative to the session?",
+    detail: "Session started at " + started_at + ". Format HH:MM:SS, signed (-00:00:05 means recording started 5 sec before the session).",
+    placeholder: "00:00:00",
+    defaultValue: "00:00:00",
+    okLabel: "Attach"
+  });
   if (ans == null) return;
   const offsetMs = parseHmsToMs(ans);
   if (offsetMs === null) {
@@ -2430,4 +2434,64 @@ async function attachExternalVideo() {
 
 if ($("#btn-attach-video")) {
   $("#btn-attach-video").addEventListener("click", attachExternalVideo);
+}
+
+/* ============ promptModal: a working replacement for window.prompt
+   ================================================================
+   Electron's renderer ships without a working prompt() implementation;
+   calling it silently returns undefined, which is why "Add manual step"
+   and "Group into phase" felt broken. This is a real inline modal that
+   resolves to the typed string (or null on cancel/escape). */
+
+function promptModal(opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop modal-prompt";
+    const okLabel = opts.okLabel || "OK";
+    const cancelLabel = opts.cancelLabel || "Cancel";
+    backdrop.innerHTML =
+      '<div class="modal modal-sm">' +
+      '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Input") + '</h2>' +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<div class="modal-body">' +
+      (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
+      (opts.detail ? '<p class="modal-detail">' + escapeHtml(opts.detail) + '</p>' : '') +
+      '<input type="text" class="modal-input" ' +
+      ' placeholder="' + escapeAttr(opts.placeholder || "") + '" ' +
+      ' value="' + escapeAttr(opts.defaultValue || "") + '">' +
+      '</div>' +
+      '<footer class="modal-footer">' +
+      '<button class="modal-cancel">' + escapeHtml(cancelLabel) + '</button>' +
+      '<button class="primary modal-ok">' + escapeHtml(okLabel) + '</button>' +
+      '</footer>' +
+      '</div>';
+    document.body.appendChild(backdrop);
+    const input = backdrop.querySelector(".modal-input");
+    const okBtn = backdrop.querySelector(".modal-ok");
+    const cancelBtn = backdrop.querySelector(".modal-cancel");
+    const closeBtn = backdrop.querySelector(".modal-close");
+    let resolved = false;
+    function done(value) {
+      if (resolved) return;
+      resolved = true;
+      backdrop.remove();
+      resolve(value);
+    }
+    okBtn.addEventListener("click", () => done(input.value));
+    cancelBtn.addEventListener("click", () => done(null));
+    closeBtn.addEventListener("click", () => done(null));
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) done(null);
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); done(input.value); }
+      else if (e.key === "Escape") { e.preventDefault(); done(null); }
+    });
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+  });
+}
+
+function escapeAttr(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 }

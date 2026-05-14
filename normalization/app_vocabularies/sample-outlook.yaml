@@ -1,0 +1,134 @@
+# Sample App Vocabulary for Outlook (ADR-0002).
+# Shows the per-app pattern when the app runs as its own .exe (not in
+# a browser tab). process_name does most of the scoping work.
+
+app_vocabulary:
+  id: "outlook"
+  name: "Outlook"
+  version: 1
+  owner: "tooling-lead@team"
+
+  scope:
+    process_name: "OUTLOOK.EXE"
+
+  screens:
+    - id: "inbox"
+      name: "Inbox"
+      window_title_regex: ".*Inbox.*Outlook.*"
+    - id: "compose"
+      name: "Compose / Reply"
+      window_title_regex: ".*(Untitled|RE:|FW:).*Message.*"
+    - id: "calendar"
+      name: "Calendar"
+      window_title_regex: ".*Calendar.*Outlook.*"
+
+  interactions:
+
+    # --- Reading mail ------------------------------------------------
+    - signature:
+        control_type: "Button"
+        name: "Reply"
+      name: "Reply to email"
+
+    - signature:
+        control_type: "Button"
+        name: "Reply All"
+      name: "Reply all"
+
+    - signature:
+        control_type: "Button"
+        name: "Forward"
+      name: "Forward email"
+
+    - signature:
+        control_type: "Button"
+        name: "Delete"
+        window_title_regex: ".*Outlook.*"
+      name: "Delete email"
+
+    - signature:
+        control_type: "Button"
+        name: "Archive"
+      name: "Archive email"
+
+    - signature:
+        control_type: "Button"
+        name: "Move"
+      name: "Move email to folder"
+
+    - signature:
+        control_type: "Button"
+        name: "Flag"
+      name: "Flag for follow-up"
+      flags:
+        automation_candidate: true
+
+    # --- Composing --------------------------------------------------
+    - signature:
+        control_type: "Button"
+        name: "New Email"
+      name: "Compose new email"
+
+    - signature:
+        control_type: "Edit"
+        automation_id: "txtTo"
+      name: "Enter recipient"
+
+    - signature:
+        control_type: "Edit"
+        automation_id: "txtSubject"
+      name: "Enter subject"
+
+    - signature:
+        control_type: "Button"
+        name: "Send"
+      name: "Send email"
+
+    - signature:
+        control_type: "Button"
+        name: "Save Draft"
+      name: "Save draft"
+
+    - signature:
+        control_type: "Button"
+        name: "Attach File"
+      name: "Attach file to email"
+      flags:
+        automation_candidate: true
+
+    # --- Calendar ---------------------------------------------------
+    - signature:
+        control_type: "Button"
+        name: "New Meeting"
+      name: "Schedule meeting"
+
+    - signature:
+        control_type: "Button"
+        name: "Accept"
+        window_title_regex: ".*Meeting.*"
+      name: "Accept meeting invite"
+
+    - signature:
+        control_type: "Button"
+        name: "Decline"
+        window_title_regex: ".*Meeting.*"
+      name: "Decline meeting invite"
+
+    # --- Search / nav -----------------------------------------------
+    - signature:
+        control_type: "Edit"
+        automation_id: "searchBox"
+      name: "Search mailbox"
+
+    - signature:
+        control_type: "TreeItem"
+        window_title_regex: ".*Outlook.*"
+      name: "Switch mailbox folder"
+
+    # --- Common waste -----------------------------------------------
+    - signature:
+        control_type: "Button"
+        name: "Mark as Read"
+      name: "Manually mark as read"
+      flags:
+        waste: true
