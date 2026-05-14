@@ -169,13 +169,22 @@ async function loadSessionIntoView(folder) {
   pushRecent(folder, label + " · " + path.basename(folder));
 
   renderSessionPills();
-  // Wire video
+  // Wire video. Toggle the no-video card explicitly since the
+  // sibling-selector CSS only fires when [src] is present.
   const video = $("#video");
+  const noVid = $("#no-video");
+  const overlay = $("#video-overlay");
   if (currentSession.recordingAvailable && currentSession.recordingPath) {
     video.src = "file:///" + currentSession.recordingPath.replace(/\\/g, "/");
+    video.style.display = "";
+    noVid.style.display = "none";
+    overlay.style.display = "";
   } else {
     video.removeAttribute("src");
     video.load();
+    video.style.display = "none";
+    noVid.style.display = "";
+    overlay.style.display = "none";
   }
   video.addEventListener("timeupdate", positionPlayhead);
   video.addEventListener("loadedmetadata", () =>
@@ -198,7 +207,15 @@ function renderSessionPills() {
     cls: m.status === "recovered" ? "warn" : (m.status === "closed" ? "ok" : "") });
   if (m.obs && m.obs.recording_path) pills.push({ label: "OBS", val: "linked", cls: "ok" });
   else pills.push({ label: "OBS", val: "none" });
-  if (currentSession.stats) pills.push({ label: "normalized", val: "✓", cls: "ok" });
+  if (currentSession.stats) {
+    pills.push({ label: "normalized", val: "✓", cls: "ok" });
+    const meta = currentSession.stats.meta || {};
+    if (meta.taxonomy_version) {
+      pills.push({ label: "taxonomy", val: meta.taxonomy_version });
+    }
+  }
+  const editCount = ((currentSession.annotations || {}).marker_edits || []).length;
+  if (editCount > 0) pills.push({ label: "edits", val: editCount, cls: "warn" });
   $("#session-pills").innerHTML = pills.map((p) =>
     '<div class="pill' + (p.cls ? " " + p.cls : "") + '"><span class="dot"></span>' +
     '<span class="lbl">' + escapeHtml(p.label) + '</span>' + escapeHtml(String(p.val)) + '</div>'
@@ -297,13 +314,16 @@ function renderTimeline() {
     bar.title = ev.data.marker_type + ": " + (ev.data.label || "") +
       (ev.data.reason ? " (" + ev.data.reason + ")" : "");
     host.appendChild(bar);
-    if (ev.data.marker_type === "start" && ev.data.label) {
-      const lbl = document.createElement("div");
-      lbl.className = "tl-marker-label";
-      lbl.style.left = "calc(" + x + "% + 4px)";
-      lbl.style.top = (activityTop + 2) + "px";
-      lbl.textContent = ev.data.label;
-      host.appendChild(lbl);
+    if (ev.data.marker_type === "start") {
+      const label = effectiveLabel(ev);
+      if (label) {
+        const lbl = document.createElement("div");
+        lbl.className = "tl-marker-label";
+        lbl.style.left = "calc(" + x + "% + 4px)";
+        lbl.style.top = (activityTop + 2) + "px";
+        lbl.textContent = label;
+        host.appendChild(lbl);
+      }
     }
   }
 
@@ -571,30 +591,84 @@ function openScreenshot(relPath) {
   if (fs.existsSync(full)) ipcRenderer.invoke("viewer:openExternal", full);
 }
 
+function getMarkerEdit(eventId) {
+  /* Returns the latest pending edit (e.g. rename) for a given marker
+     event_id, or null. Edits live in annotations.json under marker_edits. */
+  const edits = (currentSession.annotations && currentSession.annotations.marker_edits) || [];
+  let latest = null;
+  for (const e of edits) {
+    if (e.event_id === eventId) latest = e; // last write wins
+  }
+  return latest;
+}
+
+function effectiveLabel(markerEvent) {
+  const edit = getMarkerEdit(markerEvent.event_id);
+  if (edit && edit.field === "label") return edit.value;
+  return markerEvent.data.label;
+}
+
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
   const markers = (currentSession.events || []).filter((e) => e.type === "marker");
   if (!markers.length) {
-    host.innerHTML = '<p class="hint">No markers fired in this session.</p>';
+    host.innerHTML = '<p class="hint">No markers fired in this session. Double-click any row here to rename a marker (saved to annotations.json).</p>';
     return;
   }
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = "Double-click a Start marker to rename. Edits save to annotations.json (raw events untouched).";
+  host.appendChild(hint);
   let depth = 0;
   for (const m of markers) {
     const row = document.createElement("div");
     row.className = "marker-row " + m.data.marker_type;
     if (m.data.marker_type === "end") depth = Math.max(0, depth - 1);
+    const lbl = effectiveLabel(m) || "(unlabeled)";
+    const edited = getMarkerEdit(m.event_id) ? ' <span class="meta">· edited</span>' : '';
     row.innerHTML =
       '<span class="ts">' + escapeHtml(m.timestamp.slice(11, 19)) + '</span>' +
       '<span class="dir">' + (m.data.marker_type === "start" ? "▶" : "■") + '</span>' +
-      '<span class="lbl">' + escapeHtml(m.data.label || "(unlabeled)") +
+      '<span class="lbl">' + escapeHtml(lbl) +
         (m.data.reason ? ' <span class="meta">(' + escapeHtml(m.data.reason) + ')</span>' : '') +
+        edited +
       '</span>' +
-      '<span class="depth">L' + (m.data.marker_type === "start" ? depth : depth) + '</span>';
+      '<span class="depth">L' + depth + '</span>';
     if (m.data.marker_type === "start") depth += 1;
     row.addEventListener("click", () => seekToTimestamp(m.timestamp));
+    if (m.data.marker_type === "start") {
+      row.addEventListener("dblclick", async () => {
+        const current = effectiveLabel(m) || "";
+        const next = prompt("Rename marker label", current);
+        if (next == null || next.trim() === "" || next === current) return;
+        await renameMarker(m, next.trim());
+      });
+    }
     host.appendChild(row);
   }
+}
+
+async function renameMarker(markerEvent, newLabel) {
+  if (!currentSession) return;
+  const anno = currentSession.annotations || { notes: [], marker_edits: [] };
+  anno.marker_edits = anno.marker_edits || [];
+  anno.marker_edits.push({
+    id: cryptoRandomId(),
+    event_id: markerEvent.event_id,
+    field: "label",
+    value: newLabel,
+    previous: markerEvent.data.label,
+    ts: new Date().toISOString(),
+  });
+  await ipcRenderer.invoke("viewer:saveAnnotations", {
+    sessionFolder: currentSession.sessionFolder,
+    annotations: anno,
+  });
+  currentSession.annotations = anno;
+  renderMarkersList();
+  renderTimeline(); // marker labels on the timeline pick up the edit
+  toast("Marker renamed (re-run normalization to apply downstream)", "success");
 }
 
 /* ============ Aggregate view ====================================== */
@@ -633,6 +707,17 @@ $("#btn-normalize-all").addEventListener("click", async () => {
   toast("All sessions normalized + mined", "success");
 });
 
+let aggregateFilter = "";
+$("#agg-filter").addEventListener("input", (e) => {
+  aggregateFilter = (e.target.value || "").toLowerCase().trim();
+  renderAggregate();
+});
+
+function matchesFilter(text) {
+  if (!aggregateFilter) return true;
+  return String(text || "").toLowerCase().includes(aggregateFilter);
+}
+
 function renderAggregate() {
   // Pills
   const numNormalized = aggregateSessions.filter((s) => !!s.stats).length;
@@ -665,7 +750,9 @@ function renderAggregate() {
       actMap.set(r.activity_label, e);
     }
   }
-  const actRows = [...actMap.values()].sort((a, b) => b.frequency - a.frequency);
+  const actRows = [...actMap.values()]
+    .filter((r) => matchesFilter(r.activity_label))
+    .sort((a, b) => b.frequency - a.frequency);
   window.PdtCharts.renderBarChart($("#activity-chart"),
     actRows.map((r) => ({
       label: r.activity_label,
@@ -679,6 +766,7 @@ function renderAggregate() {
   for (const st of allStats) {
     for (const r of (st.case_stats || [])) {
       if (r.parent_case_id) continue; // top-level only
+      if (!matchesFilter(r.label || r.case_id)) continue;
       caseRows.push({
         label: (r.label || r.case_id.slice(0, 8)),
         value: (r.active_ms || 0) / 1000,
@@ -697,7 +785,11 @@ function renderAggregate() {
   // Variants table
   const varRows = [];
   for (const st of allStats) {
-    for (const v of (st.trace_variants || [])) varRows.push([v.frequency, v.length, v.variant.join(" → ")]);
+    for (const v of (st.trace_variants || [])) {
+      const variantStr = v.variant.join(" → ");
+      if (!matchesFilter(variantStr)) continue;
+      varRows.push([v.frequency, v.length, variantStr]);
+    }
   }
   varRows.sort((a, b) => b[0] - a[0]);
   fillTable("#variants", varRows.slice(0, 80));
@@ -705,12 +797,18 @@ function renderAggregate() {
   // Outliers + rework
   const outRows = [];
   for (const st of allStats) {
-    for (const r of (st.app_outliers || [])) outRows.push([r.app, r.case_count, r.case_pct + "%"]);
+    for (const r of (st.app_outliers || [])) {
+      if (!matchesFilter(r.app)) continue;
+      outRows.push([r.app, r.case_count, r.case_pct + "%"]);
+    }
   }
   fillTable("#outliers", outRows);
   const reworkRows = [];
   for (const st of allStats) {
-    for (const r of (st.rework_loops || [])) reworkRows.push([r.activity_label, r.rework_count]);
+    for (const r of (st.rework_loops || [])) {
+      if (!matchesFilter(r.activity_label)) continue;
+      reworkRows.push([r.activity_label, r.rework_count]);
+    }
   }
   fillTable("#rework", reworkRows);
 
@@ -747,7 +845,9 @@ function renderAggregate() {
       start_activities: Object.fromEntries(starts),
       end_activities: Object.fromEntries(ends),
     };
-    window.PdtDfg.render($("#dfg-host"), dfg);
+    window.PdtDfg.render($("#dfg-host"), dfg, {
+      onNodeClick: (activityLabel) => drillToActivity(activityLabel),
+    });
   }
 
   // Export buttons
@@ -757,6 +857,62 @@ function renderAggregate() {
   $("#btn-export-xes").disabled = !aggregateSessions.find((s) =>
     fs.existsSync(path.join(s.sessionFolder, "events.xes")));
   $("#btn-export-stats").disabled = !allStats.length;
+}
+
+/* ============ Drill-down from aggregate to session ================ */
+
+async function drillToActivity(activityLabel) {
+  if (!activityLabel) return;
+  // Find the first session whose normalized CSV / events.jsonl
+  // contains an activity event with this label. We use the loaded
+  // events for the match because activity_label only appears after
+  // normalization stamps it; loadSessionData reads stats.json but not
+  // the normalized events stream. Simplest: re-read the activity
+  // labels from the in-memory raw events plus the session's per-app
+  // labels via stats.activity_stats hit list -- but the truest source
+  // is to scan each session's events.jsonl by mapping raw app+title to
+  // the same classification rules. For v1 we approximate: open the
+  // first session that lists this label in its activity_stats, and
+  // seek to the first activity event of that app.
+  for (const sess of aggregateSessions) {
+    const stats = sess.stats;
+    if (!stats) continue;
+    const hit = (stats.activity_stats || []).find((r) => r.activity_label === activityLabel);
+    if (!hit) continue;
+    // Switch to session view and load that session
+    activateTab("session");
+    await loadSessionIntoView(sess.sessionFolder);
+    // Find the first activity event whose post-classification label
+    // matches. We don't carry activity_label on raw events.jsonl, so
+    // fall back to scanning events.csv if present, otherwise pick the
+    // first activity event whose app substring matches the label's
+    // last segment after "--".
+    const target = findFirstActivityByLabel(currentSession, activityLabel);
+    if (target) {
+      seekToTimestamp(target.timestamp);
+      toast("Drilled to " + activityLabel + " in " + sess.sessionFolder.split(/[\\/]/).pop(), "success");
+    } else {
+      toast("Opened session — couldn't pinpoint timestamp", "");
+    }
+    return;
+  }
+  toast("No loaded session contains " + activityLabel, "error");
+}
+
+function findFirstActivityByLabel(session, activityLabel) {
+  /* Heuristic match: the label format from sample-taxonomy.yaml is
+     usually "<Group> -- <App>" or similar. Pull the trailing token
+     after "--" and match against event app strings. Best-effort. */
+  if (!session || !session.events) return null;
+  const tail = (activityLabel.split("--").pop() || "").trim().toLowerCase();
+  for (const ev of session.events) {
+    if (ev.type !== "activity") continue;
+    const app = (ev.data.app || "").toLowerCase();
+    const title = (ev.data.title || "").toLowerCase();
+    if (tail && (app.includes(tail) || title.includes(tail))) return ev;
+  }
+  // Fallback: just the first activity event
+  return session.events.find((e) => e.type === "activity") || null;
 }
 
 /* ============ Exports ============================================= */

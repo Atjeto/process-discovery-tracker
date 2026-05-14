@@ -23,6 +23,7 @@
       host.innerHTML = '<div class="map-empty-inline">no DFG data</div>';
       return;
     }
+    const onNodeClick = opts.onNodeClick;
     const nodes = new Set();
     for (const e of dfg.edges) { nodes.add(e.source); nodes.add(e.target); }
     const maxFreq = Math.max(...dfg.edges.map((e) => e.frequency || 1));
@@ -123,6 +124,9 @@
         edgeSep: 10,
       },
     });
+    if (onNodeClick) {
+      cy.on("tap", "node", (e) => onNodeClick(e.target.data("id")));
+    }
     setTimeout(() => { try { cy.fit(undefined, 24); } catch (_) {} }, 50);
   }
 

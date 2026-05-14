@@ -116,6 +116,7 @@ function buildStatusHtml() {
 </div>
 
 <div class="actions">
+  <button class="full primary" id="btn-start">▶ Start capture session</button>
   <button id="btn-pause">Pause</button>
   <button id="btn-shot">📷 Screenshot</button>
   <button class="full primary" id="btn-end">End session</button>
@@ -195,10 +196,24 @@ async function tick() {
     return '<div class="ev"><span class="ts">' + fmtTs(ev.timestamp) + '</span>' +
            '<span class="' + cls + '">' + escapeHtml(label) + '</span></div>';
   }).join("");
-  // Button labels
-  document.getElementById("btn-pause").textContent = s.paused ? "Resume" : "Pause";
-  document.getElementById("btn-shot").disabled = !s.tracking || !s.screenshotsEnabled;
-  document.getElementById("btn-end").disabled = !s.tracking;
+  // Button states. Start is visible only when idle; pause/shot/end only when tracking.
+  const startBtn = document.getElementById("btn-start");
+  const pauseBtn = document.getElementById("btn-pause");
+  const shotBtn = document.getElementById("btn-shot");
+  const endBtn = document.getElementById("btn-end");
+  if (s.tracking) {
+    startBtn.style.display = "none";
+    pauseBtn.style.display = "";
+    shotBtn.style.display = "";
+    endBtn.style.display = "";
+  } else {
+    startBtn.style.display = "";
+    pauseBtn.style.display = "none";
+    shotBtn.style.display = "none";
+    endBtn.style.display = "none";
+  }
+  pauseBtn.textContent = s.paused ? "Resume" : "Pause";
+  shotBtn.disabled = !s.screenshotsEnabled;
 }
 
 function escapeHtml(s) {
@@ -206,6 +221,10 @@ function escapeHtml(s) {
     ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
 
+document.getElementById("btn-start").addEventListener("click", async () => {
+  await ipcRenderer.invoke("pdt:startSession");
+  tick();
+});
 document.getElementById("btn-pause").addEventListener("click", () => ipcRenderer.invoke("pdt:togglePause").then(tick));
 document.getElementById("btn-shot").addEventListener("click", () => ipcRenderer.invoke("pdt:manualScreenshot"));
 document.getElementById("btn-end").addEventListener("click", async () => {

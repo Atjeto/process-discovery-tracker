@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,56 @@ def load_manifest(session_folder: Path) -> dict[str, Any]:
         return json.load(f)
 
 
+def load_annotations(session_folder: Path) -> dict[str, Any]:
+    annotations_file = session_folder / "annotations.json"
+    if not annotations_file.exists():
+        return {}
+    try:
+        with open(annotations_file, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def apply_marker_edits(
+    events: list[dict[str, Any]],
+    annotations: dict[str, Any],
+) -> tuple[list[dict[str, Any]], int]:
+    """§9.3 option b -- apply annotation overrides during normalization.
+
+    Currently supports `field: "label"` rename edits. Returns the
+    edit-applied event list plus the count of edits applied. Raw
+    events.jsonl is never modified; this builds a derived stream.
+    """
+    edits = (annotations or {}).get("marker_edits") or []
+    if not edits:
+        return events, 0
+    # Last-write-wins per (event_id, field)
+    overrides: dict[tuple[str, str], Any] = {}
+    for e in edits:
+        evid = e.get("event_id")
+        field = e.get("field")
+        if not evid or not field:
+            continue
+        overrides[(evid, field)] = e.get("value")
+    applied = 0
+    out: list[dict[str, Any]] = []
+    for ev in events:
+        if ev.get("type") != "marker":
+            out.append(ev)
+            continue
+        evid = ev.get("event_id")
+        new_label = overrides.get((evid, "label"))
+        if new_label is None:
+            out.append(ev)
+            continue
+        new_ev = dict(ev)
+        new_ev["data"] = {**ev["data"], "label": new_label}
+        out.append(new_ev)
+        applied += 1
+    return out, applied
+
+
 def normalize(
     session_folder: Path,
     taxonomy_path: str | None = None,
@@ -70,7 +121,12 @@ def normalize(
     raw = load_events(events_file)
     print(f"[normalize] loaded {len(raw)} raw events")
 
-    with_cases = assign_case_ids(raw)
+    annotations = load_annotations(session_folder)
+    edited, edits_applied = apply_marker_edits(raw, annotations)
+    if edits_applied:
+        print(f"[normalize] applied {edits_applied} annotation edit(s) from annotations.json")
+
+    with_cases = assign_case_ids(edited)
     cases = collect_cases(with_cases)
     print(f"[normalize] identified {len(cases)} cases")
 
@@ -96,6 +152,18 @@ def normalize(
     print(f"[normalize] wrote {csv_path}")
 
     summary = stats.compute_all(collapsed, cases)
+    summary["meta"] = {
+        "normalization_run_at": datetime.now(timezone.utc).isoformat(),
+        "taxonomy_version": (taxonomy or {}).get("version"),
+        "taxonomy_path": str(taxonomy_path) if taxonomy_path else None,
+        "session_folder": str(session_folder),
+        "worker_id": worker_id,
+        "raw_event_count": len(raw),
+        "collapsed_activity_count": sum(1 for e in collapsed if e.get("type") == "activity"),
+        "case_count": len(cases),
+        "annotations_present": (session_folder / "annotations.json").exists(),
+        "marker_edits_applied": edits_applied,
+    }
     stats_path = session_folder / "stats.json"
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)

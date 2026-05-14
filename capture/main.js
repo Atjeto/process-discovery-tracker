@@ -481,6 +481,11 @@ ipcMain.handle("pdt:togglePause", () => {
 });
 
 ipcMain.handle("pdt:manualScreenshot", () => fireManualScreenshot());
+ipcMain.handle("pdt:startSession", async () => {
+  const s = await startSession();
+  refreshTray();
+  return s ? { sessionFolder: s.sessionFolder } : null;
+});
 ipcMain.handle("pdt:endSession", async () => {
   const f = await endSession();
   refreshTray();
