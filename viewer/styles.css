@@ -562,6 +562,12 @@ main { flex: 1; overflow: auto; }
   flex: 1; color: var(--fg);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.step-name-edit {
+  width: 100%; padding: 1px 4px; margin: -1px 0;
+  background: var(--bg-2); border: 1px solid var(--accent);
+  color: var(--fg); border-radius: 2px;
+  font-family: inherit; font-size: 12px; outline: none;
+}
 .step-row .step-time, .phase-row .phase-count {
   color: var(--fg-3); font-family: var(--font-mono); font-size: 10px;
   flex-shrink: 0;

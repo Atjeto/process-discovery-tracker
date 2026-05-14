@@ -170,7 +170,8 @@ function renderStepsLevel() {
       if (multiSelectedStepIds.has(sid)) multiSelectedStepIds.delete(sid);
       else multiSelectedStepIds.add(sid);
       $("#btn-group-into-phase").disabled = multiSelectedStepIds.size < 2;
-    }
+    },
+    inlineRenameStep,
   );
   const selected = steps.find(s => s.step_id === selectedStepId) || null;
   window.PdtSteps.renderStepDetail($("#step-detail"), selected, {
@@ -183,6 +184,44 @@ function renderStepsLevel() {
   if (span) {
     window.PdtSteps.renderStepTimeline($("#timeline-steps"), steps,
       currentSession.events.filter(e => e.type === "interaction"), span);
+  }
+}
+
+async function inlineRenameStep(stepId, newName, advance) {
+  // Special command: "open-next:<id>" means just re-render and trigger
+  // the next row's rename without modifying any data.
+  if (typeof advance === "string" && advance.startsWith("open-next:")) {
+    const nextId = advance.slice("open-next:".length);
+    selectedStepId = nextId;
+    renderStepsLevel();
+    setTimeout(() => beginRenameOnSelected(), 30);
+    return;
+  }
+  if (!currentSession || !stepId || !newName) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const step = anno.steps.find(s => s.step_id === stepId);
+  if (!step) return;
+  step.name = newName;
+  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
+  await persistAnnotations(anno);
+  renderStepsLevel();
+  if (advance === "next") {
+    const idx = anno.steps.findIndex(s => s.step_id === stepId);
+    const nextStep = anno.steps[idx + 1];
+    if (nextStep) {
+      selectedStepId = nextStep.step_id;
+      renderStepsLevel();
+      setTimeout(() => beginRenameOnSelected(), 30);
+    }
+  }
+}
+
+function beginRenameOnSelected() {
+  if (!selectedStepId) return;
+  const row = document.querySelector(`.step-row[data-step-id="${selectedStepId}"] .step-name`);
+  if (row) {
+    const evt = new MouseEvent("dblclick", { bubbles: true, cancelable: true });
+    row.dispatchEvent(evt);
   }
 }
 
@@ -2036,3 +2075,9 @@ $("#help-modal").addEventListener("click", (e) => {
 
 renderRecent();
 $("#topbar-meta").textContent = "v0.1 · " + new Date().toLocaleDateString();
+
+/* If launched with --session=<path>, the main process pushes the path
+   via this channel. Open it without any further user click. */
+ipcRenderer.on("viewer:openInitialSession", (_e, folder) => {
+  if (folder) loadSessionIntoView(folder);
+});

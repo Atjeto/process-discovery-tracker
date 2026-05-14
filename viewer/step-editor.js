@@ -11,7 +11,7 @@
     return `${tr.start.slice(11,19)} - ${tr.end.slice(11,19)}`;
   }
 
-  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect) {
+  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename) {
     host.innerHTML = "";
     if (!steps || !steps.length) {
       host.innerHTML = `
@@ -29,7 +29,7 @@
       const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(s.state)}"></span>
-        <span class="step-name">${escapeHtml(s.name)}</span>
+        <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
         ${driftTag}
         <span class="step-time">${escapeHtml(formatTimeRange(s.time_range))}</span>
       `;
@@ -40,8 +40,48 @@
           onSelect(s.step_id);
         }
       });
+      const nameEl = row.querySelector(".step-name");
+      nameEl.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        beginInlineRename(nameEl, s, onInlineRename, steps);
+      });
       host.appendChild(row);
     }
+  }
+
+  function beginInlineRename(nameEl, step, onInlineRename, allSteps) {
+    if (!nameEl || nameEl.querySelector("input")) return;
+    const original = step.name || "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = original;
+    input.className = "step-name-edit";
+    nameEl.textContent = "";
+    nameEl.appendChild(input);
+    input.focus();
+    input.select();
+    let committed = false;
+    const commit = (advance) => {
+      if (committed) return;
+      committed = true;
+      const next = input.value.trim();
+      if (next && next !== original && onInlineRename) {
+        onInlineRename(step.step_id, next, advance === "next");
+      } else if (advance === "next" && onInlineRename) {
+        // No change but user hit Tab: advance to next row's rename.
+        const idx = (allSteps || []).findIndex(x => x.step_id === step.step_id);
+        if (idx >= 0 && idx < allSteps.length - 1) onInlineRename(null, null, "open-next:" + allSteps[idx + 1].step_id);
+        else nameEl.textContent = original;
+      } else {
+        nameEl.textContent = original;
+      }
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit("stay"); }
+      else if (e.key === "Tab") { e.preventDefault(); commit("next"); }
+      else if (e.key === "Escape") { e.preventDefault(); committed = true; nameEl.textContent = original; }
+    });
+    input.addEventListener("blur", () => commit("stay"));
   }
 
   function renderStepDetail(host, step, callbacks) {

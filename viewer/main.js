@@ -18,6 +18,24 @@ const { runNormalize } = require("./python-runner.js");
 
 let mainWindow = null;
 
+/* Pull any --session=<path> off argv so we can preload a session
+   the capture app handed us. Filter file:// or http args defensively. */
+function parseInitialSessionArg() {
+  const args = process.argv.slice(1);
+  for (const a of args) {
+    if (typeof a !== "string") continue;
+    if (a.startsWith("--session=")) {
+      const p = a.slice("--session=".length);
+      try {
+        const abs = path.resolve(p);
+        if (fs.existsSync(path.join(abs, "manifest.json"))) return abs;
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+const initialSessionArg = parseInitialSessionArg();
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -47,6 +65,13 @@ function createMainWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, "index.html"));
   mainWindow.on("closed", () => { mainWindow = null; });
+
+  // If the launcher passed --session=<path>, tell the renderer to open it.
+  if (initialSessionArg) {
+    mainWindow.webContents.once("did-finish-load", () => {
+      mainWindow.webContents.send("viewer:openInitialSession", initialSessionArg);
+    });
+  }
 }
 
 /* --- IPC handlers ------------------------------------------------- */

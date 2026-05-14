@@ -36,7 +36,9 @@ const {
   closeSession,
   markSessionRecovered,
   findOrphanedSessions,
+  listRecentSessions,
 } = require("./session.js");
+const { spawn } = require("node:child_process");
 const { loadConfig, writeConfigSnapshot } = require("./config.js");
 const {
   connectOBS,
@@ -190,6 +192,46 @@ function stopIdleMonitor() {
   idleMonitorHandle = null;
   isIdle = false;
   idleStartMs = null;
+}
+
+function resolveViewerExe() {
+  /* The viewer ships either as a sibling app folder (in a packaged dist)
+     or as `npm start` in viewer/ (in dev). Probe a couple of layouts. */
+  const candidates = [
+    process.env.PDT_VIEWER_EXE,
+    // Sibling dist layout: dist/capture/... and dist/viewer/Process Discovery Viewer.exe
+    path.resolve(path.dirname(process.execPath), "..", "viewer", "Process Discovery Viewer.exe"),
+    // electron-packager layout: capture/dist/Process Discovery Tracker-win32-x64/... and viewer/dist/Process Discovery Viewer-win32-x64/...
+    path.resolve(path.dirname(process.execPath), "..", "..", "..", "viewer", "dist", "Process Discovery Viewer-win32-x64", "Process Discovery Viewer.exe"),
+  ].filter(Boolean);
+  for (const c of candidates) if (fs.existsSync(c)) return c;
+  return null;
+}
+
+function openInViewer(sessionFolder) {
+  const exe = resolveViewerExe();
+  if (!exe) {
+    dialog.showMessageBox({
+      type: "info",
+      title: "Viewer not found",
+      message: "Couldn't locate Process Discovery Viewer.exe.",
+      detail:
+        `Open it manually and pick the session folder:\n${sessionFolder}\n\n` +
+        `Set PDT_VIEWER_EXE to the viewer's executable path to enable one-click launch.`,
+      buttons: ["OK"],
+    });
+    return;
+  }
+  try {
+    const child = spawn(exe, [`--session=${sessionFolder}`], {
+      detached: true, stdio: "ignore", windowsHide: false,
+    });
+    child.unref();
+    bootLog(`launched viewer with session: ${sessionFolder}`);
+  } catch (e) {
+    bootLog(`viewer launch failed: ${e && e.message}`);
+    dialog.showErrorBox("Could not launch viewer", e && e.message);
+  }
 }
 
 function obsSettingsPath() {
@@ -821,12 +863,15 @@ function buildMenu() {
       label: "End capture session",
       click: async () => {
         const folder = await endSession();
-        dialog.showMessageBox({
+        const r = await dialog.showMessageBox({
           type: "info",
           message: "Session ended.",
-          detail: folder ? `Output: ${folder}` : "",
-          buttons: ["OK"],
+          detail: folder ? `Saved to: ${folder}` : "",
+          buttons: folder ? ["Open in viewer", "Close"] : ["OK"],
+          defaultId: 0,
+          cancelId: folder ? 1 : 0,
         });
+        if (folder && r.response === 0) openInViewer(folder);
         refreshTray();
       },
     });
@@ -840,7 +885,23 @@ function buildMenu() {
     label: operatorWindow ? "Hide operator panel" : "Show operator panel",
     click: () => toggleOperatorPanel(),
   });
-  items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+  // Recent sessions submenu - one-click "Open in viewer" handoff
+  const recent = listRecentSessions(baseDir, 8);
+  if (recent.length) {
+    const recentItems = recent.map((r) => {
+      const when = (r.started_at || "").slice(0, 19).replace("T", " ");
+      const status = r.status === "active" ? "  (active)" : (r.status === "recovered" ? "  (recovered)" : "");
+      return {
+        label: when + "  " + r.engagement + status,
+        click: () => openInViewer(r.sessionFolder),
+      };
+    });
+    recentItems.push({ type: "separator" });
+    recentItems.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+    items.push({ label: "Recent sessions", submenu: recentItems });
+  } else {
+    items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+  }
   items.push({ label: "Set up OBS recording...", click: () => showObsSetupDialog() });
   items.push({ label: "Help - How to use", click: () => showHelp() });
   if (configSourcePath) {

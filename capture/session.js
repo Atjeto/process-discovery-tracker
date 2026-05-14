@@ -93,9 +93,41 @@ function findOrphanedSessions(baseDir) {
   return orphans;
 }
 
+function listRecentSessions(baseDir, limit = 10) {
+  if (!fs.existsSync(baseDir)) return [];
+  const all = [];
+  for (const ent of fs.readdirSync(baseDir, { withFileTypes: true })) {
+    if (!ent.isDirectory()) continue;
+    const engDir = path.join(baseDir, ent.name);
+    let subs;
+    try { subs = fs.readdirSync(engDir, { withFileTypes: true }); }
+    catch (_) { continue; }
+    for (const s of subs) {
+      if (!s.isDirectory()) continue;
+      const sFolder = path.join(engDir, s.name);
+      const manifestFile = path.join(sFolder, "manifest.json");
+      if (!fs.existsSync(manifestFile)) continue;
+      try {
+        const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+        all.push({
+          sessionFolder: sFolder,
+          engagement: ent.name,
+          started_at: m.started_at,
+          ended_at: m.ended_at,
+          status: m.status,
+          label: ent.name + "  " + s.name,
+        });
+      } catch (_) { /* skip malformed */ }
+    }
+  }
+  all.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
+  return all.slice(0, limit);
+}
+
 module.exports = {
   createSession,
   closeSession,
   markSessionRecovered,
   findOrphanedSessions,
+  listRecentSessions,
 };

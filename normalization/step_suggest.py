@@ -98,12 +98,135 @@ def auto_suggest_steps(
 
 
 def _default_step_name(interactions: list[dict[str, Any]]) -> str:
+    """Derive a useful name from the actual interactions captured.
+
+    Strategy, in priority order:
+      1. The window title's app prefix + the most semantically loaded
+         interaction's control name. Most of the time the last
+         user-meaningful interaction is an Invoked Button -- that's the
+         step's purpose ("Save", "Submit", "Search").
+      2. If a value_changed shows the most recent typed value, use
+         "App: Enter <value>" (clamped).
+      3. If the cluster is all selection_changed (drop-down picks),
+         report the selected values.
+      4. Final fallback: a count-based summary.
+    """
     last = interactions[-1]["data"]
-    window = last.get("window_title") or ""
-    if last.get("kind") == "invoked" and last.get("name"):
-        return f"{window}: {last['name']}".strip(": ")
-    # build a brief summary
+    app = _short_app(last)
+
+    # Find the last button-like invocation. Cheap heuristic: kind=invoked
+    # with a non-empty name. This is almost always the action that
+    # completed the step.
+    for ev in reversed(interactions):
+        d = ev["data"]
+        if d.get("kind") == "invoked" and d.get("name"):
+            ctl = d.get("control_type") or ""
+            verb = _verb_for_control(ctl, d.get("name"))
+            return _trim(f"{app}: {verb}")
+
     kinds = [i["data"].get("kind") for i in interactions]
-    if all(k == "value_changed" for k in kinds):
-        return f"{window}: Fill {len(interactions)} fields"
-    return f"{window}: {len(interactions)} actions"
+
+    # All typed-in-fields cluster: "App: Fill 3 fields (last: Email)"
+    if all(k in ("value_changed", "text_changed") for k in kinds):
+        last_val = ""
+        for ev in reversed(interactions):
+            v = (ev["data"].get("value") or "").strip()
+            if v:
+                last_val = v[:40]
+                break
+        named_fields = [
+            (i["data"].get("name") or "").strip()
+            for i in interactions if (i["data"].get("name") or "").strip()
+        ]
+        if named_fields:
+            uniq = list(dict.fromkeys(named_fields))  # preserve order, dedup
+            if len(uniq) == 1:
+                return _trim(f"{app}: Fill {uniq[0]}")
+            if len(uniq) <= 3:
+                return _trim(f"{app}: Fill " + ", ".join(uniq))
+            return _trim(f"{app}: Fill {len(interactions)} fields ({uniq[0]}, ...)")
+        if last_val:
+            return _trim(f"{app}: Enter {last_val}")
+        return _trim(f"{app}: Fill {len(interactions)} fields")
+
+    # All selection_changed: "App: Select Foo, Bar"
+    if all(k == "selection_changed" for k in kinds):
+        vals = [
+            (i["data"].get("selected_value") or "").strip()
+            for i in interactions if (i["data"].get("selected_value") or "").strip()
+        ]
+        vals = list(dict.fromkeys(vals))
+        if vals:
+            if len(vals) == 1: return _trim(f"{app}: Select {vals[0]}")
+            if len(vals) <= 3: return _trim(f"{app}: Select " + ", ".join(vals))
+            return _trim(f"{app}: Select {len(vals)} options")
+
+    # Mixed cluster: lead with the most informative non-focus interaction.
+    for ev in interactions:
+        d = ev["data"]
+        if d.get("kind") in ("focus_changed", "text_changed"):
+            continue
+        name = (d.get("name") or "").strip()
+        val = (d.get("value") or "").strip()
+        if name:
+            return _trim(f"{app}: {name}")
+        if val:
+            return _trim(f"{app}: {val[:40]}")
+        break
+
+    return _trim(f"{app}: {len(interactions)} interactions")
+
+
+# --- Helpers -----------------------------------------------------------
+
+_VERB_HINTS = {
+    "Button": None,             # the button's name is the verb already
+    "MenuItem": "open",
+    "TabItem": "switch to",
+    "TreeItem": "select",
+    "ListItem": "select",
+    "Hyperlink": "follow",
+    "RadioButton": "choose",
+    "CheckBox": "toggle",
+}
+
+def _verb_for_control(control_type: str, name: str) -> str:
+    """Most controls' names already read like verbs ("Save", "Search").
+    For containers (MenuItem, TabItem) the name is a noun -- prefix a
+    verb so the step reads as an action."""
+    hint = _VERB_HINTS.get(control_type)
+    if hint:
+        return f"{hint} {name}"
+    return name
+
+
+def _short_app(data: dict) -> str:
+    """Pull a short readable app or window label.
+
+    Prefers a leading non-punctuation token of the window title (which
+    is usually the app name on Windows: "Salesforce | Search Accounts"
+    becomes "Salesforce"). Falls back to process_name without .exe.
+    """
+    title = (data.get("window_title") or "").strip()
+    if title:
+        # Common Windows separators: " - ", " | ", " :: "
+        for sep in (" — ", " - ", " | ", " :: ", " : "):
+            head, _, _rest = title.partition(sep)
+            if head and head != title:
+                head = head.strip()
+                # Reject leading separators like asterisks (unsaved indicator)
+                if head.startswith("*"):
+                    head = head.lstrip("*").strip()
+                if head:
+                    return head
+        # No separator: use the title up to ~40 chars
+        return title[:40]
+    proc = (data.get("process_name") or "").strip()
+    if proc.lower().endswith(".exe"):
+        proc = proc[:-4]
+    return proc or "App"
+
+
+def _trim(s: str, limit: int = 80) -> str:
+    s = (s or "").strip().strip(":").strip()
+    return s if len(s) <= limit else s[: limit - 1] + "…"
