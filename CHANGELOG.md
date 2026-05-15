@@ -56,9 +56,11 @@ repo. See README "Installing a prebuilt release" for the SME-side flow.
 
 - **`scripts/build-distribution.ps1`** now produces `dist/release/`
   containing `capture-vX.Y.Z.zip` and `viewer-vX.Y.Z.zip` ready to
-  attach to a GitHub Release. New flags: `-Version` (override the
-  release-asset version suffix), `-SkipRelease` (build but don't
-  zip).
+  attach to a GitHub Release. Each zip has a single versioned
+  top-level folder (e.g. `capture-v0.2.0/`) so Windows Explorer's
+  "Extract All" produces the expected layout. New flags: `-Version`
+  (override the release-asset version suffix), `-SkipRelease` (build
+  but don't zip).
 
 - **`README.md`** rewrote the "Building for distribution" and added a
   new "Installing a prebuilt release" section. Recipients are

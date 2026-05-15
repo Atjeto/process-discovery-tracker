@@ -303,22 +303,34 @@ if (-not $SkipRelease) {
     throw "tar.exe not found at $tar. Windows 10+ required (libarchive-backed tar produces .zip)."
   }
 
-  # tar -a -cf foo.zip -C parent appfolder  produces foo.zip with appfolder/
-  # at the root, which is what GitHub Release downloaders expect.
+  # tar -a -cf foo.zip -C parent topdir  archives "topdir/..." -- a single
+  # named folder at the zip root, which is what Windows Explorer's
+  # "Extract All" wants. Earlier versions archived "." which produced
+  # entries with a leading "./" prefix and silently extracted to an
+  # empty folder under Windows Shell. Workaround: temporarily rename the
+  # app folder to its versioned name before archiving, then rename back.
   foreach ($appName in @("capture", "viewer")) {
     $appRoot = Join-Path $distDir $appName
     if (-not (Test-Path $appRoot)) {
       Write-Host "  [skip] $appName -- $appRoot not present" -ForegroundColor DarkGray
       continue
     }
-    $asset = Join-Path $releaseDir "$appName-v$releaseVersion.zip"
-    Write-Host "  $asset" -ForegroundColor Cyan
-    # tar's -C changes to the parent so the archive contains "appfolder/...".
-    & $tar -a -cf $asset -C $appRoot "."
-    if ($LASTEXITCODE -ne 0) {
-      throw "tar -a -cf failed (exit $LASTEXITCODE) for $appName"
+    $versioned = "$appName-v$releaseVersion"
+    $renamed = Join-Path $distDir $versioned
+    Rename-Item -LiteralPath $appRoot -NewName $versioned
+    try {
+      $asset = Join-Path $releaseDir "$versioned.zip"
+      Write-Host "  $asset" -ForegroundColor Cyan
+      & $tar -a -cf $asset -C $distDir $versioned
+      if ($LASTEXITCODE -ne 0) {
+        throw "tar -a -cf failed (exit $LASTEXITCODE) for $appName"
+      }
+      $releaseAssets += $asset
+    } finally {
+      # Always rename back so subsequent runs (and any callers expecting
+      # dist/<app>/) find what they expect.
+      Rename-Item -LiteralPath $renamed -NewName $appName
     }
-    $releaseAssets += $asset
   }
 }
 
