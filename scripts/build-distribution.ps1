@@ -159,6 +159,24 @@ try {
   Pop-Location
 }
 
+# Slim the packaged Python tree. -SkipPython skips the embeddable
+# rebuild (and the slim that runs at the end of that rebuild), so
+# without this step the dist tree carries __pycache__ trees that
+# accumulated from any dev usage between rebuilds. Slimming the
+# packaged copy (not the source) keeps the source warm for `npm
+# start` while the shipped tree stays lean.
+$viewerBuildOut = Get-ChildItem (Join-Path $viewerDir "dist") -Directory | Select-Object -First 1
+$packagedPython = if ($viewerBuildOut) { Join-Path $viewerBuildOut.FullName "resources\python" } else { $null }
+if ($packagedPython -and (Test-Path $packagedPython)) {
+  Write-Host ""
+  Write-Host "Slimming packaged Python tree at $packagedPython" -ForegroundColor Yellow
+  $sourcePy = Join-Path $viewerDir "python\python.exe"
+  # Use the source python.exe to run slim (the packaged tree's
+  # python.exe is identical; either works).
+  & $sourcePy (Join-Path $PSScriptRoot "slim-python-embeddable.py") --path $packagedPython --skip-smoke-test
+  if ($LASTEXITCODE -ne 0) { throw "Slim of packaged Python tree failed (exit $LASTEXITCODE)" }
+}
+
 # Cleanup staged copy
 if (Test-Path $viewerNormStage) { Remove-Item -Recurse -Force $viewerNormStage }
 
@@ -307,8 +325,11 @@ if (-not $SkipRelease) {
   # named folder at the zip root, which is what Windows Explorer's
   # "Extract All" wants. Earlier versions archived "." which produced
   # entries with a leading "./" prefix and silently extracted to an
-  # empty folder under Windows Shell. Workaround: temporarily rename the
-  # app folder to its versioned name before archiving, then rename back.
+  # empty folder under Windows Shell. We use a directory junction
+  # (mklink /J) rather than Rename-Item: junctions are instant,
+  # consume no extra disk, and -- crucially -- aren't blocked by file
+  # locks that linger on the freshly-built tree from Defender / Search
+  # indexing. tar transparently follows the junction.
   foreach ($appName in @("capture", "viewer")) {
     $appRoot = Join-Path $distDir $appName
     if (-not (Test-Path $appRoot)) {
@@ -316,8 +337,14 @@ if (-not $SkipRelease) {
       continue
     }
     $versioned = "$appName-v$releaseVersion"
-    $renamed = Join-Path $distDir $versioned
-    Rename-Item -LiteralPath $appRoot -NewName $versioned
+    $junction = Join-Path $distDir $versioned
+    if (Test-Path $junction) {
+      & cmd /c "rmdir `"$junction`"" 2>$null | Out-Null
+    }
+    & cmd /c "mklink /J `"$junction`" `"$appRoot`"" 2>$null | Out-Null
+    if (-not (Test-Path $junction)) {
+      throw "mklink /J failed for $appName -> $junction"
+    }
     try {
       $asset = Join-Path $releaseDir "$versioned.zip"
       Write-Host "  $asset" -ForegroundColor Cyan
@@ -327,9 +354,8 @@ if (-not $SkipRelease) {
       }
       $releaseAssets += $asset
     } finally {
-      # Always rename back so subsequent runs (and any callers expecting
-      # dist/<app>/) find what they expect.
-      Rename-Item -LiteralPath $renamed -NewName $appName
+      # rmdir on a junction deletes the link, not the target tree.
+      & cmd /c "rmdir `"$junction`"" 2>$null | Out-Null
     }
   }
 }

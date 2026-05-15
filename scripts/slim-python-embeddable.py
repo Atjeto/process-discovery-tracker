@@ -19,13 +19,13 @@ after a fresh build.
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PY_DIR = REPO_ROOT / "viewer" / "python"
-SITE = PY_DIR / "Lib" / "site-packages"
+DEFAULT_PY_DIR = REPO_ROOT / "viewer" / "python"
 
 # Packages safe to remove entirely. Each was verified by running the
 # full normalize pipeline against the demo sessions with the package
@@ -89,13 +89,30 @@ def rm_tree(p: Path) -> int:
     return size
 
 
-def main() -> int:
-    if not SITE.exists():
-        print(f"ERROR: site-packages not found at {SITE}")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Slim a python embeddable bundle in-place.")
+    parser.add_argument(
+        "--path", type=Path, default=DEFAULT_PY_DIR,
+        help=("Path to the python embeddable folder to slim (the folder "
+              "containing python.exe). Defaults to viewer/python."),
+    )
+    parser.add_argument(
+        "--skip-smoke-test", action="store_true",
+        help=("Skip the post-slim smoke test. Useful when running against a "
+              "packaged dist tree where the python.exe path may have site "
+              "module changes that the smoke imports don't tolerate."),
+    )
+    args = parser.parse_args(argv)
+    py_dir = args.path.resolve()
+    site = py_dir / "Lib" / "site-packages"
+
+    if not site.exists():
+        print(f"ERROR: site-packages not found at {site}")
         print("Build the embeddable first via scripts/build-python-embeddable.ps1.")
         return 1
 
-    before = folder_bytes(PY_DIR)
+    before = folder_bytes(py_dir)
+    print(f"Slim target: {py_dir}")
     print(f"Bundle size before slim: {human_mb(before)}")
     print()
 
@@ -103,9 +120,9 @@ def main() -> int:
     removed_pkg = 0
     print("[1/4] Removing unused packages...")
     for pkg in REMOVABLE_PACKAGES:
-        target = SITE / pkg
+        target = site / pkg
         # Also strip the matching *.dist-info / *.egg-info siblings.
-        siblings = list(SITE.glob(f"{pkg}-*.dist-info")) + list(SITE.glob(f"{pkg}-*.egg-info"))
+        siblings = list(site.glob(f"{pkg}-*.dist-info")) + list(site.glob(f"{pkg}-*.egg-info"))
         if target.exists() or siblings:
             n = rm_tree(target)
             for s in siblings:
@@ -121,7 +138,7 @@ def main() -> int:
     for kind in RECURSIVE_DELETE_DIRS:
         n = 0
         # Collect first, then delete -- can't iterate and mutate.
-        targets = [p for p in PY_DIR.rglob(kind) if p.is_dir()]
+        targets = [p for p in py_dir.rglob(kind) if p.is_dir()]
         for t in targets:
             n += rm_tree(t)
         if n > 0:
@@ -135,7 +152,7 @@ def main() -> int:
     for glob in RECURSIVE_DELETE_FILE_GLOBS:
         n = 0
         count = 0
-        for f in PY_DIR.rglob(glob):
+        for f in py_dir.rglob(glob):
             try:
                 if f.is_file():
                     n += f.stat().st_size
@@ -147,25 +164,30 @@ def main() -> int:
             print(f"  - {glob:24s} -{human_mb(n)} ({count} files)")
             removed_files += n
 
-    # 4. Final smoke test -- run normalize.py against a tiny synthetic
-    #    payload to make sure the imports still resolve.
-    print()
-    print("[4/4] Smoke-testing the slimmed bundle...")
-    import subprocess
-    py = PY_DIR / "python.exe"
-    test = subprocess.run(
-        [str(py), "-c",
-         "import pm4py, pandas, networkx, yaml, docx; "
-         "print('pm4py', pm4py.__version__); "
-         "print('pandas', pandas.__version__)"],
-        capture_output=True, text=True,
-    )
-    if test.returncode != 0:
-        print(f"  SMOKE TEST FAILED:\n{test.stderr}")
-        return 1
-    print(f"  OK: {test.stdout.strip()}")
+    # 4. Smoke test -- runs python.exe from the slimmed bundle to check
+    #    imports resolve. Skipped against packaged dist trees where the
+    #    interpreter's site path resolution can differ.
+    if args.skip_smoke_test:
+        print()
+        print("[4/4] Smoke test skipped (--skip-smoke-test).")
+    else:
+        print()
+        print("[4/4] Smoke-testing the slimmed bundle...")
+        import subprocess
+        py = py_dir / "python.exe"
+        test = subprocess.run(
+            [str(py), "-c",
+             "import pm4py, pandas, networkx, yaml, docx; "
+             "print('pm4py', pm4py.__version__); "
+             "print('pandas', pandas.__version__)"],
+            capture_output=True, text=True,
+        )
+        if test.returncode != 0:
+            print(f"  SMOKE TEST FAILED:\n{test.stderr}")
+            return 1
+        print(f"  OK: {test.stdout.strip()}")
 
-    after = folder_bytes(PY_DIR)
+    after = folder_bytes(py_dir)
     print()
     print(f"Bundle size after slim:  {human_mb(after)}")
     print(f"Saved:                   {human_mb(before - after)}  "
