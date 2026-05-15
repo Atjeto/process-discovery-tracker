@@ -6,6 +6,44 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (round-2 UX feedback — features)
+
+- **Recent dropdown in the top-bar.** Recent sessions + projects were
+  only reachable from the Session empty-state, which vanishes once a
+  session loads. New "Recent" dropdown next to the Project menu lists
+  recent projects + recent sessions + bundled examples, reachable any
+  time.
+- **Capture: explicit "Start capture session" button.** The Live
+  Session window had no obvious way to begin — its primary control was
+  "Fire" (a marker), which auto-starts a session as a side effect. It
+  now shows a prominent Start button when idle; the marker controls
+  dim until a session is running.
+- **Timeline Lanes menu.** The timeline had grown to nine stacked
+  lanes. A new "Lanes" dropdown in the timeline header toggles idle /
+  markers / screenshots / cases / density / window-titles / per-step
+  bands / note dots. Defaults keep the core lanes on and the denser
+  additions off; the choice persists.
+- **Flow diagram variant overlay.** Hovering a node in the Compare
+  Sessions Flow diagram now highlights the session paths (variants)
+  running through that activity and dims everything else — you see
+  where work diverges. The standalone variant-flow Sankey
+  (`viewer/variant-viewer.js`) is removed; the Flow diagram absorbed
+  the useful idea.
+- **Process map SVG export.** New "Process map SVG" export button.
+  Exports whichever map is showing — the BPMN process diagram (via
+  bpmn-js `saveSVG`) or the Flow diagram (via a hand-written
+  cytoscape→SVG serializer) — as an SVG that imports cleanly into
+  Figma, Lucidchart, and browsers.
+
+### Changed (round-2 UX feedback — clarity)
+
+- **"Rework loops" panel renamed** to "Repeated activities within a
+  case", with a plain-English explainer ("activities a worker did
+  more than once inside the same case — often a sign of rework").
+- **Capture session-config window** rewritten for a business
+  audience: "Set up a recording session", every field relabelled in
+  plain language with a one-line helper.
+
 ### Added (round-2 UX feedback — step-noise solution)
 
 - **Step-noise denylist.** A session captured with OBS (or any app the

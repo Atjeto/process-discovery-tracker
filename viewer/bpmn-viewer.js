@@ -67,5 +67,15 @@
     }
   }
 
-  window.PdtBpmn = { render, fit };
+  /* Export the rendered diagram as SVG (Figma / Lucidchart / browser
+     all import SVG). bpmn-js's saveSVG returns a Promise<{ svg }>. */
+  async function exportSvg() {
+    if (!viewer) return null;
+    try {
+      const { svg } = await viewer.saveSVG();
+      return svg || null;
+    } catch (_) { return null; }
+  }
+
+  window.PdtBpmn = { render, fit, exportSvg };
 })();

@@ -4595,6 +4595,32 @@ $("#btn-export-bpmn").addEventListener("click", () => exportFirst("process_map.b
 $("#btn-export-xes").addEventListener("click", () => exportFirst("events.xes"));
 $("#btn-export-stats").addEventListener("click", () => exportFirst("stats.json"));
 
+/* Phase F: export the active process-map (BPMN diagram or Flow
+   diagram) as an SVG -- the format Figma / Lucidchart / browsers all
+   import. Picks the renderer for whichever map tab is showing. */
+if ($("#btn-export-map-svg")) {
+  $("#btn-export-map-svg").addEventListener("click", async () => {
+    const activeTab = document.querySelector(".panel-tab.active[data-map]");
+    const which = activeTab ? activeTab.dataset.map : "bpmn";
+    let svg = null;
+    if (which === "dfg" && window.PdtDfg && window.PdtDfg.exportSvg) {
+      svg = window.PdtDfg.exportSvg();
+    } else if (window.PdtBpmn && window.PdtBpmn.exportSvg) {
+      svg = await window.PdtBpmn.exportSvg();
+    }
+    if (!svg) {
+      toast("No process map to export — analyze sessions first.", "error");
+      return;
+    }
+    const r = await ipcRenderer.invoke("viewer:saveSvgFile", {
+      content: svg,
+      suggestedName: (which === "dfg" ? "flow-diagram" : "process-diagram") + ".svg",
+    });
+    if (r && r.ok) toast("Process map exported to " + r.path, "success");
+    else if (r && r.error) toast("Export failed: " + r.error, "error");
+  });
+}
+
 $("#btn-export-md").addEventListener("click", async () => {
   if (!window.PdtReport) return;
   const filtered = filteredAggregateSessions();

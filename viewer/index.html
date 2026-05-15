@@ -463,10 +463,11 @@
           </div>
 
           <div class="panel">
-            <h3>Rework loops</h3>
+            <h3 title="How often a worker had to revisit the same activity inside a single case — often a sign of rework or fixing a mistake.">Repeated activities within a case</h3>
+            <p class="meta" style="margin-top:0">Activities a worker did more than once inside the same case. Frequent repeats often mean rework — re-checking, re-entering, or fixing something.</p>
             <div class="stats-table-host">
               <table class="stats-table" id="rework">
-                <thead><tr><th>activity</th><th>repeats</th></tr></thead>
+                <thead><tr><th>activity</th><th>times repeated</th></tr></thead>
                 <tbody></tbody>
               </table>
             </div>
@@ -475,6 +476,7 @@
 
         <div class="actions-bar">
           <span class="meta">Exports:</span>
+          <button id="btn-export-map-svg" title="Export the process map currently shown above (Process diagram or Flow diagram) as an SVG image -- opens in Figma, Lucidchart, browsers, image editors.">Process map SVG</button>
           <button id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
           <button id="btn-export-bpmn-step" disabled>Step BPMN</button>
           <button id="btn-export-bpmn-phase" disabled>Phase BPMN</button>
@@ -740,7 +742,7 @@
             <li><strong>Case durations</strong>: active duration (filled bar) with wall-clock as a thin overlay so you can spot heavy idle inside cases. Top 12 cases.</li>
             <li><strong>Trace variants</strong>: distinct activity sequences ranked by frequency. Top 80.</li>
             <li><strong>App outliers</strong>: apps appearing in &lt;5% of cases - exceptions or misuse.</li>
-            <li><strong>Rework loops</strong>: activities revisited within a single case.</li>
+            <li><strong>Repeated activities within a case</strong>: activities a worker did more than once inside the same case — often a sign of rework or fixing a mistake.</li>
           </ul>
           <h3>Filtering</h3>
           <ul class="help-list">

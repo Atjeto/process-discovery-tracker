@@ -214,5 +214,56 @@
   }
   function getZoom() { return cy ? cy.zoom() : 1; }
 
-  window.PdtDfg = { render, fit, zoomIn, zoomOut, getZoom };
+  /* Export the current DFG as a standalone SVG. cytoscape has no
+     native SVG export (that needs the cytoscape-svg extension, which
+     isn't bundled), so we serialize the graph by hand: a rect + label
+     per node, a line + arrowhead per edge. Coordinates come straight
+     from the laid-out graph via node.position() / .width() / .height().
+     Good enough for Figma / Lucidchart import. */
+  function exportSvg() {
+    if (!cy) return null;
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const PAD = 30;
+    const bb = cy.elements().boundingBox();
+    const W = Math.ceil(bb.w + PAD * 2);
+    const H = Math.ceil(bb.h + PAD * 2);
+    const ox = PAD - bb.x1;
+    const oy = PAD - bb.y1;
+    const parts = [];
+    parts.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + W +
+      '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">');
+    parts.push('<desc>Process Discovery Tracker - Flow diagram (DFG)</desc>');
+    parts.push('<rect width="' + W + '" height="' + H + '" fill="#08080A"/>');
+    parts.push('<defs><marker id="arr" markerWidth="8" markerHeight="8" ' +
+      'refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#807E78"/></marker></defs>');
+    // Edges first so nodes sit on top.
+    cy.edges().forEach((ed) => {
+      const s = ed.source().position(), t = ed.target().position();
+      const x1 = s.x + ox, y1 = s.y + oy, x2 = t.x + ox, y2 = t.y + oy;
+      const w = ed.data("width") || 1.5;
+      parts.push('<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) +
+        '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) +
+        '" stroke="#5A5854" stroke-width="' + w.toFixed(1) +
+        '" marker-end="url(#arr)"/>');
+    });
+    // Nodes.
+    cy.nodes().forEach((n) => {
+      const p = n.position();
+      const w = n.width(), h = n.height();
+      const x = p.x + ox - w / 2, y = p.y + oy - h / 2;
+      const role = n.data("role");
+      const border = role === "start" ? "#6E8A66" : role === "end" ? "#885A42" : "#424250";
+      parts.push('<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
+        '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) +
+        '" rx="6" fill="#2E2E37" stroke="' + border + '" stroke-width="1.5"/>');
+      parts.push('<text x="' + (p.x + ox).toFixed(1) + '" y="' + (p.y + oy + 4).toFixed(1) +
+        '" font-family="sans-serif" font-size="11" fill="#D8D6CE" ' +
+        'text-anchor="middle">' + esc(n.data("label") || "") + '</text>');
+    });
+    parts.push('</svg>');
+    return parts.join("\n");
+  }
+
+  window.PdtDfg = { render, fit, zoomIn, zoomOut, getZoom, exportSvg };
 })();

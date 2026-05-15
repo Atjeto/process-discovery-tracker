@@ -162,6 +162,21 @@ ipcMain.handle("viewer:exportFile", async (_e, { sourcePath, suggestedName }) =>
   return r.filePath;
 });
 
+ipcMain.handle("viewer:saveSvgFile", async (_e, { content, suggestedName }) => {
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: "Export process map as SVG",
+    defaultPath: suggestedName || "process-map.svg",
+    filters: [{ name: "SVG image", extensions: ["svg"] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  try {
+    fs.writeFileSync(r.filePath, content, "utf-8");
+    return { ok: true, path: r.filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("viewer:revealFile", (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle("viewer:openExternal", (_e, p) => shell.openPath(p));
 
