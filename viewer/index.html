@@ -566,6 +566,8 @@
             <li><strong>Annotate</strong>: rename markers, add timestamped notes. Edits save to <code>annotations.json</code>; raw events stay immutable.</li>
             <li><strong>Compare across sessions</strong> (Tab 2) when you want statistics, path variations, and a combined process map.</li>
           </ol>
+          <h3>Save your work as a project</h3>
+          <p>The top-bar <strong>Project</strong> menu bundles the session set you've loaded for comparison, the focus session, the active Process Template, the current view mode, and the case scope into a single <code>.pdt-project.json</code> file. Use it when you're juggling multiple sessions and a template across days — instead of re-loading everything every morning, pick the project from <em>Recent projects</em> on the empty state.</p>
           <h3>What the viewer expects in a session folder</h3>
           <ul class="help-list">
             <li><code>events.jsonl</code> - one JSON event per line; the durable artifact</li>
@@ -580,7 +582,10 @@
           <h3>Session view layout</h3>
           <ul class="help-list">
             <li><strong>Video pane</strong> (top left): OBS recording if linked in the manifest. Standard HTML5 controls; click any timeline event to seek.</li>
-            <li><strong>Timeline</strong> (top right): activity bands (green), idle gaps (grey), marker bars (orange), screenshot dots (blue), nested case overlays below.</li>
+            <li><strong>Minimap</strong> (above the timeline): 30-px strip showing the whole session compressed. Click anywhere to jump; drag the highlighted viewport to scroll. Stays in sync as you zoom.</li>
+            <li><strong>Timeline</strong> (top right): activity bands (per-app colour), idle gaps (grey), marker bars, screenshot dots (hover for a thumbnail preview), event-density histogram, optional per-step bands and numbered note dots beneath. Right-click an activity band for the context menu (insert markers / scope to case). <strong>Shift-drag</strong> across the background to select a time range — a stats card pops above the legend with duration, event count, marker count, screenshot count, and top apps in the range. Esc clears the selection.</li>
+            <li><strong>Snap-to-event</strong>: clicking the timeline background snaps to the nearest event within ~10px tolerance; click in genuine empty space to seek to the literal point.</li>
+            <li><strong>Persistent zoom + scroll</strong>: each session remembers its zoom factor and scroll position in localStorage. Reopening a session restores where you were.</li>
             <li><strong>Annotations</strong> (right column) with three sub-tabs:
               <ul>
                 <li><em>Notes</em> - anchor text to current playback time</li>

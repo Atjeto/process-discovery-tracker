@@ -18,7 +18,22 @@ Internal tool for capturing and analyzing process discovery sessions. Full desig
 - **Analysis progress streaming + Cancel** (viewer). Long analyses show progress and can be aborted via a red Cancel button.
 - **Stratified-dark palette** across all surfaces. Sage / slate accents, no electric blue. Capture and viewer windows now share the same look.
 
-Items intentionally deferred to v0.4+: see [docs/SPEC-DEFERRED.md](docs/SPEC-DEFERRED.md).
+## What's new since v0.3 (unreleased)
+
+A post-v0.3 pass adds the project layer, ten timeline / aggregate features, business-language relabeling, and a number of polish items:
+
+- **Project / engagement layer** (viewer). Top-bar Project menu lets you save the current aggregate session set + focus session + active Process Template + view mode + case scope into a single `.pdt-project.json` file. Reopen restores everything in one click. "Recent projects" surfaces in the Session view's empty state alongside Recent sessions.
+- **Range selection on the timeline** (viewer). **Shift-drag** across the Flow timeline to mark a range; a stats card shows duration, event/marker/screenshot counts, and top apps in the range. Esc clears.
+- **Screenshot hover thumbnails + minimap + per-step bands + annotation lane** (viewer). Hovering a screenshot dot pops a 220×140 thumbnail. A 30-px minimap above the timeline gives you whole-session orientation; click anywhere to jump, drag the highlighted viewport to scroll. When steps exist, they render as labeled bands beneath the density histogram. When notes exist, they render as numbered dots in their own lane.
+- **DFG drill-down picker** (viewer). Clicking a node in the Compare-Sessions Flow diagram now lists every loaded session containing that activity (timestamp + session name) so you can pick the moment you actually meant. Single result auto-picks; ↑↓/Enter for keyboard navigation.
+- **Sparklines on aggregate charts + persistent timeline zoom + scope-to-playhead + snap-to-event** (viewer). Activity-frequency and case-duration bars get a 10-bucket sparkline showing temporal distribution. Timeline zoom + scroll persist per session in localStorage. New `⇥ playhead` button next to the case-scope dropdown scopes to whichever case the video playhead is in. Background timeline clicks snap to the nearest event within ~10px-equivalent.
+- **Auto-clean stale recents + batch "Remove N missing"** (viewer). Recents entries missing for >30 days auto-drop. When ≥2 recents are flagged missing, a "Remove N missing" link appears alongside Clear all.
+- **Auto-suggested phase grouping** (viewer). New "Suggest groupings..." link on the Phases pane runs two heuristics — group consecutive steps by app, group consecutive steps with no idle gap > 30s — and offers the candidates as preview before applying.
+- **Hotkey conflict toast + tray menu reorganization + live-session keyboard control** (capture). When `globalShortcut.register()` fails (another app grabbed the binding), a Windows toast names the conflict. The tray's flat ~15-item menu collapses into Live status / Storage / Help & config submenus while keeping muscle-memory items (Fire Start / End / Pause) at top. The Live Session window picks up S/E/P/Y shortcuts (suppressed when an input is focused).
+- **Mode-specific shortcuts overlay** (viewer). Dismissable bottom-right card in the Session view lists 3-4 most-used shortcuts for the active mode (Flow / Steps / Phases).
+- **Business-language relabeling** (viewer). "Aggregate" → "Compare Sessions", "Vocabularies" → "App Library", "DFG" → "Flow diagram", "BPMN" → "Process diagram (BPMN)". Toast + dialog copy rewritten. Process Template's raw definition lives behind an "Advanced" disclosure so non-engineer analysts see the step list as the default surface.
+
+Items intentionally deferred: see [docs/SPEC-DEFERRED.md](docs/SPEC-DEFERRED.md).
 
 ## Layout
 

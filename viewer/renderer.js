@@ -1250,7 +1250,43 @@ async function suggestPhaseGroupings() {
   const GAP_MS = 30 * 1000;
   const groups = [];
   let cur = [steps[0]];
-  function appOf(s) { return (s.dominant_app || s.app || "").toLowerCase(); }
+  // Steps don't carry an `app` field directly -- derive the dominant app
+  // for each step by looking at its evidence interactions and picking the
+  // most-frequent process_name. Activity events don't appear in the
+  // evidence list, so fall back to scanning activity events whose
+  // timestamp falls within the step's time_range.
+  const eventById = new Map();
+  for (const ev of (currentSession.events || [])) {
+    if (ev.event_id) eventById.set(ev.event_id, ev);
+  }
+  const stepAppCache = new Map();
+  function appOf(s) {
+    if (stepAppCache.has(s.step_id)) return stepAppCache.get(s.step_id);
+    const counts = new Map();
+    const evIds = (s.evidence && s.evidence.interaction_event_ids) || [];
+    for (const id of evIds) {
+      const ev = eventById.get(id);
+      const app = ev && ev.data && ev.data.process_name;
+      if (app) counts.set(app, (counts.get(app) || 0) + 1);
+    }
+    if (!counts.size && s.time_range) {
+      // Fallback: scan activity events overlapping the step.
+      const start = new Date(s.time_range.start).getTime();
+      const end = new Date(s.time_range.end).getTime();
+      for (const ev of (currentSession.events || [])) {
+        if (ev.type !== "activity") continue;
+        const t = new Date(ev.timestamp).getTime();
+        if (t < start || t > end) continue;
+        const app = ev.data && ev.data.app;
+        if (app) counts.set(app, (counts.get(app) || 0) + 1);
+      }
+    }
+    let best = "", bestN = 0;
+    for (const [k, n] of counts) if (n > bestN) { best = k; bestN = n; }
+    const v = best.toLowerCase();
+    stepAppCache.set(s.step_id, v);
+    return v;
+  }
   for (let i = 1; i < steps.length; i++) {
     const prev = steps[i - 1], s = steps[i];
     const sameApp = appOf(prev) && appOf(prev) === appOf(s);
@@ -2632,9 +2668,10 @@ function renderTimeline() {
   // Click to select the step + jump to Steps view.
   // (stepsLaneTop / stepsLaneH computed earlier so casesTop accounts for them.)
   for (const s of _stepsForLane) {
-    const sStart = s.start_time ? new Date(s.start_time).getTime() : null;
-    const sEnd   = s.end_time   ? new Date(s.end_time).getTime()   : null;
-    if (!sStart || !sEnd || sEnd <= sStart) continue;
+    if (!s.time_range || !s.time_range.start || !s.time_range.end) continue;
+    const sStart = new Date(s.time_range.start).getTime();
+    const sEnd   = new Date(s.time_range.end).getTime();
+    if (!isFinite(sStart) || !isFinite(sEnd) || sEnd <= sStart) continue;
     const x = ((sStart - first) / span) * 100;
     const w = Math.max(0.2, ((sEnd - sStart) / span) * 100);
     const band = document.createElement("div");
@@ -2659,9 +2696,8 @@ function renderTimeline() {
   // tab.
   // (notesLaneTop / notesLaneH computed earlier so casesTop accounts for them.)
   _notesForLane.forEach((n, idx) => {
-    const ts = n.timestamp || n.t || n.time;
-    if (!ts) return;
-    const ms = new Date(ts).getTime();
+    if (!n.timestamp) return;
+    const ms = new Date(n.timestamp).getTime();
     if (!isFinite(ms)) return;
     const x = ((ms - first) / span) * 100;
     const dot = document.createElement("div");
@@ -2670,13 +2706,13 @@ function renderTimeline() {
     dot.style.top = notesLaneTop + "px";
     dot.textContent = String(idx + 1);
     dot.dataset.noteIdx = String(idx);
-    dot.title = (n.text || n.body || "(empty note)").slice(0, 80);
+    dot.title = (n.text || "(empty note)").slice(0, 80);
     dot.addEventListener("click", (e) => {
       e.stopPropagation();
       activateAnnoTab("notes");
       const noteRow = document.querySelector(`[data-note-idx="${idx}"]`);
       if (noteRow) noteRow.scrollIntoView({ behavior: "smooth", block: "center" });
-      seekToTimestamp(ts);
+      seekToTimestamp(n.timestamp);
     });
     host.appendChild(dot);
   });
