@@ -21,7 +21,7 @@ function buildHtml() {
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Session config</title>
+<title>Set up a recording session</title>
 <style>
   :root {
     color-scheme: dark;
@@ -76,59 +76,65 @@ function buildHtml() {
 </style></head><body>
 
 <div>
-  <h1>Session config</h1>
-  <div class="sub">Authored here, saved as <code>quick-config.yaml</code>, loaded on the next tracker launch.</div>
+  <h1>Set up a recording session</h1>
+  <div class="sub">These settings apply the next time you start the tracker. You can leave any field blank.</div>
 </div>
 
 <fieldset>
-  <legend>Engagement</legend>
+  <legend>What are you recording?</legend>
   <div class="row2">
     <div>
-      <label for="eng-id">Engagement ID</label>
-      <input type="text" id="eng-id" placeholder="ENG-2026-001" />
+      <label for="eng-id">Project code</label>
+      <input type="text" id="eng-id" placeholder="e.g. ENG-2026-001" />
+      <div class="help-hint">Your team's short code for this piece of work. Used to group recordings.</div>
     </div>
     <div>
-      <label for="eng-name">Display name</label>
-      <input type="text" id="eng-name" placeholder="Customer onboarding review" />
+      <label for="eng-name">Project name</label>
+      <input type="text" id="eng-name" placeholder="e.g. Customer onboarding review" />
+      <div class="help-hint">A plain-English name so you recognise it later.</div>
     </div>
   </div>
 </fieldset>
 
 <fieldset>
-  <legend>Worker</legend>
+  <legend>Who is being recorded?</legend>
   <div class="row2">
     <div>
-      <label for="worker-id">Worker ID</label>
-      <input type="text" id="worker-id" placeholder="auto-detected from USERNAME if blank" />
+      <label for="worker-id">Person</label>
+      <input type="text" id="worker-id" placeholder="Leave blank to use the Windows login" />
+      <div class="help-hint">The person doing the work in this recording. Blank = the current Windows username.</div>
     </div>
     <div>
-      <label for="worker-role">Role (optional)</label>
-      <input type="text" id="worker-role" placeholder="CSR, Analyst, ..." />
+      <label for="worker-role">Their role</label>
+      <input type="text" id="worker-role" placeholder="e.g. Customer service rep" />
+      <div class="help-hint">Optional. Helps the analyst read the recording.</div>
     </div>
   </div>
 </fieldset>
 
 <fieldset>
-  <legend>Process labels (one per line)</legend>
-  <textarea id="labels" placeholder="Order entry\nRefund flow\nIdentity check"></textarea>
-  <div class="help-hint">These appear in the tray menu's Start picker. Comments after <code>#</code> are stripped.</div>
+  <legend>Task shortcuts</legend>
+  <textarea id="labels" placeholder="Order entry&#10;Refund flow&#10;Identity check"></textarea>
+  <div class="help-hint">One task name per line. These show up as quick-pick buttons in the tray menu so the worker can label what they're doing without typing.</div>
 </fieldset>
 
 <fieldset>
-  <legend>Behaviour</legend>
+  <legend>Recording behaviour</legend>
   <div class="row2">
     <div>
-      <label for="idle">Auto-end idle threshold (minutes)</label>
+      <label for="idle">Auto-stop after inactivity</label>
       <input type="number" id="idle" min="1" max="240" step="1" placeholder="30" />
+      <div class="help-hint">Minutes of no keyboard / mouse activity before the recording stops on its own. Default 30.</div>
     </div>
     <div>
-      <label for="obs-scene">OBS scene name</label>
+      <label for="obs-scene">OBS scene</label>
       <input type="text" id="obs-scene" placeholder="Process Discovery -- Default" />
+      <div class="help-hint">Only matters if you record video with OBS. Leave blank otherwise.</div>
     </div>
   </div>
 </fieldset>
 
-<div class="status" id="status">Edit the fields above, click Save.</div>
+<div class="status" id="status">Fill in what you need, then click Save. Blank fields are fine.</div>
 
 <div class="actions">
   <button id="btn-cancel">Cancel</button>
@@ -219,7 +225,7 @@ function showSessionConfigWindow(opts) {
   const win = new BrowserWindow({
     width: 580,
     height: 640,
-    title: "Session config",
+    title: "Set up a recording session",
     resizable: true,
     autoHideMenuBar: true,
     backgroundColor: "#14141A",

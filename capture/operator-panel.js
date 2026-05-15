@@ -130,6 +130,19 @@ function buildOperatorHtml(config) {
   .primary:hover:not(:disabled) { background: var(--bg-hover); }
   .primary:disabled { color: var(--fg-3); cursor: not-allowed; }
 
+  /* Explicit start-session button -- the obvious "begin here" action
+     when the window opens idle. Hidden once a session is running. */
+  .start-session {
+    width: 100%; padding: 11px; margin-bottom: 12px;
+    background: var(--accent); border: 1px solid var(--accent);
+    color: var(--bg); border-radius: 4px; font-family: inherit;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+  }
+  .start-session:hover { background: #8AAB7E; border-color: #8AAB7E; }
+  /* When a session is running the controls below are live; when idle
+     they're dimmed so the eye lands on Start first. */
+  body.idle .when-running { opacity: 0.4; pointer-events: none; }
+
   .secondary-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
   .secondary-row button {
     padding: 7px 6px; background: transparent; border: 1px solid var(--border);
@@ -192,12 +205,14 @@ function buildOperatorHtml(config) {
 </header>
 <div class="now" id="now"></div>
 
-<div>
+<button id="btn-start-session" class="start-session">Start capture session</button>
+
+<div class="when-running">
   <div class="lbl">Open markers</div>
   <div class="markers empty" id="markers">none</div>
 </div>
 
-<div>
+<div class="when-running">
   <div class="lbl">Counters</div>
   <div class="counters">
     <div class="ctr"><span class="v" id="c-events">0</span><span class="k">events</span></div>
@@ -207,7 +222,7 @@ function buildOperatorHtml(config) {
   </div>
 </div>
 
-<div>
+<div class="when-running">
   <div class="lbl">Fire start marker</div>
   <div class="fire-row">
     <input id="custom" placeholder="Label, then Enter" autocomplete="off" />
@@ -221,28 +236,28 @@ function buildOperatorHtml(config) {
   <div class="saved" id="saved"></div>
 </div>
 
-<hr/>
+<hr class="when-running"/>
 
-<button id="btn-end-marker" class="primary" disabled>End innermost marker</button>
+<button id="btn-end-marker" class="primary when-running" disabled>End innermost marker</button>
 
-<div class="secondary-row">
+<div class="secondary-row when-running">
   <button id="btn-pause" disabled>Pause</button>
   <button id="btn-screenshot" disabled>Screenshot</button>
   <button id="btn-sync" disabled>Sync</button>
 </div>
 
-<div class="sync-row" id="sync-row">
+<div class="sync-row when-running" id="sync-row">
   <input id="sync-id" placeholder="Sync ID (leave blank to auto-generate)" />
   <button id="sync-fire">Fire</button>
   <button id="sync-cancel" class="skip">Cancel</button>
 </div>
 
-<div>
+<div class="when-running">
   <div class="lbl">Recent events</div>
   <div class="feed" id="feed"><div class="empty">No events yet</div></div>
 </div>
 
-<button id="btn-end-session" class="end-session" disabled>End session</button>
+<button id="btn-end-session" class="end-session when-running" disabled>End session</button>
 
 <div class="end-confirm" id="end-confirm">
   <button class="no" id="end-no">Keep recording</button>
@@ -391,6 +406,14 @@ endYes.addEventListener("click", async () => {
   tick();
 });
 
+// Explicit "Start capture session" -- the obvious idle-state action.
+// Starts a session with no marker (pdt:startSession); the operator can
+// fire markers afterwards. (Firing a marker still auto-starts too.)
+document.getElementById("btn-start-session").addEventListener("click", async () => {
+  await ipcRenderer.invoke("pdt:startSession");
+  tick();
+});
+
 async function tick() {
   const s = await ipcRenderer.invoke("pdt:status");
   const dot = document.getElementById("dot");
@@ -452,6 +475,7 @@ async function tick() {
        rstate === "dead" ? "bad" : "off");
   }
 
+  const startBtn = document.getElementById("btn-start-session");
   if (!s || !s.tracking) {
     dot.className = "dot";
     state.textContent = "Idle";
@@ -462,6 +486,9 @@ async function tick() {
     btnShot.disabled = true;
     syncBtn.disabled = true;
     btnEndSession.disabled = true;
+    // Idle: surface the explicit Start button, dim the running controls.
+    document.body.classList.add("idle");
+    if (startBtn) startBtn.style.display = "";
   } else {
     if (s.paused) {
       dot.className = "dot paused";
@@ -479,6 +506,9 @@ async function tick() {
     syncBtn.disabled = false;
     btnEndSession.disabled = false;
     btnPause.textContent = s.paused ? "Resume" : "Pause";
+    // Session running: hide the Start button, the controls go live.
+    document.body.classList.remove("idle");
+    if (startBtn) startBtn.style.display = "none";
   }
 
   if (!s || !s.openMarkers || !s.openMarkers.length) {

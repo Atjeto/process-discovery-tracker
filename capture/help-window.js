@@ -154,7 +154,7 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <h2>Per-session config</h2>
 <p>Two ways to configure a session:</p>
 <ul>
-  <li><strong>Session config window</strong> (recommended) — tray → <em>Session config…</em> opens a form for engagement ID, worker, idle threshold, process labels, and OBS scene. Saves to <code>%APPDATA%\\process-discovery-tracker\\quick-config.yaml</code>; the next launch picks it up automatically.</li>
+  <li><strong>Set up a recording session</strong> (recommended) — tray → <em>Set up a recording session…</em> opens a plain-language form for the project code/name, who's being recorded, task shortcuts, auto-stop timeout, and OBS scene. Every field is optional. The next launch picks it up automatically.</li>
   <li><strong>Manual YAML</strong> — set <code>PDT_CONFIG=path\\to\\config.yaml</code> before launch for the full schema (process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, engagement metadata). See <code>capture/sample-config.yaml</code> in the repo.</li>
 </ul>
 

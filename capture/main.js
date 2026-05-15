@@ -1440,7 +1440,7 @@ function buildMenu() {
     { label: "Show welcome screen", click: () => welcomeWin.showWelcomeWindow({ hotkeys: config && config.hotkeys }) },
     { type: "separator" },
     { label: "Set up OBS recording...", click: () => showObsSetupDialog() },
-    { label: "Session config...", click: () => showSessionConfigDialog() },
+    { label: "Set up a recording session...", click: () => showSessionConfigDialog() },
     { type: "separator" },
     {
       label: configSourcePath
@@ -1531,7 +1531,7 @@ app.whenReady().then(() => {
     const list = failed.map(([name, key]) => `${name} (${key})`).join(", ");
     notifyUser(
       "Hotkey conflict",
-      `Couldn't register: ${list}. Another app is using these shortcuts. Use the tray menu, or change the bindings via Session config.`,
+      `Couldn't register: ${list}. Another app is using these shortcuts. Use the tray menu, or change the bindings via the "Set up a recording session" window.`,
       { urgency: "low" }
     );
   }
