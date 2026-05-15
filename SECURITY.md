@@ -164,6 +164,69 @@ The recorder uses only Microsoft's in-box UI Automation API. No network calls.
 
 The earlier v0.2 plan included an optional local ML stack (sentence-transformer embeddings + classifier). It was dropped after design review: the per-team App Vocabulary layer (see `docs/adr/0002-app-vocabularies.md`) covers the same naming-uncovered-events use case deterministically, without the ~500 MB of Python deps or the first-run model download.
 
+## Recorder sidecar — threat model
+
+The C# `recorder.exe` is a separate OS process spawned by the Electron capture app at session start and killed at session end. Treating it as a distinct trust unit avoids contaminating the Electron renderer's threat model with native-COM-interop risk.
+
+### Why a sidecar, not bundled into Electron
+
+Three reasons:
+
+1. **Trust boundary.** UI Automation is a COM-based API surface. Calling it from Electron's Node side would require either `node-windows-uia` (third-party native module, not corporate-approved) or a managed-runtime bridge from the renderer. Both broaden the attack surface inside Electron. A separate .NET 8 process keeps the UIA COM marshalling out of the renderer process entirely.
+2. **AV / endpoint-scan compatibility.** .NET 8 single-file self-contained executables are a well-known shape to corporate AV engines (CrowdStrike, Defender, SentinelOne). Embedding a UIA subscriber inside a Node module would create a new bundle shape that has to clear AV scans on every endpoint. The sidecar pattern uses the recognized shape.
+3. **Crash isolation.** If the recorder dies (UIA COM marshalling can throw on dynamic UI changes), the capture-side tracker keeps polling activity events. The dead-recorder state is recorded as a `recorder_died` system event in the stream, with restart accounting handled by `interactions.auto_restart` / `max_restarts_per_session` in the config.
+
+### Process boundary and privileges
+
+| Aspect | Detail |
+|---|---|
+| Process | `recorder.exe`, separate PID from the Electron capture app. |
+| Privileges | Runs as the current user. No elevation, no UAC prompt, no admin token. |
+| Filesystem access | Inherits the user's normal filesystem privileges. The recorder does **not** read or write files itself; it emits events over stdio to the parent. |
+| Network access | None. The recorder makes no socket calls. |
+| API surface | `UIAutomationCore.dll` (in-box Windows component). Same API Narrator and NVDA use. |
+| What the recorder does NOT do | No `SetWindowsHookEx`. No DLL injection. No keyboard / mouse hooks. No process memory reads. No driver loading. No COM hijacking of third-party servers. |
+
+### IPC mechanism
+
+Parent ↔ recorder communication is **NDJSON over stdio** (one JSON object per line on stdout, line-delimited on stdin). No named pipes, no shared memory, no COM marshalling across the process boundary. The parent Electron process owns both ends of stdio; an outside process cannot intercept.
+
+The parent treats stdout from the recorder as untrusted input:
+
+- Each line is parsed with `JSON.parse` inside a try/catch; malformed lines are dropped without affecting the stream.
+- Object shape is validated before being copied into `events.jsonl` (required fields: `kind`, `timestamp`, `pid`, `process_name`).
+- Bounded fields: `value` is length-clamped to 256 chars before being persisted (the C# recorder enforces this too, but the parent re-checks).
+- No fields are interpolated into shell commands, filesystem paths, or HTML.
+
+### What the recorder has access to
+
+UI Automation exposes the *same* surface that the active-window polling already exposes (foreground window title, process name, PID), plus event-driven access to UIA tree nodes when interactions happen. Specifically:
+
+| Field | Source within UIA |
+|---|---|
+| `automation_id`, `name`, `class_name`, `control_type`, `framework_id` | UIA element properties on the interaction target. |
+| `window_title`, `process_name`, `pid` | Top-level window properties. |
+| `value` | `ValuePattern.Value` on text inputs (only on `value_changed`); clamped to 256 chars. |
+| `selected_value` | `SelectionItemPattern.IsSelected` / parent `SelectionPattern.GetSelection`. |
+| `toggle_state` | `TogglePattern.ToggleState`. |
+
+UIA does not expose process memory, file contents, network traffic, or keystrokes. The `value_changed` event fires once per coalesced typing burst (per the recorder's 750ms debounce) carrying the *value* as the application sees it — same data the user typed into the focused field, no more. Sensitive inputs (password fields) are masked by Windows itself in UIA; the recorder never sees plaintext password content.
+
+### Lifecycle and observability
+
+| Event in `events.jsonl` | Meaning |
+|---|---|
+| `system.kind: "recorder_start"` | Recorder process spawned and connected. |
+| `system.kind: "recorder_stop"` | Clean shutdown at session end. |
+| `system.kind: "recorder_died"` | Recorder process exited unexpectedly. Payload: `{ code, signal, restart_count }`. |
+| `system.kind: "recorder_dead_permanent"` | Recorder exceeded `max_restarts_per_session` (default 3). Session continues, interactions stop. |
+
+The recorder's lifecycle is independent of OBS recording and of the tracker's marker stream. A worker can complete a session with zero interactions (recorder dead) without losing the activity stream, screenshots, or OBS video. The viewer surfaces interaction-stream gaps as missing-evidence flags in the timeline.
+
+### Code signing
+
+Same as the Electron apps — `recorder.exe` is not code-signed in v1. EV signing is on the roadmap and would also remove the rare AV false-positive on first run for the .NET 8 self-contained executable.
+
 ## Code signing
 
 The Windows binaries in `dist/` are **not** code-signed in v1. Production deployment should add an EV code-signing certificate to the build pipeline. The recipient will otherwise see a SmartScreen warning on first launch. See `docs/User-Guide.docx` for the recipient-side workflow.

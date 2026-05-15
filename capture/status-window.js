@@ -1,18 +1,17 @@
 /*
- * Live status window for the capture tracker.
+ * Legacy status window for the capture tracker.
  *
- * Optional surface (toggled from the tray). Polls main process via
- * IPC every 1 second for current state, renders a compact dashboard:
- *   - Recording indicator + session timer
- *   - Current app/title (live)
- *   - Open marker stack with nesting visualization
- *   - Event counters, idle indicator
- *   - Recent events feed
- *   - Quick action buttons (Pause/Resume, Manual screenshot, End session)
+ * DEPRECATED -- everything this window shows is now also in
+ * operator-panel.js (rebranded as "Live session window") with the
+ * additional affordances of inline marker firing, sync-ID input,
+ * and end-session confirm. The tray surfaces both for backward
+ * compatibility, but new work should land in operator-panel.js.
+ * This file remains as a safe fallback in case the merged window
+ * has a regression an operator can't work around -- once we've
+ * shipped a v0.3 release that proves the merged window in the
+ * field, this file can be removed.
  *
- * Built as a data: URL with nodeIntegration so we don't ship a
- * separate HTML file. Matches the trusted-first-party pattern used
- * by the label picker.
+ * Polls main process via IPC every 1 second for current state.
  */
 
 "use strict";

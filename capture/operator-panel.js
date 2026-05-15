@@ -1,14 +1,26 @@
 /*
- * Operator panel for PM-driven walkthroughs (design §13).
+ * Live-session window (formerly "operator panel").
  *
- * Always-on-top window optimized for the analyst sitting at the SME's
- * machine during a walkthrough. Type a marker label, hit Fire (or
- * Enter) — implicitly starts the session and fires the Start marker
- * in one step.
+ * This window is the canonical surface for everything an operator
+ * needs during an active capture session:
+ *   - status header (state dot, current app, session timer)
+ *   - open markers stack
+ *   - counter grid (events / markers / shots / interactions)
+ *   - recent events feed (last 8, reverse chronology)
+ *   - fire-start input + saved-label buttons
+ *   - end-marker, pause/resume, manual screenshot, sync marker
+ *   - end session (inline confirm, no window.confirm)
  *
- * Renderer talks to main.js via the same IPC channels the status
- * window uses (pdt:fireStart, pdt:endSession, pdt:status, etc.) plus
- * pdt:fireSync.
+ * Previously the counter grid + recent events feed lived in a
+ * separate status-window.js; that window is now deprecated -- the
+ * tray still exposes it for backward compatibility but new affordances
+ * land here. See ../docs/UX-CHANGES.md for the merge rationale.
+ *
+ * Renderer talks to main.js via the same IPC channels as before
+ * (pdt:fireStart, pdt:fireEnd, pdt:status, pdt:fireSync,
+ * pdt:togglePause, pdt:manualScreenshot, pdt:endSession). pdt:fireStart
+ * now optionally takes `{ nest: true }` to opt into nested-marker
+ * semantics (default is close-then-open).
  */
 
 "use strict";
@@ -20,23 +32,25 @@ function buildOperatorHtml(config) {
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>PDT Operator</title>
+<title>PDT Live Session</title>
 <style>
   :root {
     color-scheme: dark;
-    --bg:       #1a1a1a;
-    --bg-2:     #232323;
-    --bg-3:     #2c2c2c;
-    --bg-hover: #363636;
-    --border:   #3a3a3a;
-    --fg:       #e6e6e6;
-    --fg-2:     #a8a8a8;
-    --fg-3:     #6e6e6e;
-    --accent:   #3a86ff;
-    --danger:   #c83434;
-    --rec:      #d04848;
-    --warn:     #d4a040;
-    --mono:     ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+    /* Match the viewer's stratified-dark palette (see ../viewer/styles.css). */
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --bg-3:     #2E2E37;
+    --bg-hover: #3A3A44;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --accent-2: #5A7488;
+    --warn:     #A08050;
+    --danger:   #903838;
+    --rec:      #903838;
+    --mono:     "IBM Plex Mono", ui-monospace, Consolas, monospace;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -45,12 +59,11 @@ function buildOperatorHtml(config) {
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
     font-size: 13px;
   }
-  body { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+  body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
 
-  /* Header */
   header { display: flex; align-items: center; gap: 10px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fg-3); flex: 0 0 auto; }
-  .dot.on     { background: var(--rec); }
+  .dot.on     { background: var(--rec); box-shadow: 0 0 0 2px rgba(144, 56, 56, 0.18); }
   .dot.paused { background: var(--warn); }
   .state  { flex: 1; font-size: 13px; color: var(--fg); }
   .timer  { font-family: var(--mono); font-size: 14px; color: var(--fg-2); }
@@ -63,64 +76,112 @@ function buildOperatorHtml(config) {
   .pill.bad   { color: var(--danger); border-color: var(--danger); }
   .pill.off   { color: var(--fg-3);   border-color: var(--fg-3); }
 
-  /* Sub-section label */
-  .lbl { font-size: 11px; color: var(--fg-3); margin-bottom: 6px; }
+  .lbl { font-size: 10px; color: var(--fg-3); margin-bottom: 4px;
+         letter-spacing: 0.5px; text-transform: uppercase; }
 
   /* Open markers strip */
   .markers { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; }
   .markers.empty { color: var(--fg-3); font-size: 12px; align-items: center; }
   .mk { padding: 3px 8px; background: var(--bg-3); border: 1px solid var(--border);
-        border-radius: 3px; font-size: 12px; color: var(--fg); }
+        border-radius: 4px; font-size: 12px; color: var(--fg); }
   .mk .d { color: var(--fg-3); margin-right: 6px; font-family: var(--mono); font-size: 11px; }
+
+  /* Counter grid (formerly in status-window) */
+  .counters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .ctr { background: var(--bg-2); border: 1px solid var(--border); border-radius: 4px;
+         padding: 6px 8px; text-align: center; }
+  .ctr .v { font-family: var(--mono); font-size: 16px; color: var(--fg); display: block; }
+  .ctr .k { font-size: 9px; color: var(--fg-3); letter-spacing: 0.5px; text-transform: uppercase; }
 
   /* Fire row */
   .fire-row { display: flex; gap: 6px; }
   .fire-row input {
     flex: 1; padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--border);
-    color: var(--fg); border-radius: 3px; font-family: inherit; font-size: 13px; outline: none;
+    color: var(--fg); border-radius: 4px; font-family: inherit; font-size: 13px; outline: none;
   }
   .fire-row input:focus { border-color: var(--accent); }
   .fire-row input::placeholder { color: var(--fg-3); }
   .fire-row button {
-    padding: 8px 16px; background: var(--accent); border: 1px solid var(--accent);
-    color: #fff; border-radius: 3px; font-family: inherit; font-size: 13px; cursor: pointer;
+    padding: 8px 14px; background: var(--accent); border: 1px solid var(--accent);
+    color: var(--bg); border-radius: 4px; font-family: inherit; font-size: 13px; cursor: pointer;
+    font-weight: 500;
   }
-  .fire-row button:hover:not(:disabled) { filter: brightness(1.1); }
+  .fire-row button:hover:not(:disabled) { background: #8AAB7E; border-color: #8AAB7E; }
   .fire-row button:disabled { background: var(--bg-3); border-color: var(--border); color: var(--fg-3); cursor: not-allowed; }
 
-  /* Saved labels (only rendered when config supplies them) */
+  .nest-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-3);
+                 margin-top: 4px; user-select: none; cursor: pointer; }
+  .nest-toggle input { accent-color: var(--accent); }
+  .nest-toggle .hint { color: var(--warn); margin-left: 4px; }
+
+  /* Saved labels */
   .saved { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .saved button {
     padding: 4px 10px; background: var(--bg-2); border: 1px solid var(--border);
-    color: var(--fg-2); border-radius: 3px; font-family: inherit; font-size: 12px; cursor: pointer;
+    color: var(--fg-2); border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer;
   }
   .saved button:hover { background: var(--bg-hover); color: var(--fg); border-color: var(--accent); }
 
   /* Action buttons */
   .primary {
-    width: 100%; padding: 10px; background: var(--bg-3); border: 1px solid var(--border);
-    color: var(--fg); border-radius: 3px; font-family: inherit; font-size: 13px; cursor: pointer;
+    width: 100%; padding: 9px; background: var(--bg-3); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 4px; font-family: inherit; font-size: 13px; cursor: pointer;
   }
   .primary:hover:not(:disabled) { background: var(--bg-hover); }
   .primary:disabled { color: var(--fg-3); cursor: not-allowed; }
 
   .secondary-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
   .secondary-row button {
-    padding: 8px 6px; background: transparent; border: 1px solid var(--border);
-    color: var(--fg-2); border-radius: 3px; font-family: inherit; font-size: 12px; cursor: pointer;
+    padding: 7px 6px; background: transparent; border: 1px solid var(--border);
+    color: var(--fg-2); border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer;
   }
   .secondary-row button:hover:not(:disabled) { background: var(--bg-2); color: var(--fg); }
   .secondary-row button:disabled { color: var(--fg-3); cursor: not-allowed; }
 
-  .end-session {
-    width: 100%; padding: 10px; margin-top: 4px;
-    background: transparent; border: 1px solid var(--danger);
-    color: var(--danger); border-radius: 3px; font-family: inherit; font-size: 13px; cursor: pointer;
+  /* Sync ID inline input (replaces window.prompt) */
+  .sync-row { display: none; gap: 6px; margin-top: 4px; }
+  .sync-row.open { display: flex; }
+  .sync-row input {
+    flex: 1; padding: 6px 9px; background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 4px; font-family: var(--mono); font-size: 11px; outline: none;
   }
-  .end-session:hover:not(:disabled) { background: var(--danger); color: #fff; }
+  .sync-row button {
+    padding: 6px 12px; background: var(--accent); border: 1px solid var(--accent);
+    color: var(--bg); border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer;
+  }
+  .sync-row button.skip { background: transparent; color: var(--fg-3); border-color: var(--border); }
+
+  /* Recent events feed */
+  .feed { background: var(--bg-2); border: 1px solid var(--border); border-radius: 4px;
+          padding: 6px 8px; max-height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 11px; }
+  .feed .e { display: flex; gap: 8px; padding: 2px 0; color: var(--fg-2); }
+  .feed .e .t { color: var(--fg-3); flex: 0 0 auto; }
+  .feed .e .k { color: var(--accent); flex: 0 0 auto; width: 70px; }
+  .feed .e .v { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .feed .empty { color: var(--fg-3); font-style: italic; padding: 8px 0; text-align: center; }
+
+  .end-session {
+    width: 100%; padding: 9px; margin-top: 2px;
+    background: transparent; border: 1px solid var(--danger);
+    color: var(--danger); border-radius: 4px; font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+  .end-session:hover:not(:disabled) { background: var(--danger); color: #F2EAE5; }
   .end-session:disabled { border-color: var(--border); color: var(--fg-3); cursor: not-allowed; }
 
-  hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+  /* Inline end-session confirm row (replaces window.confirm) */
+  .end-confirm { display: none; gap: 6px; }
+  .end-confirm.open { display: flex; }
+  .end-confirm button {
+    flex: 1; padding: 9px; border-radius: 4px; font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+  .end-confirm .yes {
+    background: var(--danger); border: 1px solid var(--danger); color: #F2EAE5;
+  }
+  .end-confirm .no {
+    background: transparent; border: 1px solid var(--border); color: var(--fg-2);
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
 </style></head><body>
 
 <header>
@@ -137,11 +198,26 @@ function buildOperatorHtml(config) {
 </div>
 
 <div>
+  <div class="lbl">Counters</div>
+  <div class="counters">
+    <div class="ctr"><span class="v" id="c-events">0</span><span class="k">events</span></div>
+    <div class="ctr"><span class="v" id="c-markers">0</span><span class="k">markers</span></div>
+    <div class="ctr"><span class="v" id="c-shots">0</span><span class="k">shots</span></div>
+    <div class="ctr"><span class="v" id="c-int">0</span><span class="k">interactions</span></div>
+  </div>
+</div>
+
+<div>
   <div class="lbl">Fire start marker</div>
   <div class="fire-row">
     <input id="custom" placeholder="Label, then Enter" autocomplete="off" />
     <button id="custom-btn">Fire</button>
   </div>
+  <label class="nest-toggle">
+    <input type="checkbox" id="nest-cb">
+    <span>Nest under current</span>
+    <span class="hint" id="nest-hint"></span>
+  </label>
   <div class="saved" id="saved"></div>
 </div>
 
@@ -155,7 +231,23 @@ function buildOperatorHtml(config) {
   <button id="btn-sync" disabled>Sync</button>
 </div>
 
+<div class="sync-row" id="sync-row">
+  <input id="sync-id" placeholder="Sync ID (leave blank to auto-generate)" />
+  <button id="sync-fire">Fire</button>
+  <button id="sync-cancel" class="skip">Cancel</button>
+</div>
+
+<div>
+  <div class="lbl">Recent events</div>
+  <div class="feed" id="feed"><div class="empty">No events yet</div></div>
+</div>
+
 <button id="btn-end-session" class="end-session" disabled>End session</button>
+
+<div class="end-confirm" id="end-confirm">
+  <button class="no" id="end-no">Keep recording</button>
+  <button class="yes" id="end-yes">End session</button>
+</div>
 
 <script>
 const { ipcRenderer } = require("electron");
@@ -168,9 +260,17 @@ function fmtTimer(ms) {
   return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor((s % 3600) / 60)) + ":" + pad(s % 60);
 }
 function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+function fmtTs(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+}
+
+const nestCb = document.getElementById("nest-cb");
+const nestHint = document.getElementById("nest-hint");
 
 function renderSaved() {
   const host = document.getElementById("saved");
@@ -184,7 +284,10 @@ function renderSaved() {
 }
 
 async function fireStart(label) {
-  await ipcRenderer.invoke("pdt:fireStart", label);
+  await ipcRenderer.invoke("pdt:fireStart", label, { nest: nestCb.checked });
+  // Default-back to close-then-open after each fire so the user
+  // explicitly chooses nest each time.
+  nestCb.checked = false;
   tick();
 }
 
@@ -196,7 +299,12 @@ document.getElementById("custom-btn").addEventListener("click", () => {
   input.value = "";
 });
 document.getElementById("custom").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") document.getElementById("custom-btn").click();
+  if (e.key === "Enter") {
+    // Shift+Enter flips the nest choice for this fire (matches the
+    // label picker's hotkey).
+    if (e.shiftKey) nestCb.checked = !nestCb.checked;
+    document.getElementById("custom-btn").click();
+  }
 });
 document.getElementById("btn-end-marker").addEventListener("click", async () => {
   await ipcRenderer.invoke("pdt:fireEnd");
@@ -204,20 +312,54 @@ document.getElementById("btn-end-marker").addEventListener("click", async () => 
 });
 document.getElementById("btn-screenshot").addEventListener("click", () =>
   ipcRenderer.invoke("pdt:manualScreenshot"));
-document.getElementById("btn-sync").addEventListener("click", async () => {
-  const id = prompt("Sync marker ID for cross-machine alignment.\\nLeave blank to auto-generate.");
+
+// Sync marker: inline form replaces window.prompt (which is unstyled
+// + handles poorly under Citrix). Auto-generates if input is blank.
+const syncRow = document.getElementById("sync-row");
+const syncBtn = document.getElementById("btn-sync");
+const syncInput = document.getElementById("sync-id");
+const syncFire = document.getElementById("sync-fire");
+const syncCancel = document.getElementById("sync-cancel");
+syncBtn.addEventListener("click", () => {
+  syncInput.value = "";
+  syncRow.classList.add("open");
+  setTimeout(() => syncInput.focus(), 0);
+});
+syncCancel.addEventListener("click", () => { syncRow.classList.remove("open"); });
+syncFire.addEventListener("click", async () => {
+  const id = syncInput.value.trim();
   await ipcRenderer.invoke("pdt:fireSync", id || null);
+  syncRow.classList.remove("open");
   tick();
 });
+syncInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") syncFire.click();
+  else if (e.key === "Escape") syncCancel.click();
+});
+
 document.getElementById("btn-pause").addEventListener("click", async () => {
   await ipcRenderer.invoke("pdt:togglePause");
   tick();
 });
-document.getElementById("btn-end-session").addEventListener("click", async () => {
-  if (confirm("End the capture session?")) {
-    await ipcRenderer.invoke("pdt:endSession");
-    tick();
-  }
+
+// End session: inline confirm replaces window.confirm.
+const endRow = document.getElementById("end-confirm");
+const endBtn = document.getElementById("btn-end-session");
+const endYes = document.getElementById("end-yes");
+const endNo = document.getElementById("end-no");
+endBtn.addEventListener("click", () => {
+  endBtn.style.display = "none";
+  endRow.classList.add("open");
+});
+endNo.addEventListener("click", () => {
+  endRow.classList.remove("open");
+  endBtn.style.display = "";
+});
+endYes.addEventListener("click", async () => {
+  await ipcRenderer.invoke("pdt:endSession");
+  endRow.classList.remove("open");
+  endBtn.style.display = "";
+  tick();
 });
 
 async function tick() {
@@ -231,8 +373,43 @@ async function tick() {
   const btnEndMarker  = document.getElementById("btn-end-marker");
   const btnPause      = document.getElementById("btn-pause");
   const btnShot       = document.getElementById("btn-screenshot");
-  const btnSync       = document.getElementById("btn-sync");
   const btnEndSession = document.getElementById("btn-end-session");
+
+  // Counters
+  document.getElementById("c-events").textContent = (s && s.eventCount) || 0;
+  document.getElementById("c-markers").textContent = (s && s.markerCount) || 0;
+  document.getElementById("c-shots").textContent = (s && s.screenshotCount) || 0;
+  document.getElementById("c-int").textContent = (s && s.interactionCount) || 0;
+
+  // Recent events feed
+  const feed = document.getElementById("feed");
+  const recent = (s && s.recentEvents) || [];
+  if (!recent.length) {
+    feed.innerHTML = '<div class="empty">No events yet</div>';
+  } else {
+    // Reverse-chronology
+    feed.innerHTML = recent.slice().reverse().map((ev) => {
+      const t = fmtTs(ev.timestamp);
+      let k, v;
+      if (ev.type === "marker") {
+        k = ev.data && ev.data.marker_type === "start" ? "marker+" : "marker-";
+        v = (ev.data && ev.data.label) || "";
+      } else if (ev.type === "system") {
+        k = (ev.data && ev.data.kind) || "system";
+        v = (ev.data && ev.data.path) || (ev.data && ev.data.message) || "";
+      } else if (ev.type === "activity") {
+        k = "activity";
+        v = (ev.data && ev.data.app) || "";
+      } else if (ev.type === "interaction") {
+        k = (ev.data && ev.data.kind) || "interaction";
+        v = (ev.data && (ev.data.name || ev.data.value)) || "";
+      } else {
+        k = ev.type;
+        v = "";
+      }
+      return '<div class="e"><span class="t">' + esc(t) + '</span><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>';
+    }).join("");
+  }
 
   const recPill = document.getElementById("rec-pill");
   const rstate = s && s.recorder_state;
@@ -254,7 +431,7 @@ async function tick() {
     btnEndMarker.disabled = true;
     btnPause.disabled = true;
     btnShot.disabled = true;
-    btnSync.disabled = true;
+    syncBtn.disabled = true;
     btnEndSession.disabled = true;
   } else {
     if (s.paused) {
@@ -270,7 +447,7 @@ async function tick() {
     btnEndMarker.disabled = !s.markerDepth;
     btnPause.disabled = false;
     btnShot.disabled = !s.screenshotsEnabled;
-    btnSync.disabled = false;
+    syncBtn.disabled = false;
     btnEndSession.disabled = false;
     btnPause.textContent = s.paused ? "Resume" : "Pause";
   }
@@ -278,13 +455,22 @@ async function tick() {
   if (!s || !s.openMarkers || !s.openMarkers.length) {
     markers.className = "markers empty";
     markers.textContent = "none";
+    nestCb.disabled = true;
+    nestCb.checked = false;
+    nestHint.textContent = "";
   } else {
     markers.className = "markers";
     markers.innerHTML = s.openMarkers.map((l, i) =>
       '<div class="mk"><span class="d">L' + i + '</span>' + esc(l) + '</div>'
     ).join("");
+    nestCb.disabled = false;
+    nestHint.textContent = nestCb.checked
+      ? "will keep \\"" + (s.openMarkers[s.openMarkers.length - 1] || "") + "\\" open"
+      : "will close \\"" + (s.openMarkers[s.openMarkers.length - 1] || "") + "\\"";
   }
 }
+
+nestCb.addEventListener("change", () => tick());
 
 renderSaved();
 tick();
@@ -295,12 +481,12 @@ setInterval(tick, 1000);
 
 function showOperatorPanel(config) {
   const win = new BrowserWindow({
-    width: 420,
-    height: 520,
-    title: "PDT Operator",
+    width: 460,
+    height: 720,
+    title: "Process Discovery -- Live session",
     alwaysOnTop: true,
     autoHideMenuBar: true,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#14141A",
     skipTaskbar: false,
     webPreferences: {
       /* Trusted first-party HTML loaded via a data: URL. CSP in the

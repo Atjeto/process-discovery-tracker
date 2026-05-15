@@ -89,7 +89,7 @@ Items the design explicitly punts to v1.5+ or beyond:
 
 - **ML capabilities** (§10). Activity equivalence / variant merging via sentence-transformer embeddings + HDBSCAN, case-boundary inference for unbracketed sessions via change-point detection, transaction ID auto-extraction via pattern mining, screen understanding via vision-language models. All v1.5 to v3+.
 - **Multi-analyst concurrent editing** of the same session (§13). Single-analyst editing only.
-- **Marker split via UI**. The schema supports it (delete + insert), and rename / adjust-timestamp / delete are wired. Inserting a synthetic Start mid-case via the viewer UI is not yet exposed; analysts edit annotations.json directly until that ships.
+- **Marker split via UI**. Rename, adjust-timestamp, delete, and insert are all wired through `annotations.json.marker_edits`. The viewer's timeline now exposes insert via right-click on an activity band → "Insert Start marker here…" / "Insert End marker here". The edit is queued; re-run normalization to apply.
 
 ## Tooling
 

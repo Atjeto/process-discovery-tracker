@@ -62,10 +62,15 @@ function resolveDefaultTaxonomy() {
 
 function runNormalize(opts) {
   const {
-    sessionFolder, taxonomyPath, mine, onLog,
+    sessionFolder, taxonomyPath, mine, onLog, onProc,
     canonical, pddOut, stepBpmnOut, phaseBpmnOut, stepCsvOut,
     bootstrapVocabOut, vocabId, vocabName,
   } = opts || {};
+  /* onProc(child) fires once with the spawned process handle so the
+     caller can install a cancel button. We DON'T expose the promise
+     resolver because we want consistent semantics: cancellation
+     resolves with a special `{cancelled: true}` result rather than
+     rejecting -- callers can decide what to surface to the user. */
   return new Promise((resolve, reject) => {
     const python = resolvePython();
     const script = resolveNormalizeScript();
@@ -92,6 +97,23 @@ function runNormalize(opts) {
       env: process.env,
       windowsHide: true,
     });
+    let cancelled = false;
+    // Expose the proc handle so the caller can install a cancel
+    // button. The wrapper kill() flips a flag so the close-handler
+    // resolves with {cancelled:true} rather than rejecting.
+    if (onProc) {
+      try {
+        onProc({
+          kill: () => {
+            cancelled = true;
+            try { proc.kill("SIGTERM"); } catch (_) {}
+            // SIGTERM may not stop a wedged Python on Windows -- give
+            // it 500ms then SIGKILL.
+            setTimeout(() => { try { proc.kill("SIGKILL"); } catch (_) {} }, 500);
+          },
+        });
+      } catch (_) { /* caller-side error -- ignore */ }
+    }
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (b) => {
@@ -106,6 +128,10 @@ function runNormalize(opts) {
     });
     proc.on("error", (e) => reject(new Error(`failed to spawn python: ${e.message}`)));
     proc.on("close", (code) => {
+      if (cancelled) {
+        resolve({ cancelled: true, stdout, stderr });
+        return;
+      }
       if (code !== 0) {
         reject(new Error(`normalize.py exited ${code}: ${stderr}`));
         return;

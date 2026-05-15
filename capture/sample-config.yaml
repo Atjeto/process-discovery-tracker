@@ -46,6 +46,11 @@ screenshots:
   on_app_switch: true
   on_marker_fire: true
   on_idle_resume_minutes: 5   # minimum idle duration before resume triggers a screenshot
+  # Multi-monitor screen selection:
+  #   active  -- capture the display containing the focused window (default)
+  #   primary -- always capture the primary display
+  #   all     -- capture every connected display
+  display: active
 
 # Interaction recording (UIA event subscription via C# sidecar)
 interactions:

@@ -36,6 +36,11 @@ function parseInitialSessionArg() {
 }
 const initialSessionArg = parseInitialSessionArg();
 
+// Module-scope handle for the currently-running normalize child
+// process. All four runNormalize() callers register here via onProc
+// so viewer:cancelNormalize can kill whichever is in flight.
+let _normalizeHandle = null;
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -131,9 +136,18 @@ ipcMain.handle("viewer:runNormalize", async (_e, { sessionFolder, mine }) => {
       sessionFolder: root,
       mine: !!mine,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", text),
+      // Register the kill handle so viewer:cancelNormalize can stop
+      // the in-flight child. Used by the aggregate "Analyze all"
+      // loop as well as any other caller of this IPC.
+      onProc: (h) => { _normalizeHandle = h; },
     });
+    _normalizeHandle = null;
+    if (result && result.cancelled) {
+      return { ok: false, cancelled: true, error: "Analysis cancelled by user." };
+    }
     return { ok: true, ...result };
   } catch (e) {
+    _normalizeHandle = null;
     return { ok: false, error: e.message };
   }
 });
@@ -248,7 +262,12 @@ ipcMain.handle("viewer:testCanonicalMatch", async (_e, { canonicalPath, sessionF
       mine: false,
       canonical: canonicalPath,
       onLog: () => {},
+      onProc: (h) => { _normalizeHandle = h; },
     });
+    _normalizeHandle = null;
+    if (result && result.cancelled) {
+      return { ok: false, cancelled: true, error: "Match test cancelled." };
+    }
     // Read the freshly written stats.json for the match rate.
     const stats = loadOptionalJson(path.join(root, "stats.json")) || {};
     const meta = stats.meta || {};
@@ -279,13 +298,27 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       phaseBpmnOut: opts.phaseBpmnOut || null,
       stepCsvOut: opts.stepCsvOut || null,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", text),
+      onProc: (h) => { _normalizeHandle = h; },
     });
+    _normalizeHandle = null;
+    if (result && result.cancelled) {
+      return { ok: false, cancelled: true, error: "Analysis cancelled by user." };
+    }
     const stats = loadOptionalJson(path.join(root, "stats.json")) || {};
     const meta = stats.meta || {};
     return { ok: true, drift_count: meta.drift_count || 0, ...result };
   } catch (e) {
+    _normalizeHandle = null;
     return { ok: false, error: e.message };
   }
+});
+
+ipcMain.handle("viewer:cancelNormalize", () => {
+  if (_normalizeHandle) {
+    try { _normalizeHandle.kill(); } catch (_) {}
+    return { ok: true };
+  }
+  return { ok: false, error: "No analysis in progress" };
 });
 
 ipcMain.handle("viewer:bootstrapAppVocab", async (_e, { sessionFolder, vocabId, vocabName }) => {
@@ -305,7 +338,12 @@ ipcMain.handle("viewer:bootstrapAppVocab", async (_e, { sessionFolder, vocabId, 
       vocabId: vocabId || "untitled",
       vocabName: vocabName || "Untitled",
       onLog: () => {},
+      onProc: (h) => { _normalizeHandle = h; },
     });
+    _normalizeHandle = null;
+    if (r && r.cancelled) {
+      return { ok: false, cancelled: true, error: "Vocabulary bootstrap cancelled." };
+    }
     if (!fs.existsSync(tmpOut)) {
       return { ok: false, error: "bootstrap produced no output" };
     }

@@ -63,14 +63,16 @@
             label: "data(label)",
             "font-family": '"IBM Plex Sans", -apple-system, "Segoe UI", system-ui, sans-serif',
             "font-size": 11,
-            color: "#CCCAC2",
+            // Token snapshot at write time (cytoscape doesn't read CSS vars).
+            // Keep these aligned with viewer/styles.css :root tokens.
+            color: "#D8D6CE",          // --fg
             "text-valign": "center",
             "text-halign": "center",
             "text-wrap": "wrap",
             "text-max-width": 130,
             shape: "round-rectangle",
-            "background-color": "#19191E",
-            "border-color": "#242429",
+            "background-color": "#2E2E37", // --bg-3
+            "border-color": "#424250",     // --rule
             "border-width": 1,
             padding: "10px",
             width: "label",
@@ -80,16 +82,16 @@
         {
           selector: 'node[role = "start"]',
           style: {
-            "background-color": "#19191E",
-            "border-color": "#6E8A66",
+            "background-color": "#2E2E37", // --bg-3
+            "border-color": "#6E8A66",     // --accent
             "border-width": 1.5,
           },
         },
         {
           selector: 'node[role = "end"]',
           style: {
-            "background-color": "#19191E",
-            "border-color": "#885A42",
+            "background-color": "#2E2E37", // --bg-3
+            "border-color": "#885A42",     // --bad
             "border-width": 1.5,
           },
         },
@@ -97,15 +99,15 @@
           selector: "edge",
           style: {
             width: "data(width)",
-            "line-color": "#464440",
-            "target-arrow-color": "#6A6862",
+            "line-color": "#5A5854",       // --fg-4
+            "target-arrow-color": "#807E78", // --fg-3
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
             label: "data(freq)",
             "font-family": '"IBM Plex Mono", Consolas, monospace',
             "font-size": 9,
-            color: "#6A6862",
-            "text-background-color": "#131316",
+            color: "#807E78",              // --fg-3
+            "text-background-color": "#22222A", // --bg-2
             "text-background-opacity": 0.85,
             "text-background-padding": 2,
           },

@@ -21,12 +21,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import os
 import sys
+import uuid as _uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Python embeddable distributions do not auto-add the script's directory
 # to sys.path (the ._pth file overrides default behavior). Add it ourselves
@@ -36,25 +40,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from case_assignment import assign_case_ids, collect_cases
 from classification import classify_events, collapse_adjacent, load_taxonomy
+from log_setup import setup_logging
 from xes_export import build_event_log, export_xes, export_csv
 from step_suggest import auto_suggest_steps
 import app_vocab
 import stats_compute as stats
 
 
-def load_events(events_file: Path) -> list[dict[str, Any]]:
+def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
     events = []
+    dropped = 0
     with open(events_file, encoding="utf-8") as f:
-        for line in f:
+        for line_no, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
             try:
                 events.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                dropped += 1
+                snippet = line[:120] + ("..." if len(line) > 120 else "")
+                logger.warning(
+                    "load_events: dropping malformed line %d in %s: %s | %s",
+                    line_no, events_file, exc, snippet,
+                )
     events.sort(key=lambda e: e.get("timestamp", ""))
-    return events
+    return events, dropped
 
 
 def load_manifest(session_folder: Path) -> dict[str, Any]:
@@ -152,6 +163,11 @@ def apply_marker_edits(
       { event_id, field: "label", value }       - rename
       { event_id, field: "timestamp", value }   - adjust marker timestamp
       { event_id, op: "delete" }                - drop the marker entirely
+      { op: "insert", marker_type, label,
+        timestamp, id }                          - insert synthetic marker
+
+    Insert edits create a derived marker with event_id "insert-<id>" so
+    downstream consumers can distinguish synthetic from captured markers.
 
     Returns (edited_events, applied_count). Raw events.jsonl never
     modified; this builds a derived stream that downstream stages walk.
@@ -162,7 +178,27 @@ def apply_marker_edits(
     label_over: dict[str, Any] = {}
     ts_over: dict[str, Any] = {}
     deleted: set[str] = set()
+    inserts: list[dict[str, Any]] = []
+    session_id_hint = next((e.get("session_id") for e in events if e.get("session_id")), None)
     for e in edits:
+        if e.get("op") == "insert":
+            ts = e.get("timestamp")
+            if not ts:
+                continue
+            edit_id = e.get("id") or str(_uuid.uuid4())
+            inserts.append({
+                "event_id": f"insert-{edit_id}",
+                "type": "marker",
+                "timestamp": ts,
+                "session_id": session_id_hint or "",
+                "data": {
+                    "marker_type": e.get("marker_type", "start"),
+                    "label": e.get("label"),
+                    "synthetic": True,
+                    "edit_id": edit_id,
+                },
+            })
+            continue
         evid = e.get("event_id")
         if not evid:
             continue
@@ -198,8 +234,11 @@ def apply_marker_edits(
             new_ev["timestamp"] = new_ts
         out.append(new_ev)
         applied += 1
-    # If we changed any timestamps, sort again so downstream sees order
-    if ts_over:
+    if inserts:
+        out.extend(inserts)
+        applied += len(inserts)
+    # If we changed any timestamps OR inserted markers, sort again so downstream sees order
+    if ts_over or inserts:
         out.sort(key=lambda e: e.get("timestamp", ""))
     return out, applied
 
@@ -218,11 +257,15 @@ def normalize(
     if not events_file.exists():
         raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
 
+    setup_logging(session_folder=session_folder)
+
     manifest = load_manifest(session_folder)
     worker_id = (manifest.get("config", {}).get("worker") or {}).get("id", "unknown")
 
-    raw = load_events(events_file)
+    raw, dropped_lines = load_events(events_file)
     print(f"[normalize] loaded {len(raw)} raw events")
+    if dropped_lines:
+        print(f"[normalize] WARNING: dropped {dropped_lines} malformed JSONL line(s); see warnings above")
 
     annotations = load_annotations(session_folder)
     edited, edits_applied = apply_marker_edits(raw, annotations)
@@ -332,6 +375,7 @@ def normalize(
         "session_folder": str(session_folder),
         "worker_id": worker_id,
         "raw_event_count": len(raw),
+        "dropped_jsonl_lines": dropped_lines,
         "collapsed_activity_count": sum(1 for e in collapsed if e.get("type") == "activity"),
         "interaction_count": total_interactions,
         "matched_interactions": matched_interactions,
@@ -509,11 +553,13 @@ def main():
                         help="Vocabulary display name (used with --bootstrap-vocab-out).")
     args = parser.parse_args()
 
+    setup_logging()
+
     if args.bootstrap_vocab_out:
         if not args.session_folder or not args.session_folder.is_dir():
             print(f"ERROR: session folder required for --bootstrap-vocab-out", file=sys.stderr)
             sys.exit(2)
-        events = load_events(args.session_folder / "events.jsonl")
+        events, _dropped = load_events(args.session_folder / "events.jsonl")
         doc = app_vocab.bootstrap_from_session(
             events, vocab_id=args.vocab_id, vocab_name=args.vocab_name)
         yaml_text = app_vocab.to_yaml(doc)

@@ -4,14 +4,17 @@ PDD format.
 """
 
 from __future__ import annotations
+import logging
 from pathlib import Path
 
 try:
     from docx import Document
     from docx.shared import Pt, Inches
-except ImportError as _e:
+except ImportError:
     Document = None
     Inches = None
+
+logger = logging.getLogger(__name__)
 
 
 def write_pdd(
@@ -88,13 +91,16 @@ def _write_step(doc, step, session_folder):
         if full.exists():
             try:
                 doc.add_picture(str(full), width=Inches(4.5))
-            except Exception:
-                pass
+            except (FileNotFoundError, OSError, ValueError) as exc:
+                logger.warning(
+                    "pdd_export: skipping screenshot %s for step %s: %s",
+                    ref, step.get("step_id", "?"), exc,
+                )
     flags = [k for k, v in (step.get("flags") or {}).items() if v is True]
     if flags:
         p = doc.add_paragraph(f"Flags: {', '.join(flags)}")
-        try: p.italic = True
-        except Exception: pass
+        for run in p.runs:
+            run.italic = True
 
 
 def _fmt_ms(ms):

@@ -191,7 +191,12 @@ if (Test-Path $viewerNormStage) { Remove-Item -Recurse -Force $viewerNormStage }
 Write-Host ""
 Write-Host "[5/5] Assembling dist/" -ForegroundColor Yellow
 Remove-LongPathFolder $distDir
-New-Item -ItemType Directory -Path $distDir | Out-Null
+# When Defender / Search indexer hangs onto a file in the just-built
+# dist (common on a re-run shortly after the previous build), the
+# Remove-LongPathFolder above leaves the dir behind. -Force on
+# New-Item is a no-op if the dir already exists; robocopy below will
+# overwrite contents irrespective.
+New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 
 $captureBuild = Get-ChildItem (Join-Path $captureDir "dist") -Directory | Select-Object -First 1
 $viewerBuild = Get-ChildItem (Join-Path $viewerDir "dist") -Directory | Select-Object -First 1

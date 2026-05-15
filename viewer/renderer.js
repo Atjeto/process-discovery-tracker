@@ -20,6 +20,98 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 let currentSession = null;
 let aggregateSessions = [];
 
+/* ============ Annotations undo stack
+   ================================================================
+   Step / phase / marker edits all flow through saveAnnotations(). We
+   snapshot the previous annotations.json blob BEFORE each save, so
+   Ctrl+Z can revert one operation at a time. The stack is in-memory
+   (not persisted across viewer restart), capped at 50 entries, and
+   reset when a different session is opened. Redo (Ctrl+Shift+Z)
+   walks back forward through entries the user just undid.
+
+   Operations that route through here: rename step/phase/marker,
+   add/delete step or phase, split/merge, group-into-phase, drag-
+   reorder steps in a phase, insert synthetic marker, adjust marker
+   timestamp, attach external video. */
+const UNDO_MAX = 50;
+let _undoStack = [];   // each entry: { label, annotations, sessionFolder }
+let _redoStack = [];
+function resetUndoStack() { _undoStack = []; _redoStack = []; }
+function canUndo() {
+  return currentSession && _undoStack.some(e => e.sessionFolder === currentSession.sessionFolder);
+}
+function canRedo() {
+  return currentSession && _redoStack.some(e => e.sessionFolder === currentSession.sessionFolder);
+}
+function emptyAnnotationsShape() {
+  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [] };
+}
+function snapshotAnnotations(a) {
+  // Never push null/undefined onto the stack -- a later undo/redo
+  // would write null into annotations.json. Clone defensively.
+  if (!a) return emptyAnnotationsShape();
+  try { return JSON.parse(JSON.stringify(a)); }
+  catch (_) { return emptyAnnotationsShape(); }
+}
+async function saveAnnotationsWithUndo(annotations, label) {
+  if (!currentSession || !currentSession.sessionFolder) return null;
+  const sf = currentSession.sessionFolder;
+  // Snapshot the PREVIOUS state before we replace it.
+  const prev = snapshotAnnotations(currentSession.annotations);
+  _undoStack.push({ label: label || "edit", annotations: prev, sessionFolder: sf });
+  if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+  _redoStack = [];
+  const r = await ipcRenderer.invoke("viewer:saveAnnotations", {
+    sessionFolder: sf,
+    annotations,
+  });
+  return r;
+}
+async function performUndo() {
+  if (!currentSession) return;
+  // Pop the top entry that matches the current session.
+  let popped = null;
+  for (let i = _undoStack.length - 1; i >= 0; i--) {
+    if (_undoStack[i].sessionFolder === currentSession.sessionFolder) {
+      popped = _undoStack.splice(i, 1)[0];
+      break;
+    }
+  }
+  if (!popped) { toast("Nothing to undo"); return; }
+  // Push the CURRENT state onto the redo stack before reverting.
+  const currentSnap = snapshotAnnotations(currentSession.annotations);
+  _redoStack.push({ label: popped.label, annotations: currentSnap, sessionFolder: popped.sessionFolder });
+  if (_redoStack.length > UNDO_MAX) _redoStack.shift();
+  await ipcRenderer.invoke("viewer:saveAnnotations", {
+    sessionFolder: popped.sessionFolder,
+    annotations: popped.annotations,
+  });
+  // Reload session so steps/phases/case scope all refresh.
+  await loadSessionIntoView(popped.sessionFolder);
+  toast("Undone: " + popped.label);
+}
+async function performRedo() {
+  if (!currentSession) return;
+  let popped = null;
+  for (let i = _redoStack.length - 1; i >= 0; i--) {
+    if (_redoStack[i].sessionFolder === currentSession.sessionFolder) {
+      popped = _redoStack.splice(i, 1)[0];
+      break;
+    }
+  }
+  if (!popped) { toast("Nothing to redo"); return; }
+  // Push current state to undo so user can flip back.
+  const currentSnap = snapshotAnnotations(currentSession.annotations);
+  _undoStack.push({ label: popped.label, annotations: currentSnap, sessionFolder: popped.sessionFolder });
+  if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+  await ipcRenderer.invoke("viewer:saveAnnotations", {
+    sessionFolder: popped.sessionFolder,
+    annotations: popped.annotations,
+  });
+  await loadSessionIntoView(popped.sessionFolder);
+  toast("Redone: " + popped.label);
+}
+
 /* ============ Toast =============================================== */
 
 let toastTimer = null;
@@ -34,7 +126,7 @@ function toast(text, kind) {
 /* ============ Recent sessions (localStorage) ====================== */
 
 const RECENT_KEY = "pdt.recentSessions";
-const EXAMPLE_SEED_KEY = "pdt.examplesSeeded";
+const EXAMPLE_HIDDEN_KEY = "pdt.exampleSessionsHidden";
 
 function getRecent() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
@@ -42,6 +134,13 @@ function getRecent() {
 }
 function setRecent(list) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+}
+function getHiddenExamples() {
+  try { return new Set(JSON.parse(localStorage.getItem(EXAMPLE_HIDDEN_KEY)) || []); }
+  catch (_) { return new Set(); }
+}
+function setHiddenExamples(set) {
+  localStorage.setItem(EXAMPLE_HIDDEN_KEY, JSON.stringify(Array.from(set)));
 }
 function pushRecent(sessionFolder, label) {
   let list = getRecent().filter((r) => r.folder !== sessionFolder);
@@ -51,11 +150,24 @@ function pushRecent(sessionFolder, label) {
   renderRecent();
 }
 function removeRecent(folder) {
-  setRecent(getRecent().filter((r) => r.folder !== folder));
+  /* Examples aren't stored in localStorage -- they're rendered live
+     from disk. To "remove" one we mark it hidden so future renders
+     skip it. Real recents get pulled from RECENT_KEY as before. */
+  const examples = listBundledExamples();
+  if (examples.some((e) => e.folder === folder)) {
+    const hidden = getHiddenExamples();
+    hidden.add(folder);
+    setHiddenExamples(hidden);
+  } else {
+    setRecent(getRecent().filter((r) => r.folder !== folder));
+  }
   renderRecent();
 }
 function clearAllRecent() {
+  /* Wipes both the real recents AND the hidden-examples set, so
+     anything that was bundled comes back on the next render. */
   setRecent([]);
+  localStorage.removeItem(EXAMPLE_HIDDEN_KEY);
   renderRecent();
 }
 
@@ -74,52 +186,42 @@ function bundledExamplesDir() {
   return null;
 }
 
-/* First-launch seeding: if the user has no recents AND we ship example
-   sessions, push them all into recents so the empty-state lands on
-   something clickable. Guarded by a one-shot flag so wiping recents
-   doesn't trigger re-seeding -- the user is in control after the
-   first launch. */
-function seedExamplesIfFirstLaunch() {
-  if (localStorage.getItem(EXAMPLE_SEED_KEY)) return;
-  if (getRecent().length > 0) {
-    localStorage.setItem(EXAMPLE_SEED_KEY, "1");
-    return;
-  }
+/* Live-read the example-sessions list every render. Cheap (5 sessions,
+   one readdir), and avoids the localStorage-staleness problems of the
+   earlier seed-on-first-launch approach -- examples just always
+   appear unless the user × them. */
+function listBundledExamples() {
   const root = bundledExamplesDir();
-  if (!root) {
-    localStorage.setItem(EXAMPLE_SEED_KEY, "1");
-    return;
-  }
+  if (!root) return [];
   let entries;
   try {
     entries = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory());
   } catch (_) {
-    localStorage.setItem(EXAMPLE_SEED_KEY, "1");
-    return;
+    return [];
   }
-  const stamp = Date.now();
-  const list = entries.map((d, i) => ({
+  return entries.map((d) => ({
     folder: path.join(root, d.name),
     label: "example - " + d.name,
-    ts: stamp - i,  // preserve display order
     example: true,
   }));
-  if (list.length) setRecent(list);
-  localStorage.setItem(EXAMPLE_SEED_KEY, "1");
 }
 
 function renderRecent() {
   const host = $("#recent-list-session");
   if (!host) return;
   const clearBtn = $("#recent-clear-all");
-  const list = getRecent();
-  if (!list.length) {
+  const recents = getRecent();
+  const hidden = getHiddenExamples();
+  const examples = listBundledExamples().filter((e) => !hidden.has(e.folder));
+  const combined = recents.concat(examples);
+
+  if (!combined.length) {
     host.innerHTML = '<li style="cursor:default;background:transparent;border:none;color:var(--fg-4)">No recent sessions yet.</li>';
     if (clearBtn) clearBtn.style.display = "none";
     return;
   }
   if (clearBtn) clearBtn.style.display = "";
-  host.innerHTML = list.map((r) => {
+  host.innerHTML = combined.map((r) => {
     let missing = false;
     try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
     const label = escapeHtml(r.label || path.basename(r.folder));
@@ -128,8 +230,8 @@ function renderRecent() {
     const cls = missing ? "missing" : "";
     return '<li data-folder="' + escapeHtml(r.folder) + '" class="' + cls + '" title="' + escapeHtml(r.folder) + '">' +
       '<span class="label">' + label + exampleTag + missingTag + '</span>' +
-      '<span class="when">' + (r.example ? "" : relTime(r.ts)) + '</span>' +
-      '<button class="recent-remove" type="button" title="Remove from recents">×</button>' +
+      '<span class="when">' + (r.example || !r.ts ? "" : relTime(r.ts)) + '</span>' +
+      '<button class="recent-remove" type="button" title="' + (r.example ? "Hide this example" : "Remove from recents") + '">×</button>' +
     '</li>';
   }).join("");
   host.querySelectorAll("li[data-folder]").forEach((li) => {
@@ -160,11 +262,16 @@ function relTime(ms) {
 (function wireRecentClearAll() {
   const btn = document.getElementById("recent-clear-all");
   if (!btn) return;
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     if (!getRecent().length) return;
-    if (confirm("Remove all entries from Recents? Bundled example sessions can be re-seeded by clearing localStorage.")) {
-      clearAllRecent();
-    }
+    const ok = await confirmModal({
+      title: "Clear recents?",
+      message: "Remove all entries from Recents?",
+      detail: "Bundled example sessions reappear automatically. Real recents are removed from localStorage; the underlying session folders aren't touched.",
+      okLabel: "Clear",
+      danger: true,
+    });
+    if (ok) clearAllRecent();
   });
 })();
 
@@ -610,7 +717,7 @@ async function inlineRenameStep(stepId, newName, advance) {
   if (!step) return;
   step.name = newName;
   step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'rename step');
   renderStepsLevel();
   if (advance === "next") {
     const idx = anno.steps.findIndex(s => s.step_id === stepId);
@@ -638,17 +745,25 @@ async function saveStep(updatedStep) {
   const idx = anno.steps.findIndex(s => s.step_id === updatedStep.step_id);
   if (idx >= 0) anno.steps[idx] = updatedStep;
   else anno.steps.push(updatedStep);
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'save step');
   renderStepsLevel();
   toast("Step saved", "success");
 }
 
 async function deleteStep(stepId) {
   if (!currentSession) return;
-  if (!confirm("Delete this step?")) return;
   const anno = ensureAnnoShape(currentSession.annotations);
+  const step = anno.steps.find(s => s.step_id === stepId);
+  const ok = await confirmModal({
+    title: "Delete step?",
+    message: step ? `Delete step "${step.name || "(unnamed)"}"?` : "Delete this step?",
+    detail: "Ctrl+Z will restore it.",
+    okLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   anno.steps = anno.steps.filter(s => s.step_id !== stepId);
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'delete step');
   if (selectedStepId === stepId) selectedStepId = null;
   renderStepsLevel();
   toast("Step deleted", "success");
@@ -679,7 +794,7 @@ async function splitStep(stepId) {
     evidence: { ...s.evidence, interaction_event_ids: firstIds },
     state: "edited" };
   anno.steps.splice(idx, 1, first, second);
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'split step');
   renderStepsLevel();
   toast("Step split", "success");
 }
@@ -706,7 +821,7 @@ async function mergeStepWithNext(stepId) {
   };
   anno.steps = anno.steps.filter(s => s.step_id !== cur.step_id && s.step_id !== next.step_id);
   anno.steps.push(merged);
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'merge steps');
   selectedStepId = merged.step_id;
   renderStepsLevel();
   toast("Steps merged", "success");
@@ -736,7 +851,7 @@ async function addManualStep() {
     phase_id: null,
   };
   anno.steps.push(step);
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'add step');
   selectedStepId = step.step_id;
   renderStepsLevel();
   toast("Manual step added", "success");
@@ -831,18 +946,26 @@ async function savePhase(updatedPhase) {
   const idx = anno.phases.findIndex(p => p.phase_id === updatedPhase.phase_id);
   if (idx >= 0) anno.phases[idx] = updatedPhase;
   else anno.phases.push(updatedPhase);
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'save phase');
   renderPhasesLevel();
   toast("Phase saved", "success");
 }
 
 async function deletePhase(phaseId) {
-  if (!confirm("Delete this phase?")) return;
   const anno = ensureAnnoShape(currentSession.annotations);
+  const phase = anno.phases.find(p => p.phase_id === phaseId);
+  const ok = await confirmModal({
+    title: "Delete phase?",
+    message: phase ? `Delete phase "${phase.name || "(unnamed)"}"?` : "Delete this phase?",
+    detail: "Member steps stay; only the grouping is removed. Ctrl+Z will restore it.",
+    okLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   anno.phases = anno.phases.filter(p => p.phase_id !== phaseId);
   // Detach phase_id from contained steps
   for (const s of anno.steps) if (s.phase_id === phaseId) s.phase_id = null;
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'delete phase');
   if (selectedPhaseId === phaseId) selectedPhaseId = null;
   renderPhasesLevel();
   toast("Phase deleted", "success");
@@ -856,7 +979,7 @@ async function removeStepFromPhase(phaseId, stepId) {
   phase.state = phase.state === "manually_authored" ? "manually_authored" : "edited";
   const s = anno.steps.find(x => x.step_id === stepId);
   if (s) s.phase_id = null;
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'remove step from phase');
   renderPhasesLevel();
 }
 
@@ -876,7 +999,7 @@ async function addManualPhase() {
     canonical_phase_id: null,
   };
   anno.phases.push(phase);
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'add phase');
   selectedPhaseId = phase.phase_id;
   renderPhasesLevel();
   toast("Manual phase added", "success");
@@ -904,7 +1027,7 @@ async function groupIntoPhase() {
     const s = anno.steps.find(x => x.step_id === sid);
     if (s) s.phase_id = phase.phase_id;
   }
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'group steps into phase');
   multiSelectedStepIds.clear();
   selectedPhaseId = phase.phase_id;
   $("#btn-group-into-phase").disabled = true;
@@ -936,7 +1059,13 @@ function ensureAnnoShape(anno) {
 
 async function buildVocabFromSession(suggestedName) {
   if (!currentSession) return;
-  const vocabName = suggestedName || prompt("App vocabulary name (e.g., 'Salesforce'):", "");
+  const vocabName = suggestedName || await promptModal({
+    title: "Save as App Vocabulary",
+    message: "App vocabulary name",
+    detail: "e.g., \"Salesforce\". Used as the file name under normalization/app_vocabularies/.",
+    placeholder: "Salesforce",
+    okLabel: "Save",
+  });
   if (!vocabName) return;
   const vocabId = vocabName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const r = await ipcRenderer.invoke("viewer:bootstrapAppVocab", {
@@ -1185,11 +1314,37 @@ async function openSessionFlow() {
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
 
+/* Wire normalize button so the analysis-in-progress UI is visible:
+   log host expands (already open by default in the HTML), Cancel
+   button shows while running. Cancellation flows through
+   viewer:cancelNormalize which kills the python child. */
+function setAnalysisRunning(running) {
+  $("#btn-normalize").disabled = running;
+  const cancelBtn = $("#btn-cancel-normalize");
+  if (cancelBtn) cancelBtn.style.display = running ? "" : "none";
+  const logHost = $("#log-host");
+  if (logHost) {
+    if (running) {
+      logHost.style.display = "";
+      logHost.open = true;
+    }
+  }
+}
+
+const btnCancelNormalize = $("#btn-cancel-normalize");
+if (btnCancelNormalize) {
+  btnCancelNormalize.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await ipcRenderer.invoke("viewer:cancelNormalize");
+    toast("Cancelling analysis...");
+  });
+}
+
 $("#btn-normalize").addEventListener("click", async () => {
   if (!currentSession) return;
   const mine = $("#cb-mine").checked;
-  $("#btn-normalize").disabled = true;
-  $("#log-host").style.display = "";
+  setAnalysisRunning(true);
   $("#normalize-log").textContent = "";
   // If a Process Template was previously matched, re-use its path automatically.
   const remembered = (currentSession.annotations &&
@@ -1200,7 +1355,12 @@ $("#btn-normalize").addEventListener("click", async () => {
     mine,
     canonical: remembered,
   });
-  $("#btn-normalize").disabled = false;
+  setAnalysisRunning(false);
+  if (r.cancelled) {
+    $("#normalize-log").textContent += "\n[cancelled by user]";
+    toast("Analysis cancelled");
+    return;
+  }
   if (!r.ok) {
     $("#normalize-log").textContent += "\nERROR: " + r.error;
     toast("Analysis failed: " + r.error, "error");
@@ -1254,12 +1414,18 @@ ipcRenderer.on("viewer:normalizeLog", (_e, text) => {
 });
 
 async function loadSessionIntoView(folder) {
+  const prevFolder = currentSession ? currentSession.sessionFolder : null;
   try {
     currentSession = await ipcRenderer.invoke("viewer:loadSession", folder);
   } catch (e) {
     toast("Failed to load: " + (e.message || e), "error");
     return;
   }
+  // Reset undo when switching to a different session. Undo/redo
+  // stack entries are pinned to a sessionFolder so they'd be unusable
+  // anyway, but cleaning here avoids unbounded memory growth across
+  // many session switches.
+  if (prevFolder !== folder) resetUndoStack();
   $("#session-empty").style.display = "none";
   $("#session-loaded").style.display = "";
   $("#btn-normalize").disabled = false;
@@ -1562,6 +1728,91 @@ function renderTimelineSummary() {
     " · " + formatDuration(last - first);
 }
 
+/* Pop a tiny context menu at (x, y) offering to queue a synthetic
+   marker insert into annotations.json.marker_edits at timestamp `ts`.
+   The edit only takes effect on the next normalization run. */
+function showMarkerInsertMenu(x, y, ts) {
+  /* Tear down any prior menu */
+  const prior = document.getElementById("tl-ctx-menu");
+  if (prior) prior.remove();
+
+  const menu = document.createElement("div");
+  menu.id = "tl-ctx-menu";
+  menu.style.cssText =
+    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
+    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
+    "box-shadow:var(--shadow);font:13px var(--font-ui);" +
+    "min-width:200px;cursor:default;user-select:none;";
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+
+  function addItem(label, handler) {
+    const item = document.createElement("div");
+    item.textContent = label;
+    item.style.cssText = "padding:6px 14px;cursor:pointer;";
+    item.addEventListener("mouseenter", () => item.style.background = "var(--accent)");
+    item.addEventListener("mouseleave", () => item.style.background = "");
+    item.addEventListener("click", async () => {
+      menu.remove();
+      await handler();
+    });
+    menu.appendChild(item);
+  }
+
+  addItem("Insert Start marker here…", () => queueSyntheticMarker(ts, "start"));
+  addItem("Insert End marker here",    () => queueSyntheticMarker(ts, "end"));
+
+  document.body.appendChild(menu);
+  /* Dismiss on outside click / escape */
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    menu.remove();
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", dismiss, true);
+  };
+  /* Defer to avoid immediately catching the right-click's own mousedown */
+  setTimeout(() => {
+    document.addEventListener("mousedown", dismiss, true);
+    document.addEventListener("keydown", dismiss, true);
+  }, 0);
+}
+
+async function queueSyntheticMarker(ts, markerType) {
+  if (!currentSession) return;
+  let label = null;
+  if (markerType === "start") {
+    label = await promptModal({
+      title: "Insert Start marker",
+      message: "Label for the new Start marker",
+      detail: "Queued in annotations.json; re-run Analyze to apply.",
+      placeholder: "e.g. Send email",
+      okLabel: "Insert",
+    });
+    if (label === null) return;     // cancelled
+    label = (label || "").trim();
+    if (!label) label = null;
+  }
+  const a = currentSession.annotations || {};
+  if (!Array.isArray(a.marker_edits)) a.marker_edits = [];
+  a.marker_edits.push({
+    id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+    op: "insert",
+    marker_type: markerType,
+    label,
+    timestamp: ts,
+    ts: new Date().toISOString(),
+  });
+  try {
+    await saveAnnotationsWithUndo(a, `insert ${markerType} marker`);
+    toast(
+      `${markerType === "start" ? "Start" : "End"} marker queued — re-run normalization to apply`,
+      "success",
+    );
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
 function renderTimeline() {
   const host = $("#timeline");
   host.innerHTML = "";
@@ -1572,12 +1823,57 @@ function renderTimeline() {
   const span = Math.max(1, last - first);
 
   host.style.width = (100 * zoomFactor) + "%";
-  const activityTop = 6;
-  const activityH = 70;
-  const caseTop = activityH + 24;
-  const caseH = 26;
+
+  /* Lane stack (top to bottom):
+       ticks       (24px) -- HH:MM:SS labels at sensible intervals
+       activity    (60px) -- per-app coloured bands
+       density     (12px) -- event-count histogram, ~120 buckets
+       cases       (var)  -- one row per concurrent case
+       playhead overlays all lanes. */
+  const ticksTop = 4;
+  const ticksH = 20;
+  const activityTop = ticksTop + ticksH + 4;
+  const activityH = 60;
+  const densityTop = activityTop + activityH + 2;
+  const densityH = 12;
+  const caseRowH = 22;
+
+  // Count concurrent open markers at any point so we know how many
+  // case lanes to draw. Each lane gets its own row beneath the
+  // histogram; dangling cases share lanes with closed cases that
+  // started earlier.
+  const caseLanes = layoutCaseLanes(evs, first, last);
+  const casesTop = densityTop + densityH + 6;
+  const casesH = Math.max(caseRowH, caseLanes.lanesNeeded * caseRowH);
   // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
-  host.style.minHeight = Math.max(120, caseTop + caseH + 30) + "px";
+  host.style.minHeight = Math.max(120, casesTop + casesH + 14) + "px";
+
+  // ===== Time-axis ticks =====
+  // Choose tick step based on the visible span (assuming the user
+  // hasn't zoomed). Higher zoom = denser ticks would be nice but
+  // would also need per-zoom recompute, so we use the unzoomed span
+  // and let the host's CSS overflow handle visual scaling.
+  const tickStepMs = pickTickStep(span);
+  const tickEpoch = Math.ceil(first / tickStepMs) * tickStepMs;
+  for (let t = tickEpoch; t <= last; t += tickStepMs) {
+    const x = ((t - first) / span) * 100;
+    /* Use a Flow-timeline-specific class so we don't collide with the
+       generic `.tl-tick` style that step-editor.js / phase-editor.js
+       depend on for their mini-timelines (where ticks live inside a
+       short axis row with top:0/bottom:0). */
+    const tick = document.createElement("div");
+    tick.className = "tl-flow-tick";
+    tick.style.left = x + "%";
+    tick.style.top = ticksTop + "px";
+    tick.style.height = (ticksH + activityH + 2) + "px";
+    host.appendChild(tick);
+    const lbl = document.createElement("div");
+    lbl.className = "tl-flow-tick-label";
+    lbl.style.left = "calc(" + x + "% + 3px)";
+    lbl.style.top = ticksTop + "px";
+    lbl.textContent = formatTickLabel(new Date(t), tickStepMs);
+    host.appendChild(lbl);
+  }
 
   // Activity bands -- coloured per app, with inline title + duration
   // labels so analysts can read the timeline without hovering. Out-of
@@ -1624,6 +1920,11 @@ function renderTimeline() {
     band.appendChild(lbl);
 
     band.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(ev.timestamp); });
+    band.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp);
+    });
     host.appendChild(band);
   }
   renderLegend(observedApps);
@@ -1691,49 +1992,85 @@ function renderTimeline() {
     host.appendChild(dot);
   }
 
-  // Case bands (with nesting)
-  const stack = [];
+  // ===== Density histogram lane =====
+  // Bucket events into ~120 bins across the span. Background events
+  // (idle_start/end, paused/resumed, recorder_*) are excluded so the
+  // histogram reflects user activity, not session bookkeeping.
+  const N_BUCKETS = 120;
+  const bucketDur = span / N_BUCKETS;
+  const buckets = new Array(N_BUCKETS).fill(0);
   for (const ev of evs) {
-    if (ev.type !== "marker") continue;
-    const t = new Date(ev.timestamp).getTime();
-    if (ev.data.marker_type === "start") {
-      stack.push({ startMs: t, label: ev.data.label, depth: stack.length });
-    } else if (ev.data.marker_type === "end" && stack.length) {
-      const opened = stack.pop();
-      const x = ((opened.startMs - first) / span) * 100;
-      const w = Math.max(0.15, ((t - opened.startMs) / span) * 100);
-      const band = document.createElement("div");
-      band.className = "tl-case-band";
-      band.style.left = x + "%";
-      band.style.width = w + "%";
-      band.style.top = (caseTop + opened.depth * 3) + "px";
-      band.style.height = (caseH - opened.depth * 6) + "px";
-      band.title = "case: " + (opened.label || "(unlabeled)") +
-        "\n" + formatDuration(t - opened.startMs);
-      band.addEventListener("click", (e) => {
-        e.stopPropagation();
-        seekToTimestamp(new Date(opened.startMs).toISOString());
-      });
-      host.appendChild(band);
-      const lbl = document.createElement("div");
-      lbl.className = "tl-case-label";
-      lbl.style.left = "calc(" + x + "% + 4px)";
-      lbl.style.top = (caseTop + opened.depth * 3 + 4) + "px";
-      lbl.textContent = opened.label || "(unlabeled)";
-      host.appendChild(lbl);
-    }
+    if (!isUserActivityEvent(ev)) continue;
+    const idx = Math.min(N_BUCKETS - 1, Math.floor((new Date(ev.timestamp).getTime() - first) / bucketDur));
+    if (idx >= 0) buckets[idx] += 1;
   }
-  for (const o of stack) {
-    const x = ((o.startMs - first) / span) * 100;
-    const w = ((last - o.startMs) / span) * 100;
+  const maxBucket = buckets.reduce((m, v) => v > m ? v : m, 0) || 1;
+  for (let i = 0; i < N_BUCKETS; i++) {
+    if (!buckets[i]) continue;
+    const x = (i / N_BUCKETS) * 100;
+    const w = (1 / N_BUCKETS) * 100;
+    const h = Math.max(2, Math.round(densityH * (buckets[i] / maxBucket)));
+    const bar = document.createElement("div");
+    bar.className = "tl-density-bar";
+    bar.style.left = x + "%";
+    bar.style.width = w + "%";
+    bar.style.top = (densityTop + densityH - h) + "px";
+    bar.style.height = h + "px";
+    bar.title = `${buckets[i]} events @ ` +
+      new Date(first + i * bucketDur).toLocaleTimeString();
+    host.appendChild(bar);
+  }
+  // Density baseline (faint background strip so the lane reads even
+  // when sparse).
+  const densityBaseline = document.createElement("div");
+  densityBaseline.className = "tl-density-base";
+  densityBaseline.style.top = densityTop + "px";
+  densityBaseline.style.height = densityH + "px";
+  host.appendChild(densityBaseline);
+
+  // ===== Case lanes =====
+  // layoutCaseLanes() (below) walks the marker stream and assigns
+  // each case to a non-overlapping lane via a sweep-line algo:
+  //   - Each case knows its [start, end) and a parent_id.
+  //   - A new case picks the first lane whose previous occupant ended
+  //     before this case starts. Nested cases land BELOW their parent.
+  //   - Dangling cases (start with no end) extend to `last` with a
+  //     dashed right edge so they're visually distinct from closed.
+  // The case scope dropdown can target any of these directly.
+  for (const c of caseLanes.cases) {
+    const x = ((c.startMs - first) / span) * 100;
+    const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
+    const top = casesTop + c.lane * caseRowH;
     const band = document.createElement("div");
-    band.className = "tl-case-band dangling";
+    band.className = "tl-case-band" + (c.dangling ? " dangling" : "");
     band.style.left = x + "%";
     band.style.width = w + "%";
-    band.style.top = (caseTop + o.depth * 3) + "px";
-    band.style.height = (caseH - o.depth * 6) + "px";
-    band.title = "unclosed: " + (o.label || "(unlabeled)");
+    band.style.top = top + "px";
+    band.style.height = (caseRowH - 4) + "px";
+    band.title = (c.dangling ? "unclosed: " : "case: ") +
+      (c.label || "(unlabeled)") +
+      (c.dangling ? "" : "\n" + formatDuration(c.endMs - c.startMs));
+    // Click anywhere on a case band -- closed OR dangling -- seeks
+    // the video to the case start. Right-click opens the scope/jump
+    // menu below.
+    band.addEventListener("click", (e) => {
+      e.stopPropagation();
+      seekToTimestamp(new Date(c.startMs).toISOString());
+    });
+    band.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Scope-to-case option (in addition to the marker insert menu
+      // available on activity bands).
+      showCaseContextMenu(e.clientX, e.clientY, c);
+    });
     host.appendChild(band);
+    const lbl = document.createElement("div");
+    lbl.className = "tl-case-label";
+    lbl.style.left = "calc(" + x + "% + 4px)";
+    lbl.style.top = (top + 3) + "px";
+    lbl.textContent = c.label || "(unlabeled)";
+    host.appendChild(lbl);
   }
 
   // Playhead
@@ -1768,6 +2105,165 @@ function positionPlayhead() {
   ph.style.left = x + "%";
   ph.style.display = "";
   setVideoOverlay(formatPlayback(video.currentTime, video.duration));
+}
+
+/* ============ Timeline helpers (lane layout, ticks, density)
+   ================================================================ */
+
+/* Walk markers, build closed/dangling cases, and assign each to a
+   non-overlapping lane. Returns { cases: [...], lanesNeeded }.
+   Each case: { startMs, endMs, label, dangling, lane, parent_id, id }. */
+function layoutCaseLanes(evs, first, last) {
+  const opening = [];   // stack of currently-open cases by depth
+  const closed = [];
+  let nextId = 0;
+  for (const ev of evs) {
+    if (ev.type !== "marker") continue;
+    const t = new Date(ev.timestamp).getTime();
+    if (ev.data.marker_type === "start") {
+      opening.push({
+        id: nextId++,
+        startMs: t,
+        label: ev.data.label,
+        parent_id: opening.length ? opening[opening.length - 1].id : null,
+      });
+    } else if (ev.data.marker_type === "end" && opening.length) {
+      const c = opening.pop();
+      c.endMs = t;
+      c.dangling = false;
+      closed.push(c);
+    }
+  }
+  // Dangling cases: extend to session end.
+  for (const c of opening) {
+    c.endMs = last;
+    c.dangling = true;
+    closed.push(c);
+  }
+  // Sweep-line lane assignment. Sort by startMs so earlier cases get
+  // first pick. For each case, find the lowest-indexed lane whose
+  // previous occupant's end is before this case's start.
+  closed.sort((a, b) => a.startMs - b.startMs);
+  const laneEndMs = [];
+  for (const c of closed) {
+    let lane = -1;
+    for (let i = 0; i < laneEndMs.length; i++) {
+      if (laneEndMs[i] <= c.startMs) { lane = i; break; }
+    }
+    if (lane === -1) { lane = laneEndMs.length; laneEndMs.push(0); }
+    laneEndMs[lane] = c.endMs;
+    c.lane = lane;
+  }
+  return { cases: closed, lanesNeeded: Math.max(1, laneEndMs.length) };
+}
+
+/* Pick a tick interval based on visible span. Aim for ~10-15 ticks
+   so the axis isn't crowded. Steps chosen for human-readability.
+   Returns milliseconds. */
+function pickTickStep(spanMs) {
+  // Candidate steps in seconds.
+  const steps = [
+    1, 2, 5, 10, 15, 30,         // sub-minute
+    60, 120, 300, 600, 900, 1800, // minute -> 30 min
+    3600, 7200, 14400, 21600,    // hour -> 6h
+    43200, 86400,                // 12h, 24h
+  ];
+  const targetTicks = 12;
+  const idealSec = (spanMs / 1000) / targetTicks;
+  for (const s of steps) {
+    if (s >= idealSec) return s * 1000;
+  }
+  return steps[steps.length - 1] * 1000;
+}
+
+/* Format a tick label given a Date and the chosen step. Decide
+   granularity (HH:MM:SS vs HH:MM vs date) from the step length. */
+function formatTickLabel(d, stepMs) {
+  const pad = (n) => String(n).padStart(2, "0");
+  if (stepMs < 60_000) {
+    return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  }
+  if (stepMs < 3600_000) {
+    return pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  if (stepMs < 86400_000) {
+    return pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/* The density histogram counts only events that represent user
+   activity, not session bookkeeping (pause/resume, idle starts,
+   recorder lifecycle, etc.). */
+function isUserActivityEvent(ev) {
+  if (ev.type === "activity" || ev.type === "interaction" || ev.type === "marker") return true;
+  if (ev.type === "system") {
+    const k = ev.data && ev.data.kind;
+    if (k === "screenshot" || k === "screenshot_manual") return true;
+  }
+  return false;
+}
+
+/* Right-click on a case band: offer scope + jump actions. Uses the
+   same context-menu construction pattern as showMarkerInsertMenu. */
+function showCaseContextMenu(x, y, c) {
+  const prior = document.getElementById("tl-ctx-menu");
+  if (prior) prior.remove();
+  const menu = document.createElement("div");
+  menu.id = "tl-ctx-menu";
+  menu.style.cssText =
+    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
+    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
+    "box-shadow:var(--shadow);font:13px var(--font-ui);" +
+    "min-width:240px;cursor:default;user-select:none;";
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+  function addItem(label, handler) {
+    const item = document.createElement("div");
+    item.textContent = label;
+    item.style.cssText = "padding:6px 14px;cursor:pointer;";
+    item.addEventListener("mouseenter", () => item.style.background = "var(--accent)");
+    item.addEventListener("mouseleave", () => item.style.background = "");
+    item.addEventListener("click", () => { menu.remove(); handler(); });
+    menu.appendChild(item);
+  }
+  addItem("Scope view to this case", () => {
+    /* Find the case by start timestamp -- the case scope dropdown
+       keys cases by case_id derived from normalization, but visually
+       we map by startMs which is stable. */
+    const cases = currentSession ? deriveCases(currentSession) : [];
+    const match = cases.find(x => Math.abs(x.startMs - c.startMs) < 5);
+    if (match) {
+      currentCaseScope = match.id;
+      const sel = $("#case-scope-select");
+      if (sel) { sel.value = match.id; sel.dispatchEvent(new Event("change")); }
+      else { renderTimeline(); }
+      toast(`Scoped to: ${match.label || match.id}`);
+    } else {
+      toast("Case not found in normalized output -- run Analyze first", "error");
+    }
+  });
+  addItem("Jump to start", () => seekToTimestamp(new Date(c.startMs).toISOString()));
+  if (!c.dangling) {
+    addItem("Jump to end", () => seekToTimestamp(new Date(c.endMs).toISOString()));
+  }
+  document.body.appendChild(menu);
+  function dismiss(e) {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener("click", dismiss, true);
+      document.removeEventListener("keydown", onKey, true);
+    }
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      menu.remove();
+      document.removeEventListener("click", dismiss, true);
+      document.removeEventListener("keydown", onKey, true);
+    }
+  }
+  document.addEventListener("click", dismiss, true);
+  document.addEventListener("keydown", onKey, true);
 }
 
 /* The "video start timestamp" -- i.e. the wall clock at video t=0.
@@ -1920,10 +2416,7 @@ $("#btn-save-note").addEventListener("click", async () => {
     video_offset_s: video.currentTime || 0,
     text: note,
   });
-  await ipcRenderer.invoke("viewer:saveAnnotations", {
-    sessionFolder: currentSession.sessionFolder,
-    annotations: anno,
-  });
+  await saveAnnotationsWithUndo(anno, "add note");
   currentSession.annotations = anno;
   $("#anno-note").value = "";
   renderAnnotations();
@@ -2072,11 +2565,12 @@ function renderMarkersList() {
   }
 }
 
-async function persistAnnotations(anno) {
-  await ipcRenderer.invoke("viewer:saveAnnotations", {
-    sessionFolder: currentSession.sessionFolder,
-    annotations: anno,
-  });
+async function persistAnnotations(anno, undoLabel) {
+  /* Marker-edit operations (rename, delete, adjust timestamp, drift
+     flag, etc.) all flow through here. Route via the undo helper so
+     Ctrl+Z reverts them. Callers pass a short label that surfaces
+     in the undo toast. */
+  await saveAnnotationsWithUndo(anno, undoLabel || "marker edit");
   currentSession.annotations = anno;
 }
 
@@ -2102,7 +2596,7 @@ async function adjustMarkerToVideoTime(markerEvent) {
     previous: markerEvent.timestamp,
     ts: new Date().toISOString(),
   });
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'adjust marker timestamp');
   renderMarkersList();
   renderTimeline();
   toast("Marker timestamp adjusted", "success");
@@ -2110,7 +2604,14 @@ async function adjustMarkerToVideoTime(markerEvent) {
 
 async function deleteMarker(markerEvent) {
   if (!currentSession) return;
-  if (!confirm(`Delete this ${markerEvent.data.marker_type} marker from normalization output?\n\nRaw events.jsonl is not touched; the delete is recorded in annotations.json.`)) return;
+  const ok = await confirmModal({
+    title: "Delete marker?",
+    message: `Delete this ${markerEvent.data.marker_type} marker from normalization output?`,
+    detail: "Raw events.jsonl is not touched; the delete is recorded in annotations.json. Ctrl+Z will restore it.",
+    okLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   const anno = currentSession.annotations || { notes: [], marker_edits: [] };
   anno.marker_edits = anno.marker_edits || [];
   anno.marker_edits.push({
@@ -2119,7 +2620,7 @@ async function deleteMarker(markerEvent) {
     op: "delete",
     ts: new Date().toISOString(),
   });
-  await persistAnnotations(anno);
+  await persistAnnotations(anno, 'delete marker');
   renderMarkersList();
   renderTimeline();
   toast("Marker marked for deletion (re-run normalization)", "success");
@@ -2166,14 +2667,42 @@ async function openMultiFlow() {
 $("#btn-open-multi-hero").addEventListener("click", openMultiFlow);
 $("#btn-open-multi").addEventListener("click", openMultiFlow);
 
+/* Aggregate "Analyze all" supports the same cancel flow as the
+   single-session Analyze. Each per-session normalize registers the
+   kill handle via onProc on the backend; clicking the inline Cancel
+   button kills the in-flight child AND breaks the for loop so we
+   don't continue to the next session. */
+let _aggregateNormalizeCancelled = false;
+const _btnNormalizeAllCancel = $("#btn-normalize-all-cancel");
+if (_btnNormalizeAllCancel) {
+  _btnNormalizeAllCancel.addEventListener("click", async () => {
+    _aggregateNormalizeCancelled = true;
+    await ipcRenderer.invoke("viewer:cancelNormalize");
+    toast("Cancelling after current session...");
+  });
+}
 $("#btn-normalize-all").addEventListener("click", async () => {
   if (!aggregateSessions.length) return;
+  _aggregateNormalizeCancelled = false;
   $("#btn-normalize-all").disabled = true;
+  const cancelBtn = $("#btn-normalize-all-cancel");
+  if (cancelBtn) cancelBtn.style.display = "";
+  let cancelled = false;
+  let done = 0;
   for (const s of aggregateSessions) {
-    await ipcRenderer.invoke("viewer:runNormalize", {
+    if (_aggregateNormalizeCancelled) { cancelled = true; break; }
+    const r = await ipcRenderer.invoke("viewer:runNormalize", {
       sessionFolder: s.sessionFolder,
       mine: true,
     });
+    done++;
+    if (r && r.cancelled) { cancelled = true; break; }
+  }
+  if (cancelBtn) cancelBtn.style.display = "none";
+  if (cancelled) {
+    toast(`Cancelled after ${done} of ${aggregateSessions.length} session${aggregateSessions.length === 1 ? "" : "s"}.`);
+    $("#btn-normalize-all").disabled = false;
+    return;
   }
   const folders = aggregateSessions.map((s) => s.sessionFolder);
   aggregateSessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
@@ -2592,8 +3121,9 @@ $("#btn-export-promotions").addEventListener("click", async () => {
   const lines = [
     "# Taxonomy promotion candidates",
     "# Generated by Process Discovery Viewer on " + new Date().toISOString(),
-    "# Review and append to the central taxonomy YAML. Edit `label` to taste,",
-    "# refine `title_regex` if you want stricter matching, and add `extract` rules where useful.",
+    "# Each `label` below is prefixed with [REVIEW] — replace the bracketed prefix",
+    "# with the final activity name before appending to the central taxonomy YAML.",
+    "# Refine `title_regex` for stricter matching and add `extract` rules where useful.",
     "",
     "rules:",
   ];
@@ -2601,7 +3131,7 @@ $("#btn-export-promotions").addEventListener("click", async () => {
     lines.push("  - match:");
     lines.push("      app: \"" + app.replace(/"/g, "\\\"") + "\"");
     lines.push("      title_regex: \".*\"");
-    lines.push("    label: \"TODO - " + app.replace(/"/g, "\\\"") + "\"  # " + info.count + " unclassified events" +
+    lines.push("    label: \"[REVIEW] " + app.replace(/"/g, "\\\"") + "\"  # " + info.count + " unclassified events" +
       (info.firstTitle ? "; sample title: " + JSON.stringify(info.firstTitle.slice(0, 60)) : ""));
   }
   const yaml = lines.join("\n") + "\n";
@@ -2647,6 +3177,22 @@ document.addEventListener("keydown", (e) => {
   // Don't intercept other shortcuts while typing in inputs
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;
+
+  // Undo / redo apply to any view as long as a session is loaded.
+  // Ctrl+Z = undo, Ctrl+Shift+Z (or Ctrl+Y) = redo.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const key = e.key.toLowerCase();
+    if (key === "z" && !e.shiftKey) {
+      e.preventDefault();
+      performUndo();
+      return;
+    }
+    if ((key === "z" && e.shiftKey) || key === "y") {
+      e.preventDefault();
+      performRedo();
+      return;
+    }
+  }
 
   if (e.key === "?" || (e.shiftKey && e.key === "/")) {
     openHelp();
@@ -2773,7 +3319,6 @@ $("#help-modal").addEventListener("click", (e) => {
 
 /* ============ Boot ================================================ */
 
-seedExamplesIfFirstLaunch();
 renderRecent();
 $("#topbar-meta").textContent = "v0.2 · " + new Date().toLocaleDateString();
 
@@ -2847,7 +3392,13 @@ function renderVocabList() {
 
 async function selectVocab(p) {
   if (vocabState.dirty) {
-    if (!confirm("You have unsaved changes. Discard them?")) return;
+    const ok = await confirmModal({
+      title: "Unsaved changes",
+      message: "Discard unsaved changes to this vocabulary?",
+      okLabel: "Discard",
+      danger: true,
+    });
+    if (!ok) return;
   }
   vocabState.selectedPath = p;
   vocabState.dirty = false;
@@ -3161,4 +3712,62 @@ function promptModal(opts) {
 
 function escapeAttr(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+/* ============ confirmModal: themed replacement for window.confirm
+   ================================================================
+   Browser-native confirm() dialogs look unstyled and out of place
+   against the app theme, and corp users find them indistinguishable
+   from a phishing popup. confirmModal() takes the same structural
+   opts as promptModal and resolves to true/false. Supports custom
+   button labels + a `danger` flag that styles the primary action
+   for destructive operations (red instead of accent). */
+
+function confirmModal(opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop modal-confirm";
+    const okLabel = opts.okLabel || "OK";
+    const cancelLabel = opts.cancelLabel || "Cancel";
+    const okClass = opts.danger ? "danger" : "primary";
+    backdrop.innerHTML =
+      '<div class="modal modal-sm">' +
+      '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Confirm") + '</h2>' +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<div class="modal-body">' +
+      (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
+      (opts.detail ? '<p class="modal-detail">' + escapeHtml(opts.detail) + '</p>' : '') +
+      '</div>' +
+      '<footer class="modal-footer">' +
+      '<button class="modal-cancel">' + escapeHtml(cancelLabel) + '</button>' +
+      '<button class="' + okClass + ' modal-ok">' + escapeHtml(okLabel) + '</button>' +
+      '</footer>' +
+      '</div>';
+    document.body.appendChild(backdrop);
+    const okBtn = backdrop.querySelector(".modal-ok");
+    const cancelBtn = backdrop.querySelector(".modal-cancel");
+    const closeBtn = backdrop.querySelector(".modal-close");
+    let resolved = false;
+    function done(value) {
+      if (resolved) return;
+      resolved = true;
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey);
+      resolve(value);
+    }
+    function onKey(e) {
+      if (e.key === "Enter") { e.preventDefault(); done(true); }
+      else if (e.key === "Escape") { e.preventDefault(); done(false); }
+    }
+    okBtn.addEventListener("click", () => done(true));
+    cancelBtn.addEventListener("click", () => done(false));
+    closeBtn.addEventListener("click", () => done(false));
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) done(false);
+    });
+    document.addEventListener("keydown", onKey);
+    // Focus the default action so Enter/Space confirms.
+    setTimeout(() => { (opts.danger ? cancelBtn : okBtn).focus(); }, 0);
+  });
 }

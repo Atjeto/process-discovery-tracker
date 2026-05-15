@@ -102,6 +102,14 @@ function startTracker({ sessionId, eventsFile, onTick }) {
     const title = typeof win.title === "string" ? win.title : "";
     const pid = (win.owner && win.owner.processId) || null;
 
+    // active-win exposes `bounds: {x, y, width, height}` -- desktop
+    // coordinates of the foreground window. We capture them on every
+    // tick so screenshots.js can pick the right display in multi-
+    // monitor setups. Stored on currentRun (refreshed every tick)
+    // and surfaced via getStatus(). Optional: older OS / active-win
+    // builds may omit bounds; consumer falls back to primary display.
+    const bounds = (win && win.bounds && Number.isFinite(win.bounds.x)) ? win.bounds : null;
+
     if (!currentRun || currentRun.app !== app || currentRun.pid !== pid) {
       closeRun(now);
       currentRun = {
@@ -110,9 +118,11 @@ function startTracker({ sessionId, eventsFile, onTick }) {
         app,
         title,
         pid,
+        bounds,
       };
     } else {
       currentRun.title = title;
+      currentRun.bounds = bounds;
     }
 
     if (onTick) {
@@ -157,6 +167,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
       sessionId,
       currentApp: currentRun ? currentRun.app : null,
       currentTitle: currentRun ? currentRun.title : null,
+      currentBounds: currentRun ? currentRun.bounds : null,
       markerDepth: markerStack.length,
       openMarkers: markerStack.map((m) => m.label),
       eventCount,

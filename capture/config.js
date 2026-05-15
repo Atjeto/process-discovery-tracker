@@ -36,6 +36,13 @@ const DEFAULTS = {
     on_app_switch: true,
     on_marker_fire: true,
     on_idle_resume_minutes: 5,
+    /* Multi-monitor screen selection:
+         "active"  -- (default) capture the display containing the
+                      currently-focused window. Follows the user.
+         "primary" -- always capture the primary display.
+         "all"     -- capture every connected display; one screenshot
+                      system event per display, suffixed _d<id>.jpg. */
+    display: "active",
   },
   interactions: {
     enabled: true,

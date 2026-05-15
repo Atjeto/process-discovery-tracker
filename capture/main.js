@@ -52,6 +52,10 @@ const { showStatusWindow } = require("./status-window.js");
 const { showHelpWindow } = require("./help-window.js");
 const { showOperatorPanel } = require("./operator-panel.js");
 const { showObsSettingsWindow } = require("./obs-settings-window.js");
+const { showSessionConfigWindow } = require("./session-config-window.js");
+const welcomeWin = require("./welcome-window.js");
+const hotkeyOverlay = require("./hotkey-overlay.js");
+const { appLogger } = require("./log.js");
 const crypto = require("node:crypto");
 
 const DEBUG = process.env.PDT_DEBUG === "1";
@@ -105,6 +109,31 @@ let idleStartMs = null;
 
 // App-switch screenshot tracking
 let lastTrackedApp = null;
+
+/* Native Windows toast for failure modes the user otherwise wouldn't
+   notice (recorder dead, OBS dropped). Uses Electron's built-in
+   Notification API -- routes through the user's OS toast surface so
+   it pierces attention without an in-app dialog. No-ops gracefully
+   when notifications aren't supported. */
+const { Notification } = require("electron");
+function notifyUser(title, body, options) {
+  options = options || {};
+  try {
+    if (!Notification.isSupported || !Notification.isSupported()) return;
+    const n = new Notification({
+      title,
+      body,
+      silent: !!options.silent,
+      urgency: options.urgency || "normal",
+      icon: trayIconImage(),
+    });
+    if (options.onClick) n.on("click", options.onClick);
+    n.show();
+    bootLog(`notify: ${title} -- ${body}`);
+  } catch (e) {
+    bootLog(`notify failed: ${e && e.message}`);
+  }
+}
 
 function trayIconImage() {
   const candidates = [
@@ -283,11 +312,23 @@ async function confirmAndPruneByAge(days) {
 async function fireScreenshot(kind) {
   if (!tracker || !session || !config.screenshots.enabled) return;
   try {
-    const relPath = await captureScreenshot({
+    // Pass the foreground window bounds so multi-monitor "active"
+    // mode can pick the right display. lastStatus is refreshed every
+    // tick via onTickHandler; if we don't have it yet (e.g. fire just
+    // after session_start), screenshots.js falls back to cursor pos
+    // then primary.
+    const result = await captureScreenshot({
       screenshotsFolder: path.join(session.sessionFolder, "screenshots"),
       quality: config.screenshots.quality,
+      mode: (config.screenshots && config.screenshots.display) || "active",
+      foregroundBounds: lastStatus ? lastStatus.currentBounds : null,
     });
-    if (relPath) tracker.fireSystem(kind || "screenshot", { path: relPath });
+    if (!result) return;
+    // captureScreenshot returns string|string[]. Emit one system
+    // event per file so the timeline shows a dot for each display
+    // when display="all".
+    const paths = Array.isArray(result) ? result : [result];
+    for (const p of paths) tracker.fireSystem(kind || "screenshot", { path: p });
   } catch (e) {
     bootLog(`screenshot failed: ${e && e.message}`);
   }
@@ -457,6 +498,42 @@ ipcMain.handle("pdt:obsSave", (_e, { url, password }) => {
   return { saved: true };
 });
 
+function quickConfigPath() {
+  return path.join(app.getPath("userData"), "quick-config.yaml");
+}
+
+ipcMain.handle("pdt:sessionConfigGet", () => {
+  const p = quickConfigPath();
+  if (!fs.existsSync(p)) return { yaml: "", path: null };
+  try { return { yaml: fs.readFileSync(p, "utf-8"), path: p }; }
+  catch (e) { return { yaml: "", path: p, error: String(e && e.message) }; }
+});
+
+ipcMain.handle("pdt:sessionConfigSave", (_e, { yaml: text }) => {
+  const p = quickConfigPath();
+  try {
+    const dir = path.dirname(p);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(p, text || "", "utf-8");
+    bootLog(`quick-config saved to ${p}`);
+    appLogger().info(`quick-config saved to ${p}`);
+    return { saved: true, path: p };
+  } catch (e) {
+    return { saved: false, path: p, error: String(e && e.message) };
+  }
+});
+
+let sessionConfigWindow = null;
+function showSessionConfigDialog() {
+  if (sessionConfigWindow && !sessionConfigWindow.isDestroyed()) {
+    sessionConfigWindow.show();
+    sessionConfigWindow.focus();
+    return;
+  }
+  sessionConfigWindow = showSessionConfigWindow();
+  sessionConfigWindow.on("closed", () => { sessionConfigWindow = null; });
+}
+
 async function setupOBS() {
   const eff = effectiveObsCfg();
   if (!eff.websocket_url) return false;
@@ -467,17 +544,20 @@ async function setupOBS() {
     });
     obsConnected = true;
     bootLog("OBS connected");
+    appLogger().info(`OBS connected at ${eff.websocket_url}`);
     if (config.obs.auto_create_scene) {
       try {
         await ensureScene(obs, config.obs.scene_name);
         bootLog(`scene ensured: ${config.obs.scene_name}`);
       } catch (e) {
         bootLog(`scene bootstrap failed: ${e && e.message}`);
+        appLogger().warn(`OBS scene bootstrap failed for "${config.obs.scene_name}"`, e);
       }
     }
     return true;
   } catch (e) {
     bootLog(`OBS connect failed: ${e && e.message}`);
+    appLogger().error(`OBS connect failed at ${eff.websocket_url}`, e);
     obs = null;
     obsConnected = false;
     if (config.obs.required) {
@@ -490,6 +570,15 @@ async function setupOBS() {
       );
       return false;
     }
+    // Non-strict mode: surface a non-blocking toast instead of failing
+    // silently. This is the most common cause of "I captured a session
+    // and there's no video" -- the user genuinely didn't realise OBS
+    // wasn't connected.
+    notifyUser(
+      "Process Discovery Tracker",
+      `OBS not reachable at ${eff.websocket_url}. Recording will continue without video.`,
+      { urgency: "low" }
+    );
     return true; // proceed without OBS in non-strict mode
   }
 }
@@ -651,6 +740,7 @@ async function startSession(opts) {
       fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2));
     } catch (e) {
       bootLog(`OBS startRecording failed: ${e && e.message}`);
+      appLogger().error("OBS startRecording failed", e);
     }
   }
 
@@ -757,6 +847,11 @@ function handleRecorderExit(info) {
   } else {
     recorderPermanentlyDead = true;
     tracker.fireSystem("recorder_dead_permanent");
+    notifyUser(
+      "Process Discovery Tracker",
+      "Interaction recorder stopped. The session is still recording markers and screenshots, but no UI interaction events will be captured until you restart the session.",
+      { urgency: "critical" }
+    );
   }
 }
 
@@ -787,6 +882,7 @@ async function endSession() {
       }
     } catch (e) {
       bootLog(`OBS stopRecording failed: ${e && e.message}`);
+      appLogger().error("OBS stopRecording failed", e);
     }
     try { await obs.disconnect(); } catch (_e) {}
     obs = null;
@@ -804,10 +900,27 @@ async function endSession() {
   return oldFolder;
 }
 
-async function fireStartMarker(label) {
+/* Default semantics: pressing Start with a marker already open
+   should CLOSE the current one and open the new one as a sibling.
+   The previous default (always nest) was producing sessions like
+   "4 starts, 0 ends, all chained" because users had no obvious way
+   to end markers. To still allow intentional nesting, callers pass
+   `nest: true` (operator panel offers a Shift+Click button, label
+   picker offers a "Nest under current" submenu). */
+async function fireStartMarker(label, opts) {
+  opts = opts || {};
   if (!tracker) {
     const s = await startSession();
     if (!s) return;
+  }
+  const stat = tracker.getStatus();
+  if (!opts.nest && stat.markerDepth > 0) {
+    /* Close any currently-open markers (innermost first) before
+       starting the new one. Mirrors what the worker probably meant
+       when they pressed Start the second time. */
+    while (tracker.getStatus().markerDepth > 0) {
+      tracker.fireMarker({ markerType: "end", reason: "auto_close_for_sibling" });
+    }
   }
   tracker.fireMarker({ markerType: "start", label: label || "(unlabeled)" });
   if (config.screenshots.enabled && config.screenshots.on_marker_fire) {
@@ -833,15 +946,25 @@ function fireManualScreenshot() {
   fireScreenshot("screenshot_manual");
 }
 
-function showLabelPicker() {
+/* Picker semantics: if a marker is already open and the caller doesn't
+   force nest, the picker shows "Nest" as a secondary action so the
+   user can flip semantics on the fly. The default (Enter, primary
+   button) closes-and-opens, matching the new fireStartMarker default. */
+let _pickerNest = false;
+function showLabelPicker(opts) {
+  opts = opts || {};
+  _pickerNest = !!opts.nest;
   if (labelPickerWindow && !labelPickerWindow.isDestroyed()) {
+    // Reload with the current nest mode so the secondary button text
+    // and the hint update.
+    labelPickerWindow.webContents.send("pdt:setNest", _pickerNest);
     labelPickerWindow.show();
     labelPickerWindow.focus();
     return;
   }
   labelPickerWindow = new BrowserWindow({
-    width: 420,
-    height: 360,
+    width: 460,
+    height: 400,
     title: "Start marker",
     resizable: false,
     frame: false,
@@ -876,6 +999,11 @@ function showLabelPicker() {
 
 function buildPickerHtml() {
   const labels = JSON.stringify(config.process_labels || []);
+  // Pass current marker stack so we can show "Will close: <innermost>"
+  // hint, and the initial nest mode requested by the caller.
+  const stack = lastStatus && lastStatus.openMarkers ? lastStatus.openMarkers : [];
+  const stackJson = JSON.stringify(stack);
+  const initialNest = _pickerNest ? "true" : "false";
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -883,44 +1011,89 @@ function buildPickerHtml() {
 <style>
   :root {
     color-scheme: dark;
-    --bg:       #1a1a1a;
-    --bg-2:     #232323;
-    --bg-3:     #2c2c2c;
-    --bg-hover: #363636;
-    --border:   #3a3a3a;
-    --fg:       #e6e6e6;
-    --fg-2:     #a8a8a8;
-    --fg-3:     #6e6e6e;
-    --accent:   #3a86ff;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --bg-3:     #2E2E37;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --warn:     #A08050;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+  body { margin: 0; padding: 14px 16px; background: var(--bg); color: var(--fg);
          font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 13px; }
-  .lbl { font-size: 11px; margin: 0 0 8px; color: var(--fg-3); }
+  .lbl { font-size: 11px; margin: 0 0 8px; color: var(--fg-3); letter-spacing: 0.5px; text-transform: uppercase; }
+  .stack-hint { font-size: 11px; color: var(--warn); margin: 0 0 8px; padding: 5px 8px;
+                background: rgba(160, 128, 80, 0.10); border-radius: 4px; }
+  .stack-hint code { font-family: "IBM Plex Mono", Consolas, monospace; color: var(--fg-2); }
   input { width: 100%; padding: 9px 11px; background: var(--bg-2);
           border: 1px solid var(--border); color: var(--fg);
-          border-radius: 3px; font-family: inherit; font-size: 13px; outline: none; }
+          border-radius: 4px; font-family: inherit; font-size: 13px; outline: none; }
   input:focus { border-color: var(--accent); }
   input::placeholder { color: var(--fg-3); }
-  ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 220px; overflow-y: auto; }
-  li { padding: 7px 10px; border-radius: 3px; cursor: pointer; color: var(--fg-2); font-size: 13px; }
-  li.sel { background: var(--accent); color: #fff; }
+  ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 200px; overflow-y: auto; }
+  li { padding: 7px 10px; border-radius: 4px; cursor: pointer; color: var(--fg-2); font-size: 13px; }
+  li.sel { background: var(--accent); color: var(--bg); }
   li:hover:not(.sel) { background: var(--bg-3); color: var(--fg); }
-  .hint { font-size: 11px; color: var(--fg-3); margin-top: 10px; }
+  .row { display: flex; gap: 6px; margin-top: 10px; }
+  .row button { flex: 1; padding: 7px 10px; background: var(--bg-2); color: var(--fg-2);
+                border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+                font-family: inherit; font-size: 12px; }
+  .row button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
+  .row button:hover:not(:disabled) { background: var(--bg-3); color: var(--fg); }
+  .row button.primary:hover { background: #8AAB7E; border-color: #8AAB7E; }
+  .hint { font-size: 11px; color: var(--fg-3); margin-top: 8px; line-height: 1.4; }
 </style></head><body>
 <div class="lbl">Start marker</div>
+<div id="stack-hint" class="stack-hint" style="display:none"></div>
 <input id="q" placeholder="Type a label, Enter to fire" autofocus />
 <ul id="list"></ul>
-<div class="hint">Enter to fire · Esc to cancel · ↑↓ to navigate</div>
+<div class="row">
+  <button id="btn-fire" class="primary">Fire</button>
+  <button id="btn-fire-nest">Nest under current</button>
+</div>
+<div class="hint">Enter to fire · Esc to cancel · ↑↓ navigate · Shift+Enter to nest</div>
 <script>
 const { ipcRenderer } = require("electron");
 const all = ${labels};
+const stack = ${stackJson};
+let nestMode = ${initialNest};
 const q = document.getElementById("q");
 const list = document.getElementById("list");
+const stackHint = document.getElementById("stack-hint");
+const btnFire = document.getElementById("btn-fire");
+const btnNest = document.getElementById("btn-fire-nest");
 let sel = 0;
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function refreshChrome() {
+  if (stack.length > 0) {
+    const innermost = stack[stack.length - 1];
+    stackHint.innerHTML = nestMode
+      ? 'Will nest <strong>under</strong> <code>' + esc(innermost) + '</code> (closes nothing).'
+      : 'Will <strong>close</strong> <code>' + esc(innermost) + '</code>' +
+        (stack.length > 1 ? ' (and ' + (stack.length - 1) + ' parent' + (stack.length > 2 ? 's' : '') + ')' : '') +
+        ' before firing.';
+    stackHint.style.display = 'block';
+    btnFire.textContent = 'Fire (close current)';
+    btnNest.disabled = false;
+    btnNest.style.display = '';
+    if (nestMode) {
+      btnFire.classList.remove('primary');
+      btnNest.classList.add('primary');
+    } else {
+      btnFire.classList.add('primary');
+      btnNest.classList.remove('primary');
+    }
+  } else {
+    stackHint.style.display = 'none';
+    btnFire.textContent = 'Fire';
+    btnNest.style.display = 'none';
+  }
 }
 function filtered() {
   const term = q.value.toLowerCase();
@@ -941,29 +1114,35 @@ function render() {
     '<li class="' + (i === sel ? 'sel' : '') + '" data-i="' + i + '">' + esc(l) + '</li>'
   ).join('');
   list.querySelectorAll('li').forEach(li => {
-    li.addEventListener('click', () => { sel = Number(li.dataset.i); fire(); });
+    li.addEventListener('click', () => { sel = Number(li.dataset.i); fire(nestMode); });
   });
 }
-function fire() {
+function fire(nest) {
   const items = filtered();
   let label = items[sel] || q.value.trim();
   label = label.replace(/  \\(new\\)$/, "");
   if (!label) return;
-  ipcRenderer.invoke("pdt:fireStart", label);
+  ipcRenderer.invoke("pdt:fireStart", label, { nest: !!nest });
   window.close();
 }
 q.addEventListener("input", () => { sel = 0; render(); });
 q.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); fire(); }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    fire(e.shiftKey ? !nestMode : nestMode);
+  }
   else if (e.key === "Escape") { window.close(); }
   else if (e.key === "ArrowDown") { sel++; render(); e.preventDefault(); }
   else if (e.key === "ArrowUp") { sel--; render(); e.preventDefault(); }
 });
+btnFire.addEventListener("click", () => fire(false));
+btnNest.addEventListener("click", () => fire(true));
+refreshChrome();
 render();
 </script></body></html>`;
 }
 
-ipcMain.handle("pdt:fireStart", (_e, label) => fireStartMarker(label));
+ipcMain.handle("pdt:fireStart", (_e, label, opts) => fireStartMarker(label, opts || {}));
 
 /* --- Status window IPC -------------------------------------------- */
 
@@ -1111,12 +1290,29 @@ function buildMenu() {
       accelerator: config.hotkeys.start_picker,
       click: () => showLabelPicker(),
     });
+    // When a marker is already open, surface explicit nest-vs-sibling
+    // semantics. Default press of Start (above) closes-and-opens; this
+    // submenu lets the user choose nesting per-fire.
+    const hasOpen = lastStatus && lastStatus.markerDepth > 0;
+    if (hasOpen) {
+      items.push({
+        label: "Fire Start (nest under current)...",
+        click: () => showLabelPicker({ nest: true }),
+      });
+    }
     if (config.process_labels && config.process_labels.length) {
       const quickStart = config.process_labels.map((label) => ({
         label,
         click: () => fireStartMarker(label),
       }));
       items.push({ label: "Quick start", submenu: quickStart });
+      if (hasOpen) {
+        const quickNest = config.process_labels.map((label) => ({
+          label,
+          click: () => fireStartMarker(label, { nest: true }),
+        }));
+        items.push({ label: "Quick start (nested)", submenu: quickNest });
+      }
     }
     const innermost =
       lastStatus && lastStatus.markerDepth > 0
@@ -1167,12 +1363,12 @@ function buildMenu() {
   }
   items.push({ type: "separator" });
   items.push({
-    label: statusWindow ? "Hide status window" : "Show status window",
-    click: () => toggleStatusWindow(),
+    label: operatorWindow ? "Hide live session window" : "Show live session window",
+    click: () => toggleOperatorPanel(),
   });
   items.push({
-    label: operatorWindow ? "Hide operator panel" : "Show operator panel",
-    click: () => toggleOperatorPanel(),
+    label: statusWindow ? "Hide status window (legacy)" : "Show status window (legacy)",
+    click: () => toggleStatusWindow(),
   });
   // Recent sessions submenu -- each session gets a nested submenu so
   // the worker can open in viewer, reveal in Explorer, or delete the
@@ -1224,7 +1420,21 @@ function buildMenu() {
     });
   }
   items.push({ label: "Set up OBS recording...", click: () => showObsSetupDialog() });
-  items.push({ label: "Help - How to use", click: () => showHelp() });
+  items.push({ label: "Session config...", click: () => showSessionConfigDialog() });
+  items.push({
+    label: hotkeyOverlay.isVisible() ? "Hide hotkey overlay" : "Show hotkey overlay",
+    click: () => {
+      hotkeyOverlay.toggleOverlay(config && config.hotkeys);
+      refreshTray();
+    },
+  });
+  items.push({
+    label: "Help",
+    submenu: [
+      { label: "How to use...", click: () => showHelp() },
+      { label: "Show welcome screen", click: () => welcomeWin.showWelcomeWindow({ hotkeys: config && config.hotkeys }) },
+    ],
+  });
   if (configSourcePath) {
     items.push({
       label: `Config: ${path.basename(configSourcePath)}`,
@@ -1255,7 +1465,11 @@ app.whenReady().then(() => {
   bootLog("app ready");
   baseDir = path.join(app.getPath("userData"), "sessions");
 
-  const cfgPath = process.env.PDT_CONFIG || null;
+  let cfgPath = process.env.PDT_CONFIG || null;
+  if (!cfgPath) {
+    const qc = path.join(app.getPath("userData"), "quick-config.yaml");
+    if (fs.existsSync(qc)) cfgPath = qc;
+  }
   const loaded = loadConfig(cfgPath);
   config = loaded.config;
   configSourcePath = loaded.sourcePath;
@@ -1292,7 +1506,27 @@ app.whenReady().then(() => {
     });
   }
   bootLog(`hotkeys: start=${okStart} end=${okEnd} shot=${okShot} sync=${okSync}`);
+
+  // First-run welcome. shouldShowOnLaunch() returns true once per
+  // machine (gated by userData/welcome-shown.json).
+  if (welcomeWin.shouldShowOnLaunch()) {
+    welcomeWin.showWelcomeWindow({ hotkeys: config.hotkeys });
+  }
+
+  // Hotkey overlay -- restore if previously visible.
+  if (hotkeyOverlay.shouldRestoreOnLaunch()) {
+    hotkeyOverlay.showOverlay(config.hotkeys);
+  }
 }).catch((e) => bootLog(`whenReady failed: ${(e && e.stack) || e}`));
+
+// Welcome-window CTA dispatcher
+ipcMain.handle("pdt:welcomeAction", (_e, action) => {
+  if (action === "operator") {
+    toggleOperatorPanel();   // existing helper that handles show/hide + IPC
+  } else if (action === "help") {
+    showHelp();
+  }
+});
 
 app.on("window-all-closed", (e) => {
   if (e && e.preventDefault) e.preventDefault();

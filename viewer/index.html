@@ -311,8 +311,11 @@
           </div>
         </details>
 
-        <details class="log-host" id="log-host" style="display:none">
-          <summary>Analysis log</summary>
+        <details class="log-host" id="log-host" style="display:none" open>
+          <summary>
+            <span class="log-summary-text">Analysis log</span>
+            <button id="btn-cancel-normalize" class="log-cancel-btn" type="button" style="display:none" title="Stop the running analysis">Cancel</button>
+          </summary>
           <pre id="normalize-log"></pre>
         </details>
       </div>
@@ -333,6 +336,7 @@
         <div class="actions-bar">
           <button id="btn-open-multi">Open more</button>
           <button id="btn-normalize-all" class="primary" title="Analyze every loaded session: build timelines, classify activities, mine the process map.">Analyze all sessions</button>
+          <button id="btn-normalize-all-cancel" class="log-cancel-btn" type="button" style="display:none" title="Stop the running aggregate analysis after the current session finishes">Cancel</button>
           <button id="btn-renormalize-canonical">Re-match to Process Template...</button>
           <input type="search" id="agg-filter" placeholder="Filter by activity, app, or worker..." />
           <label class="cb">From <input type="date" id="agg-from" /></label>

@@ -121,15 +121,21 @@ function stripLocales(appDir) {
     out: OUT_DIR,
     prune: false,
     ignore: buildIgnore(prodDeps),
+    /* Same brand-square .ico as capture: taskbar / alt-tab / window
+       chrome / start menu show the muted-gradient square instead of
+       the default Electron diamond. Multi-res at 16/32/48/64/128/256.
+       Regenerate via scripts/generate-icons.ps1. */
+    icon: path.join(PROJECT_DIR, "..", "shared", "tracker-icon.ico"),
     extraResource: [
       path.join(PROJECT_DIR, "python"),
       path.join(PROJECT_DIR, "..", "normalization"),
       /* Example sessions for the empty state on first launch.
-         renderer.js seedExamplesIfFirstLaunch() looks for these in
-         process.resourcesPath/example-aggregate/ and populates the
-         Recents list so the SME has something clickable out of the
-         box. ~1.3 MB, no video / screenshots, just the JSONL + XES +
-         BPMN that the demo aggregate view was built against. */
+         renderer.js listBundledExamples() looks for these in
+         process.resourcesPath/example-aggregate/ and renders them
+         beneath the user's real Recents so the SME has something
+         clickable out of the box. ~1.3 MB, no video / screenshots,
+         just the JSONL + XES + BPMN the demo aggregate was built
+         against. */
       path.join(PROJECT_DIR, "..", "sessions", "example-aggregate"),
     ],
   });

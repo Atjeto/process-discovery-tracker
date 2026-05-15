@@ -99,6 +99,13 @@ function stripLocales(appDir) {
     out: OUT_DIR,
     prune: false,
     ignore: buildIgnore(prodDeps),
+    /* shared/tracker-icon.ico ships multi-resolution PNG-compressed
+       entries at 16/32/48/64/128/256. Setting it via `icon:` makes
+       electron-packager embed it into Process Discovery Tracker.exe
+       so taskbar / alt-tab / start menu / window chrome all show the
+       brand square rather than the default Electron diamond. The tray
+       still loads tray-icon.png at runtime (also brand-derived). */
+    icon: path.join(PROJECT_DIR, "..", "shared", "tracker-icon.ico"),
     extraResource: [
       path.join(PROJECT_DIR, "tray-icon.png"),
       path.join(PROJECT_DIR, "recorder", "publish"),

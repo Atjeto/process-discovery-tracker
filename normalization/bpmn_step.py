@@ -5,8 +5,11 @@ the tasks.
 """
 
 from __future__ import annotations
+import logging
 from typing import Any
 import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 
 BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -39,8 +42,11 @@ def step_bpmn_from_canonical(canonical: dict, sessions: list[dict]) -> str:
                 start = _parse(s["time_range"]["start"])
                 end = _parse(s["time_range"]["end"])
                 entry["total_ms"] += int((end - start).total_seconds() * 1000)
-            except Exception:
-                pass
+            except (KeyError, ValueError, TypeError, AttributeError) as exc:
+                logger.warning(
+                    "step_bpmn: skipping duration for step %s — bad time_range: %s",
+                    cid, exc,
+                )
 
     ET.SubElement(process, f"{{{BPMN_NS}}}startEvent", {"id": "StartEvent_1"})
     prev_id = "StartEvent_1"

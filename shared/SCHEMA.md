@@ -150,10 +150,13 @@ Legacy entries inside the two original arrays:
   "marker_edits": [
     { "id": "uuid", "event_id": "<marker_event_id>", "field": "label",     "value": "New label",    "previous": "Old", "ts": "..." },
     { "id": "uuid", "event_id": "<marker_event_id>", "field": "timestamp", "value": "<new ISO>",    "previous": "...", "ts": "..." },
-    { "id": "uuid", "event_id": "<marker_event_id>", "op":    "delete",                                                  "ts": "..." }
+    { "id": "uuid", "event_id": "<marker_event_id>", "op":    "delete",                                                  "ts": "..." },
+    { "id": "uuid", "op": "insert", "marker_type": "start", "label": "Order entry", "timestamp": "<ISO>", "ts": "..." }
   ]
 }
 ```
+
+Insert edits create a synthetic marker event during normalization with `event_id: "insert-<edit_id>"`. `data` carries `synthetic: true` and `edit_id` so downstream consumers can distinguish synthetic markers from captured ones. `marker_type` defaults to `"start"`; `label` may be null for an End marker (Ends close the innermost open Start regardless of label).
 
 ### Step entity (`steps[]`)
 
@@ -262,8 +265,99 @@ The normalization layer writes the following alongside `events.jsonl`:
 |---|---|
 | `events.xes` | IEEE 1849-2016 event log, one trace per top-level case |
 | `events.csv` | Flat CSV of activity events |
-| `stats.json` | `{ activity_stats, case_stats, trace_variants, app_outliers, rework_loops }` |
+| `stats.json` | `{ activity_stats, case_stats, trace_variants, app_outliers, rework_loops, meta }` |
 | `process_map.bpmn` | BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
 | `dfg.json` | Directly-Follows Graph as `{ edges, start_activities, end_activities }` (with `--mine`) |
 | `annotations.json` | Analyst-authored notes + future marker edits |
 | `obs/sync.json` | `{ tracker_session_start_ts, obs_recording_start_ts, offset_ms, recording_path }` |
+| `normalize.log` | Rolling log of warnings and info from normalization (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
+| `capture.log` | Per-session log written by the capture app for high-signal events |
+
+---
+
+# Data Dictionary
+
+The section above defines the *shape* of each file. This section defines the *meaning* of fields whose semantics aren't obvious from the type, plus cross-cutting conventions.
+
+## Conventions
+
+| Topic | Rule |
+|---|---|
+| Identifiers | All IDs (`event_id`, `session_id`, `case_id`, `step_id`, `phase_id`, `marker_id`) are RFC 4122 v4 UUIDs serialized as lowercase hex with dashes. Treat them as opaque. |
+| Timestamps | ISO 8601 with millisecond precision and timezone (`...Z` for UTC). Always emit UTC. Comparing across sessions requires no timezone normalization. |
+| Encoding | All text files are UTF-8 without BOM. JSON Lines (`events.jsonl`) uses LF line endings even on Windows. |
+| Paths inside session artifacts | Relative to the session folder, forward slashes (`screenshots/foo.jpg`). Cross-platform safe. |
+| Numeric durations | Always in milliseconds (`duration_ms`, `total_ms`) unless the field name says `_s` for seconds (`video_offset_s`). |
+
+## Activity events — what `duration_ms` actually measures
+
+An `activity` event spans a run of consecutive `active-win` polls that returned the same `(app, pid)` pair. The title may have changed within the run; the *latest* title is recorded. The `duration_ms` is the wall-clock span between the first poll and the last poll in the run, not the sum of foreground time (idle gaps within the run are not separately accounted — they show up as separate `idle_start` / `idle_end` system events that bracket the activity, not as gaps inside it).
+
+Collapsed events (after §7.1 step 7) sum `duration_ms` across adjacent events with the same `(app, title, label, case_ids)`. The collapsed event's `timestamp` is the *first* event's timestamp; the duration is the *summed* duration.
+
+## Marker events — nesting and the `case_ids` stack
+
+A `start` marker opens a case. A subsequent `start` opens a child case while the parent stays open. An `end` marker closes the *innermost* open case (the top of the stack), regardless of label. There is no marker-to-marker pairing by label.
+
+After normalization, every activity / interaction event carries `case_ids: [innermost, ..., outermost]`:
+
+| `case_ids` shape | Meaning |
+|---|---|
+| `[]` | The event happened outside any open marker (e.g. before the first Start or after the last End). |
+| `["abc"]` | Inside one top-level case. |
+| `["xyz", "abc"]` | Inside a child case `xyz` whose parent is `abc`. Used for transactions nested inside a containing process. |
+
+The XES export emits one trace per *top-level* case (the last entry in each event's `case_ids`). Child cases become trace attributes or sub-traces depending on the analysis target.
+
+## Step states — the lifecycle
+
+Each step's `state` field describes how the step got into `annotations.json`:
+
+| State | Set by | Survives re-normalization? |
+|---|---|---|
+| `auto_suggested` | The rule-based step suggester ([step_suggest.py](../normalization/step_suggest.py)). Best-guess grouping of adjacent interactions. | No — replaced by the next run's suggestions. |
+| `auto_matched` | The canonical step matcher ([canonical_match.py](../normalization/canonical_match.py)) when a canonical step set is provided via `--canonical`. | No — replaced when re-matched. |
+| `manually_authored` | The analyst clicked "New step" in the viewer's step editor. | Yes — `_merge_steps()` preserves it across runs. |
+| `edited` | The analyst modified an `auto_suggested` or `auto_matched` step. | Yes — same. |
+
+The merge order in [normalize.py `_merge_steps`](../normalization/normalize.py) is: `manually_authored + edited + fresh_auto_*`. This is why corrections survive re-normalization without re-doing work.
+
+`drift_markers[]` record when a previously `edited`/`manually_authored` step's `canonical_step_id` would now resolve differently against the current canonical version — a signal that the canonical set has shifted under the analyst's prior assignment. Recorded automatically; reviewed manually.
+
+## Interaction enrichment — when each field is present
+
+UIA fields (`automation_id`, `name`, `class_name`, etc.) come from the recorder. App Vocabulary enrichment fields (`meaningful_name`, `screen_id`, `vocab_flags`, `vocab_source`) only appear when a vocabulary in `normalization/app_vocabularies/` matches the interaction. See [ADR-0002](../docs/adr/0002-app-vocabularies.md) for why this layer exists.
+
+When both UIA `name` and App Vocab `meaningful_name` are present, the viewer prefers `meaningful_name` for display but exposes both. Downstream consumers should fall back to `name` when `meaningful_name` is absent.
+
+## `stats.json` sub-objects
+
+| Top-level key | Shape | What it's for |
+|---|---|---|
+| `activity_stats` | `[{ activity_label, frequency, total_duration_ms, median_ms, p90_ms, ... }]` | Per-activity rollups across all cases in this session. |
+| `case_stats` | `[{ case_id, parent_case_id, label, started_at, ended_at, active_ms, ... }]` | One row per case. `parent_case_id` is null for top-level cases. |
+| `trace_variants` | `[{ variant: ["A", "B", "C"], frequency }]` | Distinct activity sequences ranked by occurrence. |
+| `app_outliers` | `[{ app, frequency, share }]` | Apps that appear in < 5% of cases. |
+| `rework_loops` | `[{ activity_label, case_id, revisits }]` | Same activity revisited within a single case. |
+| `meta` | See below | Normalization run metadata. |
+
+### `stats.json.meta` fields
+
+| Field | Meaning |
+|---|---|
+| `normalization_run_at` | When the pipeline ran. Use to detect stale derivatives vs `events.jsonl` mtime. |
+| `taxonomy_version` / `taxonomy_path` | Which classification taxonomy was applied. Re-running with a newer version is non-destructive. |
+| `raw_event_count` | Total lines successfully parsed from `events.jsonl`. |
+| `dropped_jsonl_lines` | Lines that failed `json.loads`. Zero is the expected value. Non-zero is investigable; see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md). |
+| `collapsed_activity_count` | Activity events remaining after §7.1 step 7 collapse. |
+| `interaction_count` / `matched_interactions` / `match_rate` | How many interactions did we have, how many did the canonical matcher claim, what's the ratio. |
+| `case_count` | Top-level + nested cases combined. |
+| `marker_edits_applied` | Edits from `annotations.json.marker_edits` that took effect this run. |
+| `step_count` / `step_state_breakdown` | Total steps and counts per state (`auto_suggested`, `auto_matched`, `manually_authored`, `edited`). The breakdown is the cheapest health-check for analyst engagement. |
+| `canonical_process_id` / `canonical_version` | Pinned canonical set, if `--canonical` was used. |
+| `drift_count` / `phase_count` | Total drift markers and phases in `annotations.json` after this run. |
+| `app_vocabularies` / `app_vocabulary_matches` / `app_vocabulary_hits_by_id` | Vocabularies loaded, interactions matched, per-vocab hit counts. |
+
+## When the schema changes
+
+The schema is versioned implicitly: every additive change is non-breaking; renamings or removals would be breaking. `annotations.json` has an explicit `version` field (currently `1`) — bump it on breaking changes. Raw `events.jsonl` does not version itself; the `manifest.json` is the place to put a future capture-schema version when needed.

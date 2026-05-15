@@ -4,10 +4,13 @@ in Adonis.
 """
 
 from __future__ import annotations
+import logging
 from typing import Any
 import xml.etree.ElementTree as ET
 
 from bpmn_step import BPMN_NS, DI_NS, DC_NS, _safe_id, _parse, _fmt_ms, _serialize
+
+logger = logging.getLogger(__name__)
 
 
 def phase_bpmn_from_canonical(canonical: dict, sessions: list[dict]) -> str:
@@ -33,8 +36,11 @@ def phase_bpmn_from_canonical(canonical: dict, sessions: list[dict]) -> str:
                 start = _parse(s["time_range"]["start"])
                 end = _parse(s["time_range"]["end"])
                 entry["total_ms"] += int((end - start).total_seconds() * 1000)
-            except Exception:
-                pass
+            except (KeyError, ValueError, TypeError, AttributeError) as exc:
+                logger.warning(
+                    "phase_bpmn: skipping duration for step %s — bad time_range: %s",
+                    cid, exc,
+                )
 
     ET.SubElement(process, f"{{{BPMN_NS}}}startEvent", {"id": "StartEvent_1"})
     prev_id = "StartEvent_1"

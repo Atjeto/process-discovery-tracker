@@ -1,20 +1,34 @@
-/* ===== Design tokens ===== */
+/* ===== Design tokens =====
+ *
+ * Stratified-dark palette: each surface layer is ~6 lightness points
+ * brighter than the one below it. Previous palette had all six bg
+ * tokens squashed within ~12 points so panels, cards, the timeline,
+ * and rules all blurred into the same near-black smear. The stairway
+ * here is wide enough that a viewer at default contrast can tell the
+ * timeline strip from its container at a glance, and rules sit
+ * clearly above the bg layer they border.
+ *
+ * --bg stays near-black (the stage); bg-1..5 progressively lift.
+ * Foreground bumped a touch since they read against a brighter
+ * average surface now. Accents unchanged -- sage / slate / amber
+ * already sit well on dark.
+ */
 :root {
   color-scheme: dark;
 
-  /* Neutral cool backgrounds -- no purple tint */
+  /* Cool grey backgrounds -- stairway from stage (bg) to elevated (bg-5) */
   --bg: #08080A;
-  --bg-1: #0D0D10;
-  --bg-2: #131316;
-  --bg-3: #19191E;
-  --bg-4: #202026;
-  --bg-5: #28282F;
+  --bg-1: #16161C;
+  --bg-2: #22222A;
+  --bg-3: #2E2E37;
+  --bg-4: #3A3A44;
+  --bg-5: #484854;
 
-  /* Warm neutral foreground */
-  --fg: #CCCAC2;
-  --fg-2: #9A9890;
-  --fg-3: #6A6862;
-  --fg-4: #464440;
+  /* Warm neutral foreground -- nudged up a touch for the brighter avg surface */
+  --fg: #D8D6CE;
+  --fg-2: #A8A69E;
+  --fg-3: #807E78;
+  --fg-4: #5A5854;
 
   /* Functional color -- minimal, purposeful */
   --accent: #6E8A66;
@@ -24,8 +38,10 @@
   --bad: #885A42;
   --rec: #903838;
 
-  --rule: #1A1A1F;
-  --rule-soft: #131316;
+  /* Rule lives ABOVE the typical panel bg (bg-2/bg-3) so panel
+     borders register at a glance rather than blending in. */
+  --rule: #424250;
+  --rule-soft: #2E2E37;
 
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
   --radius: 8px;
@@ -266,7 +282,19 @@ main { flex: 1; overflow: auto; }
   overflow: hidden; }
 .tl-band:hover { filter: brightness(1.35); cursor: pointer; }
 .tl-activity { background: var(--accent); border-right: 1px solid var(--bg-2); border-radius: 2px; }
-.tl-activity:hover { filter: brightness(1.25); }
+.tl-activity:hover { filter: brightness(1.25); cursor: context-menu; }
+/* Subtle ⋯ on hover to advertise the right-click menu. The cursor
+   change is the primary hint; this fades in for the static reader
+   who isn't moving the mouse around. */
+.tl-activity::after {
+  content: "\\22EF";  /* HORIZONTAL ELLIPSIS dingbat -- compact and conventional */
+  position: absolute; top: 2px; right: 4px;
+  font-size: 10px; line-height: 1; color: var(--fg-3);
+  opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.tl-activity:hover::after { opacity: 0.7; }
+.tl-marker { cursor: context-menu; }
+.tl-marker-label { cursor: context-menu; }
 
 /* Inline labels inside activity bands -- two-line stack: app + title,
    plus duration pinned to bottom-right. Children clip if there's no
@@ -403,6 +431,15 @@ main { flex: 1; overflow: auto; }
 .event-table-host > summary, .log-host > summary { cursor: pointer; padding: 8px 0;
   color: var(--fg-3); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
   font-family: var(--font-mono); }
+.log-host > summary { display: flex; align-items: center; gap: 10px; }
+.log-host > summary .log-summary-text { flex: 1; }
+.log-host .log-cancel-btn {
+  background: transparent; color: var(--rec); border: 1px solid var(--rec);
+  padding: 2px 10px; font-size: 10px; font-family: var(--font-ui);
+  letter-spacing: 0.5px; text-transform: uppercase; border-radius: 3px;
+  cursor: pointer;
+}
+.log-host .log-cancel-btn:hover { background: var(--rec); color: #F2EAE5; }
 .event-filter { display: flex; gap: 10px; padding: 10px 0; align-items: center; flex-wrap: wrap; }
 .event-filter input[type=text] { flex: 1; min-width: 180px; }
 .event-table-scroll { max-height: 360px; overflow: auto; border: 1px solid var(--rule);
@@ -1196,6 +1233,77 @@ main { flex: 1; overflow: auto; }
   display: flex; gap: 8px; justify-content: flex-end;
   padding: 12px 18px; border-top: 1px solid var(--rule);
 }
+
+/* ===== Time-axis ticks + density histogram lane =====
+   Ticks: thin vertical guides + small HH:MM:SS labels at the top of
+   the Flow timeline. Density: per-bin event-count bars below the
+   activity strip; bar height = relative volume, ignoring
+   bookkeeping events.
+
+   Flow-timeline ticks use a distinct `.tl-flow-tick` class to avoid
+   colliding with `.tl-tick` (which step-editor.js / phase-editor.js
+   depend on for mini-timeline axes, with different geometry needs). */
+.tl-flow-tick {
+  position: absolute; width: 1px;
+  background: var(--rule); opacity: 0.6;
+  pointer-events: none;
+}
+.tl-flow-tick-label {
+  position: absolute; font-family: var(--font-mono); font-size: 9px;
+  color: var(--fg-3); pointer-events: none;
+  letter-spacing: 0.5px;
+}
+.tl-density-base {
+  position: absolute; left: 0; width: 100%;
+  background: rgba(110, 138, 102, 0.06);
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+  pointer-events: none;
+}
+.tl-density-bar {
+  position: absolute;
+  background: var(--accent); opacity: 0.55;
+  pointer-events: none;
+}
+.tl-density-bar:hover { opacity: 0.85; pointer-events: auto; }
+
+/* ===== confirmModal (themed replacement for window.confirm) =====
+   Same chrome as modal-prompt; .danger variant is for destructive
+   confirmations (delete step, clear all, etc.) where Enter would be
+   too easy. The cancel button is focused by default in that case. */
+.modal-confirm {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-confirm .modal {
+  background: var(--bg-1); border: 1px solid var(--rule);
+  border-radius: var(--radius); width: min(480px, calc(100vw - 40px));
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.modal-confirm .modal-sm { width: min(440px, calc(100vw - 40px)); }
+.modal-confirm .modal-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--rule);
+}
+.modal-confirm .modal-header h2 { flex: 1; font-size: 14px; color: var(--fg); margin: 0; }
+.modal-confirm .modal-close {
+  background: transparent; border: 0; color: var(--fg-3);
+  font-size: 14px; cursor: pointer; padding: 2px 8px;
+}
+.modal-confirm .modal-close:hover { color: var(--fg); }
+.modal-confirm .modal-body { padding: 16px 18px; }
+.modal-confirm .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 6px; }
+.modal-confirm .modal-detail { color: var(--fg-3); font-size: 11px; margin: 0 0 12px; line-height: 1.55; }
+.modal-confirm .modal-footer {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 12px 18px; border-top: 1px solid var(--rule);
+}
+button.danger {
+  background: var(--rec); border-color: var(--rec); color: #F2EAE5; font-weight: 500;
+}
+button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848; }
 
 /* ===== Timeline accessibility ===== */
 /* Activity bands: alternating subtle stripes so adjacent runs are
