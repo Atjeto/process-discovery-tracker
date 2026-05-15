@@ -12,6 +12,7 @@
 <script src="node_modules/dagre/dist/dagre.min.js"></script>
 <script src="node_modules/cytoscape-dagre/cytoscape-dagre.js"></script>
 <script src="node_modules/bpmn-js/dist/bpmn-viewer.production.min.js"></script>
+<script src="variant-viewer.js"></script>
 </head>
 <body>
 
@@ -416,8 +417,15 @@
           </div>
 
           <div class="panel panel-wide">
-            <h3>Trace variants</h3>
-            <div class="stats-table-host">
+            <div class="panel-header">
+              <h3>Path variations</h3>
+              <div class="panel-tabs">
+                <button class="panel-tab active" data-vview="flow" title="Sankey-style flow showing where session paths split and merge.">Flow</button>
+                <button class="panel-tab" data-vview="table" title="Tabular list of every distinct activity sequence with its frequency.">Table</button>
+              </div>
+            </div>
+            <div class="variant-flow-host" id="variant-flow-host" style="overflow-x:auto;min-height:240px"></div>
+            <div class="stats-table-host" id="variant-table-host" style="display:none">
               <table class="stats-table" id="variants">
                 <thead><tr><th>freq</th><th>len</th><th>variant</th></tr></thead>
                 <tbody></tbody>

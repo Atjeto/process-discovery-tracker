@@ -461,12 +461,14 @@ function _viewportApplyToMode(mode, snap) {
 }
 
 function setLevel(name) {
-  // P2.3: capture the outgoing mode's viewport so we can transfer it
-  // to the incoming mode. Skip the very first call (currentLevel
-  // wasn't yet displayed).
+  // P2.3: capture the outgoing mode's viewport BEFORE we hide its
+  // panel -- once display:none is set, scrollWidth / clientWidth both
+  // return 0 and we'd lose the snapshot. Skip the very first call
+  // (currentLevel wasn't yet displayed).
   const incomingSnap = (currentLevel && currentLevel !== name)
     ? _viewportSnapshotForMode(currentLevel)
     : null;
+  // Now safe to swap visibility.
   currentLevel = name;
   const layouts = ["flow", "steps", "phases"];
   for (const l of layouts) {
@@ -1435,6 +1437,26 @@ async function suggestPhaseGroupings() {
 }
 if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click", suggestPhaseGroupings);
 
+/* P2.2 full: Flow / Table toggle for the path-variations panel. */
+(function wireVariantViewToggle() {
+  document.querySelectorAll('.panel-tab[data-vview]').forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const which = tab.dataset.vview;
+      document.querySelectorAll('.panel-tab[data-vview]').forEach((t) =>
+        t.classList.toggle("active", t === tab));
+      const flow = document.getElementById("variant-flow-host");
+      const table = document.getElementById("variant-table-host");
+      if (which === "flow") {
+        if (flow) flow.style.display = "";
+        if (table) table.style.display = "none";
+      } else {
+        if (flow) flow.style.display = "none";
+        if (table) table.style.display = "";
+      }
+    });
+  });
+})();
+
 /* ============ AM.1 — Process Template version compare ============= */
 
 async function refreshTemplateVersions() {
@@ -1733,6 +1755,25 @@ function renderCanonicalStepList() {
   });
   document.getElementById("ctpl-name").addEventListener("input", commit);
   document.getElementById("ctpl-version").addEventListener("input", commit);
+  // Direct edits in the Advanced YAML textarea must update
+  // canonicalState.content AND re-render the form so the two views
+  // stay in sync. Re-parse on input; bail silently on parse error
+  // (the analyst is mid-typing and the YAML is temporarily broken).
+  const ta = document.getElementById("canonical-yaml");
+  if (ta && !ta._pdtSyncWired) {
+    ta._pdtSyncWired = true;
+    let _taSyncTimer = null;
+    ta.addEventListener("input", () => {
+      canonicalState.content = ta.value;
+      clearTimeout(_taSyncTimer);
+      _taSyncTimer = setTimeout(() => {
+        try {
+          const reparsed = yaml.load(ta.value);
+          if (reparsed) renderCanonicalStepList();
+        } catch (_) { /* leave form stale until valid */ }
+      }, 350);
+    });
+  }
   host.querySelectorAll(".ctpl-step-del").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const idx = parseInt(btn.closest(".ctpl-step").dataset.idx, 10);
@@ -1743,7 +1784,19 @@ function renderCanonicalStepList() {
         okLabel: "Delete", danger: true,
       });
       if (!ok) return;
+      const removedId = proc.steps[idx].step_id;
       proc.steps.splice(idx, 1);
+      // Clean up dangling references in any phase's step_ids so we
+      // don't leave a phase pointing at a missing step. If a phase
+      // ends up empty, leave it (the analyst can delete it) rather
+      // than auto-removing -- removal is a separate decision.
+      if (Array.isArray(proc.phases)) {
+        for (const ph of proc.phases) {
+          if (Array.isArray(ph.step_ids)) {
+            ph.step_ids = ph.step_ids.filter((id) => id !== removedId);
+          }
+        }
+      }
       commit();
       renderCanonicalStepList();
     });
@@ -2979,6 +3032,10 @@ function renderTimeline() {
   // the band is wide enough to fit ~6 chars; otherwise the band is a
   // pure colour stripe so the rhythm of title changes is still visible.
   if (titlesLaneH) {
+    // host.style.width was set to (100 * zoomFactor) + "%" earlier, so
+    // host.clientWidth ALREADY reflects the zoomed width. Don't multiply
+    // by zoomFactor again -- the band's pixel width is just (w / 100) *
+    // hostW.
     const hostW = host.clientWidth || 800;
     const minLabelPx = 50;
     for (const r of _titleRuns) {
@@ -2990,10 +3047,7 @@ function renderTimeline() {
       band.style.width = w + "%";
       band.style.top = titlesLaneTop + "px";
       band.title = (r.app || "") + " — " + (r.title || "(untitled)");
-      // Only show label if the rendered width is reasonable. zoomFactor
-      // multiplies the host width so a band's pixel width is ~ (w/100) *
-      // hostW * zoomFactor.
-      const renderedPx = (w / 100) * hostW * zoomFactor;
+      const renderedPx = (w / 100) * hostW;
       if (renderedPx >= minLabelPx) {
         band.textContent = r.title || (r.app || "").replace(/\.exe$/i, "");
       }
@@ -3513,12 +3567,16 @@ function renderScreenshots() {
 let _allScreenshots = [];
 let _galleryState = null;  // { idx, filterReason, playing, playTimer }
 function _galleryFilter(reason) {
+  // Capture only distinguishes manual screenshots from auto ones today
+  // (no reason field on the auto path -- they all come through as
+  // kind="screenshot"). Filter accordingly; richer per-trigger
+  // distinctions would need a capture-side change to pass `reason`.
   if (!reason || reason === "all") return _allScreenshots.slice();
   return _allScreenshots.filter((s) => {
     const k = s.data.kind || "";
-    const r = s.data.reason || "";
     if (reason === "manual") return k === "screenshot_manual";
-    return r === reason;
+    if (reason === "auto")   return k !== "screenshot_manual";
+    return true;
   });
 }
 function openScreenshotGallery() {
@@ -3532,11 +3590,9 @@ function openScreenshotGallery() {
       '<div class="screenshot-gallery-header">' +
         '<span class="title">Screenshot gallery</span>' +
         '<select id="gallery-filter">' +
-          '<option value="all">All triggers</option>' +
-          '<option value="manual">Manual</option>' +
-          '<option value="app_switch">App switch</option>' +
-          '<option value="idle_resume">Activity resumed</option>' +
-          '<option value="marker">Marker fire</option>' +
+          '<option value="all">All screenshots</option>' +
+          '<option value="manual">Manual only</option>' +
+          '<option value="auto">Auto only</option>' +
         '</select>' +
         '<button id="gallery-play" type="button" class="link-btn">Play (Space)</button>' +
         '<button id="gallery-close" type="button" class="link-btn">Close (Esc)</button>' +
@@ -4070,18 +4126,41 @@ function renderAggregate() {
   }
   const variantHost = document.querySelector("#variants tbody") || $("#variants");
   if (variantHost) {
-    const maxFreq = varRows.length ? varRows[0].freq : 1;
-    variantHost.innerHTML = varRows.slice(0, 80).map((r) => {
-      const heatPct = Math.round((r.freq / maxFreq) * 100);
-      return '<tr>' +
-        '<td><div class="variant-heat" style="width:' + heatPct + '%"></div>' +
-          '<span class="variant-freq">' + r.freq + '</span></td>' +
-        '<td>' + r.length + '</td>' +
-        '<td><span class="variant-sessions" title="' + r.sessions + ' session(s) follow this path">' +
-          r.sessions + '×</span> ' + highlightDivergence(r.variant) +
-        '</td>' +
-        '</tr>';
-    }).join("");
+    if (!varRows.length) {
+      // Clear stale rows from a previous render where variants existed.
+      variantHost.innerHTML = '<tr><td colspan="3" style="color:var(--fg-3);font-style:italic;padding:8px">No variants — analyze sessions to populate.</td></tr>';
+    } else {
+      const maxFreq = varRows[0].freq;
+      variantHost.innerHTML = varRows.slice(0, 80).map((r) => {
+        const heatPct = Math.round((r.freq / maxFreq) * 100);
+        return '<tr>' +
+          '<td><div class="variant-heat" style="width:' + heatPct + '%"></div>' +
+            '<span class="variant-freq">' + r.freq + '</span></td>' +
+          '<td>' + r.length + '</td>' +
+          '<td><span class="variant-sessions" title="' + r.sessions + ' session(s) follow this path">' +
+            r.sessions + '×</span> ' + highlightDivergence(r.variant) +
+          '</td>' +
+          '</tr>';
+      }).join("");
+    }
+  }
+
+  // P2.2 full: render the variant-flow Sankey alongside the table.
+  // Stash the rows for the flow renderer; convert from {variant: "A → B
+  // → C", freq, sessions} back to the {variant: [...], frequency} shape
+  // PdtVariantFlow expects.
+  const flowHost = document.getElementById("variant-flow-host");
+  if (flowHost && window.PdtVariantFlow) {
+    const flowVariants = varRows.slice(0, 60).map((r) => ({
+      variant: r.variant.split(" → "),
+      frequency: r.freq,
+    }));
+    window.PdtVariantFlow.render(flowHost, flowVariants, {
+      onNodeClick: (activity, _vIdxs) => {
+        // Drill into the activity using the existing DFG drill flow.
+        drillToActivity(activity, null);
+      },
+    });
   }
 
   // Outliers + rework

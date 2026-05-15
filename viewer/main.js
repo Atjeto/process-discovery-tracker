@@ -283,7 +283,16 @@ ipcMain.handle("viewer:listTemplateVersions", (_e, livePath) => {
       entries = fs.readdirSync(histDir).filter((f) => /\.ya?ml$/i.test(f));
     } catch (_) {}
     for (const f of entries) {
-      const stamp = f.replace(/\.ya?ml$/i, "").replace(/-/g, (m, off) => off === 13 || off === 16 ? ":" : (off === 19 ? "." : "-"));
+      // Filename was written via toISOString().replace(/[:.]/g, "-") so
+      // 2026-05-15T14:30:45.123Z became 2026-05-15T14-30-45-123Z.yaml.
+      // Reverse with an anchored regex rather than offset arithmetic so
+      // timezone or format drift fails loudly instead of silently
+      // mangling.
+      const base = f.replace(/\.ya?ml$/i, "");
+      const m = base.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d+)(Z?)$/);
+      const stamp = m
+        ? `${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}${m[6]}`
+        : base;  // unrecognized format -- still listable, just not pretty
       out.push({
         label: stamp,
         timestamp: stamp,

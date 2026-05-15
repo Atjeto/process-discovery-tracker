@@ -6,6 +6,44 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (P2.2 full + audit fixes)
+
+- **P2.2 Variant flow visualization (full).** New `viewer/variant-viewer.js`
+  module renders trace_variants as a Sankey-style metro map: each
+  unique (column, activity) becomes a node, edges connect consecutive
+  activities across variants, both node and edge widths scale with
+  the number of sessions flowing through. Divergence columns are
+  highlighted in amber so split points are obvious at a glance. The
+  Path variations panel in Compare Sessions now has Flow / Table tabs;
+  Flow is the default. Click a node to drill into the activity.
+
+### Fixed (audit pass on the deferred batch)
+
+- **P2.7 screenshot gallery filter** simplified to All / Manual / Auto.
+  The previous Marker / App switch / Activity resumed options never
+  matched anything because capture's `tracker.fireSystem("screenshot",
+  ...)` doesn't write a `reason` field — those distinctions only ever
+  lived in the spec. Filter now matches what the data actually carries.
+- **P2.2 variant heat empty state.** Previous render's rows would
+  persist when switching to a session set with no variants. Now shows
+  "No variants — analyze sessions to populate."
+- **AM.1 timestamp parsing** replaced fragile offset arithmetic
+  (`off === 13 || off === 16 ...`) with an anchored regex that fails
+  loudly on unrecognized formats instead of silently mangling them.
+- **Process Template form editor**: edits to the Advanced YAML
+  textarea now update the form view (debounced 350ms; bails silently
+  while the YAML is mid-edit and unparseable). And step deletion now
+  cleans up dangling references in `proc.phases[].step_ids[]` so a
+  phase can't end up pointing at a missing step.
+- **P2.12 window-title strip label threshold** was double-counting
+  zoom: `host.clientWidth` already reflects the post-zoom width, so
+  the previous `(w/100) * hostW * zoomFactor` was 1.5–3× too aggressive
+  and labels appeared on bands that were actually too narrow.
+- **P2.3 viewport state across modes** was losing the snapshot because
+  `display: none` panels return 0 for `scrollWidth` / `clientWidth`.
+  Snapshot now reads from the still-visible outgoing layout BEFORE
+  swapping visibility.
+
 ### Added (deferred-spec follow-up pass)
 
 - **Process Template form editor** replaces the regex-parsed read-only
