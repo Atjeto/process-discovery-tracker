@@ -180,8 +180,20 @@ if ($packagedPython -and (Test-Path $packagedPython)) {
   $sourcePy = Join-Path $viewerDir "python\python.exe"
   # Use the source python.exe to run slim (the packaged tree's
   # python.exe is identical; either works).
+  #
+  # Locally relax $ErrorActionPreference for this native call: the
+  # embedded Python prints a benign "Error processing line 1 of
+  # distutils-precedence.pth" warning to stderr on startup, and
+  # PowerShell 5.1 wraps any native-command stderr line as a
+  # NativeCommandError -- with the script-level "Stop" preference
+  # that aborts the build even though slim exits 0. Check
+  # $LASTEXITCODE explicitly instead.
+  $prevPref = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
   & $sourcePy (Join-Path $PSScriptRoot "slim-python-embeddable.py") --path $packagedPython --skip-smoke-test
-  if ($LASTEXITCODE -ne 0) { throw "Slim of packaged Python tree failed (exit $LASTEXITCODE)" }
+  $slimExit = $LASTEXITCODE
+  $ErrorActionPreference = $prevPref
+  if ($slimExit -ne 0) { throw "Slim of packaged Python tree failed (exit $slimExit)" }
 }
 
 # Cleanup staged copy
