@@ -368,6 +368,8 @@ function activateTab(name) {
   if (name === "vocabularies") {
     reloadVocabList();
   }
+  // P2.4: shortcuts overlay only shows on Session view.
+  if (typeof renderShortcutsOverlay === "function") renderShortcutsOverlay();
 }
 
 /* ============ Session view-mode switcher (Flow / Steps / Phases) ===
@@ -410,7 +412,62 @@ function setLevel(name) {
   if (name === "steps")  renderStepsLevel();
   if (name === "phases") renderPhasesLevel();
   if (name === "flow")   renderTimeline();
+  // P2.4: refresh the shortcuts overlay for the new view.
+  renderShortcutsOverlay();
 }
+
+/* P2.4: small persistent corner widget listing 3-4 most-used
+   shortcuts for the active view. Dismissable; state persisted to
+   localStorage so the analyst doesn't have to dismiss every launch. */
+const SHORTCUTS_OVERLAY_KEY = "pdt.shortcutsOverlayHidden";
+const VIEW_SHORTCUTS = {
+  flow: [
+    ["Space", "Play / pause video"],
+    ["← →",  "Scrub 5s"],
+    ["+ −",  "Zoom timeline"],
+    ["Shift-drag", "Select range"],
+  ],
+  steps: [
+    ["J / K", "Prev / next step"],
+    ["S",     "Split step at playhead"],
+    ["M",     "Merge selected"],
+    ["Ctrl+Z", "Undo"],
+  ],
+  phases: [
+    ["Drag",  "Reorder steps in phase"],
+    ["G",     "Group selected steps into a phase"],
+    ["Ctrl+Z", "Undo"],
+    ["?",     "Open help"],
+  ],
+};
+function renderShortcutsOverlay() {
+  const ov = document.getElementById("shortcuts-overlay");
+  if (!ov) return;
+  const hidden = localStorage.getItem(SHORTCUTS_OVERLAY_KEY) === "1";
+  // Only show on the Session view, when a session is loaded, and not dismissed.
+  const onSession = document.querySelector(".tab.active") &&
+                    document.querySelector(".tab.active").dataset.view === "session";
+  if (hidden || !onSession || !currentSession) {
+    ov.style.display = "none";
+    return;
+  }
+  const items = VIEW_SHORTCUTS[currentLevel] || [];
+  if (!items.length) { ov.style.display = "none"; return; }
+  ov.style.display = "";
+  document.getElementById("shortcuts-overlay-title").textContent =
+    currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1) + " shortcuts";
+  document.getElementById("shortcuts-overlay-list").innerHTML =
+    items.map(([k, d]) =>
+      '<li><span class="key">' + escapeHtml(k) + '</span><span>' + escapeHtml(d) + '</span></li>'
+    ).join("");
+}
+(function wireShortcutsOverlay() {
+  const closeBtn = document.getElementById("shortcuts-overlay-close");
+  if (closeBtn) closeBtn.addEventListener("click", () => {
+    localStorage.setItem(SHORTCUTS_OVERLAY_KEY, "1");
+    renderShortcutsOverlay();
+  });
+})();
 
 function activateAnnoTab(name) {
   $$(".anno-tab").forEach((t) => t.classList.toggle("active", t.dataset.anno === name));
@@ -507,15 +564,67 @@ function populateCaseScope() {
   const sel = document.getElementById("case-scope-select");
   if (!sel) return;
   const cases = currentSession ? deriveCases(currentSession) : [];
+  // P2.8: dedup duplicate labels with a [H:MM:SS] timecode suffix so
+  // analysts can tell "Send email" #2 from "Send email" #5 etc.
+  const labelCounts = {};
+  for (const c of cases) {
+    const k = c.label || c.id;
+    labelCounts[k] = (labelCounts[k] || 0) + 1;
+  }
+  function timecode(ms) {
+    if (!ms) return "";
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(ss).padStart(2, "0");
+  }
   const opts = ['<option value="">All cases</option>']
     .concat(cases.map(c => {
-      const label = c.label && c.label !== c.id ? `${c.label}` : c.id;
-      return `<option value="${c.id}"${c.id === currentCaseScope ? " selected" : ""}>${label}</option>`;
+      const baseLabel = c.label && c.label !== c.id ? c.label : c.id;
+      const needsSuffix = labelCounts[baseLabel] > 1;
+      const offsetMs = c.startMs && currentSession.events.length
+        ? c.startMs - new Date(currentSession.events[0].timestamp).getTime()
+        : 0;
+      const label = needsSuffix
+        ? `${baseLabel} [${timecode(offsetMs)}]`
+        : baseLabel;
+      return `<option value="${c.id}"${c.id === currentCaseScope ? " selected" : ""}>${escapeHtml(label)}</option>`;
     }));
   sel.innerHTML = opts.join("");
   // Wrapper picks up the visual cue that scoping is active.
   const wrap = sel.closest(".case-scope");
   if (wrap) wrap.classList.toggle("scoped", !!currentCaseScope);
+}
+
+/* P2.8: scope-to-marker-at-playhead. Finds the innermost case whose
+   range contains the current video time and selects it as the scope.
+   Falls back to a toast if there's no video / no marker at playhead. */
+function scopeToMarkerAtPlayhead() {
+  if (!currentSession) return;
+  const video = document.getElementById("video");
+  const startTs = videoStartTs();
+  if (!video || !startTs) {
+    toast("No video to anchor to playhead.", "error");
+    return;
+  }
+  const playheadMs = new Date(startTs).getTime() + video.currentTime * 1000;
+  const cases = deriveCases(currentSession);
+  // Innermost case: smallest range containing playheadMs.
+  let best = null;
+  let bestSize = Infinity;
+  for (const c of cases) {
+    if (playheadMs < c.startMs || playheadMs > c.endMs) continue;
+    const size = c.endMs - c.startMs;
+    if (size < bestSize) { best = c; bestSize = size; }
+  }
+  if (!best) { toast("No case at the current playhead.", ""); return; }
+  currentCaseScope = best.id;
+  populateCaseScope();
+  if (currentLevel === "flow")   renderTimeline();
+  if (currentLevel === "steps")  renderStepsLevel();
+  if (currentLevel === "phases") renderPhasesLevel();
+  toast("Scoped to: " + (best.label || best.id), "success");
 }
 
 (function wireCaseScope() {
@@ -530,6 +639,8 @@ function populateCaseScope() {
     if (currentLevel === "steps")  renderStepsLevel();
     if (currentLevel === "phases") renderPhasesLevel();
   });
+  const btn = document.getElementById("btn-scope-to-playhead");
+  if (btn) btn.addEventListener("click", scopeToMarkerAtPlayhead);
 })();
 
 /* Command palette provider: union of cases / steps / markers /
@@ -1114,6 +1225,88 @@ async function groupIntoPhase() {
 if ($("#btn-add-manual-phase"))   $("#btn-add-manual-phase").addEventListener("click", addManualPhase);
 if ($("#btn-group-into-phase"))   $("#btn-group-into-phase").addEventListener("click", groupIntoPhase);
 
+/* AM.2: heuristic phase-grouping suggestions. Walks the step list and
+   produces candidate groupings using two rules:
+     1. Consecutive steps from the same app (apps are stable for a
+        contiguous slice of work).
+     2. Consecutive steps with no gap > GAP_S seconds (close-in-time
+        steps usually belong to the same milestone).
+   The analyst sees the list and accepts/rejects individually.
+   Steps already assigned to a phase are skipped. */
+async function suggestPhaseGroupings() {
+  if (!currentSession) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const steps = (anno.steps || []).filter((s) => !s.phase_id);
+  if (steps.length < 2) {
+    toast("Need at least 2 ungrouped steps to suggest groupings.", "");
+    return;
+  }
+  // Sort by start time so consecutive-by-app reasoning is meaningful.
+  steps.sort((a, b) => {
+    const at = a.time_range && a.time_range.start ? new Date(a.time_range.start).getTime() : 0;
+    const bt = b.time_range && b.time_range.start ? new Date(b.time_range.start).getTime() : 0;
+    return at - bt;
+  });
+  const GAP_MS = 30 * 1000;
+  const groups = [];
+  let cur = [steps[0]];
+  function appOf(s) { return (s.dominant_app || s.app || "").toLowerCase(); }
+  for (let i = 1; i < steps.length; i++) {
+    const prev = steps[i - 1], s = steps[i];
+    const sameApp = appOf(prev) && appOf(prev) === appOf(s);
+    const prevEnd = prev.time_range && prev.time_range.end ? new Date(prev.time_range.end).getTime() : 0;
+    const curStart = s.time_range && s.time_range.start ? new Date(s.time_range.start).getTime() : 0;
+    const closeInTime = prevEnd && curStart && (curStart - prevEnd) <= GAP_MS;
+    if (sameApp || closeInTime) cur.push(s);
+    else { if (cur.length >= 2) groups.push(cur); cur = [s]; }
+  }
+  if (cur.length >= 2) groups.push(cur);
+
+  if (!groups.length) {
+    toast("No grouping suggestions found — steps are too varied or sparse.", "");
+    return;
+  }
+  // Build a preview detail string for the confirm modal.
+  const lines = groups.slice(0, 8).map((g, i) => {
+    const apps = [...new Set(g.map(appOf).filter(Boolean))].join(", ") || "mixed apps";
+    return `  ${i + 1}. ${g.length} steps (${apps})`;
+  });
+  const moreNote = groups.length > 8 ? `\n  …and ${groups.length - 8} more` : "";
+  const ok = await confirmModal({
+    title: "Apply " + groups.length + " phase grouping" + (groups.length === 1 ? "" : "s") + "?",
+    message: `Found ${groups.length} candidate phase${groups.length === 1 ? "" : "s"} from ${steps.length} ungrouped steps.`,
+    detail: "Each group bundles consecutive steps that either run in the same app or have no idle gap > 30 seconds between them. Phases are named after the dominant app; rename anytime.\n\n" +
+            lines.join("\n") + moreNote,
+    okLabel: "Apply all",
+  });
+  if (!ok) return;
+  for (const g of groups) {
+    const apps = [...new Set(g.map(appOf).filter(Boolean))];
+    const name = apps.length === 1
+      ? apps[0].replace(/\.exe$/i, "").replace(/^./, (c) => c.toUpperCase()) + " work"
+      : "Mixed-app phase";
+    const phase = {
+      phase_id: cryptoRandomId(),
+      session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+      case_id: null,
+      name,
+      description: "Auto-suggested by phase grouping heuristics.",
+      step_ids: g.map((s) => s.step_id),
+      state: "auto_suggested",
+      canonical_phase_id: null,
+    };
+    anno.phases.push(phase);
+    for (const s of g) {
+      const original = anno.steps.find((x) => x.step_id === s.step_id);
+      if (original) original.phase_id = phase.phase_id;
+    }
+  }
+  await persistAnnotations(anno, "auto-group steps into phases");
+  renderPhasesLevel();
+  toast("Applied " + groups.length + " phase grouping" + (groups.length === 1 ? "" : "s"), "success");
+}
+if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click", suggestPhaseGroupings);
+
 /* ============ Annotation shape helper ============================ */
 
 function ensureAnnoShape(anno) {
@@ -1560,6 +1753,8 @@ async function loadSessionIntoView(folder) {
   // P1.1: clear any range selection from the previous session.
   if (prevFolder !== folder) clearSelectionRange();
   installRangeSelection();
+  // P2.4: shortcuts overlay updates with session state.
+  renderShortcutsOverlay();
 }
 
 /* Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix. */
@@ -2539,13 +2734,29 @@ function renderTimeline() {
   ph.style.display = "none";
   host.appendChild(ph);
 
-  // Click->seek on background
+  // Click->seek on background. P2.9: snap to nearest event when one
+  // is within ~250ms / span × pixel-tolerance of the click; else seek
+  // to the literal point. Avoids the "click empty space, jump 30 ms
+  // before the activity I meant" feel.
   host.addEventListener("click", (e) => {
     if (e.target !== host) return;
     const rect = host.getBoundingClientRect();
     const frac = (e.clientX + host.scrollLeft - rect.left) / rect.width;
     const target = first + frac * span;
-    seekToTimestamp(new Date(target).toISOString());
+    // pixel tolerance scales with zoom: at 1x ~10px tolerance, at higher
+    // zoom the same px is fewer ms, so snapping stays "near the cursor"
+    // visually rather than "near in wall-clock".
+    const pxTol = 10;
+    const msTol = Math.max(50, Math.min(500, (pxTol / Math.max(1, host.clientWidth || rect.width)) * span));
+    let nearestT = null, nearestDelta = Infinity;
+    for (const ev of evs) {
+      const t = new Date(ev.timestamp).getTime();
+      const d = Math.abs(t - target);
+      if (d < nearestDelta) { nearestDelta = d; nearestT = t; }
+      if (d > msTol && nearestT != null) break; // events are time-sorted
+    }
+    const seekT = (nearestT != null && nearestDelta <= msTol) ? nearestT : target;
+    seekToTimestamp(new Date(seekT).toISOString());
   });
 
   // P1.3: refresh minimap to mirror the new timeline content + viewport.
@@ -3145,13 +3356,19 @@ if (_btnNormalizeAllCancel) {
 $("#btn-normalize-all").addEventListener("click", async () => {
   if (!aggregateSessions.length) return;
   _aggregateNormalizeCancelled = false;
-  $("#btn-normalize-all").disabled = true;
+  const btn = $("#btn-normalize-all");
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
   const cancelBtn = $("#btn-normalize-all-cancel");
   if (cancelBtn) cancelBtn.style.display = "";
   let cancelled = false;
   let done = 0;
+  const total = aggregateSessions.length;
   for (const s of aggregateSessions) {
     if (_aggregateNormalizeCancelled) { cancelled = true; break; }
+    // P2.11: per-iteration progress label so a long aggregate analyze
+    // doesn't look frozen.
+    btn.textContent = `Analyzing ${done + 1} / ${total}...`;
     const r = await ipcRenderer.invoke("viewer:runNormalize", {
       sessionFolder: s.sessionFolder,
       mine: true,
@@ -3160,16 +3377,17 @@ $("#btn-normalize-all").addEventListener("click", async () => {
     if (r && r.cancelled) { cancelled = true; break; }
   }
   if (cancelBtn) cancelBtn.style.display = "none";
+  btn.textContent = originalLabel;
   if (cancelled) {
-    toast(`Cancelled after ${done} of ${aggregateSessions.length} session${aggregateSessions.length === 1 ? "" : "s"}.`);
-    $("#btn-normalize-all").disabled = false;
+    toast(`Cancelled after ${done} of ${total} session${total === 1 ? "" : "s"}.`);
+    btn.disabled = false;
     return;
   }
   const folders = aggregateSessions.map((s) => s.sessionFolder);
   aggregateSessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
   aggregateSessions = aggregateSessions.filter((s) => !s.error);
   renderAggregate();
-  $("#btn-normalize-all").disabled = false;
+  btn.disabled = false;
   toast("All sessions normalized + mined", "success");
 });
 

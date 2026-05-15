@@ -8,6 +8,42 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Mode-specific shortcuts overlay** (P2.4). Small persistent
+  bottom-right widget on the Session view listing the current
+  view-mode's 3-4 most-used shortcuts. Dismissable; preference
+  persisted to localStorage.
+- **Case-scope dropdown deduplication + scope-to-playhead** (P2.8).
+  Duplicate marker labels in the case-scope dropdown get a
+  `[H:MM:SS]` time-offset suffix so analysts can tell repeated
+  cases apart. New `⇥ playhead` button next to the dropdown scopes
+  to whichever case contains the current video playhead.
+- **Snap-to-event on timeline click** (P2.9). Background click on
+  the Flow timeline snaps to the nearest event within ~10px-worth
+  of pixel tolerance (scaled by zoom). Genuine empty-space clicks
+  still seek to the literal point.
+- **Hotkey conflict detection at startup** (P2.10, capture).
+  When `globalShortcut.register()` fails (another app is using the
+  binding), a Windows toast surfaces the conflict naming each
+  failed hotkey, instead of the silent boot.log-only signal.
+- **Analyze-all per-iteration progress label** (P2.11). The
+  Aggregate "Analyze all sessions" button shows
+  "Analyzing N / total..." per-iteration so a long sweep doesn't
+  look frozen. Cancel still works mid-loop.
+- **Tray menu reorganization** (P2.13, capture). The previously-flat
+  tray menu now groups everything beyond the muscle-memory action
+  items (Fire Start / End / Pause / End session) into three named
+  submenus: Live status (overlays + windows), Storage (recents +
+  prune), and Help & config (help + OBS + session config). Fits
+  on small-DPI screens.
+- **Live-session window keyboard shortcuts** (P2.14, capture).
+  S = focus the marker input, E = end marker, P = pause/resume,
+  Y = open sync-marker row. Suppressed when an input is focused.
+- **Auto-suggested phase grouping** (AM.2). New "Suggest groupings"
+  link on the Phases pane runs two heuristics — group consecutive
+  steps from the same app, and group consecutive steps with no idle
+  gap > 30s — to propose phases. Preview shown as a confirm modal;
+  Apply all creates auto-suggested phases the analyst can rename
+  and tweak. Skips steps already in a phase.
 - **Range selection on the timeline** (P1.1). Shift-drag across the
   Flow timeline to select a time range; a "Selection" stats card
   pops above the legend showing duration, event count, marker count,
@@ -89,9 +125,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **README** gains a "What's new in v0.3" section near the top so a
   first-time reader doesn't have to dig through the changelog to learn
   about the live session window, undo, marker close-then-open, etc.
+- **`scripts/generate-icons.ps1`** now reads the sage / slate / bg
+  hex tokens directly from `viewer/styles.css` instead of duplicating
+  the hardcoded literals. Falls back to the previous defaults if the
+  CSS file is missing (so a stripped dist still builds icons).
 
 ### Removed
 
+- **Dead `escapeHtml` stub in welcome-window.js**. The inline
+  duplicate inside the embedded `<script>` block was unused;
+  template-literal callers all hit the module-level definition.
+  Bookkeeping cleanup.
 - **Last `window.confirm` from the legacy status window.** End-session
   click in `capture/status-window.js` now opens an inline confirm row
   (Cancel / End session) styled to match the operator-panel pattern,

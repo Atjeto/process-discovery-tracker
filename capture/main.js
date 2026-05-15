@@ -1363,20 +1363,37 @@ function buildMenu() {
     });
   }
   items.push({ type: "separator" });
+  // P2.13: group everything beyond the muscle-memory action items
+  // (Fire Start / End / Pause / End session) into named submenus so
+  // the flat tray fits even at small DPI.
+
+  // === Live status submenu ===
   items.push({
-    label: operatorWindow ? "Hide live session window" : "Show live session window",
-    click: () => toggleOperatorPanel(),
+    label: "Live status",
+    submenu: [
+      {
+        label: operatorWindow ? "Hide Live Session window" : "Show Live Session window",
+        click: () => toggleOperatorPanel(),
+      },
+      {
+        label: statusWindow ? "Hide status window (legacy)" : "Show status window (legacy)",
+        click: () => toggleStatusWindow(),
+      },
+      {
+        label: hotkeyOverlay.isVisible() ? "Hide hotkey overlay" : "Show hotkey overlay",
+        click: () => {
+          hotkeyOverlay.toggleOverlay(config && config.hotkeys);
+          refreshTray();
+        },
+      },
+    ],
   });
-  items.push({
-    label: statusWindow ? "Hide status window (legacy)" : "Show status window (legacy)",
-    click: () => toggleStatusWindow(),
-  });
-  // Recent sessions submenu -- each session gets a nested submenu so
-  // the worker can open in viewer, reveal in Explorer, or delete the
-  // folder from the locked-down work laptop where Python isn't
-  // available to run scripts/prune-sessions.py.
+
+  // === Storage submenu ===
   const recent = listRecentSessions(baseDir, 8);
   const activeFolder = session ? session.sessionFolder : null;
+  const totals = getSessionsTotal();
+  const storageItems = [];
   if (recent.length) {
     const recentItems = recent.map((r) => {
       const when = (r.started_at || "").slice(0, 19).replace("T", " ");
@@ -1398,20 +1415,15 @@ function buildMenu() {
         submenu: childItems,
       };
     });
-    recentItems.push({ type: "separator" });
-    recentItems.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
-    items.push({ label: "Recent sessions", submenu: recentItems });
-  } else {
-    items.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+    storageItems.push({ label: "Recent sessions", submenu: recentItems });
   }
-  // Aggregate disk-usage line + prune-by-age submenu.
-  const totals = getSessionsTotal();
-  items.push({
-    label: `Sessions on disk: ${totals.count} / ${humanSize(totals.bytes)}`,
+  storageItems.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
+  storageItems.push({
+    label: `On disk: ${totals.count} / ${humanSize(totals.bytes)}`,
     enabled: false,
   });
   if (totals.count > 0) {
-    items.push({
+    storageItems.push({
       label: "Prune sessions older than...",
       submenu: [
         { label: "30 days", click: () => confirmAndPruneByAge(30) },
@@ -1420,30 +1432,25 @@ function buildMenu() {
       ],
     });
   }
-  items.push({ label: "Set up OBS recording...", click: () => showObsSetupDialog() });
-  items.push({ label: "Session config...", click: () => showSessionConfigDialog() });
-  items.push({
-    label: hotkeyOverlay.isVisible() ? "Hide hotkey overlay" : "Show hotkey overlay",
-    click: () => {
-      hotkeyOverlay.toggleOverlay(config && config.hotkeys);
-      refreshTray();
-    },
-  });
-  items.push({
-    label: "Help",
-    submenu: [
-      { label: "How to use...", click: () => showHelp() },
-      { label: "Show welcome screen", click: () => welcomeWin.showWelcomeWindow({ hotkeys: config && config.hotkeys }) },
-    ],
-  });
-  if (configSourcePath) {
-    items.push({
-      label: `Config: ${path.basename(configSourcePath)}`,
+  items.push({ label: "Storage", submenu: storageItems });
+
+  // === Help & config submenu ===
+  const helpItems = [
+    { label: "How to use...", click: () => showHelp() },
+    { label: "Show welcome screen", click: () => welcomeWin.showWelcomeWindow({ hotkeys: config && config.hotkeys }) },
+    { type: "separator" },
+    { label: "Set up OBS recording...", click: () => showObsSetupDialog() },
+    { label: "Session config...", click: () => showSessionConfigDialog() },
+    { type: "separator" },
+    {
+      label: configSourcePath
+        ? `Config: ${path.basename(configSourcePath)}`
+        : "Config: defaults (set PDT_CONFIG to override)",
       enabled: false,
-    });
-  } else {
-    items.push({ label: "Config: defaults (set PDT_CONFIG to override)", enabled: false });
-  }
+    },
+  ];
+  items.push({ label: "Help & config", submenu: helpItems });
+
   items.push({ type: "separator" });
   items.push({
     label: "Quit",
@@ -1507,6 +1514,27 @@ app.whenReady().then(() => {
     });
   }
   bootLog(`hotkeys: start=${okStart} end=${okEnd} shot=${okShot} sync=${okSync}`);
+
+  // P2.10: surface any hotkey-registration failures to the operator
+  // via a Windows toast. Today the failure is only in boot.log, so a
+  // user with a conflicting global shortcut (some screen-recorder /
+  // password-manager combos grab Ctrl+Shift+S) discovers the problem
+  // by pressing the hotkey and seeing nothing happen.
+  const failed = [];
+  if (!okStart) failed.push(["Start picker", config.hotkeys.start_picker]);
+  if (!okEnd)   failed.push(["End marker",   config.hotkeys.end_innermost]);
+  if (!okShot)  failed.push(["Screenshot",   config.hotkeys.manual_screenshot]);
+  if (config.hotkeys.sync_marker && !okSync) {
+    failed.push(["Sync marker", config.hotkeys.sync_marker]);
+  }
+  if (failed.length) {
+    const list = failed.map(([name, key]) => `${name} (${key})`).join(", ");
+    notifyUser(
+      "Hotkey conflict",
+      `Couldn't register: ${list}. Another app is using these shortcuts. Use the tray menu, or change the bindings via Session config.`,
+      { urgency: "low" }
+    );
+  }
 
   // First-run welcome. shouldShowOnLaunch() returns true once per
   // machine (gated by userData/welcome-shown.json).

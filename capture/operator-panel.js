@@ -342,6 +342,35 @@ document.getElementById("btn-pause").addEventListener("click", async () => {
   tick();
 });
 
+// P2.14: window-level keyboard shortcuts. S = focus the custom-marker
+// input (so the operator can type-and-Enter without reaching for the
+// mouse), E = end marker, P = pause/resume, Y = sync marker. Suppressed
+// when an input is focused so typing a label doesn't fire a shortcut.
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  switch (e.key.toLowerCase()) {
+    case "s":
+      e.preventDefault();
+      const cust = document.getElementById("custom");
+      if (cust) cust.focus();
+      break;
+    case "e":
+      e.preventDefault();
+      document.getElementById("btn-end-marker").click();
+      break;
+    case "p":
+      e.preventDefault();
+      document.getElementById("btn-pause").click();
+      break;
+    case "y":
+      e.preventDefault();
+      document.getElementById("btn-sync").click();
+      break;
+  }
+});
+
 // End session: inline confirm replaces window.confirm.
 const endRow = document.getElementById("end-confirm");
 const endBtn = document.getElementById("btn-end-session");

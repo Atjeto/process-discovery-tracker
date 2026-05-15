@@ -29,10 +29,25 @@ $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Drawing | Out-Null
 
-# Tokens copied from viewer/styles.css :root. If those change, update here.
-$ACCENT_TOP    = [System.Drawing.ColorTranslator]::FromHtml("#6E8A66") # --accent (sage)
-$ACCENT_BOTTOM = [System.Drawing.ColorTranslator]::FromHtml("#5A7488") # --accent-2 (slate)
-$BG            = [System.Drawing.ColorTranslator]::FromHtml("#08080A") # --bg (inset cutout)
+# Pull palette tokens directly from viewer/styles.css so the icons stay
+# in sync if the palette changes. Falls back to known-good defaults if
+# the file or a token is missing (so a stripped dist still builds icons).
+function Get-CssToken {
+    param([string]$Path, [string]$Name, [string]$Default)
+    if (-not (Test-Path $Path)) { return $Default }
+    $line = Select-String -Path $Path -Pattern "^\s*--$Name\s*:\s*(#[0-9A-Fa-f]{3,8})" -CaseSensitive | Select-Object -First 1
+    if ($line -and $line.Matches.Count -gt 0 -and $line.Matches[0].Groups.Count -ge 2) {
+        return $line.Matches[0].Groups[1].Value
+    }
+    return $Default
+}
+$cssPath        = Join-Path $PSScriptRoot "..\viewer\styles.css"
+$accentTopHex   = Get-CssToken -Path $cssPath -Name "accent"   -Default "#6E8A66"
+$accentBotHex   = Get-CssToken -Path $cssPath -Name "accent-2" -Default "#5A7488"
+$bgHex          = Get-CssToken -Path $cssPath -Name "bg"       -Default "#08080A"
+$ACCENT_TOP     = [System.Drawing.ColorTranslator]::FromHtml($accentTopHex)   # --accent (sage)
+$ACCENT_BOTTOM  = [System.Drawing.ColorTranslator]::FromHtml($accentBotHex)   # --accent-2 (slate)
+$BG             = [System.Drawing.ColorTranslator]::FromHtml($bgHex)          # --bg (inset cutout)
 
 function Add-RoundedRect {
     param(

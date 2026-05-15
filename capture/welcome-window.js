@@ -145,9 +145,6 @@ function buildHtml(opts) {
   document.getElementById("btn-close").addEventListener("click", () => {
     window.close();
   });
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;" }[c]));
-  }
 </script>
 </body></html>`;
 }

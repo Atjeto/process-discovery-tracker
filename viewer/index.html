@@ -150,6 +150,7 @@
           <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, Phases mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
             <span class="case-scope-label">Case:</span>
             <select id="case-scope-select"><option value="">All cases</option></select>
+            <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">⇥ playhead</button>
           </label>
           <span class="view-mode-help" id="view-mode-help"></span>
         </div>
@@ -300,7 +301,10 @@
           </div>
           <div class="editor-split">
             <div class="editor-list-pane">
-              <div class="editor-pane-title">Phases · <span id="phases-pane-count">0</span></div>
+              <div class="editor-pane-title">
+                Phases · <span id="phases-pane-count">0</span>
+                <button id="btn-suggest-phases" class="link-btn" type="button" title="Heuristically group consecutive steps by app and gap into a starting set of phases. You'll be shown the suggestions to accept or skip.">Suggest groupings...</button>
+              </div>
               <div class="list-filter" id="phase-list-filter">
                 <input type="search" class="list-filter-input" id="phase-filter-text" placeholder="Filter phases by name..." />
                 <span class="list-filter-meta" id="phase-filter-meta"></span>
@@ -522,6 +526,13 @@
   </main>
 
   <div class="toast" id="toast"></div>
+
+  <!-- ========= Mode-specific shortcuts overlay (P2.4) ========= -->
+  <div class="shortcuts-overlay" id="shortcuts-overlay" style="display:none">
+    <button class="shortcuts-overlay-close" id="shortcuts-overlay-close" type="button" title="Hide (re-enable from Help → Show shortcuts overlay)">×</button>
+    <div class="shortcuts-overlay-title" id="shortcuts-overlay-title">Shortcuts</div>
+    <ul class="shortcuts-overlay-list" id="shortcuts-overlay-list"></ul>
+  </div>
 
   <!-- ========= Help modal ========= -->
   <div class="modal-backdrop" id="help-modal" style="display:none">
