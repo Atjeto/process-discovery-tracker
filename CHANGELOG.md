@@ -8,6 +8,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Project / engagement layer** (P2.1). New `viewer/project.js` data
+  module + topbar Project menu + `.pdt-project.json` file format. A
+  project bundles the loaded aggregate session set, the current focus
+  session, the active process template, the current view mode, the
+  current case scope, and the timeline zoom into a single re-loadable
+  file. New IPC handlers `viewer:saveProject`, `viewer:saveProjectAs`,
+  `viewer:openProject`, `viewer:loadProjectFile`. The Session view's
+  empty state now surfaces a "Recent projects" list alongside "Recent
+  sessions"; click a recent project to restore everything in one go.
+  Standalone-session opens (the existing flow) still work unchanged
+  and don't create projects until you explicitly Save as.
 - **Aggregate filter date-range hint.** "YYYY-MM-DD" hint label appears next
   to the From / To date inputs in the Aggregate view so the expected format
   is obvious in environments where browsers render date inputs as plain text.

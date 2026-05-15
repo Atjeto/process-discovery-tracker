@@ -28,6 +28,18 @@
       <button class="tab" data-view="vocabularies"><span class="kbd">4</span> Vocabularies</button>
     </nav>
     <div class="topbar-meta">
+      <div class="project-menu" id="project-menu">
+        <button class="project-btn" id="btn-project-menu" title="Project actions">
+          <span id="project-menu-label">No project</span>
+          <span class="project-menu-caret">▾</span>
+        </button>
+        <div class="project-menu-popup" id="project-menu-popup" style="display:none">
+          <button class="project-menu-item" id="btn-project-open">Open project...</button>
+          <button class="project-menu-item" id="btn-project-save-as">Save current as project...</button>
+          <button class="project-menu-item" id="btn-project-save" style="display:none">Save project</button>
+          <button class="project-menu-item" id="btn-project-close" style="display:none">Close project</button>
+        </div>
+      </div>
       <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
       <span id="topbar-meta"></span>
     </div>
@@ -44,9 +56,16 @@
         <p>Open a session folder produced by the capture tracker to begin.</p>
         <button class="primary" id="btn-open-session-hero">Open session folder...</button>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
+        <div class="recent-sessions" id="recent-projects-block" style="display:none">
+          <div class="recent-header">
+            <h3>Recent projects</h3>
+            <button id="recent-projects-clear" class="recent-clear-btn" type="button" title="Remove all entries from Recent projects">Clear all</button>
+          </div>
+          <ul id="recent-list-projects"></ul>
+        </div>
         <div class="recent-sessions">
           <div class="recent-header">
-            <h3>Recent</h3>
+            <h3>Recent sessions</h3>
             <button id="recent-clear-all" class="recent-clear-btn" type="button" style="display:none" title="Remove all entries from Recents">Clear all</button>
           </div>
           <ul id="recent-list-session"></ul>

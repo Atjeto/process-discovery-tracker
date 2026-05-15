@@ -1373,3 +1373,30 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
   border: 1px solid var(--bg);
 }
 .legend-shortcuts { color: var(--fg-4); margin-left: auto; font-family: var(--font-mono); font-size: 9px; }
+
+/* ===== Project menu (top-bar) ====================================== */
+.project-menu { position: relative; display: inline-block; }
+.project-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--bg-2); border: 1px solid var(--rule);
+  color: var(--fg-2); padding: 4px 10px; border-radius: 4px;
+  font-family: inherit; font-size: 11px; cursor: pointer;
+  max-width: 240px;
+}
+.project-btn:hover { background: var(--bg-3); color: var(--fg); border-color: var(--accent); }
+.project-btn.has-project { color: var(--accent); border-color: var(--accent); }
+.project-btn .project-menu-caret { font-size: 9px; opacity: 0.7; }
+#project-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-menu-popup {
+  position: absolute; right: 0; top: calc(100% + 4px);
+  min-width: 220px; background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: 5px; padding: 4px;
+  box-shadow: var(--shadow); z-index: 200;
+}
+.project-menu-item {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: 0; color: var(--fg-2);
+  padding: 6px 10px; font-size: 12px; font-family: inherit; cursor: pointer;
+  border-radius: 3px;
+}
+.project-menu-item:hover { background: var(--bg-3); color: var(--fg); }

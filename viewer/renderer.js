@@ -3771,3 +3771,265 @@ function confirmModal(opts) {
     setTimeout(() => { (opts.danger ? cancelBtn : okBtn).focus(); }, 0);
   });
 }
+
+/* ============ Project / engagement wiring (P2.1) ==================
+   A project bundles aggregate sessions, the current focus session, the
+   active process template, view mode, case scope, and (forward-
+   compatible) vocabularies into a single re-loadable file. The data
+   layer lives in viewer/project.js; this block snapshots / restores
+   the live state and wires the topbar UI. */
+
+const PdtProject = require("./project.js");
+
+const projectCollectors = {
+  currentSessionFolder: () => currentSession && currentSession.sessionFolder,
+  aggregateSessions:    () => (aggregateSessions || []).map((s) => s && s.sessionFolder).filter(Boolean),
+  templatePath:         () => canonicalState && canonicalState.path,
+  vocabularies:         () => [],   // captured by path on a future project-format bump
+  currentTab:           () => {
+    const t = document.querySelector(".tab.active");
+    return t ? t.dataset.view : "session";
+  },
+  viewMode:             () => currentLevel,
+  currentCaseScope:     () => currentCaseScope || null,
+  timeline: () => {
+    const scroll = document.getElementById("timeline-scroll");
+    return {
+      zoomFactor: (typeof zoomFactor !== "undefined") ? zoomFactor : 1,
+      scrollLeft: scroll ? scroll.scrollLeft : 0,
+    };
+  },
+};
+
+function updateProjectMenuLabel() {
+  const lbl = document.getElementById("project-menu-label");
+  const btn = document.getElementById("btn-project-menu");
+  const saveItem = document.getElementById("btn-project-save");
+  const closeItem = document.getElementById("btn-project-close");
+  const proj = PdtProject.activeProject();
+  if (proj && proj.path) {
+    if (lbl) lbl.textContent = proj.name || path.basename(proj.path, ".pdt-project.json");
+    if (btn) btn.classList.add("has-project");
+    if (saveItem) saveItem.style.display = "";
+    if (closeItem) closeItem.style.display = "";
+  } else {
+    if (lbl) lbl.textContent = "No project";
+    if (btn) btn.classList.remove("has-project");
+    if (saveItem) saveItem.style.display = "none";
+    if (closeItem) closeItem.style.display = "none";
+  }
+}
+
+document.addEventListener("pdt:projectChanged", updateProjectMenuLabel);
+
+function toggleProjectMenu(force) {
+  const popup = document.getElementById("project-menu-popup");
+  if (!popup) return;
+  const open = force === undefined ? popup.style.display === "none" : !!force;
+  popup.style.display = open ? "" : "none";
+}
+
+(function wireProjectMenu() {
+  const btn = document.getElementById("btn-project-menu");
+  const popup = document.getElementById("project-menu-popup");
+  if (!btn || !popup) return;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleProjectMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!popup.contains(e.target) && e.target !== btn) toggleProjectMenu(false);
+  });
+})();
+
+async function projectSaveAs() {
+  toggleProjectMenu(false);
+  const name = await promptModal({
+    title: "Save project as",
+    message: "Project name",
+    detail: "Saves the current aggregate session set, focus session, template, view mode, and case scope into a single .pdt-project.json file you can re-open later.",
+    placeholder: "e.g. ENG-2026-001 onboarding review",
+    initial: (PdtProject.activeProject() && PdtProject.activeProject().name) || "Untitled project",
+  });
+  if (!name) return;
+  const project = PdtProject.captureFromCollectors(projectCollectors, { name });
+  const r = await ipcRenderer.invoke("viewer:saveProjectAs", { project, suggestedName: name.replace(/[^A-Za-z0-9._-]+/g, "-") });
+  if (!r) return;
+  if (!r.ok) { toast("Save failed: " + (r.error || "unknown"), "error"); return; }
+  PdtProject.setActiveProject({ path: r.path, name, ...project });
+  PdtProject.pushRecentProject(r.path, name);
+  renderRecentProjects();
+  toast("Project saved", "success");
+}
+
+async function projectSave() {
+  toggleProjectMenu(false);
+  const active = PdtProject.activeProject();
+  if (!active || !active.path) return projectSaveAs();
+  const project = PdtProject.captureFromCollectors(projectCollectors, { name: active.name });
+  const r = await ipcRenderer.invoke("viewer:saveProject", { project, path: active.path });
+  if (!r || !r.ok) { toast("Save failed: " + ((r && r.error) || "unknown"), "error"); return; }
+  PdtProject.setActiveProject({ path: r.path, name: active.name, ...project });
+  PdtProject.pushRecentProject(r.path, active.name);
+  renderRecentProjects();
+  toast("Project saved", "success");
+}
+
+async function projectOpen() {
+  toggleProjectMenu(false);
+  const r = await ipcRenderer.invoke("viewer:openProject");
+  if (!r) return;
+  if (!r.ok) { toast("Couldn't open project: " + (r.error || "unknown"), "error"); return; }
+  await applyProject(r.path, r.project);
+}
+
+async function projectOpenByPath(filePath) {
+  const r = await ipcRenderer.invoke("viewer:loadProjectFile", filePath);
+  if (!r) return;
+  if (!r.ok) { toast("Couldn't open project: " + (r.error || "unknown"), "error"); return; }
+  await applyProject(r.path, r.project);
+}
+
+async function applyProject(filePath, raw) {
+  const v = PdtProject.validateProject(raw);
+  if (!v.ok) { toast("Project file invalid: " + v.error, "error"); return; }
+  const project = v.project;
+  PdtProject.setActiveProject({ path: filePath, ...project });
+  PdtProject.pushRecentProject(filePath, project.name);
+  renderRecentProjects();
+
+  // Aggregate sessions
+  if (project.aggregateSessions && project.aggregateSessions.length) {
+    try {
+      const sessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", project.aggregateSessions);
+      aggregateSessions = (sessions || []).filter((s) => s && !s.error);
+      const aggEmpty = $("#aggregate-empty");
+      const aggLoaded = $("#aggregate-loaded");
+      if (aggEmpty) aggEmpty.style.display = aggregateSessions.length ? "none" : "";
+      if (aggLoaded) aggLoaded.style.display = aggregateSessions.length ? "" : "none";
+      const btnNorm = $("#btn-normalize-all");
+      if (btnNorm) btnNorm.disabled = !aggregateSessions.length;
+      if (typeof renderAggregate === "function" && aggregateSessions.length) renderAggregate();
+    } catch (e) {
+      toast("Failed to load aggregate sessions: " + (e.message || e), "error");
+    }
+  }
+
+  // Focus session
+  if (project.currentSessionFolder) {
+    try { await loadSessionIntoView(project.currentSessionFolder); }
+    catch (e) { toast("Couldn't load focus session: " + (e.message || e), "error"); }
+  }
+
+  // Process template
+  if (project.templatePath) {
+    try {
+      if (fs.existsSync(project.templatePath)) {
+        canonicalState.path = project.templatePath;
+        canonicalState.content = fs.readFileSync(project.templatePath, "utf-8");
+        const yamlEl = document.getElementById("canonical-yaml");
+        if (yamlEl) yamlEl.value = canonicalState.content;
+        const metaEl = document.getElementById("canonical-meta");
+        if (metaEl) metaEl.textContent = "Loaded " + project.templatePath;
+        const saveBtn = document.getElementById("btn-save-canonical");
+        if (saveBtn) saveBtn.disabled = false;
+        if (typeof renderCanonicalStepList === "function") renderCanonicalStepList();
+      }
+    } catch (_) { /* template missing or unreadable; project still usable */ }
+  }
+
+  // View mode (Flow / Steps / Phases)
+  if (project.viewMode && project.viewMode !== currentLevel) {
+    const vmBtn = document.querySelector('.view-mode-btn[data-level="' + project.viewMode + '"]');
+    if (vmBtn) vmBtn.click();
+  }
+
+  // Case scope
+  if (project.currentCaseScope) {
+    currentCaseScope = project.currentCaseScope;
+    const sel = document.getElementById("case-scope-select");
+    if (sel) {
+      sel.value = currentCaseScope;
+      sel.dispatchEvent(new Event("change"));
+    }
+  }
+
+  // Tab last so any tab-specific re-render (e.g. aggregate fit) runs.
+  if (project.currentTab) activateTab(project.currentTab);
+
+  toast("Project loaded: " + (project.name || path.basename(filePath)), "success");
+}
+
+function projectClose() {
+  toggleProjectMenu(false);
+  PdtProject.setActiveProject(null);
+  toast("Project closed (sessions stay loaded)");
+}
+
+(function wireProjectMenuItems() {
+  const open = document.getElementById("btn-project-open");
+  const saveAs = document.getElementById("btn-project-save-as");
+  const save = document.getElementById("btn-project-save");
+  const close = document.getElementById("btn-project-close");
+  if (open)   open.addEventListener("click", projectOpen);
+  if (saveAs) saveAs.addEventListener("click", projectSaveAs);
+  if (save)   save.addEventListener("click", projectSave);
+  if (close)  close.addEventListener("click", projectClose);
+})();
+
+function renderRecentProjects() {
+  const block = document.getElementById("recent-projects-block");
+  const list = document.getElementById("recent-list-projects");
+  if (!block || !list) return;
+  const recents = PdtProject.getRecentProjects();
+  if (!recents.length) { block.style.display = "none"; return; }
+  block.style.display = "";
+  list.innerHTML = recents.map((r) => {
+    let missing = false;
+    try { missing = !fs.existsSync(r.path); } catch (_) { missing = true; }
+    const name = escapeHtml(r.name || path.basename(r.path, ".pdt-project.json"));
+    const missingTag = missing ? '<span class="recent-missing-tag">missing</span>' : "";
+    const cls = missing ? "missing" : "";
+    return '<li data-project-path="' + escapeHtml(r.path) + '" class="' + cls + '" title="' + escapeHtml(r.path) + '">' +
+      '<span class="label">' + name + missingTag + '</span>' +
+      '<span class="when">' + (r.ts ? relTime(r.ts) : "") + '</span>' +
+      '<button class="recent-remove" type="button" title="Remove from Recent projects">×</button>' +
+    '</li>';
+  }).join("");
+  list.querySelectorAll("li[data-project-path]").forEach((li) => {
+    li.addEventListener("click", (e) => {
+      if (e.target.closest(".recent-remove")) return;
+      projectOpenByPath(li.dataset.projectPath);
+    });
+  });
+  list.querySelectorAll(".recent-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      PdtProject.removeRecentProject(btn.closest("li").dataset.projectPath);
+      renderRecentProjects();
+    });
+  });
+}
+
+(function wireRecentProjectsClear() {
+  const btn = document.getElementById("recent-projects-clear");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    if (!PdtProject.getRecentProjects().length) return;
+    const ok = await confirmModal({
+      title: "Clear Recent projects?",
+      message: "Remove all entries from Recent projects?",
+      detail: "Project files on disk are not touched; only the localStorage list is cleared.",
+      okLabel: "Clear",
+      danger: true,
+    });
+    if (ok) {
+      PdtProject.clearRecentProjects();
+      renderRecentProjects();
+    }
+  });
+})();
+
+// Initial render
+updateProjectMenuLabel();
+renderRecentProjects();

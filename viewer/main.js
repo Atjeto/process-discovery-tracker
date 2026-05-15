@@ -531,6 +531,64 @@ ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, 
   }
 });
 
+/* --- Project file IPC --------------------------------------------- */
+
+const PROJECT_FILE_EXT = ".pdt-project.json";
+
+ipcMain.handle("viewer:saveProjectAs", async (_e, { project, suggestedName }) => {
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: "Save project",
+    defaultPath: (suggestedName || "untitled") + PROJECT_FILE_EXT,
+    filters: [{ name: "Process Discovery Project", extensions: ["pdt-project.json", "json"] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  let target = r.filePath;
+  // The save dialog may strip our compound extension; ensure it's present.
+  if (!target.endsWith(PROJECT_FILE_EXT) && !target.endsWith(".json")) {
+    target = target + PROJECT_FILE_EXT;
+  }
+  try {
+    fs.writeFileSync(target, JSON.stringify(project, null, 2), "utf-8");
+    return { ok: true, path: target };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("viewer:saveProject", async (_e, { project, path: target }) => {
+  if (!target) return { ok: false, error: "No project path" };
+  try {
+    fs.writeFileSync(target, JSON.stringify(project, null, 2), "utf-8");
+    return { ok: true, path: target };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("viewer:openProject", async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: "Open project",
+    properties: ["openFile"],
+    filters: [{ name: "Process Discovery Project", extensions: ["pdt-project.json", "json"] }],
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  return loadProjectFile(r.filePaths[0]);
+});
+
+ipcMain.handle("viewer:loadProjectFile", (_e, p) => loadProjectFile(p));
+
+function loadProjectFile(filePath) {
+  try {
+    const abs = path.resolve(filePath);
+    if (!fs.existsSync(abs)) return { ok: false, error: "Project file not found: " + abs };
+    const raw = fs.readFileSync(abs, "utf-8");
+    const parsed = JSON.parse(raw);
+    return { ok: true, path: abs, project: parsed };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 /* --- Annotations write-back --------------------------------------- */
 
 ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) => {
