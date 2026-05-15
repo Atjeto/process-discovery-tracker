@@ -1,0 +1,14 @@
+{
+  "session_id": "sess-2026-0512-0850",
+  "engagement_id": "demo-order-processing",
+  "started_at": "2026-05-12T08:50:00Z",
+  "ended_at": "2026-05-12T08:56:55Z",
+  "status": "closed",
+  "purpose": "process",
+  "config": {
+    "worker": {
+      "id": "demo-worker",
+      "role": "Order processor"
+    }
+  }
+}

@@ -1,0 +1,719 @@
+{
+  "phases": [],
+  "annotations": [],
+  "notes": [],
+  "marker_edits": [],
+  "drift_markers": [],
+  "version": 1,
+  "session_id": "sess-2026-0514-0900",
+  "steps": [
+    {
+      "step_id": "399b7b11-fb01-4903-a4c3-816c5924c4e1",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "8884f4fb-e88c-4043-b13b-b7b9170eba66",
+      "name": "Salesforce: Open customer record",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:00:19Z",
+        "end": "2026-05-14T09:00:28Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "6aa6ae5e40ae443fbafb2b08628018c5",
+          "38a1847b3be546db9b901abcea3ce0ac",
+          "24777a2a3c544d53b87f1d334ca188aa",
+          "c1ea2a1909844cb4a1d3d62913403261",
+          "fbe3b8de14ef4f8abfa6dfd49c1d7a1e",
+          "be6a5c2e13bd453385a000c5c0c87f0c"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "11632b77-48dd-44f2-b5d8-822828a697a6",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "8884f4fb-e88c-4043-b13b-b7b9170eba66",
+      "name": "Salesforce: Save order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:00:29Z",
+        "end": "2026-05-14T09:00:37Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "8abb5216c6ff45b6b1a984be901eb6fb",
+          "6b7a73c0ead749bfaa18b2e23743c558",
+          "734243d627144d43bb06741a787c3910",
+          "9af903f186a94928bbe742fca3580bb6",
+          "04c92ba7fd5f45369efec0362722a839",
+          "a79b9868e0c74ff486ecb622eec99f8e"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "db77e1c3-9b32-4d5f-ae63-aec330304a19",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "8884f4fb-e88c-4043-b13b-b7b9170eba66",
+      "name": "SAP: Create sales order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:00:39Z",
+        "end": "2026-05-14T09:00:47Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "92e4dda85b7d4df7a467aaf302cd59cb",
+          "3027cc3dd19a43389349b3992b1935c8",
+          "d4c6f8676ea4413dae6760f0c3b352e1",
+          "988dca7e5e96487496c46ef3a04df63f",
+          "a88f1d438b5149778d6f369b25bf2d8b",
+          "2afef86669b84f968e60e95b7e0573e6",
+          "1e6bac1f83b042e39b12073ab9c386a4"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "da12800d-3172-43b9-a9cc-31be8566f604",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "8884f4fb-e88c-4043-b13b-b7b9170eba66",
+      "name": "Excel: Save workbook",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:00:49Z",
+        "end": "2026-05-14T09:00:54Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "c6bc265b52b64d3bbc1ab18bfc220296",
+          "0c2beb9fc9bf45a8b8d269ca7e6318cd",
+          "1a2caaada8914370a898c2d520b61eff",
+          "588dd6ebb9144bcba59a1904e5428ad9",
+          "9458dc6d4507418090733200df600dff"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "13c2733e-079b-458b-b069-6309350aa8ad",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "8884f4fb-e88c-4043-b13b-b7b9170eba66",
+      "name": "Outlook: Send email",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:00:54Z",
+        "end": "2026-05-14T09:00:59Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "8cef1fd3f46c4698bdeec9170069f9ba",
+          "1c10c8cd7b704da5bc82c463b772e05e",
+          "b8ca40a4479945c5a49cd7d1a8677605",
+          "e11177828ecd4331ab0b42c06accde70"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "a8e6b59d-935a-4042-b7ab-884f0fc88219",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "name": "Salesforce: Open customer record",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:01:46Z",
+        "end": "2026-05-14T09:01:51Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "546ae56dda85489abf18e7cbd0d45300",
+          "a166d4f01f124e54b4b0d09183e6b681",
+          "f2671ffc371c41968e33ef2a48eedda1",
+          "bd324058f584443abd737036b72a2fa9",
+          "430d8382fda640a19674cce510311e6a",
+          "146eb86a417b4a98ae0fcb0357f18ae1"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "2e5db6cb-7694-4de8-9991-433a10c67703",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "name": "Salesforce: Save order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:01:52Z",
+        "end": "2026-05-14T09:01:59Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "a149250df9654358bc467b3c2cbe7c84",
+          "ea959802caaf44cb911201c05154eaa5",
+          "aa616d72e8224ccc9db979ec82bce9ef",
+          "355cde77cdff49be9a056ac3f1c6f69a",
+          "2d6fe782914d439c91138f5d194bb670",
+          "e943928cf34d47cbb51dfaec238ee8f6"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "6e916cb7-bdc2-4f09-bfd1-bd9874dbf5a5",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "name": "SAP: Create sales order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:02:01Z",
+        "end": "2026-05-14T09:02:08Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "0f13219169224adca59b6d54aa65327d",
+          "f0afd406d0604ba4b9017d251ce715ba",
+          "7eaf9d22aeb144e28622d7d6e51d59de",
+          "9fdd29abdbe84bdab41a7c6feadf522a",
+          "291814f1ec3f49b4aa960757a9498b8e",
+          "d1d7f5de0f044eeabd6542085d4aa1ff",
+          "c3fd986ca65344cbad2412bd72143045"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "220ad2ab-07e7-48d9-8814-c058c6449e81",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "name": "Notepad: 3 interactions",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:02:10Z",
+        "end": "2026-05-14T09:02:14Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "980a94458e5e473d99f3d6cd7f748bde",
+          "c3a3bfa0473d452fbf4aea2b5af0176f",
+          "f5b2099e3b2541a0a03a9acff131b66e"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "5e255ecf-7d11-4c3c-bbda-79618d84cb86",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "name": "SAP: Create sales order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:02:14Z",
+        "end": "2026-05-14T09:02:23Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "9fc7b71d688d4b6291bdfb6ab9828145",
+          "17f99b133f854fc7bb9e4acd349bd191",
+          "f44a47796d234a5e8da958dd226cb40e",
+          "06dbbaca04be4dbdb7897d0cc54b3664",
+          "bf5ebd3475be4be6be9d93383472402a",
+          "37c7b0decaf44a8a98ccf3480de09fa1",
+          "c9f207ac01914de68f84be7a1b2f7112"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "396c5166-f80b-4029-8236-499c22dbd008",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "name": "Excel: Save workbook",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:02:25Z",
+        "end": "2026-05-14T09:02:30Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "4274cd31967e4c3a95d86399b31c6199",
+          "aa4ac9518abf4adbbee71c0d27600185",
+          "6e36fdc9f9ed4c8fbe20ffaac54c9f78",
+          "83f24b30d665490eb6448fc1fe598831",
+          "e9f3206fb5914faaa09e2460359cbb48"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "cabee179-fe45-44d7-b6b3-d6f57878c7be",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "name": "Outlook: Send email",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:02:31Z",
+        "end": "2026-05-14T09:02:38Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "675cc5b87fe8452793bb212d7f9cbadb",
+          "5334ed43a97e4cad99f15445194d5a68",
+          "20e5f1c68b534fba98052f7403eb7b9b",
+          "4c95884b0a064047ac63b160cee8837e"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "7cf8c530-94b7-4d37-8917-6a9ee79fb18f",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "0861b48d-2d32-4042-8f17-3474cc88f486",
+      "name": "Salesforce: Open customer record",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:03:23Z",
+        "end": "2026-05-14T09:03:30Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "86b8da4625e24d9eaa904d12875b5551",
+          "d1995b2138e64c8daab386470fe80027",
+          "2c9dd6be51254f91b03e805d985f1a51",
+          "063018e11d9e48878b4b774d3f386bea",
+          "ae37886fa27d49948695284377feedd0",
+          "c8df0a9d459841de8a809d0b84460a32"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "395e3fc1-84a0-4976-b83e-3d12aff1d6a8",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "0861b48d-2d32-4042-8f17-3474cc88f486",
+      "name": "Salesforce: Save order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:03:31Z",
+        "end": "2026-05-14T09:03:41Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "b21ebd10da194ea0a24d2596a89d6bc8",
+          "70dbaf1e11de4adbaa1171f44e7d5e19",
+          "a969e7f773d94be0989ce89f51218d91",
+          "dae095deb662449eac41d268e243ccea",
+          "4d5d0c7fbc3947399705d131c7882fa9",
+          "8fef9ff7ff1b4aa385c569f89ee17b1a"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "e9753c3a-d4f7-4ac1-99f2-c124a65e560c",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "0861b48d-2d32-4042-8f17-3474cc88f486",
+      "name": "SAP: Create sales order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:03:42Z",
+        "end": "2026-05-14T09:03:53Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "d8cb3c5f73ac4806a8627e3cf6de9081",
+          "d57b19d8a76345ffa2a4be25308086bc",
+          "b8beb0ab23c444228b48dcdf9705c149",
+          "02ef9db9dd0646589e7a94753408cfdb",
+          "cd30c888ce724fecb13b486a60321746",
+          "8adf3e7f5c94455f949862c0f2857d06",
+          "8b9e7304f5484a95bf9d4edc4cf11b7e"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "ab193442-1abd-4c00-b3a8-d9e92d03fabb",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "0861b48d-2d32-4042-8f17-3474cc88f486",
+      "name": "Excel: Save workbook",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:03:54Z",
+        "end": "2026-05-14T09:04:01Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "8ddb845f55294293981e50607bf1a005",
+          "c645ea7f79bd44a5ac12081204ca6d94",
+          "1eab59a744ef40f9b58f18f88078c49c",
+          "9fe61ba8737349f883fb72d54ec5152f",
+          "27a72e6ac50d4c0e9c01e406f2446c5d"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "9c405b34-4beb-49cf-b226-ba7be7afa6ce",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "6d241935-5dec-4f76-b176-9aef774c5c86",
+      "name": "Salesforce: Open customer record",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:04:29Z",
+        "end": "2026-05-14T09:04:37Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "9bffd15d18c04c0987ddcff8843f8b3e",
+          "68d0f95c95be43719f16f0021e7516ed",
+          "4d2b770a59aa4764bbc6121d56a883d7",
+          "39ee66c38a9f42d991a5c50fb98e6bde",
+          "446e2cb5f1e84d4cb9cfcd1bffd49ba0",
+          "ee905d32c8de448ca6a8e176d05df61c"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "309e2d1d-0130-4843-8cd4-db73834d60f8",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "6d241935-5dec-4f76-b176-9aef774c5c86",
+      "name": "Salesforce: Save order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:04:40Z",
+        "end": "2026-05-14T09:04:47Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "21f374840cf74d6a89a05e8251b332c9",
+          "c1c9a84e26034746a3751057f0dea928",
+          "73e3f7654b18447f9ed465e43e2912b9",
+          "1eb3db62da17471293fda9cf799c3bb6",
+          "3a6cd513b2bb4e9099f78e10179e94f3",
+          "920a497ffbc94ba595dc7322c7e3e0eb"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "3001e804-dfc1-48b8-823d-74758568abe7",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "6d241935-5dec-4f76-b176-9aef774c5c86",
+      "name": "SAP: Create sales order",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:04:49Z",
+        "end": "2026-05-14T09:05:00Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "e14ae640bdb24e12a44d07b3c6ede3c6",
+          "1427125fd80c4201ab8ac2c8321ebb4d",
+          "c29e2ac2846c45ea8b136b3448db26af",
+          "c44872af400a4600ac8a2ab5b46dfc41",
+          "65c1b03042314d56b3863b1d92c85e81",
+          "ad8daf41635747888ebe190a3593ae43",
+          "d98ce07b0c45422dab77205b1fd615e3"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "ea1f1c5d-22bd-4e58-bae3-cf41df3e483a",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "6d241935-5dec-4f76-b176-9aef774c5c86",
+      "name": "Excel: Save workbook",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:05:03Z",
+        "end": "2026-05-14T09:05:08Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "8c1d3b79da9c46399d4495bb26209876",
+          "8f7edac613c14a44997b191d8139dfea",
+          "07e733929a2948cbb2216654c67c1f7a",
+          "77bbfd8005624529b9830b369a990d85",
+          "4df283b97d724155ac2d3b4fcb02a08a"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    },
+    {
+      "step_id": "c083dd4b-da52-451f-86a8-39732f546d82",
+      "session_id": "sess-2026-0514-0900",
+      "case_id": "6d241935-5dec-4f76-b176-9aef774c5c86",
+      "name": "Outlook: Send email",
+      "description": "",
+      "time_range": {
+        "start": "2026-05-14T09:05:10Z",
+        "end": "2026-05-14T09:05:13Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "41b347d39b894fa2b118dc85c1dd67ab",
+          "18696083b5e34cb4aee6755edf6c7625",
+          "3cba5d0107254d6c9c597814f94594ba",
+          "54cdfd94f5f844eea8f274265dab66ab"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "conditional": false,
+        "condition_text": null,
+        "exception_path": false,
+        "waste": false,
+        "automation_candidate": false
+      },
+      "phase_id": null
+    }
+  ],
+  "matched_against": null,
+  "last_modified": "2026-05-15T23:42:26.694303+00:00"
+}

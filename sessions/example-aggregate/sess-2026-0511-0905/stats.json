@@ -1,0 +1,159 @@
+{
+  "activity_stats": [
+    {
+      "activity_label": "Unclassified -- chrome.exe",
+      "frequency": 9,
+      "frequency_pct": 42.86,
+      "total_duration_ms": 80499,
+      "mean_ms": 8944,
+      "median_ms": 8800,
+      "p90_ms": 11000,
+      "p99_ms": 11360
+    },
+    {
+      "activity_label": "Unclassified -- SAPGUI.exe",
+      "frequency": 4,
+      "frequency_pct": 19.05,
+      "total_duration_ms": 44200,
+      "mean_ms": 11050,
+      "median_ms": 11100,
+      "p90_ms": 11620,
+      "p99_ms": 11782
+    },
+    {
+      "activity_label": "Unclassified -- EXCEL.EXE",
+      "frequency": 4,
+      "frequency_pct": 19.05,
+      "total_duration_ms": 35699,
+      "mean_ms": 8924,
+      "median_ms": 9150,
+      "p90_ms": 9470,
+      "p99_ms": 9497
+    },
+    {
+      "activity_label": "Unclassified -- OUTLOOK.EXE",
+      "frequency": 4,
+      "frequency_pct": 19.05,
+      "total_duration_ms": 22599,
+      "mean_ms": 5649,
+      "median_ms": 5799,
+      "p90_ms": 7030,
+      "p99_ms": 7273
+    }
+  ],
+  "case_stats": [
+    {
+      "case_id": "7daec0dd-8b1d-4bff-8da7-c36305c96789",
+      "label": "Order #10905",
+      "parent_case_id": null,
+      "start_ts": "2026-05-11T09:05:12Z",
+      "end_ts": "2026-05-11T09:05:56Z",
+      "wall_clock_ms": 44000,
+      "active_ms": 44000,
+      "end_reason": null
+    },
+    {
+      "case_id": "94a306b5-0bec-411d-932e-b3bef82b52e9",
+      "label": "Order #10906",
+      "parent_case_id": null,
+      "start_ts": "2026-05-11T09:06:34Z",
+      "end_ts": "2026-05-11T09:07:17Z",
+      "wall_clock_ms": 43000,
+      "active_ms": 43000,
+      "end_reason": null
+    },
+    {
+      "case_id": "d521873f-edc6-4b53-9f0f-16a9c447978f",
+      "label": "Order #10907",
+      "parent_case_id": null,
+      "start_ts": "2026-05-11T09:07:55Z",
+      "end_ts": "2026-05-11T09:08:44Z",
+      "wall_clock_ms": 49000,
+      "active_ms": 49498,
+      "end_reason": null
+    },
+    {
+      "case_id": "fa46cc4f-fcee-4eb1-9f79-d3e8d91e2d01",
+      "label": "Order #10908",
+      "parent_case_id": null,
+      "start_ts": "2026-05-11T09:09:10Z",
+      "end_ts": "2026-05-11T09:09:56Z",
+      "wall_clock_ms": 46000,
+      "active_ms": 46499,
+      "end_reason": null
+    }
+  ],
+  "trace_variants": [
+    {
+      "variant": [
+        "Unclassified -- chrome.exe",
+        "Unclassified -- chrome.exe",
+        "Unclassified -- SAPGUI.exe",
+        "Unclassified -- EXCEL.EXE",
+        "Unclassified -- OUTLOOK.EXE"
+      ],
+      "frequency": 3,
+      "length": 5
+    },
+    {
+      "variant": [
+        "Unclassified -- chrome.exe",
+        "Unclassified -- chrome.exe",
+        "Unclassified -- chrome.exe",
+        "Unclassified -- SAPGUI.exe",
+        "Unclassified -- EXCEL.EXE",
+        "Unclassified -- OUTLOOK.EXE"
+      ],
+      "frequency": 1,
+      "length": 6
+    }
+  ],
+  "app_outliers": [],
+  "rework_loops": [
+    {
+      "activity_label": "Unclassified -- chrome.exe",
+      "rework_count": 5
+    }
+  ],
+  "meta": {
+    "normalization_run_at": "2026-05-15T23:42:11.957739+00:00",
+    "taxonomy_version": null,
+    "taxonomy_path": null,
+    "session_folder": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\sessions\\example-aggregate\\sess-2026-0511-0905",
+    "worker_id": "demo-worker",
+    "raw_event_count": 153,
+    "dropped_jsonl_lines": 0,
+    "collapsed_activity_count": 21,
+    "interaction_count": 115,
+    "matched_interactions": 0,
+    "match_rate": 0.0,
+    "case_count": 4,
+    "annotations_present": true,
+    "marker_edits_applied": 0,
+    "step_count": 21,
+    "step_state_breakdown": {
+      "auto_suggested": 21,
+      "auto_matched": 0,
+      "manually_authored": 0,
+      "edited": 0
+    },
+    "canonical_process_id": null,
+    "canonical_version": null,
+    "drift_count": 0,
+    "phase_count": 0,
+    "app_vocabularies": [
+      {
+        "id": "outlook",
+        "version": 1
+      },
+      {
+        "id": "salesforce",
+        "version": 1
+      }
+    ],
+    "app_vocabulary_matches": 4,
+    "app_vocabulary_hits_by_id": {
+      "outlook": 4
+    }
+  }
+}

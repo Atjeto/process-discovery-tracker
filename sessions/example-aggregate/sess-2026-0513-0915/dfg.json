@@ -3,22 +3,22 @@
     {
       "source": "Unclassified -- chrome.exe",
       "target": "Unclassified -- chrome.exe",
-      "frequency": 3
+      "frequency": 5
     },
     {
       "source": "Unclassified -- chrome.exe",
       "target": "Unclassified -- SAPGUI.exe",
-      "frequency": 4
+      "frequency": 5
     },
     {
       "source": "Unclassified -- SAPGUI.exe",
       "target": "Unclassified -- EXCEL.EXE",
-      "frequency": 3
+      "frequency": 4
     },
     {
       "source": "Unclassified -- EXCEL.EXE",
       "target": "Unclassified -- OUTLOOK.EXE",
-      "frequency": 3
+      "frequency": 4
     },
     {
       "source": "Unclassified -- SAPGUI.exe",
@@ -27,9 +27,9 @@
     }
   ],
   "start_activities": {
-    "Unclassified -- chrome.exe": 3
+    "Unclassified -- chrome.exe": 4
   },
   "end_activities": {
-    "Unclassified -- OUTLOOK.EXE": 3
+    "Unclassified -- OUTLOOK.EXE": 4
   }
 }

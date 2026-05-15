@@ -1,75 +1,85 @@
 {
   "activity_stats": [
     {
-      "activity_label": "Unclassified -- SAPGUI.exe",
-      "frequency": 4,
-      "frequency_pct": 23.53,
-      "total_duration_ms": 270000,
-      "mean_ms": 67500,
-      "median_ms": 70000,
-      "p90_ms": 80000,
-      "p99_ms": 80000
+      "activity_label": "Unclassified -- chrome.exe",
+      "frequency": 10,
+      "frequency_pct": 43.48,
+      "total_duration_ms": 81599,
+      "mean_ms": 8159,
+      "median_ms": 8699,
+      "p90_ms": 9830,
+      "p99_ms": 10073
     },
     {
-      "activity_label": "Unclassified -- chrome.exe",
-      "frequency": 7,
-      "frequency_pct": 41.18,
-      "total_duration_ms": 255000,
-      "mean_ms": 36428,
-      "median_ms": 35000,
-      "p90_ms": 45000,
-      "p99_ms": 45000
+      "activity_label": "Unclassified -- SAPGUI.exe",
+      "frequency": 5,
+      "frequency_pct": 21.74,
+      "total_duration_ms": 53400,
+      "mean_ms": 10680,
+      "median_ms": 10300,
+      "p90_ms": 12420,
+      "p99_ms": 12672
     },
     {
       "activity_label": "Unclassified -- EXCEL.EXE",
-      "frequency": 3,
-      "frequency_pct": 17.65,
-      "total_duration_ms": 145000,
-      "mean_ms": 48333,
-      "median_ms": 50000,
-      "p90_ms": 50000,
-      "p99_ms": 50000
+      "frequency": 4,
+      "frequency_pct": 17.39,
+      "total_duration_ms": 35000,
+      "mean_ms": 8750,
+      "median_ms": 8700,
+      "p90_ms": 9850,
+      "p99_ms": 9985
     },
     {
       "activity_label": "Unclassified -- OUTLOOK.EXE",
-      "frequency": 3,
-      "frequency_pct": 17.65,
-      "total_duration_ms": 100000,
-      "mean_ms": 33333,
-      "median_ms": 35000,
-      "p90_ms": 35000,
-      "p99_ms": 35000
+      "frequency": 4,
+      "frequency_pct": 17.39,
+      "total_duration_ms": 24799,
+      "mean_ms": 6199,
+      "median_ms": 6450,
+      "p90_ms": 7149,
+      "p99_ms": 7284
     }
   ],
   "case_stats": [
     {
-      "case_id": "35677f8c-1b90-4e91-b60e-a3b876b9c5d1",
-      "label": "Order #12350",
+      "case_id": "3b833bc1-6c23-46bf-b109-c362ce66f014",
+      "label": "Order #10915",
       "parent_case_id": null,
       "start_ts": "2026-05-13T09:15:10Z",
-      "end_ts": "2026-05-13T09:19:15Z",
-      "wall_clock_ms": 245000,
-      "active_ms": 245000,
+      "end_ts": "2026-05-13T09:15:49Z",
+      "wall_clock_ms": 39000,
+      "active_ms": 39300,
       "end_reason": null
     },
     {
-      "case_id": "dbdbdc56-3327-4f6d-a20d-4331756843c8",
-      "label": "Order #12351",
+      "case_id": "1f1e4806-33ca-46fb-8868-d9f771cbbad1",
+      "label": "Order #10916",
       "parent_case_id": null,
-      "start_ts": "2026-05-13T09:19:40Z",
-      "end_ts": "2026-05-13T09:24:20Z",
-      "wall_clock_ms": 280000,
-      "active_ms": 280000,
+      "start_ts": "2026-05-13T09:16:28Z",
+      "end_ts": "2026-05-13T09:17:20Z",
+      "wall_clock_ms": 52000,
+      "active_ms": 52499,
       "end_reason": null
     },
     {
-      "case_id": "8d14190d-ebd8-4a34-a5c1-cee118d38292",
-      "label": "Order #12352",
+      "case_id": "17d3129f-f5e0-46cf-9b86-0c62fcb16c93",
+      "label": "Order #10917",
       "parent_case_id": null,
-      "start_ts": "2026-05-13T09:24:45Z",
-      "end_ts": "2026-05-13T09:28:50Z",
-      "wall_clock_ms": 245000,
-      "active_ms": 245000,
+      "start_ts": "2026-05-13T09:17:59Z",
+      "end_ts": "2026-05-13T09:18:45Z",
+      "wall_clock_ms": 46000,
+      "active_ms": 46399,
+      "end_reason": null
+    },
+    {
+      "case_id": "146bcec2-927b-44ca-8012-83eab81c328c",
+      "label": "Order #10918",
+      "parent_case_id": null,
+      "start_ts": "2026-05-13T09:19:26Z",
+      "end_ts": "2026-05-13T09:20:23Z",
+      "wall_clock_ms": 57000,
+      "active_ms": 56600,
       "end_reason": null
     }
   ],
@@ -89,6 +99,18 @@
       "variant": [
         "Unclassified -- chrome.exe",
         "Unclassified -- chrome.exe",
+        "Unclassified -- chrome.exe",
+        "Unclassified -- SAPGUI.exe",
+        "Unclassified -- EXCEL.EXE",
+        "Unclassified -- OUTLOOK.EXE"
+      ],
+      "frequency": 1,
+      "length": 6
+    },
+    {
+      "variant": [
+        "Unclassified -- chrome.exe",
+        "Unclassified -- chrome.exe",
         "Unclassified -- SAPGUI.exe",
         "Unclassified -- chrome.exe",
         "Unclassified -- SAPGUI.exe",
@@ -103,7 +125,7 @@
   "rework_loops": [
     {
       "activity_label": "Unclassified -- chrome.exe",
-      "rework_count": 4
+      "rework_count": 6
     },
     {
       "activity_label": "Unclassified -- SAPGUI.exe",
@@ -111,22 +133,23 @@
     }
   ],
   "meta": {
-    "normalization_run_at": "2026-05-14T21:49:09.502900+00:00",
+    "normalization_run_at": "2026-05-15T23:42:21.756289+00:00",
     "taxonomy_version": null,
     "taxonomy_path": null,
     "session_folder": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\sessions\\example-aggregate\\sess-2026-0513-0915",
     "worker_id": "demo-worker",
-    "raw_event_count": 38,
-    "collapsed_activity_count": 17,
-    "interaction_count": 9,
+    "raw_event_count": 165,
+    "dropped_jsonl_lines": 0,
+    "collapsed_activity_count": 23,
+    "interaction_count": 125,
     "matched_interactions": 0,
     "match_rate": 0.0,
-    "case_count": 3,
+    "case_count": 4,
     "annotations_present": true,
     "marker_edits_applied": 0,
-    "step_count": 0,
+    "step_count": 23,
     "step_state_breakdown": {
-      "auto_suggested": 0,
+      "auto_suggested": 23,
       "auto_matched": 0,
       "manually_authored": 0,
       "edited": 0
@@ -145,7 +168,9 @@
         "version": 1
       }
     ],
-    "app_vocabulary_matches": 0,
-    "app_vocabulary_hits_by_id": {}
+    "app_vocabulary_matches": 4,
+    "app_vocabulary_hits_by_id": {
+      "outlook": 4
+    }
   }
 }

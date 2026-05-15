@@ -163,6 +163,22 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  - {pkg:24s} -{human_mb(n)}")
                 removed_pkg += n
 
+    # 1b. Drop the orphaned distutils-precedence.pth. setuptools
+    #     installs this .pth to activate _distutils_hack on every
+    #     interpreter start; with setuptools / _distutils_hack removed
+    #     above it's orphaned and prints a ModuleNotFoundError to
+    #     stderr on every Python invocation -- which the tracker
+    #     surfaced in the viewer's analysis log. Remove it.
+    orphan_pth = site / "distutils-precedence.pth"
+    if orphan_pth.exists():
+        sz = orphan_pth.stat().st_size
+        try:
+            orphan_pth.unlink()
+            print(f"  - {'distutils-precedence.pth':24s} -{human_mb(sz)} (orphaned .pth)")
+            removed_pkg += sz
+        except OSError:
+            pass
+
     # 2. Recursive __pycache__ + tests purge.
     print()
     print("[2/4] Stripping __pycache__ and tests/ trees...")

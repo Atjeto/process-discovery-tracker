@@ -1,0 +1,154 @@
+{
+  "activity_stats": [
+    {
+      "activity_label": "Unclassified -- chrome.exe",
+      "frequency": 7,
+      "frequency_pct": 41.18,
+      "total_duration_ms": 62000,
+      "mean_ms": 8857,
+      "median_ms": 10200,
+      "p90_ms": 10680,
+      "p99_ms": 11058
+    },
+    {
+      "activity_label": "Unclassified -- SAPGUI.exe",
+      "frequency": 4,
+      "frequency_pct": 23.53,
+      "total_duration_ms": 45299,
+      "mean_ms": 11324,
+      "median_ms": 11199,
+      "p90_ms": 13070,
+      "p99_ms": 13367
+    },
+    {
+      "activity_label": "Unclassified -- EXCEL.EXE",
+      "frequency": 3,
+      "frequency_pct": 17.65,
+      "total_duration_ms": 22999,
+      "mean_ms": 7666,
+      "median_ms": 7699,
+      "p90_ms": 8499,
+      "p99_ms": 8679
+    },
+    {
+      "activity_label": "Unclassified -- OUTLOOK.EXE",
+      "frequency": 3,
+      "frequency_pct": 17.65,
+      "total_duration_ms": 17299,
+      "mean_ms": 5766,
+      "median_ms": 5399,
+      "p90_ms": 6359,
+      "p99_ms": 6575
+    }
+  ],
+  "case_stats": [
+    {
+      "case_id": "0a813303-aedb-4542-ad03-0537ae3dfd06",
+      "label": "Order #11320",
+      "parent_case_id": null,
+      "start_ts": "2026-05-11T13:20:12Z",
+      "end_ts": "2026-05-11T13:20:55Z",
+      "wall_clock_ms": 43000,
+      "active_ms": 43798,
+      "end_reason": null
+    },
+    {
+      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "label": "Order #11321",
+      "parent_case_id": null,
+      "start_ts": "2026-05-11T13:21:36Z",
+      "end_ts": "2026-05-11T13:22:38Z",
+      "wall_clock_ms": 62000,
+      "active_ms": 61900,
+      "end_reason": null
+    },
+    {
+      "case_id": "5f89d839-4965-4e27-a3b3-4d4ccfe8f054",
+      "label": "Order #11322",
+      "parent_case_id": null,
+      "start_ts": "2026-05-11T13:23:08Z",
+      "end_ts": "2026-05-11T13:23:50Z",
+      "wall_clock_ms": 42000,
+      "active_ms": 41899,
+      "end_reason": null
+    }
+  ],
+  "trace_variants": [
+    {
+      "variant": [
+        "Unclassified -- chrome.exe",
+        "Unclassified -- chrome.exe",
+        "Unclassified -- SAPGUI.exe",
+        "Unclassified -- EXCEL.EXE",
+        "Unclassified -- OUTLOOK.EXE"
+      ],
+      "frequency": 2,
+      "length": 5
+    },
+    {
+      "variant": [
+        "Unclassified -- chrome.exe",
+        "Unclassified -- chrome.exe",
+        "Unclassified -- SAPGUI.exe",
+        "Unclassified -- chrome.exe",
+        "Unclassified -- SAPGUI.exe",
+        "Unclassified -- EXCEL.EXE",
+        "Unclassified -- OUTLOOK.EXE"
+      ],
+      "frequency": 1,
+      "length": 7
+    }
+  ],
+  "app_outliers": [],
+  "rework_loops": [
+    {
+      "activity_label": "Unclassified -- chrome.exe",
+      "rework_count": 4
+    },
+    {
+      "activity_label": "Unclassified -- SAPGUI.exe",
+      "rework_count": 1
+    }
+  ],
+  "meta": {
+    "normalization_run_at": "2026-05-15T23:42:14.405253+00:00",
+    "taxonomy_version": null,
+    "taxonomy_path": null,
+    "session_folder": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\sessions\\example-aggregate\\sess-2026-0511-1320",
+    "worker_id": "demo-worker",
+    "raw_event_count": 125,
+    "dropped_jsonl_lines": 0,
+    "collapsed_activity_count": 17,
+    "interaction_count": 94,
+    "matched_interactions": 0,
+    "match_rate": 0.0,
+    "case_count": 3,
+    "annotations_present": true,
+    "marker_edits_applied": 0,
+    "step_count": 17,
+    "step_state_breakdown": {
+      "auto_suggested": 17,
+      "auto_matched": 0,
+      "manually_authored": 0,
+      "edited": 0
+    },
+    "canonical_process_id": null,
+    "canonical_version": null,
+    "drift_count": 0,
+    "phase_count": 0,
+    "app_vocabularies": [
+      {
+        "id": "outlook",
+        "version": 1
+      },
+      {
+        "id": "salesforce",
+        "version": 1
+      }
+    ],
+    "app_vocabulary_matches": 3,
+    "app_vocabulary_hits_by_id": {
+      "outlook": 3
+    }
+  }
+}

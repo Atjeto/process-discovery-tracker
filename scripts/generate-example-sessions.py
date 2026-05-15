@@ -1,21 +1,33 @@
 #!/usr/bin/env python
-"""Generate 5 synthetic sessions for the Aggregate view demo.
+"""Generate the bundled example / demo dataset for the viewer.
 
-Each session lives at sessions/example-aggregate/sess-<date>-<hhmm>/
-with manifest.json + events.jsonl. After writing, normalize.py --mine
-runs against each so stats.json / dfg.json / process_map.bpmn land
-alongside -- exactly what the Aggregate view consumes.
+The dataset models a realistic **order-processing** engagement: a
+worker takes sales orders through Salesforce, SAP, Excel, and Outlook.
 
-Run:
+Why a rewrite (2026-05): the previous generator emitted one interaction
+per window. `step_suggest.py` splits a step on every window change, so
+every candidate was a single interaction -- below the 2-interaction
+floor -- and auto-suggest produced **0 steps**. Nothing to annotate.
+
+This version emits realistic **interaction clusters**: when the worker
+is "in" a window they generate a burst of 4-9 interactions all sharing
+that window title. Each burst is exactly what `auto_suggest_steps`
+groups into one step. A happy-path case therefore yields ~5 named
+steps; the aggregate view gets real variants, a branching DFG, rework
+loops, and app outliers.
+
+Run (from repo root):
     viewer/python/python.exe scripts/generate-example-sessions.py
 
-Then in the viewer, Aggregate tab -> "Open sessions..." -> point at
-sessions/example-aggregate/.
+Then in the viewer: Compare Sessions tab -> "Open sessions to
+compare..." -> point at sessions/example-aggregate/.
 """
 
 from __future__ import annotations
 
 import json
+import random
+import shutil
 import subprocess
 import sys
 import uuid
@@ -27,29 +39,47 @@ SESSIONS_ROOT = REPO_ROOT / "sessions" / "example-aggregate"
 PYTHON_EXE = REPO_ROOT / "viewer" / "python" / "python.exe"
 NORMALIZE_PY = REPO_ROOT / "normalization" / "normalize.py"
 
-# Apps -- realistic exe names + pids. Same color routing the viewer
-# already maps in renderer.js's APP_COLOR_MAP.
+# Deterministic RNG -- the dataset must regenerate byte-identically so
+# it can live in git without spurious diffs.
+RNG = random.Random(20260516)
+
+# Apps -- realistic exe names + pids. Colours route through
+# renderer.js's APP_COLOR_MAP.
 APPS = {
-    "chrome":  {"app": "chrome.exe",  "pid": 1234},
-    "sap":     {"app": "SAPGUI.exe",  "pid": 5678},
-    "excel":   {"app": "EXCEL.EXE",   "pid": 9012},
-    "outlook": {"app": "OUTLOOK.EXE", "pid": 3456},
-    "notepad": {"app": "notepad.exe", "pid": 7890},
+    "chrome":  {"app": "chrome.exe",  "pid": 4120},
+    "sap":     {"app": "SAPGUI.exe",  "pid": 5180},
+    "excel":   {"app": "EXCEL.EXE",   "pid": 9220},
+    "outlook": {"app": "OUTLOOK.EXE", "pid": 3360},
+    "notepad": {"app": "notepad.exe", "pid": 7740},
 }
+
+# A 1x1 transparent PNG (the canonical 67-byte file) -- placeholder so
+# the screenshot dots are clickable and the gallery / hover-thumbnail
+# mechanics work in the demo. Real captures carry real screenshots;
+# the demo only needs a valid image file to exist at each path.
+_PLACEHOLDER_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000a49444154789c63000100000500010d0a2db4"
+    "0000000049454e44ae426082"
+)
+
+
+# ---- Builder ----------------------------------------------------------
 
 
 class Builder:
-    """Accumulates events with a moving virtual clock so each call
-    advances time naturally; output matches capture/events.js shape."""
+    """Accumulates events on a moving virtual clock. Output matches the
+    shape capture/events.js writes."""
 
-    def __init__(self, session_id: str, start: datetime):
+    def __init__(self, session_id: str, start: datetime, folder: Path):
         self.session_id = session_id
         self.t = start
+        self.folder = folder
         self.events: list[dict] = []
+        self.shot_n = 0
         self.system("session_start")
 
     def _ts(self) -> str:
-        # capture/events.js emits ISO with `Z` suffix via .toISOString().
         return self.t.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     def _push(self, ev_type: str, data: dict) -> None:
@@ -68,171 +98,279 @@ class Builder:
         self._push("system", {"kind": kind, **payload})
 
     def marker(self, marker_type: str, label: str | None = None) -> None:
-        d: dict = {"marker_type": marker_type, "label": label}
-        self._push("marker", d)
-
-    def activity(self, app_key: str, title: str, duration_s: float) -> None:
-        a = APPS[app_key]
-        self._push("activity", {
-            "app": a["app"],
-            "title": title,
-            "pid": a["pid"],
-            "duration_ms": int(duration_s * 1000),
-        })
-        self.advance(duration_s)
-
-    def interaction(self, app_key: str, kind: str, control_type: str,
-                    name: str, automation_id: str = "",
-                    window_title: str = "") -> None:
-        a = APPS[app_key]
-        data = {
-            "kind": kind,
-            "control_type": control_type,
-            "name": name,
-            "process_name": a["app"],
-            "pid": a["pid"],
-        }
-        if automation_id:
-            data["automation_id"] = automation_id
-        if window_title:
-            data["window_title"] = window_title
-        self._push("interaction", data)
-
-    def screenshot(self, path: str) -> None:
-        self.system("screenshot", path=path)
+        self._push("marker", {"marker_type": marker_type, "label": label})
 
     def idle(self, seconds: float) -> None:
         self.system("idle_start")
         self.advance(seconds)
         self.system("idle_end")
 
+    def screenshot(self) -> None:
+        self.shot_n += 1
+        rel = f"screenshots/shot_{self.shot_n:02d}.png"
+        shots_dir = self.folder / "screenshots"
+        shots_dir.mkdir(parents=True, exist_ok=True)
+        (self.folder / rel).write_bytes(_PLACEHOLDER_PNG)
+        self.system("screenshot", path=rel)
+
+    def step(self, app_key: str, window_title: str, activity_label: str,
+             interactions: list[tuple]) -> None:
+        """Emit one auto-suggestable step: an activity band plus a burst
+        of interactions that all share `window_title`. step_suggest.py
+        groups a same-window run into a single step, so this is the
+        atomic unit a happy-path case is built from.
+
+        interactions: list of (kind, control_type, name, value) tuples;
+        value may be None.
+        """
+        a = APPS[app_key]
+        # Per-interaction gaps must stay UNDER step_suggest.py's 3s
+        # idle-split threshold, otherwise a cluster fragments mid-step.
+        # Window changes (the next step) are what should split a step.
+        gaps = [round(RNG.uniform(0.5, 2.5), 1) for _ in interactions]
+        total = sum(gaps)
+        # Activity band timestamped at the cluster start, spanning it.
+        self._push("activity", {
+            "app": a["app"], "title": activity_label, "pid": a["pid"],
+            "duration_ms": int(total * 1000),
+        })
+        for (kind, ctl, name, value), gap in zip(interactions, gaps):
+            data = {
+                "kind": kind,
+                "control_type": ctl,
+                "name": name,
+                "process_name": a["app"],
+                "pid": a["pid"],
+                "window_title": window_title,
+                "automation_id": name.lower().replace(" ", "-"),
+            }
+            if value is not None:
+                data["value"] = value
+            self._push("interaction", data)
+            self.advance(gap)
+
     def close(self) -> None:
         self.system("session_end")
 
 
+# ---- Step library -----------------------------------------------------
+# Each function emits exactly one step (one interaction cluster). The
+# last interaction is usually an invoked Button so step_suggest.py's
+# namer produces a clean "App: <button>" name.
+
+
+def s_lookup(b: Builder, oid: str) -> None:
+    b.step("chrome", "Salesforce - Account lookup", "Salesforce - Account lookup", [
+        ("focus_changed", "Edit", "Customer ID field", None),
+        ("text_changed", "Edit", "Customer ID field", f"CUST-{oid}"),
+        ("value_changed", "Edit", "Customer ID field", f"CUST-{oid}"),
+        ("invoked", "Button", "Search", None),
+        ("selection_changed", "DataItem", "Customer result row", None),
+        ("invoked", "Button", "Open customer record", None),
+    ])
+
+
+def s_credit_check(b: Builder, oid: str) -> None:
+    b.step("chrome", "Salesforce - Credit check", "Salesforce - Credit check", [
+        ("invoked", "Button", "Run credit check", None),
+        ("selection_changed", "DataItem", "Credit rating", None),
+        ("invoked", "Button", "Approve credit", None),
+    ])
+
+
+def s_order_entry(b: Builder, oid: str) -> None:
+    b.step("chrome", f"Salesforce - Order #{oid}", f"Salesforce - Order #{oid} entry", [
+        ("value_changed", "Edit", "Product code", "SKU-4471"),
+        ("value_changed", "Edit", "Quantity", str(RNG.randint(2, 40))),
+        ("value_changed", "Edit", "Unit price", "49.99"),
+        ("value_changed", "Edit", "Shipping address", "144 Maple Ave"),
+        ("value_changed", "ComboBox", "Delivery method", "Express"),
+        ("invoked", "Button", "Save order", None),
+    ])
+
+
+def s_fix_address(b: Builder, oid: str) -> None:
+    """Rework: the worker returns to the Salesforce order to correct a
+    field after SAP rejected it. Same window as s_order_entry, so the
+    DFG / variants show a genuine revisit."""
+    b.step("chrome", f"Salesforce - Order #{oid}", f"Salesforce - Order #{oid} (fix)", [
+        ("value_changed", "Edit", "Shipping address", "144 Maple Avenue, Unit 2"),
+        ("value_changed", "ComboBox", "Delivery method", "Standard"),
+        ("invoked", "Button", "Save order", None),
+    ])
+
+
+def s_sap_create(b: Builder, oid: str) -> None:
+    b.step("sap", "SAP - Create Sales Order (VA01)", "SAP - Create Sales Order", [
+        ("focus_changed", "Edit", "Order type", None),
+        ("value_changed", "Edit", "Order type", "OR"),
+        ("value_changed", "Edit", "Sales organisation", "1000"),
+        ("value_changed", "Edit", "Material number", "SKU-4471"),
+        ("value_changed", "Edit", "Order quantity", str(RNG.randint(2, 40))),
+        ("invoked", "MenuItem", "Check document", None),
+        ("invoked", "Button", "Create sales order", None),
+    ])
+
+
+def s_notepad_lookup(b: Builder, oid: str) -> None:
+    """Exception: worker breaks out to a text file to look up an
+    internal product-code mapping SAP didn't recognise."""
+    b.step("notepad", "Notepad - Internal mappings.txt", "Notepad - Internal mappings", [
+        ("focus_changed", "Document", "Mappings file", None),
+        ("text_changed", "Document", "Mapping search", "SKU-4471"),
+        ("text_changed", "Document", "Mapping search", "SKU-4471 MAT-99820"),
+    ])
+
+
+def s_excel_track(b: Builder, oid: str) -> None:
+    b.step("excel", "Excel - Order Tracking.xlsx", "Excel - Order Tracking.xlsx", [
+        ("value_changed", "Edit", "Order number cell", f"Order #{oid}"),
+        ("value_changed", "Edit", "Status cell", "Created"),
+        ("value_changed", "Edit", "Date cell", "2026-05-16"),
+        ("value_changed", "Edit", "Owner cell", "demo-worker"),
+        ("invoked", "Button", "Save workbook", None),
+    ])
+
+
+def s_outlook_send(b: Builder, oid: str) -> None:
+    b.step("outlook", f"Outlook - Order #{oid} confirmation", "Outlook - Order confirmation", [
+        ("value_changed", "Edit", "To", "customer@example.com"),
+        ("value_changed", "Edit", "Subject", f"Order #{oid} confirmed"),
+        ("text_changed", "Document", "Message body", "Your order is confirmed."),
+        ("invoked", "Button", "Send", None),
+    ])
+
+
 # ---- Case templates ---------------------------------------------------
+# A case = a start marker, a sequence of steps, an end marker. Variety
+# across templates is what makes the aggregate DFG / variants / rework
+# panels interesting.
 
 
-def case_happy_path(b: Builder, order_id: str) -> None:
-    b.marker("start", f"Order #{order_id}")
-    b.activity("chrome", f"Salesforce - Account: Customer-{order_id}", 35)
-    b.interaction("chrome", "invoked", "Button", "Search",
-                  automation_id="search-customer",
-                  window_title=f"Salesforce - Account: Customer-{order_id}")
-    b.screenshot(f"screenshots/{order_id}_01.jpg")
-    b.activity("chrome", f"Salesforce - Order #{order_id} Detail", 45)
-    b.interaction("chrome", "value_changed", "Edit", "Quantity",
-                  automation_id="qty-input",
-                  window_title=f"Salesforce - Order #{order_id}")
-    b.activity("sap", "SAP Easy Access - [VA01]", 80)
-    b.interaction("sap", "invoked", "Button", "Create Order",
-                  automation_id="sap-create",
-                  window_title="SAP - VA01")
-    b.screenshot(f"screenshots/{order_id}_02.jpg")
-    b.activity("excel", "Order_Tracking.xlsx - Excel", 50)
-    b.interaction("excel", "value_changed", "Edit",
-                  f"Cell B{order_id[-2:]}",
-                  window_title="Order_Tracking.xlsx")
-    b.activity("outlook", "New Message - Outlook", 35)
+def case_happy(b: Builder, oid: str) -> None:
+    b.marker("start", f"Order #{oid}")
+    b.screenshot()
+    s_lookup(b, oid)
+    s_order_entry(b, oid)
+    s_sap_create(b, oid)
+    b.screenshot()
+    s_excel_track(b, oid)
+    s_outlook_send(b, oid)
     b.marker("end")
 
 
-def case_with_rework(b: Builder, order_id: str) -> None:
-    """SF -> SAP -> back to SF (rework) -> SAP again -> Excel -> Outlook"""
-    b.marker("start", f"Order #{order_id}")
-    b.activity("chrome", f"Salesforce - Account: Customer-{order_id}", 30)
-    b.activity("chrome", f"Salesforce - Order #{order_id} Detail", 40)
-    b.activity("sap", "SAP Easy Access - [VA01]", 50)
-    # Rework: realized a field was missing, went back to SF.
-    b.activity("chrome", f"Salesforce - Order #{order_id} Detail", 25)
-    b.interaction("chrome", "value_changed", "Edit", "ShipAddress",
-                  automation_id="ship-input",
-                  window_title=f"Salesforce - Order #{order_id}")
-    b.activity("sap", "SAP - Create Sales Order", 60)
-    b.activity("excel", "Order_Tracking.xlsx - Excel", 45)
-    b.activity("outlook", "New Message - Outlook", 30)
+def case_credit(b: Builder, oid: str) -> None:
+    """Adds a credit-check step -- a conditional branch in the DFG."""
+    b.marker("start", f"Order #{oid}")
+    b.screenshot()
+    s_lookup(b, oid)
+    s_credit_check(b, oid)
+    s_order_entry(b, oid)
+    s_sap_create(b, oid)
+    s_excel_track(b, oid)
+    s_outlook_send(b, oid)
     b.marker("end")
 
 
-def case_with_exception(b: Builder, order_id: str) -> None:
-    """SF -> SAP -> Notepad (lookup) -> SAP -> Excel -> Outlook"""
-    b.marker("start", f"Order #{order_id}")
-    b.activity("chrome", f"Salesforce - Account: Customer-{order_id}", 28)
-    b.activity("chrome", f"Salesforce - Order #{order_id} Detail", 35)
-    b.activity("sap", "SAP - Create Sales Order", 30)
-    # Exception: needed to look up a mapping in notepad.
-    b.activity("notepad", "internal-mappings.txt - Notepad", 25)
-    b.activity("sap", "SAP - Create Sales Order", 55)
-    b.activity("excel", "Order_Tracking.xlsx - Excel", 40)
-    b.activity("outlook", "New Message - Outlook", 30)
+def case_rework(b: Builder, oid: str) -> None:
+    """Worker revisits the Salesforce order to fix a field, then
+    re-runs SAP. Surfaces in the 'repeated activities' panel."""
+    b.marker("start", f"Order #{oid}")
+    b.screenshot()
+    s_lookup(b, oid)
+    s_order_entry(b, oid)
+    s_sap_create(b, oid)
+    s_fix_address(b, oid)
+    s_sap_create(b, oid)
+    b.screenshot()
+    s_excel_track(b, oid)
+    s_outlook_send(b, oid)
     b.marker("end")
 
 
-def case_idle_heavy(b: Builder, order_id: str) -> None:
-    b.marker("start", f"Order #{order_id}")
-    b.activity("chrome", f"Salesforce - Account: Customer-{order_id}", 25)
-    b.idle(180)  # 3-minute gap, e.g. analyst on call
-    b.activity("chrome", f"Salesforce - Order #{order_id} Detail", 40)
-    b.activity("sap", "SAP - Create Sales Order", 70)
-    b.idle(120)  # 2-minute gap
-    b.activity("excel", "Order_Tracking.xlsx - Excel", 45)
-    b.activity("outlook", "New Message - Outlook", 30)
+def case_exception(b: Builder, oid: str) -> None:
+    """Worker breaks out to Notepad mid-SAP -- Notepad shows up as an
+    app outlier (rare app)."""
+    b.marker("start", f"Order #{oid}")
+    b.screenshot()
+    s_lookup(b, oid)
+    s_order_entry(b, oid)
+    s_sap_create(b, oid)
+    s_notepad_lookup(b, oid)
+    s_sap_create(b, oid)
+    s_excel_track(b, oid)
+    s_outlook_send(b, oid)
     b.marker("end")
 
 
-def case_skip_outlook(b: Builder, order_id: str) -> None:
-    """Fast variant -- skips the confirmation email step."""
-    b.marker("start", f"Order #{order_id}")
-    b.activity("chrome", f"Salesforce - Account: Customer-{order_id}", 22)
-    b.activity("chrome", f"Salesforce - Order #{order_id} Detail", 35)
-    b.activity("sap", "SAP - Create Sales Order", 55)
-    b.activity("excel", "Order_Tracking.xlsx - Excel", 40)
+def case_skip_email(b: Builder, oid: str) -> None:
+    """Fast variant -- skips the confirmation email."""
+    b.marker("start", f"Order #{oid}")
+    b.screenshot()
+    s_lookup(b, oid)
+    s_order_entry(b, oid)
+    s_sap_create(b, oid)
+    s_excel_track(b, oid)
+    b.marker("end")
+
+
+def case_idle(b: Builder, oid: str) -> None:
+    """Happy path with two long idle gaps (worker pulled away)."""
+    b.marker("start", f"Order #{oid}")
+    b.screenshot()
+    s_lookup(b, oid)
+    b.idle(210)
+    s_order_entry(b, oid)
+    s_sap_create(b, oid)
+    b.idle(160)
+    s_excel_track(b, oid)
+    s_outlook_send(b, oid)
     b.marker("end")
 
 
 # ---- Session blueprints ----------------------------------------------
+# Ten sessions across five working days. The happy path dominates
+# (~60% of cases) with the variants sprinkled through so the aggregate
+# view has a realistic long tail.
 
-# (session_id, start_iso, [(case_fn, order_id), ...])
 SESSIONS = [
-    ("sess-2026-0512-0930",
-     datetime(2026, 5, 12, 9, 30, tzinfo=timezone.utc),
-     [(case_happy_path, "12345"), (case_happy_path, "12346"),
-      (case_happy_path, "12347"), (case_happy_path, "12348")]),
-
-    ("sess-2026-0513-0915",
-     datetime(2026, 5, 13, 9, 15, tzinfo=timezone.utc),
-     [(case_happy_path, "12350"), (case_with_rework, "12351"),
-      (case_happy_path, "12352")]),
-
-    ("sess-2026-0513-1402",
-     datetime(2026, 5, 13, 14, 2, tzinfo=timezone.utc),
-     [(case_happy_path, "12355"), (case_happy_path, "12356"),
-      (case_with_exception, "12357"), (case_happy_path, "12358"),
-      (case_happy_path, "12359")]),
-
-    ("sess-2026-0514-0858",
-     datetime(2026, 5, 14, 8, 58, tzinfo=timezone.utc),
-     [(case_idle_heavy, "12360"), (case_idle_heavy, "12361"),
-      (case_happy_path, "12362")]),
-
-    ("sess-2026-0514-1130",
-     datetime(2026, 5, 14, 11, 30, tzinfo=timezone.utc),
-     [(case_skip_outlook, "12365"), (case_happy_path, "12366"),
-      (case_skip_outlook, "12367"), (case_happy_path, "12368")]),
+    ("sess-2026-0511-0905", datetime(2026, 5, 11, 9, 5, tzinfo=timezone.utc),
+     [case_happy, case_happy, case_credit, case_happy]),
+    ("sess-2026-0511-1320", datetime(2026, 5, 11, 13, 20, tzinfo=timezone.utc),
+     [case_happy, case_rework, case_happy]),
+    ("sess-2026-0512-0850", datetime(2026, 5, 12, 8, 50, tzinfo=timezone.utc),
+     [case_happy, case_happy, case_exception, case_happy, case_happy]),
+    ("sess-2026-0512-1410", datetime(2026, 5, 12, 14, 10, tzinfo=timezone.utc),
+     [case_idle, case_happy, case_skip_email]),
+    ("sess-2026-0513-0915", datetime(2026, 5, 13, 9, 15, tzinfo=timezone.utc),
+     [case_happy, case_credit, case_happy, case_rework]),
+    ("sess-2026-0513-1130", datetime(2026, 5, 13, 11, 30, tzinfo=timezone.utc),
+     [case_happy, case_happy, case_happy]),
+    ("sess-2026-0514-0900", datetime(2026, 5, 14, 9, 0, tzinfo=timezone.utc),
+     [case_happy, case_exception, case_skip_email, case_happy]),
+    ("sess-2026-0514-1505", datetime(2026, 5, 14, 15, 5, tzinfo=timezone.utc),
+     [case_happy, case_credit, case_happy]),
+    ("sess-2026-0515-0840", datetime(2026, 5, 15, 8, 40, tzinfo=timezone.utc),
+     [case_happy, case_rework, case_happy, case_idle, case_happy]),
+    ("sess-2026-0515-1255", datetime(2026, 5, 15, 12, 55, tzinfo=timezone.utc),
+     [case_happy, case_happy, case_credit]),
 ]
 
 
-def build_session(session_id: str, start: datetime,
-                  cases: list[tuple]) -> Path:
-    b = Builder(session_id, start)
-    for case_fn, order_id in cases:
-        b.advance(10)  # brief gap before each case
-        case_fn(b, order_id)
-        b.advance(15)  # wrap-up after case end
+def build_session(session_id: str, start: datetime, cases: list) -> Path:
+    folder = SESSIONS_ROOT / session_id
+    folder.mkdir(parents=True, exist_ok=True)
+    b = Builder(session_id, start, folder)
+    # Order numbers are session-local but globally unique.
+    base = 10000 + int(session_id[-4:]) % 9000
+    for i, case_fn in enumerate(cases):
+        b.advance(RNG.uniform(8, 20))   # gap before the case
+        case_fn(b, str(base + i))
+        b.advance(RNG.uniform(12, 30))  # wrap-up after the case
     b.close()
 
-    end_ts = b.t.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     start_ts = start.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    end_ts = b.t.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     manifest = {
         "session_id": session_id,
         "engagement_id": "demo-order-processing",
@@ -240,11 +378,8 @@ def build_session(session_id: str, start: datetime,
         "ended_at": end_ts,
         "status": "closed",
         "purpose": "process",
-        "config": {"worker": {"id": "demo-worker"}},
+        "config": {"worker": {"id": "demo-worker", "role": "Order processor"}},
     }
-
-    folder = SESSIONS_ROOT / session_id
-    folder.mkdir(parents=True, exist_ok=True)
     (folder / "manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8")
     with open(folder / "events.jsonl", "w", encoding="utf-8") as f:
@@ -257,11 +392,15 @@ def normalize(folder: Path) -> bool:
     cmd = [str(PYTHON_EXE), str(NORMALIZE_PY), str(folder), "--mine"]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        tail = (r.stderr or r.stdout or "").splitlines()[-10:]
-        print("  [normalize FAILED]:")
+        tail = (r.stderr or r.stdout or "").splitlines()[-12:]
+        print("  [normalize FAILED]")
         for line in tail:
             print("    " + line)
         return False
+    # Surface the step count so a regression to "0 steps" is obvious.
+    for line in (r.stdout or "").splitlines():
+        if "auto-suggested" in line or "canonical match" in line:
+            print("  " + line.strip())
     return True
 
 
@@ -274,26 +413,29 @@ def main() -> int:
         print(f"ERROR: normalize.py not found at {NORMALIZE_PY}")
         return 1
 
+    # Wipe any prior example sessions so stale folders don't linger.
+    if SESSIONS_ROOT.exists():
+        shutil.rmtree(SESSIONS_ROOT)
     SESSIONS_ROOT.mkdir(parents=True, exist_ok=True)
     print(f"Writing demo sessions to: {SESSIONS_ROOT}\n")
 
-    ok_count = 0
+    ok = 0
+    total_cases = 0
     for session_id, start, cases in SESSIONS:
+        total_cases += len(cases)
         print(f"[{session_id}] {len(cases)} case(s)")
         folder = build_session(session_id, start, cases)
         if normalize(folder):
-            print("  -> normalized (stats.json + dfg.json + process_map.bpmn)")
-            ok_count += 1
-        else:
-            print("  -> normalize failed (session is still loadable as raw)")
+            ok += 1
 
     print()
-    print(f"Done. {ok_count}/{len(SESSIONS)} sessions normalized at:")
+    print(f"Done. {ok}/{len(SESSIONS)} sessions normalized, "
+          f"{total_cases} cases total, at:")
     print(f"  {SESSIONS_ROOT}")
     print()
-    print("In the Viewer: Aggregate tab -> 'Open sessions...' ->")
-    print("select that folder to load all sessions in one go.")
-    return 0
+    print("In the Viewer: Compare Sessions tab -> 'Open sessions to")
+    print("compare...' -> select that folder to load all sessions.")
+    return 0 if ok == len(SESSIONS) else 1
 
 
 if __name__ == "__main__":
