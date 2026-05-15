@@ -21,17 +21,18 @@ function buildSettingsHtml() {
 <style>
   :root {
     color-scheme: dark;
-    --bg:       #1a1a1a;
-    --bg-2:     #232323;
-    --bg-3:     #2c2c2c;
-    --bg-hover: #363636;
-    --border:   #3a3a3a;
-    --fg:       #e6e6e6;
-    --fg-2:     #a8a8a8;
-    --fg-3:     #6e6e6e;
-    --accent:   #3a86ff;
-    --good:     #4caf50;
-    --bad:      #c83434;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --bg-3:     #2E2E37;
+    --bg-hover: #3A3A44;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --accent-2: #5A7488;
+    --good:     #6E8A66;
+    --bad:      #885A42;
     --mono:     ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   }
   * { box-sizing: border-box; }
@@ -67,8 +68,8 @@ function buildSettingsHtml() {
   .status { padding: 10px 12px; border-radius: 4px;
     font-size: 12px; line-height: 1.5; min-height: 38px;
     background: var(--bg-2); border-left: 3px solid var(--fg-3); }
-  .status.good { border-color: var(--good); color: #c8e6c9; }
-  .status.bad  { border-color: var(--bad);  color: #ffcdd2; }
+  .status.good { border-color: var(--good); color: var(--fg); }
+  .status.bad  { border-color: var(--bad);  color: var(--fg); }
 
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
   .actions .left { margin-right: auto; }
@@ -77,7 +78,7 @@ function buildSettingsHtml() {
     font-family: inherit; font-size: 12px; cursor: pointer; }
   button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
   button.primary:hover:not(:disabled) { filter: brightness(1.1); }
 
   .pw-row { position: relative; }
@@ -177,7 +178,7 @@ function showObsSettingsWindow(opts) {
     title: "OBS Settings",
     resizable: false,
     autoHideMenuBar: true,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#14141A",
     skipTaskbar: false,
     webPreferences: {
       nodeIntegration: true,

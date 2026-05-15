@@ -18,14 +18,15 @@ function buildHelpHtml() {
 <style>
   :root {
     color-scheme: dark;
-    --bg:       #1a1a1a;
-    --bg-2:     #232323;
-    --bg-3:     #2c2c2c;
-    --border:   #3a3a3a;
-    --fg:       #e6e6e6;
-    --fg-2:     #a8a8a8;
-    --fg-3:     #6e6e6e;
-    --accent:   #3a86ff;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --bg-3:     #2E2E37;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --accent-2: #5A7488;
     --mono:     ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   }
   * { box-sizing: border-box; }
@@ -71,7 +72,7 @@ function buildHelpHtml() {
 </style></head><body>
 
 <h1>Process Discovery Tracker — Help</h1>
-<div class="sub">Capture side · v0.1</div>
+<div class="sub">Capture side · v0.3</div>
 
 <h2>What this app does</h2>
 <p>Polls the foreground window every 5 seconds and writes a per-session JSONL of activity, marker, and system events.
@@ -95,10 +96,36 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span></td>
       <td>Manual screenshot — annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
 </table>
-<p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>.</p>
+<p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>. The three are also surfaced in the <strong>hotkey overlay</strong> — a small click-through corner widget that stays visible across windows. Toggle from the tray (<em>Show / hide hotkey overlay</em>); visibility persists across launches.</p>
 
 <h2>The label picker</h2>
 <p>Opened by the Start hotkey or the tray <em>Fire Start marker…</em> action. Type a label and press Enter to fire. If <code>process_labels</code> is configured for this engagement, those entries appear as filterable suggestions; otherwise the picker is a free-form input.</p>
+<p>If a Start marker is already open when you fire a new one, the picker shows a banner naming what will close. Default behaviour is <strong>close-then-open</strong> — closes the open marker, then opens the new one as a sibling. Press <span class="kbd">Shift</span>+<span class="kbd">Enter</span> instead of plain Enter to nest the new marker inside the current one for one fire, or click the <em>Nest under current</em> button. The tray gains <em>Fire Start (nest under current)</em> and <em>Quick start (nested)</em> sub-menus when a marker is open if you prefer to opt into nesting from the tray.</p>
+
+<h2>Live Session window</h2>
+<p>The tray entry <em>Show Live Session window</em> opens a 460×720 always-on-top window that merges everything the old operator panel and status window did:</p>
+<ul>
+  <li>Recording indicator + session timer</li>
+  <li>Currently-tracking app + title</li>
+  <li>Open-marker stack with nesting depth labels</li>
+  <li>Counters (events / markers / screenshots / interactions)</li>
+  <li>Recent-events feed</li>
+  <li>Inline fire-marker input with a <em>Nest under current</em> checkbox + live "will close X" / "will keep X open" hint</li>
+  <li>Sync-marker fire button (with optional shared sync ID)</li>
+  <li>Inline end-session confirm — no browser dialog</li>
+</ul>
+<p>The legacy status window remains in the tray as <em>Show status window (legacy)</em> for one release as a fallback in case the merged window has a regression. New work lands in the Live Session window.</p>
+
+<h2>First-run welcome</h2>
+<p>The first launch on a machine pops a 560×540 welcome window with three buttons: open the Live Session window, open this help, dismiss. After dismissal it never re-pops automatically. Reopenable any time via tray → Help → <em>Show welcome window</em>.</p>
+
+<h2>Multi-monitor screenshot</h2>
+<p>By default, screenshots follow the foreground display rather than always capturing the primary monitor. Override via <code>screenshots.display</code> in your config:</p>
+<ul>
+  <li><code>active</code> (default) — picks the display containing the focused window</li>
+  <li><code>primary</code> — legacy behaviour, always the primary display</li>
+  <li><code>all</code> — captures every display, emits one screenshot event per file with a <code>_d&lt;displayId&gt;.jpg</code> suffix</li>
+</ul>
 
 <h2>Tray menu (when a session is running)</h2>
 <ul>
@@ -125,7 +152,11 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 </ul>
 
 <h2>Per-session config</h2>
-<p>Optional YAML loaded by setting <code>PDT_CONFIG=path\\to\\config.yaml</code> before launch. Controls process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, and engagement metadata. See <code>capture/sample-config.yaml</code> in the repo for the full schema with comments.</p>
+<p>Two ways to configure a session:</p>
+<ul>
+  <li><strong>Session config window</strong> (recommended) — tray → <em>Session config…</em> opens a form for engagement ID, worker, idle threshold, process labels, and OBS scene. Saves to <code>%APPDATA%\\process-discovery-tracker\\quick-config.yaml</code>; the next launch picks it up automatically.</li>
+  <li><strong>Manual YAML</strong> — set <code>PDT_CONFIG=path\\to\\config.yaml</code> before launch for the full schema (process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, engagement metadata). See <code>capture/sample-config.yaml</code> in the repo.</li>
+</ul>
 
 <h2>OBS recording: first-time setup (5 minutes)</h2>
 <p>OBS is optional but recommended. With OBS running, the capture app automatically starts a screen recording when you start a session, stops it when you end, and writes a tiny <code>obs/sync.json</code> file so the analyst's viewer can sync the timeline to the video.</p>
@@ -208,7 +239,7 @@ function showHelpWindow() {
     height: 760,
     title: "PDT Help",
     autoHideMenuBar: true,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#14141A",
     webPreferences: {
       /* Help is static read-only content; we run it under the
          strictest mode: sandboxed renderer with no Node access. */

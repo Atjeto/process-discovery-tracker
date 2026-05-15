@@ -4,6 +4,45 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Aggregate filter date-range hint.** "YYYY-MM-DD" hint label appears next
+  to the From / To date inputs in the Aggregate view so the expected format
+  is obvious in environments where browsers render date inputs as plain text.
+
+### Changed
+
+- **Capture window palette aligned to viewer.** All capture-side windows
+  (help, OBS settings, session config, label picker, prep-app vocab,
+  legacy status) now use the same stratified-dark sage / slate ladder as
+  the viewer (`--bg: #14141A` through `--bg-5: #484854`,
+  `--fg: #D8D6CE`, `--accent: #6E8A66` sage,
+  `--accent-2: #5A7488` slate). Eliminates the electric-blue accent
+  (`#3a86ff`) that lingered in the older tray surfaces and clashed with
+  the rest of the app.
+- **Capture help window** rewritten to document the v0.3 surface area:
+  Live Session window, hotkey overlay, first-run welcome, marker
+  close-then-open default, multi-monitor screenshot config, and the
+  Session config window (vs. raw YAML).
+- **Viewer help modal** now documents undo / redo (Ctrl+Z / Ctrl+Y),
+  the right-click context menu on activity bands (insert markers,
+  scope-to-case, jump-to-case-start/end), and the analysis Cancel
+  button.
+- **README** gains a "What's new in v0.3" section near the top so a
+  first-time reader doesn't have to dig through the changelog to learn
+  about the live session window, undo, marker close-then-open, etc.
+
+### Removed
+
+- **Last `window.confirm` from the legacy status window.** End-session
+  click in `capture/status-window.js` now opens an inline confirm row
+  (Cancel / End session) styled to match the operator-panel pattern,
+  rather than a raw browser confirm dialog. With this, no
+  `window.confirm` or `window.prompt` remains in either app's normal
+  flow.
+
 ## [0.3.0] - 2026-05-15
 
 UX overhaul (capture + viewer) plus structured logging and CI from a

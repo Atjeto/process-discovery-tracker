@@ -2,6 +2,24 @@
 
 Internal tool for capturing and analyzing process discovery sessions. Full design in [../process_discovery_tracker_design.md](../process_discovery_tracker_design.md).
 
+## What's new in v0.3
+
+- **Live Session window** (capture). One window with the recording indicator, session timer, open-marker stack, counters, recent-events feed, fire-marker input, sync marker, and inline end-session confirm. Replaces the old operator panel + status window split.
+- **Hotkey overlay** (capture). Always-on-top, click-through corner widget showing the three primary hotkeys. Toggle from the tray; visibility persisted.
+- **First-run welcome window** (capture). 560×540 onboarding shown once per machine; reopenable via tray → Help.
+- **Marker close-then-open by default** (capture). Pressing Start with an existing open marker closes it and opens a sibling, eliminating the "4 starts, 0 ends, all nested" pathology. Nest semantics still available via a checkbox / submenu / Shift+Enter.
+- **Multi-monitor screenshot follows foreground** (capture). New `screenshots.display` config — `"active"` (default), `"primary"`, `"all"`.
+- **Native Windows toast on recorder / OBS failure** (capture). Failures become visible instead of silently breaking the session.
+- **Session config window** (capture). Tray entry opens a form for engagement ID, worker, idle threshold, process labels, OBS scene; saves to `quick-config.yaml` for the next launch.
+- **Annotations undo / redo** (viewer). `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) on every step / phase / marker / note edit. Stack capped at 50, reset on session switch.
+- **Time-axis ticks + event-density histogram + per-case lanes** (viewer). Wall-clock labels along the timeline, an activity-density strip, and one row per case so dangling / overlapping bands stay readable.
+- **Right-click context menu on activity bands** (viewer). Insert Start/End markers at the clicked moment; a faint `⋯` hover hint advertises the menu.
+- **Themed confirm / prompt modals** (viewer + capture). No more raw browser dialogs. Destructive confirms style the OK button red and default focus to Cancel.
+- **Analysis progress streaming + Cancel** (viewer). Long analyses show progress and can be aborted via a red Cancel button.
+- **Stratified-dark palette** across all surfaces. Sage / slate accents, no electric blue. Capture and viewer windows now share the same look.
+
+Items intentionally deferred to v0.4+: see [docs/SPEC-DEFERRED.md](docs/SPEC-DEFERRED.md).
+
 ## Layout
 
 | Folder | Role |

@@ -26,18 +26,19 @@ function buildStatusHtml() {
 <style>
   :root {
     color-scheme: dark;
-    --bg:       #1a1a1a;
-    --bg-2:     #232323;
-    --bg-3:     #2c2c2c;
-    --bg-hover: #363636;
-    --border:   #3a3a3a;
-    --fg:       #e6e6e6;
-    --fg-2:     #a8a8a8;
-    --fg-3:     #6e6e6e;
-    --accent:   #3a86ff;
-    --danger:   #c83434;
-    --rec:      #d04848;
-    --warn:     #d4a040;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --bg-3:     #2E2E37;
+    --bg-hover: #3A3A44;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --accent-2: #5A7488;
+    --danger:   #885A42;
+    --rec:      #903838;
+    --warn:     #A08050;
     --mono:     ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   }
   * { box-sizing: border-box; }
@@ -105,13 +106,23 @@ function buildStatusHtml() {
   .actions button:hover:not(:disabled) { background: var(--bg-hover); }
   .actions button:disabled { color: var(--fg-3); cursor: not-allowed; }
   .actions button.start {
-    background: var(--accent); border-color: var(--accent); color: #fff;
+    background: var(--accent); border-color: var(--accent); color: var(--bg);
   }
   .actions button.start:hover:not(:disabled) { filter: brightness(1.1); }
   .actions button.end {
     background: transparent; border-color: var(--danger); color: var(--danger);
   }
-  .actions button.end:hover:not(:disabled) { background: var(--danger); color: #fff; }
+  .actions button.end:hover:not(:disabled) { background: var(--danger); color: var(--fg); }
+
+  /* Inline end-session confirm row (replaces window.confirm). */
+  .end-confirm { display: none; grid-column: 1 / -1; gap: 6px;
+    align-items: center; padding: 6px; background: var(--bg-2);
+    border: 1px solid var(--danger); border-radius: 4px; }
+  .end-confirm.open { display: flex; }
+  .end-confirm .label { flex: 1; font-size: 12px; color: var(--fg); padding-left: 4px; }
+  .end-confirm button { padding: 6px 12px; }
+  .end-confirm button.yes { background: var(--danger); border-color: var(--danger); color: var(--fg); }
+  .end-confirm button.yes:hover { filter: brightness(1.15); }
 
   hr { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
 </style></head><body>
@@ -154,6 +165,11 @@ function buildStatusHtml() {
   <button id="btn-pause">Pause</button>
   <button id="btn-shot">Screenshot</button>
   <button class="full end" id="btn-end">End session</button>
+  <div class="end-confirm" id="end-confirm">
+    <span class="label">End the capture session?</span>
+    <button id="end-no">Cancel</button>
+    <button class="yes" id="end-yes">End session</button>
+  </div>
 </div>
 
 <script>
@@ -251,16 +267,19 @@ async function tick() {
   const pauseBtn = document.getElementById("btn-pause");
   const shotBtn  = document.getElementById("btn-shot");
   const endBtn   = document.getElementById("btn-end");
+  const endRow   = document.getElementById("end-confirm");
+  const confirmOpen = endRow && endRow.classList.contains("open");
   if (s.tracking) {
     startBtn.style.display = "none";
     pauseBtn.style.display = "";
     shotBtn.style.display  = "";
-    endBtn.style.display   = "";
+    endBtn.style.display   = confirmOpen ? "none" : "";
   } else {
     startBtn.style.display = "";
     pauseBtn.style.display = "none";
     shotBtn.style.display  = "none";
     endBtn.style.display   = "none";
+    if (confirmOpen) endRow.classList.remove("open");
   }
   pauseBtn.textContent = s.paused ? "Resume" : "Pause";
   shotBtn.disabled = !s.screenshotsEnabled;
@@ -274,11 +293,22 @@ document.getElementById("btn-pause").addEventListener("click", () =>
   ipcRenderer.invoke("pdt:togglePause").then(tick));
 document.getElementById("btn-shot").addEventListener("click", () =>
   ipcRenderer.invoke("pdt:manualScreenshot"));
-document.getElementById("btn-end").addEventListener("click", async () => {
-  if (confirm("End the capture session?")) {
-    await ipcRenderer.invoke("pdt:endSession");
-    tick();
-  }
+// Inline end-session confirm row, mirrors the operator-panel pattern.
+const endRow = document.getElementById("end-confirm");
+const endBtn = document.getElementById("btn-end");
+document.getElementById("btn-end").addEventListener("click", () => {
+  endBtn.style.display = "none";
+  endRow.classList.add("open");
+});
+document.getElementById("end-no").addEventListener("click", () => {
+  endRow.classList.remove("open");
+  endBtn.style.display = "";
+});
+document.getElementById("end-yes").addEventListener("click", async () => {
+  await ipcRenderer.invoke("pdt:endSession");
+  endRow.classList.remove("open");
+  endBtn.style.display = "";
+  tick();
 });
 
 tick();
@@ -296,7 +326,7 @@ function showStatusWindow(opts) {
     minimizable: true,
     maximizable: false,
     autoHideMenuBar: true,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#14141A",
     skipTaskbar: false,
     webPreferences: {
       /* Trusted first-party HTML loaded via a data: URL. CSP in the

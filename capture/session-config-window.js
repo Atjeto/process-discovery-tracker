@@ -25,17 +25,18 @@ function buildHtml() {
 <style>
   :root {
     color-scheme: dark;
-    --bg:       #1a1a1a;
-    --bg-2:     #232323;
-    --bg-3:     #2c2c2c;
-    --bg-hover: #363636;
-    --border:   #3a3a3a;
-    --fg:       #e6e6e6;
-    --fg-2:     #a8a8a8;
-    --fg-3:     #6e6e6e;
-    --accent:   #3a86ff;
-    --good:     #4caf50;
-    --bad:      #c83434;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --bg-3:     #2E2E37;
+    --bg-hover: #3A3A44;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --accent-2: #5A7488;
+    --good:     #6E8A66;
+    --bad:      #885A42;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -63,14 +64,14 @@ function buildHtml() {
   .help-hint { font-size: 11px; color: var(--fg-3); margin-top: 6px; }
   .status { padding: 8px 10px; border-radius: 4px; font-size: 12px;
     background: var(--bg-2); border-left: 3px solid var(--fg-3); min-height: 32px; }
-  .status.good { border-color: var(--good); color: #c8e6c9; }
-  .status.bad  { border-color: var(--bad);  color: #ffcdd2; }
+  .status.good { border-color: var(--good); color: var(--fg); }
+  .status.bad  { border-color: var(--bad);  color: var(--fg); }
   .actions { display: flex; gap: 8px; justify-content: flex-end; }
   button { padding: 8px 16px; background: var(--bg-3); color: var(--fg);
     border: 1px solid var(--border); border-radius: 3px;
     font-family: inherit; font-size: 12px; cursor: pointer; }
   button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
   button.primary:hover { filter: brightness(1.1); }
 </style></head><body>
 
@@ -221,7 +222,7 @@ function showSessionConfigWindow(opts) {
     title: "Session config",
     resizable: true,
     autoHideMenuBar: true,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#14141A",
     skipTaskbar: false,
     webPreferences: {
       nodeIntegration: true,

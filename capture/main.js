@@ -595,7 +595,7 @@ function promptForAppName() {
       title: "Prep app vocabulary",
       resizable: false, frame: true,
       autoHideMenuBar: true,
-      backgroundColor: "#1a1a1a",
+      backgroundColor: "#14141A",
       modal: false,
       webPreferences: {
         nodeIntegration: true, contextIsolation: false, sandbox: false,
@@ -609,8 +609,9 @@ function promptForAppName() {
     const html = `<!doctype html><html><head><meta charset="utf-8">
       <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
       <style>
-        :root{color-scheme:dark;--bg:#1a1a1a;--bg-2:#232323;--bg-3:#2c2c2c;
-          --border:#3a3a3a;--fg:#e6e6e6;--fg-2:#a8a8a8;--fg-3:#6e6e6e;--accent:#3a86ff}
+        :root{color-scheme:dark;--bg:#14141A;--bg-2:#22222A;--bg-3:#2E2E37;--bg-4:#3A3A44;
+          --border:#424250;--fg:#D8D6CE;--fg-2:#A8A69E;--fg-3:#807E78;
+          --accent:#6E8A66;--accent-2:#5A7488}
         *{box-sizing:border-box}
         html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
           font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:13px;line-height:1.5}
@@ -624,8 +625,8 @@ function promptForAppName() {
         .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:auto}
         button{padding:8px 16px;background:var(--bg-3);color:var(--fg);
           border:1px solid var(--border);border-radius:3px;cursor:pointer;font-family:inherit;font-size:12px}
-        button:hover{background:#363636;border-color:var(--accent)}
-        button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+        button:hover{background:var(--bg-4);border-color:var(--accent)}
+        button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
         button.primary:hover{filter:brightness(1.1)}
         .hint{color:var(--fg-3);font-size:11px}
       </style></head><body>

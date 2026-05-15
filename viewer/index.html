@@ -339,8 +339,9 @@
           <button id="btn-normalize-all-cancel" class="log-cancel-btn" type="button" style="display:none" title="Stop the running aggregate analysis after the current session finishes">Cancel</button>
           <button id="btn-renormalize-canonical">Re-match to Process Template...</button>
           <input type="search" id="agg-filter" placeholder="Filter by activity, app, or worker..." />
-          <label class="cb">From <input type="date" id="agg-from" /></label>
-          <label class="cb">To <input type="date" id="agg-to" /></label>
+          <label class="cb" title="YYYY-MM-DD">From <input type="date" id="agg-from" /></label>
+          <label class="cb" title="YYYY-MM-DD">To <input type="date" id="agg-to" /></label>
+          <span class="hint" style="align-self:center">YYYY-MM-DD</span>
           <div class="agg-level-switcher" id="agg-level-switcher">
             <button class="agg-level-btn active" data-level="flow">Flow</button>
             <button class="agg-level-btn" data-level="steps">Steps</button>
@@ -696,16 +697,23 @@
             <tr><td><span class="kbd">Space</span></td><td>Play / pause video</td></tr>
             <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Scrub 5 seconds (hold <span class="kbd">Shift</span> for 10s)</td></tr>
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>
+            <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last step / phase / marker / note edit</td></tr>
+            <tr><td><span class="kbd">Ctrl+Y</span> / <span class="kbd">Ctrl+Shift+Z</span></td><td>Redo</td></tr>
+            <tr><td><span class="kbd">Ctrl+K</span></td><td>Open the command palette</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
+          <p class="help-hint">Undo / redo capture every annotation edit (step / phase / marker / note). Stack is capped at 50 and resets when you switch sessions.</p>
           <h3>Click behaviors</h3>
           <ul class="help-list">
             <li>Any timeline band, marker, screenshot dot, or event row → seek the video</li>
+            <li><strong>Right-click an activity band</strong> on the timeline → context menu: insert a Start/End marker at the clicked moment, scope view to the case under the cursor, jump to the case start / end. A faint <code>⋯</code> appears on hover to advertise the menu.</li>
             <li>DFG node in aggregate → drill to first matching session at the activity timestamp</li>
             <li>Marker row in the sidebar → seek; <strong>double-click a Start marker</strong> → rename</li>
             <li>Recent session in the empty state → reload that session</li>
           </ul>
+          <h3>Cancelling a long analysis</h3>
+          <p>Once an analysis kicks off the log host opens automatically. A red <strong>Cancel</strong> button in the log summary stops the in-flight Python child (graceful first, hard kill 500ms later). Works for single-session normalize, extended normalize, template match, and app vocabulary bootstrap. The aggregate <em>Analyze all</em> loop also has its own Cancel button.</p>
         </section>
 
         <section class="help-section" data-section="trouble">
