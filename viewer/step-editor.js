@@ -29,7 +29,8 @@
       const isSel = s.step_id === selectedId;
       row.className = "step-row" +
         (isSel ? " selected" : "") +
-        (isMulti ? " multi-selected" : "");
+        (isMulti ? " multi-selected" : "") +
+        (s.state === "hidden" ? " step-hidden" : "");
       row.dataset.stepId = s.step_id;
       const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
       row.innerHTML = `
@@ -126,6 +127,7 @@
         <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
         <button id="btn-step-split">Split</button>
         <button id="btn-step-merge">Merge with next</button>
+        <button id="btn-step-hide" title="${step.state === "hidden" ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${step.state === "hidden" ? "Unhide" : "Hide as noise"}</button>
         <button id="btn-step-delete" class="danger">Delete</button>
       </div>`;
     document.getElementById("btn-step-save").addEventListener("click", () => {
@@ -146,6 +148,9 @@
     });
     document.getElementById("btn-step-delete").addEventListener("click", () =>
       callbacks.onDelete && callbacks.onDelete(step.step_id));
+    const hideBtn = document.getElementById("btn-step-hide");
+    if (hideBtn) hideBtn.addEventListener("click", () =>
+      callbacks.onToggleHide && callbacks.onToggleHide(step.step_id));
     document.getElementById("btn-step-split").addEventListener("click", () =>
       callbacks.onSplit && callbacks.onSplit(step.step_id));
     document.getElementById("btn-step-merge").addEventListener("click", () =>

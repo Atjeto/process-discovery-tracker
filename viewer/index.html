@@ -239,6 +239,8 @@
           <div class="editor-toolbar">
             <button id="btn-add-manual-step" class="primary">+ Add step</button>
             <button id="btn-group-into-phase" disabled title="Ctrl+click 2+ steps in the list below, then click to group them into a new phase">Group selected into phase</button>
+            <button id="btn-delete-selected-steps" disabled title="Ctrl+click 2+ steps in the list below, then delete them all at once">Delete selected</button>
+            <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
             <span class="hint">J / K navigate · S split · M merge · N new · Ctrl+click multi-select · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
@@ -268,6 +270,7 @@
                   <button class="chip" data-state="auto_matched" title="auto-matched"><span class="state-icon state-auto_matched"></span></button>
                   <button class="chip" data-state="manually_authored" title="manually authored"><span class="state-icon state-manually_authored"></span></button>
                   <button class="chip" data-state="edited" title="edited"><span class="state-icon state-edited"></span></button>
+                  <button class="chip" data-state="hidden" title="hidden (suppressed by you)"><span class="state-icon state-hidden"></span></button>
                 </div>
                 <span class="list-filter-meta" id="step-filter-meta"></span>
               </div>

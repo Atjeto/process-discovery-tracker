@@ -14,6 +14,22 @@ def parse_ts(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
+def _is_ignored(data: dict, ignored: list[str] | None) -> bool:
+    """True if this interaction belongs to a denylisted app. Matches a
+    case-insensitive substring against both process_name and
+    window_title, so a denylist of ["obs"] catches both "obs64.exe"
+    (process) and "OBS 31.0.1" (window-title-derived app name)."""
+    if not ignored:
+        return False
+    proc = (data.get("process_name") or "").lower()
+    title = (data.get("window_title") or "").lower()
+    for term in ignored:
+        t = (term or "").strip().lower()
+        if t and (t in proc or t in title):
+            return True
+    return False
+
+
 def auto_suggest_steps(
     events: list[dict[str, Any]],
     *,
@@ -22,14 +38,24 @@ def auto_suggest_steps(
     step_min_interactions: int = 2,
     step_max_idle_ms: int = 5000,
     session_id: str = "",
+    ignored_processes: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Walk interaction events in time order within each case. Produce
     auto_suggested steps per the algorithm in annotation-model.md §4.1.
+
+    `ignored_processes` is a denylist of substrings: any interaction
+    whose process_name or window_title contains one of these terms is
+    dropped before step suggestion. This is how an analyst suppresses
+    noise apps (OBS, the tracker UI itself, Teams) that the UIA
+    recorder picks up but that aren't part of the process being
+    discovered.
     """
     # Group by top-level case (last case_id in case_ids list, or None)
     by_case: dict[str | None, list[dict[str, Any]]] = {}
     for ev in events:
         if ev.get("type") != "interaction":
+            continue
+        if _is_ignored(ev.get("data", {}), ignored_processes):
             continue
         cids = ev.get("data", {}).get("case_ids") or []
         top = cids[-1] if cids else None

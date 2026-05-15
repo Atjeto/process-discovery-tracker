@@ -93,17 +93,27 @@ def write_annotations(session_folder: Path, anno: dict) -> None:
         json.dump(anno, f, indent=2)
 
 
+def _step_ignored_processes(annotations: dict) -> list[str]:
+    """Pull the per-session step denylist from annotations.json. Shape:
+    {"step_filters": {"ignored_processes": ["obs64.exe", "OBS"]}}.
+    Returns [] when absent so step suggestion behaves as before."""
+    sf = (annotations or {}).get("step_filters") or {}
+    procs = sf.get("ignored_processes") or []
+    return [str(p) for p in procs if str(p).strip()]
+
+
 def _merge_steps(existing: list, fresh: list) -> list:
-    """Preserve manually_authored and edited steps. Replace auto_*
-    steps with the latest fresh suggestions only if their case has any
-    fresh suggestions (otherwise leave the prior auto_suggested in place
-    so the analyst doesn't lose context on a partial re-run)."""
-    by_state = {"manually_authored": [], "edited": []}
+    """Preserve manually_authored, edited, and hidden steps. Replace
+    auto_* steps with the latest fresh suggestions. A `hidden` step is
+    one the analyst manually suppressed -- preserving it means a
+    re-analyze won't resurrect it as a fresh auto_suggested row."""
+    by_state = {"manually_authored": [], "edited": [], "hidden": []}
     for s in existing or []:
         st = s.get("state")
         if st in by_state:
             by_state[st].append(s)
-    return by_state["manually_authored"] + by_state["edited"] + (fresh or [])
+    return (by_state["manually_authored"] + by_state["edited"]
+            + by_state["hidden"] + (fresh or []))
 
 
 def _merge_phases(existing: list, fresh: list) -> list:
@@ -313,7 +323,10 @@ def normalize(
         )
         matched_interactions = total_interactions - len(unmatched)
         if unmatched:
-            fallback = auto_suggest_steps(unmatched, session_id=session_id_str)
+            fallback = auto_suggest_steps(
+                unmatched, session_id=session_id_str,
+                ignored_processes=_step_ignored_processes(existing_anno),
+            )
             fresh_steps = matched_steps + fallback
         else:
             fresh_steps = matched_steps
@@ -338,7 +351,10 @@ def normalize(
         print(f"[normalize] canonical match: {len(matched_steps)} steps "
               f"({matched_interactions}/{total_interactions} interactions matched)")
     else:
-        auto_steps = auto_suggest_steps(with_cases, session_id=session_id_str)
+        auto_steps = auto_suggest_steps(
+            with_cases, session_id=session_id_str,
+            ignored_processes=_step_ignored_processes(existing_anno),
+        )
         merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps)
         existing_anno["steps"] = merged_steps
         existing_anno.setdefault("matched_against", None)

@@ -939,6 +939,9 @@ main { flex: 1; overflow: auto; }
 .state-icon.state-auto_matched      { background: var(--accent); }
 .state-icon.state-manually_authored { background: var(--accent-2); }
 .state-icon.state-edited            { background: var(--accent-3); }
+.state-icon.state-hidden            { background: transparent; border: 1px solid var(--fg-4); }
+/* Hidden steps render dimmed in the list so they're visibly suppressed. */
+.step-row.step-hidden { opacity: 0.4; }
 
 /* ===== Step / phase detail editor (compact) ===== */
 .editor-detail-pane label {

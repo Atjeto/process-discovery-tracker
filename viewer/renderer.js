@@ -849,7 +849,13 @@ function syncCaseDropdown(selectEl, cases, currentValue) {
 function stepMatchesFilter(s, f, scopeCaseId) {
   if (scopeCaseId && s.case_id !== scopeCaseId) return false;
   if (f.text && !(s.name || "").toLowerCase().includes(f.text.toLowerCase())) return false;
-  if (f.states && f.states.size > 0 && !f.states.has(s.state)) return false;
+  if (f.states && f.states.size > 0) {
+    if (!f.states.has(s.state)) return false;
+  } else {
+    // No explicit state filter: hidden steps stay out of the list by
+    // default (they're suppressed noise). The "hidden" chip reveals them.
+    if (s.state === "hidden") return false;
+  }
   return true;
 }
 
@@ -876,8 +882,10 @@ function renderStepsLevel() {
     (sid) => {
       if (multiSelectedStepIds.has(sid)) multiSelectedStepIds.delete(sid);
       else multiSelectedStepIds.add(sid);
-      const btn = $("#btn-group-into-phase");
-      if (btn) btn.disabled = multiSelectedStepIds.size < 2;
+      const grpBtn = $("#btn-group-into-phase");
+      if (grpBtn) grpBtn.disabled = multiSelectedStepIds.size < 2;
+      const delBtn = $("#btn-delete-selected-steps");
+      if (delBtn) delBtn.disabled = multiSelectedStepIds.size < 2;
       // Re-render so the user sees the multi-selected state -- otherwise
       // Ctrl+click feels broken because nothing visibly changes.
       renderStepsLevel();
@@ -892,6 +900,7 @@ function renderStepsLevel() {
     onSplit: splitStep,
     onMerge: mergeStepWithNext,
     onJumpToFlow: jumpToStepInFlow,
+    onToggleHide: toggleStepHidden,
   });
   const span = getSpan();
   if (span) {
@@ -1030,6 +1039,30 @@ async function deleteStep(stepId) {
   if (selectedStepId === stepId) selectedStepId = null;
   renderStepsLevel();
   toast("Step deleted", "success");
+}
+
+/* Toggle a step's "hidden" state. Hidden steps drop out of the list
+   (unless the hidden filter chip is on) and survive re-analyze via
+   _merge_steps. The pre-hide state is stashed on `_prev_state` so
+   unhiding restores it. */
+async function toggleStepHidden(stepId) {
+  if (!currentSession) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const step = anno.steps.find(s => s.step_id === stepId);
+  if (!step) return;
+  if (step.state === "hidden") {
+    step.state = step._prev_state || "auto_suggested";
+    delete step._prev_state;
+    await persistAnnotations(anno, "unhide step");
+    toast("Step restored", "success");
+  } else {
+    step._prev_state = step.state;
+    step.state = "hidden";
+    await persistAnnotations(anno, "hide step");
+    if (selectedStepId === stepId) selectedStepId = null;
+    toast("Step hidden — reveal via the hidden filter chip", "success");
+  }
+  renderStepsLevel();
 }
 
 async function splitStep(stepId) {
@@ -1324,6 +1357,121 @@ async function groupIntoPhase() {
 if ($("#btn-add-manual-phase"))   $("#btn-add-manual-phase").addEventListener("click", addManualPhase);
 if ($("#btn-group-into-phase"))   $("#btn-group-into-phase").addEventListener("click", groupIntoPhase);
 
+/* Bulk-delete the Ctrl+click multi-selection. One confirm for the
+   whole set; Ctrl+Z restores. */
+async function deleteSelectedSteps() {
+  if (!currentSession) return;
+  const ids = Array.from(multiSelectedStepIds);
+  if (ids.length < 2) return;
+  const ok = await confirmModal({
+    title: "Delete " + ids.length + " steps?",
+    message: "Delete the " + ids.length + " selected steps?",
+    detail: "Ctrl+Z restores them all.",
+    okLabel: "Delete " + ids.length,
+    danger: true,
+  });
+  if (!ok) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const idSet = new Set(ids);
+  anno.steps = anno.steps.filter(s => !idSet.has(s.step_id));
+  await persistAnnotations(anno, "delete " + ids.length + " steps");
+  if (idSet.has(selectedStepId)) selectedStepId = null;
+  multiSelectedStepIds.clear();
+  const grpBtn = $("#btn-group-into-phase");
+  if (grpBtn) grpBtn.disabled = true;
+  const delBtn = $("#btn-delete-selected-steps");
+  if (delBtn) delBtn.disabled = true;
+  renderStepsLevel();
+  toast(ids.length + " steps deleted", "success");
+}
+if ($("#btn-delete-selected-steps")) {
+  $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
+}
+
+/* ===== Ignored apps (step-noise denylist) =====
+   Apps the analyst checks here are written to annotations.json under
+   step_filters.ignored_processes; step_suggest.py drops their
+   interactions before step suggestion. Saving re-analyzes the session
+   so the step list refreshes immediately. */
+function distinctSessionApps() {
+  // Distinct process_name across the session's interaction events,
+  // with an interaction count so the analyst can spot the noisy ones.
+  const counts = new Map();
+  for (const ev of (currentSession && currentSession.events) || []) {
+    if (ev.type !== "interaction") continue;
+    const proc = (ev.data && ev.data.process_name) || "(unknown)";
+    counts.set(proc, (counts.get(proc) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([proc, n]) => ({ proc, count: n }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function openIgnoredAppsDialog() {
+  if (!currentSession) { toast("Open a session first.", ""); return; }
+  const apps = distinctSessionApps();
+  if (!apps.length) {
+    toast("No interaction data in this session — nothing to filter.", "");
+    return;
+  }
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const current = new Set((anno.step_filters.ignored_processes || []).map(s => String(s).toLowerCase()));
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML =
+    '<div class="modal" role="dialog" style="max-width:460px">' +
+      '<header class="modal-header"><h2>Ignored apps</h2>' +
+        '<button class="icon-btn modal-close" id="ia-close" title="Close">✕</button></header>' +
+      '<div style="padding:14px 18px">' +
+        '<p class="meta" style="margin-top:0">Apps you tick here are left out of step suggestions — useful for OBS, the tracker itself, or anything that isn\'t part of the process you\'re mapping. Saving re-analyzes the session.</p>' +
+        '<div id="ia-list" style="max-height:320px;overflow:auto;margin:10px 0"></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">' +
+          '<button id="ia-cancel">Cancel</button>' +
+          '<button id="ia-save" class="primary">Save &amp; re-analyze</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(backdrop);
+
+  const list = backdrop.querySelector("#ia-list");
+  list.innerHTML = apps.map((a, i) => {
+    const checked = current.has(a.proc.toLowerCase()) ? " checked" : "";
+    return '<label class="cb" style="display:flex;gap:8px;padding:5px 4px;align-items:center">' +
+      '<input type="checkbox" data-proc="' + escapeHtml(a.proc) + '"' + checked + ' />' +
+      '<span style="flex:1">' + escapeHtml(a.proc) + '</span>' +
+      '<span class="meta">' + a.count + ' interactions</span>' +
+      '</label>';
+  }).join("");
+
+  function close() { backdrop.remove(); }
+  backdrop.querySelector("#ia-close").addEventListener("click", close);
+  backdrop.querySelector("#ia-cancel").addEventListener("click", close);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+
+  backdrop.querySelector("#ia-save").addEventListener("click", async () => {
+    const picked = Array.from(list.querySelectorAll("input[type=checkbox]"))
+      .filter(cb => cb.checked)
+      .map(cb => cb.dataset.proc);
+    anno.step_filters.ignored_processes = picked;
+    // Settings change -- write directly (not via the undo stack).
+    await ipcRenderer.invoke("viewer:saveAnnotations", {
+      sessionFolder: currentSession.sessionFolder,
+      annotations: anno,
+    });
+    close();
+    toast(picked.length
+      ? "Ignoring " + picked.length + " app(s) — re-analyzing..."
+      : "No apps ignored — re-analyzing...", "success");
+    // Re-analyze so the step list reflects the new denylist.
+    const normBtn = $("#btn-normalize");
+    if (normBtn) normBtn.click();
+  });
+}
+if ($("#btn-ignored-apps")) {
+  $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
+}
+
 /* AM.2: heuristic phase-grouping suggestions. Walks the step list and
    produces candidate groupings using two rules:
      1. Consecutive steps from the same app (apps are stable for a
@@ -1570,6 +1718,8 @@ function ensureAnnoShape(anno) {
   a.notes = a.notes || [];
   a.marker_edits = a.marker_edits || [];
   a.drift_markers = a.drift_markers || [];
+  a.step_filters = a.step_filters || { ignored_processes: [], ignored_window_titles: [] };
+  if (!Array.isArray(a.step_filters.ignored_processes)) a.step_filters.ignored_processes = [];
   if (currentSession) a.session_id = (currentSession.manifest && currentSession.manifest.session_id) || a.session_id || "";
   currentSession.annotations = a;
   return a;

@@ -6,6 +6,46 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (round-2 UX feedback — step-noise solution)
+
+- **Step-noise denylist.** A session captured with OBS (or any app the
+  UIA recorder picks up) visible used to produce dozens of unannotatable
+  steps ("OBS 31.0.1: 12 interactions"). New per-session denylist:
+  `annotations.json` gains `step_filters.ignored_processes`;
+  `step_suggest.py` drops matching interactions (case-insensitive
+  substring on process_name + window_title) before step suggestion.
+  New "Ignored apps..." button on the Steps view toolbar opens a dialog
+  listing every app observed in the session with its interaction count;
+  ticking an app + Save re-analyzes the session with that app excluded.
+- **Bulk-delete steps.** Ctrl+click 2+ steps, then "Delete selected"
+  removes them in one confirm. Ctrl+Z restores the whole batch.
+- **Hide step as noise.** New "Hide as noise" button on the step editor.
+  Hidden steps drop out of the list (revealed via a new "hidden" filter
+  chip) and — unlike a delete — survive re-analyze: `_merge_steps`
+  preserves the `hidden` state so a re-suggest doesn't resurrect them.
+
+### Fixed (round-2 UX feedback — bug bash)
+
+- **Resize handle did nothing.** `.timeline-scroll` had `flex: 1`
+  (flex-basis 0) which overrode its `height: var(--timeline-height)`,
+  so the `#resize-timeline` drag updated the CSS variable but nothing
+  moved. Now `flex: 0 0 auto` so the height var drives the viewport.
+- **Zoom buttons overlapped the tabs** in Compare Sessions — the
+  verbiage rename had blown the tab labels up. Header now wraps;
+  `.map-zoom` is shrink-resistant; the BPMN tab label trimmed back to
+  "Process diagram".
+- **Misleading `+` cursor** on the timeline (`crosshair`) changed to a
+  normal cursor; activity-band hover uses `pointer`. Legend gained an
+  interaction hint.
+- **Screenshot dots** toned down from 14px glowing circles to quiet
+  9px markers that brighten on hover.
+- **Cases dropdown** showed a lone "All cases" with no explanation on
+  an unanalyzed session; now adds a "(no cases yet — click Analyze
+  session first)" hint.
+- **Steps editor scroll** — the selected-step editor scrolled off-screen
+  when the step list was scrolled. The detail pane is now `sticky` so it
+  stays put while the list scrolls.
+
 ### Added (P2.2 full + audit fixes)
 
 - **P2.2 Variant flow visualization (full).** New `viewer/variant-viewer.js`
