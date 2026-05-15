@@ -34,33 +34,115 @@ function toast(text, kind) {
 /* ============ Recent sessions (localStorage) ====================== */
 
 const RECENT_KEY = "pdt.recentSessions";
+const EXAMPLE_SEED_KEY = "pdt.examplesSeeded";
+
 function getRecent() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
   catch (_) { return []; }
+}
+function setRecent(list) {
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
 }
 function pushRecent(sessionFolder, label) {
   let list = getRecent().filter((r) => r.folder !== sessionFolder);
   list.unshift({ folder: sessionFolder, label, ts: Date.now() });
   list = list.slice(0, 8);
-  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  setRecent(list);
   renderRecent();
 }
+function removeRecent(folder) {
+  setRecent(getRecent().filter((r) => r.folder !== folder));
+  renderRecent();
+}
+function clearAllRecent() {
+  setRecent([]);
+  renderRecent();
+}
+
+/* Resolve where the bundled example sessions live. In dev the path is
+   ../sessions/example-aggregate relative to the renderer's __dirname;
+   in a packaged release electron-packager's --extra-resource puts
+   them under process.resourcesPath/example-aggregate/. */
+function bundledExamplesDir() {
+  const candidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, "example-aggregate") : null,
+    path.resolve(__dirname, "..", "sessions", "example-aggregate"),
+  ].filter(Boolean);
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c;
+  }
+  return null;
+}
+
+/* First-launch seeding: if the user has no recents AND we ship example
+   sessions, push them all into recents so the empty-state lands on
+   something clickable. Guarded by a one-shot flag so wiping recents
+   doesn't trigger re-seeding -- the user is in control after the
+   first launch. */
+function seedExamplesIfFirstLaunch() {
+  if (localStorage.getItem(EXAMPLE_SEED_KEY)) return;
+  if (getRecent().length > 0) {
+    localStorage.setItem(EXAMPLE_SEED_KEY, "1");
+    return;
+  }
+  const root = bundledExamplesDir();
+  if (!root) {
+    localStorage.setItem(EXAMPLE_SEED_KEY, "1");
+    return;
+  }
+  let entries;
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory());
+  } catch (_) {
+    localStorage.setItem(EXAMPLE_SEED_KEY, "1");
+    return;
+  }
+  const stamp = Date.now();
+  const list = entries.map((d, i) => ({
+    folder: path.join(root, d.name),
+    label: "example - " + d.name,
+    ts: stamp - i,  // preserve display order
+    example: true,
+  }));
+  if (list.length) setRecent(list);
+  localStorage.setItem(EXAMPLE_SEED_KEY, "1");
+}
+
 function renderRecent() {
   const host = $("#recent-list-session");
   if (!host) return;
+  const clearBtn = $("#recent-clear-all");
   const list = getRecent();
   if (!list.length) {
     host.innerHTML = '<li style="cursor:default;background:transparent;border:none;color:var(--fg-4)">No recent sessions yet.</li>';
+    if (clearBtn) clearBtn.style.display = "none";
     return;
   }
-  host.innerHTML = list.map((r) =>
-    '<li data-folder="' + escapeHtml(r.folder) + '">' +
-      '<span class="label">' + escapeHtml(r.label || path.basename(r.folder)) + '</span>' +
-      '<span class="when">' + relTime(r.ts) + '</span>' +
-    '</li>'
-  ).join("");
+  if (clearBtn) clearBtn.style.display = "";
+  host.innerHTML = list.map((r) => {
+    let missing = false;
+    try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
+    const label = escapeHtml(r.label || path.basename(r.folder));
+    const exampleTag = r.example ? '<span class="recent-tag">example</span>' : "";
+    const missingTag = missing ? '<span class="recent-missing-tag">missing</span>' : "";
+    const cls = missing ? "missing" : "";
+    return '<li data-folder="' + escapeHtml(r.folder) + '" class="' + cls + '" title="' + escapeHtml(r.folder) + '">' +
+      '<span class="label">' + label + exampleTag + missingTag + '</span>' +
+      '<span class="when">' + (r.example ? "" : relTime(r.ts)) + '</span>' +
+      '<button class="recent-remove" type="button" title="Remove from recents">×</button>' +
+    '</li>';
+  }).join("");
   host.querySelectorAll("li[data-folder]").forEach((li) => {
-    li.addEventListener("click", () => loadSessionIntoView(li.dataset.folder));
+    li.addEventListener("click", (e) => {
+      if (e.target.closest(".recent-remove")) return;
+      loadSessionIntoView(li.dataset.folder);
+    });
+  });
+  host.querySelectorAll(".recent-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeRecent(btn.closest("li").dataset.folder);
+    });
   });
 }
 function relTime(ms) {
@@ -72,6 +154,19 @@ function relTime(ms) {
   if (h < 24) return h + "h ago";
   return Math.round(h / 24) + "d ago";
 }
+
+/* Clear-all button lives outside the <ul> so it doesn't get nuked on
+   every renderRecent(). Wire once at boot. */
+(function wireRecentClearAll() {
+  const btn = document.getElementById("recent-clear-all");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    if (!getRecent().length) return;
+    if (confirm("Remove all entries from Recents? Bundled example sessions can be re-seeded by clearing localStorage.")) {
+      clearAllRecent();
+    }
+  });
+})();
 
 /* ============ Tabs ================================================ */
 
@@ -2678,8 +2773,9 @@ $("#help-modal").addEventListener("click", (e) => {
 
 /* ============ Boot ================================================ */
 
+seedExamplesIfFirstLaunch();
 renderRecent();
-$("#topbar-meta").textContent = "v0.1 · " + new Date().toLocaleDateString();
+$("#topbar-meta").textContent = "v0.2 · " + new Date().toLocaleDateString();
 
 /* If launched with --session=<path>, the main process pushes the path
    via this channel. Open it without any further user click. */

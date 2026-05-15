@@ -32,8 +32,15 @@ viewer/python/
 # Staged at distribution-build time, deleted after; never checked in
 viewer/normalization/
 
-# Captured sessions are local data, not source
-sessions/
+# Captured sessions are local data, not source.
+# Exception: sessions/example-aggregate/ is the bundled reference set
+# that ships inside the viewer release for the empty-state Recents
+# seed. Everything else under sessions/ stays ignored. Using
+# `sessions/*` (not `sessions/`) so the negation re-include works --
+# git ignores directories matched by `dir/` recursively without
+# re-examining child paths.
+sessions/*
+!sessions/example-aggregate/
 
 # Generated icons
 *.ico

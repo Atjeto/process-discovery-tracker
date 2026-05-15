@@ -74,26 +74,33 @@ Write-Host ""
 function Remove-LongPathFolder([string]$folder) {
   #PowerShell's Remove-Item -Recurse hits MAX_PATH on deep pm4py
   #__pycache__ trees. cmd's rmdir /S /Q handles long paths via the
-  #native Windows shell. Stderr is discarded explicitly: under
-  #$ErrorActionPreference="Stop", any stray "path not found" stderr
-  #line from cmd would otherwise terminate the script even when the
-  #overall delete succeeded.
+  #native Windows shell. PowerShell 5.1 wraps native stderr as
+  #NativeCommandError records regardless of `2>$null`, and under
+  #$ErrorActionPreference="Stop" those still terminate the script.
+  #Locally relaxing the preference around the call is the only thing
+  #that reliably suppresses it.
   if (-not (Test-Path $folder)) { return }
-  & cmd /c "rmdir /S /Q `"$folder`"" 2>$null | Out-Null
-  if (Test-Path $folder) {
-    #Fallback: PowerShell's own deletion (long paths handled in PS 5+
-    #on Win10 with long-path support enabled).
-    Remove-Item -Recurse -Force -LiteralPath $folder -ErrorAction SilentlyContinue
-  }
-  if (Test-Path $folder) {
-    #Last resort: robocopy mirror from an empty dir. Robocopy uses
-    #UNC long-path semantics internally and reliably wins where both
-    #rmdir and Remove-Item give up. Exit codes 0-7 are success-ish.
-    $empty = Join-Path $env:TEMP "pdt-empty-$(Get-Random)"
-    New-Item -ItemType Directory -Path $empty | Out-Null
-    & robocopy $empty $folder /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /R:1 /W:1 2>$null | Out-Null
-    Remove-Item -Recurse -Force -LiteralPath $empty -ErrorAction SilentlyContinue
-    Remove-Item -Recurse -Force -LiteralPath $folder -ErrorAction SilentlyContinue
+  $saved = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & cmd /c "rmdir /S /Q `"$folder`"" 2>&1 | Out-Null
+    if (Test-Path $folder) {
+      #Fallback: PowerShell's own deletion (long paths handled in PS 5+
+      #on Win10 with long-path support enabled).
+      Remove-Item -Recurse -Force -LiteralPath $folder -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $folder) {
+      #Last resort: robocopy mirror from an empty dir. Robocopy uses
+      #UNC long-path semantics internally and reliably wins where both
+      #rmdir and Remove-Item give up. Exit codes 0-7 are success-ish.
+      $empty = Join-Path $env:TEMP "pdt-empty-$(Get-Random)"
+      New-Item -ItemType Directory -Path $empty | Out-Null
+      & robocopy $empty $folder /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /R:1 /W:1 2>&1 | Out-Null
+      Remove-Item -Recurse -Force -LiteralPath $empty -ErrorAction SilentlyContinue
+      Remove-Item -Recurse -Force -LiteralPath $folder -ErrorAction SilentlyContinue
+    }
+  } finally {
+    $ErrorActionPreference = $saved
   }
 }
 

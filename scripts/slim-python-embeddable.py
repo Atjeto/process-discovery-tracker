@@ -77,16 +77,48 @@ def folder_bytes(p: Path) -> int:
 
 
 def rm_tree(p: Path) -> int:
-    """Remove a directory tree, returning bytes freed."""
+    """Remove a directory tree, returning bytes freed.
+
+    Falls back to robocopy /MIR from an empty dir on Windows when
+    shutil.rmtree trips over MAX_PATH. PM4Py has three __pycache__
+    paths deep enough (250+ chars) that the normal delete fails with
+    [WinError 3] "The system cannot find the path specified."
+    Robocopy uses long-path semantics internally and reliably wins.
+    """
     if not p.exists():
         return 0
     size = folder_bytes(p)
     try:
         shutil.rmtree(p)
-    except OSError as e:
-        print(f"  WARN: failed to remove {p}: {e}")
+        return size
+    except OSError:
+        pass
+    # Long-path fallback (Windows only -- robocopy ships in Win10+).
+    import os
+    import subprocess
+    import tempfile
+    if os.name != "nt":
         return 0
-    return size
+    empty = Path(tempfile.mkdtemp(prefix="pdt-empty-"))
+    try:
+        subprocess.run(
+            ["robocopy", str(empty), str(p), "/MIR",
+             "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP",
+             "/R:1", "/W:1"],
+            capture_output=True,
+        )
+        try:
+            p.rmdir()
+        except OSError:
+            pass
+        if not p.exists():
+            return size
+        return 0
+    finally:
+        try:
+            empty.rmdir()
+        except OSError:
+            pass
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -124,6 +124,13 @@ function stripLocales(appDir) {
     extraResource: [
       path.join(PROJECT_DIR, "python"),
       path.join(PROJECT_DIR, "..", "normalization"),
+      /* Example sessions for the empty state on first launch.
+         renderer.js seedExamplesIfFirstLaunch() looks for these in
+         process.resourcesPath/example-aggregate/ and populates the
+         Recents list so the SME has something clickable out of the
+         box. ~1.3 MB, no video / screenshots, just the JSONL + XES +
+         BPMN that the demo aggregate view was built against. */
+      path.join(PROJECT_DIR, "..", "sessions", "example-aggregate"),
     ],
   });
 
