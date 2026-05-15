@@ -6,6 +6,46 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (deferred-spec follow-up pass)
+
+- **Process Template form editor** replaces the regex-parsed read-only
+  step list with an actual editable form: rename / reorder / add /
+  delete steps, edit name and description, with reorder arrows on
+  every row. Round-trips through `js-yaml` so the underlying match
+  rules and other fields the analyst doesn't see stay intact. Match
+  rules themselves remain in the Advanced YAML editor.
+- **Phase drag-reorder** (P2.6). Step rows inside a phase can now be
+  dragged to reorder; a drop indicator follows the cursor and the
+  source row dims while dragging. Reorders persist via
+  `annotations.json`.
+- **Screenshot gallery** (P2.7). New "Open gallery..." link on the
+  Screenshots side-panel opens a full-pane overlay. ←/→ steps
+  through screenshots, Space toggles auto-advance (~1.2s), Esc
+  closes, click the image to seek the video. Filter by trigger
+  reason (manual / app switch / activity resumed / marker fire).
+- **Window-title runs lane on the Flow timeline** (P2.12). New lane
+  between density and steps showing one band per consecutive
+  (app, title) run. Labels render only when bands are wide enough
+  (~50px); narrow bands stay as colour stripes so the rhythm of
+  title changes is visible without crowding labels.
+- **Connect Flow / Steps / Phases viewport state** (P2.3). Switching
+  view modes now transfers zoom and scroll fraction across the
+  three modes — zoom Flow to 3x, scroll mid-session, switch to
+  Steps and you stay at the same place.
+- **Multi-version Process Template comparison** (AM.1). Every save
+  of a Process Template archives a snapshot under
+  `.template-history/<basename>/<timestamp>.yaml`. New "Compare
+  Process Template versions" panel in the Compare Sessions view
+  lets you pick two versions and see a structural diff: steps and
+  phases added / removed / renamed.
+- **Variant heat** (P2.2, scoped first cut). The Variants table
+  in the Compare Sessions view now renders with a frequency-bar
+  heat strip per row, an explicit session-count badge, and a
+  visual divergence highlight on activities that appear at the
+  same position across multiple variants (where paths split).
+  Full timeline-overlay rendering deferred — that needs PM4Py
+  per-step variant data plumbing on the Python side.
+
 ### Changed (verbiage pass for business-analyst audience)
 
 A targeted sweep through user-facing labels, headers, button text,

@@ -67,6 +67,68 @@
         if (callbacks.onRemoveStep) callbacks.onRemoveStep(phase.phase_id, sid);
       });
     });
+
+    // P2.6: drag-reorder of step rows within the phase. The rows have
+    // draggable="true" set in the template above; wire up dragstart /
+    // dragover / drop with a visual drop indicator following the cursor.
+    const list = document.getElementById("phase-step-list");
+    if (list && callbacks.onReorderSteps) {
+      let dragSid = null;
+      let indicator = null;
+      function showIndicator(target, before) {
+        if (!indicator) {
+          indicator = document.createElement("div");
+          indicator.className = "phase-drag-indicator";
+          list.style.position = "relative";
+          list.appendChild(indicator);
+        }
+        const lr = list.getBoundingClientRect();
+        const tr = target.getBoundingClientRect();
+        const top = (before ? tr.top : tr.bottom) - lr.top - 1;
+        indicator.style.top = top + "px";
+        indicator.style.display = "block";
+      }
+      function hideIndicator() { if (indicator) indicator.style.display = "none"; }
+      list.querySelectorAll(".phase-step-row").forEach((row) => {
+        row.addEventListener("dragstart", (e) => {
+          dragSid = row.dataset.stepId;
+          row.classList.add("dragging");
+          // Required by Firefox to actually enable drag.
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", dragSid);
+          }
+        });
+        row.addEventListener("dragend", () => {
+          row.classList.remove("dragging");
+          hideIndicator();
+          dragSid = null;
+        });
+        row.addEventListener("dragover", (e) => {
+          if (!dragSid || row.dataset.stepId === dragSid) return;
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+          // Decide insert-before vs insert-after based on cursor Y.
+          const tr = row.getBoundingClientRect();
+          const before = e.clientY < tr.top + tr.height / 2;
+          showIndicator(row, before);
+          row._pdtInsertBefore = before;
+        });
+        row.addEventListener("drop", (e) => {
+          e.preventDefault();
+          hideIndicator();
+          if (!dragSid || row.dataset.stepId === dragSid) return;
+          const targetSid = row.dataset.stepId;
+          const before = !!row._pdtInsertBefore;
+          if (callbacks.onReorderSteps) {
+            callbacks.onReorderSteps(phase.phase_id, dragSid, targetSid, before);
+          }
+        });
+      });
+      list.addEventListener("dragleave", (e) => {
+        if (e.target === list) hideIndicator();
+      });
+    }
     document.getElementById("btn-phase-save").addEventListener("click", () => {
       if (!callbacks.onSave) return;
       callbacks.onSave({

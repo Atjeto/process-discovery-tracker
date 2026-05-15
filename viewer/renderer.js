@@ -364,6 +364,9 @@ function activateTab(name) {
       if (window.PdtBpmn) window.PdtBpmn.fit();
       if (window.PdtDfg) window.PdtDfg.fit();
     }, 100);
+    // AM.1: refresh the version compare list when the analyst lands
+    // on the aggregate view (and a template is loaded).
+    if (typeof refreshTemplateVersions === "function") refreshTemplateVersions().catch(() => {});
   }
   if (name === "vocabularies") {
     reloadVocabList();
@@ -400,7 +403,70 @@ const VIEW_MODE_HELP = {
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
 };
 
+/* P2.3: viewport state transfer on mode switch. Each mode owns its own
+   scroll container (the Flow timeline, the Steps mini-timeline, the
+   Phases mini-timeline). When the analyst flips views we snapshot the
+   outgoing mode's zoom + scroll fraction and apply them to the
+   incoming mode -- "stayed at the same zoom + position" feel without
+   forcing the three modes to share a single DOM scroll container. */
+function _viewportSnapshotForMode(mode) {
+  let zoom = 1, scrollFrac = 0;
+  if (mode === "flow") {
+    zoom = zoomFactor;
+    const el = document.getElementById("timeline-scroll");
+    if (el && el.scrollWidth > el.clientWidth) {
+      scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
+    }
+  } else if (mode === "steps") {
+    zoom = stepZoom;
+    const el = document.querySelector("#session-layout-steps .mini-timeline-scroll");
+    if (el && el.scrollWidth > el.clientWidth) {
+      scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
+    }
+  } else if (mode === "phases") {
+    zoom = phaseZoom;
+    const el = document.querySelector("#session-layout-phases .mini-timeline-scroll");
+    if (el && el.scrollWidth > el.clientWidth) {
+      scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
+    }
+  }
+  return { zoom: Math.max(1, zoom || 1), scrollFrac: Math.max(0, Math.min(1, scrollFrac || 0)) };
+}
+function _viewportApplyToMode(mode, snap) {
+  // The render functions read zoom from the appropriate variable, so
+  // set the variable BEFORE re-rendering. Then restore scrollLeft
+  // after a frame so the host has expanded.
+  if (mode === "flow") {
+    zoomFactor = snap.zoom;
+    renderTimeline();
+    requestAnimationFrame(() => {
+      const el = document.getElementById("timeline-scroll");
+      if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
+    });
+  } else if (mode === "steps") {
+    stepZoom = snap.zoom;
+    renderStepsLevel();
+    requestAnimationFrame(() => {
+      const el = document.querySelector("#session-layout-steps .mini-timeline-scroll");
+      if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
+    });
+  } else if (mode === "phases") {
+    phaseZoom = snap.zoom;
+    renderPhasesLevel();
+    requestAnimationFrame(() => {
+      const el = document.querySelector("#session-layout-phases .mini-timeline-scroll");
+      if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
+    });
+  }
+}
+
 function setLevel(name) {
+  // P2.3: capture the outgoing mode's viewport so we can transfer it
+  // to the incoming mode. Skip the very first call (currentLevel
+  // wasn't yet displayed).
+  const incomingSnap = (currentLevel && currentLevel !== name)
+    ? _viewportSnapshotForMode(currentLevel)
+    : null;
   currentLevel = name;
   const layouts = ["flow", "steps", "phases"];
   for (const l of layouts) {
@@ -409,9 +475,13 @@ function setLevel(name) {
   }
   const help = document.getElementById("view-mode-help");
   if (help) help.textContent = VIEW_MODE_HELP[name] || "";
-  if (name === "steps")  renderStepsLevel();
-  if (name === "phases") renderPhasesLevel();
-  if (name === "flow")   renderTimeline();
+  if (incomingSnap) {
+    _viewportApplyToMode(name, incomingSnap);
+  } else {
+    if (name === "steps")  renderStepsLevel();
+    if (name === "phases") renderPhasesLevel();
+    if (name === "flow")   renderTimeline();
+  }
   // P2.4: refresh the shortcuts overlay for the new view.
   renderShortcutsOverlay();
 }
@@ -1080,6 +1150,7 @@ function renderPhasesLevel() {
     onSave: savePhase,
     onDelete: deletePhase,
     onRemoveStep: removeStepFromPhase,
+    onReorderSteps: reorderStepsInPhase,
   });
   const span = getSpan();
   if (span) {
@@ -1166,6 +1237,27 @@ async function removeStepFromPhase(phaseId, stepId) {
   const s = anno.steps.find(x => x.step_id === stepId);
   if (s) s.phase_id = null;
   await persistAnnotations(anno, 'remove step from phase');
+  renderPhasesLevel();
+}
+
+/* P2.6: drag-reorder a step within a phase. drag === source step,
+   target === drop-target step, before === insert above (vs below). */
+async function reorderStepsInPhase(phaseId, dragStepId, targetStepId, before) {
+  if (!currentSession || !dragStepId || !targetStepId || dragStepId === targetStepId) return;
+  const anno = ensureAnnoShape(currentSession.annotations);
+  const phase = anno.phases.find(p => p.phase_id === phaseId);
+  if (!phase || !Array.isArray(phase.step_ids)) return;
+  const ids = phase.step_ids.slice();
+  const fromIdx = ids.indexOf(dragStepId);
+  if (fromIdx === -1) return;
+  ids.splice(fromIdx, 1);
+  let toIdx = ids.indexOf(targetStepId);
+  if (toIdx === -1) return;
+  if (!before) toIdx += 1;
+  ids.splice(toIdx, 0, dragStepId);
+  phase.step_ids = ids;
+  phase.state = phase.state === "manually_authored" ? "manually_authored" : "edited";
+  await persistAnnotations(anno, "reorder steps in phase");
   renderPhasesLevel();
 }
 
@@ -1343,6 +1435,103 @@ async function suggestPhaseGroupings() {
 }
 if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click", suggestPhaseGroupings);
 
+/* ============ AM.1 — Process Template version compare ============= */
+
+async function refreshTemplateVersions() {
+  const panel = document.getElementById("template-compare-panel");
+  if (!panel) return;
+  if (!canonicalState.path) {
+    panel.style.display = "none";
+    return;
+  }
+  const list = await ipcRenderer.invoke("viewer:listTemplateVersions", canonicalState.path);
+  if (!list || !list.length) { panel.style.display = "none"; return; }
+  panel.style.display = "";
+  const aSel = document.getElementById("tpl-cmp-a");
+  const bSel = document.getElementById("tpl-cmp-b");
+  const opts = list.map((v) =>
+    `<option value="${escapeHtml(v.path)}">${escapeHtml(v.label || v.timestamp)}</option>`
+  ).join("");
+  aSel.innerHTML = opts;
+  bSel.innerHTML = opts;
+  // Default: A = newest snapshot before current, B = current.
+  if (list.length >= 2) {
+    aSel.value = list[1].path;
+    bSel.value = list[0].path;
+  }
+}
+
+async function compareTemplateVersions() {
+  const aPath = document.getElementById("tpl-cmp-a").value;
+  const bPath = document.getElementById("tpl-cmp-b").value;
+  const out = document.getElementById("tpl-cmp-output");
+  if (!aPath || !bPath || aPath === bPath) {
+    out.innerHTML = '<span style="color:var(--fg-3)">Pick two different versions to compare.</span>';
+    return;
+  }
+  const yaml = require("js-yaml");
+  async function read(p) {
+    const r = await ipcRenderer.invoke("viewer:readTemplateFile", p);
+    if (!r || !r.ok) return null;
+    try { return yaml.load(r.content) || {}; }
+    catch (_) { return null; }
+  }
+  const [a, b] = await Promise.all([read(aPath), read(bPath)]);
+  if (!a || !b) {
+    out.innerHTML = '<span class="delta-down">Couldn\'t parse one of the templates.</span>';
+    return;
+  }
+  const aProc = a.canonical_process || a;
+  const bProc = b.canonical_process || b;
+  const aSteps = new Map((aProc.steps || []).map((s) => [s.step_id, s]));
+  const bSteps = new Map((bProc.steps || []).map((s) => [s.step_id, s]));
+  const aPhases = new Map((aProc.phases || []).map((p) => [p.phase_id, p]));
+  const bPhases = new Map((bProc.phases || []).map((p) => [p.phase_id, p]));
+  const addedSteps = [];
+  const removedSteps = [];
+  const renamedSteps = [];
+  for (const [id, s] of bSteps) {
+    if (!aSteps.has(id)) addedSteps.push(s.name || id);
+    else if (aSteps.get(id).name !== s.name) {
+      renamedSteps.push(`${aSteps.get(id).name || id} → ${s.name}`);
+    }
+  }
+  for (const [id, s] of aSteps) {
+    if (!bSteps.has(id)) removedSteps.push(s.name || id);
+  }
+  const addedPhases = [];
+  const removedPhases = [];
+  for (const [id, p] of bPhases) if (!aPhases.has(id)) addedPhases.push(p.name || id);
+  for (const [id, p] of aPhases) if (!bPhases.has(id)) removedPhases.push(p.name || id);
+  const aVer = aProc.version != null ? "v" + aProc.version : "(no version)";
+  const bVer = bProc.version != null ? "v" + bProc.version : "(no version)";
+  function row(label, items, cls) {
+    if (!items.length) return "";
+    return '<div><strong>' + escapeHtml(label) + ' (' + items.length + '):</strong> ' +
+           '<span class="' + cls + '">' + escapeHtml(items.join(", ")) + '</span></div>';
+  }
+  const nochange = !addedSteps.length && !removedSteps.length && !renamedSteps.length &&
+                   !addedPhases.length && !removedPhases.length;
+  out.innerHTML =
+    '<div><strong>Comparing</strong> ' + escapeHtml(aVer) + ' → ' + escapeHtml(bVer) + '</div>' +
+    (nochange
+      ? '<div style="color:var(--fg-3);margin-top:4px">No structural differences.</div>'
+      : row("Steps added", addedSteps, "delta-up") +
+        row("Steps removed", removedSteps, "delta-down") +
+        row("Steps renamed", renamedSteps, "") +
+        row("Phases added", addedPhases, "delta-up") +
+        row("Phases removed", removedPhases, "delta-down"));
+}
+
+(function wireTemplateCompare() {
+  const aSel = document.getElementById("tpl-cmp-a");
+  const bSel = document.getElementById("tpl-cmp-b");
+  const refresh = document.getElementById("tpl-cmp-refresh");
+  if (aSel) aSel.addEventListener("change", compareTemplateVersions);
+  if (bSel) bSel.addEventListener("change", compareTemplateVersions);
+  if (refresh) refresh.addEventListener("click", refreshTemplateVersions);
+})();
+
 /* ============ Annotation shape helper ============================ */
 
 function ensureAnnoShape(anno) {
@@ -1450,6 +1639,9 @@ if ($("#btn-save-canonical")) {
     canonicalState.content = content;
     toast("Process Template saved", "success");
     renderCanonicalStepList();
+    // AM.1: refresh the version compare list on the next aggregate
+    // render so the new snapshot shows up.
+    refreshTemplateVersions().catch(() => {});
   });
 }
 if ($("#btn-load-exemplar")) {
@@ -1470,27 +1662,115 @@ if ($("#btn-load-exemplar")) {
   });
 }
 
+/* Render the Process Template steps as an editable form rather than
+   just a derived count. Edits to name + description round-trip through
+   js-yaml so the underlying match rules and other fields the analyst
+   doesn't see stay intact. */
 function renderCanonicalStepList() {
   const host = $("#canonical-step-list");
   if (!host) return;
   if (!canonicalState.path) {
     host.innerHTML = `
       <div class="empty-pane">
-        <p>No template loaded. Click <strong>Open template YAML...</strong> above.</p>
+        <p>No template loaded. Click <strong>Open Process Template...</strong> above.</p>
         <p class="meta">A sample template ships with the tool at <code>normalization/canonical/sample-customer-onboarding-v3.yaml</code> - open it to see how one looks.</p>
       </div>`;
     return;
   }
-  // Lightweight YAML parse: count steps by indent-aware regex
-  const content = canonicalState.content || "";
-  const stepMatches = content.match(/^\s*- step_id:\s*"?([^"\n]+)"?\s*$/gm) || [];
-  if (!stepMatches.length) {
-    host.innerHTML = '<p class="hint">No steps defined yet. Edit the YAML on the right.</p>';
+  const yaml = require("js-yaml");
+  let parsed = null;
+  try { parsed = yaml.load(canonicalState.content || "") || {}; }
+  catch (e) {
+    host.innerHTML = '<p class="hint" style="color:var(--bad)">Couldn\'t parse the template: ' +
+      escapeHtml(e.message) + '</p>';
     return;
   }
-  host.innerHTML = stepMatches.map((s) =>
-    '<div class="canonical-step-row">' + escapeHtml(s.trim()) + '</div>'
+  const proc = parsed.canonical_process || (parsed.canonical_process = {});
+  if (!Array.isArray(proc.steps)) proc.steps = [];
+  canonicalState.parsed = parsed;
+
+  const meta = '<div class="canonical-meta-form">' +
+    '<label>Template name <input type="text" id="ctpl-name" value="' + escapeHtml(proc.name || "") + '" /></label>' +
+    '<label>Version <input type="number" min="1" id="ctpl-version" value="' + (proc.version || 1) + '" /></label>' +
+    '</div>';
+  const rows = proc.steps.map((s, i) =>
+    '<div class="ctpl-step" data-idx="' + i + '">' +
+      '<div class="ctpl-step-head">' +
+        '<input type="text" class="ctpl-step-name" value="' + escapeHtml(s.name || "") + '" placeholder="Step name (e.g. Search customer)" />' +
+        '<button type="button" class="ctpl-step-up"   title="Move up">↑</button>' +
+        '<button type="button" class="ctpl-step-down" title="Move down">↓</button>' +
+        '<button type="button" class="ctpl-step-del danger" title="Delete">×</button>' +
+      '</div>' +
+      '<textarea class="ctpl-step-desc" placeholder="Optional plain-English description of what the step does">' +
+        escapeHtml(s.description || "") + '</textarea>' +
+      (Array.isArray(s.match) && s.match.length
+        ? '<div class="ctpl-step-rules">' + s.match.length + ' match rule(s) — edit via Advanced</div>'
+        : '<div class="ctpl-step-rules" style="color:var(--bad)">No match rules — won\'t auto-match. Add via Advanced.</div>') +
+    '</div>'
   ).join("");
+  host.innerHTML = meta + rows +
+    '<div class="ctpl-actions"><button type="button" id="ctpl-add-step" class="link-btn">+ Add step</button></div>';
+
+  function commit() {
+    proc.name = document.getElementById("ctpl-name").value.trim();
+    const v = parseInt(document.getElementById("ctpl-version").value, 10);
+    if (Number.isFinite(v) && v >= 1) proc.version = v;
+    host.querySelectorAll(".ctpl-step").forEach((row) => {
+      const idx = parseInt(row.dataset.idx, 10);
+      if (!proc.steps[idx]) return;
+      proc.steps[idx].name = row.querySelector(".ctpl-step-name").value.trim();
+      proc.steps[idx].description = row.querySelector(".ctpl-step-desc").value.trim();
+    });
+    canonicalState.content = yaml.dump(parsed, { lineWidth: 120, noRefs: true, sortKeys: false });
+    const ta = document.getElementById("canonical-yaml");
+    if (ta) ta.value = canonicalState.content;
+    const saveBtn = document.getElementById("btn-save-canonical");
+    if (saveBtn && saveBtn.dataset) saveBtn.dataset.dirty = "1";
+  }
+
+  host.querySelectorAll(".ctpl-step-name, .ctpl-step-desc").forEach((el) => {
+    el.addEventListener("input", commit);
+  });
+  document.getElementById("ctpl-name").addEventListener("input", commit);
+  document.getElementById("ctpl-version").addEventListener("input", commit);
+  host.querySelectorAll(".ctpl-step-del").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const idx = parseInt(btn.closest(".ctpl-step").dataset.idx, 10);
+      const ok = await confirmModal({
+        title: "Delete step?",
+        message: "Remove step \"" + (proc.steps[idx].name || "(unnamed)") + "\" from the template?",
+        detail: "Match rules attached to this step will also be removed.",
+        okLabel: "Delete", danger: true,
+      });
+      if (!ok) return;
+      proc.steps.splice(idx, 1);
+      commit();
+      renderCanonicalStepList();
+    });
+  });
+  function moveStep(idx, delta) {
+    const j = idx + delta;
+    if (j < 0 || j >= proc.steps.length) return;
+    const tmp = proc.steps[idx];
+    proc.steps[idx] = proc.steps[j];
+    proc.steps[j] = tmp;
+    commit();
+    renderCanonicalStepList();
+  }
+  host.querySelectorAll(".ctpl-step-up").forEach((btn) =>
+    btn.addEventListener("click", () => moveStep(parseInt(btn.closest(".ctpl-step").dataset.idx, 10), -1)));
+  host.querySelectorAll(".ctpl-step-down").forEach((btn) =>
+    btn.addEventListener("click", () => moveStep(parseInt(btn.closest(".ctpl-step").dataset.idx, 10), 1)));
+  document.getElementById("ctpl-add-step").addEventListener("click", () => {
+    proc.steps.push({
+      step_id: cryptoRandomId(),
+      name: "New step",
+      description: "",
+      match: [],
+    });
+    commit();
+    renderCanonicalStepList();
+  });
 }
 
 // Render the empty state immediately so the Template tab isn't blank.
@@ -2459,6 +2739,36 @@ function renderTimeline() {
   const densityH = 12;
   const caseRowH = 22;
 
+  // P2.12: window-title runs lane. Group consecutive activity events
+  // by (app, title) and emit one band per run.
+  const _titleRuns = [];
+  {
+    let runStart = null, runEndDur = 0, runApp = null, runTitle = null;
+    function flushRun(endMs) {
+      if (runStart != null && endMs > runStart) {
+        _titleRuns.push({ startMs: runStart, endMs, app: runApp, title: runTitle });
+      }
+      runStart = null; runApp = null; runTitle = null; runEndDur = 0;
+    }
+    for (const ev of evs) {
+      if (ev.type !== "activity") continue;
+      const t = new Date(ev.timestamp).getTime();
+      const dur = ev.data.duration_ms || 0;
+      const app = ev.data.app || "";
+      const title = ev.data.title || "";
+      if (runStart == null) {
+        runStart = t; runApp = app; runTitle = title; runEndDur = dur;
+      } else if (app === runApp && title === runTitle) {
+        runEndDur = (t + dur) - runStart;
+      } else {
+        flushRun(runStart + runEndDur);
+        runStart = t; runApp = app; runTitle = title; runEndDur = dur;
+      }
+    }
+    if (runStart != null) flushRun(runStart + runEndDur);
+  }
+  const titlesLaneH = _titleRuns.length ? 14 : 0;
+
   // P1.4 + P1.9: optional per-step + annotation lanes between density
   // and cases. Compute their heights upfront so casesTop accounts for
   // them — otherwise the cases overlap with the new lanes.
@@ -2466,7 +2776,8 @@ function renderTimeline() {
   const _notesForLane = (currentSession.annotations && currentSession.annotations.notes) || [];
   const stepsLaneH = _stepsForLane.length ? 16 : 0;
   const notesLaneH = _notesForLane.length ? 18 : 0;
-  const stepsLaneTop = densityTop + densityH + 4;
+  const titlesLaneTop = densityTop + densityH + 4;
+  const stepsLaneTop = titlesLaneTop + titlesLaneH + (titlesLaneH ? 4 : 0);
   const notesLaneTop = stepsLaneTop + stepsLaneH + (stepsLaneH ? 4 : 0);
 
   // Count concurrent open markers at any point so we know how many
@@ -2662,6 +2973,33 @@ function renderTimeline() {
   densityBaseline.style.top = densityTop + "px";
   densityBaseline.style.height = densityH + "px";
   host.appendChild(densityBaseline);
+
+  // ===== Window-title runs lane (P2.12) =====
+  // One band per consecutive (app, title) run. Label only renders when
+  // the band is wide enough to fit ~6 chars; otherwise the band is a
+  // pure colour stripe so the rhythm of title changes is still visible.
+  if (titlesLaneH) {
+    const hostW = host.clientWidth || 800;
+    const minLabelPx = 50;
+    for (const r of _titleRuns) {
+      const x = ((r.startMs - first) / span) * 100;
+      const w = Math.max(0.05, ((r.endMs - r.startMs) / span) * 100);
+      const band = document.createElement("div");
+      band.className = "tl-title-band";
+      band.style.left = x + "%";
+      band.style.width = w + "%";
+      band.style.top = titlesLaneTop + "px";
+      band.title = (r.app || "") + " — " + (r.title || "(untitled)");
+      // Only show label if the rendered width is reasonable. zoomFactor
+      // multiplies the host width so a band's pixel width is ~ (w/100) *
+      // hostW * zoomFactor.
+      const renderedPx = (w / 100) * hostW * zoomFactor;
+      if (renderedPx >= minLabelPx) {
+        band.textContent = r.title || (r.app || "").replace(/\.exe$/i, "");
+      }
+      host.appendChild(band);
+    }
+  }
 
   // ===== Per-step lane (P1.4) =====
   // Renders a single row of step bands beneath density when steps exist.
@@ -3137,6 +3475,8 @@ function renderScreenshots() {
   const shots = (currentSession.events || []).filter((e) =>
     e.type === "system" &&
     (e.data.kind === "screenshot" || e.data.kind === "screenshot_manual"));
+  // Stash for the gallery (P2.7).
+  _allScreenshots = shots;
   if (!shots.length) {
     host.innerHTML = '<p class="hint">No screenshots captured in this session.</p>';
     return;
@@ -3165,6 +3505,130 @@ function renderScreenshots() {
     host.appendChild(card);
   }
 }
+
+/* P2.7: full-pane screenshot gallery. Step through every screenshot
+   with arrow keys, Esc closes, Space toggles auto-advance (~1.2s),
+   filter by trigger reason. Built lazily on first open; keeps a
+   single overlay element in the DOM after first build. */
+let _allScreenshots = [];
+let _galleryState = null;  // { idx, filterReason, playing, playTimer }
+function _galleryFilter(reason) {
+  if (!reason || reason === "all") return _allScreenshots.slice();
+  return _allScreenshots.filter((s) => {
+    const k = s.data.kind || "";
+    const r = s.data.reason || "";
+    if (reason === "manual") return k === "screenshot_manual";
+    return r === reason;
+  });
+}
+function openScreenshotGallery() {
+  if (!_allScreenshots.length) { toast("No screenshots in this session.", ""); return; }
+  let overlay = document.getElementById("screenshot-gallery");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "screenshot-gallery";
+    overlay.className = "screenshot-gallery";
+    overlay.innerHTML =
+      '<div class="screenshot-gallery-header">' +
+        '<span class="title">Screenshot gallery</span>' +
+        '<select id="gallery-filter">' +
+          '<option value="all">All triggers</option>' +
+          '<option value="manual">Manual</option>' +
+          '<option value="app_switch">App switch</option>' +
+          '<option value="idle_resume">Activity resumed</option>' +
+          '<option value="marker">Marker fire</option>' +
+        '</select>' +
+        '<button id="gallery-play" type="button" class="link-btn">Play (Space)</button>' +
+        '<button id="gallery-close" type="button" class="link-btn">Close (Esc)</button>' +
+      '</div>' +
+      '<div class="screenshot-gallery-body"><img id="gallery-img" alt="screenshot" /></div>' +
+      '<div class="screenshot-gallery-footer">' +
+        '<span class="pos" id="gallery-pos">—</span>' +
+        '<span class="ts" id="gallery-ts">—</span>' +
+        '<span class="reason" id="gallery-reason">—</span>' +
+        '<span class="flex-spacer" style="flex:1"></span>' +
+        '<span style="color:var(--fg-3);font-size:10px">← / → step · Space play · Esc close · click image to seek video</span>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    document.getElementById("gallery-close").addEventListener("click", closeScreenshotGallery);
+    document.getElementById("gallery-play").addEventListener("click", _galleryTogglePlay);
+    document.getElementById("gallery-filter").addEventListener("change", (e) => {
+      _galleryState.filterReason = e.target.value;
+      _galleryState.idx = 0;
+      _galleryRenderFrame();
+    });
+    document.getElementById("gallery-img").addEventListener("click", () => {
+      const list = _galleryFilter(_galleryState.filterReason);
+      const s = list[_galleryState.idx];
+      if (s) seekToTimestamp(s.timestamp);
+    });
+  }
+  _galleryState = { idx: 0, filterReason: "all", playing: false, playTimer: null };
+  document.getElementById("gallery-filter").value = "all";
+  _galleryRenderFrame();
+  document.addEventListener("keydown", _galleryKey);
+}
+function closeScreenshotGallery() {
+  const overlay = document.getElementById("screenshot-gallery");
+  if (overlay) overlay.style.display = "none";
+  if (_galleryState && _galleryState.playTimer) clearTimeout(_galleryState.playTimer);
+  document.removeEventListener("keydown", _galleryKey);
+  _galleryState = null;
+}
+function _galleryRenderFrame() {
+  const overlay = document.getElementById("screenshot-gallery");
+  overlay.style.display = "flex";
+  const list = _galleryFilter(_galleryState.filterReason);
+  if (!list.length) {
+    document.getElementById("gallery-img").style.display = "none";
+    document.getElementById("gallery-pos").textContent = "0 / 0";
+    document.getElementById("gallery-ts").textContent = "";
+    document.getElementById("gallery-reason").textContent = "(no matching screenshots)";
+    return;
+  }
+  const s = list[_galleryState.idx];
+  const fullPath = path.join(currentSession.sessionFolder, s.data.path);
+  const img = document.getElementById("gallery-img");
+  img.style.display = "";
+  img.src = "file:///" + fullPath.replace(/\\/g, "/");
+  document.getElementById("gallery-pos").textContent = `${_galleryState.idx + 1} / ${list.length}`;
+  document.getElementById("gallery-ts").textContent = s.timestamp;
+  document.getElementById("gallery-reason").textContent =
+    s.data.kind === "screenshot_manual" ? "manual" : (s.data.reason || "automatic");
+}
+function _galleryStep(delta) {
+  if (!_galleryState) return;
+  const list = _galleryFilter(_galleryState.filterReason);
+  if (!list.length) return;
+  _galleryState.idx = (_galleryState.idx + delta + list.length) % list.length;
+  _galleryRenderFrame();
+}
+function _galleryTogglePlay() {
+  if (!_galleryState) return;
+  _galleryState.playing = !_galleryState.playing;
+  const btn = document.getElementById("gallery-play");
+  if (btn) btn.textContent = _galleryState.playing ? "Pause (Space)" : "Play (Space)";
+  if (_galleryState.playing) _galleryAdvance();
+  else if (_galleryState.playTimer) { clearTimeout(_galleryState.playTimer); _galleryState.playTimer = null; }
+}
+function _galleryAdvance() {
+  if (!_galleryState || !_galleryState.playing) return;
+  _galleryState.playTimer = setTimeout(() => {
+    _galleryStep(1);
+    _galleryAdvance();
+  }, 1200);
+}
+function _galleryKey(e) {
+  if (!_galleryState) return;
+  if (e.key === "Escape") { e.preventDefault(); closeScreenshotGallery(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); _galleryStep(1); }
+  else if (e.key === "ArrowLeft")  { e.preventDefault(); _galleryStep(-1); }
+  else if (e.key === " ")          { e.preventDefault(); _galleryTogglePlay(); }
+}
+(function wireScreenshotGallery() {
+  const btn = document.getElementById("btn-open-gallery");
+  if (btn) btn.addEventListener("click", openScreenshotGallery);
+})();
 
 function openScreenshot(relPath) {
   if (!relPath || !currentSession) return;
@@ -3566,17 +4030,59 @@ function renderAggregate() {
     secondaryColor: "var(--warn)",
   });
 
-  // Variants table
-  const varRows = [];
+  // Variants table -- with P2.2 frequency-heat bar inline. Each variant
+  // row gets a visual bar showing how dominant it is relative to the
+  // most-common variant; activities that appear at the same position
+  // across MULTIPLE variants get a faint divergence highlight so the
+  // analyst can spot where paths split.
+  const varAgg = new Map();   // variantStr -> { freq, length, sessions }
   for (const st of allStats) {
+    const sessId = ((st.meta || {}).session_id) || "?";
     for (const v of (st.trace_variants || [])) {
       const variantStr = v.variant.join(" → ");
       if (!matchesFilter(variantStr)) continue;
-      varRows.push([v.frequency, v.length, variantStr]);
+      const e = varAgg.get(variantStr) || { freq: 0, length: v.length, sessions: new Set() };
+      e.freq += v.frequency;
+      e.sessions.add(sessId);
+      varAgg.set(variantStr, e);
     }
   }
-  varRows.sort((a, b) => b[0] - a[0]);
-  fillTable("#variants", varRows.slice(0, 80));
+  const varRows = Array.from(varAgg.entries())
+    .map(([s, e]) => ({ variant: s, freq: e.freq, length: e.length, sessions: e.sessions.size }))
+    .sort((a, b) => b.freq - a.freq);
+  // Compute per-position activity sets across all variants for the
+  // divergence highlight: position i is "divergent" if multiple
+  // activities ever appear at position i across the loaded variants.
+  const positionActivities = [];
+  for (const r of varRows) {
+    const acts = r.variant.split(" → ");
+    acts.forEach((a, i) => {
+      while (positionActivities.length <= i) positionActivities.push(new Set());
+      positionActivities[i].add(a);
+    });
+  }
+  function highlightDivergence(variant) {
+    return variant.split(" → ").map((a, i) => {
+      const div = positionActivities[i] && positionActivities[i].size > 1;
+      return div ? '<span class="variant-div">' + escapeHtml(a) + '</span>'
+                 : escapeHtml(a);
+    }).join(' <span class="variant-arrow">→</span> ');
+  }
+  const variantHost = document.querySelector("#variants tbody") || $("#variants");
+  if (variantHost) {
+    const maxFreq = varRows.length ? varRows[0].freq : 1;
+    variantHost.innerHTML = varRows.slice(0, 80).map((r) => {
+      const heatPct = Math.round((r.freq / maxFreq) * 100);
+      return '<tr>' +
+        '<td><div class="variant-heat" style="width:' + heatPct + '%"></div>' +
+          '<span class="variant-freq">' + r.freq + '</span></td>' +
+        '<td>' + r.length + '</td>' +
+        '<td><span class="variant-sessions" title="' + r.sessions + ' session(s) follow this path">' +
+          r.sessions + '×</span> ' + highlightDivergence(r.variant) +
+        '</td>' +
+        '</tr>';
+    }).join("");
+  }
 
   // Outliers + rework
   const outRows = [];

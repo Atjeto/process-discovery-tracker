@@ -248,7 +248,59 @@ ipcMain.handle("viewer:openCanonicalFile", async () => {
 
 ipcMain.handle("viewer:saveCanonicalFile", (_e, { path: p, content }) => {
   fs.writeFileSync(p, content, "utf-8");
+  // AM.1: archive a versioned snapshot of every save into a sibling
+  // `.template-history/<basename>/` folder so the analyst can later
+  // compare versions of the same template. Best-effort -- snapshot
+  // failure shouldn't block the live save.
+  try {
+    const dir = path.dirname(p);
+    const base = path.basename(p, path.extname(p));
+    const histDir = path.join(dir, ".template-history", base);
+    fs.mkdirSync(histDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    fs.writeFileSync(path.join(histDir, stamp + ".yaml"), content, "utf-8");
+  } catch (_) { /* don't surface snapshot failure */ }
   return { path: p };
+});
+
+/* AM.1: list all versioned snapshots of a template, newest first.
+   Returns [{ timestamp, path }] including a synthetic "current" entry
+   for the live file so the picker has it as an option. */
+ipcMain.handle("viewer:listTemplateVersions", (_e, livePath) => {
+  if (!livePath || !fs.existsSync(livePath)) return [];
+  const dir = path.dirname(livePath);
+  const base = path.basename(livePath, path.extname(livePath));
+  const histDir = path.join(dir, ".template-history", base);
+  const out = [{
+    label: "current",
+    timestamp: fs.statSync(livePath).mtime.toISOString(),
+    path: livePath,
+    isCurrent: true,
+  }];
+  if (fs.existsSync(histDir)) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(histDir).filter((f) => /\.ya?ml$/i.test(f));
+    } catch (_) {}
+    for (const f of entries) {
+      const stamp = f.replace(/\.ya?ml$/i, "").replace(/-/g, (m, off) => off === 13 || off === 16 ? ":" : (off === 19 ? "." : "-"));
+      out.push({
+        label: stamp,
+        timestamp: stamp,
+        path: path.join(histDir, f),
+      });
+    }
+  }
+  // Newest first.
+  out.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+  return out;
+});
+
+ipcMain.handle("viewer:readTemplateFile", (_e, p) => {
+  try {
+    if (!p || !fs.existsSync(p)) return { ok: false, error: "Not found" };
+    return { ok: true, content: fs.readFileSync(p, "utf-8") };
+  } catch (e) { return { ok: false, error: e.message }; }
 });
 
 ipcMain.handle("viewer:testCanonicalMatch", async (_e, { canonicalPath, sessionFolder }) => {

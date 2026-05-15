@@ -217,6 +217,9 @@
                 <button id="btn-save-note">Save note at current time</button>
               </div>
               <div class="anno-panel" data-panel="screens" style="display:none">
+                <div class="screens-toolbar">
+                  <button id="btn-open-gallery" type="button" class="link-btn" title="Step through every screenshot full-screen with arrow keys.">Open gallery...</button>
+                </div>
                 <div id="screenshots-grid" class="screens-grid"></div>
               </div>
               <div class="anno-panel" data-panel="markers" style="display:none">
@@ -460,6 +463,21 @@
           <h3>Drift</h3>
           <div id="drift-content"></div>
         </div>
+
+        <div class="panel panel-wide template-compare" id="template-compare-panel" style="display:none">
+          <h3>Compare Process Template versions</h3>
+          <p class="meta">When you save a Process Template, every save is archived. Pick two versions to see what changed structurally — steps and phases added, removed, or renamed.</p>
+          <div class="row">
+            <label>Version A
+              <select id="tpl-cmp-a"></select>
+            </label>
+            <label>Version B
+              <select id="tpl-cmp-b"></select>
+            </label>
+            <button id="tpl-cmp-refresh" type="button" class="link-btn">Refresh versions</button>
+          </div>
+          <div id="tpl-cmp-output" class="summary">Pick two versions to compare.</div>
+        </div>
       </div>
     </section>
 
@@ -469,7 +487,7 @@
         <div class="template-explainer">
           <h2>Process Template</h2>
           <p>A Process Template is a reusable definition of an expected process: its steps, phases, and the UI patterns that identify each one. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
-          <p class="meta">Templates are stored in a structured text format. The list of steps is editable below; the full template definition lives in the Advanced editor for engineers / power users. Save, then re-match sessions from the Compare Sessions view.</p>
+          <p class="meta">The list of steps below is directly editable — rename, reorder, add, or delete. Match rules (which UI patterns identify each step) live in the Advanced section for engineers. Save your changes here, then re-match sessions from the Compare Sessions view.</p>
         </div>
         <div class="actions-bar">
           <button id="btn-open-canonical" class="primary">Open Process Template...</button>

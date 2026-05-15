@@ -1544,6 +1544,12 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+.screens-toolbar {
+  display: flex; gap: 6px; align-items: center;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--rule); margin-bottom: 6px;
+}
+
 /* ===== Screenshot gallery (P2.7) =================================== */
 .screenshot-gallery {
   position: fixed; inset: 0; z-index: 500;
@@ -1616,3 +1622,72 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
   outline: none;
 }
 .advanced-yaml textarea:focus { border-color: var(--accent); }
+
+/* ===== Process Template form editor (Phase 5++) =================== */
+.canonical-meta-form {
+  display: flex; gap: 8px; margin-bottom: 8px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--rule);
+}
+.canonical-meta-form label {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 11px; color: var(--fg-3);
+}
+.canonical-meta-form input {
+  background: var(--bg-3); border: 1px solid var(--rule);
+  color: var(--fg); padding: 4px 6px; border-radius: 3px;
+  font-family: inherit; font-size: 12px; outline: none;
+}
+.canonical-meta-form #ctpl-version { width: 60px; }
+.canonical-meta-form input:focus { border-color: var(--accent); }
+.ctpl-step {
+  background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: 4px; padding: 6px 8px; margin-bottom: 6px;
+}
+.ctpl-step-head {
+  display: flex; gap: 4px; align-items: center; margin-bottom: 4px;
+}
+.ctpl-step-name {
+  flex: 1; background: var(--bg-3); border: 1px solid var(--rule);
+  color: var(--fg); padding: 4px 6px; border-radius: 3px;
+  font-family: inherit; font-size: 12px; outline: none;
+}
+.ctpl-step-name:focus { border-color: var(--accent); }
+.ctpl-step-head button {
+  background: var(--bg-3); border: 1px solid var(--rule);
+  color: var(--fg-2); padding: 2px 6px; border-radius: 3px;
+  font-family: inherit; font-size: 11px; cursor: pointer;
+}
+.ctpl-step-head button:hover { background: var(--bg-4); color: var(--fg); }
+.ctpl-step-head button.danger:hover { background: var(--bad); color: var(--fg); border-color: var(--bad); }
+.ctpl-step-desc {
+  width: 100%; min-height: 36px; resize: vertical;
+  background: var(--bg-3); border: 1px solid var(--rule);
+  color: var(--fg); padding: 4px 6px; border-radius: 3px;
+  font-family: inherit; font-size: 11px; outline: none;
+}
+.ctpl-step-desc:focus { border-color: var(--accent); }
+.ctpl-step-rules {
+  font-size: 10px; color: var(--fg-3); margin-top: 4px; font-style: italic;
+}
+.ctpl-actions { margin-top: 8px; }
+
+/* ===== Variant heat (P2.2) ======================================== */
+.variant-heat {
+  display: inline-block; height: 6px;
+  background: var(--accent); opacity: 0.55;
+  border-radius: 2px; margin-right: 6px;
+  vertical-align: middle;
+  min-width: 4px;
+}
+.variant-freq { font-family: var(--font-mono); font-size: 10px; color: var(--fg); }
+.variant-sessions {
+  font-family: var(--font-mono); font-size: 10px;
+  background: var(--bg-3); border: 1px solid var(--rule);
+  color: var(--fg-2); padding: 0 4px; border-radius: 2px; margin-right: 4px;
+}
+.variant-div {
+  background: rgba(160, 128, 80, 0.18);
+  border-bottom: 1px dashed var(--accent-3);
+  padding: 0 2px; border-radius: 2px;
+}
+.variant-arrow { color: var(--fg-3); }
