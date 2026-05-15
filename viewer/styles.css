@@ -1443,6 +1443,25 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
 .recent-menu-item.missing .ri-label { color: var(--fg-4); text-decoration: line-through; }
 .recent-menu-empty { padding: 8px 10px; color: var(--fg-4); font-size: 11px; font-style: italic; }
 
+/* Lanes toggle menu (timeline header) */
+.lanes-menu { position: relative; display: inline-block; }
+#btn-lanes { font-size: 11px; font-family: inherit; }
+.lanes-popup {
+  position: absolute; right: 0; top: calc(100% + 4px);
+  min-width: 180px; background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: 5px; padding: 6px; box-shadow: var(--shadow); z-index: 200;
+}
+.lanes-popup-title {
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--fg-4); font-family: var(--font-mono); padding: 2px 6px 6px;
+}
+.lanes-popup label.cb {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 6px; font-size: 12px; color: var(--fg-2);
+  cursor: pointer; border-radius: 3px;
+}
+.lanes-popup label.cb:hover { background: var(--bg-3); color: var(--fg); }
+
 /* ===== Timeline screenshot hover thumb (P1.2) ===================== */
 .tl-screenshot-thumb {
   position: fixed; display: none; z-index: 999;

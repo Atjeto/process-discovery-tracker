@@ -2918,6 +2918,48 @@ async function queueSyntheticMarker(ts, markerType) {
   }
 }
 
+/* P2.D: timeline lane visibility. Defaults keep the core lanes on and
+   the denser additions (density / window-titles / per-step / notes)
+   off so the timeline isn't overwhelming out of the box. Persisted
+   per-installation since it's a workflow preference, not session data. */
+const LANE_KEY = "pdt.timelineLanes";
+const LANE_DEFAULTS = {
+  idle: true, markers: true, screenshots: true, cases: true,
+  density: false, titles: false, steps: false, notes: false,
+};
+function getLaneToggles() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LANE_KEY)) || {};
+    return Object.assign({}, LANE_DEFAULTS, saved);
+  } catch (_) { return Object.assign({}, LANE_DEFAULTS); }
+}
+function setLaneToggle(key, on) {
+  const cur = getLaneToggles();
+  cur[key] = !!on;
+  try { localStorage.setItem(LANE_KEY, JSON.stringify(cur)); } catch (_) {}
+}
+(function wireLanesMenu() {
+  const btn = document.getElementById("btn-lanes");
+  const popup = document.getElementById("lanes-popup");
+  if (!btn || !popup) return;
+  // Reflect persisted state into the checkboxes.
+  const toggles = getLaneToggles();
+  popup.querySelectorAll("input[data-lane]").forEach((cb) => {
+    cb.checked = !!toggles[cb.dataset.lane];
+    cb.addEventListener("change", () => {
+      setLaneToggle(cb.dataset.lane, cb.checked);
+      if (currentSession) renderTimeline();
+    });
+  });
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    popup.style.display = popup.style.display === "none" ? "" : "none";
+  });
+  document.addEventListener("click", (e) => {
+    if (!popup.contains(e.target) && e.target !== btn) popup.style.display = "none";
+  });
+})();
+
 function renderTimeline() {
   const host = $("#timeline");
   host.innerHTML = "";
@@ -2927,6 +2969,7 @@ function renderTimeline() {
     if (mm) mm.style.display = "none";
     return;
   }
+  const lanes = getLaneToggles();
   const first = new Date(evs[0].timestamp).getTime();
   const last = new Date(evs[evs.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
@@ -2944,7 +2987,7 @@ function renderTimeline() {
   const activityTop = ticksTop + ticksH + 4;
   const activityH = 60;
   const densityTop = activityTop + activityH + 2;
-  const densityH = 12;
+  const densityH = lanes.density ? 12 : 0;
   const caseRowH = 22;
 
   // P2.12: window-title runs lane. Group consecutive activity events
@@ -2975,15 +3018,15 @@ function renderTimeline() {
     }
     if (runStart != null) flushRun(runStart + runEndDur);
   }
-  const titlesLaneH = _titleRuns.length ? 14 : 0;
+  const titlesLaneH = (lanes.titles && _titleRuns.length) ? 14 : 0;
 
   // P1.4 + P1.9: optional per-step + annotation lanes between density
   // and cases. Compute their heights upfront so casesTop accounts for
   // them — otherwise the cases overlap with the new lanes.
   const _stepsForLane = (currentSession.annotations && currentSession.annotations.steps) || [];
   const _notesForLane = (currentSession.annotations && currentSession.annotations.notes) || [];
-  const stepsLaneH = _stepsForLane.length ? 16 : 0;
-  const notesLaneH = _notesForLane.length ? 18 : 0;
+  const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
+  const notesLaneH = (lanes.notes && _notesForLane.length) ? 18 : 0;
   const titlesLaneTop = densityTop + densityH + 4;
   const stepsLaneTop = titlesLaneTop + titlesLaneH + (titlesLaneH ? 4 : 0);
   const notesLaneTop = stepsLaneTop + stepsLaneH + (stepsLaneH ? 4 : 0);
@@ -2994,7 +3037,9 @@ function renderTimeline() {
   // started earlier.
   const caseLanes = layoutCaseLanes(evs, first, last);
   const casesTop = notesLaneTop + notesLaneH + (notesLaneH ? 4 : 6);
-  const casesH = Math.max(caseRowH, caseLanes.lanesNeeded * caseRowH);
+  const casesH = lanes.cases
+    ? Math.max(caseRowH, caseLanes.lanesNeeded * caseRowH)
+    : 0;
   // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
   host.style.minHeight = Math.max(120, casesTop + casesH + 14) + "px";
 
@@ -3081,7 +3126,7 @@ function renderTimeline() {
 
   // Idle bands
   let idleStart = null;
-  for (const ev of evs) {
+  for (const ev of (lanes.idle ? evs : [])) {
     if (ev.type !== "system") continue;
     if (ev.data.kind === "idle_start") idleStart = new Date(ev.timestamp).getTime();
     else if (ev.data.kind === "idle_end" && idleStart) {
@@ -3101,7 +3146,7 @@ function renderTimeline() {
   }
 
   // Marker bars (rendered above bands)
-  for (const ev of evs) {
+  for (const ev of (lanes.markers ? evs : [])) {
     if (ev.type !== "marker") continue;
     const t = new Date(ev.timestamp).getTime();
     const x = ((t - first) / span) * 100;
@@ -3127,7 +3172,7 @@ function renderTimeline() {
   }
 
   // Screenshot dots (on band bottom edge). P1.2: hover pops a thumbnail.
-  for (const ev of evs) {
+  for (const ev of (lanes.screenshots ? evs : [])) {
     if (ev.type !== "system") continue;
     if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
     const t = new Date(ev.timestamp).getTime();
@@ -3159,28 +3204,31 @@ function renderTimeline() {
     if (idx >= 0) buckets[idx] += 1;
   }
   const maxBucket = buckets.reduce((m, v) => v > m ? v : m, 0) || 1;
-  for (let i = 0; i < N_BUCKETS; i++) {
-    if (!buckets[i]) continue;
-    const x = (i / N_BUCKETS) * 100;
-    const w = (1 / N_BUCKETS) * 100;
-    const h = Math.max(2, Math.round(densityH * (buckets[i] / maxBucket)));
-    const bar = document.createElement("div");
-    bar.className = "tl-density-bar";
-    bar.style.left = x + "%";
-    bar.style.width = w + "%";
-    bar.style.top = (densityTop + densityH - h) + "px";
-    bar.style.height = h + "px";
-    bar.title = `${buckets[i]} events @ ` +
-      new Date(first + i * bucketDur).toLocaleTimeString();
-    host.appendChild(bar);
+  // Render the density lane only when enabled (densityH is 0 otherwise).
+  if (densityH) {
+    for (let i = 0; i < N_BUCKETS; i++) {
+      if (!buckets[i]) continue;
+      const x = (i / N_BUCKETS) * 100;
+      const w = (1 / N_BUCKETS) * 100;
+      const h = Math.max(2, Math.round(densityH * (buckets[i] / maxBucket)));
+      const bar = document.createElement("div");
+      bar.className = "tl-density-bar";
+      bar.style.left = x + "%";
+      bar.style.width = w + "%";
+      bar.style.top = (densityTop + densityH - h) + "px";
+      bar.style.height = h + "px";
+      bar.title = `${buckets[i]} events @ ` +
+        new Date(first + i * bucketDur).toLocaleTimeString();
+      host.appendChild(bar);
+    }
+    // Density baseline (faint background strip so the lane reads even
+    // when sparse).
+    const densityBaseline = document.createElement("div");
+    densityBaseline.className = "tl-density-base";
+    densityBaseline.style.top = densityTop + "px";
+    densityBaseline.style.height = densityH + "px";
+    host.appendChild(densityBaseline);
   }
-  // Density baseline (faint background strip so the lane reads even
-  // when sparse).
-  const densityBaseline = document.createElement("div");
-  densityBaseline.className = "tl-density-base";
-  densityBaseline.style.top = densityTop + "px";
-  densityBaseline.style.height = densityH + "px";
-  host.appendChild(densityBaseline);
 
   // ===== Window-title runs lane (P2.12) =====
   // One band per consecutive (app, title) run. Label only renders when
@@ -3214,7 +3262,7 @@ function renderTimeline() {
   // Renders a single row of step bands beneath density when steps exist.
   // Click to select the step + jump to Steps view.
   // (stepsLaneTop / stepsLaneH computed earlier so casesTop accounts for them.)
-  for (const s of _stepsForLane) {
+  for (const s of (lanes.steps ? _stepsForLane : [])) {
     if (!s.time_range || !s.time_range.start || !s.time_range.end) continue;
     const sStart = new Date(s.time_range.start).getTime();
     const sEnd   = new Date(s.time_range.end).getTime();
@@ -3242,7 +3290,7 @@ function renderTimeline() {
   // steps). Click to open the note in the side panel + switch to Notes
   // tab.
   // (notesLaneTop / notesLaneH computed earlier so casesTop accounts for them.)
-  _notesForLane.forEach((n, idx) => {
+  (lanes.notes ? _notesForLane : []).forEach((n, idx) => {
     if (!n.timestamp) return;
     const ms = new Date(n.timestamp).getTime();
     if (!isFinite(ms)) return;
@@ -3273,7 +3321,7 @@ function renderTimeline() {
   //   - Dangling cases (start with no end) extend to `last` with a
   //     dashed right edge so they're visually distinct from closed.
   // The case scope dropdown can target any of these directly.
-  for (const c of caseLanes.cases) {
+  for (const c of (lanes.cases ? caseLanes.cases : [])) {
     const x = ((c.startMs - first) / span) * 100;
     const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
     const top = casesTop + c.lane * caseRowH;

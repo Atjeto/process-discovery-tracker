@@ -172,6 +172,20 @@
               <strong>Timeline</strong>
               <span id="timeline-summary" class="meta"></span>
               <div class="timeline-controls">
+                <div class="lanes-menu" id="lanes-menu">
+                  <button class="icon-btn" id="btn-lanes" title="Choose which timeline lanes to show">Lanes ▾</button>
+                  <div class="lanes-popup" id="lanes-popup" style="display:none">
+                    <div class="lanes-popup-title">Show lanes</div>
+                    <label class="cb"><input type="checkbox" data-lane="idle" /> Idle gaps</label>
+                    <label class="cb"><input type="checkbox" data-lane="markers" /> Marker bars</label>
+                    <label class="cb"><input type="checkbox" data-lane="screenshots" /> Screenshot dots</label>
+                    <label class="cb"><input type="checkbox" data-lane="cases" /> Case lanes</label>
+                    <label class="cb"><input type="checkbox" data-lane="density" /> Activity density</label>
+                    <label class="cb"><input type="checkbox" data-lane="titles" /> Window-title strip</label>
+                    <label class="cb"><input type="checkbox" data-lane="steps" /> Per-step bands</label>
+                    <label class="cb"><input type="checkbox" data-lane="notes" /> Note markers</label>
+                  </div>
+                </div>
                 <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)">−</button>
                 <button class="icon-btn" id="btn-zoom-reset" title="Reset zoom (0)">⊙</button>
                 <button class="icon-btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
