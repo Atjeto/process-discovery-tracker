@@ -168,12 +168,12 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 </ul>
 
 <h2>Storage retention</h2>
-<p>Sessions accumulate in <code>%APPDATA%\\process-discovery-tracker\\sessions\\</code> over time. There is a CLI script at <code>scripts/prune-sessions.py</code> that lists or deletes sessions older than N days:</p>
+<p>Sessions accumulate in <code>%APPDATA%\\process-discovery-tracker\\sessions\\</code> over time. The tray menu now shows the total count and disk usage, and offers two ways to clean up without leaving the app:</p>
 <ul>
-  <li><code>python scripts/prune-sessions.py --older-than 90</code> (lists candidates)</li>
-  <li><code>python scripts/prune-sessions.py --older-than 90 --apply</code> (deletes)</li>
-  <li><code>--keep-recovered</code> skips orphan-recovered sessions that may need analyst attention</li>
+  <li><strong>Per session:</strong> tray &rarr; Recent sessions &rarr; pick one &rarr; <em>Delete...</em> (confirms, deletes that single folder).</li>
+  <li><strong>Bulk by age:</strong> tray &rarr; <em>Prune sessions older than...</em> &rarr; 30 / 90 / 365 days. Lists a sample of what will go, shows total bytes freed, confirms before deleting.</li>
 </ul>
+<p>The currently-recording session can never be deleted from these menus. For the analyst side (with Python available), <code>scripts/prune-sessions.py --older-than 90 [--apply]</code> still works and supports <code>--keep-recovered</code> to skip orphan-recovered sessions that may need attention.</p>
 
 <h2>Troubleshooting</h2>
 <dl>
