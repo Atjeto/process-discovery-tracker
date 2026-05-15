@@ -1328,7 +1328,7 @@ function ensureAnnoShape(anno) {
 async function buildVocabFromSession(suggestedName) {
   if (!currentSession) return;
   const vocabName = suggestedName || await promptModal({
-    title: "Save as App Vocabulary",
+    title: "Save to App Library",
     message: "App vocabulary name",
     detail: "e.g., \"Salesforce\". Used as the file name under normalization/app_vocabularies/.",
     placeholder: "Salesforce",
@@ -1341,7 +1341,7 @@ async function buildVocabFromSession(suggestedName) {
     vocabId, vocabName,
   });
   if (!r || !r.ok) {
-    toast("Vocabulary bootstrap failed: " + ((r && r.error) || "unknown"), "error");
+    toast("App Library entry build failed: " + ((r && r.error) || "unknown"), "error");
     return;
   }
   const out = await ipcRenderer.invoke("viewer:saveAppVocab", {
@@ -1354,7 +1354,7 @@ async function buildVocabFromSession(suggestedName) {
   });
   if (out) {
     await ipcRenderer.invoke("viewer:revealFile", out);
-    toast("Saved starter vocabulary - edit the `name:` fields and re-analyze any session.", "success");
+    toast("App Library starter saved — name each interaction in plain English, then re-analyze any session to apply.", "success");
   }
 }
 
@@ -1412,7 +1412,7 @@ if ($("#btn-save-canonical")) {
     const content = $("#canonical-yaml").value;
     await ipcRenderer.invoke("viewer:saveCanonicalFile", { path: canonicalState.path, content });
     canonicalState.content = content;
-    toast("Canonical YAML saved", "success");
+    toast("Process Template saved", "success");
     renderCanonicalStepList();
   });
 }
@@ -4346,20 +4346,20 @@ async function saveVocab() {
   vocabState.dirty = false;
   const btn = $("#btn-vocab-save");
   if (btn) btn.textContent = "Save vocabulary";
-  toast("Vocabulary saved - re-analyze any session to apply", "success");
+  toast("App Library entry saved — re-analyze any session to apply", "success");
   reloadVocabList();
 }
 
 if ($("#btn-vocab-new")) {
   $("#btn-vocab-new").addEventListener("click", async () => {
-    const name = await promptModal({ title: "New App Vocabulary", message: "What app is this vocabulary for?", placeholder: "e.g., Salesforce", okLabel: "Create" });
+    const name = await promptModal({ title: "New App Library entry", message: "Which app is this entry for?", placeholder: "e.g., Salesforce", okLabel: "Create" });
     if (!name) return;
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const p = await ipcRenderer.invoke("viewer:newVocabFile", { suggestedId: id });
     if (!p) return;
     await reloadVocabList();
     await selectVocab(p);
-    toast("New vocabulary created - fill in interactions and save", "success");
+    toast("New App Library entry created — fill in interactions in plain English and save", "success");
   });
 }
 if ($("#btn-vocab-reload")) {

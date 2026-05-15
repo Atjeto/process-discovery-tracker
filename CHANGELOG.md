@@ -6,6 +6,40 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (verbiage pass for business-analyst audience)
+
+A targeted sweep through user-facing labels, headers, button text,
+help copy, and toasts to replace process-mining / engineering jargon
+with business equivalents. Internal variable names, IPC channels,
+file names, and code comments are unchanged so internal references
+keep working. Highlights:
+
+- **"Aggregate" → "Compare Sessions"** wherever it surfaces in the
+  UI: the Tab 2 label, the help-modal navigation entry, the help
+  text describing it, and the empty-state hero button ("Open
+  sessions to compare..."). Internal handler / id names like
+  `aggregateSessions`, `view-aggregate`, etc. stay as-is so
+  existing wiring remains intact.
+- **"Vocabulary" / "App Vocabulary" → "App Library"**: Tab 4
+  label, the section heading, the prep CTA card, the Save / Bootstrap
+  buttons, the related toast messages, and the New / Save dialogs.
+- **"DFG" → "Flow diagram"**: the panel-tab in Compare Sessions's
+  Process map. The discoverability tooltip explains it's a
+  Direct-Follows Graph for analysts who recognize the term.
+- **"BPMN" → "Process diagram (BPMN)"**: the other panel-tab.
+  Keeps the industry-standard acronym (importable into Adonis,
+  Bizagi, Camunda) but adds the parenthetical so it's not opaque
+  to first-time readers.
+- **"Canonical YAML saved" → "Process Template saved"** and other
+  toast / dialog touches in the Process Template surface.
+- **Process Template tab** layout reframed: the raw template
+  definition is now behind an "Advanced: full template definition"
+  expander rather than the default-visible YAML pane. The list of
+  template steps stays directly editable; the underlying definition
+  is collapsed-by-default for non-engineer analysts.
+- **First-line README and help phrasing** stays focused on the
+  analyst-trying-the-tool experience.
+
 ### Added
 
 - **Mode-specific shortcuts overlay** (P2.4). Small persistent

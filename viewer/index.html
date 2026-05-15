@@ -23,9 +23,9 @@
     </div>
     <nav class="tabs">
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
-      <button class="tab" data-view="aggregate"><span class="kbd">2</span> Aggregate</button>
+      <button class="tab" data-view="aggregate"><span class="kbd">2</span> Compare Sessions</button>
       <button class="tab" data-view="canonical"><span class="kbd">3</span> Process Template</button>
-      <button class="tab" data-view="vocabularies"><span class="kbd">4</span> Vocabularies</button>
+      <button class="tab" data-view="vocabularies"><span class="kbd">4</span> App Library</button>
     </nav>
     <div class="topbar-meta">
       <div class="project-menu" id="project-menu">
@@ -77,7 +77,7 @@
           <button id="btn-open-session">Open another</button>
           <button id="btn-normalize" class="primary" title="Build the timeline, classify activities, compute statistics, and discover a process map.">Analyze session</button>
           <button id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
-          <button id="btn-save-vocab" title="Generate a starter App Vocabulary YAML from this session's captured interactions. Edit names afterward; once saved into normalization/app_vocabularies/, future sessions auto-use it.">Save App Vocabulary...</button>
+          <button id="btn-save-vocab" title="Generate a starter App Library entry from this session's captured interactions. Edit names afterward; once saved, future sessions auto-use it to label what the user did inside this app.">Save to App Library...</button>
           <button id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
           <label class="cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
           <span class="map-status" id="process-map-status" style="display:none">
@@ -98,10 +98,10 @@
         <div class="prep-cta-card" id="prep-session-cta" style="display:none">
           <div class="prep-cta-icon">▣</div>
           <div class="prep-cta-body">
-            <strong>App vocabulary prep session: <span id="prep-app-name"></span></strong>
-            <span class="prep-cta-detail">This session was captured to build the App Vocabulary for <code id="prep-app-id"></code>. Click below to bootstrap a starter YAML from every unique interaction in the capture. Open the file in your editor, fill in the <code>name:</code> fields, and drop it into <code>normalization/app_vocabularies/</code>.</span>
+            <strong>App Library prep session: <span id="prep-app-name"></span></strong>
+            <span class="prep-cta-detail">This session was captured to build the App Library entry for <code id="prep-app-id"></code>. Click below to generate a starter entry from every unique interaction in the capture; you'll then name each interaction in plain English so future sessions can label what the user did inside this app.</span>
           </div>
-          <button id="btn-prep-bootstrap" class="primary">Build vocabulary from this session</button>
+          <button id="btn-prep-bootstrap" class="primary">Build App Library entry from this session</button>
         </div>
 
         <!-- First-run guidance: visible until the session has been analyzed -->
@@ -345,14 +345,14 @@
       </div>
     </section>
 
-    <!-- ========= Aggregate view ========= -->
+    <!-- ========= Compare Sessions view ========= -->
     <section class="view" id="view-aggregate">
 
       <div class="empty-state" id="aggregate-empty">
         <div class="empty-icon">⌬</div>
         <h2>No sessions loaded</h2>
         <p>Open one or more session folders, or an engagement folder containing sessions.</p>
-        <button class="primary" id="btn-open-multi-hero">Open sessions...</button>
+        <button class="primary" id="btn-open-multi-hero">Open sessions to compare...</button>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
       </div>
 
@@ -381,8 +381,8 @@
             <div class="panel-header">
               <h3>Process map</h3>
               <div class="panel-tabs">
-                <button class="panel-tab active" data-map="bpmn">BPMN</button>
-                <button class="panel-tab" data-map="dfg">DFG</button>
+                <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram (BPMN)</button>
+                <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
               </div>
               <div class="map-zoom" id="map-zoom" style="display:none">
                 <span class="map-zoom-pct" id="map-zoom-pct">100%</span>
@@ -469,12 +469,12 @@
         <div class="template-explainer">
           <h2>Process Template</h2>
           <p>A Process Template is a reusable definition of an expected process: its steps, phases, and the UI patterns that identify each one. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
-          <p class="meta">Templates live as YAML files. Edit them here, save, then re-match sessions from the Aggregate view.</p>
+          <p class="meta">Templates are stored in a structured text format. The list of steps is editable below; the full template definition lives in the Advanced editor for engineers / power users. Save, then re-match sessions from the Compare Sessions view.</p>
         </div>
         <div class="actions-bar">
-          <button id="btn-open-canonical" class="primary">Open template YAML...</button>
+          <button id="btn-open-canonical" class="primary">Open Process Template...</button>
           <button id="btn-save-canonical" disabled>Save changes</button>
-          <button id="btn-promote-from-exemplar" disabled>Promote selected steps from exemplar</button>
+          <button id="btn-promote-from-exemplar" disabled>Add selected steps from exemplar to template</button>
           <span class="flex-spacer"></span>
           <span class="meta" id="canonical-meta"></span>
         </div>
@@ -484,8 +484,11 @@
             <div id="canonical-step-list"></div>
           </div>
           <div class="panel">
-            <h3>Template definition (YAML)</h3>
-            <textarea id="canonical-yaml" spellcheck="false"></textarea>
+            <details class="advanced-yaml" id="canonical-advanced">
+              <summary>Advanced: full template definition</summary>
+              <p class="meta" style="margin-top:6px">Direct edit of the underlying definition. Useful for tuning match rules; usually you'll add steps via the Promote button rather than editing here. Save validates the format before writing to disk.</p>
+              <textarea id="canonical-yaml" spellcheck="false"></textarea>
+            </details>
           </div>
           <div class="panel">
             <h3>Test against exemplar session</h3>
@@ -501,7 +504,7 @@
     <section class="view" id="view-vocabularies">
       <div class="loaded">
         <div class="template-explainer">
-          <h2>App Vocabularies</h2>
+          <h2>App Library</h2>
           <p>Each app you record gets one vocabulary file that maps its UI elements (Save button, Search field, etc.) to meaningful names. The names roll into step names automatically on every future session that touches the app. Edit them as a form here - no YAML required.</p>
           <p class="meta">Underlying storage is YAML at <code>normalization/app_vocabularies/</code>. You can edit those files directly if you prefer, or use this form. Both write to the same place.</p>
         </div>
@@ -546,7 +549,7 @@
         <button class="help-nav-item" data-section="session">Session view</button>
         <button class="help-nav-item" data-section="stepsphases">Steps &amp; Phases</button>
         <button class="help-nav-item" data-section="template">Process Templates</button>
-        <button class="help-nav-item" data-section="aggregate">Aggregate view</button>
+        <button class="help-nav-item" data-section="aggregate">Compare Sessions view</button>
         <button class="help-nav-item" data-section="capture">Capture workflow</button>
         <button class="help-nav-item" data-section="shortcuts">Shortcuts</button>
         <button class="help-nav-item" data-section="trouble">Troubleshooting</button>
@@ -561,7 +564,7 @@
             <li><strong>Open</strong> the session in this viewer: Session view → <em>Open session folder...</em></li>
             <li><strong>Analyze</strong>: click <em>Analyze session</em>. Tick <em>Build process map</em> to also discover a BPMN diagram.</li>
             <li><strong>Annotate</strong>: rename markers, add timestamped notes. Edits save to <code>annotations.json</code>; raw events stay immutable.</li>
-            <li><strong>Aggregate</strong> across sessions (Tab 2) when you want statistics, variants, and a combined process map.</li>
+            <li><strong>Compare across sessions</strong> (Tab 2) when you want statistics, path variations, and a combined process map.</li>
           </ol>
           <h3>What the viewer expects in a session folder</h3>
           <ul class="help-list">
@@ -678,8 +681,8 @@
           </ul>
           <h3>Process map</h3>
           <ul class="help-list">
-            <li><strong>BPMN</strong> tab: the inductive miner's output rendered with bpmn-js. Pan/zoom with mouse. Export the source file via the BPMN export button below.</li>
-            <li><strong>DFG</strong> tab: directly-follows graph. Node green border = start activity, orange border = end activity. Edge thickness ~ frequency. <strong>Click any node to drill back to the first session containing that activity, at the matching timestamp.</strong></li>
+            <li><strong>Process diagram (BPMN)</strong> tab: the discovered process rendered as a standard BPMN diagram. Pan/zoom with mouse. Export the file (importable into Adonis, Bizagi, etc.) via the export button below.</li>
+            <li><strong>Flow diagram</strong> tab: a network view showing how often each activity is followed by each other activity. Node with a green border = where sessions started; orange border = where sessions ended; edge thickness reflects how often that transition happened. <strong>Click any node to drill into every loaded session containing that activity, at the matching timestamp.</strong></li>
           </ul>
           <h3>Statistics</h3>
           <ul class="help-list">
@@ -724,7 +727,7 @@
         <section class="help-section" data-section="shortcuts">
           <h3>Viewer keyboard shortcuts</h3>
           <table class="help-table">
-            <tr><td><span class="kbd">1</span> / <span class="kbd">2</span></td><td>Session view / Aggregate view</td></tr>
+            <tr><td><span class="kbd">1</span> / <span class="kbd">2</span></td><td>Session view / Compare Sessions view</td></tr>
             <tr><td><span class="kbd">Space</span></td><td>Play / pause video</td></tr>
             <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Scrub 5 seconds (hold <span class="kbd">Shift</span> for 10s)</td></tr>
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>

@@ -1598,3 +1598,21 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
 .template-compare .summary { font-size: 11px; color: var(--fg-2); margin-top: 8px; }
 .template-compare .delta-up   { color: var(--accent); }
 .template-compare .delta-down { color: var(--bad); }
+
+/* ===== Advanced disclosure for raw-data editors (Phase 5) =========== */
+.advanced-yaml { margin-top: 4px; }
+.advanced-yaml > summary {
+  cursor: pointer; color: var(--fg-3);
+  font-size: 11px; padding: 4px 0;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.advanced-yaml > summary:hover { color: var(--fg-2); }
+.advanced-yaml[open] > summary { color: var(--accent); }
+.advanced-yaml textarea {
+  width: 100%; min-height: 240px; resize: vertical;
+  background: var(--bg-3); border: 1px solid var(--rule);
+  color: var(--fg); border-radius: 3px; padding: 8px;
+  font-family: var(--font-mono); font-size: 11px;
+  outline: none;
+}
+.advanced-yaml textarea:focus { border-color: var(--accent); }
