@@ -1420,6 +1420,29 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
 }
 .project-menu-item:hover { background: var(--bg-3); color: var(--fg); }
 
+/* Recent dropdown (top-bar) -- sessions + projects reachable any time */
+.recent-menu-section { max-height: 380px; overflow-y: auto; }
+.recent-menu-heading {
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--fg-4); font-family: var(--font-mono);
+  padding: 6px 10px 3px;
+}
+.recent-menu-item {
+  display: flex; width: 100%; text-align: left; gap: 8px;
+  background: transparent; border: 0; color: var(--fg-2);
+  padding: 6px 10px; font-size: 12px; font-family: inherit;
+  cursor: pointer; border-radius: 3px; align-items: baseline;
+}
+.recent-menu-item:hover { background: var(--bg-3); color: var(--fg); }
+.recent-menu-item .ri-label { flex: 1; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.recent-menu-item .ri-tag {
+  font-size: 9px; font-family: var(--font-mono); color: var(--fg-4);
+  flex: 0 0 auto;
+}
+.recent-menu-item.missing .ri-label { color: var(--fg-4); text-decoration: line-through; }
+.recent-menu-empty { padding: 8px 10px; color: var(--fg-4); font-size: 11px; font-style: italic; }
+
 /* ===== Timeline screenshot hover thumb (P1.2) ===================== */
 .tl-screenshot-thumb {
   position: fixed; display: none; z-index: 999;

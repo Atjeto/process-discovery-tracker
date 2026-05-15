@@ -29,6 +29,15 @@
       <button class="tab" data-view="vocabularies"><span class="kbd">4</span> App Library</button>
     </nav>
     <div class="topbar-meta">
+      <div class="project-menu" id="recent-menu">
+        <button class="project-btn" id="btn-recent-menu" title="Open a recent session or project">
+          <span>Recent</span>
+          <span class="project-menu-caret">▾</span>
+        </button>
+        <div class="project-menu-popup" id="recent-menu-popup" style="display:none; min-width: 280px;">
+          <div class="recent-menu-section" id="recent-menu-content"></div>
+        </div>
+      </div>
       <div class="project-menu" id="project-menu">
         <button class="project-btn" id="btn-project-menu" title="Project actions">
           <span id="project-menu-label">No project</span>

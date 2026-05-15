@@ -5392,6 +5392,82 @@ function toggleProjectMenu(force) {
   });
 })();
 
+/* ===== Recent dropdown (top-bar) =====
+   Recent sessions + projects were only reachable from the Session
+   empty-state, which disappears once a session loads. This top-bar
+   menu makes them reachable any time. */
+function renderRecentMenu() {
+  const host = document.getElementById("recent-menu-content");
+  if (!host) return;
+  let html = "";
+  // Recent projects.
+  const projects = (typeof PdtProject !== "undefined") ? PdtProject.getRecentProjects() : [];
+  if (projects.length) {
+    html += '<div class="recent-menu-heading">Recent projects</div>';
+    html += projects.map((p) => {
+      let missing = false;
+      try { missing = !fs.existsSync(p.path); } catch (_) { missing = true; }
+      return '<button class="recent-menu-item' + (missing ? " missing" : "") + '" ' +
+        'data-kind="project" data-path="' + escapeHtml(p.path) + '">' +
+        '<span class="ri-label">' + escapeHtml(p.name || path.basename(p.path)) + '</span>' +
+        '<span class="ri-tag">' + (missing ? "missing" : "project") + '</span>' +
+        '</button>';
+    }).join("");
+  }
+  // Recent sessions + bundled examples.
+  const recents = getRecent();
+  const hidden = getHiddenExamples();
+  const examples = listBundledExamples().filter((e) => !hidden.has(e.folder));
+  const sessions = recents.concat(examples);
+  if (sessions.length) {
+    html += '<div class="recent-menu-heading">Recent sessions</div>';
+    html += sessions.map((r) => {
+      let missing = false;
+      try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
+      const label = r.label || path.basename(r.folder);
+      return '<button class="recent-menu-item' + (missing ? " missing" : "") + '" ' +
+        'data-kind="session" data-folder="' + escapeHtml(r.folder) + '">' +
+        '<span class="ri-label">' + escapeHtml(label) + '</span>' +
+        '<span class="ri-tag">' + (missing ? "missing" : (r.example ? "example" : "session")) + '</span>' +
+        '</button>';
+    }).join("");
+  }
+  if (!html) {
+    html = '<div class="recent-menu-empty">No recent sessions or projects yet.</div>';
+  }
+  host.innerHTML = html;
+  host.querySelectorAll(".recent-menu-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      toggleRecentMenu(false);
+      if (item.dataset.kind === "project") {
+        projectOpenByPath(item.dataset.path);
+      } else {
+        activateTab("session");
+        loadSessionIntoView(item.dataset.folder);
+      }
+    });
+  });
+}
+function toggleRecentMenu(force) {
+  const popup = document.getElementById("recent-menu-popup");
+  if (!popup) return;
+  const open = force === undefined ? popup.style.display === "none" : !!force;
+  if (open) renderRecentMenu();
+  popup.style.display = open ? "" : "none";
+}
+(function wireRecentMenu() {
+  const btn = document.getElementById("btn-recent-menu");
+  const popup = document.getElementById("recent-menu-popup");
+  if (!btn || !popup) return;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleRecentMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!popup.contains(e.target) && e.target !== btn) toggleRecentMenu(false);
+  });
+})();
+
 async function projectSaveAs() {
   toggleProjectMenu(false);
   const name = await promptModal({
