@@ -272,17 +272,22 @@ main { flex: 1; overflow: auto; }
   margin-bottom: 10px; gap: 12px; }
 .timeline-header strong { font-size: 12px; }
 .timeline-controls { display: flex; gap: 4px; }
-.timeline-scroll { flex: 1; overflow-x: auto; overflow-y: hidden;
+/* flex must NOT be 1 here: flex:1 sets flex-basis:0 which overrides the
+   explicit height, so the #resize-timeline drag handle (which updates
+   --timeline-height) had no visible effect. flex:0 0 auto lets the
+   height var actually drive the viewport size. overflow-y:auto so a
+   tall lane stack scrolls inside the resized viewport. */
+.timeline-scroll { flex: 0 0 auto; overflow-x: auto; overflow-y: auto;
   background: var(--bg-3); border: 1px solid var(--rule); border-radius: var(--radius-sm);
   height: var(--timeline-height, 160px); }
 .timeline { position: relative; height: 100%; min-height: 80px;
-  cursor: crosshair; min-width: 100%; }
+  cursor: default; min-width: 100%; }
 .tl-row { position: absolute; left: 0; right: 0; }
 .tl-band { position: absolute; top: 0; bottom: 0; transition: filter 0.15s, opacity 0.15s;
   overflow: hidden; }
 .tl-band:hover { filter: brightness(1.35); cursor: pointer; }
 .tl-activity { background: var(--accent); border-right: 1px solid var(--bg-2); border-radius: 2px; }
-.tl-activity:hover { filter: brightness(1.25); cursor: context-menu; }
+.tl-activity:hover { filter: brightness(1.25); cursor: pointer; }
 /* Subtle ⋯ on hover to advertise the right-click menu. The cursor
    change is the primary hint; this fades in for the static reader
    who isn't moving the mouse around. */
@@ -466,10 +471,11 @@ main { flex: 1; overflow: auto; }
 .panel { background: var(--bg-2); border-radius: var(--radius); padding: 14px 18px;
   min-height: 220px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .panel-wide { grid-column: 1 / -1; }
-.panel-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.panel-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px;
+  flex-wrap: wrap; }
 .panel-header h3 { margin: 0; }
 .panel-tabs { display: flex; gap: 2px; background: var(--bg-3); padding: 3px;
-  border-radius: 4px; border: 1px solid var(--rule); }
+  border-radius: 4px; border: 1px solid var(--rule); flex-shrink: 0; }
 .panel-tab { background: transparent; border: 1px solid transparent; padding: 4px 12px;
   font-size: 11px; color: var(--fg-3); border-radius: 3px; }
 .panel-tab.active { background: var(--bg-1); color: var(--fg); }
@@ -477,7 +483,7 @@ main { flex: 1; overflow: auto; }
 
 /* DFG zoom controls */
 .map-zoom { display: flex; align-items: center; gap: 4px; margin-left: auto;
-  color: var(--fg-3); font-size: 10px; }
+  color: var(--fg-3); font-size: 10px; flex-shrink: 0; white-space: nowrap; }
 .map-zoom-pct { font-family: var(--font-mono); color: var(--fg-3);
   min-width: 38px; text-align: right; }
 .map-zoom .icon-btn.xs { padding: 2px 8px; font-size: 11px; min-width: 22px; height: 22px; }
@@ -830,6 +836,13 @@ main { flex: 1; overflow: auto; }
 .editor-list-pane, .editor-detail-pane {
   background: var(--bg-1); border: 1px solid var(--rule);
   border-radius: var(--radius-sm); padding: 8px 10px; overflow: auto;
+}
+/* The selected-step editor stays pinned to the top of the viewport as
+   the (long) step list scrolls -- otherwise the analyst scrolls down to
+   find a step, clicks it, and has to scroll back up to edit it. */
+.editor-detail-pane {
+  position: sticky; top: 8px; align-self: start;
+  max-height: calc(100vh - 130px);
 }
 .editor-pane-title {
   font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
@@ -1323,20 +1336,23 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
   opacity: 0.8;
 }
 
-/* Screenshot dots: dramatically more visible. The original 6px circle
-   with low contrast was invisible against the green wall. */
+/* Screenshot dots: quiet indicators sitting on the activity band's
+   bottom edge. Visible enough to find, dim enough not to "float" over
+   the timeline. Brighten + grow on hover (which also pops the
+   thumbnail preview). */
 .tl-screenshot {
   position: absolute;
-  width: 14px; height: 14px; border-radius: 50%;
+  width: 9px; height: 9px; border-radius: 50%;
   background: var(--accent-2);
-  border: 2px solid var(--bg);
-  box-shadow: 0 0 0 1px var(--accent-2);
-  cursor: pointer; z-index: 5;
-  transition: transform 0.12s;
+  border: 1px solid var(--bg);
+  opacity: 0.55;
+  cursor: pointer; z-index: 4;
+  transition: transform 0.12s, opacity 0.12s;
 }
 .tl-screenshot:hover {
-  transform: scale(1.4);
-  box-shadow: 0 0 0 2px var(--accent-2), 0 0 8px rgba(90, 116, 136, 0.6);
+  opacity: 1;
+  transform: scale(1.5);
+  box-shadow: 0 0 6px rgba(90, 116, 136, 0.5);
 }
 
 /* Marker bars: thin amber line, instrument-like */

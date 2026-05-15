@@ -663,6 +663,11 @@ function populateCaseScope() {
         : baseLabel;
       return `<option value="${c.id}"${c.id === currentCaseScope ? " selected" : ""}>${escapeHtml(label)}</option>`;
     }));
+  // Cases are derived from analyzed steps. An unanalyzed session has
+  // none -- spell that out rather than showing a lone "All cases".
+  if (!cases.length) {
+    opts.push('<option value="" disabled>(no cases yet — click Analyze session first)</option>');
+  }
   sel.innerHTML = opts.join("");
   // Wrapper picks up the visual cue that scoping is active.
   const wrap = sel.closest(".case-scope");
