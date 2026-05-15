@@ -116,6 +116,20 @@
           selector: "edge:selected, node:selected",
           style: { "line-color": "#6E8A66", "border-color": "#6E8A66" },
         },
+        // Variant overlay (Phase E): hovering a node highlights the
+        // session paths through it and dims everything else.
+        {
+          selector: ".vh-dim",
+          style: { opacity: 0.12 },
+        },
+        {
+          selector: "node.vh-on",
+          style: { "border-color": "#A08050", "border-width": 2.5 },
+        },
+        {
+          selector: "edge.vh-on",
+          style: { "line-color": "#A08050", "target-arrow-color": "#A08050" },
+        },
       ],
       layout: {
         name: typeof dagre !== "undefined" || typeof window.dagre !== "undefined"
@@ -136,6 +150,49 @@
     }
     if (opts.onZoomChange) {
       cy.on("zoom", () => opts.onZoomChange(cy.zoom()));
+    }
+
+    // Variant overlay (Phase E). Pre-index, for every activity, the set
+    // of node ids and edge ids on variants passing through it. On node
+    // hover, dim everything outside that union.
+    const variants = opts.variants || [];
+    if (variants.length) {
+      const nodeIndex = new Map();  // activity -> Set(node ids)
+      const edgeIndex = new Map();  // activity -> Set(edge ids)
+      for (const v of variants) {
+        const seq = v.variant || [];
+        const vNodes = new Set(seq);
+        const vEdges = new Set();
+        for (let i = 0; i < seq.length - 1; i++) {
+          vEdges.add(seq[i] + "__" + seq[i + 1]);
+        }
+        for (const act of seq) {
+          if (!nodeIndex.has(act)) nodeIndex.set(act, new Set());
+          if (!edgeIndex.has(act)) edgeIndex.set(act, new Set());
+          for (const n of vNodes) nodeIndex.get(act).add(n);
+          for (const e of vEdges) edgeIndex.get(act).add(e);
+        }
+      }
+      cy.on("mouseover", "node", (e) => {
+        const act = e.target.data("id");
+        const keepNodes = nodeIndex.get(act);
+        const keepEdges = edgeIndex.get(act);
+        if (!keepNodes) return;  // activity not on any variant
+        cy.elements().addClass("vh-dim");
+        cy.nodes().forEach((n) => {
+          if (keepNodes.has(n.data("id"))) {
+            n.removeClass("vh-dim").addClass("vh-on");
+          }
+        });
+        cy.edges().forEach((ed) => {
+          if (keepEdges.has(ed.data("id"))) {
+            ed.removeClass("vh-dim").addClass("vh-on");
+          }
+        });
+      });
+      cy.on("mouseout", "node", () => {
+        cy.elements().removeClass("vh-dim vh-on");
+      });
     }
     setTimeout(() => {
       try { cy.fit(undefined, 24); } catch (_) {}

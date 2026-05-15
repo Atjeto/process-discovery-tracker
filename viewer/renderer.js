@@ -1590,26 +1590,6 @@ async function suggestPhaseGroupings() {
 }
 if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click", suggestPhaseGroupings);
 
-/* P2.2 full: Flow / Table toggle for the path-variations panel. */
-(function wireVariantViewToggle() {
-  document.querySelectorAll('.panel-tab[data-vview]').forEach((tab) => {
-    tab.addEventListener("click", () => {
-      const which = tab.dataset.vview;
-      document.querySelectorAll('.panel-tab[data-vview]').forEach((t) =>
-        t.classList.toggle("active", t === tab));
-      const flow = document.getElementById("variant-flow-host");
-      const table = document.getElementById("variant-table-host");
-      if (which === "flow") {
-        if (flow) flow.style.display = "";
-        if (table) table.style.display = "none";
-      } else {
-        if (flow) flow.style.display = "none";
-        if (table) table.style.display = "";
-      }
-    });
-  });
-})();
-
 /* ============ AM.1 — Process Template version compare ============= */
 
 async function refreshTemplateVersions() {
@@ -4348,23 +4328,13 @@ function renderAggregate() {
     }
   }
 
-  // P2.2 full: render the variant-flow Sankey alongside the table.
-  // Stash the rows for the flow renderer; convert from {variant: "A → B
-  // → C", freq, sessions} back to the {variant: [...], frequency} shape
-  // PdtVariantFlow expects.
-  const flowHost = document.getElementById("variant-flow-host");
-  if (flowHost && window.PdtVariantFlow) {
-    const flowVariants = varRows.slice(0, 60).map((r) => ({
-      variant: r.variant.split(" → "),
-      frequency: r.freq,
-    }));
-    window.PdtVariantFlow.render(flowHost, flowVariants, {
-      onNodeClick: (activity, _vIdxs) => {
-        // Drill into the activity using the existing DFG drill flow.
-        drillToActivity(activity, null);
-      },
-    });
-  }
+  // Variant data for the DFG variant-overlay (Phase E). Each variant is
+  // an ordered activity list; the DFG renderer uses these to highlight
+  // the paths through a hovered node.
+  const variantsForDfg = varRows.slice(0, 80).map((r) => ({
+    variant: r.variant.split(" → "),
+    frequency: r.freq,
+  }));
 
   // Outliers + rework
   const outRows = [];
@@ -4421,6 +4391,9 @@ function renderAggregate() {
     window.PdtDfg.render($("#dfg-host"), dfg, {
       onNodeClick: (activityLabel, ev) => drillToActivity(activityLabel, ev),
       onZoomChange: (z) => setMapZoomPct(z),
+      // Phase E: variant overlay. Hovering a node highlights the
+      // session paths (variants) that pass through that activity.
+      variants: variantsForDfg,
     });
     // Show zoom controls if the DFG tab is currently active
     const dfgTabActive = document.querySelector('.panel-tab.active')?.dataset.map === "dfg";

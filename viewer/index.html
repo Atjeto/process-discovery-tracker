@@ -12,7 +12,6 @@
 <script src="node_modules/dagre/dist/dagre.min.js"></script>
 <script src="node_modules/cytoscape-dagre/cytoscape-dagre.js"></script>
 <script src="node_modules/bpmn-js/dist/bpmn-viewer.production.min.js"></script>
-<script src="variant-viewer.js"></script>
 </head>
 <body>
 
@@ -443,15 +442,9 @@
           </div>
 
           <div class="panel panel-wide">
-            <div class="panel-header">
-              <h3>Path variations</h3>
-              <div class="panel-tabs">
-                <button class="panel-tab active" data-vview="flow" title="Sankey-style flow showing where session paths split and merge.">Flow</button>
-                <button class="panel-tab" data-vview="table" title="Tabular list of every distinct activity sequence with its frequency.">Table</button>
-              </div>
-            </div>
-            <div class="variant-flow-host" id="variant-flow-host" style="overflow-x:auto;min-height:240px"></div>
-            <div class="stats-table-host" id="variant-table-host" style="display:none">
+            <h3>Path variations</h3>
+            <p class="meta" style="margin-top:0">Every distinct activity sequence across the loaded sessions, ranked by how many sessions follow it. The bar shows relative frequency; amber-highlighted activities are positions where paths diverge. Hover a node in the Flow diagram above to see the same paths laid out visually.</p>
+            <div class="stats-table-host" id="variant-table-host">
               <table class="stats-table" id="variants">
                 <thead><tr><th>freq</th><th>len</th><th>variant</th></tr></thead>
                 <tbody></tbody>
@@ -739,7 +732,7 @@
           <h3>Process map</h3>
           <ul class="help-list">
             <li><strong>Process diagram (BPMN)</strong> tab: the discovered process rendered as a standard BPMN diagram. Pan/zoom with mouse. Export the file (importable into Adonis, Bizagi, etc.) via the export button below.</li>
-            <li><strong>Flow diagram</strong> tab: a network view showing how often each activity is followed by each other activity. Node with a green border = where sessions started; orange border = where sessions ended; edge thickness reflects how often that transition happened. <strong>Click any node to drill into every loaded session containing that activity, at the matching timestamp.</strong></li>
+            <li><strong>Flow diagram</strong> tab: a network view showing how often each activity is followed by each other activity. Node with a green border = where sessions started; orange border = where sessions ended; edge thickness reflects how often that transition happened. <strong>Hover any node to highlight the session paths (variants) that run through it</strong> — everything off those paths dims so you can see where work diverges. <strong>Click a node to drill into every loaded session containing that activity, at the matching timestamp.</strong></li>
           </ul>
           <h3>Statistics</h3>
           <ul class="help-list">
