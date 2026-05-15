@@ -128,7 +128,11 @@
       },
     });
     if (onNodeClick) {
-      cy.on("tap", "node", (e) => onNodeClick(e.target.data("id")));
+      cy.on("tap", "node", (e) => {
+        // Surface the original DOM event so the picker can position
+        // itself near the cursor (P1.5).
+        onNodeClick(e.target.data("id"), e.originalEvent || null);
+      });
     }
     if (opts.onZoomChange) {
       cy.on("zoom", () => opts.onZoomChange(cy.zoom()));

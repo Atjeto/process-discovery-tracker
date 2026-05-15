@@ -206,13 +206,54 @@ function listBundledExamples() {
   }));
 }
 
+/* Auto-clean grace period (P1.8). Once a recents entry is detected
+   missing, we stamp `firstMissingAt`. After STALE_RECENT_DAYS in that
+   missing state, the entry is silently dropped on the next render --
+   long enough that a one-off network hiccup or unplugged drive doesn't
+   prune real recents, but short enough that long-deleted folders don't
+   accumulate forever. */
+const STALE_RECENT_DAYS = 30;
+
 function renderRecent() {
   const host = $("#recent-list-session");
   if (!host) return;
   const clearBtn = $("#recent-clear-all");
-  const recents = getRecent();
+  let recents = getRecent();
   const hidden = getHiddenExamples();
   const examples = listBundledExamples().filter((e) => !hidden.has(e.folder));
+
+  // Auto-clean stale missing entries (P1.8): stamp firstMissingAt on
+  // first miss, drop entries that have been missing > STALE_RECENT_DAYS.
+  const now = Date.now();
+  const staleMs = STALE_RECENT_DAYS * 24 * 60 * 60 * 1000;
+  let recentsMutated = false;
+  const survivors = [];
+  for (const r of recents) {
+    let missing = false;
+    try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
+    if (!missing) {
+      // Folder is back -- clear any prior firstMissingAt stamp.
+      if (r.firstMissingAt) { delete r.firstMissingAt; recentsMutated = true; }
+      survivors.push(r);
+      continue;
+    }
+    if (!r.firstMissingAt) {
+      r.firstMissingAt = now;
+      recentsMutated = true;
+      survivors.push(r);
+    } else if (now - r.firstMissingAt > staleMs) {
+      // Stale. Drop it silently.
+      recentsMutated = true;
+      continue;
+    } else {
+      survivors.push(r);
+    }
+  }
+  if (recentsMutated) {
+    recents = survivors;
+    setRecent(recents);
+  }
+
   const combined = recents.concat(examples);
 
   if (!combined.length) {
@@ -221,9 +262,17 @@ function renderRecent() {
     return;
   }
   if (clearBtn) clearBtn.style.display = "";
-  host.innerHTML = combined.map((r) => {
+
+  // Compute live missing-state for the visible list (recents + examples).
+  let missingCount = 0;
+  const rowData = combined.map((r) => {
     let missing = false;
     try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
+    if (missing) missingCount++;
+    return { r, missing };
+  });
+
+  host.innerHTML = rowData.map(({ r, missing }) => {
     const label = escapeHtml(r.label || path.basename(r.folder));
     const exampleTag = r.example ? '<span class="recent-tag">example</span>' : "";
     const missingTag = missing ? '<span class="recent-missing-tag">missing</span>' : "";
@@ -234,6 +283,32 @@ function renderRecent() {
       '<button class="recent-remove" type="button" title="' + (r.example ? "Hide this example" : "Remove from recents") + '">×</button>' +
     '</li>';
   }).join("");
+
+  // P1.6: batch "Remove N missing" link, alongside Clear all, when ≥2 missing.
+  if (clearBtn && missingCount >= 2) {
+    let bulk = document.getElementById("recent-bulk-missing");
+    if (!bulk) {
+      bulk = document.createElement("button");
+      bulk.id = "recent-bulk-missing";
+      bulk.className = "recent-clear-btn";
+      bulk.type = "button";
+      bulk.style.marginRight = "6px";
+      clearBtn.parentNode.insertBefore(bulk, clearBtn);
+      bulk.addEventListener("click", () => {
+        const live = getRecent().filter((rr) => {
+          try { return fs.existsSync(rr.folder); } catch (_) { return false; }
+        });
+        setRecent(live);
+        renderRecent();
+      });
+    }
+    bulk.textContent = "Remove " + missingCount + " missing";
+    bulk.style.display = "";
+  } else {
+    const bulk = document.getElementById("recent-bulk-missing");
+    if (bulk) bulk.style.display = "none";
+  }
+
   host.querySelectorAll("li[data-folder]").forEach((li) => {
     li.addEventListener("click", (e) => {
       if (e.target.closest(".recent-remove")) return;
@@ -1479,6 +1554,12 @@ async function loadSessionIntoView(folder) {
     currentCaseScope = "";
     populateCaseScope();
   }
+  // P1.10: restore persisted timeline zoom + scroll for this session.
+  _wireTimelineScrollPersist();
+  restoreTimelineForCurrent();
+  // P1.1: clear any range selection from the previous session.
+  if (prevFolder !== folder) clearSelectionRange();
+  installRangeSelection();
 }
 
 /* Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix. */
@@ -1714,9 +1795,314 @@ function renderLegend(observedApps) {
   }
 }
 
-$("#btn-zoom-in").addEventListener("click", () => { zoomFactor *= 1.5; renderTimeline(); });
-$("#btn-zoom-out").addEventListener("click", () => { zoomFactor = Math.max(1, zoomFactor / 1.5); renderTimeline(); });
-$("#btn-zoom-reset").addEventListener("click", () => { zoomFactor = 1; renderTimeline(); });
+/* P1.10: persistent timeline zoom + scroll per session. Keyed by
+   sessionFolder so each session reopens to where the analyst left it.
+   Uses a small in-memory throttle for scroll writes since scroll fires
+   continuously during drag. */
+const TL_STATE_KEY = "pdt.timelineState";
+function _readTimelineState() {
+  try { return JSON.parse(localStorage.getItem(TL_STATE_KEY)) || {}; }
+  catch (_) { return {}; }
+}
+function _writeTimelineState(map) {
+  try { localStorage.setItem(TL_STATE_KEY, JSON.stringify(map)); }
+  catch (_) {}
+}
+function persistTimelineForCurrent() {
+  if (!currentSession || !currentSession.sessionFolder) return;
+  const map = _readTimelineState();
+  const scroll = document.getElementById("timeline-scroll");
+  map[currentSession.sessionFolder] = {
+    zoomFactor,
+    scrollLeft: scroll ? scroll.scrollLeft : 0,
+    ts: Date.now(),
+  };
+  _writeTimelineState(map);
+}
+function restoreTimelineForCurrent() {
+  if (!currentSession || !currentSession.sessionFolder) return;
+  const map = _readTimelineState();
+  const saved = map[currentSession.sessionFolder];
+  if (!saved) return;
+  if (typeof saved.zoomFactor === "number" && saved.zoomFactor >= 1) {
+    zoomFactor = saved.zoomFactor;
+    renderTimeline();
+  }
+  // Wait one frame so the host has expanded to the new width before scrolling.
+  requestAnimationFrame(() => {
+    const scroll = document.getElementById("timeline-scroll");
+    if (scroll && typeof saved.scrollLeft === "number") scroll.scrollLeft = saved.scrollLeft;
+  });
+}
+let _tlScrollPersistTimer = null;
+function _wireTimelineScrollPersist() {
+  const scroll = document.getElementById("timeline-scroll");
+  if (!scroll || scroll._pdtPersistWired) return;
+  scroll._pdtPersistWired = true;
+  scroll.addEventListener("scroll", () => {
+    syncMinimapViewport();
+    if (_tlScrollPersistTimer) return;
+    _tlScrollPersistTimer = setTimeout(() => {
+      _tlScrollPersistTimer = null;
+      persistTimelineForCurrent();
+    }, 250);
+  });
+}
+$("#btn-zoom-in").addEventListener("click", () => { zoomFactor *= 1.5; renderTimeline(); persistTimelineForCurrent(); });
+$("#btn-zoom-out").addEventListener("click", () => { zoomFactor = Math.max(1, zoomFactor / 1.5); renderTimeline(); persistTimelineForCurrent(); });
+$("#btn-zoom-reset").addEventListener("click", () => { zoomFactor = 1; renderTimeline(); persistTimelineForCurrent(); });
+
+/* P1.1: range selection on the timeline. Drag across the activity
+   lane to select a time range; a stats card pops up summarizing what
+   happened (duration, event count, top apps, contained markers). The
+   range survives view-mode switches but clears on session change.
+   Esc / click outside clears. */
+let _selectionRange = null;
+function clearSelectionRange() {
+  _selectionRange = null;
+  const ov = document.getElementById("tl-selection-overlay");
+  if (ov) ov.remove();
+  const card = document.getElementById("tl-selection-stats");
+  if (card) card.remove();
+}
+function installRangeSelection() {
+  const host = document.getElementById("timeline");
+  if (!host || host._pdtSelWired) return;
+  host._pdtSelWired = true;
+  let startX = null, startMs = null, overlay = null;
+  function spanInfo() {
+    if (!currentSession || !currentSession.events.length) return null;
+    const first = new Date(currentSession.events[0].timestamp).getTime();
+    const last  = new Date(currentSession.events[currentSession.events.length - 1].timestamp).getTime();
+    return { first, last, span: Math.max(1, last - first) };
+  }
+  function pxToMs(clientX) {
+    const info = spanInfo();
+    if (!info) return null;
+    const rect = host.getBoundingClientRect();
+    const frac = (clientX + host.scrollLeft - rect.left) / Math.max(1, rect.width);
+    return info.first + frac * info.span;
+  }
+  host.addEventListener("mousedown", (e) => {
+    // Only pure-background drag starts a selection — clicks on bands /
+    // markers / dots / labels stay normal click-to-seek.
+    if (e.target !== host) return;
+    if (e.button !== 0) return;
+    if (!e.shiftKey) return;  // require Shift so plain click-to-seek is unaffected
+    e.preventDefault();
+    startX = e.clientX;
+    startMs = pxToMs(e.clientX);
+    if (startMs == null) return;
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.className = "tl-selection-overlay";
+      overlay.id = "tl-selection-overlay";
+      host.appendChild(overlay);
+    }
+    const info = spanInfo();
+    const x = ((startMs - info.first) / info.span) * 100;
+    overlay.style.left = x + "%";
+    overlay.style.width = "0%";
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (startX == null || !overlay) return;
+    const info = spanInfo();
+    if (!info) return;
+    const curMs = pxToMs(e.clientX);
+    if (curMs == null) return;
+    const lo = Math.min(startMs, curMs);
+    const hi = Math.max(startMs, curMs);
+    overlay.style.left  = (((lo - info.first) / info.span) * 100) + "%";
+    overlay.style.width = (((hi - lo) / info.span) * 100) + "%";
+  });
+  document.addEventListener("mouseup", () => {
+    if (startX == null) return;
+    if (!overlay) { startX = null; return; }
+    const info = spanInfo();
+    if (!info) { startX = null; return; }
+    // Read the overlay's geometry to derive the final range.
+    const leftPct  = parseFloat(overlay.style.left)  || 0;
+    const widthPct = parseFloat(overlay.style.width) || 0;
+    if (widthPct < 0.1) {
+      // Tiny drag — treat as cancel.
+      clearSelectionRange();
+      startX = null;
+      return;
+    }
+    const startSel = info.first + (leftPct / 100) * info.span;
+    const endSel   = startSel + (widthPct / 100) * info.span;
+    _selectionRange = { startMs: startSel, endMs: endSel };
+    renderSelectionStats();
+    startX = null;
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && _selectionRange) clearSelectionRange();
+  });
+}
+function renderSelectionStats() {
+  if (!_selectionRange || !currentSession) return;
+  let card = document.getElementById("tl-selection-stats");
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "selection-stats";
+    card.id = "tl-selection-stats";
+    // Place above the legend so it doesn't crowd the timeline.
+    const legend = document.getElementById("timeline-legend");
+    if (legend && legend.parentNode) legend.parentNode.insertBefore(card, legend);
+  }
+  const evs = currentSession.events;
+  const inRange = evs.filter((ev) => {
+    const t = new Date(ev.timestamp).getTime();
+    return t >= _selectionRange.startMs && t <= _selectionRange.endMs;
+  });
+  const appCounts = {};
+  let markerCount = 0, screenshotCount = 0;
+  for (const ev of inRange) {
+    if (ev.type === "activity") {
+      const app = ev.data.app || "unknown";
+      appCounts[app] = (appCounts[app] || 0) + 1;
+    } else if (ev.type === "marker") markerCount++;
+    else if (ev.type === "system" &&
+             (ev.data.kind === "screenshot" || ev.data.kind === "screenshot_manual")) {
+      screenshotCount++;
+    }
+  }
+  const topApps = Object.entries(appCounts)
+    .sort((a, b) => b[1] - a[1]).slice(0, 4)
+    .map(([app, n]) => appLabel(app) + " (" + n + ")")
+    .join(", ");
+  const dur = _selectionRange.endMs - _selectionRange.startMs;
+  card.innerHTML =
+    '<h4>Selection</h4>' +
+    '<div class="row"><span>Duration</span><span>' + escapeHtml(formatDuration(dur)) + '</span></div>' +
+    '<div class="row"><span>Events</span><span>' + inRange.length + '</span></div>' +
+    '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
+    '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
+    (topApps ? '<div class="row"><span>Top apps</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
+    '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
+  document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
+}
+
+/* P1.3: minimap overview above the timeline. A 30px strip showing the
+   whole session compressed; the highlighted rectangle marks the
+   currently-visible region in the scroll container. Click anywhere to
+   jump; drag the rectangle to scroll. */
+function renderMinimap() {
+  const mm = document.getElementById("timeline-minimap");
+  const scroll = document.getElementById("timeline-scroll");
+  if (!mm || !scroll || !currentSession || !currentSession.events) return;
+  const evs = currentSession.events;
+  if (!evs.length) { mm.style.display = "none"; return; }
+  mm.style.display = "";
+  const first = new Date(evs[0].timestamp).getTime();
+  const last  = new Date(evs[evs.length - 1].timestamp).getTime();
+  const span  = Math.max(1, last - first);
+  // Build / reset content.
+  mm.innerHTML = "";
+  // Activity bands (compressed). Skip very short ones for clarity.
+  for (const ev of evs) {
+    if (ev.type !== "activity") continue;
+    const dur = ev.data.duration_ms || 0;
+    if (dur < span * 0.0005) continue;
+    const t = new Date(ev.timestamp).getTime();
+    const x = ((t - first) / span) * 100;
+    const w = Math.max(0.1, (dur / span) * 100);
+    const b = document.createElement("div");
+    b.className = "tl-mm-band";
+    b.style.left = x + "%";
+    b.style.width = w + "%";
+    b.style.background = appColor(ev.data.app);
+    mm.appendChild(b);
+  }
+  // Viewport rectangle.
+  const vp = document.createElement("div");
+  vp.className = "tl-mm-viewport";
+  vp.id = "tl-mm-viewport";
+  mm.appendChild(vp);
+  syncMinimapViewport();
+}
+function syncMinimapViewport() {
+  const mm = document.getElementById("timeline-minimap");
+  const scroll = document.getElementById("timeline-scroll");
+  const vp = document.getElementById("tl-mm-viewport");
+  if (!mm || !scroll || !vp) return;
+  const inner = scroll.scrollWidth || 1;
+  const outer = scroll.clientWidth || 1;
+  const visibleFrac = Math.min(1, outer / inner);
+  const startFrac   = scroll.scrollLeft / inner;
+  vp.style.left  = (startFrac * 100) + "%";
+  vp.style.width = (visibleFrac * 100) + "%";
+}
+(function wireMinimap() {
+  const mm = document.getElementById("timeline-minimap");
+  if (!mm || mm._pdtWired) return;
+  mm._pdtWired = true;
+  mm.addEventListener("click", (e) => {
+    // Click outside the viewport rect → jump there.
+    if (e.target.id === "tl-mm-viewport") return;
+    const scroll = document.getElementById("timeline-scroll");
+    if (!scroll) return;
+    const rect = mm.getBoundingClientRect();
+    const frac = (e.clientX - rect.left) / Math.max(1, rect.width);
+    const inner = scroll.scrollWidth || 1;
+    const outer = scroll.clientWidth || 1;
+    scroll.scrollLeft = Math.max(0, frac * inner - outer / 2);
+    syncMinimapViewport();
+    persistTimelineForCurrent();
+  });
+  // Drag the viewport.
+  let dragging = null;
+  mm.addEventListener("mousedown", (e) => {
+    if (e.target.id !== "tl-mm-viewport") return;
+    e.preventDefault();
+    const vp = e.target;
+    vp.classList.add("dragging");
+    const scroll = document.getElementById("timeline-scroll");
+    const rect = mm.getBoundingClientRect();
+    dragging = { startX: e.clientX, startScrollLeft: scroll.scrollLeft, mmW: rect.width, scroll };
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const dxPx = e.clientX - dragging.startX;
+    const inner = dragging.scroll.scrollWidth || 1;
+    const dxScroll = (dxPx / Math.max(1, dragging.mmW)) * inner;
+    dragging.scroll.scrollLeft = Math.max(0, dragging.startScrollLeft + dxScroll);
+    syncMinimapViewport();
+  });
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    const vp = document.getElementById("tl-mm-viewport");
+    if (vp) vp.classList.remove("dragging");
+    dragging = null;
+    persistTimelineForCurrent();
+  });
+})();
+
+/* P1.2: hover thumbnail for timeline screenshot dots. Single shared
+   element — created lazily, repositioned on each show. */
+let _screenshotThumbEl = null;
+function showScreenshotThumb(dot, imgPath) {
+  if (!_screenshotThumbEl) {
+    _screenshotThumbEl = document.createElement("img");
+    _screenshotThumbEl.className = "tl-screenshot-thumb";
+    document.body.appendChild(_screenshotThumbEl);
+  }
+  _screenshotThumbEl.src = "file:///" + imgPath.replace(/\\/g, "/");
+  const rect = dot.getBoundingClientRect();
+  // Place above the dot, biased to keep within viewport.
+  const thumbW = 220, thumbH = 140;
+  let left = rect.left + rect.width / 2 - thumbW / 2;
+  if (left < 8) left = 8;
+  if (left + thumbW > window.innerWidth - 8) left = window.innerWidth - thumbW - 8;
+  let top = rect.top - thumbH - 8;
+  if (top < 8) top = rect.bottom + 8;
+  _screenshotThumbEl.style.left = left + "px";
+  _screenshotThumbEl.style.top  = top  + "px";
+  _screenshotThumbEl.style.display = "block";
+}
+function hideScreenshotThumb() {
+  if (_screenshotThumbEl) _screenshotThumbEl.style.display = "none";
+}
 
 function renderTimelineSummary() {
   const evs = currentSession.events;
@@ -1817,7 +2203,11 @@ function renderTimeline() {
   const host = $("#timeline");
   host.innerHTML = "";
   const evs = currentSession.events;
-  if (!evs.length) return;
+  if (!evs.length) {
+    const mm = document.getElementById("timeline-minimap");
+    if (mm) mm.style.display = "none";
+    return;
+  }
   const first = new Date(evs[0].timestamp).getTime();
   const last = new Date(evs[evs.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
@@ -1838,12 +2228,22 @@ function renderTimeline() {
   const densityH = 12;
   const caseRowH = 22;
 
+  // P1.4 + P1.9: optional per-step + annotation lanes between density
+  // and cases. Compute their heights upfront so casesTop accounts for
+  // them — otherwise the cases overlap with the new lanes.
+  const _stepsForLane = (currentSession.annotations && currentSession.annotations.steps) || [];
+  const _notesForLane = (currentSession.annotations && currentSession.annotations.notes) || [];
+  const stepsLaneH = _stepsForLane.length ? 16 : 0;
+  const notesLaneH = _notesForLane.length ? 18 : 0;
+  const stepsLaneTop = densityTop + densityH + 4;
+  const notesLaneTop = stepsLaneTop + stepsLaneH + (stepsLaneH ? 4 : 0);
+
   // Count concurrent open markers at any point so we know how many
   // case lanes to draw. Each lane gets its own row beneath the
   // histogram; dangling cases share lanes with closed cases that
   // started earlier.
   const caseLanes = layoutCaseLanes(evs, first, last);
-  const casesTop = densityTop + densityH + 6;
+  const casesTop = notesLaneTop + notesLaneH + (notesLaneH ? 4 : 6);
   const casesH = Math.max(caseRowH, caseLanes.lanesNeeded * caseRowH);
   // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
   host.style.minHeight = Math.max(120, casesTop + casesH + 14) + "px";
@@ -1976,7 +2376,7 @@ function renderTimeline() {
     }
   }
 
-  // Screenshot dots (on band bottom edge)
+  // Screenshot dots (on band bottom edge). P1.2: hover pops a thumbnail.
   for (const ev of evs) {
     if (ev.type !== "system") continue;
     if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
@@ -1989,6 +2389,10 @@ function renderTimeline() {
     dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
       "\n" + (ev.data.path || "");
     dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
+    if (ev.data.path) {
+      dot.addEventListener("mouseenter", () => showScreenshotThumb(dot, ev.data.path));
+      dot.addEventListener("mouseleave", () => hideScreenshotThumb());
+    }
     host.appendChild(dot);
   }
 
@@ -2027,6 +2431,60 @@ function renderTimeline() {
   densityBaseline.style.top = densityTop + "px";
   densityBaseline.style.height = densityH + "px";
   host.appendChild(densityBaseline);
+
+  // ===== Per-step lane (P1.4) =====
+  // Renders a single row of step bands beneath density when steps exist.
+  // Click to select the step + jump to Steps view.
+  // (stepsLaneTop / stepsLaneH computed earlier so casesTop accounts for them.)
+  for (const s of _stepsForLane) {
+    const sStart = s.start_time ? new Date(s.start_time).getTime() : null;
+    const sEnd   = s.end_time   ? new Date(s.end_time).getTime()   : null;
+    if (!sStart || !sEnd || sEnd <= sStart) continue;
+    const x = ((sStart - first) / span) * 100;
+    const w = Math.max(0.2, ((sEnd - sStart) / span) * 100);
+    const band = document.createElement("div");
+    band.className = "tl-step-band";
+    band.style.left = x + "%";
+    band.style.width = w + "%";
+    band.style.top = stepsLaneTop + "px";
+    band.textContent = s.name || s.step_id || "";
+    band.title = (s.name || s.step_id) + " — " + formatDuration(sEnd - sStart);
+    band.addEventListener("click", (e) => {
+      e.stopPropagation();
+      selectedStepId = s.step_id;
+      const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
+      if (stepsBtn) stepsBtn.click();
+    });
+    host.appendChild(band);
+  }
+
+  // ===== Annotation lane (P1.9) =====
+  // Numbered note dots beneath the steps lane (or beneath density if no
+  // steps). Click to open the note in the side panel + switch to Notes
+  // tab.
+  // (notesLaneTop / notesLaneH computed earlier so casesTop accounts for them.)
+  _notesForLane.forEach((n, idx) => {
+    const ts = n.timestamp || n.t || n.time;
+    if (!ts) return;
+    const ms = new Date(ts).getTime();
+    if (!isFinite(ms)) return;
+    const x = ((ms - first) / span) * 100;
+    const dot = document.createElement("div");
+    dot.className = "tl-note-dot";
+    dot.style.left = "calc(" + x + "% - 7px)";
+    dot.style.top = notesLaneTop + "px";
+    dot.textContent = String(idx + 1);
+    dot.dataset.noteIdx = String(idx);
+    dot.title = (n.text || n.body || "(empty note)").slice(0, 80);
+    dot.addEventListener("click", (e) => {
+      e.stopPropagation();
+      activateAnnoTab("notes");
+      const noteRow = document.querySelector(`[data-note-idx="${idx}"]`);
+      if (noteRow) noteRow.scrollIntoView({ behavior: "smooth", block: "center" });
+      seekToTimestamp(ts);
+    });
+    host.appendChild(dot);
+  });
 
   // ===== Case lanes =====
   // layoutCaseLanes() (below) walks the marker stream and assigns
@@ -2089,6 +2547,9 @@ function renderTimeline() {
     const target = first + frac * span;
     seekToTimestamp(new Date(target).toISOString());
   });
+
+  // P1.3: refresh minimap to mirror the new timeline content + viewport.
+  renderMinimap();
 }
 
 function positionPlayhead() {
@@ -2771,18 +3232,40 @@ function renderAggregate() {
   }
   $("#map-empty").style.display = "none";
 
+  // P1.7: compute the wall-clock span across loaded sessions so we can
+  // bucket sparkline data into 10 equal slices for each chart row.
+  const sessionTimes = filtered
+    .map((s) => (s.manifest && s.manifest.started_at) ? new Date(s.manifest.started_at).getTime() : null)
+    .filter((t) => t != null && isFinite(t));
+  const sparkSpan = sessionTimes.length
+    ? { startMs: Math.min(...sessionTimes), endMs: Math.max(...sessionTimes) }
+    : null;
+  const SPARK_BUCKETS = 10;
+  function bucketIdx(ms) {
+    if (!sparkSpan || !isFinite(ms)) return -1;
+    const sp = Math.max(1, sparkSpan.endMs - sparkSpan.startMs);
+    return Math.min(SPARK_BUCKETS - 1, Math.max(0, Math.floor(((ms - sparkSpan.startMs) / sp) * SPARK_BUCKETS)));
+  }
+
   // Merge activity stats
   const actMap = new Map();
   for (const st of allStats) {
     for (const r of (st.activity_stats || [])) {
       const e = actMap.get(r.activity_label) || {
         activity_label: r.activity_label, frequency: 0, total_duration_ms: 0,
-        median_samples: [], p90_samples: [],
+        median_samples: [], p90_samples: [], sparkline: new Array(SPARK_BUCKETS).fill(0),
       };
       e.frequency += r.frequency;
       e.total_duration_ms += r.total_duration_ms;
       e.median_samples.push(r.median_ms);
       e.p90_samples.push(r.p90_ms);
+      // Bucket this session's contribution by its started_at.
+      const sessTs = ((st.meta || {}).session_started_at) ||
+                     (filtered.find((s) => s.stats === st) && filtered.find((s) => s.stats === st).manifest && filtered.find((s) => s.stats === st).manifest.started_at);
+      if (sessTs) {
+        const idx = bucketIdx(new Date(sessTs).getTime());
+        if (idx >= 0) e.sparkline[idx] += r.frequency;
+      }
       actMap.set(r.activity_label, e);
     }
   }
@@ -2794,6 +3277,7 @@ function renderAggregate() {
       label: r.activity_label,
       value: r.frequency,
       valueLabel: r.frequency + " · " + window.PdtCharts.fmtDurationS(r.total_duration_ms / 1000),
+      sparkline: sparkSpan ? r.sparkline : null,
     })),
     { unit: "" });
 
@@ -2803,11 +3287,21 @@ function renderAggregate() {
     for (const r of (st.case_stats || [])) {
       if (r.parent_case_id) continue; // top-level only
       if (!matchesFilter(r.label || r.case_id)) continue;
+      // Per-case sparkline: a single bin (the bucket containing this
+      // case's start_time). Aggregated across the row gives a "when did
+      // these cases happen" feel without needing per-event scan.
+      let caseSpark = null;
+      if (sparkSpan && r.start_time) {
+        caseSpark = new Array(SPARK_BUCKETS).fill(0);
+        const idx = bucketIdx(new Date(r.start_time).getTime());
+        if (idx >= 0) caseSpark[idx] = 1;
+      }
       caseRows.push({
         label: (r.label || r.case_id.slice(0, 8)),
         value: (r.active_ms || 0) / 1000,
         secondary: (r.wall_clock_ms || 0) / 1000,
         valueLabel: window.PdtCharts.fmtDurationS((r.active_ms || 0) / 1000),
+        sparkline: caseSpark,
         meta: r,
       });
     }
@@ -2883,7 +3377,7 @@ function renderAggregate() {
       end_activities: Object.fromEntries(ends),
     };
     window.PdtDfg.render($("#dfg-host"), dfg, {
-      onNodeClick: (activityLabel) => drillToActivity(activityLabel),
+      onNodeClick: (activityLabel, ev) => drillToActivity(activityLabel, ev),
       onZoomChange: (z) => setMapZoomPct(z),
     });
     // Show zoom controls if the DFG tab is currently active
@@ -2964,42 +3458,104 @@ function renderAggregate() {
 
 /* ============ Drill-down from aggregate to session ================ */
 
-async function drillToActivity(activityLabel) {
+async function drillToActivity(activityLabel, fromEvent) {
   if (!activityLabel) return;
-  // Find the first session whose normalized CSV / events.jsonl
-  // contains an activity event with this label. We use the loaded
-  // events for the match because activity_label only appears after
-  // normalization stamps it; loadSessionData reads stats.json but not
-  // the normalized events stream. Simplest: re-read the activity
-  // labels from the in-memory raw events plus the session's per-app
-  // labels via stats.activity_stats hit list -- but the truest source
-  // is to scan each session's events.jsonl by mapping raw app+title to
-  // the same classification rules. For v1 we approximate: open the
-  // first session that lists this label in its activity_stats, and
-  // seek to the first activity event of that app.
+  // P1.5: collect every matching activity event across all loaded
+  // sessions, not just the first session that mentions the label.
+  // Single-result auto-picks; multi-result opens a picker so the
+  // analyst can choose the moment they actually meant.
+  const matches = [];
   for (const sess of aggregateSessions) {
     const stats = sess.stats;
     if (!stats) continue;
     const hit = (stats.activity_stats || []).find((r) => r.activity_label === activityLabel);
     if (!hit) continue;
-    // Switch to session view and load that session
-    activateTab("session");
-    await loadSessionIntoView(sess.sessionFolder);
-    // Find the first activity event whose post-classification label
-    // matches. We don't carry activity_label on raw events.jsonl, so
-    // fall back to scanning events.csv if present, otherwise pick the
-    // first activity event whose app substring matches the label's
-    // last segment after "--".
-    const target = findFirstActivityByLabel(currentSession, activityLabel);
-    if (target) {
-      seekToTimestamp(target.timestamp);
-      toast("Drilled to " + activityLabel + " in " + sess.sessionFolder.split(/[\\/]/).pop(), "success");
-    } else {
-      toast("Opened session - couldn't pinpoint timestamp", "");
-    }
+    const ev = findFirstActivityByLabel(sess, activityLabel);
+    if (!ev) continue;
+    matches.push({
+      sessionFolder: sess.sessionFolder,
+      sessionName: sess.sessionFolder.split(/[\\/]/).pop(),
+      timestamp: ev.timestamp,
+      app: ev.data.app || "",
+      title: ev.data.title || "",
+    });
+  }
+  if (!matches.length) {
+    toast("No loaded session contains " + activityLabel, "error");
     return;
   }
-  toast("No loaded session contains " + activityLabel, "error");
+  if (matches.length === 1) {
+    await _drillTo(matches[0], activityLabel);
+    return;
+  }
+  showDfgDrillPicker(matches, activityLabel, fromEvent);
+}
+
+async function _drillTo(match, activityLabel) {
+  activateTab("session");
+  await loadSessionIntoView(match.sessionFolder);
+  if (match.timestamp) {
+    seekToTimestamp(match.timestamp);
+    toast("Drilled to " + activityLabel + " in " + match.sessionName, "success");
+  }
+}
+
+function showDfgDrillPicker(matches, activityLabel, fromEvent) {
+  // Tear down any prior picker.
+  const prior = document.getElementById("dfg-drill-picker");
+  if (prior) prior.remove();
+
+  const picker = document.createElement("div");
+  picker.id = "dfg-drill-picker";
+  picker.className = "dfg-drill-popup";
+  // Position near the click if we have one, else center on viewer.
+  let x = window.innerWidth / 2 - 200;
+  let y = window.innerHeight / 2 - 100;
+  if (fromEvent && typeof fromEvent.clientX === "number") {
+    x = Math.min(fromEvent.clientX, window.innerWidth - 460);
+    y = Math.min(fromEvent.clientY, window.innerHeight - 320);
+  }
+  picker.style.left = Math.max(8, x) + "px";
+  picker.style.top  = Math.max(8, y) + "px";
+  picker.innerHTML =
+    matches.map((m, i) =>
+      '<div class="row' + (i === 0 ? " sel" : "") + '" data-idx="' + i + '">' +
+      '<span class="ts">' + new Date(m.timestamp).toLocaleString() + '</span>' +
+      '<span class="name"><strong>' + escapeHtml(m.sessionName) + '</strong>' +
+      (m.title ? ' — ' + escapeHtml(m.title) : '') + '</span>' +
+      '</div>'
+    ).join("");
+  document.body.appendChild(picker);
+
+  let selIdx = 0;
+  function setSel(i) {
+    selIdx = Math.max(0, Math.min(matches.length - 1, i));
+    picker.querySelectorAll(".row").forEach((r, ri) => r.classList.toggle("sel", ri === selIdx));
+  }
+  function pick(i) {
+    cleanup();
+    _drillTo(matches[i], activityLabel);
+  }
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); cleanup(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setSel(selIdx + 1); }
+    else if (e.key === "ArrowUp")   { e.preventDefault(); setSel(selIdx - 1); }
+    else if (e.key === "Enter")     { e.preventDefault(); pick(selIdx); }
+  }
+  function onMouse(e) {
+    if (!picker.contains(e.target)) cleanup();
+  }
+  function cleanup() {
+    picker.remove();
+    document.removeEventListener("keydown", onKey, true);
+    document.removeEventListener("mousedown", onMouse, true);
+  }
+  picker.querySelectorAll(".row").forEach((r) => {
+    r.addEventListener("click", () => pick(parseInt(r.dataset.idx, 10)));
+    r.addEventListener("mouseenter", () => setSel(parseInt(r.dataset.idx, 10)));
+  });
+  document.addEventListener("keydown", onKey, true);
+  setTimeout(() => document.addEventListener("mousedown", onMouse, true), 0);
 }
 
 function findFirstActivityByLabel(session, activityLabel) {

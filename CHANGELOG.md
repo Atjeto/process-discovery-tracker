@@ -8,6 +8,51 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Range selection on the timeline** (P1.1). Shift-drag across the
+  Flow timeline to select a time range; a "Selection" stats card
+  pops above the legend showing duration, event count, marker count,
+  screenshot count, and top apps in the range. Esc clears. The range
+  survives view-mode switches and clears on session change.
+- **Screenshot hover thumbnails** (P1.2). Hovering a screenshot dot
+  on the Flow timeline pops a 220×140 thumbnail preview near the dot.
+  Click still opens the full modal.
+- **Mini-map overview above the timeline** (P1.3). 30px strip showing
+  the whole session compressed into the visible region. Click anywhere
+  to jump; drag the highlighted viewport to scroll. Per-app coloured
+  bands provide a thumbnail-of-the-timeline read at a glance.
+- **Per-step duration bands on the Flow timeline** (P1.4). When a
+  session has steps (auto-suggested, auto-matched, or manually
+  authored), each step renders as a labeled band on a dedicated lane
+  beneath the density histogram. Click a step band to switch to Steps
+  view with that step selected.
+- **DFG drill-down picker** (P1.5). Clicking a DFG node in the
+  Aggregate view now lists every loaded session containing that
+  activity (timestamp + session name) instead of jumping to the
+  first match. Single-result auto-picks; ↑↓/Enter for keyboard
+  navigation; Esc to dismiss. The picker positions near the click.
+- **Batch "Remove N missing" link in Recents** (P1.6). When ≥2
+  recents entries are flagged missing, a "Remove N missing" link
+  appears alongside "Clear all" so the analyst doesn't have to
+  ✕ each one individually.
+- **Sparklines on aggregate bar charts** (P1.7). The
+  activity-frequency and case-duration bar charts in the Aggregate
+  view get a tiny 10-bucket sparkline at the bar's right edge,
+  showing temporal distribution across the loaded sessions' wall-
+  clock span. Quick read for "did this cluster early or evenly?"
+- **Auto-clean stale recents** (P1.8). When a Recents entry is first
+  detected missing, `firstMissingAt` is stamped on it. After 30 days
+  of being missing, the entry is silently dropped on the next
+  render. A temporarily-unplugged drive can't false-positive a real
+  recent off the list.
+- **Annotation lane on the Flow timeline** (P1.9). Numbered note
+  dots render in their own lane between steps and cases when notes
+  exist. Click a dot to jump to that note in the side panel and
+  seek the video to the note's timestamp.
+- **Persistent timeline zoom + scroll per session** (P1.10). Zoom
+  factor and `#timeline-scroll.scrollLeft` are persisted to
+  localStorage keyed by sessionFolder; reopening a session restores
+  the zoom and scroll position. Scroll writes are throttled to once
+  per 250ms.
 - **Project / engagement layer** (P2.1). New `viewer/project.js` data
   module + topbar Project menu + `.pdt-project.json` file format. A
   project bundles the loaded aggregate session set, the current focus

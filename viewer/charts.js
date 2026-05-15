@@ -98,6 +98,39 @@ function renderBarChart(host, data, opts) {
       class: "bar-value",
     }, svg);
     valTxt.textContent = row.valueLabel || `${row.value}${opts.unit || ""}`;
+    // P1.7: tiny sparkline (10-bucket histogram of timestamps) at the
+    // bar's right edge, when caller passed `sparkline` data. Adds
+    // temporal context to a frequency or duration chart -- "this
+    // activity clustered early" vs "spread evenly".
+    if (Array.isArray(row.sparkline) && row.sparkline.length) {
+      const sparkW = 60, sparkH = barH - 4;
+      const sparkX = width - sparkW - 4;
+      const sparkY = y + 2;
+      const buckets = row.sparkline;
+      const maxB = Math.max(1, ...buckets);
+      const bw = sparkW / buckets.length;
+      // Background strip so sparse rows still register.
+      svgEl("rect", {
+        x: sparkX, y: sparkY, width: sparkW, height: sparkH,
+        fill: "var(--bg-3)", opacity: 0.5, rx: 1,
+      }, svg);
+      buckets.forEach((b, bi) => {
+        if (!b) return;
+        const h = Math.max(1, Math.round(sparkH * (b / maxB)));
+        svgEl("rect", {
+          x: sparkX + bi * bw,
+          y: sparkY + sparkH - h,
+          width: Math.max(1, bw - 0.5),
+          height: h,
+          fill: "var(--accent-2)",
+          opacity: 0.85,
+        }, svg);
+      });
+      // Title for hover-discoverability.
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      t.textContent = "Time distribution across the session";
+      svg.lastChild.appendChild(t);
+    }
   });
   if (data.length > maxBars) {
     const more = svgEl("text", {

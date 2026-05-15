@@ -1400,3 +1400,96 @@ button.danger:hover:not(:disabled) { background: #B04848; border-color: #B04848;
   border-radius: 3px;
 }
 .project-menu-item:hover { background: var(--bg-3); color: var(--fg); }
+
+/* ===== Timeline screenshot hover thumb (P1.2) ===================== */
+.tl-screenshot-thumb {
+  position: fixed; display: none; z-index: 999;
+  width: 220px; max-height: 140px; object-fit: cover;
+  background: var(--bg-3); border: 1px solid var(--accent-2);
+  border-radius: 4px; box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+/* ===== Timeline minimap (P1.3) ==================================== */
+.timeline-minimap {
+  position: relative; height: 30px;
+  background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: 3px; margin-bottom: 4px; overflow: hidden;
+  cursor: pointer; user-select: none;
+}
+.tl-mm-band { position: absolute; top: 6px; height: 18px; background: var(--accent); opacity: 0.45; }
+.tl-mm-viewport {
+  position: absolute; top: 0; bottom: 0;
+  background: rgba(110, 138, 102, 0.16);
+  border-left: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  cursor: grab;
+}
+.tl-mm-viewport.dragging { cursor: grabbing; }
+
+/* ===== Per-step timeline lane (P1.4) ============================== */
+.tl-step-band {
+  position: absolute; height: 14px;
+  background: var(--accent-2); opacity: 0.55;
+  border-radius: 2px;
+  font-size: 10px; color: var(--bg);
+  padding: 0 4px; line-height: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.tl-step-band:hover { opacity: 0.8; }
+
+/* ===== Annotation lane on timeline (P1.9) ========================= */
+.tl-note-dot {
+  position: absolute; width: 14px; height: 14px;
+  background: var(--accent-3); border-radius: 50%;
+  font-size: 9px; color: var(--bg); text-align: center;
+  line-height: 14px; cursor: pointer; font-weight: 600;
+}
+.tl-note-dot:hover { transform: scale(1.25); transform-origin: center; }
+.tl-note-dot.pulse { animation: tl-note-pulse 0.6s ease-out; }
+@keyframes tl-note-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(160, 128, 80, 0.7); }
+  100% { box-shadow: 0 0 0 12px rgba(160, 128, 80, 0); }
+}
+
+/* ===== DFG drill-down picker (P1.5) =============================== */
+.dfg-drill-popup {
+  position: fixed; z-index: 1000;
+  background: var(--bg-2); border: 1px solid var(--accent);
+  border-radius: 5px; padding: 6px 0;
+  box-shadow: var(--shadow);
+  min-width: 320px; max-width: 480px; max-height: 320px;
+  overflow-y: auto;
+}
+.dfg-drill-popup .row {
+  padding: 6px 12px; cursor: pointer;
+  font-size: 12px; color: var(--fg-2);
+  display: flex; gap: 10px; align-items: baseline;
+}
+.dfg-drill-popup .row:hover, .dfg-drill-popup .row.sel {
+  background: var(--bg-3); color: var(--fg);
+}
+.dfg-drill-popup .row .ts { color: var(--fg-3); font-family: var(--font-mono); font-size: 10px; flex: 0 0 auto; }
+.dfg-drill-popup .row .name { flex: 1; }
+.dfg-drill-popup .empty { padding: 8px 12px; color: var(--fg-3); font-style: italic; font-size: 12px; }
+
+/* ===== Range selection on timeline (P1.1) ========================= */
+.tl-selection-overlay {
+  position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: rgba(110, 138, 102, 0.16);
+  border-left: 1px dashed var(--accent);
+  border-right: 1px dashed var(--accent);
+  z-index: 5;
+}
+.selection-stats {
+  background: var(--bg-2); border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  padding: 8px 10px; margin: 8px 0; border-radius: 3px;
+  font-size: 11px; color: var(--fg-2);
+}
+.selection-stats h4 { margin: 0 0 4px; font-size: 11px; color: var(--fg); font-weight: 500; }
+.selection-stats .row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+.selection-stats .clear-link { display: inline-block; margin-top: 6px;
+  font-size: 10px; color: var(--accent); cursor: pointer; }
+.selection-stats .clear-link:hover { text-decoration: underline; }
