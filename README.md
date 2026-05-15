@@ -33,6 +33,19 @@ A post-v0.3 pass adds the project layer, ten timeline / aggregate features, busi
 - **Mode-specific shortcuts overlay** (viewer). Dismissable bottom-right card in the Session view lists 3-4 most-used shortcuts for the active mode (Flow / Steps / Phases).
 - **Business-language relabeling** (viewer). "Aggregate" → "Compare Sessions", "Vocabularies" → "App Library", "DFG" → "Flow diagram", "BPMN" → "Process diagram (BPMN)". Toast + dialog copy rewritten. Process Template's raw definition lives behind an "Advanced" disclosure so non-engineer analysts see the step list as the default surface.
 
+## Round-2 UX feedback pass (unreleased)
+
+A pass driven by hands-on field testing of the above. Fixes friction and clarifies the parts that were hard to use:
+
+- **Step-noise denylist** (viewer + normalization). A session captured with OBS (or any app the recorder picks up) used to produce dozens of unannotatable "OBS: 12 interactions" steps. New per-session denylist (`annotations.json` → `step_filters.ignored_processes`); `step_suggest.py` drops matching interactions before step suggestion. The Steps view has an **"Ignored apps..."** dialog (tick the apps to exclude → re-analyzes), a **"Delete selected"** bulk action, and a **"Hide as noise"** per-step button whose hidden state survives re-analyze.
+- **Capture: explicit "Start capture session" button**. The Live Session window now shows an obvious green Start button when idle — firing a marker still auto-starts, but you no longer have to know that.
+- **Recent dropdown in the top-bar** (viewer). Recent sessions + projects are reachable any time, not just from the empty state.
+- **Timeline Lanes menu** (viewer). The timeline had grown to nine stacked lanes; a "Lanes" dropdown toggles each, with the denser lanes (density / window-titles / per-step / notes) off by default.
+- **Flow diagram variant overlay** (viewer). Hovering a node in the Compare Sessions Flow diagram highlights the session paths through that activity and dims the rest. (The separate variant-flow Sankey was removed — the Flow diagram absorbed it.)
+- **Process map SVG export** (viewer). New "Process map SVG" button exports the active map (BPMN process diagram or Flow diagram) as SVG — imports into Figma, Lucidchart, browsers.
+- **Bug fixes**: timeline resize handle now works (`flex` was overriding the height var); Compare Sessions zoom buttons no longer overlap the tabs; the misleading `+` cursor over the timeline is gone; screenshot dots toned down; the Steps editor pane stays pinned while the step list scrolls.
+- **Clearer wording**: capture session-config window rewritten in plain language ("Set up a recording session"); "Rework loops" → "Repeated activities within a case".
+
 Items intentionally deferred: see [docs/SPEC-DEFERRED.md](docs/SPEC-DEFERRED.md).
 
 ## Layout
@@ -41,7 +54,7 @@ Items intentionally deferred: see [docs/SPEC-DEFERRED.md](docs/SPEC-DEFERRED.md)
 |---|---|
 | `capture/` | Worker-side Electron tray app. Polls active window, fires marker events, drives OBS, captures screenshots, writes per-session JSONL. |
 | `normalization/` | Analyst-side Python pipeline. Turns raw `events.jsonl` into XES + CSV + statistics + (optional) mined BPMN. |
-| `viewer/` | Analyst-side Electron app. Two surfaces: session view (video-synced timeline + annotations) and aggregate view (DFG, statistics, exports). |
+| `viewer/` | Analyst-side Electron app. Two surfaces: Session view (video-synced timeline + annotations) and Compare Sessions view (process map, statistics, exports). |
 | `shared/` | Cross-cutting schema docs. |
 
 ## End-to-end flow

@@ -105,6 +105,7 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <h2>Live Session window</h2>
 <p>The tray entry <em>Show Live Session window</em> opens a 460×720 always-on-top window that merges everything the old operator panel and status window did:</p>
 <ul>
+  <li><strong>Start capture session</strong> button — shown while idle. Click it to begin a session; the marker controls below dim until a session is running. (Firing a marker also auto-starts a session.)</li>
   <li>Recording indicator + session timer</li>
   <li>Currently-tracking app + title</li>
   <li>Open-marker stack with nesting depth labels</li>

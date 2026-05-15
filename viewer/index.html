@@ -676,6 +676,14 @@
             <li><span class="state-icon state-auto_matched"></span> <strong>auto-matched</strong> - matched a Process Template. Replaced when you re-match against a newer template version.</li>
             <li><span class="state-icon state-manually_authored"></span> <strong>manually authored</strong> - you typed it. Survives re-normalization.</li>
             <li><span class="state-icon state-edited"></span> <strong>edited</strong> - you modified an auto-suggested or auto-matched step. Survives re-normalization.</li>
+            <li><span class="state-icon state-hidden"></span> <strong>hidden</strong> - you suppressed it as noise. It stays out of the list and survives re-normalization.</li>
+          </ul>
+          <h3>Cutting down step noise</h3>
+          <p>A session captured with a screen recorder or other background app open can produce dozens of irrelevant steps ("OBS: 12 interactions"). Three tools handle this:</p>
+          <ul class="help-list">
+            <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process — they're left out of step suggestion entirely, and the session re-analyzes. The choice is saved per session, so re-analyze keeps them out.</li>
+            <li><strong>Delete selected</strong>: Ctrl+click two or more steps, then delete them all in one go (Ctrl+Z restores).</li>
+            <li><strong>Hide as noise</strong> (step editor): suppress a single step. Unlike delete, hidden steps survive re-normalization — a re-analyze won't bring them back. Reveal them via the hidden filter chip.</li>
           </ul>
           <h3>Flags</h3>
           <p>Each step can be tagged. These don't change the data but they show up in exports and statistics:</p>
