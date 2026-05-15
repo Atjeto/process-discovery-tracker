@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<log xes.version="1849-2016" xes.features="nested-attributes" xmlns="http://www.xes-standard.org/">
+	<trace>
+		<string key="concept:name" value="Order #12350" />
+		<string key="case:id" value="35677f8c-1b90-4e91-b60e-a3b876b9c5d1" />
+		<string key="case:start_ts" value="2026-05-13T09:15:10Z" />
+		<string key="case:end_ts" value="2026-05-13T09:19:15Z" />
+		<event>
+			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:15:10+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Salesforce - Account: Customer-12350" />
+			<int key="raw:pid" value="1234" />
+			<int key="raw:duration_ms" value="35000" />
+			<string key="case:stack" value="35677f8c-1b90-4e91-b60e-a3b876b9c5d1" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:15:45+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Salesforce - Order #12350 Detail" />
+			<int key="raw:pid" value="1234" />
+			<int key="raw:duration_ms" value="45000" />
+			<string key="case:stack" value="35677f8c-1b90-4e91-b60e-a3b876b9c5d1" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:16:30+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="SAPGUI.exe" />
+			<string key="raw:title" value="SAP Easy Access - [VA01]" />
+			<int key="raw:pid" value="5678" />
+			<int key="raw:duration_ms" value="80000" />
+			<string key="case:stack" value="35677f8c-1b90-4e91-b60e-a3b876b9c5d1" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- EXCEL.EXE" />
+			<date key="time:timestamp" value="2026-05-13T09:17:50+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="EXCEL.EXE" />
+			<string key="raw:title" value="Order_Tracking.xlsx - Excel" />
+			<int key="raw:pid" value="9012" />
+			<int key="raw:duration_ms" value="50000" />
+			<string key="case:stack" value="35677f8c-1b90-4e91-b60e-a3b876b9c5d1" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- OUTLOOK.EXE" />
+			<date key="time:timestamp" value="2026-05-13T09:18:40+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="OUTLOOK.EXE" />
+			<string key="raw:title" value="New Message - Outlook" />
+			<int key="raw:pid" value="3456" />
+			<int key="raw:duration_ms" value="35000" />
+			<string key="case:stack" value="35677f8c-1b90-4e91-b60e-a3b876b9c5d1" />
+		</event>
+	</trace>
+	<trace>
+		<string key="concept:name" value="Order #12351" />
+		<string key="case:id" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		<string key="case:start_ts" value="2026-05-13T09:19:40Z" />
+		<string key="case:end_ts" value="2026-05-13T09:24:20Z" />
+		<event>
+			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:19:40+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Salesforce - Account: Customer-12351" />
+			<int key="raw:pid" value="1234" />
+			<int key="raw:duration_ms" value="30000" />
+			<string key="case:stack" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:20:10+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Salesforce - Order #12351 Detail" />
+			<int key="raw:pid" value="1234" />
+			<int key="raw:duration_ms" value="40000" />
+			<string key="case:stack" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:20:50+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="SAPGUI.exe" />
+			<string key="raw:title" value="SAP Easy Access - [VA01]" />
+			<int key="raw:pid" value="5678" />
+			<int key="raw:duration_ms" value="50000" />
+			<string key="case:stack" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:21:40+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Salesforce - Order #12351 Detail" />
+			<int key="raw:pid" value="1234" />
+			<int key="raw:duration_ms" value="25000" />
+			<string key="case:stack" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:22:05+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="SAPGUI.exe" />
+			<string key="raw:title" value="SAP - Create Sales Order" />
+			<int key="raw:pid" value="5678" />
+			<int key="raw:duration_ms" value="60000" />
+			<string key="case:stack" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- EXCEL.EXE" />
+			<date key="time:timestamp" value="2026-05-13T09:23:05+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="EXCEL.EXE" />
+			<string key="raw:title" value="Order_Tracking.xlsx - Excel" />
+			<int key="raw:pid" value="9012" />
+			<int key="raw:duration_ms" value="45000" />
+			<string key="case:stack" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- OUTLOOK.EXE" />
+			<date key="time:timestamp" value="2026-05-13T09:23:50+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="OUTLOOK.EXE" />
+			<string key="raw:title" value="New Message - Outlook" />
+			<int key="raw:pid" value="3456" />
+			<int key="raw:duration_ms" value="30000" />
+			<string key="case:stack" value="dbdbdc56-3327-4f6d-a20d-4331756843c8" />
+		</event>
+	</trace>
+	<trace>
+		<string key="concept:name" value="Order #12352" />
+		<string key="case:id" value="8d14190d-ebd8-4a34-a5c1-cee118d38292" />
+		<string key="case:start_ts" value="2026-05-13T09:24:45Z" />
+		<string key="case:end_ts" value="2026-05-13T09:28:50Z" />
+		<event>
+			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:24:45+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Salesforce - Account: Customer-12352" />
+			<int key="raw:pid" value="1234" />
+			<int key="raw:duration_ms" value="35000" />
+			<string key="case:stack" value="8d14190d-ebd8-4a34-a5c1-cee118d38292" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:25:20+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Salesforce - Order #12352 Detail" />
+			<int key="raw:pid" value="1234" />
+			<int key="raw:duration_ms" value="45000" />
+			<string key="case:stack" value="8d14190d-ebd8-4a34-a5c1-cee118d38292" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<date key="time:timestamp" value="2026-05-13T09:26:05+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="SAPGUI.exe" />
+			<string key="raw:title" value="SAP Easy Access - [VA01]" />
+			<int key="raw:pid" value="5678" />
+			<int key="raw:duration_ms" value="80000" />
+			<string key="case:stack" value="8d14190d-ebd8-4a34-a5c1-cee118d38292" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- EXCEL.EXE" />
+			<date key="time:timestamp" value="2026-05-13T09:27:25+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="EXCEL.EXE" />
+			<string key="raw:title" value="Order_Tracking.xlsx - Excel" />
+			<int key="raw:pid" value="9012" />
+			<int key="raw:duration_ms" value="50000" />
+			<string key="case:stack" value="8d14190d-ebd8-4a34-a5c1-cee118d38292" />
+		</event>
+		<event>
+			<string key="concept:name" value="Unclassified -- OUTLOOK.EXE" />
+			<date key="time:timestamp" value="2026-05-13T09:28:15+00:00" />
+			<string key="org:resource" value="demo-worker" />
+			<string key="raw:app" value="OUTLOOK.EXE" />
+			<string key="raw:title" value="New Message - Outlook" />
+			<int key="raw:pid" value="3456" />
+			<int key="raw:duration_ms" value="35000" />
+			<string key="case:stack" value="8d14190d-ebd8-4a34-a5c1-cee118d38292" />
+		</event>
+	</trace>
+</log>

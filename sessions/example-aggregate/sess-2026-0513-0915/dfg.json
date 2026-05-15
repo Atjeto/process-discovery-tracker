@@ -1,0 +1,35 @@
+{
+  "edges": [
+    {
+      "source": "Unclassified -- chrome.exe",
+      "target": "Unclassified -- chrome.exe",
+      "frequency": 3
+    },
+    {
+      "source": "Unclassified -- chrome.exe",
+      "target": "Unclassified -- SAPGUI.exe",
+      "frequency": 4
+    },
+    {
+      "source": "Unclassified -- SAPGUI.exe",
+      "target": "Unclassified -- EXCEL.EXE",
+      "frequency": 3
+    },
+    {
+      "source": "Unclassified -- EXCEL.EXE",
+      "target": "Unclassified -- OUTLOOK.EXE",
+      "frequency": 3
+    },
+    {
+      "source": "Unclassified -- SAPGUI.exe",
+      "target": "Unclassified -- chrome.exe",
+      "frequency": 1
+    }
+  ],
+  "start_activities": {
+    "Unclassified -- chrome.exe": 3
+  },
+  "end_activities": {
+    "Unclassified -- OUTLOOK.EXE": 3
+  }
+}

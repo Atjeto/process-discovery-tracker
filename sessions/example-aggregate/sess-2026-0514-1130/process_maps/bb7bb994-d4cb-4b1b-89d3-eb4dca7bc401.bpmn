@@ -1,0 +1,72 @@
+<?xml version='1.0' encoding='utf-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/dd/20100524/DC" xmlns:di="http://www.omg.org/dd/20100524/DI" id="Definitions_1" targetNamespace="http://process-discovery-tracker/bpmn">
+  <bpmn:process id="Process_1" isExecutable="false">
+    <bpmn:task id="node_0_end" name="end" />
+    <bpmn:task id="node_1_Unclassified_--_EXCEL_EXE" name="Unclassified -- EXCEL.EXE" />
+    <bpmn:exclusiveGateway id="node_2" />
+    <bpmn:task id="node_3_Unclassified_--_SAPGUI_exe" name="Unclassified -- SAPGUI.exe" />
+    <bpmn:startEvent id="node_4_start" name="start" />
+    <bpmn:exclusiveGateway id="node_5" />
+    <bpmn:task id="node_6_Unclassified_--_chrome_exe" name="Unclassified -- chrome.exe" />
+    <bpmn:sequenceFlow id="flow_0" sourceRef="node_3_Unclassified_--_SAPGUI_exe" targetRef="node_1_Unclassified_--_EXCEL_EXE" />
+    <bpmn:sequenceFlow id="flow_1" sourceRef="node_1_Unclassified_--_EXCEL_EXE" targetRef="node_0_end" />
+    <bpmn:sequenceFlow id="flow_2" sourceRef="node_5" targetRef="node_6_Unclassified_--_chrome_exe" />
+    <bpmn:sequenceFlow id="flow_3" sourceRef="node_4_start" targetRef="node_5" />
+    <bpmn:sequenceFlow id="flow_4" sourceRef="node_6_Unclassified_--_chrome_exe" targetRef="node_2" />
+    <bpmn:sequenceFlow id="flow_5" sourceRef="node_2" targetRef="node_5" />
+    <bpmn:sequenceFlow id="flow_6" sourceRef="node_2" targetRef="node_3_Unclassified_--_SAPGUI_exe" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="Shape_node_0_end" bpmnElement="node_0_end">
+        <dc:Bounds x="166" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_1_Unclassified_--_EXCEL_EXE" bpmnElement="node_1_Unclassified_--_EXCEL_EXE">
+        <dc:Bounds x="282" y="165" width="110" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_2" bpmnElement="node_2">
+        <dc:Bounds x="472" y="175" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_3_Unclassified_--_SAPGUI_exe" bpmnElement="node_3_Unclassified_--_SAPGUI_exe">
+        <dc:Bounds x="602" y="125" width="110" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_4_start" bpmnElement="node_4_start">
+        <dc:Bounds x="50" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_5" bpmnElement="node_5">
+        <dc:Bounds x="632" y="225" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_6_Unclassified_--_chrome_exe" bpmnElement="node_6_Unclassified_--_chrome_exe">
+        <dc:Bounds x="792" y="165" width="110" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_flow_0" bpmnElement="flow_0">
+        <di:waypoint x="712" y="160" />
+        <di:waypoint x="282" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_1" bpmnElement="flow_1">
+        <di:waypoint x="392" y="200" />
+        <di:waypoint x="166" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_2" bpmnElement="flow_2">
+        <di:waypoint x="682" y="250" />
+        <di:waypoint x="792" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_3" bpmnElement="flow_3">
+        <di:waypoint x="86" y="200" />
+        <di:waypoint x="632" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_4" bpmnElement="flow_4">
+        <di:waypoint x="902" y="200" />
+        <di:waypoint x="472" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_5" bpmnElement="flow_5">
+        <di:waypoint x="522" y="200" />
+        <di:waypoint x="632" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_6" bpmnElement="flow_6">
+        <di:waypoint x="522" y="200" />
+        <di:waypoint x="602" y="160" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

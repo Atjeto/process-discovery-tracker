@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://process-discovery-tracker/bpmn">
+  <bpmn:process id="Process_1" isExecutable="false">
+    <bpmn:startEvent id="node_0_start" name="start" />
+    <bpmn:task id="node_1_Unclassified_--_chrome_exe" name="Unclassified -- chrome.exe" />
+    <bpmn:exclusiveGateway id="node_2" />
+    <bpmn:task id="node_3_Unclassified_--_EXCEL_EXE" name="Unclassified -- EXCEL.EXE" />
+    <bpmn:exclusiveGateway id="node_4" />
+    <bpmn:task id="node_5_Unclassified_--_SAPGUI_exe" name="Unclassified -- SAPGUI.exe" />
+    <bpmn:task id="node_6_Unclassified_--_OUTLOOK_EXE" name="Unclassified -- OUTLOOK.EXE" />
+    <bpmn:task id="node_7_end" name="end" />
+    <bpmn:sequenceFlow id="flow_0" sourceRef="node_2" targetRef="node_1_Unclassified_--_chrome_exe" />
+    <bpmn:sequenceFlow id="flow_1" sourceRef="node_3_Unclassified_--_EXCEL_EXE" targetRef="node_6_Unclassified_--_OUTLOOK_EXE" />
+    <bpmn:sequenceFlow id="flow_2" sourceRef="node_5_Unclassified_--_SAPGUI_exe" targetRef="node_3_Unclassified_--_EXCEL_EXE" />
+    <bpmn:sequenceFlow id="flow_3" sourceRef="node_4" targetRef="node_2" />
+    <bpmn:sequenceFlow id="flow_4" sourceRef="node_1_Unclassified_--_chrome_exe" targetRef="node_4" />
+    <bpmn:sequenceFlow id="flow_5" sourceRef="node_6_Unclassified_--_OUTLOOK_EXE" targetRef="node_7_end" />
+    <bpmn:sequenceFlow id="flow_6" sourceRef="node_4" targetRef="node_5_Unclassified_--_SAPGUI_exe" />
+    <bpmn:sequenceFlow id="flow_7" sourceRef="node_0_start" targetRef="node_2" />
+  </bpmn:process>
+</bpmn:definitions>
