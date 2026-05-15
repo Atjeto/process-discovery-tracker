@@ -13,6 +13,10 @@
 
     dist/DISTRIBUTION.md         operations-facing README
 
+    dist/release/                zipped release assets, ready to upload
+      capture-vX.Y.Z.zip         to a GitHub Release via `gh release create`
+      viewer-vX.Y.Z.zip
+
   Sequence:
     1. (optional) Build the Python embeddable into viewer/python/.
     2. Stage normalization/ into viewer/normalization/ (electron-packager
@@ -22,6 +26,9 @@
        --extra-resource args).
     5. Move the per-app outputs into dist/.
     6. Clean up the staging copy.
+    7. Zip each app folder into dist/release/<name>-v<version>.zip for
+       attaching to a GitHub Release. Version is read from capture's
+       package.json unless -Version is passed.
 
 .PARAMETER SkipPython
   Skip the Python embeddable build. Use when viewer/python/ is current.
@@ -29,15 +36,26 @@
 .PARAMETER Clean
   Wipe dist/ and per-app dist/ folders before building.
 
+.PARAMETER Version
+  Override the version tag used in release asset filenames. Defaults to
+  the `version` field in capture/package.json.
+
+.PARAMETER SkipRelease
+  Skip the final zip-into-dist/release/ step. Useful for fast local
+  iteration when you just want the unzipped dist trees.
+
 .EXAMPLE
   .\scripts\build-distribution.ps1
   .\scripts\build-distribution.ps1 -SkipPython
   .\scripts\build-distribution.ps1 -Clean -SkipPython
+  .\scripts\build-distribution.ps1 -Version 0.2.0
 #>
 [CmdletBinding()]
 param(
   [switch]$SkipPython,
-  [switch]$Clean
+  [switch]$Clean,
+  [switch]$SkipRelease,
+  [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,12 +74,25 @@ Write-Host ""
 function Remove-LongPathFolder([string]$folder) {
   #PowerShell's Remove-Item -Recurse hits MAX_PATH on deep pm4py
   #__pycache__ trees. cmd's rmdir /S /Q handles long paths via the
-  #native Windows shell.
+  #native Windows shell. Stderr is discarded explicitly: under
+  #$ErrorActionPreference="Stop", any stray "path not found" stderr
+  #line from cmd would otherwise terminate the script even when the
+  #overall delete succeeded.
   if (-not (Test-Path $folder)) { return }
-  & cmd /c "rmdir /S /Q `"$folder`"" | Out-Null
+  & cmd /c "rmdir /S /Q `"$folder`"" 2>$null | Out-Null
   if (Test-Path $folder) {
-    #Fallback: try the PowerShell path in case rmdir failed for a
-    #different reason.
+    #Fallback: PowerShell's own deletion (long paths handled in PS 5+
+    #on Win10 with long-path support enabled).
+    Remove-Item -Recurse -Force -LiteralPath $folder -ErrorAction SilentlyContinue
+  }
+  if (Test-Path $folder) {
+    #Last resort: robocopy mirror from an empty dir. Robocopy uses
+    #UNC long-path semantics internally and reliably wins where both
+    #rmdir and Remove-Item give up. Exit codes 0-7 are success-ish.
+    $empty = Join-Path $env:TEMP "pdt-empty-$(Get-Random)"
+    New-Item -ItemType Directory -Path $empty | Out-Null
+    & robocopy $empty $folder /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /R:1 /W:1 2>$null | Out-Null
+    Remove-Item -Recurse -Force -LiteralPath $empty -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force -LiteralPath $folder -ErrorAction SilentlyContinue
   }
 }
@@ -241,6 +272,56 @@ Production deployment should add EV code signing.
 
 Set-Content -Path $distMd -Value $distMdContent -Encoding UTF8
 
+# Zip the unzipped dist trees into release assets unless skipped.
+$releaseAssets = @()
+if (-not $SkipRelease) {
+  # Resolve version: explicit flag wins, else capture/package.json.
+  $releaseVersion = $Version
+  if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
+    $pkgJson = Join-Path $captureDir "package.json"
+    if (Test-Path $pkgJson) {
+      try {
+        $releaseVersion = (Get-Content $pkgJson -Raw | ConvertFrom-Json).version
+      } catch {
+        $releaseVersion = $null
+      }
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
+    $releaseVersion = (Get-Date).ToString("yyyy.MM.dd")
+    Write-Host "WARNING: no version in capture/package.json; using date-stamp $releaseVersion" -ForegroundColor Yellow
+  }
+
+  Write-Host ""
+  Write-Host "Zipping release assets (v$releaseVersion)" -ForegroundColor Yellow
+  $releaseDir = Join-Path $distDir "release"
+  Remove-LongPathFolder $releaseDir
+  New-Item -ItemType Directory -Path $releaseDir | Out-Null
+
+  $tar = Join-Path $env:WINDIR "System32\tar.exe"
+  if (-not (Test-Path $tar)) {
+    throw "tar.exe not found at $tar. Windows 10+ required (libarchive-backed tar produces .zip)."
+  }
+
+  # tar -a -cf foo.zip -C parent appfolder  produces foo.zip with appfolder/
+  # at the root, which is what GitHub Release downloaders expect.
+  foreach ($appName in @("capture", "viewer")) {
+    $appRoot = Join-Path $distDir $appName
+    if (-not (Test-Path $appRoot)) {
+      Write-Host "  [skip] $appName -- $appRoot not present" -ForegroundColor DarkGray
+      continue
+    }
+    $asset = Join-Path $releaseDir "$appName-v$releaseVersion.zip"
+    Write-Host "  $asset" -ForegroundColor Cyan
+    # tar's -C changes to the parent so the archive contains "appfolder/...".
+    & $tar -a -cf $asset -C $appRoot "."
+    if ($LASTEXITCODE -ne 0) {
+      throw "tar -a -cf failed (exit $LASTEXITCODE) for $appName"
+    }
+    $releaseAssets += $asset
+  }
+}
+
 # Summary
 Write-Host ""
 Write-Host "Distribution build complete." -ForegroundColor Green
@@ -251,5 +332,14 @@ Write-Host ""
 Write-Host "Per-app sizes:"
 Write-Host ("  capture: {0:N1} MB" -f ($captureSize / 1MB))
 Write-Host ("  viewer:  {0:N1} MB (includes bundled Python + PM4Py)" -f ($viewerSize / 1MB))
-Write-Host ""
-Write-Host "Zip each folder for shipping, or copy as-is to the target machine."
+if ($releaseAssets.Count -gt 0) {
+  Write-Host ""
+  Write-Host "Release assets:"
+  foreach ($a in $releaseAssets) {
+    $sz = (Get-Item $a).Length
+    Write-Host ("  {0}  ({1:N1} MB)" -f $a, ($sz / 1MB))
+  }
+  Write-Host ""
+  Write-Host "Upload via: scripts\publish-release.ps1 -Version $releaseVersion"
+  Write-Host "    or:     gh release create v$releaseVersion <asset>... --notes-file CHANGELOG.md"
+}

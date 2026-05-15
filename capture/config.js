@@ -43,6 +43,11 @@ const DEFAULTS = {
     auto_restart: true,
     max_restarts_per_session: 3,
     exclude_processes: [],
+    /* Forensic mode -- emit the raw UIA firehose (focus_changed,
+       text_changed, per-keystroke value_changed). Default off; turn
+       on only when debugging missing events or focus-tracking issues.
+       Expect ~3-5x more events per session. */
+    verbose: false,
   },
 };
 

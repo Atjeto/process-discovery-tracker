@@ -1,11 +1,11 @@
 "use strict";
 
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
 const readline = require("node:readline");
 
-function resolveRecorderPath() {
+function resolveRecorderPath(bootLog) {
   /* The packaged layout varies by how electron-packager handles
      --extra-resource. The source --extra-resource=recorder/publish ends
      up at resources/publish/ (basename-of-source rule), so check both
@@ -17,11 +17,32 @@ function resolveRecorderPath() {
     path.join(__dirname, "recorder", "publish", "recorder.exe"),
   ].filter(Boolean);
   for (const c of candidates) if (fs.existsSync(c)) return c;
-  throw new Error("recorder.exe not found in any candidate path");
+
+  /* recorder.exe is too big for a single GitHub-tracked file (>100 MB
+     compressed self-contained .NET single-file), so the build pipeline
+     ships it as recorder.zip alongside where the .exe would land. On
+     first run, extract it in place. Win10+ bundles tar.exe with libarchive,
+     which handles .zip without third-party deps. */
+  const zipCandidates = candidates
+    .filter((c) => c && c !== process.env.PDT_RECORDER_PATH)
+    .map((c) => c.replace(/recorder\.exe$/i, "recorder.zip"));
+  for (const zip of zipCandidates) {
+    if (!fs.existsSync(zip)) continue;
+    const targetDir = path.dirname(zip);
+    if (bootLog) bootLog(`[recorder] extracting ${zip} -> ${targetDir}`);
+    const r = spawnSync("tar.exe", ["-xf", zip, "-C", targetDir], { windowsHide: true });
+    if (r.status === 0) {
+      const exe = path.join(targetDir, "recorder.exe");
+      if (fs.existsSync(exe)) return exe;
+    }
+    if (bootLog) bootLog(`[recorder] tar extract failed (status=${r.status}): ${(r.stderr || "").toString().slice(0, 200)}`);
+  }
+
+  throw new Error("recorder.exe not found in any candidate path (and no recorder.zip to extract)");
 }
 
-function spawnRecorder({ sessionId, recorderPath, onEvent, onWarning, onStats, onExit, bootLog }) {
-  const exe = recorderPath || resolveRecorderPath();
+function spawnRecorder({ sessionId, recorderPath, verbose, onEvent, onWarning, onStats, onExit, bootLog }) {
+  const exe = recorderPath || resolveRecorderPath(bootLog);
   const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
   const rl = readline.createInterface({ input: child.stdout });
@@ -56,8 +77,14 @@ function spawnRecorder({ sessionId, recorderPath, onEvent, onWarning, onStats, o
     } catch (_) { /* sidecar already exited */ }
   }
 
-  // Send hello
-  safeWrite({ cmd: "hello", session_id: sessionId, schema_version: 1 });
+  // Send hello. `verbose: true` opts into the raw firehose (focus_changed,
+  // text_changed, per-keystroke value_changed) for forensic debugging.
+  safeWrite({
+    cmd: "hello",
+    session_id: sessionId,
+    schema_version: 1,
+    verbose: !!verbose,
+  });
 
   return {
     child,

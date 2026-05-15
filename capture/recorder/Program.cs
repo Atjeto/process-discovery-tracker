@@ -31,7 +31,11 @@ public static class Program {
         var emittedTotal = 0L;
         var queue = new BlockingCollection<string>(boundedCapacity: 4096);
 
-        var subscriber = new UiaSubscriber(options, evt => {
+        // Verbose mode is set from the `hello` control message before
+        // Start() is called, so the subscription set can branch on it.
+        var verbose = false;
+        UiaSubscriber? subscriber = null;
+        Action<object> onEvent = evt => {
             if (Volatile.Read(ref paused) != 0) return;
             try {
                 var line = JsonSerializer.Serialize(evt, options);
@@ -41,7 +45,7 @@ public static class Program {
             } catch (Exception e) {
                 Console.Error.WriteLine($"serialize failed: {e.Message}");
             }
-        });
+        };
 
         var writer = Task.Run(() => {
             foreach (var line in queue.GetConsumingEnumerable()) {
@@ -71,9 +75,10 @@ public static class Program {
             v = 1, type = "ready", ts = DateTime.UtcNow.ToString("o")
         }, options));
 
-        subscriber.Start();
-
-        // Control loop on stdin
+        // Control loop on stdin. The `hello` command (sent first by the
+        // Electron parent) optionally carries a `verbose` flag that
+        // toggles the firehose-mode subscription set. Subscriber.Start()
+        // is deferred until we've seen hello.
         string? line;
         while ((line = await Console.In.ReadLineAsync()) != null) {
             try {
@@ -81,6 +86,14 @@ public static class Program {
                 if (!doc.RootElement.TryGetProperty("cmd", out var cmdEl)) continue;
                 var cmd = cmdEl.GetString();
                 switch (cmd) {
+                    case "hello":
+                        if (doc.RootElement.TryGetProperty("verbose", out var vEl) &&
+                            vEl.ValueKind == JsonValueKind.True) {
+                            verbose = true;
+                        }
+                        subscriber = new UiaSubscriber(options, onEvent, verbose);
+                        subscriber.Start();
+                        break;
                     case "pause":    Interlocked.Exchange(ref paused, 1); break;
                     case "resume":   Interlocked.Exchange(ref paused, 0); break;
                     case "shutdown": goto done;
@@ -92,7 +105,7 @@ public static class Program {
 
     done:
         statsTimer.Stop();
-        subscriber.Stop();
+        subscriber?.Stop();
         queue.CompleteAdding();
         try { writer.Wait(TimeSpan.FromMilliseconds(1500)); } catch { }
         return 0;

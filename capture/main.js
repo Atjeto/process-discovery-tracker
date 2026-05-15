@@ -547,6 +547,7 @@ async function startRecorderForSession() {
   try {
     recorder = require("./recorder.js").spawnRecorder({
       sessionId: session.sessionId,
+      verbose: !!(config.interactions && config.interactions.verbose),
       onEvent: (data) => {
         if (!tracker) return;
         try { tracker.fireInteraction(data); }

@@ -54,3 +54,8 @@ interactions:
   auto_restart: true
   max_restarts_per_session: 3
   exclude_processes: []
+  # Forensic mode: emit the raw UIA firehose (focus_changed,
+  # text_changed, per-keystroke value_changed). Default false. Turn on
+  # only when you need to debug missing events or focus tracking.
+  # Expect ~3-5x more events per session.
+  verbose: false
