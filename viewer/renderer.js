@@ -17,6 +17,7 @@ const TimelineCore = require("./timeline/timeline-core.js");
 const State = require("./state.js");
 const PdtCharts = require("./charts.js");
 const PdtReport = require("./report-md.js");
+const PdtPalette = require("./command-palette.js");
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -826,8 +827,8 @@ function commandPaletteProvider(rawQuery) {
   return out.slice(0, 50);
 }
 
-if (window.PdtPalette) {
-  window.PdtPalette.setProvider(commandPaletteProvider);
+if (PdtPalette) {
+  PdtPalette.setProvider(commandPaletteProvider);
 }
 
 function uniqueCaseIds(steps) {

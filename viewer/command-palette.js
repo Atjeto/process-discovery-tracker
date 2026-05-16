@@ -152,5 +152,5 @@
     }
   });
 
-  window.PdtPalette = { open, close, toggle, setProvider: (fn) => { provider = fn; } };
+  module.exports = { open, close, toggle, setProvider: (fn) => { provider = fn; } };
 })();
