@@ -7,8 +7,6 @@
 
 "use strict";
 
-(function () {
-
 function fmtDuration(ms) {
   if (ms == null) return "-";
   const s = ms / 1000;
@@ -205,6 +203,4 @@ function buildAggregateReport(sessions, mergedActivity, mergedCases, dfg) {
   return lines.join("\n");
 }
 
-window.PdtReport = { buildSessionReport, buildAggregateReport };
-
-})();
+module.exports = { buildSessionReport, buildAggregateReport };

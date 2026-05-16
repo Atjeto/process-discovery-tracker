@@ -16,6 +16,7 @@ const fs = require("node:fs");
 const TimelineCore = require("./timeline/timeline-core.js");
 const State = require("./state.js");
 const PdtCharts = require("./charts.js");
+const PdtReport = require("./report-md.js");
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -4550,7 +4551,7 @@ if ($("#btn-export-map-svg")) {
 }
 
 $("#btn-export-md").addEventListener("click", async () => {
-  if (!window.PdtReport) return;
+  if (!PdtReport) return;
   const filtered = filteredAggregateSessions();
   if (!filtered.length) return;
   /* Re-merge activity stats and cases across the filtered set so the
@@ -4583,13 +4584,13 @@ $("#btn-export-md").addEventListener("click", async () => {
     const [source, target] = k.split("\x00");
     return { source, target, frequency: freq };
   })};
-  const md = window.PdtReport.buildAggregateReport(filtered, mergedActivity, mergedCases, dfg);
+  const md = PdtReport.buildAggregateReport(filtered, mergedActivity, mergedCases, dfg);
   await saveMarkdownReport(md, "aggregate-report.md");
 });
 
 $("#btn-session-md").addEventListener("click", async () => {
-  if (!State.getSession() || !window.PdtReport) return;
-  const md = window.PdtReport.buildSessionReport(State.getSession());
+  if (!State.getSession() || !PdtReport) return;
+  const md = PdtReport.buildSessionReport(State.getSession());
   const name = "session-" + (State.getSession().sessionFolder.split(/[\\/]/).slice(-1)[0] || "report") + ".md";
   await saveMarkdownReport(md, name);
 });
