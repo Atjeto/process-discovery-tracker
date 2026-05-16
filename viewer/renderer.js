@@ -19,9 +19,6 @@ const State = require("./state.js");
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-let currentSession = null;
-let aggregateSessions = [];
-
 /* ============ Annotations undo stack
    ================================================================
    Step / phase / marker edits all flow through saveAnnotations(). We
@@ -40,10 +37,10 @@ let _undoStack = [];   // each entry: { label, annotations, sessionFolder }
 let _redoStack = [];
 function resetUndoStack() { _undoStack = []; _redoStack = []; }
 function canUndo() {
-  return currentSession && _undoStack.some(e => e.sessionFolder === currentSession.sessionFolder);
+  return State.getSession() && _undoStack.some(e => e.sessionFolder === State.getSession().sessionFolder);
 }
 function canRedo() {
-  return currentSession && _redoStack.some(e => e.sessionFolder === currentSession.sessionFolder);
+  return State.getSession() && _redoStack.some(e => e.sessionFolder === State.getSession().sessionFolder);
 }
 function emptyAnnotationsShape() {
   return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [] };
@@ -56,10 +53,10 @@ function snapshotAnnotations(a) {
   catch (_) { return emptyAnnotationsShape(); }
 }
 async function saveAnnotationsWithUndo(annotations, label) {
-  if (!currentSession || !currentSession.sessionFolder) return null;
-  const sf = currentSession.sessionFolder;
+  if (!State.getSession() || !State.getSession().sessionFolder) return null;
+  const sf = State.getSession().sessionFolder;
   // Snapshot the PREVIOUS state before we replace it.
-  const prev = snapshotAnnotations(currentSession.annotations);
+  const prev = snapshotAnnotations(State.getSession().annotations);
   _undoStack.push({ label: label || "edit", annotations: prev, sessionFolder: sf });
   if (_undoStack.length > UNDO_MAX) _undoStack.shift();
   _redoStack = [];
@@ -70,18 +67,18 @@ async function saveAnnotationsWithUndo(annotations, label) {
   return r;
 }
 async function performUndo() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   // Pop the top entry that matches the current session.
   let popped = null;
   for (let i = _undoStack.length - 1; i >= 0; i--) {
-    if (_undoStack[i].sessionFolder === currentSession.sessionFolder) {
+    if (_undoStack[i].sessionFolder === State.getSession().sessionFolder) {
       popped = _undoStack.splice(i, 1)[0];
       break;
     }
   }
   if (!popped) { toast("Nothing to undo"); return; }
   // Push the CURRENT state onto the redo stack before reverting.
-  const currentSnap = snapshotAnnotations(currentSession.annotations);
+  const currentSnap = snapshotAnnotations(State.getSession().annotations);
   _redoStack.push({ label: popped.label, annotations: currentSnap, sessionFolder: popped.sessionFolder });
   if (_redoStack.length > UNDO_MAX) _redoStack.shift();
   await ipcRenderer.invoke("viewer:saveAnnotations", {
@@ -93,17 +90,17 @@ async function performUndo() {
   toast("Undone: " + popped.label);
 }
 async function performRedo() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   let popped = null;
   for (let i = _redoStack.length - 1; i >= 0; i--) {
-    if (_redoStack[i].sessionFolder === currentSession.sessionFolder) {
+    if (_redoStack[i].sessionFolder === State.getSession().sessionFolder) {
       popped = _redoStack.splice(i, 1)[0];
       break;
     }
   }
   if (!popped) { toast("Nothing to redo"); return; }
   // Push current state to undo so user can flip back.
-  const currentSnap = snapshotAnnotations(currentSession.annotations);
+  const currentSnap = snapshotAnnotations(State.getSession().annotations);
   _undoStack.push({ label: popped.label, annotations: currentSnap, sessionFolder: popped.sessionFolder });
   if (_undoStack.length > UNDO_MAX) _undoStack.shift();
   await ipcRenderer.invoke("viewer:saveAnnotations", {
@@ -520,7 +517,7 @@ function renderShortcutsOverlay() {
   // Only show on the Session view, when a session is loaded, and not dismissed.
   const onSession = document.querySelector(".tab.active") &&
                     document.querySelector(".tab.active").dataset.view === "session";
-  if (hidden || !onSession || !currentSession) {
+  if (hidden || !onSession || !State.getSession()) {
     ov.style.display = "none";
     return;
   }
@@ -553,7 +550,7 @@ function activateAnnoTab(name) {
 /* ============ Steps view rendering ================================ */
 
 function getSpan() {
-  const evs = (currentSession && currentSession.events) || [];
+  const evs = (State.getSession() && State.getSession().events) || [];
   if (!evs.length) return null;
   return {
     startMs: new Date(evs[0].timestamp).getTime(),
@@ -562,7 +559,7 @@ function getSpan() {
 }
 
 function decorateDrift(steps) {
-  const drifts = (currentSession.annotations && currentSession.annotations.drift_markers) || [];
+  const drifts = (State.getSession().annotations && State.getSession().annotations.drift_markers) || [];
   const byStep = {};
   for (const d of drifts) {
     byStep[d.step_id] = d;
@@ -629,15 +626,15 @@ function deriveCases(session) {
 }
 
 function currentScopeRange() {
-  if (!currentCaseScope || !currentSession) return null;
-  const cases = deriveCases(currentSession);
+  if (!currentCaseScope || !State.getSession()) return null;
+  const cases = deriveCases(State.getSession());
   return cases.find(c => c.id === currentCaseScope) || null;
 }
 
 function populateCaseScope() {
   const sel = document.getElementById("case-scope-select");
   if (!sel) return;
-  const cases = currentSession ? deriveCases(currentSession) : [];
+  const cases = State.getSession() ? deriveCases(State.getSession()) : [];
   // P2.8: dedup duplicate labels with a [H:MM:SS] timecode suffix so
   // analysts can tell "Send email" #2 from "Send email" #5 etc.
   const labelCounts = {};
@@ -657,8 +654,8 @@ function populateCaseScope() {
     .concat(cases.map(c => {
       const baseLabel = c.label && c.label !== c.id ? c.label : c.id;
       const needsSuffix = labelCounts[baseLabel] > 1;
-      const offsetMs = c.startMs && currentSession.events.length
-        ? c.startMs - new Date(currentSession.events[0].timestamp).getTime()
+      const offsetMs = c.startMs && State.getSession().events.length
+        ? c.startMs - new Date(State.getSession().events[0].timestamp).getTime()
         : 0;
       const label = needsSuffix
         ? `${baseLabel} [${timecode(offsetMs)}]`
@@ -680,7 +677,7 @@ function populateCaseScope() {
    range contains the current video time and selects it as the scope.
    Falls back to a toast if there's no video / no marker at playhead. */
 function scopeToMarkerAtPlayhead() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const video = document.getElementById("video");
   const startTs = videoStartTs();
   if (!video || !startTs) {
@@ -688,7 +685,7 @@ function scopeToMarkerAtPlayhead() {
     return;
   }
   const playheadMs = new Date(startTs).getTime() + video.currentTime * 1000;
-  const cases = deriveCases(currentSession);
+  const cases = deriveCases(State.getSession());
   // Innermost case: smallest range containing playheadMs.
   let best = null;
   let bestSize = Infinity;
@@ -731,8 +728,8 @@ function commandPaletteProvider(rawQuery) {
   }
 
   // 1) Cases -- prominent navigation primitive
-  if (currentSession) {
-    const cases = deriveCases(currentSession);
+  if (State.getSession()) {
+    const cases = deriveCases(State.getSession());
     for (const c of cases) {
       const dur = c.endMs - c.startMs;
       const durStr = dur < 60000 ? `${Math.round(dur / 1000)}s`
@@ -747,8 +744,8 @@ function commandPaletteProvider(rawQuery) {
   }
 
   // 2) Steps -- the long-tail surface that needs find-by-name most
-  if (currentSession) {
-    const allSteps = (currentSession.annotations && currentSession.annotations.steps) || [];
+  if (State.getSession()) {
+    const allSteps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
     let n = 0;
     for (const s of allSteps) {
       if (n >= 80) break;
@@ -772,8 +769,8 @@ function commandPaletteProvider(rawQuery) {
   }
 
   // 3) Markers -- case boundaries by label
-  if (currentSession) {
-    const markers = (currentSession.events || []).filter(e => e.type === "marker" && e.data.marker_type === "start");
+  if (State.getSession()) {
+    const markers = (State.getSession().events || []).filter(e => e.type === "marker" && e.data.marker_type === "start");
     let n = 0;
     for (const m of markers) {
       if (n >= 40) break;
@@ -854,8 +851,8 @@ function stepMatchesFilter(s, f, scopeCaseId) {
 }
 
 function renderStepsLevel() {
-  if (!currentSession || !window.PdtSteps) return;
-  const allSteps = decorateDrift((currentSession.annotations && currentSession.annotations.steps) || []);
+  if (!State.getSession() || !window.PdtSteps) return;
+  const allSteps = decorateDrift((State.getSession().annotations && State.getSession().annotations.steps) || []);
   const f = listFilters.step;
   const filtered = allSteps.filter(s => stepMatchesFilter(s, f, currentCaseScope));
   const filteredIds = new Set(filtered.map(s => s.step_id));
@@ -903,7 +900,7 @@ function renderStepsLevel() {
     const dimmedIds = new Set();
     for (const s of allSteps) if (!filteredIds.has(s.step_id)) dimmedIds.add(s.step_id);
     window.PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
-      currentSession.events.filter(e => e.type === "interaction"), span, {
+      State.getSession().events.filter(e => e.type === "interaction"), span, {
         zoom: stepZoom,
         selectedId: State.getSelectedStepId(),
         dimmedIds,
@@ -977,8 +974,8 @@ async function inlineRenameStep(stepId, newName, advance) {
     setTimeout(() => beginRenameOnSelected(), 30);
     return;
   }
-  if (!currentSession || !stepId || !newName) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession() || !stepId || !newName) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const step = anno.steps.find(s => s.step_id === stepId);
   if (!step) return;
   step.name = newName;
@@ -1006,8 +1003,8 @@ function beginRenameOnSelected() {
 }
 
 async function saveStep(updatedStep) {
-  if (!currentSession) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const idx = anno.steps.findIndex(s => s.step_id === updatedStep.step_id);
   if (idx >= 0) anno.steps[idx] = updatedStep;
   else anno.steps.push(updatedStep);
@@ -1017,8 +1014,8 @@ async function saveStep(updatedStep) {
 }
 
 async function deleteStep(stepId) {
-  if (!currentSession) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const step = anno.steps.find(s => s.step_id === stepId);
   const ok = await confirmModal({
     title: "Delete step?",
@@ -1040,8 +1037,8 @@ async function deleteStep(stepId) {
    _merge_steps. The pre-hide state is stashed on `_prev_state` so
    unhiding restores it. */
 async function toggleStepHidden(stepId) {
-  if (!currentSession) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const step = anno.steps.find(s => s.step_id === stepId);
   if (!step) return;
   if (step.state === "hidden") {
@@ -1060,8 +1057,8 @@ async function toggleStepHidden(stepId) {
 }
 
 async function splitStep(stepId) {
-  if (!currentSession) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const idx = anno.steps.findIndex(s => s.step_id === stepId);
   if (idx < 0) return;
   const s = anno.steps[idx];
@@ -1070,7 +1067,7 @@ async function splitStep(stepId) {
   const mid = Math.floor(ids.length / 2);
   const firstIds = ids.slice(0, mid);
   const secondIds = ids.slice(mid);
-  const interMap = Object.fromEntries(currentSession.events.filter(e => e.type === "interaction").map(e => [e.event_id, e]));
+  const interMap = Object.fromEntries(State.getSession().events.filter(e => e.type === "interaction").map(e => [e.event_id, e]));
   const firstEvents = firstIds.map(id => interMap[id]).filter(Boolean);
   const secondEvents = secondIds.map(id => interMap[id]).filter(Boolean);
   if (!firstEvents.length || !secondEvents.length) { toast("Could not split step", "error"); return; }
@@ -1090,8 +1087,8 @@ async function splitStep(stepId) {
 }
 
 async function mergeStepWithNext(stepId) {
-  if (!currentSession) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const sorted = anno.steps.slice().sort((a, b) =>
     (a.time_range && a.time_range.start || "").localeCompare(b.time_range && b.time_range.start || ""));
   const idx = sorted.findIndex(s => s.step_id === stepId);
@@ -1118,7 +1115,7 @@ async function mergeStepWithNext(stepId) {
 }
 
 async function addManualStep() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const name = await promptModal({ title: "Add manual step", message: "Name this step", placeholder: "e.g., Search customer in CRM", okLabel: "Add step" });
   if (!name) return;
   const video = $("#video");
@@ -1126,10 +1123,10 @@ async function addManualStep() {
   // Default duration so manual steps render with a non-zero width
   // in the mini-timeline; the analyst can edit the time range later.
   const endTs = new Date(new Date(tsNow).getTime() + 5000).toISOString();
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const step = {
     step_id: cryptoRandomId(),
-    session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+    session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
     case_id: null,
     name,
     description: "",
@@ -1163,9 +1160,9 @@ function phaseMatchesFilter(p, steps, f, scopeCaseId) {
 }
 
 function renderPhasesLevel() {
-  if (!currentSession || !window.PdtPhases) return;
-  const phases = (currentSession.annotations && currentSession.annotations.phases) || [];
-  const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
+  if (!State.getSession() || !window.PdtPhases) return;
+  const phases = (State.getSession().annotations && State.getSession().annotations.phases) || [];
+  const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
   const f = listFilters.phase;
   const filtered = phases.filter(p => phaseMatchesFilter(p, steps, f, currentCaseScope));
   const filteredIds = new Set(filtered.map(p => p.phase_id));
@@ -1212,7 +1209,7 @@ function renderPhasesLevel() {
       clearTimeout(t);
       t = setTimeout(() => {
         listFilters.marker.text = txt.value.trim();
-        if (currentSession) renderMarkersList();
+        if (State.getSession()) renderMarkersList();
       }, 120);
     });
   }
@@ -1233,7 +1230,7 @@ function renderPhasesLevel() {
 })();
 
 async function savePhase(updatedPhase) {
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const idx = anno.phases.findIndex(p => p.phase_id === updatedPhase.phase_id);
   if (idx >= 0) anno.phases[idx] = updatedPhase;
   else anno.phases.push(updatedPhase);
@@ -1243,7 +1240,7 @@ async function savePhase(updatedPhase) {
 }
 
 async function deletePhase(phaseId) {
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const phase = anno.phases.find(p => p.phase_id === phaseId);
   const ok = await confirmModal({
     title: "Delete phase?",
@@ -1263,7 +1260,7 @@ async function deletePhase(phaseId) {
 }
 
 async function removeStepFromPhase(phaseId, stepId) {
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const phase = anno.phases.find(p => p.phase_id === phaseId);
   if (!phase) return;
   phase.step_ids = (phase.step_ids || []).filter(id => id !== stepId);
@@ -1277,8 +1274,8 @@ async function removeStepFromPhase(phaseId, stepId) {
 /* P2.6: drag-reorder a step within a phase. drag === source step,
    target === drop-target step, before === insert above (vs below). */
 async function reorderStepsInPhase(phaseId, dragStepId, targetStepId, before) {
-  if (!currentSession || !dragStepId || !targetStepId || dragStepId === targetStepId) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession() || !dragStepId || !targetStepId || dragStepId === targetStepId) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const phase = anno.phases.find(p => p.phase_id === phaseId);
   if (!phase || !Array.isArray(phase.step_ids)) return;
   const ids = phase.step_ids.slice();
@@ -1296,13 +1293,13 @@ async function reorderStepsInPhase(phaseId, dragStepId, targetStepId, before) {
 }
 
 async function addManualPhase() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const name = await promptModal({ title: "Add phase", message: "Name this phase", placeholder: "e.g., Validate customer", okLabel: "Add phase" });
   if (!name) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const phase = {
     phase_id: cryptoRandomId(),
-    session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+    session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
     case_id: null,
     name,
     description: "",
@@ -1318,15 +1315,15 @@ async function addManualPhase() {
 }
 
 async function groupIntoPhase() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const ids = Array.from(State.getMultiSelectedStepIds());
   if (ids.length < 2) return;
   const name = await promptModal({ title: "Add phase", message: "Name this phase", placeholder: "e.g., Validate customer", okLabel: "Add phase" });
   if (!name) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const phase = {
     phase_id: cryptoRandomId(),
-    session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+    session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
     case_id: null,
     name,
     description: "",
@@ -1354,7 +1351,7 @@ if ($("#btn-group-into-phase"))   $("#btn-group-into-phase").addEventListener("c
 /* Bulk-delete the Ctrl+click multi-selection. One confirm for the
    whole set; Ctrl+Z restores. */
 async function deleteSelectedSteps() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const ids = Array.from(State.getMultiSelectedStepIds());
   if (ids.length < 2) return;
   const ok = await confirmModal({
@@ -1365,7 +1362,7 @@ async function deleteSelectedSteps() {
     danger: true,
   });
   if (!ok) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const idSet = new Set(ids);
   anno.steps = anno.steps.filter(s => !idSet.has(s.step_id));
   await persistAnnotations(anno, "delete " + ids.length + " steps");
@@ -1391,7 +1388,7 @@ function distinctSessionApps() {
   // Distinct process_name across the session's interaction events,
   // with an interaction count so the analyst can spot the noisy ones.
   const counts = new Map();
-  for (const ev of (currentSession && currentSession.events) || []) {
+  for (const ev of (State.getSession() && State.getSession().events) || []) {
     if (ev.type !== "interaction") continue;
     const proc = (ev.data && ev.data.process_name) || "(unknown)";
     counts.set(proc, (counts.get(proc) || 0) + 1);
@@ -1402,13 +1399,13 @@ function distinctSessionApps() {
 }
 
 function openIgnoredAppsDialog() {
-  if (!currentSession) { toast("Open a session first.", ""); return; }
+  if (!State.getSession()) { toast("Open a session first.", ""); return; }
   const apps = distinctSessionApps();
   if (!apps.length) {
     toast("No interaction data in this session — nothing to filter.", "");
     return;
   }
-  const anno = ensureAnnoShape(currentSession.annotations);
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const current = new Set((anno.step_filters.ignored_processes || []).map(s => String(s).toLowerCase()));
 
   const backdrop = document.createElement("div");
@@ -1450,7 +1447,7 @@ function openIgnoredAppsDialog() {
     anno.step_filters.ignored_processes = picked;
     // Settings change -- write directly (not via the undo stack).
     await ipcRenderer.invoke("viewer:saveAnnotations", {
-      sessionFolder: currentSession.sessionFolder,
+      sessionFolder: State.getSession().sessionFolder,
       annotations: anno,
     });
     close();
@@ -1475,8 +1472,8 @@ if ($("#btn-ignored-apps")) {
    The analyst sees the list and accepts/rejects individually.
    Steps already assigned to a phase are skipped. */
 async function suggestPhaseGroupings() {
-  if (!currentSession) return;
-  const anno = ensureAnnoShape(currentSession.annotations);
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const steps = (anno.steps || []).filter((s) => !s.phase_id);
   if (steps.length < 2) {
     toast("Need at least 2 ungrouped steps to suggest groupings.", "");
@@ -1497,7 +1494,7 @@ async function suggestPhaseGroupings() {
   // evidence list, so fall back to scanning activity events whose
   // timestamp falls within the step's time_range.
   const eventById = new Map();
-  for (const ev of (currentSession.events || [])) {
+  for (const ev of (State.getSession().events || [])) {
     if (ev.event_id) eventById.set(ev.event_id, ev);
   }
   const stepAppCache = new Map();
@@ -1514,7 +1511,7 @@ async function suggestPhaseGroupings() {
       // Fallback: scan activity events overlapping the step.
       const start = new Date(s.time_range.start).getTime();
       const end = new Date(s.time_range.end).getTime();
-      for (const ev of (currentSession.events || [])) {
+      for (const ev of (State.getSession().events || [])) {
         if (ev.type !== "activity") continue;
         const t = new Date(ev.timestamp).getTime();
         if (t < start || t > end) continue;
@@ -1564,7 +1561,7 @@ async function suggestPhaseGroupings() {
       : "Mixed-app phase";
     const phase = {
       phase_id: cryptoRandomId(),
-      session_id: (currentSession.manifest && currentSession.manifest.session_id) || "",
+      session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
       case_id: null,
       name,
       description: "Auto-suggested by phase grouping heuristics.",
@@ -1694,15 +1691,15 @@ function ensureAnnoShape(anno) {
   a.drift_markers = a.drift_markers || [];
   a.step_filters = a.step_filters || { ignored_processes: [], ignored_window_titles: [] };
   if (!Array.isArray(a.step_filters.ignored_processes)) a.step_filters.ignored_processes = [];
-  if (currentSession) a.session_id = (currentSession.manifest && currentSession.manifest.session_id) || a.session_id || "";
-  currentSession.annotations = a;
+  if (State.getSession()) a.session_id = (State.getSession().manifest && State.getSession().manifest.session_id) || a.session_id || "";
+  State.getSession().annotations = a;
   return a;
 }
 
 /* ============ Save App Vocabulary from this session ================ */
 
 async function buildVocabFromSession(suggestedName) {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const vocabName = suggestedName || await promptModal({
     title: "Save to App Library",
     message: "App vocabulary name",
@@ -1713,7 +1710,7 @@ async function buildVocabFromSession(suggestedName) {
   if (!vocabName) return;
   const vocabId = vocabName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const r = await ipcRenderer.invoke("viewer:bootstrapAppVocab", {
-    sessionFolder: currentSession.sessionFolder,
+    sessionFolder: State.getSession().sessionFolder,
     vocabId, vocabName,
   });
   if (!r || !r.ok) {
@@ -1746,8 +1743,8 @@ if (btnSaveVocab) {
 const btnPrepBootstrap = $("#btn-prep-bootstrap");
 if (btnPrepBootstrap) {
   btnPrepBootstrap.addEventListener("click", async () => {
-    if (!currentSession) return;
-    const m = currentSession.manifest || {};
+    if (!State.getSession()) return;
+    const m = State.getSession().manifest || {};
     const friendly = (m.prep_app || "").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     btnPrepBootstrap.disabled = true;
     await buildVocabFromSession(friendly || null);
@@ -1963,8 +1960,8 @@ if (typeof window !== "undefined") {
 /* ============ Step / phase / PDD exports ========================= */
 
 async function exportArtifact(kind) {
-  if (!currentSession && !aggregateSessions.length) return;
-  const filtered = aggregateSessions.length ? filteredAggregateSessions() : [currentSession];
+  if (!State.getSession() && !State.getAggregateSessions().length) return;
+  const filtered = State.getAggregateSessions().length ? filteredAggregateSessions() : [State.getSession()];
   if (!filtered.length) return;
   const target = filtered[0];
   // Run normalize with the corresponding --*-out flag against a temp path
@@ -2001,17 +1998,17 @@ if ($("#btn-renormalize-canonical")) {
   $("#btn-renormalize-canonical").addEventListener("click", async () => {
     const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
     if (!r) return;
-    if (!aggregateSessions.length) { toast("Load sessions first", "error"); return; }
+    if (!State.getAggregateSessions().length) { toast("Load sessions first", "error"); return; }
     let driftCount = 0;
-    for (const s of aggregateSessions) {
+    for (const s of State.getAggregateSessions()) {
       const result = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
         sessionFolder: s.sessionFolder, mine: true, canonical: r.path,
       });
       if (result && result.ok && result.drift_count) driftCount += result.drift_count;
     }
-    const folders = aggregateSessions.map((s) => s.sessionFolder);
-    aggregateSessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
-    aggregateSessions = aggregateSessions.filter((s) => !s.error);
+    const folders = State.getAggregateSessions().map((s) => s.sessionFolder);
+    State.setAggregateSessions(await ipcRenderer.invoke("viewer:loadMultipleSessions", folders));
+    State.setAggregateSessions(State.getAggregateSessions().filter((s) => !s.error));
     renderAggregate();
     toast(`Re-normalized; ${driftCount} drift marker(s)`, driftCount ? "warn" : "success");
   });
@@ -2108,16 +2105,16 @@ if (btnCancelNormalize) {
 }
 
 $("#btn-normalize").addEventListener("click", async () => {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const mine = $("#cb-mine").checked;
   setAnalysisRunning(true);
   $("#normalize-log").textContent = "";
   // If a Process Template was previously matched, re-use its path automatically.
-  const remembered = (currentSession.annotations &&
-    currentSession.annotations.matched_against &&
-    currentSession.annotations.matched_against.template_path) || null;
+  const remembered = (State.getSession().annotations &&
+    State.getSession().annotations.matched_against &&
+    State.getSession().annotations.matched_against.template_path) || null;
   const r = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
-    sessionFolder: currentSession.sessionFolder,
+    sessionFolder: State.getSession().sessionFolder,
     mine,
     canonical: remembered,
   });
@@ -2133,13 +2130,13 @@ $("#btn-normalize").addEventListener("click", async () => {
     return;
   }
   toast(remembered ? "Re-analyzed with template" : "Analysis complete", "success");
-  await loadSessionIntoView(currentSession.sessionFolder);
+  await loadSessionIntoView(State.getSession().sessionFolder);
 });
 
 const btnMatchTemplate = $("#btn-match-template");
 if (btnMatchTemplate) {
   btnMatchTemplate.addEventListener("click", async () => {
-    if (!currentSession) return;
+    if (!State.getSession()) return;
     const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
     if (!r) return;
     btnMatchTemplate.disabled = true;
@@ -2148,7 +2145,7 @@ if (btnMatchTemplate) {
     $("#normalize-log").textContent = "";
     const mine = $("#cb-mine").checked;
     const result = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
-      sessionFolder: currentSession.sessionFolder,
+      sessionFolder: State.getSession().sessionFolder,
       mine,
       canonical: r.path,
     });
@@ -2160,16 +2157,16 @@ if (btnMatchTemplate) {
     }
     // Persist template path into annotations.json so future re-analyses remember it.
     try {
-      const a = currentSession.annotations || {};
+      const a = State.getSession().annotations || {};
       a.matched_against = a.matched_against || {};
       a.matched_against.template_path = r.path;
       await ipcRenderer.invoke("viewer:saveAnnotations", {
-        sessionFolder: currentSession.sessionFolder,
+        sessionFolder: State.getSession().sessionFolder,
         annotations: a,
       });
     } catch (_) {}
     toast("Matched against Process Template", "success");
-    await loadSessionIntoView(currentSession.sessionFolder);
+    await loadSessionIntoView(State.getSession().sessionFolder);
   });
 }
 
@@ -2180,9 +2177,9 @@ ipcRenderer.on("viewer:normalizeLog", (_e, text) => {
 });
 
 async function loadSessionIntoView(folder) {
-  const prevFolder = currentSession ? currentSession.sessionFolder : null;
+  const prevFolder = State.getSession() ? State.getSession().sessionFolder : null;
   try {
-    currentSession = await ipcRenderer.invoke("viewer:loadSession", folder);
+    State.setSession(await ipcRenderer.invoke("viewer:loadSession", folder));
   } catch (e) {
     toast("Failed to load: " + (e.message || e), "error");
     return;
@@ -2196,7 +2193,7 @@ async function loadSessionIntoView(folder) {
   $("#session-loaded").style.display = "";
   $("#btn-normalize").disabled = false;
   const label =
-    (currentSession.manifest && currentSession.manifest.engagement_id) ||
+    (State.getSession().manifest && State.getSession().manifest.engagement_id) ||
     path.basename(folder);
   pushRecent(folder, label + " · " + path.basename(folder));
 
@@ -2206,8 +2203,8 @@ async function loadSessionIntoView(folder) {
   const video = $("#video");
   const noVid = $("#no-video");
   const overlay = $("#video-overlay");
-  if (currentSession.recordingAvailable && currentSession.recordingPath) {
-    video.src = "file:///" + currentSession.recordingPath.replace(/\\/g, "/");
+  if (State.getSession().recordingAvailable && State.getSession().recordingPath) {
+    video.src = "file:///" + State.getSession().recordingPath.replace(/\\/g, "/");
     video.style.display = "";
     noVid.style.display = "none";
     overlay.style.display = "";
@@ -2221,7 +2218,7 @@ async function loadSessionIntoView(folder) {
   video.addEventListener("timeupdate", positionPlayhead);
   video.addEventListener("loadedmetadata", () =>
     setVideoOverlay(`${formatDuration(video.duration * 1000)} loaded`));
-  setVideoOverlay(currentSession.recordingAvailable ? "loading…" : "no video");
+  setVideoOverlay(State.getSession().recordingAvailable ? "loading…" : "no video");
 
   renderTimeline();
   renderEventTable();
@@ -2240,7 +2237,7 @@ async function loadSessionIntoView(folder) {
   // Refresh case-scope dropdown -- clear scope if the new session no
   // longer contains the previously-selected case.
   populateCaseScope();
-  const cases = deriveCases(currentSession).map(c => c.id);
+  const cases = deriveCases(State.getSession()).map(c => c.id);
   if (currentCaseScope && !cases.includes(currentCaseScope)) {
     currentCaseScope = "";
     populateCaseScope();
@@ -2269,11 +2266,11 @@ function countBpmnNodes(xml) {
 function updateProcessMapStatus() {
   const wrap = document.getElementById("process-map-status");
   if (!wrap) return;
-  if (!currentSession || !currentSession.sessionFolder) {
+  if (!State.getSession() || !State.getSession().sessionFolder) {
     wrap.style.display = "none";
     return;
   }
-  const bpmnPath = path.join(currentSession.sessionFolder, "process_map.bpmn");
+  const bpmnPath = path.join(State.getSession().sessionFolder, "process_map.bpmn");
   let xml = "";
   try {
     if (!fs.existsSync(bpmnPath)) {
@@ -2292,7 +2289,7 @@ function updateProcessMapStatus() {
   wrap.dataset.bpmnPath = bpmnPath;
 
   // Per-case BPMNs (if normalize.py --mine wrote any)
-  const perCaseDir = path.join(currentSession.sessionFolder, "process_maps");
+  const perCaseDir = path.join(State.getSession().sessionFolder, "process_maps");
   const sel = document.getElementById("process-map-case-select");
   if (!sel) return;
   let perCaseFiles = [];
@@ -2344,16 +2341,16 @@ function updateProcessMapStatus() {
 })();
 
 function renderSessionPills() {
-  const m = currentSession.manifest || {};
+  const m = State.getSession().manifest || {};
   const pills = [];
-  pills.push({ label: "events", val: currentSession.events.length, cls: "ok" });
+  pills.push({ label: "events", val: State.getSession().events.length, cls: "ok" });
   pills.push({ label: "status", val: m.status || "?",
     cls: m.status === "recovered" ? "warn" : (m.status === "closed" ? "ok" : "") });
   if (m.obs && m.obs.recording_path) pills.push({ label: "video", val: "OBS linked", cls: "ok" });
   else pills.push({ label: "video", val: "no recording" });
-  if (currentSession.stats) {
+  if (State.getSession().stats) {
     pills.push({ label: "analyzed", val: "✓", cls: "ok" });
-    const meta = currentSession.stats.meta || {};
+    const meta = State.getSession().stats.meta || {};
     if (meta.taxonomy_version) {
       pills.push({ label: "taxonomy", val: meta.taxonomy_version });
     }
@@ -2372,7 +2369,7 @@ function renderSessionPills() {
   } else {
     pills.push({ label: "analyzed", val: "no", cls: "warn" });
   }
-  const editCount = ((currentSession.annotations || {}).marker_edits || []).length;
+  const editCount = ((State.getSession().annotations || {}).marker_edits || []).length;
   if (editCount > 0) pills.push({ label: "edits", val: editCount, cls: "warn" });
   $("#session-pills").innerHTML = pills.map((p) =>
     '<div class="pill' + (p.cls ? " " + p.cls : "") + '"><span class="dot"></span>' +
@@ -2382,7 +2379,7 @@ function renderSessionPills() {
   // Show onboarding card until the session is analyzed.
   const onboarding = $("#onboarding-card");
   if (onboarding) {
-    onboarding.style.display = currentSession.stats ? "none" : "";
+    onboarding.style.display = State.getSession().stats ? "none" : "";
   }
 
   /* Prep-session CTA: when the manifest tags this as an app-vocab prep
@@ -2408,9 +2405,9 @@ function renderSessionPills() {
   // Update the Match button label to reflect a remembered template.
   const btnMatch = $("#btn-match-template");
   if (btnMatch) {
-    const tmpl = (currentSession.annotations &&
-      currentSession.annotations.matched_against &&
-      currentSession.annotations.matched_against.template_path);
+    const tmpl = (State.getSession().annotations &&
+      State.getSession().annotations.matched_against &&
+      State.getSession().annotations.matched_against.template_path);
     if (tmpl) {
       btnMatch.textContent = "Change Process Template...";
       btnMatch.title = "Currently matched against: " + tmpl;
@@ -2502,10 +2499,10 @@ function _writeTimelineState(map) {
   catch (_) {}
 }
 function persistTimelineForCurrent() {
-  if (!currentSession || !currentSession.sessionFolder) return;
+  if (!State.getSession() || !State.getSession().sessionFolder) return;
   const map = _readTimelineState();
   const scroll = document.getElementById("timeline-scroll");
-  map[currentSession.sessionFolder] = {
+  map[State.getSession().sessionFolder] = {
     zoomFactor,
     scrollLeft: scroll ? scroll.scrollLeft : 0,
     ts: Date.now(),
@@ -2513,9 +2510,9 @@ function persistTimelineForCurrent() {
   _writeTimelineState(map);
 }
 function restoreTimelineForCurrent() {
-  if (!currentSession || !currentSession.sessionFolder) return;
+  if (!State.getSession() || !State.getSession().sessionFolder) return;
   const map = _readTimelineState();
-  const saved = map[currentSession.sessionFolder];
+  const saved = map[State.getSession().sessionFolder];
   if (!saved) return;
   if (typeof saved.zoomFactor === "number" && saved.zoomFactor >= 1) {
     zoomFactor = saved.zoomFactor;
@@ -2564,9 +2561,9 @@ function installRangeSelection() {
   host._pdtSelWired = true;
   let startX = null, startMs = null, overlay = null;
   function spanInfo() {
-    if (!currentSession || !currentSession.events.length) return null;
-    const first = new Date(currentSession.events[0].timestamp).getTime();
-    const last  = new Date(currentSession.events[currentSession.events.length - 1].timestamp).getTime();
+    if (!State.getSession() || !State.getSession().events.length) return null;
+    const first = new Date(State.getSession().events[0].timestamp).getTime();
+    const last  = new Date(State.getSession().events[State.getSession().events.length - 1].timestamp).getTime();
     return { first, last, span: Math.max(1, last - first) };
   }
   function pxToMs(clientX) {
@@ -2633,7 +2630,7 @@ function installRangeSelection() {
   });
 }
 function renderSelectionStats() {
-  if (!_selectionRange || !currentSession) return;
+  if (!_selectionRange || !State.getSession()) return;
   let card = document.getElementById("tl-selection-stats");
   if (!card) {
     card = document.createElement("div");
@@ -2643,7 +2640,7 @@ function renderSelectionStats() {
     const legend = document.getElementById("timeline-legend");
     if (legend && legend.parentNode) legend.parentNode.insertBefore(card, legend);
   }
-  const evs = currentSession.events;
+  const evs = State.getSession().events;
   const inRange = evs.filter((ev) => {
     const t = new Date(ev.timestamp).getTime();
     return t >= _selectionRange.startMs && t <= _selectionRange.endMs;
@@ -2683,8 +2680,8 @@ function renderSelectionStats() {
 function renderMinimap() {
   const mm = document.getElementById("timeline-minimap");
   const scroll = document.getElementById("timeline-scroll");
-  if (!mm || !scroll || !currentSession || !currentSession.events) return;
-  const evs = currentSession.events;
+  if (!mm || !scroll || !State.getSession() || !State.getSession().events) return;
+  const evs = State.getSession().events;
   if (!evs.length) { mm.style.display = "none"; return; }
   mm.style.display = "";
   const first = new Date(evs[0].timestamp).getTime();
@@ -2798,7 +2795,7 @@ function hideScreenshotThumb() {
 }
 
 function renderTimelineSummary() {
-  const evs = currentSession.events;
+  const evs = State.getSession().events;
   if (!evs.length) { $("#timeline-summary").textContent = ""; return; }
   const first = new Date(evs[0].timestamp);
   const last = new Date(evs[evs.length - 1].timestamp);
@@ -2857,7 +2854,7 @@ function showMarkerInsertMenu(x, y, ts) {
 }
 
 async function queueSyntheticMarker(ts, markerType) {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   let label = null;
   if (markerType === "start") {
     label = await promptModal({
@@ -2871,7 +2868,7 @@ async function queueSyntheticMarker(ts, markerType) {
     label = (label || "").trim();
     if (!label) label = null;
   }
-  const a = currentSession.annotations || {};
+  const a = State.getSession().annotations || {};
   if (!Array.isArray(a.marker_edits)) a.marker_edits = [];
   a.marker_edits.push({
     id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
@@ -2922,7 +2919,7 @@ function setLaneToggle(key, on) {
     cb.checked = !!toggles[cb.dataset.lane];
     cb.addEventListener("change", () => {
       setLaneToggle(cb.dataset.lane, cb.checked);
-      if (currentSession) renderTimeline();
+      if (State.getSession()) renderTimeline();
     });
   });
   btn.addEventListener("click", (e) => {
@@ -2937,7 +2934,7 @@ function setLaneToggle(key, on) {
 function renderTimeline() {
   const host = $("#timeline");
   host.innerHTML = "";
-  const evs = currentSession.events;
+  const evs = State.getSession().events;
   if (!evs.length) {
     const mm = document.getElementById("timeline-minimap");
     if (mm) mm.style.display = "none";
@@ -2997,8 +2994,8 @@ function renderTimeline() {
   // P1.4 + P1.9: optional per-step + annotation lanes between density
   // and cases. Compute their heights upfront so casesTop accounts for
   // them — otherwise the cases overlap with the new lanes.
-  const _stepsForLane = (currentSession.annotations && currentSession.annotations.steps) || [];
-  const _notesForLane = (currentSession.annotations && currentSession.annotations.notes) || [];
+  const _stepsForLane = (State.getSession().annotations && State.getSession().annotations.steps) || [];
+  const _notesForLane = (State.getSession().annotations && State.getSession().annotations.notes) || [];
   const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
   const notesLaneH = (lanes.notes && _notesForLane.length) ? 18 : 0;
   const titlesLaneTop = densityTop + densityH + 4;
@@ -3365,9 +3362,9 @@ function renderTimeline() {
 function positionPlayhead() {
   const video = $("#video");
   const ph = $("#tl-playhead");
-  if (!ph || !currentSession || !currentSession.events.length) return;
-  const first = new Date(currentSession.events[0].timestamp).getTime();
-  const last = new Date(currentSession.events[currentSession.events.length - 1].timestamp).getTime();
+  if (!ph || !State.getSession() || !State.getSession().events.length) return;
+  const first = new Date(State.getSession().events[0].timestamp).getTime();
+  const last = new Date(State.getSession().events[State.getSession().events.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
   const obsStartTs = videoStartTs();
   if (!obsStartTs) { ph.style.display = "none"; return; }
@@ -3463,7 +3460,7 @@ function showCaseContextMenu(x, y, c) {
     /* Find the case by start timestamp -- the case scope dropdown
        keys cases by case_id derived from normalization, but visually
        we map by startMs which is stable. */
-    const cases = currentSession ? deriveCases(currentSession) : [];
+    const cases = State.getSession() ? deriveCases(State.getSession()) : [];
     const match = cases.find(x => Math.abs(x.startMs - c.startMs) < 5);
     if (match) {
       currentCaseScope = match.id;
@@ -3502,14 +3499,14 @@ function showCaseContextMenu(x, y, c) {
    Priority: external-video offset (Teams recording etc.), else OBS's
    recording_start_ts. Returns ISO string or null. */
 function videoStartTs() {
-  if (!currentSession) return null;
+  if (!State.getSession()) return null;
   // External video override: session started_at + offsetMs = wall-clock when video t=0.
-  if (currentSession.externalVideoOffsetMs != null && currentSession.manifest && currentSession.manifest.started_at) {
-    const ms = new Date(currentSession.manifest.started_at).getTime()
-             + Number(currentSession.externalVideoOffsetMs);
+  if (State.getSession().externalVideoOffsetMs != null && State.getSession().manifest && State.getSession().manifest.started_at) {
+    const ms = new Date(State.getSession().manifest.started_at).getTime()
+             + Number(State.getSession().externalVideoOffsetMs);
     return new Date(ms).toISOString();
   }
-  return (currentSession.manifest.obs && currentSession.manifest.obs.recording_start_ts) || null;
+  return (State.getSession().manifest.obs && State.getSession().manifest.obs.recording_start_ts) || null;
 }
 
 function formatPlayback(curS, durS) {
@@ -3523,7 +3520,7 @@ function formatPlayback(curS, durS) {
 }
 
 function seekToTimestamp(ts) {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const video = $("#video");
   const obsStartTs = videoStartTs();
   if (!obsStartTs || !video.src) return;
@@ -3562,7 +3559,7 @@ function renderEventTable() {
   const tbody = $("#event-table tbody");
   tbody.innerHTML = "";
   let count = 0;
-  for (const ev of currentSession.events) {
+  for (const ev of State.getSession().events) {
     if (ev.type === "activity" && !showAct) continue;
     if (ev.type === "marker" && !showMark) continue;
     if (ev.type === "system" && !showSys) continue;
@@ -3618,7 +3615,7 @@ if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("chang
 function renderAnnotations() {
   const host = $("#annotations-list");
   host.innerHTML = "";
-  const notes = (currentSession.annotations && currentSession.annotations.notes) || [];
+  const notes = (State.getSession().annotations && State.getSession().annotations.notes) || [];
   if (!notes.length) {
     host.innerHTML = '<p class="hint">No annotations yet. Anchor a note to the current playback time below.</p>';
     return;
@@ -3634,12 +3631,12 @@ function renderAnnotations() {
 }
 
 $("#btn-save-note").addEventListener("click", async () => {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const note = $("#anno-note").value.trim();
   if (!note) return;
   const video = $("#video");
   const videoTs = videoTimeToSessionTs(video.currentTime) || new Date().toISOString();
-  const anno = currentSession.annotations || { notes: [] };
+  const anno = State.getSession().annotations || { notes: [] };
   anno.notes = anno.notes || [];
   anno.notes.push({
     id: cryptoRandomId(),
@@ -3649,7 +3646,7 @@ $("#btn-save-note").addEventListener("click", async () => {
     text: note,
   });
   await saveAnnotationsWithUndo(anno, "add note");
-  currentSession.annotations = anno;
+  State.getSession().annotations = anno;
   $("#anno-note").value = "";
   renderAnnotations();
   toast("Note saved", "success");
@@ -3658,7 +3655,7 @@ $("#btn-save-note").addEventListener("click", async () => {
 function renderScreenshots() {
   const host = $("#screenshots-grid");
   host.innerHTML = "";
-  const shots = (currentSession.events || []).filter((e) =>
+  const shots = (State.getSession().events || []).filter((e) =>
     e.type === "system" &&
     (e.data.kind === "screenshot" || e.data.kind === "screenshot_manual"));
   // Stash for the gallery (P2.7).
@@ -3670,7 +3667,7 @@ function renderScreenshots() {
   for (const s of shots) {
     const card = document.createElement("div");
     card.className = "thumb";
-    const fullPath = path.join(currentSession.sessionFolder, s.data.path);
+    const fullPath = path.join(State.getSession().sessionFolder, s.data.path);
     if (fs.existsSync(fullPath)) {
       const img = document.createElement("img");
       img.src = "file:///" + fullPath.replace(/\\/g, "/");
@@ -3775,7 +3772,7 @@ function _galleryRenderFrame() {
     return;
   }
   const s = list[_galleryState.idx];
-  const fullPath = path.join(currentSession.sessionFolder, s.data.path);
+  const fullPath = path.join(State.getSession().sessionFolder, s.data.path);
   const img = document.getElementById("gallery-img");
   img.style.display = "";
   img.src = "file:///" + fullPath.replace(/\\/g, "/");
@@ -3819,15 +3816,15 @@ function _galleryKey(e) {
 })();
 
 function openScreenshot(relPath) {
-  if (!relPath || !currentSession) return;
-  const full = path.join(currentSession.sessionFolder, relPath);
+  if (!relPath || !State.getSession()) return;
+  const full = path.join(State.getSession().sessionFolder, relPath);
   if (fs.existsSync(full)) ipcRenderer.invoke("viewer:openExternal", full);
 }
 
 function getMarkerEdit(eventId) {
   /* Returns the latest pending edit (e.g. rename) for a given marker
      event_id, or null. Edits live in annotations.json under marker_edits. */
-  const edits = (currentSession.annotations && currentSession.annotations.marker_edits) || [];
+  const edits = (State.getSession().annotations && State.getSession().annotations.marker_edits) || [];
   let latest = null;
   for (const e of edits) {
     if (e.event_id === eventId) latest = e; // last write wins
@@ -3842,12 +3839,12 @@ function effectiveLabel(markerEvent) {
 }
 
 function isDeletedMarker(eventId) {
-  const edits = (currentSession.annotations && currentSession.annotations.marker_edits) || [];
+  const edits = (State.getSession().annotations && State.getSession().annotations.marker_edits) || [];
   return edits.some((e) => e.event_id === eventId && e.op === "delete");
 }
 
 function effectiveTimestamp(markerEvent) {
-  const edits = (currentSession.annotations && currentSession.annotations.marker_edits) || [];
+  const edits = (State.getSession().annotations && State.getSession().annotations.marker_edits) || [];
   let latest = null;
   for (const e of edits) {
     if (e.event_id === markerEvent.event_id && e.field === "timestamp") latest = e.value;
@@ -3858,7 +3855,7 @@ function effectiveTimestamp(markerEvent) {
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
-  const allMarkers = (currentSession.events || []).filter((e) => e.type === "marker");
+  const allMarkers = (State.getSession().events || []).filter((e) => e.type === "marker");
   if (!allMarkers.length) {
     host.innerHTML = '<p class="hint">No markers fired in this session.</p>';
     return;
@@ -3931,11 +3928,11 @@ async function persistAnnotations(anno, undoLabel) {
      Ctrl+Z reverts them. Callers pass a short label that surfaces
      in the undo toast. */
   await saveAnnotationsWithUndo(anno, undoLabel || "marker edit");
-  currentSession.annotations = anno;
+  State.getSession().annotations = anno;
 }
 
 async function adjustMarkerToVideoTime(markerEvent) {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const video = $("#video");
   const obsStartTs = videoStartTs();
   let newTs;
@@ -3946,7 +3943,7 @@ async function adjustMarkerToVideoTime(markerEvent) {
     if (!input) return;
     newTs = input.trim();
   }
-  const anno = currentSession.annotations || { notes: [], marker_edits: [] };
+  const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
   anno.marker_edits = anno.marker_edits || [];
   anno.marker_edits.push({
     id: cryptoRandomId(),
@@ -3963,7 +3960,7 @@ async function adjustMarkerToVideoTime(markerEvent) {
 }
 
 async function deleteMarker(markerEvent) {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const ok = await confirmModal({
     title: "Delete marker?",
     message: `Delete this ${markerEvent.data.marker_type} marker from normalization output?`,
@@ -3972,7 +3969,7 @@ async function deleteMarker(markerEvent) {
     danger: true,
   });
   if (!ok) return;
-  const anno = currentSession.annotations || { notes: [], marker_edits: [] };
+  const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
   anno.marker_edits = anno.marker_edits || [];
   anno.marker_edits.push({
     id: cryptoRandomId(),
@@ -3987,8 +3984,8 @@ async function deleteMarker(markerEvent) {
 }
 
 async function renameMarker(markerEvent, newLabel) {
-  if (!currentSession) return;
-  const anno = currentSession.annotations || { notes: [], marker_edits: [] };
+  if (!State.getSession()) return;
+  const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
   anno.marker_edits = anno.marker_edits || [];
   anno.marker_edits.push({
     id: cryptoRandomId(),
@@ -3999,10 +3996,10 @@ async function renameMarker(markerEvent, newLabel) {
     ts: new Date().toISOString(),
   });
   await ipcRenderer.invoke("viewer:saveAnnotations", {
-    sessionFolder: currentSession.sessionFolder,
+    sessionFolder: State.getSession().sessionFolder,
     annotations: anno,
   });
-  currentSession.annotations = anno;
+  State.getSession().annotations = anno;
   renderMarkersList();
   renderTimeline(); // marker labels on the timeline pick up the edit
   toast("Marker renamed (re-run normalization to apply downstream)", "success");
@@ -4014,13 +4011,13 @@ async function openMultiFlow() {
   const folders = await ipcRenderer.invoke("viewer:openMultipleSessions");
   if (!folders || !folders.length) return;
   const sessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
-  aggregateSessions = sessions.filter((s) => !s.error);
-  $("#aggregate-empty").style.display = aggregateSessions.length ? "none" : "";
-  $("#aggregate-loaded").style.display = aggregateSessions.length ? "" : "none";
-  $("#btn-normalize-all").disabled = !aggregateSessions.length;
+  State.setAggregateSessions(sessions.filter((s) => !s.error));
+  $("#aggregate-empty").style.display = State.getAggregateSessions().length ? "none" : "";
+  $("#aggregate-loaded").style.display = State.getAggregateSessions().length ? "" : "none";
+  $("#btn-normalize-all").disabled = !State.getAggregateSessions().length;
   renderAggregate();
-  if (aggregateSessions.length) {
-    toast(`Loaded ${aggregateSessions.length} session(s)`, "success");
+  if (State.getAggregateSessions().length) {
+    toast(`Loaded ${State.getAggregateSessions().length} session(s)`, "success");
   }
 }
 
@@ -4042,7 +4039,7 @@ if (_btnNormalizeAllCancel) {
   });
 }
 $("#btn-normalize-all").addEventListener("click", async () => {
-  if (!aggregateSessions.length) return;
+  if (!State.getAggregateSessions().length) return;
   _aggregateNormalizeCancelled = false;
   const btn = $("#btn-normalize-all");
   const originalLabel = btn.textContent;
@@ -4051,8 +4048,8 @@ $("#btn-normalize-all").addEventListener("click", async () => {
   if (cancelBtn) cancelBtn.style.display = "";
   let cancelled = false;
   let done = 0;
-  const total = aggregateSessions.length;
-  for (const s of aggregateSessions) {
+  const total = State.getAggregateSessions().length;
+  for (const s of State.getAggregateSessions()) {
     if (_aggregateNormalizeCancelled) { cancelled = true; break; }
     // P2.11: per-iteration progress label so a long aggregate analyze
     // doesn't look frozen.
@@ -4071,9 +4068,9 @@ $("#btn-normalize-all").addEventListener("click", async () => {
     btn.disabled = false;
     return;
   }
-  const folders = aggregateSessions.map((s) => s.sessionFolder);
-  aggregateSessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
-  aggregateSessions = aggregateSessions.filter((s) => !s.error);
+  const folders = State.getAggregateSessions().map((s) => s.sessionFolder);
+  State.setAggregateSessions(await ipcRenderer.invoke("viewer:loadMultipleSessions", folders));
+  State.setAggregateSessions(State.getAggregateSessions().filter((s) => !s.error));
   renderAggregate();
   btn.disabled = false;
   toast("All sessions normalized + mined", "success");
@@ -4113,7 +4110,7 @@ function sessionInDateRange(s) {
 }
 
 function filteredAggregateSessions() {
-  return aggregateSessions.filter(sessionInDateRange);
+  return State.getAggregateSessions().filter(sessionInDateRange);
 }
 
 function renderAggregate() {
@@ -4121,7 +4118,7 @@ function renderAggregate() {
   const filtered = filteredAggregateSessions();
   const numNormalized = filtered.filter((s) => !!s.stats).length;
   const rangeNote = (aggregateFromDate || aggregateToDate)
-    ? ` (filtered from ${aggregateSessions.length})` : "";
+    ? ` (filtered from ${State.getAggregateSessions().length})` : "";
   $("#aggregate-pills").innerHTML =
     '<div class="pill ok"><span class="dot"></span><span class="lbl">sessions</span>' +
       filtered.length + escapeHtml(rangeNote) + '</div>' +
@@ -4429,7 +4426,7 @@ async function drillToActivity(activityLabel, fromEvent) {
   // Single-result auto-picks; multi-result opens a picker so the
   // analyst can choose the moment they actually meant.
   const matches = [];
-  for (const sess of aggregateSessions) {
+  for (const sess of State.getAggregateSessions()) {
     const stats = sess.stats;
     if (!stats) continue;
     const hit = (stats.activity_stats || []).find((r) => r.activity_label === activityLabel);
@@ -4609,9 +4606,9 @@ $("#btn-export-md").addEventListener("click", async () => {
 });
 
 $("#btn-session-md").addEventListener("click", async () => {
-  if (!currentSession || !window.PdtReport) return;
-  const md = window.PdtReport.buildSessionReport(currentSession);
-  const name = "session-" + (currentSession.sessionFolder.split(/[\\/]/).slice(-1)[0] || "report") + ".md";
+  if (!State.getSession() || !window.PdtReport) return;
+  const md = window.PdtReport.buildSessionReport(State.getSession());
+  const name = "session-" + (State.getSession().sessionFolder.split(/[\\/]/).slice(-1)[0] || "report") + ".md";
   await saveMarkdownReport(md, name);
 });
 
@@ -4696,7 +4693,7 @@ $("#btn-export-promotions").addEventListener("click", async () => {
 });
 
 async function exportFirst(filename) {
-  const s = aggregateSessions.find((x) =>
+  const s = State.getAggregateSessions().find((x) =>
     fs.existsSync(path.join(x.sessionFolder, filename)));
   if (!s) return;
   const src = path.join(s.sessionFolder, filename);
@@ -4750,8 +4747,8 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "3") activateTab("canonical");
   else if (e.key === "4") activateTab("vocabularies");
   // Step editor shortcuts (only when on session view and steps panel)
-  else if (State.getLevel() === "steps" && currentSession) {
-    const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
+  else if (State.getLevel() === "steps" && State.getSession()) {
+    const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
     if (e.key === "j" || e.key === "ArrowDown") {
       const idx = steps.findIndex(s => s.step_id === State.getSelectedStepId());
       if (idx < steps.length - 1) { State.setSelectedStepId(steps[Math.max(0, idx + 1)].step_id); renderStepsLevel(); e.preventDefault(); }
@@ -5158,12 +5155,12 @@ function parseHmsToMs(s) {
 }
 
 async function attachExternalVideo() {
-  if (!currentSession) return;
+  if (!State.getSession()) return;
   const r = await ipcRenderer.invoke("viewer:attachExternalVideo", {
-    sessionFolder: currentSession.sessionFolder,
+    sessionFolder: State.getSession().sessionFolder,
   });
   if (!r) return;
-  const m = currentSession.manifest || {};
+  const m = State.getSession().manifest || {};
   const started_at = m.started_at;
   if (!started_at) {
     toast("Session manifest has no started_at; can't compute video offset", "error");
@@ -5184,7 +5181,7 @@ async function attachExternalVideo() {
     return;
   }
   const saved = await ipcRenderer.invoke("viewer:saveExternalVideoSync", {
-    sessionFolder: currentSession.sessionFolder,
+    sessionFolder: State.getSession().sessionFolder,
     videoPath: r.path,
     offsetMs,
   });
@@ -5193,7 +5190,7 @@ async function attachExternalVideo() {
     return;
   }
   toast("Video attached - reloading session", "success");
-  await loadSessionIntoView(currentSession.sessionFolder);
+  await loadSessionIntoView(State.getSession().sessionFolder);
 }
 
 if ($("#btn-attach-video")) {
@@ -5328,8 +5325,8 @@ function confirmModal(opts) {
 const PdtProject = require("./project.js");
 
 const projectCollectors = {
-  currentSessionFolder: () => currentSession && currentSession.sessionFolder,
-  aggregateSessions:    () => (aggregateSessions || []).map((s) => s && s.sessionFolder).filter(Boolean),
+  currentSessionFolder: () => State.getSession() && State.getSession().sessionFolder,
+  aggregateSessions:    () => (State.getAggregateSessions() || []).map((s) => s && s.sessionFolder).filter(Boolean),
   templatePath:         () => canonicalState && canonicalState.path,
   vocabularies:         () => [],   // captured by path on a future project-format bump
   currentTab:           () => {
@@ -5524,14 +5521,14 @@ async function applyProject(filePath, raw) {
   if (project.aggregateSessions && project.aggregateSessions.length) {
     try {
       const sessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", project.aggregateSessions);
-      aggregateSessions = (sessions || []).filter((s) => s && !s.error);
+      State.setAggregateSessions((sessions || []).filter((s) => s && !s.error));
       const aggEmpty = $("#aggregate-empty");
       const aggLoaded = $("#aggregate-loaded");
-      if (aggEmpty) aggEmpty.style.display = aggregateSessions.length ? "none" : "";
-      if (aggLoaded) aggLoaded.style.display = aggregateSessions.length ? "" : "none";
+      if (aggEmpty) aggEmpty.style.display = State.getAggregateSessions().length ? "none" : "";
+      if (aggLoaded) aggLoaded.style.display = State.getAggregateSessions().length ? "" : "none";
       const btnNorm = $("#btn-normalize-all");
-      if (btnNorm) btnNorm.disabled = !aggregateSessions.length;
-      if (typeof renderAggregate === "function" && aggregateSessions.length) renderAggregate();
+      if (btnNorm) btnNorm.disabled = !State.getAggregateSessions().length;
+      if (typeof renderAggregate === "function" && State.getAggregateSessions().length) renderAggregate();
     } catch (e) {
       toast("Failed to load aggregate sessions: " + (e.message || e), "error");
     }
