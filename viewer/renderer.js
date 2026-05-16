@@ -387,10 +387,6 @@ function activateTab(name) {
    strip is visible" approach because users couldn't find the cramped
    editor inside the narrow annotations panel. */
 
-let selectedStepId = null;
-let multiSelectedStepIds = new Set();
-let selectedPhaseId = null;
-
 $$(".view-mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
@@ -763,7 +759,7 @@ function commandPaletteProvider(rawQuery) {
         label: s.name || s.step_id,
         hint: `${s.state || ""}${time ? " · " + time : ""}`,
         run: () => {
-          selectedStepId = s.step_id;
+          State.setSelectedStepId(s.step_id);
           applyLevel("steps");
           // Activate the steps view-mode button so the UI catches up
           const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
@@ -875,23 +871,23 @@ function renderStepsLevel() {
 
   $("#steps-badge").textContent = String(allSteps.length);
   if ($("#steps-pane-count")) $("#steps-pane-count").textContent = String(allSteps.length);
-  window.PdtSteps.renderStepList($("#step-list"), filtered, selectedStepId,
-    (sid) => { selectedStepId = sid; renderStepsLevel(); },
+  window.PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
+    (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
     (sid) => {
-      if (multiSelectedStepIds.has(sid)) multiSelectedStepIds.delete(sid);
-      else multiSelectedStepIds.add(sid);
+      if (State.getMultiSelectedStepIds().has(sid)) State.getMultiSelectedStepIds().delete(sid);
+      else State.getMultiSelectedStepIds().add(sid);
       const grpBtn = $("#btn-group-into-phase");
-      if (grpBtn) grpBtn.disabled = multiSelectedStepIds.size < 2;
+      if (grpBtn) grpBtn.disabled = State.getMultiSelectedStepIds().size < 2;
       const delBtn = $("#btn-delete-selected-steps");
-      if (delBtn) delBtn.disabled = multiSelectedStepIds.size < 2;
+      if (delBtn) delBtn.disabled = State.getMultiSelectedStepIds().size < 2;
       // Re-render so the user sees the multi-selected state -- otherwise
       // Ctrl+click feels broken because nothing visibly changes.
       renderStepsLevel();
     },
     inlineRenameStep,
-    multiSelectedStepIds,
+    State.getMultiSelectedStepIds(),
   );
-  const selected = allSteps.find(s => s.step_id === selectedStepId) || null;
+  const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
   window.PdtSteps.renderStepDetail($("#step-detail"), selected, {
     onSave: saveStep,
     onDelete: deleteStep,
@@ -909,9 +905,9 @@ function renderStepsLevel() {
     window.PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
       currentSession.events.filter(e => e.type === "interaction"), span, {
         zoom: stepZoom,
-        selectedId: selectedStepId,
+        selectedId: State.getSelectedStepId(),
         dimmedIds,
-        onSelect: (sid) => { selectedStepId = sid; renderStepsLevel(); },
+        onSelect: (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
       });
     const range = $("#steps-timeline-range");
     if (range) {
@@ -976,7 +972,7 @@ async function inlineRenameStep(stepId, newName, advance) {
   // the next row's rename without modifying any data.
   if (typeof advance === "string" && advance.startsWith("open-next:")) {
     const nextId = advance.slice("open-next:".length);
-    selectedStepId = nextId;
+    State.setSelectedStepId(nextId);
     renderStepsLevel();
     setTimeout(() => beginRenameOnSelected(), 30);
     return;
@@ -993,7 +989,7 @@ async function inlineRenameStep(stepId, newName, advance) {
     const idx = anno.steps.findIndex(s => s.step_id === stepId);
     const nextStep = anno.steps[idx + 1];
     if (nextStep) {
-      selectedStepId = nextStep.step_id;
+      State.setSelectedStepId(nextStep.step_id);
       renderStepsLevel();
       setTimeout(() => beginRenameOnSelected(), 30);
     }
@@ -1001,8 +997,8 @@ async function inlineRenameStep(stepId, newName, advance) {
 }
 
 function beginRenameOnSelected() {
-  if (!selectedStepId) return;
-  const row = document.querySelector(`.step-row[data-step-id="${selectedStepId}"] .step-name`);
+  if (!State.getSelectedStepId()) return;
+  const row = document.querySelector(`.step-row[data-step-id="${State.getSelectedStepId()}"] .step-name`);
   if (row) {
     const evt = new MouseEvent("dblclick", { bubbles: true, cancelable: true });
     row.dispatchEvent(evt);
@@ -1034,7 +1030,7 @@ async function deleteStep(stepId) {
   if (!ok) return;
   anno.steps = anno.steps.filter(s => s.step_id !== stepId);
   await persistAnnotations(anno, 'delete step');
-  if (selectedStepId === stepId) selectedStepId = null;
+  if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
   renderStepsLevel();
   toast("Step deleted", "success");
 }
@@ -1057,7 +1053,7 @@ async function toggleStepHidden(stepId) {
     step._prev_state = step.state;
     step.state = "hidden";
     await persistAnnotations(anno, "hide step");
-    if (selectedStepId === stepId) selectedStepId = null;
+    if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
     toast("Step hidden — reveal via the hidden filter chip", "success");
   }
   renderStepsLevel();
@@ -1116,7 +1112,7 @@ async function mergeStepWithNext(stepId) {
   anno.steps = anno.steps.filter(s => s.step_id !== cur.step_id && s.step_id !== next.step_id);
   anno.steps.push(merged);
   await persistAnnotations(anno, 'merge steps');
-  selectedStepId = merged.step_id;
+  State.setSelectedStepId(merged.step_id);
   renderStepsLevel();
   toast("Steps merged", "success");
 }
@@ -1146,7 +1142,7 @@ async function addManualStep() {
   };
   anno.steps.push(step);
   await persistAnnotations(anno, 'add step');
-  selectedStepId = step.step_id;
+  State.setSelectedStepId(step.step_id);
   renderStepsLevel();
   toast("Manual step added", "success");
 }
@@ -1181,9 +1177,9 @@ function renderPhasesLevel() {
 
   $("#phases-badge").textContent = String(phases.length);
   if ($("#phases-pane-count")) $("#phases-pane-count").textContent = String(phases.length);
-  window.PdtPhases.renderPhaseList($("#phase-list"), filtered, selectedPhaseId,
-    (pid) => { selectedPhaseId = pid; renderPhasesLevel(); });
-  const selected = phases.find(p => p.phase_id === selectedPhaseId) || null;
+  window.PdtPhases.renderPhaseList($("#phase-list"), filtered, State.getSelectedPhaseId(),
+    (pid) => { State.setSelectedPhaseId(pid); renderPhasesLevel(); });
+  const selected = phases.find(p => p.phase_id === State.getSelectedPhaseId()) || null;
   window.PdtPhases.renderPhaseDetail($("#phase-detail"), selected, steps, {
     onSave: savePhase,
     onDelete: deletePhase,
@@ -1196,9 +1192,9 @@ function renderPhasesLevel() {
     for (const p of phases) if (!filteredIds.has(p.phase_id)) dimmedIds.add(p.phase_id);
     window.PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span, {
       zoom: phaseZoom,
-      selectedId: selectedPhaseId,
+      selectedId: State.getSelectedPhaseId(),
       dimmedIds,
-      onSelect: (pid) => { selectedPhaseId = pid; renderPhasesLevel(); },
+      onSelect: (pid) => { State.setSelectedPhaseId(pid); renderPhasesLevel(); },
     });
     const range = $("#phases-timeline-range");
     if (range) {
@@ -1261,7 +1257,7 @@ async function deletePhase(phaseId) {
   // Detach phase_id from contained steps
   for (const s of anno.steps) if (s.phase_id === phaseId) s.phase_id = null;
   await persistAnnotations(anno, 'delete phase');
-  if (selectedPhaseId === phaseId) selectedPhaseId = null;
+  if (State.getSelectedPhaseId() === phaseId) State.setSelectedPhaseId(null);
   renderPhasesLevel();
   toast("Phase deleted", "success");
 }
@@ -1316,14 +1312,14 @@ async function addManualPhase() {
   };
   anno.phases.push(phase);
   await persistAnnotations(anno, 'add phase');
-  selectedPhaseId = phase.phase_id;
+  State.setSelectedPhaseId(phase.phase_id);
   renderPhasesLevel();
   toast("Manual phase added", "success");
 }
 
 async function groupIntoPhase() {
   if (!currentSession) return;
-  const ids = Array.from(multiSelectedStepIds);
+  const ids = Array.from(State.getMultiSelectedStepIds());
   if (ids.length < 2) return;
   const name = await promptModal({ title: "Add phase", message: "Name this phase", placeholder: "e.g., Validate customer", okLabel: "Add phase" });
   if (!name) return;
@@ -1344,8 +1340,8 @@ async function groupIntoPhase() {
     if (s) s.phase_id = phase.phase_id;
   }
   await persistAnnotations(anno, 'group steps into phase');
-  multiSelectedStepIds.clear();
-  selectedPhaseId = phase.phase_id;
+  State.getMultiSelectedStepIds().clear();
+  State.setSelectedPhaseId(phase.phase_id);
   $("#btn-group-into-phase").disabled = true;
   activateAnnoTab("phases");
   renderPhasesLevel();
@@ -1359,7 +1355,7 @@ if ($("#btn-group-into-phase"))   $("#btn-group-into-phase").addEventListener("c
    whole set; Ctrl+Z restores. */
 async function deleteSelectedSteps() {
   if (!currentSession) return;
-  const ids = Array.from(multiSelectedStepIds);
+  const ids = Array.from(State.getMultiSelectedStepIds());
   if (ids.length < 2) return;
   const ok = await confirmModal({
     title: "Delete " + ids.length + " steps?",
@@ -1373,8 +1369,8 @@ async function deleteSelectedSteps() {
   const idSet = new Set(ids);
   anno.steps = anno.steps.filter(s => !idSet.has(s.step_id));
   await persistAnnotations(anno, "delete " + ids.length + " steps");
-  if (idSet.has(selectedStepId)) selectedStepId = null;
-  multiSelectedStepIds.clear();
+  if (idSet.has(State.getSelectedStepId())) State.setSelectedStepId(null);
+  State.getMultiSelectedStepIds().clear();
   const grpBtn = $("#btn-group-into-phase");
   if (grpBtn) grpBtn.disabled = true;
   const delBtn = $("#btn-delete-selected-steps");
@@ -2234,9 +2230,9 @@ async function loadSessionIntoView(folder) {
   renderMarkersList();
   renderTimelineSummary();
   // Phase B+ surfaces
-  selectedStepId = null;
-  selectedPhaseId = null;
-  multiSelectedStepIds = new Set();
+  State.setSelectedStepId(null);
+  State.setSelectedPhaseId(null);
+  State.setMultiSelectedStepIds(new Set());
   if ($("#btn-group-into-phase")) $("#btn-group-into-phase").disabled = true;
   renderStepsLevel();
   renderPhasesLevel();
@@ -3250,7 +3246,7 @@ function renderTimeline() {
     band.title = (s.name || s.step_id) + " — " + formatDuration(sEnd - sStart);
     band.addEventListener("click", (e) => {
       e.stopPropagation();
-      selectedStepId = s.step_id;
+      State.setSelectedStepId(s.step_id);
       const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
       if (stepsBtn) stepsBtn.click();
     });
@@ -4757,17 +4753,17 @@ document.addEventListener("keydown", (e) => {
   else if (State.getLevel() === "steps" && currentSession) {
     const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
     if (e.key === "j" || e.key === "ArrowDown") {
-      const idx = steps.findIndex(s => s.step_id === selectedStepId);
-      if (idx < steps.length - 1) { selectedStepId = steps[Math.max(0, idx + 1)].step_id; renderStepsLevel(); e.preventDefault(); }
+      const idx = steps.findIndex(s => s.step_id === State.getSelectedStepId());
+      if (idx < steps.length - 1) { State.setSelectedStepId(steps[Math.max(0, idx + 1)].step_id); renderStepsLevel(); e.preventDefault(); }
     } else if (e.key === "k" || e.key === "ArrowUp") {
-      const idx = steps.findIndex(s => s.step_id === selectedStepId);
-      if (idx > 0) { selectedStepId = steps[idx - 1].step_id; renderStepsLevel(); e.preventDefault(); }
+      const idx = steps.findIndex(s => s.step_id === State.getSelectedStepId());
+      if (idx > 0) { State.setSelectedStepId(steps[idx - 1].step_id); renderStepsLevel(); e.preventDefault(); }
     } else if (e.key === "n") {
       addManualStep(); e.preventDefault();
     } else if (e.key === "s") {
-      if (selectedStepId) { splitStep(selectedStepId); e.preventDefault(); }
+      if (State.getSelectedStepId()) { splitStep(State.getSelectedStepId()); e.preventDefault(); }
     } else if (e.key === "m") {
-      if (selectedStepId) { mergeStepWithNext(selectedStepId); e.preventDefault(); }
+      if (State.getSelectedStepId()) { mergeStepWithNext(State.getSelectedStepId()); e.preventDefault(); }
     }
   }
   else if (e.key === " ") {
