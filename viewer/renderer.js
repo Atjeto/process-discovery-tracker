@@ -1,11 +1,9 @@
 /*
  * Viewer renderer -- session + aggregate surfaces glued together.
  *
- * Depends on globals exposed by sibling scripts loaded earlier in
- * index.html:
- *   window.PdtCharts (charts.js)
- *   PdtDfg    (dfg-viewer.js, cytoscape)
- *   PdtBpmn   (bpmn-viewer.js, bpmn-js)
+ * Sibling feature modules are pulled in via require() (see the require
+ * block below); index.html loads only this entry script plus the
+ * vendored libraries.
  */
 
 "use strict";
