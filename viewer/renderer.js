@@ -20,6 +20,7 @@ const PdtReport = require("./report-md.js");
 const PdtPalette = require("./command-palette.js");
 const PdtDfg = require("./dfg-viewer.js");
 const PdtBpmn = require("./bpmn-viewer.js");
+const PdtSteps = require("./step-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const $ = (sel) => document.querySelector(sel);
@@ -864,7 +865,7 @@ function stepMatchesFilter(s, f, scopeCaseId) {
 }
 
 function renderStepsLevel() {
-  if (!State.getSession() || !window.PdtSteps) return;
+  if (!State.getSession() || !PdtSteps) return;
   const allSteps = decorateDrift((State.getSession().annotations && State.getSession().annotations.steps) || []);
   const f = State.getListFilters().step;
   const filtered = allSteps.filter(s => stepMatchesFilter(s, f, State.getCaseScope()));
@@ -881,7 +882,7 @@ function renderStepsLevel() {
 
   $("#steps-badge").textContent = String(allSteps.length);
   if ($("#steps-pane-count")) $("#steps-pane-count").textContent = String(allSteps.length);
-  window.PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
+  PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
     (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
     (sid) => {
       if (State.getMultiSelectedStepIds().has(sid)) State.getMultiSelectedStepIds().delete(sid);
@@ -898,7 +899,7 @@ function renderStepsLevel() {
     State.getMultiSelectedStepIds(),
   );
   const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
-  window.PdtSteps.renderStepDetail($("#step-detail"), selected, {
+  PdtSteps.renderStepDetail($("#step-detail"), selected, {
     onSave: saveStep,
     onDelete: deleteStep,
     onSplit: splitStep,
@@ -912,7 +913,7 @@ function renderStepsLevel() {
     // are dimmed via the dimmedIds option so the filter still localises.
     const dimmedIds = new Set();
     for (const s of allSteps) if (!filteredIds.has(s.step_id)) dimmedIds.add(s.step_id);
-    window.PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
+    PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
       State.getSession().events.filter(e => e.type === "interaction"), span, {
         zoom: State.getStepZoom(),
         selectedId: State.getSelectedStepId(),

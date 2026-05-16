@@ -227,5 +227,5 @@
     return `${kind}: ${label}`;
   }
 
-  window.PdtSteps = { renderStepList, renderStepDetail, renderStepTimeline, renderInteractionEvent };
+  module.exports = { renderStepList, renderStepDetail, renderStepTimeline, renderInteractionEvent };
 })();
