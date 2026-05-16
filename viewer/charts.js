@@ -151,4 +151,4 @@ function fmtDurationS(s) {
   return `${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60)}m`;
 }
 
-window.PdtCharts = { renderBarChart, fmtDurationS };
+module.exports = { renderBarChart, fmtDurationS };

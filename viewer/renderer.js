@@ -15,6 +15,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const TimelineCore = require("./timeline/timeline-core.js");
 const State = require("./state.js");
+const PdtCharts = require("./charts.js");
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -4156,11 +4157,11 @@ function renderAggregate() {
   const actRows = [...actMap.values()]
     .filter((r) => matchesFilter(r.activity_label))
     .sort((a, b) => b.frequency - a.frequency);
-  window.PdtCharts.renderBarChart($("#activity-chart"),
+  PdtCharts.renderBarChart($("#activity-chart"),
     actRows.map((r) => ({
       label: r.activity_label,
       value: r.frequency,
-      valueLabel: r.frequency + " · " + window.PdtCharts.fmtDurationS(r.total_duration_ms / 1000),
+      valueLabel: r.frequency + " · " + PdtCharts.fmtDurationS(r.total_duration_ms / 1000),
       sparkline: sparkSpan ? r.sparkline : null,
     })),
     { unit: "" });
@@ -4184,14 +4185,14 @@ function renderAggregate() {
         label: (r.label || r.case_id.slice(0, 8)),
         value: (r.active_ms || 0) / 1000,
         secondary: (r.wall_clock_ms || 0) / 1000,
-        valueLabel: window.PdtCharts.fmtDurationS((r.active_ms || 0) / 1000),
+        valueLabel: PdtCharts.fmtDurationS((r.active_ms || 0) / 1000),
         sparkline: caseSpark,
         meta: r,
       });
     }
   }
   caseRows.sort((a, b) => b.value - a.value);
-  window.PdtCharts.renderBarChart($("#case-chart"), caseRows, {
+  PdtCharts.renderBarChart($("#case-chart"), caseRows, {
     color: "var(--accent-2)",
     secondaryColor: "var(--warn)",
   });
