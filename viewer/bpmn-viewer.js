@@ -77,5 +77,5 @@
     } catch (_) { return null; }
   }
 
-  window.PdtBpmn = { render, fit, exportSvg };
+  module.exports = { render, fit, exportSvg };
 })();

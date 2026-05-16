@@ -5,7 +5,7 @@
  * index.html:
  *   window.PdtCharts (charts.js)
  *   PdtDfg    (dfg-viewer.js, cytoscape)
- *   window.PdtBpmn   (bpmn-viewer.js, bpmn-js)
+ *   PdtBpmn   (bpmn-viewer.js, bpmn-js)
  */
 
 "use strict";
@@ -19,6 +19,7 @@ const PdtCharts = require("./charts.js");
 const PdtReport = require("./report-md.js");
 const PdtPalette = require("./command-palette.js");
 const PdtDfg = require("./dfg-viewer.js");
+const PdtBpmn = require("./bpmn-viewer.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const $ = (sel) => document.querySelector(sel);
@@ -378,7 +379,7 @@ function activateTab(name) {
   // Trigger lazy re-fit of any active viz
   if (name === "aggregate") {
     setTimeout(() => {
-      if (window.PdtBpmn) window.PdtBpmn.fit();
+      if (PdtBpmn) PdtBpmn.fit();
       if (PdtDfg) PdtDfg.fit();
     }, 100);
     // AM.1: refresh the version compare list when the analyst lands
@@ -2034,7 +2035,7 @@ $$(".panel-tab").forEach((tab) => {
     $("#dfg-host").style.display = which === "dfg" ? "" : "none";
     setMapZoomVisible(which === "dfg");
     setTimeout(() => {
-      if (which === "bpmn" && window.PdtBpmn) window.PdtBpmn.fit();
+      if (which === "bpmn" && PdtBpmn) PdtBpmn.fit();
       if (which === "dfg" && PdtDfg) {
         PdtDfg.fit();
         setMapZoomPct(PdtDfg.getZoom());
@@ -4289,8 +4290,8 @@ function renderAggregate() {
   // BPMN + DFG render from the first available session
   const sessionWithBpmn = filtered.find((s) =>
     fs.existsSync(path.join(s.sessionFolder, "process_map.bpmn")));
-  if (sessionWithBpmn && window.PdtBpmn) {
-    window.PdtBpmn.render($("#bpmn-host"),
+  if (sessionWithBpmn && PdtBpmn) {
+    PdtBpmn.render($("#bpmn-host"),
       path.join(sessionWithBpmn.sessionFolder, "process_map.bpmn"),
       { onNodeClick: (activityLabel) => drillToActivity(activityLabel) });
   }
@@ -4537,8 +4538,8 @@ if ($("#btn-export-map-svg")) {
     let svg = null;
     if (which === "dfg" && PdtDfg && PdtDfg.exportSvg) {
       svg = PdtDfg.exportSvg();
-    } else if (window.PdtBpmn && window.PdtBpmn.exportSvg) {
-      svg = await window.PdtBpmn.exportSvg();
+    } else if (PdtBpmn && PdtBpmn.exportSvg) {
+      svg = await PdtBpmn.exportSvg();
     }
     if (!svg) {
       toast("No process map to export — analyze sessions first.", "error");
