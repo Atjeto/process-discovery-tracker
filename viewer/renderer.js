@@ -424,17 +424,17 @@ const VIEW_MODE_HELP = {
 const MODE_VIEWPORT = {
   flow: {
     scrollSel: "#timeline-scroll",
-    getZoom: () => zoomFactor, setZoom: (z) => { zoomFactor = z; },
+    getZoom: State.getZoomFactor, setZoom: State.setZoomFactor,
     render: renderTimeline,
   },
   steps: {
     scrollSel: "#session-layout-steps .mini-timeline-scroll",
-    getZoom: () => stepZoom, setZoom: (z) => { stepZoom = z; },
+    getZoom: State.getStepZoom, setZoom: State.setStepZoom,
     render: renderStepsLevel,
   },
   phases: {
     scrollSel: "#session-layout-phases .mini-timeline-scroll",
-    getZoom: () => phaseZoom, setZoom: (z) => { phaseZoom = z; },
+    getZoom: State.getPhaseZoom, setZoom: State.setPhaseZoom,
     render: renderPhasesLevel,
   },
 };
@@ -588,20 +588,6 @@ function decorateDrift(steps) {
   return (steps || []).map(s => byStep[s.step_id] ? { ...s, drift: byStep[s.step_id] } : s);
 }
 
-/* Filter state for the long lists. Lives in renderer scope so it
-   survives across re-renders. Case scope is now session-wide (see
-   currentCaseScope below) so per-list caseId fields are gone. */
-const listFilters = {
-  step:   { text: "", states: new Set() },
-  phase:  { text: "" },
-  marker: { text: "" },
-};
-
-/* Session-wide case scope. null/"" = all cases; otherwise the case_id
-   that the Flow timeline, Steps mini-timeline, and Phases mini-timeline
-   should all scope to. Drives dimming everywhere. */
-let currentCaseScope = "";
-
 /* Build the canonical list of cases for the loaded session. Pairs
    step.case_id ranges (the data-side source of truth) with marker
    labels (the user-recognizable name) so the dropdown shows e.g.
@@ -647,9 +633,9 @@ function deriveCases(session) {
 }
 
 function currentScopeRange() {
-  if (!currentCaseScope || !State.getSession()) return null;
+  if (!State.getCaseScope() || !State.getSession()) return null;
   const cases = deriveCases(State.getSession());
-  return cases.find(c => c.id === currentCaseScope) || null;
+  return cases.find(c => c.id === State.getCaseScope()) || null;
 }
 
 function populateCaseScope() {
@@ -681,7 +667,7 @@ function populateCaseScope() {
       const label = needsSuffix
         ? `${baseLabel} [${timecode(offsetMs)}]`
         : baseLabel;
-      return `<option value="${c.id}"${c.id === currentCaseScope ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      return `<option value="${c.id}"${c.id === State.getCaseScope() ? " selected" : ""}>${escapeHtml(label)}</option>`;
     }));
   // Cases are derived from analyzed steps. An unanalyzed session has
   // none -- spell that out rather than showing a lone "All cases".
@@ -691,7 +677,7 @@ function populateCaseScope() {
   sel.innerHTML = opts.join("");
   // Wrapper picks up the visual cue that scoping is active.
   const wrap = sel.closest(".case-scope");
-  if (wrap) wrap.classList.toggle("scoped", !!currentCaseScope);
+  if (wrap) wrap.classList.toggle("scoped", !!State.getCaseScope());
 }
 
 /* P2.8: scope-to-marker-at-playhead. Finds the innermost case whose
@@ -716,7 +702,7 @@ function scopeToMarkerAtPlayhead() {
     if (size < bestSize) { best = c; bestSize = size; }
   }
   if (!best) { toast("No case at the current playhead.", ""); return; }
-  currentCaseScope = best.id;
+  State.setCaseScope(best.id);
   populateCaseScope();
   rerenderActiveLevel();
   toast("Scoped to: " + (best.label || best.id), "success");
@@ -726,9 +712,9 @@ function scopeToMarkerAtPlayhead() {
   const sel = document.getElementById("case-scope-select");
   if (!sel) return;
   sel.addEventListener("change", () => {
-    currentCaseScope = sel.value || "";
+    State.setCaseScope(sel.value || "");
     const wrap = sel.closest(".case-scope");
-    if (wrap) wrap.classList.toggle("scoped", !!currentCaseScope);
+    if (wrap) wrap.classList.toggle("scoped", !!State.getCaseScope());
     // Re-render whatever's currently on screen
     rerenderActiveLevel();
   });
@@ -757,7 +743,7 @@ function commandPaletteProvider(rawQuery) {
                     : dur < 3600000 ? `${Math.round(dur / 60000)}m`
                     : `${(dur / 3600000).toFixed(1)}h`;
       pushIfMatch(c.label, durStr, "case", () => {
-        currentCaseScope = c.id;
+        State.setCaseScope(c.id);
         populateCaseScope();
         rerenderActiveLevel();
       }, 5);
@@ -823,7 +809,7 @@ function commandPaletteProvider(rawQuery) {
     { label: "Switch to Process Template", hint: "Tab 3", run: () => activateTab("canonical") },
     { label: "Switch to Vocabularies", hint: "Tab 4", run: () => activateTab("vocabularies") },
     { label: "Clear case scope", hint: "Show all cases", run: () => {
-        currentCaseScope = "";
+        State.setCaseScope("");
         populateCaseScope();
         rerenderActiveLevel();
       } },
@@ -874,8 +860,8 @@ function stepMatchesFilter(s, f, scopeCaseId) {
 function renderStepsLevel() {
   if (!State.getSession() || !window.PdtSteps) return;
   const allSteps = decorateDrift((State.getSession().annotations && State.getSession().annotations.steps) || []);
-  const f = listFilters.step;
-  const filtered = allSteps.filter(s => stepMatchesFilter(s, f, currentCaseScope));
+  const f = State.getListFilters().step;
+  const filtered = allSteps.filter(s => stepMatchesFilter(s, f, State.getCaseScope()));
   const filteredIds = new Set(filtered.map(s => s.step_id));
 
   const meta = $("#step-filter-meta");
@@ -922,7 +908,7 @@ function renderStepsLevel() {
     for (const s of allSteps) if (!filteredIds.has(s.step_id)) dimmedIds.add(s.step_id);
     window.PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
       State.getSession().events.filter(e => e.type === "interaction"), span, {
-        zoom: stepZoom,
+        zoom: State.getStepZoom(),
         selectedId: State.getSelectedStepId(),
         dimmedIds,
         onSelect: (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
@@ -936,7 +922,7 @@ function renderStepsLevel() {
 }
 
 /* Wire the step filter inputs once on load. The actual filter state
-   sits in listFilters; renderStepsLevel reads it every re-render. */
+   sits in State.getListFilters(); renderStepsLevel reads it every re-render. */
 (function wireStepFilter() {
   const txt = document.getElementById("step-filter-text");
   if (txt) {
@@ -944,7 +930,7 @@ function renderStepsLevel() {
     txt.addEventListener("input", () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        listFilters.step.text = txt.value.trim();
+        State.getListFilters().step.text = txt.value.trim();
         renderStepsLevel();
       }, 120);
     });
@@ -955,18 +941,13 @@ function renderStepsLevel() {
       const chip = e.target.closest(".chip");
       if (!chip) return;
       const st = chip.dataset.state;
-      const set = listFilters.step.states;
+      const set = State.getListFilters().step.states;
       if (set.has(st)) set.delete(st); else set.add(st);
       renderStepsLevel();
     });
   }
 })();
 
-// Zoom state for the Steps + Phases mini-timelines. Mirrors the Flow
-// timeline zoom contract: 1 = fit-to-width, higher = zoomed in, scroll
-// container handles overflow.
-let stepZoom = 1;
-let phaseZoom = 1;
 function bindMiniTimelineZoom(prefix, getZoom, setZoom, rerender) {
   const buttons = [
     ["zoom-in",    () => setZoom(Math.min(20, getZoom() * 1.5))],
@@ -979,10 +960,10 @@ function bindMiniTimelineZoom(prefix, getZoom, setZoom, rerender) {
   }
 }
 bindMiniTimelineZoom("steps",
-  () => stepZoom, (v) => { stepZoom = v; },
+  State.getStepZoom, State.setStepZoom,
   () => renderStepsLevel());
 bindMiniTimelineZoom("phases",
-  () => phaseZoom, (v) => { phaseZoom = v; },
+  State.getPhaseZoom, State.setPhaseZoom,
   () => renderPhasesLevel());
 
 async function inlineRenameStep(stepId, newName, advance) {
@@ -1177,8 +1158,8 @@ function renderPhasesLevel() {
   if (!State.getSession() || !window.PdtPhases) return;
   const phases = (State.getSession().annotations && State.getSession().annotations.phases) || [];
   const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
-  const f = listFilters.phase;
-  const filtered = phases.filter(p => phaseMatchesFilter(p, steps, f, currentCaseScope));
+  const f = State.getListFilters().phase;
+  const filtered = phases.filter(p => phaseMatchesFilter(p, steps, f, State.getCaseScope()));
   const filteredIds = new Set(filtered.map(p => p.phase_id));
 
   const meta = $("#phase-filter-meta");
@@ -1202,7 +1183,7 @@ function renderPhasesLevel() {
     const dimmedIds = new Set();
     for (const p of phases) if (!filteredIds.has(p.phase_id)) dimmedIds.add(p.phase_id);
     window.PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span, {
-      zoom: phaseZoom,
+      zoom: State.getPhaseZoom(),
       selectedId: State.getSelectedPhaseId(),
       dimmedIds,
       onSelect: (pid) => { State.setSelectedPhaseId(pid); renderPhasesLevel(); },
@@ -1222,7 +1203,7 @@ function renderPhasesLevel() {
     txt.addEventListener("input", () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        listFilters.marker.text = txt.value.trim();
+        State.getListFilters().marker.text = txt.value.trim();
         if (State.getSession()) renderMarkersList();
       }, 120);
     });
@@ -1236,7 +1217,7 @@ function renderPhasesLevel() {
     txt.addEventListener("input", () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        listFilters.phase.text = txt.value.trim();
+        State.getListFilters().phase.text = txt.value.trim();
         renderPhasesLevel();
       }, 120);
     });
@@ -1760,11 +1741,10 @@ if (btnPrepBootstrap) {
 
 /* ============ Aggregate level switcher ============================ */
 
-let aggregateLevel = "flow";
 $$("#agg-level-switcher .agg-level-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     $$("#agg-level-switcher .agg-level-btn").forEach((b) => b.classList.toggle("active", b === btn));
-    aggregateLevel = btn.dataset.level;
+    State.setAggregateLevel(btn.dataset.level);
     renderAggregate();
   });
 });
@@ -2244,8 +2224,8 @@ async function loadSessionIntoView(folder) {
   // longer contains the previously-selected case.
   populateCaseScope();
   const cases = deriveCases(State.getSession()).map(c => c.id);
-  if (currentCaseScope && !cases.includes(currentCaseScope)) {
-    currentCaseScope = "";
+  if (State.getCaseScope() && !cases.includes(State.getCaseScope())) {
+    State.setCaseScope("");
     populateCaseScope();
   }
   // P1.10: restore persisted timeline zoom + scroll for this session.
@@ -2431,8 +2411,6 @@ function setVideoOverlay(text) {
 
 /* ============ Timeline ============================================ */
 
-let zoomFactor = 1;
-
 /* Muted per-app color palette. Known apps get fixed assignments so the
    same color is stable across sessions; unknown apps get a deterministic
    slot via a small hash so they stay stable too. All tones desaturated
@@ -2509,7 +2487,7 @@ function persistTimelineForCurrent() {
   const map = _readTimelineState();
   const scroll = document.getElementById("timeline-scroll");
   map[State.getSession().sessionFolder] = {
-    zoomFactor,
+    zoomFactor: State.getZoomFactor(),
     scrollLeft: scroll ? scroll.scrollLeft : 0,
     ts: Date.now(),
   };
@@ -2521,7 +2499,7 @@ function restoreTimelineForCurrent() {
   const saved = map[State.getSession().sessionFolder];
   if (!saved) return;
   if (typeof saved.zoomFactor === "number" && saved.zoomFactor >= 1) {
-    zoomFactor = saved.zoomFactor;
+    State.setZoomFactor(saved.zoomFactor);
     renderTimeline();
   }
   // Wait one frame so the host has expanded to the new width before scrolling.
@@ -2544,18 +2522,17 @@ function _wireTimelineScrollPersist() {
     }, 250);
   });
 }
-$("#btn-zoom-in").addEventListener("click", () => { zoomFactor *= 1.5; renderTimeline(); persistTimelineForCurrent(); });
-$("#btn-zoom-out").addEventListener("click", () => { zoomFactor = Math.max(1, zoomFactor / 1.5); renderTimeline(); persistTimelineForCurrent(); });
-$("#btn-zoom-reset").addEventListener("click", () => { zoomFactor = 1; renderTimeline(); persistTimelineForCurrent(); });
+$("#btn-zoom-in").addEventListener("click", () => { State.setZoomFactor(State.getZoomFactor() * 1.5); renderTimeline(); persistTimelineForCurrent(); });
+$("#btn-zoom-out").addEventListener("click", () => { State.setZoomFactor(Math.max(1, State.getZoomFactor() / 1.5)); renderTimeline(); persistTimelineForCurrent(); });
+$("#btn-zoom-reset").addEventListener("click", () => { State.setZoomFactor(1); renderTimeline(); persistTimelineForCurrent(); });
 
 /* P1.1: range selection on the timeline. Drag across the activity
    lane to select a time range; a stats card pops up summarizing what
    happened (duration, event count, top apps, contained markers). The
    range survives view-mode switches but clears on session change.
    Esc / click outside clears. */
-let _selectionRange = null;
 function clearSelectionRange() {
-  _selectionRange = null;
+  State.setSelectionRange(null);
   const ov = document.getElementById("tl-selection-overlay");
   if (ov) ov.remove();
   const card = document.getElementById("tl-selection-stats");
@@ -2627,16 +2604,16 @@ function installRangeSelection() {
     }
     const startSel = info.first + (leftPct / 100) * info.span;
     const endSel   = startSel + (widthPct / 100) * info.span;
-    _selectionRange = { startMs: startSel, endMs: endSel };
+    State.setSelectionRange({ startMs: startSel, endMs: endSel });
     renderSelectionStats();
     startX = null;
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && _selectionRange) clearSelectionRange();
+    if (e.key === "Escape" && State.getSelectionRange()) clearSelectionRange();
   });
 }
 function renderSelectionStats() {
-  if (!_selectionRange || !State.getSession()) return;
+  if (!State.getSelectionRange() || !State.getSession()) return;
   let card = document.getElementById("tl-selection-stats");
   if (!card) {
     card = document.createElement("div");
@@ -2649,7 +2626,7 @@ function renderSelectionStats() {
   const evs = State.getSession().events;
   const inRange = evs.filter((ev) => {
     const t = new Date(ev.timestamp).getTime();
-    return t >= _selectionRange.startMs && t <= _selectionRange.endMs;
+    return t >= State.getSelectionRange().startMs && t <= State.getSelectionRange().endMs;
   });
   const appCounts = {};
   let markerCount = 0, screenshotCount = 0;
@@ -2667,7 +2644,7 @@ function renderSelectionStats() {
     .sort((a, b) => b[1] - a[1]).slice(0, 4)
     .map(([app, n]) => appLabel(app) + " (" + n + ")")
     .join(", ");
-  const dur = _selectionRange.endMs - _selectionRange.startMs;
+  const dur = State.getSelectionRange().endMs - State.getSelectionRange().startMs;
   card.innerHTML =
     '<h4>Selection</h4>' +
     '<div class="row"><span>Duration</span><span>' + escapeHtml(formatDuration(dur)) + '</span></div>' +
@@ -2951,7 +2928,7 @@ function renderTimeline() {
   const last = new Date(evs[evs.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
 
-  host.style.width = (100 * zoomFactor) + "%";
+  host.style.width = (100 * State.getZoomFactor()) + "%";
 
   /* Lane stack (top to bottom):
        ticks       (24px) -- HH:MM:SS labels at sensible intervals
@@ -3469,7 +3446,7 @@ function showCaseContextMenu(x, y, c) {
     const cases = State.getSession() ? deriveCases(State.getSession()) : [];
     const match = cases.find(x => Math.abs(x.startMs - c.startMs) < 5);
     if (match) {
-      currentCaseScope = match.id;
+      State.setCaseScope(match.id);
       const sel = $("#case-scope-select");
       if (sel) { sel.value = match.id; sel.dispatchEvent(new Event("change")); }
       else { renderTimeline(); }
@@ -3866,7 +3843,7 @@ function renderMarkersList() {
     host.innerHTML = '<p class="hint">No markers fired in this session.</p>';
     return;
   }
-  const f = listFilters.marker;
+  const f = State.getListFilters().marker;
   const query = (f.text || "").toLowerCase();
   const markers = query
     ? allMarkers.filter(m => (effectiveLabel(m) || "").toLowerCase().includes(query)
@@ -4084,36 +4061,33 @@ $("#btn-normalize-all").addEventListener("click", async () => {
   toast("All sessions normalized + mined", "success");
 });
 
-let aggregateFilter = "";
-let aggregateFromDate = "";
-let aggregateToDate = "";
 $("#agg-filter").addEventListener("input", (e) => {
-  aggregateFilter = (e.target.value || "").toLowerCase().trim();
+  State.setAggregateFilter((e.target.value || "").toLowerCase().trim());
   renderAggregate();
 });
 $("#agg-from").addEventListener("change", (e) => {
-  aggregateFromDate = e.target.value || "";
+  State.setAggregateFromDate(e.target.value || "");
   renderAggregate();
 });
 $("#agg-to").addEventListener("change", (e) => {
-  aggregateToDate = e.target.value || "";
+  State.setAggregateToDate(e.target.value || "");
   renderAggregate();
 });
 
 function matchesFilter(text) {
-  if (!aggregateFilter) return true;
-  return String(text || "").toLowerCase().includes(aggregateFilter);
+  if (!State.getAggregateFilter()) return true;
+  return String(text || "").toLowerCase().includes(State.getAggregateFilter());
 }
 
 function sessionInDateRange(s) {
   /* Use manifest.started_at against [from, to] inclusive when set.
      A session with no started_at is conservatively included. */
-  if (!aggregateFromDate && !aggregateToDate) return true;
+  if (!State.getAggregateFromDate() && !State.getAggregateToDate()) return true;
   const startedAt = (s.manifest || {}).started_at;
   if (!startedAt) return true;
   const day = startedAt.slice(0, 10); // YYYY-MM-DD
-  if (aggregateFromDate && day < aggregateFromDate) return false;
-  if (aggregateToDate && day > aggregateToDate) return false;
+  if (State.getAggregateFromDate() && day < State.getAggregateFromDate()) return false;
+  if (State.getAggregateToDate() && day > State.getAggregateToDate()) return false;
   return true;
 }
 
@@ -4125,7 +4099,7 @@ function renderAggregate() {
   // Pills - count filtered + total
   const filtered = filteredAggregateSessions();
   const numNormalized = filtered.filter((s) => !!s.stats).length;
-  const rangeNote = (aggregateFromDate || aggregateToDate)
+  const rangeNote = (State.getAggregateFromDate() || State.getAggregateToDate())
     ? ` (filtered from ${State.getAggregateSessions().length})` : "";
   $("#aggregate-pills").innerHTML =
     '<div class="pill ok"><span class="dot"></span><span class="lbl">sessions</span>' +
@@ -4791,15 +4765,15 @@ document.addEventListener("keydown", (e) => {
     }
   } else if (e.key === "+" || e.key === "=") {
     if ($("#view-session").classList.contains("active")) {
-      zoomFactor *= 1.5; renderTimeline();
+      State.setZoomFactor(State.getZoomFactor() * 1.5); renderTimeline();
     }
   } else if (e.key === "-" || e.key === "_") {
     if ($("#view-session").classList.contains("active")) {
-      zoomFactor = Math.max(1, zoomFactor / 1.5); renderTimeline();
+      State.setZoomFactor(Math.max(1, State.getZoomFactor() / 1.5)); renderTimeline();
     }
   } else if (e.key === "0") {
     if ($("#view-session").classList.contains("active")) {
-      zoomFactor = 1; renderTimeline();
+      State.setZoomFactor(1); renderTimeline();
     }
   }
 });
@@ -5342,11 +5316,11 @@ const projectCollectors = {
     return t ? t.dataset.view : "session";
   },
   viewMode:             () => State.getLevel(),
-  currentCaseScope:     () => currentCaseScope || null,
+  currentCaseScope:     () => State.getCaseScope() || null,
   timeline: () => {
     const scroll = document.getElementById("timeline-scroll");
     return {
-      zoomFactor: (typeof zoomFactor !== "undefined") ? zoomFactor : 1,
+      zoomFactor: State.getZoomFactor(),
       scrollLeft: scroll ? scroll.scrollLeft : 0,
     };
   },
@@ -5573,10 +5547,10 @@ async function applyProject(filePath, raw) {
 
   // Case scope
   if (project.currentCaseScope) {
-    currentCaseScope = project.currentCaseScope;
+    State.setCaseScope(project.currentCaseScope);
     const sel = document.getElementById("case-scope-select");
     if (sel) {
-      sel.value = currentCaseScope;
+      sel.value = State.getCaseScope();
       sel.dispatchEvent(new Event("change"));
     }
   }
