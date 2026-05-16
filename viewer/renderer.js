@@ -18,6 +18,7 @@ const State = require("./state.js");
 const PdtCharts = require("./charts.js");
 const PdtReport = require("./report-md.js");
 const PdtPalette = require("./command-palette.js");
+require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));

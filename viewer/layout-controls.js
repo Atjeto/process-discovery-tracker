@@ -168,5 +168,5 @@
     init();
   }
 
-  window.PdtLayout = { setTimelineHeight, setVideoWidth, setVideoMode, setMiniTimelineHeight };
+  module.exports = { setTimelineHeight, setVideoWidth, setVideoMode, setMiniTimelineHeight };
 })();
