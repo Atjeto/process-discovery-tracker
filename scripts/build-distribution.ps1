@@ -149,8 +149,17 @@ Write-Host ""
 Write-Host "[3/5] Packaging capture (electron-packager)" -ForegroundColor Yellow
 Push-Location $captureDir
 try {
+  # npm prints "npm notice" lines (version / deprecation notices) to
+  # stderr periodically. PowerShell 5.1 wraps native-command stderr as
+  # NativeCommandError records, and the script-level "Stop" preference
+  # turns those into a fatal abort even though npm exited 0. Relax the
+  # preference around the call and check $LASTEXITCODE explicitly.
+  $prevPref = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
   & npm run package
-  if ($LASTEXITCODE -ne 0) { throw "capture package failed (exit $LASTEXITCODE)" }
+  $pkgExit = $LASTEXITCODE
+  $ErrorActionPreference = $prevPref
+  if ($pkgExit -ne 0) { throw "capture package failed (exit $pkgExit)" }
 } finally {
   Pop-Location
 }
@@ -160,8 +169,14 @@ Write-Host ""
 Write-Host "[4/5] Packaging viewer (electron-packager, includes Python + normalization)" -ForegroundColor Yellow
 Push-Location $viewerDir
 try {
+  # See the capture step above -- same npm-notice / NativeCommandError
+  # guard.
+  $prevPref = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
   & npm run package
-  if ($LASTEXITCODE -ne 0) { throw "viewer package failed (exit $LASTEXITCODE)" }
+  $pkgExit = $LASTEXITCODE
+  $ErrorActionPreference = $prevPref
+  if ($pkgExit -ne 0) { throw "viewer package failed (exit $pkgExit)" }
 } finally {
   Pop-Location
 }
