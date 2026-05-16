@@ -450,6 +450,14 @@ function _viewportApplyToMode(mode, snap) {
 
 const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel };
 
+/* Wire the state change-notification bus: an annotation edit emits the
+   topics it touched (see persistAnnotations / performUndo / performRedo)
+   and the matching view re-renders itself -- no full-session reload. */
+State.subscribe("steps",    renderStepsLevel);
+State.subscribe("phases",   renderPhasesLevel);
+State.subscribe("timeline", renderTimeline);
+State.subscribe("markers",  renderMarkersList);
+
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
    an `if (currentLevel === ...)` triplet that was copied verbatim
@@ -981,7 +989,6 @@ async function inlineRenameStep(stepId, newName, advance) {
   step.name = newName;
   step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
   await persistAnnotations(anno, 'rename step');
-  renderStepsLevel();
   if (advance === "next") {
     const idx = anno.steps.findIndex(s => s.step_id === stepId);
     const nextStep = anno.steps[idx + 1];
@@ -1009,7 +1016,6 @@ async function saveStep(updatedStep) {
   if (idx >= 0) anno.steps[idx] = updatedStep;
   else anno.steps.push(updatedStep);
   await persistAnnotations(anno, 'save step');
-  renderStepsLevel();
   toast("Step saved", "success");
 }
 
@@ -1028,7 +1034,6 @@ async function deleteStep(stepId) {
   anno.steps = anno.steps.filter(s => s.step_id !== stepId);
   await persistAnnotations(anno, 'delete step');
   if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
-  renderStepsLevel();
   toast("Step deleted", "success");
 }
 
@@ -1053,7 +1058,6 @@ async function toggleStepHidden(stepId) {
     if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
     toast("Step hidden — reveal via the hidden filter chip", "success");
   }
-  renderStepsLevel();
 }
 
 async function splitStep(stepId) {
@@ -1082,7 +1086,6 @@ async function splitStep(stepId) {
     state: "edited" };
   anno.steps.splice(idx, 1, first, second);
   await persistAnnotations(anno, 'split step');
-  renderStepsLevel();
   toast("Step split", "success");
 }
 
@@ -1110,7 +1113,6 @@ async function mergeStepWithNext(stepId) {
   anno.steps.push(merged);
   await persistAnnotations(anno, 'merge steps');
   State.setSelectedStepId(merged.step_id);
-  renderStepsLevel();
   toast("Steps merged", "success");
 }
 
@@ -1140,7 +1142,6 @@ async function addManualStep() {
   anno.steps.push(step);
   await persistAnnotations(anno, 'add step');
   State.setSelectedStepId(step.step_id);
-  renderStepsLevel();
   toast("Manual step added", "success");
 }
 
@@ -1235,7 +1236,6 @@ async function savePhase(updatedPhase) {
   if (idx >= 0) anno.phases[idx] = updatedPhase;
   else anno.phases.push(updatedPhase);
   await persistAnnotations(anno, 'save phase');
-  renderPhasesLevel();
   toast("Phase saved", "success");
 }
 
@@ -1255,7 +1255,6 @@ async function deletePhase(phaseId) {
   for (const s of anno.steps) if (s.phase_id === phaseId) s.phase_id = null;
   await persistAnnotations(anno, 'delete phase');
   if (State.getSelectedPhaseId() === phaseId) State.setSelectedPhaseId(null);
-  renderPhasesLevel();
   toast("Phase deleted", "success");
 }
 
@@ -1268,7 +1267,6 @@ async function removeStepFromPhase(phaseId, stepId) {
   const s = anno.steps.find(x => x.step_id === stepId);
   if (s) s.phase_id = null;
   await persistAnnotations(anno, 'remove step from phase');
-  renderPhasesLevel();
 }
 
 /* P2.6: drag-reorder a step within a phase. drag === source step,
@@ -1289,7 +1287,6 @@ async function reorderStepsInPhase(phaseId, dragStepId, targetStepId, before) {
   phase.step_ids = ids;
   phase.state = phase.state === "manually_authored" ? "manually_authored" : "edited";
   await persistAnnotations(anno, "reorder steps in phase");
-  renderPhasesLevel();
 }
 
 async function addManualPhase() {
@@ -1310,7 +1307,6 @@ async function addManualPhase() {
   anno.phases.push(phase);
   await persistAnnotations(anno, 'add phase');
   State.setSelectedPhaseId(phase.phase_id);
-  renderPhasesLevel();
   toast("Manual phase added", "success");
 }
 
@@ -1341,7 +1337,6 @@ async function groupIntoPhase() {
   State.setSelectedPhaseId(phase.phase_id);
   $("#btn-group-into-phase").disabled = true;
   activateAnnoTab("phases");
-  renderPhasesLevel();
   toast("Steps grouped into phase", "success");
 }
 
@@ -1372,7 +1367,6 @@ async function deleteSelectedSteps() {
   if (grpBtn) grpBtn.disabled = true;
   const delBtn = $("#btn-delete-selected-steps");
   if (delBtn) delBtn.disabled = true;
-  renderStepsLevel();
   toast(ids.length + " steps deleted", "success");
 }
 if ($("#btn-delete-selected-steps")) {
@@ -1576,7 +1570,6 @@ async function suggestPhaseGroupings() {
     }
   }
   await persistAnnotations(anno, "auto-group steps into phases");
-  renderPhasesLevel();
   toast("Applied " + groups.length + " phase grouping" + (groups.length === 1 ? "" : "s"), "success");
 }
 if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click", suggestPhaseGroupings);
@@ -3922,13 +3915,19 @@ function renderMarkersList() {
   }
 }
 
-async function persistAnnotations(anno, undoLabel) {
-  /* Marker-edit operations (rename, delete, adjust timestamp, drift
-     flag, etc.) all flow through here. Route via the undo helper so
-     Ctrl+Z reverts them. Callers pass a short label that surfaces
-     in the undo toast. */
+const DEFAULT_EDIT_TOPICS = ["steps", "phases", "timeline"];
+
+async function persistAnnotations(anno, undoLabel, topics) {
+  /* Step / phase / marker edits route through here: persist via the
+     undo helper (so Ctrl+Z reverts) then emit the change topics so the
+     affected views re-render themselves -- no full-session reload.
+     `topics` defaults to the safe superset; marker edits pass a
+     narrower set. */
   await saveAnnotationsWithUndo(anno, undoLabel || "marker edit");
   State.getSession().annotations = anno;
+  State.batch(() => {
+    for (const t of (topics || DEFAULT_EDIT_TOPICS)) State.emit(t);
+  });
 }
 
 async function adjustMarkerToVideoTime(markerEvent) {
@@ -3953,9 +3952,7 @@ async function adjustMarkerToVideoTime(markerEvent) {
     previous: markerEvent.timestamp,
     ts: new Date().toISOString(),
   });
-  await persistAnnotations(anno, 'adjust marker timestamp');
-  renderMarkersList();
-  renderTimeline();
+  await persistAnnotations(anno, 'adjust marker timestamp', ["markers", "timeline"]);
   toast("Marker timestamp adjusted", "success");
 }
 
@@ -3977,9 +3974,7 @@ async function deleteMarker(markerEvent) {
     op: "delete",
     ts: new Date().toISOString(),
   });
-  await persistAnnotations(anno, 'delete marker');
-  renderMarkersList();
-  renderTimeline();
+  await persistAnnotations(anno, 'delete marker', ["markers", "timeline"]);
   toast("Marker marked for deletion (re-run normalization)", "success");
 }
 
