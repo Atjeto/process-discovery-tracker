@@ -1573,11 +1573,11 @@ if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click",
 async function refreshTemplateVersions() {
   const panel = document.getElementById("template-compare-panel");
   if (!panel) return;
-  if (!canonicalState.path) {
+  if (!State.getCanonicalState().path) {
     panel.style.display = "none";
     return;
   }
-  const list = await ipcRenderer.invoke("viewer:listTemplateVersions", canonicalState.path);
+  const list = await ipcRenderer.invoke("viewer:listTemplateVersions", State.getCanonicalState().path);
   if (!list || !list.length) { panel.style.display = "none"; return; }
   panel.style.display = "";
   const aSel = document.getElementById("tpl-cmp-a");
@@ -1751,14 +1751,13 @@ $$("#agg-level-switcher .agg-level-btn").forEach((btn) => {
 
 /* ============ Canonical view IPC ================================== */
 
-let canonicalState = { path: null, content: null, parsed: null, exemplarFolder: null };
 
 if ($("#btn-open-canonical")) {
   $("#btn-open-canonical").addEventListener("click", async () => {
     const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
     if (!r) return;
-    canonicalState.path = r.path;
-    canonicalState.content = r.content;
+    State.getCanonicalState().path = r.path;
+    State.getCanonicalState().content = r.content;
     $("#canonical-yaml").value = r.content;
     $("#canonical-meta").textContent = "Loaded " + r.path;
     $("#btn-save-canonical").disabled = false;
@@ -1767,10 +1766,10 @@ if ($("#btn-open-canonical")) {
 }
 if ($("#btn-save-canonical")) {
   $("#btn-save-canonical").addEventListener("click", async () => {
-    if (!canonicalState.path) return;
+    if (!State.getCanonicalState().path) return;
     const content = $("#canonical-yaml").value;
-    await ipcRenderer.invoke("viewer:saveCanonicalFile", { path: canonicalState.path, content });
-    canonicalState.content = content;
+    await ipcRenderer.invoke("viewer:saveCanonicalFile", { path: State.getCanonicalState().path, content });
+    State.getCanonicalState().content = content;
     toast("Process Template saved", "success");
     renderCanonicalStepList();
     // AM.1: refresh the version compare list on the next aggregate
@@ -1782,10 +1781,10 @@ if ($("#btn-load-exemplar")) {
   $("#btn-load-exemplar").addEventListener("click", async () => {
     const folder = await ipcRenderer.invoke("viewer:openSessionFolder");
     if (!folder) return;
-    canonicalState.exemplarFolder = folder;
-    if (canonicalState.path) {
+    State.getCanonicalState().exemplarFolder = folder;
+    if (State.getCanonicalState().path) {
       const r = await ipcRenderer.invoke("viewer:testCanonicalMatch", {
-        canonicalPath: canonicalState.path, sessionFolder: folder,
+        canonicalPath: State.getCanonicalState().path, sessionFolder: folder,
       });
       if (r && r.ok) {
         $("#exemplar-match-rate").textContent =
@@ -1803,7 +1802,7 @@ if ($("#btn-load-exemplar")) {
 function renderCanonicalStepList() {
   const host = $("#canonical-step-list");
   if (!host) return;
-  if (!canonicalState.path) {
+  if (!State.getCanonicalState().path) {
     host.innerHTML = `
       <div class="empty-pane">
         <p>No template loaded. Click <strong>Open Process Template...</strong> above.</p>
@@ -1813,7 +1812,7 @@ function renderCanonicalStepList() {
   }
   const yaml = require("js-yaml");
   let parsed = null;
-  try { parsed = yaml.load(canonicalState.content || "") || {}; }
+  try { parsed = yaml.load(State.getCanonicalState().content || "") || {}; }
   catch (e) {
     host.innerHTML = '<p class="hint" style="color:var(--bad)">Couldn\'t parse the template: ' +
       escapeHtml(e.message) + '</p>';
@@ -1821,7 +1820,7 @@ function renderCanonicalStepList() {
   }
   const proc = parsed.canonical_process || (parsed.canonical_process = {});
   if (!Array.isArray(proc.steps)) proc.steps = [];
-  canonicalState.parsed = parsed;
+  State.getCanonicalState().parsed = parsed;
 
   const meta = '<div class="canonical-meta-form">' +
     '<label>Template name <input type="text" id="ctpl-name" value="' + escapeHtml(proc.name || "") + '" /></label>' +
@@ -1855,9 +1854,9 @@ function renderCanonicalStepList() {
       proc.steps[idx].name = row.querySelector(".ctpl-step-name").value.trim();
       proc.steps[idx].description = row.querySelector(".ctpl-step-desc").value.trim();
     });
-    canonicalState.content = yaml.dump(parsed, { lineWidth: 120, noRefs: true, sortKeys: false });
+    State.getCanonicalState().content = yaml.dump(parsed, { lineWidth: 120, noRefs: true, sortKeys: false });
     const ta = document.getElementById("canonical-yaml");
-    if (ta) ta.value = canonicalState.content;
+    if (ta) ta.value = State.getCanonicalState().content;
     const saveBtn = document.getElementById("btn-save-canonical");
     if (saveBtn && saveBtn.dataset) saveBtn.dataset.dirty = "1";
   }
@@ -1868,7 +1867,7 @@ function renderCanonicalStepList() {
   document.getElementById("ctpl-name").addEventListener("input", commit);
   document.getElementById("ctpl-version").addEventListener("input", commit);
   // Direct edits in the Advanced YAML textarea must update
-  // canonicalState.content AND re-render the form so the two views
+  // State.getCanonicalState().content AND re-render the form so the two views
   // stay in sync. Re-parse on input; bail silently on parse error
   // (the analyst is mid-typing and the YAML is temporarily broken).
   const ta = document.getElementById("canonical-yaml");
@@ -1876,7 +1875,7 @@ function renderCanonicalStepList() {
     ta._pdtSyncWired = true;
     let _taSyncTimer = null;
     ta.addEventListener("input", () => {
-      canonicalState.content = ta.value;
+      State.getCanonicalState().content = ta.value;
       clearTimeout(_taSyncTimer);
       _taSyncTimer = setTimeout(() => {
         try {
@@ -4855,31 +4854,25 @@ ipcRenderer.on("viewer:openInitialSession", (_e, folder) => {
 
 /* ============ Vocabularies tab (form editor, no YAML) ============= */
 
-let vocabState = {
-  list: [],
-  selectedPath: null,
-  current: null,
-  dirty: false,
-};
 
 async function reloadVocabList() {
   const r = await ipcRenderer.invoke("viewer:listAppVocabs");
-  vocabState.list = (r && r.vocabs) || [];
+  State.getVocabState().list = (r && r.vocabs) || [];
   const meta = $("#vocab-list-meta");
   if (meta) {
-    if (vocabState.list.length) {
-      meta.textContent = vocabState.list.length + " vocab(s) across " + ((r.dirs || []).length) + " folder(s)";
+    if (State.getVocabState().list.length) {
+      meta.textContent = State.getVocabState().list.length + " vocab(s) across " + ((r.dirs || []).length) + " folder(s)";
     } else {
       meta.textContent = "no vocabularies yet";
     }
   }
   renderVocabList();
-  if (vocabState.selectedPath && !vocabState.list.some(v => v.path === vocabState.selectedPath)) {
-    vocabState.selectedPath = null;
-    vocabState.current = null;
+  if (State.getVocabState().selectedPath && !State.getVocabState().list.some(v => v.path === State.getVocabState().selectedPath)) {
+    State.getVocabState().selectedPath = null;
+    State.getVocabState().current = null;
     renderVocabEditor();
-  } else if (vocabState.selectedPath) {
-    await selectVocab(vocabState.selectedPath);
+  } else if (State.getVocabState().selectedPath) {
+    await selectVocab(State.getVocabState().selectedPath);
   } else {
     renderVocabEditor();
   }
@@ -4888,7 +4881,7 @@ async function reloadVocabList() {
 function renderVocabList() {
   const host = $("#vocab-list");
   if (!host) return;
-  if (!vocabState.list.length) {
+  if (!State.getVocabState().list.length) {
     host.innerHTML =
       '<div class="empty-pane">' +
       '<p><strong>No vocabularies yet.</strong></p>' +
@@ -4901,9 +4894,9 @@ function renderVocabList() {
     return;
   }
   host.innerHTML = "";
-  for (const v of vocabState.list) {
+  for (const v of State.getVocabState().list) {
     const row = document.createElement("div");
-    row.className = "vocab-row" + (v.path === vocabState.selectedPath ? " selected" : "");
+    row.className = "vocab-row" + (v.path === State.getVocabState().selectedPath ? " selected" : "");
     row.innerHTML =
       '<div class="vocab-row-head">' +
       '<span class="vocab-row-name">' + escapeHtml(v.name || v.id) + '</span>' +
@@ -4916,7 +4909,7 @@ function renderVocabList() {
 }
 
 async function selectVocab(p) {
-  if (vocabState.dirty) {
+  if (State.getVocabState().dirty) {
     const ok = await confirmModal({
       title: "Unsaved changes",
       message: "Discard unsaved changes to this vocabulary?",
@@ -4925,17 +4918,17 @@ async function selectVocab(p) {
     });
     if (!ok) return;
   }
-  vocabState.selectedPath = p;
-  vocabState.dirty = false;
+  State.getVocabState().selectedPath = p;
+  State.getVocabState().dirty = false;
   const v = await ipcRenderer.invoke("viewer:readVocab", p);
   if (!v) {
-    vocabState.current = null;
+    State.getVocabState().current = null;
     toast("Could not read vocab file", "error");
   } else if (v._error) {
-    vocabState.current = null;
+    State.getVocabState().current = null;
     toast("Vocab YAML parse error: " + v._error, "error");
   } else {
-    vocabState.current = v;
+    State.getVocabState().current = v;
   }
   renderVocabList();
   renderVocabEditor();
@@ -4946,7 +4939,7 @@ async function selectVocab(p) {
 function renderVocabEditor() {
   const host = $("#vocab-editor");
   if (!host) return;
-  const v = vocabState.current;
+  const v = State.getVocabState().current;
   if (!v) {
     host.innerHTML =
       '<div class="empty-pane">' +
@@ -4987,7 +4980,7 @@ function renderVocabEditor() {
 function renderVocabInteractions() {
   const host = $("#vocab-interactions");
   if (!host) return;
-  const interactions = (vocabState.current && vocabState.current.interactions) || [];
+  const interactions = (State.getVocabState().current && State.getVocabState().current.interactions) || [];
   if (!interactions.length) {
     host.innerHTML = '<p class="hint">No interactions yet. Click + Add interaction, or bootstrap from a prep session in the tracker tray.</p>';
     return;
@@ -5027,7 +5020,7 @@ function renderVocabInteractions() {
 }
 
 function collectAndMark() {
-  const v = vocabState.current;
+  const v = State.getVocabState().current;
   if (!v) return;
   v.name = $("#vocab-name").value.trim();
   v.id = $("#vocab-id").value.trim();
@@ -5061,13 +5054,13 @@ function collectAndMark() {
 }
 
 function markDirty() {
-  vocabState.dirty = true;
+  State.getVocabState().dirty = true;
   const btn = $("#btn-vocab-save");
   if (btn) btn.textContent = "Save vocabulary*";
 }
 
 function addInteraction() {
-  const v = vocabState.current;
+  const v = State.getVocabState().current;
   if (!v) return;
   v.interactions = v.interactions || [];
   v.interactions.push({ signature: { control_type: "Button", name: "" }, name: "" });
@@ -5076,7 +5069,7 @@ function addInteraction() {
 }
 
 function removeInteraction(idx) {
-  const v = vocabState.current;
+  const v = State.getVocabState().current;
   if (!v) return;
   v.interactions.splice(idx, 1);
   renderVocabInteractions();
@@ -5084,17 +5077,17 @@ function removeInteraction(idx) {
 }
 
 async function saveVocab() {
-  if (!vocabState.selectedPath || !vocabState.current) return;
+  if (!State.getVocabState().selectedPath || !State.getVocabState().current) return;
   collectAndMark();
   const r = await ipcRenderer.invoke("viewer:writeVocab", {
-    path: vocabState.selectedPath,
-    vocab: vocabState.current,
+    path: State.getVocabState().selectedPath,
+    vocab: State.getVocabState().current,
   });
   if (!r || !r.ok) {
     toast("Save failed: " + ((r && r.error) || "unknown"), "error");
     return;
   }
-  vocabState.dirty = false;
+  State.getVocabState().dirty = false;
   const btn = $("#btn-vocab-save");
   if (btn) btn.textContent = "Save vocabulary";
   toast("App Library entry saved — re-analyze any session to apply", "success");
@@ -5118,7 +5111,7 @@ if ($("#btn-vocab-reload")) {
 }
 if ($("#btn-vocab-open-yaml")) {
   $("#btn-vocab-open-yaml").addEventListener("click", () => {
-    if (vocabState.selectedPath) ipcRenderer.invoke("viewer:openVocabFile", vocabState.selectedPath);
+    if (State.getVocabState().selectedPath) ipcRenderer.invoke("viewer:openVocabFile", State.getVocabState().selectedPath);
   });
 }
 
@@ -5309,7 +5302,7 @@ const PdtProject = require("./project.js");
 const projectCollectors = {
   currentSessionFolder: () => State.getSession() && State.getSession().sessionFolder,
   aggregateSessions:    () => (State.getAggregateSessions() || []).map((s) => s && s.sessionFolder).filter(Boolean),
-  templatePath:         () => canonicalState && canonicalState.path,
+  templatePath:         () => State.getCanonicalState() && State.getCanonicalState().path,
   vocabularies:         () => [],   // captured by path on a future project-format bump
   currentTab:           () => {
     const t = document.querySelector(".tab.active");
@@ -5526,10 +5519,10 @@ async function applyProject(filePath, raw) {
   if (project.templatePath) {
     try {
       if (fs.existsSync(project.templatePath)) {
-        canonicalState.path = project.templatePath;
-        canonicalState.content = fs.readFileSync(project.templatePath, "utf-8");
+        State.getCanonicalState().path = project.templatePath;
+        State.getCanonicalState().content = fs.readFileSync(project.templatePath, "utf-8");
         const yamlEl = document.getElementById("canonical-yaml");
-        if (yamlEl) yamlEl.value = canonicalState.content;
+        if (yamlEl) yamlEl.value = State.getCanonicalState().content;
         const metaEl = document.getElementById("canonical-meta");
         if (metaEl) metaEl.textContent = "Loaded " + project.templatePath;
         const saveBtn = document.getElementById("btn-save-canonical");
