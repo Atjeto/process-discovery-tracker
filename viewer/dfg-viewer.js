@@ -265,5 +265,5 @@
     return parts.join("\n");
   }
 
-  window.PdtDfg = { render, fit, zoomIn, zoomOut, getZoom, exportSvg };
+  module.exports = { render, fit, zoomIn, zoomOut, getZoom, exportSvg };
 })();

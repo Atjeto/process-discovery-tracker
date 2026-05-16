@@ -4,7 +4,7 @@
  * Depends on globals exposed by sibling scripts loaded earlier in
  * index.html:
  *   window.PdtCharts (charts.js)
- *   window.PdtDfg    (dfg-viewer.js, cytoscape)
+ *   PdtDfg    (dfg-viewer.js, cytoscape)
  *   window.PdtBpmn   (bpmn-viewer.js, bpmn-js)
  */
 
@@ -18,6 +18,7 @@ const State = require("./state.js");
 const PdtCharts = require("./charts.js");
 const PdtReport = require("./report-md.js");
 const PdtPalette = require("./command-palette.js");
+const PdtDfg = require("./dfg-viewer.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const $ = (sel) => document.querySelector(sel);
@@ -378,7 +379,7 @@ function activateTab(name) {
   if (name === "aggregate") {
     setTimeout(() => {
       if (window.PdtBpmn) window.PdtBpmn.fit();
-      if (window.PdtDfg) window.PdtDfg.fit();
+      if (PdtDfg) PdtDfg.fit();
     }, 100);
     // AM.1: refresh the version compare list when the analyst lands
     // on the aggregate view (and a template is loaded).
@@ -2034,9 +2035,9 @@ $$(".panel-tab").forEach((tab) => {
     setMapZoomVisible(which === "dfg");
     setTimeout(() => {
       if (which === "bpmn" && window.PdtBpmn) window.PdtBpmn.fit();
-      if (which === "dfg" && window.PdtDfg) {
-        window.PdtDfg.fit();
-        setMapZoomPct(window.PdtDfg.getZoom());
+      if (which === "dfg" && PdtDfg) {
+        PdtDfg.fit();
+        setMapZoomPct(PdtDfg.getZoom());
       }
     }, 50);
   });
@@ -2046,13 +2047,13 @@ const btnDfgZoomIn = document.getElementById("btn-dfg-zoom-in");
 const btnDfgZoomOut = document.getElementById("btn-dfg-zoom-out");
 const btnDfgZoomFit = document.getElementById("btn-dfg-zoom-fit");
 if (btnDfgZoomIn) btnDfgZoomIn.addEventListener("click", () => {
-  if (window.PdtDfg) { window.PdtDfg.zoomIn(); setMapZoomPct(window.PdtDfg.getZoom()); }
+  if (PdtDfg) { PdtDfg.zoomIn(); setMapZoomPct(PdtDfg.getZoom()); }
 });
 if (btnDfgZoomOut) btnDfgZoomOut.addEventListener("click", () => {
-  if (window.PdtDfg) { window.PdtDfg.zoomOut(); setMapZoomPct(window.PdtDfg.getZoom()); }
+  if (PdtDfg) { PdtDfg.zoomOut(); setMapZoomPct(PdtDfg.getZoom()); }
 });
 if (btnDfgZoomFit) btnDfgZoomFit.addEventListener("click", () => {
-  if (window.PdtDfg) { window.PdtDfg.fit(); setMapZoomPct(window.PdtDfg.getZoom()); }
+  if (PdtDfg) { PdtDfg.fit(); setMapZoomPct(PdtDfg.getZoom()); }
 });
 
 /* ============ Session view: open + normalize ====================== */
@@ -4310,7 +4311,7 @@ function renderAggregate() {
       ends.set(k, (ends.get(k) || 0) + v);
     }
   }
-  if (edgeMap.size && window.PdtDfg) {
+  if (edgeMap.size && PdtDfg) {
     const dfg = {
       edges: [...edgeMap.entries()].map(([k, freq]) => {
         const [source, target] = k.split("\x00");
@@ -4319,7 +4320,7 @@ function renderAggregate() {
       start_activities: Object.fromEntries(starts),
       end_activities: Object.fromEntries(ends),
     };
-    window.PdtDfg.render($("#dfg-host"), dfg, {
+    PdtDfg.render($("#dfg-host"), dfg, {
       onNodeClick: (activityLabel, ev) => drillToActivity(activityLabel, ev),
       onZoomChange: (z) => setMapZoomPct(z),
       // Phase E: variant overlay. Hovering a node highlights the
@@ -4534,8 +4535,8 @@ if ($("#btn-export-map-svg")) {
     const activeTab = document.querySelector(".panel-tab.active[data-map]");
     const which = activeTab ? activeTab.dataset.map : "bpmn";
     let svg = null;
-    if (which === "dfg" && window.PdtDfg && window.PdtDfg.exportSvg) {
-      svg = window.PdtDfg.exportSvg();
+    if (which === "dfg" && PdtDfg && PdtDfg.exportSvg) {
+      svg = PdtDfg.exportSvg();
     } else if (window.PdtBpmn && window.PdtBpmn.exportSvg) {
       svg = await window.PdtBpmn.exportSvg();
     }
