@@ -9,10 +9,10 @@
 
 "use strict";
 
-const { $, escapeHtml, escapeAttr, toast } = require("./dom.js");
-const { confirmModal, promptModal } = require("./modals.js");
-const State = require("./state.js");
-const Ipc = require("./ipc.js");
+const { $, escapeHtml, escapeAttr, toast } = require("../dom.js");
+const { confirmModal, promptModal } = require("../modals.js");
+const State = require("../state.js");
+const Ipc = require("../ipc.js");
 
 async function reloadVocabList() {
   const r = await Ipc.listAppVocabs();

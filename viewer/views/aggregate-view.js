@@ -12,12 +12,12 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { $, $$, escapeHtml, fillTable, toast } = require("./dom.js");
-const State = require("./state.js");
-const Ipc = require("./ipc.js");
-const PdtCharts = require("./charts.js");
-const PdtBpmn = require("./bpmn-viewer.js");
-const PdtDfg = require("./dfg-viewer.js");
+const { $, $$, escapeHtml, fillTable, toast } = require("../dom.js");
+const State = require("../state.js");
+const Ipc = require("../ipc.js");
+const PdtCharts = require("../charts.js");
+const PdtBpmn = require("../bpmn-viewer.js");
+const PdtDfg = require("../dfg-viewer.js");
 
 /* Injected by renderer.js -- activates the Session tab, loads a
    session folder, and seeks to a timestamp. */

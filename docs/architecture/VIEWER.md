@@ -1,15 +1,16 @@
 # Viewer Architecture
 
-> **Deep reference.** The Viewer is the active refactor target; this document and
-> [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) are the primary maps for that work.
-> Structural problems are catalogued separately in
+> **Deep reference.** The structural refactor (ADR-0003) is implemented through
+> Phase 3: the renderer is now a graph of CommonJS modules. This document and
+> [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) are the maps for that structure.
+> Remaining work (the Phase 4 design-system pass) is tracked in
 > [ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md).
 
 ## Contents
 
 1. [Process model](#1-process-model)
 2. [Module map](#2-module-map)
-3. [The window-globals contract](#3-the-window-globals-contract)
+3. [The module graph](#3-the-module-graph)
 4. [IPC surface](#4-ipc-surface)
 5. [View system](#5-view-system)
 6. [State model](#6-state-model)
@@ -21,79 +22,107 @@
 ## 1. Process model
 
 The Viewer is an Electron app: one **main process** ([`main.js`](../../viewer/main.js))
-and one **renderer** ([`index.html`](../../viewer/index.html) + a stack of scripts).
+and one **renderer** ([`index.html`](../../viewer/index.html) + a graph of
+`require()`d modules).
 
 - **One window**, 1400×900, created in `createMainWindow()`. A `--session=<path>`
   argv entry is parsed at startup and pushed to the renderer as
   `viewer:openInitialSession`.
 - `webPreferences` deliberately set `nodeIntegration: true`, `contextIsolation: false`.
   This is why the renderer scripts call `require("electron")`, `require("node:fs")`,
-  and `require("./project.js")` directly. The risk is mitigated by `webSecurity`,
+  and `require("./<module>.js")` directly. The risk is mitigated by `webSecurity`,
   a deny-all `setWindowOpenHandler`, and a `will-navigate` guard.
 - The main process is thin: window lifecycle, file dialogs, the normalization
   subprocess, and file I/O. **All UI logic lives in the renderer.**
 
 ## 2. Module map
 
-Renderer scripts load in this order (see `index.html`); later scripts depend on
-globals set by earlier ones. There are **two loading patterns**, which is itself
-worth knowing:
+`index.html` loads exactly **five `<script>` tags**: the four vendored libraries
+(cytoscape, dagre, cytoscape-dagre, bpmn-js — consumed as globals) and the single
+`renderer.js` entry. Everything else is reached through `renderer.js`'s
+`require()` graph — there is no bundler (ADR-0003: the renderer already used
+CommonJS, so real modules need no build step).
 
-| File | Lines (approx) | Loaded as | Exposes | Role |
-|---|---|---|---|---|
-| `charts.js` | 154 | `<script>` global | `window.PdtCharts` = `{ renderBarChart, fmtDurationS }` | Inline-SVG bar charts for the Aggregate view |
-| `dfg-viewer.js` | 269 | `<script>` global | `window.PdtDfg` = `{ render, fit, zoomIn, zoomOut, getZoom, exportSvg }` | Directly-Follows Graph via cytoscape + dagre |
-| `bpmn-viewer.js` | 81 | `<script>` global | `window.PdtBpmn` = `{ render, fit, exportSvg }` | BPMN 2.0 diagram via bpmn-js |
-| `report-md.js` | 210 | `<script>` global | `window.PdtReport` = `{ buildSessionReport, buildAggregateReport }` | Markdown report generation |
-| `step-editor.js` | 338 | `<script>` global | `window.PdtSteps` = `{ renderStepList, renderStepDetail, renderStepTimeline, renderInteractionEvent }` | Steps list/detail + the Steps mini-timeline |
-| `phase-editor.js` | 274 | `<script>` global | `window.PdtPhases` = `{ renderPhaseList, renderPhaseDetail, renderPhaseTimeline }` | Phases list/detail + the Phases mini-timeline |
-| `layout-controls.js` | 172 | `<script>` global | `window.PdtLayout` = `{ setTimelineHeight, setVideoWidth, setVideoMode, setMiniTimelineHeight }` | Drag-resize handles + video modes; self-inits on `DOMContentLoaded` |
-| `command-palette.js` | 156 | `<script>` global | `window.PdtPalette` = `{ open, close, toggle, setProvider }` | Ctrl+K command palette |
-| `renderer.js` | **5,708** | `<script>` global | *(nothing)* | **The orchestrator** — see below |
-| `project.js` | 170 | `require()` (CommonJS) | `module.exports` (project shape, capture/validate, recents) | Project-file layer |
-| `python-runner.js` | 153 | `require()` by `main.js` | `module.exports` = `{ runNormalize, resolvePython, … }` | Spawns the bundled Python pipeline |
-| `main.js` | 697 | Electron main | — | Main process (see §4) |
+**Entry + cross-cutting infrastructure** (flat in `viewer/`):
 
-`renderer.js` exposes no global of its own — it is the top-level script that wires
-everything together. At **5,708 lines** it holds session loading, all view
-rendering, the Flow timeline, every UI event handler, state, and persistence. This
-single file is the central finding of the refactor review; see
-[ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md).
+| File | Role |
+|---|---|
+| `renderer.js` | **Thin wiring entry** — tab routing, the Flow/Steps/Phases level switcher, the state-bus subscriptions, global keyboard shortcuts, the project menu, export buttons, boot. Wires modules together; holds no view logic. |
+| `state.js` | Central state store + topic pub/sub bus + undo/redo stacks (Phase 2). |
+| `session.js` | Annotations persistence + the undo/redo round-trip (Phase 3). |
+| `ipc.js` | Typed wrappers over every `viewer:*` IPC channel (Phase 3). |
+| `dom.js` | DOM helpers: `$`, `$$`, `escapeHtml`, `formatDuration`, `fillTable`, `toast`, … |
+| `modals.js` | `promptModal`, `confirmModal`, help-modal open/close. |
+| `recent.js` | Recent-sessions localStorage + bundled examples. |
+| `project.js` | Project-file layer — capture/validate, recents (collector-callback pattern). |
+| `timeline/timeline-core.js` | Shared timeline core: lane packing, tick choice, band primitives (Phase 1). |
 
-> **Note on patterns.** Most modules use the `window.Pdt*` global pattern;
-> `project.js` and `python-runner.js` use CommonJS `module.exports`. `project.js`
-> additionally uses a *collector-callback* pattern to stay decoupled from
-> `renderer.js`'s variable names — the cleanest module seam in the viewer, and a
-> useful template for the refactor.
+**Per-view modules** (`viewer/views/`):
 
-## 3. The window-globals contract
+| File | Surface |
+|---|---|
+| `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, video sync, event table, the annotations/screenshots/markers panel, case scope, command-palette provider. |
+| `views/steps-view.js` | Steps level — step list/detail, step CRUD, the ignored-apps dialog. |
+| `views/phases-view.js` | Phases level — phase list/detail, phase CRUD, grouping suggestions. |
+| `views/aggregate-view.js` | Compare Sessions — process maps, statistics, drill-down, exports. |
+| `views/template-view.js` | Process Template tab — version compare, exemplar match. |
+| `views/vocab-view.js` | App Library (Vocabulary editor) tab. |
 
-`renderer.js` orchestrates the feature modules by calling their globals. There is
-**no enforced interface** — the contract is the set of function names above, kept
-in sync by hand. Representative calls:
+**Feature modules** — all CommonJS `module.exports` since Phase 3 Stage A (the
+former `window.Pdt*` globals were converted; the globals are gone):
+
+| File | Exports | Role |
+|---|---|---|
+| `charts.js` | `renderBarChart`, `fmtDurationS` | Inline-SVG bar charts |
+| `dfg-viewer.js` | `render`, `fit`, `zoomIn/Out`, `getZoom`, `exportSvg` | Directly-Follows Graph (cytoscape + dagre) |
+| `bpmn-viewer.js` | `render`, `fit`, `exportSvg` | BPMN 2.0 diagram (bpmn-js) |
+| `report-md.js` | `buildSessionReport`, `buildAggregateReport` | Markdown report generation |
+| `step-editor.js` | `renderStepList`, `renderStepDetail`, `renderStepTimeline`, … | Steps list/detail + Steps mini-timeline |
+| `phase-editor.js` | `renderPhaseList`, `renderPhaseDetail`, `renderPhaseTimeline` | Phases list/detail + Phases mini-timeline |
+| `layout-controls.js` | (side-effect import) | Drag-resize handles + video modes; self-inits at `require()` time |
+| `command-palette.js` | `open`, `close`, `toggle`, `setProvider` | Ctrl+K command palette |
+| `python-runner.js` | `runNormalize`, `resolvePython`, … | Spawns the bundled Python pipeline (`require`d by `main.js`) |
+| `main.js` | — | Electron main process (see §4) |
+
+`step-editor.js` / `phase-editor.js` are the list/detail + mini-timeline
+**widgets**; `views/steps-view.js` / `views/phases-view.js` are the
+renderer-side orchestration that *calls* them — different files, different
+layers.
+
+## 3. The module graph
+
+`renderer.js` `require()`s the infrastructure modules and the six view modules,
+then wires them together. Modules never reach back into `renderer.js` by name:
+cross-surface glue is **injected** at boot through an `init<Module>({...})` call,
+passed as lazy arrow wrappers so load order does not matter. Examples:
 
 ```
-renderer.js ─ renderStepsLevel()   → window.PdtSteps.renderStepList / renderStepDetail / renderStepTimeline
-            ─ renderPhasesLevel()  → window.PdtPhases.renderPhaseList / renderPhaseDetail / renderPhaseTimeline
-            ─ renderAggregate()    → window.PdtCharts.renderBarChart
-                                   → window.PdtDfg.render / window.PdtBpmn.render
-            ─ report export        → window.PdtReport.buildSessionReport / buildAggregateReport
-            ─ Ctrl+K               → window.PdtPalette.open / setProvider
+renderer.js ─ initFlowView({ renderShortcutsOverlay, rerenderActiveLevel,
+                             applyLevel, activateTab })
+            ─ initSession({ renderAnnotations, renderSessionPills })
+            ─ initStepsView({ ensureAnnoShape, persistAnnotations,
+                              videoTimeToSessionTs, jumpToStepInFlow })
+            ─ initPhasesView({ ensureAnnoShape, persistAnnotations,
+                               activateAnnoTab })
+            ─ initAggregateView({ onDrillToSession })
+            ─ initRecent({ onOpenSession })
 ```
 
-`layout-controls.js` is the exception: it self-initialises on `DOMContentLoaded`
-and is not called by `renderer.js` at all — it only writes CSS variables
-(`--timeline-height`, `--video-width`, `--mini-timeline-height`) that the
-stylesheet and the timeline renderers read.
+A module may also wire its own DOM controls at `require()` time — the document is
+already parsed when `renderer.js` pulls it in (`flow-view.js`, `template-view.js`,
+`layout-controls.js` all do this). Functions a sibling still calls are re-exported
+and destructured by `renderer.js` so call sites stay unchanged (e.g.
+`renderTimeline` / `renderMarkersList` from `flow-view.js` are wired into the
+level switcher and the state bus).
 
-The header comment in `renderer.js` lists only `PdtCharts` / `PdtDfg` / `PdtBpmn`
-as dependencies — it is stale; the real dependency set is all seven `Pdt*` globals
-plus `require("./project.js")`.
+`ipc.js` centralises the `viewer:*` channel strings: a typo'd channel is a
+missing export, caught at the call site instead of failing silently at runtime.
 
 ## 4. IPC surface
 
-`renderer.js` ↔ `main.js` over Electron IPC. All renderer→main calls are
-`ipcRenderer.invoke("viewer:…")` against `ipcMain.handle` in `main.js`:
+`renderer.js` and the view modules talk to `main.js` over Electron IPC, always
+through `ipc.js` — one typed async wrapper per channel over
+`ipcRenderer.invoke("viewer:…")`, against `ipcMain.handle` in `main.js`:
 
 | Group | Channels |
 |---|---|
@@ -106,79 +135,80 @@ plus `require("./project.js")`.
 | Projects | `viewer:saveProjectAs`, `viewer:saveProject`, `viewer:openProject`, `viewer:loadProjectFile` |
 | Annotations | `viewer:saveAnnotations` |
 
-Main→renderer messages (`webContents.send`): `viewer:openInitialSession` (startup
-`--session=`), `viewer:normalizeLog` (streamed normalization output).
+Main→renderer messages (`webContents.send`) are exposed by `ipc.js` as
+`onOpenInitialSession(fn)` (startup `--session=`) and `onNormalizeLog(fn)`
+(streamed normalization output).
 
 `loadSessionData()` in `main.js` assembles the session object the renderer holds
-as `currentSession`: `{ sessionFolder, manifest, events, stats, dfg, annotations,
-obsSync, recordingPath, recordingAvailable, externalVideoOffsetMs }`. All
-normalization IPC funnels through `runNormalize()` and shares one module-scope kill
-handle (`_normalizeHandle`), so `viewer:cancelNormalize` stops whichever run is in
-flight.
+(via `State.setSession`): `{ sessionFolder, manifest, events, stats, dfg,
+annotations, obsSync, recordingPath, recordingAvailable, externalVideoOffsetMs }`.
+All normalization IPC funnels through `runNormalize()` and shares one module-scope
+kill handle, so `viewer:cancelNormalize` stops whichever run is in flight.
 
 ## 5. View system
 
 The renderer has **four top-level surfaces** (containers in `index.html`):
 
-| Container | Surface |
-|---|---|
-| `#view-session` | One session — video + timeline + annotations |
-| `#view-aggregate` | Compare Sessions — process maps, statistics, exports |
-| `#view-canonical` | Process Template editor |
-| `#view-vocabularies` | App Library (App Vocabulary editor) |
+| Container | Surface | Module |
+|---|---|---|
+| `#view-session` | One session — video + timeline + annotations | `views/flow-view.js` (+ steps/phases) |
+| `#view-aggregate` | Compare Sessions — process maps, statistics, exports | `views/aggregate-view.js` |
+| `#view-canonical` | Process Template editor | `views/template-view.js` |
+| `#view-vocabularies` | App Library (App Vocabulary editor) | `views/vocab-view.js` |
 
 Inside `#view-session` there are **three levels**, switched by the `.view-mode-btn`
-buttons → `setLevel(name)` ([`renderer.js:463`](../../viewer/renderer.js)):
+buttons → `applyLevel(name)` in `renderer.js`:
 
 | Level | Layout container | Render entry |
 |---|---|---|
-| `flow` | `#session-layout-flow` | `renderTimeline()` |
-| `steps` | `#session-layout-steps` | `renderStepsLevel()` |
-| `phases` | `#session-layout-phases` | `renderPhasesLevel()` |
+| `flow` | `#session-layout-flow` | `renderTimeline()` — `flow-view.js` |
+| `steps` | `#session-layout-steps` | `renderStepsLevel()` — `steps-view.js` |
+| `phases` | `#session-layout-phases` | `renderPhasesLevel()` — `phases-view.js` |
 
-`setLevel()` does three things: sets the explicit `currentLevel` variable
-([`renderer.js:388`](../../viewer/renderer.js), `let currentLevel = "flow"`),
+`applyLevel()` keeps the level in `state.js` (`State.getLevel`/`setLevel`),
 toggles `display` on the three `#session-layout-*` containers, and snapshots /
 restores the outgoing and incoming levels' viewport (zoom + scroll fraction) via
-`_viewportSnapshotForMode` / `_viewportApplyToMode`.
-
-> The current level **is** explicit state (`currentLevel`) — but the renderer also
-> relies on DOM `display` for the same fact, and dispatches on it with a
-> hand-written 3-way `if (currentLevel === "flow") … "steps" … "phases"` block
-> repeated at ~6 sites. The duplication, not the state, is the smell — see
-> [ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md).
+`_viewportSnapshotForMode` / `_viewportApplyToMode`. The `MODE_VIEWPORT` table and
+`LEVEL_RENDERERS` map in `renderer.js` replace what used to be a hand-written
+3-way `if (currentLevel === …)` block repeated across the renderer.
 
 ## 6. State model
 
-There is no store and no framework. State is module-level `let`s in `renderer.js`:
+State lives in [`state.js`](../../viewer/state.js) — a single store with explicit
+getters/setters and a topic pub/sub bus (no framework, no reactivity):
 
-| Variable | Holds |
+| State | Holds |
 |---|---|
-| `currentSession` | the loaded session object (§4) |
+| `session` | the loaded session object (§4) |
 | `aggregateSessions` | array of sessions for the Compare view |
-| `currentLevel` | `"flow"` \| `"steps"` \| `"phases"` |
-| `zoomFactor` | Flow-timeline zoom (`stepZoom` / `phaseZoom` for the mini-timelines) |
-| `currentCaseScope` | case-id filter, or `""` for all |
+| `level` | `"flow"` \| `"steps"` \| `"phases"` |
+| `zoomFactor` / `stepZoom` / `phaseZoom` | per-timeline zoom |
+| `caseScope` | case-id filter, or `""` for all |
 | `selectedStepId`, `selectedPhaseId`, `multiSelectedStepIds` | editor selection |
-| `_undoStack`, `_redoStack` | annotation undo history (§8) |
+| `canonicalState`, `vocabState`, `listFilters` | tab-local state |
+| undo / redo stacks | annotation undo history (§8) |
+
+`State.subscribe(topic, fn)` / `State.emit(topic)` / `State.batch(fn)` are the
+change bus: an annotation edit emits the topics it touched and the subscribed
+view re-renders itself.
 
 **Persistence** is `localStorage`, all keys prefixed `pdt.`:
 
 | Key | Written by | Holds |
 |---|---|---|
-| `pdt.recentSessions` | `renderer.js` | recent session folders |
+| `pdt.recentSessions` | `recent.js` | recent session folders |
 | `pdt.recentProjects` | `project.js` | recent project files |
 | `pdt.timelineHeight`, `pdt.videoWidth`, `pdt.miniTimelineHeight` | `layout-controls.js` | drag-resized pane sizes |
-| `pdt.timelineState` | `renderer.js` | per-session timeline zoom + scroll (one key, a map) |
-| `pdt.timelineLanes` | `renderer.js` | which Flow-timeline lanes are toggled on |
+| `pdt.timelineState` | `flow-view.js` | per-session timeline zoom + scroll (one key, a map) |
+| `pdt.timelineLanes` | `flow-view.js` | which Flow-timeline lanes are toggled on |
 | `pdt.shortcutsOverlayHidden` | `renderer.js` | dismiss state of the shortcuts card |
 
 ## 7. Render pipeline
 
-**Load.** `loadSessionIntoView(folder)` ([`renderer.js:2188`](../../viewer/renderer.js)):
+**Load.** `loadSessionIntoView(folder)` in `flow-view.js`:
 
 ```
-open folder → ipcRenderer.invoke("viewer:loadSession") → currentSession = result
+open folder → Ipc.loadSession() → State.setSession(result)
             → wire <video>
             → renderTimeline() · renderEventTable() · renderAnnotations()
               renderScreenshots() · renderMarkersList() · renderTimelineSummary()
@@ -188,49 +218,48 @@ open folder → ipcRenderer.invoke("viewer:loadSession") → currentSession = re
 
 Every surface is re-rendered on load regardless of which level is visible.
 
-**Edit.** Annotation edits do **not** patch the DOM in place — they round-trip
-through disk:
+**Edit.** Annotation edits do **not** trigger a full session reload (Phase 2
+fixed this — issue S6). They route through `session.js`:
 
 ```
-edit → saveAnnotationsWithUndo(annotations, label)   (renderer.js:56)
-     → ipcRenderer.invoke("viewer:saveAnnotations")
-     → loadSessionIntoView(sessionFolder)            ← full reload + full re-render
+edit → persistAnnotations(annotations, label, topics)   (session.js)
+     → saveAnnotationsWithUndo → Ipc.saveAnnotations()
+     → State.emit(topic) for each touched topic
+     → the subscribed view re-renders itself, in place
 ```
-
-This "every edit is a full session reload" model is simple but expensive and is a
-named refactor target.
 
 ## 8. Annotations editing & undo
 
-All step / phase / marker / note mutations funnel through
-`saveAnnotationsWithUndo(annotations, label)`:
+All step / phase / marker / note mutations funnel through `session.js`:
 
-- It snapshots the **previous** `annotations` onto `_undoStack` before writing.
-- `_undoStack` / `_redoStack` are in-memory, capped at `UNDO_MAX = 50`, and each
-  entry is pinned to a `sessionFolder`.
-- `resetUndoStack()` runs on session switch.
+- `saveAnnotationsWithUndo(annotations, label)` snapshots the **previous**
+  `annotations` onto the undo stack (in `state.js`) before writing.
+- Undo / redo stacks are in-memory, capped, and each entry is pinned to a
+  `sessionFolder`. `resetUndoStack()` runs on session switch.
 - `performUndo()` / `performRedo()` write the snapshot back via
-  `viewer:saveAnnotations` and then `loadSessionIntoView()` to refresh.
+  `viewer:saveAnnotations`, then patch `session.annotations` **in place** and emit
+  the change topics — no full reload, no scroll jump (issue S6).
 
-Step CRUD (`inlineRenameStep`, `saveStep`, `splitStep`, `mergeStepWithNext`,
-`addManualStep`, `toggleStepHidden`, …) and phase CRUD (`savePhase`,
-`groupIntoPhase`, `reorderStepsInPhase`, …) all end at this one function.
+Step CRUD (`splitStep`, `mergeStepWithNext`, `addManualStep`, …) lives in
+`steps-view.js`; phase CRUD (`groupIntoPhase`, …) in `phases-view.js`; marker CRUD
+in `flow-view.js`. All end at `session.js`.
 
 ## 9. Compare Sessions (Aggregate) view
 
-`renderAggregate()` ([`renderer.js:4170`](../../viewer/renderer.js)) drives
-`#view-aggregate`: activity-frequency and case-duration bar charts (`PdtCharts`),
+[`views/aggregate-view.js`](../../viewer/views/aggregate-view.js) drives
+`#view-aggregate`: activity-frequency and case-duration bar charts (`charts.js`),
 trace-variant / outlier / rework tables, and the process map. The map renders two
-ways in one tabbed panel — **DFG** via `PdtDfg` (cytoscape + dagre) and **BPMN** via
-`PdtBpmn` (bpmn-js). Clicking a DFG node opens a drill-down picker that lists every
-loaded session containing that activity.
+ways in one tabbed panel — **DFG** via `dfg-viewer.js` (cytoscape + dagre) and
+**BPMN** via `bpmn-viewer.js` (bpmn-js). Clicking a DFG node opens a drill-down
+picker; the drill-to-session action is injected by `renderer.js` via
+`initAggregateView({ onDrillToSession })`.
 
 ## 10. Project layer
 
 [`project.js`](../../viewer/project.js) bundles the analyst's working set — loaded
-aggregate sessions, focus session, active template, open vocabularies, current tab
-/ view-mode / case scope, timeline state — into a single `.pdt-project.json` file.
-It is a CommonJS module `require()`d by `renderer.js`, persists recents under
-`pdt.recentProjects`, validates the `format` / `version` pair on load, and uses
-**collector callbacks** so it never references `renderer.js` variables directly.
-This decoupling is the pattern the rest of the viewer should move toward.
+aggregate sessions, focus session, active template, current tab / view-mode / case
+scope, timeline state — into a single `.pdt-project.json` file. It is a CommonJS
+module `require()`d by `renderer.js`, persists recents under `pdt.recentProjects`,
+validates the `format` / `version` pair on load, and uses **collector callbacks**
+so it never references `renderer.js` variables directly — the seam pattern the
+rest of the viewer now follows.

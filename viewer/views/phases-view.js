@@ -11,10 +11,10 @@
 
 "use strict";
 
-const { $, formatDuration, cryptoRandomId, toast } = require("./dom.js");
-const { confirmModal, promptModal } = require("./modals.js");
-const State = require("./state.js");
-const PdtPhases = require("./phase-editor.js");
+const { $, formatDuration, cryptoRandomId, toast } = require("../dom.js");
+const { confirmModal, promptModal } = require("../modals.js");
+const State = require("../state.js");
+const PdtPhases = require("../phase-editor.js");
 
 /* Injected by renderer.js. */
 let ensureAnnoShape = (a) => a;

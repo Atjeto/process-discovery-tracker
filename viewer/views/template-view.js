@@ -10,10 +10,10 @@
 
 "use strict";
 
-const { $, escapeHtml, toast, cryptoRandomId } = require("./dom.js");
-const { confirmModal } = require("./modals.js");
-const State = require("./state.js");
-const Ipc = require("./ipc.js");
+const { $, escapeHtml, toast, cryptoRandomId } = require("../dom.js");
+const { confirmModal } = require("../modals.js");
+const State = require("../state.js");
+const Ipc = require("../ipc.js");
 const { renderAggregate } = require("./aggregate-view.js");
 
 /* ============ AM.1 -- Process Template version compare ============ */

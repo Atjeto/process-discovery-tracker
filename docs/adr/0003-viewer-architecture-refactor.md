@@ -210,9 +210,9 @@ Each phase is independently shippable; the app keeps working throughout.
 8. [ ] Replace the per-edit full-session reload with targeted per-view re-render.
 
 **Phase 3 — Decompose `renderer.js` (S1, S3, S7, S8)**
-9. [ ] Extract `flow-view` / `steps-view` / `phases-view` / `aggregate-view` modules.
-10. [ ] Extract `session.js` and `ipc.js`; reduce `renderer.js` to a thin wiring entry.
-11. [ ] Convert the `window.Pdt*` files to `require`/`module.exports`; delete the globals.
+9. [x] Extract `flow-view` / `steps-view` / `phases-view` / `aggregate-view` modules.
+10. [x] Extract `session.js` and `ipc.js`; reduce `renderer.js` to a thin wiring entry.
+11. [x] Convert the `window.Pdt*` files to `require`/`module.exports`; delete the globals.
 
 **Phase 4 — Design-system pass (parallel; fixes R2, R3, R4 / D1–D3)**
 12. [ ] Decide and apply one colour fix across all timelines (tint alpha vs. saturation vs. borders).

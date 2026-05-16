@@ -11,11 +11,11 @@
 
 "use strict";
 
-const { $, escapeHtml, formatDuration, cryptoRandomId, toast } = require("./dom.js");
-const { confirmModal, promptModal } = require("./modals.js");
-const State = require("./state.js");
-const Ipc = require("./ipc.js");
-const PdtSteps = require("./step-editor.js");
+const { $, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
+const { confirmModal, promptModal } = require("../modals.js");
+const State = require("../state.js");
+const Ipc = require("../ipc.js");
+const PdtSteps = require("../step-editor.js");
 
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
@@ -434,5 +434,5 @@ function initStepsView(deps) {
 
 module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
-  deleteSelectedSteps,
+  deleteSelectedSteps, splitStep, mergeStepWithNext,
 };
