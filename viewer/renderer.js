@@ -1026,8 +1026,8 @@ async function deleteStep(stepId) {
   });
   if (!ok) return;
   anno.steps = anno.steps.filter(s => s.step_id !== stepId);
-  await persistAnnotations(anno, 'delete step');
   if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
+  await persistAnnotations(anno, 'delete step');
   toast("Step deleted", "success");
 }
 
@@ -1048,8 +1048,8 @@ async function toggleStepHidden(stepId) {
   } else {
     step._prev_state = step.state;
     step.state = "hidden";
-    await persistAnnotations(anno, "hide step");
     if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
+    await persistAnnotations(anno, "hide step");
     toast("Step hidden — reveal via the hidden filter chip", "success");
   }
 }
@@ -1105,8 +1105,8 @@ async function mergeStepWithNext(stepId) {
   };
   anno.steps = anno.steps.filter(s => s.step_id !== cur.step_id && s.step_id !== next.step_id);
   anno.steps.push(merged);
-  await persistAnnotations(anno, 'merge steps');
   State.setSelectedStepId(merged.step_id);
+  await persistAnnotations(anno, 'merge steps');
   toast("Steps merged", "success");
 }
 
@@ -1134,8 +1134,8 @@ async function addManualStep() {
     phase_id: null,
   };
   anno.steps.push(step);
-  await persistAnnotations(anno, 'add step');
   State.setSelectedStepId(step.step_id);
+  await persistAnnotations(anno, 'add step');
   toast("Manual step added", "success");
 }
 
@@ -1247,8 +1247,8 @@ async function deletePhase(phaseId) {
   anno.phases = anno.phases.filter(p => p.phase_id !== phaseId);
   // Detach phase_id from contained steps
   for (const s of anno.steps) if (s.phase_id === phaseId) s.phase_id = null;
-  await persistAnnotations(anno, 'delete phase');
   if (State.getSelectedPhaseId() === phaseId) State.setSelectedPhaseId(null);
+  await persistAnnotations(anno, 'delete phase');
   toast("Phase deleted", "success");
 }
 
@@ -1299,8 +1299,8 @@ async function addManualPhase() {
     canonical_phase_id: null,
   };
   anno.phases.push(phase);
-  await persistAnnotations(anno, 'add phase');
   State.setSelectedPhaseId(phase.phase_id);
+  await persistAnnotations(anno, 'add phase');
   toast("Manual phase added", "success");
 }
 
@@ -1326,9 +1326,9 @@ async function groupIntoPhase() {
     const s = anno.steps.find(x => x.step_id === sid);
     if (s) s.phase_id = phase.phase_id;
   }
-  await persistAnnotations(anno, 'group steps into phase');
   State.getMultiSelectedStepIds().clear();
   State.setSelectedPhaseId(phase.phase_id);
+  await persistAnnotations(anno, 'group steps into phase');
   $("#btn-group-into-phase").disabled = true;
   activateAnnoTab("phases");
   toast("Steps grouped into phase", "success");
@@ -1354,9 +1354,9 @@ async function deleteSelectedSteps() {
   const anno = ensureAnnoShape(State.getSession().annotations);
   const idSet = new Set(ids);
   anno.steps = anno.steps.filter(s => !idSet.has(s.step_id));
-  await persistAnnotations(anno, "delete " + ids.length + " steps");
   if (idSet.has(State.getSelectedStepId())) State.setSelectedStepId(null);
   State.getMultiSelectedStepIds().clear();
+  await persistAnnotations(anno, "delete " + ids.length + " steps");
   const grpBtn = $("#btn-group-into-phase");
   if (grpBtn) grpBtn.disabled = true;
   const delBtn = $("#btn-delete-selected-steps");
