@@ -1314,7 +1314,7 @@ function renderTimeline() {
     band.style.width = w + "%";
     band.style.top = activityTop + "px";
     band.style.height = activityH + "px";
-    band.style.background = appColor(ev.data.app) + "AA";
+    band.style.background = appColor(ev.data.app);
     band.dataset.app = ev.data.app || "";
     if (ev.data.app) observedApps.add(ev.data.app);
     band.title = (ev.data.app || "") + " - " + (ev.data.title || "") +
@@ -1403,8 +1403,8 @@ function renderTimeline() {
     const x = ((t - first) / span) * 100;
     const dot = document.createElement("div");
     dot.className = "tl-screenshot";
-    dot.style.left = "calc(" + x + "% - 3px)";
-    dot.style.top = (activityTop + activityH - 4) + "px";
+    dot.style.left = "calc(" + x + "% - 7px)";
+    dot.style.top = (activityTop + activityH - 7) + "px";
     dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
       "\n" + (ev.data.path || "");
     dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });

@@ -1,132 +1,126 @@
 # Design System
 
-> Covers the viewer's styling: design tokens, colour palettes, and the
-> conventions that govern how UI elements are coloured — including an honest
-> account of the **colour-contrast problem** behind the recurring "everything
-> blends together" complaints. Refactor framing is in
-> [ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md).
+> Covers the viewer's styling: design tokens, colour palettes, fonts, and
+> the conventions that govern how UI elements are coloured. The viewer
+> uses the **Warm Editorial** theme — a light, warm, amber-accented
+> design applied from a Claude Design handoff (May 2026), which replaced
+> the earlier "stratified-dark" theme outright.
 
 ## Where styling lives
 
 | Source | Holds |
 |---|---|
-| [`viewer/styles.css`](../../viewer/styles.css) (~1,758 lines) | Every rule — one global stylesheet, no preprocessor, no modules |
+| [`viewer/styles.css`](../../viewer/styles.css) | Every rule — one global stylesheet, no preprocessor, no modules. `:root` holds the tokens; `@font-face` blocks load the self-hosted fonts |
+| [`viewer/fonts/`](../../viewer/fonts/) | Self-hosted woff2 — `plus-jakarta-sans.woff2`, `jetbrains-mono.woff2` (variable fonts) |
+| [`viewer/views/flow-view.js`](../../viewer/views/flow-view.js) `APP_PALETTE` / `appColor()` | Per-app activity-band colours |
 | [`viewer/step-editor.js`](../../viewer/step-editor.js) `STEP_PALETTE` | Per-step block colours |
 | [`viewer/phase-editor.js`](../../viewer/phase-editor.js) `PHASE_PALETTE` | Per-phase band colours |
-| [`viewer/renderer.js`](../../viewer/renderer.js) `APP_PALETTE` / `appColor()` | Per-app activity-band colours |
 
-Colour is therefore split: a CSS token layer for chrome, plus three hard-coded JS
-arrays for data marks. There is no single colour source of truth.
+Colour is split: a CSS token layer for chrome, plus three hard-coded JS
+arrays for data marks.
+
+## The theme
+
+**Warm Editorial** is a light theme: warm off-white surfaces, a single
+amber accent, slate-blue as the cool secondary, sharp corners, soft warm
+shadows, and geometric-sans typography.
+
+Fonts are **self-hosted** (woff2 under `viewer/fonts/`, loaded via
+`@font-face`) — the capture and analyst machines run offline and the
+renderer's Content-Security-Policy forbids a web-font CDN, so a
+`fonts.googleapis.com` link is not an option. `font-src 'self'` already
+covers the local files; no CSP change was needed.
 
 ## Design tokens
 
 All tokens are CSS custom properties in the `:root` block at the top of
-`styles.css`. The "stratified-dark" palette: each surface layer sits ~6 lightness
-points above the one below.
+`styles.css`.
 
-**Backgrounds** — the surface stairway (stage → elevated):
+**Backgrounds** — warm surface stairway (stage → white cards → elevated):
 
 | Token | Hex | Typical use |
 |---|---|---|
-| `--bg` | `#08080A` | app stage / base |
-| `--bg-1` | `#16161C` | low panels |
-| `--bg-2` | `#22222A` | cards, mini-timeline pane |
-| `--bg-3` | `#2E2E37` | timeline track, inputs |
-| `--bg-4` | `#3A3A44` | raised elements |
-| `--bg-5` | `#484854` | top elevation |
+| `--bg` | `#faf8f4` | app stage / base |
+| `--bg-1` | `#f4f1eb` | low panels |
+| `--bg-2` | `#ffffff` | cards, panels, the topbar |
+| `--bg-3` | `#f0ebe2` | timeline track, inputs, tab strip |
+| `--bg-4` | `#e6e0d5` | raised fills, scrollbar thumb |
+| `--bg-5` | `#dbd4c8` | top elevation |
 
-**Foreground** — warm neutral grey scale:
+**Foreground** — warm neutral scale, near-black down to muted taupe:
 
 | Token | Hex | Use |
 |---|---|---|
-| `--fg` | `#D8D6CE` | primary text |
-| `--fg-2` | `#A8A69E` | secondary text |
-| `--fg-3` | `#807E78` | tertiary / muted labels |
-| `--fg-4` | `#5A5854` | faintest text, disabled |
+| `--fg` | `#2c2418` | primary text |
+| `--fg-2` | `#635848` | secondary text |
+| `--fg-3` | `#9a8e7e` | tertiary / muted labels |
+| `--fg-4` | `#c0b5a5` | faintest text, disabled |
 
 **Accents & functional:**
 
 | Token | Hex | Meaning |
 |---|---|---|
-| `--accent` | `#6E8A66` | sage green — primary accent |
-| `--accent-2` | `#5A7488` | slate blue — secondary accent |
-| `--accent-3` | `#A08050` | amber — tertiary accent |
-| `--warn` | `#A08050` | amber — markers / warnings |
-| `--bad` | `#885A42` | rust — errors / destructive |
-| `--rec` | `#903838` | red — recording / danger buttons |
+| `--accent` | `#c07830` | amber — primary accent |
+| `--accent-hover` | `#a86828` | amber, darker — hover on accent fills |
+| `--accent-muted` | `rgba(192,120,48,.10)` | faint amber wash — selection / range overlays |
+| `--accent-text` | `#fff8f0` | text/icons on an accent fill |
+| `--accent-2` | `#5a7a8a` | slate blue — secondary accent |
+| `--accent-3` | `#b08040` | amber-gold — tertiary |
+| `--warn` | `#b08040` | amber-gold — markers / warnings |
+| `--bad` | `#a05a3a` | rust — errors / destructive |
+| `--rec` | `#c04040` | red — recording / danger buttons |
 
-**Rules & geometry:** `--rule` `#424250` (panel borders, sits *above* panel bg so
-it registers), `--rule-soft` `#2E2E37`; `--shadow` `0 2px 12px rgba(0,0,0,.35)`;
-`--radius` `8px`, `--radius-sm` `5px`. **Fonts:** `--font-ui` IBM Plex Sans,
-`--font-mono` IBM Plex Mono.
+**Rules, shadow, geometry:** `--rule` `#e5ddd0` and `--rule-soft`
+`#ede7dc` are warm hairlines; `--shadow` `0 1px 3px rgba(40,30,10,.05),
+0 0 0 1px rgba(40,30,10,.03)` and `--shadow-lg` `0 4px 16px
+rgba(40,30,10,.08)`. Corners are **sharp**: `--radius` `4px`,
+`--radius-sm` `3px`, `--radius-x` `2px`. `--transition` is `0.15s ease`.
 
-> The `:root` comment records a prior fix: the six `--bg-*` tokens were once
-> squashed within ~12 hex points and "blurred into the same near-black smear".
-> That pass widened the *background* stairway — but, by its own admission, left
-> the **accents unchanged**. That is the unfinished half of the contrast problem.
+**Fonts:** `--font-ui` Plus Jakarta Sans, `--font-mono` JetBrains Mono —
+both self-hosted variable woff2, declared via `@font-face` at the top of
+`styles.css`.
+
+## Component conventions
+
+- **Cards / panels** — `--bg-2` (white) fill, `var(--shadow)`, sharp
+  `var(--radius)` corners. The timeline pane, annotations pane, aggregate
+  panels, and the editor panes all follow this.
+- **Buttons** — default: white `--bg-2` fill, `--rule` border, `--fg`
+  label. Primary: `--accent` fill, `--accent-text` label,
+  `--accent-hover` on hover. Danger: `--rec` fill.
+- **Topbar / tab strip** — the topbar is white with a soft shadow; the
+  tab strip is a `--bg-3` trough with the active tab lifted to white +
+  shadow.
+- **Bottom playback bar** — a global video transport pinned below the
+  Session view as a flex sibling of `<main>` (`--bg-2`, top hairline);
+  the `.hidden` class collapses it off the Session tab / when no
+  recording is loaded.
+- **Video pane** — stays dark (`#0a0908`) regardless of theme; video is
+  dark by nature, and its overlay controls use light-on-dark colours.
 
 ## JS colour palettes (data marks)
 
-| Constant | File:line | Values |
+| Constant | File | Values |
 |---|---|---|
-| `STEP_PALETTE` | `step-editor.js:167` | `#5A7488 #6E6A88 #886A78 #887A5A #5A8870 #787058 #5E6878` |
-| `PHASE_PALETTE` | `phase-editor.js:149` | `#5A7488 #6E6A88 #886A78 #887A5A #5A8870 #787058` |
-| `APP_PALETTE` / `appColor()` | `renderer.js:2455` / `:2464` | per-app cycling palette |
+| `APP_PALETTE` / `appColor()` | `flow-view.js` | per-app cycling palette plus fixed assignments for known executables |
+| `STEP_PALETTE` | `step-editor.js` | per-step block colours |
+| `PHASE_PALETTE` | `phase-editor.js` | per-phase band colours |
 
-Two things to note: `STEP_PALETTE` and `PHASE_PALETTE` are **the same six colours**
-(steps add one more) — so a step and a phase can be coloured identically. And every
-colour is low-saturation by design ("already sit well on dark"); they cluster in a
-narrow muted-mid band.
+Flow-timeline **activity bands** are painted with the solid per-app
+colour and carry white labels — the app palette is dark enough that
+white text clears a comfortable contrast margin. **Step / phase**
+mini-timeline blocks are painted with a translucent tint of the palette
+colour (`timeline/timeline-core.js` `tintAlpha` / `borderAlpha`) plus a
+stronger border and full-strength text, so the mark reads against the
+light `--bg-3` track.
 
-## The translucent-tint convention
+## Notes
 
-Data marks are not painted with their palette colour directly — they are painted
-with a **hex-alpha suffix** appended to the colour string, producing a faint tint:
-
-| Mark | Background | Border | Text |
-|---|---|---|---|
-| Step block (`step-editor.js`) | `color + "1F"` (~12%) | `color + "55"` (~33%) | `color` (100%) |
-| Phase band (`phase-editor.js`) | `color + "14"` (~8%) | `color + "44"` (~27%) | `color` (100%) |
-| Activity band (`renderer.js`) | `appColor + "AA"` (~67%), inline | — | — |
-
-On top of the alpha-tinted *background*, several marks also carry a CSS
-**`opacity`** — a second, compounding transparency:
-
-| Selector | `styles.css` | `opacity` |
-|---|---|---|
-| `.tl-band.tl-activity` | ~1331 | `0.65` (even rows `0.55`) |
-| `.tl-band.tl-idle` | ~1339 | `0.8` |
-| `.tl-screenshot` | ~1350 | `0.55` |
-| `.tl-marker` | ~1366 | `0.85` |
-
-So an activity band is its per-app colour at **67% background alpha**, then the
-whole element at **~60% opacity** — an effective ~0.4. A step block is its palette
-colour at **12%** on a `--bg-3` (`#2E2E37`) track.
-
-## The contrast problem
-
-The user-reported symptom is "all the colours blend into each other". The cause is
-a *stack* of independently reasonable choices that compound badly:
-
-1. **The palette is low-saturation.** `STEP_PALETTE` / `PHASE_PALETTE` / accents are
-   all muted, mid-lightness, and close together in hue. They have little room to
-   differ once any transparency is applied.
-2. **Marks are tinted to 8–12%.** `color + "1F"` / `+ "14"` composites a step/phase
-   colour almost entirely toward the `#2E2E37` track behind it — the result is
-   near-grey and barely distinct from the `--fg-3`/`--fg-4` text greys.
-3. **Opacity stacks on top of alpha.** Activity bands and screenshot dots apply a
-   CSS `opacity` *in addition to* an alpha-suffixed background, so the effective
-   visibility is the product of two transparencies.
-4. **Steps and phases share a palette**, so the two entity types cannot be told
-   apart by colour at all.
-5. The earlier palette pass widened the **background** stairway but left **accents
-   and the tint convention untouched** — so the fix addressed chrome, not data marks.
-
-Net effect: borders (`+ "55"`) and text (`color` at 100%) are the only parts of a
-step/phase block carrying real colour; the fill is nearly inert. Adjacent marks,
-and marks-vs-background, separate weakly.
-
-This is documented here as current-state fact. It is logged as a refactor target —
-with candidate directions (raise tint alpha, raise palette saturation, drop the
-double-opacity, give steps and phases distinct palettes, or lean on solid borders)
-— in [ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md).
+- The DFG (Flow diagram) graph in `dfg-viewer.js` keeps a **token
+  snapshot** in JS — cytoscape and the SVG export cannot read CSS
+  variables. Those hex values are commented with the token they mirror;
+  keep them aligned with `:root` if the palette ever changes.
+- The earlier dark "stratified-dark" theme — and the low-contrast
+  translucent-tint problem it carried (issues D1–D3 in the
+  ARCHITECTURE-ISSUES register) — are obsolete: the theme was replaced
+  rather than patched.

@@ -214,9 +214,16 @@ Each phase is independently shippable; the app keeps working throughout.
 10. [x] Extract `session.js` and `ipc.js`; reduce `renderer.js` to a thin wiring entry.
 11. [x] Convert the `window.Pdt*` files to `require`/`module.exports`; delete the globals.
 
-**Phase 4 — Design-system pass (parallel; fixes R2, R3, R4 / D1–D3)**
-12. [ ] Decide and apply one colour fix across all timelines (tint alpha vs. saturation vs. borders).
-13. [ ] Give phases a distinct palette; raise video-control and screenshot-dot contrast; relabel the `⇥ playhead` control.
+**Phase 4 — Design-system pass — closed; superseded by the Warm Editorial redesign**
+
+The viewer's dark "stratified-dark" theme was replaced wholesale by a
+light-theme redesign (Warm Editorial, applied from a Claude Design
+handoff, May 2026 — see [DESIGN-SYSTEM.md](../architecture/DESIGN-SYSTEM.md)).
+Tuning the dark palette's tint alpha and contrast is moot once the theme
+itself is gone, so items 12-13 are closed as superseded.
+
+12. [x] Decide and apply one colour fix across all timelines — *superseded: the dark palette and its translucent-tint convention were replaced outright.*
+13. [x] Give phases a distinct palette; raise video-control and screenshot-dot contrast; relabel the `⇥ playhead` control — *video-control and screenshot-dot contrast were rebuilt in the redesign; the `⇥ playhead` control was relabelled to `Scope to playhead`; the distinct-phase-palette item is superseded by the new theme.*
 
 **Recommended order:** 0 → 1 → 2 → 3, with 4 runnable in parallel at any point.
 Phase 1 delivers the biggest win first — it ends the recurring timeline regressions.

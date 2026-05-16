@@ -83,6 +83,8 @@ function activateTab(name) {
   }
   // P2.4: shortcuts overlay only shows on Session view.
   if (typeof renderShortcutsOverlay === "function") renderShortcutsOverlay();
+  // Let the bottom playback bar re-evaluate its visibility for this tab.
+  document.dispatchEvent(new Event("pdt:tabchange"));
 }
 
 /* ============ Session view-mode switcher (Flow / Steps / Phases) ===
@@ -696,6 +698,80 @@ $$(".help-nav-item").forEach((b) =>
 $("#help-modal").addEventListener("click", (e) => {
   if (e.target.id === "help-modal") closeHelp();
 });
+
+/* ============ Bottom playback bar ================================= */
+/* A global transport mirroring the #video element. Visible only on the
+   Session tab with a recording loaded; the .hidden class collapses it
+   otherwise. Space / arrow shortcuts are handled in the keydown block
+   above and reflect here through the video's own play/pause/timeupdate
+   events, so the bar stays in sync regardless of how playback changes. */
+(function wirePlaybackBar() {
+  const bar = $("#playback-bar");
+  const video = $("#video");
+  if (!bar || !video) return;
+  const iconPlay = bar.querySelector(".pb-icon-play");
+  const iconPause = bar.querySelector(".pb-icon-pause");
+  const scrub = $("#pb-scrub"), fill = $("#pb-fill"), knob = $("#pb-knob");
+  const curEl = $("#pb-current"), totEl = $("#pb-total");
+
+  function fmtTime(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+  }
+  function hasVideo() {
+    return !!(video.src && isFinite(video.duration) && video.duration > 0);
+  }
+  function onSessionTab() {
+    const t = document.querySelector(".tab.active");
+    return !!t && t.dataset.view === "session";
+  }
+  function refresh() {
+    bar.classList.toggle("hidden", !onSessionTab() || !hasVideo());
+    const dur = video.duration || 0, cur = video.currentTime || 0;
+    const pct = dur > 0 ? (cur / dur) * 100 : 0;
+    fill.style.width = pct + "%";
+    knob.style.left = pct + "%";
+    curEl.textContent = fmtTime(cur);
+    totEl.textContent = fmtTime(dur);
+    const playing = !video.paused && !video.ended;
+    iconPlay.style.display = playing ? "none" : "";
+    iconPause.style.display = playing ? "" : "none";
+  }
+  function seekFromEvent(e) {
+    if (!hasVideo()) return;
+    const r = scrub.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    video.currentTime = frac * video.duration;
+  }
+
+  $("#pb-play").addEventListener("click", () => {
+    if (!hasVideo()) return;
+    if (video.paused) video.play(); else video.pause();
+  });
+  $("#pb-skip-back").addEventListener("click", () => {
+    if (hasVideo()) video.currentTime = Math.max(0, video.currentTime - 5);
+  });
+  $("#pb-skip-fwd").addEventListener("click", () => {
+    if (hasVideo()) video.currentTime = Math.min(video.duration, video.currentTime + 5);
+  });
+  scrub.addEventListener("mousedown", (e) => {
+    if (!hasVideo()) return;
+    seekFromEvent(e);
+    const onMove = (ev) => seekFromEvent(ev);
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+
+  for (const evt of ["timeupdate", "loadedmetadata", "play", "pause", "emptied", "durationchange"]) {
+    video.addEventListener(evt, refresh);
+  }
+  document.addEventListener("pdt:tabchange", refresh);
+  refresh();
+})();
 
 /* ============ Boot ================================================ */
 

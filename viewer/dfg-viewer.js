@@ -61,18 +61,18 @@
           selector: "node",
           style: {
             label: "data(label)",
-            "font-family": '"IBM Plex Sans", -apple-system, "Segoe UI", system-ui, sans-serif',
+            "font-family": '"Plus Jakarta Sans", -apple-system, "Segoe UI", system-ui, sans-serif',
             "font-size": 11,
             // Token snapshot at write time (cytoscape doesn't read CSS vars).
             // Keep these aligned with viewer/styles.css :root tokens.
-            color: "#D8D6CE",          // --fg
+            color: "#2c2418",          // --fg
             "text-valign": "center",
             "text-halign": "center",
             "text-wrap": "wrap",
             "text-max-width": 130,
             shape: "round-rectangle",
-            "background-color": "#2E2E37", // --bg-3
-            "border-color": "#424250",     // --rule
+            "background-color": "#ffffff", // --bg-2
+            "border-color": "#e5ddd0",     // --rule
             "border-width": 1,
             padding: "10px",
             width: "label",
@@ -82,16 +82,16 @@
         {
           selector: 'node[role = "start"]',
           style: {
-            "background-color": "#2E2E37", // --bg-3
-            "border-color": "#6E8A66",     // --accent
+            "background-color": "#ffffff", // --bg-2
+            "border-color": "#c07830",     // --accent
             "border-width": 1.5,
           },
         },
         {
           selector: 'node[role = "end"]',
           style: {
-            "background-color": "#2E2E37", // --bg-3
-            "border-color": "#885A42",     // --bad
+            "background-color": "#ffffff", // --bg-2
+            "border-color": "#a05a3a",     // --bad
             "border-width": 1.5,
           },
         },
@@ -99,22 +99,22 @@
           selector: "edge",
           style: {
             width: "data(width)",
-            "line-color": "#5A5854",       // --fg-4
-            "target-arrow-color": "#807E78", // --fg-3
+            "line-color": "#9a8e7e",       // --fg-3
+            "target-arrow-color": "#9a8e7e", // --fg-3
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
             label: "data(freq)",
-            "font-family": '"IBM Plex Mono", Consolas, monospace',
+            "font-family": '"JetBrains Mono", Consolas, monospace',
             "font-size": 9,
-            color: "#807E78",              // --fg-3
-            "text-background-color": "#22222A", // --bg-2
+            color: "#635848",              // --fg-2
+            "text-background-color": "#faf8f4", // --bg
             "text-background-opacity": 0.85,
             "text-background-padding": 2,
           },
         },
         {
           selector: "edge:selected, node:selected",
-          style: { "line-color": "#6E8A66", "border-color": "#6E8A66" },
+          style: { "line-color": "#c07830", "border-color": "#c07830" },
         },
         // Variant overlay (Phase E): hovering a node highlights the
         // session paths through it and dims everything else.
@@ -124,11 +124,11 @@
         },
         {
           selector: "node.vh-on",
-          style: { "border-color": "#A08050", "border-width": 2.5 },
+          style: { "border-color": "#b08040", "border-width": 2.5 },
         },
         {
           selector: "edge.vh-on",
-          style: { "line-color": "#A08050", "target-arrow-color": "#A08050" },
+          style: { "line-color": "#b08040", "target-arrow-color": "#b08040" },
         },
       ],
       layout: {
@@ -234,9 +234,9 @@
     parts.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + W +
       '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">');
     parts.push('<desc>Process Discovery Tracker - Flow diagram (DFG)</desc>');
-    parts.push('<rect width="' + W + '" height="' + H + '" fill="#08080A"/>');
+    parts.push('<rect width="' + W + '" height="' + H + '" fill="#faf8f4"/>');
     parts.push('<defs><marker id="arr" markerWidth="8" markerHeight="8" ' +
-      'refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#807E78"/></marker></defs>');
+      'refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9a8e7e"/></marker></defs>');
     // Edges first so nodes sit on top.
     cy.edges().forEach((ed) => {
       const s = ed.source().position(), t = ed.target().position();
@@ -244,7 +244,7 @@
       const w = ed.data("width") || 1.5;
       parts.push('<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) +
         '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) +
-        '" stroke="#5A5854" stroke-width="' + w.toFixed(1) +
+        '" stroke="#9a8e7e" stroke-width="' + w.toFixed(1) +
         '" marker-end="url(#arr)"/>');
     });
     // Nodes.
@@ -253,12 +253,12 @@
       const w = n.width(), h = n.height();
       const x = p.x + ox - w / 2, y = p.y + oy - h / 2;
       const role = n.data("role");
-      const border = role === "start" ? "#6E8A66" : role === "end" ? "#885A42" : "#424250";
+      const border = role === "start" ? "#c07830" : role === "end" ? "#a05a3a" : "#e5ddd0";
       parts.push('<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
         '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) +
-        '" rx="6" fill="#2E2E37" stroke="' + border + '" stroke-width="1.5"/>');
+        '" rx="6" fill="#ffffff" stroke="' + border + '" stroke-width="1.5"/>');
       parts.push('<text x="' + (p.x + ox).toFixed(1) + '" y="' + (p.y + oy + 4).toFixed(1) +
-        '" font-family="sans-serif" font-size="11" fill="#D8D6CE" ' +
+        '" font-family="sans-serif" font-size="11" fill="#2c2418" ' +
         'text-anchor="middle">' + esc(n.data("label") || "") + '</text>');
     });
     parts.push('</svg>');

@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file:; font-src 'self' file: data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Process Discovery Viewer</title>
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/diagram-js.css" />
@@ -159,7 +159,7 @@
           <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, Phases mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
             <span class="case-scope-label">Case:</span>
             <select id="case-scope-select"><option value="">All cases</option></select>
-            <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">⇥ playhead</button>
+            <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">Scope to playhead</button>
           </label>
           <span class="view-mode-help" id="view-mode-help"></span>
         </div>
@@ -576,6 +576,26 @@
       </div>
     </section>
   </main>
+
+  <!-- Bottom playback bar: a global transport for the session video.
+       Shown on the Session tab when a recording is loaded; mirrors and
+       drives the #video element. Hidden otherwise. -->
+  <div class="playback-bar hidden" id="playback-bar">
+    <button class="pb-btn" id="pb-skip-back" title="Back 5s (Left arrow)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+    </button>
+    <button class="pb-play" id="pb-play" title="Play / pause (Space)">
+      <svg class="pb-icon-play" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"/></svg>
+      <svg class="pb-icon-pause" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+    </button>
+    <button class="pb-btn" id="pb-skip-fwd" title="Forward 5s (Right arrow)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l8.5-6L13 6zm-.5 6L4 6v12l8.5-6z"/></svg>
+    </button>
+    <span class="pb-time" id="pb-current">0:00</span>
+    <div class="pb-scrub" id="pb-scrub"><div class="pb-fill" id="pb-fill"></div><div class="pb-knob" id="pb-knob"></div></div>
+    <span class="pb-time pb-total" id="pb-total">0:00</span>
+    <span class="pb-hint">Space &middot; &larr;&rarr; &middot; Shift+&larr;&rarr;</span>
+  </div>
 
   <div class="toast" id="toast"></div>
 
