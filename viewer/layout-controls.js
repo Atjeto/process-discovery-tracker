@@ -15,8 +15,8 @@
   const TIMELINE_HEIGHT_MAX = 360;
   const TIMELINE_HEIGHT_DEFAULT = 160;
   const VIDEO_WIDTH_MIN = 240;
-  const VIDEO_WIDTH_MAX = 900;
-  const VIDEO_WIDTH_DEFAULT = 420;
+  const VIDEO_WIDTH_MAX = 1200;
+  const VIDEO_WIDTH_DEFAULT = 600;
   // Steps + Phases share one resizable mini-timeline strip height.
   const MINI_TIMELINE_HEIGHT_MIN = 56;
   const MINI_TIMELINE_HEIGHT_MAX = 260;

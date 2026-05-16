@@ -154,9 +154,15 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .help-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
 .help-cta { color: var(--fg-3); font-size: 11px; margin-top: 16px; }
 
-main { flex: 1; overflow: auto; }
+/* The app shell fills the window: <main> is a flex column and the
+   active view flex-fills it, scrolling internally only when its own
+   content genuinely exceeds the viewport. This is what lets each
+   screen's working panels size to the real screen instead of a stack
+   of minimums -- spare space goes to the content, not to dead scroll. */
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .view { display: none; padding: 18px 20px 28px; }
-.view.active { display: block; }
+.view.active { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+.view.active > .loaded { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 /* ===== Empty states ===== */
 .empty-state { text-align: center; padding: 80px 20px 40px; max-width: 480px; margin: 0 auto; }
@@ -217,15 +223,17 @@ main { flex: 1; overflow: auto; }
 .pill .lbl { color: var(--fg-3); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
 
 /* ===== Session view -- full-width timeline + lower video|annotations row ===== */
-.session-layout { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.session-layout { display: flex; flex-direction: column; gap: 10px; margin-top: 12px;
+  flex: 1; min-height: 0; }
 
 .timeline-pane { background: var(--bg-2); border-radius: var(--radius);
   padding: 10px 14px; display: flex; flex-direction: column;
-  box-shadow: var(--shadow); }
+  box-shadow: var(--shadow); flex: 0 0 auto; }
 
 /* Lower workspace: video + annotations side-by-side */
-.lower-workspace { display: flex; gap: 0; min-height: 260px; align-items: stretch; }
-.lower-workspace .video-pane { flex: 0 0 var(--video-width, 420px); min-width: 200px; }
+.lower-workspace { display: flex; gap: 0; align-items: stretch;
+  flex: 1; min-height: 200px; }
+.lower-workspace .video-pane { flex: 0 0 var(--video-width, 600px); min-width: 200px; }
 .lower-workspace .annotations-pane { flex: 1 1 auto; min-width: 280px; }
 
 /* Video expanded: takes 70% of workspace */
@@ -396,14 +404,15 @@ main { flex: 1; overflow: auto; }
 .anno-tab.active { color: var(--fg); border-bottom-color: var(--accent); }
 .anno-tab:hover { color: var(--fg); background: transparent; }
 .anno-panel { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
-#annotations-list { flex: 1; overflow: auto; max-height: 200px; }
+#annotations-list { flex: 1; overflow: auto; min-height: 0; }
 .anno-row { padding: 6px 10px; border-bottom: 1px solid var(--rule); font-size: 12px;
   cursor: pointer; display: flex; gap: 8px; transition: background 0.12s; }
 .anno-row:hover { background: var(--bg-3); }
 .anno-row .ts { color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; flex: 0 0 auto; }
 .anno-row .text { color: var(--fg); flex: 1; }
 
-.screens-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px 0; }
+.screens-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px; padding: 4px 0; align-content: start; }
 .screens-grid .thumb { background: var(--bg-3); border-radius: 4px; overflow: hidden;
   cursor: pointer; aspect-ratio: 4 / 3; border: 1px solid var(--rule);
   transition: border-color 0.12s; position: relative; }
@@ -438,7 +447,7 @@ main { flex: 1; overflow: auto; }
 
 .actions-bar input[type=date] { background: var(--bg-3); color: var(--fg);
   border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: 5px 8px;
-  font-family: inherit; font-size: 11px; color-scheme: dark; }
+  font-family: inherit; font-size: 11px; color-scheme: light; }
 .actions-bar .cb input[type=date] { margin-left: 6px; }
 
 /* ===== Event table ===== */
@@ -478,6 +487,9 @@ main { flex: 1; overflow: auto; }
 
 /* ===== Aggregate view ===== */
 .aggregate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+/* Ultrawide: a third column so the stat panels read at a sensible width
+   instead of being stretched across half a 2K display. */
+@media (min-width: 1800px) { .aggregate-grid { grid-template-columns: 1fr 1fr 1fr; } }
 .panel { background: var(--bg-2); border-radius: var(--radius); padding: 14px 18px;
   min-height: 220px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .panel-wide { grid-column: 1 / -1; }
@@ -501,7 +513,7 @@ main { flex: 1; overflow: auto; }
   margin-left: 8px; }
 
 .map-host { flex: 1; position: relative; background: var(--bg-3); border-radius: var(--radius-sm);
-  border: 1px solid var(--rule); min-height: 380px; overflow: hidden; }
+  border: 1px solid var(--rule); min-height: clamp(360px, 50vh, 720px); overflow: hidden; }
 .map-pane { position: absolute; inset: 0; overflow: auto; }
 .map-pane.active { display: block; }
 .bpmn-warning { position: absolute; bottom: 8px; right: 8px; padding: 4px 10px;
@@ -660,6 +672,7 @@ main { flex: 1; overflow: auto; }
 /* ===== Full-width Steps / Phases layouts (tight, no waste) ===== */
 .session-layout-stepsphases {
   display: flex; flex-direction: column; gap: 8px;
+  flex: 1; min-height: 0;
 }
 
 /* Mini-timeline wrapper used by Steps + Phases views. Mirrors the
@@ -670,7 +683,7 @@ main { flex: 1; overflow: auto; }
 .mini-timeline-pane {
   background: var(--bg-2); border-radius: var(--radius);
   padding: 8px 12px; display: flex; flex-direction: column;
-  gap: 6px; box-shadow: var(--shadow);
+  gap: 6px; box-shadow: var(--shadow); flex: 0 0 auto;
 }
 .mini-timeline-header {
   display: flex; align-items: center; gap: 10px;
@@ -851,12 +864,11 @@ main { flex: 1; overflow: auto; }
   background: var(--bg-1); border: 1px solid var(--rule);
   border-radius: var(--radius-sm); padding: 8px 10px; overflow: auto;
 }
-/* The selected-step editor stays pinned to the top of the viewport as
-   the (long) step list scrolls -- otherwise the analyst scrolls down to
-   find a step, clicks it, and has to scroll back up to edit it. */
+/* The selected-step editor fills its column and scrolls internally;
+   the step list scrolls inside its own pane, so the editor stays in
+   view without needing sticky positioning. */
 .editor-detail-pane {
-  position: sticky; top: 8px; align-self: start;
-  max-height: calc(100vh - 130px);
+  min-height: 0;
 }
 .editor-pane-title {
   font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
@@ -1021,9 +1033,11 @@ main { flex: 1; overflow: auto; }
 
 /* ===== Canonical view ===== */
 .canonical-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
-  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(300px, 1.3fr) minmax(260px, 1fr) minmax(260px, 1fr);
+  gap: 10px; padding: 10px;
 }
+@media (max-width: 1100px) { .canonical-grid { grid-template-columns: 1fr; } }
 #canonical-yaml {
   width: 100%; min-height: 320px;
   background: var(--bg-2); color: var(--fg); border: 1px solid var(--rule);
@@ -1098,8 +1112,8 @@ main { flex: 1; overflow: auto; }
 
 /* ===== Vocabularies tab ===== */
 .vocab-grid {
-  display: grid; grid-template-columns: 320px 1fr; gap: 12px;
-  min-height: 480px;
+  display: grid; grid-template-columns: 300px 1fr; gap: 12px;
+  flex: 1; min-height: 360px;
 }
 @media (max-width: 1100px) { .vocab-grid { grid-template-columns: 1fr; } }
 .vocab-list-panel, .vocab-editor-panel {
