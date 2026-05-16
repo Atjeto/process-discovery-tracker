@@ -6,6 +6,28 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-16
+
+### Changed (Warm Editorial redesign)
+
+- **Light-theme visual redesign.** The dark "stratified-dark" viewer
+  theme is replaced by "Warm Editorial" — a warm off-white palette, an
+  amber accent, sharp corners, soft shadows, and self-hosted Plus
+  Jakarta Sans + JetBrains Mono typography, applied from a Claude Design
+  handoff.
+- **Fill-the-window layout.** Every screen fills the viewport and flexes
+  its panels by ratio rather than stacking each at a fixed minimum, so
+  the video, the screenshot gallery, the process map, and the editors
+  grow with the display. The drag-resize handles remain.
+- **Flow timeline rebuilt.** Vivid, distinct per-app band colours; case
+  bands moved to a labelled header lane above the activity bands; a
+  dedicated screenshot rail with clear camera markers; the Flow-diagram
+  graph re-themed to the light palette.
+- **Bottom playback bar.** A global video transport — skip, play/pause,
+  scrub — pinned below the Session view.
+- **Steps view polish.** Compact step durations in the list, Duration /
+  Start / End stat tiles in the detail pane, and proper card styling.
+
 ### Added (round-2 UX feedback — features)
 
 - **Recent dropdown in the top-bar.** Recent sessions + projects were
