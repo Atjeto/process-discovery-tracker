@@ -30,111 +30,14 @@ const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
 const { refreshTemplateVersions, renderCanonicalStepList } = require("./views/template-view.js");
 const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
+const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 
-/* ============ Annotations undo stack
-   ================================================================
-   Step / phase / marker edits all flow through saveAnnotations(). We
-   snapshot the previous annotations.json blob BEFORE each save, so
-   Ctrl+Z can revert one operation at a time. The stack is in-memory
-   (not persisted across viewer restart), capped at 50 entries, and
-   reset when a different session is opened. Redo (Ctrl+Shift+Z)
-   walks back forward through entries the user just undid.
+/* ============ Session / undo layer -- see session.js ============== */
 
-   Operations that route through here: rename step/phase/marker,
-   add/delete step or phase, split/merge, group-into-phase, drag-
-   reorder steps in a phase, insert synthetic marker, adjust marker
-   timestamp, attach external video. */
-/* The undo/redo stacks live in the state module; the orchestration
-   (IPC save + re-render) stays here. */
-function resetUndoStack() { State.resetUndo(); }
-function canUndo() {
-  const s = State.getSession();
-  return !!s && State.canUndo(s.sessionFolder);
-}
-function canRedo() {
-  const s = State.getSession();
-  return !!s && State.canRedo(s.sessionFolder);
-}
-function emptyAnnotationsShape() {
-  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [] };
-}
-function snapshotAnnotations(a) {
-  // Never push null/undefined onto the stack -- a later undo/redo
-  // would write null into annotations.json. Clone defensively.
-  if (!a) return emptyAnnotationsShape();
-  try { return JSON.parse(JSON.stringify(a)); }
-  catch (_) { return emptyAnnotationsShape(); }
-}
-async function saveAnnotationsWithUndo(annotations, label) {
-  const session = State.getSession();
-  if (!session || !session.sessionFolder) return null;
-  const sf = session.sessionFolder;
-  // Snapshot the PREVIOUS state before we replace it.
-  State.recordEdit({
-    label: label || "edit",
-    annotations: snapshotAnnotations(session.annotations),
-    sessionFolder: sf,
-  });
-  return await Ipc.saveAnnotations({
-    sessionFolder: sf,
-    annotations,
-  });
-}
-/* Undo / redo revert one edit by writing the saved annotations blob
-   back to disk and refreshing the affected views IN PLACE. The old
-   implementation reloaded the whole session -- a viewer:loadSession
-   round-trip plus a repaint of every surface -- just to revert one
-   edit (issue S6). */
-async function performUndo() {
-  const session = State.getSession();
-  if (!session) return;
-  const popped = State.popUndo(session.sessionFolder);
-  if (!popped) { toast("Nothing to undo"); return; }
-  // Push the CURRENT state onto the redo stack before reverting.
-  State.pushRedo({
-    label: popped.label,
-    annotations: snapshotAnnotations(session.annotations),
-    sessionFolder: popped.sessionFolder,
-  });
-  await Ipc.saveAnnotations({
-    sessionFolder: popped.sessionFolder,
-    annotations: popped.annotations,
-  });
-  applyRevertedAnnotations(popped.annotations);
-  toast("Undone: " + popped.label);
-}
-async function performRedo() {
-  const session = State.getSession();
-  if (!session) return;
-  const popped = State.popRedo(session.sessionFolder);
-  if (!popped) { toast("Nothing to redo"); return; }
-  // Push current state to undo so the user can flip back.
-  State.pushUndo({
-    label: popped.label,
-    annotations: snapshotAnnotations(session.annotations),
-    sessionFolder: popped.sessionFolder,
-  });
-  await Ipc.saveAnnotations({
-    sessionFolder: popped.sessionFolder,
-    annotations: popped.annotations,
-  });
-  applyRevertedAnnotations(popped.annotations);
-  toast("Redone: " + popped.label);
-}
-/* Swap a reverted annotations blob into the loaded session and refresh
-   every annotation-derived surface -- the in-place alternative to a
-   full session reload. */
-function applyRevertedAnnotations(annotations) {
-  State.getSession().annotations = ensureAnnoShape(annotations);
-  State.batch(() => {
-    State.emit("steps");
-    State.emit("phases");
-    State.emit("timeline");
-    State.emit("markers");
-  });
-  renderAnnotations();
-  renderSessionPills();
-}
+initSession({
+  renderAnnotations: () => renderAnnotations(),
+  renderSessionPills: () => renderSessionPills(),
+});
 
 /* ============ Recent sessions ===================================== */
 
@@ -669,23 +572,6 @@ bindMiniTimelineZoom("phases",
 
 /* ============ Process Template tab -- see views/template-view.js == */
 
-/* ============ Annotation shape helper ============================ */
-
-function ensureAnnoShape(anno) {
-  const a = anno || {};
-  a.version = 1;
-  a.steps = a.steps || [];
-  a.phases = a.phases || [];
-  a.annotations = a.annotations || [];
-  a.notes = a.notes || [];
-  a.marker_edits = a.marker_edits || [];
-  a.drift_markers = a.drift_markers || [];
-  a.step_filters = a.step_filters || { ignored_processes: [], ignored_window_titles: [] };
-  if (!Array.isArray(a.step_filters.ignored_processes)) a.step_filters.ignored_processes = [];
-  if (State.getSession()) a.session_id = (State.getSession().manifest && State.getSession().manifest.session_id) || a.session_id || "";
-  State.getSession().annotations = a;
-  return a;
-}
 
 /* ============ Save App Vocabulary from this session ================ */
 
@@ -2664,20 +2550,6 @@ function renderMarkersList() {
   }
 }
 
-const DEFAULT_EDIT_TOPICS = ["steps", "phases", "timeline"];
-
-async function persistAnnotations(anno, undoLabel, topics) {
-  /* Step / phase / marker edits route through here: persist via the
-     undo helper (so Ctrl+Z reverts) then emit the change topics so the
-     affected views re-render themselves -- no full-session reload.
-     `topics` defaults to the safe superset; marker edits pass a
-     narrower set. */
-  await saveAnnotationsWithUndo(anno, undoLabel || "marker edit");
-  State.getSession().annotations = anno;
-  State.batch(() => {
-    for (const t of (topics || DEFAULT_EDIT_TOPICS)) State.emit(t);
-  });
-}
 
 async function adjustMarkerToVideoTime(markerEvent) {
   if (!State.getSession()) return;
