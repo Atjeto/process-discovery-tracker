@@ -32,15 +32,16 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
    add/delete step or phase, split/merge, group-into-phase, drag-
    reorder steps in a phase, insert synthetic marker, adjust marker
    timestamp, attach external video. */
-const UNDO_MAX = 50;
-let _undoStack = [];   // each entry: { label, annotations, sessionFolder }
-let _redoStack = [];
-function resetUndoStack() { _undoStack = []; _redoStack = []; }
+/* The undo/redo stacks live in the state module; the orchestration
+   (IPC save + re-render) stays here. */
+function resetUndoStack() { State.resetUndo(); }
 function canUndo() {
-  return State.getSession() && _undoStack.some(e => e.sessionFolder === State.getSession().sessionFolder);
+  const s = State.getSession();
+  return !!s && State.canUndo(s.sessionFolder);
 }
 function canRedo() {
-  return State.getSession() && _redoStack.some(e => e.sessionFolder === State.getSession().sessionFolder);
+  const s = State.getSession();
+  return !!s && State.canRedo(s.sessionFolder);
 }
 function emptyAnnotationsShape() {
   return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [] };
@@ -53,62 +54,74 @@ function snapshotAnnotations(a) {
   catch (_) { return emptyAnnotationsShape(); }
 }
 async function saveAnnotationsWithUndo(annotations, label) {
-  if (!State.getSession() || !State.getSession().sessionFolder) return null;
-  const sf = State.getSession().sessionFolder;
+  const session = State.getSession();
+  if (!session || !session.sessionFolder) return null;
+  const sf = session.sessionFolder;
   // Snapshot the PREVIOUS state before we replace it.
-  const prev = snapshotAnnotations(State.getSession().annotations);
-  _undoStack.push({ label: label || "edit", annotations: prev, sessionFolder: sf });
-  if (_undoStack.length > UNDO_MAX) _undoStack.shift();
-  _redoStack = [];
-  const r = await ipcRenderer.invoke("viewer:saveAnnotations", {
+  State.recordEdit({
+    label: label || "edit",
+    annotations: snapshotAnnotations(session.annotations),
+    sessionFolder: sf,
+  });
+  return await ipcRenderer.invoke("viewer:saveAnnotations", {
     sessionFolder: sf,
     annotations,
   });
-  return r;
 }
+/* Undo / redo revert one edit by writing the saved annotations blob
+   back to disk and refreshing the affected views IN PLACE. The old
+   implementation reloaded the whole session -- a viewer:loadSession
+   round-trip plus a repaint of every surface -- just to revert one
+   edit (issue S6). */
 async function performUndo() {
-  if (!State.getSession()) return;
-  // Pop the top entry that matches the current session.
-  let popped = null;
-  for (let i = _undoStack.length - 1; i >= 0; i--) {
-    if (_undoStack[i].sessionFolder === State.getSession().sessionFolder) {
-      popped = _undoStack.splice(i, 1)[0];
-      break;
-    }
-  }
+  const session = State.getSession();
+  if (!session) return;
+  const popped = State.popUndo(session.sessionFolder);
   if (!popped) { toast("Nothing to undo"); return; }
   // Push the CURRENT state onto the redo stack before reverting.
-  const currentSnap = snapshotAnnotations(State.getSession().annotations);
-  _redoStack.push({ label: popped.label, annotations: currentSnap, sessionFolder: popped.sessionFolder });
-  if (_redoStack.length > UNDO_MAX) _redoStack.shift();
+  State.pushRedo({
+    label: popped.label,
+    annotations: snapshotAnnotations(session.annotations),
+    sessionFolder: popped.sessionFolder,
+  });
   await ipcRenderer.invoke("viewer:saveAnnotations", {
     sessionFolder: popped.sessionFolder,
     annotations: popped.annotations,
   });
-  // Reload session so steps/phases/case scope all refresh.
-  await loadSessionIntoView(popped.sessionFolder);
+  applyRevertedAnnotations(popped.annotations);
   toast("Undone: " + popped.label);
 }
 async function performRedo() {
-  if (!State.getSession()) return;
-  let popped = null;
-  for (let i = _redoStack.length - 1; i >= 0; i--) {
-    if (_redoStack[i].sessionFolder === State.getSession().sessionFolder) {
-      popped = _redoStack.splice(i, 1)[0];
-      break;
-    }
-  }
+  const session = State.getSession();
+  if (!session) return;
+  const popped = State.popRedo(session.sessionFolder);
   if (!popped) { toast("Nothing to redo"); return; }
-  // Push current state to undo so user can flip back.
-  const currentSnap = snapshotAnnotations(State.getSession().annotations);
-  _undoStack.push({ label: popped.label, annotations: currentSnap, sessionFolder: popped.sessionFolder });
-  if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+  // Push current state to undo so the user can flip back.
+  State.pushUndo({
+    label: popped.label,
+    annotations: snapshotAnnotations(session.annotations),
+    sessionFolder: popped.sessionFolder,
+  });
   await ipcRenderer.invoke("viewer:saveAnnotations", {
     sessionFolder: popped.sessionFolder,
     annotations: popped.annotations,
   });
-  await loadSessionIntoView(popped.sessionFolder);
+  applyRevertedAnnotations(popped.annotations);
   toast("Redone: " + popped.label);
+}
+/* Swap a reverted annotations blob into the loaded session and refresh
+   every annotation-derived surface -- the in-place alternative to a
+   full session reload. */
+function applyRevertedAnnotations(annotations) {
+  State.getSession().annotations = ensureAnnoShape(annotations);
+  State.batch(() => {
+    State.emit("steps");
+    State.emit("phases");
+    State.emit("timeline");
+    State.emit("markers");
+  });
+  renderAnnotations();
+  renderSessionPills();
 }
 
 /* ============ Toast =============================================== */
