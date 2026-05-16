@@ -687,25 +687,26 @@ function setVideoOverlay(text) {
 
 /* ============ Timeline ============================================ */
 
-/* Muted per-app color palette. Known apps get fixed assignments so the
-   same color is stable across sessions; unknown apps get a deterministic
-   slot via a small hash so they stay stable too. All tones desaturated
-   to keep the timeline instrument-like (no decorative color). */
+/* Per-app colour palette. Known apps get fixed assignments so the same
+   colour is stable across sessions; unknown apps get a deterministic
+   slot via a small hash so they stay stable too. Vivid, distinct hues
+   on the light theme -- each is deep enough that the white band labels
+   clear a comfortable contrast margin. */
 const APP_COLOR_MAP = {
-  "chrome.exe":   "#5C7080",
-  "msedge.exe":   "#5C7080",
-  "firefox.exe":  "#5C7080",
-  "SAPGUI.exe":   "#807060",
-  "saplogon.exe": "#807060",
-  "EXCEL.EXE":    "#607868",
-  "OUTLOOK.EXE":  "#705C78",
-  "winword.exe":  "#6A6878",
-  "powerpnt.exe": "#8C6A5C",
-  "Teams.exe":    "#5C6A88",
+  "chrome.exe":   "#b07a32",  // amber
+  "msedge.exe":   "#2f8a93",  // teal
+  "firefox.exe":  "#c0612f",  // orange
+  "SAPGUI.exe":   "#2f6f9f",  // blue
+  "saplogon.exe": "#2f6f9f",  // blue
+  "EXCEL.EXE":    "#3f8a5c",  // green
+  "OUTLOOK.EXE":  "#5b5fb0",  // indigo
+  "winword.exe":  "#4a6f93",  // steel blue
+  "powerpnt.exe": "#b5503a",  // rust
+  "Teams.exe":    "#7159a8",  // purple
 };
 const APP_PALETTE = [
-  "#5C7080", "#807060", "#607868", "#705C78",
-  "#685E58", "#5E6878", "#586E70", "#787058",
+  "#2f6f9f", "#3f8a5c", "#b07a32", "#7159a8",
+  "#2f8a93", "#c0612f", "#b5503a", "#5b5fb0",
 ];
 function _hashAppIdx(s) {
   let h = 0;
@@ -1207,17 +1208,14 @@ function renderTimeline() {
   host.style.width = (100 * State.getZoomFactor()) + "%";
 
   /* Lane stack (top to bottom):
-       ticks       (24px) -- HH:MM:SS labels at sensible intervals
-       activity    (60px) -- per-app coloured bands
-       density     (12px) -- event-count histogram, ~120 buckets
-       cases       (var)  -- one row per concurrent case
+       ticks        -- HH:MM:SS labels at sensible intervals
+       cases        -- one labelled row per concurrent case (header)
+       activity     -- per-app coloured bands (the hero lane)
+       screenshots  -- dedicated capture rail
+       density / titles / steps / notes -- optional lanes
        playhead overlays all lanes. */
   const ticksTop = 4;
   const ticksH = 20;
-  const activityTop = ticksTop + ticksH + 4;
-  const activityH = 60;
-  const densityTop = activityTop + activityH + 2;
-  const densityH = lanes.density ? 12 : 0;
   const caseRowH = 22;
 
   // P2.12: window-title runs lane. Group consecutive activity events
@@ -1248,30 +1246,35 @@ function renderTimeline() {
     }
     if (runStart != null) flushRun(runStart + runEndDur);
   }
-  const titlesLaneH = (lanes.titles && _titleRuns.length) ? 14 : 0;
 
-  // P1.4 + P1.9: optional per-step + annotation lanes between density
-  // and cases. Compute their heights upfront so casesTop accounts for
-  // them — otherwise the cases overlap with the new lanes.
   const _stepsForLane = (State.getSession().annotations && State.getSession().annotations.steps) || [];
   const _notesForLane = (State.getSession().annotations && State.getSession().annotations.notes) || [];
-  const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
-  const notesLaneH = (lanes.notes && _notesForLane.length) ? 18 : 0;
-  const titlesLaneTop = densityTop + densityH + 4;
-  const stepsLaneTop = titlesLaneTop + titlesLaneH + (titlesLaneH ? 4 : 0);
-  const notesLaneTop = stepsLaneTop + stepsLaneH + (stepsLaneH ? 4 : 0);
 
-  // Count concurrent open markers at any point so we know how many
-  // case lanes to draw. Each lane gets its own row beneath the
-  // histogram; dangling cases share lanes with closed cases that
-  // started earlier.
+  // Lane geometry, top to bottom. Case bands render as a labelled header
+  // ABOVE the activity lane, and screenshots get a dedicated rail below
+  // it -- mirroring the design (cases on top, activity centre, captures
+  // beneath). layoutCaseLanes assigns each case a non-overlapping lane.
   const caseLanes = layoutCaseLanes(evs, first, last);
-  const casesTop = notesLaneTop + notesLaneH + (notesLaneH ? 4 : 6);
-  const casesH = lanes.cases
-    ? Math.max(caseRowH, caseLanes.lanesNeeded * caseRowH)
-    : 0;
+  const casesTop = ticksTop + ticksH + 4;
+  const casesH = lanes.cases ? caseLanes.lanesNeeded * caseRowH : 0;
+
+  const activityTop = casesTop + casesH + (casesH ? 6 : 4);
+  const activityH = 60;
+
+  const screenshotsTop = activityTop + activityH + 4;
+  const screenshotsH = lanes.screenshots ? 26 : 0;
+
+  const densityTop = screenshotsTop + screenshotsH + (screenshotsH ? 6 : 4);
+  const densityH = lanes.density ? 12 : 0;
+  const titlesLaneTop = densityTop + densityH + 4;
+  const titlesLaneH = (lanes.titles && _titleRuns.length) ? 14 : 0;
+  const stepsLaneTop = titlesLaneTop + titlesLaneH + (titlesLaneH ? 4 : 0);
+  const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
+  const notesLaneTop = stepsLaneTop + stepsLaneH + (stepsLaneH ? 4 : 0);
+  const notesLaneH = (lanes.notes && _notesForLane.length) ? 18 : 0;
+
   // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
-  host.style.minHeight = Math.max(120, casesTop + casesH + 14) + "px";
+  host.style.minHeight = Math.max(120, notesLaneTop + notesLaneH + 14) + "px";
 
   // ===== Time-axis ticks =====
   // Tick positions, intervals, and labels come from the shared timeline
@@ -1284,7 +1287,7 @@ function renderTimeline() {
     tick.className = "tl-flow-tick";
     tick.style.left = x + "%";
     tick.style.top = ticksTop + "px";
-    tick.style.height = (ticksH + activityH + 2) + "px";
+    tick.style.height = (activityTop + activityH - ticksTop) + "px";
     host.appendChild(tick);
     const lbl = document.createElement("div");
     lbl.className = "tl-flow-tick-label";
@@ -1395,24 +1398,45 @@ function renderTimeline() {
     }
   }
 
-  // Screenshot dots (on band bottom edge). P1.2: hover pops a thumbnail.
-  for (const ev of (lanes.screenshots ? evs : [])) {
-    if (ev.type !== "system") continue;
-    if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
-    const t = new Date(ev.timestamp).getTime();
-    const x = ((t - first) / span) * 100;
-    const dot = document.createElement("div");
-    dot.className = "tl-screenshot";
-    dot.style.left = "calc(" + x + "% - 7px)";
-    dot.style.top = (activityTop + activityH - 7) + "px";
-    dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
-      "\n" + (ev.data.path || "");
-    dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
-    if (ev.data.path) {
-      dot.addEventListener("mouseenter", () => showScreenshotThumb(dot, ev.data.path));
-      dot.addEventListener("mouseleave", () => hideScreenshotThumb());
+  // ===== Screenshot rail =====
+  // A dedicated capture lane beneath the activity bands: clearly visible,
+  // clickable camera markers in their own row rather than dots lost on
+  // the band edge. P1.2: hover still pops a thumbnail preview.
+  if (screenshotsH) {
+    const rail = document.createElement("div");
+    rail.className = "tl-screenshot-rail";
+    rail.style.top = screenshotsTop + "px";
+    rail.style.height = screenshotsH + "px";
+    host.appendChild(rail);
+    const railLabel = document.createElement("div");
+    railLabel.className = "tl-rail-label";
+    railLabel.style.top = (screenshotsTop + screenshotsH / 2 - 5) + "px";
+    railLabel.textContent = "CAPTURES";
+    host.appendChild(railLabel);
+    const markY = screenshotsTop + (screenshotsH - 16) / 2;
+    const camSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+      + 'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<rect x="3" y="3" width="18" height="18" rx="2"/>'
+      + '<circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L6 21"/></svg>';
+    for (const ev of evs) {
+      if (ev.type !== "system") continue;
+      if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
+      const t = new Date(ev.timestamp).getTime();
+      const x = ((t - first) / span) * 100;
+      const dot = document.createElement("div");
+      dot.className = "tl-screenshot";
+      dot.style.left = "calc(" + x + "% - 8px)";
+      dot.style.top = markY + "px";
+      dot.innerHTML = camSvg;
+      dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
+        "\n" + (ev.data.path || "");
+      dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
+      if (ev.data.path) {
+        dot.addEventListener("mouseenter", () => showScreenshotThumb(dot, ev.data.path));
+        dot.addEventListener("mouseleave", () => hideScreenshotThumb());
+      }
+      host.appendChild(dot);
     }
-    host.appendChild(dot);
   }
 
   // ===== Density histogram lane =====

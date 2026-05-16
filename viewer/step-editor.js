@@ -13,6 +13,18 @@
     return `${tr.start.slice(11,19)} - ${tr.end.slice(11,19)}`;
   }
 
+  /* Compact duration for a step's time range -- "42s", "2:17", "1h04". */
+  function stepDuration(tr) {
+    if (!tr || !tr.start || !tr.end) return "";
+    const ms = new Date(tr.end).getTime() - new Date(tr.start).getTime();
+    if (!isFinite(ms) || ms < 0) return "";
+    const secs = Math.round(ms / 1000);
+    if (secs < 60) return secs + "s";
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return mins + ":" + String(secs % 60).padStart(2, "0");
+    return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
+  }
+
   function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet) {
     host.innerHTML = "";
     if (!steps || !steps.length) {
@@ -40,7 +52,7 @@
         <span class="multi-check" title="Ctrl+click to multi-select for phase grouping"></span>
         <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
         ${driftTag}
-        <span class="step-time">${escapeHtml(formatTimeRange(s.time_range))}</span>
+        <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
       `;
       row.addEventListener("click", (e) => {
         if (e.ctrlKey || e.metaKey) {
@@ -109,7 +121,16 @@
       return;
     }
     const flags = step.flags || {};
+    const _tr = step.time_range || {};
+    const _dur = stepDuration(_tr) || "—";
+    const _start = _tr.start ? escapeHtml(_tr.start.slice(11, 19)) : "—";
+    const _end = _tr.end ? escapeHtml(_tr.end.slice(11, 19)) : "—";
     host.innerHTML = `
+      <div class="step-stat-tiles">
+        <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
+        <div class="stat-tile"><div class="stat-tile-label">Start</div><div class="stat-tile-value">${_start}</div></div>
+        <div class="stat-tile"><div class="stat-tile-label">End</div><div class="stat-tile-value">${_end}</div></div>
+      </div>
       <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"></label>
       <label>Description <textarea id="step-desc">${escapeHtml(step.description || "")}</textarea></label>
       <div class="flags">
