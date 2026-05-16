@@ -205,5 +205,5 @@
     });
   }
 
-  window.PdtPhases = { renderPhaseList, renderPhaseDetail, renderPhaseTimeline };
+  module.exports = { renderPhaseList, renderPhaseDetail, renderPhaseTimeline };
 })();

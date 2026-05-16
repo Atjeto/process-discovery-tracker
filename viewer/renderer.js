@@ -21,6 +21,7 @@ const PdtPalette = require("./command-palette.js");
 const PdtDfg = require("./dfg-viewer.js");
 const PdtBpmn = require("./bpmn-viewer.js");
 const PdtSteps = require("./step-editor.js");
+const PdtPhases = require("./phase-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const $ = (sel) => document.querySelector(sel);
@@ -1162,7 +1163,7 @@ function phaseMatchesFilter(p, steps, f, scopeCaseId) {
 }
 
 function renderPhasesLevel() {
-  if (!State.getSession() || !window.PdtPhases) return;
+  if (!State.getSession() || !PdtPhases) return;
   const phases = (State.getSession().annotations && State.getSession().annotations.phases) || [];
   const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
   const f = State.getListFilters().phase;
@@ -1176,10 +1177,10 @@ function renderPhasesLevel() {
 
   $("#phases-badge").textContent = String(phases.length);
   if ($("#phases-pane-count")) $("#phases-pane-count").textContent = String(phases.length);
-  window.PdtPhases.renderPhaseList($("#phase-list"), filtered, State.getSelectedPhaseId(),
+  PdtPhases.renderPhaseList($("#phase-list"), filtered, State.getSelectedPhaseId(),
     (pid) => { State.setSelectedPhaseId(pid); renderPhasesLevel(); });
   const selected = phases.find(p => p.phase_id === State.getSelectedPhaseId()) || null;
-  window.PdtPhases.renderPhaseDetail($("#phase-detail"), selected, steps, {
+  PdtPhases.renderPhaseDetail($("#phase-detail"), selected, steps, {
     onSave: savePhase,
     onDelete: deletePhase,
     onRemoveStep: removeStepFromPhase,
@@ -1189,7 +1190,7 @@ function renderPhasesLevel() {
   if (span) {
     const dimmedIds = new Set();
     for (const p of phases) if (!filteredIds.has(p.phase_id)) dimmedIds.add(p.phase_id);
-    window.PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span, {
+    PdtPhases.renderPhaseTimeline($("#timeline-phases"), phases, steps, span, {
       zoom: State.getPhaseZoom(),
       selectedId: State.getSelectedPhaseId(),
       dimmedIds,
