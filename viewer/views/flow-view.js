@@ -1205,16 +1205,17 @@ function renderTimeline() {
   const last = new Date(evs[evs.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
 
-  host.style.width = (100 * State.getZoomFactor()) + "%";
-
   /* Lane stack (top to bottom):
        ticks        -- HH:MM:SS labels at sensible intervals
        cases        -- one labelled row per concurrent case (header)
        activity     -- per-app coloured bands (the hero lane)
        screenshots  -- dedicated capture rail
        density / titles / steps / notes -- optional lanes
-       playhead overlays all lanes. */
-  const ticksTop = 4;
+       playhead overlays all lanes.
+     Each lane below is a { key, height, gapBefore, render } plugin; the
+     shared timeline core (TimelineCore.renderLaneStack) stacks them, drives
+     the zoom width + minHeight, and calls each lane's render(host, ctx).
+     See docs/adr/0003-viewer-architecture-refactor.md items 4-5. */
   const ticksH = 20;
   const caseRowH = 22;
 
@@ -1250,362 +1251,434 @@ function renderTimeline() {
   const _stepsForLane = (State.getSession().annotations && State.getSession().annotations.steps) || [];
   const _notesForLane = (State.getSession().annotations && State.getSession().annotations.notes) || [];
 
-  // Lane geometry, top to bottom. Case bands render as a labelled header
-  // ABOVE the activity lane, and screenshots get a dedicated rail below
-  // it -- mirroring the design (cases on top, activity centre, captures
-  // beneath). layoutCaseLanes assigns each case a non-overlapping lane.
+  // Case bands render as a labelled header ABOVE the activity lane;
+  // layoutCaseLanes assigns each case a non-overlapping lane (sweep-line).
   const caseLanes = layoutCaseLanes(evs, first, last);
-  const casesTop = ticksTop + ticksH + 4;
+
+  // Resolved lane heights. A height of 0 hides the lane: the core skips its
+  // render and (with gapBefore) collapses the spacing. These mirror the
+  // pre-core geometry; gapBefore values below reproduce the lane cascade.
   const casesH = lanes.cases ? caseLanes.lanesNeeded * caseRowH : 0;
-
-  const activityTop = casesTop + casesH + (casesH ? 6 : 4);
   const activityH = 60;
-
-  const screenshotsTop = activityTop + activityH + 4;
   const screenshotsH = lanes.screenshots ? 26 : 0;
-
-  const densityTop = screenshotsTop + screenshotsH + (screenshotsH ? 6 : 4);
   const densityH = lanes.density ? 12 : 0;
-  const titlesLaneTop = densityTop + densityH + 4;
   const titlesLaneH = (lanes.titles && _titleRuns.length) ? 14 : 0;
-  const stepsLaneTop = titlesLaneTop + titlesLaneH + (titlesLaneH ? 4 : 0);
   const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
-  const notesLaneTop = stepsLaneTop + stepsLaneH + (stepsLaneH ? 4 : 0);
   const notesLaneH = (lanes.notes && _notesForLane.length) ? 18 : 0;
 
-  // height comes from --timeline-height (drag-resizable); set as min-height so content never clips
-  host.style.minHeight = Math.max(120, notesLaneTop + notesLaneH + 14) + "px";
+  // Apps observed while drawing the activity lane feed the legend; the case
+  // scope range dims out-of-scope activity bands. Both computed once.
+  const observedApps = new Set();
+  const scopeRange = currentScopeRange();
 
   // ===== Time-axis ticks =====
   // Tick positions, intervals, and labels come from the shared timeline
   // core -- the same logic the Steps and Phases timelines use. The
   // `.tl-flow-tick` class keeps the Flow ticks (tall vertical lines)
-  // distinct from the mini-timelines' short `.tl-tick` axis ticks.
-  for (const tk of TimelineCore.chooseTicks(first, last, 12)) {
-    const x = tk.xPct;
-    const tick = document.createElement("div");
-    tick.className = "tl-flow-tick";
-    tick.style.left = x + "%";
-    tick.style.top = ticksTop + "px";
-    tick.style.height = (activityTop + activityH - ticksTop) + "px";
-    host.appendChild(tick);
-    const lbl = document.createElement("div");
-    lbl.className = "tl-flow-tick-label";
-    lbl.style.left = "calc(" + x + "% + 3px)";
-    lbl.style.top = ticksTop + "px";
-    lbl.textContent = tk.label;
-    host.appendChild(lbl);
-  }
-
-  // Activity bands -- coloured per app, with inline title + duration
-  // labels so analysts can read the timeline without hovering. Out-of
-  // -scope bands (case scope active and this band's midpoint outside
-  // the case range) are dimmed via .out-of-scope so context survives.
-  const observedApps = new Set();
-  const scopeRange = currentScopeRange();
-  for (const ev of evs) {
-    if (ev.type !== "activity") continue;
-    const t = new Date(ev.timestamp).getTime();
-    const dur = ev.data.duration_ms || 0;
-    const x = ((t - first) / span) * 100;
-    const w = Math.max(0.15, (dur / span) * 100);
-    const inScope = !scopeRange ||
-      (t + dur / 2 >= scopeRange.startMs && t + dur / 2 <= scopeRange.endMs);
-    const band = document.createElement("div");
-    band.className = "tl-band tl-activity" + (inScope ? "" : " out-of-scope");
-    band.style.left = x + "%";
-    band.style.width = w + "%";
-    band.style.top = activityTop + "px";
-    band.style.height = activityH + "px";
-    band.style.background = appColor(ev.data.app);
-    band.dataset.app = ev.data.app || "";
-    if (ev.data.app) observedApps.add(ev.data.app);
-    band.title = (ev.data.app || "") + " - " + (ev.data.title || "") +
-      "\n" + new Date(t).toLocaleTimeString() + " (" + formatDuration(dur) + ")";
-
-    // Label: app name (top line, bold-ish) + window title (second line, dim).
-    // Duration pinned to bottom-right. CSS hides children that don't fit.
-    const lbl = document.createElement("div");
-    lbl.className = "tl-activity-label";
-    const appName = document.createElement("span");
-    appName.className = "tl-act-app";
-    appName.textContent = appLabel(ev.data.app);
-    const titleEl = document.createElement("span");
-    titleEl.className = "tl-act-title";
-    titleEl.textContent = ev.data.title || "";
-    const durEl = document.createElement("span");
-    durEl.className = "tl-act-dur";
-    durEl.textContent = formatDuration(dur);
-    lbl.appendChild(appName);
-    lbl.appendChild(titleEl);
-    lbl.appendChild(durEl);
-    band.appendChild(lbl);
-
-    band.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(ev.timestamp); });
-    band.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp);
-    });
-    host.appendChild(band);
-  }
-  renderLegend(observedApps);
-
-  // Idle bands
-  let idleStart = null;
-  for (const ev of (lanes.idle ? evs : [])) {
-    if (ev.type !== "system") continue;
-    if (ev.data.kind === "idle_start") idleStart = new Date(ev.timestamp).getTime();
-    else if (ev.data.kind === "idle_end" && idleStart) {
-      const endT = new Date(ev.timestamp).getTime();
-      const x = ((idleStart - first) / span) * 100;
-      const w = Math.max(0.15, ((endT - idleStart) / span) * 100);
-      const band = document.createElement("div");
-      band.className = "tl-band tl-idle";
-      band.style.left = x + "%";
-      band.style.width = w + "%";
-      band.style.top = activityTop + "px";
-      band.style.height = activityH + "px";
-      band.title = "idle " + formatDuration(endT - idleStart);
-      host.appendChild(band);
-      idleStart = null;
-    }
-  }
-
-  // Marker bars (rendered above bands)
-  for (const ev of (lanes.markers ? evs : [])) {
-    if (ev.type !== "marker") continue;
-    const t = new Date(ev.timestamp).getTime();
-    const x = ((t - first) / span) * 100;
-    const bar = document.createElement("div");
-    bar.className = "tl-marker";
-    bar.style.left = x + "%";
-    bar.style.height = activityH + "px";
-    bar.style.top = activityTop + "px";
-    bar.title = ev.data.marker_type + ": " + (ev.data.label || "") +
-      (ev.data.reason ? " (" + ev.data.reason + ")" : "");
-    host.appendChild(bar);
-    if (ev.data.marker_type === "start") {
-      const label = effectiveLabel(ev);
-      if (label) {
+  // distinct from the mini-timelines' short `.tl-tick` axis ticks. The
+  // tick lines reach down to the bottom of the activity lane.
+  const ticksLane = {
+    key: "ticks",
+    height: ticksH,
+    gapBefore: 4,
+    render(host, ctx) {
+      const ticksTop = ctx.slot.top;
+      const act = ctx.slots.get("activity");
+      const activityTop = act.top;
+      const activityH = act.height;
+      for (const tk of TimelineCore.chooseTicks(first, last, 12)) {
+        const x = tk.xPct;
+        const tick = document.createElement("div");
+        tick.className = "tl-flow-tick";
+        tick.style.left = x + "%";
+        tick.style.top = ticksTop + "px";
+        tick.style.height = (activityTop + activityH - ticksTop) + "px";
+        host.appendChild(tick);
         const lbl = document.createElement("div");
-        lbl.className = "tl-marker-label";
-        lbl.style.left = "calc(" + x + "% + 4px)";
-        lbl.style.top = (activityTop + 2) + "px";
-        lbl.textContent = label;
+        lbl.className = "tl-flow-tick-label";
+        lbl.style.left = "calc(" + x + "% + 3px)";
+        lbl.style.top = ticksTop + "px";
+        lbl.textContent = tk.label;
         host.appendChild(lbl);
       }
-    }
-  }
-
-  // ===== Screenshot rail =====
-  // A dedicated capture lane beneath the activity bands: clearly visible,
-  // clickable camera markers in their own row rather than dots lost on
-  // the band edge. P1.2: hover still pops a thumbnail preview.
-  if (screenshotsH) {
-    const rail = document.createElement("div");
-    rail.className = "tl-screenshot-rail";
-    rail.style.top = screenshotsTop + "px";
-    rail.style.height = screenshotsH + "px";
-    host.appendChild(rail);
-    const railLabel = document.createElement("div");
-    railLabel.className = "tl-rail-label";
-    railLabel.style.top = (screenshotsTop + screenshotsH / 2 - 5) + "px";
-    railLabel.textContent = "CAPTURES";
-    host.appendChild(railLabel);
-    const markY = screenshotsTop + (screenshotsH - 16) / 2;
-    const camSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-      + 'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
-      + '<rect x="3" y="3" width="18" height="18" rx="2"/>'
-      + '<circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L6 21"/></svg>';
-    for (const ev of evs) {
-      if (ev.type !== "system") continue;
-      if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
-      const t = new Date(ev.timestamp).getTime();
-      const x = ((t - first) / span) * 100;
-      const dot = document.createElement("div");
-      dot.className = "tl-screenshot";
-      dot.style.left = "calc(" + x + "% - 8px)";
-      dot.style.top = markY + "px";
-      dot.innerHTML = camSvg;
-      dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
-        "\n" + (ev.data.path || "");
-      dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
-      if (ev.data.path) {
-        dot.addEventListener("mouseenter", () => showScreenshotThumb(dot, ev.data.path));
-        dot.addEventListener("mouseleave", () => hideScreenshotThumb());
-      }
-      host.appendChild(dot);
-    }
-  }
-
-  // ===== Density histogram lane =====
-  // Bucket events into ~120 bins across the span. Background events
-  // (idle_start/end, paused/resumed, recorder_*) are excluded so the
-  // histogram reflects user activity, not session bookkeeping.
-  const N_BUCKETS = 120;
-  const bucketDur = span / N_BUCKETS;
-  const buckets = new Array(N_BUCKETS).fill(0);
-  for (const ev of evs) {
-    if (!isUserActivityEvent(ev)) continue;
-    const idx = Math.min(N_BUCKETS - 1, Math.floor((new Date(ev.timestamp).getTime() - first) / bucketDur));
-    if (idx >= 0) buckets[idx] += 1;
-  }
-  const maxBucket = buckets.reduce((m, v) => v > m ? v : m, 0) || 1;
-  // Render the density lane only when enabled (densityH is 0 otherwise).
-  if (densityH) {
-    for (let i = 0; i < N_BUCKETS; i++) {
-      if (!buckets[i]) continue;
-      const x = (i / N_BUCKETS) * 100;
-      const w = (1 / N_BUCKETS) * 100;
-      const h = Math.max(2, Math.round(densityH * (buckets[i] / maxBucket)));
-      const bar = document.createElement("div");
-      bar.className = "tl-density-bar";
-      bar.style.left = x + "%";
-      bar.style.width = w + "%";
-      bar.style.top = (densityTop + densityH - h) + "px";
-      bar.style.height = h + "px";
-      bar.title = `${buckets[i]} events @ ` +
-        new Date(first + i * bucketDur).toLocaleTimeString();
-      host.appendChild(bar);
-    }
-    // Density baseline (faint background strip so the lane reads even
-    // when sparse).
-    const densityBaseline = document.createElement("div");
-    densityBaseline.className = "tl-density-base";
-    densityBaseline.style.top = densityTop + "px";
-    densityBaseline.style.height = densityH + "px";
-    host.appendChild(densityBaseline);
-  }
-
-  // ===== Window-title runs lane (P2.12) =====
-  // One band per consecutive (app, title) run. Label only renders when
-  // the band is wide enough to fit ~6 chars; otherwise the band is a
-  // pure colour stripe so the rhythm of title changes is still visible.
-  if (titlesLaneH) {
-    // host.style.width was set to (100 * zoomFactor) + "%" earlier, so
-    // host.clientWidth ALREADY reflects the zoomed width. Don't multiply
-    // by zoomFactor again -- the band's pixel width is just (w / 100) *
-    // hostW.
-    const hostW = host.clientWidth || 800;
-    const minLabelPx = 50;
-    for (const r of _titleRuns) {
-      const x = ((r.startMs - first) / span) * 100;
-      const w = Math.max(0.05, ((r.endMs - r.startMs) / span) * 100);
-      const band = document.createElement("div");
-      band.className = "tl-title-band";
-      band.style.left = x + "%";
-      band.style.width = w + "%";
-      band.style.top = titlesLaneTop + "px";
-      band.title = (r.app || "") + " — " + (r.title || "(untitled)");
-      const renderedPx = (w / 100) * hostW;
-      if (renderedPx >= minLabelPx) {
-        band.textContent = r.title || (r.app || "").replace(/\.exe$/i, "");
-      }
-      host.appendChild(band);
-    }
-  }
-
-  // ===== Per-step lane (P1.4) =====
-  // Renders a single row of step bands beneath density when steps exist.
-  // Click to select the step + jump to Steps view.
-  // (stepsLaneTop / stepsLaneH computed earlier so casesTop accounts for them.)
-  for (const s of (lanes.steps ? _stepsForLane : [])) {
-    if (!s.time_range || !s.time_range.start || !s.time_range.end) continue;
-    const sStart = new Date(s.time_range.start).getTime();
-    const sEnd   = new Date(s.time_range.end).getTime();
-    if (!isFinite(sStart) || !isFinite(sEnd) || sEnd <= sStart) continue;
-    const x = ((sStart - first) / span) * 100;
-    const w = Math.max(0.2, ((sEnd - sStart) / span) * 100);
-    const band = document.createElement("div");
-    band.className = "tl-step-band";
-    band.style.left = x + "%";
-    band.style.width = w + "%";
-    band.style.top = stepsLaneTop + "px";
-    band.textContent = s.name || s.step_id || "";
-    band.title = (s.name || s.step_id) + " — " + formatDuration(sEnd - sStart);
-    band.addEventListener("click", (e) => {
-      e.stopPropagation();
-      State.setSelectedStepId(s.step_id);
-      const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
-      if (stepsBtn) stepsBtn.click();
-    });
-    host.appendChild(band);
-  }
-
-  // ===== Annotation lane (P1.9) =====
-  // Numbered note dots beneath the steps lane (or beneath density if no
-  // steps). Click to open the note in the side panel + switch to Notes
-  // tab.
-  // (notesLaneTop / notesLaneH computed earlier so casesTop accounts for them.)
-  (lanes.notes ? _notesForLane : []).forEach((n, idx) => {
-    if (!n.timestamp) return;
-    const ms = new Date(n.timestamp).getTime();
-    if (!isFinite(ms)) return;
-    const x = ((ms - first) / span) * 100;
-    const dot = document.createElement("div");
-    dot.className = "tl-note-dot";
-    dot.style.left = "calc(" + x + "% - 7px)";
-    dot.style.top = notesLaneTop + "px";
-    dot.textContent = String(idx + 1);
-    dot.dataset.noteIdx = String(idx);
-    dot.title = (n.text || "(empty note)").slice(0, 80);
-    dot.addEventListener("click", (e) => {
-      e.stopPropagation();
-      activateAnnoTab("notes");
-      const noteRow = document.querySelector(`[data-note-idx="${idx}"]`);
-      if (noteRow) noteRow.scrollIntoView({ behavior: "smooth", block: "center" });
-      seekToTimestamp(n.timestamp);
-    });
-    host.appendChild(dot);
-  });
+    },
+  };
 
   // ===== Case lanes =====
-  // layoutCaseLanes() (below) walks the marker stream and assigns
-  // each case to a non-overlapping lane via a sweep-line algo:
+  // layoutCaseLanes() walks the marker stream and assigns each case to a
+  // non-overlapping lane via a sweep-line algo:
   //   - Each case knows its [start, end) and a parent_id.
   //   - A new case picks the first lane whose previous occupant ended
   //     before this case starts. Nested cases land BELOW their parent.
   //   - Dangling cases (start with no end) extend to `last` with a
   //     dashed right edge so they're visually distinct from closed.
   // The case scope dropdown can target any of these directly.
-  for (const c of (lanes.cases ? caseLanes.cases : [])) {
-    const x = ((c.startMs - first) / span) * 100;
-    const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
-    const top = casesTop + c.lane * caseRowH;
-    const band = document.createElement("div");
-    band.className = "tl-case-band" + (c.dangling ? " dangling" : "");
-    band.style.left = x + "%";
-    band.style.width = w + "%";
-    band.style.top = top + "px";
-    band.style.height = (caseRowH - 4) + "px";
-    band.title = (c.dangling ? "unclosed: " : "case: ") +
-      (c.label || "(unlabeled)") +
-      (c.dangling ? "" : "\n" + formatDuration(c.endMs - c.startMs));
-    // Click anywhere on a case band -- closed OR dangling -- seeks
-    // the video to the case start. Right-click opens the scope/jump
-    // menu below.
-    band.addEventListener("click", (e) => {
-      e.stopPropagation();
-      seekToTimestamp(new Date(c.startMs).toISOString());
-    });
-    band.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // Scope-to-case option (in addition to the marker insert menu
-      // available on activity bands).
-      showCaseContextMenu(e.clientX, e.clientY, c);
-    });
-    host.appendChild(band);
-    const lbl = document.createElement("div");
-    lbl.className = "tl-case-label";
-    lbl.style.left = "calc(" + x + "% + 4px)";
-    lbl.style.top = (top + 3) + "px";
-    lbl.textContent = c.label || "(unlabeled)";
-    host.appendChild(lbl);
-  }
+  const casesLane = {
+    key: "cases",
+    height: casesH,
+    gapBefore: 4,
+    render(host, ctx) {
+      const casesTop = ctx.slot.top;
+      for (const c of (lanes.cases ? caseLanes.cases : [])) {
+        const x = ((c.startMs - first) / span) * 100;
+        const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
+        const top = casesTop + c.lane * caseRowH;
+        const band = document.createElement("div");
+        band.className = "tl-case-band" + (c.dangling ? " dangling" : "");
+        band.style.left = x + "%";
+        band.style.width = w + "%";
+        band.style.top = top + "px";
+        band.style.height = (caseRowH - 4) + "px";
+        band.title = (c.dangling ? "unclosed: " : "case: ") +
+          (c.label || "(unlabeled)") +
+          (c.dangling ? "" : "\n" + formatDuration(c.endMs - c.startMs));
+        // Click anywhere on a case band -- closed OR dangling -- seeks
+        // the video to the case start. Right-click opens the scope/jump
+        // menu below.
+        band.addEventListener("click", (e) => {
+          e.stopPropagation();
+          seekToTimestamp(new Date(c.startMs).toISOString());
+        });
+        band.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Scope-to-case option (in addition to the marker insert menu
+          // available on activity bands).
+          showCaseContextMenu(e.clientX, e.clientY, c);
+        });
+        host.appendChild(band);
+        const lbl = document.createElement("div");
+        lbl.className = "tl-case-label";
+        lbl.style.left = "calc(" + x + "% + 4px)";
+        lbl.style.top = (top + 3) + "px";
+        lbl.textContent = c.label || "(unlabeled)";
+        host.appendChild(lbl);
+      }
+    },
+  };
 
-  // Playhead
+  // ===== Activity lane (the hero lane) =====
+  // Per-app coloured bands with inline title + duration labels so analysts
+  // can read the timeline without hovering. Out-of-scope bands (case scope
+  // active and this band's midpoint outside the case range) are dimmed via
+  // .out-of-scope so context survives. Idle bands and marker bars share the
+  // activity lane's row.
+  const activityLane = {
+    key: "activity",
+    height: activityH,
+    gapBefore: casesH ? 6 : 4,
+    render(host, ctx) {
+      const activityTop = ctx.slot.top;
+      const activityH = ctx.slot.height;
+      for (const ev of evs) {
+        if (ev.type !== "activity") continue;
+        const t = new Date(ev.timestamp).getTime();
+        const dur = ev.data.duration_ms || 0;
+        const x = ((t - first) / span) * 100;
+        const w = Math.max(0.15, (dur / span) * 100);
+        const inScope = !scopeRange ||
+          (t + dur / 2 >= scopeRange.startMs && t + dur / 2 <= scopeRange.endMs);
+        const band = document.createElement("div");
+        band.className = "tl-band tl-activity" + (inScope ? "" : " out-of-scope");
+        band.style.left = x + "%";
+        band.style.width = w + "%";
+        band.style.top = activityTop + "px";
+        band.style.height = activityH + "px";
+        band.style.background = appColor(ev.data.app);
+        band.dataset.app = ev.data.app || "";
+        if (ev.data.app) observedApps.add(ev.data.app);
+        band.title = (ev.data.app || "") + " - " + (ev.data.title || "") +
+          "\n" + new Date(t).toLocaleTimeString() + " (" + formatDuration(dur) + ")";
+
+        // Label: app name (top line, bold-ish) + window title (second line, dim).
+        // Duration pinned to bottom-right. CSS hides children that don't fit.
+        const lbl = document.createElement("div");
+        lbl.className = "tl-activity-label";
+        const appName = document.createElement("span");
+        appName.className = "tl-act-app";
+        appName.textContent = appLabel(ev.data.app);
+        const titleEl = document.createElement("span");
+        titleEl.className = "tl-act-title";
+        titleEl.textContent = ev.data.title || "";
+        const durEl = document.createElement("span");
+        durEl.className = "tl-act-dur";
+        durEl.textContent = formatDuration(dur);
+        lbl.appendChild(appName);
+        lbl.appendChild(titleEl);
+        lbl.appendChild(durEl);
+        band.appendChild(lbl);
+
+        band.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(ev.timestamp); });
+        band.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp);
+        });
+        host.appendChild(band);
+      }
+
+      // Idle bands
+      let idleStart = null;
+      for (const ev of (lanes.idle ? evs : [])) {
+        if (ev.type !== "system") continue;
+        if (ev.data.kind === "idle_start") idleStart = new Date(ev.timestamp).getTime();
+        else if (ev.data.kind === "idle_end" && idleStart) {
+          const endT = new Date(ev.timestamp).getTime();
+          const x = ((idleStart - first) / span) * 100;
+          const w = Math.max(0.15, ((endT - idleStart) / span) * 100);
+          const band = document.createElement("div");
+          band.className = "tl-band tl-idle";
+          band.style.left = x + "%";
+          band.style.width = w + "%";
+          band.style.top = activityTop + "px";
+          band.style.height = activityH + "px";
+          band.title = "idle " + formatDuration(endT - idleStart);
+          host.appendChild(band);
+          idleStart = null;
+        }
+      }
+
+      // Marker bars (rendered above bands)
+      for (const ev of (lanes.markers ? evs : [])) {
+        if (ev.type !== "marker") continue;
+        const t = new Date(ev.timestamp).getTime();
+        const x = ((t - first) / span) * 100;
+        const bar = document.createElement("div");
+        bar.className = "tl-marker";
+        bar.style.left = x + "%";
+        bar.style.height = activityH + "px";
+        bar.style.top = activityTop + "px";
+        bar.title = ev.data.marker_type + ": " + (ev.data.label || "") +
+          (ev.data.reason ? " (" + ev.data.reason + ")" : "");
+        host.appendChild(bar);
+        if (ev.data.marker_type === "start") {
+          const label = effectiveLabel(ev);
+          if (label) {
+            const lbl = document.createElement("div");
+            lbl.className = "tl-marker-label";
+            lbl.style.left = "calc(" + x + "% + 4px)";
+            lbl.style.top = (activityTop + 2) + "px";
+            lbl.textContent = label;
+            host.appendChild(lbl);
+          }
+        }
+      }
+    },
+  };
+
+  // ===== Screenshot rail =====
+  // A dedicated capture lane beneath the activity bands: clearly visible,
+  // clickable camera markers in their own row rather than dots lost on
+  // the band edge. P1.2: hover still pops a thumbnail preview.
+  const screenshotsLane = {
+    key: "screenshots",
+    height: screenshotsH,
+    gapBefore: 4,
+    render(host, ctx) {
+      const screenshotsTop = ctx.slot.top;
+      const screenshotsH = ctx.slot.height;
+      const rail = document.createElement("div");
+      rail.className = "tl-screenshot-rail";
+      rail.style.top = screenshotsTop + "px";
+      rail.style.height = screenshotsH + "px";
+      host.appendChild(rail);
+      const railLabel = document.createElement("div");
+      railLabel.className = "tl-rail-label";
+      railLabel.style.top = (screenshotsTop + screenshotsH / 2 - 5) + "px";
+      railLabel.textContent = "CAPTURES";
+      host.appendChild(railLabel);
+      const markY = screenshotsTop + (screenshotsH - 16) / 2;
+      const camSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        + 'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+        + '<rect x="3" y="3" width="18" height="18" rx="2"/>'
+        + '<circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L6 21"/></svg>';
+      for (const ev of evs) {
+        if (ev.type !== "system") continue;
+        if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
+        const t = new Date(ev.timestamp).getTime();
+        const x = ((t - first) / span) * 100;
+        const dot = document.createElement("div");
+        dot.className = "tl-screenshot";
+        dot.style.left = "calc(" + x + "% - 8px)";
+        dot.style.top = markY + "px";
+        dot.innerHTML = camSvg;
+        dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
+          "\n" + (ev.data.path || "");
+        dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
+        if (ev.data.path) {
+          dot.addEventListener("mouseenter", () => showScreenshotThumb(dot, ev.data.path));
+          dot.addEventListener("mouseleave", () => hideScreenshotThumb());
+        }
+        host.appendChild(dot);
+      }
+    },
+  };
+
+  // ===== Density histogram lane =====
+  // Bucket events into ~120 bins across the span. Background events
+  // (idle_start/end, paused/resumed, recorder_*) are excluded so the
+  // histogram reflects user activity, not session bookkeeping. The bucket
+  // maths runs inside render() -- it only fires when the lane is shown.
+  const densityLane = {
+    key: "density",
+    height: densityH,
+    gapBefore: screenshotsH ? 6 : 4,
+    render(host, ctx) {
+      const densityTop = ctx.slot.top;
+      const densityH = ctx.slot.height;
+      const N_BUCKETS = 120;
+      const bucketDur = span / N_BUCKETS;
+      const buckets = new Array(N_BUCKETS).fill(0);
+      for (const ev of evs) {
+        if (!isUserActivityEvent(ev)) continue;
+        const idx = Math.min(N_BUCKETS - 1, Math.floor((new Date(ev.timestamp).getTime() - first) / bucketDur));
+        if (idx >= 0) buckets[idx] += 1;
+      }
+      const maxBucket = buckets.reduce((m, v) => v > m ? v : m, 0) || 1;
+      for (let i = 0; i < N_BUCKETS; i++) {
+        if (!buckets[i]) continue;
+        const x = (i / N_BUCKETS) * 100;
+        const w = (1 / N_BUCKETS) * 100;
+        const h = Math.max(2, Math.round(densityH * (buckets[i] / maxBucket)));
+        const bar = document.createElement("div");
+        bar.className = "tl-density-bar";
+        bar.style.left = x + "%";
+        bar.style.width = w + "%";
+        bar.style.top = (densityTop + densityH - h) + "px";
+        bar.style.height = h + "px";
+        bar.title = `${buckets[i]} events @ ` +
+          new Date(first + i * bucketDur).toLocaleTimeString();
+        host.appendChild(bar);
+      }
+      // Density baseline (faint background strip so the lane reads even
+      // when sparse).
+      const densityBaseline = document.createElement("div");
+      densityBaseline.className = "tl-density-base";
+      densityBaseline.style.top = densityTop + "px";
+      densityBaseline.style.height = densityH + "px";
+      host.appendChild(densityBaseline);
+    },
+  };
+
+  // ===== Window-title runs lane (P2.12) =====
+  // One band per consecutive (app, title) run. Label only renders when
+  // the band is wide enough to fit ~6 chars; otherwise the band is a
+  // pure colour stripe so the rhythm of title changes is still visible.
+  const titlesLane = {
+    key: "titles",
+    height: titlesLaneH,
+    gapBefore: 4,
+    render(host, ctx) {
+      const titlesLaneTop = ctx.slot.top;
+      // renderLaneStack set host.style.width to the zoomed width before
+      // this runs, so host.clientWidth ALREADY reflects the zoomed width.
+      // Don't multiply by zoomFactor again -- the band's pixel width is
+      // just (w / 100) * hostW.
+      const hostW = host.clientWidth || 800;
+      const minLabelPx = 50;
+      for (const r of _titleRuns) {
+        const x = ((r.startMs - first) / span) * 100;
+        const w = Math.max(0.05, ((r.endMs - r.startMs) / span) * 100);
+        const band = document.createElement("div");
+        band.className = "tl-title-band";
+        band.style.left = x + "%";
+        band.style.width = w + "%";
+        band.style.top = titlesLaneTop + "px";
+        band.title = (r.app || "") + " — " + (r.title || "(untitled)");
+        const renderedPx = (w / 100) * hostW;
+        if (renderedPx >= minLabelPx) {
+          band.textContent = r.title || (r.app || "").replace(/\.exe$/i, "");
+        }
+        host.appendChild(band);
+      }
+    },
+  };
+
+  // ===== Per-step lane (P1.4) =====
+  // Renders a single row of step bands beneath density when steps exist.
+  // Click to select the step + jump to Steps view.
+  const stepsLane = {
+    key: "steps",
+    height: stepsLaneH,
+    gapBefore: titlesLaneH ? 4 : 0,
+    render(host, ctx) {
+      const stepsLaneTop = ctx.slot.top;
+      for (const s of (lanes.steps ? _stepsForLane : [])) {
+        if (!s.time_range || !s.time_range.start || !s.time_range.end) continue;
+        const sStart = new Date(s.time_range.start).getTime();
+        const sEnd   = new Date(s.time_range.end).getTime();
+        if (!isFinite(sStart) || !isFinite(sEnd) || sEnd <= sStart) continue;
+        const x = ((sStart - first) / span) * 100;
+        const w = Math.max(0.2, ((sEnd - sStart) / span) * 100);
+        const band = document.createElement("div");
+        band.className = "tl-step-band";
+        band.style.left = x + "%";
+        band.style.width = w + "%";
+        band.style.top = stepsLaneTop + "px";
+        band.textContent = s.name || s.step_id || "";
+        band.title = (s.name || s.step_id) + " — " + formatDuration(sEnd - sStart);
+        band.addEventListener("click", (e) => {
+          e.stopPropagation();
+          State.setSelectedStepId(s.step_id);
+          const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
+          if (stepsBtn) stepsBtn.click();
+        });
+        host.appendChild(band);
+      }
+    },
+  };
+
+  // ===== Annotation lane (P1.9) =====
+  // Numbered note dots beneath the steps lane (or beneath density if no
+  // steps). Click to open the note in the side panel + switch to Notes
+  // tab.
+  const notesLane = {
+    key: "notes",
+    height: notesLaneH,
+    gapBefore: stepsLaneH ? 4 : 0,
+    render(host, ctx) {
+      const notesLaneTop = ctx.slot.top;
+      (lanes.notes ? _notesForLane : []).forEach((n, idx) => {
+        if (!n.timestamp) return;
+        const ms = new Date(n.timestamp).getTime();
+        if (!isFinite(ms)) return;
+        const x = ((ms - first) / span) * 100;
+        const dot = document.createElement("div");
+        dot.className = "tl-note-dot";
+        dot.style.left = "calc(" + x + "% - 7px)";
+        dot.style.top = notesLaneTop + "px";
+        dot.textContent = String(idx + 1);
+        dot.dataset.noteIdx = String(idx);
+        dot.title = (n.text || "(empty note)").slice(0, 80);
+        dot.addEventListener("click", (e) => {
+          e.stopPropagation();
+          activateAnnoTab("notes");
+          const noteRow = document.querySelector(`[data-note-idx="${idx}"]`);
+          if (noteRow) noteRow.scrollIntoView({ behavior: "smooth", block: "center" });
+          seekToTimestamp(n.timestamp);
+        });
+        host.appendChild(dot);
+      });
+    },
+  };
+
+  // Stack and render every lane through the shared timeline core. The core
+  // owns the vertical layout maths, the zoom width, and the minHeight; each
+  // lane plugin owns its own DOM. tailPx (14) + the 120 floor reproduce the
+  // pre-core host.style.minHeight.
+  TimelineCore.renderLaneStack(host, {
+    lanes: [ticksLane, casesLane, activityLane, screenshotsLane,
+            densityLane, titlesLane, stepsLane, notesLane],
+    span: { startMs: first, endMs: last },
+    zoom: State.getZoomFactor(),
+    tailPx: 14,
+    minHeightFloor: 120,
+  });
+
+  // Legend mirrors the apps observed while the activity lane rendered.
+  renderLegend(observedApps);
+
+  // Playhead overlays all lanes; appended last so it paints on top.
   const ph = document.createElement("div");
   ph.className = "tl-playhead";
   ph.id = "tl-playhead";

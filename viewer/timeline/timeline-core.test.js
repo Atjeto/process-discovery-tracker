@@ -101,3 +101,65 @@ test("packLanes ignores items with non-finite times", () => {
   assert.equal(r.laneOf.has("bad"), false);
   assert.equal(r.laneOf.get("a"), 0);
 });
+
+test("layoutLaneStack stacks lanes cumulatively, offsetting each by its gap", () => {
+  const layout = tc.layoutLaneStack([
+    { key: "ticks", height: 20, gapBefore: 4 },
+    { key: "cases", height: 22, gapBefore: 4 },
+    { key: "activity", height: 60, gapBefore: 6 },
+  ]);
+  assert.deepEqual(layout.slots.get("ticks"), { top: 4, height: 20 });
+  assert.deepEqual(layout.slots.get("cases"), { top: 28, height: 22 });
+  assert.deepEqual(layout.slots.get("activity"), { top: 56, height: 60 });
+  assert.equal(layout.contentHeight, 116);
+  assert.equal(layout.totalHeight, 116);
+});
+
+test("layoutLaneStack offsets the first lane by its gapBefore", () => {
+  const layout = tc.layoutLaneStack([{ key: "only", height: 20, gapBefore: 4 }]);
+  assert.deepEqual(layout.slots.get("only"), { top: 4, height: 20 });
+});
+
+test("layoutLaneStack keeps a zero-height lane in the stack but adds no height", () => {
+  const layout = tc.layoutLaneStack([
+    { key: "a", height: 10, gapBefore: 0 },
+    { key: "b", height: 0, gapBefore: 5 },
+    { key: "c", height: 10, gapBefore: 5 },
+  ]);
+  assert.deepEqual(layout.slots.get("a"), { top: 0, height: 10 });
+  assert.deepEqual(layout.slots.get("b"), { top: 15, height: 0 });
+  assert.deepEqual(layout.slots.get("c"), { top: 20, height: 10 });
+  assert.equal(layout.contentHeight, 30);
+});
+
+test("layoutLaneStack adds tailPx below the last lane", () => {
+  const layout = tc.layoutLaneStack([{ key: "a", height: 10, gapBefore: 4 }], { tailPx: 14 });
+  assert.equal(layout.contentHeight, 14);
+  assert.equal(layout.totalHeight, 28);
+});
+
+test("layoutLaneStack reproduces the Flow timeline lane cascade", () => {
+  // The Flow lane stack with default toggles: cases + activity + screenshots
+  // shown; density/titles/steps/notes off (height 0). Expected tops are
+  // hand-computed from the pre-refactor renderTimeline() geometry.
+  const layout = tc.layoutLaneStack([
+    { key: "ticks", height: 20, gapBefore: 4 },
+    { key: "cases", height: 22, gapBefore: 4 },
+    { key: "activity", height: 60, gapBefore: 6 },
+    { key: "screenshots", height: 26, gapBefore: 4 },
+    { key: "density", height: 0, gapBefore: 6 },
+    { key: "titles", height: 0, gapBefore: 4 },
+    { key: "steps", height: 0, gapBefore: 0 },
+    { key: "notes", height: 0, gapBefore: 0 },
+  ], { tailPx: 14 });
+  assert.deepEqual(layout.slots.get("ticks"), { top: 4, height: 20 });
+  assert.deepEqual(layout.slots.get("cases"), { top: 28, height: 22 });
+  assert.deepEqual(layout.slots.get("activity"), { top: 56, height: 60 });
+  assert.deepEqual(layout.slots.get("screenshots"), { top: 120, height: 26 });
+  assert.deepEqual(layout.slots.get("density"), { top: 152, height: 0 });
+  assert.deepEqual(layout.slots.get("titles"), { top: 156, height: 0 });
+  assert.deepEqual(layout.slots.get("steps"), { top: 156, height: 0 });
+  assert.deepEqual(layout.slots.get("notes"), { top: 156, height: 0 });
+  assert.equal(layout.contentHeight, 156);
+  assert.equal(layout.totalHeight, 170);
+});

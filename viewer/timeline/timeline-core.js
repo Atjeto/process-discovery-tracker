@@ -246,6 +246,108 @@ function renderAxis(host, ticks, opts) {
 }
 
 /**
+ * @typedef {Object} LaneSlot
+ * @property {number} top     Resolved top offset, px from the host top.
+ * @property {number} height  Lane height, px.
+ */
+
+/**
+ * @typedef {Object} LaneStackLayout
+ * @property {Map<string, LaneSlot>} slots  Resolved geometry, keyed by lane key.
+ * @property {number} contentHeight         Bottom edge of the last lane, px.
+ * @property {number} totalHeight           contentHeight plus tailPx.
+ */
+
+/**
+ * @typedef {Object} LaneRenderCtx
+ * @property {LaneSlot} slot                This lane's resolved geometry.
+ * @property {Map<string, LaneSlot>} slots  Every lane's geometry (cross-lane refs).
+ * @property {number} startMs               Span start (ms since epoch).
+ * @property {number} endMs                 Span end (ms since epoch).
+ * @property {number} spanMs                Span length (ms; always >= 1).
+ * @property {number} zoom                  Horizontal zoom factor (>= 1).
+ */
+
+/**
+ * @typedef {Object} StackLane
+ * @property {string} key        Stable lane id; used for cross-lane geometry lookup.
+ * @property {number} height     Resolved lane height in px; 0 hides the lane.
+ * @property {number} gapBefore  Vertical gap in px inserted above this lane.
+ * @property {(host: HTMLElement, ctx: LaneRenderCtx) => void} render  Draws the lane.
+ */
+
+/**
+ * @typedef {Object} LaneStackOptions
+ * @property {StackLane[]} lanes               Lanes in top-to-bottom order.
+ * @property {{ startMs: number, endMs: number }} span
+ * @property {number} [zoom]            Horizontal zoom factor, >= 1 (default 1).
+ * @property {number} [tailPx]          Padding added below the last lane, px.
+ * @property {number} [minHeightFloor]  Lower bound for the host minHeight, px.
+ */
+
+/**
+ * Stack lanes vertically into cumulative { top, height } geometry. Pure layout
+ * maths -- no DOM, no time -- so it is unit-tested directly. The Flow timeline
+ * is a heterogeneous vertical stack (ticks, cases, activity, screenshots, the
+ * optional lanes); this resolves that stack the way packLanes resolves the
+ * single-block-type mini-timelines.
+ * @param {{ key: string, height: number, gapBefore: number }[]} lanes
+ *        Lanes in top-to-bottom order. A height of 0 keeps the lane in the
+ *        stack (its gapBefore still applies) but contributes no height.
+ * @param {{ tailPx?: number }} [opts]  tailPx is added below the last lane.
+ * @returns {LaneStackLayout}
+ */
+function layoutLaneStack(lanes, opts) {
+  /** @type {Map<string, LaneSlot>} */
+  const slots = new Map();
+  let cursor = 0;
+  for (const lane of lanes) {
+    const top = cursor + lane.gapBefore;
+    slots.set(lane.key, { top, height: lane.height });
+    cursor = top + lane.height;
+  }
+  return {
+    slots,
+    contentHeight: cursor,
+    totalHeight: cursor + ((opts && opts.tailPx) || 0),
+  };
+}
+
+/**
+ * Render a heterogeneous vertical lane stack into host: set the host width for
+ * zoom, resolve the layout, set the host minHeight, then call render(host, ctx)
+ * on each visible (height > 0) lane in order. Each lane is a { height, render }
+ * plugin (ADR-0003 item 5). Unlike renderMiniTimeline this does NOT clear host
+ * or bind host listeners -- the caller owns the host lifecycle (innerHTML,
+ * click handlers, overlays such as a playhead).
+ * @param {HTMLElement} host
+ * @param {LaneStackOptions} opts
+ * @returns {LaneStackLayout}
+ */
+function renderLaneStack(host, opts) {
+  const zoom = Math.max(1, opts.zoom || 1);
+  host.style.width = 100 * zoom + "%";
+  const layout = layoutLaneStack(opts.lanes, { tailPx: opts.tailPx });
+  host.style.minHeight =
+    Math.max(opts.minHeightFloor || 0, layout.totalHeight) + "px";
+  const spanMs = Math.max(1, opts.span.endMs - opts.span.startMs);
+  for (const lane of opts.lanes) {
+    if (lane.height <= 0) continue;
+    const slot = layout.slots.get(lane.key);
+    if (!slot) continue; // unreachable: every lane has a slot -- narrows for tsc
+    lane.render(host, {
+      slot,
+      slots: layout.slots,
+      startMs: opts.span.startMs,
+      endMs: opts.span.endMs,
+      spanMs,
+      zoom,
+    });
+  }
+  return layout;
+}
+
+/**
  * Render a single-block-type mini-timeline -- the Steps and Phases strips: a
  * lane-packed row of blocks plus a bottom time axis, scaled to fill the
  * drag-resizable strip height. Replaces the bodies of renderStepTimeline and
@@ -323,4 +425,6 @@ module.exports = {
   renderBand,
   renderAxis,
   renderMiniTimeline,
+  layoutLaneStack,
+  renderLaneStack,
 };
