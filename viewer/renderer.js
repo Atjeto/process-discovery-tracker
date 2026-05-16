@@ -14,6 +14,7 @@ const { ipcRenderer } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const TimelineCore = require("./timeline/timeline-core.js");
+const State = require("./state.js");
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));

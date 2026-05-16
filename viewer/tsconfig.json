@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["timeline/**/*.js"]
+  "include": ["timeline/**/*.js", "state.js", "state.test.js"]
 }

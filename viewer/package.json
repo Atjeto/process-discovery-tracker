@@ -10,7 +10,7 @@
     "package": "node build-package.js",
     "dist": "electron-builder --win --x64 --publish=never",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test \"timeline/**/*.test.js\""
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18"
@@ -38,6 +38,7 @@
       "python-runner.js",
       "index.html",
       "renderer.js",
+      "state.js",
       "charts.js",
       "dfg-viewer.js",
       "bpmn-viewer.js",
