@@ -8,7 +8,7 @@
 
 "use strict";
 
-const { ipcRenderer } = require("electron");
+const Ipc = require("./ipc.js");
 const path = require("node:path");
 const fs = require("node:fs");
 const TimelineCore = require("./timeline/timeline-core.js");
@@ -69,7 +69,7 @@ async function saveAnnotationsWithUndo(annotations, label) {
     annotations: snapshotAnnotations(session.annotations),
     sessionFolder: sf,
   });
-  return await ipcRenderer.invoke("viewer:saveAnnotations", {
+  return await Ipc.saveAnnotations({
     sessionFolder: sf,
     annotations,
   });
@@ -90,7 +90,7 @@ async function performUndo() {
     annotations: snapshotAnnotations(session.annotations),
     sessionFolder: popped.sessionFolder,
   });
-  await ipcRenderer.invoke("viewer:saveAnnotations", {
+  await Ipc.saveAnnotations({
     sessionFolder: popped.sessionFolder,
     annotations: popped.annotations,
   });
@@ -108,7 +108,7 @@ async function performRedo() {
     annotations: snapshotAnnotations(session.annotations),
     sessionFolder: popped.sessionFolder,
   });
-  await ipcRenderer.invoke("viewer:saveAnnotations", {
+  await Ipc.saveAnnotations({
     sessionFolder: popped.sessionFolder,
     annotations: popped.annotations,
   });
@@ -1440,7 +1440,7 @@ function openIgnoredAppsDialog() {
       .map(cb => cb.dataset.proc);
     anno.step_filters.ignored_processes = picked;
     // Settings change -- write directly (not via the undo stack).
-    await ipcRenderer.invoke("viewer:saveAnnotations", {
+    await Ipc.saveAnnotations({
       sessionFolder: State.getSession().sessionFolder,
       annotations: anno,
     });
@@ -1583,7 +1583,7 @@ async function refreshTemplateVersions() {
     panel.style.display = "none";
     return;
   }
-  const list = await ipcRenderer.invoke("viewer:listTemplateVersions", State.getCanonicalState().path);
+  const list = await Ipc.listTemplateVersions(State.getCanonicalState().path);
   if (!list || !list.length) { panel.style.display = "none"; return; }
   panel.style.display = "";
   const aSel = document.getElementById("tpl-cmp-a");
@@ -1610,7 +1610,7 @@ async function compareTemplateVersions() {
   }
   const yaml = require("js-yaml");
   async function read(p) {
-    const r = await ipcRenderer.invoke("viewer:readTemplateFile", p);
+    const r = await Ipc.readTemplateFile(p);
     if (!r || !r.ok) return null;
     try { return yaml.load(r.content) || {}; }
     catch (_) { return null; }
@@ -1702,7 +1702,7 @@ async function buildVocabFromSession(suggestedName) {
   });
   if (!vocabName) return;
   const vocabId = vocabName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  const r = await ipcRenderer.invoke("viewer:bootstrapAppVocab", {
+  const r = await Ipc.bootstrapAppVocab({
     sessionFolder: State.getSession().sessionFolder,
     vocabId, vocabName,
   });
@@ -1710,7 +1710,7 @@ async function buildVocabFromSession(suggestedName) {
     toast("App Library entry build failed: " + ((r && r.error) || "unknown"), "error");
     return;
   }
-  const out = await ipcRenderer.invoke("viewer:saveAppVocab", {
+  const out = await Ipc.saveAppVocab({
     defaultName: vocabId + ".yaml",
     content: r.yaml,
     /* Default to the shipped vocab dir so the analyst doesn't have to
@@ -1719,7 +1719,7 @@ async function buildVocabFromSession(suggestedName) {
     preferAppVocabDir: true,
   });
   if (out) {
-    await ipcRenderer.invoke("viewer:revealFile", out);
+    await Ipc.revealFile(out);
     toast("App Library starter saved — name each interaction in plain English, then re-analyze any session to apply.", "success");
   }
 }
@@ -1760,7 +1760,7 @@ $$("#agg-level-switcher .agg-level-btn").forEach((btn) => {
 
 if ($("#btn-open-canonical")) {
   $("#btn-open-canonical").addEventListener("click", async () => {
-    const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
+    const r = await Ipc.openCanonicalFile();
     if (!r) return;
     State.getCanonicalState().path = r.path;
     State.getCanonicalState().content = r.content;
@@ -1774,7 +1774,7 @@ if ($("#btn-save-canonical")) {
   $("#btn-save-canonical").addEventListener("click", async () => {
     if (!State.getCanonicalState().path) return;
     const content = $("#canonical-yaml").value;
-    await ipcRenderer.invoke("viewer:saveCanonicalFile", { path: State.getCanonicalState().path, content });
+    await Ipc.saveCanonicalFile({ path: State.getCanonicalState().path, content });
     State.getCanonicalState().content = content;
     toast("Process Template saved", "success");
     renderCanonicalStepList();
@@ -1785,11 +1785,11 @@ if ($("#btn-save-canonical")) {
 }
 if ($("#btn-load-exemplar")) {
   $("#btn-load-exemplar").addEventListener("click", async () => {
-    const folder = await ipcRenderer.invoke("viewer:openSessionFolder");
+    const folder = await Ipc.openSessionFolder();
     if (!folder) return;
     State.getCanonicalState().exemplarFolder = folder;
     if (State.getCanonicalState().path) {
-      const r = await ipcRenderer.invoke("viewer:testCanonicalMatch", {
+      const r = await Ipc.testCanonicalMatch({
         canonicalPath: State.getCanonicalState().path, sessionFolder: folder,
       });
       if (r && r.ok) {
@@ -1966,12 +1966,12 @@ async function exportArtifact(kind) {
   if (kind === "phase-bpmn") opts.phaseBpmnOut = tmpPath;
   if (kind === "pdd")        opts.pddOut       = tmpPath;
   if (kind === "step-csv")   opts.stepCsvOut   = tmpPath;
-  const r = await ipcRenderer.invoke("viewer:runNormalizeExtended", opts);
+  const r = await Ipc.runNormalizeExtended(opts);
   if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
   const suggested = "process." + kind + "." + ext;
-  const out = await ipcRenderer.invoke("viewer:exportFile", { sourcePath: tmpPath, suggestedName: suggested });
+  const out = await Ipc.exportFile({ sourcePath: tmpPath, suggestedName: suggested });
   if (out) {
-    await ipcRenderer.invoke("viewer:revealFile", out);
+    await Ipc.revealFile(out);
     toast("Exported: " + path.basename(out), "success");
   }
   try { fs.unlinkSync(tmpPath); } catch (_) {}
@@ -1987,18 +1987,18 @@ if ($("#btn-export-step-csv"))   $("#btn-export-step-csv").addEventListener("cli
 
 if ($("#btn-renormalize-canonical")) {
   $("#btn-renormalize-canonical").addEventListener("click", async () => {
-    const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
+    const r = await Ipc.openCanonicalFile();
     if (!r) return;
     if (!State.getAggregateSessions().length) { toast("Load sessions first", "error"); return; }
     let driftCount = 0;
     for (const s of State.getAggregateSessions()) {
-      const result = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
+      const result = await Ipc.runNormalizeExtended({
         sessionFolder: s.sessionFolder, mine: true, canonical: r.path,
       });
       if (result && result.ok && result.drift_count) driftCount += result.drift_count;
     }
     const folders = State.getAggregateSessions().map((s) => s.sessionFolder);
-    State.setAggregateSessions(await ipcRenderer.invoke("viewer:loadMultipleSessions", folders));
+    State.setAggregateSessions(await Ipc.loadMultipleSessions(folders));
     State.setAggregateSessions(State.getAggregateSessions().filter((s) => !s.error));
     renderAggregate();
     toast(`Re-normalized; ${driftCount} drift marker(s)`, driftCount ? "warn" : "success");
@@ -2060,7 +2060,7 @@ if (btnDfgZoomFit) btnDfgZoomFit.addEventListener("click", () => {
 /* ============ Session view: open + normalize ====================== */
 
 async function openSessionFlow() {
-  const folder = await ipcRenderer.invoke("viewer:openSessionFolder");
+  const folder = await Ipc.openSessionFolder();
   if (!folder) return;
   await loadSessionIntoView(folder);
 }
@@ -2090,7 +2090,7 @@ if (btnCancelNormalize) {
   btnCancelNormalize.addEventListener("click", async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    await ipcRenderer.invoke("viewer:cancelNormalize");
+    await Ipc.cancelNormalize();
     toast("Cancelling analysis...");
   });
 }
@@ -2104,7 +2104,7 @@ $("#btn-normalize").addEventListener("click", async () => {
   const remembered = (State.getSession().annotations &&
     State.getSession().annotations.matched_against &&
     State.getSession().annotations.matched_against.template_path) || null;
-  const r = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
+  const r = await Ipc.runNormalizeExtended({
     sessionFolder: State.getSession().sessionFolder,
     mine,
     canonical: remembered,
@@ -2128,14 +2128,14 @@ const btnMatchTemplate = $("#btn-match-template");
 if (btnMatchTemplate) {
   btnMatchTemplate.addEventListener("click", async () => {
     if (!State.getSession()) return;
-    const r = await ipcRenderer.invoke("viewer:openCanonicalFile");
+    const r = await Ipc.openCanonicalFile();
     if (!r) return;
     btnMatchTemplate.disabled = true;
     $("#btn-normalize").disabled = true;
     $("#log-host").style.display = "";
     $("#normalize-log").textContent = "";
     const mine = $("#cb-mine").checked;
-    const result = await ipcRenderer.invoke("viewer:runNormalizeExtended", {
+    const result = await Ipc.runNormalizeExtended({
       sessionFolder: State.getSession().sessionFolder,
       mine,
       canonical: r.path,
@@ -2151,7 +2151,7 @@ if (btnMatchTemplate) {
       const a = State.getSession().annotations || {};
       a.matched_against = a.matched_against || {};
       a.matched_against.template_path = r.path;
-      await ipcRenderer.invoke("viewer:saveAnnotations", {
+      await Ipc.saveAnnotations({
         sessionFolder: State.getSession().sessionFolder,
         annotations: a,
       });
@@ -2161,7 +2161,7 @@ if (btnMatchTemplate) {
   });
 }
 
-ipcRenderer.on("viewer:normalizeLog", (_e, text) => {
+Ipc.onNormalizeLog((text) => {
   const pre = $("#normalize-log");
   pre.textContent += text;
   pre.scrollTop = pre.scrollHeight;
@@ -2170,7 +2170,7 @@ ipcRenderer.on("viewer:normalizeLog", (_e, text) => {
 async function loadSessionIntoView(folder) {
   const prevFolder = State.getSession() ? State.getSession().sessionFolder : null;
   try {
-    State.setSession(await ipcRenderer.invoke("viewer:loadSession", folder));
+    State.setSession(await Ipc.loadSession(folder));
   } catch (e) {
     toast("Failed to load: " + (e.message || e), "error");
     return;
@@ -2322,12 +2322,12 @@ function updateProcessMapStatus() {
   if (open) open.addEventListener("click", async () => {
     const p = currentBpmnPath();
     if (!p) return;
-    const err = await ipcRenderer.invoke("viewer:openExternal", p);
+    const err = await Ipc.openExternal(p);
     if (err) toast("Could not open: " + err, "error");
   });
   if (reveal) reveal.addEventListener("click", () => {
     const p = currentBpmnPath();
-    if (p) ipcRenderer.invoke("viewer:revealFile", p);
+    if (p) Ipc.revealFile(p);
   });
 })();
 
@@ -3806,7 +3806,7 @@ function _galleryKey(e) {
 function openScreenshot(relPath) {
   if (!relPath || !State.getSession()) return;
   const full = path.join(State.getSession().sessionFolder, relPath);
-  if (fs.existsSync(full)) ipcRenderer.invoke("viewer:openExternal", full);
+  if (fs.existsSync(full)) Ipc.openExternal(full);
 }
 
 function getMarkerEdit(eventId) {
@@ -3985,7 +3985,7 @@ async function renameMarker(markerEvent, newLabel) {
     previous: markerEvent.data.label,
     ts: new Date().toISOString(),
   });
-  await ipcRenderer.invoke("viewer:saveAnnotations", {
+  await Ipc.saveAnnotations({
     sessionFolder: State.getSession().sessionFolder,
     annotations: anno,
   });
@@ -3998,9 +3998,9 @@ async function renameMarker(markerEvent, newLabel) {
 /* ============ Aggregate view ====================================== */
 
 async function openMultiFlow() {
-  const folders = await ipcRenderer.invoke("viewer:openMultipleSessions");
+  const folders = await Ipc.openMultipleSessions();
   if (!folders || !folders.length) return;
-  const sessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
+  const sessions = await Ipc.loadMultipleSessions(folders);
   State.setAggregateSessions(sessions.filter((s) => !s.error));
   $("#aggregate-empty").style.display = State.getAggregateSessions().length ? "none" : "";
   $("#aggregate-loaded").style.display = State.getAggregateSessions().length ? "" : "none";
@@ -4024,7 +4024,7 @@ const _btnNormalizeAllCancel = $("#btn-normalize-all-cancel");
 if (_btnNormalizeAllCancel) {
   _btnNormalizeAllCancel.addEventListener("click", async () => {
     _aggregateNormalizeCancelled = true;
-    await ipcRenderer.invoke("viewer:cancelNormalize");
+    await Ipc.cancelNormalize();
     toast("Cancelling after current session...");
   });
 }
@@ -4044,7 +4044,7 @@ $("#btn-normalize-all").addEventListener("click", async () => {
     // P2.11: per-iteration progress label so a long aggregate analyze
     // doesn't look frozen.
     btn.textContent = `Analyzing ${done + 1} / ${total}...`;
-    const r = await ipcRenderer.invoke("viewer:runNormalize", {
+    const r = await Ipc.runNormalize({
       sessionFolder: s.sessionFolder,
       mine: true,
     });
@@ -4059,7 +4059,7 @@ $("#btn-normalize-all").addEventListener("click", async () => {
     return;
   }
   const folders = State.getAggregateSessions().map((s) => s.sessionFolder);
-  State.setAggregateSessions(await ipcRenderer.invoke("viewer:loadMultipleSessions", folders));
+  State.setAggregateSessions(await Ipc.loadMultipleSessions(folders));
   State.setAggregateSessions(State.getAggregateSessions().filter((s) => !s.error));
   renderAggregate();
   btn.disabled = false;
@@ -4545,7 +4545,7 @@ if ($("#btn-export-map-svg")) {
       toast("No process map to export — analyze sessions first.", "error");
       return;
     }
-    const r = await ipcRenderer.invoke("viewer:saveSvgFile", {
+    const r = await Ipc.saveSvgFile({
       content: svg,
       suggestedName: (which === "dfg" ? "flow-diagram" : "process-diagram") + ".svg",
     });
@@ -4605,12 +4605,12 @@ async function saveMarkdownReport(md, suggestedName) {
   const tmpDir = require("os").tmpdir();
   const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-" + suggestedName);
   fs.writeFileSync(tmpPath, md, "utf-8");
-  const out = await ipcRenderer.invoke("viewer:exportFile", {
+  const out = await Ipc.exportFile({
     sourcePath: tmpPath,
     suggestedName,
   });
   if (out) {
-    await ipcRenderer.invoke("viewer:revealFile", out);
+    await Ipc.revealFile(out);
     toast("Markdown report saved: " + path.basename(out), "success");
   }
   try { fs.unlinkSync(tmpPath); } catch (_) {}
@@ -4668,12 +4668,12 @@ $("#btn-export-promotions").addEventListener("click", async () => {
   const tmpDir = require("os").tmpdir();
   const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-taxonomy-promotions.yaml");
   fs.writeFileSync(tmpPath, yaml, "utf-8");
-  const out = await ipcRenderer.invoke("viewer:exportFile", {
+  const out = await Ipc.exportFile({
     sourcePath: tmpPath,
     suggestedName: "taxonomy-promotions.yaml",
   });
   if (out) {
-    await ipcRenderer.invoke("viewer:revealFile", out);
+    await Ipc.revealFile(out);
     toast(`Promoted ${sorted.length} app(s) as taxonomy candidates`, "success");
   }
   try { fs.unlinkSync(tmpPath); } catch (_) {}
@@ -4684,12 +4684,12 @@ async function exportFirst(filename) {
     fs.existsSync(path.join(x.sessionFolder, filename)));
   if (!s) return;
   const src = path.join(s.sessionFolder, filename);
-  const out = await ipcRenderer.invoke("viewer:exportFile", {
+  const out = await Ipc.exportFile({
     sourcePath: src,
     suggestedName: filename,
   });
   if (out) {
-    await ipcRenderer.invoke("viewer:revealFile", out);
+    await Ipc.revealFile(out);
     toast("Exported: " + path.basename(out), "success");
   }
 }
@@ -4854,7 +4854,7 @@ $("#topbar-meta").textContent = "v0.2 · " + new Date().toLocaleDateString();
 
 /* If launched with --session=<path>, the main process pushes the path
    via this channel. Open it without any further user click. */
-ipcRenderer.on("viewer:openInitialSession", (_e, folder) => {
+Ipc.onOpenInitialSession((folder) => {
   if (folder) loadSessionIntoView(folder);
 });
 
@@ -4862,7 +4862,7 @@ ipcRenderer.on("viewer:openInitialSession", (_e, folder) => {
 
 
 async function reloadVocabList() {
-  const r = await ipcRenderer.invoke("viewer:listAppVocabs");
+  const r = await Ipc.listAppVocabs();
   State.getVocabState().list = (r && r.vocabs) || [];
   const meta = $("#vocab-list-meta");
   if (meta) {
@@ -4926,7 +4926,7 @@ async function selectVocab(p) {
   }
   State.getVocabState().selectedPath = p;
   State.getVocabState().dirty = false;
-  const v = await ipcRenderer.invoke("viewer:readVocab", p);
+  const v = await Ipc.readVocab(p);
   if (!v) {
     State.getVocabState().current = null;
     toast("Could not read vocab file", "error");
@@ -5085,7 +5085,7 @@ function removeInteraction(idx) {
 async function saveVocab() {
   if (!State.getVocabState().selectedPath || !State.getVocabState().current) return;
   collectAndMark();
-  const r = await ipcRenderer.invoke("viewer:writeVocab", {
+  const r = await Ipc.writeVocab({
     path: State.getVocabState().selectedPath,
     vocab: State.getVocabState().current,
   });
@@ -5105,7 +5105,7 @@ if ($("#btn-vocab-new")) {
     const name = await promptModal({ title: "New App Library entry", message: "Which app is this entry for?", placeholder: "e.g., Salesforce", okLabel: "Create" });
     if (!name) return;
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    const p = await ipcRenderer.invoke("viewer:newVocabFile", { suggestedId: id });
+    const p = await Ipc.newVocabFile({ suggestedId: id });
     if (!p) return;
     await reloadVocabList();
     await selectVocab(p);
@@ -5117,7 +5117,7 @@ if ($("#btn-vocab-reload")) {
 }
 if ($("#btn-vocab-open-yaml")) {
   $("#btn-vocab-open-yaml").addEventListener("click", () => {
-    if (State.getVocabState().selectedPath) ipcRenderer.invoke("viewer:openVocabFile", State.getVocabState().selectedPath);
+    if (State.getVocabState().selectedPath) Ipc.openVocabFile(State.getVocabState().selectedPath);
   });
 }
 
@@ -5137,7 +5137,7 @@ function parseHmsToMs(s) {
 
 async function attachExternalVideo() {
   if (!State.getSession()) return;
-  const r = await ipcRenderer.invoke("viewer:attachExternalVideo", {
+  const r = await Ipc.attachExternalVideo({
     sessionFolder: State.getSession().sessionFolder,
   });
   if (!r) return;
@@ -5161,7 +5161,7 @@ async function attachExternalVideo() {
     toast("Couldn't parse offset; try 00:00:05 or -00:01:30", "error");
     return;
   }
-  const saved = await ipcRenderer.invoke("viewer:saveExternalVideoSync", {
+  const saved = await Ipc.saveExternalVideoSync({
     sessionFolder: State.getSession().sessionFolder,
     videoPath: r.path,
     offsetMs,
@@ -5453,7 +5453,7 @@ async function projectSaveAs() {
   });
   if (!name) return;
   const project = PdtProject.captureFromCollectors(projectCollectors, { name });
-  const r = await ipcRenderer.invoke("viewer:saveProjectAs", { project, suggestedName: name.replace(/[^A-Za-z0-9._-]+/g, "-") });
+  const r = await Ipc.saveProjectAs({ project, suggestedName: name.replace(/[^A-Za-z0-9._-]+/g, "-") });
   if (!r) return;
   if (!r.ok) { toast("Save failed: " + (r.error || "unknown"), "error"); return; }
   PdtProject.setActiveProject({ path: r.path, name, ...project });
@@ -5467,7 +5467,7 @@ async function projectSave() {
   const active = PdtProject.activeProject();
   if (!active || !active.path) return projectSaveAs();
   const project = PdtProject.captureFromCollectors(projectCollectors, { name: active.name });
-  const r = await ipcRenderer.invoke("viewer:saveProject", { project, path: active.path });
+  const r = await Ipc.saveProject({ project, path: active.path });
   if (!r || !r.ok) { toast("Save failed: " + ((r && r.error) || "unknown"), "error"); return; }
   PdtProject.setActiveProject({ path: r.path, name: active.name, ...project });
   PdtProject.pushRecentProject(r.path, active.name);
@@ -5477,14 +5477,14 @@ async function projectSave() {
 
 async function projectOpen() {
   toggleProjectMenu(false);
-  const r = await ipcRenderer.invoke("viewer:openProject");
+  const r = await Ipc.openProject();
   if (!r) return;
   if (!r.ok) { toast("Couldn't open project: " + (r.error || "unknown"), "error"); return; }
   await applyProject(r.path, r.project);
 }
 
 async function projectOpenByPath(filePath) {
-  const r = await ipcRenderer.invoke("viewer:loadProjectFile", filePath);
+  const r = await Ipc.loadProjectFile(filePath);
   if (!r) return;
   if (!r.ok) { toast("Couldn't open project: " + (r.error || "unknown"), "error"); return; }
   await applyProject(r.path, r.project);
@@ -5501,7 +5501,7 @@ async function applyProject(filePath, raw) {
   // Aggregate sessions
   if (project.aggregateSessions && project.aggregateSessions.length) {
     try {
-      const sessions = await ipcRenderer.invoke("viewer:loadMultipleSessions", project.aggregateSessions);
+      const sessions = await Ipc.loadMultipleSessions(project.aggregateSessions);
       State.setAggregateSessions((sessions || []).filter((s) => s && !s.error));
       const aggEmpty = $("#aggregate-empty");
       const aggLoaded = $("#aggregate-loaded");
