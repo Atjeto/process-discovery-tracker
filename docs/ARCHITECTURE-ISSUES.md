@@ -19,6 +19,9 @@ The recurring complaint — "fix one thing, another breaks" — is not bad luck.
 the predictable behaviour of **S1** + **S2**: one giant file, and timeline logic
 copied three times. Most regressions below are symptoms of those two.
 
+> **Capture app:** this register covers the viewer only. The capture app's
+> equivalent audit is [CAPTURE-ARCHITECTURE-ISSUES.md](./CAPTURE-ARCHITECTURE-ISSUES.md).
+
 ---
 
 ## Structural issues
