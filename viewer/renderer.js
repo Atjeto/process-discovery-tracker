@@ -410,6 +410,13 @@ initAggregateView({
   },
 });
 
+/* Re-fit the process map after its panel is drag-resized (layout-controls
+   fires pdt:mapresized on drag release). */
+document.addEventListener("pdt:mapresized", () => {
+  if (PdtBpmn && PdtBpmn.fit) PdtBpmn.fit();
+  if (PdtDfg && PdtDfg.fit) PdtDfg.fit();
+});
+
 /* ============ Exports ============================================= */
 
 $("#btn-export-bpmn").addEventListener("click", () => exportFirst("process_map.bpmn"));

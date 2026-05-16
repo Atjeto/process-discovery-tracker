@@ -44,7 +44,8 @@ function renderBarChart(host, data, opts) {
   const labelW = 160;
   const barH = 18;
   const gap = 6;
-  const valueW = 70;
+  const valueW = 84;
+  const sparkW = 60;
   const width = host.clientWidth || 360;
   const height = rows.length * (barH + gap) + 12;
   const svg = svgEl("svg", {
@@ -55,7 +56,11 @@ function renderBarChart(host, data, opts) {
   });
   host.appendChild(svg);
   const barAreaX = labelW + 10;
-  const barAreaW = Math.max(60, width - barAreaX - valueW - 10);
+  // Reserve room on the right for the value label and -- when any row
+  // carries a sparkline -- the sparkline strip too, so the longest
+  // bar's value text never runs underneath the sparkline.
+  const hasSpark = rows.some((r) => Array.isArray(r.sparkline) && r.sparkline.length);
+  const barAreaW = Math.max(60, width - barAreaX - valueW - (hasSpark ? sparkW + 14 : 10));
   rows.forEach((row, i) => {
     const y = i * (barH + gap) + 4;
     const w = Math.max(2, (row.value / max) * barAreaW);
@@ -103,7 +108,7 @@ function renderBarChart(host, data, opts) {
     // temporal context to a frequency or duration chart -- "this
     // activity clustered early" vs "spread evenly".
     if (Array.isArray(row.sparkline) && row.sparkline.length) {
-      const sparkW = 60, sparkH = barH - 4;
+      const sparkH = barH - 4;
       const sparkX = width - sparkW - 4;
       const sparkY = y + 2;
       const buckets = row.sparkline;
