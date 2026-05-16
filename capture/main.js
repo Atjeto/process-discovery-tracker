@@ -20,7 +20,6 @@ const {
   Tray,
   Menu,
   BrowserWindow,
-  nativeImage,
   shell,
   dialog,
   globalShortcut,
@@ -55,21 +54,12 @@ const { showObsSettingsWindow } = require("./obs-settings-window.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
 const welcomeWin = require("./welcome-window.js");
 const hotkeyOverlay = require("./hotkey-overlay.js");
+const { createWindowManager } = require("./window-manager.js");
+const { createSessionStorage } = require("./session-storage.js");
 const { appLogger } = require("./log.js");
 const crypto = require("node:crypto");
 
-const DEBUG = process.env.PDT_DEBUG === "1";
-function bootLog(msg) {
-  if (!DEBUG) return;
-  try {
-    const dir = app.getPath("userData");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(
-      path.join(dir, "boot.log"),
-      `${new Date().toISOString()} ${msg}\n`
-    );
-  } catch (_e) { /* best-effort */ }
-}
+const { bootLog } = require("./boot-log.js");
 process.on("uncaughtException", (e) =>
   bootLog(`uncaughtException: ${(e && e.stack) || e}`)
 );
@@ -89,9 +79,9 @@ let tracker = null;
 let session = null;
 let lastStatus = null;
 let labelPickerWindow = null;
-let statusWindow = null;
-let helpWindow = null;
-let operatorWindow = null;
+/* status, help, operator, obsSettings, sessionConfig — all single-instance
+   tray windows; the picker stays separate (blur-close + nest IPC). */
+const windows = createWindowManager();
 let obs = null;
 let obsConnected = false;
 let config = null;
@@ -110,207 +100,30 @@ let idleStartMs = null;
 // App-switch screenshot tracking
 let lastTrackedApp = null;
 
-/* Native Windows toast for failure modes the user otherwise wouldn't
-   notice (recorder dead, OBS dropped). Uses Electron's built-in
-   Notification API -- routes through the user's OS toast surface so
-   it pierces attention without an in-app dialog. No-ops gracefully
-   when notifications aren't supported. */
-const { Notification } = require("electron");
-function notifyUser(title, body, options) {
-  options = options || {};
-  try {
-    if (!Notification.isSupported || !Notification.isSupported()) return;
-    const n = new Notification({
-      title,
-      body,
-      silent: !!options.silent,
-      urgency: options.urgency || "normal",
-      icon: trayIconImage(),
-    });
-    if (options.onClick) n.on("click", options.onClick);
-    n.show();
-    bootLog(`notify: ${title} -- ${body}`);
-  } catch (e) {
-    bootLog(`notify failed: ${e && e.message}`);
-  }
-}
+const { notifyUser, trayIconImage } = require("./notify.js");
 
-function trayIconImage() {
-  const candidates = [
-    path.join(process.resourcesPath || "", "tray-icon.png"),
-    path.join(__dirname, "tray-icon.png"),
-  ];
-  for (const c of candidates) {
-    if (c && fs.existsSync(c)) {
-      const img = nativeImage.createFromPath(c);
-      if (!img.isEmpty()) return img.resize({ width: 16, height: 16 });
-    }
-  }
-  return nativeImage.createEmpty();
-}
+/* Session disk-usage accounting + the delete / prune flows. */
+const sessionStorage = createSessionStorage({
+  getBaseDir: () => baseDir,
+  getActiveSessionFolder: () => (session ? session.sessionFolder : null),
+  refreshTray: () => refreshTray(),
+});
 
-/* --- Session disk-usage helpers + prune ---------------------------- */
+/* Leading-edge debounce: a burst of triggers (an app switch plus a
+   marker start/end landing together) collapses to a single capture.
+   Manual shots pass { force: true } and are never suppressed. */
+const SCREENSHOT_MIN_INTERVAL_MS = 2000;
+let lastScreenshotMs = 0;
+let screenshotFailureNotified = false;
 
-function folderBytes(folder) {
-  let total = 0;
-  let stack = [folder];
-  while (stack.length) {
-    const dir = stack.pop();
-    let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-    catch (_) { continue; }
-    for (const e of entries) {
-      const p = path.join(dir, e.name);
-      try {
-        if (e.isDirectory()) stack.push(p);
-        else if (e.isFile()) total += fs.statSync(p).size;
-      } catch (_) { /* unreadable file -- skip */ }
-    }
-  }
-  return total;
-}
-
-function humanSize(bytes) {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0, n = bytes;
-  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
-  return (n < 10 ? n.toFixed(1) : Math.round(n)) + " " + units[i];
-}
-
-function folderSizeHuman(folder) {
-  return humanSize(folderBytes(folder));
-}
-
-/* Tray menu rebuilds on every status tick (5s by default), so the
-   sessions-total enumeration is cached for a minute and invalidated
-   after any delete. Worst case the displayed total is 60s stale --
-   fine for an info line. */
-let _sessionsCache = null;
-let _sessionsCacheUntil = 0;
-
-function getSessionsTotal() {
-  const now = Date.now();
-  if (_sessionsCache && now < _sessionsCacheUntil) return _sessionsCache;
-  let count = 0;
-  let bytes = 0;
-  if (baseDir && fs.existsSync(baseDir)) {
-    for (const eng of fs.readdirSync(baseDir, { withFileTypes: true })) {
-      if (!eng.isDirectory()) continue;
-      const engDir = path.join(baseDir, eng.name);
-      let subs;
-      try { subs = fs.readdirSync(engDir, { withFileTypes: true }); }
-      catch (_) { continue; }
-      for (const s of subs) {
-        if (!s.isDirectory()) continue;
-        const sFolder = path.join(engDir, s.name);
-        if (!fs.existsSync(path.join(sFolder, "manifest.json"))) continue;
-        count++;
-        bytes += folderBytes(sFolder);
-      }
-    }
-  }
-  _sessionsCache = { count, bytes };
-  _sessionsCacheUntil = now + 60_000;
-  return _sessionsCache;
-}
-
-function invalidateSessionsCache() {
-  _sessionsCache = null;
-  _sessionsCacheUntil = 0;
-}
-
-async function confirmAndDeleteSession(sessionFolder, label) {
-  /* Never delete the currently active session. */
-  if (session && session.sessionFolder === sessionFolder) {
-    await dialog.showMessageBox({
-      type: "info",
-      title: "Cannot delete",
-      message: "This session is currently being recorded. End it first via the tray menu.",
-      buttons: ["OK"],
-    });
-    return;
-  }
-  const bytes = folderBytes(sessionFolder);
-  const r = await dialog.showMessageBox({
-    type: "warning",
-    title: "Delete session?",
-    message: "Delete this session folder?",
-    detail: `${label || sessionFolder}\n${sessionFolder}\n\nFrees ${humanSize(bytes)}. This cannot be undone.`,
-    buttons: ["Delete", "Cancel"],
-    defaultId: 1,
-    cancelId: 1,
-  });
-  if (r.response !== 0) return;
-  try {
-    fs.rmSync(sessionFolder, { recursive: true, force: true });
-    invalidateSessionsCache();
-    refreshTray();
-    bootLog(`deleted session ${sessionFolder} (${bytes} bytes)`);
-  } catch (e) {
-    dialog.showErrorBox("Delete failed", `${e && e.message}\n\nThe folder may still exist; check Explorer.`);
-  }
-}
-
-async function confirmAndPruneByAge(days) {
-  if (!baseDir || !fs.existsSync(baseDir)) return;
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const candidates = [];
-  let totalBytes = 0;
-  for (const r of listRecentSessions(baseDir, Number.MAX_SAFE_INTEGER)) {
-    if (session && r.sessionFolder === session.sessionFolder) continue;  // never the active one
-    const startMs = r.started_at ? new Date(r.started_at).getTime() : 0;
-    if (!startMs || startMs >= cutoff) continue;
-    const b = folderBytes(r.sessionFolder);
-    candidates.push({ ...r, bytes: b });
-    totalBytes += b;
-  }
-  if (!candidates.length) {
-    await dialog.showMessageBox({
-      type: "info",
-      title: "Nothing to prune",
-      message: `No sessions older than ${days} days.`,
-      buttons: ["OK"],
-    });
-    return;
-  }
-  const sample = candidates.slice(0, 8).map(c => `  ${c.label}  (${humanSize(c.bytes)})`).join("\n");
-  const more = candidates.length > 8 ? `\n  ...and ${candidates.length - 8} more` : "";
-  const r = await dialog.showMessageBox({
-    type: "warning",
-    title: "Prune old sessions?",
-    message: `Delete ${candidates.length} session${candidates.length === 1 ? "" : "s"} older than ${days} days?`,
-    detail: `Frees ${humanSize(totalBytes)} total. This cannot be undone.\n\n${sample}${more}`,
-    buttons: ["Delete", "Cancel"],
-    defaultId: 1,
-    cancelId: 1,
-  });
-  if (r.response !== 0) return;
-  let deleted = 0;
-  let failed = 0;
-  for (const c of candidates) {
-    try {
-      fs.rmSync(c.sessionFolder, { recursive: true, force: true });
-      deleted++;
-    } catch (e) {
-      failed++;
-      bootLog(`prune failed for ${c.sessionFolder}: ${e && e.message}`);
-    }
-  }
-  invalidateSessionsCache();
-  refreshTray();
-  await dialog.showMessageBox({
-    type: failed ? "warning" : "info",
-    title: "Prune complete",
-    message: failed
-      ? `Deleted ${deleted}, ${failed} failed (see boot.log if PDT_DEBUG=1).`
-      : `Deleted ${deleted} session${deleted === 1 ? "" : "s"}.`,
-    buttons: ["OK"],
-  });
-}
-
-async function fireScreenshot(kind) {
+async function fireScreenshot(kind, opts) {
   if (!tracker || !session || !config.screenshots.enabled) return;
+  const now = Date.now();
+  if (!(opts && opts.force) && now - lastScreenshotMs < SCREENSHOT_MIN_INTERVAL_MS) {
+    bootLog(`screenshot coalesced (${now - lastScreenshotMs}ms since last, kind=${kind})`);
+    return;
+  }
+  lastScreenshotMs = now;
   try {
     // Pass the foreground window bounds so multi-monitor "active"
     // mode can pick the right display. lastStatus is refreshed every
@@ -320,7 +133,7 @@ async function fireScreenshot(kind) {
     const result = await captureScreenshot({
       screenshotsFolder: path.join(session.sessionFolder, "screenshots"),
       quality: config.screenshots.quality,
-      mode: (config.screenshots && config.screenshots.display) || "active",
+      mode: config.screenshots.display,
       foregroundBounds: lastStatus ? lastStatus.currentBounds : null,
     });
     if (!result) return;
@@ -331,6 +144,14 @@ async function fireScreenshot(kind) {
     for (const p of paths) tracker.fireSystem(kind || "screenshot", { path: p });
   } catch (e) {
     bootLog(`screenshot failed: ${e && e.message}`);
+    if (!screenshotFailureNotified) {
+      screenshotFailureNotified = true;
+      notifyUser(
+        "Process Discovery Tracker",
+        "Screenshots are failing. The session is still recording markers, video, and interactions, but screenshots will be missing until you restart the session.",
+        { urgency: "normal" }
+      );
+    }
   }
 }
 
@@ -359,8 +180,8 @@ function startIdleMonitor() {
     if (!tracker) return;
     if (lastStatus && lastStatus.paused) return;
     const idleSecs = powerMonitor.getSystemIdleTime();
-    const threshold = config.idle_threshold_seconds || 60;
-    const autoEndSecs = (config.auto_end_idle_minutes || 30) * 60;
+    const threshold = config.idle_threshold_seconds;
+    const autoEndSecs = config.auto_end_idle_minutes * 60;
 
     if (!isIdle && idleSecs >= threshold) {
       isIdle = true;
@@ -374,7 +195,7 @@ function startIdleMonitor() {
       idleStartMs = null;
       bootLog(`idle_end after ${durationSecs}s`);
       const minResume =
-        (config.screenshots.on_idle_resume_minutes || 5) * 60;
+        config.screenshots.on_idle_resume_minutes * 60;
       if (durationSecs >= minResume) fireScreenshot("screenshot");
     } else if (isIdle && idleSecs >= autoEndSecs) {
       /* Auto-close any open markers and log the cause (§3.3). */
@@ -465,15 +286,8 @@ function effectiveObsCfg() {
   };
 }
 
-let obsSettingsWindow = null;
 function showObsSetupDialog() {
-  if (obsSettingsWindow && !obsSettingsWindow.isDestroyed()) {
-    obsSettingsWindow.show();
-    obsSettingsWindow.focus();
-    return;
-  }
-  obsSettingsWindow = showObsSettingsWindow();
-  obsSettingsWindow.on("closed", () => { obsSettingsWindow = null; });
+  windows.show("obsSettings", () => showObsSettingsWindow());
 }
 
 ipcMain.handle("pdt:obsGet", () => {
@@ -523,15 +337,8 @@ ipcMain.handle("pdt:sessionConfigSave", (_e, { yaml: text }) => {
   }
 });
 
-let sessionConfigWindow = null;
 function showSessionConfigDialog() {
-  if (sessionConfigWindow && !sessionConfigWindow.isDestroyed()) {
-    sessionConfigWindow.show();
-    sessionConfigWindow.focus();
-    return;
-  }
-  sessionConfigWindow = showSessionConfigWindow();
-  sessionConfigWindow.on("closed", () => { sessionConfigWindow = null; });
+  windows.show("sessionConfig", () => showSessionConfigWindow());
 }
 
 async function setupOBS() {
@@ -778,6 +585,7 @@ async function startSession(opts) {
     } catch (_e) { /* best-effort */ }
   }
   lastTrackedApp = null;
+  screenshotFailureNotified = false;
   lastStatus = tracker.getStatus();
   startIdleMonitor();
 
@@ -838,7 +646,7 @@ function handleRecorderExit(info) {
   if (
     config.interactions &&
     config.interactions.auto_restart &&
-    recorderRestartCount < (config.interactions.max_restarts_per_session || 3)
+    recorderRestartCount < config.interactions.max_restarts_per_session
   ) {
     recorderRestartCount += 1;
     setTimeout(() => {
@@ -897,7 +705,7 @@ async function endSession() {
   tracker = null;
   session = null;
   lastStatus = null;
-  invalidateSessionsCache();  // new session lands in the count + size
+  sessionStorage.invalidateSessionsCache();  // new session lands in the count + size
   return oldFolder;
 }
 
@@ -944,7 +752,7 @@ function fireEndMarker() {
 
 function fireManualScreenshot() {
   if (!tracker || !session) return;
-  fireScreenshot("screenshot_manual");
+  fireScreenshot("screenshot_manual", { force: true });
 }
 
 /* Picker semantics: if a marker is already open and the caller doesn't
@@ -1189,7 +997,7 @@ ipcMain.handle("pdt:status", () => {
   };
 });
 
-ipcMain.handle("pdt:togglePause", () => {
+function togglePause() {
   if (!tracker) return null;
   const s = tracker.getStatus();
   if (s.paused) tracker.resume(); else tracker.pause();
@@ -1199,7 +1007,9 @@ ipcMain.handle("pdt:togglePause", () => {
   }
   refreshTray();
   return lastStatus;
-});
+}
+
+ipcMain.handle("pdt:togglePause", () => togglePause());
 
 ipcMain.handle("pdt:manualScreenshot", () => fireManualScreenshot());
 ipcMain.handle("pdt:startSession", async () => {
@@ -1227,33 +1037,15 @@ ipcMain.handle("pdt:fireSync", (_e, syncId) => {
 });
 
 function toggleStatusWindow() {
-  if (statusWindow && !statusWindow.isDestroyed()) {
-    statusWindow.close();
-    statusWindow = null;
-    return;
-  }
-  statusWindow = showStatusWindow();
-  statusWindow.on("closed", () => { statusWindow = null; });
+  windows.toggle("status", () => showStatusWindow());
 }
 
 function showHelp() {
-  if (helpWindow && !helpWindow.isDestroyed()) {
-    helpWindow.show();
-    helpWindow.focus();
-    return;
-  }
-  helpWindow = showHelpWindow();
-  helpWindow.on("closed", () => { helpWindow = null; });
+  windows.show("help", () => showHelpWindow());
 }
 
 function toggleOperatorPanel() {
-  if (operatorWindow && !operatorWindow.isDestroyed()) {
-    operatorWindow.close();
-    operatorWindow = null;
-    return;
-  }
-  operatorWindow = showOperatorPanel(config);
-  operatorWindow.on("closed", () => { operatorWindow = null; });
+  windows.toggle("operator", () => showOperatorPanel(config));
 }
 
 function statusLine() {
@@ -1334,16 +1126,7 @@ function buildMenu() {
     items.push({ type: "separator" });
     items.push({
       label: lastStatus && lastStatus.paused ? "Resume polling" : "Pause polling",
-      click: () => {
-        if (!tracker) return;
-        if (lastStatus && lastStatus.paused) tracker.resume();
-        else tracker.pause();
-        lastStatus = tracker.getStatus();
-        if (recorder) {
-          try { lastStatus.paused ? recorder.pause() : recorder.resume(); } catch (_e) {}
-        }
-        refreshTray();
-      },
+      click: () => togglePause(),
     });
     items.push({
       label: "End capture session",
@@ -1372,11 +1155,11 @@ function buildMenu() {
     label: "Live status",
     submenu: [
       {
-        label: operatorWindow ? "Hide Live Session window" : "Show Live Session window",
+        label: windows.isOpen("operator") ? "Hide Live Session window" : "Show Live Session window",
         click: () => toggleOperatorPanel(),
       },
       {
-        label: statusWindow ? "Hide status window (legacy)" : "Show status window (legacy)",
+        label: windows.isOpen("status") ? "Hide status window (legacy)" : "Show status window (legacy)",
         click: () => toggleStatusWindow(),
       },
       {
@@ -1392,13 +1175,13 @@ function buildMenu() {
   // === Storage submenu ===
   const recent = listRecentSessions(baseDir, 8);
   const activeFolder = session ? session.sessionFolder : null;
-  const totals = getSessionsTotal();
+  const totals = sessionStorage.getSessionsTotal();
   const storageItems = [];
   if (recent.length) {
     const recentItems = recent.map((r) => {
       const when = (r.started_at || "").slice(0, 19).replace("T", " ");
       const status = r.status === "active" ? "  (active)" : (r.status === "recovered" ? "  (recovered)" : "");
-      const size = folderSizeHuman(r.sessionFolder);
+      const size = sessionStorage.folderSizeHuman(r.sessionFolder);
       const isCurrent = r.sessionFolder === activeFolder;
       const childItems = [
         { label: "Open in viewer", click: () => openInViewer(r.sessionFolder) },
@@ -1407,7 +1190,7 @@ function buildMenu() {
         {
           label: isCurrent ? "Delete... (currently recording)" : "Delete...",
           enabled: !isCurrent,
-          click: () => confirmAndDeleteSession(r.sessionFolder, r.label),
+          click: () => sessionStorage.confirmAndDeleteSession(r.sessionFolder, r.label),
         },
       ];
       return {
@@ -1419,16 +1202,16 @@ function buildMenu() {
   }
   storageItems.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
   storageItems.push({
-    label: `On disk: ${totals.count} / ${humanSize(totals.bytes)}`,
+    label: `On disk: ${totals.count} / ${sessionStorage.humanSize(totals.bytes)}`,
     enabled: false,
   });
   if (totals.count > 0) {
     storageItems.push({
       label: "Prune sessions older than...",
       submenu: [
-        { label: "30 days", click: () => confirmAndPruneByAge(30) },
-        { label: "90 days", click: () => confirmAndPruneByAge(90) },
-        { label: "365 days", click: () => confirmAndPruneByAge(365) },
+        { label: "30 days", click: () => sessionStorage.confirmAndPruneByAge(30) },
+        { label: "90 days", click: () => sessionStorage.confirmAndPruneByAge(90) },
+        { label: "365 days", click: () => sessionStorage.confirmAndPruneByAge(365) },
       ],
     });
   }

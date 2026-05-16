@@ -10,7 +10,8 @@
     "build:recorder": "dotnet publish recorder/Recorder.csproj -c Release -o recorder/publish",
     "prepackage": "npm run build:recorder",
     "package": "node build-package.js",
-    "dist": "electron-builder --win --x64 --publish=never"
+    "dist": "electron-builder --win --x64 --publish=never",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18"

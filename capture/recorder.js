@@ -46,7 +46,9 @@ function spawnRecorder({ sessionId, recorderPath, verbose, onEvent, onWarning, o
   const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
   const rl = readline.createInterface({ input: child.stdout });
+  let lastLineMs = Date.now();
   rl.on("line", (line) => {
+    lastLineMs = Date.now();
     if (!line) return;
     let msg;
     try { msg = JSON.parse(line); } catch (_e) {
@@ -66,7 +68,27 @@ function spawnRecorder({ sessionId, recorderPath, verbose, onEvent, onWarning, o
   const rlErr = readline.createInterface({ input: child.stderr });
   rlErr.on("line", (line) => bootLog && bootLog(`[recorder.stderr] ${line}`));
 
-  child.on("exit", (code, signal) => onExit && onExit({ code, signal }));
+  /* Liveness watchdog. The C# sidecar emits a stats line every 30s
+     regardless of UI activity, so a stdout silent far longer than that
+     means the sidecar is wedged (hung, not exited). Kill it and let the
+     exit handler run the parent's normal restart path. */
+  const RECORDER_QUIET_TIMEOUT_MS = 90_000;
+  let exited = false;
+  const watchdog = setInterval(() => {
+    if (exited) return;
+    const quietMs = Date.now() - lastLineMs;
+    if (quietMs > RECORDER_QUIET_TIMEOUT_MS) {
+      if (onWarning) onWarning({ msg: "recorder unresponsive", detail: `${quietMs}ms since last line; terminating` });
+      try { child.kill(); } catch (_) { /* already gone */ }
+    }
+  }, 30_000);
+  watchdog.unref();
+
+  child.on("exit", (code, signal) => {
+    exited = true;
+    clearInterval(watchdog);
+    if (onExit) onExit({ code, signal });
+  });
   /* Swallow EPIPE on stdin so a dead sidecar doesn't crash the parent
      when we try to send pause/resume/shutdown after-the-fact. */
   child.stdin.on("error", (e) => bootLog && bootLog(`[recorder.stdin] ${e && e.message}`));

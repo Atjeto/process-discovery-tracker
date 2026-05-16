@@ -16,8 +16,10 @@
 "use strict";
 
 const { BrowserWindow } = require("electron");
+const { DEFAULTS } = require("./config.js");
 
 function buildHtml() {
+  const idleDefault = DEFAULTS.auto_end_idle_minutes;
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -123,8 +125,8 @@ function buildHtml() {
   <div class="row2">
     <div>
       <label for="idle">Auto-stop after inactivity</label>
-      <input type="number" id="idle" min="1" max="240" step="1" placeholder="30" />
-      <div class="help-hint">Minutes of no keyboard / mouse activity before the recording stops on its own. Default 30.</div>
+      <input type="number" id="idle" min="1" max="240" step="1" placeholder="${idleDefault}" />
+      <div class="help-hint">Minutes of no keyboard / mouse activity before the recording stops on its own. Default ${idleDefault}.</div>
     </div>
     <div>
       <label for="obs-scene">OBS scene</label>
@@ -155,7 +157,7 @@ async function load() {
   $("eng-name").value    = parsed.engagement_name || "";
   $("worker-id").value   = (parsed.worker && parsed.worker.id) || "";
   $("worker-role").value = (parsed.worker && parsed.worker.role) || "";
-  $("idle").value        = parsed.auto_end_idle_minutes || 30;
+  $("idle").value        = parsed.auto_end_idle_minutes || ${idleDefault};
   $("obs-scene").value   = (parsed.obs && parsed.obs.scene_name) || "";
   const labels = Array.isArray(parsed.process_labels)
     ? parsed.process_labels.join("\\n") : "";
