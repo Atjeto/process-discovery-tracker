@@ -387,7 +387,6 @@ function activateTab(name) {
    strip is visible" approach because users couldn't find the cramped
    editor inside the narrow annotations panel. */
 
-let currentLevel = "flow";
 let selectedStepId = null;
 let multiSelectedStepIds = new Set();
 let selectedPhaseId = null;
@@ -395,7 +394,7 @@ let selectedPhaseId = null;
 $$(".view-mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
-    setLevel(btn.dataset.level);
+    applyLevel(btn.dataset.level);
   });
 });
 
@@ -411,67 +410,73 @@ const VIEW_MODE_HELP = {
    outgoing mode's zoom + scroll fraction and apply them to the
    incoming mode -- "stayed at the same zoom + position" feel without
    forcing the three modes to share a single DOM scroll container. */
+/* P2.3 viewport transfer: each mode owns its own scroll container and
+   zoom variable. MODE_VIEWPORT pairs the three so snapshot/apply is one
+   code path instead of three copy-pasted `if (mode === ...)` arms.
+   (Zoom still reads/writes the renderer-local vars; they move into the
+   state module in a later step.) */
+const MODE_VIEWPORT = {
+  flow: {
+    scrollSel: "#timeline-scroll",
+    getZoom: () => zoomFactor, setZoom: (z) => { zoomFactor = z; },
+    render: renderTimeline,
+  },
+  steps: {
+    scrollSel: "#session-layout-steps .mini-timeline-scroll",
+    getZoom: () => stepZoom, setZoom: (z) => { stepZoom = z; },
+    render: renderStepsLevel,
+  },
+  phases: {
+    scrollSel: "#session-layout-phases .mini-timeline-scroll",
+    getZoom: () => phaseZoom, setZoom: (z) => { phaseZoom = z; },
+    render: renderPhasesLevel,
+  },
+};
 function _viewportSnapshotForMode(mode) {
-  let zoom = 1, scrollFrac = 0;
-  if (mode === "flow") {
-    zoom = zoomFactor;
-    const el = document.getElementById("timeline-scroll");
-    if (el && el.scrollWidth > el.clientWidth) {
-      scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
-    }
-  } else if (mode === "steps") {
-    zoom = stepZoom;
-    const el = document.querySelector("#session-layout-steps .mini-timeline-scroll");
-    if (el && el.scrollWidth > el.clientWidth) {
-      scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
-    }
-  } else if (mode === "phases") {
-    zoom = phaseZoom;
-    const el = document.querySelector("#session-layout-phases .mini-timeline-scroll");
-    if (el && el.scrollWidth > el.clientWidth) {
-      scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
-    }
+  const m = MODE_VIEWPORT[mode];
+  if (!m) return { zoom: 1, scrollFrac: 0 };
+  let scrollFrac = 0;
+  const el = document.querySelector(m.scrollSel);
+  if (el && el.scrollWidth > el.clientWidth) {
+    scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
   }
-  return { zoom: Math.max(1, zoom || 1), scrollFrac: Math.max(0, Math.min(1, scrollFrac || 0)) };
+  return { zoom: Math.max(1, m.getZoom() || 1), scrollFrac: Math.max(0, Math.min(1, scrollFrac || 0)) };
 }
 function _viewportApplyToMode(mode, snap) {
-  // The render functions read zoom from the appropriate variable, so
-  // set the variable BEFORE re-rendering. Then restore scrollLeft
-  // after a frame so the host has expanded.
-  if (mode === "flow") {
-    zoomFactor = snap.zoom;
-    renderTimeline();
-    requestAnimationFrame(() => {
-      const el = document.getElementById("timeline-scroll");
-      if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
-    });
-  } else if (mode === "steps") {
-    stepZoom = snap.zoom;
-    renderStepsLevel();
-    requestAnimationFrame(() => {
-      const el = document.querySelector("#session-layout-steps .mini-timeline-scroll");
-      if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
-    });
-  } else if (mode === "phases") {
-    phaseZoom = snap.zoom;
-    renderPhasesLevel();
-    requestAnimationFrame(() => {
-      const el = document.querySelector("#session-layout-phases .mini-timeline-scroll");
-      if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
-    });
-  }
+  // Set the mode's zoom BEFORE re-rendering (the render reads it), then
+  // restore scrollLeft after a frame so the host has expanded.
+  const m = MODE_VIEWPORT[mode];
+  if (!m) return;
+  m.setZoom(snap.zoom);
+  m.render();
+  requestAnimationFrame(() => {
+    const el = document.querySelector(m.scrollSel);
+    if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
+  });
 }
 
-function setLevel(name) {
+const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel };
+
+/* Re-render whichever session sub-view is on screen. The single
+   dispatch point for "the active level's data changed" -- it replaces
+   an `if (currentLevel === ...)` triplet that was copied verbatim
+   across the case-scope and command-palette handlers (issue S5). */
+function rerenderActiveLevel() {
+  const fn = LEVEL_RENDERERS[State.getLevel()];
+  if (fn) fn();
+}
+
+function applyLevel(name) {
   // P2.3: capture the outgoing mode's viewport BEFORE we hide its
   // panel -- once display:none is set, scrollWidth / clientWidth both
   // return 0 and we'd lose the snapshot. Skip the very first call
-  // (currentLevel wasn't yet displayed).
-  const incomingSnap = (currentLevel && currentLevel !== name)
-    ? _viewportSnapshotForMode(currentLevel)
+  // (the level wasn't yet displayed).
+  const prev = State.getLevel();
+  const incomingSnap = (prev && prev !== name)
+    ? _viewportSnapshotForMode(prev)
     : null;
   // Now safe to swap visibility.
-  currentLevel = name;
+  State.setLevel(name);
   const layouts = ["flow", "steps", "phases"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
@@ -482,9 +487,7 @@ function setLevel(name) {
   if (incomingSnap) {
     _viewportApplyToMode(name, incomingSnap);
   } else {
-    if (name === "steps")  renderStepsLevel();
-    if (name === "phases") renderPhasesLevel();
-    if (name === "flow")   renderTimeline();
+    rerenderActiveLevel();
   }
   // P2.4: refresh the shortcuts overlay for the new view.
   renderShortcutsOverlay();
@@ -525,11 +528,12 @@ function renderShortcutsOverlay() {
     ov.style.display = "none";
     return;
   }
-  const items = VIEW_SHORTCUTS[currentLevel] || [];
+  const lvl = State.getLevel();
+  const items = VIEW_SHORTCUTS[lvl] || [];
   if (!items.length) { ov.style.display = "none"; return; }
   ov.style.display = "";
   document.getElementById("shortcuts-overlay-title").textContent =
-    currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1) + " shortcuts";
+    lvl.charAt(0).toUpperCase() + lvl.slice(1) + " shortcuts";
   document.getElementById("shortcuts-overlay-list").innerHTML =
     items.map(([k, d]) =>
       '<li><span class="key">' + escapeHtml(k) + '</span><span>' + escapeHtml(d) + '</span></li>'
@@ -700,9 +704,7 @@ function scopeToMarkerAtPlayhead() {
   if (!best) { toast("No case at the current playhead.", ""); return; }
   currentCaseScope = best.id;
   populateCaseScope();
-  if (currentLevel === "flow")   renderTimeline();
-  if (currentLevel === "steps")  renderStepsLevel();
-  if (currentLevel === "phases") renderPhasesLevel();
+  rerenderActiveLevel();
   toast("Scoped to: " + (best.label || best.id), "success");
 }
 
@@ -714,9 +716,7 @@ function scopeToMarkerAtPlayhead() {
     const wrap = sel.closest(".case-scope");
     if (wrap) wrap.classList.toggle("scoped", !!currentCaseScope);
     // Re-render whatever's currently on screen
-    if (currentLevel === "flow")   renderTimeline();
-    if (currentLevel === "steps")  renderStepsLevel();
-    if (currentLevel === "phases") renderPhasesLevel();
+    rerenderActiveLevel();
   });
   const btn = document.getElementById("btn-scope-to-playhead");
   if (btn) btn.addEventListener("click", scopeToMarkerAtPlayhead);
@@ -745,9 +745,7 @@ function commandPaletteProvider(rawQuery) {
       pushIfMatch(c.label, durStr, "case", () => {
         currentCaseScope = c.id;
         populateCaseScope();
-        if (currentLevel === "flow")   renderTimeline();
-        if (currentLevel === "steps")  renderStepsLevel();
-        if (currentLevel === "phases") renderPhasesLevel();
+        rerenderActiveLevel();
       }, 5);
     }
   }
@@ -766,7 +764,7 @@ function commandPaletteProvider(rawQuery) {
         hint: `${s.state || ""}${time ? " · " + time : ""}`,
         run: () => {
           selectedStepId = s.step_id;
-          setLevel("steps");
+          applyLevel("steps");
           // Activate the steps view-mode button so the UI catches up
           const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
           if (btn && !btn.classList.contains("active")) btn.click();
@@ -813,9 +811,7 @@ function commandPaletteProvider(rawQuery) {
     { label: "Clear case scope", hint: "Show all cases", run: () => {
         currentCaseScope = "";
         populateCaseScope();
-        if (currentLevel === "flow")   renderTimeline();
-        if (currentLevel === "steps")  renderStepsLevel();
-        if (currentLevel === "phases") renderPhasesLevel();
+        rerenderActiveLevel();
       } },
     { label: "Open help", hint: "?", run: () => $("#btn-help") && $("#btn-help").click() },
   ];
@@ -4758,7 +4754,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "3") activateTab("canonical");
   else if (e.key === "4") activateTab("vocabularies");
   // Step editor shortcuts (only when on session view and steps panel)
-  else if (currentLevel === "steps" && currentSession) {
+  else if (State.getLevel() === "steps" && currentSession) {
     const steps = (currentSession.annotations && currentSession.annotations.steps) || [];
     if (e.key === "j" || e.key === "ArrowDown") {
       const idx = steps.findIndex(s => s.step_id === selectedStepId);
@@ -5344,7 +5340,7 @@ const projectCollectors = {
     const t = document.querySelector(".tab.active");
     return t ? t.dataset.view : "session";
   },
-  viewMode:             () => currentLevel,
+  viewMode:             () => State.getLevel(),
   currentCaseScope:     () => currentCaseScope || null,
   timeline: () => {
     const scroll = document.getElementById("timeline-scroll");
@@ -5569,7 +5565,7 @@ async function applyProject(filePath, raw) {
   }
 
   // View mode (Flow / Steps / Phases)
-  if (project.viewMode && project.viewMode !== currentLevel) {
+  if (project.viewMode && project.viewMode !== State.getLevel()) {
     const vmBtn = document.querySelector('.view-mode-btn[data-level="' + project.viewMode + '"]');
     if (vmBtn) vmBtn.click();
   }
