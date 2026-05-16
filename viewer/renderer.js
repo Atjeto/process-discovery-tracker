@@ -13,6 +13,7 @@
 const { ipcRenderer } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const TimelineCore = require("./timeline/timeline-core.js");
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -3024,18 +3025,12 @@ function renderTimeline() {
   host.style.minHeight = Math.max(120, casesTop + casesH + 14) + "px";
 
   // ===== Time-axis ticks =====
-  // Choose tick step based on the visible span (assuming the user
-  // hasn't zoomed). Higher zoom = denser ticks would be nice but
-  // would also need per-zoom recompute, so we use the unzoomed span
-  // and let the host's CSS overflow handle visual scaling.
-  const tickStepMs = pickTickStep(span);
-  const tickEpoch = Math.ceil(first / tickStepMs) * tickStepMs;
-  for (let t = tickEpoch; t <= last; t += tickStepMs) {
-    const x = ((t - first) / span) * 100;
-    /* Use a Flow-timeline-specific class so we don't collide with the
-       generic `.tl-tick` style that step-editor.js / phase-editor.js
-       depend on for their mini-timelines (where ticks live inside a
-       short axis row with top:0/bottom:0). */
+  // Tick positions, intervals, and labels come from the shared timeline
+  // core -- the same logic the Steps and Phases timelines use. The
+  // `.tl-flow-tick` class keeps the Flow ticks (tall vertical lines)
+  // distinct from the mini-timelines' short `.tl-tick` axis ticks.
+  for (const tk of TimelineCore.chooseTicks(first, last, 12)) {
+    const x = tk.xPct;
     const tick = document.createElement("div");
     tick.className = "tl-flow-tick";
     tick.style.left = x + "%";
@@ -3046,7 +3041,7 @@ function renderTimeline() {
     lbl.className = "tl-flow-tick-label";
     lbl.style.left = "calc(" + x + "% + 3px)";
     lbl.style.top = ticksTop + "px";
-    lbl.textContent = formatTickLabel(new Date(t), tickStepMs);
+    lbl.textContent = tk.label;
     host.appendChild(lbl);
   }
 
@@ -3423,57 +3418,18 @@ function layoutCaseLanes(evs, first, last) {
     c.dangling = true;
     closed.push(c);
   }
-  // Sweep-line lane assignment. Sort by startMs so earlier cases get
-  // first pick. For each case, find the lowest-indexed lane whose
-  // previous occupant's end is before this case's start.
+  // Lane assignment is delegated to the shared timeline core. Cases stay
+  // sorted by start so the returned array order is unchanged; maxLanes is
+  // set high enough that cases are never capped (unlike step/phase lanes).
   closed.sort((a, b) => a.startMs - b.startMs);
-  const laneEndMs = [];
-  for (const c of closed) {
-    let lane = -1;
-    for (let i = 0; i < laneEndMs.length; i++) {
-      if (laneEndMs[i] <= c.startMs) { lane = i; break; }
-    }
-    if (lane === -1) { lane = laneEndMs.length; laneEndMs.push(0); }
-    laneEndMs[lane] = c.endMs;
-    c.lane = lane;
-  }
-  return { cases: closed, lanesNeeded: Math.max(1, laneEndMs.length) };
+  const packed = TimelineCore.packLanes(
+    closed.map((c) => ({ id: String(c.id), startMs: c.startMs, endMs: c.endMs })),
+    { maxLanes: Math.max(1, closed.length), spanMs: Math.max(1, last - first) }
+  );
+  for (const c of closed) c.lane = packed.laneOf.get(String(c.id)) || 0;
+  return { cases: closed, lanesNeeded: packed.laneCount };
 }
 
-/* Pick a tick interval based on visible span. Aim for ~10-15 ticks
-   so the axis isn't crowded. Steps chosen for human-readability.
-   Returns milliseconds. */
-function pickTickStep(spanMs) {
-  // Candidate steps in seconds.
-  const steps = [
-    1, 2, 5, 10, 15, 30,         // sub-minute
-    60, 120, 300, 600, 900, 1800, // minute -> 30 min
-    3600, 7200, 14400, 21600,    // hour -> 6h
-    43200, 86400,                // 12h, 24h
-  ];
-  const targetTicks = 12;
-  const idealSec = (spanMs / 1000) / targetTicks;
-  for (const s of steps) {
-    if (s >= idealSec) return s * 1000;
-  }
-  return steps[steps.length - 1] * 1000;
-}
-
-/* Format a tick label given a Date and the chosen step. Decide
-   granularity (HH:MM:SS vs HH:MM vs date) from the step length. */
-function formatTickLabel(d, stepMs) {
-  const pad = (n) => String(n).padStart(2, "0");
-  if (stepMs < 60_000) {
-    return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
-  }
-  if (stepMs < 3600_000) {
-    return pad(d.getHours()) + ":" + pad(d.getMinutes());
-  }
-  if (stepMs < 86400_000) {
-    return pad(d.getHours()) + ":" + pad(d.getMinutes());
-  }
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
 
 /* The density histogram counts only events that represent user
    activity, not session bookkeeping (pause/resume, idle starts,

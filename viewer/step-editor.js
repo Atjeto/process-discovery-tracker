@@ -1,6 +1,8 @@
 "use strict";
 
 (function () {
+  const TimelineCore = require("./timeline/timeline-core.js");
+
   function escapeHtml(s) {
     return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   }
@@ -166,159 +168,56 @@
      quiet. Same name = same color across the session. */
   const STEP_PALETTE = ["#5A7488","#6E6A88","#886A78","#887A5A","#5A8870","#787058","#5E6878"];
 
-  /* Pick a "nice" tick interval that yields ~targetCount ticks across
-     the visible span. Picks from a fixed ladder of human-friendly
-     intervals so labels read as round times. */
-  function pickTickIntervalMs(totalMs, targetCount) {
-    const ladder = [
-      1000, 5000, 10000, 30000,            // 1s .. 30s
-      60000, 5 * 60000, 15 * 60000, 30 * 60000,  // 1m .. 30m
-      60 * 60000, 2 * 60 * 60000, 6 * 60 * 60000, 12 * 60 * 60000, // 1h .. 12h
-      24 * 60 * 60000,
-    ];
-    const target = totalMs / Math.max(1, targetCount);
-    for (const step of ladder) if (step >= target) return step;
-    return ladder[ladder.length - 1];
-  }
-
-  function fmtAxisLabel(date, intervalMs) {
-    // Seconds-precision when intervals are sub-minute, otherwise HH:MM.
-    const hh = String(date.getHours()).padStart(2, "0");
-    const mm = String(date.getMinutes()).padStart(2, "0");
-    const ss = String(date.getSeconds()).padStart(2, "0");
-    return intervalMs < 60000 ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`;
-  }
-
-  /* Lane-pack steps so overlapping time ranges don't pile up on a
-     single row. Greedy: try to place each step on the lowest-numbered
-     lane whose latest "visual end" is <= this step's start. Capped at
-     MAX_LANES; anything beyond falls back to the last lane.
-
-     "Visual end" accounts for the block's minimum rendered width
-     (~0.5% of the span). Two steps fired within a few ms of each
-     other have mathematically non-overlapping time ranges but the
-     rendered blocks DO overlap once each is padded to its min width.
-     Lane-pack against the visual footprint, not the raw timestamp,
-     so rapid successive clicks land on separate rows. */
-  function assignLanes(steps, span, maxLanes) {
-    const sorted = [...steps].filter(s => s.time_range)
-      .sort((a, b) => new Date(a.time_range.start) - new Date(b.time_range.start));
-    const total = span.endMs - span.startMs;
-    const MIN_VISUAL_MS = Math.max(1, total * 0.005); // matches Math.max(0.5, ...) in renderer
-    const laneEnds = [];
-    const out = new Map();
-    for (const s of sorted) {
-      const startMs = new Date(s.time_range.start).getTime();
-      const rawEnd = new Date(s.time_range.end).getTime();
-      const visualEnd = Math.max(rawEnd, startMs + MIN_VISUAL_MS);
-      let lane = laneEnds.findIndex(e => e <= startMs);
-      if (lane === -1) {
-        if (laneEnds.length < maxLanes) {
-          lane = laneEnds.length;
-          laneEnds.push(visualEnd);
-        } else {
-          lane = maxLanes - 1;
-          laneEnds[lane] = Math.max(laneEnds[lane], visualEnd);
-        }
-      } else {
-        laneEnds[lane] = visualEnd;
-      }
-      out.set(s.step_id, lane);
-    }
-    return { laneCount: Math.max(1, laneEnds.length), stepLane: out };
-  }
-
+  /* Build the Steps mini-timeline. The lane-packing, tick maths, axis, and
+     band layout all live in timeline-core.js (shared with the Phases and Flow
+     timelines); this function only shapes step data into the core's MiniItem
+     form. `interactions` is unused -- kept for call-site compatibility. */
   function renderStepTimeline(host, steps, interactions, span, opts) {
     opts = opts || {};
-    host.innerHTML = "";
-    if (!steps || !steps.length || !span || span.endMs <= span.startMs) return;
-    const total = span.endMs - span.startMs;
-    const zoom = Math.max(1, opts.zoom || 1);
-    host.style.width = (100 * zoom) + "%";
+    if (!steps || !steps.length || !span) { host.innerHTML = ""; return; }
 
-    const MAX_LANES = 4;
-    const LANE_H = 18, LANE_GAP = 2, AXIS_H = 16;
-    const { laneCount, stepLane } = assignLanes(steps, span, MAX_LANES);
-    const rowsH = laneCount * (LANE_H + LANE_GAP);
-    host.style.minHeight = (rowsH + AXIS_H + 4) + "px";
-
-    // Time axis along the bottom
-    const axis = document.createElement("div");
-    axis.className = "tl-time-axis";
-    axis.style.top = rowsH + "px";
-    axis.style.height = AXIS_H + "px";
-    const tickCount = Math.max(4, Math.round(10 * zoom));
-    const intervalMs = pickTickIntervalMs(total, tickCount);
-    const firstTick = Math.ceil(span.startMs / intervalMs) * intervalMs;
-    for (let t = firstTick; t <= span.endMs; t += intervalMs) {
-      const left = ((t - span.startMs) / total) * 100;
-      const tick = document.createElement("div");
-      tick.className = "tl-tick";
-      tick.style.left = left + "%";
-      const lbl = document.createElement("span");
-      lbl.className = "tl-tick-label";
-      lbl.textContent = fmtAxisLabel(new Date(t), intervalMs);
-      tick.appendChild(lbl);
-      axis.appendChild(tick);
-    }
-    host.appendChild(axis);
-
+    // Same name -> same colour across the session.
     const colorByName = new Map();
     let pi = 0;
     for (const s of steps) {
       const name = s.name || s.step_id;
       if (!colorByName.has(name)) colorByName.set(name, STEP_PALETTE[pi++ % STEP_PALETTE.length]);
     }
+
+    const items = [];
     for (const s of steps) {
       if (!s.time_range) continue;
-      const start = new Date(s.time_range.start).getTime();
-      const end = new Date(s.time_range.end).getTime();
-      const left = ((start - span.startMs) / total) * 100;
-      const width = Math.max(0.5, ((end - start) / total) * 100);
-      const color = colorByName.get(s.name || s.step_id);
-      const lane = stepLane.get(s.step_id) || 0;
-      const block = document.createElement("div");
-      const dimmed = opts.dimmedIds && opts.dimmedIds.has(s.step_id);
-      block.className = "step-block"
-        + (opts.selectedId === s.step_id ? " selected" : "")
-        + (dimmed ? " dimmed" : "");
-      block.style.left = left + "%";
-      block.style.width = width + "%";
-      block.style.top = (lane * (LANE_H + LANE_GAP)) + "px";
-      block.style.height = LANE_H + "px";
-      block.style.background = color + "1F";
-      block.style.borderColor = color + "55";
-      block.style.color = color;
-      // Include start time + duration in the hover tooltip so the user
-      // can read exact timings without a finer axis.
-      const dur = end - start;
+      const startMs = new Date(s.time_range.start).getTime();
+      const endMs = new Date(s.time_range.end).getTime();
+      if (!isFinite(startMs) || !isFinite(endMs)) continue;
+      const dur = endMs - startMs;
       const durStr = dur < 60000 ? `${Math.round(dur / 1000)}s`
         : dur < 3600000 ? `${Math.round(dur / 60000)}m`
         : `${(dur / 3600000).toFixed(1)}h`;
-      const startTime = new Date(start).toLocaleTimeString();
-      block.title = `${s.name} (${s.state})\n${startTime} · ${durStr}`;
-      block.dataset.stepId = s.step_id;
-      const label = document.createElement("span");
-      label.className = "step-block-label";
-      label.textContent = s.name || "";
-      block.appendChild(label);
-      if (opts.onSelect) {
-        block.addEventListener("click", (e) => {
-          e.stopPropagation();
-          opts.onSelect(s.step_id);
-        });
-      }
-      host.appendChild(block);
+      items.push({
+        id: s.step_id,
+        startMs,
+        endMs,
+        label: s.name || "",
+        color: colorByName.get(s.name || s.step_id),
+        title: `${s.name} (${s.state})\n${new Date(startMs).toLocaleTimeString()} · ${durStr}`,
+        selected: opts.selectedId === s.step_id,
+        dimmed: !!(opts.dimmedIds && opts.dimmedIds.has(s.step_id)),
+      });
     }
-    if (opts.selectedId) {
-      const sel = host.querySelector(`.step-block[data-step-id="${opts.selectedId}"]`);
-      const scroll = host.parentElement;
-      if (sel && scroll) {
-        const sl = sel.offsetLeft, sw = sel.offsetWidth;
-        const target = sl + sw / 2 - scroll.clientWidth / 2;
-        scroll.scrollLeft = Math.max(0, target);
-      }
-    }
+
+    TimelineCore.renderMiniTimeline(host, {
+      items,
+      span,
+      zoom: opts.zoom,
+      maxLanes: 4,
+      laneHeight: 18,
+      blockClass: "step-block",
+      labelClass: "step-block-label",
+      idAttr: "data-step-id",
+      selectedId: opts.selectedId,
+      onSelect: opts.onSelect,
+    });
   }
 
   function renderInteractionEvent(ev) {

@@ -1,0 +1,103 @@
+"use strict";
+
+/*
+ * Tests for the pure functions of timeline-core.js. Run with `npm test`
+ * (Node's built-in runner -- no test library). DOM helpers are not covered
+ * here; they are verified by launching the viewer.
+ */
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const tc = require("./timeline-core.js");
+
+test("timeToXPct maps a time linearly onto 0-100", () => {
+  assert.equal(tc.timeToXPct(0, 0, 100), 0);
+  assert.equal(tc.timeToXPct(50, 0, 100), 50);
+  assert.equal(tc.timeToXPct(100, 0, 100), 100);
+  assert.equal(tc.timeToXPct(150, 100, 100), 50);
+});
+
+test("formatAxisLabel: seconds sub-minute, HH:MM for hours, date for days", () => {
+  const t = Date.now();
+  assert.match(tc.formatAxisLabel(t, 30000), /^\d\d:\d\d:\d\d$/);
+  assert.match(tc.formatAxisLabel(t, 59999), /^\d\d:\d\d:\d\d$/);
+  assert.match(tc.formatAxisLabel(t, 60000), /^\d\d:\d\d$/);
+  assert.match(tc.formatAxisLabel(t, 3600000), /^\d\d:\d\d$/);
+  assert.match(tc.formatAxisLabel(t, 86400000), /^\d{1,2}\/\d{1,2}$/);
+});
+
+test("chooseTicks returns nothing for a non-positive span", () => {
+  assert.deepEqual(tc.chooseTicks(100, 100, 5), []);
+  assert.deepEqual(tc.chooseTicks(100, 50, 5), []);
+});
+
+test("chooseTicks places round, evenly-spaced ticks across the span", () => {
+  const ticks = tc.chooseTicks(0, 60000, 6); // target 10000ms -> 10s interval
+  assert.equal(ticks.length, 7);
+  assert.equal(ticks[0].tMs, 0);
+  assert.equal(ticks[6].tMs, 60000);
+  assert.equal(ticks[3].tMs, 30000);
+  assert.equal(ticks[3].xPct, 50);
+  for (const tick of ticks) assert.equal(tick.tMs % 10000, 0);
+});
+
+test("chooseTicks widens the interval as the span grows", () => {
+  const ticks = tc.chooseTicks(0, 3600000, 6); // target 600000ms -> 10m interval
+  for (let i = 1; i < ticks.length; i++) {
+    assert.equal(ticks[i].tMs - ticks[i - 1].tMs, 600000);
+  }
+  assert.match(ticks[0].label, /^\d\d:\d\d$/); // >= 1 minute -> no seconds
+});
+
+test("packLanes keeps non-overlapping items on one lane", () => {
+  const r = tc.packLanes(
+    [{ id: "a", startMs: 0, endMs: 100 }, { id: "b", startMs: 1000, endMs: 1100 }],
+    { maxLanes: 4, spanMs: 10000 }
+  );
+  assert.equal(r.laneCount, 1);
+  assert.equal(r.laneOf.get("a"), 0);
+  assert.equal(r.laneOf.get("b"), 0);
+});
+
+test("packLanes splits overlapping items onto separate lanes", () => {
+  const r = tc.packLanes(
+    [{ id: "a", startMs: 0, endMs: 5000 }, { id: "b", startMs: 1000, endMs: 6000 }],
+    { maxLanes: 4, spanMs: 10000 }
+  );
+  assert.equal(r.laneCount, 2);
+  assert.equal(r.laneOf.get("a"), 0);
+  assert.equal(r.laneOf.get("b"), 1);
+});
+
+test("packLanes caps lanes at maxLanes; overflow shares the last lane", () => {
+  const items = [
+    { id: "a", startMs: 0, endMs: 10000 },
+    { id: "b", startMs: 100, endMs: 10000 },
+    { id: "c", startMs: 200, endMs: 10000 },
+    { id: "d", startMs: 300, endMs: 10000 },
+  ];
+  const r = tc.packLanes(items, { maxLanes: 3, spanMs: 10000 });
+  assert.equal(r.laneCount, 3);
+  assert.equal(r.laneOf.get("c"), 2);
+  assert.equal(r.laneOf.get("d"), 2); // overflow -> last lane
+});
+
+test("packLanes uses a visual footprint so near-simultaneous items separate", () => {
+  // Raw ranges (0-1 and 10-11) do not overlap, but on a 100s span the rendered
+  // blocks do once padded to their minimum width -> they must take two lanes.
+  const r = tc.packLanes(
+    [{ id: "a", startMs: 0, endMs: 1 }, { id: "b", startMs: 10, endMs: 11 }],
+    { maxLanes: 4, spanMs: 100000 }
+  );
+  assert.equal(r.laneCount, 2);
+  assert.notEqual(r.laneOf.get("a"), r.laneOf.get("b"));
+});
+
+test("packLanes ignores items with non-finite times", () => {
+  const r = tc.packLanes(
+    [{ id: "a", startMs: 0, endMs: 100 }, { id: "bad", startMs: NaN, endMs: 100 }],
+    { maxLanes: 4, spanMs: 10000 }
+  );
+  assert.equal(r.laneOf.has("bad"), false);
+  assert.equal(r.laneOf.get("a"), 0);
+});

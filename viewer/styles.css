@@ -272,14 +272,14 @@ main { flex: 1; overflow: auto; }
   margin-bottom: 10px; gap: 12px; }
 .timeline-header strong { font-size: 12px; }
 .timeline-controls { display: flex; gap: 4px; }
-/* flex must NOT be 1 here: flex:1 sets flex-basis:0 which overrides the
-   explicit height, so the #resize-timeline drag handle (which updates
-   --timeline-height) had no visible effect. flex:0 0 auto lets the
-   height var actually drive the viewport size. overflow-y:auto so a
-   tall lane stack scrolls inside the resized viewport. */
+/* The Flow timeline sizes to fit its lane stack: `min-height` (not a fixed
+   `height`) keeps the strip at least the drag-set --timeline-height while
+   letting it grow taller when there are more lanes, so the content never
+   triggers a second, competing vertical scrollbar. flex:0 0 auto keeps
+   flex from collapsing that height. */
 .timeline-scroll { flex: 0 0 auto; overflow-x: auto; overflow-y: auto;
   background: var(--bg-3); border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  height: var(--timeline-height, 160px); }
+  min-height: var(--timeline-height, 160px); }
 .timeline { position: relative; height: 100%; min-height: 80px;
   cursor: default; min-width: 100%; }
 .tl-row { position: absolute; left: 0; right: 0; }
@@ -668,12 +668,16 @@ main { flex: 1; overflow: auto; }
 .mini-timeline-header strong { font-size: 11px; font-weight: 500; letter-spacing: 0.3px; color: var(--fg-2); }
 .mini-timeline-header .meta { font-family: var(--font-mono); font-size: 10px; color: var(--fg-4); }
 .mini-timeline-scroll {
-  overflow-x: auto; overflow-y: hidden;
+  overflow-x: auto; overflow-y: auto;
   background: var(--bg-3); border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
+  /* Drag-resizable: the .resize-v handle below the strip updates
+     --mini-timeline-height. The inner .timeline fills this height
+     (height:100% set by the renderer) so the lane bands scale with it. */
+  height: var(--mini-timeline-height, 120px);
 }
 .mini-timeline-scroll .timeline {
-  position: relative; min-height: 60px; min-width: 100%;
+  position: relative; min-height: 100%; min-width: 100%;
 }
 
 /* Time axis below the lane area in mini-timelines */

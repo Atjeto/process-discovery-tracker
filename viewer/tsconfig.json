@@ -1,0 +1,19 @@
+// Check-only TypeScript config for the viewer.
+// Type-checks the JS modules in scope via their JSDoc annotations and emits
+// nothing (`npm run typecheck`). The `include` scope widens as the viewer
+// refactor (docs/adr/0003) modularizes more files.
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022",
+    "module": "commonjs",
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["timeline/**/*.js"]
+}
