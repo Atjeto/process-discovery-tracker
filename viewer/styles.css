@@ -53,6 +53,11 @@
   --bad: #a05a3a;
   --rec: #c04040;
 
+  /* Analysis layer (Cluster N) -- waste-segment fills */
+  --va: #5a8f6a;
+  --bnva: #c2922f;
+  --nva: #bf5340;
+
   /* Rules -- warm hairlines that sit just above the panel they border */
   --rule: #e5ddd0;
   --rule-soft: #ede7dc;
@@ -101,6 +106,11 @@
   --warn: #fbbf24;
   --bad: #e8775a;
   --rec: #ef4444;
+
+  /* Analysis layer (Cluster N) -- waste-segment fills */
+  --va: #34c98a;
+  --bnva: #f0b429;
+  --nva: #ef6a52;
 
   /* Rules -- cool hairlines */
   --rule: #2e3650;
@@ -739,6 +749,76 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   display: flex; flex-direction: column; gap: 8px;
   flex: 1; min-height: 0;
 }
+
+/* ===== Analysis view (Cluster N / ADR-0008) ===== */
+.session-layout-analysis {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0; overflow-y: auto;
+}
+#analysis-content { display: flex; flex-direction: column; gap: 14px; }
+.analysis-empty {
+  color: var(--fg-3); font-size: 13px; padding: 32px; text-align: center;
+}
+.analysis-caption {
+  background: var(--accent-muted); color: var(--fg-2);
+  border-left: 3px solid var(--accent);
+  padding: 8px 12px; font-size: 12px; border-radius: var(--radius-sm);
+}
+.analysis-section {
+  background: var(--bg-2); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px 14px;
+}
+.analysis-section-title {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px;
+}
+.efficiency-row { display: flex; align-items: baseline; gap: 14px; }
+.efficiency-big {
+  font-size: 34px; font-weight: 700; color: var(--accent);
+  font-family: var(--font-mono); line-height: 1;
+}
+.efficiency-detail { color: var(--fg-2); font-size: 12px; }
+.waste-legend {
+  display: flex; gap: 14px; margin-bottom: 8px;
+  font-size: 11px; color: var(--fg-3);
+}
+.waste-legend .swatch {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 2px; margin-right: 4px; vertical-align: middle;
+}
+.waste-rows { display: flex; flex-direction: column; gap: 6px; }
+.waste-row { display: flex; align-items: center; gap: 10px; }
+.waste-name {
+  flex: 0 0 180px; font-size: 12px; color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.waste-bar {
+  flex: 1; display: flex; height: 14px;
+  background: var(--bg-4); border-radius: 2px; overflow: hidden;
+}
+.waste-seg { height: 100%; }
+.waste-tags { flex: 0 0 auto; display: flex; gap: 4px; }
+.waste-tag {
+  font-size: 10px; color: var(--fg-2); background: var(--bg-3);
+  border: 1px solid var(--rule); border-radius: 2px; padding: 1px 5px;
+}
+.seg-va { background: var(--va); }
+.seg-bnva { background: var(--bnva); }
+.seg-nva { background: var(--nva); }
+.analysis-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.analysis-table th {
+  text-align: left; color: var(--fg-3); font-weight: 600;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px;
+  padding: 4px 8px; border-bottom: 1px solid var(--rule);
+}
+.analysis-table td {
+  padding: 4px 8px; border-bottom: 1px solid var(--rule-soft);
+  color: var(--fg);
+}
+.analysis-table td.num {
+  text-align: right; font-family: var(--font-mono); font-size: 11px;
+}
+.analysis-table .score-na { color: var(--fg-4); }
 
 /* Mini-timeline wrapper used by Steps + Phases views. Mirrors the
    Flow timeline's affordances: header strip with title + time range

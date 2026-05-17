@@ -152,6 +152,13 @@ test("computeSummary passes through canonical drift when present", () => {
   assert.equal(s.canonicalDrift.previous_rate, 0.9);
 });
 
+test("computeSummary surfaces the analysis-layer efficiency ratio", () => {
+  assert.equal(computeSummary(sampleSession()).efficiencyRatio, null);
+  const sess = sampleSession();
+  sess.analysis = { efficiency: { process_efficiency_ratio: 0.62 } };
+  assert.equal(computeSummary(sess).efficiencyRatio, 0.62);
+});
+
 /* ---- detectMarkerProblems ------------------------------------------ */
 
 function marker(type, label, timestamp, id) {

@@ -40,7 +40,10 @@ a bundled Python 3.12 embeddable distribution.
 10. **Statistics** — compute activity, case, variant, outlier, and rework stats.
 11. **Export** — write `events.xes`, `events.csv`, `stats.json`, and the updated
     `annotations.json`.
-12. **Mining** — with `--mine`, run PM4Py to produce `process_map.bpmn` and `dfg.json`.
+12. **Analysis layer** — when the session has steps, compute the heuristic
+    waste / time-study / automation / efficiency findings and write
+    `analysis.json` ([ADR-0008](../adr/0008-build-the-analysis-layer.md)).
+13. **Mining** — with `--mine`, run PM4Py to produce `process_map.bpmn` and `dfg.json`.
 
 ## Module map (`normalization/`)
 
@@ -53,6 +56,7 @@ a bundled Python 3.12 embeddable distribution.
 | `canonical_match.py` | Matches interactions to a canonical step set (`auto_matched`). |
 | `app_vocab.py` | Loads and applies App Vocabularies to enrich interactions. |
 | `stats_compute.py` | Builds `stats.json` (activity / case / variant / outlier / rework / meta). |
+| `analysis*.py` | Analysis layer — `analysis.py` orchestrates `analysis_waste` / `_time_study` / `_automation` / `_efficiency` over the `analysis_common` per-step segmentation; writes `analysis.json` ([ADR-0008](../adr/0008-build-the-analysis-layer.md)). |
 | `xes_export.py` | Emits `events.xes` (IEEE 1849-2016), one trace per top-level case. |
 | `step_csv.py` | Flat CSV of step entities for pivot analysis. |
 | `mining.py` | PM4Py wrappers — inductive / heuristics miners, DFG. |
@@ -75,8 +79,9 @@ Two external YAML layers shape the output beyond the raw heuristics:
 ## Outputs
 
 All written back into the same session folder:
-`events.xes`, `events.csv`, `stats.json`, `process_map.bpmn` + `dfg.json` (with
-`--mine`), an updated `annotations.json`, and `normalize.log`. Re-running is
+`events.xes`, `events.csv`, `stats.json`, `analysis.json` (when the session has
+steps), `process_map.bpmn` + `dfg.json` (with `--mine`), an updated
+`annotations.json`, and `normalize.log`. Re-running is
 non-destructive — `stats.json.meta.normalization_run_at` lets consumers detect
 stale derivatives. Field-level detail is in
 [`shared/SCHEMA.md`](../../shared/SCHEMA.md) → "Post-normalization artifacts".

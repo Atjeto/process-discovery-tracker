@@ -25,6 +25,7 @@ def write_pdd(
     annotations: dict,
     stats: dict,
     manifest: dict,
+    analysis: dict | None = None,
 ) -> None:
     if Document is None:
         raise RuntimeError(
@@ -44,6 +45,28 @@ def write_pdd(
         doc.add_heading(f"Process: {canonical.get('name', '-')}", level=1)
         doc.add_paragraph(f"Canonical version: {canonical.get('version', '-')}")
 
+    # Analysis-layer context (Cluster N / ADR-0008). analysis.json is
+    # absent on sessions normalized before the analysis layer existed;
+    # the per-step enrichment is simply skipped when it is.
+    analysis = analysis or {}
+    waste_by_step = {
+        w["step_id"]: w
+        for w in (analysis.get("waste_classification") or [])
+        if w.get("step_id")
+    }
+    auto_by_step = {
+        a["step_id"]: a
+        for a in (analysis.get("automation_candidates") or [])
+        if a.get("step_id")
+    }
+    efficiency = analysis.get("efficiency") or {}
+    if efficiency.get("process_efficiency_ratio") is not None:
+        pct = round(efficiency["process_efficiency_ratio"] * 100)
+        doc.add_paragraph(
+            f"Process efficiency: {pct}% value-add time (heuristic "
+            "estimate -- review before relying on it)."
+        )
+
     # Phase-by-phase narrative
     phases = annotations.get("phases", []) or []
     steps = annotations.get("steps", []) or []
@@ -57,11 +80,11 @@ def write_pdd(
             contained = [step_by_id.get(sid) for sid in (phase.get("step_ids") or [])]
             contained = [s for s in contained if s]
             for step in contained:
-                _write_step(doc, step, session_folder)
+                _write_step(doc, step, session_folder, waste_by_step, auto_by_step)
     elif steps:
         doc.add_heading("Steps", level=1)
         for step in steps:
-            _write_step(doc, step, session_folder)
+            _write_step(doc, step, session_folder, waste_by_step, auto_by_step)
 
     # Statistics table
     if stats and stats.get("activity_stats"):
@@ -82,7 +105,7 @@ def write_pdd(
     doc.save(str(out_path))
 
 
-def _write_step(doc, step, session_folder):
+def _write_step(doc, step, session_folder, waste_by_step=None, auto_by_step=None):
     doc.add_heading(step["name"], level=3)
     if step.get("description"):
         doc.add_paragraph(step["description"])
@@ -101,6 +124,29 @@ def _write_step(doc, step, session_folder):
         p = doc.add_paragraph(f"Flags: {', '.join(flags)}")
         for run in p.runs:
             run.italic = True
+
+    # Analysis-layer context (Cluster N), when analysis.json was present.
+    sid = step.get("step_id")
+    waste = (waste_by_step or {}).get(sid)
+    if waste:
+        bits = []
+        if waste.get("nva_ms"):
+            bits.append(f"{_fmt_ms(waste['nva_ms'])} non-value-add")
+        if waste.get("waste_types"):
+            bits.append("waste types: " + ", ".join(waste["waste_types"]))
+        if bits:
+            p = doc.add_paragraph("Waste: " + "; ".join(bits))
+            for run in p.runs:
+                run.italic = True
+    auto = (auto_by_step or {}).get(sid)
+    if auto and auto.get("data_sufficiency") == "multi_instance":
+        rep = (auto.get("scores") or {}).get("repetitiveness")
+        if rep is not None:
+            p = doc.add_paragraph(
+                f"Automation potential: repetitiveness {round(rep * 100)}%"
+            )
+            for run in p.runs:
+                run.italic = True
 
 
 def _fmt_ms(ms):

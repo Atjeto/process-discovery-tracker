@@ -119,6 +119,14 @@ function computeSummary(session) {
   const autoSteps = (breakdown.auto_suggested || 0) + (breakdown.auto_matched || 0);
   const confirmedSteps = (breakdown.manually_authored || 0) + (breakdown.edited || 0);
 
+  /* Cluster N: the process efficiency ratio from the analysis.json
+     sidecar, when the session was analyzed with the analysis layer. */
+  const eff = session.analysis && session.analysis.efficiency;
+  const efficiencyRatio =
+    eff && typeof eff.process_efficiency_ratio === "number"
+      ? eff.process_efficiency_ratio
+      : null;
+
   return {
     engagement: manifest.engagement_id || "—",
     worker:
@@ -143,6 +151,7 @@ function computeSummary(session) {
     topActivities,
     appSwitches,
     longestStretch: { app: longest.app, ms: longest.ms },
+    efficiencyRatio,
   };
 }
 

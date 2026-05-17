@@ -710,6 +710,10 @@ function renderSessionSummary() {
     { label: "Steps", value: s.stepCount,
       sub: `${s.autoSteps} to review · ${s.confirmedSteps} confirmed` },
   ];
+  if (s.efficiencyRatio != null) {
+    tiles.push({ label: "Efficiency", value: pct(s.efficiencyRatio),
+      sub: "value-add share (heuristic)" });
+  }
   if (s.hasTemplate || s.matchedInteractions > 0) {
     tiles.push({ label: "Template match", value: pct(s.matchRate || 0),
       sub: `${s.matchedInteractions} interactions` });

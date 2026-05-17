@@ -166,6 +166,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-desc">milestones</span>
             <span class="badge" id="phases-badge">0</span>
           </button>
+          <button class="view-mode-btn" data-level="analysis" title="Heuristic waste, time-study and automation findings">
+            <span class="view-mode-icon">⊞</span> Analysis
+            <span class="view-mode-desc">waste &amp; automation</span>
+          </button>
           <span class="flex-spacer"></span>
           <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, Phases mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
             <span class="case-scope-label">Case:</span>
@@ -358,6 +362,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div id="phase-detail"></div>
             </div>
           </div>
+        </div>
+
+        <!-- ========= ANALYSIS view (Cluster N / ADR-0008 findings) ========= -->
+        <div class="session-layout-analysis" id="session-layout-analysis" style="display:none">
+          <div id="analysis-content"></div>
         </div>
 
         <details class="event-table-host">

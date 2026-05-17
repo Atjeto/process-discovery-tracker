@@ -482,6 +482,29 @@ def normalize(
         json.dump(summary, f, indent=2)
     print(f"[normalize] wrote {stats_path}")
 
+    # Analysis layer (ADR-0008 / IMPROVEMENTS.md Cluster N). Heuristic
+    # IE/CI findings -- waste classification, time study, automation
+    # candidates, the process-efficiency ratio -- written to
+    # analysis.json. Runs whenever the session has steps; best-effort,
+    # never blocks the pipeline.
+    analysis_result = None
+    if existing_anno.get("steps"):
+        try:
+            from analysis import run_analysis
+            analysis_result = run_analysis(
+                events=classified,
+                steps=existing_anno.get("steps") or [],
+                phases=existing_anno.get("phases") or [],
+                stats=summary,
+                manifest=manifest,
+            )
+            analysis_path = session_folder / "analysis.json"
+            with open(analysis_path, "w", encoding="utf-8") as f:
+                json.dump(analysis_result, f, indent=2)
+            print(f"[normalize] wrote {analysis_path}")
+        except Exception as e:
+            print(f"[normalize] WARNING: analysis layer failed: {e}")
+
     if mine:
         import mining as mining_mod
         from pm4py.objects.log.obj import EventLog
@@ -546,6 +569,7 @@ def normalize(
                 annotations=existing_anno,
                 stats=summary,
                 manifest=manifest,
+                analysis=analysis_result,
             )
             print(f"[normalize] wrote PDD: {pdd_out}")
         except Exception as e:

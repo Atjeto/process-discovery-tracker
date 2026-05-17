@@ -214,6 +214,7 @@ function loadSessionData(sessionFolder) {
   const dfg = loadOptionalJson(path.join(sessionFolder, "dfg.json"));
   const annotations = loadOptionalJson(path.join(sessionFolder, "annotations.json"));
   const obsSync = loadOptionalJson(path.join(sessionFolder, "obs", "sync.json"));
+  const analysis = loadOptionalJson(path.join(sessionFolder, "analysis.json"));
 
   /* Locate the recording. Priority: an analyst-attached external video
      (annotations.external_video, set via the Attach video flow for
@@ -250,6 +251,7 @@ function loadSessionData(sessionFolder) {
     events,
     stats,
     dfg,
+    analysis,
     annotations,
     obsSync,
     recordingPath,

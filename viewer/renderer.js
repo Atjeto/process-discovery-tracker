@@ -37,6 +37,7 @@ const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, d
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, activateAnnoTab } = require("./views/flow-view.js");
+const { renderAnalysisLevel } = require("./views/analysis-view.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
 
@@ -109,6 +110,7 @@ const VIEW_MODE_HELP = {
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured in this session.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
+  analysis: "Analysis view: heuristic waste, time-study and automation findings — review before relying on them.",
 };
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
@@ -138,6 +140,13 @@ const MODE_VIEWPORT = {
     getZoom: State.getPhaseZoom, setZoom: State.setPhaseZoom,
     render: renderPhasesLevel,
   },
+  // The Analysis view has no timeline / zoom; the no-op zoom accessors
+  // let it ride the same viewport-transfer code path harmlessly.
+  analysis: {
+    scrollSel: "#session-layout-analysis",
+    getZoom: () => 1, setZoom: () => {},
+    render: renderAnalysisLevel,
+  },
 };
 function _viewportSnapshotForMode(mode) {
   const m = MODE_VIEWPORT[mode];
@@ -162,7 +171,7 @@ function _viewportApplyToMode(mode, snap) {
   });
 }
 
-const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel };
+const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, analysis: renderAnalysisLevel };
 
 /* Wire the state change-notification bus: an annotation edit emits the
    topics it touched (see persistAnnotations / performUndo / performRedo)
@@ -192,7 +201,7 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
-  const layouts = ["flow", "steps", "phases"];
+  const layouts = ["flow", "steps", "phases", "analysis"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";

@@ -18,7 +18,7 @@
 
 "use strict";
 
-/** @typedef {"flow"|"steps"|"phases"} Level */
+/** @typedef {"flow"|"steps"|"phases"|"analysis"} Level */
 
 /**
  * Renderable concerns a view can subscribe to. An edit emits the

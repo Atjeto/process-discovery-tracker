@@ -8,6 +8,25 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A process-analysis layer turns a recording into IE-grade
+  findings.** After step suggestion, normalization now runs four
+  heuristic analyzers and writes an `analysis.json` sidecar: a per-step
+  **waste classification** (value-add vs. waiting / motion / rework /
+  cross-app overprocessing — the DOWNTIME wastes), a **time study**
+  (per-step cycle time across instances, split into active / waiting /
+  switching), **automation-candidate** scoring (repetitiveness and
+  rule-basedness, scored only where a step repeats often enough to
+  judge), and the **process-efficiency ratio** (value-add over total
+  stepped time). The viewer gains a fourth Session sub-view —
+  **Analysis** — showing the efficiency ratio, a per-step waste bar,
+  the time-study table, and the automation list; the session summary
+  panel surfaces the efficiency ratio as a tile; and the PDD export
+  appends the waste and automation context under each step. The
+  classifiers are deliberately conservative and labelled provisional:
+  they are tuned ahead of real 8-hour recording data and meant to be
+  recalibrated against it. See
+  [ADR-0008](docs/adr/0008-build-the-analysis-layer.md).
+
 - **Session summary panel.** An analyzed session now opens with a
   summary above the timeline instead of leaving the analyst to scroll
   and reconstruct what happened: engagement and worker, duration, case /

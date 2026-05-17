@@ -307,6 +307,56 @@ completely from the worker's machine.
 lists itself excluded. The viewer's session loader compares this against the
 files actually present and surfaces any that are missing.
 
+## analysis.json
+
+Heuristic IE/CI findings, written by the normalization **analysis layer**
+([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md) / IMPROVEMENTS.md
+Cluster N) whenever a session has steps. Absent on sessions normalized before
+the layer existed, and on step-less sessions. Every figure is a provisional
+heuristic — `meta.provisional` is always `true` and `meta.heuristic_version`
+identifies the classifier generation.
+
+```json
+{
+  "meta": { "heuristic_version": 1, "generated_at": "ISO 8601",
+            "session_id": "uuid", "step_count": 0, "provisional": true },
+  "waste_classification": [
+    { "step_id": "uuid", "name": "string", "elapsed_ms": 0,
+      "va_ms": 0, "bnva_ms": 0, "nva_ms": 0,
+      "waste_types": ["waiting | motion | rework | overprocessing"],
+      "cross_app_transfers": 0 }
+  ],
+  "time_study": [
+    { "step_id": "uuid", "canonical_step_id": "uuid or null",
+      "name": "string", "instances": 1,
+      "cycle_ms": { "mean": 0, "min": 0, "max": 0, "stdev": 0,
+                    "p25": 0, "p50": 0, "p75": 0, "p95": 0 },
+      "active_ms": 0, "waiting_ms": 0, "switching_ms": 0 }
+  ],
+  "automation_candidates": [
+    { "step_id": "uuid", "canonical_step_id": "uuid or null", "name": "string",
+      "scores": { "repetitiveness": 0.0, "rule_based": 0.0, "volume": 0 },
+      "estimated_savings_ms": null,
+      "data_sufficiency": "single_instance | multi_instance" }
+  ],
+  "efficiency": {
+    "process_efficiency_ratio": 0.0,
+    "total_va_ms": 0, "total_bnva_ms": 0, "total_nva_ms": 0,
+    "total_elapsed_ms": 0,
+    "per_step": [ { "step_id": "uuid", "ratio": 0.0 } ]
+  }
+}
+```
+
+`waste_classification` has one entry per step; `time_study` and
+`automation_candidates` have one entry per *logical* step — instances sharing a
+`canonical_step_id` are grouped, falling back to one group per step when no
+process template was matched. `bnva_ms` is `0` in the current heuristic
+generation: the value-add vs. business-required split needs analyst judgement
+and is left for a correction pass. `automation_candidates` scores are `null`
+with `data_sufficiency: "single_instance"` for a step observed only once —
+repetitiveness cannot be judged from a single instance.
+
 ## Invariants
 
 - Events are immutable once written. Corrections live in `annotations.json` (§9.3 -- the viewer writes notes here; marker edit / merge / split UIs are deferred).
@@ -325,6 +375,7 @@ The normalization layer writes the following alongside `events.jsonl`:
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, app_outliers, rework_loops, meta }` |
 | `process_map.bpmn` | BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
 | `dfg.json` | Directly-Follows Graph as `{ edges, start_activities, end_activities }` (with `--mine`) |
+| `analysis.json` | Heuristic IE findings: `{ meta, waste_classification, time_study, automation_candidates, efficiency }` (when the session has steps — ADR-0008) |
 | `annotations.json` | Analyst-authored notes + future marker edits |
 | `obs/sync.json` | `{ tracker_session_start_ts, obs_recording_start_ts, offset_ms, recording_path }` |
 | `normalize.log` | Rolling log of warnings and info from normalization (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
