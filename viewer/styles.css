@@ -1881,6 +1881,60 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
   font-size: 10px; color: var(--accent); cursor: pointer; }
 .selection-stats .clear-link:hover { text-decoration: underline; }
 
+/* ===== Phase H: Compare-Sessions toggles, legends, side-by-side ==== */
+.agg-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.agg-panel-head h3 { margin: 0; }
+.agg-toggle-btn {
+  padding: 4px 12px; font-size: 11px; cursor: pointer;
+  background: var(--bg-3); color: var(--fg-2);
+  border: 1px solid var(--rule); border-radius: var(--radius-sm);
+}
+.agg-toggle-btn.active {
+  background: var(--accent); color: var(--bg); border-color: var(--accent);
+}
+.worker-legend, .conformance-legend {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  font-size: 11px; color: var(--fg-2); margin: 8px 0; padding: 6px 10px;
+  background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+}
+.worker-legend .lg-item, .conformance-legend .lg-item {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.worker-legend .lg-swatch, .conformance-legend .lg-swatch {
+  width: 11px; height: 11px; border-radius: 2px; display: inline-block;
+}
+.conformance-legend .lg-missing { color: var(--fg-3); }
+
+/* H4 -- interactive video re-sync instruction card + click targets */
+.video-sync-card {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  z-index: 200; display: flex; align-items: center; gap: 14px;
+  padding: 10px 16px; font-size: 12px; color: var(--fg);
+  background: var(--bg-2); border: 1px solid var(--accent);
+  border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+.video-sync-card .vs-cancel {
+  padding: 3px 12px; font-size: 11px; cursor: pointer;
+  background: var(--bg-3); color: var(--fg-2);
+  border: 1px solid var(--rule); border-radius: var(--radius-sm);
+}
+.video-sync-target {
+  outline: 2px solid var(--accent); outline-offset: -2px; cursor: crosshair;
+}
+
+/* H2 -- side-by-side step timelines */
+#side-by-side-container {
+  display: flex; flex-direction: column; gap: 4px; margin-top: 8px;
+}
+.sxs-strip-label {
+  font-size: 11px; color: var(--fg-2); font-weight: 500; margin: 6px 0 2px;
+}
+.sxs-strip { height: 78px; }
+
 /* ===== Mode-specific shortcuts overlay (P2.4) ===================== */
 .shortcuts-overlay {
   position: fixed; right: 14px; bottom: 14px; z-index: 100;

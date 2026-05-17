@@ -150,6 +150,7 @@
       <div class="actions">
         <button id="btn-step-save" class="primary">Save</button>
         <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
+        ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
         <button id="btn-step-split">Split</button>
         <button id="btn-step-merge">Merge with next</button>
         <button id="btn-step-hide" title="${step.state === "hidden" ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${step.state === "hidden" ? "Unhide" : "Hide as noise"}</button>
@@ -184,6 +185,11 @@
     if (jumpBtn) {
       jumpBtn.addEventListener("click", () => callbacks.onJumpToFlow && callbacks.onJumpToFlow(step));
       jumpBtn.disabled = !(step.time_range && step.time_range.start);
+    }
+    const watchBtn = document.getElementById("btn-step-watch");
+    if (watchBtn) {
+      watchBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
+      watchBtn.disabled = !(step.time_range && step.time_range.start);
     }
   }
 

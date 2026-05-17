@@ -54,6 +54,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <button class="project-menu-item" id="btn-project-save-as">Save current as project...</button>
           <button class="project-menu-item" id="btn-project-save" style="display:none">Save project</button>
           <button class="project-menu-item" id="btn-project-notes" style="display:none">Project notes...</button>
+          <button class="project-menu-item" id="btn-set-session-template" style="display:none">Set current session as step template</button>
           <button class="project-menu-item" id="btn-project-close" style="display:none">Close project</button>
         </div>
       </div>
@@ -97,6 +98,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <button id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
           <button id="btn-save-vocab" title="Generate a starter App Library entry from this session's captured interactions. Edit names afterward; once saved, future sessions auto-use it to label what the user did inside this app.">Save to App Library...</button>
           <button id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
+          <button id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
           <label class="cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
           <span class="map-status" id="process-map-status" style="display:none">
             <span class="map-status-dot"></span>
@@ -424,11 +426,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button class="agg-level-btn" data-level="steps">Steps</button>
             <button class="agg-level-btn" data-level="phases">Phases</button>
           </div>
+          <label class="cb" id="agg-group-worker-wrap" style="display:none" title="Colour the activity and case charts by worker, so you can compare how different people ran the same process."><input type="checkbox" id="cb-agg-group-worker" /> Group by worker</label>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="aggregate-pills"></div>
         </div>
         <div class="alert" id="agg-version-spread" style="display:none"></div>
         <div class="alert" id="agg-outlier-banner" style="display:none"></div>
+        <div class="alert" id="agg-taxonomy-banner" style="display:none"></div>
+        <div class="worker-legend" id="agg-worker-legend" style="display:none"></div>
 
         <div class="aggregate-grid">
           <div class="panel panel-wide">
@@ -443,6 +448,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <button class="icon-btn xs" id="btn-dfg-zoom-out" title="Zoom out">−</button>
                 <button class="icon-btn xs" id="btn-dfg-zoom-fit" title="Fit to view">fit</button>
                 <button class="icon-btn xs" id="btn-dfg-zoom-in" title="Zoom in">+</button>
+                <label class="cb" id="dfg-conformance-wrap" style="display:none" title="Colour Flow-diagram nodes by how they match the loaded Process Template: green matches a canonical step, amber is off-template."><input type="checkbox" id="cb-dfg-conformance" /> Conformance</label>
                 <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
               </div>
             </div>
@@ -454,6 +460,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <div>Click "Analyze all sessions" to discover a process map.</div>
               </div>
             </div>
+            <div id="dfg-conformance-legend" class="conformance-legend" style="display:none"></div>
             <div class="resize-v" id="resize-map" title="Drag to resize the process map"></div>
           </div>
 
@@ -468,7 +475,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
 
           <div class="panel panel-wide">
-            <h3>Path variations</h3>
+            <div class="agg-panel-head">
+              <h3>Path variations</h3>
+              <div class="agg-level-switcher" id="variant-mode-switch" title="Compare the raw activity sequence, or the analyst's stepped view of the process.">
+                <button class="agg-level-btn active" data-vmode="activity">By activity</button>
+                <button class="agg-level-btn" data-vmode="step">By step</button>
+              </div>
+            </div>
             <p class="meta" style="margin-top:0">Every distinct activity sequence across the loaded sessions, ranked by how many sessions follow it. The bar shows relative frequency; amber-highlighted activities are positions where paths diverge. Hover a node in the Flow diagram above to see the same paths laid out visually.</p>
             <div class="stats-table-host" id="variant-table-host">
               <table class="stats-table" id="variants">
@@ -476,6 +489,17 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <tbody></tbody>
               </table>
             </div>
+          </div>
+
+          <div class="panel panel-wide" id="side-by-side-panel" style="display:none">
+            <div class="agg-panel-head">
+              <h3>Side-by-side comparison</h3>
+              <button id="btn-sxs-align" class="agg-toggle-btn" title="Align both timelines by wall-clock time, or by each session's first case start.">Align: by time</button>
+            </div>
+            <p class="meta" style="margin-top:0">Two sessions' step timelines stacked for a direct visual comparison. Steps both sessions share are green; steps unique to one session are amber.</p>
+            <button id="btn-compare-sxs" class="primary">Compare side-by-side</button>
+            <div id="side-by-side-summary" class="meta"></div>
+            <div id="side-by-side-container"></div>
           </div>
 
           <div class="panel">

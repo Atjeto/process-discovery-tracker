@@ -78,6 +78,45 @@ def test_drops_singletons_below_min_threshold():
     assert steps == []
 
 
+# --- Excluded ranges (H6) ----------------------------------------------
+
+def test_excluded_range_drops_events_before_suggestion():
+    """Interactions inside an annotations excluded_range are dropped
+    before step suggestion -- here the middle two of four."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [_make_inter(base + timedelta(milliseconds=i * 500)) for i in range(4)]
+    excluded = [{
+        "start": _iso(base + timedelta(milliseconds=400)),
+        "end": _iso(base + timedelta(milliseconds=1100)),
+        "reason": "manual",
+    }]
+    steps = auto_suggest_steps(events, session_id="s1", excluded_ranges=excluded)
+    assert len(steps) == 1
+    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 2
+
+
+def test_excluded_range_can_remove_a_whole_step():
+    """An excluded range covering every interaction yields no steps."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [_make_inter(base + timedelta(milliseconds=i * 500)) for i in range(4)]
+    excluded = [{
+        "start": _iso(base - timedelta(seconds=1)),
+        "end": _iso(base + timedelta(seconds=10)),
+        "reason": "manual",
+    }]
+    steps = auto_suggest_steps(events, session_id="s1", excluded_ranges=excluded)
+    assert steps == []
+
+
+def test_malformed_excluded_range_is_ignored():
+    """A range missing start/end must not crash or drop events."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [_make_inter(base + timedelta(milliseconds=i * 500)) for i in range(4)]
+    steps = auto_suggest_steps(
+        events, session_id="s1", excluded_ranges=[{"reason": "manual"}])
+    assert len(steps) == 1
+
+
 # --- Step overlap (I37) ------------------------------------------------
 
 def _step(state, start, end):

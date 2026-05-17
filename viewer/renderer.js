@@ -37,7 +37,7 @@ const { refreshTemplateVersions, renderCanonicalStepList } = require("./views/te
 const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, activateAnnoTab } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab } = require("./views/flow-view.js");
 const { renderAnalysisLevel } = require("./views/analysis-view.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
@@ -306,6 +306,7 @@ initStepsView({
   persistAnnotations: (a, label) => persistAnnotations(a, label),
   videoTimeToSessionTs: (t) => videoTimeToSessionTs(t),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
+  watchStep: (s) => watchStep(s),
 });
 initPhasesView({
   ensureAnnoShape: (a) => ensureAnnoShape(a),
@@ -989,6 +990,7 @@ function updateProjectMenuLabel() {
   const btn = document.getElementById("btn-project-menu");
   const saveItem = document.getElementById("btn-project-save");
   const notesItem = document.getElementById("btn-project-notes");
+  const tmplItem = document.getElementById("btn-set-session-template");
   const closeItem = document.getElementById("btn-project-close");
   const proj = PdtProject.activeProject();
   if (proj && proj.path) {
@@ -996,12 +998,14 @@ function updateProjectMenuLabel() {
     if (btn) btn.classList.add("has-project");
     if (saveItem) saveItem.style.display = "";
     if (notesItem) notesItem.style.display = "";
+    if (tmplItem) tmplItem.style.display = "";
     if (closeItem) closeItem.style.display = "";
   } else {
     if (lbl) lbl.textContent = "No project";
     if (btn) btn.classList.remove("has-project");
     if (saveItem) saveItem.style.display = "none";
     if (notesItem) notesItem.style.display = "none";
+    if (tmplItem) tmplItem.style.display = "none";
     if (closeItem) closeItem.style.display = "none";
   }
 }
@@ -1275,16 +1279,38 @@ async function projectNotes() {
   await projectSave();
 }
 
+/* F5 setter: record the loaded session as the project's step template
+   so a step-less session later opened under the project is offered its
+   step structure. Mirrors projectNotes(). */
+async function setSessionAsTemplate() {
+  toggleProjectMenu(false);
+  const active = PdtProject.activeProject();
+  if (!active || !active.path) {
+    toast("Open or save a project first.", "error");
+    return;
+  }
+  const session = State.getSession();
+  const folder = session && session.sessionFolder;
+  if (!folder) {
+    toast("Open a session first.", "error");
+    return;
+  }
+  PdtProject.setActiveProject(Object.assign({}, active, { step_template_session: folder }));
+  await projectSave();
+}
+
 (function wireProjectMenuItems() {
   const open = document.getElementById("btn-project-open");
   const saveAs = document.getElementById("btn-project-save-as");
   const save = document.getElementById("btn-project-save");
   const close = document.getElementById("btn-project-close");
   const notes = document.getElementById("btn-project-notes");
+  const tmpl = document.getElementById("btn-set-session-template");
   if (open)   open.addEventListener("click", projectOpen);
   if (saveAs) saveAs.addEventListener("click", projectSaveAs);
   if (save)   save.addEventListener("click", projectSave);
   if (notes)  notes.addEventListener("click", projectNotes);
+  if (tmpl)   tmpl.addEventListener("click", setSessionAsTemplate);
   if (close)  close.addEventListener("click", projectClose);
 })();
 

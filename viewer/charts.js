@@ -74,7 +74,8 @@ function renderBarChart(host, data, opts) {
     lbl.textContent = shortLabel(row.label, 26);
     lbl.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title"));
     lbl.lastChild.textContent = row.label;
-    // Bar
+    // Bar -- a per-row `color` (used by the H1 group-by-worker view)
+    // overrides the chart-wide colour.
     svgEl("rect", {
       x: barAreaX,
       y,
@@ -82,7 +83,7 @@ function renderBarChart(host, data, opts) {
       height: barH,
       rx: 3,
       class: "bar-rect",
-      fill: opts.color || "var(--accent)",
+      fill: row.color || opts.color || "var(--accent)",
     }, svg);
     // Secondary bar (e.g. p90) overlay
     if (row.secondary != null) {

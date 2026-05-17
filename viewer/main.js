@@ -703,6 +703,28 @@ function loadProjectFile(filePath) {
 
 /* --- Annotations write-back --------------------------------------- */
 
+/* H8: rotate annotations.json into numbered backups before each write.
+   annotations.json -> .2 -> .3 -> .4 -> .5; five versions are kept.
+   Recovery is manual -- the analyst copies a .N file back over
+   annotations.json -- this is just a safety net against a corrupt
+   write or a regretted bulk edit. */
+const ANNOTATION_BACKUP_DEPTH = 5;
+function rotateAnnotationBackups(root) {
+  try {
+    for (let i = ANNOTATION_BACKUP_DEPTH - 1; i >= 1; i--) {
+      const from = i === 1 ? "annotations.json" : `annotations.json.${i}`;
+      const to = `annotations.json.${i + 1}`;
+      const fromPath = path.join(root, from);
+      if (fs.existsSync(fromPath)) {
+        fs.renameSync(fromPath, path.join(root, to));
+      }
+    }
+  } catch (_e) {
+    /* A failed rotation must not block the actual save -- worst case
+       the analyst loses one backup generation. */
+  }
+}
+
 ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) => {
   /* Anchor the write to an absolute session folder; reject if the
      resolved path doesn't contain a manifest (i.e. is not actually a
@@ -713,6 +735,7 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
     throw new Error("Refusing to write annotations: not a session folder");
   }
   const annoPath = path.join(root, "annotations.json");
+  rotateAnnotationBackups(root);
   fs.writeFileSync(annoPath, JSON.stringify(annotations, null, 2));
   return annoPath;
 });

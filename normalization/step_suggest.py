@@ -30,6 +30,36 @@ def _is_ignored(data: dict, ignored: list[str] | None) -> bool:
     return False
 
 
+def _parse_excluded_ranges(
+    excluded_ranges: list[dict] | None,
+) -> list[tuple[datetime, datetime]]:
+    """Pre-parse the annotations.json `excluded_ranges` start/end ISO
+    strings into datetime pairs, dropping any malformed entry."""
+    out: list[tuple[datetime, datetime]] = []
+    for r in excluded_ranges or []:
+        start, end = (r or {}).get("start"), (r or {}).get("end")
+        if not start or not end:
+            continue
+        try:
+            a, b = parse_ts(start), parse_ts(end)
+        except (ValueError, TypeError):
+            continue
+        if b >= a:
+            out.append((a, b))
+    return out
+
+
+def _ts_excluded(ts_str: str, ranges: list[tuple[datetime, datetime]]) -> bool:
+    """True if `ts_str` falls inside any excluded range."""
+    if not ranges:
+        return False
+    try:
+        t = parse_ts(ts_str)
+    except (ValueError, TypeError):
+        return False
+    return any(a <= t <= b for a, b in ranges)
+
+
 def auto_suggest_steps(
     events: list[dict[str, Any]],
     *,
@@ -39,6 +69,7 @@ def auto_suggest_steps(
     step_max_idle_ms: int = 5000,
     session_id: str = "",
     ignored_processes: list[str] | None = None,
+    excluded_ranges: list[dict] | None = None,
 ) -> list[dict[str, Any]]:
     """Walk interaction events in time order within each case. Produce
     auto_suggested steps per the algorithm in annotation-model.md §4.1.
@@ -49,13 +80,21 @@ def auto_suggest_steps(
     noise apps (OBS, the tracker UI itself, Teams) that the UIA
     recorder picks up but that aren't part of the process being
     discovered.
+
+    `excluded_ranges` is the annotations.json `excluded_ranges` list:
+    any interaction whose timestamp falls inside one is dropped, so an
+    analyst can cut a break or an unrelated detour out of a long
+    passive recording before step suggestion runs.
     """
+    excluded = _parse_excluded_ranges(excluded_ranges)
     # Group by top-level case (last case_id in case_ids list, or None)
     by_case: dict[str | None, list[dict[str, Any]]] = {}
     for ev in events:
         if ev.get("type") != "interaction":
             continue
         if _is_ignored(ev.get("data", {}), ignored_processes):
+            continue
+        if _ts_excluded(ev.get("timestamp", ""), excluded):
             continue
         cids = ev.get("data", {}).get("case_ids") or []
         top = cids[-1] if cids else None

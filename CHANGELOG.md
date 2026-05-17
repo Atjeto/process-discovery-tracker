@@ -8,6 +8,29 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Comparing sessions, the video, and markers all got sharper.** The
+  Compare Sessions view gains a **Group by worker** toggle — the
+  activity and case charts split and colour by worker so you can see
+  how different people ran the same process; a **side-by-side** mode
+  that stacks two sessions' step timelines, shared steps in green and
+  divergent ones in amber, with a plain-language summary of where they
+  agree; a **conformance overlay** on the Flow diagram that colours
+  each node green (matches a Process Template step) or amber
+  (off-template) and lists template steps no session reached; a warning
+  when the loaded sessions were analyzed against **different taxonomy
+  versions**; and a **Variants by: Activity / Step** toggle on the Path
+  variations table, so you can compare the analyst's stepped view of
+  the process, not just the raw activity sequence. On the Session view,
+  a **Sync video** button re-aligns a recording interactively — click a
+  moment in the video, then the matching point on the timeline; a
+  **▶ Watch** button on each step plays the recording across just that
+  step's span; a timeline range can now be **excluded from analysis**
+  (step suggestion and statistics skip it) as well as turned into a
+  case; re-analyzing a session that already has steps now **asks for
+  confirmation** first, since it regenerates auto-detected steps and
+  clears the undo history; and every save of `annotations.json` keeps
+  **five rotating backups** as a safety net.
+
 - **Projects carry knowledge forward.** A saved project now auto-saves
   a few seconds after you switch tab or view, so a workspace stays
   current without a manual Save. Project files store their session and
@@ -20,6 +43,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   open a step-less session under a project that names one and the
   viewer offers to seed it with the template's step structure, each
   step positioned by relative time.
+
+- **Set a project's step template from the menu.** The Project menu
+  gains a "Set current session as step template" action: with a
+  project open and a session loaded, one click records that session as
+  the project's step template, so later step-less sessions opened under
+  the project can be seeded from it. Previously the template could only
+  be set by hand-editing the project file.
 
 - **One-click HTML findings report.** The Session view's export bar
   gains a "Findings report..." button. It produces a self-contained

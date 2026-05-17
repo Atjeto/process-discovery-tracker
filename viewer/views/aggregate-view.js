@@ -21,6 +21,12 @@ const PdtBpmn = require("../bpmn-viewer.js");
 const PdtDfg = require("../dfg-viewer.js");
 const { formModal } = require("../modals.js");
 const SessionSummary = require("../session-summary.js");
+const PdtTheme = require("../theme.js");
+const TimelineCore = require("../timeline/timeline-core.js");
+
+/* H2/H3 conformance colours -- must match dfg-viewer.js's CONF_*. */
+const CONF_GREEN = "#4f9d5b";
+const CONF_AMBER = "#cf9233";
 
 /* Injected by renderer.js -- activates the Session tab, loads a
    session folder, and seeks to a timestamp. */
@@ -92,6 +98,13 @@ async function openMultiFlow() {
    don't continue to the next session. */
 let _aggregateNormalizeCancelled = false;
 
+/* Phase H Compare-Sessions view toggles -- view state, not session
+   data, so module-level (like _aggregateNormalizeCancelled above). */
+let _groupByWorker = false;        // H1
+let _variantMode = "activity";     // H10: "activity" | "step"
+let _sxsAlign = "time";            // H2: "time" | "case"
+let _dfgConformance = false;       // H3
+
 function wireAggregateControls() {
   $("#btn-open-multi-hero").addEventListener("click", openMultiFlow);
   $("#btn-open-multi").addEventListener("click", openMultiFlow);
@@ -154,6 +167,43 @@ function wireAggregateControls() {
     State.setAggregateToDate(e.target.value || "");
     renderAggregate();
   });
+
+  // H1: group the activity / case charts by worker.
+  const groupCb = document.getElementById("cb-agg-group-worker");
+  if (groupCb) groupCb.addEventListener("change", (e) => {
+    _groupByWorker = !!e.target.checked;
+    renderAggregate();
+  });
+
+  // H10: variant table -- raw activity sequence vs. step-name sequence.
+  const vmodeSwitch = document.getElementById("variant-mode-switch");
+  if (vmodeSwitch) {
+    vmodeSwitch.querySelectorAll("[data-vmode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        _variantMode = btn.dataset.vmode === "step" ? "step" : "activity";
+        vmodeSwitch.querySelectorAll("[data-vmode]").forEach((b) =>
+          b.classList.toggle("active", b === btn));
+        renderAggregate();
+      });
+    });
+  }
+
+  // H3: DFG conformance overlay toggle.
+  const confCb = document.getElementById("cb-dfg-conformance");
+  if (confCb) confCb.addEventListener("change", (e) => {
+    _dfgConformance = !!e.target.checked;
+    renderAggregate();
+  });
+
+  // H2: two-session side-by-side comparison.
+  const sxsBtn = document.getElementById("btn-compare-sxs");
+  if (sxsBtn) sxsBtn.addEventListener("click", renderSideBySide);
+  const sxsAlign = document.getElementById("btn-sxs-align");
+  if (sxsAlign) sxsAlign.addEventListener("click", () => {
+    _sxsAlign = _sxsAlign === "time" ? "case" : "time";
+    sxsAlign.textContent = "Align: by " + (_sxsAlign === "time" ? "time" : "first case");
+    renderSideBySide();
+  });
 }
 
 function matchesFilter(text) {
@@ -201,6 +251,30 @@ function sessionName(s) {
     (s.manifest && s.manifest.session_id) || "session";
 }
 
+/* H1: the worker who recorded a session. stats meta wins, then the
+   manifest config block -- the same resolution session-summary.js uses. */
+function sessionWorker(s) {
+  if (!s) return "unknown worker";
+  const meta = (s.stats && s.stats.meta) || {};
+  const m = s.manifest || {};
+  return meta.worker_id ||
+    (m.config && m.config.worker && m.config.worker.id) ||
+    m.worker || "unknown worker";
+}
+
+/* Distinct worker names across a session set, sorted. */
+function distinctWorkers(sessions) {
+  return [...new Set((sessions || []).map(sessionWorker))].sort();
+}
+
+/* Stable per-worker colour, drawn from the theme's step palette. */
+function workerColorMap(sessions) {
+  const pal = PdtTheme.stepPalette();
+  const map = new Map();
+  distinctWorkers(sessions).forEach((w, i) => map.set(w, pal[i % pal.length]));
+  return map;
+}
+
 /* Phase A2: flag a session whose total duration is a statistical
    outlier among the loaded set -- it can quietly distort the merged
    statistics. The banner offers a one-click drop from the comparison. */
@@ -240,10 +314,44 @@ function renderOutlierBanner(sessions) {
   });
 }
 
+/* H9: warn when the loaded sessions were analyzed against different
+   taxonomy versions -- their activity labels (and the variant
+   comparison built on them) may not line up. */
+function renderTaxonomyBanner(sessions) {
+  const banner = document.getElementById("agg-taxonomy-banner");
+  if (!banner) return;
+  const versions = new Set();
+  for (const s of sessions) {
+    const tv = ((s.stats || {}).meta || {}).taxonomy_version;
+    if (tv != null && tv !== "") versions.add(tv);
+  }
+  if (versions.size > 1) {
+    banner.style.display = "";
+    banner.textContent =
+      "Sessions were analyzed with different taxonomy versions (" +
+      [...versions].join(", ") + ") — activity labels may not line up, " +
+      "so variant comparison can be unreliable. Re-analyze them against " +
+      "the same taxonomy for a consistent comparison.";
+  } else {
+    banner.style.display = "none";
+    banner.textContent = "";
+  }
+}
+
 function renderAggregate() {
   // Pills - count filtered + total
   const filtered = filteredAggregateSessions();
   renderOutlierBanner(filtered);
+  renderTaxonomyBanner(filtered);
+  // H1: the group-by-worker toggle is only meaningful with 2+ workers.
+  const workerWrap = document.getElementById("agg-group-worker-wrap");
+  if (workerWrap) {
+    workerWrap.style.display =
+      (filtered.length > 1 && distinctWorkers(filtered).length >= 2) ? "" : "none";
+  }
+  // H2: the side-by-side panel is available only for exactly two sessions.
+  const sxsPanel = document.getElementById("side-by-side-panel");
+  if (sxsPanel) sxsPanel.style.display = filtered.length === 2 ? "" : "none";
   const numNormalized = filtered.filter((s) => !!s.stats).length;
   const rangeNote = (State.getAggregateFromDate() || State.getAggregateToDate())
     ? ` (filtered from ${State.getAggregateSessions().length})` : "";
@@ -303,19 +411,35 @@ function renderAggregate() {
   const actRows = [...actMap.values()]
     .filter((r) => matchesFilter(r.activity_label))
     .sort((a, b) => b.frequency - a.frequency);
-  PdtCharts.renderBarChart($("#activity-chart"),
-    actRows.map((r) => ({
-      label: r.activity_label,
-      value: r.frequency,
-      valueLabel: r.frequency + " · " + PdtCharts.fmtDurationS(r.total_duration_ms / 1000),
-      sparkline: sparkSpan ? r.sparkline : null,
-    })),
-    { unit: "" });
+  // H1: when "Group by worker" is on (and the set spans 2+ workers),
+  // split the merged top activities into one bar per worker.
+  const wColors = workerColorMap(filtered);
+  const showGrouping = _groupByWorker && distinctWorkers(filtered).length >= 2;
+  if (showGrouping) {
+    const topActs = actRows.slice(0, 8).map((r) => r.activity_label);
+    PdtCharts.renderBarChart($("#activity-chart"),
+      groupedActivityRows(filtered, topActs, wColors),
+      { unit: "", maxBars: 32 });
+  } else {
+    PdtCharts.renderBarChart($("#activity-chart"),
+      actRows.map((r) => ({
+        label: r.activity_label,
+        value: r.frequency,
+        valueLabel: r.frequency + " · " + PdtCharts.fmtDurationS(r.total_duration_ms / 1000),
+        sparkline: sparkSpan ? r.sparkline : null,
+      })),
+      { unit: "" });
+  }
+  renderWorkerLegend(showGrouping ? wColors : null);
 
-  // Case durations: bar chart, active duration with wall-clock overlay
+  // Case durations: bar chart, active duration with wall-clock overlay.
+  // H1: iterate sessions (not merged stats) so each case row knows its
+  // worker and can be coloured when grouping is on.
   const caseRows = [];
-  for (const st of allStats) {
-    for (const r of (st.case_stats || [])) {
+  for (const s of filtered) {
+    if (!s.stats) continue;
+    const caseWorker = sessionWorker(s);
+    for (const r of (s.stats.case_stats || [])) {
       if (r.parent_case_id) continue; // top-level only
       if (!matchesFilter(r.label || r.case_id)) continue;
       // Per-case sparkline: a single bin (the bucket containing this
@@ -333,6 +457,7 @@ function renderAggregate() {
         secondary: (r.wall_clock_ms || 0) / 1000,
         valueLabel: PdtCharts.fmtDurationS((r.active_ms || 0) / 1000),
         sparkline: caseSpark,
+        color: showGrouping ? wColors.get(caseWorker) : undefined,
         meta: r,
       });
     }
@@ -348,10 +473,13 @@ function renderAggregate() {
   // most-common variant; activities that appear at the same position
   // across MULTIPLE variants get a faint divergence highlight so the
   // analyst can spot where paths split.
+  // H10: the variant table can key on the raw activity sequence or the
+  // analyst's step-name sequence (stats.step_variants).
+  const variantKey = _variantMode === "step" ? "step_variants" : "trace_variants";
   const varAgg = new Map();   // variantStr -> { freq, length, sessions }
   for (const st of allStats) {
     const sessId = ((st.meta || {}).session_id) || "?";
-    for (const v of (st.trace_variants || [])) {
+    for (const v of (st[variantKey] || [])) {
       const variantStr = v.variant.join(" → ");
       if (!matchesFilter(variantStr)) continue;
       const e = varAgg.get(variantStr) || { freq: 0, length: v.length, sessions: new Set() };
@@ -402,13 +530,19 @@ function renderAggregate() {
     }
   }
 
-  // Variant data for the DFG variant-overlay (Phase E). Each variant is
-  // an ordered activity list; the DFG renderer uses these to highlight
-  // the paths through a hovered node.
-  const variantsForDfg = varRows.slice(0, 80).map((r) => ({
-    variant: r.variant.split(" → "),
-    frequency: r.freq,
-  }));
+  // Variant data for the DFG variant-overlay (Phase E). Always the
+  // activity sequence -- DFG nodes are activities -- independent of the
+  // variant table's Activity/Step display mode (H10).
+  const dfgVarAgg = new Map();
+  for (const st of allStats) {
+    for (const v of (st.trace_variants || [])) {
+      const k = v.variant.join(" → ");
+      dfgVarAgg.set(k, (dfgVarAgg.get(k) || 0) + (v.frequency || 0));
+    }
+  }
+  const variantsForDfg = [...dfgVarAgg.entries()]
+    .sort((a, b) => b[1] - a[1]).slice(0, 80)
+    .map(([k, freq]) => ({ variant: k.split(" → "), frequency: freq }));
 
   // Outliers + rework
   const outRows = [];
@@ -453,6 +587,11 @@ function renderAggregate() {
       ends.set(k, (ends.get(k) || 0) + v);
     }
   }
+  // H3: hide the conformance toggle + legend by default; the DFG block
+  // re-enables them when a template-matched DFG is available.
+  renderConformanceLegend(null);
+  const _confWrap = document.getElementById("dfg-conformance-wrap");
+  if (_confWrap) _confWrap.style.display = "none";
   if (edgeMap.size && PdtDfg) {
     const dfg = {
       edges: [...edgeMap.entries()].map(([k, freq]) => {
@@ -462,13 +601,23 @@ function renderAggregate() {
       start_activities: Object.fromEntries(starts),
       end_activities: Object.fromEntries(ends),
     };
+    // H3: conformance overlay -- offered when any session matched a
+    // Process Template (auto_matched steps exist).
+    const conf = computeConformance(filtered, dfg);
+    if (_confWrap) _confWrap.style.display = conf ? "" : "none";
+    const confActive = !!(conf && _dfgConformance);
+    const confCb = document.getElementById("cb-dfg-conformance");
+    if (confCb) confCb.checked = confActive;
     PdtDfg.render($("#dfg-host"), dfg, {
       onNodeClick: (activityLabel, ev) => drillToActivity(activityLabel, ev),
       onZoomChange: (z) => setMapZoomPct(z),
       // Phase E: variant overlay. Hovering a node highlights the
       // session paths (variants) that pass through that activity.
       variants: variantsForDfg,
+      // H3: green/amber conformance node colouring when the toggle is on.
+      conformance: confActive ? conf.status : null,
     });
+    renderConformanceLegend(confActive ? conf : null);
     // Show zoom controls if the DFG tab is currently active
     const dfgTabActive = document.querySelector('.panel-tab.active')?.dataset.map === "dfg";
     setMapZoomVisible(dfgTabActive);
@@ -542,6 +691,217 @@ function renderAggregate() {
     } else {
       driftPanel.style.display = "none";
     }
+  }
+}
+
+/* ============ H1: per-worker chart grouping ======================= */
+
+/* Per-(activity, worker) rows for the activity chart: the merged top
+   activities, split into one bar per worker and coloured by worker. */
+function groupedActivityRows(sessions, topActivities, wColors) {
+  const byWorker = new Map();   // worker -> Map(activity -> frequency)
+  for (const s of sessions) {
+    if (!s.stats) continue;
+    const w = sessionWorker(s);
+    let m = byWorker.get(w);
+    if (!m) { m = new Map(); byWorker.set(w, m); }
+    for (const r of (s.stats.activity_stats || [])) {
+      m.set(r.activity_label, (m.get(r.activity_label) || 0) + r.frequency);
+    }
+  }
+  const workers = [...byWorker.keys()].sort();
+  const rows = [];
+  for (const act of topActivities) {
+    for (const w of workers) {
+      const freq = byWorker.get(w).get(act) || 0;
+      if (!freq) continue;
+      rows.push({
+        label: act,
+        value: freq,
+        color: wColors.get(w),
+        valueLabel: freq + " · " + w,
+      });
+    }
+  }
+  return rows;
+}
+
+/* Render (or hide) the worker colour legend above the charts. */
+function renderWorkerLegend(wColors) {
+  const host = document.getElementById("agg-worker-legend");
+  if (!host) return;
+  if (!wColors || !wColors.size) {
+    host.style.display = "none";
+    host.innerHTML = "";
+    return;
+  }
+  host.style.display = "";
+  host.innerHTML = "Worker: " + [...wColors.entries()].map(([w, c]) =>
+    '<span class="lg-item"><span class="lg-swatch" style="background:' +
+    escapeAttr(c) + '"></span>' + escapeHtml(w) + "</span>"
+  ).join("");
+}
+
+/* ============ H3: DFG conformance overlay ========================= */
+
+/* Build a conformance map for the merged DFG. A node is green when its
+   activity label matches a canonical step name (taken from auto_matched
+   steps across the loaded sessions), amber otherwise. Returns null when
+   no session matched a Process Template -- the overlay has nothing to
+   say. `missing` lists canonical steps no DFG node represents. */
+function computeConformance(sessions, dfg) {
+  const canonical = new Set();   // normalized canonical step names
+  const canonicalDisplay = new Map();  // normalized -> display name
+  for (const s of sessions) {
+    for (const st of (((s.annotations || {}).steps) || [])) {
+      if (st.state === "auto_matched" && st.name) {
+        const norm = st.name.trim().toLowerCase();
+        canonical.add(norm);
+        if (!canonicalDisplay.has(norm)) canonicalDisplay.set(norm, st.name);
+      }
+    }
+  }
+  if (!canonical.size) return null;
+  const nodes = new Set();
+  for (const e of (dfg.edges || [])) { nodes.add(e.source); nodes.add(e.target); }
+  const status = {};
+  const seen = new Set();
+  for (const n of nodes) {
+    const norm = String(n).trim().toLowerCase();
+    if (canonical.has(norm)) { status[n] = "green"; seen.add(norm); }
+    else status[n] = "amber";
+  }
+  const missing = [];
+  for (const norm of canonical) {
+    if (!seen.has(norm)) missing.push(canonicalDisplay.get(norm));
+  }
+  return { status, missing };
+}
+
+/* Render (or hide) the conformance legend below the process map. */
+function renderConformanceLegend(conf) {
+  const host = document.getElementById("dfg-conformance-legend");
+  if (!host) return;
+  if (!conf) {
+    host.style.display = "none";
+    host.innerHTML = "";
+    return;
+  }
+  host.style.display = "";
+  let html =
+    '<span class="lg-item"><span class="lg-swatch" style="background:' + CONF_GREEN +
+      '"></span>matches a template step</span>' +
+    '<span class="lg-item"><span class="lg-swatch" style="background:' + CONF_AMBER +
+      '"></span>off-template</span>';
+  if (conf.missing && conf.missing.length) {
+    html += '<span class="lg-item lg-missing">Template steps not seen: ' +
+      conf.missing.map(escapeHtml).join(", ") + "</span>";
+  }
+  host.innerHTML = html;
+}
+
+/* ============ H2: two-session side-by-side comparison ============= */
+
+/* Render two sessions' step timelines stacked, for a direct visual
+   comparison. Shared step names render green, divergent ones amber.
+   Triggered by the "Compare side-by-side" button and the align toggle;
+   no-ops unless exactly two sessions are loaded. */
+function renderSideBySide() {
+  const container = document.getElementById("side-by-side-container");
+  const summary = document.getElementById("side-by-side-summary");
+  if (!container) return;
+  const sessions = filteredAggregateSessions();
+  if (sessions.length !== 2) {
+    container.innerHTML = "";
+    if (summary) summary.textContent = "";
+    return;
+  }
+  container.innerHTML = "";
+  const [a, b] = sessions;
+  const usable = (s) => (((s.annotations || {}).steps) || [])
+    .filter((st) => st.time_range && st.time_range.start && st.time_range.end);
+  const stepsA = usable(a);
+  const stepsB = usable(b);
+  if (!stepsA.length && !stepsB.length) {
+    if (summary) summary.textContent =
+      "Neither session has steps yet — analyze them first.";
+    return;
+  }
+  const namesA = new Set(stepsA.map((s) => s.name));
+  const namesB = new Set(stepsB.map((s) => s.name));
+  const shared = (name) => namesA.has(name) && namesB.has(name);
+
+  function firstCaseStart(sess, steps) {
+    const cs = (((sess.stats || {}).case_stats) || [])
+      .filter((c) => !c.parent_case_id && c.start_ts)
+      .map((c) => new Date(c.start_ts).getTime())
+      .filter((t) => isFinite(t));
+    if (cs.length) return Math.min(...cs);
+    return steps.length
+      ? Math.min(...steps.map((s) => new Date(s.time_range.start).getTime()))
+      : 0;
+  }
+  let spanA, spanB;
+  if (_sxsAlign === "time" || !stepsA.length || !stepsB.length) {
+    // Shared wall-clock window: equal time maps to equal x in both strips.
+    const all = [...stepsA, ...stepsB];
+    const starts = all.map((s) => new Date(s.time_range.start).getTime());
+    const ends = all.map((s) => new Date(s.time_range.end).getTime());
+    const span = { startMs: Math.min(...starts), endMs: Math.max(...ends) };
+    spanA = span; spanB = span;
+  } else {
+    // Anchor each session at its first case start; both spans share the
+    // same duration so equal elapsed-since-case-start lines up.
+    const anchorA = firstCaseStart(a, stepsA);
+    const anchorB = firstCaseStart(b, stepsB);
+    const endA = Math.max(...stepsA.map((s) => new Date(s.time_range.end).getTime()));
+    const endB = Math.max(...stepsB.map((s) => new Date(s.time_range.end).getTime()));
+    const dur = Math.max(1, endA - anchorA, endB - anchorB);
+    spanA = { startMs: anchorA, endMs: anchorA + dur };
+    spanB = { startMs: anchorB, endMs: anchorB + dur };
+  }
+  function items(steps) {
+    return steps.map((s) => ({
+      id: s.step_id,
+      startMs: new Date(s.time_range.start).getTime(),
+      endMs: new Date(s.time_range.end).getTime(),
+      label: s.name || "",
+      color: shared(s.name) ? CONF_GREEN : CONF_AMBER,
+      title: (s.name || "step") + (shared(s.name) ? " (in both sessions)" : " (only this session)"),
+    }));
+  }
+  function strip(sess, steps, label, span) {
+    const lbl = document.createElement("div");
+    lbl.className = "sxs-strip-label";
+    lbl.textContent = label + " — " + sessionName(sess) + " · " + sessionWorker(sess);
+    container.appendChild(lbl);
+    const scroll = document.createElement("div");
+    scroll.className = "mini-timeline-scroll sxs-strip";
+    const tl = document.createElement("div");
+    tl.className = "timeline";
+    scroll.appendChild(tl);
+    container.appendChild(scroll);
+    TimelineCore.renderMiniTimeline(tl, {
+      items: items(steps), span,
+      maxLanes: 4, laneHeight: 18,
+      blockClass: "step-block", labelClass: "step-block-label",
+      idAttr: "data-step-id",
+    });
+  }
+  strip(a, stepsA, "Session A", spanA);
+  strip(b, stepsB, "Session B", spanB);
+
+  if (summary) {
+    const sharedNames = [...namesA].filter((n) => namesB.has(n));
+    const onlyA = [...namesA].filter((n) => !namesB.has(n));
+    const onlyB = [...namesB].filter((n) => !namesA.has(n));
+    const parts = [sharedNames.length + " step name(s) appear in both sessions."];
+    if (onlyA.length) parts.push("Only in A: " + onlyA.join(", ") + ".");
+    if (onlyB.length) parts.push("Only in B: " + onlyB.join(", ") + ".");
+    if (!onlyA.length && !onlyB.length && sharedNames.length) {
+      parts.push("Both sessions ran the same set of steps.");
+    }
+    summary.textContent = parts.join(" ");
   }
 }
 

@@ -371,6 +371,24 @@ if (btnCancelNormalize) {
 
 $("#btn-normalize").addEventListener("click", async () => {
   if (!State.getSession()) return;
+  /* H7: a re-analysis regenerates auto-detected steps and clears the
+     undo stack. Warn before that happens -- but only when the session
+     already has steps, so a first-ever Analyze runs straight through. */
+  const _steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
+  if (_steps.length) {
+    const _auto = _steps.filter((s) =>
+      s.state === "auto_suggested" || s.state === "auto_matched").length;
+    const _kept = _steps.length - _auto;
+    const ok = await confirmModal({
+      title: "Re-analyze this session?",
+      message: `Re-analyzing regenerates the ${_auto} auto-detected step(s) and clears the undo history.`,
+      detail: _kept
+        ? `Your ${_kept} confirmed step(s) are kept.`
+        : "There are no confirmed steps to keep.",
+      okLabel: "Re-analyze",
+    });
+    if (!ok) return;
+  }
   const mine = $("#cb-mine").checked;
   setAnalysisRunning(true);
   $("#normalize-log").textContent = "";
@@ -1257,9 +1275,11 @@ function renderSelectionStats() {
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
     (topApps ? '<div class="row"><span>Top apps</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
     '<button class="summary-fix" id="tl-selection-case">Insert case from selection</button>' +
+    '<button class="summary-fix" id="tl-selection-exclude" title="Skip the events in this range during step suggestion and statistics on the next analysis.">Exclude from analysis</button>' +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
   document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
+  document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
 }
 
 /* P1.3: minimap overview above the timeline. A 30px strip showing the
@@ -1520,6 +1540,38 @@ async function queueCaseFromSelection() {
   try {
     await saveAnnotationsWithUndo(a, "insert case from selection");
     toast("Case queued — re-run normalization to apply", "success");
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
+/* H6: mark the current timeline range as excluded from analysis. The
+   range is stored in annotations.json.excluded_ranges; on the next
+   analysis, step suggestion and statistics skip every event inside it.
+   Lets the analyst cut a lunch break or an unrelated detour out of a
+   long passive recording without touching the raw event log. */
+async function queueExcludeRange() {
+  const range = State.getSelectionRange();
+  if (!range || !State.getSession()) return;
+  const ok = await confirmModal({
+    title: "Exclude this range from analysis?",
+    message: "Events inside the selected range will be skipped during step suggestion and statistics on the next analysis.",
+    detail: "The raw events are kept; re-run Analyze to apply.",
+    okLabel: "Exclude range",
+  });
+  if (!ok) return;
+  const a = State.getSession().annotations || {};
+  if (!Array.isArray(a.excluded_ranges)) a.excluded_ranges = [];
+  a.excluded_ranges.push({
+    start: new Date(range.startMs).toISOString(),
+    end: new Date(range.endMs).toISOString(),
+    reason: "manual",
+  });
+  try {
+    await saveAnnotationsWithUndo(a, "exclude range from analysis");
+    State.getSession().annotations = a;
+    toast("Range excluded — re-run normalization to apply", "success");
+    clearSelectionRange();
   } catch (err) {
     toast("Failed to save annotation: " + (err && err.message), "error");
   }
@@ -2281,6 +2333,175 @@ function videoTimeToSessionTs(seconds) {
   return new Date(new Date(obsStartTs).getTime() + seconds * 1000).toISOString();
 }
 
+/* H5: play the recording across a step's time range. Seeks to the step
+   start and plays; a timeupdate guard pauses once the step end is hit
+   so the analyst sees exactly the step and no more. */
+let _watchStepStopAt = null;
+function watchStep(step) {
+  if (!step || !step.time_range || !step.time_range.start) return;
+  const session = State.getSession();
+  const video = $("#video");
+  if (!session || !session.recordingAvailable || !video || !video.src) {
+    toast("No video is linked to this session.", "error");
+    return;
+  }
+  const startTs = videoStartTs();
+  if (!startTs) {
+    toast("Cannot line the video up with the timeline — no video start time.", "error");
+    return;
+  }
+  // Make sure the video is on screen.
+  const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
+  if (flowBtn) flowBtn.click();
+  const base = new Date(startTs).getTime();
+  const startS = (new Date(step.time_range.start).getTime() - base) / 1000;
+  if (!isFinite(startS) || startS < 0) {
+    toast("This step starts before the recording does.", "error");
+    return;
+  }
+  const endS = step.time_range.end
+    ? (new Date(step.time_range.end).getTime() - base) / 1000
+    : null;
+  _watchStepStopAt = (endS != null && endS > startS) ? endS : null;
+  video.currentTime = startS;
+  video.play().catch(() => {});
+}
+/* timeupdate guard for watchStep -- pauses once the step end is hit. */
+function _watchStepGuard() {
+  if (_watchStepStopAt == null) return;
+  const video = $("#video");
+  if (video && video.currentTime >= _watchStepStopAt) {
+    video.pause();
+    _watchStepStopAt = null;
+  }
+}
+if ($("#video")) $("#video").addEventListener("timeupdate", _watchStepGuard);
+
+/* H4: interactive video re-sync. The analyst clicks a recognizable
+   moment in the video, then the matching point on the timeline; the
+   wall-clock gap becomes the external-video offset (annotations.json
+   external_video.offset_ms, the same field the Attach video flow
+   writes). The instruction card is non-blocking so the video and
+   timeline stay clickable underneath it. */
+let _videoSync = null;
+function _videoSyncCard(text) {
+  let card = document.getElementById("video-sync-card");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "video-sync-card";
+    card.className = "video-sync-card";
+    document.body.appendChild(card);
+  }
+  card.innerHTML = '<span class="vs-text"></span>' +
+    '<button type="button" class="vs-cancel">Cancel</button>';
+  card.querySelector(".vs-text").textContent = text;
+  card.querySelector(".vs-cancel").addEventListener("click", cancelVideoSync);
+}
+function cancelVideoSync() {
+  if (_videoSync) {
+    const video = $("#video");
+    if (video) {
+      video.removeEventListener("click", _videoSync.onVideoClick, true);
+      video.classList.remove("video-sync-target");
+    }
+    const tl = document.getElementById("timeline");
+    if (tl) {
+      tl.removeEventListener("click", _videoSync.onTimelineClick, true);
+      tl.classList.remove("video-sync-target");
+    }
+    document.removeEventListener("keydown", _videoSync.onKey, true);
+  }
+  _videoSync = null;
+  const card = document.getElementById("video-sync-card");
+  if (card) card.remove();
+}
+function startVideoSync() {
+  const session = State.getSession();
+  const video = $("#video");
+  if (!session || !session.recordingAvailable || !video || !video.src) {
+    toast("No video is linked to this session.", "error");
+    return;
+  }
+  if (!session.manifest || !session.manifest.started_at) {
+    toast("Session has no start time — cannot compute a video offset.", "error");
+    return;
+  }
+  cancelVideoSync();
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); cancelVideoSync(); }
+  };
+  function onVideoClick() {
+    if (!_videoSync) return;
+    _videoSync.videoTime = video.currentTime || 0;
+    video.removeEventListener("click", onVideoClick, true);
+    video.classList.remove("video-sync-target");
+    const tl = document.getElementById("timeline");
+    if (tl) {
+      tl.classList.add("video-sync-target");
+      tl.addEventListener("click", onTimelineClick, true);
+    }
+    _videoSyncCard("Step 2 of 2 — click the matching moment on the timeline below.");
+  }
+  function onTimelineClick(e) {
+    if (!_videoSync) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const tl = document.getElementById("timeline");
+    if (tl) tl.removeEventListener("click", onTimelineClick, true);
+    const eventMs = _timelineClickToMs(e.clientX);
+    if (eventMs == null) {
+      cancelVideoSync();
+      toast("Could not read the timeline position.", "error");
+      return;
+    }
+    const startedAt = new Date(session.manifest.started_at).getTime();
+    // external_video.offset_ms is added to manifest.started_at to get
+    // wall-clock at video t=0, so: offset = clicked wall-clock - the
+    // video time at that moment - session start.
+    const offsetMs = Math.round(eventMs - startedAt - (_videoSync.videoTime || 0) * 1000);
+    applyVideoSync(offsetMs);
+  }
+  _videoSync = { videoTime: null, onVideoClick, onTimelineClick, onKey };
+  video.classList.add("video-sync-target");
+  video.addEventListener("click", onVideoClick, true);
+  document.addEventListener("keydown", onKey, true);
+  _videoSyncCard("Step 1 of 2 — pause the video at a recognizable moment, then click the video.");
+}
+async function applyVideoSync(offsetMs) {
+  const session = State.getSession();
+  cancelVideoSync();
+  if (!session) return;
+  const r = await Ipc.saveExternalVideoSync({
+    sessionFolder: session.sessionFolder,
+    videoPath: session.recordingPath,
+    offsetMs,
+  });
+  if (!r || !r.ok) {
+    toast("Could not save the video sync: " + ((r && r.error) || "unknown"), "error");
+    return;
+  }
+  toast("Video re-synced — reloading session", "success");
+  await loadSessionIntoView(session.sessionFolder);
+}
+/* Wall-clock ms at a clicked x on the Flow timeline. #timeline spans the
+   full (zoomed) session width and its left edge tracks the scroll, so a
+   plain clientX-to-fraction read is correct without a scroll term. */
+function _timelineClickToMs(clientX) {
+  const host = document.getElementById("timeline");
+  const session = State.getSession();
+  const evs = (session && session.events) || [];
+  if (!host || !evs.length) return null;
+  const first = new Date(evs[0].timestamp).getTime();
+  const last = new Date(evs[evs.length - 1].timestamp).getTime();
+  const span = Math.max(1, last - first);
+  const rect = host.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)));
+  return first + frac * span;
+}
+if ($("#btn-sync-video")) {
+  $("#btn-sync-video").addEventListener("click", startVideoSync);
+}
+
 /* ============ Event table ========================================= */
 
 function renderEventTable() {
@@ -2768,6 +2989,6 @@ module.exports = {
   initFlowView,
   loadSessionIntoView, renderTimeline, renderMarkersList,
   renderAnnotations, renderSessionPills,
-  seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
+  seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
   activateAnnoTab,
 };

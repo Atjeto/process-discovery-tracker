@@ -24,6 +24,40 @@ def _parse_ts(ts: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
+def _filter_excluded(
+    events: list[dict[str, Any]],
+    excluded_ranges: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Drop events whose timestamp falls inside any excluded range
+    (annotations.json `excluded_ranges`, set from the viewer's timeline
+    selection). Statistics skip these so a lunch break or an unrelated
+    detour in a long passive recording doesn't distort the numbers."""
+    ranges: list[tuple[datetime, datetime]] = []
+    for r in excluded_ranges or []:
+        start, end = r.get("start"), r.get("end")
+        if not start or not end:
+            continue
+        try:
+            a, b = _parse_ts(start), _parse_ts(end)
+        except (ValueError, TypeError):
+            continue
+        if b >= a:
+            ranges.append((a, b))
+    if not ranges:
+        return events
+    kept = []
+    for ev in events:
+        try:
+            t = _parse_ts(ev.get("timestamp", ""))
+        except (ValueError, TypeError):
+            kept.append(ev)
+            continue
+        if any(a <= t <= b for a, b in ranges):
+            continue
+        kept.append(ev)
+    return kept
+
+
 def _percentile(values: list[float], pct: float) -> float:
     if not values:
         return 0.0
@@ -176,11 +210,53 @@ def rework_loops(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def compute_all(events: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def step_variants(
+    steps: list[dict[str, Any]],
+    top_n: int = 50,
+) -> list[dict[str, Any]]:
+    """Variants keyed by the sequence of step *names* per case -- the
+    step-level analogue of trace_variants. Where trace_variants captures
+    the raw activity sequence, this captures the analyst's stepped view
+    of the process, which is usually the more meaningful comparison.
+
+    A case's variant is its steps ordered by start time. Steps with no
+    case_id are skipped (they cannot be attributed to a process
+    instance)."""
+    by_case: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for s in steps or []:
+        cid = s.get("case_id")
+        if not cid:
+            continue
+        start = ((s.get("time_range") or {}).get("start")) or ""
+        by_case[cid].append((start, s.get("name") or "(unnamed step)"))
+
+    variant_counts: Counter[tuple[str, ...]] = Counter()
+    for seq in by_case.values():
+        seq.sort(key=lambda pair: pair[0])
+        variant_counts[tuple(name for _, name in seq)] += 1
+
+    rows = []
+    for variant, count in variant_counts.most_common(top_n):
+        rows.append({
+            "variant": list(variant),
+            "frequency": count,
+            "length": len(variant),
+        })
+    return rows
+
+
+def compute_all(
+    events: list[dict[str, Any]],
+    cases: dict[str, dict[str, Any]],
+    excluded_ranges: list[dict[str, Any]] | None = None,
+    steps: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    events = _filter_excluded(events, excluded_ranges)
     return {
         "activity_stats": activity_stats(events),
         "case_stats": case_stats(events, cases),
         "trace_variants": trace_variants(events, cases),
+        "step_variants": step_variants(steps or []),
         "app_outliers": app_outliers(events, cases),
         "rework_loops": rework_loops(events),
     }

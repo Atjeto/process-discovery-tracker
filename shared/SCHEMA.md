@@ -143,6 +143,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "annotations": [],
   "marker_edits": [],
   "classification_overrides": [],
+  "excluded_ranges": [],
   "notes": [],
   "drift_markers": [],
   "starred_screenshots": [],
@@ -152,7 +153,9 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `excluded_ranges`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
+
+The viewer keeps up to four rotating backups of this file — `annotations.json.2` (most recent) through `annotations.json.5` (oldest); each save shifts the previous versions down one slot. It is a safety net against a regretted bulk edit or a corrupt write; recovery is a manual file copy of a `.N` file back over `annotations.json`.
 
 Legacy entries inside the two original arrays:
 
@@ -190,6 +193,20 @@ Analyst corrections to activity classification, written by the viewer's Flow-map
 ```
 
 `scope: "instance"` retargets one activity event by `event_id`; `scope: "rule"` retargets every activity event whose `app` + window `title` match. An instance override wins over a rule override for the same event; among rules, first match wins. A `rule` entry is itself a candidate taxonomy rule (`match` + `label`) — an owner can promote it into `taxonomy.yaml` by hand (§6.1). Raw `events.jsonl` is never modified.
+
+### Excluded range (`excluded_ranges[]`)
+
+Time spans the analyst marked as out-of-scope from the viewer's timeline range selection — a lunch break, an unrelated detour, anything that shouldn't count in a long passive recording. Step suggestion and `stats.json` skip every event whose `timestamp` falls inside an excluded range on the next normalization run; the raw `events.jsonl`, `events.csv`, and the process maps (`dfg.json`, `process_map.bpmn`) are untouched.
+
+```json
+{
+  "excluded_ranges": [
+    { "start": "<ISO>", "end": "<ISO>", "reason": "manual" }
+  ]
+}
+```
+
+`start` and `end` are inclusive ISO 8601 bounds. `reason` is free text — `"manual"` for a range the analyst selected by hand. A malformed entry (missing `start` or `end`, or `end` earlier than `start`) is ignored rather than failing the run.
 
 ### Step entity (`steps[]`)
 
@@ -373,7 +390,7 @@ The normalization layer writes the following alongside `events.jsonl`:
 |---|---|
 | `events.xes` | IEEE 1849-2016 event log, one trace per top-level case |
 | `events.csv` | Flat CSV of activity events |
-| `stats.json` | `{ activity_stats, case_stats, trace_variants, app_outliers, rework_loops, meta }` |
+| `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, app_outliers, rework_loops, meta }` |
 | `process_map.bpmn` | BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
 | `dfg.json` | Directly-Follows Graph as `{ edges, start_activities, end_activities }` (with `--mine`) |
 | `analysis.json` | Heuristic IE findings: `{ meta, waste_classification, time_study, automation_candidates, efficiency }` (when the session has steps — ADR-0008) |
@@ -449,7 +466,8 @@ When both UIA `name` and App Vocab `meaningful_name` are present, the viewer pre
 |---|---|---|
 | `activity_stats` | `[{ activity_label, frequency, total_duration_ms, median_ms, p90_ms, ... }]` | Per-activity rollups across all cases in this session. |
 | `case_stats` | `[{ case_id, parent_case_id, label, started_at, ended_at, active_ms, ... }]` | One row per case. `parent_case_id` is null for top-level cases. |
-| `trace_variants` | `[{ variant: ["A", "B", "C"], frequency }]` | Distinct activity sequences ranked by occurrence. |
+| `trace_variants` | `[{ variant: ["A", "B", "C"], frequency, length }]` | Distinct activity sequences ranked by occurrence. |
+| `step_variants` | `[{ variant: ["Step A", "Step B"], frequency, length }]` | Distinct *step-name* sequences per case — the step-level analogue of `trace_variants`, the analyst's stepped view of the process rather than the raw activity sequence. Empty until the session has steps. |
 | `app_outliers` | `[{ app, frequency, share }]` | Apps that appear in < 5% of cases. |
 | `rework_loops` | `[{ activity_label, case_id, revisits }]` | Same activity revisited within a single case. |
 | `meta` | See below | Normalization run metadata. |

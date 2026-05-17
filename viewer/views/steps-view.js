@@ -22,6 +22,7 @@ let ensureAnnoShape = (a) => a;
 let persistAnnotations = async () => {};
 let videoTimeToSessionTs = () => null;
 let jumpToStepInFlow = () => {};
+let watchStep = () => {};
 
 function getSpan() {
   const evs = (State.getSession() && State.getSession().events) || [];
@@ -95,7 +96,9 @@ function renderStepsLevel() {
     onSplit: splitStep,
     onMerge: mergeStepWithNext,
     onJumpToFlow: (step) => jumpToStepInFlow(step),
+    onWatchStep: (step) => watchStep(step),
     onToggleHide: toggleStepHidden,
+    recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
   });
   const span = getSpan();
   if (span) {
@@ -404,6 +407,7 @@ function initStepsView(deps) {
   persistAnnotations = deps.persistAnnotations;
   videoTimeToSessionTs = deps.videoTimeToSessionTs;
   jumpToStepInFlow = deps.jumpToStepInFlow;
+  watchStep = deps.watchStep || (() => {});
 
   const txt = document.getElementById("step-filter-text");
   if (txt) {

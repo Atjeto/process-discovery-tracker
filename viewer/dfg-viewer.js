@@ -18,6 +18,13 @@
 
   const PdtTheme = require("./theme.js");
 
+  /* H3 conformance-overlay colours. Fixed semantic hexes (not theme
+     tokens) so "matches the template" / "off-template" read the same in
+     both themes; chosen to sit legibly on the light and dark DFG
+     backgrounds alike. */
+  const CONF_GREEN = "#4f9d5b";
+  const CONF_AMBER = "#cf9233";
+
   function render(host, dfg, opts) {
     opts = opts || {};
     host.innerHTML = "";
@@ -26,6 +33,9 @@
       return;
     }
     const onNodeClick = opts.onNodeClick;
+    /* H3: when a conformance map is supplied, every node is coloured
+       green (matches a canonical step) or amber (off-template). */
+    const conformance = opts.conformance || null;
     const nodes = new Set();
     for (const e of dfg.edges) { nodes.add(e.source); nodes.add(e.target); }
     const maxFreq = Math.max(...dfg.edges.map((e) => e.frequency || 1));
@@ -38,6 +48,7 @@
           id: n,
           label: n,
           role: isStart ? "start" : isEnd ? "end" : "activity",
+          conf: conformance ? (conformance[n] || "amber") : null,
         },
       });
     }
@@ -98,6 +109,16 @@
             "border-color": tok.bad,
             "border-width": 1.5,
           },
+        },
+        // H3 conformance overlay -- listed after role styles so the
+        // conformance border wins when a map is supplied.
+        {
+          selector: 'node[conf = "green"]',
+          style: { "border-color": CONF_GREEN, "border-width": 3 },
+        },
+        {
+          selector: 'node[conf = "amber"]',
+          style: { "border-color": CONF_AMBER, "border-width": 3 },
         },
         {
           selector: "edge",

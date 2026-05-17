@@ -108,6 +108,15 @@ def _step_ignored_processes(annotations: dict) -> list[str]:
     return [str(p) for p in procs if str(p).strip()]
 
 
+def _excluded_ranges(annotations: dict) -> list[dict]:
+    """Pull the analyst-authored excluded-time ranges from
+    annotations.json. Shape: {"excluded_ranges": [{"start": iso,
+    "end": iso, "reason": "manual"}, ...]}. Step suggestion and
+    statistics skip events inside these. Returns [] when absent."""
+    ranges = (annotations or {}).get("excluded_ranges") or []
+    return [r for r in ranges if isinstance(r, dict) and r.get("start") and r.get("end")]
+
+
 def _merge_steps(existing: list, fresh: list) -> list:
     """Preserve manually_authored, edited, and hidden steps. Replace
     auto_* steps with the latest fresh suggestions. A `hidden` step is
@@ -342,6 +351,7 @@ def normalize(
             fallback = auto_suggest_steps(
                 unmatched, session_id=session_id_str,
                 ignored_processes=_step_ignored_processes(existing_anno),
+                excluded_ranges=_excluded_ranges(existing_anno),
             )
             fresh_steps = matched_steps + fallback
         else:
@@ -370,6 +380,7 @@ def normalize(
         auto_steps = auto_suggest_steps(
             with_cases, session_id=session_id_str,
             ignored_processes=_step_ignored_processes(existing_anno),
+            excluded_ranges=_excluded_ranges(existing_anno),
         )
         merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps)
         existing_anno["steps"] = merged_steps
@@ -429,7 +440,11 @@ def normalize(
         except (OSError, json.JSONDecodeError, ValueError):
             prev_match_rate = None
 
-    summary = stats.compute_all(log_events, cases)
+    summary = stats.compute_all(
+        log_events, cases,
+        excluded_ranges=_excluded_ranges(existing_anno),
+        steps=existing_anno.get("steps") or [],
+    )
     summary["meta"] = {
         "normalization_run_at": datetime.now(timezone.utc).isoformat(),
         "taxonomy_version": (taxonomy or {}).get("version"),
