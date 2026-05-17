@@ -98,4 +98,25 @@ function writeConfigSnapshot(folder, config) {
   return out;
 }
 
-module.exports = { DEFAULTS, loadConfig, writeConfigSnapshot, deepMerge };
+/* B2: pre-flight sanity checks on the session config. Returns a list of
+   human-readable problems (empty when all good) -- run before the first
+   event is written so a mis-set engagement or an unwritable folder is
+   fixed rather than discovered after an 8-hour recording. */
+function validateConfig(config, baseDir) {
+  const problems = [];
+  if (!config || !config.engagement_id || config.engagement_id === "default") {
+    problems.push(
+      "Engagement ID is still the default -- this recording will be filed under \"default\" and is easy to lose track of.",
+    );
+  }
+  if (baseDir) {
+    try {
+      fs.accessSync(baseDir, fs.constants.W_OK);
+    } catch (_) {
+      problems.push("The session folder is not writable: " + baseDir);
+    }
+  }
+  return problems;
+}
+
+module.exports = { DEFAULTS, loadConfig, writeConfigSnapshot, deepMerge, validateConfig };

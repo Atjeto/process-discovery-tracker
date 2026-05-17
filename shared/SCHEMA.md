@@ -11,6 +11,7 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   config.yaml        # session config snapshot (planned for iteration 2)
   screenshots/       # event-triggered screenshots (planned)
   obs/               # OBS recording reference and sync data (planned)
+  session-integrity.json  # file manifest (name + size) written at session end
 ```
 
 ## events.jsonl envelope
@@ -265,6 +266,7 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
   "started_at": "ISO 8601",
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
+  "label": "analyst-given session name (optional; absent until set)",
   "config": { ...snapshot of session config... },
   "obs": {
     "recording_path": null,
@@ -280,6 +282,30 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
 - `active` -- session is currently running, or was active when the tracker crashed (orphan).
 - `closed` -- session ended cleanly.
 - `recovered` -- session was orphaned and reopened at next launch. Open markers in `events.jsonl` are handled by the normalization layer.
+
+`label` is an optional analyst-facing name, set from the capture app's
+post-session summary; it is absent until set. The viewer's Recents list shows
+it in place of the folder timestamp when present.
+
+## session-integrity.json
+
+Written by the capture app when a session ends -- a manifest of every file in
+the session folder, so the viewer can tell whether a session was copied
+completely from the worker's machine.
+
+```json
+{
+  "files": [
+    { "name": "events.jsonl", "size": 1234567 },
+    { "name": "screenshots/001.jpg", "size": 45678 }
+  ],
+  "created_at": "ISO 8601"
+}
+```
+
+`name` is the path relative to the session folder, forward slashes; the file
+lists itself excluded. The viewer's session loader compares this against the
+files actually present and surfaces any that are missing.
 
 ## Invariants
 

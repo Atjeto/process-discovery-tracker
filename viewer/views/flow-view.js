@@ -456,10 +456,13 @@ async function loadSessionIntoView(folder) {
   $("#session-empty").style.display = "none";
   $("#session-loaded").style.display = "";
   $("#btn-normalize").disabled = false;
-  const label =
-    (State.getSession().manifest && State.getSession().manifest.engagement_id) ||
-    path.basename(folder);
-  pushRecent(folder, label + " · " + path.basename(folder));
+  /* B1: a worker-given manifest label (set in the capture post-session
+     summary) names the Recents entry; else fall back to engagement. */
+  const _m = State.getSession().manifest || {};
+  const recentLabel = _m.label
+    ? _m.label
+    : (_m.engagement_id || path.basename(folder)) + " · " + path.basename(folder);
+  pushRecent(folder, recentLabel);
 
   renderSessionPills();
   renderSessionSummary();
@@ -810,6 +813,19 @@ function renderSessionSummary() {
       "may have changed its fields.</div>";
   }
 
+  /* B5: flag files that did not survive the copy from the capture box. */
+  let integrityHtml = "";
+  const _integ = State.getSession() && State.getSession().integrity;
+  if (_integ && _integ.missing && _integ.missing.length) {
+    const n = _integ.missing.length;
+    const names = _integ.missing.slice(0, 6).map(escapeHtml).join(", ");
+    integrityHtml =
+      '<div class="summary-banner warn">⚠ ' +
+      `${n} file${n === 1 ? "" : "s"} recorded in this session ${n === 1 ? "is" : "are"} ` +
+      `missing — the session may have been copied incompletely: ${names}` +
+      `${n > 6 ? ", …" : ""}.</div>`;
+  }
+
   const hint = (s.caseCount > 0 && s.stepCount > 0)
     ? '<div class="summary-hint">Cases are time ranges marked during recording. ' +
       "Steps are logical actions identified during analysis — the two are independent.</div>"
@@ -828,7 +844,7 @@ function renderSessionSummary() {
         `<strong>${escapeHtml(formatDuration(s.durationMs))}</strong> · ` +
         `analyzed ${escapeHtml(analyzed)}</div>` +
       `<div class="summary-tiles">${tilesHtml}</div>` +
-      activityHtml + casesHtml + driftHtml + problemsHtml + hint + bannerHtml +
+      activityHtml + casesHtml + driftHtml + integrityHtml + problemsHtml + hint + bannerHtml +
     '</div>';
 
   // Collapsible: remember the analyst's open/closed choice across sessions.

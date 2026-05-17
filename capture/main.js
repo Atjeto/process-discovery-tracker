@@ -36,9 +36,11 @@ const {
   markSessionRecovered,
   findOrphanedSessions,
   listRecentSessions,
+  writeSessionIntegrity,
+  setSessionLabel,
 } = require("./session.js");
 const { spawn } = require("node:child_process");
-const { loadConfig, writeConfigSnapshot } = require("./config.js");
+const { loadConfig, writeConfigSnapshot, validateConfig } = require("./config.js");
 const {
   connectOBS,
   ensureScene,
@@ -513,6 +515,26 @@ async function startSession(opts) {
   if (session) return session;
   fs.mkdirSync(baseDir, { recursive: true });
 
+  /* B2: pre-flight config validation. An unset engagement or an
+     unwritable folder is worth catching before recording, not after.
+     App-prep sessions skip this -- they file under "vocab-prep" by
+     design. The operator can still override and start anyway. */
+  if (!(opts && opts.purpose === "app_prep")) {
+    const problems = validateConfig(config, baseDir);
+    if (problems.length) {
+      const { response } = await dialog.showMessageBox({
+        type: "warning",
+        title: "Check the recording setup",
+        message: "Some settings may cause problems:",
+        detail: problems.join("\n\n") + "\n\nStart the recording anyway?",
+        buttons: ["Start anyway", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      if (response === 1) return null;
+    }
+  }
+
   /* OBS preflight before creating the session folder so a failed OBS
      start in strict mode doesn't litter the filesystem. */
   if (config.obs && config.obs.required) {
@@ -694,6 +716,7 @@ function handleTrackerNotice(kind, payload) {
 async function endSession() {
   if (!tracker) return null;
   stopIdleMonitor();
+  const hadVideo = obsConnected;  // B1: captured before the OBS teardown clears it
 
   if (recorder) {
     try { tracker.fireSystem("recorder_stop"); } catch (_e) {}
@@ -725,8 +748,27 @@ async function endSession() {
     obsConnected = false;
   }
 
-  await tracker.stop();
+  const finalStatus = await tracker.stop();
   closeSession({ sessionFolder: session.sessionFolder, status: "closed" });
+  /* B5: integrity manifest, written last so it captures the final
+     manifest.json and events.jsonl sizes. */
+  try { writeSessionIntegrity(session.sessionFolder); }
+  catch (e) { bootLog(`session-integrity write failed: ${e && e.message}`); }
+
+  /* B1: hand the operator a post-session summary if the Live Session
+     window is open -- a harmless no-op when it is not. */
+  const opPanel = windows.get("operator");
+  if (opPanel && !opPanel.isDestroyed()) {
+    opPanel.webContents.send("pdt:sessionSummary", {
+      sessionFolder: session.sessionFolder,
+      durationMs: finalStatus.elapsedMs,
+      events: finalStatus.eventCount,
+      markers: finalStatus.markerCount,
+      screenshots: finalStatus.screenshotCount,
+      interactions: finalStatus.interactionCount,
+      hadVideo,
+    });
+  }
   bootLog(`session ended: ${session.sessionFolder}`);
   const oldFolder = session.sessionFolder;
   tracker = null;
@@ -1051,6 +1093,10 @@ ipcMain.handle("pdt:endSession", async () => {
 });
 
 ipcMain.handle("pdt:fireEnd", () => { fireEndMarker(); });
+ipcMain.handle("pdt:setSessionLabel", (_e, sessionFolder, label) => {
+  try { setSessionLabel(sessionFolder, label); }
+  catch (e) { bootLog(`setSessionLabel failed: ${e && e.message}`); }
+});
 
 ipcMain.handle("pdt:fireSync", (_e, syncId) => {
   /* Cross-machine sync marker (§13). Workers fire this at agreed
@@ -1314,39 +1360,60 @@ app.whenReady().then(() => {
   tray.on("click", () => { if (trayMenu) tray.popUpContextMenu(trayMenu); });
   tray.on("right-click", () => { if (trayMenu) tray.popUpContextMenu(trayMenu); });
 
-  const okStart = globalShortcut.register(config.hotkeys.start_picker, async () => {
+  /* B3: register a global shortcut, falling back from a Control+Shift+X
+     binding to Control+Alt+X when the primary is already taken by
+     another app. Returns { ok, key, fellBack }. */
+  function registerHotkey(accelerator, handler) {
+    if (!accelerator) return { ok: false, key: accelerator, fellBack: false };
+    if (globalShortcut.register(accelerator, handler)) {
+      return { ok: true, key: accelerator, fellBack: false };
+    }
+    const fallback = accelerator.replace(/\bShift\b/i, "Alt");
+    if (fallback !== accelerator && globalShortcut.register(fallback, handler)) {
+      return { ok: true, key: fallback, fellBack: true };
+    }
+    return { ok: false, key: accelerator, fellBack: false };
+  }
+
+  const startHK = registerHotkey(config.hotkeys.start_picker, async () => {
     if (!tracker) {
       const s = await startSession();
       if (!s) return;
     }
     showLabelPicker();
   });
-  const okEnd = globalShortcut.register(config.hotkeys.end_innermost, () => fireEndMarker());
-  const okShot = globalShortcut.register(config.hotkeys.manual_screenshot, () => fireManualScreenshot());
-  let okSync = false;
+  const endHK = registerHotkey(config.hotkeys.end_innermost, () => fireEndMarker());
+  const shotHK = registerHotkey(config.hotkeys.manual_screenshot, () => fireManualScreenshot());
+  let syncHK = { ok: false, key: config.hotkeys.sync_marker, fellBack: false };
   if (config.hotkeys.sync_marker) {
-    okSync = globalShortcut.register(config.hotkeys.sync_marker, () => {
+    syncHK = registerHotkey(config.hotkeys.sync_marker, () => {
       if (!tracker) return;
       const id = `sync-${new Date().toISOString().replace(/[:.]/g, "")}-${crypto.randomBytes(3).toString("hex")}`;
       tracker.fireSystem("sync_marker", { sync_id: id });
     });
   }
-  bootLog(`hotkeys: start=${okStart} end=${okEnd} shot=${okShot} sync=${okSync}`);
+  bootLog(`hotkeys: start=${startHK.ok}(${startHK.key}) end=${endHK.ok}(${endHK.key}) shot=${shotHK.ok}(${shotHK.key}) sync=${syncHK.ok}(${syncHK.key})`);
 
-  // P2.10: surface any hotkey-registration failures to the operator
-  // via a Windows toast. Today the failure is only in boot.log, so a
-  // user with a conflicting global shortcut (some screen-recorder /
-  // password-manager combos grab Ctrl+Shift+S) discovers the problem
-  // by pressing the hotkey and seeing nothing happen.
-  const failed = [];
-  if (!okStart) failed.push(["Start picker", config.hotkeys.start_picker]);
-  if (!okEnd)   failed.push(["End marker",   config.hotkeys.end_innermost]);
-  if (!okShot)  failed.push(["Screenshot",   config.hotkeys.manual_screenshot]);
-  if (config.hotkeys.sync_marker && !okSync) {
-    failed.push(["Sync marker", config.hotkeys.sync_marker]);
+  /* P2.10 + B3: surface hotkey trouble to the operator via a toast --
+     both bindings that fell back to an alternate, and bindings that
+     could not be registered at all (boot.log alone is too quiet; some
+     screen-recorder / password-manager combos grab Ctrl+Shift+S). */
+  const hotkeyInfo = [
+    ["Start picker", config.hotkeys.start_picker, startHK],
+    ["End marker", config.hotkeys.end_innermost, endHK],
+    ["Screenshot", config.hotkeys.manual_screenshot, shotHK],
+  ];
+  if (config.hotkeys.sync_marker) {
+    hotkeyInfo.push(["Sync marker", config.hotkeys.sync_marker, syncHK]);
+  }
+  const fellBack = hotkeyInfo.filter((h) => h[2].fellBack);
+  const failed = hotkeyInfo.filter((h) => !h[2].ok);
+  if (fellBack.length) {
+    const list = fellBack.map((h) => `${h[0]}: ${h[1]} was taken, using ${h[2].key}`).join("; ");
+    notifyUser("Hotkey reassigned", list, { urgency: "low" });
   }
   if (failed.length) {
-    const list = failed.map(([name, key]) => `${name} (${key})`).join(", ");
+    const list = failed.map((h) => `${h[0]} (${h[1]})`).join(", ");
     notifyUser(
       "Hotkey conflict",
       `Couldn't register: ${list}. Another app is using these shortcuts. Use the tray menu, or change the bindings via the "Set up a recording session" window.`,

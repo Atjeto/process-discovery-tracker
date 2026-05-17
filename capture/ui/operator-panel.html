@@ -164,6 +164,24 @@
   }
 
   hr { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
+
+  /* B1: post-session summary, shown in place of the live controls
+     once a session ends. */
+  #summary { display: none; }
+  body.show-summary > * { display: none; }
+  body.show-summary > #summary { display: flex; flex-direction: column; gap: 8px; }
+  .summary-head { font-size: 15px; color: var(--accent); font-weight: 500; }
+  .summary-stats { background: var(--bg-2); border: 1px solid var(--border);
+                   border-radius: 4px; padding: 4px 8px; }
+  .summary-stats .row { display: flex; justify-content: space-between;
+                        padding: 3px 0; font-size: 12px; }
+  .summary-stats .row .sk { color: var(--fg-3); }
+  .summary-stats .row .sv { font-family: var(--mono); color: var(--fg); }
+  #summary-label {
+    padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 4px; font-family: inherit; font-size: 13px; outline: none;
+  }
+  #summary-label:focus { border-color: var(--accent); }
 </style></head><body>
 
 <header>
@@ -173,6 +191,14 @@
   <div class="timer" id="timer">00:00:00</div>
 </header>
 <div class="now" id="now"></div>
+
+<div id="summary">
+  <div class="summary-head">Session complete</div>
+  <div class="summary-stats" id="summary-stats"></div>
+  <div class="lbl">Name this session (optional)</div>
+  <input id="summary-label" placeholder="e.g. Acme order entry, morning run" autocomplete="off" />
+  <button id="summary-done" class="primary">Done</button>
+</div>
 
 <button id="btn-start-session" class="start-session">Start capture session</button>
 
@@ -383,8 +409,46 @@ document.getElementById("btn-start-session").addEventListener("click", async () 
   tick();
 });
 
+// B1: post-session summary. main.js sends pdt:sessionSummary when a
+// session ends; swap the panel to a summary + an optional label input.
+let summaryShowing = false;
+let summaryFolder = null;
+ipcRenderer.on("pdt:sessionSummary", (_e, d) => {
+  summaryFolder = d.sessionFolder;
+  const rows = [
+    ["Duration", fmtTimer(d.durationMs)],
+    ["Events", d.events],
+    ["Markers fired", d.markers],
+    ["Screenshots", d.screenshots],
+    ["Interactions", d.interactions],
+    ["Video", d.hadVideo ? "recorded" : "not recorded"],
+  ];
+  document.getElementById("summary-stats").innerHTML = rows.map((r) =>
+    '<div class="row"><span class="sk">' + esc(r[0]) +
+    '</span><span class="sv">' + esc(r[1]) + '</span></div>'
+  ).join("");
+  document.getElementById("summary-label").value = "";
+  summaryShowing = true;
+  document.body.classList.add("show-summary");
+});
+function saveSummaryLabel() {
+  if (summaryFolder) {
+    ipcRenderer.invoke("pdt:setSessionLabel", summaryFolder,
+      document.getElementById("summary-label").value);
+  }
+}
+document.getElementById("summary-label").addEventListener("blur", saveSummaryLabel);
+document.getElementById("summary-done").addEventListener("click", () => {
+  saveSummaryLabel();
+  summaryShowing = false;
+  summaryFolder = null;
+  document.body.classList.remove("show-summary");
+  tick();
+});
+
 async function tick() {
   const s = await ipcRenderer.invoke("pdt:status");
+  if (summaryShowing) return;   // B1: don't paint over the summary
   const dot = document.getElementById("dot");
   const state = document.getElementById("state");
   const timer = document.getElementById("timer");

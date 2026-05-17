@@ -6,7 +6,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { DEFAULTS, loadConfig, writeConfigSnapshot, deepMerge } = require("../config.js");
+const { DEFAULTS, loadConfig, writeConfigSnapshot, deepMerge, validateConfig } = require("../config.js");
 
 function tmpDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -93,4 +93,24 @@ test("a config can override interactions.debounce_ms without losing siblings (E4
 test("auto_end_on_idle defaults to true (G1)", () => {
   const { config } = loadConfig(null);
   assert.strictEqual(config.auto_end_on_idle, true);
+});
+
+test("validateConfig flags a default engagement id (B2)", () => {
+  const problems = validateConfig({ engagement_id: "default" }, os.tmpdir());
+  assert.strictEqual(problems.length, 1);
+  assert.match(problems[0], /Engagement ID/);
+});
+
+test("validateConfig passes a configured engagement and a writable folder (B2)", () => {
+  const dir = tmpDir("pdt-vc-");
+  assert.deepStrictEqual(validateConfig({ engagement_id: "ACME-2026" }, dir), []);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("validateConfig flags a missing / unwritable session folder (B2)", () => {
+  const problems = validateConfig(
+    { engagement_id: "ACME-2026" },
+    path.join(os.tmpdir(), `pdt-nonexistent-${Date.now()}`));
+  assert.strictEqual(problems.length, 1);
+  assert.match(problems[0], /not writable/);
 });

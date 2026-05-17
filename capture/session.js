@@ -130,10 +130,55 @@ function listRecentSessions(baseDir, limit = 10) {
   return all.slice(0, limit);
 }
 
+/* B5: snapshot every file in the session folder (name + size) at close.
+   The viewer compares this against what actually arrived, so a session
+   copied incompletely -- a missing video, a truncated events.jsonl -- is
+   caught instead of being silently analyzed. */
+function writeSessionIntegrity(sessionFolder) {
+  const files = [];
+  function walk(dir, prefix) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch (_) { return; }
+    for (const ent of entries) {
+      const rel = prefix ? prefix + "/" + ent.name : ent.name;
+      if (ent.isDirectory()) {
+        walk(path.join(dir, ent.name), rel);
+      } else if (rel !== "session-integrity.json") {
+        try {
+          files.push({ name: rel, size: fs.statSync(path.join(dir, ent.name)).size });
+        } catch (_) { /* file vanished mid-walk; skip */ }
+      }
+    }
+  }
+  walk(sessionFolder, "");
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  const integrity = { files, created_at: new Date().toISOString() };
+  fs.writeFileSync(
+    path.join(sessionFolder, "session-integrity.json"),
+    JSON.stringify(integrity, null, 2),
+  );
+  return integrity;
+}
+
+/* B1: stamp an analyst-facing label onto a finished session's manifest,
+   set from the post-session summary panel. A blank label clears it. */
+function setSessionLabel(sessionFolder, label) {
+  const manifestFile = path.join(sessionFolder, "manifest.json");
+  if (!fs.existsSync(manifestFile)) return;
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+  const clean = (label || "").trim();
+  if (clean) manifest.label = clean;
+  else delete manifest.label;
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
+}
+
 module.exports = {
   createSession,
   closeSession,
   markSessionRecovered,
   findOrphanedSessions,
   listRecentSessions,
+  writeSessionIntegrity,
+  setSessionLabel,
 };

@@ -12,6 +12,8 @@ const {
   markSessionRecovered,
   findOrphanedSessions,
   listRecentSessions,
+  writeSessionIntegrity,
+  setSessionLabel,
 } = require("../session.js");
 
 function tmpBase() {
@@ -112,5 +114,37 @@ test("listRecentSessions sorts newest first and respects the limit", () => {
   assert.strictEqual(recent.length, 2);
   assert.strictEqual(recent[0].started_at, "2026-05-12T00:00:00.000Z");
   assert.strictEqual(recent[1].started_at, "2026-05-11T00:00:00.000Z");
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test("writeSessionIntegrity lists every file with its size, excluding itself (B5)", () => {
+  const base = tmpBase();
+  const s = createSession({ baseDir: base, engagementId: "eng1", config: {} });
+  fs.writeFileSync(s.eventsFile, '{"type":"system"}\n');
+  fs.writeFileSync(path.join(s.sessionFolder, "screenshots", "001.jpg"), "jpgbytes");
+
+  const integrity = writeSessionIntegrity(s.sessionFolder);
+  const names = integrity.files.map((f) => f.name);
+  assert.ok(names.includes("events.jsonl"));
+  assert.ok(names.includes("manifest.json"));
+  assert.ok(names.includes("screenshots/001.jpg"));
+  assert.ok(integrity.files.every((f) => typeof f.size === "number"));
+  assert.match(integrity.created_at, /^\d{4}-\d{2}-\d{2}T/);
+
+  // It is written to disk, and a second run never lists the file it
+  // just wrote.
+  assert.ok(fs.existsSync(path.join(s.sessionFolder, "session-integrity.json")));
+  const again = writeSessionIntegrity(s.sessionFolder);
+  assert.ok(!again.files.some((f) => f.name === "session-integrity.json"));
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test("setSessionLabel writes a trimmed label, and a blank one clears it (B1)", () => {
+  const base = tmpBase();
+  const s = createSession({ baseDir: base, engagementId: "eng1" });
+  setSessionLabel(s.sessionFolder, "  Acme morning run  ");
+  assert.strictEqual(readManifest(s.sessionFolder).label, "Acme morning run");
+  setSessionLabel(s.sessionFolder, "   ");
+  assert.ok(!("label" in readManifest(s.sessionFolder)));
   fs.rmSync(base, { recursive: true, force: true });
 });

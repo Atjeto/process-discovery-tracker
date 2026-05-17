@@ -69,7 +69,7 @@ v0.5.0 (C8):
 
 | Module | `ui/` file | Window |
 |---|---|---|
-| `operator-panel.js` | `operator-panel.html` | The **Live Session** window — recording indicator, timer, open-marker stack, counters, recent-events feed, inline marker firing, quick actions. |
+| `operator-panel.js` | `operator-panel.html` | The **Live Session** window — recording indicator, timer, open-marker stack, counters, recent-events feed, inline marker firing, quick actions, and the post-session summary. |
 | `status-window.js` | `status-window.html` | Legacy status window — superseded by the Live Session window; kept in the tray as a fallback. |
 | `hotkey-overlay.js` | `hotkey-overlay.html` | Always-on-top click-through corner widget showing the primary hotkeys. |
 | `session-config-window.js` | `session-config.html` | Form to edit engagement / worker / idle / labels / OBS; writes `quick-config.yaml`. |
@@ -119,12 +119,17 @@ notification.
 
 ## Session lifecycle
 
-- **Start** — `session.js` creates the folder + `manifest.json` (`status: active`);
-  `tracker.js` begins polling; the recorder sidecar and (if configured) OBS start.
-  Firing the first marker auto-starts a session; an explicit green **Start** button
-  also exists.
+- **Start** — a pre-flight `validateConfig()` first warns the operator if the
+  engagement ID is unset or the session folder is unwritable, with a
+  Start-anyway prompt. Then `session.js` creates the folder + `manifest.json`
+  (`status: active`); `tracker.js` begins polling; the recorder sidecar and
+  (if configured) OBS start. Firing the first marker auto-starts a session; an
+  explicit green **Start** button also exists.
 - **End** — polling, recorder, and OBS stop; `manifest.json` is updated
-  (`status: closed`, `ended_at`).
+  (`status: closed`, `ended_at`); a `session-integrity.json` file manifest is
+  written so the viewer can detect an incomplete copy; and the Live Session
+  window shows a post-session summary with an optional field to label the
+  session.
 - **Crash recovery** — on next launch, `session.js` finds sessions still marked
   `active` with no `ended_at`, marks them `recovered`; the normalization layer
   reconciles any markers left open.
@@ -147,4 +152,5 @@ recordings), `poll_interval_seconds`,
 `interactions` (including `debounce_ms`, the recorder's `value_changed` coalescing
 window, passed to the sidecar in the `hello` message). Point the app at a file
 with `PDT_CONFIG`, or edit via the session config window (which writes
-`quick-config.yaml` for the next launch).
+`quick-config.yaml` for the next launch). A hotkey whose binding is already
+held by another app falls back to its `Ctrl+Alt+` variant at registration.

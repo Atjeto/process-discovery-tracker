@@ -84,6 +84,34 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   analyst can now mark process instances in a long passive recording
   after the fact, with no capture-time markers.
 
+- **A post-session summary closes out each recording.** When a capture
+  session ends, the Live Session window shows a summary — duration,
+  event / marker / screenshot / interaction counts, and whether video
+  was recorded — with an optional field to name the session. The name
+  is saved to the session manifest and shown in the viewer's Recents
+  list, so a worker hands off a recording knowing it is complete and an
+  analyst can tell sessions apart at a glance.
+
+- **The recording setup is checked before capture starts.** A
+  pre-flight validation runs at session start; if the engagement ID is
+  still the default or the session folder is not writable, it asks the
+  operator to confirm before recording — catching a misfiled or
+  unwritable session before a long recording goes into it, not after.
+
+- **Hotkeys fall back to an alternate binding when one is taken.** If a
+  global shortcut can't be registered because another app already holds
+  it (some screen recorders and password managers grab Ctrl+Shift+S),
+  capture now tries the Ctrl+Alt+ variant and tells the operator which
+  binding is live, instead of the hotkey silently doing nothing.
+
+- **Sessions carry an integrity manifest.** Capture writes
+  `session-integrity.json` — every file in the session folder with its
+  size — when a session ends. Opening the session in the viewer checks
+  that manifest against what actually arrived and shows a warning
+  banner if files went missing, so a session copied incompletely (a
+  dropped video, a truncated event log) is caught before analysis
+  instead of silently producing a partial result.
+
 ### Changed
 
 - **Step states read in plain language.** The four pipeline step states

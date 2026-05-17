@@ -230,6 +230,20 @@ function loadSessionData(sessionFolder) {
   }
   let recordingAvailable = !!(recordingPath && fs.existsSync(recordingPath));
 
+  /* B5: when the session carries an integrity manifest, flag any files
+     that did not survive the copy from the capture machine. */
+  let integrity = null;
+  const integrityPath = path.join(sessionFolder, "session-integrity.json");
+  if (fs.existsSync(integrityPath)) {
+    try {
+      const declared = JSON.parse(fs.readFileSync(integrityPath, "utf-8")).files || [];
+      const missing = declared
+        .filter((f) => f && f.name && !fs.existsSync(path.join(sessionFolder, f.name)))
+        .map((f) => f.name);
+      integrity = { missing };
+    } catch (_e) { /* malformed integrity file -- ignore */ }
+  }
+
   return {
     sessionFolder,
     manifest,
@@ -241,6 +255,7 @@ function loadSessionData(sessionFolder) {
     recordingPath,
     recordingAvailable,
     externalVideoOffsetMs,
+    integrity,
   };
 }
 
