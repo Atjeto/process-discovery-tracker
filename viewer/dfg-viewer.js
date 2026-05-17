@@ -16,6 +16,8 @@
 
   let cy = null;
 
+  const PdtTheme = require("./theme.js");
+
   function render(host, dfg, opts) {
     opts = opts || {};
     host.innerHTML = "";
@@ -52,6 +54,7 @@
     }
 
     if (cy) { try { cy.destroy(); } catch (_) {} cy = null; }
+    const tok = PdtTheme.dfgStyleTokens();
     cy = cytoscape({
       container: host,
       elements,
@@ -63,16 +66,17 @@
             label: "data(label)",
             "font-family": '"Plus Jakarta Sans", -apple-system, "Segoe UI", system-ui, sans-serif',
             "font-size": 11,
-            // Token snapshot at write time (cytoscape doesn't read CSS vars).
-            // Keep these aligned with viewer/styles.css :root tokens.
-            color: "#2c2418",          // --fg
+            // Colours come from theme.js (PdtTheme.dfgStyleTokens) -- cytoscape
+            // renders to a <canvas> and cannot read CSS vars, so the active
+            // theme's token snapshot is read fresh on each render().
+            color: tok.fg,
             "text-valign": "center",
             "text-halign": "center",
             "text-wrap": "wrap",
             "text-max-width": 130,
             shape: "round-rectangle",
-            "background-color": "#ffffff", // --bg-2
-            "border-color": "#e5ddd0",     // --rule
+            "background-color": tok.bg2,
+            "border-color": tok.rule,
             "border-width": 1,
             padding: "10px",
             width: "label",
@@ -82,16 +86,16 @@
         {
           selector: 'node[role = "start"]',
           style: {
-            "background-color": "#ffffff", // --bg-2
-            "border-color": "#c07830",     // --accent
+            "background-color": tok.bg2,
+            "border-color": tok.accent,
             "border-width": 1.5,
           },
         },
         {
           selector: 'node[role = "end"]',
           style: {
-            "background-color": "#ffffff", // --bg-2
-            "border-color": "#a05a3a",     // --bad
+            "background-color": tok.bg2,
+            "border-color": tok.bad,
             "border-width": 1.5,
           },
         },
@@ -99,22 +103,22 @@
           selector: "edge",
           style: {
             width: "data(width)",
-            "line-color": "#9a8e7e",       // --fg-3
-            "target-arrow-color": "#9a8e7e", // --fg-3
+            "line-color": tok.fg3,
+            "target-arrow-color": tok.fg3,
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
             label: "data(freq)",
             "font-family": '"JetBrains Mono", Consolas, monospace',
             "font-size": 9,
-            color: "#635848",              // --fg-2
-            "text-background-color": "#faf8f4", // --bg
+            color: tok.fg2,
+            "text-background-color": tok.bg,
             "text-background-opacity": 0.85,
             "text-background-padding": 2,
           },
         },
         {
           selector: "edge:selected, node:selected",
-          style: { "line-color": "#c07830", "border-color": "#c07830" },
+          style: { "line-color": tok.accent, "border-color": tok.accent },
         },
         // Variant overlay (Phase E): hovering a node highlights the
         // session paths through it and dims everything else.
@@ -124,11 +128,11 @@
         },
         {
           selector: "node.vh-on",
-          style: { "border-color": "#b08040", "border-width": 2.5 },
+          style: { "border-color": tok.accent3, "border-width": 2.5 },
         },
         {
           selector: "edge.vh-on",
-          style: { "line-color": "#b08040", "target-arrow-color": "#b08040" },
+          style: { "line-color": tok.accent3, "target-arrow-color": tok.accent3 },
         },
       ],
       layout: {
@@ -219,7 +223,10 @@
      isn't bundled), so we serialize the graph by hand: a rect + label
      per node, a line + arrowhead per edge. Coordinates come straight
      from the laid-out graph via node.position() / .width() / .height().
-     Good enough for Figma / Lucidchart import. */
+     Good enough for Figma / Lucidchart import. The palette below is
+     intentionally the light theme regardless of the viewer's current
+     theme -- an exported diagram goes into a document, which expects a
+     light background. */
   function exportSvg() {
     if (!cy) return null;
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>

@@ -2,6 +2,7 @@
 
 (function () {
   const TimelineCore = require("./timeline/timeline-core.js");
+  const PdtTheme = require("./theme.js");
 
   function escapeHtml(s) {
     return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
@@ -185,10 +186,6 @@
     }
   }
 
-  /* Muted palette per design intent -- desaturated, distinguishable but
-     quiet. Same name = same color across the session. */
-  const STEP_PALETTE = ["#5A7488","#6E6A88","#886A78","#887A5A","#5A8870","#787058","#5E6878"];
-
   /* Build the Steps mini-timeline. The lane-packing, tick maths, axis, and
      band layout all live in timeline-core.js (shared with the Phases and Flow
      timelines); this function only shapes step data into the core's MiniItem
@@ -197,6 +194,9 @@
     opts = opts || {};
     if (!steps || !steps.length || !span) { host.innerHTML = ""; return; }
 
+    // Palette + band alphas track the active theme (see theme.js).
+    const STEP_PALETTE = PdtTheme.stepPalette();
+    const ba = PdtTheme.bandAlphas();
     // Same name -> same colour across the session.
     const colorByName = new Map();
     let pi = 0;
@@ -236,6 +236,8 @@
       blockClass: "step-block",
       labelClass: "step-block-label",
       idAttr: "data-step-id",
+      tintAlpha: ba ? ba.tintAlpha : undefined,
+      borderAlpha: ba ? ba.borderAlpha : undefined,
       selectedId: opts.selectedId,
       onSelect: opts.onSelect,
     });

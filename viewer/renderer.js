@@ -17,6 +17,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const TimelineCore = require("./timeline/timeline-core.js");
 const State = require("./state.js");
+const PdtTheme = require("./theme.js");
 const PdtCharts = require("./charts.js");
 const PdtReport = require("./report-md.js");
 const PdtPalette = require("./command-palette.js");
@@ -259,6 +260,30 @@ function renderShortcutsOverlay() {
     localStorage.setItem(SHORTCUTS_OVERLAY_KEY, "1");
     renderShortcutsOverlay();
   });
+})();
+
+/* ============ Theme toggle ======================================== */
+
+/* Flips Warm Editorial (light) <-> Studio Dark (dark). CSS chrome
+   recolors itself the instant data-theme flips; the JS-painted marks
+   (timeline bands, the cytoscape DFG, the charts) are repainted by
+   re-running the existing renderers. */
+(function wireThemeToggle() {
+  const btn = document.getElementById("btn-theme-toggle");
+  if (!btn) return;
+  const sync = () => {
+    const dark = PdtTheme.getTheme() === "dark";
+    btn.textContent = dark ? "☀" : "☾";
+    btn.setAttribute("aria-pressed", String(dark));
+    btn.title = dark ? "Switch to light theme" : "Switch to dark theme";
+  };
+  btn.addEventListener("click", () => PdtTheme.toggleTheme());
+  PdtTheme.onChange(() => {
+    sync();
+    if (State.getSession()) rerenderActiveLevel();
+    renderAggregate();
+  });
+  sync();
 })();
 
 /* ============ Steps + Phases view modules ========================= */

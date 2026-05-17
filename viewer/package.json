@@ -39,6 +39,7 @@
       "index.html",
       "renderer.js",
       "state.js",
+      "theme.js",
       "session.js",
       "ipc.js",
       "dom.js",

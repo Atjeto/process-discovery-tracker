@@ -1,11 +1,19 @@
-/* ===== Design tokens -- Warm Editorial =====
+/* ===== Design tokens -- Warm Editorial (light) + Studio Dark (dark) =====
  *
- * Light, warm, amber-accented theme (Warm Editorial direction, applied
- * from the Claude Design handoff). Surfaces stair from a warm off-white
- * stage (--bg) up through white cards (--bg-2) to warmer elevated fills
- * (--bg-3..5). Foreground runs from a warm near-black down to muted
- * taupe. One amber accent; slate-blue as the cool secondary. Sharp
- * corners, soft warm shadows, self-hosted geometric-sans typography.
+ * Two themes share one set of CSS custom properties. The `:root` block
+ * is the default light theme, Warm Editorial: warm off-white surfaces
+ * stairing from the stage (--bg) up through white cards (--bg-2) to
+ * warmer elevated fills (--bg-3..5), a warm near-black-to-taupe
+ * foreground, one amber accent, slate-blue as the cool secondary.
+ *
+ * The `:root[data-theme="dark"]` block below is the opt-in dark theme,
+ * Studio Dark: a cool charcoal-blue base, teal accent, brighter
+ * foreground. It overrides only the token values -- every downstream
+ * rule consumes var(--token), so nothing else changes. theme.js sets
+ * the data-theme attribute; see docs/architecture/DESIGN-SYSTEM.md.
+ *
+ * Geometry (sharp corners), the shadows' shape, and the self-hosted
+ * geometric-sans typography are shared by both themes.
  */
 @font-face {
   font-family: "Plus Jakarta Sans";
@@ -59,6 +67,52 @@
   --font-ui: "Plus Jakarta Sans", -apple-system, "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", "Consolas", "Cascadia Code", "Courier New", monospace;
 }
+
+/* ===== Studio Dark -- opt-in dark theme =====
+ * Cinematic, technical, teal-accented. Activated by data-theme="dark"
+ * on <html> (set by theme.js). Overrides only the token values; the
+ * surface stairway inverts -- the stage (--bg) is now the darkest and
+ * cards (--bg-2) sit above it. --fg-3 is held a little lighter than the
+ * source spec so muted labels keep a >=4.5:1 contrast on --bg-2. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Cool charcoal-blue stairway -- stage (bg) -> cards (bg-2) -> elevated */
+  --bg: #171c2a;
+  --bg-1: #1a2032;
+  --bg-2: #1e2436;
+  --bg-3: #262d40;
+  --bg-4: #2e3548;
+  --bg-5: #39415a;
+
+  /* Foreground -- near-white down to a dim slate */
+  --fg: #e4e7f0;
+  --fg-2: #b4bcce;
+  --fg-3: #8c96b0;
+  --fg-4: #4e5670;
+
+  /* Functional color -- teal accent, slate-blue secondary, amber warn */
+  --accent: #2dd4bf;
+  --accent-hover: #5ee0d0;
+  --accent-muted: rgba(45, 212, 191, 0.12);
+  --accent-text: #0a2020;
+  --accent-2: #6a93c4;
+  --accent-3: #fbbf24;
+  --warn: #fbbf24;
+  --bad: #e8775a;
+  --rec: #ef4444;
+
+  /* Rules -- cool hairlines */
+  --rule: #2e3650;
+  --rule-soft: #242b3e;
+
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* The "no video" icon sits on the always-dark video pane; --fg-4 is too
+   dim there under the dark theme, so lift it to a readable cool grey. */
+:root[data-theme="dark"] .nv-icon { color: #6b7290; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
@@ -152,6 +206,10 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   font-family: var(--font-mono); font-weight: 600; font-size: 13px;
   color: var(--accent); border-color: var(--accent); background: transparent; }
 .help-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+.theme-toggle { width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1;
+  color: var(--fg-2); border-color: var(--rule); background: transparent; }
+.theme-toggle:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .help-cta { color: var(--fg-3); font-size: 11px; margin-top: 16px; }
 
 /* The app shell fills the window: <main> is a flex column and the
@@ -194,7 +252,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   border-radius: 8px; background: var(--accent-muted); color: var(--accent); }
 .recent-sessions .recent-missing-tag { display: inline-block; font-family: var(--font-mono);
   font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px;
-  border-radius: 8px; background: rgba(160, 90, 58, 0.12); color: var(--bad); }
+  border-radius: 8px; background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
 .recent-sessions .recent-remove { background: none; border: none; color: var(--fg-4);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px;
   opacity: 0; transition: opacity 0.12s, color 0.12s; flex: 0 0 auto; }
@@ -252,12 +310,17 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .session-layout.video-fullscreen .lower-workspace .annotations-pane,
 .session-layout.video-fullscreen .lower-workspace .resize-h { display: none; }
 
-.video-pane { background: #0a0908; border-radius: var(--radius); position: relative;
+.video-pane { background: radial-gradient(ellipse at 50% 40%, #1a1d29 0%, #0a0908 70%);
+  border-radius: var(--radius); position: relative;
   overflow: hidden; display: flex; flex-direction: column;
   min-height: 220px; box-shadow: var(--shadow); }
 .video-pane video { width: 100%; flex: 1; min-height: 0; background: #000; object-fit: contain; }
 .no-video { color: var(--fg-3); padding: 24px; text-align: center;
-  display: flex; flex-direction: column; gap: 8px; align-items: center; flex: 1; justify-content: center; }
+  display: flex; flex-direction: column; gap: 8px; align-items: center; flex: 1; justify-content: center;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 48px 48px; }
 .nv-icon { font-size: 36px; color: var(--fg-4); }
 .video-pane video[src] ~ .no-video { display: none; }
 .video-overlay { position: absolute; bottom: 8px; left: 8px; padding: 4px 10px;
@@ -268,10 +331,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .video-controls { display: flex; align-items: center; justify-content: space-between;
   padding: 6px 10px; background: rgba(0, 0, 0, 0.5); flex-shrink: 0; z-index: 2; }
 .video-controls .vc-status { display: flex; align-items: center; gap: 6px;
-  font-family: var(--font-mono); font-size: 10px; color: #9a9080; }
+  font-family: var(--font-mono); font-size: 10px; color: #9aa0b0; }
 .video-controls .vc-buttons { display: flex; gap: 4px; }
 .video-controls button { padding: 4px 6px; background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 3px; color: #b0a898;
+  border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 3px; color: #c0c4d0;
   cursor: pointer; display: flex; align-items: center; line-height: 0; }
 .video-controls button:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
 
@@ -364,11 +427,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background: var(--accent-2); border: 1px solid var(--bg); border-radius: 50%;
   cursor: pointer; transition: transform 0.12s; }
 .tl-screenshot:hover { transform: scale(1.5); }
-.tl-case-row { background: rgba(90, 122, 138, 0.07); border-top: 1px dashed var(--accent-2); }
-.tl-case-band { position: absolute; background: rgba(90, 122, 138, 0.18);
-  border-top: 2px solid rgba(90, 122, 138, 0.5); border-bottom: 1px solid var(--accent-2);
+.tl-case-row { background: color-mix(in srgb, var(--accent-2) 7%, transparent); border-top: 1px dashed var(--accent-2); }
+.tl-case-band { position: absolute; background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--accent-2) 50%, transparent); border-bottom: 1px solid var(--accent-2);
   border-radius: 2px 2px 0 0; cursor: pointer; }
-.tl-case-band.dangling { background: rgba(176, 128, 64, 0.22);
+.tl-case-band.dangling { background: color-mix(in srgb, var(--warn) 22%, transparent);
   border-top-color: var(--warn); border-bottom-color: var(--warn);
   border-top-style: dashed; }
 .tl-case-label { position: absolute; padding: 1px 5px; font-size: 10px;
@@ -476,8 +539,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   letter-spacing: 0.5px; font-size: 10px; z-index: 1; }
 .event-table tr { cursor: pointer; transition: background 0.1s; }
 .event-table tr:hover { background: var(--bg-3); }
-.event-table tr.t-marker td { background: rgba(194, 111, 74, 0.10); }
-.event-table tr.t-system td { background: rgba(106, 140, 175, 0.08); color: var(--fg-2); }
+.event-table tr.t-marker td { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.event-table tr.t-system td { background: color-mix(in srgb, var(--accent-2) 8%, transparent); color: var(--fg-2); }
 .event-table td.t-time { font-family: var(--font-mono); color: var(--fg-3); white-space: nowrap; }
 .event-table td.t-type { font-family: var(--font-mono); font-size: 10px; }
 
@@ -1254,7 +1317,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   color: var(--bg); font-size: 11px; font-weight: 700;
 }
 .step-row.multi-selected {
-  background: rgba(90, 116, 136, 0.08);
+  background: color-mix(in srgb, var(--accent-2) 8%, transparent);
   border-color: var(--accent-2);
 }
 
@@ -1316,7 +1379,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .tl-density-base {
   position: absolute; left: 0; width: 100%;
-  background: rgba(192, 120, 48, 0.05);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
   border-top: 1px solid var(--rule-soft);
   border-bottom: 1px solid var(--rule-soft);
   pointer-events: none;
@@ -1364,7 +1427,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 button.danger {
   background: var(--rec); border-color: var(--rec); color: var(--accent-text); font-weight: 500;
 }
-button.danger:hover:not(:disabled) { background: #a83636; border-color: #a83636; }
+button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 
 /* ===== Timeline accessibility ===== */
 /* Activity bands: alternating subtle stripes so adjacent runs are
@@ -1391,7 +1454,7 @@ button.danger:hover:not(:disabled) { background: #a83636; border-color: #a83636;
    camera markers (the design's "captures" row). */
 .tl-screenshot-rail {
   position: absolute; left: 0; width: 100%;
-  background: rgba(90, 122, 138, 0.06);
+  background: color-mix(in srgb, var(--accent-2) 6%, transparent);
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   pointer-events: none;
@@ -1570,8 +1633,8 @@ button.danger:hover:not(:disabled) { background: #a83636; border-color: #a83636;
 .tl-note-dot:hover { transform: scale(1.25); transform-origin: center; }
 .tl-note-dot.pulse { animation: tl-note-pulse 0.6s ease-out; }
 @keyframes tl-note-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(160, 128, 80, 0.7); }
-  100% { box-shadow: 0 0 0 12px rgba(160, 128, 80, 0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-3) 70%, transparent); }
+  100% { box-shadow: 0 0 0 12px transparent; }
 }
 
 /* ===== DFG drill-down picker (P1.5) =============================== */
@@ -1807,7 +1870,7 @@ button.danger:hover:not(:disabled) { background: #a83636; border-color: #a83636;
   color: var(--fg-2); padding: 0 4px; border-radius: 2px; margin-right: 4px;
 }
 .variant-div {
-  background: rgba(176, 128, 64, 0.16);
+  background: color-mix(in srgb, var(--accent-3) 16%, transparent);
   border-bottom: 1px dashed var(--accent-3);
   padding: 0 2px; border-radius: 2px;
 }

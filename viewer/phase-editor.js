@@ -2,6 +2,7 @@
 
 (function () {
   const TimelineCore = require("./timeline/timeline-core.js");
+  const PdtTheme = require("./theme.js");
 
   function escapeHtml(s) {
     return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
@@ -146,16 +147,16 @@
       callbacks.onSplit && callbacks.onSplit(phase.phase_id));
   }
 
-  /* Muted phase palette -- very low chroma. Phases sit beneath the step
-     row so the tint must stay quiet to not overpower the step bands. */
-  const PHASE_PALETTE = ["#5A7488","#6E6A88","#886A78","#887A5A","#5A8870","#787058"];
-
   /* Build the Phases mini-timeline. Lane-packing, ticks, axis, and band
      layout live in timeline-core.js (shared with the Steps and Flow
      timelines). A phase's time range is the union of its contained steps. */
   function renderPhaseTimeline(host, phases, steps, span, opts) {
     opts = opts || {};
     if (!phases || !phases.length || !span) { host.innerHTML = ""; return; }
+
+    // Palette + band alphas track the active theme (see theme.js).
+    const PHASE_PALETTE = PdtTheme.phasePalette();
+    const ba = PdtTheme.bandAlphas();
 
     // A phase spans the union of the steps it contains; sort by start so the
     // palette colours run in chronological order.
@@ -198,8 +199,8 @@
       blockClass: "phase-band",
       labelClass: "phase-band-label",
       idAttr: "data-phase-id",
-      tintAlpha: "14",
-      borderAlpha: "44",
+      tintAlpha: ba ? ba.tintAlpha : "14",
+      borderAlpha: ba ? ba.borderAlpha : "44",
       selectedId: opts.selectedId,
       onSelect: opts.onSelect,
     });

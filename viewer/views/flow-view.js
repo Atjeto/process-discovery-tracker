@@ -18,6 +18,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const TimelineCore = require("../timeline/timeline-core.js");
 const State = require("../state.js");
+const PdtTheme = require("../theme.js");
 const Ipc = require("../ipc.js");
 const PdtPalette = require("../command-palette.js");
 const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
@@ -687,36 +688,19 @@ function setVideoOverlay(text) {
 
 /* ============ Timeline ============================================ */
 
-/* Per-app colour palette. Known apps get fixed assignments so the same
-   colour is stable across sessions; unknown apps get a deterministic
-   slot via a small hash so they stay stable too. Vivid, distinct hues
-   on the light theme -- each is deep enough that the white band labels
-   clear a comfortable contrast margin. */
-const APP_COLOR_MAP = {
-  "chrome.exe":   "#b07a32",  // amber
-  "msedge.exe":   "#2f8a93",  // teal
-  "firefox.exe":  "#c0612f",  // orange
-  "SAPGUI.exe":   "#2f6f9f",  // blue
-  "saplogon.exe": "#2f6f9f",  // blue
-  "EXCEL.EXE":    "#3f8a5c",  // green
-  "OUTLOOK.EXE":  "#5b5fb0",  // indigo
-  "winword.exe":  "#4a6f93",  // steel blue
-  "powerpnt.exe": "#b5503a",  // rust
-  "Teams.exe":    "#7159a8",  // purple
-};
-const APP_PALETTE = [
-  "#2f6f9f", "#3f8a5c", "#b07a32", "#7159a8",
-  "#2f8a93", "#c0612f", "#b5503a", "#5b5fb0",
-];
-function _hashAppIdx(s) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % APP_PALETTE.length;
-}
+/* Per-app colour. Known apps get fixed assignments so the same colour
+   is stable across sessions; unknown apps get a deterministic slot via
+   a small hash so they stay stable too. The palettes -- and the
+   light/dark split -- live in theme.js; bands are solid fills carrying
+   white labels, so every colour is deep enough to clear white text. */
 function appColor(app) {
-  if (!app) return "#505050";
-  if (APP_COLOR_MAP[app]) return APP_COLOR_MAP[app];
-  return APP_PALETTE[_hashAppIdx(app.toLowerCase())];
+  const { map, palette, fallback } = PdtTheme.appColors();
+  if (!app) return fallback;
+  if (map[app]) return map[app];
+  let h = 0;
+  const s = app.toLowerCase();
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return palette[h % palette.length];
 }
 
 /* Friendly display name for known executables; falls back to the raw
