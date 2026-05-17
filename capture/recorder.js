@@ -41,7 +41,7 @@ function resolveRecorderPath(bootLog) {
   throw new Error("recorder.exe not found in any candidate path (and no recorder.zip to extract)");
 }
 
-function spawnRecorder({ sessionId, recorderPath, verbose, onEvent, onWarning, onStats, onExit, bootLog }) {
+function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, onEvent, onWarning, onStats, onExit, bootLog }) {
   const exe = recorderPath || resolveRecorderPath(bootLog);
   const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
@@ -101,11 +101,14 @@ function spawnRecorder({ sessionId, recorderPath, verbose, onEvent, onWarning, o
 
   // Send hello. `verbose: true` opts into the raw firehose (focus_changed,
   // text_changed, per-keystroke value_changed) for forensic debugging.
+  // `debounce_ms` tunes the value_changed coalescing window; the recorder
+  // falls back to its own default when the field is absent.
   safeWrite({
     cmd: "hello",
     session_id: sessionId,
     schema_version: 1,
     verbose: !!verbose,
+    debounce_ms: debounceMs,
   });
 
   return {

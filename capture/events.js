@@ -48,6 +48,8 @@ function interactionEvent(sessionId, data) {
     "kind", "control_type", "automation_id", "name", "class_name",
     "framework_id", "window_title", "process_name", "pid",
     "selected_value", "toggle_state", "value",
+    // E6 / E7 -- recorder-emitted signal-quality fields.
+    "coverage_hint", "value_truncated",
   ]);
   const shaped = {};
   for (const [k, v] of Object.entries(data)) {

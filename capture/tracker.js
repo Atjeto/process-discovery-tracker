@@ -20,6 +20,13 @@ const { activityEvent, markerEvent, systemEvent, interactionEvent } = require(".
 
 const POLL_INTERVAL_MS = 5_000;
 
+/* E5 -- a foreground app the recorder produced zero interaction events
+   for, after this many ms continuously frontmost, is flagged as
+   uncaptured (commonly an elevated process, or one with no UIA surface).
+   Conservative on purpose; a calibration candidate once 8h-recording
+   data exists. */
+const UNCAPTURED_WARN_MS = 90_000;
+
 let activeWinPromise = null;
 function getActiveWin() {
   if (!activeWinPromise) {
@@ -60,7 +67,26 @@ function isNewRun(currentRun, app, pid, normTitle) {
   );
 }
 
-function startTracker({ sessionId, eventsFile, onTick }) {
+/* E5 -- whether a foreground app should be flagged as uncaptured: the
+   recorder is expected to be running, the app has been frontmost past
+   the threshold, and it has never produced an interaction event. Pure
+   (all state passed in) so it is unit-testable, like isNewRun above. */
+function isUncapturedApp({
+  interactionsExpected,
+  pid,
+  interactivePids,
+  uncapturedWarned,
+  foregroundElapsedMs,
+  thresholdMs,
+}) {
+  if (!interactionsExpected) return false;
+  if (pid == null) return false;
+  if (interactivePids.has(pid)) return false;
+  if (uncapturedWarned.has(pid)) return false;
+  return foregroundElapsedMs >= thresholdMs;
+}
+
+function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = false, onNotice = null }) {
   if (!sessionId || !eventsFile) {
     throw new Error("startTracker requires { sessionId, eventsFile }");
   }
@@ -82,7 +108,20 @@ function startTracker({ sessionId, eventsFile, onTick }) {
   const RECENT_BUFFER_SIZE = 16;
   const recentEvents = [];
 
+  /* E5 -- uncaptured-app detection. interactivePids holds pids the
+     recorder HAS produced an interaction for; uncapturedWarned holds
+     pids already flagged so we warn once. foregroundPid / SinceMs track
+     how long the current frontmost pid has held focus. */
+  const interactivePids = new Set();
+  const uncapturedWarned = new Set();
+  let foregroundPid = null;
+  let foregroundSinceMs = 0;
+
   function appendEvent(ev) {
+    // _seq is the 0-based events.jsonl line ordinal. Normalization uses
+    // it as a secondary sort key so events sharing a millisecond
+    // timestamp keep their true append order.
+    ev._seq = eventCount;
     fs.appendFileSync(eventsFile, JSON.stringify(ev) + "\n");
     eventCount += 1;
     if (ev.type === "marker") markerCount += 1;
@@ -159,6 +198,14 @@ function startTracker({ sessionId, eventsFile, onTick }) {
       currentRun.bounds = bounds;
     }
 
+    // E5: track how long the current foreground pid has held focus, and
+    // flag it once if the recorder never captures an interaction for it.
+    if (pid !== foregroundPid) {
+      foregroundPid = pid;
+      foregroundSinceMs = now;
+    }
+    maybeWarnUncaptured(now, app, pid);
+
     if (onTick) {
       try { onTick(getStatus()); } catch (_e) { /* ignore */ }
     }
@@ -191,7 +238,31 @@ function startTracker({ sessionId, eventsFile, onTick }) {
   function fireInteraction(data) {
     const ev = interactionEvent(sessionId, data);
     appendEvent(ev);
+    // The recorder produced an interaction for this pid -- it is
+    // capturable, so it is never an uncaptured-app candidate.
+    if (data && data.pid != null) interactivePids.add(data.pid);
     return ev;
+  }
+
+  /* Flag a foreground app the recorder has produced no interaction for.
+     Fires the durable uncaptured_app system event (and an onNotice
+     toast) once per pid. The decision itself is the pure isUncapturedApp. */
+  function maybeWarnUncaptured(now, app, pid) {
+    const flag = isUncapturedApp({
+      interactionsExpected,
+      pid,
+      interactivePids,
+      uncapturedWarned,
+      foregroundElapsedMs: now - foregroundSinceMs,
+      thresholdMs: UNCAPTURED_WARN_MS,
+    });
+    if (!flag) return;
+    uncapturedWarned.add(pid);
+    fireSystem("uncaptured_app", { app, pid });
+    if (onNotice) {
+      try { onNotice("uncaptured_app", { app, pid }); }
+      catch (_e) { /* notice is best-effort */ }
+    }
   }
 
   function getStatus() {
@@ -243,4 +314,4 @@ function startTracker({ sessionId, eventsFile, onTick }) {
   return { fireMarker, fireSystem, fireInteraction, getStatus, pause, resume, stop };
 }
 
-module.exports = { startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun };
+module.exports = { startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun, isUncapturedApp };

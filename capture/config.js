@@ -13,6 +13,10 @@ const DEFAULTS = {
     role: null,
   },
   auto_end_idle_minutes: 30,
+  /* When false, an idle stretch past auto_end_idle_minutes no longer
+     ends the session -- idle is still recorded, but the worker (or the
+     end of the shift) ends it. Set false for 8-hour passive recordings. */
+  auto_end_on_idle: true,
   poll_interval_seconds: 5,
   idle_threshold_seconds: 60,
   process_labels: [],
@@ -55,6 +59,11 @@ const DEFAULTS = {
        on only when debugging missing events or focus-tracking issues.
        Expect ~3-5x more events per session. */
     verbose: false,
+    /* value_changed / range_value_changed events for one field are
+       coalesced within this window (ms) -- typing emits one event with
+       the final value, not one per keystroke. Passed to the recorder
+       in the hello message. */
+    debounce_ms: 750,
   },
 };
 

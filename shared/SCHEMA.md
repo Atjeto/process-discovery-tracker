@@ -23,11 +23,18 @@ Each line is one JSON object:
   "type": "activity" | "marker" | "system" | "interaction",
   "timestamp": "ISO 8601 with millisecond precision",
   "session_id": "uuid",
-  "data": { ...type-specific... }
+  "data": { ...type-specific... },
+  "_seq": 0
 }
 ```
 
 The envelope is the contract; the `data` shape varies by `type`.
+
+`_seq` is a monotonic integer — the 0-based ordinal of the event's line
+within `events.jsonl`, stamped by the capture tracker as each event is
+appended. Normalization uses it as a secondary sort key so events that
+share a millisecond `timestamp` keep their true append order. Sessions
+captured before this field existed simply omit it (treated as `0`).
 
 ### `activity` data
 
@@ -68,7 +75,7 @@ End markers carry `null` label by convention; they close the innermost open Star
 }
 ```
 
-Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`, `recorder_start`, `recorder_stop`, `recorder_died`, `recorder_dead_permanent`.
+Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`, `recorder_start`, `recorder_stop`, `recorder_died`, `recorder_dead_permanent`, `recorder_health`, `uncaptured_app`.
 
 Kind-specific payloads:
 
@@ -82,6 +89,8 @@ Kind-specific payloads:
 | `sync_marker` | `{ sync_id }` -- shared identifier across machines for cross-machine timeline alignment in shift reviews |
 | `recorder_start` / `recorder_stop` / `recorder_dead_permanent` | (empty) |
 | `recorder_died` | `{ code, signal, restart_count }` |
+| `recorder_health` | `{ queued, emitted_total, dropped_total, errors, last_error? }` -- a periodic snapshot of the C# recorder's stats line (~every 30s). `last_error` (`{ kind, pid, process_name, control_type, message }`) is present only after a recorder-side failure. |
+| `uncaptured_app` | `{ app, pid }` -- a foreground app the recorder produced no interaction events for, after a sustained stretch frontmost (commonly an elevated process, or one with no UI Automation surface). Emitted once per pid. |
 | `session_start` / `session_end` / `paused` / `resumed` | (empty) |
 
 ### `interaction` data
@@ -102,6 +111,8 @@ Sourced from Windows UI Automation via the C# sidecar recorder. See `docs/intera
 | `selected_value` | string | `selection_changed` only |
 | `toggle_state` | string | `toggle_changed` only - `on` \| `off` \| `indeterminate` |
 | `value` | string | `value_changed` only, length-clamped to 256 chars |
+| `value_truncated` | bool | `value_changed` only; present (`true`) when the 256-char clamp fired, so the analyst knows the stored value is partial |
+| `coverage_hint` | string | First interaction per process only — `rich` (stable `automation_id`) \| `basic` (control type, no id) \| `minimal` (class name only). Signals how richly UIA exposes that app. |
 
 Fields are omitted (not nulled) when the underlying UIA property throws on access.
 
@@ -274,7 +285,7 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
 
 - Events are immutable once written. Corrections live in `annotations.json` (§9.3 -- the viewer writes notes here; marker edit / merge / split UIs are deferred).
 - `event_id` is unique within a session.
-- `events.jsonl` is sorted by `timestamp` in practice (single-writer append) but normalization sorts defensively (§7.1 step 2).
+- `events.jsonl` is sorted by `timestamp` in practice (single-writer append); normalization sorts defensively by `(timestamp, _seq)` so a millisecond timestamp collision still resolves to true append order (§7.1 step 2).
 - Adjacent identical activity events (same app, title, label, case_ids) are collapsed during normalization (§7.1 step 7).
 
 ## Post-normalization artifacts

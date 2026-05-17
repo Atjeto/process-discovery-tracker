@@ -23,13 +23,15 @@ Output: one session folder under
 |---|---|---|
 | Foreground window | `active-win` polled every 5 s | `activity` events |
 | UI interactions | C# UI Automation recorder sidecar | `interaction` events |
-| Process boundaries | Start/End hotkeys; auto-end on idle | `marker` events |
+| Process boundaries | Start/End hotkeys; optional auto-end on idle | `marker` events |
 | Lifecycle | session start/end, idle, OBS, recorder health | `system` events |
 | Screen | Electron `desktopCapturer` (app-switch / marker / idle / manual) | screenshots |
 | Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | external recording + `obs/sync.json` |
 
 Events are appended to `events.jsonl` synchronously (per-event `appendFileSync`),
-so a crash loses at most the in-flight event. Screenshot triggers are coalesced by
+so a crash loses at most the in-flight event. Each event carries a monotonic
+`_seq` — its 0-based append ordinal — so normalization can resolve events that
+share a millisecond timestamp into true order. Screenshot triggers are coalesced by
 a 2-second leading-edge debounce, so coincident triggers (an app switch landing
 with a marker fire) collapse to a single capture; a manual screenshot is never
 suppressed.
@@ -52,7 +54,7 @@ and the `pdt:*` IPC handlers.
 | `notify.js` | `notifyUser()` — native OS toast for failures the operator must see (recorder dead, OBS dropped, screenshots failing); also `trayIconImage()`. |
 | `session-storage.js` | Session disk-usage accounting and the delete / prune-by-age flows. |
 | `window-manager.js` | Shared singleton-window helper — `createWindowManager()` exposing `show` / `toggle` / `isOpen` / `get`, keyed per window. |
-| `tracker.js` | The 5-second active-window polling loop; event-append and live counters. |
+| `tracker.js` | The 5-second active-window polling loop; event-append, `_seq` stamping, live counters, and uncaptured-app detection. |
 | `session.js` | Session-folder creation, `manifest.json` I/O, orphan detection / recovery. |
 | `events.js` | Event-envelope factories — `activityEvent`, `markerEvent`, `systemEvent`, `interactionEvent`. |
 | `config.js` | Loads + deep-merges per-session YAML over `DEFAULTS` — the single source of default values. |
@@ -82,7 +84,7 @@ v0.5.0 (C8):
 | File | Role |
 |---|---|
 | `build-package.js` | Custom `electron-packager` wrapper for distribution builds. |
-| `test/` | `node:test` suite — 41 tests over `config`, `events`, `session`, `tracker`, and `window-manager`; run with `npm test`. |
+| `test/` | `node:test` suite — 59 tests over `config`, `events`, `session`, `tracker`, and `window-manager`; run with `npm test`. |
 | `ui/` | The seven extracted window HTML files (see the Windows table above). |
 | `recorder/` | The C# recorder sidecar — see below. |
 
@@ -93,18 +95,25 @@ process (not Node) because UI Automation is a first-party Windows API best consu
 from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
 
 - `Program.cs` — entry point; an **NDJSON control loop** over stdin/stdout.
-  Electron sends `hello` / `pause` / `resume` / `shutdown`; the recorder emits
-  `ready`, `interaction`, `stats`, and `warning` lines.
+  Electron sends `hello` / `pause` / `resume` / `shutdown` (the `hello` carries
+  `verbose` and `debounce_ms`); the recorder emits `ready`, `interaction`,
+  `stats`, and `warning` lines. The `stats` line carries throughput counters
+  plus an `errors` count and a `last_error` snapshot.
 - `UiaSubscriber.cs` — subscribes to UI Automation events (invoke, selection,
   toggle, value), filters noise (drops `focus_changed` / `text_changed`, coalesces
-  rapid `value_changed`, drops low-signal control types), and extracts fields
-  safely (a property that throws is omitted, not nulled).
+  rapid `value_changed` within a configurable debounce window, drops low-signal
+  Win32 *and* Chromium internal-DOM control types), and extracts fields safely
+  (a property that throws is omitted, not nulled). The first interaction per
+  process carries a `coverage_hint` (`rich` / `basic` / `minimal`); a clamped
+  256-char value is flagged `value_truncated`.
 
 `recorder.js` resolves the executable (packaged `resources/recorder/`, source tree,
 or auto-extracted `recorder.zip`), spawns it, and restarts it up to a configured
 limit. It also runs a **liveness watchdog**: the sidecar emits a `stats` line every
 30 s, so if its stdout falls silent for 90 s the process is presumed hung — it is
-killed and recovered through the normal exit/restart path. Recorder death surfaces
+killed and recovered through the normal exit/restart path. Each `stats` line is
+also written to `events.jsonl` as a `recorder_health` `system` event, so drops
+and errors stay visible against the session timeline. Recorder death surfaces
 as a `recorder_died` / `recorder_dead_permanent` `system` event and a native OS
 notification.
 
@@ -131,7 +140,11 @@ The tray/main process exposes `pdt:*` IPC handlers consumed by the utility windo
 
 Per-session config is YAML, deep-merged over the `DEFAULTS` object in `config.js`
 — which, since v0.5.0 (C3), is the **single source** of default values. Keys cover
-engagement/worker identity, `auto_end_idle_minutes`, `poll_interval_seconds`,
+engagement/worker identity, `auto_end_idle_minutes` plus `auto_end_on_idle`
+(set false to keep a session running through idle, for 8-hour passive
+recordings), `poll_interval_seconds`,
 `process_labels` (Start-marker label list), `obs`, `hotkeys`, `screenshots`, and
-`interactions`. Point the app at a file with `PDT_CONFIG`, or edit via the session
-config window (which writes `quick-config.yaml` for the next launch).
+`interactions` (including `debounce_ms`, the recorder's `value_changed` coalescing
+window, passed to the sidecar in the `hello` message). Point the app at a file
+with `PDT_CONFIG`, or edit via the session config window (which writes
+`quick-config.yaml` for the next launch).

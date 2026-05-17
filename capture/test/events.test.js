@@ -76,3 +76,17 @@ test("interactionEvent keeps allowed keys and drops disallowed or null ones", ()
 test("event_id is unique across calls", () => {
   assert.notStrictEqual(systemEvent(SID, "x").event_id, systemEvent(SID, "x").event_id);
 });
+
+test("interactionEvent passes through the E6/E7 signal-quality fields", () => {
+  // coverage_hint (E6) and value_truncated (E7) are recorder-emitted; the
+  // allowlist must keep them or they never reach events.jsonl.
+  const ev = interactionEvent(SID, {
+    kind: "value_changed",
+    value: "Customer Acme Corp",
+    coverage_hint: "rich",
+    value_truncated: true,
+  });
+  assertEnvelope(ev, "interaction");
+  assert.strictEqual(ev.data.coverage_hint, "rich");
+  assert.strictEqual(ev.data.value_truncated, true);
+});

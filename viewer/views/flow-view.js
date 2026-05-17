@@ -1141,8 +1141,10 @@ function renderSelectionStats() {
     '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
     (topApps ? '<div class="row"><span>Top apps</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
+    '<button class="summary-fix" id="tl-selection-case">Insert case from selection</button>' +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
+  document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
 }
 
 /* P1.3: minimap overview above the timeline. A 30px strip showing the
@@ -1356,6 +1358,53 @@ async function queueSyntheticMarker(ts, markerType) {
       `${markerType === "start" ? "Start" : "End"} marker queued — re-run normalization to apply`,
       "success",
     );
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
+/* G4: turn the current timeline range selection into a case — queue a
+   synthetic Start at the range start and an End at the range end, in one
+   save so undo reverts the pair. Applied on the next normalization run.
+   Lets the analyst bracket process instances in an 8-hour passive
+   recording after the fact, without capture-time markers. */
+async function queueCaseFromSelection() {
+  const range = State.getSelectionRange();
+  if (!range || !State.getSession()) return;
+  let label = await promptModal({
+    title: "Insert case from selection",
+    message: "Label for the new case",
+    detail: "Queues Start and End markers in annotations.json; re-run Analyze to apply.",
+    placeholder: "e.g. Order entry",
+    okLabel: "Insert case",
+  });
+  if (label === null) return;     // cancelled
+  label = (label || "").trim() || null;
+
+  const newId = () =>
+    (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now() + Math.random());
+  const editedAt = new Date().toISOString();
+  const a = State.getSession().annotations || {};
+  if (!Array.isArray(a.marker_edits)) a.marker_edits = [];
+  a.marker_edits.push({
+    id: newId(),
+    op: "insert",
+    marker_type: "start",
+    label,
+    timestamp: new Date(range.startMs).toISOString(),
+    ts: editedAt,
+  });
+  a.marker_edits.push({
+    id: newId(),
+    op: "insert",
+    marker_type: "end",
+    label: null,
+    timestamp: new Date(range.endMs).toISOString(),
+    ts: editedAt,
+  });
+  try {
+    await saveAnnotationsWithUndo(a, "insert case from selection");
+    toast("Case queued — re-run normalization to apply", "success");
   } catch (err) {
     toast("Failed to save annotation: " + (err && err.message), "error");
   }

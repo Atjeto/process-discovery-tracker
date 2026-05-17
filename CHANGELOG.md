@@ -36,6 +36,54 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `stats.json` and the session summary shows a warning — the usual
   cause is the target application changing its field identifiers.
 
+- **The interaction recorder filters browser and Electron chrome.**
+  The C# recorder now drops the Chromium render-tree scaffolding events
+  — empty-id Pane / Group / Document / Custom panes — that every
+  browser, and every Electron app, fires for its own internal DOM, the
+  same way it already dropped Win32 desktop-shell chrome. Real web-app
+  controls, which carry a page-set automation id, are untouched.
+  Without this, an all-day browser-heavy recording could bury the
+  signal under tens of thousands of noise events.
+
+- **Recorder health lands on the timeline, not just the debug log.**
+  The recorder's periodic stats — events emitted, events dropped, an
+  error count, and a snapshot of the last failure (process, control,
+  message) — are now written to `events.jsonl` as `recorder_health`
+  system events, so capture trouble is visible against the session it
+  happened in instead of only in the debug log.
+
+- **Applications the recorder cannot see are flagged.** When a
+  foreground application produces no interaction events for a sustained
+  stretch — typically because it runs elevated, or exposes no UI
+  Automation surface — the capture app records an `uncaptured_app`
+  event and shows the worker a one-time notice. Such an app used to
+  record silently, with no interactions and no explanation.
+
+- **Interaction events carry capture-quality signals.** The first
+  interaction captured for each application is tagged with a
+  `coverage_hint` — `rich`, `basic`, or `minimal` — a quick read on how
+  much detail UI Automation exposes for that app; and a value clamped
+  at the 256-character limit is flagged `value_truncated` so a partial
+  value is not mistaken for the whole.
+
+- **Events carry a sequence number.** Every event in `events.jsonl`
+  now has a monotonic `_seq`; normalization sorts on
+  `(timestamp, _seq)`, so events written within the same millisecond
+  keep their true order through the pipeline.
+
+- **Sessions can run through idle for all-day recordings.** A new
+  `auto_end_on_idle` config key (default on) governs whether an idle
+  stretch past `auto_end_idle_minutes` ends the session. Set it off for
+  an 8-hour passive recording — idle is still logged, but only the
+  worker, or the end of the shift, ends the session.
+
+- **Bracket a case straight from a timeline selection.** The range-
+  selection card on the Flow timeline gains an "Insert case from
+  selection" button: name the case and it queues a Start and End
+  marker at the selection's edges, applied on the next analysis. An
+  analyst can now mark process instances in a long passive recording
+  after the fact, with no capture-time markers.
+
 ### Changed
 
 - **Step states read in plain language.** The four pipeline step states
@@ -65,6 +113,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ignored) so cosmetic churn doesn't fragment the timeline. This
   realigns capture with the original design — see
   [ADR-0007](docs/adr/0007-activity-event-granularity.md).
+
+- **The interaction-recorder debounce is configurable.** The window
+  that coalesces a burst of value changes into one event — typing into
+  a field emits a single event with the final value — was a hardcoded
+  750 ms. It is now an `interactions.debounce_ms` config key, passed to
+  the recorder sidecar in its startup handshake.
 
 ## [0.7.0] - 2026-05-17
 

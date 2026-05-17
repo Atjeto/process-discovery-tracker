@@ -64,6 +64,8 @@ public static class Program {
                     queued = queue.Count,
                     dropped_total = Interlocked.Read(ref droppedTotal),
                     emitted_total = Interlocked.Read(ref emittedTotal),
+                    errors = subscriber?.ErrorCount ?? 0L,
+                    last_error = subscriber?.LastError,
                 }
             };
             try { Console.Out.WriteLine(JsonSerializer.Serialize(stats, options)); }
@@ -86,14 +88,23 @@ public static class Program {
                 if (!doc.RootElement.TryGetProperty("cmd", out var cmdEl)) continue;
                 var cmd = cmdEl.GetString();
                 switch (cmd) {
-                    case "hello":
+                    case "hello": {
                         if (doc.RootElement.TryGetProperty("verbose", out var vEl) &&
                             vEl.ValueKind == JsonValueKind.True) {
                             verbose = true;
                         }
-                        subscriber = new UiaSubscriber(options, onEvent, verbose);
+                        // debounce_ms tunes the value_changed coalescing window;
+                        // fall back to 750ms when the field is absent or invalid.
+                        var debounceMs = 750;
+                        if (doc.RootElement.TryGetProperty("debounce_ms", out var dEl) &&
+                            dEl.ValueKind == JsonValueKind.Number &&
+                            dEl.TryGetInt32(out var dVal) && dVal > 0) {
+                            debounceMs = dVal;
+                        }
+                        subscriber = new UiaSubscriber(options, onEvent, verbose, debounceMs);
                         subscriber.Start();
                         break;
+                    }
                     case "pause":    Interlocked.Exchange(ref paused, 1); break;
                     case "resume":   Interlocked.Exchange(ref paused, 0); break;
                     case "shutdown": goto done;

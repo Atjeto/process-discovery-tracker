@@ -198,7 +198,7 @@ function startIdleMonitor() {
       const minResume =
         config.screenshots.on_idle_resume_minutes * 60;
       if (durationSecs >= minResume) fireScreenshot("screenshot");
-    } else if (isIdle && idleSecs >= autoEndSecs) {
+    } else if (isIdle && idleSecs >= autoEndSecs && config.auto_end_on_idle) {
       /* Auto-close any open markers and log the cause (§3.3). */
       while (lastStatus && lastStatus.markerDepth > 0) {
         tracker.fireMarker({ markerType: "end", reason: "auto_end_idle" });
@@ -557,6 +557,8 @@ async function startSession(opts) {
     sessionId: session.sessionId,
     eventsFile: session.eventsFile,
     onTick: onTickHandler,
+    interactionsExpected: !!(config.interactions && config.interactions.enabled),
+    onNotice: handleTrackerNotice,
   });
   if (obsConnected) {
     tracker.fireSystem("obs_recording_start");
@@ -608,13 +610,22 @@ async function startRecorderForSession() {
     recorder = require("./recorder.js").spawnRecorder({
       sessionId: session.sessionId,
       verbose: !!(config.interactions && config.interactions.verbose),
+      debounceMs: config.interactions && config.interactions.debounce_ms,
       onEvent: (data) => {
         if (!tracker) return;
         try { tracker.fireInteraction(data); }
         catch (e) { bootLog(`fireInteraction failed: ${e && e.message}`); }
       },
       onWarning: (w) => bootLog(`[recorder] ${w.msg || ""}: ${w.detail || ""}`),
-      onStats: (s) => bootLog(`[recorder.stats] queued=${s.queued} dropped=${s.dropped_total} emitted=${s.emitted_total}`),
+      onStats: (s) => {
+        bootLog(`[recorder.stats] queued=${s.queued} dropped=${s.dropped_total} emitted=${s.emitted_total} errors=${s.errors || 0}`);
+        // Land recorder health in events.jsonl so the analyst sees drops
+        // and errors against the session timeline, not only in boot.log.
+        if (tracker) {
+          try { tracker.fireSystem("recorder_health", s); }
+          catch (e) { bootLog(`recorder_health emit failed: ${e && e.message}`); }
+        }
+      },
       onExit: (info) => handleRecorderExit(info),
       bootLog,
     });
@@ -663,6 +674,21 @@ function handleRecorderExit(info) {
       { urgency: "critical" }
     );
   }
+}
+
+/* Tracker-side notices that warrant a desktop toast. Currently only
+   uncaptured_app: a foreground app the recorder produced no interaction
+   events for -- commonly an elevated process, or one with no UIA surface. */
+function handleTrackerNotice(kind, payload) {
+  if (kind !== "uncaptured_app") return;
+  // Stay quiet when there is no live recorder -- its own failure toast
+  // (or the required-recorder dialog) already told the user.
+  if (!recorder || recorderPermanentlyDead) return;
+  const app = (payload && payload.app) || "An application";
+  notifyUser(
+    "Process Discovery Tracker",
+    `${app} interactions aren't being recorded -- it may be running as administrator or may not expose UI Automation. Markers, screenshots and video are unaffected.`
+  );
 }
 
 async function endSession() {

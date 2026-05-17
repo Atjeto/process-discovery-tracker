@@ -18,6 +18,10 @@
 //   - Events from low-signal control types (Pane, Group, Window with
 //     framework_id == "Win32") are dropped -- these are desktop shell
 //     / layout chrome, not user actions.
+//   - Events from Chromium internal-DOM chrome (Pane/Group/Document/
+//     Custom with framework_id == "Chrome" and no AutomationId) are
+//     dropped -- browser and Electron render scaffolding, not user
+//     actions. Real web-app controls keep their page-set AutomationId.
 //
 // Verbose mode (hello cmd carries `verbose: true`): skips all the
 // above filters and emits the raw firehose. Reserved for forensic
@@ -42,7 +46,9 @@ public sealed class UiaSubscriber {
     // Key: "{pid}|{automation_id}" (falls back to name/class when id is missing).
     // Value: latest pending event + timer that fires after the debounce window.
     private readonly ConcurrentDictionary<string, PendingValue> _pending = new();
-    private static readonly TimeSpan ValueCoalesceWindow = TimeSpan.FromMilliseconds(750);
+    // value_changed coalescing window. Configurable via the hello cmd's
+    // debounce_ms field; set once in the constructor.
+    private readonly TimeSpan _valueCoalesceWindow;
 
     // Control types whose UIA notifications are almost always layout
     // chrome rather than user action. Combined with Win32 framework
@@ -51,11 +57,34 @@ public sealed class UiaSubscriber {
         "Pane", "Group", "Window", "Custom"
     };
 
-    public UiaSubscriber(JsonSerializerOptions opts, Action<object> onEvent, bool verbose = false) {
+    // Chromium render-tree scaffolding control types. Combined with the
+    // "Chrome" framework and an empty AutomationId these are browser /
+    // Electron internal DOM, not user actions.
+    private static readonly HashSet<string> BrowserChromeControlTypes = new(StringComparer.Ordinal) {
+        "Pane", "Group", "Document", "Custom"
+    };
+
+    // Health counters surfaced on the recorder stats line. _lastError is
+    // a snapshot of the most recent BuildEvent failure.
+    private long _errors;
+    private volatile Dictionary<string, object?>? _lastError;
+
+    // pids that have already emitted an event carrying a coverage_hint.
+    private readonly ConcurrentDictionary<int, byte> _coveredPids = new();
+
+    public UiaSubscriber(JsonSerializerOptions opts, Action<object> onEvent,
+                         bool verbose = false, int debounceMs = 750) {
         _opts = opts;
         _onEvent = onEvent;
         _verbose = verbose;
+        _valueCoalesceWindow = TimeSpan.FromMilliseconds(debounceMs > 0 ? debounceMs : 750);
     }
+
+    /// <summary>Total BuildEvent failures since start (recorder stats line).</summary>
+    public long ErrorCount => Interlocked.Read(ref _errors);
+
+    /// <summary>Snapshot of the most recent BuildEvent failure, or null.</summary>
+    public Dictionary<string, object?>? LastError => _lastError;
 
     public void Start() {
         if (_started) return;
@@ -110,24 +139,28 @@ public sealed class UiaSubscriber {
         } else if (e.Property == ValuePattern.ValueProperty ||
                    e.Property == RangeValuePattern.ValueProperty) {
             var raw = e.NewValue?.ToString() ?? "";
-            // Length-clamp text values; range values are short numerics
-            var v = raw.Length > 256 ? raw.Substring(0, 256) : raw;
-            EmitValueChanged(el, v);
+            // Length-clamp text values; range values are short numerics.
+            // Flag the clamp so the analyst knows the stored value is partial.
+            var truncated = raw.Length > 256;
+            var v = truncated ? raw.Substring(0, 256) : raw;
+            EmitValueChanged(el, v, truncated);
         }
     }
 
-    private void EmitValueChanged(AutomationElement el, string value) {
+    private void EmitValueChanged(AutomationElement el, string value, bool truncated) {
+        // value_truncated stays null (and is omitted) unless the clamp fired.
+        var extra = new { value, value_truncated = truncated ? (bool?)true : null };
         if (_verbose) {
-            EmitFiltered("value_changed", el, new { value });
+            EmitFiltered("value_changed", el, extra);
             return;
         }
         var key = CoalesceKey(el);
         if (key == null) {
             // No stable identity -- emit immediately, no coalescing possible.
-            EmitFiltered("value_changed", el, new { value });
+            EmitFiltered("value_changed", el, extra);
             return;
         }
-        var built = BuildEvent("value_changed", el, new { value });
+        var built = BuildEvent("value_changed", el, extra);
         if (built == null) return;
         _pending.AddOrUpdate(key,
             // First entry for this key: schedule a flush.
@@ -135,7 +168,7 @@ public sealed class UiaSubscriber {
             // Existing entry: replace the event, reset the timer.
             (_, existing) => {
                 existing.Event = built;
-                existing.Timer.Change(ValueCoalesceWindow, Timeout.InfiniteTimeSpan);
+                existing.Timer.Change(_valueCoalesceWindow, Timeout.InfiniteTimeSpan);
                 return existing;
             });
     }
@@ -146,7 +179,7 @@ public sealed class UiaSubscriber {
                 pending.Timer.Dispose();
                 _onEvent(pending.Event);
             }
-        }, null, ValueCoalesceWindow, Timeout.InfiniteTimeSpan);
+        }, null, _valueCoalesceWindow, Timeout.InfiniteTimeSpan);
     }
 
     private static string? CoalesceKey(AutomationElement el) {
@@ -189,6 +222,16 @@ public sealed class UiaSubscriber {
                 var ctl = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
                 if (ctl != null && LowSignalControlTypes.Contains(ctl)) return true;
             }
+            // Chromium render-tree scaffolding. Every browser -- and every
+            // Electron app -- fires Pane/Group/Document/Custom events for
+            // its own internal DOM. Real web-app controls carry a page-set
+            // AutomationId, so an empty AutomationId keeps those while
+            // dropping the noise.
+            if (string.Equals(fwk, "Chrome", StringComparison.Ordinal) &&
+                string.IsNullOrEmpty(el.Current.AutomationId)) {
+                var ctl = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
+                if (ctl != null && BrowserChromeControlTypes.Contains(ctl)) return true;
+            }
             return false;
         } catch {
             return false;
@@ -219,12 +262,19 @@ public sealed class UiaSubscriber {
                     };
                 }
             }
+            // E6: the first event emitted for a pid carries a coverage
+            // hint -- how richly UIA exposes that app. rich = a stable
+            // AutomationId, basic = a control type only, minimal = just a
+            // class name.
+            TrySetCoverageHint(data);
             return new {
                 v = 1, type = "interaction",
                 ts = DateTime.UtcNow.ToString("o"),
                 data,
             };
         } catch (Exception ex) {
+            Interlocked.Increment(ref _errors);
+            _lastError = BuildErrorInfo(kind, el, ex);
             Console.Error.WriteLine($"build event failed: {ex.Message}");
             return null;
         }
@@ -232,6 +282,38 @@ public sealed class UiaSubscriber {
 
     private static void TrySet<T>(IDictionary<string, object?> d, string key, Func<T> get) {
         try { var v = get(); if (v is not null) d[key] = v; } catch { }
+    }
+
+    // First event per pid gets a coverage_hint describing how richly UIA
+    // exposes that app -- a signal the analyst can use to spot apps that
+    // need a richer integration. Marks the pid so later events skip it.
+    private void TrySetCoverageHint(Dictionary<string, object?> data) {
+        if (!data.TryGetValue("pid", out var pidObj) || pidObj is not int pid) return;
+        if (!_coveredPids.TryAdd(pid, 0)) return;
+        var aid = data.TryGetValue("automation_id", out var aidV) ? aidV as string : null;
+        string? hint;
+        if (!string.IsNullOrEmpty(aid)) hint = "rich";
+        else if (data.ContainsKey("control_type")) hint = "basic";
+        else if (data.ContainsKey("class_name")) hint = "minimal";
+        else hint = null;
+        if (hint != null) data["coverage_hint"] = hint;
+    }
+
+    // Snapshot of the element that caused a BuildEvent failure, for the
+    // recorder stats line. Each property read is guarded -- the element
+    // is often throwing precisely because it is no longer available.
+    private static Dictionary<string, object?> BuildErrorInfo(
+            string kind, AutomationElement el, Exception ex) {
+        var info = new Dictionary<string, object?> {
+            ["kind"] = kind,
+            ["message"] = ex.Message,
+        };
+        try { info["pid"] = el.Current.ProcessId; } catch { }
+        try { info["process_name"] = GetProcessName(el); } catch { }
+        try {
+            info["control_type"] = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
+        } catch { }
+        return info;
     }
 
     private static string? GetTopWindowTitle(AutomationElement el) {

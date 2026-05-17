@@ -70,7 +70,7 @@ def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
                     "load_events: dropping malformed line %d in %s: %s | %s",
                     line_no, events_file, exc, snippet,
                 )
-    events.sort(key=lambda e: e.get("timestamp", ""))
+    events.sort(key=lambda e: (e.get("timestamp", ""), e.get("_seq", 0)))
     return events, dropped
 
 
@@ -265,7 +265,7 @@ def apply_marker_edits(
         applied += len(inserts)
     # If we changed any timestamps OR inserted markers, sort again so downstream sees order
     if ts_over or inserts:
-        out.sort(key=lambda e: e.get("timestamp", ""))
+        out.sort(key=lambda e: (e.get("timestamp", ""), e.get("_seq", 0)))
     return out, applied
 
 

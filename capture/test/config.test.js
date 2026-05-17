@@ -78,3 +78,19 @@ test("loadConfig: always supplies the keys main.js consumes without a fallback",
   assert.strictEqual(typeof config.screenshots.display, "string");
   assert.strictEqual(typeof config.interactions.max_restarts_per_session, "number");
 });
+
+test("interactions.debounce_ms defaults to 750 (E4)", () => {
+  const { config } = loadConfig(null);
+  assert.strictEqual(config.interactions.debounce_ms, 750);
+});
+
+test("a config can override interactions.debounce_ms without losing siblings (E4)", () => {
+  const merged = deepMerge(DEFAULTS, { interactions: { debounce_ms: 1200 } });
+  assert.strictEqual(merged.interactions.debounce_ms, 1200);
+  assert.strictEqual(merged.interactions.enabled, DEFAULTS.interactions.enabled);
+});
+
+test("auto_end_on_idle defaults to true (G1)", () => {
+  const { config } = loadConfig(null);
+  assert.strictEqual(config.auto_end_on_idle, true);
+});

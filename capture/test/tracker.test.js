@@ -9,7 +9,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const {
-  startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun,
+  startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun, isUncapturedApp,
 } = require("../tracker.js");
 
 function tmpEvents() {
@@ -138,4 +138,77 @@ test("isNewRun: a null run, or any app/pid change, starts a new run", () => {
 test("isNewRun: a normalized-title change starts a new run (web-app switch)", () => {
   const run = { app: "chrome.exe", pid: 10, _normTitle: "Salesforce" };
   assert.strictEqual(isNewRun(run, "chrome.exe", 10, "SAP Sales Order"), true);
+});
+
+// --- Sequence counter (E2) ------------------------------------------
+
+test("appendEvent stamps a monotonic _seq, in append order, on every event", () => {
+  const { dir, file } = tmpEvents();
+  const t = startTracker({ sessionId: "s", eventsFile: file });
+  t.fireMarker({ markerType: "start", label: "A" });
+  t.fireInteraction({ kind: "click", name: "OK" });
+  t.fireSystem("note");
+  t.stop();
+  const evs = readEvents(file);
+  // session_start is _seq 0; each subsequent appended event increments by 1.
+  assert.ok(evs.length >= 4);
+  evs.forEach((e, i) => assert.strictEqual(e._seq, i));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --- Uncaptured-app detection (E5) ----------------------------------
+
+const UNCAPTURED_BASE = {
+  interactionsExpected: true,
+  pid: 1234,
+  interactivePids: new Set(),
+  uncapturedWarned: new Set(),
+  foregroundElapsedMs: 999_999,
+  thresholdMs: 90_000,
+};
+
+test("isUncapturedApp: flags a long-foreground app with no interactions", () => {
+  assert.strictEqual(isUncapturedApp({ ...UNCAPTURED_BASE }), true);
+});
+
+test("isUncapturedApp: does nothing when interactions aren't expected", () => {
+  assert.strictEqual(
+    isUncapturedApp({ ...UNCAPTURED_BASE, interactionsExpected: false }), false);
+});
+
+test("isUncapturedApp: below the threshold it does not flag yet", () => {
+  assert.strictEqual(
+    isUncapturedApp({ ...UNCAPTURED_BASE, foregroundElapsedMs: 5_000 }), false);
+});
+
+test("isUncapturedApp: a pid that produced an interaction is never flagged", () => {
+  assert.strictEqual(
+    isUncapturedApp({ ...UNCAPTURED_BASE, interactivePids: new Set([1234]) }), false);
+});
+
+test("isUncapturedApp: an already-warned pid is not flagged twice", () => {
+  assert.strictEqual(
+    isUncapturedApp({ ...UNCAPTURED_BASE, uncapturedWarned: new Set([1234]) }), false);
+});
+
+test("isUncapturedApp: a null pid is never flagged", () => {
+  assert.strictEqual(isUncapturedApp({ ...UNCAPTURED_BASE, pid: null }), false);
+});
+
+test("startTracker accepts the E5 options without disturbing the marker flow", () => {
+  const { dir, file } = tmpEvents();
+  const notices = [];
+  const t = startTracker({
+    sessionId: "s",
+    eventsFile: file,
+    interactionsExpected: true,
+    onNotice: (kind, payload) => notices.push({ kind, payload }),
+  });
+  t.fireMarker({ markerType: "start", label: "A" });
+  t.stop();
+  // No app has been foreground long enough on the first tick.
+  assert.strictEqual(notices.length, 0);
+  const kinds = readEvents(file).filter((e) => e.type === "system").map((e) => e.data.kind);
+  assert.ok(!kinds.includes("uncaptured_app"));
+  fs.rmSync(dir, { recursive: true, force: true });
 });
