@@ -84,6 +84,11 @@ function saveSvgFile(payload) {
   return ipcRenderer.invoke("viewer:saveSvgFile", payload);
 }
 
+/** @param {object} payload @returns {Promise<any>} */
+function saveHtmlFile(payload) {
+  return ipcRenderer.invoke("viewer:saveHtmlFile", payload);
+}
+
 /** @param {string} filePath @returns {Promise<any>} */
 function revealFile(filePath) {
   return ipcRenderer.invoke("viewer:revealFile", filePath);
@@ -199,7 +204,7 @@ module.exports = {
   runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
   cancelNormalize,
   saveAnnotations, addClassificationOverride,
-  exportFile, saveSvgFile, revealFile, openExternal,
+  exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal,
   openCanonicalFile, saveCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
   attachExternalVideo, saveExternalVideoSync,

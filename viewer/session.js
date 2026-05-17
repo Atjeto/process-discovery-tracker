@@ -33,7 +33,7 @@ function canRedo() {
   return !!s && State.canRedo(s.sessionFolder);
 }
 function emptyAnnotationsShape() {
-  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [] };
+  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [], starred_screenshots: [] };
 }
 function snapshotAnnotations(a) {
   // Never push null/undefined onto the stack -- a later undo/redo

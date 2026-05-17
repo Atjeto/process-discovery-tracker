@@ -820,6 +820,25 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .analysis-table .score-na { color: var(--fg-4); }
 
+/* ===== Screenshot star (Phase D findings report) ===== */
+.screens-grid .thumb .thumb-star {
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; padding: 0; line-height: 16px;
+  font-size: 12px; text-align: center; cursor: pointer;
+  background: rgba(0, 0, 0, 0.45); color: #fff;
+  border: none; border-radius: 3px;
+}
+.screens-grid .thumb .thumb-star.starred { color: var(--accent); }
+
+/* ===== Checklist modal (findings-report export options) ===== */
+.modal-check {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 5px 2px; cursor: pointer; font-size: 13px; color: var(--fg);
+}
+.modal-check input { margin: 0; }
+.modal-check small { color: var(--fg-3); font-size: 11px; }
+.modal-check.disabled { opacity: 0.5; cursor: default; }
+
 /* Mini-timeline wrapper used by Steps + Phases views. Mirrors the
    Flow timeline's affordances: header strip with title + time range
    + zoom buttons, plus a horizontally-scrolling band area. The inner

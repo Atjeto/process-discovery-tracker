@@ -145,13 +145,14 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "classification_overrides": [],
   "notes": [],
   "drift_markers": [],
+  "starred_screenshots": [],
   "matched_against": null,
   "last_modified": null,
   "last_modified_by": null
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `version`, `session_id`, `last_modified`, `last_modified_by`) are additive; missing files are treated as empty.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
 
 Legacy entries inside the two original arrays:
 

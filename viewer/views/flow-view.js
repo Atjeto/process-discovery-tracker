@@ -2302,6 +2302,7 @@ function renderScreenshots() {
     host.innerHTML = '<p class="hint">No screenshots captured in this session.</p>';
     return;
   }
+  const starred = new Set(((State.getSession().annotations || {}).starred_screenshots) || []);
   for (const s of shots) {
     const card = document.createElement("div");
     card.className = "thumb";
@@ -2321,10 +2322,38 @@ function renderScreenshots() {
       b.textContent = "manual";
       card.appendChild(b);
     }
+    // D1: star a screenshot to include it in the findings report.
+    const star = document.createElement("button");
+    star.type = "button";
+    star.className = "thumb-star" + (starred.has(s.data.path) ? " starred" : "");
+    star.textContent = starred.has(s.data.path) ? "★" : "☆";
+    star.title = "Star this screenshot for the findings report";
+    star.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggleScreenshotStar(s.data.path);
+    });
+    card.appendChild(star);
     card.title = s.timestamp + "\n" + s.data.path;
     card.addEventListener("click", () => seekToTimestamp(s.timestamp));
     host.appendChild(card);
   }
+}
+
+/* D1: toggle a screenshot's `starred` membership in
+   annotations.starred_screenshots. Starred screenshots are the ones
+   the findings report embeds. */
+async function toggleScreenshotStar(relPath) {
+  const session = State.getSession();
+  if (!session) return;
+  const anno = session.annotations || {};
+  const list = anno.starred_screenshots || [];
+  const i = list.indexOf(relPath);
+  if (i >= 0) list.splice(i, 1);
+  else list.push(relPath);
+  anno.starred_screenshots = list;
+  await saveAnnotationsWithUndo(anno, "star screenshot");
+  session.annotations = anno;
+  renderScreenshots();
 }
 
 /* P2.7: full-pane screenshot gallery. Step through every screenshot

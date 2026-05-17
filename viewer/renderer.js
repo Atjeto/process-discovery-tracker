@@ -20,6 +20,7 @@ const State = require("./state.js");
 const PdtTheme = require("./theme.js");
 const PdtCharts = require("./charts.js");
 const PdtReport = require("./report-md.js");
+const PdtReportHtml = require("./report-html.js");
 const PdtPalette = require("./command-palette.js");
 const PdtDfg = require("./dfg-viewer.js");
 const PdtBpmn = require("./bpmn-viewer.js");
@@ -28,7 +29,7 @@ const PdtPhases = require("./phase-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
-const { promptModal, confirmModal } = require("./modals.js");
+const { promptModal, confirmModal, checklistModal } = require("./modals.js");
 const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent, relTime } = require("./recent.js");
 const { initAggregateView, renderAggregate, filteredAggregateSessions } = require("./views/aggregate-view.js");
 const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
@@ -543,6 +544,71 @@ async function saveMarkdownReport(md, suggestedName) {
     toast("Markdown report saved: " + path.basename(out), "success");
   }
   try { fs.unlinkSync(tmpPath); } catch (_) {}
+}
+
+/* Phase D: self-contained HTML findings report. A pre-export dialog
+   picks which optional sections to include; report-html.js builds the
+   document string; viewer:saveHtmlFile writes it (viewer:exportFile
+   only copies an existing file -- ADR-0006 Correction 1). */
+if ($("#btn-export-findings")) {
+  $("#btn-export-findings").addEventListener("click", async () => {
+    const session = State.getSession();
+    if (!session) { toast("Open a session first.", "error"); return; }
+    if (!PdtReportHtml) return;
+    const anno = session.annotations || {};
+    const notes = anno.notes || [];
+    const starred = anno.starred_screenshots || [];
+    let mapSvg = null;
+    try { if (PdtDfg && PdtDfg.exportSvg) mapSvg = PdtDfg.exportSvg(); } catch (_) {}
+    const opts = await checklistModal({
+      title: "Export findings report",
+      message: "Choose what to include in the HTML report.",
+      okLabel: "Generate",
+      items: [
+        { key: "map", label: "Process map", checked: !!mapSvg,
+          disabled: !mapSvg, hint: mapSvg ? "" : "no process map rendered" },
+        { key: "analysis", label: "Waste & automation findings",
+          checked: !!session.analysis, disabled: !session.analysis,
+          hint: session.analysis ? "" : "session not analyzed" },
+        { key: "notes", label: "Notes", checked: notes.length > 0,
+          disabled: notes.length === 0, hint: notes.length ? "" : "no notes" },
+        { key: "screenshots", label: "Starred screenshots",
+          checked: starred.length > 0, disabled: starred.length === 0,
+          hint: starred.length ? starred.length + " starred"
+            : "none starred — star them in the Screenshots panel" },
+      ],
+    });
+    if (!opts) return;
+    const screenshotData = {};
+    if (opts.screenshots) {
+      for (const rel of starred) {
+        try {
+          const full = path.join(session.sessionFolder, rel);
+          if (fs.existsSync(full)) {
+            screenshotData[rel] = "data:image/jpeg;base64," +
+              fs.readFileSync(full).toString("base64");
+          }
+        } catch (_) {}
+      }
+    }
+    const html = PdtReportHtml.generateFindingsReport(session, {
+      includeProcessMap: !!opts.map,
+      includeAnalysis: !!opts.analysis,
+      includeNotes: !!opts.notes,
+      includeScreenshots: !!opts.screenshots,
+      processMapSvg: opts.map ? mapSvg : null,
+      screenshotData,
+    });
+    const folder = (session.sessionFolder || "").split(/[\\/]/).slice(-1)[0] || "session";
+    const r = await Ipc.saveHtmlFile({ content: html,
+      suggestedName: "findings-" + folder + ".html" });
+    if (r && r.ok) {
+      await Ipc.revealFile(r.path);
+      toast("Findings report saved: " + path.basename(r.path), "success");
+    } else if (r && r.error) {
+      toast("Export failed: " + r.error, "error");
+    }
+  });
 }
 
 $("#btn-export-promotions").addEventListener("click", async () => {

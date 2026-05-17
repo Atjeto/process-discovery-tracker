@@ -185,4 +185,67 @@ function formModal(opts) {
   });
 }
 
-module.exports = { promptModal, confirmModal, formModal };
+/* A modal with a list of checkboxes. `items` is an array of
+   { key, label, hint, checked, disabled }; resolves to an object of
+   key->bool, or null on cancel/escape. Used by the findings-report
+   export to pick which optional sections to include. */
+function checklistModal(opts) {
+  opts = opts || {};
+  const items = Array.isArray(opts.items) ? opts.items : [];
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop modal-prompt";
+    const okLabel = opts.okLabel || "OK";
+    const cancelLabel = opts.cancelLabel || "Cancel";
+    const rows = items.map((it) =>
+      '<label class="modal-check' + (it.disabled ? " disabled" : "") + '">' +
+      '<input type="checkbox" data-key="' + escapeAttr(it.key || "") + '"' +
+      (it.checked ? " checked" : "") + (it.disabled ? " disabled" : "") + ">" +
+      "<span>" + escapeHtml(it.label || it.key || "") + "</span>" +
+      (it.hint ? '<small>' + escapeHtml(it.hint) + "</small>" : "") +
+      "</label>").join("");
+    backdrop.innerHTML =
+      '<div class="modal modal-sm">' +
+      '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Options") + "</h2>" +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<div class="modal-body">' +
+      (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + "</p>" : "") +
+      rows +
+      "</div>" +
+      '<footer class="modal-footer">' +
+      '<button class="modal-cancel">' + escapeHtml(cancelLabel) + "</button>" +
+      '<button class="primary modal-ok">' + escapeHtml(okLabel) + "</button>" +
+      "</footer></div>";
+    document.body.appendChild(backdrop);
+    const okBtn = backdrop.querySelector(".modal-ok");
+    const cancelBtn = backdrop.querySelector(".modal-cancel");
+    const closeBtn = backdrop.querySelector(".modal-close");
+    let resolved = false;
+    function done(value) {
+      if (resolved) return;
+      resolved = true;
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey);
+      resolve(value);
+    }
+    function collect() {
+      const out = {};
+      backdrop.querySelectorAll("input[type=checkbox]").forEach((c) => {
+        out[c.dataset.key] = c.checked;
+      });
+      return out;
+    }
+    function onKey(e) {
+      if (e.key === "Enter") { e.preventDefault(); done(collect()); }
+      else if (e.key === "Escape") { e.preventDefault(); done(null); }
+    }
+    okBtn.addEventListener("click", () => done(collect()));
+    cancelBtn.addEventListener("click", () => done(null));
+    closeBtn.addEventListener("click", () => done(null));
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) done(null); });
+    document.addEventListener("keydown", onKey);
+    setTimeout(() => { okBtn.focus(); }, 0);
+  });
+}
+
+module.exports = { promptModal, confirmModal, formModal, checklistModal };

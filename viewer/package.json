@@ -50,6 +50,7 @@
       "dfg-viewer.js",
       "bpmn-viewer.js",
       "report-md.js",
+      "report-html.js",
       "session-summary.js",
       "step-editor.js",
       "phase-editor.js",

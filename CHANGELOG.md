@@ -8,6 +8,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **One-click HTML findings report.** The Session view's export bar
+  gains a "Findings report..." button. It produces a self-contained
+  HTML document — process summary, the process map inline, the steps
+  table, the waste / automation / efficiency findings, notes, and
+  starred screenshots, plus an editable recommendations block — that
+  opens in any browser with no external assets. A pre-export dialog
+  picks which optional sections to include. Screenshots gain a star
+  toggle in the Screenshots panel; only starred screenshots are
+  embedded in the report.
+
 - **A process-analysis layer turns a recording into IE-grade
   findings.** After step suggestion, normalization now runs four
   heuristic analyzers and writes an `analysis.json` sidecar: a per-step
