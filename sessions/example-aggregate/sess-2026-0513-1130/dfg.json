@@ -1,30 +1,25 @@
 {
   "edges": [
     {
-      "source": "Unclassified -- chrome.exe",
-      "target": "Unclassified -- chrome.exe",
+      "source": "CRM -- Salesforce",
+      "target": "SAP -- Sales Order",
       "frequency": 3
     },
     {
-      "source": "Unclassified -- chrome.exe",
-      "target": "Unclassified -- SAPGUI.exe",
+      "source": "SAP -- Sales Order",
+      "target": "Spreadsheet -- Excel",
       "frequency": 3
     },
     {
-      "source": "Unclassified -- SAPGUI.exe",
-      "target": "Unclassified -- EXCEL.EXE",
-      "frequency": 3
-    },
-    {
-      "source": "Unclassified -- EXCEL.EXE",
-      "target": "Unclassified -- OUTLOOK.EXE",
+      "source": "Spreadsheet -- Excel",
+      "target": "Email -- Outlook Desktop",
       "frequency": 3
     }
   ],
   "start_activities": {
-    "Unclassified -- chrome.exe": 3
+    "CRM -- Salesforce": 3
   },
   "end_activities": {
-    "Unclassified -- OUTLOOK.EXE": 3
+    "Email -- Outlook Desktop": 3
   }
 }

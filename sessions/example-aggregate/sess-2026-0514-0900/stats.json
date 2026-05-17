@@ -1,19 +1,19 @@
 {
   "activity_stats": [
     {
-      "activity_label": "Unclassified -- chrome.exe",
-      "frequency": 8,
-      "frequency_pct": 38.1,
+      "activity_label": "CRM -- Salesforce",
+      "frequency": 4,
+      "frequency_pct": 23.53,
       "total_duration_ms": 73000,
-      "mean_ms": 9125,
-      "median_ms": 9400,
-      "p90_ms": 10590,
-      "p99_ms": 11409
+      "mean_ms": 18250,
+      "median_ms": 19300,
+      "p90_ms": 19500,
+      "p99_ms": 19500
     },
     {
-      "activity_label": "Unclassified -- SAPGUI.exe",
+      "activity_label": "SAP -- Sales Order",
       "frequency": 5,
-      "frequency_pct": 23.81,
+      "frequency_pct": 29.41,
       "total_duration_ms": 55999,
       "mean_ms": 11199,
       "median_ms": 11100,
@@ -21,9 +21,9 @@
       "p99_ms": 13703
     },
     {
-      "activity_label": "Unclassified -- EXCEL.EXE",
+      "activity_label": "Spreadsheet -- Excel",
       "frequency": 4,
-      "frequency_pct": 19.05,
+      "frequency_pct": 23.53,
       "total_duration_ms": 26899,
       "mean_ms": 6724,
       "median_ms": 6499,
@@ -31,9 +31,9 @@
       "p99_ms": 9046
     },
     {
-      "activity_label": "Unclassified -- OUTLOOK.EXE",
+      "activity_label": "Email -- Outlook Desktop",
       "frequency": 3,
-      "frequency_pct": 14.29,
+      "frequency_pct": 17.65,
       "total_duration_ms": 21000,
       "mean_ms": 7000,
       "median_ms": 7500,
@@ -41,9 +41,9 @@
       "p99_ms": 8186
     },
     {
-      "activity_label": "Unclassified -- notepad.exe",
+      "activity_label": "Notes -- Notepad",
       "frequency": 1,
-      "frequency_pct": 4.76,
+      "frequency_pct": 5.88,
       "total_duration_ms": 4400,
       "mean_ms": 4400,
       "median_ms": 4400,
@@ -53,7 +53,7 @@
   ],
   "case_stats": [
     {
-      "case_id": "8884f4fb-e88c-4043-b13b-b7b9170eba66",
+      "case_id": "c82d28f9-63b9-44dc-9bf8-5f0ce3210d02",
       "label": "Order #10900",
       "parent_case_id": null,
       "start_ts": "2026-05-14T09:00:19Z",
@@ -63,7 +63,7 @@
       "end_reason": null
     },
     {
-      "case_id": "34db799e-9f37-4cf8-b338-65421571da23",
+      "case_id": "e5d1183f-9ea1-4bcc-8686-2a0622c98a4f",
       "label": "Order #10901",
       "parent_case_id": null,
       "start_ts": "2026-05-14T09:01:46Z",
@@ -73,7 +73,7 @@
       "end_reason": null
     },
     {
-      "case_id": "0861b48d-2d32-4042-8f17-3474cc88f486",
+      "case_id": "8555379e-70fd-4ab6-b91a-f92138d3336c",
       "label": "Order #10902",
       "parent_case_id": null,
       "start_ts": "2026-05-14T09:03:23Z",
@@ -83,7 +83,7 @@
       "end_reason": null
     },
     {
-      "case_id": "6d241935-5dec-4f76-b176-9aef774c5c86",
+      "case_id": "59765919-a5d5-48eb-ab7b-0714f7b3efae",
       "label": "Order #10903",
       "parent_case_id": null,
       "start_ts": "2026-05-14T09:04:29Z",
@@ -96,55 +96,48 @@
   "trace_variants": [
     {
       "variant": [
-        "Unclassified -- chrome.exe",
-        "Unclassified -- chrome.exe",
-        "Unclassified -- SAPGUI.exe",
-        "Unclassified -- EXCEL.EXE",
-        "Unclassified -- OUTLOOK.EXE"
+        "CRM -- Salesforce",
+        "SAP -- Sales Order",
+        "Spreadsheet -- Excel",
+        "Email -- Outlook Desktop"
       ],
       "frequency": 2,
-      "length": 5
-    },
-    {
-      "variant": [
-        "Unclassified -- chrome.exe",
-        "Unclassified -- chrome.exe",
-        "Unclassified -- SAPGUI.exe",
-        "Unclassified -- notepad.exe",
-        "Unclassified -- SAPGUI.exe",
-        "Unclassified -- EXCEL.EXE",
-        "Unclassified -- OUTLOOK.EXE"
-      ],
-      "frequency": 1,
-      "length": 7
-    },
-    {
-      "variant": [
-        "Unclassified -- chrome.exe",
-        "Unclassified -- chrome.exe",
-        "Unclassified -- SAPGUI.exe",
-        "Unclassified -- EXCEL.EXE"
-      ],
-      "frequency": 1,
       "length": 4
+    },
+    {
+      "variant": [
+        "CRM -- Salesforce",
+        "SAP -- Sales Order",
+        "Notes -- Notepad",
+        "SAP -- Sales Order",
+        "Spreadsheet -- Excel",
+        "Email -- Outlook Desktop"
+      ],
+      "frequency": 1,
+      "length": 6
+    },
+    {
+      "variant": [
+        "CRM -- Salesforce",
+        "SAP -- Sales Order",
+        "Spreadsheet -- Excel"
+      ],
+      "frequency": 1,
+      "length": 3
     }
   ],
   "app_outliers": [],
   "rework_loops": [
     {
-      "activity_label": "Unclassified -- chrome.exe",
-      "rework_count": 4
-    },
-    {
-      "activity_label": "Unclassified -- SAPGUI.exe",
+      "activity_label": "SAP -- Sales Order",
       "rework_count": 1
     }
   ],
   "meta": {
-    "normalization_run_at": "2026-05-15T23:42:26.731805+00:00",
-    "taxonomy_version": null,
-    "taxonomy_path": null,
-    "session_folder": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\sessions\\example-aggregate\\sess-2026-0514-0900",
+    "normalization_run_at": "2026-05-17T14:56:32.008354+00:00",
+    "taxonomy_version": "v1",
+    "taxonomy_path": "normalization/taxonomy.yaml",
+    "session_folder": "sessions\\example-aggregate\\sess-2026-0514-0900",
     "worker_id": "demo-worker",
     "raw_event_count": 155,
     "dropped_jsonl_lines": 0,

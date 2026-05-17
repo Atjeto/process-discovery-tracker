@@ -8,9 +8,9 @@
   "session_id": "sess-2026-0511-1320",
   "steps": [
     {
-      "step_id": "6b719b65-b214-447c-8eaa-accc6805ac68",
+      "step_id": "67667b9c-a37f-4432-8ab8-b2ac12a288c3",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "0a813303-aedb-4542-ad03-0537ae3dfd06",
+      "case_id": "7151aeb0-e4f5-4ffb-b3d3-0ed467f2ab7e",
       "name": "Salesforce: Open customer record",
       "description": "",
       "time_range": {
@@ -42,9 +42,9 @@
       "phase_id": null
     },
     {
-      "step_id": "4a093994-db01-4eb5-8db0-8edfe100cf9c",
+      "step_id": "61c055d1-0406-406f-b3e5-ee28c7125b76",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "0a813303-aedb-4542-ad03-0537ae3dfd06",
+      "case_id": "7151aeb0-e4f5-4ffb-b3d3-0ed467f2ab7e",
       "name": "Salesforce: Save order",
       "description": "",
       "time_range": {
@@ -76,9 +76,9 @@
       "phase_id": null
     },
     {
-      "step_id": "8fbfbcef-00bd-4592-b868-e4be989fac63",
+      "step_id": "9cc687ea-431b-453b-92ff-9d5c07564ba9",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "0a813303-aedb-4542-ad03-0537ae3dfd06",
+      "case_id": "7151aeb0-e4f5-4ffb-b3d3-0ed467f2ab7e",
       "name": "SAP: Create sales order",
       "description": "",
       "time_range": {
@@ -111,9 +111,9 @@
       "phase_id": null
     },
     {
-      "step_id": "c57fc766-a3b0-42af-b87d-578f19dfdb85",
+      "step_id": "5cc7c0ed-6ff2-48a5-9825-2a0a1adfa7e1",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "0a813303-aedb-4542-ad03-0537ae3dfd06",
+      "case_id": "7151aeb0-e4f5-4ffb-b3d3-0ed467f2ab7e",
       "name": "Excel: Save workbook",
       "description": "",
       "time_range": {
@@ -144,9 +144,9 @@
       "phase_id": null
     },
     {
-      "step_id": "646632ee-7252-4325-ae46-f8e125951395",
+      "step_id": "255a07a8-e382-4258-af85-ee312d6f780c",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "0a813303-aedb-4542-ad03-0537ae3dfd06",
+      "case_id": "7151aeb0-e4f5-4ffb-b3d3-0ed467f2ab7e",
       "name": "Outlook: Send email",
       "description": "",
       "time_range": {
@@ -176,9 +176,9 @@
       "phase_id": null
     },
     {
-      "step_id": "1ab34be7-e5ce-4e9a-8f78-c0e8d590eb92",
+      "step_id": "9d4079a3-f64b-44ad-93d7-59124c95f43d",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "name": "Salesforce: Open customer record",
       "description": "",
       "time_range": {
@@ -210,9 +210,9 @@
       "phase_id": null
     },
     {
-      "step_id": "bc1b9f02-fa40-4d4a-8789-89e33cf0076f",
+      "step_id": "8890b21c-0ada-4ef7-95c4-15570b73e74c",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "name": "Salesforce: Save order",
       "description": "",
       "time_range": {
@@ -244,9 +244,9 @@
       "phase_id": null
     },
     {
-      "step_id": "5683404b-593c-4156-b085-e5039aeb9444",
+      "step_id": "b49c10f3-72b6-4e0b-8e34-073bea836aae",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "name": "SAP: Create sales order",
       "description": "",
       "time_range": {
@@ -279,9 +279,9 @@
       "phase_id": null
     },
     {
-      "step_id": "402ac9a4-757b-4d9e-a6db-63f5f4c9306c",
+      "step_id": "ef86074a-196d-441c-92e6-3e8e5dc2fbcd",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "name": "Salesforce: Save order",
       "description": "",
       "time_range": {
@@ -310,9 +310,9 @@
       "phase_id": null
     },
     {
-      "step_id": "80b75102-bde3-4fa9-9b27-232ec6acf4c9",
+      "step_id": "3ce00ede-f923-4eda-a59c-856f02f18003",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "name": "SAP: Create sales order",
       "description": "",
       "time_range": {
@@ -345,9 +345,9 @@
       "phase_id": null
     },
     {
-      "step_id": "46185f85-38e5-45e4-893e-d2f0a5e6cc60",
+      "step_id": "5c6252f6-f13d-476a-a1a0-35666b85e929",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "name": "Excel: Save workbook",
       "description": "",
       "time_range": {
@@ -378,9 +378,9 @@
       "phase_id": null
     },
     {
-      "step_id": "a18db02a-93f7-4c5b-9f89-8af83a57b7e4",
+      "step_id": "df682210-952b-478b-9d0f-6146f818926d",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "name": "Outlook: Send email",
       "description": "",
       "time_range": {
@@ -410,9 +410,9 @@
       "phase_id": null
     },
     {
-      "step_id": "312a2d91-92a6-4998-bab0-a261373c9107",
+      "step_id": "6c9ac7e5-f36f-4147-a22b-5829e7976dc2",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "5f89d839-4965-4e27-a3b3-4d4ccfe8f054",
+      "case_id": "28d634a5-0935-4d12-9d3b-4439eb339471",
       "name": "Salesforce: Open customer record",
       "description": "",
       "time_range": {
@@ -444,9 +444,9 @@
       "phase_id": null
     },
     {
-      "step_id": "7fe98454-5042-411e-a494-6ccfa74d4e68",
+      "step_id": "81a2ecf2-2f8f-4d0b-afbe-f23393040246",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "5f89d839-4965-4e27-a3b3-4d4ccfe8f054",
+      "case_id": "28d634a5-0935-4d12-9d3b-4439eb339471",
       "name": "Salesforce: Save order",
       "description": "",
       "time_range": {
@@ -478,9 +478,9 @@
       "phase_id": null
     },
     {
-      "step_id": "3f691fc5-e2ea-4b94-961a-920db47f94f1",
+      "step_id": "0aaf022f-29dc-49f5-8fae-09f4d6720bc9",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "5f89d839-4965-4e27-a3b3-4d4ccfe8f054",
+      "case_id": "28d634a5-0935-4d12-9d3b-4439eb339471",
       "name": "SAP: Create sales order",
       "description": "",
       "time_range": {
@@ -513,9 +513,9 @@
       "phase_id": null
     },
     {
-      "step_id": "89ebbc0d-2204-4100-9b91-6f5c6df2a99b",
+      "step_id": "2ddd261f-5ea4-459d-ab38-8c723d27785d",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "5f89d839-4965-4e27-a3b3-4d4ccfe8f054",
+      "case_id": "28d634a5-0935-4d12-9d3b-4439eb339471",
       "name": "Excel: Save workbook",
       "description": "",
       "time_range": {
@@ -546,9 +546,9 @@
       "phase_id": null
     },
     {
-      "step_id": "b43b59be-6a68-4845-8690-986375589ff6",
+      "step_id": "ca7d6ef5-b070-49fc-906c-7c6927d56154",
       "session_id": "sess-2026-0511-1320",
-      "case_id": "5f89d839-4965-4e27-a3b3-4d4ccfe8f054",
+      "case_id": "28d634a5-0935-4d12-9d3b-4439eb339471",
       "name": "Outlook: Send email",
       "description": "",
       "time_range": {
@@ -579,5 +579,5 @@
     }
   ],
   "matched_against": null,
-  "last_modified": "2026-05-15T23:42:14.368253+00:00"
+  "last_modified": "2026-05-17T14:56:20.593644+00:00"
 }

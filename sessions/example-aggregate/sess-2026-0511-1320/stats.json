@@ -1,19 +1,19 @@
 {
   "activity_stats": [
     {
-      "activity_label": "Unclassified -- chrome.exe",
-      "frequency": 7,
-      "frequency_pct": 41.18,
+      "activity_label": "CRM -- Salesforce",
+      "frequency": 4,
+      "frequency_pct": 28.57,
       "total_duration_ms": 62000,
-      "mean_ms": 8857,
-      "median_ms": 10200,
-      "p90_ms": 10680,
-      "p99_ms": 11058
+      "mean_ms": 15500,
+      "median_ms": 18500,
+      "p90_ms": 20630,
+      "p99_ms": 21413
     },
     {
-      "activity_label": "Unclassified -- SAPGUI.exe",
+      "activity_label": "SAP -- Sales Order",
       "frequency": 4,
-      "frequency_pct": 23.53,
+      "frequency_pct": 28.57,
       "total_duration_ms": 45299,
       "mean_ms": 11324,
       "median_ms": 11199,
@@ -21,9 +21,9 @@
       "p99_ms": 13367
     },
     {
-      "activity_label": "Unclassified -- EXCEL.EXE",
+      "activity_label": "Spreadsheet -- Excel",
       "frequency": 3,
-      "frequency_pct": 17.65,
+      "frequency_pct": 21.43,
       "total_duration_ms": 22999,
       "mean_ms": 7666,
       "median_ms": 7699,
@@ -31,9 +31,9 @@
       "p99_ms": 8679
     },
     {
-      "activity_label": "Unclassified -- OUTLOOK.EXE",
+      "activity_label": "Email -- Outlook Desktop",
       "frequency": 3,
-      "frequency_pct": 17.65,
+      "frequency_pct": 21.43,
       "total_duration_ms": 17299,
       "mean_ms": 5766,
       "median_ms": 5399,
@@ -43,7 +43,7 @@
   ],
   "case_stats": [
     {
-      "case_id": "0a813303-aedb-4542-ad03-0537ae3dfd06",
+      "case_id": "7151aeb0-e4f5-4ffb-b3d3-0ed467f2ab7e",
       "label": "Order #11320",
       "parent_case_id": null,
       "start_ts": "2026-05-11T13:20:12Z",
@@ -53,7 +53,7 @@
       "end_reason": null
     },
     {
-      "case_id": "97aef5e1-49d1-48c5-87f9-56a90fdd5e37",
+      "case_id": "5fe5073b-1c97-477e-9810-546904ececcb",
       "label": "Order #11321",
       "parent_case_id": null,
       "start_ts": "2026-05-11T13:21:36Z",
@@ -63,7 +63,7 @@
       "end_reason": null
     },
     {
-      "case_id": "5f89d839-4965-4e27-a3b3-4d4ccfe8f054",
+      "case_id": "28d634a5-0935-4d12-9d3b-4439eb339471",
       "label": "Order #11322",
       "parent_case_id": null,
       "start_ts": "2026-05-11T13:23:08Z",
@@ -76,45 +76,43 @@
   "trace_variants": [
     {
       "variant": [
-        "Unclassified -- chrome.exe",
-        "Unclassified -- chrome.exe",
-        "Unclassified -- SAPGUI.exe",
-        "Unclassified -- EXCEL.EXE",
-        "Unclassified -- OUTLOOK.EXE"
+        "CRM -- Salesforce",
+        "SAP -- Sales Order",
+        "Spreadsheet -- Excel",
+        "Email -- Outlook Desktop"
       ],
       "frequency": 2,
-      "length": 5
+      "length": 4
     },
     {
       "variant": [
-        "Unclassified -- chrome.exe",
-        "Unclassified -- chrome.exe",
-        "Unclassified -- SAPGUI.exe",
-        "Unclassified -- chrome.exe",
-        "Unclassified -- SAPGUI.exe",
-        "Unclassified -- EXCEL.EXE",
-        "Unclassified -- OUTLOOK.EXE"
+        "CRM -- Salesforce",
+        "SAP -- Sales Order",
+        "CRM -- Salesforce",
+        "SAP -- Sales Order",
+        "Spreadsheet -- Excel",
+        "Email -- Outlook Desktop"
       ],
       "frequency": 1,
-      "length": 7
+      "length": 6
     }
   ],
   "app_outliers": [],
   "rework_loops": [
     {
-      "activity_label": "Unclassified -- chrome.exe",
-      "rework_count": 4
+      "activity_label": "CRM -- Salesforce",
+      "rework_count": 1
     },
     {
-      "activity_label": "Unclassified -- SAPGUI.exe",
+      "activity_label": "SAP -- Sales Order",
       "rework_count": 1
     }
   ],
   "meta": {
-    "normalization_run_at": "2026-05-15T23:42:14.405253+00:00",
-    "taxonomy_version": null,
-    "taxonomy_path": null,
-    "session_folder": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\sessions\\example-aggregate\\sess-2026-0511-1320",
+    "normalization_run_at": "2026-05-17T14:56:20.636160+00:00",
+    "taxonomy_version": "v1",
+    "taxonomy_path": "normalization/taxonomy.yaml",
+    "session_folder": "sessions\\example-aggregate\\sess-2026-0511-1320",
     "worker_id": "demo-worker",
     "raw_event_count": 125,
     "dropped_jsonl_lines": 0,

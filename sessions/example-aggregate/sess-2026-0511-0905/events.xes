@@ -2,236 +2,186 @@
 <log xes.version="1849-2016" xes.features="nested-attributes" xmlns="http://www.xes-standard.org/">
 	<trace>
 		<string key="concept:name" value="Order #10905" />
-		<string key="case:id" value="7daec0dd-8b1d-4bff-8da7-c36305c96789" />
+		<string key="case:id" value="ec615b44-4806-48a7-b12a-24b3bfb81dcd" />
 		<string key="case:start_ts" value="2026-05-11T09:05:12Z" />
 		<string key="case:end_ts" value="2026-05-11T09:05:56Z" />
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<string key="concept:name" value="CRM -- Salesforce" />
 			<date key="time:timestamp" value="2026-05-11T09:05:12+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="chrome.exe" />
 			<string key="raw:title" value="Salesforce - Account lookup" />
 			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="11400" />
-			<string key="case:stack" value="7daec0dd-8b1d-4bff-8da7-c36305c96789" />
+			<int key="raw:duration_ms" value="20200" />
+			<string key="case:stack" value="ec615b44-4806-48a7-b12a-24b3bfb81dcd" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
-			<date key="time:timestamp" value="2026-05-11T09:05:24+00:00" />
-			<string key="org:resource" value="demo-worker" />
-			<string key="raw:app" value="chrome.exe" />
-			<string key="raw:title" value="Salesforce - Order #10905 entry" />
-			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="8800" />
-			<string key="case:stack" value="7daec0dd-8b1d-4bff-8da7-c36305c96789" />
-		</event>
-		<event>
-			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<string key="concept:name" value="SAP -- Sales Order" />
 			<date key="time:timestamp" value="2026-05-11T09:05:32+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="SAPGUI.exe" />
 			<string key="raw:title" value="SAP - Create Sales Order" />
 			<int key="raw:pid" value="5180" />
 			<int key="raw:duration_ms" value="11200" />
-			<string key="case:stack" value="7daec0dd-8b1d-4bff-8da7-c36305c96789" />
+			<string key="case:stack" value="ec615b44-4806-48a7-b12a-24b3bfb81dcd" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- EXCEL.EXE" />
+			<string key="concept:name" value="Spreadsheet -- Excel" />
 			<date key="time:timestamp" value="2026-05-11T09:05:44+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="EXCEL.EXE" />
 			<string key="raw:title" value="Excel - Order Tracking.xlsx" />
 			<int key="raw:pid" value="9220" />
 			<int key="raw:duration_ms" value="8900" />
-			<string key="case:stack" value="7daec0dd-8b1d-4bff-8da7-c36305c96789" />
+			<string key="case:stack" value="ec615b44-4806-48a7-b12a-24b3bfb81dcd" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- OUTLOOK.EXE" />
+			<string key="concept:name" value="Email -- Outlook Desktop" />
 			<date key="time:timestamp" value="2026-05-11T09:05:53+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="OUTLOOK.EXE" />
 			<string key="raw:title" value="Outlook - Order confirmation" />
 			<int key="raw:pid" value="3360" />
 			<int key="raw:duration_ms" value="3700" />
-			<string key="case:stack" value="7daec0dd-8b1d-4bff-8da7-c36305c96789" />
+			<string key="case:stack" value="ec615b44-4806-48a7-b12a-24b3bfb81dcd" />
 		</event>
 	</trace>
 	<trace>
 		<string key="concept:name" value="Order #10906" />
-		<string key="case:id" value="94a306b5-0bec-411d-932e-b3bef82b52e9" />
+		<string key="case:id" value="00245c92-edc3-42cd-82aa-00ddb4253966" />
 		<string key="case:start_ts" value="2026-05-11T09:06:34Z" />
 		<string key="case:end_ts" value="2026-05-11T09:07:17Z" />
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<string key="concept:name" value="CRM -- Salesforce" />
 			<date key="time:timestamp" value="2026-05-11T09:06:34+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="chrome.exe" />
 			<string key="raw:title" value="Salesforce - Account lookup" />
 			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="7800" />
-			<string key="case:stack" value="94a306b5-0bec-411d-932e-b3bef82b52e9" />
+			<int key="raw:duration_ms" value="16000" />
+			<string key="case:stack" value="00245c92-edc3-42cd-82aa-00ddb4253966" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
-			<date key="time:timestamp" value="2026-05-11T09:06:41+00:00" />
-			<string key="org:resource" value="demo-worker" />
-			<string key="raw:app" value="chrome.exe" />
-			<string key="raw:title" value="Salesforce - Order #10906 entry" />
-			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="8200" />
-			<string key="case:stack" value="94a306b5-0bec-411d-932e-b3bef82b52e9" />
-		</event>
-		<event>
-			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<string key="concept:name" value="SAP -- Sales Order" />
 			<date key="time:timestamp" value="2026-05-11T09:06:50+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="SAPGUI.exe" />
 			<string key="raw:title" value="SAP - Create Sales Order" />
 			<int key="raw:pid" value="5180" />
 			<int key="raw:duration_ms" value="10200" />
-			<string key="case:stack" value="94a306b5-0bec-411d-932e-b3bef82b52e9" />
+			<string key="case:stack" value="00245c92-edc3-42cd-82aa-00ddb4253966" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- EXCEL.EXE" />
+			<string key="concept:name" value="Spreadsheet -- Excel" />
 			<date key="time:timestamp" value="2026-05-11T09:07:00+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="EXCEL.EXE" />
 			<string key="raw:title" value="Excel - Order Tracking.xlsx" />
 			<int key="raw:pid" value="9220" />
 			<int key="raw:duration_ms" value="9500" />
-			<string key="case:stack" value="94a306b5-0bec-411d-932e-b3bef82b52e9" />
+			<string key="case:stack" value="00245c92-edc3-42cd-82aa-00ddb4253966" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- OUTLOOK.EXE" />
+			<string key="concept:name" value="Email -- Outlook Desktop" />
 			<date key="time:timestamp" value="2026-05-11T09:07:09+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="OUTLOOK.EXE" />
 			<string key="raw:title" value="Outlook - Order confirmation" />
 			<int key="raw:pid" value="3360" />
 			<int key="raw:duration_ms" value="7300" />
-			<string key="case:stack" value="94a306b5-0bec-411d-932e-b3bef82b52e9" />
+			<string key="case:stack" value="00245c92-edc3-42cd-82aa-00ddb4253966" />
 		</event>
 	</trace>
 	<trace>
 		<string key="concept:name" value="Order #10907" />
-		<string key="case:id" value="d521873f-edc6-4b53-9f0f-16a9c447978f" />
+		<string key="case:id" value="e00a00bc-5e34-443b-a246-f9e2bcdbc985" />
 		<string key="case:start_ts" value="2026-05-11T09:07:55Z" />
 		<string key="case:end_ts" value="2026-05-11T09:08:44Z" />
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<string key="concept:name" value="CRM -- Salesforce" />
 			<date key="time:timestamp" value="2026-05-11T09:07:55+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="chrome.exe" />
 			<string key="raw:title" value="Salesforce - Account lookup" />
 			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="10700" />
-			<string key="case:stack" value="d521873f-edc6-4b53-9f0f-16a9c447978f" />
+			<int key="raw:duration_ms" value="24600" />
+			<string key="case:stack" value="e00a00bc-5e34-443b-a246-f9e2bcdbc985" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
-			<date key="time:timestamp" value="2026-05-11T09:08:05+00:00" />
-			<string key="org:resource" value="demo-worker" />
-			<string key="raw:app" value="chrome.exe" />
-			<string key="raw:title" value="Salesforce - Credit check" />
-			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="4000" />
-			<string key="case:stack" value="d521873f-edc6-4b53-9f0f-16a9c447978f" />
-		</event>
-		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
-			<date key="time:timestamp" value="2026-05-11T09:08:09+00:00" />
-			<string key="org:resource" value="demo-worker" />
-			<string key="raw:app" value="chrome.exe" />
-			<string key="raw:title" value="Salesforce - Order #10907 entry" />
-			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="9900" />
-			<string key="case:stack" value="d521873f-edc6-4b53-9f0f-16a9c447978f" />
-		</event>
-		<event>
-			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<string key="concept:name" value="SAP -- Sales Order" />
 			<date key="time:timestamp" value="2026-05-11T09:08:19+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="SAPGUI.exe" />
 			<string key="raw:title" value="SAP - Create Sales Order" />
 			<int key="raw:pid" value="5180" />
 			<int key="raw:duration_ms" value="11800" />
-			<string key="case:stack" value="d521873f-edc6-4b53-9f0f-16a9c447978f" />
+			<string key="case:stack" value="e00a00bc-5e34-443b-a246-f9e2bcdbc985" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- EXCEL.EXE" />
+			<string key="concept:name" value="Spreadsheet -- Excel" />
 			<date key="time:timestamp" value="2026-05-11T09:08:31+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="EXCEL.EXE" />
 			<string key="raw:title" value="Excel - Order Tracking.xlsx" />
 			<int key="raw:pid" value="9220" />
 			<int key="raw:duration_ms" value="7899" />
-			<string key="case:stack" value="d521873f-edc6-4b53-9f0f-16a9c447978f" />
+			<string key="case:stack" value="e00a00bc-5e34-443b-a246-f9e2bcdbc985" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- OUTLOOK.EXE" />
+			<string key="concept:name" value="Email -- Outlook Desktop" />
 			<date key="time:timestamp" value="2026-05-11T09:08:39+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="OUTLOOK.EXE" />
 			<string key="raw:title" value="Outlook - Order confirmation" />
 			<int key="raw:pid" value="3360" />
 			<int key="raw:duration_ms" value="5199" />
-			<string key="case:stack" value="d521873f-edc6-4b53-9f0f-16a9c447978f" />
+			<string key="case:stack" value="e00a00bc-5e34-443b-a246-f9e2bcdbc985" />
 		</event>
 	</trace>
 	<trace>
 		<string key="concept:name" value="Order #10908" />
-		<string key="case:id" value="fa46cc4f-fcee-4eb1-9f79-d3e8d91e2d01" />
+		<string key="case:id" value="d61f665e-386c-4299-9019-3dcd2fd79d22" />
 		<string key="case:start_ts" value="2026-05-11T09:09:10Z" />
 		<string key="case:end_ts" value="2026-05-11T09:09:56Z" />
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
+			<string key="concept:name" value="CRM -- Salesforce" />
 			<date key="time:timestamp" value="2026-05-11T09:09:10+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="chrome.exe" />
 			<string key="raw:title" value="Salesforce - Account lookup" />
 			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="10900" />
-			<string key="case:stack" value="fa46cc4f-fcee-4eb1-9f79-d3e8d91e2d01" />
+			<int key="raw:duration_ms" value="19699" />
+			<string key="case:stack" value="d61f665e-386c-4299-9019-3dcd2fd79d22" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- chrome.exe" />
-			<date key="time:timestamp" value="2026-05-11T09:09:21+00:00" />
-			<string key="org:resource" value="demo-worker" />
-			<string key="raw:app" value="chrome.exe" />
-			<string key="raw:title" value="Salesforce - Order #10908 entry" />
-			<int key="raw:pid" value="4120" />
-			<int key="raw:duration_ms" value="8799" />
-			<string key="case:stack" value="fa46cc4f-fcee-4eb1-9f79-d3e8d91e2d01" />
-		</event>
-		<event>
-			<string key="concept:name" value="Unclassified -- SAPGUI.exe" />
+			<string key="concept:name" value="SAP -- Sales Order" />
 			<date key="time:timestamp" value="2026-05-11T09:09:30+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="SAPGUI.exe" />
 			<string key="raw:title" value="SAP - Create Sales Order" />
 			<int key="raw:pid" value="5180" />
 			<int key="raw:duration_ms" value="11000" />
-			<string key="case:stack" value="fa46cc4f-fcee-4eb1-9f79-d3e8d91e2d01" />
+			<string key="case:stack" value="d61f665e-386c-4299-9019-3dcd2fd79d22" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- EXCEL.EXE" />
+			<string key="concept:name" value="Spreadsheet -- Excel" />
 			<date key="time:timestamp" value="2026-05-11T09:09:41+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="EXCEL.EXE" />
 			<string key="raw:title" value="Excel - Order Tracking.xlsx" />
 			<int key="raw:pid" value="9220" />
 			<int key="raw:duration_ms" value="9400" />
-			<string key="case:stack" value="fa46cc4f-fcee-4eb1-9f79-d3e8d91e2d01" />
+			<string key="case:stack" value="d61f665e-386c-4299-9019-3dcd2fd79d22" />
 		</event>
 		<event>
-			<string key="concept:name" value="Unclassified -- OUTLOOK.EXE" />
+			<string key="concept:name" value="Email -- Outlook Desktop" />
 			<date key="time:timestamp" value="2026-05-11T09:09:50+00:00" />
 			<string key="org:resource" value="demo-worker" />
 			<string key="raw:app" value="OUTLOOK.EXE" />
 			<string key="raw:title" value="Outlook - Order confirmation" />
 			<int key="raw:pid" value="3360" />
 			<int key="raw:duration_ms" value="6400" />
-			<string key="case:stack" value="fa46cc4f-fcee-4eb1-9f79-d3e8d91e2d01" />
+			<string key="case:stack" value="d61f665e-386c-4299-9019-3dcd2fd79d22" />
 		</event>
 	</trace>
 </log>

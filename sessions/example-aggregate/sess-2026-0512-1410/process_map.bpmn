@@ -1,135 +1,104 @@
 <?xml version='1.0' encoding='utf-8'?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://process-discovery-tracker/bpmn">
   <bpmn:process id="Process_1" isExecutable="false">
-    <bpmn:task id="node_0_Unclassified_--_SAPGUI_exe" name="Unclassified -- SAPGUI.exe">
+    <bpmn:exclusiveGateway id="node_0">
       <bpmn:incoming>flow_5</bpmn:incoming>
-      <bpmn:outgoing>flow_10</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:exclusiveGateway id="node_1">
-      <bpmn:incoming>flow_3</bpmn:incoming>
-      <bpmn:outgoing>flow_2</bpmn:outgoing>
-      <bpmn:outgoing>flow_5</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:task id="node_2_Unclassified_--_OUTLOOK_EXE" name="Unclassified -- OUTLOOK.EXE">
-      <bpmn:incoming>flow_0</bpmn:incoming>
-      <bpmn:outgoing>flow_8</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:task id="node_3_end" name="end">
-      <bpmn:incoming>flow_9</bpmn:incoming>
-    </bpmn:task>
-    <bpmn:task id="node_4_Unclassified_--_chrome_exe" name="Unclassified -- chrome.exe">
-      <bpmn:incoming>flow_6</bpmn:incoming>
-      <bpmn:outgoing>flow_3</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:startEvent id="node_5_start" name="start">
-      <bpmn:outgoing>flow_4</bpmn:outgoing>
-    </bpmn:startEvent>
-    <bpmn:exclusiveGateway id="node_6">
-      <bpmn:incoming>flow_1</bpmn:incoming>
-      <bpmn:outgoing>flow_0</bpmn:outgoing>
-      <bpmn:outgoing>flow_7</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:task id="node_7_Unclassified_--_EXCEL_EXE" name="Unclassified -- EXCEL.EXE">
-      <bpmn:incoming>flow_10</bpmn:incoming>
-      <bpmn:outgoing>flow_1</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:exclusiveGateway id="node_8">
-      <bpmn:incoming>flow_2</bpmn:incoming>
-      <bpmn:incoming>flow_4</bpmn:incoming>
+      <bpmn:incoming>flow_7</bpmn:incoming>
       <bpmn:outgoing>flow_6</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:exclusiveGateway id="node_9">
-      <bpmn:incoming>flow_7</bpmn:incoming>
-      <bpmn:incoming>flow_8</bpmn:incoming>
-      <bpmn:outgoing>flow_9</bpmn:outgoing>
+    <bpmn:task id="node_1_Email_--_Outlook_Desktop" name="Email -- Outlook Desktop">
+      <bpmn:incoming>flow_1</bpmn:incoming>
+      <bpmn:outgoing>flow_5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="node_2_Spreadsheet_--_Excel" name="Spreadsheet -- Excel">
+      <bpmn:incoming>flow_3</bpmn:incoming>
+      <bpmn:outgoing>flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="node_3_SAP_--_Sales_Order" name="SAP -- Sales Order">
+      <bpmn:incoming>flow_4</bpmn:incoming>
+      <bpmn:outgoing>flow_3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="node_4_CRM_--_Salesforce" name="CRM -- Salesforce">
+      <bpmn:incoming>flow_0</bpmn:incoming>
+      <bpmn:outgoing>flow_4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:startEvent id="node_5_start" name="start">
+      <bpmn:outgoing>flow_0</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="node_6_end" name="end">
+      <bpmn:incoming>flow_6</bpmn:incoming>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="node_7">
+      <bpmn:incoming>flow_2</bpmn:incoming>
+      <bpmn:outgoing>flow_1</bpmn:outgoing>
+      <bpmn:outgoing>flow_7</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:sequenceFlow id="flow_0" sourceRef="node_6" targetRef="node_2_Unclassified_--_OUTLOOK_EXE" />
-    <bpmn:sequenceFlow id="flow_1" sourceRef="node_7_Unclassified_--_EXCEL_EXE" targetRef="node_6" />
-    <bpmn:sequenceFlow id="flow_2" sourceRef="node_1" targetRef="node_8" />
-    <bpmn:sequenceFlow id="flow_3" sourceRef="node_4_Unclassified_--_chrome_exe" targetRef="node_1" />
-    <bpmn:sequenceFlow id="flow_4" sourceRef="node_5_start" targetRef="node_8" />
-    <bpmn:sequenceFlow id="flow_5" sourceRef="node_1" targetRef="node_0_Unclassified_--_SAPGUI_exe" />
-    <bpmn:sequenceFlow id="flow_6" sourceRef="node_8" targetRef="node_4_Unclassified_--_chrome_exe" />
-    <bpmn:sequenceFlow id="flow_7" sourceRef="node_6" targetRef="node_9" />
-    <bpmn:sequenceFlow id="flow_8" sourceRef="node_2_Unclassified_--_OUTLOOK_EXE" targetRef="node_9" />
-    <bpmn:sequenceFlow id="flow_9" sourceRef="node_9" targetRef="node_3_end" />
-    <bpmn:sequenceFlow id="flow_10" sourceRef="node_0_Unclassified_--_SAPGUI_exe" targetRef="node_7_Unclassified_--_EXCEL_EXE" />
+    <bpmn:sequenceFlow id="flow_0" sourceRef="node_5_start" targetRef="node_4_CRM_--_Salesforce" />
+    <bpmn:sequenceFlow id="flow_1" sourceRef="node_7" targetRef="node_1_Email_--_Outlook_Desktop" />
+    <bpmn:sequenceFlow id="flow_2" sourceRef="node_2_Spreadsheet_--_Excel" targetRef="node_7" />
+    <bpmn:sequenceFlow id="flow_3" sourceRef="node_3_SAP_--_Sales_Order" targetRef="node_2_Spreadsheet_--_Excel" />
+    <bpmn:sequenceFlow id="flow_4" sourceRef="node_4_CRM_--_Salesforce" targetRef="node_3_SAP_--_Sales_Order" />
+    <bpmn:sequenceFlow id="flow_5" sourceRef="node_1_Email_--_Outlook_Desktop" targetRef="node_0" />
+    <bpmn:sequenceFlow id="flow_6" sourceRef="node_0" targetRef="node_6_end" />
+    <bpmn:sequenceFlow id="flow_7" sourceRef="node_7" targetRef="node_0" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
-      <bpmndi:BPMNShape id="Shape_node_0_Unclassified_--_SAPGUI_exe" bpmnElement="node_0_Unclassified_--_SAPGUI_exe">
-        <dc:Bounds x="166" y="115" width="110" height="70" />
+      <bpmndi:BPMNShape id="Shape_node_0" bpmnElement="node_0">
+        <dc:Bounds x="1056" y="175" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_1" bpmnElement="node_1">
-        <dc:Bounds x="546" y="102" width="50" height="50" />
+      <bpmndi:BPMNShape id="Shape_node_1_Email_--_Outlook_Desktop" bpmnElement="node_1_Email_--_Outlook_Desktop">
+        <dc:Bounds x="866" y="165" width="110" height="70" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_2_Unclassified_--_OUTLOOK_EXE" bpmnElement="node_2_Unclassified_--_OUTLOOK_EXE">
-        <dc:Bounds x="166" y="215" width="110" height="70" />
+      <bpmndi:BPMNShape id="Shape_node_2_Spreadsheet_--_Excel" bpmnElement="node_2_Spreadsheet_--_Excel">
+        <dc:Bounds x="546" y="165" width="110" height="70" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_3_end" bpmnElement="node_3_end">
-        <dc:Bounds x="553" y="182" width="36" height="36" />
+      <bpmndi:BPMNShape id="Shape_node_3_SAP_--_Sales_Order" bpmnElement="node_3_SAP_--_Sales_Order">
+        <dc:Bounds x="356" y="165" width="110" height="70" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_4_Unclassified_--_chrome_exe" bpmnElement="node_4_Unclassified_--_chrome_exe">
-        <dc:Bounds x="356" y="115" width="110" height="70" />
+      <bpmndi:BPMNShape id="Shape_node_4_CRM_--_Salesforce" bpmnElement="node_4_CRM_--_Salesforce">
+        <dc:Bounds x="166" y="165" width="110" height="70" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_node_5_start" bpmnElement="node_5_start">
         <dc:Bounds x="50" y="182" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_6" bpmnElement="node_6">
-        <dc:Bounds x="546" y="248" width="50" height="50" />
+      <bpmndi:BPMNShape id="Shape_node_6_end" bpmnElement="node_6_end">
+        <dc:Bounds x="1186" y="182" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_7_Unclassified_--_EXCEL_EXE" bpmnElement="node_7_Unclassified_--_EXCEL_EXE">
-        <dc:Bounds x="356" y="215" width="110" height="70" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_8" bpmnElement="node_8">
-        <dc:Bounds x="676" y="135" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_node_9" bpmnElement="node_9">
-        <dc:Bounds x="676" y="215" width="50" height="50" />
+      <bpmndi:BPMNShape id="Shape_node_7" bpmnElement="node_7">
+        <dc:Bounds x="736" y="175" width="50" height="50" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Edge_flow_0" bpmnElement="flow_0">
-        <di:waypoint x="596" y="273" />
-        <di:waypoint x="166" y="250" />
+        <di:waypoint x="86" y="200" />
+        <di:waypoint x="166" y="200" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_flow_1" bpmnElement="flow_1">
-        <di:waypoint x="466" y="250" />
-        <di:waypoint x="546" y="273" />
+        <di:waypoint x="786" y="200" />
+        <di:waypoint x="866" y="200" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_flow_2" bpmnElement="flow_2">
-        <di:waypoint x="596" y="127" />
-        <di:waypoint x="676" y="160" />
+        <di:waypoint x="656" y="200" />
+        <di:waypoint x="736" y="200" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_flow_3" bpmnElement="flow_3">
-        <di:waypoint x="466" y="150" />
-        <di:waypoint x="546" y="127" />
+        <di:waypoint x="466" y="200" />
+        <di:waypoint x="546" y="200" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_flow_4" bpmnElement="flow_4">
-        <di:waypoint x="86" y="200" />
-        <di:waypoint x="676" y="160" />
+        <di:waypoint x="276" y="200" />
+        <di:waypoint x="356" y="200" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_flow_5" bpmnElement="flow_5">
-        <di:waypoint x="596" y="127" />
-        <di:waypoint x="166" y="150" />
+        <di:waypoint x="976" y="200" />
+        <di:waypoint x="1056" y="200" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_flow_6" bpmnElement="flow_6">
-        <di:waypoint x="726" y="160" />
-        <di:waypoint x="356" y="150" />
+        <di:waypoint x="1106" y="200" />
+        <di:waypoint x="1186" y="200" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_flow_7" bpmnElement="flow_7">
-        <di:waypoint x="596" y="273" />
-        <di:waypoint x="676" y="240" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_flow_8" bpmnElement="flow_8">
-        <di:waypoint x="276" y="250" />
-        <di:waypoint x="676" y="240" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_flow_9" bpmnElement="flow_9">
-        <di:waypoint x="726" y="240" />
-        <di:waypoint x="553" y="200" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_flow_10" bpmnElement="flow_10">
-        <di:waypoint x="276" y="150" />
-        <di:waypoint x="356" y="250" />
+        <di:waypoint x="786" y="200" />
+        <di:waypoint x="1056" y="200" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
