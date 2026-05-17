@@ -5,12 +5,13 @@
  * with a different data model (per-session JSONL, envelope events,
  * marker stream) so the implementations diverge by §3.6 of the design.
  *
- * Output is per-event append to events.jsonl. Sync semantics: each
- * append goes through fs.appendFileSync which on Windows/Linux flushes
- * to the OS page cache; we trust the OS to fsync within the kernel
- * writeback window. Crash loss bound is therefore "events buffered in
- * kernel cache at crash time" -- typically sub-second. If we ever need
- * stricter guarantees, swap appendFileSync for an open(O_SYNC) fd.
+ * Output is append to events.jsonl through a small batching queue
+ * (I47): high-volume events (activity polls, interactions) are flushed
+ * on a 500ms timer, while markers and system events flush the whole
+ * pending queue immediately -- so a case boundary or lifecycle event is
+ * never left only in memory. The crash-loss bound is therefore "queued
+ * activity/interaction events at crash time" -- under 500ms of
+ * low-stakes data; stop() flushes the queue on a clean exit.
  */
 
 "use strict";
@@ -105,6 +106,10 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   let markerCount = 0;
   let screenshotCount = 0;
   let interactionCount = 0;
+  /* I23: wall-clock of the most recent interaction forwarded by the
+     recorder. The idle monitor reads it to tell "idle but still at the
+     desk" (recent mouse/keyboard) from "idle and away". */
+  let lastInteractionMs = 0;
   const RECENT_BUFFER_SIZE = 16;
   const recentEvents = [];
 
@@ -117,12 +122,29 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   let foregroundPid = null;
   let foregroundSinceMs = 0;
 
+  /* I47: deferred-write queue. flushEvents() drains it; markers and
+     system events flush synchronously, activity/interaction events ride
+     a 500ms timer. */
+  let writeQueue = [];
+  let flushTimer = null;
+  function flushEvents() {
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    if (!writeQueue.length) return;
+    const batch = writeQueue.splice(0);
+    try {
+      fs.appendFileSync(eventsFile, batch.join(""));
+    } catch (_e) {
+      /* A failed flush loses at most this batch -- the durable record
+         is best-effort, not transactional. */
+    }
+  }
+
   function appendEvent(ev) {
-    // _seq is the 0-based events.jsonl line ordinal. Normalization uses
-    // it as a secondary sort key so events sharing a millisecond
-    // timestamp keep their true append order.
+    // _seq is the 0-based events.jsonl line ordinal -- assigned in call
+    // order so it stays monotonic even though the write is deferred.
+    // Normalization uses it as a secondary sort key so events sharing a
+    // millisecond timestamp keep their true append order.
     ev._seq = eventCount;
-    fs.appendFileSync(eventsFile, JSON.stringify(ev) + "\n");
     eventCount += 1;
     if (ev.type === "marker") markerCount += 1;
     if (ev.type === "interaction") interactionCount += 1;
@@ -131,6 +153,15 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
     }
     recentEvents.push(ev);
     if (recentEvents.length > RECENT_BUFFER_SIZE) recentEvents.shift();
+    writeQueue.push(JSON.stringify(ev) + "\n");
+    // Markers and system events (session start/end, idle, screenshots)
+    // are durability-critical -- flush the whole queue now, which also
+    // preserves ordering of any activity/interaction events ahead of it.
+    if (ev.type === "marker" || ev.type === "system") {
+      flushEvents();
+    } else if (!flushTimer) {
+      flushTimer = setTimeout(flushEvents, 500);
+    }
   }
 
   function closeRun(endMs) {
@@ -150,6 +181,13 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
        this app/title), not the moment we closed the run. The duration
        carries the span. */
     ev.timestamp = currentRun.timestamp;
+    /* I43: carry the foreground window's desktop bounds so the viewer
+       can tell which monitor the work happened on. active-win reports
+       {x, y, width, height}; older builds may omit it. */
+    if (currentRun.bounds) {
+      const b = currentRun.bounds;
+      ev.data.bounds = { x: b.x, y: b.y, w: b.width, h: b.height };
+    }
     appendEvent(ev);
     currentRun = null;
   }
@@ -236,6 +274,7 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   }
 
   function fireInteraction(data) {
+    lastInteractionMs = Date.now();
     const ev = interactionEvent(sessionId, data);
     appendEvent(ev);
     // The recorder produced an interaction for this pid -- it is
@@ -281,6 +320,7 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
       interactionCount,
       sessionStartMs,
       elapsedMs: Date.now() - sessionStartMs,
+      lastInteractionMs,
       recentEvents: recentEvents.slice(),
     };
   }
@@ -291,6 +331,7 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
     if (pollHandle) clearInterval(pollHandle);
     closeRun(Date.now());
     fireSystem("session_end");
+    flushEvents();   // I47: drain any queued events on a clean exit
     return getStatus();
   }
 

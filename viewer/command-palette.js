@@ -4,17 +4,18 @@
  * top-level commands.
  *
  * Self-contained: builds its own DOM lazily on first open, owns the
- * keyboard handlers, exposes a single setProvider(fn) hook the renderer
+ * keyboard handlers, exposes a registerProvider(key, fn) hook each view
  * uses to feed it items. Provider signature:
  *   fn(query: string) -> Array<{ type, label, hint?, run() }>
- * Provider does the filtering -- the palette only renders + drives.
+ * Each provider does its own filtering; the palette concatenates every
+ * registered provider's results and renders + drives the list.
  */
 
 "use strict";
 
 (function () {
   let overlay = null, input = null, list = null;
-  let provider = null;
+  const providers = new Map();   // key -> fn(query) -> items[]
   let items = [];
   let selectedIndex = 0;
   let inputDebounce = null;
@@ -74,9 +75,17 @@
   }
 
   function render(query) {
-    if (!provider) { items = []; paint(); return; }
-    try { items = provider(query || "") || []; }
-    catch (e) { console.error("palette provider failed", e); items = []; }
+    const q = query || "";
+    let collected = [];
+    for (const fn of providers.values()) {
+      try {
+        const part = fn(q);
+        if (Array.isArray(part)) collected = collected.concat(part);
+      } catch (e) {
+        console.error("palette provider failed", e);
+      }
+    }
+    items = collected;
     selectedIndex = 0;
     paint();
   }
@@ -152,5 +161,14 @@
     }
   });
 
-  module.exports = { open, close, toggle, setProvider: (fn) => { provider = fn; } };
+  module.exports = {
+    open, close, toggle,
+    /* Each view registers its commands under a stable key; re-registering
+       the same key replaces that view's provider. */
+    registerProvider: (key, fn) => {
+      if (key && typeof fn === "function") providers.set(key, fn);
+    },
+    /* Back-compat alias for the original single-provider hook. */
+    setProvider: (fn) => { providers.set("default", fn); },
+  };
 })();

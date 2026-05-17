@@ -8,6 +8,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A pass of vocabulary, capture, and viewer polish.** An auto-detected
+  step now shows *why* the tool grouped its interactions ("Grouped 8
+  interactions in SAP, max gap 4s"). The screenshot gallery collapses a
+  run of near-identical frames behind a "(+N near-duplicates)" badge —
+  click to expand — computed from a perceptual hash written during
+  normalization. A pipeline failure in the analysis log is prefixed with
+  a plain-language explanation of the likely cause. The Ctrl+K command
+  palette became multi-provider, so the Steps and Phases views
+  contribute their own commands, with a ⌘K hint in the topbar. The
+  session summary reports **App Vocabulary coverage** per app, and a
+  bootstrapped vocabulary is now ranked by how often each control was
+  used — rarely-seen controls fold under a disclosure. On the capture
+  side: events are written through a 500 ms batching queue (markers and
+  lifecycle events still flush immediately); a long idle stretch is
+  tagged **at-desk** when the recorder still saw activity, and rendered
+  distinctly on the timeline; each activity event and the manifest carry
+  window and display geometry, so the viewer badges which **monitor** a
+  window was on; and a session that ends with stored sessions over a
+  size threshold prompts a cleanup reminder.
+
 - **Comparing sessions, the video, and markers all got sharper.** The
   Compare Sessions view gains a **Group by worker** toggle — the
   activity and case charts split and colour by worker so you can see

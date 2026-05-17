@@ -160,3 +160,16 @@ def test_drop_overlapping_auto_steps_keeps_disjoint():
     kept, dropped = drop_overlapping_auto_steps(fresh, preserved)
     assert len(kept) == 1
     assert dropped == []
+
+
+# --- Suggestion reason (I5) --------------------------------------------
+
+def test_auto_step_carries_a_suggestion_reason():
+    """An auto-suggested step explains why its interactions were grouped."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [_make_inter(base + timedelta(milliseconds=i * 500)) for i in range(4)]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+    reason = steps[0]["suggestion_reason"]
+    assert "Grouped 4 interactions" in reason
+    assert "threshold" in reason

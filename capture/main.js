@@ -189,8 +189,15 @@ function startIdleMonitor() {
     if (!isIdle && idleSecs >= threshold) {
       isIdle = true;
       idleStartMs = Date.now();
-      tracker.fireSystem("idle_start", { idle_seconds: idleSecs });
-      bootLog(`idle_start at ${idleSecs}s`);
+      /* I23: "at desk" = the recorder forwarded an interaction within
+         the last 30s, so the worker was active even though the OS idle
+         timer (mouse/keyboard) crossed the threshold -- e.g. a Citrix /
+         RDP session whose input the host idle timer cannot see. */
+      const st = tracker.getStatus();
+      const atDesk = !!st.lastInteractionMs &&
+        (Date.now() - st.lastInteractionMs) < 30000;
+      tracker.fireSystem("idle_start", { idle_seconds: idleSecs, at_desk: atDesk });
+      bootLog(`idle_start at ${idleSecs}s (at_desk=${atDesk})`);
     } else if (isIdle && idleSecs < threshold) {
       isIdle = false;
       const durationSecs = Math.round((Date.now() - idleStartMs) / 1000);
@@ -614,6 +621,17 @@ async function startSession(opts) {
   lastStatus = tracker.getStatus();
   startIdleMonitor();
 
+  /* I43: stamp the display geometry onto the manifest so the viewer can
+     badge which monitor each captured window was on. Read-modify-write
+     so it sits alongside the fields createSession already wrote. */
+  try {
+    const { screen } = require("electron");
+    const mf = path.join(session.sessionFolder, "manifest.json");
+    const m = JSON.parse(fs.readFileSync(mf, "utf-8"));
+    m.displays = screen.getAllDisplays().map((d) => ({ id: d.id, bounds: d.bounds }));
+    fs.writeFileSync(mf, JSON.stringify(m, null, 2));
+  } catch (e) { bootLog(`display geometry write failed: ${e && e.message}`); }
+
   if (config.interactions && config.interactions.enabled) {
     const ok = await startRecorderForSession();
     if (!ok && config.interactions.required) {
@@ -754,6 +772,23 @@ async function endSession() {
      manifest.json and events.jsonl sizes. */
   try { writeSessionIntegrity(session.sessionFolder); }
   catch (e) { bootLog(`session-integrity write failed: ${e && e.message}`); }
+
+  /* I25: at session end, warn once if total session storage has grown
+     large -- a nudge toward the tray's prune tool. */
+  try {
+    const total = sessionStorage.getSessionsTotal();
+    const warnGb = config.storage_warn_gb || 50;
+    if (total.bytes > warnGb * 1024 * 1024 * 1024) {
+      const { Notification } = require("electron");
+      if (Notification.isSupported()) {
+        new Notification({
+          title: "Session storage is getting large",
+          body: `Recorded sessions now use ${sessionStorage.humanSize(total.bytes)}. ` +
+                `Consider the tray "Prune old sessions" tool to free space.`,
+        }).show();
+      }
+    }
+  } catch (e) { bootLog(`storage check failed: ${e && e.message}`); }
 
   /* B1: hand the operator a post-session summary if the Live Session
      window is open -- a harmless no-op when it is not. */

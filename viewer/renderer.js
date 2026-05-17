@@ -899,6 +899,10 @@ Ipc.onOpenInitialSession((folder) => {
 
 initVocabView();
 
+/* I72: the topbar command-palette hint opens the palette (also Ctrl+K). */
+const _cmdkHint = document.getElementById("btn-cmdk-hint");
+if (_cmdkHint && PdtPalette) _cmdkHint.addEventListener("click", () => PdtPalette.toggle());
+
 /* ============ Attach external video (Teams recording, etc.) ======= */
 
 function parseHmsToMs(s) {

@@ -127,6 +127,24 @@ function computeSummary(session) {
       ? eff.process_efficiency_ratio
       : null;
 
+  /* I58: App Vocabulary coverage -- how much of each app's interaction
+     stream the loaded vocabularies could name. Null when no app vocab
+     enrichment data is present (stats.json.meta.vocab_coverage). */
+  const rawCoverage = meta.vocab_coverage || {};
+  let covTotal = 0;
+  let covEnriched = 0;
+  const covApps = [];
+  for (const app of Object.keys(rawCoverage)) {
+    const c = rawCoverage[app] || {};
+    covTotal += c.total_interactions || 0;
+    covEnriched += c.enriched || 0;
+    covApps.push({ app, pct: c.coverage_pct || 0, total: c.total_interactions || 0 });
+  }
+  covApps.sort((a, b) => b.total - a.total);
+  const vocabCoverage = covTotal > 0
+    ? { overallPct: Math.round((100 * covEnriched) / covTotal), apps: covApps.slice(0, 4) }
+    : null;
+
   return {
     engagement: manifest.engagement_id || "—",
     worker:
@@ -152,6 +170,7 @@ function computeSummary(session) {
     appSwitches,
     longestStretch: { app: longest.app, ms: longest.ms },
     efficiencyRatio,
+    vocabCoverage,
   };
 }
 

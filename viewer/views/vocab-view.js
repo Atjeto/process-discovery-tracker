@@ -136,6 +136,42 @@ function renderVocabEditor() {
   $("#btn-vocab-save").addEventListener("click", saveVocab);
 }
 
+function _buildVocabIntRow(ent, i) {
+  const sig = ent.signature || {};
+  const sigParts = [sig.control_type, sig.automation_id, sig.name].filter(Boolean);
+  const sigSummary = sigParts.length ? sigParts.join(" · ") : "(unset signature)";
+  // I57: a bootstrapped entry carries how many times the control was
+  // observed -- show it so the analyst can prioritise.
+  const seen = (typeof ent.seen_count === "number")
+    ? '<span class="vocab-int-seen" title="Times this control was used in the prep session">seen ' + ent.seen_count + '×</span>'
+    : "";
+  const row = document.createElement("div");
+  row.className = "vocab-int";
+  row.dataset.idx = String(i);
+  row.innerHTML =
+    '<div class="vocab-int-head">' +
+    '<span class="vocab-int-num">' + (i + 1) + '</span>' +
+    '<div class="vocab-int-sig">' + escapeHtml(sigSummary) + '</div>' +
+    seen +
+    '<button class="icon-btn vocab-int-remove" title="Remove">✕</button>' +
+    '</div>' +
+    '<div class="vocab-int-body">' +
+    '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
+    '<div class="vocab-int-sig-fields">' +
+    '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
+    '<label>automation_id<input type="text" data-sig="automation_id" value="' + escapeAttr(sig.automation_id || "") + '"></label>' +
+    '<label>name (raw)<input type="text" data-sig="name" value="' + escapeAttr(sig.name || "") + '"></label>' +
+    '<label>window_title_regex<input type="text" data-sig="window_title_regex" value="' + escapeAttr(sig.window_title_regex || "") + '"></label>' +
+    '</div>' +
+    '</div>';
+  row.querySelector(".vocab-int-remove").addEventListener("click", () => removeInteraction(i));
+  row.querySelectorAll("[data-field], [data-sig], [data-flag]").forEach((el) => {
+    el.addEventListener("input", collectAndMark);
+    el.addEventListener("change", collectAndMark);
+  });
+  return row;
+}
+
 function renderVocabInteractions() {
   const host = $("#vocab-interactions");
   if (!host) return;
@@ -145,36 +181,32 @@ function renderVocabInteractions() {
     return;
   }
   host.innerHTML = "";
-  for (let i = 0; i < interactions.length; i++) {
-    const ent = interactions[i];
-    const sig = ent.signature || {};
-    const flags = ent.flags || {};
-    const sigParts = [sig.control_type, sig.automation_id, sig.name].filter(Boolean);
-    const sigSummary = sigParts.length ? sigParts.join(" · ") : "(unset signature)";
-    const row = document.createElement("div");
-    row.className = "vocab-int";
-    row.dataset.idx = String(i);
-    row.innerHTML =
-      '<div class="vocab-int-head">' +
-      '<span class="vocab-int-num">' + (i + 1) + '</span>' +
-      '<div class="vocab-int-sig">' + escapeHtml(sigSummary) + '</div>' +
-      '<button class="icon-btn vocab-int-remove" title="Remove">✕</button>' +
-      '</div>' +
-      '<div class="vocab-int-body">' +
-      '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
-      '<div class="vocab-int-sig-fields">' +
-      '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
-      '<label>automation_id<input type="text" data-sig="automation_id" value="' + escapeAttr(sig.automation_id || "") + '"></label>' +
-      '<label>name (raw)<input type="text" data-sig="name" value="' + escapeAttr(sig.name || "") + '"></label>' +
-      '<label>window_title_regex<input type="text" data-sig="window_title_regex" value="' + escapeAttr(sig.window_title_regex || "") + '"></label>' +
-      '</div>' +
-      '</div>';
-    row.querySelector(".vocab-int-remove").addEventListener("click", () => removeInteraction(i));
-    row.querySelectorAll("[data-field], [data-sig], [data-flag]").forEach(el => {
-      el.addEventListener("input", collectAndMark);
-      el.addEventListener("change", collectAndMark);
-    });
-    host.appendChild(row);
+  /* I57: a bootstrapped vocab is frequency-ranked, so rarely-seen
+     controls (seen_count <= 2) cluster at the tail. Fold a clean
+     uncommon tail under a disclosure so the analyst names the
+     high-traffic controls first. The rows stay descendants of
+     #vocab-interactions in original order, so collectAndMark still
+     reads them correctly on save. */
+  const isUncommon = (e) => typeof e.seen_count === "number" && e.seen_count <= 2;
+  let foldFrom = interactions.length;
+  while (foldFrom > 0 && isUncommon(interactions[foldFrom - 1])) foldFrom--;
+  const cleanTail = foldFrom < interactions.length &&
+    interactions.slice(0, foldFrom).every((e) => !isUncommon(e));
+  if (!cleanTail) foldFrom = interactions.length;
+
+  for (let i = 0; i < foldFrom; i++) {
+    host.appendChild(_buildVocabIntRow(interactions[i], i));
+  }
+  if (foldFrom < interactions.length) {
+    const det = document.createElement("details");
+    det.className = "vocab-uncommon";
+    const sum = document.createElement("summary");
+    sum.textContent = "Show uncommon fields (" + (interactions.length - foldFrom) + ")";
+    det.appendChild(sum);
+    for (let i = foldFrom; i < interactions.length; i++) {
+      det.appendChild(_buildVocabIntRow(interactions[i], i));
+    }
+    host.appendChild(det);
   }
 }
 

@@ -16,6 +16,7 @@ const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
+const PdtPalette = require("../command-palette.js");
 
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
@@ -408,6 +409,18 @@ function initStepsView(deps) {
   videoTimeToSessionTs = deps.videoTimeToSessionTs;
   jumpToStepInFlow = deps.jumpToStepInFlow;
   watchStep = deps.watchStep || (() => {});
+
+  // I72: Steps-view commands for the Ctrl+K palette.
+  if (PdtPalette) {
+    PdtPalette.registerProvider("steps", (q) => {
+      const ql = (q || "").toLowerCase();
+      const cmds = [
+        { type: "command", label: "New manual step", hint: "Steps", run: addManualStep },
+        { type: "command", label: "Delete selected steps", hint: "Steps", run: deleteSelectedSteps },
+      ];
+      return cmds.filter((c) => !ql || c.label.toLowerCase().includes(ql));
+    });
+  }
 
   const txt = document.getElementById("step-filter-text");
   if (txt) {

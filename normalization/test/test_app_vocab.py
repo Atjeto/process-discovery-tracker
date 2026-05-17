@@ -165,3 +165,39 @@ def test_bootstrap_from_session_produces_signatures():
 def test_bootstrap_empty_session():
     doc = app_vocab.bootstrap_from_session([], vocab_id="empty", vocab_name="Empty")
     assert doc["app_vocabulary"]["interactions"] == []
+
+
+# --- I57 / I58: bootstrap ranking + coverage ---------------------------
+
+def test_enrich_events_reports_per_app_coverage():
+    """I58: the enrich_events summary carries per-app vocabulary coverage."""
+    events = [
+        _ev({"process_name": "chrome.exe", "window_title": "Salesforce",
+             "control_type": "Button", "automation_id": "searchBtn"}),
+        _ev({"process_name": "chrome.exe", "window_title": "Salesforce",
+             "control_type": "Button", "name": "Cancel"}),
+        _ev({"process_name": "OUTLOOK.EXE", "window_title": "Inbox",
+             "name": "Send"}),
+    ]
+    _, summary = app_vocab.enrich_events(
+        events, vocabs=[SALESFORCE_VOCAB, OUTLOOK_VOCAB])
+    cov = summary["coverage"]
+    assert cov["chrome.exe"] == {
+        "total_interactions": 2, "enriched": 1, "coverage_pct": 50.0}
+    assert cov["OUTLOOK.EXE"]["coverage_pct"] == 100.0
+
+
+def test_bootstrap_carries_seen_count_ranked_by_frequency():
+    """I57: bootstrapped entries carry seen_count, ranked by it descending."""
+    events = [
+        _ev({"process_name": "chrome.exe", "window_title": "App",
+             "control_type": "Button", "automation_id": "common"})
+        for _ in range(3)
+    ] + [
+        _ev({"process_name": "chrome.exe", "window_title": "App",
+             "control_type": "Button", "automation_id": "rare"}),
+    ]
+    doc = app_vocab.bootstrap_from_session(events, vocab_id="x", vocab_name="X")
+    interactions = doc["app_vocabulary"]["interactions"]
+    assert [i["seen_count"] for i in interactions] == [3, 1]
+    assert interactions[0]["signature"]["automation_id"] == "common"

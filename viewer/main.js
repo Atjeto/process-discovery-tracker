@@ -135,7 +135,7 @@ ipcMain.handle("viewer:runNormalize", async (_e, { sessionFolder, mine }) => {
     const result = await runNormalize({
       sessionFolder: root,
       mine: !!mine,
-      onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", text),
+      onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       // Register the kill handle so viewer:cancelNormalize can stop
       // the in-flight child. Used by the aggregate "Analyze all"
       // loop as well as any other caller of this IPC.
@@ -281,6 +281,27 @@ function loadOptionalJson(p) {
   try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch (_e) { return null; }
 }
 
+/* I24: map a few common Python pipeline failures to plain-language
+   guidance for the analyst. The original technical line is kept below
+   the translation so an engineer can still read it. */
+const PIPELINE_ERROR_TRANSLATIONS = [
+  [/KeyError: ['"]timestamp['"]/, "Some events are missing timestamps — the capture may have been interrupted."],
+  [/KeyError: ['"]case_ids['"]/, "Case assignment failed — check that Start/End markers are present in the session."],
+  [/InductiveMiner|inductive_miner/, "Process-map mining ran into trouble — try adding noisy apps to the ignored list to cut complexity."],
+  [/FileNotFoundError.*events\.jsonl/, "The events file is missing — was the session folder copied completely?"],
+  [/yaml\.scanner\.ScannerError|yaml\.parser\.ParserError/, "A YAML file has a syntax error — check its indentation."],
+  [/ModuleNotFoundError|ImportError/, "A Python package the pipeline needs is missing from the bundled runtime."],
+];
+function translatePipelineError(text) {
+  if (!text) return text;
+  for (const [pattern, message] of PIPELINE_ERROR_TRANSLATIONS) {
+    if (pattern.test(text)) {
+      return "ℹ " + message + "\n   Technical detail: " + text;
+    }
+  }
+  return text;
+}
+
 /* --- Canonical YAML IPC ------------------------------------------- */
 
 ipcMain.handle("viewer:openCanonicalFile", async () => {
@@ -405,7 +426,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       stepBpmnOut: opts.stepBpmnOut || null,
       phaseBpmnOut: opts.phaseBpmnOut || null,
       stepCsvOut: opts.stepCsvOut || null,
-      onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", text),
+      onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
     });
     _normalizeHandle = null;

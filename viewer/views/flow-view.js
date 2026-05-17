@@ -298,7 +298,7 @@ function commandPaletteProvider(rawQuery) {
 }
 
 if (PdtPalette) {
-  PdtPalette.setProvider(commandPaletteProvider);
+  PdtPalette.registerProvider("flow", commandPaletteProvider);
 }
 
 function uniqueCaseIds(steps) {
@@ -830,6 +830,11 @@ function renderSessionSummary() {
   if (s.hasTemplate || s.matchedInteractions > 0) {
     tiles.push({ label: "Template match", value: pct(s.matchRate || 0),
       sub: `${s.matchedInteractions} interactions` });
+  }
+  if (s.vocabCoverage) {
+    tiles.push({ label: "Vocab coverage", value: s.vocabCoverage.overallPct + "%",
+      sub: s.vocabCoverage.apps
+        .map((a) => appLabel(a.app) + " " + Math.round(a.pct) + "%").join(" · ") });
   }
   const tilesHtml = tiles.map((t) =>
     '<div class="summary-tile">' +
@@ -1836,6 +1841,16 @@ function renderTimeline() {
         lbl.appendChild(durEl);
         band.appendChild(lbl);
 
+        // I43: badge which monitor this window was on (multi-display only).
+        const _mon = monitorBadgeFor(ev.data.bounds);
+        if (_mon) {
+          const monEl = document.createElement("span");
+          monEl.className = "tl-monitor-badge";
+          monEl.textContent = _mon;
+          monEl.title = "Captured on monitor " + _mon.slice(1);
+          band.appendChild(monEl);
+        }
+
         band.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(ev.timestamp); });
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -1845,24 +1860,32 @@ function renderTimeline() {
         host.appendChild(band);
       }
 
-      // Idle bands
+      // Idle bands. I23: an idle stretch tagged at_desk (the recorder
+      // still saw activity, e.g. inside a Citrix session the OS idle
+      // timer cannot observe) renders distinctly from a genuine "away".
       let idleStart = null;
+      let idleAtDesk = false;
       for (const ev of (lanes.idle ? evs : [])) {
         if (ev.type !== "system") continue;
-        if (ev.data.kind === "idle_start") idleStart = new Date(ev.timestamp).getTime();
-        else if (ev.data.kind === "idle_end" && idleStart) {
+        if (ev.data.kind === "idle_start") {
+          idleStart = new Date(ev.timestamp).getTime();
+          idleAtDesk = !!ev.data.at_desk;
+        } else if (ev.data.kind === "idle_end" && idleStart) {
           const endT = new Date(ev.timestamp).getTime();
           const x = ((idleStart - first) / span) * 100;
           const w = Math.max(0.15, ((endT - idleStart) / span) * 100);
           const band = document.createElement("div");
-          band.className = "tl-band tl-idle";
+          band.className = "tl-band tl-idle" + (idleAtDesk ? " tl-idle-atdesk" : "");
           band.style.left = x + "%";
           band.style.width = w + "%";
           band.style.top = activityTop + "px";
           band.style.height = activityH + "px";
-          band.title = "idle " + formatDuration(endT - idleStart);
+          band.title = (idleAtDesk
+            ? "Idle (still at desk — recent mouse/keyboard activity), "
+            : "Idle (away), ") + formatDuration(endT - idleStart);
           host.appendChild(band);
           idleStart = null;
+          idleAtDesk = false;
         }
       }
 
@@ -2498,6 +2521,25 @@ function _timelineClickToMs(clientX) {
   const frac = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)));
   return first + frac * span;
 }
+
+/* I43: which monitor a captured window sat on -- "M1".."MN", or null
+   when the session is single-display or carries no display geometry.
+   The window's centre point is tested against each display's bounds. */
+function monitorBadgeFor(bounds) {
+  const session = State.getSession();
+  const displays = (session && session.manifest && session.manifest.displays) || [];
+  if (displays.length < 2 || !bounds) return null;
+  const cx = bounds.x + (bounds.w || 0) / 2;
+  const cy = bounds.y + (bounds.h || 0) / 2;
+  for (let i = 0; i < displays.length; i++) {
+    const b = displays[i].bounds || {};
+    if (cx >= b.x && cx < b.x + (b.width || 0) &&
+        cy >= b.y && cy < b.y + (b.height || 0)) {
+      return "M" + (i + 1);
+    }
+  }
+  return null;
+}
 if ($("#btn-sync-video")) {
   $("#btn-sync-video").addEventListener("click", startVideoSync);
 }
@@ -2677,7 +2719,7 @@ async function toggleScreenshotStar(relPath) {
    filter by trigger reason. Built lazily on first open; keeps a
    single overlay element in the DOM after first build. */
 let _allScreenshots = [];
-let _galleryState = null;  // { idx, filterReason, playing, playTimer }
+let _galleryState = null;  // { idx, filterReason, playing, playTimer, expanded }
 function _galleryFilter(reason) {
   // Capture only distinguishes manual screenshots from auto ones today
   // (no reason field on the auto path -- they all come through as
@@ -2690,6 +2732,53 @@ function _galleryFilter(reason) {
     if (reason === "auto")   return k !== "screenshot_manual";
     return true;
   });
+}
+/* I10: hamming distance between two 16-hex-char aHash strings. A high
+   value (mismatched length / missing hash) means "treat as different". */
+function _hammingHex(a, b) {
+  if (!a || !b || a.length !== b.length) return 64;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) {
+    let x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
+    while (x) { d += x & 1; x >>= 1; }
+  }
+  return d;
+}
+/* I10: the gallery's screenshots collapsed so a run of near-identical
+   frames (aHash hamming distance < 5) shows as a single entry -- the
+   last frame of the run -- carrying a count of the folded-in frames.
+   A group the analyst expanded (clicked the badge) is emitted in full. */
+function _galleryView() {
+  const list = _galleryFilter(_galleryState.filterReason);
+  const hashes = ((State.getSession().stats || {}).screenshot_hashes) || [];
+  const byFile = {};
+  for (const h of hashes) byFile[h.filename] = h.hash;
+  const fileOf = (s) => String(s.data.path || "").split(/[\\/]/).pop();
+  const groups = [];
+  for (const s of list) {
+    const hash = byFile[fileOf(s)] || null;
+    const prev = groups[groups.length - 1];
+    if (prev && hash && prev.hash && _hammingHex(hash, prev.hash) < 5) {
+      prev.shots.push(s);
+      prev.hash = hash;
+    } else {
+      groups.push({ shots: [s], hash });
+    }
+  }
+  const view = [];
+  for (const g of groups) {
+    const key = fileOf(g.shots[0]);
+    if (g.shots.length === 1 || _galleryState.expanded.has(key)) {
+      for (const s of g.shots) view.push({ shot: s, similar: 0, groupKey: key });
+    } else {
+      view.push({
+        shot: g.shots[g.shots.length - 1],
+        similar: g.shots.length - 1,
+        groupKey: key,
+      });
+    }
+  }
+  return view;
 }
 function openScreenshotGallery() {
   if (!_allScreenshots.length) { toast("No screenshots in this session.", ""); return; }
@@ -2723,15 +2812,16 @@ function openScreenshotGallery() {
     document.getElementById("gallery-filter").addEventListener("change", (e) => {
       _galleryState.filterReason = e.target.value;
       _galleryState.idx = 0;
+      _galleryState.expanded = new Set();
       _galleryRenderFrame();
     });
     document.getElementById("gallery-img").addEventListener("click", () => {
-      const list = _galleryFilter(_galleryState.filterReason);
-      const s = list[_galleryState.idx];
-      if (s) seekToTimestamp(s.timestamp);
+      const list = _galleryView();
+      const entry = list[_galleryState.idx];
+      if (entry) seekToTimestamp(entry.shot.timestamp);
     });
   }
-  _galleryState = { idx: 0, filterReason: "all", playing: false, playTimer: null };
+  _galleryState = { idx: 0, filterReason: "all", playing: false, playTimer: null, expanded: new Set() };
   document.getElementById("gallery-filter").value = "all";
   _galleryRenderFrame();
   document.addEventListener("keydown", _galleryKey);
@@ -2746,7 +2836,7 @@ function closeScreenshotGallery() {
 function _galleryRenderFrame() {
   const overlay = document.getElementById("screenshot-gallery");
   overlay.style.display = "flex";
-  const list = _galleryFilter(_galleryState.filterReason);
+  const list = _galleryView();
   if (!list.length) {
     document.getElementById("gallery-img").style.display = "none";
     document.getElementById("gallery-pos").textContent = "0 / 0";
@@ -2754,19 +2844,36 @@ function _galleryRenderFrame() {
     document.getElementById("gallery-reason").textContent = "(no matching screenshots)";
     return;
   }
-  const s = list[_galleryState.idx];
+  if (_galleryState.idx >= list.length) _galleryState.idx = list.length - 1;
+  if (_galleryState.idx < 0) _galleryState.idx = 0;
+  const entry = list[_galleryState.idx];
+  const s = entry.shot;
   const fullPath = path.join(State.getSession().sessionFolder, s.data.path);
   const img = document.getElementById("gallery-img");
   img.style.display = "";
   img.src = "file:///" + fullPath.replace(/\\/g, "/");
   document.getElementById("gallery-pos").textContent = `${_galleryState.idx + 1} / ${list.length}`;
   document.getElementById("gallery-ts").textContent = s.timestamp;
-  document.getElementById("gallery-reason").textContent =
+  const reasonEl = document.getElementById("gallery-reason");
+  reasonEl.textContent =
     s.data.kind === "screenshot_manual" ? "manual" : (s.data.reason || "automatic");
+  // I10: this frame stands in for a run of near-identical ones -- offer
+  // a click to expand them.
+  if (entry.similar > 0) {
+    const exp = document.createElement("span");
+    exp.className = "gallery-similar";
+    exp.textContent = ` (+${entry.similar} near-duplicate${entry.similar === 1 ? "" : "s"} — show)`;
+    exp.title = "Show the near-identical frames folded into this one";
+    exp.addEventListener("click", () => {
+      _galleryState.expanded.add(entry.groupKey);
+      _galleryRenderFrame();
+    });
+    reasonEl.appendChild(exp);
+  }
 }
 function _galleryStep(delta) {
   if (!_galleryState) return;
-  const list = _galleryFilter(_galleryState.filterReason);
+  const list = _galleryView();
   if (!list.length) return;
   _galleryState.idx = (_galleryState.idx + delta + list.length) % list.length;
   _galleryRenderFrame();

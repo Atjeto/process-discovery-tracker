@@ -129,6 +129,7 @@ def auto_suggest_steps(
                     "manual_notes": "",
                 },
                 "state": "auto_suggested",
+                "suggestion_reason": _suggestion_reason(candidate, step_split_idle_ms),
                 "canonical_step_id": None,
                 "flags": _aggregate_vocab_flags(candidate),
                 "phase_id": None,
@@ -245,6 +246,25 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
         break
 
     return _trim(f"{app}: {len(interactions)} interactions")
+
+
+def _suggestion_reason(interactions: list[dict[str, Any]], threshold_ms: int) -> str:
+    """One-line explanation of why these interactions were grouped into a
+    step -- shown to the analyst so an auto-detected step is not a black
+    box. The largest within-step gap is always below `threshold_ms` (a
+    bigger gap would have split the step)."""
+    app = _short_app(interactions[-1]["data"])
+    max_gap_ms = 0.0
+    if len(interactions) >= 2:
+        ts = [parse_ts(ev["timestamp"]) for ev in interactions]
+        max_gap_ms = max(
+            (ts[i + 1] - ts[i]).total_seconds() * 1000
+            for i in range(len(ts) - 1)
+        )
+    return (
+        f"Grouped {len(interactions)} interactions in {app}, "
+        f"max gap {max_gap_ms / 1000:.0f}s (threshold {threshold_ms // 1000}s)"
+    )
 
 
 # --- Helpers -----------------------------------------------------------

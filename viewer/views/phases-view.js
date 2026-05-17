@@ -15,6 +15,7 @@ const { $, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const PdtPhases = require("../phase-editor.js");
+const PdtPalette = require("../command-palette.js");
 
 /* Injected by renderer.js. */
 let ensureAnnoShape = (a) => a;
@@ -320,6 +321,17 @@ function initPhasesView(deps) {
   if ($("#btn-add-manual-phase")) $("#btn-add-manual-phase").addEventListener("click", addManualPhase);
   if ($("#btn-group-into-phase")) $("#btn-group-into-phase").addEventListener("click", groupIntoPhase);
   if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click", suggestPhaseGroupings);
+
+  // I72: Phases-view commands for the Ctrl+K palette.
+  if (PdtPalette) {
+    PdtPalette.registerProvider("phases", (q) => {
+      const ql = (q || "").toLowerCase();
+      const cmds = [
+        { type: "command", label: "New phase", hint: "Phases", run: addManualPhase },
+      ];
+      return cmds.filter((c) => !ql || c.label.toLowerCase().includes(ql));
+    });
+  }
 }
 
 module.exports = {

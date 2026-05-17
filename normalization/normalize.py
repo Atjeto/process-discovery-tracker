@@ -117,6 +117,34 @@ def _excluded_ranges(annotations: dict) -> list[dict]:
     return [r for r in ranges if isinstance(r, dict) and r.get("start") and r.get("end")]
 
 
+def compute_screenshot_hashes(session_folder: Path) -> list[dict[str, str]]:
+    """Average-hash (aHash) every screenshot so the viewer's gallery can
+    collapse runs of near-identical frames. Pillow is optional -- when it
+    cannot be imported the feature degrades cleanly to no grouping."""
+    shots_dir = session_folder / "screenshots"
+    if not shots_dir.is_dir():
+        return []
+    try:
+        from PIL import Image
+    except ImportError:
+        return []
+    out: list[dict[str, str]] = []
+    for f in sorted(shots_dir.glob("*.jpg")):
+        try:
+            with Image.open(f) as im:
+                px = list(im.convert("L").resize((8, 8)).getdata())
+        except (OSError, ValueError):
+            continue
+        if not px:
+            continue
+        avg = sum(px) / len(px)
+        bits = 0
+        for p in px:
+            bits = (bits << 1) | (1 if p >= avg else 0)
+        out.append({"filename": f.name, "hash": f"{bits:016x}"})
+    return out
+
+
 def _merge_steps(existing: list, fresh: list) -> list:
     """Preserve manually_authored, edited, and hidden steps. Replace
     auto_* steps with the latest fresh suggestions. A `hidden` step is
@@ -320,7 +348,8 @@ def normalize(
         print(f"[normalize] app vocabs: {vocab_summary['matched']}/{vocab_summary['total']} "
               f"interactions enriched ({len(vocabs)} vocab(s) loaded)")
     else:
-        vocab_summary = {"matched": 0, "total": 0, "vocabs_loaded": [], "vocabs_hit": {}}
+        vocab_summary = {"matched": 0, "total": 0, "vocabs_loaded": [],
+                         "vocabs_hit": {}, "coverage": {}}
 
     # Step matching / suggestion (Phase B + C)
     session_id_str = manifest.get("session_id", "")
@@ -445,6 +474,7 @@ def normalize(
         excluded_ranges=_excluded_ranges(existing_anno),
         steps=existing_anno.get("steps") or [],
     )
+    summary["screenshot_hashes"] = compute_screenshot_hashes(session_folder)
     summary["meta"] = {
         "normalization_run_at": datetime.now(timezone.utc).isoformat(),
         "taxonomy_version": (taxonomy or {}).get("version"),
@@ -475,6 +505,7 @@ def normalize(
         "app_vocabularies": vocab_summary.get("vocabs_loaded") or [],
         "app_vocabulary_matches": vocab_summary.get("matched", 0),
         "app_vocabulary_hits_by_id": vocab_summary.get("vocabs_hit") or {},
+        "vocab_coverage": vocab_summary.get("coverage") or {},
     }
     # C5/§I38: a >20-point match-rate drop vs the prior run usually means
     # the target app changed its field IDs and canonical matching is

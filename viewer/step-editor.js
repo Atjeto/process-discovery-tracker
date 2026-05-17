@@ -134,6 +134,7 @@
         <div class="stat-tile"><div class="stat-tile-label">End</div><div class="stat-tile-value">${_end}</div></div>
       </div>
       <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"></label>
+      ${step.suggestion_reason ? `<p class="step-suggestion-reason" title="Why the tool grouped these interactions into a step">Auto-detected: ${escapeHtml(step.suggestion_reason)}</p>` : ""}
       <label>Description <textarea id="step-desc">${escapeHtml(step.description || "")}</textarea></label>
       <div class="flags">
         <label title="This step only happens in some cases (branching path). Marks the step as conditional in exports."><input type="checkbox" id="flag-conditional" ${flags.conditional ? "checked" : ""}> Conditional</label>

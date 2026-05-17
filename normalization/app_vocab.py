@@ -214,17 +214,33 @@ def enrich_events(
     total = 0
     matched = 0
     hit: dict[str, int] = {}
+    per_app: dict[str, list[int]] = {}   # process_name -> [total, enriched]
     for ev in events:
         if ev.get("type") != "interaction":
             continue
         total += 1
-        enrich = lookup(vocabs, ev.get("data") or {})
+        data = ev.get("data") or {}
+        app = data.get("process_name") or "(unknown)"
+        counts = per_app.setdefault(app, [0, 0])
+        counts[0] += 1
+        enrich = lookup(vocabs, data)
         if not enrich:
             continue
         ev["data"].update({k: v for k, v in enrich.items() if v is not None and v != {}})
         matched += 1
+        counts[1] += 1
         vid = enrich["vocab_source"]["vocab_id"]
         hit[vid] = hit.get(vid, 0) + 1
+    # I58: per-app vocabulary coverage -- how much of each app's
+    # interaction stream the loaded vocabularies could name.
+    coverage = {
+        app: {
+            "total_interactions": t,
+            "enriched": e,
+            "coverage_pct": round(100.0 * e / t, 1) if t else 0.0,
+        }
+        for app, (t, e) in per_app.items()
+    }
     summary = {
         "matched": matched,
         "total": total,
@@ -232,6 +248,7 @@ def enrich_events(
             {"id": v.get("id"), "version": v.get("version", 1)} for v in vocabs
         ],
         "vocabs_hit": hit,
+        "coverage": coverage,
     }
     return events, summary
 
@@ -301,14 +318,17 @@ def bootstrap_from_session(
             "_raw_name": d.get("name") or d.get("automation_id") or "",
         }
 
+    # I57: rank interactions by observed frequency (descending) so the
+    # analyst names the most-used controls first. `seen_count` is carried
+    # as a data field -- the viewer collapses rarely-seen entries under a
+    # disclosure -- and echoed in the `_hint` comment for YAML readers.
     interactions = []
     for v in sorted(seen.values(), key=lambda x: -x["_count"]):
-        item = {"signature": v["signature"], "name": ""}
+        item = {"signature": v["signature"], "name": "", "seen_count": v["_count"]}
         hint = v["_raw_name"]
         if hint:
-            # Stash a hint as a YAML comment in name -- analyst will overwrite.
-            item["name"] = ""
-            item["_hint"] = f"raw: {hint!r} ({v['_count']}x)"
+            # Stash a hint as a YAML comment -- analyst will overwrite name.
+            item["_hint"] = f"raw: {hint!r} (seen {v['_count']}x)"
         interactions.append(item)
 
     return {

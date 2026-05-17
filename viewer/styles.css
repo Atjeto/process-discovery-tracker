@@ -1935,6 +1935,47 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 }
 .sxs-strip { height: 78px; }
 
+/* ===== Phase I: polish styles ===================================== */
+/* I5 -- the "why" line under an auto-detected step's name */
+.step-suggestion-reason {
+  margin: 2px 0 6px; font-size: 11px; color: var(--fg-3); font-style: italic;
+}
+/* I72 -- topbar command-palette discoverability hint */
+.cmdk-hint {
+  padding: 3px 8px; font-size: 11px; font-family: var(--font-mono);
+  cursor: pointer; color: var(--fg-2);
+  background: var(--bg-3); border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+}
+.cmdk-hint:hover { color: var(--fg); border-color: var(--fg-4); }
+/* I23 -- an idle stretch where the worker was still at the desk */
+.tl-idle-atdesk {
+  border: 1px dashed var(--accent-2);
+  background-image: repeating-linear-gradient(
+    45deg, transparent, transparent 4px,
+    var(--bg-4) 4px, var(--bg-4) 8px);
+}
+/* I43 -- which-monitor badge on a multi-display activity band */
+.tl-monitor-badge {
+  position: absolute; top: 2px; right: 2px;
+  font-size: 9px; font-family: var(--font-mono);
+  padding: 0 3px; border-radius: 2px;
+  background: var(--bg); color: var(--fg-2);
+  border: 1px solid var(--rule); pointer-events: none;
+}
+/* I10 -- gallery near-duplicate expand affordance */
+.gallery-similar { color: var(--accent); cursor: pointer; }
+.gallery-similar:hover { text-decoration: underline; }
+/* I57 -- vocabulary bootstrap frequency hints */
+.vocab-int-seen {
+  font-size: 10px; font-family: var(--font-mono); color: var(--fg-3);
+  margin-left: 6px;
+}
+.vocab-uncommon { margin-top: 6px; }
+.vocab-uncommon > summary {
+  cursor: pointer; font-size: 11px; color: var(--fg-2); padding: 4px 0;
+}
+
 /* ===== Mode-specific shortcuts overlay (P2.4) ===================== */
 .shortcuts-overlay {
   position: fixed; right: 14px; bottom: 14px; z-index: 100;

@@ -44,11 +44,14 @@ captured before this field existed simply omit it (treated as `0`).
   "app": "chrome.exe",
   "title": "Salesforce - Order #12345 - Google Chrome",
   "pid": 12648,
-  "duration_ms": 17320
+  "duration_ms": 17320,
+  "bounds": { "x": 0, "y": 0, "w": 1920, "h": 1080 }
 }
 ```
 
 `timestamp` is the start of the activity run, not the moment the event was written. `duration_ms` covers the span the foreground window held the same app, pid, and (normalized) window title — see the data dictionary below.
+
+`bounds` (optional) is the foreground window's desktop rectangle — `x`/`y` top-left, `w`/`h` size. The viewer pairs it with `manifest.displays` to badge which monitor the work happened on. Capture builds whose `active-win` omits window bounds simply leave the field off.
 
 ### `marker` data
 
@@ -82,7 +85,7 @@ Kind-specific payloads:
 
 | Kind | Payload |
 |---|---|
-| `idle_start` | `{ idle_seconds }` |
+| `idle_start` | `{ idle_seconds, at_desk }` — `at_desk` is `true` when the recorder forwarded an interaction within the last 30 s, i.e. the worker was active even though the OS idle timer (mouse/keyboard) crossed the threshold |
 | `idle_end` | `{ duration_seconds }` |
 | `auto_end_idle` | `{ idle_seconds }` (fired after auto-closing all open markers, §3.3) |
 | `screenshot` / `screenshot_manual` | `{ path: "screenshots/<file>.jpg" }` (relative to session folder) |
@@ -225,6 +228,7 @@ Time spans the analyst marked as out-of-scope from the viewer's timeline range s
     "manual_notes": "string"
   },
   "state": "auto_suggested|auto_matched|manually_authored|edited",
+  "suggestion_reason": "string -- auto_suggested steps only",
   "canonical_step_id": "uuid or null",
   "flags": {
     "conditional": false,
@@ -291,9 +295,14 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
     "recording_start_ts": null,
     "offset_ms": null
   },
+  "displays": [
+    { "id": 0, "bounds": { "x": 0, "y": 0, "width": 1920, "height": 1080 } }
+  ],
   "recovered": false
 }
 ```
+
+`displays` is the monitor geometry captured at session start (`Electron screen.getAllDisplays()`). The viewer uses it with each `activity` event's `bounds` to badge which monitor a window was on; it is absent on sessions captured before this field existed and on single-display machines it is simply a one-element list.
 
 `status`:
 
@@ -390,7 +399,7 @@ The normalization layer writes the following alongside `events.jsonl`:
 |---|---|
 | `events.xes` | IEEE 1849-2016 event log, one trace per top-level case |
 | `events.csv` | Flat CSV of activity events |
-| `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, app_outliers, rework_loops, meta }` |
+| `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, app_outliers, rework_loops, screenshot_hashes, meta }` |
 | `process_map.bpmn` | BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
 | `dfg.json` | Directly-Follows Graph as `{ edges, start_activities, end_activities }` (with `--mine`) |
 | `analysis.json` | Heuristic IE findings: `{ meta, waste_classification, time_study, automation_candidates, efficiency }` (when the session has steps — ADR-0008) |
@@ -470,6 +479,7 @@ When both UIA `name` and App Vocab `meaningful_name` are present, the viewer pre
 | `step_variants` | `[{ variant: ["Step A", "Step B"], frequency, length }]` | Distinct *step-name* sequences per case — the step-level analogue of `trace_variants`, the analyst's stepped view of the process rather than the raw activity sequence. Empty until the session has steps. |
 | `app_outliers` | `[{ app, frequency, share }]` | Apps that appear in < 5% of cases. |
 | `rework_loops` | `[{ activity_label, case_id, revisits }]` | Same activity revisited within a single case. |
+| `screenshot_hashes` | `[{ filename, hash }]` | Per-screenshot 64-bit average hash (16 hex chars). The viewer's gallery uses it to collapse runs of near-identical frames. Empty when Pillow is unavailable in the bundled runtime. |
 | `meta` | See below | Normalization run metadata. |
 
 ### `stats.json.meta` fields
@@ -488,6 +498,7 @@ When both UIA `name` and App Vocab `meaningful_name` are present, the viewer pre
 | `canonical_process_id` / `canonical_version` | Pinned canonical set, if `--canonical` was used. |
 | `drift_count` / `phase_count` | Total drift markers and phases in `annotations.json` after this run. |
 | `app_vocabularies` / `app_vocabulary_matches` / `app_vocabulary_hits_by_id` | Vocabularies loaded, interactions matched, per-vocab hit counts. |
+| `vocab_coverage` | Per-app `{ total_interactions, enriched, coverage_pct }` — how much of each app's interaction stream a loaded App Vocabulary could name. The session summary panel surfaces it. |
 
 ## When the schema changes
 
