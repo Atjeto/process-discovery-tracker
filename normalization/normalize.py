@@ -39,7 +39,13 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from case_assignment import assign_case_ids, collect_cases
-from classification import classify_events, collapse_adjacent, load_taxonomy
+from classification import (
+    classify_events,
+    collapse_adjacent,
+    collapse_activity_occurrences,
+    load_taxonomy,
+)
+from classification_overrides import apply_classification_overrides
 from log_setup import setup_logging
 from xes_export import build_event_log, export_xes, export_csv
 from step_suggest import auto_suggest_steps
@@ -366,11 +372,25 @@ def normalize(
     print(f"[normalize] taxonomy: {len(taxonomy.get('rules', []))} rules")
 
     classified = classify_events(with_cases, taxonomy)
+    # Analyst classification corrections (annotations.json) override the
+    # taxonomy result -- applied last so the analyst's judgement wins, and
+    # before collapse so a correction that unifies two labels then
+    # collapses cleanly. See design §6.1 / §7.2.
+    classified, overrides_applied = apply_classification_overrides(classified, annotations)
+    if overrides_applied:
+        print(f"[normalize] applied {overrides_applied} classification override(s) from annotations.json")
     collapsed = collapse_adjacent(classified)
     print(f"[normalize] collapsed: {sum(1 for e in classified if e.get('type') == 'activity')} -> "
           f"{sum(1 for e in collapsed if e.get('type') == 'activity')} activity events")
 
-    log = build_event_log(collapsed, cases, worker_id=worker_id)
+    # events.csv keeps the per-window rows (`collapsed`); the process-mining
+    # event log collapses further -- one row per activity occurrence -- so the
+    # DFG/BPMN cannot contain a directly-follows self-loop. See design §7.1.
+    log_events = collapse_activity_occurrences(classified)
+    print(f"[normalize] event-log occurrences: "
+          f"{sum(1 for e in log_events if e.get('type') == 'activity')} activity events")
+
+    log = build_event_log(log_events, cases, worker_id=worker_id)
     print(f"[normalize] event log: {len(log)} traces")
 
     xes_path = session_folder / "events.xes"
@@ -383,7 +403,7 @@ def normalize(
     export_csv(collapsed, cases, str(csv_path))
     print(f"[normalize] wrote {csv_path}")
 
-    summary = stats.compute_all(collapsed, cases)
+    summary = stats.compute_all(log_events, cases)
     summary["meta"] = {
         "normalization_run_at": datetime.now(timezone.utc).isoformat(),
         "taxonomy_version": (taxonomy or {}).get("version"),

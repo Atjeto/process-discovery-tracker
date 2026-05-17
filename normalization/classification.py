@@ -107,3 +107,46 @@ def collapse_adjacent(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
         out.append(ev)
     return out
+
+
+def collapse_activity_occurrences(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse consecutive activity events sharing `activity_label` and
+    `case_ids` into a single activity occurrence, summing duration.
+
+    Unlike `collapse_adjacent` -- which keys on app + title + label +
+    case_ids and is broken by any interleaved non-activity event -- this
+    keys on the activity label alone and skips over interleaved
+    interaction / marker events when judging adjacency.
+
+    Rationale: the process-mining event log treats one continuous run of an
+    activity as one occurrence. Two consecutive same-label events differ
+    only in sub-activity detail (a window-title change) or are separated
+    only by capture noise (interactions, a marker) -- neither is a real
+    transition. Feeding the event log through this collapse makes a
+    directly-follows self-loop structurally impossible. `collapse_adjacent`
+    is left untouched so events.csv keeps the finer per-window rows.
+    """
+    out: list[dict[str, Any]] = []
+    last_idx: int | None = None  # index in `out` of the most recent activity event
+    for ev in events:
+        if ev.get("type") != "activity":
+            out.append(ev)
+            continue
+        if last_idx is not None:
+            prev = out[last_idx]
+            pd = prev["data"]
+            cd = ev["data"]
+            same = (
+                pd.get("activity_label") == cd.get("activity_label")
+                and (pd.get("case_ids") or []) == (cd.get("case_ids") or [])
+            )
+            if same:
+                merged = dict(prev)
+                merged_data = dict(pd)
+                merged_data["duration_ms"] = (pd.get("duration_ms") or 0) + (cd.get("duration_ms") or 0)
+                merged["data"] = merged_data
+                out[last_idx] = merged
+                continue
+        out.append(ev)
+        last_idx = len(out) - 1
+    return out

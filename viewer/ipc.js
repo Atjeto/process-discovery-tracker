@@ -67,6 +67,11 @@ function saveAnnotations(payload) {
   return ipcRenderer.invoke("viewer:saveAnnotations", payload);
 }
 
+/** @param {object} payload @returns {Promise<any>} */
+function addClassificationOverride(payload) {
+  return ipcRenderer.invoke("viewer:addClassificationOverride", payload);
+}
+
 /* ---- Export / shell ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -193,7 +198,7 @@ module.exports = {
   loadSession, openSessionFolder, openMultipleSessions, loadMultipleSessions,
   runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
   cancelNormalize,
-  saveAnnotations,
+  saveAnnotations, addClassificationOverride,
   exportFile, saveSvgFile, revealFile, openExternal,
   openCanonicalFile, saveCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,

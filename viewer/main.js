@@ -681,6 +681,36 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
   return annoPath;
 });
 
+/* Append one analyst classification override to annotations.json,
+   preserving all other annotation state. Same path-anchoring guard as
+   saveAnnotations; read-merge-write like saveExternalVideoSync so a
+   stale renderer copy of annotations can't clobber other edits. */
+ipcMain.handle("viewer:addClassificationOverride", (_e, { sessionFolder, override }) => {
+  try {
+    const root = path.resolve(sessionFolder);
+    if (!fs.existsSync(path.join(root, "manifest.json"))) {
+      return { ok: false, error: "Not a session folder" };
+    }
+    if (!override || typeof override !== "object") {
+      return { ok: false, error: "No override provided" };
+    }
+    const annoPath = path.join(root, "annotations.json");
+    let anno = {};
+    if (fs.existsSync(annoPath)) {
+      try { anno = JSON.parse(fs.readFileSync(annoPath, "utf-8")) || {}; }
+      catch (_) { anno = {}; }
+    }
+    if (!Array.isArray(anno.classification_overrides)) {
+      anno.classification_overrides = [];
+    }
+    anno.classification_overrides.push(override);
+    fs.writeFileSync(annoPath, JSON.stringify(anno, null, 2));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 /* --- App lifecycle ----------------------------------------------- */
 
 app.whenReady().then(() => {

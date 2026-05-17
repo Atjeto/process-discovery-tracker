@@ -50,7 +50,13 @@ function resolveNormalizeScript() {
 }
 
 function resolveDefaultTaxonomy() {
+  /* The canonical taxonomy.yaml wins over sample-taxonomy.yaml when
+     present, in both the dev tree and a packaged build. The sample is
+     kept only as a last-resort fallback so a fresh checkout still
+     classifies something. */
   const candidates = [
+    path.resolve(__dirname, "..", "normalization", "taxonomy.yaml"),
+    path.join(process.resourcesPath || "", "normalization", "taxonomy.yaml"),
     path.resolve(__dirname, "..", "normalization", "sample-taxonomy.yaml"),
     path.join(process.resourcesPath || "", "normalization", "sample-taxonomy.yaml"),
   ];

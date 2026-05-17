@@ -130,6 +130,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "phases": [],
   "annotations": [],
   "marker_edits": [],
+  "classification_overrides": [],
   "notes": [],
   "drift_markers": [],
   "matched_against": null,
@@ -138,7 +139,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `version`, `session_id`, `last_modified`, `last_modified_by`) are additive; missing files are treated as empty.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `version`, `session_id`, `last_modified`, `last_modified_by`) are additive; missing files are treated as empty.
 
 Legacy entries inside the two original arrays:
 
@@ -157,6 +158,25 @@ Legacy entries inside the two original arrays:
 ```
 
 Insert edits create a synthetic marker event during normalization with `event_id: "insert-<edit_id>"`. `data` carries `synthetic: true` and `edit_id` so downstream consumers can distinguish synthetic markers from captured ones. `marker_type` defaults to `"start"`; `label` may be null for an End marker (Ends close the innermost open Start regardless of label).
+
+### Classification override (`classification_overrides[]`)
+
+Analyst corrections to activity classification, written by the viewer's Flow-map reclassify action. Applied during normalization (after taxonomy classification, before collapse) so the corrected label flows through to `events.csv`, `events.xes`, the DFG/BPMN process maps, and `stats.json`.
+
+```json
+{
+  "classification_overrides": [
+    { "override_id": "uuid", "scope": "instance",
+      "event_id": "<activity_event_id>", "label": "CRM -- Salesforce",
+      "created_at": "<ISO>" },
+    { "override_id": "uuid", "scope": "rule",
+      "match": { "app": "chrome.exe", "title_regex": ".*Salesforce.*" },
+      "label": "CRM -- Salesforce", "created_at": "<ISO>" }
+  ]
+}
+```
+
+`scope: "instance"` retargets one activity event by `event_id`; `scope: "rule"` retargets every activity event whose `app` + window `title` match. An instance override wins over a rule override for the same event; among rules, first match wins. A `rule` entry is itself a candidate taxonomy rule (`match` + `label`) — an owner can promote it into `taxonomy.yaml` by hand (§6.1). Raw `events.jsonl` is never modified.
 
 ### Step entity (`steps[]`)
 

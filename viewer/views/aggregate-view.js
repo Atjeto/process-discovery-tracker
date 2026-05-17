@@ -12,12 +12,14 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { $, $$, escapeHtml, fillTable, toast } = require("../dom.js");
+const { randomUUID } = require("node:crypto");
+const { $, $$, escapeHtml, escapeAttr, fillTable, toast } = require("../dom.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const PdtCharts = require("../charts.js");
 const PdtBpmn = require("../bpmn-viewer.js");
 const PdtDfg = require("../dfg-viewer.js");
+const { formModal } = require("../modals.js");
 
 /* Injected by renderer.js -- activates the Session tab, loads a
    session folder, and seeks to a timestamp. */
@@ -484,8 +486,8 @@ async function drillToActivity(activityLabel, fromEvent) {
   if (!activityLabel) return;
   // P1.5: collect every matching activity event across all loaded
   // sessions, not just the first session that mentions the label.
-  // Single-result auto-picks; multi-result opens a picker so the
-  // analyst can choose the moment they actually meant.
+  // The picker lists those moments to drill into and (Phase 3) offers
+  // a Reclassify action for the activity.
   const matches = [];
   for (const sess of State.getAggregateSessions()) {
     const stats = sess.stats;
@@ -506,10 +508,8 @@ async function drillToActivity(activityLabel, fromEvent) {
     toast("No loaded session contains " + activityLabel, "error");
     return;
   }
-  if (matches.length === 1) {
-    await _drillTo(matches[0], activityLabel);
-    return;
-  }
+  // Always open the picker -- even for a single match -- so the
+  // Reclassify action is reachable from every map node.
   showDfgDrillPicker(matches, activityLabel, fromEvent);
 }
 
@@ -537,14 +537,18 @@ function showDfgDrillPicker(matches, activityLabel, fromEvent) {
   }
   picker.style.left = Math.max(8, x) + "px";
   picker.style.top  = Math.max(8, y) + "px";
+  const rowsHtml = matches.map((m, i) =>
+    '<div class="row' + (i === 0 ? " sel" : "") + '" data-idx="' + i + '">' +
+    '<span class="ts">' + new Date(m.timestamp).toLocaleString() + '</span>' +
+    '<span class="name"><strong>' + escapeHtml(m.sessionName) + '</strong>' +
+    (m.title ? ' — ' + escapeHtml(m.title) : '') + '</span>' +
+    '</div>'
+  ).join("");
   picker.innerHTML =
-    matches.map((m, i) =>
-      '<div class="row' + (i === 0 ? " sel" : "") + '" data-idx="' + i + '">' +
-      '<span class="ts">' + new Date(m.timestamp).toLocaleString() + '</span>' +
-      '<span class="name"><strong>' + escapeHtml(m.sessionName) + '</strong>' +
-      (m.title ? ' — ' + escapeHtml(m.title) : '') + '</span>' +
-      '</div>'
-    ).join("");
+    '<div class="dfg-drill-head">' +
+    '<span class="lbl" title="' + escapeAttr(activityLabel) + '">' + escapeHtml(activityLabel) + '</span>' +
+    '<button type="button" class="dfg-drill-reclassify">Reclassify…</button>' +
+    '</div>' + rowsHtml;
   document.body.appendChild(picker);
 
   let selIdx = 0;
@@ -574,8 +578,87 @@ function showDfgDrillPicker(matches, activityLabel, fromEvent) {
     r.addEventListener("click", () => pick(parseInt(r.dataset.idx, 10)));
     r.addEventListener("mouseenter", () => setSel(parseInt(r.dataset.idx, 10)));
   });
+  const reBtn = picker.querySelector(".dfg-drill-reclassify");
+  if (reBtn) {
+    reBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      cleanup();
+      reclassifyActivity(activityLabel, matches);
+    });
+  }
   document.addEventListener("keydown", onKey, true);
   setTimeout(() => document.addEventListener("mousedown", onMouse, true), 0);
+}
+
+/* Phase 3: capture an analyst classification correction from a map node.
+   Writes a rule-scoped classification override into every loaded
+   session's annotations.json, then re-runs the analyze pipeline so the
+   corrected label flows through to the process map. */
+async function reclassifyActivity(activityLabel, matches) {
+  const sessions = State.getAggregateSessions();
+  if (!sessions.length) return;
+  // Existing labels across loaded sessions -> datalist, so the analyst is
+  // nudged toward an existing canonical string, not a near-duplicate.
+  const known = new Set();
+  for (const s of sessions) {
+    for (const r of (((s.stats || {}).activity_stats) || [])) {
+      if (r.activity_label) known.add(r.activity_label);
+    }
+  }
+  // The node's app, when every sampled occurrence shares one (always true
+  // for an "Unclassified -- <app>" node -- that label is built from app).
+  const apps = [...new Set((matches || []).map((m) => m.app).filter(Boolean))];
+  const app = apps.length === 1 ? apps[0] : "";
+  const res = await formModal({
+    title: "Reclassify activity",
+    message: 'Currently labelled "' + activityLabel + '".',
+    okLabel: "Apply & re-analyze",
+    fields: [
+      {
+        key: "label", label: "New activity label", value: activityLabel,
+        placeholder: "e.g. CRM -- Salesforce", options: [...known].sort(),
+      },
+      {
+        key: "pattern", label: "Window-title pattern (regex)", value: ".*",
+        placeholder: ".*",
+        hint: app
+          ? "Reclassifies " + app + " windows whose title matches. Use .* for every window in this activity."
+          : "Reclassifies windows whose title matches this regex.",
+      },
+    ],
+  });
+  if (!res) return;
+  const label = (res.label || "").trim();
+  const pattern = (res.pattern || "").trim() || ".*";
+  if (!label) { toast("Reclassify cancelled — no label entered", "error"); return; }
+  try {
+    new RegExp(pattern);
+  } catch (e) {
+    toast("Invalid title pattern: " + e.message, "error");
+    return;
+  }
+  const override = {
+    override_id: randomUUID(),
+    scope: "rule",
+    match: app ? { app, title_regex: pattern } : { title_regex: pattern },
+    label,
+    created_at: new Date().toISOString(),
+  };
+  let written = 0;
+  for (const s of sessions) {
+    try {
+      const r = await Ipc.addClassificationOverride({
+        sessionFolder: s.sessionFolder, override,
+      });
+      if (r && r.ok) written++;
+    } catch (_) { /* per-session failure -- keep going */ }
+  }
+  if (!written) { toast("Could not save the classification override", "error"); return; }
+  toast('Reclassified to "' + label + '" — re-analyzing…', "success");
+  // Reuse the verified "Analyze all" flow: re-runs normalization for every
+  // loaded session and re-renders the map with the override applied.
+  const btn = document.getElementById("btn-normalize-all");
+  if (btn) btn.click();
 }
 
 function findFirstActivityByLabel(session, activityLabel) {

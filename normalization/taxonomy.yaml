@@ -1,0 +1,117 @@
+# Canonical activity-classification taxonomy.
+#
+# The team-wide, version-controlled classification reference (design §6.1).
+# Rules are evaluated in order; FIRST MATCH WINS. A window that matches no rule
+# keeps the fallback label "Unclassified -- <app>" -- that fallback is
+# deliberate (§7.2): it is a prompt for the analyst to classify, not a failure.
+#
+# Browser windows are classified per WEB APP, by window title. There is
+# deliberately NO `chrome.exe` / `msedge.exe` catch-all rule: a `.*` catch-all
+# re-lumps every distinct web app into one coarse "Browser (other)" node, which
+# is what produces meaningless process maps (a node looping on itself, an
+# arrow with nowhere real to go). Add one rule per web app the team uses.
+#
+# Native desktop apps are different: one exe is genuinely one application, so
+# an exe-level `.*` rule is correct for them.
+
+version: "v1"
+
+rules:
+
+  # --- Web apps inside the browser (title-discriminated; NO browser catch-all) ---
+  # Salesforce is exercised by the bundled example sessions. The others are
+  # common enterprise starting points -- tune the title regexes to your tenant.
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*Salesforce.*"
+    label: "CRM -- Salesforce"
+    extract:
+      transaction_id: "Order #(\\d+)"
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*Outlook.*"
+    label: "Email -- Outlook Web"
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*Confluence.*"
+    label: "Docs -- Confluence"
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*Jira.*"
+    label: "Tickets -- Jira"
+
+  - match:
+      app: "chrome.exe"
+      title_regex: ".*SharePoint.*"
+    label: "Docs -- SharePoint"
+
+  # --- SAP desktop client ---
+  # Covers both the saplogon.exe launcher and the SAPGUI.exe transaction
+  # windows. Specific transactions first, then a residual -- a residual IS
+  # acceptable here: the SAP GUI is one application, not a host for many.
+
+  - match:
+      app: "SAPGUI.exe"
+      title_regex: ".*Sales Order.*"
+    label: "SAP -- Sales Order"
+
+  - match:
+      app: "saplogon.exe"
+      title_regex: ".*Sales Order.*"
+    label: "SAP -- Sales Order"
+
+  - match:
+      app: "SAPGUI.exe"
+      title_regex: ".*"
+    label: "SAP -- Other"
+
+  - match:
+      app: "saplogon.exe"
+      title_regex: ".*"
+    label: "SAP -- Other"
+
+  # --- Native desktop applications (one exe = one app) ---
+
+  - match:
+      app: "EXCEL.EXE"
+      title_regex: ".*"
+    label: "Spreadsheet -- Excel"
+
+  - match:
+      app: "OUTLOOK.EXE"
+      title_regex: ".*"
+    label: "Email -- Outlook Desktop"
+
+  - match:
+      app: "WINWORD.EXE"
+      title_regex: ".*"
+    label: "Document -- Word"
+
+  - match:
+      app: "POWERPNT.EXE"
+      title_regex: ".*"
+    label: "Slides -- PowerPoint"
+
+  - match:
+      app: "notepad.exe"
+      title_regex: ".*"
+    label: "Notes -- Notepad"
+
+  - match:
+      app: "Teams.exe"
+      title_regex: ".*"
+    label: "Comms -- Teams"
+
+  - match:
+      app: "Slack.exe"
+      title_regex: ".*"
+    label: "Comms -- Slack"
+
+  - match:
+      app: "explorer.exe"
+      title_regex: ".*"
+    label: "OS -- File Explorer"
