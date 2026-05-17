@@ -75,6 +75,7 @@ if (!gotLock) {
 if (process.platform === "darwin" && app.dock) app.dock.hide();
 
 let tray = null;
+let trayMenu = null;  // rebuilt by refreshTray(); shown via popUpContextMenu
 let tracker = null;
 let session = null;
 let lastStatus = null;
@@ -1049,7 +1050,7 @@ function toggleOperatorPanel() {
 }
 
 function statusLine() {
-  if (!tracker) return "Idle -- right-click to start a session";
+  if (!tracker) return "Idle -- click to start a session";
   if (lastStatus && lastStatus.paused) return `Paused (${lastStatus.markerDepth} open)`;
   const appName = (lastStatus && lastStatus.currentApp) || "(no window)";
   const depth = (lastStatus && lastStatus.markerDepth) || 0;
@@ -1249,7 +1250,12 @@ function buildMenu() {
 function refreshTray() {
   if (!tray) return;
   tray.setToolTip(statusLine());
-  tray.setContextMenu(buildMenu());
+  /* Keep the menu in a variable; the click handlers show it via
+     popUpContextMenu. We deliberately do NOT call setContextMenu --
+     on Windows that auto-shows the menu on right-click, which then
+     double-fires against our own right-click handler and leaves
+     right-click doing nothing. */
+  trayMenu = buildMenu();
 }
 
 app.whenReady().then(() => {
@@ -1276,8 +1282,11 @@ app.whenReady().then(() => {
   tray = new Tray(trayIconImage());
   tray.setToolTip("Process Discovery Tracker -- idle");
   refreshTray();
-  tray.on("right-click", () => tray.popUpContextMenu());
-  tray.on("click", () => tray.popUpContextMenu());
+  // Left- and right-click both open the menu, symmetrically. Driven
+  // explicitly (not via setContextMenu) so right-click does not
+  // double-fire -- see refreshTray().
+  tray.on("click", () => { if (trayMenu) tray.popUpContextMenu(trayMenu); });
+  tray.on("right-click", () => { if (trayMenu) tray.popUpContextMenu(trayMenu); });
 
   const okStart = globalShortcut.register(config.hotkeys.start_picker, async () => {
     if (!tracker) {
