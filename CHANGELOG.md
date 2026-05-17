@@ -6,6 +6,25 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-17
+
+### Added
+
+- **Studio Dark — a dark theme for the viewer.** A second, opt-in theme
+  alongside the default light Warm Editorial: a cool charcoal-blue base,
+  a teal accent, a brighter foreground — cinematic and technical. A
+  toggle in the topbar switches it at runtime, the choice is remembered,
+  and the stored theme is applied before first paint so there is no
+  flash. The dark theme covers every view — the timeline bands, the
+  step / phase editors, the Flow-diagram (DFG) graph, and the charts
+  included.
+
+### Changed
+
+- **Video stage glow.** The video pane carries a subtle radial-gradient
+  depth, and the no-video placeholder a faint grid — applied to both
+  themes so they stay visually matched.
+
 ## [0.5.0] - 2026-05-17
 
 ### Changed
