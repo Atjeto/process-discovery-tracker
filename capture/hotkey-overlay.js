@@ -123,40 +123,13 @@ function buildHtml(hotkeys) {
   const start = hotkeys.start_picker || "Ctrl+Shift+S";
   const end = hotkeys.end_innermost || "Ctrl+Shift+E";
   const shot = hotkeys.manual_screenshot || "Ctrl+Shift+P";
-  return `<!doctype html>
-<html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>PDT Hotkeys</title>
-<style>
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 8px 10px;
-         background: rgba(20, 20, 26, 0.85);
-         backdrop-filter: blur(6px);
-         color: #D8D6CE;
-         font-family: "Segoe UI", system-ui, sans-serif;
-         font-size: 11px; line-height: 1.4;
-         border: 1px solid #424250;
-         border-radius: 8px;
-         user-select: none;
-         -webkit-user-select: none;
-         pointer-events: none; /* re-affirm click-through at the CSS layer */
-  }
-  .title { font-size: 9px; letter-spacing: 1px; color: #807E78;
-           text-transform: uppercase; margin-bottom: 4px; }
-  .row { display: flex; justify-content: space-between;
-         align-items: center; padding: 3px 0; }
-  .row .label { color: #A8A69E; font-size: 11px; }
-  .kbd { font-family: "IBM Plex Mono", Consolas, monospace;
-         font-size: 10px; padding: 1px 5px;
-         background: rgba(46, 46, 55, 0.85);
-         border: 1px solid #424250; border-radius: 3px;
-         color: #D8D6CE; }
-</style></head><body>
-<div class="title">Hotkeys</div>
-<div class="row"><span class="label">Start marker</span><span class="kbd">${escapeHtml(start)}</span></div>
-<div class="row"><span class="label">End marker</span><span class="kbd">${escapeHtml(end)}</span></div>
-<div class="row"><span class="label">Screenshot</span><span class="kbd">${escapeHtml(shot)}</span></div>
-</body></html>`;
+  /* Markup lives in ui/hotkey-overlay.html; the three {{HK_*}} tokens
+     carry the (escaped) current hotkey bindings. */
+  return fs
+    .readFileSync(path.join(__dirname, "ui", "hotkey-overlay.html"), "utf-8")
+    .split("{{HK_START}}").join(escapeHtml(start))
+    .split("{{HK_END}}").join(escapeHtml(end))
+    .split("{{HK_SHOT}}").join(escapeHtml(shot));
 }
 
 function escapeHtml(s) {
@@ -170,4 +143,5 @@ module.exports = {
   toggleOverlay,
   isVisible,
   shouldRestoreOnLaunch,
+  buildHtml,
 };
