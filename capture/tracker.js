@@ -28,6 +28,38 @@ function getActiveWin() {
   return activeWinPromise;
 }
 
+/* A window title carries cosmetic churn that isn't a process step: a
+   "(3)" unread-count prefix, a "*"/"●" unsaved-changes marker, the
+   trailing browser-name suffix. Strip those before deciding whether the
+   title changed enough to start a new activity run -- so a Gmail unread
+   tick doesn't fragment the timeline, while a real navigation
+   (Salesforce -> SAP, both inside Chrome) still does. The raw title is
+   kept verbatim on the emitted event; this governs run boundaries only. */
+function normalizeTitle(title) {
+  let t = (title || "").trim();
+  t = t.replace(/^\(\d+\)\s*/, "");          // "(3) " unread-count prefix
+  t = t.replace(/^[*●•]\s*/, "");             // unsaved-changes marker
+  t = t.replace(
+    /\s+[-–—]\s+(Google Chrome|Microsoft\s*Edge|Mozilla Firefox|Brave|Opera|Chromium)$/i,
+    "",
+  );
+  return t.trim();
+}
+
+/* An activity run is a maximal stretch of polls sharing the same app,
+   pid, AND normalized window title. Putting the title in the run key
+   (design §3.1 / §7.1) keeps in-browser navigation between web apps
+   visible, instead of collapsing a long Chrome stretch into one
+   undifferentiated "chrome.exe" event. */
+function isNewRun(currentRun, app, pid, normTitle) {
+  return (
+    !currentRun ||
+    currentRun.app !== app ||
+    currentRun.pid !== pid ||
+    currentRun._normTitle !== normTitle
+  );
+}
+
 function startTracker({ sessionId, eventsFile, onTick }) {
   if (!sessionId || !eventsFile) {
     throw new Error("startTracker requires { sessionId, eventsFile }");
@@ -35,7 +67,7 @@ function startTracker({ sessionId, eventsFile, onTick }) {
 
   let paused = false;
   let stopped = false;
-  let currentRun = null; // { app, title, pid, _startMs, timestamp }
+  let currentRun = null; // { app, title, _normTitle, pid, bounds, _startMs, timestamp }
   let pollHandle = null;
   let markerStack = []; // for tray/status only; case IDs are derived in normalization
 
@@ -110,13 +142,15 @@ function startTracker({ sessionId, eventsFile, onTick }) {
     // builds may omit bounds; consumer falls back to primary display.
     const bounds = (win && win.bounds && Number.isFinite(win.bounds.x)) ? win.bounds : null;
 
-    if (!currentRun || currentRun.app !== app || currentRun.pid !== pid) {
+    const normTitle = normalizeTitle(title);
+    if (isNewRun(currentRun, app, pid, normTitle)) {
       closeRun(now);
       currentRun = {
         _startMs: now,
         timestamp: new Date(now).toISOString(),
         app,
         title,
+        _normTitle: normTitle,
         pid,
         bounds,
       };
@@ -209,4 +243,4 @@ function startTracker({ sessionId, eventsFile, onTick }) {
   return { fireMarker, fireSystem, fireInteraction, getStatus, pause, resume, stop };
 }
 
-module.exports = { startTracker, POLL_INTERVAL_MS };
+module.exports = { startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun };

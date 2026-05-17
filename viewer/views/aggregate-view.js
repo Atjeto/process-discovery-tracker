@@ -20,6 +20,7 @@ const PdtCharts = require("../charts.js");
 const PdtBpmn = require("../bpmn-viewer.js");
 const PdtDfg = require("../dfg-viewer.js");
 const { formModal } = require("../modals.js");
+const SessionSummary = require("../session-summary.js");
 
 /* Injected by renderer.js -- activates the Session tab, loads a
    session folder, and seeks to a timestamp. */
@@ -176,9 +177,73 @@ function filteredAggregateSessions() {
   return State.getAggregateSessions().filter(sessionInDateRange);
 }
 
+/* Phase A2: total session duration for the outlier check -- the
+   manifest's started/ended span, falling back to the event stream. */
+function sessionWallMs(s) {
+  const m = (s && s.manifest) || {};
+  if (m.started_at && m.ended_at) {
+    const a = Date.parse(m.started_at);
+    const b = Date.parse(m.ended_at);
+    if (isFinite(a) && isFinite(b) && b > a) return b - a;
+  }
+  const evs = (s && s.events) || [];
+  if (evs.length) {
+    const a = Date.parse(evs[0].timestamp);
+    const b = Date.parse(evs[evs.length - 1].timestamp);
+    if (isFinite(a) && isFinite(b)) return Math.max(0, b - a);
+  }
+  return 0;
+}
+
+function sessionName(s) {
+  if (!s) return "session";
+  return path.basename(s.sessionFolder || "") ||
+    (s.manifest && s.manifest.session_id) || "session";
+}
+
+/* Phase A2: flag a session whose total duration is a statistical
+   outlier among the loaded set -- it can quietly distort the merged
+   statistics. The banner offers a one-click drop from the comparison. */
+function renderOutlierBanner(sessions) {
+  const banner = document.getElementById("agg-outlier-banner");
+  if (!banner) return;
+  const outliers = SessionSummary.detectDurationOutliers(sessions.map(sessionWallMs));
+  if (!outliers.length) {
+    banner.style.display = "none";
+    banner.innerHTML = "";
+    return;
+  }
+  banner.style.display = "";
+  const many = outliers.length > 1;
+  const parts = outliers.map((o) =>
+    `<strong>${escapeHtml(sessionName(sessions[o.index]))}</strong> ` +
+    `(${o.ratio.toFixed(1)}× the median) ` +
+    `<span class="summary-link" data-drop="${o.index}">remove</span>`
+  );
+  banner.innerHTML =
+    `Possible outlier${many ? "s" : ""}: ` + parts.join(" · ") +
+    ". A very different duration can distort the merged statistics — " +
+    `consider reviewing ${many ? "them" : "it"} separately.`;
+  banner.querySelectorAll("[data-drop]").forEach((link) => {
+    link.addEventListener("click", () => {
+      const sess = sessions[Number(link.dataset.drop)];
+      if (!sess) return;
+      State.setAggregateSessions(
+        State.getAggregateSessions().filter((x) => x !== sess));
+      if (!State.getAggregateSessions().length) {
+        $("#aggregate-empty").style.display = "";
+        $("#aggregate-loaded").style.display = "none";
+      }
+      renderAggregate();
+      toast("Removed " + sessionName(sess) + " from the comparison");
+    });
+  });
+}
+
 function renderAggregate() {
   // Pills - count filtered + total
   const filtered = filteredAggregateSessions();
+  renderOutlierBanner(filtered);
   const numNormalized = filtered.filter((s) => !!s.stats).length;
   const rangeNote = (State.getAggregateFromDate() || State.getAggregateToDate())
     ? ` (filtered from ${State.getAggregateSessions().length})` : "";

@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from classification import collapse_activity_occurrences
+from classification import collapse_activity_occurrences, classify_events
 
 
 def _activity(label, title, dur, case_ids=("c1",)):
@@ -106,6 +106,50 @@ def test_input_not_mutated():
     collapse_activity_occurrences(events)
     assert events[0]["data"]["duration_ms"] == 100
     assert events[1]["data"]["duration_ms"] == 200
+
+
+def _taxonomy():
+    return {
+        "rules": [
+            {"label": "CRM", "match": {"app": "chrome.exe", "title_regex": "Salesforce"}},
+            {"label": "Mail", "match": {"app": "outlook.exe", "title_regex": "Inbox"}},
+        ]
+    }
+
+
+def test_classify_events_returns_per_rule_report():
+    """classify_events returns (events, report); the report counts how
+    many activity events each taxonomy rule matched."""
+    events = [
+        {"type": "activity", "data": {"app": "chrome.exe", "title": "Salesforce - Home"}},
+        {"type": "activity", "data": {"app": "chrome.exe", "title": "Salesforce - Account"}},
+    ]
+    out, report = classify_events(events, _taxonomy())
+    assert out[0]["data"]["activity_label"] == "CRM"
+    assert len(report) == 2
+    assert report[0]["label"] == "CRM"
+    assert report[0]["matches"] == 2
+    assert report[0]["zero_match"] is False
+
+
+def test_classify_events_flags_zero_match_rule():
+    """A rule that fires on nothing -- typically a typo'd title_regex --
+    is flagged zero_match so it doesn't fail silently (I67)."""
+    events = [
+        {"type": "activity", "data": {"app": "chrome.exe", "title": "Salesforce - Home"}},
+    ]
+    _out, report = classify_events(events, _taxonomy())
+    mail = next(r for r in report if r["label"] == "Mail")
+    assert mail["matches"] == 0
+    assert mail["zero_match"] is True
+    assert mail["title_regex"] == "Inbox"
+
+
+def test_classify_events_empty_taxonomy_empty_report():
+    events = [{"type": "activity", "data": {"app": "x.exe", "title": "t"}}]
+    out, report = classify_events(events, {"rules": []})
+    assert report == []
+    assert out[0]["data"]["activity_label"] == "Unclassified -- x.exe"
 
 
 if __name__ == "__main__":

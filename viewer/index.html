@@ -146,6 +146,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
         </div>
 
+        <!-- Session summary: post-analysis orientation panel (Phase A) -->
+        <details class="session-summary" id="session-summary" style="display:none"></details>
+
         <!-- View-mode bar: prominent, controls what the whole session view shows -->
         <div class="view-mode-bar">
           <span class="view-mode-label">View:</span>
@@ -414,6 +417,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <div class="session-pills" id="aggregate-pills"></div>
         </div>
         <div class="alert" id="agg-version-spread" style="display:none"></div>
+        <div class="alert" id="agg-outlier-banner" style="display:none"></div>
 
         <div class="aggregate-grid">
           <div class="panel panel-wide">

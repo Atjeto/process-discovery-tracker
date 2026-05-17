@@ -40,7 +40,7 @@ The envelope is the contract; the `data` shape varies by `type`.
 }
 ```
 
-`timestamp` is the start of the activity run, not the moment the event was written. `duration_ms` covers the span the foreground window was app+pid (title may have shifted within the run; the latest title is recorded).
+`timestamp` is the start of the activity run, not the moment the event was written. `duration_ms` covers the span the foreground window held the same app, pid, and (normalized) window title — see the data dictionary below.
 
 ### `marker` data
 
@@ -311,7 +311,11 @@ The section above defines the *shape* of each file. This section defines the *me
 
 ## Activity events — what `duration_ms` actually measures
 
-An `activity` event spans a run of consecutive `active-win` polls that returned the same `(app, pid)` pair. The title may have changed within the run; the *latest* title is recorded. The `duration_ms` is the wall-clock span between the first poll and the last poll in the run, not the sum of foreground time (idle gaps within the run are not separately accounted — they show up as separate `idle_start` / `idle_end` system events that bracket the activity, not as gaps inside it).
+An `activity` event spans a run of consecutive `active-win` polls that returned the same `(app, pid)` pair **and the same normalized window title**. A change of foreground app, process, or title ends the run and starts a new event — so navigation between web apps inside one browser (Salesforce → SAP, both `chrome.exe`) produces distinct events instead of one coarse `chrome.exe` event (see [ADR-0007](../docs/adr/0007-activity-event-granularity.md)).
+
+The title is *normalized* for the run-boundary comparison only: a leading unread-count (`(3)`), an unsaved-changes marker (`*`/`●`), and the trailing browser-name suffix are stripped, so cosmetic title churn does not fragment the stream. The raw, unmodified title is what is recorded on the event.
+
+The `duration_ms` is the wall-clock span between the first poll and the last poll in the run, not the sum of foreground time (idle gaps within the run are not separately accounted — they show up as separate `idle_start` / `idle_end` system events that bracket the activity, not as gaps inside it).
 
 Collapsed events (after §7.1 step 7) sum `duration_ms` across adjacent events with the same `(app, title, label, case_ids)`. The collapsed event's `timestamp` is the *first* event's timestamp; the duration is the *summed* duration.
 

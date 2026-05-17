@@ -48,7 +48,7 @@ from classification import (
 from classification_overrides import apply_classification_overrides
 from log_setup import setup_logging
 from xes_export import build_event_log, export_xes, export_csv
-from step_suggest import auto_suggest_steps
+from step_suggest import auto_suggest_steps, drop_overlapping_auto_steps
 import app_vocab
 import stats_compute as stats
 
@@ -112,14 +112,24 @@ def _merge_steps(existing: list, fresh: list) -> list:
     """Preserve manually_authored, edited, and hidden steps. Replace
     auto_* steps with the latest fresh suggestions. A `hidden` step is
     one the analyst manually suppressed -- preserving it means a
-    re-analyze won't resurrect it as a fresh auto_suggested row."""
+    re-analyze won't resurrect it as a fresh auto_suggested row.
+
+    Fresh auto steps that overlap an analyst-owned (manual / edited /
+    hidden) step are dropped: the analyst already owns that span, and an
+    overlapping auto step is a duplicate they would otherwise have to
+    find and delete by hand (§I37)."""
     by_state = {"manually_authored": [], "edited": [], "hidden": []}
     for s in existing or []:
         st = s.get("state")
         if st in by_state:
             by_state[st].append(s)
-    return (by_state["manually_authored"] + by_state["edited"]
-            + by_state["hidden"] + (fresh or []))
+    preserved = (by_state["manually_authored"] + by_state["edited"]
+                 + by_state["hidden"])
+    kept, dropped = drop_overlapping_auto_steps(fresh or [], preserved)
+    if dropped:
+        print(f"[normalize] dropped {len(dropped)} auto step(s) "
+              f"overlapping analyst-owned steps")
+    return preserved + kept
 
 
 def _merge_phases(existing: list, fresh: list) -> list:
@@ -371,7 +381,12 @@ def normalize(
     taxonomy = load_taxonomy(taxonomy_path) if taxonomy_path else {"rules": []}
     print(f"[normalize] taxonomy: {len(taxonomy.get('rules', []))} rules")
 
-    classified = classify_events(with_cases, taxonomy)
+    classified, taxonomy_report = classify_events(with_cases, taxonomy)
+    for _r in taxonomy_report:
+        if _r["zero_match"]:
+            _rx = f" (title pattern: {_r['title_regex']})" if _r["title_regex"] else ""
+            print(f"[normalize] note: taxonomy rule '{_r['label']}'{_rx} "
+                  f"matched 0 events")
     # Analyst classification corrections (annotations.json) override the
     # taxonomy result -- applied last so the analyst's judgement wins, and
     # before collapse so a correction that unifies two labels then
@@ -403,11 +418,23 @@ def normalize(
     export_csv(collapsed, cases, str(csv_path))
     print(f"[normalize] wrote {csv_path}")
 
+    # C5/§I38: capture the prior run's canonical match rate before we
+    # overwrite stats.json, so a sharp drop can be flagged as drift.
+    prev_match_rate = None
+    _prior_stats = session_folder / "stats.json"
+    if _prior_stats.exists():
+        try:
+            with open(_prior_stats, encoding="utf-8") as f:
+                prev_match_rate = (json.load(f).get("meta") or {}).get("match_rate")
+        except (OSError, json.JSONDecodeError, ValueError):
+            prev_match_rate = None
+
     summary = stats.compute_all(log_events, cases)
     summary["meta"] = {
         "normalization_run_at": datetime.now(timezone.utc).isoformat(),
         "taxonomy_version": (taxonomy or {}).get("version"),
         "taxonomy_path": str(taxonomy_path) if taxonomy_path else None,
+        "taxonomy_report": taxonomy_report,
         "session_folder": str(session_folder),
         "worker_id": worker_id,
         "raw_event_count": len(raw),
@@ -434,6 +461,22 @@ def normalize(
         "app_vocabulary_matches": vocab_summary.get("matched", 0),
         "app_vocabulary_hits_by_id": vocab_summary.get("vocabs_hit") or {},
     }
+    # C5/§I38: a >20-point match-rate drop vs the prior run usually means
+    # the target app changed its field IDs and canonical matching is
+    # silently degrading. Surface it so the analyst can re-check.
+    if (canonical_path and prev_match_rate is not None
+            and total_interactions > 0):
+        _cur = summary["meta"]["match_rate"]
+        if _cur < prev_match_rate - 0.20:
+            summary["meta"]["canonical_drift"] = {
+                "warning": True,
+                "current_rate": round(_cur, 3),
+                "previous_rate": round(prev_match_rate, 3),
+            }
+            print(f"[normalize] WARNING: canonical match rate dropped "
+                  f"{round(prev_match_rate * 100)}% -> {round(_cur * 100)}% "
+                  f"-- the target application may have changed its fields")
+
     stats_path = session_folder / "stats.json"
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)

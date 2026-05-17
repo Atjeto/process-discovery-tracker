@@ -8,7 +8,9 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { startTracker, POLL_INTERVAL_MS } = require("../tracker.js");
+const {
+  startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun,
+} = require("../tracker.js");
 
 function tmpEvents() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-trk-"));
@@ -94,4 +96,46 @@ test("pause and resume update status and emit system events", () => {
   assert.ok(kinds.includes("paused"));
   assert.ok(kinds.includes("resumed"));
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --- Title-grained activity runs (ADR-0007) -------------------------
+
+test("normalizeTitle strips the unread-count prefix and browser suffix", () => {
+  assert.strictEqual(normalizeTitle("(3) Inbox - Google Chrome"), "Inbox");
+  assert.strictEqual(normalizeTitle("(27) Slack | acme - Google Chrome"), "Slack | acme");
+});
+
+test("normalizeTitle strips an unsaved-changes marker", () => {
+  assert.strictEqual(normalizeTitle("*Quarterly report"), "Quarterly report");
+  assert.strictEqual(normalizeTitle("● Untitled"), "Untitled");
+});
+
+test("normalizeTitle strips the suffix for several browsers", () => {
+  assert.strictEqual(normalizeTitle("Workday — Mozilla Firefox"), "Workday");
+  assert.strictEqual(normalizeTitle("SAP Fiori - Microsoft Edge"), "SAP Fiori");
+});
+
+test("normalizeTitle leaves a plain title untouched", () => {
+  assert.strictEqual(normalizeTitle("SAP Fiori Launchpad"), "SAP Fiori Launchpad");
+  assert.strictEqual(normalizeTitle(""), "");
+  assert.strictEqual(normalizeTitle(undefined), "");
+});
+
+test("normalizeTitle keeps genuinely different web apps distinct", () => {
+  const a = normalizeTitle("(2) Salesforce | Accounts - Google Chrome");
+  const b = normalizeTitle("SAP Sales Order - Google Chrome");
+  assert.notStrictEqual(a, b);
+});
+
+test("isNewRun: a null run, or any app/pid change, starts a new run", () => {
+  assert.strictEqual(isNewRun(null, "chrome.exe", 10, "Salesforce"), true);
+  const run = { app: "chrome.exe", pid: 10, _normTitle: "Salesforce" };
+  assert.strictEqual(isNewRun(run, "chrome.exe", 10, "Salesforce"), false);
+  assert.strictEqual(isNewRun(run, "excel.exe", 10, "Salesforce"), true);
+  assert.strictEqual(isNewRun(run, "chrome.exe", 99, "Salesforce"), true);
+});
+
+test("isNewRun: a normalized-title change starts a new run (web-app switch)", () => {
+  const run = { app: "chrome.exe", pid: 10, _normTitle: "Salesforce" };
+  assert.strictEqual(isNewRun(run, "chrome.exe", 10, "SAP Sales Order"), true);
 });

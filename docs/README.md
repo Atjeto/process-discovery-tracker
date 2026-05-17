@@ -68,6 +68,8 @@ is today.
 | [adr/0003-viewer-architecture-refactor.md](adr/0003-viewer-architecture-refactor.md) | ADR — the viewer refactor decision and migration path |
 | [adr/0004-flow-timeline-steps-rework.md](adr/0004-flow-timeline-steps-rework.md) | ADR — the Flow timeline + Steps view rework (Warm Editorial) |
 | [adr/0005-capture-architecture-remediation.md](adr/0005-capture-architecture-remediation.md) | ADR — the capture app tech-debt remediation (C1-C8) |
+| [adr/0006-backlog-sequencing.md](adr/0006-backlog-sequencing.md) | ADR — sequencing the IMPROVEMENTS backlog; defer the analysis layer |
+| [adr/0007-activity-event-granularity.md](adr/0007-activity-event-granularity.md) | ADR — activity-event granularity; title in the capture run key |
 | [../capture/README.md](../capture/README.md) | Capture component quick-start |
 | [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |
 | [../normalization/README.md](../normalization/README.md) | Normalization component quick-start |

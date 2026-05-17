@@ -27,6 +27,7 @@ const { resetUndoStack, saveAnnotationsWithUndo, persistAnnotations } = require(
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
+const SessionSummary = require("../session-summary.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -461,6 +462,7 @@ async function loadSessionIntoView(folder) {
   pushRecent(folder, label + " · " + path.basename(folder));
 
   renderSessionPills();
+  renderSessionSummary();
   // Wire video. Toggle the no-video card explicitly since the
   // sibling-selector CSS only fires when [src] is present.
   const video = $("#video");
@@ -508,6 +510,7 @@ async function loadSessionIntoView(folder) {
   // P1.10: restore persisted timeline zoom + scroll for this session.
   _wireTimelineScrollPersist();
   restoreTimelineForCurrent();
+  maybeAutoScrollToFirstCase();
   // P1.1: clear any range selection from the previous session.
   if (prevFolder !== folder) clearSelectionRange();
   installRangeSelection();
@@ -681,6 +684,204 @@ function renderSessionPills() {
   }
 }
 
+/* Phase A: the post-analysis orientation panel. Sits above the
+   view-mode bar and answers "what happened here" before the analyst
+   scrolls the timeline. Hidden until the session has a stats.json
+   (the onboarding card covers the unanalyzed state). All derivations
+   are pure functions in session-summary.js; this only renders. */
+function renderSessionSummary() {
+  const panel = $("#session-summary");
+  if (!panel) return;
+  const session = State.getSession();
+  const s = SessionSummary.computeSummary(session);
+  if (!s) { panel.style.display = "none"; panel.innerHTML = ""; return; }
+  panel.style.display = "";
+
+  const pct = (f) => Math.round(f * 100) + "%";
+  const analyzed = s.analyzedAt ? new Date(s.analyzedAt).toLocaleString() : "—";
+
+  const tiles = [
+    { label: "Cases", value: s.caseCount, sub: "" },
+    { label: "Events", value: s.eventCount,
+      sub: `${s.activityCount} activities · ${s.interactionCount} interactions` },
+    { label: "Steps", value: s.stepCount,
+      sub: `${s.autoSteps} to review · ${s.confirmedSteps} confirmed` },
+  ];
+  if (s.hasTemplate || s.matchedInteractions > 0) {
+    tiles.push({ label: "Template match", value: pct(s.matchRate || 0),
+      sub: `${s.matchedInteractions} interactions` });
+  }
+  const tilesHtml = tiles.map((t) =>
+    '<div class="summary-tile">' +
+      `<span class="t-label">${escapeHtml(t.label)}</span>` +
+      `<span class="t-value">${escapeHtml(String(t.value))}</span>` +
+      (t.sub ? `<span class="t-sub">${escapeHtml(t.sub)}</span>` : "") +
+    "</div>"
+  ).join("");
+
+  let activityHtml = "";
+  if (s.topActivities.length) {
+    const bars = s.topActivities.map((a) =>
+      '<div class="summary-bar-row">' +
+        `<span class="b-name" title="${escapeHtml(a.label)}">${escapeHtml(a.label)}</span>` +
+        '<span class="summary-bar-track">' +
+          `<span class="summary-bar-fill" style="width:${(a.pct * 100).toFixed(1)}%"></span>` +
+        "</span>" +
+        `<span class="b-value">${pct(a.pct)} · ${escapeHtml(formatDuration(a.ms))}</span>` +
+      "</div>"
+    ).join("");
+    const stretch = s.longestStretch.app
+      ? `${appLabel(s.longestStretch.app)} ${formatDuration(s.longestStretch.ms)}`
+      : "—";
+    const metaLine =
+      `${s.appSwitches} app switch${s.appSwitches === 1 ? "" : "es"} · ` +
+      `longest single-app stretch: ${stretch}`;
+    activityHtml =
+      '<div class="summary-section">' +
+        '<div class="summary-section-title">Where the time went</div>' +
+        `<div class="summary-bars">${bars}</div>` +
+        `<div class="summary-meta-line">${escapeHtml(metaLine)}</div>` +
+      "</div>";
+  }
+
+  let casesHtml = "";
+  if (s.topCases.length) {
+    const line = s.topCases
+      .map((c) => `${escapeHtml(c.label)} (${escapeHtml(formatDuration(c.ms))})`)
+      .join(" · ");
+    casesHtml =
+      '<div class="summary-section">' +
+        '<div class="summary-section-title">Longest cases</div>' +
+        `<div class="summary-meta-line">${line}</div>` +
+      "</div>";
+  }
+
+  const problems = SessionSummary.detectMarkerProblems((session && session.events) || []);
+  let problemsHtml = "";
+  if (problems.length) {
+    const rows = problems.map((p) => {
+      const time = (p.timestamp || "").slice(11, 19);
+      let text = "";
+      let fix = "";
+      if (p.kind === "dangling_start") {
+        text = `Start ${p.label ? '"' + escapeHtml(p.label) + '"' : "(unlabeled)"} ` +
+               `at ${time} has no matching End.`;
+        fix = '<button class="summary-fix" data-fix="close-start">Close at session end</button>';
+      } else if (p.kind === "orphan_end") {
+        text = `End marker at ${time} has no open Start to close.`;
+        if (p.eventId) {
+          fix = '<button class="summary-fix" data-fix="delete-end" ' +
+                `data-event-id="${escapeHtml(p.eventId)}">Remove this marker</button>`;
+        }
+      } else if (p.kind === "short_case") {
+        const secs = Math.round((p.durationMs || 0) / 1000);
+        text = `Case ${p.label ? '"' + escapeHtml(p.label) + '"' : "(unlabeled)"} ` +
+               `at ${time} is only ${secs}s long — accidental?`;
+      }
+      return `<div class="summary-problem"><span class="p-text">⚠ ${text}</span>${fix}</div>`;
+    }).join("");
+    problemsHtml =
+      '<div class="summary-section">' +
+        `<div class="summary-section-title">Marker problems (${problems.length})</div>` +
+        `<div class="summary-problems">${rows}</div>` +
+      "</div>";
+  }
+
+  let bannerHtml = "";
+  if (s.stepCount > 0 && s.confirmedSteps === 0 && s.autoSteps > 0) {
+    bannerHtml =
+      '<div class="summary-banner">Review the ' +
+      '<span class="summary-link" data-go="steps">Steps</span> tab — ' +
+      `${s.autoSteps} step${s.autoSteps === 1 ? " was" : "s were"} ` +
+      "auto-detected and may need editing.</div>";
+  } else if (s.stepCount > 0 && s.phaseCount === 0) {
+    bannerHtml =
+      '<div class="summary-banner">Group your reviewed steps into ' +
+      '<span class="summary-link" data-go="phases">Phases</span> to organize the process.</div>';
+  }
+
+  let driftHtml = "";
+  if (s.canonicalDrift && s.canonicalDrift.warning) {
+    const cur = Math.round((s.canonicalDrift.current_rate || 0) * 100);
+    const prev = Math.round((s.canonicalDrift.previous_rate || 0) * 100);
+    driftHtml =
+      '<div class="summary-banner warn">⚠ Canonical match rate dropped from ' +
+      `${prev}% to ${cur}% since the last analysis — the target application ` +
+      "may have changed its fields.</div>";
+  }
+
+  const hint = (s.caseCount > 0 && s.stepCount > 0)
+    ? '<div class="summary-hint">Cases are time ranges marked during recording. ' +
+      "Steps are logical actions identified during analysis — the two are independent.</div>"
+    : "";
+
+  const teaser = `${s.engagement} · ${formatDuration(s.durationMs)} · ` +
+    `${s.caseCount} case${s.caseCount === 1 ? "" : "s"}`;
+
+  panel.innerHTML =
+    '<summary><span class="summary-label">Session summary</span>' +
+      `<span class="summary-teaser">${escapeHtml(teaser)}</span></summary>` +
+    '<div class="summary-body">' +
+      '<div class="summary-head">Engagement ' +
+        `<strong>${escapeHtml(s.engagement)}</strong> · worker ` +
+        `<strong>${escapeHtml(s.worker)}</strong> · ` +
+        `<strong>${escapeHtml(formatDuration(s.durationMs))}</strong> · ` +
+        `analyzed ${escapeHtml(analyzed)}</div>` +
+      `<div class="summary-tiles">${tilesHtml}</div>` +
+      activityHtml + casesHtml + driftHtml + problemsHtml + hint + bannerHtml +
+    '</div>';
+
+  // Collapsible: remember the analyst's open/closed choice across sessions.
+  try { panel.open = localStorage.getItem("pdt.summaryOpen") !== "0"; }
+  catch (_) { panel.open = true; }
+  if (!panel._pdtToggleWired) {
+    panel._pdtToggleWired = true;
+    panel.addEventListener("toggle", () => {
+      try { localStorage.setItem("pdt.summaryOpen", panel.open ? "1" : "0"); }
+      catch (_) {}
+    });
+  }
+
+  panel.querySelectorAll(".summary-fix").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      if (btn.dataset.fix === "close-start") {
+        const evs = (State.getSession() && State.getSession().events) || [];
+        if (evs.length) await queueSyntheticMarker(evs[evs.length - 1].timestamp, "end");
+      } else if (btn.dataset.fix === "delete-end") {
+        await queueMarkerDelete(btn.dataset.eventId);
+      }
+      btn.textContent = "Queued — re-analyze to apply";
+    });
+  });
+  panel.querySelectorAll(".summary-link[data-go]").forEach((link) => {
+    link.addEventListener("click", () => {
+      const b = document.querySelector(`.view-mode-btn[data-level="${link.dataset.go}"]`);
+      if (b) b.click();
+    });
+  });
+}
+
+/* Queue a marker deletion into annotations.json.marker_edits. Mirrors
+   queueSyntheticMarker; the edit applies on the next normalization. */
+async function queueMarkerDelete(eventId) {
+  if (!State.getSession() || !eventId) return;
+  const a = State.getSession().annotations || {};
+  if (!Array.isArray(a.marker_edits)) a.marker_edits = [];
+  a.marker_edits.push({
+    id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+    event_id: eventId,
+    op: "delete",
+    ts: new Date().toISOString(),
+  });
+  try {
+    await saveAnnotationsWithUndo(a, "delete marker");
+    toast("Marker removal queued — re-run normalization to apply", "success");
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
 function setVideoOverlay(text) {
   let o = $("#video-overlay");
   o.textContent = text;
@@ -783,6 +984,33 @@ function _wireTimelineScrollPersist() {
     }, 250);
   });
 }
+/* I2: on the first load of a session (no remembered timeline view),
+   nudge the scroll to the first case so a long recording doesn't open
+   on empty pre-case time. Skipped once the analyst has zoomed or
+   scrolled -- restoreTimelineForCurrent already owns that case. */
+function maybeAutoScrollToFirstCase() {
+  const sess = State.getSession();
+  if (!sess || !sess.sessionFolder) return;
+  if (_readTimelineState()[sess.sessionFolder]) return;   // remembered view
+  if (State.getZoomFactor() !== 1) return;                // default zoom only
+  const cases = (sess.stats && sess.stats.case_stats) || [];
+  const evs = sess.events || [];
+  if (!evs.length) return;
+  const tops = cases
+    .filter((c) => !c.parent_case_id && c.start_ts)
+    .sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts));
+  if (!tops.length) return;
+  const first = Date.parse(evs[0].timestamp);
+  const last = Date.parse(evs[evs.length - 1].timestamp);
+  const span = Math.max(1, last - first);
+  const frac = (Date.parse(tops[0].start_ts) - first) / span;
+  if (!isFinite(frac) || frac < 0.04) return;   // first case already near the start
+  requestAnimationFrame(() => {
+    const scroll = document.getElementById("timeline-scroll");
+    if (scroll) scroll.scrollLeft = Math.max(0, frac * scroll.scrollWidth - 48);
+  });
+}
+
 $("#btn-zoom-in").addEventListener("click", () => { State.setZoomFactor(State.getZoomFactor() * 1.5); renderTimeline(); persistTimelineForCurrent(); });
 $("#btn-zoom-out").addEventListener("click", () => { State.setZoomFactor(Math.max(1, State.getZoomFactor() / 1.5)); renderTimeline(); persistTimelineForCurrent(); });
 $("#btn-zoom-reset").addEventListener("click", () => { State.setZoomFactor(1); renderTimeline(); persistTimelineForCurrent(); });

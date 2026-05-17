@@ -3,6 +3,7 @@
 (function () {
   const TimelineCore = require("./timeline/timeline-core.js");
   const PdtTheme = require("./theme.js");
+  const { stepStateLabel } = require("./session-summary.js");
 
   function escapeHtml(s) {
     return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
@@ -49,7 +50,7 @@
       row.dataset.stepId = s.step_id;
       const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
       row.innerHTML = `
-        <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(s.state)}"></span>
+        <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
         <span class="multi-check" title="Ctrl+click to multi-select for phase grouping"></span>
         <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
         ${driftTag}

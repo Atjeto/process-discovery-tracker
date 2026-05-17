@@ -6,6 +6,66 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Session summary panel.** An analyzed session now opens with a
+  summary above the timeline instead of leaving the analyst to scroll
+  and reconstruct what happened: engagement and worker, duration, case /
+  event / step counts, a "where the time went" breakdown of the top
+  activities, the app-switch count and longest single-app stretch, and
+  the longest cases. It also surfaces **marker problems** — a Start with
+  no matching End, an orphaned End, a suspiciously short case — each,
+  where fixable, with a one-click button that queues the correcting
+  marker edit for the next analysis.
+
+- **Compare Sessions flags duration outliers.** When the loaded set
+  holds a session whose total duration is a statistical outlier (a
+  Tukey fence around the median), a banner names it and offers to drop
+  it from the comparison, so one unusually long or short recording
+  doesn't quietly skew the merged statistics.
+
+- **Taxonomy rules that match nothing are surfaced.** Normalization now
+  records a per-rule match count in `stats.json`
+  (`meta.taxonomy_report`) and prints a note for every taxonomy rule
+  that classified zero events — a typo in a rule's title pattern no
+  longer fails silently.
+
+- **Canonical match-rate drift warning.** When a re-analysis against a
+  Process Template sees its interaction match rate fall sharply from
+  the previous run (more than 20 points), normalization records it in
+  `stats.json` and the session summary shows a warning — the usual
+  cause is the target application changing its field identifiers.
+
+### Changed
+
+- **Step states read in plain language.** The four pipeline step states
+  (`auto_suggested`, `auto_matched`, `manually_authored`, `edited`)
+  surface to the analyst as just two — "Auto-detected" and "Confirmed" —
+  in the step-list tooltip and the summary panel. The pipeline
+  distinction is unchanged; only the wording the analyst sees.
+
+- **The Session view points at what to do next.** Once analyzed, a
+  context banner in the summary panel suggests the next move — review
+  the auto-detected steps, or group reviewed steps into phases — and a
+  long recording auto-scrolls to its first case on load.
+
+- **Re-analysis no longer duplicates analyst-owned steps.** When
+  normalization regenerates auto-detected steps, a fresh step that
+  overlaps a manually-authored, edited, or hidden step by more than
+  half its duration is dropped instead of stacked on top — the analyst
+  no longer inherits overlapping duplicates to find and delete.
+
+- **Web apps inside a browser are now visible.** The capture tracker
+  starts a new activity event when the window title changes, not only
+  when the application changes — so a worker moving between Salesforce,
+  web-SAP and Workday inside one Chrome window produces three activity
+  events instead of one undifferentiated `chrome.exe` event, and the
+  process map shows the real flow. The title is normalized first
+  (unread counts, unsaved markers and the browser-name suffix are
+  ignored) so cosmetic churn doesn't fragment the timeline. This
+  realigns capture with the original design — see
+  [ADR-0007](docs/adr/0007-activity-event-granularity.md).
+
 ## [0.7.0] - 2026-05-17
 
 ### Fixed

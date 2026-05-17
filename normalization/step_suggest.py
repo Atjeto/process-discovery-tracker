@@ -279,3 +279,61 @@ def _short_app(data: dict) -> str:
 def _trim(s: str, limit: int = 80) -> str:
     s = (s or "").strip().strip(":").strip()
     return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
+# --- Step overlap (I37) ------------------------------------------------
+
+def _step_bounds(step: dict) -> tuple[datetime, datetime] | None:
+    """(start, end) datetimes for a step's time_range, or None when the
+    range is missing or inverted."""
+    tr = step.get("time_range") or {}
+    s, e = tr.get("start"), tr.get("end")
+    if not s or not e:
+        return None
+    try:
+        a, b = parse_ts(s), parse_ts(e)
+    except (ValueError, TypeError):
+        return None
+    return (a, b) if b >= a else None
+
+
+def steps_overlap_seconds(a: dict, b: dict) -> float:
+    """Seconds of time-range overlap between two steps; 0 when disjoint
+    or either range is unusable."""
+    ba, bb = _step_bounds(a), _step_bounds(b)
+    if not ba or not bb:
+        return 0.0
+    lo = max(ba[0], bb[0])
+    hi = min(ba[1], bb[1])
+    return max(0.0, (hi - lo).total_seconds())
+
+
+def drop_overlapping_auto_steps(
+    fresh: list[dict],
+    preserved: list[dict],
+    threshold: float = 0.5,
+) -> tuple[list[dict], list[dict]]:
+    """Drop a freshly-suggested auto step when it overlaps an
+    analyst-owned (manually_authored / edited / hidden) step by more than
+    `threshold` of the fresh step's own duration.
+
+    A re-analyze regenerates auto steps from the raw interaction stream,
+    independent of where the analyst has authored steps -- so a fresh
+    auto step can land on top of a span the analyst already owns. Without
+    this the analyst inherits a duplicate to notice and delete (§I37).
+
+    Returns `(kept, dropped)`.
+    """
+    kept: list[dict] = []
+    dropped: list[dict] = []
+    for f in fresh or []:
+        fb = _step_bounds(f)
+        f_dur = (fb[1] - fb[0]).total_seconds() if fb else 0.0
+        overlapped = False
+        if f_dur > 0:
+            for p in preserved or []:
+                if steps_overlap_seconds(f, p) > threshold * f_dur:
+                    overlapped = True
+                    break
+        (dropped if overlapped else kept).append(f)
+    return kept, dropped

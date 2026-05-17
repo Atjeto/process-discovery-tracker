@@ -43,9 +43,17 @@ def _compile_rules(taxonomy: dict[str, Any]) -> list[dict[str, Any]]:
 def classify_events(
     events: list[dict[str, Any]],
     taxonomy: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Stamp `activity_label` and optional `transaction_id` on activity events."""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Stamp `activity_label` and optional `transaction_id` on activity
+    events.
+
+    Returns `(classified_events, taxonomy_report)`. The report carries a
+    per-rule match count so a rule that fires on nothing -- usually a
+    typo in its `title_regex` -- is surfaced instead of failing silently
+    (§I67). One report entry per taxonomy rule, in declaration order.
+    """
     rules = _compile_rules(taxonomy)
+    counts = [0] * len(rules)
     out: list[dict[str, Any]] = []
     for ev in events:
         if ev.get("type") != "activity":
@@ -55,12 +63,13 @@ def classify_events(
         title = ev["data"].get("title", "") or ""
         label = f"Unclassified -- {app}"
         transaction_id = None
-        for rule in rules:
+        for idx, rule in enumerate(rules):
             if rule["app"] and rule["app"].lower() != app.lower():
                 continue
             if rule["title_regex"] and not rule["title_regex"].search(title):
                 continue
             label = rule["label"]
+            counts[idx] += 1
             tx_re = rule.get("transaction_id_regex")
             if tx_re:
                 m = tx_re.search(title)
@@ -74,7 +83,17 @@ def classify_events(
             new_data["transaction_id"] = transaction_id
         new_ev["data"] = new_data
         out.append(new_ev)
-    return out
+    report = [
+        {
+            "label": rule["label"],
+            "app": rule["app"],
+            "title_regex": rule["title_regex"].pattern if rule["title_regex"] else None,
+            "matches": counts[idx],
+            "zero_match": counts[idx] == 0,
+        }
+        for idx, rule in enumerate(rules)
+    ]
+    return out, report
 
 
 def collapse_adjacent(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
