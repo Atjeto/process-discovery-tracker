@@ -641,6 +641,7 @@ ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, 
 
 /* --- Project file IPC --------------------------------------------- */
 
+const { toRelativePaths, toAbsolutePaths } = require("./project.js");
 const PROJECT_FILE_EXT = ".pdt-project.json";
 
 ipcMain.handle("viewer:saveProjectAs", async (_e, { project, suggestedName }) => {
@@ -656,7 +657,8 @@ ipcMain.handle("viewer:saveProjectAs", async (_e, { project, suggestedName }) =>
     target = target + PROJECT_FILE_EXT;
   }
   try {
-    fs.writeFileSync(target, JSON.stringify(project, null, 2), "utf-8");
+    const rel = toRelativePaths(project, path.dirname(target));
+    fs.writeFileSync(target, JSON.stringify(rel, null, 2), "utf-8");
     return { ok: true, path: target };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -666,7 +668,8 @@ ipcMain.handle("viewer:saveProjectAs", async (_e, { project, suggestedName }) =>
 ipcMain.handle("viewer:saveProject", async (_e, { project, path: target }) => {
   if (!target) return { ok: false, error: "No project path" };
   try {
-    fs.writeFileSync(target, JSON.stringify(project, null, 2), "utf-8");
+    const rel = toRelativePaths(project, path.dirname(target));
+    fs.writeFileSync(target, JSON.stringify(rel, null, 2), "utf-8");
     return { ok: true, path: target };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -691,7 +694,8 @@ function loadProjectFile(filePath) {
     if (!fs.existsSync(abs)) return { ok: false, error: "Project file not found: " + abs };
     const raw = fs.readFileSync(abs, "utf-8");
     const parsed = JSON.parse(raw);
-    return { ok: true, path: abs, project: parsed };
+    const project = toAbsolutePaths(parsed, path.dirname(abs));
+    return { ok: true, path: abs, project };
   } catch (e) {
     return { ok: false, error: e.message };
   }

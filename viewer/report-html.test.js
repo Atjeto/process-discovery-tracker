@@ -138,3 +138,12 @@ test("an unanalyzed session still produces a report", () => {
   assert.ok(html.startsWith("<!doctype html>"));
   assert.ok(html.includes("not been analyzed"));
 });
+
+test("project notes appear in the report only when supplied", () => {
+  const on = generateFindingsReport(sampleSession(),
+    { ...ALL_ON, projectFindings: "Watch SAP latency" });
+  assert.ok(on.includes("Project notes"));
+  assert.ok(on.includes("Watch SAP latency"));
+  const off = generateFindingsReport(sampleSession(), ALL_ON);
+  assert.ok(!off.includes("Project notes"));
+});

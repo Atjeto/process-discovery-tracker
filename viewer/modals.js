@@ -31,9 +31,13 @@ function promptModal(opts) {
       '<div class="modal-body">' +
       (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
       (opts.detail ? '<p class="modal-detail">' + escapeHtml(opts.detail) + '</p>' : '') +
-      '<input type="text" class="modal-input" ' +
-      ' placeholder="' + escapeAttr(opts.placeholder || "") + '" ' +
-      ' value="' + escapeAttr(opts.defaultValue || "") + '">' +
+      (opts.multiline
+        ? '<textarea class="modal-input modal-textarea" placeholder="' +
+          escapeAttr(opts.placeholder || "") + '">' +
+          escapeHtml(opts.defaultValue || "") + '</textarea>'
+        : '<input type="text" class="modal-input"' +
+          ' placeholder="' + escapeAttr(opts.placeholder || "") + '"' +
+          ' value="' + escapeAttr(opts.defaultValue || "") + '">') +
       '</div>' +
       '<footer class="modal-footer">' +
       '<button class="modal-cancel">' + escapeHtml(cancelLabel) + '</button>' +
@@ -59,7 +63,7 @@ function promptModal(opts) {
       if (e.target === backdrop) done(null);
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); done(input.value); }
+      if (e.key === "Enter" && !opts.multiline) { e.preventDefault(); done(input.value); }
       else if (e.key === "Escape") { e.preventDefault(); done(null); }
     });
     setTimeout(() => { input.focus(); input.select(); }, 0);

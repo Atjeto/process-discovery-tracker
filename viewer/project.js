@@ -60,6 +60,9 @@ function newProjectShape(name) {
     currentCaseScope: null,
     timeline: { zoomFactor: 1, scrollLeft: 0 },
     sessionTimelines: {},
+    findings: "",                 // F4: project-level notes
+    default_ignored_processes: [], // F3: team-wide step-suggestion denylist
+    step_template_session: null,  // F5: a session whose steps seed new ones
   };
 }
 
@@ -86,6 +89,14 @@ function captureFromCollectors(collectors, opts) {
   proj.currentCaseScope     = safe("currentCaseScope", null);
   proj.timeline             = safe("timeline", { zoomFactor: 1, scrollLeft: 0 });
   proj.sessionTimelines     = safe("sessionTimelines", {});
+  // F3/F4/F5: project-level config is not derived from renderer state --
+  // carry it forward from the active project so a capture (every save,
+  // including auto-save) does not reset it to the empty shape.
+  if (_activeProject) {
+    proj.findings = _activeProject.findings || "";
+    proj.default_ignored_processes = _activeProject.default_ignored_processes || [];
+    proj.step_template_session = _activeProject.step_template_session || null;
+  }
   return proj;
 }
 
@@ -150,6 +161,37 @@ function clearRecentProjects() {
   setRecentProjects([]);
 }
 
+/* ===== Portable paths (F2) =====
+   A project file stores session / template paths relative to its own
+   directory, so a project folder stays valid when moved or shared.
+   Conversion is two-way; a path already in the wanted form (or empty)
+   passes through untouched, so a legacy absolute-path file still
+   loads. */
+const _PROJECT_PATH_FIELDS = ["currentSessionFolder", "templatePath", "step_template_session"];
+
+function _mapProjectPaths(project, fn) {
+  const out = Object.assign({}, project);
+  for (const key of _PROJECT_PATH_FIELDS) {
+    if (out[key]) out[key] = fn(out[key]);
+  }
+  if (Array.isArray(out.aggregateSessions)) {
+    out.aggregateSessions = out.aggregateSessions.map((p) => (p ? fn(p) : p));
+  }
+  return out;
+}
+
+function toRelativePaths(project, projectDir) {
+  if (!projectDir) return project;
+  return _mapProjectPaths(project, (p) =>
+    path.isAbsolute(p) ? path.relative(projectDir, p) : p);
+}
+
+function toAbsolutePaths(project, projectDir) {
+  if (!projectDir) return project;
+  return _mapProjectPaths(project, (p) =>
+    path.isAbsolute(p) ? p : path.resolve(projectDir, p));
+}
+
 module.exports = {
   PROJECT_FORMAT,
   PROJECT_VERSION,
@@ -167,4 +209,6 @@ module.exports = {
   pushRecentProject,
   removeRecentProject,
   clearRecentProjects,
+  toRelativePaths,
+  toAbsolutePaths,
 };

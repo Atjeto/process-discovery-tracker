@@ -839,6 +839,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .modal-check small { color: var(--fg-3); font-size: 11px; }
 .modal-check.disabled { opacity: 0.5; cursor: default; }
 
+/* Multi-line prompt modal (project notes) */
+.modal-textarea {
+  width: 100%; min-height: 140px; resize: vertical;
+  font-family: var(--font-ui); font-size: 13px;
+}
+
 /* Mini-timeline wrapper used by Steps + Phases views. Mirrors the
    Flow timeline's affordances: header strip with title + time range
    + zoom buttons, plus a horizontally-scrolling band area. The inner

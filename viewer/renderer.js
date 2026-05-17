@@ -216,6 +216,7 @@ function applyLevel(name) {
   }
   // P2.4: refresh the shortcuts overlay for the new view.
   renderShortcutsOverlay();
+  scheduleAutoSave();   // F1: persist the project after a view-mode switch
 }
 
 /* P2.4: small persistent corner widget listing 3-4 most-used
@@ -591,6 +592,7 @@ if ($("#btn-export-findings")) {
         } catch (_) {}
       }
     }
+    const proj = PdtProject.activeProject();
     const html = PdtReportHtml.generateFindingsReport(session, {
       includeProcessMap: !!opts.map,
       includeAnalysis: !!opts.analysis,
@@ -598,6 +600,7 @@ if ($("#btn-export-findings")) {
       includeScreenshots: !!opts.screenshots,
       processMapSvg: opts.map ? mapSvg : null,
       screenshotData,
+      projectFindings: (proj && proj.findings) || "",
     });
     const folder = (session.sessionFolder || "").split(/[\\/]/).slice(-1)[0] || "session";
     const r = await Ipc.saveHtmlFile({ content: html,
@@ -985,17 +988,20 @@ function updateProjectMenuLabel() {
   const lbl = document.getElementById("project-menu-label");
   const btn = document.getElementById("btn-project-menu");
   const saveItem = document.getElementById("btn-project-save");
+  const notesItem = document.getElementById("btn-project-notes");
   const closeItem = document.getElementById("btn-project-close");
   const proj = PdtProject.activeProject();
   if (proj && proj.path) {
     if (lbl) lbl.textContent = proj.name || path.basename(proj.path, ".pdt-project.json");
     if (btn) btn.classList.add("has-project");
     if (saveItem) saveItem.style.display = "";
+    if (notesItem) notesItem.style.display = "";
     if (closeItem) closeItem.style.display = "";
   } else {
     if (lbl) lbl.textContent = "No project";
     if (btn) btn.classList.remove("has-project");
     if (saveItem) saveItem.style.display = "none";
+    if (notesItem) notesItem.style.display = "none";
     if (closeItem) closeItem.style.display = "none";
   }
 }
@@ -1222,14 +1228,63 @@ function projectClose() {
   toast("Project closed (sessions stay loaded)");
 }
 
+/* F1: auto-save the active project ~5s after a project-state change
+   (a tab or view-mode switch). Only a named project auto-saves -- an
+   unsaved capture has no file to write to. Best-effort: a failure is
+   swallowed; the interactive Save still works. */
+let _autoSaveTimer = null;
+function scheduleAutoSave() {
+  const active = PdtProject.activeProject();
+  if (!active || !active.path) return;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(autoSaveProject, 5000);
+}
+async function autoSaveProject() {
+  const active = PdtProject.activeProject();
+  if (!active || !active.path) return;
+  const project = PdtProject.captureFromCollectors(projectCollectors, { name: active.name });
+  try {
+    const r = await Ipc.saveProject({ project, path: active.path });
+    if (r && r.ok) {
+      PdtProject.setActiveProject({ path: r.path, name: active.name, ...project });
+    }
+  } catch (_) { /* best-effort -- interactive Save still works */ }
+}
+document.addEventListener("pdt:tabchange", scheduleAutoSave);
+
+/* F4: project-level notes. A textarea modal off the Project menu; the
+   text is stored on the project file (`findings`) and included in the
+   findings report when one is generated with a project open. */
+async function projectNotes() {
+  toggleProjectMenu(false);
+  const active = PdtProject.activeProject();
+  if (!active || !active.path) {
+    toast("Open or save a project first.", "error");
+    return;
+  }
+  const text = await promptModal({
+    title: "Project notes",
+    message: "Findings and notes for this project.",
+    detail: "Saved on the project file; included in the findings report.",
+    multiline: true,
+    okLabel: "Save",
+    defaultValue: active.findings || "",
+  });
+  if (text == null) return;
+  PdtProject.setActiveProject(Object.assign({}, PdtProject.activeProject(), { findings: text }));
+  await projectSave();
+}
+
 (function wireProjectMenuItems() {
   const open = document.getElementById("btn-project-open");
   const saveAs = document.getElementById("btn-project-save-as");
   const save = document.getElementById("btn-project-save");
   const close = document.getElementById("btn-project-close");
+  const notes = document.getElementById("btn-project-notes");
   if (open)   open.addEventListener("click", projectOpen);
   if (saveAs) saveAs.addEventListener("click", projectSaveAs);
   if (save)   save.addEventListener("click", projectSave);
+  if (notes)  notes.addEventListener("click", projectNotes);
   if (close)  close.addEventListener("click", projectClose);
 })();
 

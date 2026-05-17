@@ -8,6 +8,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Projects carry knowledge forward.** A saved project now auto-saves
+  a few seconds after you switch tab or view, so a workspace stays
+  current without a manual Save. Project files store their session and
+  template paths *relative* to the project file, so a project folder
+  can be moved or shared without breaking. A project can also carry a
+  **team denylist** of apps to leave out of step suggestion — applied
+  to any session opened under the project that has no denylist of its
+  own — a **Project notes** field, editable from the Project menu and
+  included in the findings report, and a **step-template session**:
+  open a step-less session under a project that names one and the
+  viewer offers to seed it with the template's step structure, each
+  step positioned by relative time.
+
 - **One-click HTML findings report.** The Session view's export bar
   gains a "Findings report..." button. It produces a self-contained
   HTML document — process summary, the process map inline, the steps

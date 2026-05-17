@@ -208,6 +208,12 @@ function screenshotsSection(session, options) {
   }).join("");
 }
 
+function projectNotesSection(options) {
+  if (!options.projectFindings) return "";
+  return "<h2>Project notes</h2><div class=\"note\">" +
+    esc(options.projectFindings).replace(/\n/g, "<br>") + "</div>";
+}
+
 /* Build a complete, self-contained HTML findings report. `options`:
    includeProcessMap / includeAnalysis / includeNotes / includeScreenshots
    (booleans), processMapSvg (string|null), screenshotData ({relPath:
@@ -225,6 +231,7 @@ function generateFindingsReport(session, options) {
     "</head><body><main>",
     headerSection(session, summary),
     summarySection(session, summary),
+    projectNotesSection(options),
     processMapSection(options),
     analysisSection(session, options),
     stepsSection(session),

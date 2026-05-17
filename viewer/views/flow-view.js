@@ -28,6 +28,7 @@ const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
 const SessionSummary = require("../session-summary.js");
+const PdtProject = require("../project.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -519,6 +520,100 @@ async function loadSessionIntoView(folder) {
   installRangeSelection();
   // P2.4: shortcuts overlay updates with session state.
   renderShortcutsOverlay();
+  // Phase F: apply project-level knowledge to the freshly-loaded session.
+  applyProjectDenylist();
+  maybeApplyStepTemplate();
+}
+
+/* ===== Phase F: project knowledge applied on session load ===== */
+
+function _eventSpan(events) {
+  const evs = Array.isArray(events) ? events : [];
+  if (!evs.length) return null;
+  const a = Date.parse(evs[0].timestamp);
+  const b = Date.parse(evs[evs.length - 1].timestamp);
+  if (!isFinite(a) || !isFinite(b) || b <= a) return null;
+  return { startMs: a, endMs: b };
+}
+
+/* F3: a project can carry a team-wide step-suggestion denylist. Apply
+   it to a freshly-loaded session that has none of its own -- never
+   override a denylist the analyst already set on the session. */
+function applyProjectDenylist() {
+  const proj = PdtProject.activeProject();
+  const session = State.getSession();
+  if (!proj || !session) return;
+  const defaults = proj.default_ignored_processes || [];
+  if (!defaults.length) return;
+  const anno = session.annotations || {};
+  const sf = anno.step_filters || {};
+  if ((sf.ignored_processes || []).length) return;  // session has its own
+  anno.step_filters = Object.assign({}, sf, { ignored_processes: defaults.slice() });
+  session.annotations = anno;
+  Ipc.saveAnnotations({ sessionFolder: session.sessionFolder, annotations: anno });
+  toast("Applied the project's team denylist (" + defaults.length + " app(s))");
+}
+
+/* F5: a project can name a "step template" session. When a session
+   with no steps is opened under such a project, offer to seed it with
+   the template's step structure, each step positioned at the same
+   fraction of the session's elapsed time. The analyst then adjusts. */
+async function maybeApplyStepTemplate() {
+  const proj = PdtProject.activeProject();
+  const session = State.getSession();
+  if (!proj || !session || !proj.step_template_session) return;
+  if (((session.annotations || {}).steps || []).length) return;
+  let template;
+  try { template = await Ipc.loadSession(proj.step_template_session); }
+  catch (_) { return; }
+  const tSteps = ((template && template.annotations) || {}).steps || [];
+  const tSpan = _eventSpan(template && template.events);
+  const nSpan = _eventSpan(session.events);
+  if (!tSteps.length || !tSpan || !nSpan) return;
+  const ok = await confirmModal({
+    title: "Apply step structure?",
+    message: "Seed this session with the step structure from the project's template?",
+    detail: tSteps.length + " step(s) from " + path.basename(proj.step_template_session) +
+      ". You can adjust, split, or merge them afterwards.",
+    okLabel: "Apply", cancelLabel: "Skip",
+  });
+  if (!ok || State.getSession() !== session) return;  // session may have changed
+  const nDur = nSpan.endMs - nSpan.startMs;
+  const tDur = (tSpan.endMs - tSpan.startMs) || 1;
+  const frac = (iso) => {
+    const t = Date.parse(iso);
+    if (!isFinite(t)) return 0;
+    return Math.max(0, Math.min(1, (t - tSpan.startMs) / tDur));
+  };
+  const sid = (session.manifest || {}).session_id || "";
+  const anno = session.annotations || {};
+  anno.steps = tSteps.map((ts, i) => {
+    const tr = ts.time_range || {};
+    const startMs = nSpan.startMs + frac(tr.start) * nDur;
+    const endMs = nSpan.startMs + frac(tr.end) * nDur;
+    return {
+      step_id: cryptoRandomId(),
+      session_id: sid,
+      case_id: null,
+      name: ts.name || ("Step " + (i + 1)),
+      description: ts.description || "",
+      time_range: {
+        start: new Date(startMs).toISOString(),
+        end: new Date(Math.max(startMs, endMs)).toISOString(),
+      },
+      evidence: { interaction_event_ids: [], screenshot_refs: [],
+        video_timecode_range: [0, 0], manual_notes: "" },
+      state: "manually_authored",
+      canonical_step_id: null,
+      flags: { conditional: false, condition_text: null,
+        exception_path: false, waste: false, automation_candidate: false },
+      phase_id: null,
+    };
+  });
+  session.annotations = anno;
+  await saveAnnotationsWithUndo(anno, "apply step template");
+  renderStepsLevel();
+  toast("Applied " + anno.steps.length + " template step(s)", "success");
 }
 
 /* Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix. */
