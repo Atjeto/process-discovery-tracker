@@ -6,6 +6,40 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-17
+
+### Fixed
+
+- **The Flow map no longer draws meaningless self-loops.** A directly-
+  follows graph node with an arrow back to itself has no business
+  meaning — it was an artifact of the event log keeping consecutive
+  same-activity events separate. Normalization now collapses a run of
+  one activity into a single occurrence for the process-mining log (the
+  finer per-window rows are kept in `events.csv`), so a self-loop is
+  structurally impossible — in the Flow graph, the XES log, and the
+  mined BPMN alike.
+
+- **The capture tray menu opens on right-click again.** The tray set a
+  context menu and also handled right-click explicitly; on Windows the
+  two double-fired and right-click did nothing. Both clicks now open
+  the menu reliably.
+
+### Added
+
+- **Per-web-app taxonomy.** A canonical `normalization/taxonomy.yaml`
+  classifies browser windows into the actual web apps they host
+  (Salesforce, SAP, …) instead of one coarse `Unclassified --
+  chrome.exe` node. There is deliberately no per-browser catch-all rule
+  — an unmatched window stays `Unclassified`, a prompt for the analyst.
+  The viewer's Analyze step picks the taxonomy up automatically.
+
+- **Reclassify an activity from the Flow map.** Clicking a map node
+  offers a Reclassify action: give the activity its correct label and
+  the correction — stored as a `classification_overrides` entry in
+  `annotations.json` — flows through re-analysis into the process map,
+  the statistics, and the exports. An `Unclassified` node is now a
+  prompt the analyst can answer, not a dead end.
+
 ## [0.6.0] - 2026-05-17
 
 ### Added
