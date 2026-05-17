@@ -48,14 +48,21 @@ npm start
 `python-runner.js` resolves the interpreter in this order:
 
 1. `PDT_PYTHON` env var
-2. Sibling `python-embeddable/` folder (the §11.5 ship target)
+2. Bundled `python/` folder alongside the app (`viewer/python/` in dev, `resources/python/` packaged)
 3. System `python` on PATH
 
 The normalization script is located relative to the viewer in dev (`../normalization/normalize.py`) and under `resources/normalization/` in a packaged build.
 
-## Limitations in this pass
+## Notes & limitations
 
-- DFG renders as a sorted edge list, not a graph drawing. Adding `bpmn-io/bpmn-js` for proper BPMN visualization is straightforward but is deferred.
-- Statistics panels are tables -- no chart rendering. Add chart.js or similar if visual stats become a priority.
-- The annotations contract supports `notes`; marker rename / boundary edit / merge / split UIs are not wired yet (§9.3 is named in the design but only the simplest annotation shape ships here).
-- No video streaming optimization. Videos load via `file://` URLs.
+- Architecture reference: [`docs/architecture/VIEWER.md`](../docs/architecture/VIEWER.md)
+  and [`VIEWER-TIMELINE.md`](../docs/architecture/VIEWER-TIMELINE.md); the viewer's
+  structural refactor is recorded in
+  [ADR-0003](../docs/adr/0003-viewer-architecture-refactor.md).
+- The process map renders as a real graph — BPMN via `bpmn-js`, DFG via
+  `cytoscape` + `dagre`; statistics render as inline-SVG charts.
+- Step / phase / marker / note editing (including marker rename and boundary
+  edits) is wired through `annotations.json`.
+- Videos load via `file://` URLs — no streaming optimization.
+- Single-analyst editing only; concurrent multi-analyst editing of one session is
+  out of scope.

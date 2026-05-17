@@ -39,9 +39,10 @@ is today.
 | [architecture/CAPTURE.md](architecture/CAPTURE.md) | Capture app + C# recorder sidecar (overview) |
 | [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) | The Python transformation pipeline (overview) |
 | [architecture/VIEWER.md](architecture/VIEWER.md) | Viewer architecture — modules, views, state, IPC, render pipeline *(deep)* |
-| [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline subsystem and its triplicated renderers *(deep)* |
+| [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline subsystem and the shared timeline core *(deep)* |
 | [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, colour palettes, and the contrast problem |
-| [ARCHITECTURE-ISSUES.md](ARCHITECTURE-ISSUES.md) | Structural problems, design-system problems, current regressions — the refactor register |
+| [ARCHITECTURE-ISSUES.md](ARCHITECTURE-ISSUES.md) | Viewer refactor register — structural / design-system / regression issues (all resolved) |
+| [CAPTURE-ARCHITECTURE-ISSUES.md](CAPTURE-ARCHITECTURE-ISSUES.md) | Capture refactor register — tech-debt items C1-C8 (all resolved in v0.5.0) |
 
 ## Current — operational & component docs
 
@@ -60,6 +61,8 @@ is today.
 | [adr/0001-click-recorder-sidecar-language.md](adr/0001-click-recorder-sidecar-language.md) | ADR — why the recorder is C#, not Python |
 | [adr/0002-app-vocabularies.md](adr/0002-app-vocabularies.md) | ADR — why the App Vocabulary layer exists |
 | [adr/0003-viewer-architecture-refactor.md](adr/0003-viewer-architecture-refactor.md) | ADR — the viewer refactor decision and migration path |
+| [adr/0004-flow-timeline-steps-rework.md](adr/0004-flow-timeline-steps-rework.md) | ADR — the Flow timeline + Steps view rework (Warm Editorial) |
+| [adr/0005-capture-architecture-remediation.md](adr/0005-capture-architecture-remediation.md) | ADR — the capture app tech-debt remediation (C1-C8) |
 | [../capture/README.md](../capture/README.md) | Capture component quick-start |
 | [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |
 | [../normalization/README.md](../normalization/README.md) | Normalization component quick-start |

@@ -1,10 +1,16 @@
 # Architecture Issues & Refactor Register
 
-> The bridge from documentation into the refactor. This catalogues the
-> **structural problems**, **design-system problems**, and **current UI
-> regressions** found in the viewer, with enough detail to scope the work.
-> It is *not itself* the refactor plan — that is a separate follow-up built
-> from this register.
+> **Status — RESOLVED.** The viewer refactor is complete: the structural issues
+> (S1-S8) were addressed across [ADR-0003](./adr/0003-viewer-architecture-refactor.md)
+> Phases 1-3, and the design-system issues (D1-D3) and regressions (R1-R4) were
+> superseded by the Warm Editorial redesign
+> ([ADR-0004](./adr/0004-flow-timeline-steps-rework.md)). See the Resolution section
+> below. This document is kept as the audit of record — the problem statements
+> below are unedited.
+>
+> It catalogued the **structural problems**, **design-system problems**, and
+> **current UI regressions** found in the viewer; ADR-0003 turned it into the
+> four-phase refactor decision.
 
 ## How to read this
 
@@ -23,6 +29,29 @@ copied three times. Most regressions below are symptoms of those two.
 > equivalent audit is [CAPTURE-ARCHITECTURE-ISSUES.md](./CAPTURE-ARCHITECTURE-ISSUES.md).
 
 ---
+
+## Resolution — shipped
+
+Every issue below was addressed by the viewer refactor. The structural work landed
+across ADR-0003 Phases 1-3; the design-system issues and the colour-blend
+regressions were superseded by the Warm Editorial light-theme redesign
+([ADR-0004](./adr/0004-flow-timeline-steps-rework.md)).
+
+| ID | Resolved by |
+|----|-------------|
+| S1 | Phase 3 — `renderer.js` decomposed into per-view + infrastructure modules (~5,700 → ~1,200 lines). |
+| S2 | Phase 1 — one shared `timeline/timeline-core.js`; the three timelines no longer duplicate tick / lane logic. |
+| S3 | Phase 1 — `renderTimeline()` migrated onto the timeline core as lane plugins (commit `faed9f6`). |
+| S4 | Phase 2 — zoom / scroll / sizing state moved into `state.js`. |
+| S5 | Phase 2 — the three-way level dispatch collapsed to a `LEVEL_RENDERERS` map. |
+| S6 | Phase 2 — annotation edits do a targeted per-view re-render instead of a full session reload. |
+| S7 | Phase 3 — the `window.Pdt*` globals converted to CommonJS modules and deleted. |
+| S8 | Phase 1 — optional Flow lanes are now lane plugins with a uniform contract. |
+| R1 | Phase 1 — the double-scrollbar fixed once, in the timeline core. |
+| D1-D3, R2-R4 | Superseded by the Warm Editorial redesign (ADR-0004) — the dark palette these describe was replaced wholesale. |
+
+The "Suggested sequencing" section near the end is the original pre-refactor plan,
+kept for context.
 
 ## Structural issues
 

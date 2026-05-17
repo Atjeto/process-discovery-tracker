@@ -1,6 +1,6 @@
 # ADR-0003: Viewer Architecture Refactor — Incremental Modularization
 
-**Status:** Proposed
+**Status:** Accepted — implemented and shipped (Phases 0-3); Phase 4 superseded by the Warm Editorial redesign ([ADR-0004](./0004-flow-timeline-steps-rework.md))
 **Date:** 2026-05-16
 **Deciders:** Project owner
 
@@ -196,18 +196,18 @@ solo developer's plate.
 Each phase is independently shippable; the app keeps working throughout.
 
 **Phase 0 — Scaffolding**
-1. [ ] Create the `app/` module tree; add a `node:test` script to `viewer/package.json`.
-2. [ ] Convert `index.html` to load a single entry script; keep existing files working.
+1. [x] Create the `app/` module tree; add a `node:test` script to `viewer/package.json`.
+2. [x] Convert `index.html` to load a single entry script; keep existing files working.
 
 **Phase 1 — Shared timeline core (kills S2; fixes R1)**
-3. [ ] Build `timeline/timeline-core.js` — lane layout, tick interval + axis labels, zoom, scroll, band primitive — with pure, unit-tested layout maths.
-4. [ ] Migrate the **Steps** mini-timeline onto it (smallest, lowest risk), then **Phases**, then the **Flow** timeline.
-5. [ ] Re-express Flow's optional lanes as lane plugins (`{ height, render }`).
-6. [ ] Fix the double-scrollbar (R1) once, in the core.
+3. [x] Build `timeline/timeline-core.js` — lane layout, tick interval + axis labels, zoom, scroll, band primitive — with pure, unit-tested layout maths.
+4. [x] Migrate the **Steps** mini-timeline onto it (smallest, lowest risk), then **Phases**, then the **Flow** timeline. *(Flow migrated in commit `faed9f6`.)*
+5. [x] Re-express Flow's optional lanes as lane plugins (`{ height, render }`).
+6. [x] Fix the double-scrollbar (R1) once, in the core.
 
 **Phase 2 — State module (fixes S5, S6)**
-7. [ ] Add `state.js`; move the scattered `renderer.js` `let`s into it.
-8. [ ] Replace the per-edit full-session reload with targeted per-view re-render.
+7. [x] Add `state.js`; move the scattered `renderer.js` `let`s into it.
+8. [x] Replace the per-edit full-session reload with targeted per-view re-render.
 
 **Phase 3 — Decompose `renderer.js` (S1, S3, S7, S8)**
 9. [x] Extract `flow-view` / `steps-view` / `phases-view` / `aggregate-view` modules.

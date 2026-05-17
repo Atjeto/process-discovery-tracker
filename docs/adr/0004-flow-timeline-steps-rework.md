@@ -60,15 +60,15 @@ ADR-0003 lane-plugin refactor.
 - `timeline-core.js` and the Steps/Phases mini-timelines. The
   `timeline-core` unit tests passing after the change is the proof.
 
-**Still open:**
-- ADR-0003 items 4-5 — migrating `renderTimeline()` onto `timeline-core`
-  as proper lane plugins. `renderTimeline()` remains a ~430-line function
-  (ADR-0003 issue S3). Worth doing as its own focused pass; deliberately
-  not bundled here.
+**Resolved afterwards:**
+- ADR-0003 items 4-5 — migrating `renderTimeline()` onto `timeline-core` as
+  proper lane plugins — were completed in commit `faed9f6` (ADR-0003 Phase 1).
+  When this ADR was written they were still open and deliberately not bundled
+  into this rework; they have since landed as their own focused pass.
 
 ## Action Items
 
 1. [x] Vivid app palette in `flow-view.js`.
 2. [x] Re-order lanes + dedicated screenshot rail in `renderTimeline()`.
 3. [x] Steps list + detail rework.
-4. [ ] ADR-0003 items 4-5 — lane-plugin refactor of `renderTimeline()` (separate task).
+4. [x] ADR-0003 items 4-5 — lane-plugin refactor of `renderTimeline()` (done separately in commit `faed9f6`).

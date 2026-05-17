@@ -1,13 +1,15 @@
 # Capture — Architecture Issues & Refactor Register
 
-> This catalogues the technical debt in the capture app (`capture/`), with enough
-> detail to scope a future remediation. It is *not itself* a refactor plan, and not a
-> commitment to act — it is the audit, on the record.
+> **Status — RESOLVED.** All eight items (C1-C8) were remediated and shipped in
+> **v0.5.0** (2026-05-17). See the Resolution section below and
+> [ADR-0005](./adr/0005-capture-architecture-remediation.md) for the decision
+> record. This document is kept as the audit of record: the problem statements
+> below are unedited; the Resolution table records how each item was closed.
 >
-> The capture app has never had a structural refactor: all of its history is feature
-> work, fixes, and release bumps. Its sibling, the viewer, *has* been refactored — see
-> [ARCHITECTURE-ISSUES.md](./ARCHITECTURE-ISSUES.md) and
-> [ADR-0003](./adr/0003-viewer-architecture-refactor.md).
+> It was written as an audit — a catalogue of the technical debt in the capture
+> app (`capture/`). Its sibling, the viewer, has its own register
+> ([ARCHITECTURE-ISSUES.md](./ARCHITECTURE-ISSUES.md)) and ADR
+> ([ADR-0003](./adr/0003-viewer-architecture-refactor.md)).
 
 ## How to read this
 
@@ -38,6 +40,23 @@ return more per unit of work.
 | C6 | `main.js` is a 1,578-line monolith | Medium | 4 | 3 | 4 | 14 |
 | C7 | Screenshot triggers — no rate-limiting | Low | 1 | 2 | 2 | 12 |
 | C8 | Inline HTML across seven window files | Low | 2 | 1 | 3 | 9 |
+
+## Resolution — v0.5.0
+
+All eight items were remediated in the v0.5.0 capture tech-debt pass (commits
+`48ad02a`, `0a2b039`; decision record
+[ADR-0005](./adr/0005-capture-architecture-remediation.md)).
+
+| ID | Resolved by |
+|----|-------------|
+| C1 | `node:test` harness + `capture/test/*.test.js` — 41 tests over config, events, session, tracker, window-manager; `npm test` script added. |
+| C2 | Screenshot failures raise a once-per-session OS notification via `notify.js`; OBS-connect and recorder-death failures already surfaced a toast. |
+| C3 | `config.js` `DEFAULTS` is the single source — inline `main.js` fallbacks removed; `session-config-window.js` reads its default from `config.js`. |
+| C4 | `recorder.js` runs a stdout-quiet watchdog (90 s) — the C# sidecar emits a stats line every 30 s, so prolonged silence ⇒ hung ⇒ killed, and the existing restart path recovers it. |
+| C5 | Shared `window-manager.js` (`createWindowManager` → `show`/`toggle`/`isOpen`/`get`); the pause/resume logic collapsed into one `togglePause()`. |
+| C6 | `main.js` decomposed into `boot-log.js`, `notify.js`, `session-storage.js`, `window-manager.js` — 1,578 → ~1,210 lines. |
+| C7 | `fireScreenshot()` has a 2 s leading-edge debounce; manual screenshots pass `{ force: true }` and bypass it. |
+| C8 | Each window's HTML extracted to `capture/ui/*.html`; the window modules read the file (builder output verified byte-identical to the former inline strings). |
 
 ---
 
@@ -190,5 +209,6 @@ as complete.
 
 ---
 
-*Audit taken against `master` at v0.4.0 (commit `48583c6`). Line numbers are
-approximate and prefixed `~`.*
+*Audit originally taken against v0.4.0 (commit `48583c6`); all items resolved in
+v0.5.0. The problem-statement line numbers above are from the pre-remediation code
+and are prefixed `~`.*

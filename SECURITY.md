@@ -96,7 +96,7 @@ Improving the interactive renderers to fully sandboxed `preload + contextBridge`
 
 | Source | Treatment |
 |---|---|
-| `events.jsonl` per-line JSON | Parsed with `JSON.parse` inside a try/catch; malformed lines silently dropped. |
+| `events.jsonl` per-line JSON | Parsed with `JSON.parse` inside a try/catch; a malformed line is skipped — the normalization pipeline logs skipped lines and counts them in `stats.json` rather than dropping them silently. |
 | `manifest.json` | `JSON.parse`. Path fields are not used to compose filesystem paths (the session folder root is the only filesystem anchor); `obs.recording_path` is only used as a value for `<video src="file://...">` after `fs.existsSync` confirms the file. |
 | `annotations.json` | `JSON.parse`, malformed file silently produces empty annotations. Writes are gated on the target being a real session folder (`manifest.json` exists). |
 | Taxonomy + session YAML | `js-yaml` v4 (safe by default; the unsafe `!!js/*` tags were removed in 4.0) on the JS side; `yaml.safe_load` on the Python side. |
@@ -134,11 +134,11 @@ Direct runtime dependencies are deliberately small and widely used:
 - `networkx`
 - (transitively) numpy, scipy, matplotlib, lxml, graphviz Python bindings
 
-An SBOM is generated via `scripts/generate-sbom.js` and lands at `dist/SBOM.json`. It is a valid CycloneDX 1.5 document covering every npm package under capture/ and viewer/ node_modules plus every Python package in the embeddable bundle (~390 components in v1).
+An SBOM is generated via `scripts/generate-sbom.js` and lands at `dist/SBOM.json`. It is a valid CycloneDX 1.5 document covering every npm package under capture/ and viewer/ node_modules plus every Python package in the embeddable bundle (~390 components).
 
 ### `npm audit` status
 
-Runtime dependency audit results as of v1:
+Runtime dependency audit results as of v0.5.0:
 
 | App | Runtime advisories | Notes |
 |---|---|---|
@@ -156,9 +156,9 @@ Run `npm audit --omit=dev` in each app folder to reproduce the runtime numbers.
 
 ## Bundled binaries
 
-The shipped `dist/` for v0.2 includes:
+The shipped `dist/` includes:
 
-- `recorder/recorder.exe` (~70 MB, .NET 8 self-contained, UIA event subscriber - source under `capture/recorder/`)
+- `recorder/recorder.exe` (~155 MB, .NET 8 self-contained, UIA event subscriber - source under `capture/recorder/`)
 
 The recorder uses only Microsoft's in-box UI Automation API. No network calls.
 
@@ -225,11 +225,11 @@ The recorder's lifecycle is independent of OBS recording and of the tracker's ma
 
 ### Code signing
 
-Same as the Electron apps — `recorder.exe` is not code-signed in v1. EV signing is on the roadmap and would also remove the rare AV false-positive on first run for the .NET 8 self-contained executable.
+Same as the Electron apps — `recorder.exe` is not code-signed. EV signing is on the roadmap and would also remove the rare AV false-positive on first run for the .NET 8 self-contained executable.
 
 ## Code signing
 
-The Windows binaries in `dist/` are **not** code-signed in v1. Production deployment should add an EV code-signing certificate to the build pipeline. The recipient will otherwise see a SmartScreen warning on first launch. See `docs/User-Guide.docx` for the recipient-side workflow.
+The Windows binaries in `dist/` are **not** code-signed. Production deployment should add an EV code-signing certificate to the build pipeline. The recipient will otherwise see a SmartScreen warning on first launch. See `docs/User-Guide.docx` for the recipient-side workflow.
 
 ## Reporting a vulnerability
 

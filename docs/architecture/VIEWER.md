@@ -1,10 +1,11 @@
 # Viewer Architecture
 
-> **Deep reference.** The structural refactor (ADR-0003) is implemented through
-> Phase 3: the renderer is now a graph of CommonJS modules. This document and
-> [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) are the maps for that structure.
-> Remaining work (the Phase 4 design-system pass) is tracked in
-> [ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md).
+> **Deep reference.** The viewer's structural refactor (ADR-0003) is **complete** —
+> the renderer is now a graph of CommonJS modules. This document and
+> [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) are the maps for that structure. The
+> design-system pass (ADR-0003 Phase 4) was superseded by the Warm Editorial
+> redesign — see [ADR-0004](../adr/0004-flow-timeline-steps-rework.md) and
+> [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
 
 ## Contents
 

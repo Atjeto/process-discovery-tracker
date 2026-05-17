@@ -2,6 +2,19 @@
 
 Internal tool for capturing and analyzing process discovery sessions. Full design in [../process_discovery_tracker_design.md](../process_discovery_tracker_design.md).
 
+## What's new in v0.5.0
+
+- **Capture-app tech-debt remediation** (capture). A `node:test` unit suite;
+  `main.js` decomposed into focused modules (`boot-log`, `notify`,
+  `session-storage`, `window-manager`); window HTML extracted into
+  `capture/ui/*.html`; config defaults consolidated to one source; a recorder
+  liveness watchdog; screenshot-trigger debounce; and desktop notifications when
+  capture is degrading. Decision record:
+  [ADR-0005](docs/adr/0005-capture-architecture-remediation.md).
+- **Viewer Flow timeline on the shared core** (viewer). The Flow timeline was
+  migrated onto `timeline-core` as lane plugins, completing the ADR-0003 viewer
+  refactor.
+
 ## What's new in v0.3
 
 - **Live Session window** (capture). One window with the recording indicator, session timer, open-marker stack, counters, recent-events feed, fire-marker input, sync marker, and inline end-session confirm. Replaces the old operator panel + status window split.
@@ -18,9 +31,9 @@ Internal tool for capturing and analyzing process discovery sessions. Full desig
 - **Analysis progress streaming + Cancel** (viewer). Long analyses show progress and can be aborted via a red Cancel button.
 - **Stratified-dark palette** across all surfaces. Sage / slate accents, no electric blue. Capture and viewer windows now share the same look.
 
-## What's new since v0.3 (unreleased)
+## What's new in v0.4.0
 
-A post-v0.3 pass adds the project layer, ten timeline / aggregate features, business-language relabeling, and a number of polish items:
+The **Warm Editorial** redesign — the dark "stratified-dark" theme replaced by a warm light theme, with a rebuilt Flow timeline and Steps view ([ADR-0004](docs/adr/0004-flow-timeline-steps-rework.md)) — plus the project layer, ten timeline / aggregate features, business-language relabeling, and a number of polish items:
 
 - **Project / engagement layer** (viewer). Top-bar Project menu lets you save the current aggregate session set + focus session + active Process Template + view mode + case scope into a single `.pdt-project.json` file. Reopen restores everything in one click. "Recent projects" surfaces in the Session view's empty state alongside Recent sessions.
 - **Range selection on the timeline** (viewer). **Shift-drag** across the Flow timeline to mark a range; a stats card shows duration, event/marker/screenshot counts, and top apps in the range. Esc clears.
@@ -33,7 +46,7 @@ A post-v0.3 pass adds the project layer, ten timeline / aggregate features, busi
 - **Mode-specific shortcuts overlay** (viewer). Dismissable bottom-right card in the Session view lists 3-4 most-used shortcuts for the active mode (Flow / Steps / Phases).
 - **Business-language relabeling** (viewer). "Aggregate" → "Compare Sessions", "Vocabularies" → "App Library", "DFG" → "Flow diagram", "BPMN" → "Process diagram (BPMN)". Toast + dialog copy rewritten. Process Template's raw definition lives behind an "Advanced" disclosure so non-engineer analysts see the step list as the default surface.
 
-## Round-2 UX feedback pass (unreleased)
+## Round-2 UX feedback pass (v0.4.0)
 
 A pass driven by hands-on field testing of the above. Fixes friction and clarifies the parts that were hard to use:
 
@@ -203,15 +216,15 @@ dist/
 To publish a release once the build is done:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\publish-release.ps1 -Version 0.2.0
+powershell -ExecutionPolicy Bypass -File .\scripts\publish-release.ps1 -Version 0.5.0
 # or, manually:
-gh release create v0.2.0 dist\release\capture-v0.2.0.zip dist\release\viewer-v0.2.0.zip --title "Process Discovery Tracker v0.2.0"
+gh release create v0.5.0 dist\release\capture-v0.5.0.zip dist\release\viewer-v0.5.0.zip --title "Process Discovery Tracker v0.5.0"
 ```
 
 Build flags:
 - `-SkipPython` - skip rebuilding `viewer/python/` if it already exists. Saves 3-5 minutes.
 - `-Clean` - wipe `dist/` and per-app `dist/` folders before building.
-- `-Version 0.2.0` - override the version baked into the release-asset filenames.
+- `-Version 0.5.0` - override the version baked into the release-asset filenames.
 - `-SkipRelease` - stop after producing the unzipped dist trees (no `dist/release/` zips).
 
 The build uses `electron-packager` rather than `electron-builder` to avoid the Windows symlink requirement during winCodeSign cache extraction. If you want NSIS installers, enable Developer Mode in Windows Settings (or run as admin) and the per-app `npm run dist` scripts will produce them via electron-builder.

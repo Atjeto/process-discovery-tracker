@@ -1,9 +1,10 @@
 # Viewer — Timeline Subsystem
 
-> **Deep reference.** The timeline was the original refactor target. Phase 1 of
-> ADR-0003 extracted the shared core; Phase 3 moved the Flow timeline into its
-> view module. Read [VIEWER.md](./VIEWER.md) first for the surrounding
-> architecture.
+> **Deep reference.** The timeline was the original refactor target. ADR-0003
+> Phase 1 extracted the shared core and migrated all three timelines — Steps,
+> Phases, and (in commit `faed9f6`) Flow — onto it; Phase 3 moved the Flow
+> timeline into its view module. Read [VIEWER.md](./VIEWER.md) first for the
+> surrounding architecture.
 
 ## The shared core
 
@@ -21,6 +22,7 @@ position mapping, lane packing, and band/axis DOM construction all live once, in
 | `packLanes(items, opts)` | Sweep-line lane assignment for overlapping bands |
 | `renderBand(host, spec)` / `renderAxis(host, ticks)` | Band / axis DOM primitives |
 | `renderMiniTimeline(host, opts)` | Whole mini-timeline render (lanes + axis) |
+| `layoutLaneStack(lanes)` / `renderLaneStack(host, lanes, opts)` | Lay out and render a stack of lane plugins (`{ key, height, gapBefore, render }`) — used by the Flow timeline |
 
 `timeline-core.js` is a CommonJS module with **pure, unit-tested** layout maths
 ([`timeline/timeline-core.test.js`](../../viewer/timeline/timeline-core.test.js),
@@ -34,40 +36,46 @@ broken there" regressions is gone.
 |---|---|---|---|
 | Entry point | `renderTimeline()` | `renderStepTimeline()` | `renderPhaseTimeline()` |
 | File | [`views/flow-view.js`](../../viewer/views/flow-view.js) | [`step-editor.js`](../../viewer/step-editor.js) | [`phase-editor.js`](../../viewer/phase-editor.js) |
-| Core use | `chooseTicks` + `packLanes`; builds its own 9-lane stack | `TimelineCore.renderMiniTimeline` | `TimelineCore.renderMiniTimeline` |
+| Core use | `TimelineCore.renderLaneStack` with lane plugins | `TimelineCore.renderMiniTimeline` | `TimelineCore.renderMiniTimeline` |
 | Host element | `#timeline` inside `#timeline-scroll` | `#timeline-steps` inside `.mini-timeline-scroll` | `#timeline-phases` inside `.mini-timeline-scroll` |
 | Zoom state | `State.zoomFactor` | `State.stepZoom` | `State.phaseZoom` |
 | Height / resize | `--timeline-height` (`#resize-timeline`) | `--mini-timeline-height` | `--mini-timeline-height` |
 
 The Steps and Phases mini-timelines are thin: each gathers its lane items, then
 hands them to `TimelineCore.renderMiniTimeline`, which does lane packing, the
-axis, and band DOM. The Flow timeline is richer — it keeps its own lane-stack
-assembly because of the optional lanes below — but still draws ticks via
-`chooseTicks` and packs case lanes via `packLanes`.
+axis, and band DOM. The Flow timeline is richer — it has the optional lanes
+below — but is also a caller of the core: it builds an array of lane plugins and
+hands them to `TimelineCore.renderLaneStack` (commit `faed9f6` completed this
+migration — ADR-0003 items 4-5).
 
 ## The Flow timeline — `renderTimeline()` (`flow-view.js`)
 
-A 9-lane stack, each optional lane toggleable via the Lanes menu
-(`getLaneToggles()`, persisted to `pdt.timelineLanes`):
+`renderTimeline()` builds an ordered array of **lane plugins** — each an object
+`{ key, height, gapBefore, render(host, ctx) }` — and hands it to
+`TimelineCore.renderLaneStack`, which lays the lanes out (running-sum tops, total
+`minHeight`) and calls each lane's `render`. The lane stack, top to bottom:
 
 ```
-tick labels        (ticksH 20)   wall-clock HH:MM:SS, via chooseTicks
-activity bands     (activityH 60) per-app coloured runs  ← idle bands,
-                                                            marker bars,
-                                                            screenshot dots
-                                                            all overlay here
-density histogram  (12)          ~120-bucket event-count strip
-window-title runs  (14)          one band per (app,title) run
-per-step lane      (16)          step bands, click → Steps view
-note lane          (18)          numbered note dots
-case lanes         (22 each)     packLanes-packed, one row per concurrent case
-playhead           (overlay)     1px line synced to the <video>
+tick labels        wall-clock HH:MM:SS axis, via chooseTicks
+case header        labelled lane of concurrent-case bands (packLanes-packed)
+activity bands     per-app coloured runs; idle bands and marker bars overlay here
+screenshot rail    dedicated rail of screenshot marks
+density histogram  optional — ~120-bucket event-count strip
+window-title runs  optional — one band per (app,title) run
+per-step lane      optional — step bands, click → Steps view
+note lane          optional — numbered note dots
+playhead           overlay — 1px line synced to the <video>
 ```
 
-Lane tops are computed as a running sum of fixed pixel heights;
-`host.style.minHeight` is set to the total. `layoutCaseLanes()` (in
-`flow-view.js`) walks the marker stream into closed/dangling cases and delegates
-lane assignment to `TimelineCore.packLanes`.
+The four optional lanes (density / window-title / per-step / note) toggle via the
+Lanes menu (`getLaneToggles()`, persisted to `pdt.timelineLanes`) — they are
+simply omitted from the lane array when off. `layoutCaseLanes()` walks the marker
+stream into closed/dangling cases and delegates row assignment to
+`TimelineCore.packLanes`.
+
+The case header *above* the activity bands and the dedicated screenshot rail
+*below* them are the Warm Editorial lane re-order — see
+[ADR-0004](../adr/0004-flow-timeline-steps-rework.md).
 
 ## Zoom, scroll, and persistence
 

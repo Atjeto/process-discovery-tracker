@@ -1,20 +1,31 @@
 # Capture
 
-Worker-side Electron tracker. Polls foreground window every 5s, fires marker events on hotkey / tray, writes per-session JSONL to the user's APPDATA folder.
+Worker-side Electron tray app. Polls the foreground window every 5 s, records UI
+interactions via a C# sidecar, fires marker events on hotkey / tray, drives OBS,
+captures screenshots, and writes a per-session JSONL folder under `%APPDATA%`.
+
+Architecture overview: [`docs/architecture/CAPTURE.md`](../docs/architecture/CAPTURE.md).
 
 ## Run
 
 ```
 npm install
-npm start
+npm start    # launch the tray app
+npm test     # run the unit suite (node:test)
 ```
 
-Tray icon appears. Right-click for menu.
+The tray icon appears; right-click for the menu.
 
-**Hotkeys (default):**
+**Default hotkeys:**
 
-- `Ctrl+Shift+S` -- open label picker for a Start marker. Type to filter the configured labels or type a free-form label and Enter to fire.
-- `Ctrl+Shift+E` -- fire End marker for the innermost open marker.
+- `Ctrl+Shift+S` — open the label picker for a Start marker.
+- `Ctrl+Shift+E` — fire an End marker (closes the innermost open marker).
+- `Ctrl+Shift+P` — take a manual screenshot.
+- `Ctrl+Shift+Y` — fire a cross-machine sync marker.
+
+Set `PDT_CONFIG=path\to\config.yaml` before launch for a per-session config, or
+use the tray's "Set up a recording session" window (it writes `quick-config.yaml`
+for the next launch). See `sample-config.yaml` for the schema.
 
 ## Output
 
@@ -22,34 +33,41 @@ Each session writes a self-contained folder:
 
 ```
 %APPDATA%\process-discovery-tracker\sessions\<engagement>\<YYYYMMDD-HHMMSS>\
-  events.jsonl       # one JSON event per line, append-only
-  manifest.json      # session metadata
-  screenshots/       # (empty in v0)
-  obs/               # (empty in v0)
+  events.jsonl       # one JSON event per line, append-only — the durable artifact
+  manifest.json      # session metadata, status, OBS reference
+  config.yaml        # snapshot of the config used
+  screenshots/       # event-triggered captures
+  obs/sync.json      # clock-sync data (when OBS was connected)
 ```
 
-`events.jsonl` is the durable artifact. See [../shared/SCHEMA.md](../shared/SCHEMA.md) for the event envelope and type-specific data shapes.
+See [`../shared/SCHEMA.md`](../shared/SCHEMA.md) for the event envelope and
+type-specific data shapes.
 
-## What's in v0
+## Code map
 
-- Activity polling via `active-win` (5s cadence)
-- Per-session JSONL output (append + OS-cached sync)
-- Marker stream: Start (with label) / End (innermost) via hotkey and tray
-- Marker stack tracked for status display (case IDs derived in normalization, per §5.2)
-- Session lifecycle: `session_start` / `session_end` system events
-- Pause / Resume with `paused` / `resumed` system events
-- Orphan-session recovery at next launch (marks manifest `status: recovered`)
-- Single-instance lock, boot.log diagnostic (set `PDT_DEBUG=1` to enable)
+`main.js` is the orchestration core. The v0.5.0 tech-debt remediation
+([ADR-0005](../docs/adr/0005-capture-architecture-remediation.md)) extracted four
+cross-cutting modules and the window HTML out of it.
 
-## What's not yet in (iteration 2+)
-
-- OBS integration (obs-websocket, scene bootstrap, recording start/stop, timestamp offset capture)
-- Screenshot capture (event-triggered per §3.4)
-- Idle detection and auto-end (§3.3)
-- Per-session YAML config loading (§6.2) -- config is hard-coded in `main.js` for v0
-- Status window
-- Launch-on-login toggle
-- Tray icon -- ships with an empty tray for now; drop a `tray-icon.png` in this folder to enable
+| Path | Role |
+|---|---|
+| `main.js` | Electron main process — tray, hotkeys, session lifecycle, idle monitor, screenshot triggers, IPC handlers. |
+| `boot-log.js` | `bootLog()` diagnostic log (opt-in via `PDT_DEBUG=1`). |
+| `notify.js` | `notifyUser()` OS toast for failures the operator must see. |
+| `session-storage.js` | Session disk-usage accounting; the delete / prune flows. |
+| `window-manager.js` | Shared singleton-window helper. |
+| `tracker.js` | The 5 s polling loop; event append; live counters. |
+| `session.js` | Session-folder creation, `manifest.json` I/O, orphan recovery. |
+| `events.js` | Event-envelope factories. |
+| `config.js` | Loads + deep-merges per-session YAML over `DEFAULTS` (the single source of defaults). |
+| `recorder.js` | Spawns / supervises the C# `recorder.exe` sidecar; liveness watchdog. |
+| `obs.js` | OBS WebSocket integration. |
+| `screenshots.js` | Desktop capture via `desktopCapturer`. |
+| `log.js` | Per-session `capture.log` writer. |
+| `*-window.js`, `operator-panel.js` | The tray windows; each loads its markup from `ui/<name>.html`. |
+| `ui/` | The seven window HTML files. |
+| `test/` | `node:test` unit suite (config, events, session, tracker, window-manager). |
+| `recorder/` | The C# UI-Automation recorder sidecar — see [`docs/interaction-recorder.md`](../docs/interaction-recorder.md). |
 
 ## Debug
 
@@ -59,20 +77,8 @@ npm start
 ```
 
 Writes per-lifecycle lines to `%APPDATA%\process-discovery-tracker\boot.log`.
-
-Test a session from PowerShell:
+Stream a session's events live:
 
 ```
 Get-Content "$env:APPDATA\process-discovery-tracker\sessions\default\<timestamp>\events.jsonl" -Wait
 ```
-
-Streams events as they land.
-
-## Code map
-
-| File | Role |
-|---|---|
-| `main.js` | Electron entry, tray, hotkeys, IPC, session lifecycle |
-| `tracker.js` | Polling loop, event append, marker/system event API |
-| `session.js` | Session folder creation, manifest read/write, orphan recovery |
-| `events.js` | Event envelope helpers |
