@@ -6,6 +6,35 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-17
+
+### Changed
+
+- **Capture app tech-debt remediation.** Following an architecture audit
+  (`docs/CAPTURE-ARCHITECTURE-ISSUES.md`), the capture app was reworked: a
+  `node:test` suite covers the pure-logic modules; the ~1,580-line
+  `main.js` is decomposed into focused modules (boot-log, notify,
+  session-storage, window-manager); config defaults are consolidated to a
+  single source; and each window's HTML is extracted from its JS module
+  into a `ui/*.html` file. The decomposition and HTML extraction are
+  behaviour-preserving.
+- **Screenshots are debounced.** Coincident triggers (an app switch
+  landing together with a marker fire) collapse to a single capture
+  instead of several near-duplicates. Manual screenshots are never
+  suppressed.
+- **Viewer: Flow timeline on the shared timeline core.** The Flow
+  timeline is migrated onto the timeline-core lane plugins.
+- **Viewer: process map is resizable; Activity Frequency chart fix.**
+
+### Added
+
+- **Capture-time failure notifications.** If screenshots start failing
+  during a session, the operator gets a desktop notification rather than
+  the failure landing only in the debug log.
+- **Recorder liveness watchdog.** The interaction-recorder sidecar is
+  monitored; if it wedges without exiting, it is terminated and the
+  existing restart path recovers it.
+
 ## [0.4.0] - 2026-05-16
 
 ### Changed (Warm Editorial redesign)
