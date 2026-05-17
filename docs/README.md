@@ -16,6 +16,8 @@ current **architecture reference** (what the code is now), current **operational
 | You want to… | Read |
 |---|---|
 | Understand the whole system fast | [architecture/OVERVIEW.md](architecture/OVERVIEW.md) |
+| Know what the product does (feature catalogue) | [FEATURES.md](FEATURES.md) |
+| Set up a dev environment / build / test | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Work with session data / file formats | [architecture/DATA-MODEL.md](architecture/DATA-MODEL.md) · [../shared/SCHEMA.md](../shared/SCHEMA.md) |
 | Change how recording works | [architecture/CAPTURE.md](architecture/CAPTURE.md) |
 | Change the Python pipeline | [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) |
@@ -49,6 +51,9 @@ is today.
 | Doc | Covers |
 |---|---|
 | [../README.md](../README.md) | Repo quick-start and per-release feature notes |
+| [../CLAUDE.md](../CLAUDE.md) | Project context for Claude Code — layout, commands, conventions |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Developer setup, build, test, and conventions |
+| [FEATURES.md](FEATURES.md) | What the product does — capability catalogue by component |
 | [../CHANGELOG.md](../CHANGELOG.md) | Per-release history |
 | [../SECURITY.md](../SECURITY.md) | Threat model and security posture |
 | [../shared/SCHEMA.md](../shared/SCHEMA.md) | **Authoritative** session-data schema + data dictionary |
