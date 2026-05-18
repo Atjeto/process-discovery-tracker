@@ -34,10 +34,10 @@ const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecen
 const { initAggregateView, renderAggregate, filteredAggregateSessions } = require("./views/aggregate-view.js");
 const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
 const { refreshTemplateVersions, renderCanonicalStepList } = require("./views/template-view.js");
-const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext } = require("./views/steps-view.js");
+const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, addStepAtTimestamp } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
 const { renderAnalysisLevel } = require("./views/analysis-view.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
@@ -50,6 +50,7 @@ initFlowView({
   rerenderActiveLevel:    () => rerenderActiveLevel(),
   applyLevel:             (name) => applyLevel(name),
   activateTab:            (name) => activateTab(name),
+  addStepAtTimestamp:     (ts) => addStepAtTimestamp(ts),
 });
 
 /* ============ Session / undo layer -- see session.js ============== */
@@ -708,6 +709,12 @@ document.addEventListener("keydown", (e) => {
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;
 
+  // <video controls> handles Space / arrows natively; skip them here
+  // so the global handler doesn't double-fire and cancel the toggle.
+  if (tag === "video" && (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    return;
+  }
+
   // Undo / redo apply to any view as long as a session is loaded.
   // Ctrl+Z = undo, Ctrl+Shift+Z (or Ctrl+Y) = redo.
   if ((e.ctrlKey || e.metaKey) && !e.altKey) {
@@ -726,6 +733,13 @@ document.addEventListener("keydown", (e) => {
 
   if (e.key === "?" || (e.shiftKey && e.key === "/")) {
     openHelp();
+    e.preventDefault();
+    return;
+  }
+  // Flow view: S adds/splits a step at the video playhead.
+  if (State.getLevel() === "flow" && State.getSession()
+      && e.key === "s" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    addStepAtPlayhead();
     e.preventDefault();
     return;
   }

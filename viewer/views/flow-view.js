@@ -36,6 +36,7 @@ let renderShortcutsOverlay = () => {};
 let rerenderActiveLevel = () => {};
 let applyLevel = () => {};
 let activateTab = () => {};
+let addStepAtTimestamp = async () => {};
 
 /* ============ Annotation sub-tabs ================================= */
 
@@ -1149,9 +1150,25 @@ function maybeAutoScrollToFirstCase() {
   });
 }
 
+/* "Add step here" -- splits/creates a step at the video playhead so the
+   analyst can annotate without leaving Flow view. Also bound to the S
+   key (see renderer.js). Enables the per-step lane so the new boundary
+   is visible immediately. */
+async function addStepAtPlayhead() {
+  if (!State.getSession()) return;
+  const video = $("#video");
+  const tsISO = video ? videoTimeToSessionTs(video.currentTime) : null;
+  if (!tsISO) { toast("No video timing — can't place a step at the playhead", "error"); return; }
+  setLaneToggle("steps", true);
+  const cb = document.querySelector('#lanes-popup input[data-lane="steps"]');
+  if (cb) cb.checked = true;
+  await addStepAtTimestamp(tsISO);
+}
+
 $("#btn-zoom-in").addEventListener("click", () => { State.setZoomFactor(State.getZoomFactor() * 1.5); renderTimeline(); persistTimelineForCurrent(); });
 $("#btn-zoom-out").addEventListener("click", () => { State.setZoomFactor(Math.max(1, State.getZoomFactor() / 1.5)); renderTimeline(); persistTimelineForCurrent(); });
 $("#btn-zoom-reset").addEventListener("click", () => { State.setZoomFactor(1); renderTimeline(); persistTimelineForCurrent(); });
+$("#btn-add-step").addEventListener("click", addStepAtPlayhead);
 
 /* P1.1: range selection on the timeline. Drag across the activity
    lane to select a time range; a stats card pops up summarizing what
@@ -2407,7 +2424,7 @@ if ($("#video")) $("#video").addEventListener("timeupdate", _watchStepGuard);
    writes). The instruction card is non-blocking so the video and
    timeline stay clickable underneath it. */
 let _videoSync = null;
-function _videoSyncCard(text) {
+function _videoSyncCard(text, primaryLabel, primaryFn) {
   let card = document.getElementById("video-sync-card");
   if (!card) {
     card = document.createElement("div");
@@ -2415,18 +2432,20 @@ function _videoSyncCard(text) {
     card.className = "video-sync-card";
     document.body.appendChild(card);
   }
-  card.innerHTML = '<span class="vs-text"></span>' +
-    '<button type="button" class="vs-cancel">Cancel</button>';
+  let html = '<span class="vs-text"></span>';
+  if (primaryLabel) html += '<button type="button" class="vs-mark primary"></button>';
+  html += '<button type="button" class="vs-cancel">Cancel</button>';
+  card.innerHTML = html;
   card.querySelector(".vs-text").textContent = text;
+  if (primaryLabel) {
+    const mark = card.querySelector(".vs-mark");
+    mark.textContent = primaryLabel;
+    mark.addEventListener("click", primaryFn);
+  }
   card.querySelector(".vs-cancel").addEventListener("click", cancelVideoSync);
 }
 function cancelVideoSync() {
   if (_videoSync) {
-    const video = $("#video");
-    if (video) {
-      video.removeEventListener("click", _videoSync.onVideoClick, true);
-      video.classList.remove("video-sync-target");
-    }
     const tl = document.getElementById("timeline");
     if (tl) {
       tl.removeEventListener("click", _videoSync.onTimelineClick, true);
@@ -2453,24 +2472,25 @@ function startVideoSync() {
   const onKey = (e) => {
     if (e.key === "Escape") { e.preventDefault(); cancelVideoSync(); }
   };
-  function onVideoClick() {
-    if (!_videoSync) return;
+  // Step 1 -> 2: capture where the analyst paused the video. The video
+  // keeps its normal controls so they can scrub to the right frame; a
+  // card button (not a click on the video) records it, so marking can
+  // never toggle playback.
+  function markFrame() {
+    if (!_videoSync || _videoSync.step !== 1) return;
     _videoSync.videoTime = video.currentTime || 0;
-    video.removeEventListener("click", onVideoClick, true);
-    video.classList.remove("video-sync-target");
+    _videoSync.step = 2;
     const tl = document.getElementById("timeline");
-    if (tl) {
-      tl.classList.add("video-sync-target");
-      tl.addEventListener("click", onTimelineClick, true);
-    }
+    if (tl) tl.classList.add("video-sync-target");
     _videoSyncCard("Step 2 of 2 — click the matching moment on the timeline below.");
   }
+  // The timeline's normal click (seek) is suppressed for the whole sync;
+  // a step-2 click also sets the sync point.
   function onTimelineClick(e) {
     if (!_videoSync) return;
     e.preventDefault();
     e.stopPropagation();
-    const tl = document.getElementById("timeline");
-    if (tl) tl.removeEventListener("click", onTimelineClick, true);
+    if (_videoSync.step !== 2) return;
     const eventMs = _timelineClickToMs(e.clientX);
     if (eventMs == null) {
       cancelVideoSync();
@@ -2484,11 +2504,12 @@ function startVideoSync() {
     const offsetMs = Math.round(eventMs - startedAt - (_videoSync.videoTime || 0) * 1000);
     applyVideoSync(offsetMs);
   }
-  _videoSync = { videoTime: null, onVideoClick, onTimelineClick, onKey };
-  video.classList.add("video-sync-target");
-  video.addEventListener("click", onVideoClick, true);
+  _videoSync = { videoTime: null, step: 1, onTimelineClick, onKey };
+  const tl = document.getElementById("timeline");
+  if (tl) tl.addEventListener("click", onTimelineClick, true);
   document.addEventListener("keydown", onKey, true);
-  _videoSyncCard("Step 1 of 2 — pause the video at a recognizable moment, then click the video.");
+  _videoSyncCard("Step 1 of 2 — pause the video at a recognizable moment, then click Mark frame.",
+    "Mark frame", markFrame);
 }
 async function applyVideoSync(offsetMs) {
   const session = State.getSession();
@@ -3090,6 +3111,7 @@ function initFlowView(deps) {
   rerenderActiveLevel    = deps.rerenderActiveLevel    || (() => {});
   applyLevel             = deps.applyLevel             || (() => {});
   activateTab            = deps.activateTab            || (() => {});
+  addStepAtTimestamp     = deps.addStepAtTimestamp     || (async () => {});
 }
 
 module.exports = {
@@ -3097,5 +3119,5 @@ module.exports = {
   loadSessionIntoView, renderTimeline, renderMarkersList,
   renderAnnotations, renderSessionPills,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
-  activateAnnoTab,
+  activateAnnoTab, addStepAtPlayhead,
 };

@@ -239,6 +239,105 @@ async function splitStep(stepId) {
   toast("Step split", "success");
 }
 
+/* "Add step here" from the Flow video playhead -- always adds a step,
+   never refuses:
+     - playhead inside a step -> split that step at the playhead
+       (a boundary inside a step necessarily cuts it in two);
+     - playhead in open space -> new step from the playhead to the
+       next step's start (or the session end);
+     - no steps yet           -> carve the session into "Step 1" /
+       "Step 2" at the playhead.
+   Distinct from splitStep(), which cuts a selected step at its
+   interaction-count midpoint. */
+async function addStepAtTimestamp(tsISO) {
+  if (!State.getSession()) return;
+  const t = new Date(tsISO).getTime();
+  if (!isFinite(t)) { toast("Couldn't read the playhead position", "error"); return; }
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const inter = State.getSession().events.filter(e => e.type === "interaction");
+  const interMap = Object.fromEntries(inter.map(e => [e.event_id, e]));
+  const evTime = (id) => interMap[id] ? new Date(interMap[id].timestamp).getTime() : NaN;
+  const tISO = new Date(t).toISOString();
+
+  // No steps yet: carve the whole session in two at the playhead.
+  if (!anno.steps.length) {
+    const span = getSpan();
+    if (!span) { toast("No events to anchor a step to", "error"); return; }
+    const before = inter.filter(e => new Date(e.timestamp).getTime() < t).map(e => e.event_id);
+    const after = inter.filter(e => new Date(e.timestamp).getTime() >= t).map(e => e.event_id);
+    anno.steps.push(
+      makeStep("Step 1", new Date(span.startMs).toISOString(), tISO, before),
+      makeStep("Step 2", tISO, new Date(span.endMs).toISOString(), after),
+    );
+    await persistAnnotations(anno, "Add step at playhead");
+    toast('Created "Step 1" and "Step 2"', "success");
+    return;
+  }
+
+  // Playhead inside a step: split that step at the playhead.
+  const idx = anno.steps.findIndex(s => s.time_range
+    && new Date(s.time_range.start).getTime() < t
+    && new Date(s.time_range.end).getTime() > t);
+  if (idx >= 0) {
+    const s = anno.steps[idx];
+    const ids = (s.evidence && s.evidence.interaction_event_ids) || [];
+    const newName = nextStepName(anno.steps);
+    const first = { ...s, time_range: { start: s.time_range.start, end: tISO },
+      evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) < t) },
+      state: "edited" };
+    const second = { ...s, step_id: cryptoRandomId(), name: newName,
+      time_range: { start: tISO, end: s.time_range.end },
+      evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) >= t) },
+      state: "edited" };
+    anno.steps.splice(idx, 1, first, second);
+    await persistAnnotations(anno, "Add step at playhead");
+    toast('Added "' + newName + '"', "success");
+    return;
+  }
+
+  // Playhead in open space: new step from the playhead to the next boundary.
+  const span = getSpan();
+  const next = anno.steps
+    .filter(s => s.time_range && s.time_range.start)
+    .map(s => new Date(s.time_range.start).getTime())
+    .filter(ms => ms >= t)
+    .sort((a, b) => a - b)[0];
+  const endMs = next != null ? next : (span ? span.endMs : t + 5000);
+  if (endMs - t <= 0) { toast("A step already starts here"); return; }
+  const newName = nextStepName(anno.steps);
+  const ids = inter
+    .filter(e => { const et = new Date(e.timestamp).getTime(); return et >= t && et < endMs; })
+    .map(e => e.event_id);
+  anno.steps.push(makeStep(newName, tISO, new Date(endMs).toISOString(), ids));
+  await persistAnnotations(anno, "Add step at playhead");
+  toast('Added "' + newName + '"', "success");
+}
+
+function makeStep(name, startISO, endISO, eventIds) {
+  return {
+    step_id: cryptoRandomId(),
+    session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
+    case_id: null,
+    name,
+    description: "",
+    time_range: { start: startISO, end: endISO },
+    evidence: { interaction_event_ids: eventIds, screenshot_refs: [], video_timecode_range: null, manual_notes: "" },
+    state: "manually_authored",
+    canonical_step_id: null,
+    flags: { conditional: false, condition_text: null, exception_path: false, waste: false, automation_candidate: false },
+    phase_id: null,
+  };
+}
+
+function nextStepName(steps) {
+  let max = 0;
+  for (const s of steps) {
+    const m = /^Step (\d+)$/.exec(s.name || "");
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return "Step " + (max + 1);
+}
+
 async function mergeStepWithNext(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
@@ -352,16 +451,16 @@ function openIgnoredAppsDialog() {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML =
-    '<div class="modal" role="dialog" style="max-width:460px">' +
+    '<div class="modal modal-simple" role="dialog">' +
       '<header class="modal-header"><h2>Ignored apps</h2>' +
         '<button class="icon-btn modal-close" id="ia-close" title="Close">✕</button></header>' +
-      '<div style="padding:14px 18px">' +
+      '<div class="modal-body">' +
         '<p class="meta" style="margin-top:0">Apps you tick here are left out of step suggestions — useful for OBS, the tracker itself, or anything that isn\'t part of the process you\'re mapping. Saving re-analyzes the session.</p>' +
-        '<div id="ia-list" style="max-height:320px;overflow:auto;margin:10px 0"></div>' +
-        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">' +
-          '<button id="ia-cancel">Cancel</button>' +
-          '<button id="ia-save" class="primary">Save &amp; re-analyze</button>' +
-        '</div>' +
+        '<div id="ia-list" style="margin-top:10px"></div>' +
+      '</div>' +
+      '<div class="modal-footer">' +
+        '<button id="ia-cancel">Cancel</button>' +
+        '<button id="ia-save" class="primary">Save &amp; re-analyze</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(backdrop);
@@ -451,5 +550,5 @@ function initStepsView(deps) {
 
 module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
-  deleteSelectedSteps, splitStep, mergeStepWithNext,
+  deleteSelectedSteps, splitStep, mergeStepWithNext, addStepAtTimestamp,
 };
