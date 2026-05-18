@@ -33,7 +33,8 @@ const { promptModal, confirmModal, checklistModal } = require("./modals.js");
 const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent, relTime } = require("./recent.js");
 const { initAggregateView, renderAggregate, filteredAggregateSessions } = require("./views/aggregate-view.js");
 const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
-const { refreshTemplateVersions, renderCanonicalStepList } = require("./views/template-view.js");
+const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
+const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = require("./views/template-view.js");
 const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, addStepAtTimestamp } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
@@ -309,6 +310,7 @@ initStepsView({
   videoTimeToSessionTs: (t) => videoTimeToSessionTs(t),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   watchStep: (s) => watchStep(s),
+  openCanonicalInTemplateTab: (r) => { activateTab("canonical"); loadCanonical(r); },
 });
 initPhasesView({
   ensureAnnoShape: (a) => ensureAnnoShape(a),
@@ -360,12 +362,37 @@ async function buildVocabFromSession(suggestedName) {
     toast("App Library entry build failed: " + ((r && r.error) || "unknown"), "error");
     return;
   }
+  // Parse the bootstrapped vocab. If a vocab with the same id already
+  // exists, merge into it (signature-deduped) instead of overwriting --
+  // re-running this for an app must never destroy the prior vocab.
+  const yaml = require("js-yaml");
+  let bootstrapped = null;
+  try { bootstrapped = (yaml.load(r.yaml) || {}).app_vocabulary || null; }
+  catch (_) { bootstrapped = null; }
+  const list = await Ipc.listAppVocabs();
+  const existing = ((list && list.vocabs) || []).find((v) => v.id === vocabId);
+
+  if (bootstrapped && existing) {
+    const current = await Ipc.readVocab(existing.path);
+    if (current && !current._error) {
+      const merged = mergeInteractionsIntoVocab(current, bootstrapped.interactions || []);
+      const w = await Ipc.writeVocab({ path: existing.path, vocab: merged.vocab });
+      if (w && w.ok) {
+        await Ipc.revealFile(existing.path);
+        toast("Merged into the existing App Library entry — " + merged.added +
+          " new interaction(s), " + merged.skipped + " already present.", "success");
+      } else {
+        toast("Couldn't update the App Library file: " + ((w && w.error) || "unknown"), "error");
+      }
+      return;
+    }
+  }
+
+  // No existing vocab for this id -> save as a new file. preferAppVocabDir
+  // defaults to the shipped vocab dir so the analyst needn't hunt for it.
   const out = await Ipc.saveAppVocab({
     defaultName: vocabId + ".yaml",
     content: r.yaml,
-    /* Default to the shipped vocab dir so the analyst doesn't have to
-       hunt for it. Falls back to the user's Documents folder if the
-       shipped dir isn't writable (e.g., installed under Program Files). */
     preferAppVocabDir: true,
   });
   if (out) {
@@ -1127,6 +1154,29 @@ function toggleRecentMenu(force) {
   });
 })();
 
+/* Generic dropdown menu (button + popup) -- used by the Export menus on
+   the Session and Compare Sessions tabs. Mirrors wireProjectMenu: the
+   button toggles the popup, an outside click closes it, and clicking
+   any enabled menu item closes it after the item's own handler runs. */
+function wireDropdownMenu(btnId, popupId) {
+  const btn = document.getElementById(btnId);
+  const popup = document.getElementById(popupId);
+  if (!btn || !popup) return;
+  function toggle(force) {
+    const open = force === undefined ? popup.style.display === "none" : !!force;
+    popup.style.display = open ? "" : "none";
+  }
+  btn.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+  popup.addEventListener("click", (e) => {
+    if (e.target.closest(".project-menu-item")) toggle(false);
+  });
+  document.addEventListener("click", (e) => {
+    if (!popup.contains(e.target) && e.target !== btn) toggle(false);
+  });
+}
+wireDropdownMenu("btn-session-export-menu", "session-export-popup");
+wireDropdownMenu("btn-agg-export-menu", "agg-export-popup");
+
 async function projectSaveAs() {
   toggleProjectMenu(false);
   const name = await promptModal({
@@ -1218,6 +1268,10 @@ async function applyProject(filePath, raw) {
         if (metaEl) metaEl.textContent = "Loaded " + project.templatePath;
         const saveBtn = document.getElementById("btn-save-canonical");
         if (saveBtn) saveBtn.disabled = false;
+        const closeBtn = document.getElementById("btn-close-canonical");
+        if (closeBtn) closeBtn.disabled = false;
+        const deleteBtn = document.getElementById("btn-delete-canonical");
+        if (deleteBtn) deleteBtn.disabled = false;
         if (typeof renderCanonicalStepList === "function") renderCanonicalStepList();
       }
     } catch (_) { /* template missing or unreadable; project still usable */ }

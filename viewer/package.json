@@ -44,6 +44,7 @@
       "ipc.js",
       "dom.js",
       "modals.js",
+      "canonical-author.js",
       "recent.js",
       "project.js",
       "charts.js",

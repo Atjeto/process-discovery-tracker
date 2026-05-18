@@ -44,6 +44,14 @@ function setMapZoomPct(z) {
   if (el) el.textContent = Math.round((z || 1) * 100) + "%";
 }
 
+/* The active map viewer, derived from which host is visible -- both the
+   BPMN and DFG viewers expose the same zoomIn/zoomOut/fit/getZoom API. */
+function activeMapViewer() {
+  const bpmnHost = $("#bpmn-host");
+  const bpmnVisible = bpmnHost && bpmnHost.style.display !== "none";
+  return bpmnVisible ? PdtBpmn : PdtDfg;
+}
+
 function wireMapTabs() {
   $$(".panel-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -51,28 +59,30 @@ function wireMapTabs() {
       const which = tab.dataset.map;
       $("#bpmn-host").style.display = which === "bpmn" ? "" : "none";
       $("#dfg-host").style.display = which === "dfg" ? "" : "none";
-      setMapZoomVisible(which === "dfg");
+      setMapZoomVisible(true);
       setTimeout(() => {
-        if (which === "bpmn" && PdtBpmn) PdtBpmn.fit();
-        if (which === "dfg" && PdtDfg) {
-          PdtDfg.fit();
-          setMapZoomPct(PdtDfg.getZoom());
-        }
+        if (which === "bpmn" && PdtBpmn) { PdtBpmn.fit(); setMapZoomPct(PdtBpmn.getZoom()); }
+        if (which === "dfg" && PdtDfg) { PdtDfg.fit(); setMapZoomPct(PdtDfg.getZoom()); }
       }, 50);
     });
   });
 
-  const btnDfgZoomIn = document.getElementById("btn-dfg-zoom-in");
-  const btnDfgZoomOut = document.getElementById("btn-dfg-zoom-out");
-  const btnDfgZoomFit = document.getElementById("btn-dfg-zoom-fit");
-  if (btnDfgZoomIn) btnDfgZoomIn.addEventListener("click", () => {
-    if (PdtDfg) { PdtDfg.zoomIn(); setMapZoomPct(PdtDfg.getZoom()); }
+  // The zoom/fit controls (named btn-dfg-* historically) serve whichever
+  // map tab is active, routed through activeMapViewer().
+  const btnZoomIn = document.getElementById("btn-dfg-zoom-in");
+  const btnZoomOut = document.getElementById("btn-dfg-zoom-out");
+  const btnZoomFit = document.getElementById("btn-dfg-zoom-fit");
+  if (btnZoomIn) btnZoomIn.addEventListener("click", () => {
+    const v = activeMapViewer();
+    if (v) { v.zoomIn(); setMapZoomPct(v.getZoom()); }
   });
-  if (btnDfgZoomOut) btnDfgZoomOut.addEventListener("click", () => {
-    if (PdtDfg) { PdtDfg.zoomOut(); setMapZoomPct(PdtDfg.getZoom()); }
+  if (btnZoomOut) btnZoomOut.addEventListener("click", () => {
+    const v = activeMapViewer();
+    if (v) { v.zoomOut(); setMapZoomPct(v.getZoom()); }
   });
-  if (btnDfgZoomFit) btnDfgZoomFit.addEventListener("click", () => {
-    if (PdtDfg) { PdtDfg.fit(); setMapZoomPct(PdtDfg.getZoom()); }
+  if (btnZoomFit) btnZoomFit.addEventListener("click", () => {
+    const v = activeMapViewer();
+    if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
   });
 }
 
@@ -570,7 +580,8 @@ function renderAggregate() {
   if (sessionWithBpmn && PdtBpmn) {
     PdtBpmn.render($("#bpmn-host"),
       path.join(sessionWithBpmn.sessionFolder, "process_map.bpmn"),
-      { onNodeClick: (activityLabel) => drillToActivity(activityLabel) });
+      { onNodeClick: (activityLabel) => drillToActivity(activityLabel) })
+      .then(() => setMapZoomPct(PdtBpmn.getZoom())).catch(() => {});
   }
   // Merge DFG edges across the filtered sessions
   const edgeMap = new Map();
@@ -620,9 +631,11 @@ function renderAggregate() {
       conformance: confActive ? conf.status : null,
     });
     renderConformanceLegend(confActive ? conf : null);
-    // Show zoom controls if the DFG tab is currently active
-    const dfgTabActive = document.querySelector('.panel-tab.active')?.dataset.map === "dfg";
-    setMapZoomVisible(dfgTabActive);
+  }
+  // Zoom/fit controls serve whichever map tab is active -- both the BPMN
+  // and DFG viewers support zoom, so show them once a map has rendered.
+  if ((sessionWithBpmn && PdtBpmn) || (edgeMap.size && PdtDfg)) {
+    setMapZoomVisible(true);
   }
 
   // Export buttons

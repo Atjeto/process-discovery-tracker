@@ -109,8 +109,15 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button class="link-btn" id="btn-open-bpmn" title="Open the selected BPMN file in the system default app">Open</button>
             <button class="link-btn" id="btn-reveal-bpmn" title="Show the BPMN file in File Explorer">Reveal in folder</button>
           </span>
-          <button id="btn-session-md">Export Markdown</button>
-          <button id="btn-export-findings" title="Generate a self-contained HTML findings report for this session.">Findings report...</button>
+          <div class="project-menu" id="session-export-menu">
+            <button class="project-btn" id="btn-session-export-menu" title="Export this session">
+              <span>Export</span><span class="project-menu-caret">▾</span>
+            </button>
+            <div class="project-menu-popup" id="session-export-popup" style="display:none">
+              <button class="project-menu-item" id="btn-session-md">Markdown report (this session)</button>
+              <button class="project-menu-item" id="btn-export-findings" title="Generate a self-contained HTML findings report for this session.">Findings report...</button>
+            </div>
+          </div>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="session-pills"></div>
         </div>
@@ -281,9 +288,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
           <div class="editor-toolbar">
             <button id="btn-add-manual-step" class="primary">+ Add step</button>
-            <button id="btn-group-into-phase" disabled title="Ctrl+click 2+ steps in the list below, then click to group them into a new phase">Group selected into phase</button>
-            <button id="btn-delete-selected-steps" disabled title="Ctrl+click 2+ steps in the list below, then delete them all at once">Delete selected</button>
+            <button id="btn-sort-steps-time" title="Reorder the step list into chronological order by start time.">Sort by time</button>
+            <button id="btn-group-into-phase" disabled title="Tick 2+ steps in the list below, then click to group them into a new phase">Group selected into phase</button>
+            <button id="btn-delete-selected-steps" disabled title="Tick 2+ steps in the list below, then delete them all at once">Delete selected</button>
             <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
+            <button id="btn-steps-to-template" title="Turn this session's steps into a new Process Template YAML, with a match rule derived from each step's interactions.">Export as Process Template...</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
             <span class="hint">J / K navigate · S split · M merge · N new · Ctrl+click multi-select · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
@@ -386,7 +395,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
           <div class="event-table-scroll">
             <table class="event-table" id="event-table">
-              <thead><tr><th>time</th><th>type</th><th>label / app</th><th>detail</th><th>dur</th></tr></thead>
+              <thead><tr><th>time</th><th>type</th><th>label / app</th><th>detail</th><th>dur</th><th>actions</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -429,6 +438,23 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button class="agg-level-btn" data-level="phases">Phases</button>
           </div>
           <label class="cb" id="agg-group-worker-wrap" style="display:none" title="Colour the activity and case charts by worker, so you can compare how different people ran the same process."><input type="checkbox" id="cb-agg-group-worker" /> Group by worker</label>
+          <div class="project-menu" id="agg-export-menu">
+            <button class="project-btn" id="btn-agg-export-menu" title="Export process maps, reports, and data">
+              <span>Export</span><span class="project-menu-caret">▾</span>
+            </button>
+            <div class="project-menu-popup" id="agg-export-popup" style="display:none">
+              <button class="project-menu-item" id="btn-export-map-svg" title="Export the process map currently shown above (Process diagram or Flow diagram) as an SVG image -- opens in Figma, Lucidchart, browsers, image editors.">Process map SVG</button>
+              <button class="project-menu-item" id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
+              <button class="project-menu-item" id="btn-export-bpmn-step" disabled>Step BPMN</button>
+              <button class="project-menu-item" id="btn-export-bpmn-phase" disabled>Phase BPMN</button>
+              <button class="project-menu-item" id="btn-export-pdd" disabled>PDD (.docx)</button>
+              <button class="project-menu-item" id="btn-export-step-csv" disabled>Step CSV</button>
+              <button class="project-menu-item" id="btn-export-xes" disabled>XES</button>
+              <button class="project-menu-item" id="btn-export-stats" disabled>stats.json</button>
+              <button class="project-menu-item" id="btn-export-md" disabled>Markdown report (all loaded sessions)</button>
+              <button class="project-menu-item" id="btn-export-promotions" disabled>Taxonomy promotions</button>
+            </div>
+          </div>
           <span class="flex-spacer"></span>
           <div class="session-pills" id="aggregate-pills"></div>
         </div>
@@ -532,20 +558,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
         </div>
 
-        <div class="actions-bar">
-          <span class="meta">Exports:</span>
-          <button id="btn-export-map-svg" title="Export the process map currently shown above (Process diagram or Flow diagram) as an SVG image -- opens in Figma, Lucidchart, browsers, image editors.">Process map SVG</button>
-          <button id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
-          <button id="btn-export-bpmn-step" disabled>Step BPMN</button>
-          <button id="btn-export-bpmn-phase" disabled>Phase BPMN</button>
-          <button id="btn-export-pdd" disabled>PDD (.docx)</button>
-          <button id="btn-export-step-csv" disabled>Step CSV</button>
-          <button id="btn-export-xes" disabled>XES</button>
-          <button id="btn-export-stats" disabled>stats.json</button>
-          <button id="btn-export-md" disabled>Markdown report</button>
-          <button id="btn-export-promotions" disabled>Taxonomy promotions</button>
-        </div>
-
         <div class="panel panel-wide" id="drift-panel" style="display:none">
           <h3>Drift</h3>
           <div id="drift-content"></div>
@@ -577,9 +589,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p class="meta">The list of steps below is directly editable — rename, reorder, add, or delete. Match rules (which UI patterns identify each step) live in the Advanced section for engineers. Save your changes here, then re-match sessions from the Compare Sessions view.</p>
         </div>
         <div class="actions-bar">
-          <button id="btn-open-canonical" class="primary">Open Process Template...</button>
+          <button id="btn-new-canonical" class="primary">+ New Process Template</button>
+          <button id="btn-open-canonical">Open Process Template...</button>
           <button id="btn-save-canonical" disabled>Save changes</button>
-          <button id="btn-promote-from-exemplar" disabled>Add selected steps from exemplar to template</button>
+          <button id="btn-close-canonical" disabled>Close</button>
+          <button id="btn-delete-canonical" class="danger" disabled>Delete template</button>
           <span class="flex-spacer"></span>
           <span class="meta" id="canonical-meta"></span>
         </div>
@@ -589,19 +603,23 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div id="canonical-step-list"></div>
           </div>
           <div class="panel">
-            <details class="advanced-yaml" id="canonical-advanced">
-              <summary>Advanced: full template definition</summary>
-              <p class="meta" style="margin-top:6px">Direct edit of the underlying definition. Useful for tuning match rules; usually you'll add steps via the Promote button rather than editing here. Save validates the format before writing to disk.</p>
-              <textarea id="canonical-yaml" spellcheck="false"></textarea>
-            </details>
-          </div>
-          <div class="panel">
-            <h3>Test against exemplar session</h3>
-            <button id="btn-load-exemplar">Load exemplar session...</button>
+            <h3>Import steps from a session</h3>
+            <p class="meta" style="margin-top:0">Drafts template steps from a real recording: load a session, tick the steps you want, then add them to the template. Each becomes a step with a match rule derived from its interactions — linked to your App Library where a matching entry exists. For precise per-step rules, use <em>Match rules…</em> on each step instead.</p>
+            <button id="btn-load-exemplar">Load sample session...</button>
             <div id="exemplar-events"></div>
             <p class="meta" id="exemplar-match-rate"></p>
+            <div class="exemplar-promote-bar">
+              <span class="meta" id="exemplar-selected-count"></span>
+              <button id="btn-promote-from-exemplar" disabled>Add selected steps to template</button>
+            </div>
+            <p class="meta exemplar-promote-hint">Adds the ticked steps to the open Process Template as new steps. Existing steps aren't changed.</p>
           </div>
         </div>
+        <details class="advanced-yaml advanced-yaml-strip" id="canonical-advanced">
+          <summary>Advanced: full template definition (YAML)</summary>
+          <p class="meta" style="margin-top:6px">Direct edit of the underlying definition — useful for fine-tuning match rules. Usually you'll add steps via the editable list above, or from a sample session. Save validates the format before writing to disk.</p>
+          <textarea id="canonical-yaml" spellcheck="false"></textarea>
+        </details>
       </div>
     </section>
 
@@ -718,10 +736,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <li><em>Markers</em> - full list; <strong>double-click a Start marker to rename it</strong> (edit saved to <code>annotations.json</code>)</li>
               </ul>
             </li>
-            <li><strong>Raw events</strong> (collapsible at the bottom): filter by text or by type checkboxes. Click any row to seek.</li>
+            <li><strong>Raw events</strong> (collapsible at the bottom): filter by text or by type checkboxes. Click any row to seek, or use its per-row actions to jump, spin off a new step, or add the event to the selected step.</li>
           </ul>
           <h3>Working with markers</h3>
           <p>Markers bracket business activities. Captured markers are immutable in <code>events.jsonl</code>; edits live in <code>annotations.json</code> and are layered in by re-normalization (§9.3).</p>
+          <p><strong>Markers are not cases.</strong> During capture the worker places markers — a start, an end, and a label. <em>Cases</em> (the individual runs through the process) are never recorded directly: they're derived from the marker stream during normalization, with nested markers forming a case tree. That's why editing a marker reshapes the cases, and why there is no "mark a case" action while recording — you mark markers, and the pipeline computes the cases from them.</p>
           <p>From the <em>Markers</em> sub-tab on the right:</p>
           <ul class="help-list">
             <li><strong>Rename</strong>: double-click a Start marker row, type the new label, press Enter.</li>
@@ -760,7 +779,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>A session captured with a screen recorder or other background app open can produce dozens of irrelevant steps ("OBS: 12 interactions"). Three tools handle this:</p>
           <ul class="help-list">
             <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process — they're left out of step suggestion entirely, and the session re-analyzes. The choice is saved per session, so re-analyze keeps them out.</li>
-            <li><strong>Delete selected</strong>: Ctrl+click two or more steps, then delete them all in one go (Ctrl+Z restores).</li>
+            <li><strong>Delete selected</strong>: tick (or Ctrl+click) two or more steps, then delete them all in one go (Ctrl+Z restores).</li>
             <li><strong>Hide as noise</strong> (step editor): suppress a single step. Unlike delete, hidden steps survive re-normalization — a re-analyze won't bring them back. Reveal them via the hidden filter chip.</li>
           </ul>
           <h3>Flags</h3>
@@ -774,7 +793,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Building phases manually</h3>
           <ol class="help-steps">
             <li>Switch to <strong>Steps</strong> view.</li>
-            <li>Ctrl+click two or more step rows to multi-select.</li>
+            <li>Tick the checkbox on two or more step rows to multi-select them (or Ctrl+click the rows).</li>
             <li>Switch to <strong>Phases</strong> view. The <em>Group selected steps into phase</em> button is now enabled.</li>
             <li>Click it, give the phase a name. Done.</li>
           </ol>
@@ -804,8 +823,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           interaction:
             control_type: "Edit"
             automation_id: "searchInput"</code></pre>
+          <h3>Phases in a template</h3>
+          <p>A template's <code>phases</code> block groups its steps into milestones — the chunks an exec thinks in. Template phases drive the PDD export, the step CSV, and the phase-level BPMN. You don't have to hand-write the YAML: in the <strong>Template steps</strong> editor each step has a <em>Phase</em> dropdown — pick an existing phase or create one inline, and the <code>phases</code> block stays in sync. (This is separate from grouping one session's steps into phases, which you do in the Phases view.)</p>
           <h3>Matching against a captured session</h3>
-          <p>From the Process Template tab, load the YAML, click <em>Load exemplar session</em>, and the match rate shows up. Aim for 80% or higher; below that you need to refine the match rules until they cover the real patterns the SME hit.</p>
+          <p>From the Process Template tab, load the YAML, click <em>Load sample session</em>, and the match rate shows up. Aim for 80% or higher; below that you need to refine the match rules until they cover the real patterns the SME hit.</p>
           <h3>Versioning + drift</h3>
           <p>Templates have a <code>version</code> field. When you change a template and re-normalize old sessions, any step the analyst edited manually that now maps to a different canonical step gets a <strong>drift marker</strong> (you'll see a ⚠ icon in the Steps view). The aggregate Drift panel shows the trend across loaded sessions.</p>
         </section>

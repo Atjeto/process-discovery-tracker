@@ -67,6 +67,23 @@
     }
   }
 
+  /* Current zoom level (1 = 100%). Mirrors dfg-viewer.js's getZoom so
+     the shared map-zoom controls can read either viewer. */
+  function getZoom() {
+    if (!viewer) return 1;
+    try { return viewer.get("canvas").zoom() || 1; } catch (_) { return 1; }
+  }
+
+  function zoomIn() {
+    if (!viewer) return;
+    try { viewer.get("canvas").zoom(getZoom() * 1.25); } catch (_) {}
+  }
+
+  function zoomOut() {
+    if (!viewer) return;
+    try { viewer.get("canvas").zoom(getZoom() / 1.25); } catch (_) {}
+  }
+
   /* Export the rendered diagram as SVG (Figma / Lucidchart / browser
      all import SVG). bpmn-js's saveSVG returns a Promise<{ svg }>. */
   async function exportSvg() {
@@ -77,5 +94,5 @@
     } catch (_) { return null; }
   }
 
-  module.exports = { render, fit, exportSvg };
+  module.exports = { render, fit, zoomIn, zoomOut, getZoom, exportSvg };
 })();

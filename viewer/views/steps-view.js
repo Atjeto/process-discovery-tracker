@@ -17,6 +17,8 @@ const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
 const PdtPalette = require("../command-palette.js");
+const { stepsToTemplateSteps, canonicalSkeleton, slugify } = require("../canonical-author.js");
+const { loadVocabs } = require("./identity-picker.js");
 
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
@@ -24,6 +26,7 @@ let persistAnnotations = async () => {};
 let videoTimeToSessionTs = () => null;
 let jumpToStepInFlow = () => {};
 let watchStep = () => {};
+let openCanonicalInTemplateTab = () => {};
 
 function getSpan() {
   const evs = (State.getSession() && State.getSession().events) || [];
@@ -89,6 +92,7 @@ function renderStepsLevel() {
     },
     inlineRenameStep,
     State.getMultiSelectedStepIds(),
+    reorderStep,
   );
   const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
   PdtSteps.renderStepDetail($("#step-detail"), selected, {
@@ -341,40 +345,100 @@ function nextStepName(steps) {
 async function mergeStepWithNext(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const sorted = anno.steps.slice().sort((a, b) =>
-    (a.time_range && a.time_range.start || "").localeCompare(b.time_range && b.time_range.start || ""));
-  const idx = sorted.findIndex(s => s.step_id === stepId);
-  if (idx < 0 || idx === sorted.length - 1) { toast("No next step to merge with", "error"); return; }
-  const cur = sorted[idx];
-  const next = sorted[idx + 1];
+  const byStart = (a, b) =>
+    (a.time_range && a.time_range.start || "").localeCompare(b.time_range && b.time_range.start || "");
+
+  // 2+ steps multi-selected -> merge exactly those. Otherwise fall back
+  // to merging the clicked step with the chronologically next one.
+  const multi = State.getMultiSelectedStepIds();
+  let toMerge;
+  if (multi && multi.size >= 2) {
+    toMerge = anno.steps.filter(s => multi.has(s.step_id)).sort(byStart);
+  } else {
+    const sorted = anno.steps.slice().sort(byStart);
+    const idx = sorted.findIndex(s => s.step_id === stepId);
+    if (idx < 0 || idx === sorted.length - 1) { toast("No next step to merge with", "error"); return; }
+    toMerge = [sorted[idx], sorted[idx + 1]];
+  }
+  if (toMerge.length < 2) { toast("Select at least two steps to merge", "error"); return; }
+
+  const first = toMerge[0];
+  const last = toMerge[toMerge.length - 1];
   const merged = {
-    ...cur,
-    name: cur.name + " + " + next.name,
-    time_range: { start: cur.time_range.start, end: next.time_range.end },
+    ...first,
+    name: toMerge.map(s => s.name).join(" + "),
+    time_range: { start: first.time_range.start, end: last.time_range.end },
     evidence: {
-      ...cur.evidence,
-      interaction_event_ids: [...(cur.evidence.interaction_event_ids || []), ...(next.evidence.interaction_event_ids || [])],
-      screenshot_refs: [...(cur.evidence.screenshot_refs || []), ...(next.evidence.screenshot_refs || [])],
+      ...first.evidence,
+      interaction_event_ids: toMerge.flatMap(s => (s.evidence && s.evidence.interaction_event_ids) || []),
+      screenshot_refs: toMerge.flatMap(s => (s.evidence && s.evidence.screenshot_refs) || []),
     },
     state: "edited",
   };
-  anno.steps = anno.steps.filter(s => s.step_id !== cur.step_id && s.step_id !== next.step_id);
+  const mergedIds = new Set(toMerge.map(s => s.step_id));
+  anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
   anno.steps.push(merged);
   State.setSelectedStepId(merged.step_id);
+  if (multi) multi.clear();
   await persistAnnotations(anno, 'merge steps');
-  toast("Steps merged", "success");
+  toast('Merged ' + toMerge.length + ' steps into "' + merged.name + '"', "success");
+}
+
+/* Move a step one slot up/down. The swap is relative to the step's
+   neighbour in the *displayed* (filtered) order so it stays intuitive
+   when a filter is active, but applied to the underlying anno.steps. */
+async function reorderStep(stepId, delta) {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const f = State.getListFilters().step;
+  const visible = decorateDrift(anno.steps)
+    .filter(s => stepMatchesFilter(s, f, State.getCaseScope()));
+  const vIdx = visible.findIndex(s => s.step_id === stepId);
+  const neighbour = visible[vIdx + delta];
+  if (vIdx < 0 || !neighbour) return;
+  const i = anno.steps.findIndex(s => s.step_id === stepId);
+  const j = anno.steps.findIndex(s => s.step_id === neighbour.step_id);
+  if (i < 0 || j < 0) return;
+  const tmp = anno.steps[i];
+  anno.steps[i] = anno.steps[j];
+  anno.steps[j] = tmp;
+  await persistAnnotations(anno, 'reorder step');
+}
+
+/* Reorder the whole step list chronologically by time_range.start. */
+async function sortStepsByTime() {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  if (!anno.steps.length) { toast("No steps to sort", ""); return; }
+  anno.steps.sort((a, b) =>
+    ((a.time_range && a.time_range.start) || "")
+      .localeCompare((b.time_range && b.time_range.start) || ""));
+  await persistAnnotations(anno, 'sort steps by time');
+  toast("Steps sorted by start time", "success");
 }
 
 async function addManualStep() {
   if (!State.getSession()) return;
   const name = await promptModal({ title: "Add manual step", message: "Name this step", placeholder: "e.g., Search customer in CRM", okLabel: "Add step" });
   if (!name) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
   const video = $("#video");
-  const tsNow = videoTimeToSessionTs(video.currentTime) || new Date().toISOString();
+  let tsNow = videoTimeToSessionTs(video.currentTime);
+  if (!tsNow) {
+    // No video to anchor to: drop the step at the end of the session's
+    // recorded span (after any existing step) rather than wall-clock
+    // now, which would land far past the timeline.
+    const span = getSpan();
+    let anchorMs = span ? span.endMs : Date.now();
+    for (const s of anno.steps) {
+      const end = s.time_range && s.time_range.end && new Date(s.time_range.end).getTime();
+      if (end && end > anchorMs) anchorMs = end;
+    }
+    tsNow = new Date(anchorMs).toISOString();
+  }
   // Default duration so manual steps render with a non-zero width
   // in the mini-timeline; the analyst can edit the time range later.
   const endTs = new Date(new Date(tsNow).getTime() + 5000).toISOString();
-  const anno = ensureAnnoShape(State.getSession().annotations);
   const step = {
     step_id: cryptoRandomId(),
     session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
@@ -500,14 +564,63 @@ function openIgnoredAppsDialog() {
   });
 }
 
+/* Turn the current session's annotated steps into a new Process
+   Template YAML. Each template step carries the name + description and
+   a match rule derived from the step's interactions (canonical-author.js).
+   A plain file write -- not routed through saveAnnotationsWithUndo, so
+   the annotation undo stack is untouched. */
+async function exportStepsAsTemplate() {
+  if (!State.getSession()) { toast("Open a session first.", "error"); return; }
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const steps = (anno.steps || [])
+    .filter((s) => s.state !== "hidden")
+    .slice()
+    .sort((a, b) => ((a.time_range && a.time_range.start) || "")
+      .localeCompare((b.time_range && b.time_range.start) || ""));
+  if (!steps.length) {
+    toast("This session has no steps to export — add or analyze steps first.", "error");
+    return;
+  }
+  const name = await promptModal({
+    title: "Export as Process Template",
+    message: "Name this process",
+    detail: steps.length + " step(s) will be carried over, each with a match rule derived from its interactions.",
+    placeholder: "e.g. Customer Onboarding",
+    okLabel: "Create template",
+  });
+  if (!name) return;
+  const yaml = require("js-yaml");
+  let vocabs = [];
+  try { vocabs = await loadVocabs(); } catch (_) { vocabs = []; }
+  const tplSteps = stepsToTemplateSteps(steps, State.getSession().events || [], vocabs);
+  const content = yaml.dump(canonicalSkeleton(name, tplSteps),
+    { lineWidth: 120, noRefs: true, sortKeys: false });
+  const r = await Ipc.newCanonicalFile({
+    content, suggestedName: slugify(name) || "new-process",
+  });
+  if (!r) return;
+  const withRules = tplSteps.filter((s) => s.match.length).length;
+  toast("Process Template created — " + tplSteps.length + " step(s), " +
+    withRules + " with a derived match rule", "success");
+  const open = await confirmModal({
+    title: "Open the new template?",
+    message: "Switch to the Process Template tab to review and refine the match rules?",
+    okLabel: "Open template",
+    cancelLabel: "Stay here",
+  });
+  if (open) openCanonicalInTemplateTab(r);
+}
+
 /* Wire the Steps surface. deps = { ensureAnnoShape, persistAnnotations,
-   videoTimeToSessionTs, jumpToStepInFlow }. Call once at boot. */
+   videoTimeToSessionTs, jumpToStepInFlow, openCanonicalInTemplateTab }.
+   Call once at boot. */
 function initStepsView(deps) {
   ensureAnnoShape = deps.ensureAnnoShape;
   persistAnnotations = deps.persistAnnotations;
   videoTimeToSessionTs = deps.videoTimeToSessionTs;
   jumpToStepInFlow = deps.jumpToStepInFlow;
   watchStep = deps.watchStep || (() => {});
+  if (deps.openCanonicalInTemplateTab) openCanonicalInTemplateTab = deps.openCanonicalInTemplateTab;
 
   // I72: Steps-view commands for the Ctrl+K palette.
   if (PdtPalette) {
@@ -544,8 +657,10 @@ function initStepsView(deps) {
     });
   }
   if ($("#btn-add-manual-step")) $("#btn-add-manual-step").addEventListener("click", addManualStep);
+  if ($("#btn-sort-steps-time")) $("#btn-sort-steps-time").addEventListener("click", sortStepsByTime);
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
+  if ($("#btn-steps-to-template")) $("#btn-steps-to-template").addEventListener("click", exportStepsAsTemplate);
 }
 
 module.exports = {

@@ -2614,11 +2614,64 @@ function renderEventTable() {
     tr.appendChild(td("", lbl));
     tr.appendChild(td("", detail));
     tr.appendChild(td("", ev.type === "activity" ? formatDuration(ev.data.duration_ms) : ""));
+    tr.appendChild(buildEventActions(ev));
     tr.addEventListener("click", () => seekToTimestamp(ev.timestamp));
     tbody.appendChild(tr);
     count += 1;
   }
   $("#event-count").textContent = String(count);
+}
+
+/* Per-row action cell for the raw events table: jump to the event,
+   spin a new step off it, or attach it to the selected step. */
+function buildEventActions(ev) {
+  const cell = document.createElement("td");
+  cell.className = "t-actions";
+  const mkBtn = (label, title, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ev-act";
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+    return b;
+  };
+  cell.appendChild(mkBtn("jump", "Seek the video and timeline to this event",
+    () => seekToTimestamp(ev.timestamp)));
+  cell.appendChild(mkBtn("+ step", "Create a step at this event's time",
+    () => addStepAtTimestamp(ev.timestamp)));
+  if (ev.type === "interaction" && ev.event_id) {
+    cell.appendChild(mkBtn("+ to step", "Add this interaction to the selected step",
+      () => addEventToSelectedStep(ev)));
+  }
+  return cell;
+}
+
+/* Append an interaction event to the currently-selected step's
+   evidence and stretch the step's time range to cover it. */
+async function addEventToSelectedStep(ev) {
+  if (!State.getSession()) return;
+  const sid = State.getSelectedStepId();
+  if (!sid) { toast("Select a step in the Steps view first", "error"); return; }
+  const anno = State.getSession().annotations || {};
+  anno.steps = anno.steps || [];
+  const step = anno.steps.find((s) => s.step_id === sid);
+  if (!step) { toast("The selected step no longer exists", "error"); return; }
+  step.evidence = step.evidence || { interaction_event_ids: [], screenshot_refs: [] };
+  step.evidence.interaction_event_ids = step.evidence.interaction_event_ids || [];
+  if (step.evidence.interaction_event_ids.includes(ev.event_id)) {
+    toast("That event is already in this step", "");
+    return;
+  }
+  step.evidence.interaction_event_ids.push(ev.event_id);
+  const tr = step.time_range || (step.time_range = { start: ev.timestamp, end: ev.timestamp });
+  if (!tr.start || ev.timestamp < tr.start) tr.start = ev.timestamp;
+  if (!tr.end || ev.timestamp > tr.end) tr.end = ev.timestamp;
+  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
+  await saveAnnotationsWithUndo(anno, "add event to step");
+  State.getSession().annotations = anno;
+  renderStepsLevel();
+  toast('Added event to "' + (step.name || "step") + '"', "success");
 }
 
 $("#event-filter").addEventListener("input", () => renderEventTable());

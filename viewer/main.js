@@ -331,6 +331,33 @@ ipcMain.handle("viewer:saveCanonicalFile", (_e, { path: p, content }) => {
   return { path: p };
 });
 
+ipcMain.handle("viewer:newCanonicalFile", async (_e, { content, suggestedName }) => {
+  /* Create a new Process Template file. `content` is the YAML the
+     renderer built -- an empty skeleton, or one seeded from a session's
+     steps. Returns { path, content } or null on cancel. */
+  const defaultPath = (suggestedName || "new-process") + ".yaml";
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: "New Process Template",
+    defaultPath,
+    filters: [{ name: "YAML", extensions: ["yaml", "yml"] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  fs.writeFileSync(r.filePath, content || "", "utf-8");
+  return { path: r.filePath, content: content || "" };
+});
+
+/* Delete a Process Template .yaml file. The sibling
+   `.template-history/<base>/` snapshot folder is deliberately left
+   intact so version history survives a delete. */
+ipcMain.handle("viewer:deleteCanonicalFile", (_e, { path: p }) => {
+  try {
+    if (!p) return { ok: false, error: "No path given" };
+    if (!fs.existsSync(p)) return { ok: false, error: "File not found" };
+    fs.unlinkSync(p);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
 /* AM.1: list all versioned snapshots of a template, newest first.
    Returns [{ timestamp, path }] including a synthetic "current" entry
    for the live file so the picker has it as an option. */

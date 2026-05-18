@@ -27,7 +27,7 @@
     return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
   }
 
-  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet) {
+  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onReorder) {
     host.innerHTML = "";
     if (!steps || !steps.length) {
       host.innerHTML = `
@@ -51,10 +51,14 @@
       const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
-        <span class="multi-check" title="Ctrl+click to multi-select for phase grouping"></span>
+        <span class="multi-check" title="Click to select for merge or phase grouping"></span>
         <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
         ${driftTag}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
+        <span class="step-reorder">
+          <button type="button" class="step-move-up" title="Move up" tabindex="-1">↑</button>
+          <button type="button" class="step-move-down" title="Move down" tabindex="-1">↓</button>
+        </span>
       `;
       row.addEventListener("click", (e) => {
         if (e.ctrlKey || e.metaKey) {
@@ -62,6 +66,21 @@
         } else if (onSelect) {
           onSelect(s.step_id);
         }
+      });
+      // A plain click on the checkbox toggles multi-selection -- no Ctrl
+      // needed; stopPropagation so it doesn't also fire row-select.
+      const checkEl = row.querySelector(".multi-check");
+      checkEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (onMultiSelect) onMultiSelect(s.step_id);
+      });
+      row.querySelector(".step-move-up").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (onReorder) onReorder(s.step_id, -1);
+      });
+      row.querySelector(".step-move-down").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (onReorder) onReorder(s.step_id, 1);
       });
       const nameEl = row.querySelector(".step-name");
       nameEl.addEventListener("dblclick", (e) => {

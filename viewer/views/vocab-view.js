@@ -255,8 +255,20 @@ function addInteraction() {
   if (!v) return;
   v.interactions = v.interactions || [];
   v.interactions.push({ signature: { control_type: "Button", name: "" }, name: "" });
+  const newIdx = v.interactions.length - 1;
   renderVocabInteractions();
   markDirty();
+  // Make the freshly-added row obvious: scroll it into view, flash a
+  // highlight, and focus its name field so the analyst can type at once.
+  const host = $("#vocab-interactions");
+  const row = host && host.querySelector('.vocab-int[data-idx="' + newIdx + '"]');
+  if (row) {
+    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    row.classList.add("vocab-int-new");
+    setTimeout(() => row.classList.remove("vocab-int-new"), 1500);
+    const nameInput = row.querySelector('[data-field="name"]');
+    if (nameInput) nameInput.focus();
+  }
 }
 
 function removeInteraction(idx) {

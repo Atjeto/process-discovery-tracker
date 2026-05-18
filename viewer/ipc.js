@@ -111,6 +111,16 @@ function saveCanonicalFile(payload) {
   return ipcRenderer.invoke("viewer:saveCanonicalFile", payload);
 }
 
+/** @param {object} payload @returns {Promise<any>} */
+function newCanonicalFile(payload) {
+  return ipcRenderer.invoke("viewer:newCanonicalFile", payload);
+}
+
+/** @param {object} payload @returns {Promise<any>} */
+function deleteCanonicalFile(payload) {
+  return ipcRenderer.invoke("viewer:deleteCanonicalFile", payload);
+}
+
 /** @param {string} canonicalPath @returns {Promise<any>} */
 function listTemplateVersions(canonicalPath) {
   return ipcRenderer.invoke("viewer:listTemplateVersions", canonicalPath);
@@ -205,7 +215,7 @@ module.exports = {
   cancelNormalize,
   saveAnnotations, addClassificationOverride,
   exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal,
-  openCanonicalFile, saveCanonicalFile, listTemplateVersions, readTemplateFile,
+  openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
   attachExternalVideo, saveExternalVideoSync,
   saveProjectAs, saveProject, openProject, loadProjectFile,
