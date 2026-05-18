@@ -291,8 +291,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .pill .lbl { color: var(--fg-3); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
 
 /* ===== Session view -- full-width timeline + lower video|annotations row ===== */
+/* flex:1 so the layout fills the viewport, but no min-height:0 -- that
+   would let the scrolling session view squeeze it below its content
+   when the event-table / log panels below are open, spilling the
+   video+annotations row over them. The view (overflow:auto) scrolls. */
 .session-layout { display: flex; flex-direction: column; gap: 10px; margin-top: 12px;
-  flex: 1; min-height: 0; }
+  flex: 1; }
 
 .timeline-pane { background: var(--bg-2); border-radius: var(--radius);
   padding: 10px 14px; display: flex; flex-direction: column;
@@ -524,7 +528,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .actions-bar .cb input[type=date] { margin-left: 6px; }
 
 /* ===== Event table ===== */
-.event-table-host, .log-host { margin-top: 18px; }
+/* Bottom collapsible panels keep their natural height (flex:0 0 auto)
+   so the flex column never shrinks them or the layout above into an
+   overlap -- the session view scrolls instead. */
+.event-table-host, .log-host { margin-top: 18px; flex: 0 0 auto; }
 .event-table-host > summary, .log-host > summary { cursor: pointer; padding: 8px 0;
   color: var(--fg-3); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
   font-family: var(--font-mono); }
@@ -747,7 +754,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 /* ===== Full-width Steps / Phases layouts (tight, no waste) ===== */
 .session-layout-stepsphases {
   display: flex; flex-direction: column; gap: 8px;
-  flex: 1; min-height: 0;
+  flex: 1;
 }
 
 /* ===== Analysis view (Cluster N / ADR-0008) ===== */
@@ -1378,7 +1385,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   height: 8px; background: var(--bg-3);
   border-radius: 2px; overflow: hidden;
 }
-.summary-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+.summary-bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 .summary-bar-row .b-value {
   color: var(--fg-3); text-align: right; font-family: var(--font-mono);
 }
