@@ -9,7 +9,7 @@ Project context for Claude Code. For the full documentation set start at
 Process Discovery Tracker — an internal Windows **process-mining** tool. A worker
 records how they perform a business process (Capture); an analyst transforms the
 recording (Normalization) and explores it (Viewer) to produce process maps, a
-step/phase breakdown, and statistics. Current version: **0.10.0** (SemVer 0.x).
+step/phase breakdown, and statistics. Current version: **0.11.0** (SemVer 0.x).
 
 The two halves never talk over a network — the hand-off is a self-contained
 **session folder** moved from the worker's machine to the analyst's.

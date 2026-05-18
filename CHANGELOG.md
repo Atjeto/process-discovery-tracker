@@ -6,6 +6,78 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-18
+
+### Added
+
+- **Process Template steps can be identified from the App Library.** A
+  step's match rules — the UI patterns that recognise it in a captured
+  session — are now composed through a per-step **Match rules…** picker
+  that draws on the App Library (the per-app catalog of named UI
+  interactions), a basic app/window rule, or an interaction lifted from
+  a sample session. Library-sourced rules keep a reference back to the
+  catalog entry and show a drift badge when that entry later changes.
+
+- **Inline phase assignment in the Process Template editor.** Each step
+  row has a **Phase** dropdown — assign it to an existing phase or
+  create one on the spot. The template's `phases` block, which the
+  exports roll steps up into, stays in sync automatically.
+
+- **Close and Delete for a Process Template.** The actions bar gained
+  **Close** (unload the template from the editor) and **Delete** (remove
+  the `.yaml` from disk, with confirmation). Version-history snapshots
+  are deliberately kept on delete.
+
+- **Step reordering in the Steps view.** Each step row has up/down
+  buttons, and a **Sort by time** action reorders the whole list
+  chronologically.
+
+- **Per-row actions in the Raw events table.** A row can now jump the
+  video and timeline to its event, spin a new step off it, or add the
+  event to the selected step — not just seek.
+
+- **Zoom controls for the Process diagram.** The BPMN process-map tab in
+  Compare Sessions gained zoom-in / zoom-out / fit controls, matching
+  the Flow diagram.
+
+### Changed
+
+- **The Process Template tab was relaid out.** Two main columns —
+  Template steps and Import steps from a session — with the Advanced
+  YAML editor demoted from a co-equal third column to a collapsible
+  strip below, reclaiming the space for the panels that matter.
+
+- **Clearer naming.** The app-and-window-only match rule is now a "Basic
+  match rule" (was "coarse rule"); the bulk step-import panel is now
+  "Import steps from a session" (was "Rough-in from a recording").
+
+- **Steps can be multi-selected with a plain click** on their checkbox;
+  Ctrl+click still works.
+
+- **The Raw events table uses the available height** instead of a fixed
+  360px panel, and stays collapsible.
+
+### Fixed
+
+- **The Match rules… picker rendered in a narrow left strip** because it
+  reused a modal layout meant for a nav sidebar it does not have.
+
+- **A manual step added with no video loaded landed far off the
+  timeline** — the fallback timestamp was wall-clock now; it is now
+  anchored within the session's recorded span.
+
+- **"Merge with next" ignored a multi-selection.** With two or more
+  steps selected it now merges exactly those, in chronological order,
+  and names what merged.
+
+- **"+ Add interaction" in the App Library gave no sign anything
+  happened** — the new row now scrolls into view, briefly highlights,
+  and takes focus.
+
+- **The help text mis-described cases and phases.** Cases are derived
+  from markers during normalization, not marked during recording; the
+  phases text now explains what phases are for and where to define them.
+
 ## [0.10.0] - 2026-05-18
 
 ### Added
