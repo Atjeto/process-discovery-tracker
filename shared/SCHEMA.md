@@ -146,6 +146,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "annotations": [],
   "marker_edits": [],
   "classification_overrides": [],
+  "analysis_overrides": [],
   "excluded_ranges": [],
   "notes": [],
   "drift_markers": [],
@@ -156,7 +157,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `excluded_ranges`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
 
 The viewer keeps up to four rotating backups of this file — `annotations.json.2` (most recent) through `annotations.json.5` (oldest); each save shifts the previous versions down one slot. It is a safety net against a regretted bulk edit or a corrupt write; recovery is a manual file copy of a `.N` file back over `annotations.json`.
 
@@ -196,6 +197,23 @@ Analyst corrections to activity classification, written by the viewer's Flow-map
 ```
 
 `scope: "instance"` retargets one activity event by `event_id`; `scope: "rule"` retargets every activity event whose `app` + window `title` match. An instance override wins over a rule override for the same event; among rules, first match wins. A `rule` entry is itself a candidate taxonomy rule (`match` + `label`) — an owner can promote it into `taxonomy.yaml` by hand (§6.1). Raw `events.jsonl` is never modified.
+
+### Analysis override (`analysis_overrides[]`)
+
+Analyst corrections to the heuristic analysis layer ([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md)). The waste and automation classifiers ship provisional: the value-add vs. business-required split is left to the analyst (`bnva_ms` is `0` by heuristic) and an automation candidate cannot be confirmed from a single recording. The analyst corrects both from the viewer's Analysis sub-view. Corrections live here, **not** in `analysis.json` — that sidecar is regenerated on every `normalize` run — and the analysis layer reads them while recomputing it.
+
+```json
+{
+  "analysis_overrides": [
+    { "step_id": "uuid",
+      "bnva_ms": 0,
+      "waste_types": ["waiting", "rework"],
+      "automation_confirmed": true }
+  ]
+}
+```
+
+One entry per step, keyed by `step_id`. Every field is optional — only the ones the analyst touched are present; the rest stay heuristic. `bnva_ms` reclassifies value-add time as business-required non-value-add: the waste classifier clamps it to the step's available active time and recomputes `va_ms` so `va_ms + bnva_ms + nva_ms` still equals `elapsed_ms`. `waste_types` replaces the detected waste-type set for that step. `automation_confirmed` (`true` confirm / `false` dismiss) records the analyst's verdict on an automation candidate. Raw `events.jsonl` and `analysis.json` are never edited by hand; the next `normalize` run bakes the overrides into a fresh `analysis.json`.
 
 ### Excluded range (`excluded_ranges[]`)
 
@@ -362,8 +380,11 @@ identifies the classifier generation.
   ],
   "automation_candidates": [
     { "step_id": "uuid", "canonical_step_id": "uuid or null", "name": "string",
+      "instances": 1,
       "scores": { "repetitiveness": 0.0, "rule_based": 0.0, "volume": 0 },
+      "sequence_signature": "hash or null",
       "estimated_savings_ms": null,
+      "automation_confirmed": null,
       "data_sufficiency": "single_instance | multi_instance" }
   ],
   "efficiency": {
@@ -378,11 +399,15 @@ identifies the classifier generation.
 `waste_classification` has one entry per step; `time_study` and
 `automation_candidates` have one entry per *logical* step — instances sharing a
 `canonical_step_id` are grouped, falling back to one group per step when no
-process template was matched. `bnva_ms` is `0` in the current heuristic
-generation: the value-add vs. business-required split needs analyst judgement
-and is left for a correction pass. `automation_candidates` scores are `null`
-with `data_sufficiency: "single_instance"` for a step observed only once —
-repetitiveness cannot be judged from a single instance.
+process template was matched. `bnva_ms` is `0` by heuristic — the value-add vs.
+business-required split needs analyst judgement — until the analyst sets it via
+`analysis_overrides[]` in `annotations.json`. `automation_candidates` scores are
+`null` with `data_sufficiency: "single_instance"` for a step observed only once
+— repetitiveness cannot be judged from a single instance. `instances` is the
+step count behind the entry; `sequence_signature` is a stable hash of how the
+step was performed, letting the Compare-Sessions view pool the same step across
+recordings; `automation_confirmed` carries the analyst's verdict (`true` /
+`false`, or `null` when undecided).
 
 ## Invariants
 

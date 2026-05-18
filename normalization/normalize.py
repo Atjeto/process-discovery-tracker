@@ -543,6 +543,7 @@ def normalize(
                 phases=existing_anno.get("phases") or [],
                 stats=summary,
                 manifest=manifest,
+                annotations=existing_anno,
             )
             analysis_path = session_folder / "analysis.json"
             with open(analysis_path, "w", encoding="utf-8") as f:

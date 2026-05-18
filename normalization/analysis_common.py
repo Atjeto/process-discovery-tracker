@@ -65,6 +65,18 @@ def norm_value(v: Any) -> str:
     return re.sub(r"\s+", " ", str(v if v is not None else "")).strip().lower()
 
 
+def overrides_by_step(annotations: dict | None) -> dict[Any, dict]:
+    """Index the analyst `analysis_overrides[]` from annotations.json by
+    `step_id`. Each entry may carry any subset of bnva_ms / waste_types /
+    automation_confirmed -- the waste and automation analyzers each read
+    the fields they own. See ANALYSIS-LAYER-FOLLOWUPS.md / ADR-0008."""
+    out: dict[Any, dict] = {}
+    for ov in ((annotations or {}).get("analysis_overrides") or []):
+        if isinstance(ov, dict) and ov.get("step_id") is not None:
+            out[ov["step_id"]] = ov
+    return out
+
+
 def _idle_intervals(events: list[dict]) -> list[tuple[datetime, datetime]]:
     """Pair idle_start / idle_end system events into [start, end] intervals."""
     intervals: list[tuple[datetime, datetime]] = []

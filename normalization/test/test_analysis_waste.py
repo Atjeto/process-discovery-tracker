@@ -107,6 +107,42 @@ def test_rework_flagged_from_stats():
     assert "rework" in classify_waste([step], events, stats)[0]["waste_types"]
 
 
+def test_bnva_override_recomputes_va():
+    # 600s step, idle 100-300 -> 200000ms nva, 400000ms va by heuristic.
+    anno = {"analysis_overrides": [{"step_id": "s1", "bnva_ms": 120000}]}
+    w = classify_waste([_step("s1", 0, 600)], _idle(100, 300), {},
+                       annotations=anno)[0]
+    assert w["bnva_ms"] == 120000
+    assert w["nva_ms"] == 200000
+    assert w["va_ms"] == 280000  # 600000 - 120000 - 200000
+    assert w["va_ms"] + w["bnva_ms"] + w["nva_ms"] == w["elapsed_ms"]
+
+
+def test_bnva_override_clamped_to_available_va():
+    # bnva cannot exceed elapsed - nva (here 600000 - 200000 = 400000).
+    anno = {"analysis_overrides": [{"step_id": "s1", "bnva_ms": 999999999}]}
+    w = classify_waste([_step("s1", 0, 600)], _idle(100, 300), {},
+                       annotations=anno)[0]
+    assert w["bnva_ms"] == 400000
+    assert w["va_ms"] == 0
+    assert w["nva_ms"] == 200000
+
+
+def test_waste_types_override_replaces_set():
+    # Heuristic flags "waiting"; the analyst replaces the whole set.
+    anno = {"analysis_overrides": [{"step_id": "s1", "waste_types": ["rework"]}]}
+    w = classify_waste([_step("s1", 0, 600)], _idle(100, 300), {},
+                       annotations=anno)[0]
+    assert w["waste_types"] == ["rework"]
+
+
+def test_override_for_other_step_ignored():
+    anno = {"analysis_overrides": [{"step_id": "elsewhere", "bnva_ms": 50000}]}
+    w = classify_waste([_step("s1", 0, 600)], _idle(100, 300), {},
+                       annotations=anno)[0]
+    assert w["bnva_ms"] == 0
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

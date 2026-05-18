@@ -5,8 +5,9 @@ non-value-add / non-value-add (waste), and tags the DOWNTIME waste
 types present.
 
 v1 honesty: the VA vs BNVA distinction needs domain judgement the tool
-does not have, so v1 puts all active-processing time in `va_ms` and
-leaves `bnva_ms` at 0 -- the analyst reclassifies later. What the tool
+does not have, so the heuristic puts all active-processing time in
+`va_ms` and leaves `bnva_ms` at 0 -- the analyst reclassifies it through
+`analysis_overrides[]` in annotations.json. What the tool
 *can* detect well is waste: idle waiting, app-switch motion, rework,
 and cross-app overprocessing. `waste_types` is the qualitative signal;
 `nva_ms` quantifies the cleanly measurable part (waiting + switching).
@@ -20,6 +21,7 @@ from analysis_common import (
     TRANSFER_MIN_LEN,
     TRANSFER_WINDOW_MS,
     norm_value,
+    overrides_by_step,
     parse_ts,
     segment_steps,
 )
@@ -59,15 +61,36 @@ def count_cross_app_transfers(interactions: list[dict[str, Any]]) -> int:
     return transfers
 
 
+def _apply_waste_override(entry: dict[str, Any], ov: dict[str, Any]) -> None:
+    """Apply one analyst `analysis_overrides[]` entry onto a waste row,
+    in place. The analyst value wins; `va_ms` is recomputed so the
+    va/bnva/nva split still sums to `elapsed_ms`."""
+    wt = ov.get("waste_types")
+    if isinstance(wt, list):
+        entry["waste_types"] = [str(t) for t in wt]
+    if "bnva_ms" in ov:
+        try:
+            bnva = round(float(ov["bnva_ms"]))
+        except (TypeError, ValueError):
+            return
+        elapsed = entry["elapsed_ms"]
+        nva = entry["nva_ms"]
+        bnva = max(0, min(bnva, max(0, elapsed - nva)))
+        entry["bnva_ms"] = bnva
+        entry["va_ms"] = max(0, elapsed - bnva - nva)
+
+
 def classify_waste(
     steps: list[dict[str, Any]],
     events: list[dict[str, Any]],
     stats: dict[str, Any],
     segments: dict | None = None,
+    annotations: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     if segments is None:
         segments = segment_steps(steps, events)
     by_id = {e.get("event_id"): e for e in events if e.get("event_id")}
+    ovr = overrides_by_step(annotations)
 
     # Activity labels stats_compute flagged as reworked within a case.
     rework_labels = {
@@ -111,7 +134,7 @@ def classify_waste(
             if s0 and s1 and any(s0 <= t <= s1 for t in reworked_ts):
                 waste_types.append("rework")
 
-        out.append({
+        entry = {
             "step_id": sid,
             "name": step.get("name") or "",
             "elapsed_ms": round(elapsed),
@@ -120,5 +143,8 @@ def classify_waste(
             "nva_ms": round(waiting + switching),
             "waste_types": waste_types,
             "cross_app_transfers": transfers,
-        })
+        }
+        if sid in ovr:
+            _apply_waste_override(entry, ovr[sid])
+        out.append(entry)
     return out

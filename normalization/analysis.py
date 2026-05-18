@@ -34,6 +34,7 @@ def run_analysis(
     phases: list[dict[str, Any]] | None = None,
     stats: dict[str, Any] | None = None,
     manifest: dict[str, Any] | None = None,
+    annotations: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Produce the analysis.json payload for one session."""
     steps = steps or []
@@ -58,7 +59,7 @@ def run_analysis(
 
     try:
         result["waste_classification"] = classify_waste(
-            steps, events, stats or {}, segments)
+            steps, events, stats or {}, segments, annotations)
     except Exception as e:  # noqa: BLE001 -- best-effort, log and continue
         logger.warning("analysis: waste classifier failed: %s", e)
     try:
@@ -67,7 +68,7 @@ def run_analysis(
         logger.warning("analysis: time study failed: %s", e)
     try:
         result["automation_candidates"] = score_automation(
-            steps, events, segments)
+            steps, events, segments, annotations)
     except Exception as e:  # noqa: BLE001
         logger.warning("analysis: automation scorer failed: %s", e)
     try:

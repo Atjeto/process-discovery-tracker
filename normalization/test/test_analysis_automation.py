@@ -73,6 +73,48 @@ def test_multi_instance_varied_sequences_score_lower():
     assert out[0]["scores"]["rule_based"] < 1.0
 
 
+def test_automation_confirmed_from_override():
+    steps = [_step("s1", 0, 300, interaction_ids=["i1"])]
+    events = [_interaction("i1", 10, "field")]
+    # No override -> automation_confirmed is None.
+    assert score_automation(steps, events)[0]["automation_confirmed"] is None
+    # Override confirms the candidate.
+    anno = {"analysis_overrides": [{"step_id": "s1", "automation_confirmed": True}]}
+    assert score_automation(steps, events, annotations=anno)[0][
+        "automation_confirmed"] is True
+    # Override dismisses it.
+    anno2 = {"analysis_overrides": [{"step_id": "s1", "automation_confirmed": False}]}
+    assert score_automation(steps, events, annotations=anno2)[0][
+        "automation_confirmed"] is False
+
+
+def test_candidate_carries_instances_and_signature():
+    steps = [
+        _step("s1", 0, 300, canonical="c1", interaction_ids=["i1"]),
+        _step("s2", 400, 700, canonical="c1", interaction_ids=["i2"]),
+    ]
+    events = [_interaction("i1", 10, "name"), _interaction("i2", 410, "name")]
+    out = score_automation(steps, events)
+    assert out[0]["instances"] == 2
+    assert isinstance(out[0]["sequence_signature"], str)
+
+
+def test_same_sequence_yields_same_signature():
+    # Two steps performed identically share a signature -- the basis for
+    # cross-session pooling in the Compare-Sessions analysis panel.
+    a = score_automation([_step("s1", 0, 300, interaction_ids=["i1"])],
+                         [_interaction("i1", 10, "field")])
+    b = score_automation([_step("s2", 0, 300, interaction_ids=["i2"])],
+                         [_interaction("i2", 10, "field")])
+    assert a[0]["sequence_signature"] is not None
+    assert a[0]["sequence_signature"] == b[0]["sequence_signature"]
+
+
+def test_no_interactions_signature_is_none():
+    out = score_automation([_step("s1", 0, 300)], [])
+    assert out[0]["sequence_signature"] is None
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

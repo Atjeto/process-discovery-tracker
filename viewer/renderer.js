@@ -181,6 +181,7 @@ State.subscribe("steps",    renderStepsLevel);
 State.subscribe("phases",   renderPhasesLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
+State.subscribe("analysis", renderAnalysisLevel);
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces

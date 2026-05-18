@@ -6,6 +6,27 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The Analysis view's heuristic findings can now be corrected.** The waste
+  and automation classifiers ship as provisional estimates — the value-add vs.
+  business-required time split is a guess (all active time defaults to
+  value-add), and an automation candidate cannot be judged real from a single
+  recording. The Analysis sub-view is now interactive: click a step's waste row
+  to set how much of its time is business-required overhead, and confirm or
+  dismiss each automation candidate. Corrections are saved to
+  `annotations.json` with undo, shown immediately, and folded into the analysis
+  layer on the next Analyze run — flowing through to `analysis.json` and the
+  PDD export.
+
+- **Compare Sessions gained an Analysis panel.** Loading several recordings of
+  the same process now pools their heuristic findings: a cross-session time
+  study, a per-worker cycle-time comparison, automation candidates scored
+  across sessions — a step seen once per session finally has enough instances
+  to judge for repetitiveness — and a process-efficiency trend. Each automation
+  candidate carries a fingerprint of how its step was performed, so the same
+  step compares cleanly from one recording to the next.
+
 ## [0.8.0] - 2026-05-18
 
 ### Added

@@ -108,6 +108,7 @@ function applyRevertedAnnotations(annotations) {
     State.emit("phases");
     State.emit("timeline");
     State.emit("markers");
+    State.emit("analysis");
   });
   renderAnnotations();
   renderSessionPills();
