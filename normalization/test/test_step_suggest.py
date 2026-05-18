@@ -173,3 +173,111 @@ def test_auto_step_carries_a_suggestion_reason():
     reason = steps[0]["suggestion_reason"]
     assert "Grouped 4 interactions" in reason
     assert "threshold" in reason
+
+
+# --- value_changed / selection coalescing (typing-noise fix) -----------
+
+def _make_value_changed(ts, value, *, automation_id="", name="",
+                        control_type="Edit", window="TAMBA",
+                        proc="chrome.exe"):
+    """A value_changed event. Defaults model a Chrome web-app field --
+    empty automation_id AND empty name -- the case the recorder's own
+    coalescer cannot key, so the keystroke flood reaches step suggestion."""
+    return {
+        "event_id": str(uuid.uuid4()),
+        "type": "interaction",
+        "timestamp": _iso(ts),
+        "session_id": "s1",
+        "data": {
+            "kind": "value_changed",
+            "control_type": control_type,
+            "automation_id": automation_id,
+            "name": name,
+            "class_name": "",
+            "window_title": window,
+            "process_name": proc,
+            "value": value,
+            "case_ids": ["case-1"],
+        },
+    }
+
+
+def test_typing_burst_on_identityless_control_coalesces_to_one_step():
+    """A keystroke-by-keystroke value_changed flood into one Chrome field
+    collapses to a single step -- not the pre-fix explosion of
+    12-interaction fragments."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    text = "CE removed paper jam from receipt printer"
+    events = [
+        _make_value_changed(base + timedelta(milliseconds=i * 200), text[:i + 1])
+        for i in range(len(text))
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 1
+    assert "Enter" in steps[0]["name"]
+
+
+def test_typing_burst_keeps_the_final_value():
+    """The coalesced event keeps the last (complete) typed value."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_value_changed(base, "C"),
+        _make_value_changed(base + timedelta(milliseconds=200), "CE"),
+        _make_value_changed(base + timedelta(milliseconds=400), "CE done"),
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+    assert "CE done" in steps[0]["name"]
+
+
+def test_two_identityless_fields_split_by_focus_stay_separate():
+    """Coalescing folds a *run* -- a focus_changed between two field
+    edits breaks it, so the two fields are not merged into one."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_value_changed(base, "first field"),
+        _make_value_changed(base + timedelta(milliseconds=200), "first field x"),
+        _make_inter(base + timedelta(milliseconds=400), kind="focus_changed",
+                    window="TAMBA", proc="chrome.exe", name=""),
+        _make_value_changed(base + timedelta(milliseconds=600), "second"),
+        _make_value_changed(base + timedelta(milliseconds=800), "second field"),
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+    # two coalesced typing events + the focus event = 3 interactions
+    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
+
+
+def test_repeated_identical_tab_selection_collapses():
+    """The OS re-fires selection_changed on a tab every time focus
+    returns to it. Identical re-selections collapse to one, and a lone
+    tab switch is not substantial enough to be its own step."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_inter(base + timedelta(milliseconds=i * 300),
+                    kind="selection_changed", window="TAMBA -  ",
+                    name="TAMBA -  ")
+        for i in range(5)
+    ]
+    for ev in events:
+        ev["data"]["control_type"] = "TabItem"
+        ev["data"]["selected_value"] = "TAMBA -  "
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert steps == []
+
+
+def test_step_name_does_not_echo_app_prefix():
+    """A step whose only nameable interaction is a tab switch must not be
+    named 'TAMBA: TAMBA -  ' -- the tab title just echoes the app."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    tab = _make_inter(base, kind="selection_changed", window="TAMBA -  ",
+                      name="TAMBA -  ")
+    tab["data"]["control_type"] = "TabItem"
+    tab["data"]["selected_value"] = "TAMBA -  "
+    click = _make_inter(base + timedelta(milliseconds=300), kind="invoked",
+                        window="TAMBA -  ", name="")
+    steps = auto_suggest_steps([tab, click], session_id="s1")
+    assert len(steps) == 1
+    label = steps[0]["name"].split(": ", 1)[-1]
+    assert "TAMBA" not in label

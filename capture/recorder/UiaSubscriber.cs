@@ -12,9 +12,9 @@
 //     are "notification only, no payload" -- the actual value comes
 //     from ValueProperty changes.
 //   - value_changed / range_value_changed events are coalesced per
-//     (pid, automation_id || name) within a debounce window. Typing
-//     "Customer Acme Corp" emits one event with the final value
-//     instead of one per keystroke.
+//     (pid, automation_id || name || runtime_id) within a debounce
+//     window. Typing "Customer Acme Corp" emits one event with the
+//     final value instead of one per keystroke.
 //   - Events from low-signal control types (Pane, Group, Window with
 //     framework_id == "Win32") are dropped -- these are desktop shell
 //     / layout chrome, not user actions.
@@ -43,7 +43,8 @@ public sealed class UiaSubscriber {
     private bool _started;
 
     // value_changed coalescer: per-element debouncer.
-    // Key: "{pid}|{automation_id}" (falls back to name/class when id is missing).
+    // Key: "{pid}|{automation_id}" (falls back to name/class, then to the
+    // UIA RuntimeId, when the AutomationId is missing).
     // Value: latest pending event + timer that fires after the debounce window.
     private readonly ConcurrentDictionary<string, PendingValue> _pending = new();
     // value_changed coalescing window. Configurable via the hello cmd's
@@ -190,6 +191,13 @@ public sealed class UiaSubscriber {
             var name = el.Current.Name;
             var cls = el.Current.ClassName;
             if (!string.IsNullOrEmpty(name)) return $"{pid}|n|{name}|{cls}";
+            // Web content (Chrome) exposes an empty AutomationId *and* an
+            // empty Name on input fields, so both keys above miss. The UIA
+            // RuntimeId is stable for the element's lifetime -- which spans
+            // a typing burst -- so it keys the debouncer well enough to
+            // coalesce keystrokes into one final-value event.
+            var rid = el.GetRuntimeId();
+            if (rid != null && rid.Length > 0) return $"{pid}|rid|{string.Join("-", rid)}";
             return null;
         } catch {
             return null;

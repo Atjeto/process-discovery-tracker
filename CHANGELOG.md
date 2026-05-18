@@ -6,6 +6,25 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-05-19
+
+### Fixed
+
+- **A recorded session of browser work produced hundreds of unusable
+  auto-detected steps.** Typing into a web-app field reached step
+  suggestion as a flood of per-keystroke `value_changed` events: the
+  recorder's debounce coalescer keys on a control's AutomationId or
+  Name, and Chrome exposes neither on most web inputs, so it silently
+  skipped them — then the step interaction cap sliced one typed value
+  into five or six fragment "steps" with growing-prefix names. Step
+  suggestion now coalesces a run of `value_changed` events on one
+  control before it segments, and folds the browser's repeated
+  same-tab `selection_changed` re-fires; a step name no longer echoes
+  the window title back as its own label. The recorder's coalescer
+  also gained a UIA RuntimeId fallback so identity-less web fields are
+  coalesced at capture time in new recordings. Existing sessions are
+  fixed on the next Re-analyze — no re-recording needed.
+
 ## [0.12.0] - 2026-05-18
 
 ### Added

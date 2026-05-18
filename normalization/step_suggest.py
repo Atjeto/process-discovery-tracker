@@ -60,6 +60,88 @@ def _ts_excluded(ts_str: str, ranges: list[tuple[datetime, datetime]]) -> bool:
     return any(a <= t <= b for a, b in ranges)
 
 
+def _coalesce_key(data: dict) -> str:
+    """A stable-ish identity for a control, used to decide whether two
+    consecutive events touched the same element. Mirrors the recorder's
+    CoalesceKey but always returns a key: identity-less web controls
+    (empty automation_id *and* empty name) fall back to
+    control_type + window + process, which is enough to recognise a
+    keystroke run into one field."""
+    pid = data.get("pid")
+    aid = (data.get("automation_id") or "").strip()
+    if aid:
+        return f"{pid}|aid|{aid}"
+    name = (data.get("name") or "").strip()
+    if name:
+        cls = (data.get("class_name") or "").strip()
+        return f"{pid}|n|{name}|{cls}"
+    ct = (data.get("control_type") or "").strip()
+    win = (data.get("window_title") or "").strip()
+    proc = (data.get("process_name") or "").strip()
+    return f"{pid}|ct|{ct}|{win}|{proc}"
+
+
+def _coalesce_interactions(
+    events: list[dict[str, Any]], idle_ms: int,
+) -> list[dict[str, Any]]:
+    """Collapse runs of consecutive same-control noise events that the
+    recorder's debounce coalescer let through.
+
+    The recorder coalesces keystroke `value_changed` events into one
+    final-value event -- but only for controls exposing an AutomationId
+    or a Name. Web content (Chrome) exposes neither, so a typed sentence
+    arrives as dozens of value_changed snapshots; left alone, the step
+    interaction cap then slices that flood into several meaningless
+    steps. Two run types are collapsed here:
+
+      * consecutive `value_changed` / `text_changed` on one control ->
+        the LAST event (it carries the final, complete value);
+      * consecutive `selection_changed` on one control reporting the
+        SAME selected_value -> the FIRST event (the rest are the OS
+        re-firing selection as focus returns to a tab -- pure noise).
+
+    A run breaks on a different event kind, a different control, or a
+    gap longer than `idle_ms`, so a genuine pause is never merged.
+    """
+    if len(events) < 2:
+        return events
+    typing = ("value_changed", "text_changed")
+    out: list[dict[str, Any]] = []
+    i, n = 0, len(events)
+    while i < n:
+        data = events[i].get("data", {})
+        kind = data.get("kind")
+        if kind in typing:
+            run = "typing"
+        elif kind == "selection_changed":
+            run = "selection"
+        else:
+            out.append(events[i])
+            i += 1
+            continue
+        key = _coalesce_key(data)
+        j = i + 1
+        while j < n:
+            nd = events[j].get("data", {})
+            nk = nd.get("kind")
+            same_run = (run == "typing" and nk in typing) or (
+                run == "selection" and nk == "selection_changed")
+            if not same_run or _coalesce_key(nd) != key:
+                break
+            gap_ms = (parse_ts(events[j]["timestamp"])
+                      - parse_ts(events[j - 1]["timestamp"])).total_seconds() * 1000
+            if gap_ms > idle_ms:
+                break
+            if run == "selection" and (
+                    (nd.get("selected_value") or "")
+                    != (data.get("selected_value") or "")):
+                break
+            j += 1
+        out.append(events[j - 1] if run == "typing" else events[i])
+        i = j
+    return out
+
+
 def auto_suggest_steps(
     events: list[dict[str, Any]],
     *,
@@ -103,13 +185,22 @@ def auto_suggest_steps(
     steps: list[dict[str, Any]] = []
     for case_id, case_events in by_case.items():
         case_events.sort(key=lambda e: e["timestamp"])
+        case_events = _coalesce_interactions(case_events, step_split_idle_ms)
         candidate: list[dict[str, Any]] = []
         last_ts: datetime | None = None
         last_window: str | None = None
         last_process: str | None = None
 
         def flush():
-            if len(candidate) < step_min_interactions:
+            # A typed value is a substantial action even after its
+            # keystroke run coalesced down to a single interaction, so a
+            # step carrying one is exempt from the min-interactions
+            # noise floor that drops lone clicks and stray selections.
+            has_typing = any(
+                ev["data"].get("kind") in ("value_changed", "text_changed")
+                for ev in candidate
+            )
+            if len(candidate) < step_min_interactions and not has_typing:
                 candidate.clear()
                 return
             steps.append({
@@ -237,9 +328,15 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
         d = ev["data"]
         if d.get("kind") in ("focus_changed", "text_changed"):
             continue
+        # A browser tab switch is navigation, not the step's purpose,
+        # and its name is the window title -- which would only echo the
+        # `app` prefix (the "TAMBA: TAMBA -  " bug).
+        if (d.get("kind") == "selection_changed"
+                and d.get("control_type") in ("TabItem", "Tab")):
+            continue
         name = (d.get("name") or "").strip()
         val = (d.get("value") or "").strip()
-        if name:
+        if name and name.lower() != app.strip().lower():
             return _trim(f"{app}: {name}")
         if val:
             return _trim(f"{app}: {val[:40]}")
