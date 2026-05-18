@@ -50,24 +50,30 @@
       clearTimeout(inputDebounce);
       inputDebounce = setTimeout(() => render(input.value), 50);
     });
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
-      else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
-      else if (e.key === "Enter") { e.preventDefault(); fire(); }
-      else if (e.key === "Escape") { e.preventDefault(); close(); }
-      else if (e.key === "Tab") { e.preventDefault(); move(e.shiftKey ? -1 : 1); }
-    });
   }
 
   function move(delta) {
     if (!items.length) return;
     selectedIndex = (selectedIndex + delta + items.length) % items.length;
-    paint();
+    highlight();
     const sel = list.querySelector(".cmdpalette-row.selected");
     if (sel) sel.scrollIntoView({ block: "nearest" });
   }
 
+  /* Repaint only the selection marker. Hover and arrow-key nav use this
+     instead of paint(): paint() rebuilds the whole list, and rebuilding
+     it under the cursor swaps the row out between mousedown and mouseup,
+     so the browser never fires a click on the row. */
+  function highlight() {
+    if (!list) return;
+    list.querySelectorAll(".cmdpalette-row").forEach((row, i) => {
+      row.classList.toggle("selected", i === selectedIndex);
+    });
+  }
+
   function fire() {
+    if (!items.length) return;
+    if (selectedIndex < 0 || selectedIndex >= items.length) selectedIndex = 0;
     const item = items[selectedIndex];
     if (!item) return;
     close();
@@ -113,7 +119,7 @@
       });
       row.addEventListener("mouseenter", () => {
         selectedIndex = parseInt(row.dataset.idx, 10);
-        paint();
+        highlight();
       });
     });
   }
@@ -159,6 +165,18 @@
       e.preventDefault();
       toggle();
     }
+  });
+
+  /* Palette keyboard navigation. Bound at the document level (not on the
+     search input) so Arrow/Enter/Esc/Tab work whenever the palette is
+     open, regardless of which element currently holds focus. */
+  document.addEventListener("keydown", (e) => {
+    if (!overlay || !overlay.classList.contains("open")) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+    else if (e.key === "Enter") { e.preventDefault(); fire(); }
+    else if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "Tab") { e.preventDefault(); move(e.shiftKey ? -1 : 1); }
   });
 
   module.exports = {
