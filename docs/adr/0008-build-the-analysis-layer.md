@@ -101,5 +101,5 @@ the efficiency-ratio summary tile; the PDD enrichment (I78).
        PDD export.
 3. [ ] After the first 8-hour passive recording, recalibrate the heuristics
        and bump `heuristic_version`.
-4. [ ] Build the analyst-correction pass and the Compare-Sessions
+4. [x] Build the analyst-correction pass and the Compare-Sessions
        aggregation — spec: [`docs/To-Do/ANALYSIS-LAYER-FOLLOWUPS.md`](../To-Do/ANALYSIS-LAYER-FOLLOWUPS.md).

@@ -52,6 +52,7 @@
       "report-md.js",
       "report-html.js",
       "session-summary.js",
+      "analysis-aggregate.js",
       "step-editor.js",
       "phase-editor.js",
       "layout-controls.js",

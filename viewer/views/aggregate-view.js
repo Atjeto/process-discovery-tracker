@@ -21,6 +21,7 @@ const PdtBpmn = require("../bpmn-viewer.js");
 const PdtDfg = require("../dfg-viewer.js");
 const { formModal } = require("../modals.js");
 const SessionSummary = require("../session-summary.js");
+const AnalysisAggregate = require("../analysis-aggregate.js");
 const PdtTheme = require("../theme.js");
 const TimelineCore = require("../timeline/timeline-core.js");
 
@@ -343,6 +344,7 @@ function renderAggregate() {
   const filtered = filteredAggregateSessions();
   renderOutlierBanner(filtered);
   renderTaxonomyBanner(filtered);
+  renderAggAnalysis(filtered);
   // H1: the group-by-worker toggle is only meaningful with 2+ workers.
   const workerWrap = document.getElementById("agg-group-worker-wrap");
   if (workerWrap) {
@@ -692,6 +694,121 @@ function renderAggregate() {
       driftPanel.style.display = "none";
     }
   }
+}
+
+/* ============ Analysis aggregation (ANALYSIS-LAYER-FOLLOWUPS) ====== */
+
+/* Render the cross-session Analysis panel from the loaded sessions'
+   analysis.json sidecars. Hidden unless at least one loaded session was
+   analyzed. The aggregation itself lives in the pure analysis-aggregate.js. */
+function renderAggAnalysis(sessions) {
+  const panel = document.getElementById("agg-analysis-panel");
+  if (!panel) return;
+  const withAnalysis = (sessions || []).filter((s) => s && s.analysis);
+  if (!withAnalysis.length) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "";
+  const host = document.getElementById("agg-analysis-content");
+  if (!host) return;
+  const agg = AnalysisAggregate.aggregateAnalysis(withAnalysis);
+  host.innerHTML =
+    (_aggTimeStudySection(agg) + _aggWorkerSection(agg) +
+     _aggAutomationSection(agg) + _aggEfficiencySection(agg)) ||
+    '<div class="analysis-empty">The loaded sessions have no analysis ' +
+    "findings yet.</div>";
+}
+
+function _aggDur(ms) {
+  return escapeHtml(PdtCharts.fmtDurationS((ms || 0) / 1000));
+}
+
+function _aggScore(v) {
+  return (v === null || v === undefined)
+    ? '<span class="score-na" title="needs the step in 2+ sessions">—</span>'
+    : Math.round(v * 100) + "%";
+}
+
+function _aggTimeStudySection(agg) {
+  if (!agg.time_study.length) return "";
+  const rows = agg.time_study.map((t) =>
+    "<tr><td>" + escapeHtml(t.name) + "</td>" +
+    '<td class="num">' + t.sessions + "</td>" +
+    '<td class="num">' + t.instances + "</td>" +
+    '<td class="num">' + _aggDur(t.cycle_ms.mean) + "</td>" +
+    '<td class="num">' + _aggDur(t.cycle_ms.min) + "</td>" +
+    '<td class="num">' + _aggDur(t.cycle_ms.max) + "</td>" +
+    '<td class="num">' + _aggDur(t.active_ms) + "</td>" +
+    '<td class="num">' + _aggDur(t.waiting_ms) + "</td>" +
+    '<td class="num">' + _aggDur(t.switching_ms) + "</td></tr>"
+  ).join("");
+  return '<div class="analysis-section">' +
+    '<div class="analysis-section-title">Cross-session time study</div>' +
+    '<table class="analysis-table"><thead><tr><th>Step</th><th>Sessions</th>' +
+    "<th>Instances</th><th>Mean</th><th>Min</th><th>Max</th><th>Active</th>" +
+    "<th>Waiting</th><th>Switching</th></tr></thead><tbody>" +
+    rows + "</tbody></table></div>";
+}
+
+function _aggWorkerSection(agg) {
+  // A per-worker comparison only says something with two or more workers.
+  if (!agg.by_worker || agg.by_worker.length < 2) return "";
+  const rows = [];
+  for (const w of agg.by_worker) {
+    for (const st of w.steps) {
+      rows.push("<tr><td>" + escapeHtml(w.worker) + "</td>" +
+        "<td>" + escapeHtml(st.name) + "</td>" +
+        '<td class="num">' + st.instances + "</td>" +
+        '<td class="num">' + _aggDur(st.mean_cycle_ms) + "</td></tr>");
+    }
+  }
+  if (!rows.length) return "";
+  return '<div class="analysis-section">' +
+    '<div class="analysis-section-title">Per-worker comparison</div>' +
+    '<table class="analysis-table"><thead><tr><th>Worker</th><th>Step</th>' +
+    "<th>Instances</th><th>Mean cycle</th></tr></thead><tbody>" +
+    rows.join("") + "</tbody></table></div>";
+}
+
+function _aggAutomationSection(agg) {
+  if (!agg.automation.length) return "";
+  const rows = agg.automation.map((a) => {
+    const parts = [];
+    if (a.confirmed) parts.push(a.confirmed + " confirmed");
+    if (a.dismissed) parts.push(a.dismissed + " dismissed");
+    const decision = parts.length ? parts.join(" · ") : "—";
+    return "<tr><td>" + escapeHtml(a.name) + "</td>" +
+      '<td class="num">' + a.sessions + "</td>" +
+      '<td class="num">' + a.instances + "</td>" +
+      '<td class="num">' + _aggScore(a.repetitiveness) + "</td>" +
+      '<td class="num">' + _aggScore(a.rule_based) + "</td>" +
+      '<td class="num">' + _aggDur(a.volume) + "</td>" +
+      "<td>" + escapeHtml(decision) + "</td></tr>";
+  }).join("");
+  return '<div class="analysis-section">' +
+    '<div class="analysis-section-title">Automation candidates (pooled)</div>' +
+    '<table class="analysis-table"><thead><tr><th>Step</th><th>Sessions</th>' +
+    "<th>Instances</th><th>Repetitive</th><th>Rule-based</th><th>Volume</th>" +
+    "<th>Analyst decision</th></tr></thead><tbody>" +
+    rows + "</tbody></table></div>";
+}
+
+function _aggEfficiencySection(agg) {
+  if (!agg.efficiency_trend.length) return "";
+  const rows = agg.efficiency_trend.map((e) => {
+    const pct = Math.round(e.ratio * 100);
+    const label = e.name + (e.worker ? " · " + e.worker : "");
+    return '<div class="agg-eff-row">' +
+      '<span class="agg-eff-name" title="' + escapeAttr(label) + '">' +
+        escapeHtml(label) + "</span>" +
+      '<span class="agg-eff-track"><span class="agg-eff-fill" style="width:' +
+        pct + '%"></span></span>' +
+      '<span class="agg-eff-val">' + pct + "%</span></div>";
+  }).join("");
+  return '<div class="analysis-section">' +
+    '<div class="analysis-section-title">Process-efficiency trend</div>' +
+    '<div class="agg-eff-list">' + rows + "</div></div>";
 }
 
 /* ============ H1: per-worker chart grouping ======================= */

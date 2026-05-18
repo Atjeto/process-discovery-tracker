@@ -503,6 +503,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div id="side-by-side-container"></div>
           </div>
 
+          <div class="panel panel-wide" id="agg-analysis-panel" style="display:none">
+            <h3>Analysis</h3>
+            <p class="meta" style="margin-top:0">Heuristic IE findings pooled across the loaded sessions — a step seen once per session gains real signal once recordings are combined. Provisional estimates; review before relying on them.</p>
+            <div id="agg-analysis-content"></div>
+          </div>
+
           <div class="panel">
             <h3>App outliers (&lt;5%)</h3>
             <div class="stats-table-host">
