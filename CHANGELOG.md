@@ -6,6 +6,46 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-18
+
+### Added
+
+- **Add a step at the video playhead, without leaving Flow view.** A
+  "+ Step" button in the timeline toolbar — and the `S` keyboard
+  shortcut — create a step boundary at the current video playhead, so
+  a manual step can be marked while watching in Flow view instead of
+  switching to the Steps view to place it blind. The playhead inside
+  an existing step splits it there; in open space it starts a new step
+  running to the next boundary; on a session with no steps yet it
+  carves the recording into "Step 1" / "Step 2" at the playhead. The
+  per-step lane is switched on so the new boundary appears on the
+  timeline immediately.
+
+### Fixed
+
+- **Space and the arrow keys double-fired against the video's native
+  controls.** When the `<video>` element had keyboard focus, a Space
+  or Left/Right press was handled twice — once by the browser's
+  built-in media controls and once by the viewer's global shortcut
+  handler — so the two play/pause toggles cancelled out and Space
+  appeared to do nothing. The global handler now leaves those keys to
+  the native control whenever the video element is focused.
+
+- **The session summary panel could be squeezed flat.** After the
+  v0.9.0 session-view overlap fix pinned the event-table and log
+  panels to their content height, the summary panel was left as the
+  only shrinkable element in the scrolling session column — so it
+  collapsed, and its `overflow: hidden` clipped the body, leaving it
+  unable to open. It is now pinned like its sibling panels.
+
+- **Command palette result clicks and keyboard navigation.** Hovering
+  a result rebuilt the whole list on every mouse-enter, swapping the
+  row out between mousedown and mouseup so a click never landed;
+  selection highlighting now updates in place. Arrow / Enter / Esc /
+  Tab navigation is bound at the document level, so it works whenever
+  the palette is open rather than only while the search box holds
+  focus.
+
 ## [0.9.0] - 2026-05-18
 
 ### Added
