@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-18
+
 ### Added
 
 - **A pass of vocabulary, capture, and viewer polish.** An auto-detected
