@@ -1339,7 +1339,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 
 /* ===== Session summary (post-analysis orientation, Phase A) ===== */
 .session-summary {
-  margin: 0 0 14px; overflow: hidden;
+  /* flex:0 0 auto -- hold natural height like the event-table / log
+     <details> panels. Without it this shrinkable panel is the only
+     give in the scrolling session column and gets squeezed flat. */
+  margin: 0 0 14px; overflow: hidden; flex: 0 0 auto;
   background: var(--bg-2); border: 1px solid var(--rule);
   border-radius: var(--radius);
 }
