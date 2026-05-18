@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-18
+
 ### Added
 
 - **The Analysis view's heuristic findings can now be corrected.** The waste
@@ -26,6 +28,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to judge for repetitiveness — and a process-efficiency trend. Each automation
   candidate carries a fingerprint of how its step was performed, so the same
   step compares cleanly from one recording to the next.
+
+### Fixed
+
+- **The session summary's "Where the time went" bars rendered empty.** The
+  bar fill was an inline element, so the browser ignored its width and
+  height — the percentages showed but the bars beside them stayed blank.
+
+- **The Flow, Steps, and Phases views could overlap the panels below them.**
+  With the analysis-log or raw-events panel open, the session layout was
+  squeezed below its content height and the video and annotations spilled
+  over the panels beneath. The layout now keeps its height and the session
+  view scrolls instead.
 
 ## [0.8.0] - 2026-05-18
 
