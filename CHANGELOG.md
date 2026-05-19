@@ -6,12 +6,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-05-19
+
 ### Changed
 
 - The step interaction list and auto-generated step descriptions now
   phrase every recorder event kind — including toggle / checkbox
   changes ("Turned Remember me on") and payload-less text-change
   notifications — with a graceful generic fallback for any future kind.
+  Descriptions read as one sentence per action.
 - Auto-detected step names now carry the value the step acted on —
   "Search — SN12345" rather than a bare "Search", "Enter SN12345 in
   Serial Number" rather than "Fill Serial Number" — so a step is
