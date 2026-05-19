@@ -6,6 +6,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-05-19
+
+### Fixed
+
+- **The Steps-view scroll change shipped in v0.14.1 broke the editor
+  panes** — transparent panes with content scrolling through them, the
+  selected-step editor and the raw events bleeding into the background.
+  Reworked as a plain max-height cap on the step list (with a floor) so
+  it cannot collapse the panes. The step list scrolls within its own
+  pane and the selected-step editor stays in view as you scroll the
+  list.
+
 ## [0.14.1] - 2026-05-19
 
 ### Changed
