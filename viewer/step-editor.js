@@ -146,6 +146,10 @@
     const _dur = stepDuration(_tr) || "—";
     const _start = _tr.start ? escapeHtml(_tr.start.slice(11, 19)) : "—";
     const _end = _tr.end ? escapeHtml(_tr.end.slice(11, 19)) : "—";
+    const interMap = (callbacks && callbacks.interactionsById) || {};
+    const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
+    const interListHtml = renderInteractionList(
+      interIds.map((id) => interMap[id]).filter(Boolean), interIds.length);
     host.innerHTML = `
       <div class="step-stat-tiles">
         <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
@@ -162,7 +166,7 @@
         <label title="Mark this individual step as a candidate to include in a future automation project (RPA / integration / script). Aggregated across the session into the PDD export and the stats report so you can see total automatable share at a glance."><input type="checkbox" id="flag-auto" ${flags.automation_candidate ? "checked" : ""}> Automation candidate</label>
       </div>
       <div class="evidence">
-        <p>${(step.evidence && step.evidence.interaction_event_ids || []).length} interactions</p>
+        ${interListHtml}
         <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
         ${step.canonical_step_id ? `<p class="meta">canonical: <code>${escapeHtml(step.canonical_step_id)}</code></p>` : ""}
         ${step.drift ? `<p class="drift-note">⚠ Canonical drift: was <code>${escapeHtml(step.drift.previous_canonical_step_id || "")}</code> → now <code>${escapeHtml(step.drift.new_canonical_step_id || "")}</code></p>` : ""}
@@ -270,12 +274,67 @@
     });
   }
 
-  function renderInteractionEvent(ev) {
-    const d = ev.data || {};
-    const kind = d.kind || "?";
-    const label = d.name || d.automation_id || d.control_type || d.window_title || "";
-    return `${kind}: ${label}`;
+  /* A readable one-line description of a single interaction event --
+     'Typed "X" into Serial Number', 'Clicked Search'. Drives the step
+     detail's interaction list; also exported for unit tests. */
+  function describeInteraction(ev) {
+    const d = (ev && ev.data) || {};
+    const kind = d.kind || "";
+    const name = String(d.meaningful_name || d.name || "").trim();
+    const ctl = d.control_type || "";
+    if (kind === "value_changed" || kind === "text_changed") {
+      const field = name || String(d.automation_id || "").trim() || "a field";
+      let value = String(d.value || "").trim();
+      if (value.length > 300) value = value.slice(0, 299) + "…";
+      const n = d._coalesced_count || 0;
+      const keys = n > 1 ? ` — ${n} keystrokes` : "";
+      return value
+        ? `Typed "${value}" into ${field}${keys}`
+        : `Cleared ${field}${keys}`;
+    }
+    if (kind === "invoked") {
+      if (!name) return `Clicked a ${ctl || "control"}`;
+      if (ctl === "MenuItem") return `Opened ${name}`;
+      if (ctl === "Hyperlink") return `Followed ${name}`;
+      return `Clicked ${name}`;
+    }
+    if (kind === "selection_changed") {
+      const sel = String(d.selected_value || "").trim();
+      if (ctl === "TabItem" || ctl === "Tab") return `Switched to ${sel || name || "a tab"}`;
+      if (sel) return name ? `Selected "${sel}" in ${name}` : `Selected "${sel}"`;
+      return name ? `Changed selection in ${name}` : "Changed a selection";
+    }
+    if (kind === "focus_changed") return name ? `Focused ${name}` : "Focus moved";
+    const label = name || d.automation_id || ctl || d.window_title || "interaction";
+    return `${kind || "Event"}: ${label}`;
   }
 
-  module.exports = { renderStepList, renderStepDetail, renderStepTimeline, renderInteractionEvent };
+  /* The collapsible list of a step's constituent interactions. `events`
+     are the resolved interaction events in step order; `total` is the
+     count the step claims (may exceed events.length when some ids are
+     not in this session's event stream). */
+  function renderInteractionList(events, total) {
+    if (!total) return `<p class="meta">No interactions recorded for this step.</p>`;
+    const rows = events.map((ev) => {
+      const t = String(ev.timestamp || "").slice(11, 19);
+      return `<li class="step-interaction">` +
+        `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
+        `<span class="si-time">${escapeHtml(t)}</span></li>`;
+    });
+    const missing = total - events.length;
+    if (missing > 0) {
+      rows.push(`<li class="step-interaction">` +
+        `<span class="si-text meta">${missing} interaction(s) not found in this session</span>` +
+        `</li>`);
+    }
+    return `<details class="step-interactions"${total <= 15 ? " open" : ""}>` +
+      `<summary>Interactions (${total})</summary>` +
+      `<ol class="step-interaction-list">${rows.join("")}</ol>` +
+      `</details>`;
+  }
+
+  module.exports = {
+    renderStepList, renderStepDetail, renderStepTimeline,
+    describeInteraction, renderInteractionList,
+  };
 })();

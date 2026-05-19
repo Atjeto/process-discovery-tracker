@@ -348,3 +348,47 @@ def test_volatile_window_title_suffix_does_not_split_steps():
     steps = auto_suggest_steps(events, session_id="s1")
     assert len(steps) == 1
     assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
+
+
+# --- Step description (interaction summary) ----------------------------
+
+def test_step_description_summarizes_typed_value():
+    """An auto step's description names the value entered and the field."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    ev = _make_value_changed(base, "SN12345", name="Serial Number")
+    steps = auto_suggest_steps([ev], session_id="s1")
+    assert len(steps) == 1
+    desc = steps[0]["description"]
+    assert "SN12345" in desc
+    assert "Serial Number" in desc
+
+
+def test_step_description_reports_coalesced_keystroke_count():
+    """A coalesced typing burst's description reports the keystroke count."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    text = "resolved"
+    events = [
+        _make_value_changed(base + timedelta(milliseconds=i * 150),
+                            text[:i + 1], name="Notes")
+        for i in range(len(text))
+    ]
+    coalesced = coalesce_typing_bursts(events)
+    steps = auto_suggest_steps(coalesced, session_id="s1")
+    assert len(steps) == 1
+    desc = steps[0]["description"]
+    assert "keystrokes" in desc
+    assert str(len(text)) in desc
+
+
+def test_step_description_summarizes_clicks():
+    """A step of button clicks reads as a list of clicked actions."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_inter(base, kind="invoked", name="Open form"),
+        _make_inter(base + timedelta(seconds=1), kind="invoked", name="Add note"),
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+    desc = steps[0]["description"]
+    assert "Clicked Open form" in desc
+    assert "Add note" in desc

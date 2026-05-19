@@ -95,6 +95,10 @@ function renderStepsLevel() {
     reorderStep,
   );
   const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
+  const interactionsById = {};
+  for (const ev of (State.getSession().events || [])) {
+    if (ev.type === "interaction") interactionsById[ev.event_id] = ev;
+  }
   PdtSteps.renderStepDetail($("#step-detail"), selected, {
     onSave: saveStep,
     onDelete: deleteStep,
@@ -103,6 +107,7 @@ function renderStepsLevel() {
     onJumpToFlow: (step) => jumpToStepInFlow(step),
     onWatchStep: (step) => watchStep(step),
     onToggleHide: toggleStepHidden,
+    interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
   });
   const span = getSpan();

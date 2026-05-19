@@ -124,7 +124,7 @@ def auto_suggest_steps(
                 "session_id": session_id,
                 "case_id": case_id,
                 "name": _default_step_name(candidate),
-                "description": "",
+                "description": _default_step_description(candidate),
                 "time_range": {
                     "start": candidate[0]["timestamp"],
                     "end": candidate[-1]["timestamp"],
@@ -262,6 +262,67 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
         break
 
     return _trim(f"{app}: {len(interactions)} interactions")
+
+
+def _describe_interaction(data: dict[str, Any]) -> str | None:
+    """A short human phrase for one interaction ('entered "X" into Y',
+    'clicked Search'), or None for interactions not worth narrating in a
+    step summary (focus changes, detail-less events)."""
+    kind = data.get("kind")
+    name = (data.get("meaningful_name") or data.get("name") or "").strip()
+    ctl = data.get("control_type") or ""
+
+    if kind in ("value_changed", "text_changed"):
+        field = name or (data.get("automation_id") or "").strip() or "a field"
+        value = (data.get("value") or "").strip()
+        if len(value) > 160:
+            value = value[:159] + "…"
+        count = data.get("_coalesced_count") or 0
+        keys = f" ({count} keystrokes)" if count > 1 else ""
+        if value:
+            return f'entered "{value}" into {field}{keys}'
+        return f"cleared {field}{keys}"
+
+    if kind == "invoked":
+        if not name:
+            return None
+        if ctl == "MenuItem":
+            return f"opened {name}"
+        if ctl == "Hyperlink":
+            return f"followed {name}"
+        return f"clicked {name}"
+
+    if kind == "selection_changed":
+        sel = (data.get("selected_value") or "").strip()
+        if ctl in ("TabItem", "Tab"):
+            return f"switched to {sel or name}" if (sel or name) else None
+        if sel:
+            return f'selected "{sel}" in {name}' if name else f'selected "{sel}"'
+        return None
+
+    return None
+
+
+def _default_step_description(interactions: list[dict[str, Any]]) -> str:
+    """A prose summary of what a step did, built from its interactions,
+    so an auto-suggested step reads meaningfully without the analyst
+    drilling into the raw events. The name stays terse; this carries the
+    detail. Keystroke runs coalesced upstream report their count."""
+    phrases: list[str] = []
+    for ev in interactions:
+        phrase = _describe_interaction(ev.get("data") or {})
+        if phrase:
+            phrases.append(phrase)
+    if not phrases:
+        n = len(interactions)
+        return f"{n} interaction{'' if n == 1 else 's'} with no recorded detail."
+    cap = 6
+    shown = phrases[:cap]
+    extra = len(phrases) - len(shown)
+    sentence = ", ".join(shown)
+    if extra > 0:
+        sentence += f", and {extra} more action{'' if extra == 1 else 's'}"
+    return sentence[0].upper() + sentence[1:] + "."
 
 
 def _suggestion_reason(interactions: list[dict[str, Any]], threshold_ms: int) -> str:
