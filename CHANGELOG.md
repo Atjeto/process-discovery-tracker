@@ -6,6 +6,47 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-05-19
+
+### Added
+
+- **Canonical step rules match controls flexibly.** A match rule
+  previously compared three fields for exact equality. Rules now accept
+  `contains`, `starts_with`, and `matches` (regex) operators over six
+  fields — control type, AutomationId, name, value, class name and
+  framework ID — so a template can target a control by a stable part of
+  its label instead of its full, volatile text.
+
+- **A step rule can declare how far the step extends.** Each canonical
+  step carries a `boundary` mode that decides which following events it
+  absorbs: `single`, `until_app_change`, `until_pause`,
+  `until_field_change`, `until_next_step`, or the default
+  contiguous-group behaviour — so a template can describe a step that
+  spans a stretch of work, not just one click.
+
+- **Cases can be detected from a recurring field value.** A template
+  can name a *case anchor* — a control whose value identifies the work
+  item (a ticket number, a serial). The pipeline opens a new case each
+  time the anchor changes value and stamps every interaction and
+  activity in that span, so a recording of repeated work splits into
+  one case per item with no manual markers.
+
+- **Keystroke runs are coalesced as an early pipeline stage.** Typing
+  reaches the pipeline as one `value_changed` event per keystroke. A
+  dedicated stage now folds a run of edits to one control into a single
+  event carrying the final value before any later stage sees the
+  stream, with a prefix guard so two different fields typed
+  back-to-back are kept apart.
+
+### Changed
+
+- **Automatic step suggestion fragments less.** With no canonical
+  template, step suggestion no longer starts a new step on every app or
+  window switch, and tolerates a longer idle gap (10 s) and more
+  interactions (60) before splitting. It does start a fresh step after
+  a completion action — a click on a button or link labelled "search",
+  "submit", "save" and the like.
+
 ## [0.12.2] - 2026-05-19
 
 ### Fixed
