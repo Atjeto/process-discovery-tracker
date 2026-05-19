@@ -1,0 +1,67 @@
+# Example canonical process template — ATM Ticket Handling
+#
+# This is a worked example of the v0.13 template format. Field values
+# (automation_ids, class names, window titles) are placeholders from one
+# engagement's applications. An analyst authoring a real template identifies
+# them from their own capture.
+
+canonical_process:
+  id: "atm-ticket-handling"
+  name: "ATM Ticket Handling"
+  version: 1
+
+  case_anchor:
+    field: "automation_id"
+    equals: "txtsr"
+    case_label_from: "value"
+    min_gap_ms: 10000
+    close_on_pause_ms: 300000
+
+  phases:
+    - phase_id: "investigation"
+      name: "Investigation"
+      step_ids: ["investigate-serial", "check-call-mgmt", "check-contract"]
+    - phase_id: "resolution"
+      name: "Resolution"
+      step_ids: ["write-resolution", "classify-ticket", "update-status"]
+
+  steps:
+    - step_id: "investigate-serial"
+      name: "Investigate serial"
+      description: "Look up the serial in SNFI and cross-reference in TAMBA."
+      match:
+        - interaction: { automation_id: "txtsr" }
+      boundary: "until_next_step"
+
+    - step_id: "check-call-mgmt"
+      name: "Check call management"
+      match:
+        - interaction: { name: { contains: "Load Task#" } }
+      boundary: "until_app_change"
+
+    - step_id: "check-contract"
+      name: "Check contract coverage"
+      match:
+        - window_title_regex: ".*Time.*Material.*team.*"
+      boundary: "until_app_change"
+
+    - step_id: "write-resolution"
+      name: "Write resolution"
+      match:
+        - window_title_regex: ".*TAMBA.*"
+          interaction: { value: { starts_with: "**Resolution**" } }
+      boundary: "single"
+
+    - step_id: "classify-ticket"
+      name: "Classify ticket"
+      match:
+        - window_title_regex: ".*TAMBA.*"
+          interaction: { class_name: "ag-cell-edit-input" }
+      boundary: "until_field_change"
+
+    - step_id: "update-status"
+      name: "Update status fields"
+      match:
+        - interaction: { value: { equals: "No FLM" } }
+        - interaction: { value: { equals: "No related tickets in 14 days" } }
+      boundary: "single"

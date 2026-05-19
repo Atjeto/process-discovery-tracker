@@ -1,0 +1,18 @@
+# Example taxonomy — ATM Ticket Handling engagement
+#
+# Omits `app` on browser-hosted rules to be robust to Chrome/Edge mix.
+# Match on page-title text, never URL substrings.
+
+rules:
+  - match: { title_regex: ".*TAMBA.*" }
+    label: "TAMBA"
+  - match: { title_regex: ".*SNFI.*" }
+    label: "SNFI"
+  - match: { title_regex: ".*ES CALL MANAGEMENT.*|.*CALL MANAGEMENT.*" }
+    label: "ES Call Management"
+  - match: { title_regex: ".*Time.*Material.*team.*" }
+    label: "SharePoint — Contract Lookup"
+  - match: { app: "EXCEL.EXE", title_regex: ".*" }
+    label: "Excel — Account View"
+  - match: { app: "explorer.exe", title_regex: ".*" }
+    label: "File Explorer"

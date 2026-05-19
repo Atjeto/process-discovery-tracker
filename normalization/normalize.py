@@ -38,7 +38,11 @@ logger = logging.getLogger(__name__)
 # whether we run under regular Python or the bundled embeddable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from case_assignment import assign_case_ids, collect_cases
+from case_assignment import (
+    assign_case_ids, collect_cases,
+    detect_cases_from_anchors, stamp_anchor_cases,
+)
+from coalesce import coalesce_typing_bursts
 from classification import (
     classify_events,
     collapse_adjacent,
@@ -330,14 +334,34 @@ def normalize(
     if dropped_lines:
         print(f"[normalize] WARNING: dropped {dropped_lines} malformed JSONL line(s); see warnings above")
 
+    # Stage 1a: coalesce typing bursts
+    coalesced = coalesce_typing_bursts(raw)
+    if len(coalesced) < len(raw):
+        print(f"[normalize] coalesced: {len(raw)} -> {len(coalesced)} events")
+
     annotations = load_annotations(session_folder)
-    edited, edits_applied = apply_marker_edits(raw, annotations)
+    edited, edits_applied = apply_marker_edits(coalesced, annotations)
     if edits_applied:
         print(f"[normalize] applied {edits_applied} annotation edit(s) from annotations.json")
 
-    with_cases = assign_case_ids(edited)
-    cases = collect_cases(with_cases)
-    print(f"[normalize] identified {len(cases)} cases")
+    # Stage 2a/3: case assignment — anchor mode or marker mode
+    canonical = None
+    anchor_cfg = None
+    if canonical_path:
+        from canonical_match import load_canonical
+        canonical = load_canonical(canonical_path)
+        anchor_cfg = canonical.get("case_anchor")
+
+    if anchor_cfg:
+        anchor_interactions = [
+            e for e in edited if e.get("type") == "interaction"]
+        anchor_cases = detect_cases_from_anchors(anchor_interactions, anchor_cfg)
+        with_cases, cases = stamp_anchor_cases(edited, anchor_cases)
+        print(f"[normalize] anchor cases: {len(cases)} cases detected")
+    else:
+        with_cases = assign_case_ids(edited)
+        cases = collect_cases(with_cases)
+        print(f"[normalize] identified {len(cases)} cases")
 
     # App vocabulary enrichment (ADR-0002). Non-destructive: adds
     # meaningful_name / screen_id / vocab_flags / vocab_source onto each
@@ -362,12 +386,14 @@ def normalize(
     existing_anno["version"] = 1
     existing_anno["session_id"] = session_id_str
 
-    canonical = None
     matched_interactions = 0
+    unmatched_evs: list[dict[str, Any]] = []
     total_interactions = sum(1 for e in with_cases if e.get("type") == "interaction")
     if canonical_path:
-        from canonical_match import load_canonical, match_canonical, rollup_phases
-        canonical = load_canonical(canonical_path)
+        from canonical_match import match_canonical, rollup_phases
+        if canonical is None:
+            from canonical_match import load_canonical
+            canonical = load_canonical(canonical_path)
         existing_anno["matched_against"] = {
             "canonical_process_id": canonical.get("id"),
             "canonical_version": canonical.get("version"),
@@ -376,6 +402,7 @@ def normalize(
             with_cases, canonical, session_id=session_id_str
         )
         matched_interactions = total_interactions - len(unmatched)
+        unmatched_evs = unmatched
         if unmatched:
             fallback = auto_suggest_steps(
                 unmatched, session_id=session_id_str,
@@ -500,6 +527,7 @@ def normalize(
         },
         "canonical_process_id": (canonical.get("id") if canonical else None),
         "canonical_version": (canonical.get("version") if canonical else None),
+        "coalesced_event_count": len(coalesced),
         "drift_count": len(existing_anno.get("drift_markers") or []),
         "phase_count": len(existing_anno.get("phases") or []),
         "app_vocabularies": vocab_summary.get("vocabs_loaded") or [],
@@ -507,6 +535,17 @@ def normalize(
         "app_vocabulary_hits_by_id": vocab_summary.get("vocabs_hit") or {},
         "vocab_coverage": vocab_summary.get("coverage") or {},
     }
+    # Unmatched-interaction summary for canonical runs
+    if canonical_path and unmatched_evs:
+        um_apps: dict[str, int] = {}
+        for ue in unmatched_evs:
+            app = (ue.get("data", {}).get("process_name") or "unknown")
+            um_apps[app] = um_apps.get(app, 0) + 1
+        summary["meta"]["unmatched_interactions"] = {
+            "count": len(unmatched_evs),
+            "apps": um_apps,
+        }
+
     # C5/§I38: a >20-point match-rate drop vs the prior run usually means
     # the target app changed its field IDs and canonical matching is
     # silently degrading. Surface it so the analyst can re-check.

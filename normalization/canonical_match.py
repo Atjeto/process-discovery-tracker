@@ -5,6 +5,7 @@ auto_matched steps per annotation-model.md §3.5.
 from __future__ import annotations
 import re
 import uuid
+from datetime import datetime
 from typing import Any
 import yaml
 
@@ -12,6 +13,23 @@ import yaml
 def load_canonical(path: str) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f).get("canonical_process", {})
+
+
+INTERACTION_FIELDS = (
+    "control_type", "automation_id", "name",
+    "value", "class_name", "framework_id",
+)
+
+
+def _op_match(spec: dict, actual) -> bool:
+    if actual is None:
+        return False
+    actual = str(actual)
+    if "equals"      in spec: return actual == spec["equals"]
+    if "contains"    in spec: return spec["contains"] in actual
+    if "starts_with" in spec: return actual.startswith(spec["starts_with"])
+    if "matches"     in spec: return re.search(spec["matches"], actual) is not None
+    return False
 
 
 def _interaction_matches(rule: dict, ev: dict) -> bool:
@@ -25,10 +43,27 @@ def _interaction_matches(rule: dict, ev: dict) -> bool:
         return False
     irule = rule.get("interaction")
     if irule:
-        for k in ("control_type", "automation_id", "name"):
-            if k in irule and data.get(k) != irule[k]:
+        for k in INTERACTION_FIELDS:
+            if k not in irule:
+                continue
+            expected, actual = irule[k], data.get(k)
+            if isinstance(expected, dict):
+                if not _op_match(expected, actual):
+                    return False
+            elif actual != expected:
                 return False
     return True
+
+
+def _parse_ts(s: str) -> datetime:
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    return datetime.fromisoformat(s)
+
+
+def _event_case(ev: dict) -> str | None:
+    cids = ev.get("data", {}).get("case_ids") or []
+    return cids[-1] if cids else None
 
 
 def match_canonical(
@@ -37,13 +72,14 @@ def match_canonical(
     *,
     session_id: str = "",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Walk interaction events in time order. Assign each to the first
-    canonical step whose match rules fire. Group contiguous interactions
-    sharing the same canonical_step_id into one step. Honors `end_when`
-    when present to close a step explicitly.
+    """Walk interaction events in time order.  Assign each to the first
+    canonical step whose match rules fire.  Group interactions into steps
+    using the step's ``boundary`` mode (default ``group_contiguous``).
 
     Returns (steps, unmatched_interactions).
     """
+    from step_suggest import _short_app
+
     cstep_defs = {s["step_id"]: s for s in canonical.get("steps", [])}
     order = [s["step_id"] for s in canonical.get("steps", [])]
 
@@ -55,7 +91,7 @@ def match_canonical(
 
     steps: list[dict[str, Any]] = []
     unmatched: list[dict[str, Any]] = []
-    open_step = None  # { step_id, canonical_step_id, events, end_when_rule }
+    open_step: dict[str, Any] | None = None
 
     def close_open():
         nonlocal open_step
@@ -65,7 +101,7 @@ def match_canonical(
         evs = open_step["events"]
         cdef = cstep_defs[open_step["canonical_step_id"]]
         cids = evs[0]["data"].get("case_ids") or []
-        steps.append({
+        step_dict: dict[str, Any] = {
             "step_id": str(uuid.uuid4()),
             "session_id": session_id,
             "case_id": (cids[-1] if cids else None),
@@ -89,16 +125,110 @@ def match_canonical(
                 "automation_candidate": False,
             },
             "phase_id": None,
-        })
+        }
+        if open_step["boundary"] == "until_next_step":
+            apps = set()
+            for e in evs:
+                apps.add(_short_app(e.get("data", {})))
+            step_dict["scope"] = {
+                "apps": sorted(apps),
+                "interaction_count": len(evs),
+            }
+        steps.append(step_dict)
         open_step = None
 
-    for ev in interactions:
-        # Did the open step's end_when fire?
-        if open_step and open_step.get("end_when_rule") and _interaction_matches(
-            open_step["end_when_rule"], ev
-        ):
+    def _should_close(ev: dict) -> bool:
+        """Evaluate whether the open step should close BEFORE absorbing ev."""
+        if open_step is None:
+            return False
+
+        boundary = open_step["boundary"]
+        data = ev.get("data", {})
+
+        # Universal: case_id change always closes
+        if _event_case(ev) != open_step.get("open_case"):
+            return True
+
+        # end_when fires
+        ew = open_step.get("end_when_rule")
+        if ew and _interaction_matches(ew, ev):
             open_step["events"].append(ev)
             close_open()
+            return False  # already closed and consumed
+
+        if boundary == "single":
+            return True
+
+        if boundary == "until_app_change":
+            if _short_app(data) != open_step.get("open_app"):
+                return True
+
+        if boundary == "until_pause":
+            pause_ms = open_step.get("pause_ms", 5000)
+            gap = (_parse_ts(ev["timestamp"])
+                   - _parse_ts(open_step["events"][-1]["timestamp"])
+                   ).total_seconds() * 1000
+            if gap > pause_ms:
+                return True
+
+        if boundary == "until_field_change":
+            prev_d = open_step["events"][-1].get("data", {})
+            ft_prev = (prev_d.get("window_title"), prev_d.get("automation_id"),
+                       prev_d.get("class_name"))
+            ft_cur = (data.get("window_title"), data.get("automation_id"),
+                      data.get("class_name"))
+            if ft_cur != ft_prev:
+                return True
+
+        if boundary == "until_next_step":
+            elapsed = (_parse_ts(ev["timestamp"])
+                       - _parse_ts(open_step["events"][0]["timestamp"])
+                       ).total_seconds() * 1000
+            if elapsed > open_step.get("max_span_ms", 1800000):
+                return True
+
+        return False
+
+    for ev in interactions:
+        # Check if open step should close before this event
+        if open_step is not None:
+            result = _should_close(ev)
+            if open_step is None:
+                # end_when consumed the event and closed the step
+                continue
+            if result:
+                close_open()
+
+        # For until_next_step: absorb unmatched interactions
+        if open_step is not None and open_step["boundary"] == "until_next_step":
+            # Check if a DIFFERENT step's trigger fires
+            matched_step_id = None
+            end_when = None
+            for sid in order:
+                for rule in cstep_defs[sid].get("match", []):
+                    if _interaction_matches(rule, ev):
+                        matched_step_id = sid
+                        end_when = rule.get("end_when")
+                        break
+                if matched_step_id:
+                    break
+            if matched_step_id and matched_step_id != open_step["canonical_step_id"]:
+                close_open()
+                cdef = cstep_defs[matched_step_id]
+                open_step = {
+                    "step_id": str(uuid.uuid4()),
+                    "canonical_step_id": matched_step_id,
+                    "events": [ev],
+                    "end_when_rule": end_when,
+                    "boundary": cdef.get("boundary", "group_contiguous"),
+                    "open_case": _event_case(ev),
+                    "open_app": _short_app(ev.get("data", {})),
+                    "pause_ms": cdef.get("pause_ms", 5000),
+                    "max_span_ms": cdef.get("max_span_ms", 1800000),
+                }
+            else:
+                # Same step re-trigger or unmatched — absorb
+                open_step["events"].append(ev)
             continue
 
         # Find canonical step
@@ -121,11 +251,17 @@ def match_canonical(
             open_step["events"].append(ev)
         else:
             close_open()
+            cdef = cstep_defs[matched_step_id]
             open_step = {
                 "step_id": str(uuid.uuid4()),
                 "canonical_step_id": matched_step_id,
                 "events": [ev],
                 "end_when_rule": end_when,
+                "boundary": cdef.get("boundary", "group_contiguous"),
+                "open_case": _event_case(ev),
+                "open_app": _short_app(ev.get("data", {})),
+                "pause_ms": cdef.get("pause_ms", 5000),
+                "max_span_ms": cdef.get("max_span_ms", 1800000),
             }
     close_open()
 

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from coalesce import coalesce_typing_bursts
 from step_suggest import (
     auto_suggest_steps, drop_overlapping_auto_steps, steps_overlap_seconds,
 )
@@ -51,15 +52,16 @@ def test_splits_on_idle_gap():
     events = [
         _make_inter(base),
         _make_inter(base + timedelta(milliseconds=200)),
-        # 5s idle gap (> step_split_idle_ms=3000)
-        _make_inter(base + timedelta(seconds=10)),
-        _make_inter(base + timedelta(seconds=10, milliseconds=200)),
+        # 15s idle gap (> step_split_idle_ms=10000)
+        _make_inter(base + timedelta(seconds=15)),
+        _make_inter(base + timedelta(seconds=15, milliseconds=200)),
     ]
     steps = auto_suggest_steps(events, session_id="s1")
     assert len(steps) == 2
 
 
-def test_splits_on_window_change():
+def test_multiple_apps_within_threshold_stay_one_step():
+    """v0.13: app/process changes no longer split steps."""
     base = datetime(2026, 5, 14, 9, 0, 0)
     events = [
         _make_inter(base, window="Window A"),
@@ -68,7 +70,7 @@ def test_splits_on_window_change():
         _make_inter(base + timedelta(milliseconds=600), window="Window B"),
     ]
     steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 2
+    assert len(steps) == 1
 
 
 def test_drops_singletons_below_min_threshold():
@@ -204,15 +206,15 @@ def _make_value_changed(ts, value, *, automation_id="", name="",
 
 def test_typing_burst_on_identityless_control_coalesces_to_one_step():
     """A keystroke-by-keystroke value_changed flood into one Chrome field
-    collapses to a single step -- not the pre-fix explosion of
-    12-interaction fragments."""
+    collapses to a single step via coalesce_typing_bursts + auto_suggest."""
     base = datetime(2026, 5, 14, 9, 0, 0)
     text = "CE removed paper jam from receipt printer"
     events = [
         _make_value_changed(base + timedelta(milliseconds=i * 200), text[:i + 1])
         for i in range(len(text))
     ]
-    steps = auto_suggest_steps(events, session_id="s1")
+    coalesced = coalesce_typing_bursts(events)
+    steps = auto_suggest_steps(coalesced, session_id="s1")
     assert len(steps) == 1
     assert len(steps[0]["evidence"]["interaction_event_ids"]) == 1
     assert "Enter" in steps[0]["name"]
@@ -226,7 +228,8 @@ def test_typing_burst_keeps_the_final_value():
         _make_value_changed(base + timedelta(milliseconds=200), "CE"),
         _make_value_changed(base + timedelta(milliseconds=400), "CE done"),
     ]
-    steps = auto_suggest_steps(events, session_id="s1")
+    coalesced = coalesce_typing_bursts(events)
+    steps = auto_suggest_steps(coalesced, session_id="s1")
     assert len(steps) == 1
     assert "CE done" in steps[0]["name"]
 
@@ -243,7 +246,8 @@ def test_two_identityless_fields_split_by_focus_stay_separate():
         _make_value_changed(base + timedelta(milliseconds=600), "second"),
         _make_value_changed(base + timedelta(milliseconds=800), "second field"),
     ]
-    steps = auto_suggest_steps(events, session_id="s1")
+    coalesced = coalesce_typing_bursts(events)
+    steps = auto_suggest_steps(coalesced, session_id="s1")
     assert len(steps) == 1
     # two coalesced typing events + the focus event = 3 interactions
     assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
@@ -263,8 +267,52 @@ def test_repeated_identical_tab_selection_collapses():
     for ev in events:
         ev["data"]["control_type"] = "TabItem"
         ev["data"]["selected_value"] = "TAMBA -  "
-    steps = auto_suggest_steps(events, session_id="s1")
+    coalesced = coalesce_typing_bursts(events)
+    steps = auto_suggest_steps(coalesced, session_id="s1")
     assert steps == []
+
+
+def test_completion_action_splits_step():
+    """An invoked Button with a completion word in its name closes the step."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_inter(base, kind="invoked", name="Open form"),
+        _make_inter(base + timedelta(seconds=1), kind="invoked", name="Fill field"),
+        _make_inter(base + timedelta(seconds=2), kind="invoked", name="Search"),
+        _make_inter(base + timedelta(seconds=3), kind="invoked", name="View result"),
+        _make_inter(base + timedelta(seconds=4), kind="invoked", name="Copy data"),
+    ]
+    for ev in events:
+        ev["data"]["control_type"] = "Button"
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 2
+    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
+    assert len(steps[1]["evidence"]["interaction_event_ids"]) == 2
+
+
+def test_three_apps_within_5s_one_step():
+    """v0.13 §8.1: 3 apps within 5s -> 1 step (no app split)."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_inter(base, window="App A", proc="a.exe"),
+        _make_inter(base + timedelta(seconds=2), window="App B", proc="b.exe"),
+        _make_inter(base + timedelta(seconds=4), window="App C", proc="c.exe"),
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+
+
+def test_15s_gap_splits_into_two_steps():
+    """v0.13 §8.1: 15s gap -> 2 steps."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_inter(base),
+        _make_inter(base + timedelta(milliseconds=200)),
+        _make_inter(base + timedelta(seconds=15)),
+        _make_inter(base + timedelta(seconds=15, milliseconds=200)),
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 2
 
 
 def test_step_name_does_not_echo_app_prefix():
@@ -284,9 +332,8 @@ def test_step_name_does_not_echo_app_prefix():
 
 
 def test_volatile_window_title_suffix_does_not_split_steps():
-    """A window-title change that is only a volatile suffix (a memory
-    counter, the browser-name tail) must not start a new step -- the
-    segmenter keys on the stable app prefix, not the raw title."""
+    """v0.13: app/process changes no longer split -- volatile title
+    suffixes are also safe since neither key splits on them now."""
     base = datetime(2026, 5, 14, 9, 0, 0)
     titles = [
         "ES CALL MANAGEMENT - Memory usage - 95.2 MB - Work - Microsoft Edge",
