@@ -275,15 +275,16 @@
   }
 
   /* A readable one-line description of a single interaction event --
-     'Typed "X" into Serial Number', 'Clicked Search'. Drives the step
-     detail's interaction list; also exported for unit tests. */
+     'Typed "X" into Serial Number', 'Clicked Search', 'Turned Wi-Fi
+     on'. Covers every recorder event kind; an unrecognised future kind
+     degrades to a humanized fallback. Exported for unit tests. */
   function describeInteraction(ev) {
     const d = (ev && ev.data) || {};
     const kind = d.kind || "";
     const name = String(d.meaningful_name || d.name || "").trim();
     const ctl = d.control_type || "";
-    if (kind === "value_changed" || kind === "text_changed") {
-      const field = name || String(d.automation_id || "").trim() || "a field";
+    const field = name || String(d.automation_id || "").trim() || "a control";
+    if (kind === "value_changed") {
       let value = String(d.value || "").trim();
       if (value.length > 300) value = value.slice(0, 299) + "…";
       const n = d._coalesced_count || 0;
@@ -292,6 +293,7 @@
         ? `Typed "${value}" into ${field}${keys}`
         : `Cleared ${field}${keys}`;
     }
+    if (kind === "text_changed") return `Edited ${field}`;
     if (kind === "invoked") {
       if (!name) return `Clicked a ${ctl || "control"}`;
       if (ctl === "MenuItem") return `Opened ${name}`;
@@ -304,9 +306,16 @@
       if (sel) return name ? `Selected "${sel}" in ${name}` : `Selected "${sel}"`;
       return name ? `Changed selection in ${name}` : "Changed a selection";
     }
+    if (kind === "toggle_changed") {
+      const state = String(d.toggle_state || "").trim().toLowerCase();
+      if (state === "on") return `Turned ${field} on`;
+      if (state === "off") return `Turned ${field} off`;
+      if (state === "indeterminate") return `Set ${field} to indeterminate`;
+      return `Toggled ${field}`;
+    }
     if (kind === "focus_changed") return name ? `Focused ${name}` : "Focus moved";
     const label = name || d.automation_id || ctl || d.window_title || "interaction";
-    return `${kind || "Event"}: ${label}`;
+    return `${kind ? kind.replace(/_/g, " ") : "Event"}: ${label}`;
   }
 
   /* The collapsible list of a step's constituent interactions. `events`

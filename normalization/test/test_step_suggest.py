@@ -392,3 +392,52 @@ def test_step_description_summarizes_clicks():
     desc = steps[0]["description"]
     assert "Clicked Open form" in desc
     assert "Add note" in desc
+
+
+def test_step_description_summarizes_a_toggle():
+    """A toggle_changed interaction reads as 'turned X on/off'."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    toggle = _make_inter(base, kind="toggle_changed", name="Remember me")
+    toggle["data"]["toggle_state"] = "on"
+    click = _make_inter(base + timedelta(seconds=1), kind="invoked", name="Sign in")
+    steps = auto_suggest_steps([toggle, click], session_id="s1")
+    assert len(steps) == 1
+    assert "Turned Remember me on" in steps[0]["description"]
+
+
+def test_step_description_handles_text_changed_and_unknown_kinds():
+    """text_changed reads as 'edited X'; an unrecognised future kind
+    degrades to a generic phrase instead of being dropped."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    txt = _make_inter(base, kind="text_changed", name="Comments")
+    unknown = _make_inter(base + timedelta(seconds=1),
+                          kind="range_value_changed", name="Volume")
+    steps = auto_suggest_steps([txt, unknown], session_id="s1")
+    assert len(steps) == 1
+    desc = steps[0]["description"]
+    assert "Edited Comments" in desc
+    assert "range value changed" in desc
+
+
+def test_step_name_includes_the_value_acted_on():
+    """A step that types a value then clicks a button names both, so it
+    is recognisable from the list without opening its interactions."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    typed = _make_value_changed(base, "SN12345", name="Serial")
+    btn = _make_inter(base + timedelta(seconds=1), kind="invoked", name="Search")
+    steps = auto_suggest_steps([typed, btn], session_id="s1")
+    assert len(steps) == 1
+    name = steps[0]["name"]
+    assert "Search" in name
+    assert "SN12345" in name
+
+
+def test_step_name_for_one_field_shows_value_and_field():
+    """Typing into a single named field names the value and the field."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    ev = _make_value_changed(base, "SN12345", name="Serial Number")
+    steps = auto_suggest_steps([ev], session_id="s1")
+    assert len(steps) == 1
+    name = steps[0]["name"]
+    assert "SN12345" in name
+    assert "Serial Number" in name

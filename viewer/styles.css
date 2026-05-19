@@ -766,7 +766,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 /* ===== Full-width Steps / Phases layouts (tight, no waste) ===== */
 .session-layout-stepsphases {
   display: flex; flex-direction: column; gap: 8px;
-  flex: 1;
+  flex: 1; min-height: 0;
 }
 
 /* ===== Analysis view (Cluster N / ADR-0008) ===== */
@@ -1088,6 +1088,15 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background: var(--bg-2); border: 1px solid var(--rule);
   border-radius: var(--radius); padding: 10px 12px; overflow: auto;
   box-shadow: var(--shadow); min-height: 0;
+}
+/* Steps view: the list pane keeps its title + filter pinned and scrolls
+   only the step rows, so scrolling down to step 300 never pushes the
+   selected-step editor (the next grid column) out of view. */
+#session-layout-steps .editor-list-pane {
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#session-layout-steps #step-list {
+  flex: 1; min-height: 0; overflow-y: auto;
 }
 /* Stat tiles at the top of the selected-step detail pane. */
 .step-stat-tiles { display: flex; gap: 6px; margin-bottom: 12px; }

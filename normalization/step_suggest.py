@@ -169,6 +169,19 @@ def auto_suggest_steps(
     return steps
 
 
+def _primary_value(interactions: list[dict[str, Any]]) -> str:
+    """The most identifying value a step typed -- the field content that
+    says *which item* the step acted on. Newest-first, so the final
+    (complete) value wins. Empty when the step typed nothing."""
+    for ev in reversed(interactions):
+        d = ev["data"]
+        if d.get("kind") in ("value_changed", "text_changed"):
+            v = (d.get("value") or "").strip()
+            if v:
+                return v[:39] + "…" if len(v) > 40 else v
+    return ""
+
+
 def _default_step_name(interactions: list[dict[str, Any]]) -> str:
     """Derive a useful name from the actual interactions captured.
 
@@ -195,12 +208,16 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
         if d.get("kind") == "invoked" and d.get("meaningful_name"):
             return _trim(f"{app}: {d['meaningful_name']}")
 
-    # 1. Last invoked button's raw name.
+    # 1. Last invoked button -- its verb, plus the value the step acted
+    #    on if there is one ("Search — SN12345" beats a bare "Search").
     for ev in reversed(interactions):
         d = ev["data"]
         if d.get("kind") == "invoked" and d.get("name"):
             ctl = d.get("control_type") or ""
             verb = _verb_for_control(ctl, d.get("name"))
+            obj = _primary_value(interactions)
+            if obj and obj.lower() not in verb.lower():
+                return _trim(f"{app}: {verb} — {obj}")
             return _trim(f"{app}: {verb}")
 
     kinds = [i["data"].get("kind") for i in interactions]
@@ -222,6 +239,8 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
         if named_fields:
             uniq = list(dict.fromkeys(named_fields))  # preserve order, dedup
             if len(uniq) == 1:
+                if last_val:
+                    return _trim(f"{app}: Enter {last_val} in {uniq[0]}")
                 return _trim(f"{app}: Fill {uniq[0]}")
             if len(uniq) <= 3:
                 return _trim(f"{app}: Fill " + ", ".join(uniq))
@@ -242,7 +261,11 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
             if len(vals) <= 3: return _trim(f"{app}: Select " + ", ".join(vals))
             return _trim(f"{app}: Select {len(vals)} options")
 
-    # Mixed cluster: lead with the most informative non-focus interaction.
+    # Mixed cluster: no completion button -- lead with the value typed,
+    # else the first clearly-named control.
+    obj = _primary_value(interactions)
+    if obj:
+        return _trim(f"{app}: Enter {obj}")
     for ev in interactions:
         d = ev["data"]
         if d.get("kind") in ("focus_changed", "text_changed"):
@@ -253,12 +276,9 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
         if (d.get("kind") == "selection_changed"
                 and d.get("control_type") in ("TabItem", "Tab")):
             continue
-        name = (d.get("name") or "").strip()
-        val = (d.get("value") or "").strip()
+        name = (d.get("meaningful_name") or d.get("name") or "").strip()
         if name and name.lower() != app.strip().lower():
             return _trim(f"{app}: {name}")
-        if val:
-            return _trim(f"{app}: {val[:40]}")
         break
 
     return _trim(f"{app}: {len(interactions)} interactions")
@@ -266,14 +286,17 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
 
 def _describe_interaction(data: dict[str, Any]) -> str | None:
     """A short human phrase for one interaction ('entered "X" into Y',
-    'clicked Search'), or None for interactions not worth narrating in a
-    step summary (focus changes, detail-less events)."""
+    'clicked Search', 'turned Remember me on'), or None for interactions
+    not worth narrating in a step summary (focus changes). Covers every
+    recorder event kind; an unrecognised future kind degrades to a
+    generic phrase rather than being dropped."""
     kind = data.get("kind")
     name = (data.get("meaningful_name") or data.get("name") or "").strip()
     ctl = data.get("control_type") or ""
+    target = name or (data.get("automation_id") or "").strip()
+    field = target or "a control"
 
-    if kind in ("value_changed", "text_changed"):
-        field = name or (data.get("automation_id") or "").strip() or "a field"
+    if kind == "value_changed":
         value = (data.get("value") or "").strip()
         if len(value) > 160:
             value = value[:159] + "…"
@@ -282,6 +305,9 @@ def _describe_interaction(data: dict[str, Any]) -> str | None:
         if value:
             return f'entered "{value}" into {field}{keys}'
         return f"cleared {field}{keys}"
+
+    if kind == "text_changed":
+        return f"edited {field}"
 
     if kind == "invoked":
         if not name:
@@ -300,6 +326,21 @@ def _describe_interaction(data: dict[str, Any]) -> str | None:
             return f'selected "{sel}" in {name}' if name else f'selected "{sel}"'
         return None
 
+    if kind == "toggle_changed":
+        state = (data.get("toggle_state") or "").strip().lower()
+        if state == "on":
+            return f"turned {field} on"
+        if state == "off":
+            return f"turned {field} off"
+        if state == "indeterminate":
+            return f"set {field} to indeterminate"
+        return f"toggled {field}"
+
+    if kind == "focus_changed":
+        return None  # navigation noise -- never narrated in the summary
+
+    if kind:
+        return f"{kind.replace('_', ' ')} on {target}" if target else None
     return None
 
 

@@ -95,6 +95,42 @@ test("describeInteraction: a tab switch reads as Switched to", () => {
   assert.equal(line, "Switched to Details");
 });
 
+test("describeInteraction: a toggle reads as Turned on / Turned off", () => {
+  assert.equal(
+    describeInteraction(inter({
+      kind: "toggle_changed", control_type: "CheckBox",
+      name: "Remember me", toggle_state: "on",
+    })),
+    "Turned Remember me on");
+  assert.equal(
+    describeInteraction(inter({
+      kind: "toggle_changed", name: "Airplane mode", toggle_state: "off",
+    })),
+    "Turned Airplane mode off");
+});
+
+test("describeInteraction: an indeterminate toggle is spelled out", () => {
+  assert.equal(
+    describeInteraction(inter({
+      kind: "toggle_changed", name: "Select all", toggle_state: "indeterminate",
+    })),
+    "Set Select all to indeterminate");
+});
+
+test("describeInteraction: a text_changed notification reads as Edited", () => {
+  assert.equal(
+    describeInteraction(inter({ kind: "text_changed", name: "Comments" })),
+    "Edited Comments");
+});
+
+test("describeInteraction: an unknown kind degrades to a humanized fallback", () => {
+  const line = describeInteraction(inter({
+    kind: "range_value_changed", name: "Volume",
+  }));
+  assert.ok(line.includes("range value changed"));
+  assert.ok(line.includes("Volume"));
+});
+
 /* ---- renderInteractionList ----------------------------------------- */
 
 test("renderInteractionList: no interactions yields a plain note", () => {
