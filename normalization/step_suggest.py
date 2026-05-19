@@ -347,8 +347,8 @@ def _describe_interaction(data: dict[str, Any]) -> str | None:
 def _default_step_description(interactions: list[dict[str, Any]]) -> str:
     """A prose summary of what a step did, built from its interactions,
     so an auto-suggested step reads meaningfully without the analyst
-    drilling into the raw events. The name stays terse; this carries the
-    detail. Keystroke runs coalesced upstream report their count."""
+    drilling into the raw events. Each interaction is framed as its own
+    sentence. The name stays terse; this carries the detail."""
     phrases: list[str] = []
     for ev in interactions:
         phrase = _describe_interaction(ev.get("data") or {})
@@ -359,11 +359,11 @@ def _default_step_description(interactions: list[dict[str, Any]]) -> str:
         return f"{n} interaction{'' if n == 1 else 's'} with no recorded detail."
     cap = 6
     shown = phrases[:cap]
+    sentences = [p[0].upper() + p[1:] + "." for p in shown]
     extra = len(phrases) - len(shown)
-    sentence = ", ".join(shown)
     if extra > 0:
-        sentence += f", and {extra} more action{'' if extra == 1 else 's'}"
-    return sentence[0].upper() + sentence[1:] + "."
+        sentences.append(f"Plus {extra} more action{'' if extra == 1 else 's'}.")
+    return " ".join(sentences)
 
 
 def _suggestion_reason(interactions: list[dict[str, Any]], threshold_ms: int) -> str:

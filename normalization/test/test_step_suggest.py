@@ -390,8 +390,7 @@ def test_step_description_summarizes_clicks():
     steps = auto_suggest_steps(events, session_id="s1")
     assert len(steps) == 1
     desc = steps[0]["description"]
-    assert "Clicked Open form" in desc
-    assert "Add note" in desc
+    assert desc == "Clicked Open form. Clicked Add note."
 
 
 def test_step_description_summarizes_a_toggle():
@@ -415,8 +414,8 @@ def test_step_description_handles_text_changed_and_unknown_kinds():
     steps = auto_suggest_steps([txt, unknown], session_id="s1")
     assert len(steps) == 1
     desc = steps[0]["description"]
-    assert "Edited Comments" in desc
-    assert "range value changed" in desc
+    assert "Edited Comments." in desc
+    assert "Range value changed on Volume." in desc
 
 
 def test_step_name_includes_the_value_acted_on():
@@ -441,3 +440,17 @@ def test_step_name_for_one_field_shows_value_and_field():
     name = steps[0]["name"]
     assert "SN12345" in name
     assert "Serial Number" in name
+
+
+def test_step_description_caps_long_steps_with_a_tail():
+    """A step with more actions than the cap ends with a 'Plus N more'
+    sentence rather than an unbounded run-on."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_inter(base + timedelta(seconds=i), kind="invoked", name=f"Btn{i}")
+        for i in range(10)
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+    desc = steps[0]["description"]
+    assert desc.endswith("Plus 4 more actions.")
