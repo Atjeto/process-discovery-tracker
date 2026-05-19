@@ -6,6 +6,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-05-19
+
+### Fixed
+
+- **The Steps-view step list had dead space below the rows and was too
+  short on a laptop viewport.** The v0.14.2 cap was viewport-height
+  based, so on a ~800-px-tall laptop the list got capped to ~200 px
+  (~7 rows) while the pane stretched taller to match the selected-step
+  editor. The list pane is now a flex column and the step list fills
+  the remaining pane height (driven by the editor's content via the
+  grid row), with a 350-px floor so the list is always tall enough to
+  navigate.
+
 ## [0.14.2] - 2026-05-19
 
 ### Fixed
