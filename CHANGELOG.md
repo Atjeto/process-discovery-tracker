@@ -6,6 +6,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-05-19
+
+### Added
+
+- **A step now shows what it interacted with, not just how many
+  interactions.** The step detail panel showed a bare count, so
+  understanding a step meant cross-referencing the raw event stream by
+  hand. It now lists each interaction as a readable line — *Typed
+  "SN12345" into Serial Number*, *Clicked Search*, *Selected "Resolved"
+  in Status* — collapsible, with the full typed values shown.
+
+- **Auto-detected steps are now self-describing.** An auto-suggested
+  step had an empty description. It now carries a generated prose
+  summary of what it did — *"Entered 'SN12345' into Serial Number (20
+  keystrokes), clicked Search."* — with full field values and the
+  keystroke count behind a coalesced typing burst, so a step reads
+  meaningfully in the list and in exports without anyone drilling into
+  the events. An analyst's own edits to a step survive re-analysis as
+  before.
+
 ## [0.13.0] - 2026-05-19
 
 ### Added
