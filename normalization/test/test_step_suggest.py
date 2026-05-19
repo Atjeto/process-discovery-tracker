@@ -281,3 +281,23 @@ def test_step_name_does_not_echo_app_prefix():
     assert len(steps) == 1
     label = steps[0]["name"].split(": ", 1)[-1]
     assert "TAMBA" not in label
+
+
+def test_volatile_window_title_suffix_does_not_split_steps():
+    """A window-title change that is only a volatile suffix (a memory
+    counter, the browser-name tail) must not start a new step -- the
+    segmenter keys on the stable app prefix, not the raw title."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    titles = [
+        "ES CALL MANAGEMENT - Memory usage - 95.2 MB - Work - Microsoft Edge",
+        "ES CALL MANAGEMENT - Work - Microsoft Edge",
+        "ES CALL MANAGEMENT - Memory usage - 96.4 MB - Work - Microsoft Edge",
+    ]
+    events = [
+        _make_inter(base + timedelta(milliseconds=i * 300), kind="invoked",
+                    window=t, proc="msedge.exe", name="Open")
+        for i, t in enumerate(titles)
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 1
+    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3

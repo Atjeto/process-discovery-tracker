@@ -61,6 +61,7 @@ function renderPhasesLevel() {
   PdtPhases.renderPhaseDetail($("#phase-detail"), selected, steps, {
     onSave: savePhase,
     onDelete: deletePhase,
+    onSplit: splitPhase,
     onRemoveStep: removeStepFromPhase,
     onReorderSteps: reorderStepsInPhase,
   });
@@ -141,6 +142,42 @@ async function reorderStepsInPhase(phaseId, dragStepId, targetStepId, before) {
   await persistAnnotations(anno, "reorder steps in phase");
 }
 
+/* Split a phase at a step: that step and every step after it (in the
+   phase's order) move into a new phase; the steps before it stay. */
+async function splitPhase(phaseId, stepId) {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const phase = anno.phases.find(p => p.phase_id === phaseId);
+  if (!phase || !Array.isArray(phase.step_ids)) return;
+  const idx = phase.step_ids.indexOf(stepId);
+  if (idx <= 0) {
+    toast("Cannot split at the first step — pick a later one.", "");
+    return;
+  }
+  const moved = phase.step_ids.slice(idx);
+  phase.step_ids = phase.step_ids.slice(0, idx);
+  phase.state = phase.state === "manually_authored" ? "manually_authored" : "edited";
+  const newPhase = {
+    phase_id: cryptoRandomId(),
+    session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
+    case_id: null,
+    name: (phase.name || "Phase") + " (part 2)",
+    description: "",
+    step_ids: moved,
+    state: "manually_authored",
+    canonical_phase_id: null,
+  };
+  for (const sid of moved) {
+    const s = anno.steps.find(x => x.step_id === sid);
+    if (s) s.phase_id = newPhase.phase_id;
+  }
+  const pidx = anno.phases.findIndex(p => p.phase_id === phaseId);
+  anno.phases.splice(pidx + 1, 0, newPhase);
+  State.setSelectedPhaseId(newPhase.phase_id);
+  await persistAnnotations(anno, "split phase");
+  toast("Phase split", "success");
+}
+
 async function addManualPhase() {
   if (!State.getSession()) return;
   const name = await promptModal({ title: "Add phase", message: "Name this phase", placeholder: "e.g., Validate customer", okLabel: "Add phase" });
@@ -192,12 +229,10 @@ async function groupIntoPhase() {
   toast("Steps grouped into phase", "success");
 }
 
-/* AM.2: heuristic phase-grouping suggestions. Walks the step list and
-   produces candidate groupings using two rules:
-     1. Consecutive steps from the same app.
-     2. Consecutive steps with no gap > GAP_MS between them.
-   The analyst sees a preview and accepts/rejects the whole set.
-   Steps already assigned to a phase are skipped. */
+/* AM.2: heuristic phase-grouping suggestions. A phase is a run of
+   consecutive steps with no idle pause longer than IDLE_GAP_MS between
+   them -- one continuous block of work. The analyst sees a preview and
+   accepts/rejects the whole set; steps already in a phase are skipped. */
 async function suggestPhaseGroupings() {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
@@ -211,81 +246,65 @@ async function suggestPhaseGroupings() {
     const bt = b.time_range && b.time_range.start ? new Date(b.time_range.start).getTime() : 0;
     return at - bt;
   });
-  const GAP_MS = 30 * 1000;
+
+  // An idle pause longer than this starts a new phase. The old rule
+  // also chained any two steps < 30 s apart regardless of pauses, which
+  // on a dense multi-app session merged almost everything into a
+  // handful of giant blobs.
+  const IDLE_GAP_MS = 120 * 1000;
+
+  // A step's app is the prefix of its name ("TAMBA: Search" -> "TAMBA").
+  const appOf = (s) => {
+    const nm = String(s.name || "");
+    const i = nm.indexOf(":");
+    return (i > 0 ? nm.slice(0, i) : nm).trim();
+  };
+
   const groups = [];
   let cur = [steps[0]];
-  const eventById = new Map();
-  for (const ev of (State.getSession().events || [])) {
-    if (ev.event_id) eventById.set(ev.event_id, ev);
-  }
-  const stepAppCache = new Map();
-  function appOf(s) {
-    if (stepAppCache.has(s.step_id)) return stepAppCache.get(s.step_id);
-    const counts = new Map();
-    const evIds = (s.evidence && s.evidence.interaction_event_ids) || [];
-    for (const id of evIds) {
-      const ev = eventById.get(id);
-      const app = ev && ev.data && ev.data.process_name;
-      if (app) counts.set(app, (counts.get(app) || 0) + 1);
-    }
-    if (!counts.size && s.time_range) {
-      // Fallback: scan activity events overlapping the step.
-      const start = new Date(s.time_range.start).getTime();
-      const end = new Date(s.time_range.end).getTime();
-      for (const ev of (State.getSession().events || [])) {
-        if (ev.type !== "activity") continue;
-        const t = new Date(ev.timestamp).getTime();
-        if (t < start || t > end) continue;
-        const app = ev.data && ev.data.app;
-        if (app) counts.set(app, (counts.get(app) || 0) + 1);
-      }
-    }
-    let best = "", bestN = 0;
-    for (const [k, n] of counts) if (n > bestN) { best = k; bestN = n; }
-    const v = best.toLowerCase();
-    stepAppCache.set(s.step_id, v);
-    return v;
-  }
   for (let i = 1; i < steps.length; i++) {
-    const prev = steps[i - 1], s = steps[i];
-    const sameApp = appOf(prev) && appOf(prev) === appOf(s);
-    const prevEnd = prev.time_range && prev.time_range.end ? new Date(prev.time_range.end).getTime() : 0;
-    const curStart = s.time_range && s.time_range.start ? new Date(s.time_range.start).getTime() : 0;
-    const closeInTime = prevEnd && curStart && (curStart - prevEnd) <= GAP_MS;
-    if (sameApp || closeInTime) cur.push(s);
-    else { if (cur.length >= 2) groups.push(cur); cur = [s]; }
+    const prevEnd = steps[i - 1].time_range && steps[i - 1].time_range.end
+      ? new Date(steps[i - 1].time_range.end).getTime() : 0;
+    const curStart = steps[i].time_range && steps[i].time_range.start
+      ? new Date(steps[i].time_range.start).getTime() : 0;
+    const gap = (prevEnd && curStart) ? curStart - prevEnd : 0;
+    if (gap <= IDLE_GAP_MS) cur.push(steps[i]);
+    else { if (cur.length >= 2) groups.push(cur); cur = [steps[i]]; }
   }
   if (cur.length >= 2) groups.push(cur);
 
   if (!groups.length) {
-    toast("No grouping suggestions found — steps are too varied or sparse.", "");
+    toast("No grouping suggestions found — no continuous-work blocks of 2+ steps.", "");
     return;
   }
-  // Build a preview detail string for the confirm modal.
-  const lines = groups.slice(0, 8).map((g, i) => {
-    const apps = [...new Set(g.map(appOf).filter(Boolean))].join(", ") || "mixed apps";
-    return `  ${i + 1}. ${g.length} steps (${apps})`;
-  });
+
+  // Name a phase after its dominant app, else a sequence number.
+  const nameOf = (g, idx) => {
+    const counts = new Map();
+    for (const s of g) { const a = appOf(s); if (a) counts.set(a, (counts.get(a) || 0) + 1); }
+    let best = "", bestN = 0;
+    for (const [k, n] of counts) if (n > bestN) { best = k; bestN = n; }
+    return best ? best + " work" : "Work block " + (idx + 1);
+  };
+
+  const lines = groups.slice(0, 8).map((g, i) => `  ${i + 1}. ${nameOf(g, i)} — ${g.length} steps`);
   const moreNote = groups.length > 8 ? `\n  …and ${groups.length - 8} more` : "";
   const ok = await confirmModal({
     title: "Apply " + groups.length + " phase grouping" + (groups.length === 1 ? "" : "s") + "?",
     message: `Found ${groups.length} candidate phase${groups.length === 1 ? "" : "s"} from ${steps.length} ungrouped steps.`,
-    detail: "Each group bundles consecutive steps that either run in the same app or have no idle gap > 30 seconds between them. Phases are named after the dominant app; rename anytime.\n\n" +
+    detail: "Each phase is a run of steps with no idle pause longer than 2 minutes between them — one continuous block of work. Rename, split, or delete them afterwards.\n\n" +
             lines.join("\n") + moreNote,
     okLabel: "Apply all",
   });
   if (!ok) return;
-  for (const g of groups) {
-    const apps = [...new Set(g.map(appOf).filter(Boolean))];
-    const name = apps.length === 1
-      ? apps[0].replace(/\.exe$/i, "").replace(/^./, (c) => c.toUpperCase()) + " work"
-      : "Mixed-app phase";
+
+  groups.forEach((g, idx) => {
     const phase = {
       phase_id: cryptoRandomId(),
       session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
       case_id: null,
-      name,
-      description: "Auto-suggested by phase grouping heuristics.",
+      name: nameOf(g, idx),
+      description: "Auto-suggested by phase grouping (continuous-work blocks).",
       step_ids: g.map((s) => s.step_id),
       state: "auto_suggested",
       canonical_phase_id: null,
@@ -295,7 +314,7 @@ async function suggestPhaseGroupings() {
       const original = anno.steps.find((x) => x.step_id === s.step_id);
       if (original) original.phase_id = phase.phase_id;
     }
-  }
+  });
   await persistAnnotations(anno, "auto-group steps into phases");
   toast("Applied " + groups.length + " phase grouping" + (groups.length === 1 ? "" : "s"), "success");
 }

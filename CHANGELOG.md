@@ -6,6 +6,38 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-05-19
+
+### Fixed
+
+- **A browser-heavy recording still fragmented into hundreds of
+  auto-detected steps.** Step suggestion started a new step on every
+  change of the raw window title, and web-app titles carry volatile
+  text (a live memory counter, the "- Microsoft Edge" tail), so the
+  *same* application read as a fresh step over and over. Segmentation
+  now keys on the stable app prefix — the title up to its first
+  separator, the same label it already uses for naming — so a window
+  whose title only churns cosmetically no longer splits the step.
+
+- **Auto-suggested phases were unusable.** "Suggest groupings" bundled
+  any steps less than 30 s apart and treated every browser tab as one
+  app, so a dense session collapsed into two or three enormous
+  "Mixed-app phase" blobs. It now groups steps into continuous-work
+  blocks — runs with no idle pause longer than two minutes between
+  them — and names each phase after its dominant app.
+
+- **A phase could not be deleted or split.** The phase detail pane had
+  no height limit, so a phase with many steps pushed its Save / Delete
+  buttons off-screen; the step list now scrolls within a fixed height.
+  "Split" was wired to nothing — each step row in a phase now carries a
+  split control that moves that step and everything after it into a new
+  phase.
+
+- **"Jump" on a raw-events row did nothing without a video.** The jump
+  action, and clicking an event row, only seeked a video. With no
+  recording linked it now moves the Flow timeline playhead to the event
+  and scrolls it into view.
+
 ## [0.12.1] - 2026-05-19
 
 ### Fixed

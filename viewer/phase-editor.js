@@ -51,23 +51,29 @@
       <label>Name <input type="text" id="phase-name" value="${escapeAttr(phase.name)}"></label>
       <label>Description <textarea id="phase-desc">${escapeHtml(phase.description || "")}</textarea></label>
       <div class="phase-step-list" id="phase-step-list">
-        ${containedSteps.map(s => `
+        ${containedSteps.map((s, si) => `
           <div class="phase-step-row" draggable="true" data-step-id="${escapeAttr(s.step_id)}">
             <span class="grip">⋮⋮</span>
             <span class="step-name">${escapeHtml(s.name)}</span>
+            ${si > 0 ? `<button class="split-step" data-step-id="${escapeAttr(s.step_id)}" title="Split the phase here — this step starts a new phase">✂</button>` : ""}
             <button class="remove-step" data-step-id="${escapeAttr(s.step_id)}" title="Remove from phase">×</button>
           </div>
         `).join("")}
       </div>
       <div class="actions">
         <button id="btn-phase-save" class="primary">Save</button>
-        <button id="btn-phase-split">Split here</button>
         <button id="btn-phase-delete" class="danger">Delete</button>
       </div>`;
     host.querySelectorAll(".remove-step").forEach(btn => {
       btn.addEventListener("click", () => {
         const sid = btn.dataset.stepId;
         if (callbacks.onRemoveStep) callbacks.onRemoveStep(phase.phase_id, sid);
+      });
+    });
+    host.querySelectorAll(".split-step").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const sid = btn.dataset.stepId;
+        if (callbacks.onSplit) callbacks.onSplit(phase.phase_id, sid);
       });
     });
 
@@ -143,8 +149,6 @@
     });
     document.getElementById("btn-phase-delete").addEventListener("click", () =>
       callbacks.onDelete && callbacks.onDelete(phase.phase_id));
-    document.getElementById("btn-phase-split").addEventListener("click", () =>
-      callbacks.onSplit && callbacks.onSplit(phase.phase_id));
   }
 
   /* Build the Phases mini-timeline. Lane-packing, ticks, axis, and band

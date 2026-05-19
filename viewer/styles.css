@@ -1262,6 +1262,13 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   margin-left: auto; padding: 2px 6px; background: transparent;
   border: 0; color: var(--bad); cursor: pointer;
 }
+.phase-step-row .split-step {
+  margin-left: auto; padding: 2px 6px; background: transparent;
+  border: 0; color: var(--accent); cursor: pointer;
+}
+/* Cap the phase's step list so the Save / Delete actions below it stay
+   on screen even when a phase contains hundreds of steps. */
+.phase-step-list { max-height: 320px; overflow-y: auto; }
 
 /* ===== Anno-tab badge ===== */
 .badge {

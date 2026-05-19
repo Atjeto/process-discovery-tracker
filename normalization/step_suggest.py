@@ -188,7 +188,7 @@ def auto_suggest_steps(
         case_events = _coalesce_interactions(case_events, step_split_idle_ms)
         candidate: list[dict[str, Any]] = []
         last_ts: datetime | None = None
-        last_window: str | None = None
+        last_app: str | None = None
         last_process: str | None = None
 
         def flush():
@@ -230,20 +230,25 @@ def auto_suggest_steps(
         for ev in case_events:
             data = ev["data"]
             ts = parse_ts(ev["timestamp"])
-            window = data.get("window_title") or ""
+            # Split on the stable app label (the title prefix that
+            # _short_app extracts), not the raw window_title. Volatile
+            # title text -- a memory counter, the "- Microsoft Edge"
+            # tail -- otherwise starts a new step on nearly every event
+            # in a browser-heavy, multi-app session.
+            app_key = _short_app(data)
             proc = data.get("process_name") or ""
             split = False
             if candidate:
                 gap_ms = (ts - last_ts).total_seconds() * 1000
                 if gap_ms > step_split_idle_ms: split = True
-                elif window != last_window: split = True
+                elif app_key != last_app: split = True
                 elif proc != last_process: split = True
                 elif len(candidate) >= step_max_interactions: split = True
             if split:
                 flush()
             candidate.append(ev)
             last_ts = ts
-            last_window = window
+            last_app = app_key
             last_process = proc
         flush()
 

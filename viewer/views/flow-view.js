@@ -2348,11 +2348,44 @@ function seekToTimestamp(ts) {
   if (!State.getSession()) return;
   const video = $("#video");
   const obsStartTs = videoStartTs();
-  if (!obsStartTs || !video.src) return;
-  const offsetS = (new Date(ts).getTime() - new Date(obsStartTs).getTime()) / 1000;
-  if (offsetS < 0) return;
-  video.currentTime = offsetS;
-  video.play().catch(() => {});
+  if (obsStartTs && video && video.src) {
+    const offsetS = (new Date(ts).getTime() - new Date(obsStartTs).getTime()) / 1000;
+    if (offsetS < 0) return;
+    video.currentTime = offsetS;
+    video.play().catch(() => {});
+    return;
+  }
+  // No video recording -- the seek above is dead without one. Move the
+  // Flow timeline playhead to the timestamp and scroll it into view so
+  // a "jump" / row click still does something visible.
+  movePlayheadToTimestamp(ts);
+}
+
+/* Position the timeline playhead at a wall-clock timestamp and scroll
+   the timeline so it is on screen. Gives no-video sessions a working
+   seek -- the playhead is otherwise driven only by video playback. */
+function movePlayheadToTimestamp(ts) {
+  const sess = State.getSession();
+  if (!sess || !sess.events || !sess.events.length) return;
+  const ph = $("#tl-playhead");
+  if (!ph) return;
+  const first = new Date(sess.events[0].timestamp).getTime();
+  const last = new Date(sess.events[sess.events.length - 1].timestamp).getTime();
+  const span = Math.max(1, last - first);
+  const frac = Math.min(1, Math.max(0, (new Date(ts).getTime() - first) / span));
+  ph.style.left = (frac * 100) + "%";
+  ph.style.display = "";
+  const scroll = document.getElementById("timeline-scroll");
+  if (scroll && scroll.scrollWidth > scroll.clientWidth) {
+    scroll.scrollTo({
+      left: Math.max(0, frac * scroll.scrollWidth - scroll.clientWidth / 2),
+      behavior: "smooth",
+    });
+  }
+  if (ph.animate) {
+    ph.animate([{ filter: "brightness(2.6)" }, { filter: "brightness(1)" }],
+               { duration: 650 });
+  }
 }
 
 /* Steps/Phases detail panel -> Flow view. Switches the active level
