@@ -6,6 +6,45 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-05-19
+
+### Added
+
+- **Flow → Steps navigation.** Clicking anywhere on the Flow timeline
+  (a band, a marker, a screenshot, or the new right-click "Jump to
+  step here" item) parks the timestamp; the next time you open the
+  Steps view, the step containing (or closest to, by nearest edge)
+  that timestamp is selected and scrolled into view. The Flow
+  timeline's right-click menu now opens on the background too, not
+  only on case / activity bands.
+
+### Fixed
+
+- **Step times disagreed with the Step timeline axis.** The step
+  detail tiles (Start, End) and the interaction-list times used the
+  raw UTC portion of the ISO timestamp, while the timeline axis above
+  used local time — the step detail showed 08:55:07 next to a 10:55
+  axis label on the same step. All step times now render in local
+  time.
+- **The selected step block on the Step mini-timeline was almost
+  invisible.** Replaced a 1-px muted outline with a 2-px accent
+  outline plus a brightness/saturate boost and a z-index lift so the
+  highlight reads on every block colour.
+- **Screenshot dots on the Flow timeline blinked on hover with no
+  preview.** The hover-thumbnail used an unresolved relative path and
+  could never load; removed the wiring. The dot still scales subtly
+  to acknowledge the hover.
+- **Clicking a screenshot in the gallery only seeked the video.** It
+  now also opens the screenshot full-size, matching the behaviour of
+  the dot icon on the timeline.
+
+### Known issues
+
+- The right-click **Jump to step here** item correctly pre-positions
+  the Steps view (the right step is selected and scrolled when you
+  switch tab), but does not yet auto-switch to Steps — you still have
+  to click the Steps tab after picking the menu item.
+
 ## [0.14.3] - 2026-05-19
 
 ### Fixed
