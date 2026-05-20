@@ -10,9 +10,22 @@
   }
   function escapeAttr(s) { return escapeHtml(s); }
 
+  /* Local "HH:MM:SS" from an ISO timestamp. The mini-timeline axis
+     already uses toLocaleTimeString, so step times must use the same
+     convention -- a raw .slice(11,19) shows the UTC time and silently
+     disagrees with the timeline (e.g. 08:55:07 in the detail tile
+     vs. 10:55 on the timeline on a +2 system). */
+  function localTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (!isFinite(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  }
+
   function formatTimeRange(tr) {
     if (!tr || !tr.start || !tr.end) return "";
-    return `${tr.start.slice(11,19)} - ${tr.end.slice(11,19)}`;
+    return `${localTime(tr.start)} - ${localTime(tr.end)}`;
   }
 
   /* Compact duration for a step's time range -- "42s", "2:17", "1h04". */
@@ -144,8 +157,8 @@
     const flags = step.flags || {};
     const _tr = step.time_range || {};
     const _dur = stepDuration(_tr) || "—";
-    const _start = _tr.start ? escapeHtml(_tr.start.slice(11, 19)) : "—";
-    const _end = _tr.end ? escapeHtml(_tr.end.slice(11, 19)) : "—";
+    const _start = _tr.start ? escapeHtml(localTime(_tr.start)) : "—";
+    const _end = _tr.end ? escapeHtml(localTime(_tr.end)) : "—";
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
     const interListHtml = renderInteractionList(
@@ -325,7 +338,7 @@
   function renderInteractionList(events, total) {
     if (!total) return `<p class="meta">No interactions recorded for this step.</p>`;
     const rows = events.map((ev) => {
-      const t = String(ev.timestamp || "").slice(11, 19);
+      const t = localTime(ev.timestamp);
       return `<li class="step-interaction">` +
         `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
         `<span class="si-time">${escapeHtml(t)}</span></li>`;

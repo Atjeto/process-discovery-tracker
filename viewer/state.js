@@ -108,6 +108,7 @@ const _s = {
   aggregateToDate: "",
   undoStack: [],
   redoStack: [],
+  pendingStepJumpTs: null,
 };
 
 /* ---- change-notification bus ------------------------------------- */
@@ -271,6 +272,19 @@ function getCaseScope() { return _s.currentCaseScope; }
 /** @param {string} v */
 function setCaseScope(v) { _s.currentCaseScope = v; }
 
+/* Cross-view step-jump request: a Flow seek (band click, marker click,
+   right-click "Jump to step here", ...) parks the requested timestamp
+   here; the next Steps view render consumes it once to focus on the
+   step containing that timestamp. */
+/** @param {string} ts */
+function setPendingStepJump(ts) { _s.pendingStepJumpTs = ts; }
+/** @returns {string|null} */
+function consumePendingStepJump() {
+  const ts = _s.pendingStepJumpTs;
+  _s.pendingStepJumpTs = null;
+  return ts;
+}
+
 /* Zoom */
 function getZoomFactor() { return _s.zoomFactor; }
 /** @param {number} v */
@@ -318,6 +332,8 @@ module.exports = {
   getMultiSelectedStepIds, setMultiSelectedStepIds,
   // filters & case scope
   getListFilters, getCaseScope, setCaseScope,
+  // cross-view step-jump request
+  setPendingStepJump, consumePendingStepJump,
   // zoom
   getZoomFactor, setZoomFactor, getStepZoom, setStepZoom, getPhaseZoom, setPhaseZoom,
   // flow timeline range selection

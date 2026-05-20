@@ -62,6 +62,31 @@ function stepMatchesFilter(s, f, scopeCaseId) {
 function renderStepsLevel() {
   if (!State.getSession() || !PdtSteps) return;
   const allSteps = decorateDrift((State.getSession().annotations && State.getSession().annotations.steps) || []);
+
+  // Consume a pending step-jump request from a Flow seek: focus on the
+  // step containing the requested timestamp. Scrolled into view at the
+  // end of this function so the row exists in the DOM.
+  const pendingTs = State.consumePendingStepJump();
+  if (pendingTs) {
+    const targetMs = new Date(pendingTs).getTime();
+    if (isFinite(targetMs) && allSteps.length) {
+      // Prefer a step that contains the timestamp; fall back to the
+      // closest by nearest edge so a right-click in a gap between
+      // steps still focuses a step instead of doing nothing visible.
+      let best = null, bestDist = Infinity;
+      for (const s of allSteps) {
+        const tr = s.time_range; if (!tr) continue;
+        const a = new Date(tr.start).getTime();
+        const b = new Date(tr.end).getTime();
+        if (!isFinite(a) || !isFinite(b)) continue;
+        if (a <= targetMs && targetMs <= b) { best = s; break; }
+        const dist = Math.min(Math.abs(targetMs - a), Math.abs(targetMs - b));
+        if (dist < bestDist) { best = s; bestDist = dist; }
+      }
+      if (best) State.setSelectedStepId(best.step_id);
+    }
+  }
+
   const f = State.getListFilters().step;
   const filtered = allSteps.filter(s => stepMatchesFilter(s, f, State.getCaseScope()));
   const filteredIds = new Set(filtered.map(s => s.step_id));
@@ -128,6 +153,12 @@ function renderStepsLevel() {
       const fmt = (ms) => new Date(ms).toLocaleTimeString();
       range.textContent = `${fmt(span.startMs)} → ${fmt(span.endMs)} · ${formatDuration(span.endMs - span.startMs)}`;
     }
+  }
+  if (pendingTs && State.getSelectedStepId()) {
+    setTimeout(() => {
+      const row = document.querySelector('.step-row[data-step-id="' + State.getSelectedStepId() + '"]');
+      if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 0);
   }
 }
 

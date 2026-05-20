@@ -1468,6 +1468,15 @@ function showMarkerInsertMenu(x, y, ts) {
 
   addItem("Insert Start marker here…", () => queueSyntheticMarker(ts, "start"));
   addItem("Insert End marker here",    () => queueSyntheticMarker(ts, "end"));
+  addItem("Jump to step here",         () => {
+    State.setPendingStepJump(ts);
+    const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
+    // Defer the synthetic click out of the menu's own click handler so
+    // the view switch lands in a clean event-loop tick -- a direct
+    // btn.click() from inside the menu handler was being swallowed
+    // (the pending jump was set and consumed but the view didn't swap).
+    if (btn) setTimeout(() => btn.click(), 0);
+  });
 
   document.body.appendChild(menu);
   /* Dismiss on outside click / escape */
@@ -1483,6 +1492,30 @@ function showMarkerInsertMenu(x, y, ts) {
     document.addEventListener("keydown", dismiss, true);
   }, 0);
 }
+
+/* Right-click on the Flow timeline background (anywhere not covered by
+   a case/activity/marker/screenshot band) opens the same marker-insert
+   menu as right-clicking an activity band, so the "right-click for
+   menu" legend hint is always actionable. The band-specific contextmenu
+   handlers stopPropagation, so they still take precedence on bands. */
+document.addEventListener("contextmenu", (e) => {
+  const tl = document.getElementById("timeline");
+  if (!tl || !tl.contains(e.target)) return;
+  if (e.target.closest(".tl-activity, .tl-case-band, .tl-marker, .tl-screenshot")) return;
+  if (!State.getSession()) return;
+  const evs = State.getSession().events || [];
+  if (!evs.length) return;
+  const rect = tl.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  const first = new Date(evs[0].timestamp).getTime();
+  const last = new Date(evs[evs.length - 1].timestamp).getTime();
+  const span = last - first;
+  if (span <= 0) return;
+  e.preventDefault();
+  const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+  const ts = first + (x / rect.width) * span;
+  showMarkerInsertMenu(e.clientX, e.clientY, new Date(ts).toISOString());
+});
 
 async function queueSyntheticMarker(ts, markerType) {
   if (!State.getSession()) return;
@@ -1973,10 +2006,6 @@ function renderTimeline() {
         dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
           "\n" + (ev.data.path || "");
         dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
-        if (ev.data.path) {
-          dot.addEventListener("mouseenter", () => showScreenshotThumb(dot, ev.data.path));
-          dot.addEventListener("mouseleave", () => hideScreenshotThumb());
-        }
         host.appendChild(dot);
       }
     },
@@ -2346,6 +2375,9 @@ function formatPlayback(curS, durS) {
 
 function seekToTimestamp(ts) {
   if (!State.getSession()) return;
+  // Remember this position so the Steps view can focus on the matching
+  // step the next time the analyst switches to it.
+  State.setPendingStepJump(ts);
   const video = $("#video");
   const obsStartTs = videoStartTs();
   if (obsStartTs && video && video.src) {
@@ -2799,7 +2831,7 @@ function renderScreenshots() {
     });
     card.appendChild(star);
     card.title = s.timestamp + "\n" + s.data.path;
-    card.addEventListener("click", () => seekToTimestamp(s.timestamp));
+    card.addEventListener("click", () => { seekToTimestamp(s.timestamp); openScreenshot(s.data.path); });
     host.appendChild(card);
   }
 }
