@@ -95,17 +95,24 @@ the empty-map problem: even with zero taxonomy, the map/lane show real
 semantic activity instead of "Unclassified". Touches
 `normalization/classification.py` + the Flow activity lane / DFG.
 
-### P3 — Validate alignment on real data, then refine
-1. Install analytics deps on the dev box: `pip install pandas pm4py` (the
-   lightweight scripts dodged this; the full `normalize.py` needs them).
-2. Normalize the real session with the ATM template (Match Process Template →
-   `normalization/canonical/atm-ticket-handling.yaml`), open in the viewer
-   Steps view.
-3. Eyeball: repeat badges (`↻N`), "Apply to N repeats", and whether the
-   value-agnostic signature in `step-alignment.js` groups the *right* steps.
-4. If it over/under-groups, tune `stepSignature` toward fuzzy/variant-aware
-   matching (sequence alignment), not exact category-set match. Calibrate
-   against this real session.
+### P3 — Validate on real data via the PACKAGED APP (no dev-box pip)
+The shipped viewer bundles its own Python embeddable with pandas/pm4py
+(`scripts/build-distribution.ps1`) — the analyst machine needs no Python. So
+the real validation is to **run the actual app**, not to reconstruct the
+pipeline on bare system Python (that was a prior-session time-sink: the
+`pip install` + CLI `normalize.py` dance is unnecessary).
+1. Build/run the packaged viewer (bundles Python + analysis deps). The real
+   session is already on the dev box (`C:\Users\rasha\Downloads\Event
+   Analysis.jsonl`), so this can be validated on the dev box before the
+   locked-down laptop — iterate where it's fast.
+2. Load the session, Match Process Template →
+   `normalization/canonical/atm-ticket-handling.yaml`.
+3. The app normalizes with the bundled Python and renders everything at once:
+   case count, maps, steps, repeat badges (`↻N`), "Apply to N repeats". One run
+   validates the UI **and** the pipeline **and** surfaces the calibration data
+   (how many cases the anchor produces, §2).
+4. If alignment over/under-groups, tune `stepSignature` (`step-alignment.js`)
+   toward fuzzy/variant-aware matching, not exact category-set match.
 
 ### P4 — Value-chain "what else" (review §"what else needs changing")
 - Team-wide **taxonomy editor** (the in-app classification manager `a3a179f`
@@ -164,5 +171,7 @@ running Electron build.** Next session (or the owner) should launch and eyeball:
 1. Confirm the **case-segmentation model** (§2) with the owner; implement C +
    degenerate guard in `case_assignment.py` (+ tests).
 2. **P1** recognition cross-language lift (shared table → Python).
-3. **P3** install deps, normalize the real session, eyeball alignment, calibrate.
+3. **P3** build/run the packaged viewer on the real session and eyeball maps +
+   alignment + case count — the app bundles its own Python, so no dev-box pip
+   or CLI `normalize.py`.
 4. Then P2 / P4 / P5 as priorities allow.
