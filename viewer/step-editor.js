@@ -70,11 +70,15 @@
         (_f.automation_candidate ? '<span class="step-flag flag-auto" title="Automation candidate">A</span>' : "") +
         (_f.conditional ? '<span class="step-flag flag-cond" title="Conditional — only sometimes happens">?</span>' : "") +
         (_f.exception_path ? '<span class="step-flag flag-exc" title="Exception path — error or workaround">!</span>' : "");
+      // Decision 1: repeat badge -- this step recurs across N tickets.
+      const repeatBadge = (s._repeat > 1)
+        ? `<span class="step-repeat" title="Recurs in ${s._repeat} tickets — edit one, then Apply to repeats">&#8635;${s._repeat}</span>`
+        : "";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
         <span class="multi-check" title="Click to select for merge or phase grouping"></span>
         <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${driftTag}${flagBadges}
+        ${driftTag}${flagBadges}${repeatBadge}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
         <span class="step-reorder">
           <button type="button" class="step-move-up" title="Move up" tabindex="-1">↑</button>
@@ -180,6 +184,12 @@
     const splitBtnTitle = _hasSplitPoint
       ? "Split this step after interaction #" + (splitAfterIndex + 1)
       : "Split this step in two. Click the scissors on an interaction to choose where; otherwise it splits at the midpoint.";
+    // Decision 1: when this step recurs across tickets, offer to apply the
+    // curation (name + description + flags) to the matching steps in the rest.
+    const repeatCount = (callbacks && callbacks.repeatCount) || 0;
+    const propagateBtn = repeatCount > 1
+      ? `<button id="btn-step-propagate" title="Apply this step's name, description and flags to the ${repeatCount - 1} matching step(s) in other tickets">Apply to ${repeatCount - 1} repeat(s)</button>`
+      : "";
     host.innerHTML = `
       <div class="step-stat-tiles">
         <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
@@ -203,6 +213,7 @@
       </div>
       <div class="actions">
         <button id="btn-step-save" class="primary">Save</button>
+        ${propagateBtn}
         <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
         ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
         <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
@@ -233,6 +244,9 @@
       callbacks.onToggleHide && callbacks.onToggleHide(step.step_id));
     document.getElementById("btn-step-split").addEventListener("click", () =>
       callbacks.onSplit && callbacks.onSplit(step.step_id));
+    const _propBtn = document.getElementById("btn-step-propagate");
+    if (_propBtn) _propBtn.addEventListener("click", () =>
+      callbacks.onPropagate && callbacks.onPropagate());
     // A2: scissors on each interaction pick the split boundary.
     host.querySelectorAll(".si-split-btn").forEach((b) => {
       b.addEventListener("click", (e) => {

@@ -16,6 +16,7 @@ const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
+const PdtAlign = require("../step-alignment.js");
 const PdtPalette = require("../command-palette.js");
 const { stepsToTemplateSteps, canonicalSkeleton, slugify } = require("../canonical-author.js");
 const { loadVocabs } = require("./identity-picker.js");
@@ -51,6 +52,16 @@ function decorateDrift(steps) {
   return (steps || []).map(s => byStep[s.step_id] ? { ...s, drift: byStep[s.step_id] } : s);
 }
 
+/* Decision 1: tag each step with how many cases (tickets) it recurs in, so
+   the list can badge repeated work and the detail can offer "apply to all".
+   A step that appears in only one case gets no _repeat tag. */
+function decorateRepeats(steps, interactionsById) {
+  const { groups } = PdtAlign.alignSteps(steps, interactionsById);
+  const span = new Map();
+  for (const g of groups) for (const m of g.members) span.set(m.stepId, g.caseSpan);
+  return (steps || []).map(s => span.has(s.step_id) ? { ...s, _repeat: span.get(s.step_id) } : s);
+}
+
 function stepMatchesFilter(s, f, scopeCaseId) {
   if (scopeCaseId && s.case_id !== scopeCaseId) return false;
   if (f.text && !(s.name || "").toLowerCase().includes(f.text.toLowerCase())) return false;
@@ -66,7 +77,15 @@ function stepMatchesFilter(s, f, scopeCaseId) {
 
 function renderStepsLevel() {
   if (!State.getSession() || !PdtSteps) return;
-  const allSteps = decorateDrift((State.getSession().annotations && State.getSession().annotations.steps) || []);
+  const interactionsById = {};
+  for (const ev of (State.getSession().events || [])) {
+    if (ev.type === "interaction") interactionsById[ev.event_id] = ev;
+  }
+  // Decorate with drift markers, then intra-session repeat counts (a step that
+  // recurs across anchor-detected cases is the high-value "curate once" target).
+  const allSteps = decorateRepeats(
+    decorateDrift((State.getSession().annotations && State.getSession().annotations.steps) || []),
+    interactionsById);
 
   // Consume a pending step-jump request from a Flow seek: focus on the
   // step containing the requested timestamp. Scrolled into view at the
@@ -140,10 +159,6 @@ function renderStepsLevel() {
     reorderStep,
   );
   const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
-  const interactionsById = {};
-  for (const ev of (State.getSession().events || [])) {
-    if (ev.type === "interaction") interactionsById[ev.event_id] = ev;
-  }
   PdtSteps.renderStepDetail($("#step-detail"), selected, {
     onSave: saveStep,
     onDelete: deleteStep,
@@ -154,6 +169,9 @@ function renderStepsLevel() {
     onToggleHide: toggleStepHidden,
     interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
+    // Decision 1: how many tickets this step recurs in + the propagate action.
+    repeatCount: (selected && selected._repeat) || 0,
+    onPropagate: () => { if (selected) propagateStepToGroup(selected.step_id); },
     // A2: the chosen split boundary for this step (if any) + the picker.
     splitAfterIndex: (selected && _splitAfter.stepId === selected.step_id) ? _splitAfter.index : null,
     onPickSplit: (idx) => {
@@ -754,6 +772,39 @@ async function toggleStepFlag(stepId, flagKey) {
   toast(step.flags[flagKey] ? "Flagged" : "Flag cleared", "success");
 }
 
+/* Decision 1: apply this step's name + description + flags to the matching
+   steps in the OTHER cases it recurs in -- "curate one ticket, apply to all".
+   Alignment is by the value-agnostic structural signature (step-alignment.js). */
+async function propagateStepToGroup(stepId) {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const interactionsById = {};
+  for (const ev of (State.getSession().events || [])) {
+    if (ev.type === "interaction") interactionsById[ev.event_id] = ev;
+  }
+  const group = PdtAlign.groupForStep(stepId, anno.steps || [], interactionsById);
+  if (!group || group.caseSpan < 2) {
+    toast("This step doesn't recur across tickets", "error");
+    return;
+  }
+  const source = (anno.steps || []).find(s => s.step_id === stepId);
+  if (!source) return;
+  let applied = 0;
+  for (const m of group.members) {
+    if (m.stepId === stepId) continue;
+    const t = (anno.steps || []).find(s => s.step_id === m.stepId);
+    if (!t) continue;
+    t.name = source.name;
+    t.description = source.description;
+    t.flags = { ...(source.flags || {}) };
+    t.state = t.state === "manually_authored" ? "manually_authored" : "edited";
+    applied++;
+  }
+  await persistAnnotations(anno, "apply step to repeats");
+  toast("Applied to " + applied + " matching step(s) in other tickets", "success");
+  renderStepsLevel();
+}
+
 /* A5: right-click context menu for a step block in the Step timeline.
    Mirrors the inline-styled menu pattern used by the Flow timeline
    (flow-view.js showMarkerInsertMenu) for visual consistency. */
@@ -813,6 +864,18 @@ function showStepContextMenu(stepId, x, y) {
     () => toggleStepFlag(stepId, "waste"));
   addItem(flags.automation_candidate ? "Clear automation flag" : "Flag as automation candidate",
     () => toggleStepFlag(stepId, "automation_candidate"));
+
+  // Decision 1: "apply to repeats" when this step recurs across cases.
+  const _interById = {};
+  for (const ev of (State.getSession().events || [])) {
+    if (ev.type === "interaction") _interById[ev.event_id] = ev;
+  }
+  const _grp = PdtAlign.groupForStep(stepId, (anno.steps || []), _interById);
+  if (_grp && _grp.caseSpan > 1) {
+    addSep();
+    addItem("Apply name + flags to " + (_grp.caseSpan - 1) + " repeat(s)",
+      () => propagateStepToGroup(stepId));
+  }
 
   document.body.appendChild(menu);
   const dismiss = (e) => {
