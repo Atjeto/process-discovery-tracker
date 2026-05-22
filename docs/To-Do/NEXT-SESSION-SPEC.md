@@ -76,6 +76,30 @@ choice, not just code.
 
 ## 3. Prioritized work
 
+### P0 — Coherence pass FIRST (see [COHERENCE-AUDIT.md](../architecture/COHERENCE-AUDIT.md))
+The first live run surfaced four defects the green tests missed — all the same
+shape (a verb shipped without its inverse / legend / IA). Fix these before any
+new feature; they restore the curation loop the cycle's additions broke.
+- **P0.1 — merge symmetry.** A clear "merge back" after split; make merge act on
+  the user's actual selection with unambiguous labels ("Merge selected" vs
+  "Merge with next" as distinct items). `mergeStepWithNext`
+  (`views/steps-view.js:440`) silently falls to `step + next` when the chosen
+  steps aren't in the multi-select set (a row-click is single-select, not
+  multi) — that is the "merged the wrong pair" bug. Show merge wherever split is.
+- **P0.2 — map IA.** Notation (Process / Flow diagram) and level (Activity /
+  Step / Phase) are orthogonal; the depth selector currently force-activates the
+  Flow pane (`views/aggregate-view.js` `map-level` change handler). The level
+  selector must change level *in place* and never swap notation. Decide if BPMN
+  supports levels or grey the selector out on the BPMN tab.
+- **P0.3 — repeat badge.** Don't badge steps that recur in *all* cases (zero
+  signal — every demo step shows `↻5`); legible label ("5×") + legend; surface
+  repetition where it discriminates.
+- **P0.4 — legends.** Colour key for the interaction bars (A1); one-liner for the
+  repeat indicator. Cheap; makes both self-explanatory.
+Hold every subsequent item to the four-point discipline in COHERENCE-AUDIT.md
+(inverse works · comprehension affordance · control-interaction check · verified
+in a real run).
+
 ### P1 — Recognition: cross-language + drive the pipeline (ADR-0011 follow-ups 1-2)
 Right now `recognition.js` is viewer-only; the Python pipeline still uses a
 hardcoded browser-chrome list. Unify them:
@@ -168,10 +192,13 @@ running Electron build.** Next session (or the owner) should launch and eyeball:
 
 ## 6. Suggested order for next session
 
-1. Confirm the **case-segmentation model** (§2) with the owner; implement C +
+1. **P0 coherence pass** ([COHERENCE-AUDIT.md](../architecture/COHERENCE-AUDIT.md))
+   — merge symmetry, map-IA split, repeat-badge signal, legends. Restores the
+   curation loop first.
+2. Confirm the **case-segmentation model** (§2) with the owner; implement C +
    degenerate guard in `case_assignment.py` (+ tests).
-2. **P1** recognition cross-language lift (shared table → Python).
-3. **P3** build/run the packaged viewer on the real session and eyeball maps +
+3. **P1** recognition cross-language lift (shared table → Python).
+4. **P3** build/run the packaged viewer on the real session and eyeball maps +
    alignment + case count — the app bundles its own Python, so no dev-box pip
    or CLI `normalize.py`.
-4. Then P2 / P4 / P5 as priorities allow.
+5. Then P2 / P4 / P5, each held to the four-point discipline.
