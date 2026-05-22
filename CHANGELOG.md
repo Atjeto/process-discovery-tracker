@@ -14,6 +14,27 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   an active session a left-click on the tray icon brings the Live Session
   window to the front (right-click still opens the menu) — so you can always
   reach Stop / markers without resorting to hotkeys.
+- **Interactions are colour-coded (A1).** In the step detail, each interaction
+  is tinted by kind — value entry (amber), action (blue), selection (teal),
+  toggle (purple) — so a step reads at a glance instead of as a text wall.
+- **Choose where a step splits (A2).** Each interaction has a scissors control;
+  click it to set the split boundary, and Split cuts there instead of always at
+  the interaction-count midpoint (it still falls back to the midpoint).
+- **Step timeline context menu (A5).** Right-click a step block to split, merge,
+  rename, hide/unhide, jump to Flow, watch, or flag as waste / automation.
+- **Step flags are visible and reach outputs (A3).** Flagged steps are badged in
+  the list (waste steps are also struck through), the toolbar shows a flag-count
+  summary, and the per-session report gains a Steps table with a Flags column.
+- **Process map at step or phase level (C1b).** A depth selector builds the Flow
+  diagram from your steps or phases (one trace per case), so the map is
+  meaningful even with no taxonomy. A blank activity map auto-falls-back to the
+  step/phase level when annotations exist.
+- **Unclassified-activity warning + classify-in-place (C1a).** The Flow view
+  warns when most activity is unclassified (why the application map looks empty),
+  and a right-click "Classify this app…" on an activity band adds a taxonomy rule
+  and re-analyzes.
+- **Configurable hotkeys (D2).** The session-setup window records the four
+  recorder shortcuts via a live key-capture — no more hand-editing the YAML.
 
 ### Fixed
 
@@ -29,6 +50,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   snapshot and surfaced nowhere. It is now a first-class manifest field
   (`engagement_name`), used as the name in the recents list and shown in the
   viewer's session summary. Existing sessions fall back to the config snapshot.
+- **The selected-step pane dragged both panes taller (B1).** The Steps editor
+  now pins its row to the available height; each pane scrolls internally, so
+  expanding a step's interactions no longer pushes the step list off-screen.
+- **Typing into several fields collapsed into one step (A4).** Step suggestion
+  now ends a step when typing moves to a different field, so filling N fields
+  yields N steps instead of one glued blob. Type-then-click coupling (e.g. type
+  a serial then click Search) is preserved; gated by a default-on config flag.
 
 ## [0.14.4] - 2026-05-19
 

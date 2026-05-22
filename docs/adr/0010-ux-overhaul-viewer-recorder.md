@@ -1,6 +1,10 @@
 # ADR-0010: UX Overhaul -- Viewer Interaction Model + Recorder Usability
 
-**Status:** Proposed
+**Status:** Accepted — fully implemented 2026-05-22 (commits d9fbc13, ff9922d,
+89417b5, b1464d8, 98e5a2b, 8e0c168, 8d667cf). Strategic framing in
+[VALUE-CHAIN-REVIEW.md](../architecture/VALUE-CHAIN-REVIEW.md); note that A4 (and
+the step-level map C1b) are tactical aids — the deeper segmentation fix is
+intra-session repetition alignment, tracked separately.
 **Date:** 2026-05-22
 **Deciders:** Rasha (analyst/owner)
 
