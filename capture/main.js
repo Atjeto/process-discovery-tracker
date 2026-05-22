@@ -81,6 +81,11 @@ let trayMenu = null;  // rebuilt by refreshTray(); shown via popUpContextMenu
 let tracker = null;
 let session = null;
 let lastStatus = null;
+/* D3: the last foreground-window bounds that belong to a real work window
+   (never one of our own recorder windows). Screenshots aim at the display
+   containing this rect, so firing a marker from the recorder -- which moves
+   focus to the recorder's monitor -- still captures the worker's monitor. */
+let lastWorkBounds = null;
 let labelPickerWindow = null;
 /* status, help, operator, obsSettings, sessionConfig — all single-instance
    tray windows; the picker stays separate (blur-close + nest IPC). */
@@ -137,7 +142,7 @@ async function fireScreenshot(kind, opts) {
       screenshotsFolder: path.join(session.sessionFolder, "screenshots"),
       quality: config.screenshots.quality,
       mode: config.screenshots.display,
-      foregroundBounds: lastStatus ? lastStatus.currentBounds : null,
+      foregroundBounds: lastWorkBounds || (lastStatus ? lastStatus.currentBounds : null),
     });
     if (!result) return;
     // captureScreenshot returns string|string[]. Emit one system
@@ -160,6 +165,15 @@ async function fireScreenshot(kind, opts) {
 
 async function onTickHandler(status) {
   lastStatus = status;
+  /* D3: remember the last work-window bounds, excluding our own recorder
+     windows. While a recorder window (panel / picker / status) holds focus,
+     BrowserWindow.getFocusedWindow() is non-null -- skip the update so a
+     marker screenshot keeps targeting the worker's monitor, not the
+     recorder's. (Single-monitor occlusion -- the panel physically covering
+     the work app -- would still need a pre-capture; tracked as a follow-up.) */
+  if (status && status.currentBounds && !BrowserWindow.getFocusedWindow()) {
+    lastWorkBounds = status.currentBounds;
+  }
   refreshTray();
   /* App-switch screenshot trigger -- detect new currentApp value and
      fire a screenshot. lastTrackedApp persists across ticks. */
@@ -897,6 +911,9 @@ function showLabelPicker(opts) {
       spellcheck: false,
     },
   });
+  // D1: keep the picker above full-screen / always-on-top apps so the
+  // operator can actually see it to type a label.
+  labelPickerWindow.setAlwaysOnTop(true, "screen-saver");
   labelPickerWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   labelPickerWindow.webContents.on("will-navigate", (e) => e.preventDefault());
   labelPickerWindow.loadURL(
@@ -1392,7 +1409,19 @@ app.whenReady().then(() => {
   // Left- and right-click both open the menu, symmetrically. Driven
   // explicitly (not via setContextMenu) so right-click does not
   // double-fire -- see refreshTray().
-  tray.on("click", () => { if (trayMenu) tray.popUpContextMenu(trayMenu); });
+  // D1: during an active session a left-click brings the Live Session window
+  // to the front (opening it if needed) so the operator can always get back
+  // to it -- to fire a marker or end the session -- without hunting for it
+  // behind other apps or falling back to hotkeys. Outside a session there is
+  // no panel to show, so left-click opens the tray menu (to start one).
+  // Right-click always opens the menu.
+  tray.on("click", () => {
+    if (tracker) {
+      windows.show("operator", () => showOperatorPanel(config));
+    } else if (trayMenu) {
+      tray.popUpContextMenu(trayMenu);
+    }
+  });
   tray.on("right-click", () => { if (trayMenu) tray.popUpContextMenu(trayMenu); });
 
   /* B3: register a global shortcut, falling back from a Control+Shift+X

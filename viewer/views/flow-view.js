@@ -954,7 +954,10 @@ function renderSessionSummary() {
       "Steps are logical actions identified during analysis — the two are independent.</div>"
     : "";
 
-  const teaser = `${s.engagement} · ${formatDuration(s.durationMs)} · ` +
+  // D4: lead with the project name the operator typed at setup; keep the
+  // engagement id alongside it for reference when a name is present.
+  const engLabel = s.engagementName || s.engagement;
+  const teaser = `${engLabel} · ${formatDuration(s.durationMs)} · ` +
     `${s.caseCount} case${s.caseCount === 1 ? "" : "s"}`;
 
   panel.innerHTML =
@@ -962,7 +965,9 @@ function renderSessionSummary() {
       `<span class="summary-teaser">${escapeHtml(teaser)}</span></summary>` +
     '<div class="summary-body">' +
       '<div class="summary-head">Engagement ' +
-        `<strong>${escapeHtml(s.engagement)}</strong> · worker ` +
+        `<strong>${escapeHtml(engLabel)}</strong>` +
+        (s.engagementName ? ` <span class="meta">(${escapeHtml(s.engagement)})</span>` : "") +
+        ` · worker ` +
         `<strong>${escapeHtml(s.worker)}</strong> · ` +
         `<strong>${escapeHtml(formatDuration(s.durationMs))}</strong> · ` +
         `analyzed ${escapeHtml(analyzed)}</div>` +

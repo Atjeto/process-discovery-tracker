@@ -147,6 +147,11 @@ function computeSummary(session) {
 
   return {
     engagement: manifest.engagement_id || "—",
+    /* D4: the analyst-entered project name. Prefer the top-level field (new
+       sessions) and fall back to the config snapshot (sessions captured before
+       the field was lifted out of config). Null when never set. */
+    engagementName: manifest.engagement_name
+      || (manifest.config && manifest.config.engagement_name) || null,
     worker:
       meta.worker_id ||
       (manifest.config && manifest.config.worker && manifest.config.worker.id) ||

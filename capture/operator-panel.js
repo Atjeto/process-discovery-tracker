@@ -62,6 +62,11 @@ function showOperatorPanel(config) {
     },
   });
   win.removeMenu();
+  // D1: the highest always-on-top level so the live session window stays
+  // visible above normal -- and even most always-on-top -- apps. The
+  // operator must always be able to reach Stop / markers without hunting
+  // for the window behind whatever they are working in.
+  win.setAlwaysOnTop(true, "screen-saver");
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.loadURL(

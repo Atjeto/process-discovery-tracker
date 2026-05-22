@@ -31,6 +31,12 @@ function createSession({ baseDir, engagementId, config, purpose, prepApp }) {
   const manifest = {
     session_id: sessionId,
     engagement_id: engagement,
+    /* Lift the analyst-entered project name out of the config snapshot to a
+       first-class field so the recents list and the viewer header can show it
+       without digging into manifest.config. This is the name the operator
+       typed in "Set up a recording session"; it was previously saved only
+       inside config and never surfaced anywhere (D4). */
+    engagement_name: (config && config.engagement_name) || null,
     started_at: new Date().toISOString(),
     ended_at: null,
     status: "active",
@@ -115,13 +121,20 @@ function listRecentSessions(baseDir, limit = 10) {
       if (!fs.existsSync(manifestFile)) continue;
       try {
         const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+        /* Display name precedence: an explicit post-session label, then the
+           project name the operator entered at setup, then the engagement
+           folder. The timestamp folder is always appended so same-named
+           sessions stay distinguishable. */
+        const engName = m.engagement_name || (m.config && m.config.engagement_name) || null;
+        const displayName = (m.label || engName || ent.name || "").trim() || ent.name;
         all.push({
           sessionFolder: sFolder,
           engagement: ent.name,
+          engagement_name: engName,
           started_at: m.started_at,
           ended_at: m.ended_at,
           status: m.status,
-          label: ent.name + "  " + s.name,
+          label: displayName + "  " + s.name,
         });
       } catch (_) { /* skip malformed */ }
     }

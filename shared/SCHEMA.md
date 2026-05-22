@@ -303,6 +303,7 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
 {
   "session_id": "uuid",
   "engagement_id": "default",
+  "engagement_name": "project name from setup (optional; null until set)",
   "started_at": "ISO 8601",
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
@@ -331,6 +332,14 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
 `label` is an optional analyst-facing name, set from the capture app's
 post-session summary; it is absent until set. The viewer's Recents list shows
 it in place of the folder timestamp when present.
+
+`engagement_name` is the project name the operator typed in the session-setup
+window. It is lifted out of the `config` snapshot to the top level at session
+creation so the Recents list and the viewer can display it without reading the
+nested config; it is `null` when never set. Sessions captured before this field
+existed carry the name inside `config.engagement_name`, and consumers fall back
+to that. Display precedence is `label` (a post-session rename) → `engagement_name`
+→ the engagement-folder name.
 
 ## session-integrity.json
 

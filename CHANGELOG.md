@@ -6,6 +6,30 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Recorder stays reachable (D1).** The Live Session window and the
+  Start-marker picker now sit at the highest always-on-top level, so they
+  stay above other applications instead of disappearing behind them. During
+  an active session a left-click on the tray icon brings the Live Session
+  window to the front (right-click still opens the menu) — so you can always
+  reach Stop / markers without resorting to hotkeys.
+
+### Fixed
+
+- **Marker screenshots captured the recorder instead of the work (D3).**
+  Firing a marker moves focus to the recorder's monitor, so the screenshot
+  showed the recorder UI. Screenshots now aim at the last work-window's
+  monitor — the recorder's own windows are excluded from that tracking — so a
+  marker captures what the worker was doing. (Single-monitor occlusion, where
+  the panel physically covers the work app on one screen, is a separate
+  pre-capture follow-up.)
+- **The session name entered at setup was never shown (D4).** The project name
+  typed in *Set up a recording session* was stored only inside the config
+  snapshot and surfaced nowhere. It is now a first-class manifest field
+  (`engagement_name`), used as the name in the recents list and shown in the
+  viewer's session summary. Existing sessions fall back to the config snapshot.
+
 ## [0.14.4] - 2026-05-19
 
 ### Added
