@@ -28,6 +28,11 @@ let jumpToStepInFlow = () => {};
 let watchStep = () => {};
 let openCanonicalInTemplateTab = () => {};
 
+/* A2: the analyst-chosen split boundary for the currently-selected step --
+   { stepId, index } where index means "split AFTER this interaction". Null
+   index when no boundary is picked (Split then falls back to the midpoint). */
+let _splitAfter = { stepId: null, index: null };
+
 function getSpan() {
   const evs = (State.getSession() && State.getSession().events) || [];
   if (!evs.length) return null;
@@ -134,6 +139,17 @@ function renderStepsLevel() {
     onToggleHide: toggleStepHidden,
     interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
+    // A2: the chosen split boundary for this step (if any) + the picker.
+    splitAfterIndex: (selected && _splitAfter.stepId === selected.step_id) ? _splitAfter.index : null,
+    onPickSplit: (idx) => {
+      if (!selected) return;
+      if (_splitAfter.stepId === selected.step_id && _splitAfter.index === idx) {
+        _splitAfter = { stepId: null, index: null };   // toggle the boundary off
+      } else {
+        _splitAfter = { stepId: selected.step_id, index: idx };
+      }
+      renderStepsLevel();
+    },
   });
   const span = getSpan();
   if (span) {
@@ -147,6 +163,7 @@ function renderStepsLevel() {
         selectedId: State.getSelectedStepId(),
         dimmedIds,
         onSelect: (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
+        onContextMenu: (sid, x, y) => showStepContextMenu(sid, x, y),
       });
     const range = $("#steps-timeline-range");
     if (range) {
@@ -258,7 +275,15 @@ async function splitStep(stepId) {
   const s = anno.steps[idx];
   const ids = s.evidence.interaction_event_ids || [];
   if (ids.length < 2) { toast("Need ≥2 interactions to split", "error"); return; }
-  const mid = Math.floor(ids.length / 2);
+  // A2: split at the analyst-picked boundary (split AFTER index i -> first
+  // chunk is [0..i]) when one is set for THIS step; else the midpoint.
+  let mid;
+  if (_splitAfter.stepId === stepId && Number.isInteger(_splitAfter.index)
+      && _splitAfter.index >= 0 && _splitAfter.index < ids.length - 1) {
+    mid = _splitAfter.index + 1;
+  } else {
+    mid = Math.floor(ids.length / 2);
+  }
   const firstIds = ids.slice(0, mid);
   const secondIds = ids.slice(mid);
   const interMap = Object.fromEntries(State.getSession().events.filter(e => e.type === "interaction").map(e => [e.event_id, e]));
@@ -275,6 +300,7 @@ async function splitStep(stepId) {
     evidence: { ...s.evidence, interaction_event_ids: firstIds },
     state: "edited" };
   anno.steps.splice(idx, 1, first, second);
+  _splitAfter = { stepId: null, index: null };
   await persistAnnotations(anno, 'split step');
   toast("Step split", "success");
 }
@@ -697,6 +723,94 @@ function initStepsView(deps) {
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
   if ($("#btn-steps-to-template")) $("#btn-steps-to-template").addEventListener("click", exportStepsAsTemplate);
+}
+
+/* A2/A5: toggle one boolean flag on a step and persist. Shared by the step
+   timeline context menu and any other quick-flag affordance. */
+async function toggleStepFlag(stepId, flagKey) {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const step = (anno.steps || []).find(s => s.step_id === stepId);
+  if (!step) return;
+  step.flags = step.flags || {};
+  step.flags[flagKey] = !step.flags[flagKey];
+  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
+  await persistAnnotations(anno, (step.flags[flagKey] ? "flag " : "unflag ") + flagKey);
+  toast(step.flags[flagKey] ? "Flagged" : "Flag cleared", "success");
+}
+
+/* A5: right-click context menu for a step block in the Step timeline.
+   Mirrors the inline-styled menu pattern used by the Flow timeline
+   (flow-view.js showMarkerInsertMenu) for visual consistency. */
+function showStepContextMenu(stepId, x, y) {
+  const prior = document.getElementById("step-ctx-menu");
+  if (prior) prior.remove();
+  const session = State.getSession();
+  const anno = session && session.annotations;
+  const step = anno && (anno.steps || []).find(s => s.step_id === stepId);
+  if (!step) return;
+  State.setSelectedStepId(stepId);
+
+  const menu = document.createElement("div");
+  menu.id = "step-ctx-menu";
+  menu.style.cssText =
+    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
+    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
+    "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:210px;cursor:default;user-select:none;";
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+
+  function addItem(label, handler) {
+    const item = document.createElement("div");
+    item.textContent = label;
+    item.style.cssText = "padding:6px 14px;cursor:pointer;";
+    item.addEventListener("mouseenter", () => { item.style.background = "var(--accent)"; });
+    item.addEventListener("mouseleave", () => { item.style.background = ""; });
+    item.addEventListener("click", async () => { menu.remove(); await handler(); });
+    menu.appendChild(item);
+  }
+  function addSep() {
+    const sep = document.createElement("div");
+    sep.style.cssText = "height:1px;margin:4px 0;background:var(--rule);";
+    menu.appendChild(sep);
+  }
+
+  const flags = step.flags || {};
+  addItem("Split at interaction…", () => {
+    renderStepsLevel();
+    toast("Click the scissors on an interaction, then Split", "success");
+  });
+  addItem("Merge with next", () => mergeStepWithNext(stepId));
+  addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
+  addItem(step.state === "hidden" ? "Unhide" : "Hide as noise", () => toggleStepHidden(stepId));
+  addItem("Jump to in Flow", () => {
+    const s = (anno.steps || []).find(x => x.step_id === stepId);
+    if (s) jumpToStepInFlow(s);
+  });
+  if (session && session.recordingAvailable) {
+    addItem("Watch", () => {
+      const s = (anno.steps || []).find(x => x.step_id === stepId);
+      if (s) watchStep(s);
+    });
+  }
+  addSep();
+  addItem(flags.waste ? "Clear waste flag" : "Flag as waste",
+    () => toggleStepFlag(stepId, "waste"));
+  addItem(flags.automation_candidate ? "Clear automation flag" : "Flag as automation candidate",
+    () => toggleStepFlag(stepId, "automation_candidate"));
+
+  document.body.appendChild(menu);
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    menu.remove();
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", dismiss, true);
+  };
+  setTimeout(() => {
+    document.addEventListener("mousedown", dismiss, true);
+    document.addEventListener("keydown", dismiss, true);
+  }, 0);
+  renderStepsLevel();   // reflect the new selection immediately
 }
 
 module.exports = {

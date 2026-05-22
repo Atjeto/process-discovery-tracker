@@ -767,6 +767,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .session-layout-stepsphases {
   display: flex; flex-direction: column; gap: 8px;
   flex: 1;
+  /* B1: allow this flex child to be bounded by the workspace height so the
+     editor-split below can claim a fixed row instead of growing with the
+     selected-step content. */
+  min-height: 0;
 }
 
 /* ===== Analysis view (Cluster N / ADR-0008) ===== */
@@ -961,7 +965,14 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .editor-split {
   display: grid; grid-template-columns: 340px 1fr; gap: 10px;
   flex: 1; min-height: 340px;
+  /* B1: pin the single row to the available height (minmax(0,1fr)) instead
+     of letting it grow to whichever pane is taller. The list pane then keeps
+     a stable full height, and the selected-step pane scrolls internally as
+     its interaction list expands rather than dragging both panes taller. */
+  grid-template-rows: minmax(0, 1fr);
 }
+.editor-split > .editor-list-pane,
+.editor-split > .editor-detail-pane { min-height: 0; max-height: 100%; overflow-y: auto; }
 @media (max-width: 1100px) {
   .editor-split { grid-template-columns: 1fr; }
 }
@@ -1263,9 +1274,29 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .editor-detail-pane .step-interaction {
   display: flex; gap: 10px; align-items: baseline;
-  padding: 2px 0; border-top: 1px solid var(--rule);
+  padding: 2px 0 2px 8px; border-top: 1px solid var(--rule);
+  border-left: 3px solid transparent;
 }
 .editor-detail-pane .step-interaction:first-child { border-top: 0; }
+/* A1: colour-code interactions by kind. Left border + faint tint mark
+   value entry (amber), actions (blue), selections (teal) and toggles
+   (purple); navigational/other stays muted. The hues are theme-neutral --
+   they read the same on the light and dark backgrounds (theme parity). */
+.editor-detail-pane .step-interaction.si-value  { border-left-color: #C8862A; background: rgba(200,134,42,0.09); }
+.editor-detail-pane .step-interaction.si-action { border-left-color: #4A78B0; background: rgba(74,120,176,0.09); }
+.editor-detail-pane .step-interaction.si-select { border-left-color: #3E9E96; background: rgba(62,158,150,0.09); }
+.editor-detail-pane .step-interaction.si-toggle { border-left-color: #8A6CB0; background: rgba(138,108,176,0.09); }
+.editor-detail-pane .step-interaction.si-other  { border-left-color: var(--rule); }
+/* A2: per-interaction split affordance + the chosen boundary. */
+.editor-detail-pane .si-split-btn {
+  flex: none; border: 0; background: transparent; cursor: pointer;
+  color: var(--fg-4); font-size: 12px; line-height: 1; padding: 0 2px;
+  opacity: 0; transition: opacity 0.12s, color 0.12s;
+}
+.editor-detail-pane .step-interaction:hover .si-split-btn { opacity: 0.65; }
+.editor-detail-pane .si-split-btn:hover { opacity: 1; color: var(--accent); }
+.editor-detail-pane .si-split-btn.active { opacity: 1; color: var(--accent); }
+.editor-detail-pane .step-interaction.split-boundary { border-bottom: 2px solid var(--accent); }
 .editor-detail-pane .si-text { flex: 1; color: var(--fg-2); word-break: break-word; }
 .editor-detail-pane .si-time {
   flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px;

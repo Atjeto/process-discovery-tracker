@@ -10,7 +10,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { describeInteraction, renderInteractionList } = require("./step-editor.js");
+const { describeInteraction, renderInteractionList, siKindClass } = require("./step-editor.js");
 
 function inter(data) {
   return {
@@ -168,4 +168,56 @@ test("renderInteractionList: unresolved ids surface as a missing-count note", ()
   const events = [inter({ kind: "invoked", control_type: "Button", name: "X" })];
   const html = renderInteractionList(events, 3);
   assert.ok(html.includes("2 interaction(s) not found"));
+});
+
+/* ---- A1: interaction kind colour-coding ---------------------------- */
+
+test("siKindClass: buckets each interaction kind", () => {
+  assert.equal(siKindClass(inter({ kind: "value_changed" })), "si-value");
+  assert.equal(siKindClass(inter({ kind: "text_changed" })), "si-value");
+  assert.equal(siKindClass(inter({ kind: "invoked" })), "si-action");
+  assert.equal(siKindClass(inter({ kind: "selection_changed" })), "si-select");
+  assert.equal(siKindClass(inter({ kind: "toggle_changed" })), "si-toggle");
+  assert.equal(siKindClass(inter({ kind: "focus_changed" })), "si-other");
+  assert.equal(siKindClass(inter({})), "si-other");
+});
+
+test("renderInteractionList: rows carry the kind class", () => {
+  const events = [
+    inter({ kind: "value_changed", name: "Serial", value: "X" }),
+    inter({ kind: "invoked", control_type: "Button", name: "Search" }),
+  ];
+  const html = renderInteractionList(events, 2);
+  assert.ok(html.includes("step-interaction si-value"));
+  assert.ok(html.includes("step-interaction si-action"));
+});
+
+/* ---- A2: split-point affordance ------------------------------------ */
+
+test("renderInteractionList: splittable renders scissors for all but the last row", () => {
+  const events = [
+    inter({ kind: "invoked", name: "A" }),
+    inter({ kind: "invoked", name: "B" }),
+    inter({ kind: "invoked", name: "C" }),
+  ];
+  const html = renderInteractionList(events, 3, { splittable: true });
+  // two scissors buttons (after row 0 and row 1, never after the last)
+  const count = (html.match(/si-split-btn/g) || []).length;
+  assert.equal(count, 2);
+  assert.ok(html.includes('data-after="0"'));
+  assert.ok(html.includes('data-after="1"'));
+  assert.ok(!html.includes('data-after="2"'));
+});
+
+test("renderInteractionList: a chosen boundary marks the row and its scissors active", () => {
+  const events = [inter({ kind: "invoked", name: "A" }), inter({ kind: "invoked", name: "B" })];
+  const html = renderInteractionList(events, 2, { splittable: true, splitAfterIndex: 0 });
+  assert.ok(html.includes("split-boundary"));
+  assert.ok(html.includes("si-split-btn active"));
+});
+
+test("renderInteractionList: not splittable by default (back-compat)", () => {
+  const events = [inter({ kind: "invoked", name: "A" }), inter({ kind: "invoked", name: "B" })];
+  const html = renderInteractionList(events, 2);
+  assert.ok(!html.includes("si-split-btn"));
 });

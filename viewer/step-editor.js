@@ -161,8 +161,17 @@
     const _end = _tr.end ? escapeHtml(localTime(_tr.end)) : "—";
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
-    const interListHtml = renderInteractionList(
-      interIds.map((id) => interMap[id]).filter(Boolean), interIds.length);
+    const resolvedInter = interIds.map((id) => interMap[id]).filter(Boolean);
+    // A2: a boundary index chosen by the analyst (split AFTER this index).
+    const splitAfterIndex = (callbacks && Number.isInteger(callbacks.splitAfterIndex))
+      ? callbacks.splitAfterIndex : null;
+    const interListHtml = renderInteractionList(resolvedInter, interIds.length,
+      { splittable: true, splitAfterIndex });
+    const _hasSplitPoint = splitAfterIndex !== null;
+    const splitBtnLabel = _hasSplitPoint ? "Split here" : "Split";
+    const splitBtnTitle = _hasSplitPoint
+      ? "Split this step after interaction #" + (splitAfterIndex + 1)
+      : "Split this step in two. Click the scissors on an interaction to choose where; otherwise it splits at the midpoint.";
     host.innerHTML = `
       <div class="step-stat-tiles">
         <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
@@ -188,7 +197,7 @@
         <button id="btn-step-save" class="primary">Save</button>
         <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
         ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
-        <button id="btn-step-split">Split</button>
+        <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
         <button id="btn-step-merge">Merge with next</button>
         <button id="btn-step-hide" title="${step.state === "hidden" ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${step.state === "hidden" ? "Unhide" : "Hide as noise"}</button>
         <button id="btn-step-delete" class="danger">Delete</button>
@@ -216,6 +225,14 @@
       callbacks.onToggleHide && callbacks.onToggleHide(step.step_id));
     document.getElementById("btn-step-split").addEventListener("click", () =>
       callbacks.onSplit && callbacks.onSplit(step.step_id));
+    // A2: scissors on each interaction pick the split boundary.
+    host.querySelectorAll(".si-split-btn").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const after = parseInt(b.dataset.after, 10);
+        if (callbacks.onPickSplit && Number.isInteger(after)) callbacks.onPickSplit(after);
+      });
+    });
     document.getElementById("btn-step-merge").addEventListener("click", () =>
       callbacks.onMerge && callbacks.onMerge(step.step_id));
     const jumpBtn = document.getElementById("btn-step-jump");
@@ -285,6 +302,19 @@
       selectedId: opts.selectedId,
       onSelect: opts.onSelect,
     });
+
+    // A5: right-click a step block for the step context menu (split, merge,
+    // rename, hide, jump, flag). The Flow timeline's document-level
+    // contextmenu handler is scoped to #timeline, so it never fires here.
+    if (opts.onContextMenu) {
+      for (const block of host.querySelectorAll(".step-block[data-step-id]")) {
+        block.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          opts.onContextMenu(block.getAttribute("data-step-id"), e.clientX, e.clientY);
+        });
+      }
+    }
   }
 
   /* A readable one-line description of a single interaction event --
@@ -335,13 +365,35 @@
      are the resolved interaction events in step order; `total` is the
      count the step claims (may exceed events.length when some ids are
      not in this session's event stream). */
-  function renderInteractionList(events, total) {
+  /* A1: bucket an interaction by kind so the list can colour-code value
+     entry vs. actions vs. selections vs. toggles (ADR-0010 A1). An unknown
+     or navigational kind (focus_changed, ...) stays muted. Exported for
+     unit tests. */
+  function siKindClass(ev) {
+    const k = (ev && ev.data && ev.data.kind) || "";
+    if (k === "value_changed" || k === "text_changed") return "si-value";
+    if (k === "invoked") return "si-action";
+    if (k === "selection_changed") return "si-select";
+    if (k === "toggle_changed") return "si-toggle";
+    return "si-other";
+  }
+
+  function renderInteractionList(events, total, opts) {
     if (!total) return `<p class="meta">No interactions recorded for this step.</p>`;
-    const rows = events.map((ev) => {
+    opts = opts || {};
+    // A2: when splittable, every interaction except the last carries a
+    // scissors control that picks the boundary the Split action cuts at.
+    const splittable = !!opts.splittable && events.length >= 2;
+    const splitAfter = Number.isInteger(opts.splitAfterIndex) ? opts.splitAfterIndex : null;
+    const rows = events.map((ev, i) => {
       const t = localTime(ev.timestamp);
-      return `<li class="step-interaction">` +
+      const isBoundary = splittable && splitAfter === i;
+      const splitBtn = (splittable && i < events.length - 1)
+        ? `<button type="button" class="si-split-btn${isBoundary ? " active" : ""}" data-after="${i}" tabindex="-1" title="Split the step here, after this interaction">&#9988;</button>`
+        : "";
+      return `<li class="step-interaction ${siKindClass(ev)}${isBoundary ? " split-boundary" : ""}" data-idx="${i}">` +
         `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
-        `<span class="si-time">${escapeHtml(t)}</span></li>`;
+        `<span class="si-time">${escapeHtml(t)}</span>${splitBtn}</li>`;
     });
     const missing = total - events.length;
     if (missing > 0) {
@@ -357,6 +409,6 @@
 
   module.exports = {
     renderStepList, renderStepDetail, renderStepTimeline,
-    describeInteraction, renderInteractionList,
+    describeInteraction, renderInteractionList, siKindClass,
   };
 })();
