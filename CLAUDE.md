@@ -4,14 +4,18 @@ Project context for Claude Code. For the full documentation set start at
 [docs/README.md](docs/README.md); for architecture,
 [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05):** the systemic value-chain gaps (why the app
-produces logs, not process insight) and the phased plan to close them are in
-[docs/architecture/VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md)
-— read it before working on segmentation, the process map, recorder UX, or step
-annotation. Tactical fix list: [ADR-0010](docs/adr/0010-ux-overhaul-viewer-recorder.md).
-The cross-session canonical-template path in
-[ADR-0009](docs/adr/0009-normalization-redesign-v013.md) is redirected to
-intra-session repetition alignment (see the review's Decision 1).
+**Active direction (2026-05) — START HERE:** the next-session plan of record is
+[docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md). It leads with
+a **P0 coherence pass** (fix split/merge symmetry, the map level-vs-notation IA,
+the repeat badge, and legends) *before any new feature*, per
+[docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — a
+new "verb" needs its inverse, a legend, a control-interaction check, and a
+real-run check (the cycle's UI bugs were invisible to green tests). Strategic
+frame: [VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md). State:
+ADR-0010 (viewer/recorder UX) implemented; [ADR-0011](docs/adr/0011-platform-recognition-layer.md)
+added a platform recognition layer; [ADR-0009](docs/adr/0009-normalization-redesign-v013.md)'s
+cross-session templates are redirected to intra-session repetition alignment.
+Validate by running the **packaged app** (it bundles its own Python), not dev-box pip.
 
 ## What this is
 
