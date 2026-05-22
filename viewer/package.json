@@ -50,6 +50,7 @@
       "charts.js",
       "dfg-viewer.js",
       "process-map-levels.js",
+      "step-alignment.js",
       "bpmn-viewer.js",
       "report-md.js",
       "report-html.js",
