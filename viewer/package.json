@@ -51,6 +51,7 @@
       "dfg-viewer.js",
       "process-map-levels.js",
       "step-alignment.js",
+      "recognition.js",
       "bpmn-viewer.js",
       "report-md.js",
       "report-html.js",

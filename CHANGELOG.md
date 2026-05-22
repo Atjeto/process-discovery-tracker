@@ -41,6 +41,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to the per-band "Classify this app…", so an empty application-level map can be
   fixed without hand-editing taxonomy YAML. The unclassified-activity banner
   links to it.
+- **Platform/framework recognition layer (ADR-0011).** Interaction recognition
+  is anchored on documented, cross-app platform signatures — the UIA
+  ControlType taxonomy plus Chromium/Edge chrome, Bootstrap, AG-Grid,
+  SharePoint, Office 365 and Win32/Office conventions — instead of one
+  engagement's opaque automation_ids. Steps align across tickets by semantic
+  category, unnamed elements read as their real type ("a data-grid cell"), and
+  per-session selectors (`txtsr`, window-title taxonomy) drop to examples.
 
 ### Fixed
 

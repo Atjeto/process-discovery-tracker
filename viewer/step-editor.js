@@ -3,6 +3,7 @@
 (function () {
   const TimelineCore = require("./timeline/timeline-core.js");
   const PdtTheme = require("./theme.js");
+  const PdtRecognize = require("./recognition.js");
   const { stepStateLabel } = require("./session-summary.js");
 
   function escapeHtml(s) {
@@ -348,7 +349,10 @@
     const kind = d.kind || "";
     const name = String(d.meaningful_name || d.name || "").trim();
     const ctl = d.control_type || "";
-    const field = name || String(d.automation_id || "").trim() || "a control";
+    // Fall back to the recognised framework/platform type (e.g. "data-grid
+    // cell", "form field") rather than a meaningless "a control" when the
+    // element has no visible name or id (ADR-0011).
+    const field = name || String(d.automation_id || "").trim() || PdtRecognize.recognize(d).typeLabel;
     if (kind === "value_changed") {
       let value = String(d.value || "").trim();
       if (value.length > 300) value = value.slice(0, 299) + "…";
@@ -360,7 +364,7 @@
     }
     if (kind === "text_changed") return `Edited ${field}`;
     if (kind === "invoked") {
-      if (!name) return `Clicked a ${ctl || "control"}`;
+      if (!name) return `Clicked a ${PdtRecognize.recognize(d).typeLabel}`;
       if (ctl === "MenuItem") return `Opened ${name}`;
       if (ctl === "Hyperlink") return `Followed ${name}`;
       return `Clicked ${name}`;

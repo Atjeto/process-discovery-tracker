@@ -22,6 +22,8 @@
  * is available to calibrate against -- see the value-chain review's caveats.
  */
 
+const { recognize } = require("./recognition.js");
+
 /** Stable, value-agnostic signature for one step. */
 function stepSignature(step, interactionsById) {
   if (step && step.canonical_step_id) return "c:" + step.canonical_step_id;
@@ -29,10 +31,10 @@ function stepSignature(step, interactionsById) {
   const elems = new Set();
   for (const id of ids) {
     const d = ((interactionsById || {})[id] || {}).data || {};
-    // element identity WITHOUT the typed value or visible name (those vary
-    // per ticket); automation_id, else class_name, identifies the control.
-    const elem = (d.control_type || "") + "/" + (d.automation_id || d.class_name || "");
-    elems.add((d.kind || "") + ":" + elem);
+    // Framework-aware semantic CATEGORY (recognition.js), not the opaque
+    // automation_id -- so the same step aligns across tickets regardless of
+    // per-ticket ids/values (ADR-0011).
+    elems.add((d.kind || "") + ":" + recognize(d).category);
   }
   if (!elems.size) return "n:" + ((step && step.name) || (step && step.step_id) || "");
   return "s:" + [...elems].sort().join("|");
