@@ -49,6 +49,7 @@
       "project.js",
       "charts.js",
       "dfg-viewer.js",
+      "process-map-levels.js",
       "bpmn-viewer.js",
       "report-md.js",
       "report-html.js",

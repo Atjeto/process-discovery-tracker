@@ -19,6 +19,7 @@ const Ipc = require("../ipc.js");
 const PdtCharts = require("../charts.js");
 const PdtBpmn = require("../bpmn-viewer.js");
 const PdtDfg = require("../dfg-viewer.js");
+const { buildAnnotationDfg } = require("../process-map-levels.js");
 const { formModal } = require("../modals.js");
 const SessionSummary = require("../session-summary.js");
 const AnalysisAggregate = require("../analysis-aggregate.js");
@@ -84,6 +85,48 @@ function wireMapTabs() {
     const v = activeMapViewer();
     if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
   });
+
+  // C1b: process-map depth selector.
+  const lvl = document.getElementById("map-level");
+  if (lvl) {
+    lvl.addEventListener("change", () => {
+      _mapLevel = lvl.value || "activity";
+      // The level applies to the Flow diagram (DFG), so surface that pane.
+      $$(".panel-tab").forEach((t) => t.classList.toggle("active", t.dataset.map === "dfg"));
+      $("#bpmn-host").style.display = "none";
+      $("#dfg-host").style.display = "";
+      applyMapLevel();
+    });
+  }
+}
+
+/* C1b: render the process map (Flow diagram) at the selected depth without a
+   full aggregate re-run. Activity uses the taxonomy-classified DFG; step and
+   phase build one from the analyst's annotations, so the map is meaningful
+   even when the taxonomy is empty. */
+function applyMapLevel() {
+  if (!PdtDfg) return;
+  const host = $("#dfg-host");
+  if (!host) return;
+  let dfg;
+  const opts = { onZoomChange: (z) => setMapZoomPct(z) };
+  if (_mapLevel === "activity") {
+    dfg = _lastActivityDfg;
+    opts.onNodeClick = (label, ev) => drillToActivity(label, ev);
+    opts.variants = _lastVariantsForMap;
+  } else {
+    dfg = buildAnnotationDfg(_lastFilteredForMap || [], _mapLevel);
+    opts.onNodeClick = () => {};
+  }
+  if (dfg && dfg.edges && dfg.edges.length) {
+    PdtDfg.render(host, dfg, opts);
+    setMapZoomVisible(true);
+  } else {
+    host.innerHTML = '<div class="map-empty-inline">No ' + _mapLevel + '-level flow yet'
+      + (_mapLevel === "activity"
+          ? ' — classify your apps in the taxonomy'
+          : ' — add steps or phases to this session') + '</div>';
+  }
 }
 
 /* ============ Multi-session loading =============================== */
@@ -115,6 +158,14 @@ let _groupByWorker = false;        // H1
 let _variantMode = "activity";     // H10: "activity" | "step"
 let _sxsAlign = "time";            // H2: "time" | "case"
 let _dfgConformance = false;       // H3
+/* C1b: process-map depth. "activity" is the taxonomy-classified DFG;
+   "step"/"phase" build a DFG from the analyst's annotations (no taxonomy
+   needed). The last render's inputs are cached so the depth selector can
+   re-render without a full aggregate re-run. */
+let _mapLevel = "activity";
+let _lastFilteredForMap = [];
+let _lastVariantsForMap = null;
+let _lastActivityDfg = null;
 
 function wireAggregateControls() {
   $("#btn-open-multi-hero").addEventListener("click", openMultiFlow);
@@ -600,6 +651,12 @@ function renderAggregate() {
       ends.set(k, (ends.get(k) || 0) + v);
     }
   }
+  // C1b: cache the map inputs so the depth selector can re-render the Flow
+  // diagram at step/phase level without a full aggregate re-run.
+  _lastFilteredForMap = filtered;
+  _lastVariantsForMap = variantsForDfg;
+  _lastActivityDfg = null;
+
   // H3: hide the conformance toggle + legend by default; the DFG block
   // re-enables them when a template-matched DFG is available.
   renderConformanceLegend(null);
@@ -614,6 +671,7 @@ function renderAggregate() {
       start_activities: Object.fromEntries(starts),
       end_activities: Object.fromEntries(ends),
     };
+    _lastActivityDfg = dfg;
     // H3: conformance overlay -- offered when any session matched a
     // Process Template (auto_matched steps exist).
     const conf = computeConformance(filtered, dfg);
@@ -632,9 +690,30 @@ function renderAggregate() {
     });
     renderConformanceLegend(confActive ? conf : null);
   }
+  // C1b: if the activity map is empty (no taxonomy) but the analyst has
+  // steps/phases, fall back to that level so the map is not blank -- and
+  // surface the Flow-diagram pane where the annotation DFG renders.
+  let _autoLevel = false;
+  if (_mapLevel === "activity" && !(_lastActivityDfg && _lastActivityDfg.edges.length)) {
+    const anyPhases = filtered.some((s) => ((s.annotations || {}).phases || []).length);
+    const anySteps = filtered.some((s) => ((s.annotations || {}).steps || []).some((st) => st.state !== "hidden"));
+    if (anyPhases) { _mapLevel = "phase"; _autoLevel = true; }
+    else if (anySteps) { _mapLevel = "step"; _autoLevel = true; }
+  }
+  const _lvlSel = document.getElementById("map-level");
+  if (_lvlSel) _lvlSel.value = _mapLevel;
+  if (_mapLevel !== "activity") {
+    if (_autoLevel) {
+      $$(".panel-tab").forEach((t) => t.classList.toggle("active", t.dataset.map === "dfg"));
+      $("#bpmn-host").style.display = "none";
+      $("#dfg-host").style.display = "";
+    }
+    applyMapLevel();
+  }
+
   // Zoom/fit controls serve whichever map tab is active -- both the BPMN
   // and DFG viewers support zoom, so show them once a map has rendered.
-  if ((sessionWithBpmn && PdtBpmn) || (edgeMap.size && PdtDfg)) {
+  if ((sessionWithBpmn && PdtBpmn) || (edgeMap.size && PdtDfg) || _mapLevel !== "activity") {
     setMapZoomVisible(true);
   }
 

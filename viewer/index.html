@@ -470,6 +470,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="panel-tabs">
                 <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
                 <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
+                <select id="map-level" class="map-status-select" title="Level of the Flow diagram: Activity (application-level, needs taxonomy rules), Step or Phase (built from your annotations, works with no taxonomy).">
+                  <option value="activity">Activity level</option>
+                  <option value="step">Step level</option>
+                  <option value="phase">Phase level</option>
+                </select>
               </div>
               <div class="map-zoom" id="map-zoom" style="display:none">
                 <span class="map-zoom-pct" id="map-zoom-pct">100%</span>
