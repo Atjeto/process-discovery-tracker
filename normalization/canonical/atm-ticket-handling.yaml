@@ -4,6 +4,15 @@
 # (automation_ids, class names, window titles) are placeholders from one
 # engagement's applications. An analyst authoring a real template identifies
 # them from their own capture.
+#
+# Fact-find (real ATM capture, ADR-0009) CONFIRMED for this engagement:
+#   - the case-anchor automation_id "txtsr" is real and captured with a value
+#     (the serial field "SrNo" is an alternate/additional candidate);
+#   - the AG-Grid cell class "ag-cell-edit-input" is real (classify-ticket);
+#   - TAMBA is Chrome-hosted, the call-management system is Edge-hosted, so the
+#     match rules stay browser-agnostic (no process_name constraint).
+# Still to verify against your own values/titles: the name/title/value rules
+# below (check-call-mgmt, check-contract, write-resolution, update-status).
 
 canonical_process:
   id: "atm-ticket-handling"
@@ -54,6 +63,11 @@ canonical_process:
 
     - step_id: "classify-ticket"
       name: "Classify ticket"
+      # Fact-find: AG-Grid cells are identityless -- no per-cell automation_id
+      # or name; every cell is the same "ag-cell-edit-input" Edit. Per-field
+      # granularity is NOT recoverable from the capture, so this necessarily
+      # matches the whole grid as ONE coarse step -- until_field_change cannot
+      # sub-divide it (there is no detectable field change).
       match:
         - window_title_regex: ".*TAMBA.*"
           interaction: { class_name: "ag-cell-edit-input" }
