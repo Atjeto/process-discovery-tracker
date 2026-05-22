@@ -107,6 +107,21 @@ function renderStepsLevel() {
 
   $("#steps-badge").textContent = String(allSteps.length);
   if ($("#steps-pane-count")) $("#steps-pane-count").textContent = String(allSteps.length);
+  // A3: surface analyst flag counts so marking a step visibly counts.
+  const sumEl = $("#steps-summary");
+  if (sumEl) {
+    const fc = { waste: 0, automation_candidate: 0, conditional: 0, exception_path: 0 };
+    for (const st of allSteps) {
+      const fl = st.flags || {};
+      for (const k of Object.keys(fc)) if (fl[k]) fc[k]++;
+    }
+    const parts = [];
+    if (fc.waste) parts.push(fc.waste + " waste");
+    if (fc.automation_candidate) parts.push(fc.automation_candidate + " automatable");
+    if (fc.conditional) parts.push(fc.conditional + " conditional");
+    if (fc.exception_path) parts.push(fc.exception_path + " exception");
+    sumEl.textContent = parts.length ? ("Flagged: " + parts.join(" · ")) : "";
+  }
   PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
     (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
     (sid) => {

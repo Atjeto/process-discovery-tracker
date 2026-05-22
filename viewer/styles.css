@@ -1312,6 +1312,19 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .drift-indicator { color: var(--warn); margin-left: 4px; }
 .drift-note { color: var(--warn); font-size: 11px; }
+/* A3: analyst flag badges in the step list. Marking a step visibly shows
+   here (and waste also strikes the name). Hues are theme-neutral. */
+.step-flag {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 14px; height: 14px; padding: 0 3px; margin-left: 4px;
+  border-radius: 3px; font-size: 9px; font-weight: 700; line-height: 1;
+  font-family: var(--font-mono); color: #fff; flex: none;
+}
+.step-flag.flag-waste { background: #B0563C; }
+.step-flag.flag-auto  { background: #4A78B0; }
+.step-flag.flag-cond  { background: #7C7A72; }
+.step-flag.flag-exc   { background: #C8862A; }
+.step-row.step-flag-waste .step-name { text-decoration: line-through; opacity: 0.72; }
 
 .phase-step-row {
   display: flex; align-items: center; gap: 6px;

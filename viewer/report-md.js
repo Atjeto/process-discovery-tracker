@@ -62,6 +62,30 @@ function buildSessionReport(session) {
   if (meta.marker_edits_applied) lines.push(`- Annotation edits applied: ${meta.marker_edits_applied}`);
   lines.push("");
 
+  /* Steps + analyst flags (A3) -- the analyst's annotations reach the report,
+     not just the viewer. Hidden steps are left out. */
+  const reportSteps = ((session.annotations || {}).steps || []).filter((s) => s.state !== "hidden");
+  if (reportSteps.length) {
+    lines.push(`## Steps`);
+    lines.push("");
+    lines.push(`| # | Step | Duration | Flags |`);
+    lines.push(`|---|---|---:|---|`);
+    reportSteps.forEach((s, i) => {
+      const fl = s.flags || {};
+      const flags = [
+        fl.waste ? "waste" : null,
+        fl.automation_candidate ? "automation" : null,
+        fl.conditional ? "conditional" : null,
+        fl.exception_path ? "exception" : null,
+      ].filter(Boolean).join(", ");
+      const tr = s.time_range || {};
+      const durMs = (tr.start && tr.end) ? (new Date(tr.end) - new Date(tr.start)) : 0;
+      lines.push(`| ${i + 1} | ${mdEscape(s.name || "(unnamed)")} ` +
+        `| ${fmtDuration(durMs)} | ${mdEscape(flags)} |`);
+    });
+    lines.push("");
+  }
+
   /* Cases / Markers timeline */
   if (markers.length) {
     lines.push(`## Markers`);

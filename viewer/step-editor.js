@@ -59,14 +59,22 @@
       row.className = "step-row" +
         (isSel ? " selected" : "") +
         (isMulti ? " multi-selected" : "") +
-        (s.state === "hidden" ? " step-hidden" : "");
+        (s.state === "hidden" ? " step-hidden" : "") +
+        (s.flags && s.flags.waste ? " step-flag-waste" : "");
       row.dataset.stepId = s.step_id;
       const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
+      // A3: analyst flag badges -- marking a step now visibly shows in the list.
+      const _f = s.flags || {};
+      const flagBadges =
+        (_f.waste ? '<span class="step-flag flag-waste" title="Waste — should not be needed">W</span>' : "") +
+        (_f.automation_candidate ? '<span class="step-flag flag-auto" title="Automation candidate">A</span>' : "") +
+        (_f.conditional ? '<span class="step-flag flag-cond" title="Conditional — only sometimes happens">?</span>' : "") +
+        (_f.exception_path ? '<span class="step-flag flag-exc" title="Exception path — error or workaround">!</span>' : "");
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
         <span class="multi-check" title="Click to select for merge or phase grouping"></span>
         <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${driftTag}
+        ${driftTag}${flagBadges}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
         <span class="step-reorder">
           <button type="button" class="step-move-up" title="Move up" tabindex="-1">↑</button>
