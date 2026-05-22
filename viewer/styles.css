@@ -1773,6 +1773,16 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .modal-confirm .modal-close:hover { color: var(--fg); }
 .modal-confirm .modal-body { padding: 16px 18px; }
+
+/* Phase 3: classification manager modal. */
+.cm-modal { width: min(680px, calc(100vw - 40px)); }
+.cm-modal .modal-body { max-height: 60vh; overflow-y: auto; }
+.cm-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.cm-table th { text-align: left; color: var(--fg-3); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--rule); }
+.cm-table td { padding: 4px 8px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+.cm-table .cm-app { font-family: var(--font-mono); color: var(--fg-2); }
+.cm-table .cm-count { color: var(--fg-3); text-align: right; width: 64px; }
+.cm-table .cm-label { width: 100%; }
 .modal-confirm .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 6px; }
 .modal-confirm .modal-detail { color: var(--fg-3); font-size: 11px; margin: 0 0 12px; line-height: 1.55; }
 .modal-confirm .modal-footer {

@@ -35,6 +35,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and re-analyzes.
 - **Configurable hotkeys (D2).** The session-setup window records the four
   recorder shortcuts via a live key-capture — no more hand-editing the YAML.
+- **In-app classification manager.** A "Classify activities…" action lists every
+  application observed in the session and lets you label each in one place
+  (writing per-session classification rules) and re-analyze — the bulk companion
+  to the per-band "Classify this app…", so an empty application-level map can be
+  fixed without hand-editing taxonomy YAML. The unclassified-activity banner
+  links to it.
 
 ### Fixed
 

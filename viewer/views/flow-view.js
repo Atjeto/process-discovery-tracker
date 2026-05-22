@@ -23,7 +23,7 @@ const Ipc = require("../ipc.js");
 const PdtPalette = require("../command-palette.js");
 const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
-const { resetUndoStack, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
+const { resetUndoStack, saveAnnotationsWithUndo, persistAnnotations, ensureAnnoShape } = require("../session.js");
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
@@ -342,6 +342,8 @@ async function openSessionFlow() {
 
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
+const _btnClassify = document.getElementById("btn-classify-activities");
+if (_btnClassify) _btnClassify.addEventListener("click", () => showClassifyManager());
 
 /* Wire normalize button so the analysis-in-progress UI is visible:
    log host expands (already open by default in the HTML), Cancel
@@ -965,8 +967,8 @@ function renderSessionSummary() {
       const pct = Math.round((uncl / tot) * 100);
       taxonomyHtml =
         '<div class="summary-banner warn">⚠ ' + pct + '% of activity is unclassified, ' +
-        'so the application-level process map is mostly empty. Right-click an activity ' +
-        'band below and choose “Classify this app…”, or add rules to your taxonomy. ' +
+        'so the application-level process map is mostly empty. Use “Classify activities…” ' +
+        'in the top bar to label your apps (or right-click an activity band below). ' +
         'The Step and Phase process maps work without taxonomy.</div>';
     }
   }
@@ -1496,6 +1498,100 @@ async function classifyApp(app) {
   toast('Classified "' + app + '" — re-analyzing…', "success");
   const btn = document.getElementById("btn-normalize");
   if (btn) btn.click();
+}
+
+/* Phase 3: in-app classification manager. Lists every application observed in
+   the session and lets the analyst give each a meaningful activity label in
+   one place (a rule-scoped classification override -- every window of that app
+   -> the label). Saving re-analyzes so the map + lane pick the labels up. The
+   see-everything companion to the per-band classifyApp. Uses persistAnnotations
+   (in-memory + disk in one write) so the in-memory annotations stay consistent. */
+function showClassifyManager() {
+  if (!State.getSession()) return;
+  const prior = document.getElementById("classify-mgr-backdrop");
+  if (prior) prior.remove();
+
+  // Distinct apps from activity events, by frequency.
+  const counts = new Map();
+  for (const ev of (State.getSession().events || [])) {
+    if (ev.type !== "activity") continue;
+    const app = (ev.data && ev.data.app) || "";
+    if (app) counts.set(app, (counts.get(app) || 0) + 1);
+  }
+  const apps = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+
+  // Prefill from existing whole-app rule overrides.
+  const existing = {};
+  for (const o of ((State.getSession().annotations || {}).classification_overrides || [])) {
+    if (o && o.scope === "rule" && o.match && o.match.title_regex === ".*" && o.match.app) {
+      existing[o.match.app] = o.label || "";
+    }
+  }
+
+  const backdrop = document.createElement("div");
+  backdrop.id = "classify-mgr-backdrop";
+  backdrop.className = "modal-backdrop";
+  const rows = apps.map(([app, n]) =>
+    '<tr><td class="cm-app">' + escapeHtml(app) + '</td>' +
+    '<td class="cm-count">' + n + '</td>' +
+    '<td><input type="text" class="modal-input cm-label" data-app="' + escapeHtml(app) + '" ' +
+    'value="' + escapeHtml(existing[app] || "") + '" placeholder="e.g. TAMBA — Ticket system"></td></tr>'
+  ).join("");
+  backdrop.innerHTML =
+    '<div class="modal cm-modal">' +
+    '<header class="modal-header"><h2>Classify activities</h2>' +
+    '<button class="icon-btn modal-close" title="Close (Esc)">✕</button></header>' +
+    '<div class="modal-body">' +
+    '<p class="modal-msg">Give each application a meaningful label so the process map and timeline show real activities instead of “Unclassified”. This adds rules for this session and re-analyzes. Clear a label to remove it.</p>' +
+    (apps.length
+      ? '<table class="cm-table"><thead><tr><th>Application</th><th>Events</th><th>Activity label</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<p class="meta">No activity events in this session yet.</p>') +
+    '</div>' +
+    '<footer class="modal-footer"><button class="modal-cancel">Cancel</button>' +
+    '<button class="primary cm-save">Save & re-analyze</button></footer>' +
+    '</div>';
+  document.body.appendChild(backdrop);
+
+  function close() {
+    backdrop.remove();
+    document.removeEventListener("keydown", onKey, true);
+  }
+  function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+  document.addEventListener("keydown", onKey, true);
+  backdrop.querySelector(".modal-close").addEventListener("click", close);
+  backdrop.querySelector(".modal-cancel").addEventListener("click", close);
+  backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) close(); });
+
+  backdrop.querySelector(".cm-save").addEventListener("click", async () => {
+    const anno = ensureAnnoShape(State.getSession().annotations);
+    anno.classification_overrides = anno.classification_overrides || [];
+    let changed = 0;
+    backdrop.querySelectorAll(".cm-label").forEach((inp) => {
+      const app = inp.getAttribute("data-app");
+      const label = (inp.value || "").trim();
+      if (label === (existing[app] || "")) return;
+      // Drop any prior whole-app rule override for this app, then re-add.
+      anno.classification_overrides = anno.classification_overrides.filter(
+        (o) => !(o && o.scope === "rule" && o.match
+          && o.match.title_regex === ".*" && o.match.app === app));
+      if (label) {
+        anno.classification_overrides.push({
+          override_id: cryptoRandomId(),
+          scope: "rule",
+          match: { app, title_regex: ".*" },
+          label,
+          created_at: new Date().toISOString(),
+        });
+      }
+      changed++;
+    });
+    if (!changed) { close(); return; }
+    await persistAnnotations(anno, "classify activities", ["timeline"]);
+    close();
+    toast(changed + " app" + (changed === 1 ? "" : "s") + " relabelled — re-analyzing…", "success");
+    const btn = document.getElementById("btn-normalize");
+    if (btn) btn.click();
+  });
 }
 
 /* Pop a tiny context menu at (x, y) offering to queue a synthetic marker
