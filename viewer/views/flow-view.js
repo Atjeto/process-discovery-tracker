@@ -949,6 +949,28 @@ function renderSessionSummary() {
       `${n > 6 ? ", …" : ""}.</div>`;
   }
 
+  // C1a: warn when most activity is unclassified -- the application-level
+  // process map and the app lane stay near-empty until the taxonomy has rules
+  // for these apps. The Step/Phase maps work without taxonomy.
+  let taxonomyHtml = "";
+  {
+    const acts = (State.getSession() && State.getSession().stats
+      && State.getSession().stats.activity_stats) || [];
+    let tot = 0, uncl = 0;
+    for (const a of acts) {
+      const f = a.frequency || 0; tot += f;
+      if (/^Unclassified/i.test(a.activity_label || "")) uncl += f;
+    }
+    if (tot > 0 && uncl / tot > 0.5) {
+      const pct = Math.round((uncl / tot) * 100);
+      taxonomyHtml =
+        '<div class="summary-banner warn">⚠ ' + pct + '% of activity is unclassified, ' +
+        'so the application-level process map is mostly empty. Right-click an activity ' +
+        'band below and choose “Classify this app…”, or add rules to your taxonomy. ' +
+        'The Step and Phase process maps work without taxonomy.</div>';
+    }
+  }
+
   const hint = (s.caseCount > 0 && s.stepCount > 0)
     ? '<div class="summary-hint">Cases are time ranges marked during recording. ' +
       "Steps are logical actions identified during analysis — the two are independent.</div>"
@@ -972,7 +994,7 @@ function renderSessionSummary() {
         `<strong>${escapeHtml(formatDuration(s.durationMs))}</strong> · ` +
         `analyzed ${escapeHtml(analyzed)}</div>` +
       `<div class="summary-tiles">${tilesHtml}</div>` +
-      activityHtml + casesHtml + driftHtml + integrityHtml + problemsHtml + hint + bannerHtml +
+      activityHtml + casesHtml + driftHtml + integrityHtml + taxonomyHtml + problemsHtml + hint + bannerHtml +
     '</div>';
 
   // Collapsible: remember the analyst's open/closed choice across sessions.
@@ -1440,10 +1462,47 @@ function renderTimelineSummary() {
     " · " + formatDuration(last - first);
 }
 
-/* Pop a tiny context menu at (x, y) offering to queue a synthetic
-   marker insert into annotations.json.marker_edits at timestamp `ts`.
-   The edit only takes effect on the next normalization run. */
-function showMarkerInsertMenu(x, y, ts) {
+/* C1a: classify the app under an activity band in place. Writes a
+   rule-scoped classification override (every window of this app -> the
+   chosen label) and re-analyzes, so the activity map + lane pick it up.
+   Same override mechanism the aggregate map's Reclassify uses. */
+async function classifyApp(app) {
+  if (!app || !State.getSession()) return;
+  const label = await promptModal({
+    title: "Classify this app",
+    message: 'Give every "' + app + '" window an activity label. Adds a taxonomy ' +
+      "rule for this session and re-analyzes.",
+    placeholder: "e.g. TAMBA — Ticket system",
+    okLabel: "Classify & re-analyze",
+  });
+  const clean = (label || "").trim();
+  if (!clean) return;
+  const override = {
+    override_id: cryptoRandomId(),
+    scope: "rule",
+    match: { app, title_regex: ".*" },
+    label: clean,
+    created_at: new Date().toISOString(),
+  };
+  try {
+    const r = await Ipc.addClassificationOverride({
+      sessionFolder: State.getSession().sessionFolder, override,
+    });
+    if (!r || !r.ok) { toast("Could not save the classification", "error"); return; }
+  } catch (e) {
+    toast("Could not save the classification: " + (e && e.message), "error");
+    return;
+  }
+  toast('Classified "' + app + '" — re-analyzing…', "success");
+  const btn = document.getElementById("btn-normalize");
+  if (btn) btn.click();
+}
+
+/* Pop a tiny context menu at (x, y) offering to queue a synthetic marker
+   insert into annotations.json.marker_edits at timestamp `ts`. When `app` is
+   set (right-click on an activity band) the menu also offers Classify this
+   app. The edit only takes effect on the next normalization run. */
+function showMarkerInsertMenu(x, y, ts, app) {
   /* Tear down any prior menu */
   const prior = document.getElementById("tl-ctx-menu");
   if (prior) prior.remove();
@@ -1471,6 +1530,7 @@ function showMarkerInsertMenu(x, y, ts) {
     menu.appendChild(item);
   }
 
+  if (app) addItem("Classify this app…", () => classifyApp(app));
   addItem("Insert Start marker here…", () => queueSyntheticMarker(ts, "start"));
   addItem("Insert End marker here",    () => queueSyntheticMarker(ts, "end"));
   addItem("Jump to step here",         () => {
@@ -1910,7 +1970,7 @@ function renderTimeline() {
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp);
+          showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp, ev.data.app || "");
         });
         host.appendChild(band);
       }
