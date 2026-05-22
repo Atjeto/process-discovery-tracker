@@ -53,6 +53,12 @@
   button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
   button.primary:hover { filter: brightness(1.1); }
+  .hk-row { display: grid; grid-template-columns: 1fr 140px 72px; gap: 8px; align-items: center; margin-top: 8px; }
+  .hk-row:first-of-type { margin-top: 0; }
+  .hk-label { font-size: 11px; color: var(--fg-2); }
+  .hk-input { font-family: ui-monospace, Consolas, monospace; font-size: 11px; text-align: center; }
+  .hk-rec { padding: 6px 8px; font-size: 11px; }
+  .hk-rec.recording { border-color: var(--accent); color: var(--accent); }
 </style></head><body>
 
 <div>
@@ -99,6 +105,31 @@
 </fieldset>
 
 <fieldset>
+  <legend>Keyboard shortcuts</legend>
+  <div class="hk-row">
+    <span class="hk-label">Start marker / label picker</span>
+    <input type="text" id="hk-start" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-start">Record</button>
+  </div>
+  <div class="hk-row">
+    <span class="hk-label">End marker (close innermost)</span>
+    <input type="text" id="hk-end" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-end">Record</button>
+  </div>
+  <div class="hk-row">
+    <span class="hk-label">Manual screenshot</span>
+    <input type="text" id="hk-shot" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-shot">Record</button>
+  </div>
+  <div class="hk-row">
+    <span class="hk-label">Sync marker</span>
+    <input type="text" id="hk-sync" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-sync">Record</button>
+  </div>
+  <div class="help-hint">Click Record, then press the key combination (e.g. Ctrl+Shift+S). Changes take effect when you restart the tracker.</div>
+</fieldset>
+
+<fieldset>
   <legend>Recording behaviour</legend>
   <div class="row2">
     <div>
@@ -140,6 +171,11 @@ async function load() {
   const labels = Array.isArray(parsed.process_labels)
     ? parsed.process_labels.join("\n") : "";
   $("labels").value = labels;
+  const hk = parsed.hotkeys || {};
+  $("hk-start").value = hk.start_picker      || "Control+Shift+S";
+  $("hk-end").value   = hk.end_innermost     || "Control+Shift+E";
+  $("hk-shot").value  = hk.manual_screenshot || "Control+Shift+P";
+  $("hk-sync").value  = hk.sync_marker       || "Control+Shift+Y";
 }
 load();
 
@@ -160,6 +196,12 @@ function buildYaml() {
     obs: $("obs-scene").value.trim()
       ? { scene_name: $("obs-scene").value.trim() }
       : undefined,
+    hotkeys: {
+      start_picker:      $("hk-start").value.trim() || undefined,
+      end_innermost:     $("hk-end").value.trim()   || undefined,
+      manual_screenshot: $("hk-shot").value.trim()  || undefined,
+      sync_marker:       $("hk-sync").value.trim()  || undefined,
+    },
   };
   /* Trim undefined fields so the YAML doesn't carry nulls everywhere */
   function prune(o) {
@@ -193,6 +235,50 @@ $("btn-save").addEventListener("click", async () => {
   }
 });
 $("btn-cancel").addEventListener("click", () => window.close());
+
+/* D2: capture a keyboard shortcut as an Electron accelerator string
+   (https://www.electronjs.org/docs/latest/api/accelerator). */
+function accelFromEvent(e) {
+  if (["Control", "Alt", "Shift", "Meta", "OS"].includes(e.key)) return null;
+  const parts = [];
+  if (e.ctrlKey) parts.push("Control");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.metaKey) parts.push("Super");
+  let key = e.key;
+  const named = {
+    " ": "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left",
+    ArrowRight: "Right", Escape: "Esc",
+  };
+  if (named[key]) key = named[key];
+  else if (key.length === 1) key = key.toUpperCase();
+  parts.push(key);
+  return parts.join("+");
+}
+
+let _recording = false;
+document.querySelectorAll(".hk-rec").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (_recording) return;
+    _recording = true;
+    const orig = btn.textContent;
+    btn.textContent = "Press keys…";
+    btn.classList.add("recording");
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const accel = accelFromEvent(e);
+      if (!accel) return;                 // a lone modifier -- keep waiting
+      const inp = $(btn.getAttribute("data-target"));
+      if (inp) inp.value = accel;
+      document.removeEventListener("keydown", onKey, true);
+      btn.textContent = orig;
+      btn.classList.remove("recording");
+      _recording = false;
+    };
+    document.addEventListener("keydown", onKey, true);
+  });
+});
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
