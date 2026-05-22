@@ -65,6 +65,20 @@ _COMPLETION_WORDS = frozenset(
 )
 
 
+def _element_key(data: dict[str, Any]) -> tuple:
+    """Identity of the UI element an interaction targeted, for A4
+    element-boundary step splitting. A stable automation id wins, else the
+    visible name; the control type and window title disambiguate same-named
+    controls across windows. Identityless web-app fields (no id, no name)
+    collapse to the same key -- they are genuinely indistinguishable, so they
+    are not force-split."""
+    return (
+        data.get("window_title") or "",
+        (data.get("automation_id") or data.get("name") or ""),
+        data.get("control_type") or "",
+    )
+
+
 def auto_suggest_steps(
     events: list[dict[str, Any]],
     *,
@@ -72,6 +86,7 @@ def auto_suggest_steps(
     step_max_interactions: int = 60,
     step_min_interactions: int = 2,
     step_max_idle_ms: int = 5000,
+    step_split_on_element: bool = True,
     session_id: str = "",
     ignored_processes: list[str] | None = None,
     excluded_ranges: list[dict] | None = None,
@@ -90,6 +105,12 @@ def auto_suggest_steps(
     any interaction whose timestamp falls inside one is dropped, so an
     analyst can cut a break or an unrelated detour out of a long
     passive recording before step suggestion runs.
+
+    `step_split_on_element` (default True) additionally ends a step when
+    typing moves to a DIFFERENT field, so filling several fields yields one
+    step per field instead of a single glued blob (ADR-0010 A4). value->action
+    transitions are left intact ("type a serial then click Search" stays one
+    named step). Set False to restore the pre-A4 grouping.
     """
     excluded = _parse_excluded_ranges(excluded_ranges)
     # Group by top-level case (last case_id in case_ids list, or None)
@@ -153,6 +174,18 @@ def auto_suggest_steps(
                     split = True
                 elif len(candidate) >= step_max_interactions:
                     split = True
+                elif step_split_on_element:
+                    # A4: a value gesture (typing into a field) ends the step
+                    # when the next typing lands on a DIFFERENT element -- so
+                    # filling three separate fields yields three steps, not one
+                    # glued blob. value->action transitions are left intact so
+                    # "type a serial then click Search" stays one named step.
+                    prev = candidate[-1]["data"]
+                    prev_is_value = prev.get("kind") in ("value_changed", "text_changed")
+                    cur_is_value = data.get("kind") in ("value_changed", "text_changed")
+                    if (prev_is_value and cur_is_value
+                            and _element_key(prev) != _element_key(data)):
+                        split = True
             if split:
                 flush()
             candidate.append(ev)

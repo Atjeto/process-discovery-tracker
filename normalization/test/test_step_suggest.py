@@ -253,6 +253,43 @@ def test_two_identityless_fields_split_by_focus_stay_separate():
     assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
 
 
+# --- A4: element-boundary step splitting -------------------------------
+
+def test_distinct_fields_split_into_separate_steps():
+    """A4: typing into two DIFFERENT named fields yields two steps, not one
+    glued blob -- the dominant over-grouping the element split fixes."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_value_changed(base, "SN12345", name="Serial Number"),
+        _make_value_changed(base + timedelta(milliseconds=300), "Banking", name="Industry"),
+    ]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert len(steps) == 2
+
+
+def test_element_split_can_be_disabled():
+    """A4: step_split_on_element=False restores the pre-A4 grouping --
+    the two fields collapse back into one step."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _make_value_changed(base, "SN12345", name="Serial Number"),
+        _make_value_changed(base + timedelta(milliseconds=300), "Banking", name="Industry"),
+    ]
+    steps = auto_suggest_steps(events, session_id="s1", step_split_on_element=False)
+    assert len(steps) == 1
+
+
+def test_type_then_action_stays_one_step():
+    """A4: a value->action transition is NOT split -- typing a serial then
+    clicking Search in the same window stays one step (good naming/coupling)."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    typed = _make_value_changed(base, "SN12345", name="Serial", window="TAMBA")
+    btn = _make_inter(base + timedelta(milliseconds=300), kind="invoked",
+                      name="Search", window="TAMBA")
+    steps = auto_suggest_steps([typed, btn], session_id="s1")
+    assert len(steps) == 1
+
+
 def test_repeated_identical_tab_selection_collapses():
     """The OS re-fires selection_changed on a tab every time focus
     returns to it. Identical re-selections collapse to one, and a lone
