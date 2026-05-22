@@ -4,6 +4,15 @@ Project context for Claude Code. For the full documentation set start at
 [docs/README.md](docs/README.md); for architecture,
 [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
+**Active direction (2026-05):** the systemic value-chain gaps (why the app
+produces logs, not process insight) and the phased plan to close them are in
+[docs/architecture/VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md)
+— read it before working on segmentation, the process map, recorder UX, or step
+annotation. Tactical fix list: [ADR-0010](docs/adr/0010-ux-overhaul-viewer-recorder.md).
+The cross-session canonical-template path in
+[ADR-0009](docs/adr/0009-normalization-redesign-v013.md) is redirected to
+intra-session repetition alignment (see the review's Decision 1).
+
 ## What this is
 
 Process Discovery Tracker — an internal Windows **process-mining** tool. A worker
