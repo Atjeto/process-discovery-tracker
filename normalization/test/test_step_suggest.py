@@ -290,6 +290,42 @@ def test_type_then_action_stays_one_step():
     assert len(steps) == 1
 
 
+# --- Browser-chrome noise filter (ADR-0009 fact-find) ------------------
+
+def test_browser_chrome_noise_is_filtered():
+    """Address-bar typing and browser tab switches are dropped as navigation
+    noise; web-app fields are kept."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    omni = _make_value_changed(base, "https://tamba", name="Address and search bar")
+    omni["data"]["class_name"] = "OmniboxViewViews"
+    tab = _make_inter(base + timedelta(milliseconds=200),
+                      kind="selection_changed", name="TAMBA")
+    tab["data"]["control_type"] = "TabItem"
+    tab["data"]["class_name"] = "Tab"
+    f1 = _make_value_changed(base + timedelta(milliseconds=400), "AB123", name="Serial")
+    f1["data"]["class_name"] = "form-control"
+    f2 = _make_value_changed(base + timedelta(milliseconds=600), "Done", name="Notes")
+    f2["data"]["class_name"] = "form-control"
+    steps = auto_suggest_steps([omni, tab, f1, f2], session_id="s1")
+    all_ids = [i for s in steps for i in s["evidence"]["interaction_event_ids"]]
+    assert omni["event_id"] not in all_ids
+    assert tab["event_id"] not in all_ids
+    assert f1["event_id"] in all_ids
+    assert f2["event_id"] in all_ids
+
+
+def test_browser_chrome_filter_can_be_disabled():
+    """filter_browser_chrome=False keeps the browser-frame interactions."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    omni = _make_value_changed(base, "url", name="addr")
+    omni["data"]["class_name"] = "OmniboxViewViews"
+    field = _make_value_changed(base + timedelta(milliseconds=300), "x", name="Serial")
+    field["data"]["class_name"] = "form-control"
+    steps = auto_suggest_steps([omni, field], session_id="s1", filter_browser_chrome=False)
+    all_ids = [i for s in steps for i in s["evidence"]["interaction_event_ids"]]
+    assert omni["event_id"] in all_ids
+
+
 def test_repeated_identical_tab_selection_collapses():
     """The OS re-fires selection_changed on a tab every time focus
     returns to it. Identical re-selections collapse to one, and a lone

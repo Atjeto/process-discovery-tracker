@@ -30,6 +30,31 @@ def _is_ignored(data: dict, ignored: list[str] | None) -> bool:
     return False
 
 
+_BROWSER_CHROME_CLASSES = frozenset({
+    "OmniboxViewViews",                  # Chrome address / search bar
+    "BackForwardButton", "ReloadButton", "HomeButton",
+    "BookmarkButton", "StarView", "AppMenuButton", "BrowserAppMenuButton",
+    "DownloadBubbleTransparentButton", "NewTabButton",
+})
+
+
+def _is_browser_chrome(data: dict) -> bool:
+    """True for interactions on the browser's OWN chrome -- the address bar,
+    toolbar buttons, and tab strip -- rather than the web app inside it. That
+    is browser navigation, not a process step. Web-app content carries page
+    CSS classes (form-control, ag-cell-edit-input, ...); the browser frame
+    carries these fixed Chromium/Edge view class names. Verified against a real
+    ATM capture where the omnibox alone produced 55 value_changed events
+    (ADR-0009 fact-find)."""
+    cls = data.get("class_name") or ""
+    if cls in _BROWSER_CHROME_CLASSES:
+        return True
+    # Browser tab switches: a TabItem in the Chromium/Edge tab strip.
+    if data.get("control_type") == "TabItem" and cls in ("Tab", "EdgeTab"):
+        return True
+    return False
+
+
 def _parse_excluded_ranges(
     excluded_ranges: list[dict] | None,
 ) -> list[tuple[datetime, datetime]]:
@@ -87,6 +112,7 @@ def auto_suggest_steps(
     step_min_interactions: int = 2,
     step_max_idle_ms: int = 5000,
     step_split_on_element: bool = True,
+    filter_browser_chrome: bool = True,
     session_id: str = "",
     ignored_processes: list[str] | None = None,
     excluded_ranges: list[dict] | None = None,
@@ -111,6 +137,10 @@ def auto_suggest_steps(
     step per field instead of a single glued blob (ADR-0010 A4). value->action
     transitions are left intact ("type a serial then click Search" stays one
     named step). Set False to restore the pre-A4 grouping.
+
+    `filter_browser_chrome` (default True) drops interactions on the browser's
+    own UI -- address bar, toolbar buttons, tab strip -- which are navigation
+    noise, not process steps (ADR-0009 fact-find). Web-app content is kept.
     """
     excluded = _parse_excluded_ranges(excluded_ranges)
     # Group by top-level case (last case_id in case_ids list, or None)
@@ -121,6 +151,8 @@ def auto_suggest_steps(
         if _is_ignored(ev.get("data", {}), ignored_processes):
             continue
         if _ts_excluded(ev.get("timestamp", ""), excluded):
+            continue
+        if filter_browser_chrome and _is_browser_chrome(ev.get("data", {})):
             continue
         cids = ev.get("data", {}).get("case_ids") or []
         top = cids[-1] if cids else None
