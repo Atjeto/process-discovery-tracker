@@ -41,6 +41,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   phase node descends to the step level and a step node to the activity level
   (phase→step→activity); the activity level still drills to the source session
   (`viewer/views/aggregate-view.js`).
+- **Drill-down now scopes to the clicked node's children (Flow diagram).**
+  Clicking a phase node descends to the step level showing only that phase's
+  steps; clicking a step node descends to the activity level showing only the
+  activity labels seen inside that step. A "scoped: <parent> · show all" chip in
+  the map header is the inverse. The Process diagram (BPMN) is a static mined
+  file, so there a click descends unfiltered, as before
+  (`viewer/views/aggregate-view.js`, `viewer/process-map-levels.js`).
+- **"Hide rare paths" toggle for the Flow diagram.** On a long, dense recording
+  the map can carry many one-off (frequency-1) deviations. The toggle drops those
+  edges so the dominant flow is readable — the hidden count shows in the label and
+  it is reversible by un-ticking; a no-op when there is no frequency spread, so the
+  map is never blanked (`viewer/process-map-levels.js` `dropRareEdges`,
+  `viewer/views/aggregate-view.js`).
 
 ### Fixed
 
@@ -81,6 +94,22 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   below its content, so an open Raw Events panel overflowed and overlapped the
   editor instead of scrolling. Removed it, with a comment so it isn't re-added
   (`viewer/styles.css`).
+- **Dead Flow / Steps / Phases switcher removed from Compare Sessions.** The
+  three-button level switcher in the aggregate toolbar wrote to a state value
+  nothing read, so clicking it only moved the highlight and re-rendered the same
+  view. The process-map level is set by the "Activity / Step / Phase level"
+  dropdown beside the map; the orphaned control and its backing state are gone
+  (`viewer/index.html`, `viewer/renderer.js`, `viewer/state.js`).
+- **Analysis time study and step statistics no longer fragment per instance.**
+  The cross-session time study, `step_stats`, `step_variants`, and the pooled
+  automation candidates grouped steps by `canonical_step_id` / raw `step_id` or
+  raw name, so with no Process Template every order made its own row — an endless,
+  near-valueless list ("Salesforce: Search — CUST-10900", "— CUST-10901", …). They
+  now fall back to the value-free `process_label` (the same abstraction the process
+  map uses), so a step seen across N orders collapses to one row with `instances=N`
+  ("Salesforce: Search · 4"). New shared `step_group_key` / `step_group_label`
+  helpers in `analysis_common.py`; applied in `analysis_time_study`,
+  `analysis_automation`, and `stats_compute`.
 
 ### Changed
 
@@ -391,6 +420,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed on the next Re-analyze — no re-recording needed.
 
 ## [0.12.0] - 2026-05-18
+
+> Version note: the `v0.11.0` tag carried this same content and was immediately
+> re-released as `v0.12.0` (a renumber — there was no separate 0.11.0 feature set),
+> which is why the version sequence has no `[0.11.0]` section.
 
 ### Added
 

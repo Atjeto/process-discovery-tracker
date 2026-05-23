@@ -28,8 +28,12 @@ Output: one session folder under
 | Screen | Electron `desktopCapturer` (app-switch / marker / idle / manual) | screenshots |
 | Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | external recording + `obs/sync.json` |
 
-Events are appended to `events.jsonl` synchronously (per-event `appendFileSync`),
-so a crash loses at most the in-flight event. Each event carries a monotonic
+Events are appended to `events.jsonl` through a small batching queue: high-volume
+events (activity polls, interactions) flush on a 500 ms timer, while `marker` and
+`system` events flush the whole pending queue immediately — so a case boundary or
+lifecycle event is never left only in memory, and a clean shutdown drains the queue.
+A crash therefore loses at most the activity/interaction events queued at that
+moment (under 500 ms of low-stakes data). Each event carries a monotonic
 `_seq` — its 0-based append ordinal — so normalization can resolve events that
 share a millisecond timestamp into true order. Screenshot triggers are coalesced by
 a 2-second leading-edge debounce, so coincident triggers (an app switch landing
@@ -40,8 +44,9 @@ suppressed.
 
 `main.js` is the Electron main process and the app's orchestration core. The
 v0.5.0 remediation ([ADR-0005](../adr/0005-capture-architecture-remediation.md))
-extracted four cross-cutting modules out of it; it is now ~1,210 lines (down from
-~1,580) and still the largest file — it holds the tray menu, global hotkeys, the
+extracted four cross-cutting modules out of it (down from ~1,580 to ~1,210 lines);
+features added since have grown it back to ~1,532, still the largest file — it holds
+the tray menu, global hotkeys, the
 session lifecycle, the idle monitor, the screenshot triggers, the label picker,
 and the `pdt:*` IPC handlers.
 
@@ -84,7 +89,7 @@ v0.5.0 (C8):
 | File | Role |
 |---|---|
 | `build-package.js` | Custom `electron-packager` wrapper for distribution builds. |
-| `test/` | `node:test` suite — 59 tests over `config`, `events`, `session`, `tracker`, and `window-manager`; run with `npm test`. |
+| `test/` | `node:test` suite — 65 tests over `config`, `events`, `session`, `tracker`, and `window-manager`; run with `npm test`. |
 | `ui/` | The seven extracted window HTML files (see the Windows table above). |
 | `recorder/` | The C# recorder sidecar — see below. |
 
@@ -134,6 +139,18 @@ notification.
   `active` with no `ended_at`, marks them `recovered`; the normalization layer
   reconciles any markers left open.
 
+### App-vocabulary prep sessions
+
+A session carries a `purpose`: ordinary process capture (`"process"`, the default)
+or `"app_prep"`. `startAppPrepSession()` (tray → **Start app vocabulary prep
+session…**) prompts for an app name and starts an `app_prep` session — filed under
+`engagement_id: "vocab-prep"` so it doesn't pollute a real engagement's captures. It
+**skips** the pre-flight engagement/folder validation and fires a starter marker so
+the analyst gets clear timeline boundaries; the target app name is recorded as
+`manifest.prep_app` for downstream auto-naming. The point is a focused, throwaway
+walkthrough of one application purely to bootstrap its App Vocabulary
+([ADR-0002](../adr/0002-app-vocabularies.md)), kept apart from process recordings.
+
 ## IPC surface
 
 The tray/main process exposes `pdt:*` IPC handlers consumed by the utility windows:
@@ -144,13 +161,26 @@ The tray/main process exposes `pdt:*` IPC handlers consumed by the utility windo
 ## Configuration
 
 Per-session config is YAML, deep-merged over the `DEFAULTS` object in `config.js`
-— which, since v0.5.0 (C3), is the **single source** of default values. Keys cover
-engagement/worker identity, `auto_end_idle_minutes` plus `auto_end_on_idle`
-(set false to keep a session running through idle, for 8-hour passive
-recordings), `poll_interval_seconds`,
-`process_labels` (Start-marker label list), `obs`, `hotkeys`, `screenshots`, and
-`interactions` (including `debounce_ms`, the recorder's `value_changed` coalescing
-window, passed to the sidecar in the `hello` message). Point the app at a file
-with `PDT_CONFIG`, or edit via the session config window (which writes
-`quick-config.yaml` for the next launch). A hotkey whose binding is already
-held by another app falls back to its `Ctrl+Alt+` variant at registration.
+— which, since v0.5.0 (C3), is the **single source** of default values (one
+exception: `storage_warn_gb` is read in `main.js` with an inline `|| 50` fallback,
+not from `DEFAULTS`). Point the app at a file with `PDT_CONFIG`, or edit via the
+session config window (which writes `quick-config.yaml` for the next launch). A
+hotkey whose binding is already held by another app falls back to its `Ctrl+Alt+`
+variant at registration.
+
+| Key | Default | Purpose |
+|---|---|---|
+| `engagement_id` / `engagement_name` / `worker` | `"default"` / … | Identity stamped on the session + manifest. |
+| `auto_end_idle_minutes` | `30` | Idle span that auto-ends the session (when `auto_end_on_idle`). |
+| `auto_end_on_idle` | `true` | Set `false` to keep a session running through idle — 8-hour passive recordings. |
+| `poll_interval_seconds` | `5` | Active-window poll cadence. |
+| `idle_threshold_seconds` | `60` | OS-idle threshold before an `idle_start` is logged. |
+| `taxonomy_version` | `"v0"` | Taxonomy generation stamped into `stats.json.meta`. |
+| `storage_warn_gb` | `50` | Total stored-sessions size that triggers a cleanup-reminder toast (read in `main.js`). |
+| `process_labels` | `[]` | Start-marker label list offered in the picker. |
+| `obs` / `hotkeys` | … | OBS WebSocket config + the four global-hotkey bindings. |
+| `screenshots.enabled` / `.quality` / `.on_app_switch` / `.on_marker_fire` / `.on_idle_resume_minutes` / `.display` | `true` / `60` / `true` / `true` / `5` / `"active"` | Screenshot triggers, JPEG quality, and multi-monitor selection (`active` / `primary` / `all`). |
+| `interactions.enabled` / `.required` / `.auto_restart` / `.max_restarts_per_session` | `true` / `false` / `true` / `3` | Recorder-sidecar lifecycle. |
+| `interactions.exclude_processes` | `[]` | Process names the recorder skips. |
+| `interactions.verbose` | `false` | Forensic firehose — emit `focus_changed` / `text_changed` / per-keystroke `value_changed` (~3–5× events). |
+| `interactions.debounce_ms` | `750` | The recorder's `value_changed` coalescing window, passed to the sidecar in `hello`. |

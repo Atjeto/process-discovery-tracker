@@ -433,6 +433,23 @@ cross-session templates, it fits one-off processes.
 
 ---
 
+## Status — what shipped (2026-05-23)
+
+The review's three decisions and six gaps have largely been executed; this section
+closes them out.
+
+| Item | Status | Where |
+|---|---|---|
+| **Decision 1** — intra-session alignment (not cross-session templates) | Direction accepted; **partially built** | Anchor-based case detection shipped ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)); the alignment engine (`step-alignment.js`, repeat badges, "Apply to N repeats") is a first cut; the full fuzzy alignment + curate-once-propagate loop is now its own [ADR-0015](../adr/0015-intra-session-repetition-alignment.md). |
+| **Decision 2** — one zoomable single-session map (phase / step / activity) | **Shipped** | Notation × level matrix + observed-flow step/phase maps + drill-down + "Hide rare paths" ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md), [ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)); the dead aggregate switcher was removed. |
+| **Decision 3** — annotation propagates | **Shipped** | Step flags badge the list and reach the report / PDD ([ADR-0010](../adr/0010-ux-overhaul-viewer-recorder.md) A3). |
+| Gap 1 — in-app taxonomy editor | **Shipped** | Classification manager + classify-in-place + team-taxonomy promotion ([ADR-0010](../adr/0010-ux-overhaul-viewer-recorder.md), [ADR-0011](../adr/0011-platform-recognition-layer.md)). |
+| Gap 2 — curate-once-apply-to-all loop | **Partial** | First cut in `step-alignment.js`; the full loop is [ADR-0015](../adr/0015-intra-session-repetition-alignment.md). |
+| Gap 3 — deliverable as a projection, not a snapshot | **Open** | The PDD "living projection" still needs an owner definition (NEXT-SESSION-SPEC §4). |
+| Gap 4 — activity / step stats split-brain | **Shipped** | `step_stats` + value-free `process_label` grouping ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)). |
+| Gap 5 — re-norm preserves the curated model's relationships | **Shipped** | `_inherit_step_identity` keeps step↔phase / step↔template links across re-analyze ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)). |
+| Gap 6 — explicit IA for the two maps | **Shipped** | The independent notation × level axes + drill-down ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)). |
+
 ## One-paragraph summary for the owner
 
 The app captures well and exports well; it fails in the middle, where logs

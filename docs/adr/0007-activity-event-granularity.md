@@ -103,6 +103,7 @@ the deliverable does not improve.
 3. [x] `docs/architecture/CAPTURE.md` — run model updated.
 4. [x] `docs/To-Do/IMPLEMENTATION-SPEC.md` — C1's framing corrected:
        it is the coarse-view companion to this change, not the fix.
-5. [ ] Follow-on: decide whether a web-app switch (a normalized-title
-       change within one browser) should also trigger a screenshot —
-       §3.4 fires screenshots on an application-executable switch only.
+5. [x] Decided: screenshots stay **executable-switch only** — `main.js` fires on
+       `status.currentApp !== lastTrackedApp`. A normalized-title change within one
+       browser does not trigger a screenshot; doing so would multiply near-duplicate
+       captures on browser-heavy sessions for little gain.

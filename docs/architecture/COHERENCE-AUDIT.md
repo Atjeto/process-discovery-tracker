@@ -69,6 +69,12 @@ The additions don't sit in isolation; each raises the load on something else:
 - **Recognition layer (ADR-0011) ⟶ the pipeline.** Built viewer-side only;
   segmentation/classification in Python still use the old logic, so its value
   isn't realised end-to-end yet.
+  - **Resolved (2026-05-23, v0.15.0+):** the recognition layer now spans both
+    sides — the signature table moved to `shared/recognition-patterns.json`, loaded
+    by the viewer (`recognition.js`) **and** the Python pipeline
+    (`normalization/recognition.py`); the step suggester's browser-chrome filter and
+    activity classification both consume it (ADR-0011 follow-ups #3–#5). The
+    end-to-end gap is closed.
 - **Flags / classify ⟶ their inverses.** Flag↔unflag and classify↔reclassify do
   exist — good. The discipline below is to keep it that way.
 

@@ -31,8 +31,8 @@ current **architecture reference** (what the code is now), current **operational
 
 ## Current — architecture reference
 
-Written as part of the refactor-review pass (2026-05-16); describes the code as it
-is today.
+Originally written in the refactor-review pass (2026-05-16); refreshed 2026-05-23
+for v0.15.0 plus the analysis & recognition layers. Describes the code as it is today.
 
 | Doc | Covers |
 |---|---|
@@ -45,6 +45,8 @@ is today.
 | [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, colour palettes, and the contrast problem |
 | [ARCHITECTURE-ISSUES.md](ARCHITECTURE-ISSUES.md) | Viewer refactor register — structural / design-system / regression issues (all resolved) |
 | [CAPTURE-ARCHITECTURE-ISSUES.md](CAPTURE-ARCHITECTURE-ISSUES.md) | Capture refactor register — tech-debt items C1-C8 (all resolved in v0.5.0) |
+| [architecture/VALUE-CHAIN-REVIEW.md](architecture/VALUE-CHAIN-REVIEW.md) | Strategic review — where meaning leaks across the capture→insight value chain |
+| [architecture/COHERENCE-AUDIT.md](architecture/COHERENCE-AUDIT.md) | Coherence discipline — every "verb" needs its inverse, a legend, and a real-run check |
 
 ## Current — operational & component docs
 
@@ -70,6 +72,14 @@ is today.
 | [adr/0005-capture-architecture-remediation.md](adr/0005-capture-architecture-remediation.md) | ADR — the capture app tech-debt remediation (C1-C8) |
 | [adr/0006-backlog-sequencing.md](adr/0006-backlog-sequencing.md) | ADR — sequencing the IMPROVEMENTS backlog; defer the analysis layer |
 | [adr/0007-activity-event-granularity.md](adr/0007-activity-event-granularity.md) | ADR — activity-event granularity; title in the capture run key |
+| [adr/0008-build-the-analysis-layer.md](adr/0008-build-the-analysis-layer.md) | ADR — build the heuristic IE/CI analysis layer |
+| [adr/0009-normalization-redesign-v013.md](adr/0009-normalization-redesign-v013.md) | ADR — v0.13 normalization redesign; intra-session repetition alignment |
+| [adr/0010-ux-overhaul-viewer-recorder.md](adr/0010-ux-overhaul-viewer-recorder.md) | ADR — viewer + recorder UX overhaul (12 fixes) |
+| [adr/0011-platform-recognition-layer.md](adr/0011-platform-recognition-layer.md) | ADR — platform/framework recognition layer |
+| [adr/0012-active-case-stamping-and-map-matrix.md](adr/0012-active-case-stamping-and-map-matrix.md) | ADR — active-case stamping + the notation × level map matrix |
+| [adr/0013-value-free-grouping-and-map-readability.md](adr/0013-value-free-grouping-and-map-readability.md) | ADR — `process_label` value-free grouping + map readability |
+| [adr/0014-distribution-model.md](adr/0014-distribution-model.md) | ADR — distribution model: GitHub Releases + electron-packager |
+| [adr/0015-intra-session-repetition-alignment.md](adr/0015-intra-session-repetition-alignment.md) | ADR — intra-session repetition alignment (curate one, propagate to all) |
 | [../capture/README.md](../capture/README.md) | Capture component quick-start |
 | [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |
 | [../normalization/README.md](../normalization/README.md) | Normalization component quick-start |

@@ -254,13 +254,16 @@ Override: `PDT_APP_VOCABULARIES` env var pointing at one or more directories (se
 
 ## Action items
 
-1. [ ] `normalization/app_vocab.py`: schema, loader, signature-match engine, event-enrichment pass.
-2. [ ] `normalize.py` integration: load vocabularies from default dir + `PDT_APP_VOCABULARIES`, enrich interaction events before step suggestion.
-3. [ ] Step auto-suggestion uses `meaningful_name` when present.
-4. [ ] `normalization/app_vocabularies/sample-salesforce.yaml`: a small worked example for the team to copy.
-5. [ ] Viewer: "Save app vocabulary from this session" button (in Steps view or under Process Template tab).
-6. [ ] Viewer: surface `meaningful_name` in the raw events table and the step detail evidence list.
-7. [ ] `shared/SCHEMA.md`: document the new `data.meaningful_name`, `data.screen_id`, `data.vocab_flags`, `data.vocab_source` fields.
-8. [ ] Stats meta: add `app_vocabularies_applied` (list of `{id, version}`) so re-analysis can detect vocab drift.
-9. [ ] User Guide: chapter on app vocabularies — what they are, when to use, how to bootstrap from a session.
-10. [ ] Pytest smoke for app_vocab.py: scope-match, signature-match, specificity tiebreak, multi-vocab load order.
+> **Shipped** — the App Vocabulary / "App Library" layer is live. Items 9 (User
+> Guide chapter) and 10 (pytest smoke) are unverified in this pass.
+
+1. [x] `normalization/app_vocab.py`: schema, loader, signature-match engine, event-enrichment pass.
+2. [x] `normalize.py` integration: loads vocabularies from the default dir + `PDT_APP_VOCABULARIES`, enriches before step suggestion.
+3. [x] Step auto-suggestion uses `meaningful_name` when present.
+4. [x] Worked examples shipped: `app_vocabularies/sample-salesforce.yaml` + `sample-outlook.yaml`.
+5. [x] Viewer "Save to App Library…" button (`#btn-save-vocab` → `viewer:saveAppVocab`) bootstraps a starter vocab from the session.
+6. [x] Viewer surfaces `meaningful_name` in the raw events table and step detail.
+7. [x] `shared/SCHEMA.md` documents `meaningful_name` / `screen_id` / `vocab_flags` / `vocab_source`.
+8. [x] Stats meta records applied vocabularies (`app_vocabularies` / `app_vocabulary_matches` / `vocab_coverage`).
+9. [ ] User Guide: chapter on app vocabularies (unverified — check `User-Guide.docx`).
+10. [ ] Pytest smoke for `app_vocab.py` (unverified in this pass).

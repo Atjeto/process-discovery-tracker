@@ -1,8 +1,9 @@
 # Architecture Overview
 
 > Part of the [architecture reference](./). Describes the current working tree
-> (post-v0.3, as of 2026-05-16). For *why* decisions were made, see the
-> historical design docs linked from [`docs/README.md`](../README.md).
+> (refreshed 2026-05-23 for v0.15.0 plus the analysis & recognition layers). For
+> *why* decisions were made, see the ADRs and historical design docs linked from
+> [`docs/README.md`](../README.md).
 
 ## What this is
 
@@ -48,7 +49,7 @@ a self-contained directory of files — moved from worker to analyst.
 | Layer | Folder | Responsibility | Tech |
 |---|---|---|---|
 | **Capture** | [`capture/`](../../capture/) | Poll the foreground window every 5 s, record UI interactions, fire Start/End markers, take screenshots, drive OBS, append a per-session `events.jsonl`. | Electron 33 (main process, no renderer logic of note) + a C# .NET 8 UI Automation recorder sidecar |
-| **Normalization** | [`normalization/`](../../normalization/) | Transform raw `events.jsonl` into cases, steps, and phases; export XES / CSV / statistics; optionally mine a BPMN map and DFG. | Python 3.12 + PM4Py, pandas, networkx |
+| **Normalization** | [`normalization/`](../../normalization/) | Transform raw `events.jsonl` into cases (marker- or anchor-based), steps, and phases; classify activities (taxonomy + platform recognition); compute statistics + heuristic IE/CI findings (the analysis layer); optionally mine activity / step / phase process maps. | Python 3.12 + PM4Py, pandas, networkx |
 | **Viewer** | [`viewer/`](../../viewer/) | Load a session, run normalization, render a video-synced timeline, let the analyst edit steps/phases, compare sessions, and export. | Electron 33 + a bundled Python embeddable distribution |
 | **Shared** | [`shared/`](../../shared/) | The cross-cutting data-format contract. | Markdown only ([`SCHEMA.md`](../../shared/SCHEMA.md)) |
 
@@ -68,6 +69,11 @@ These hold across the whole system; every other doc assumes them.
 - **Re-normalization is non-destructive.** Re-running the Python pipeline preserves
   manually-authored and analyst-edited steps; only machine-suggested artifacts are
   regenerated.
+- **Recognition is platform-grounded; classification & analysis are heuristic.**
+  An interaction's semantic *type* comes from documented platform/framework
+  invariants (the recognition layer, [ADR-0011](../adr/0011-platform-recognition-layer.md)),
+  so it transfers across apps; business *labels* and the IE/CI analysis findings
+  are heuristics the analyst confirms ([ADR-0008](../adr/0008-build-the-analysis-layer.md)).
 - **No network egress.** No telemetry, no update checks. The only socket is OBS on
   `ws://127.0.0.1:4455`. See [`SECURITY.md`](../../SECURITY.md).
 
@@ -77,7 +83,7 @@ These hold across the whole system; every other doc assumes them.
 process-discovery-tracker/
   capture/          Worker-side Electron app + C# recorder sidecar (recorder/)
   normalization/    Python pipeline (normalize.py + ~13 modules)
-  viewer/           Analyst-side Electron app (renderer.js + Pdt* modules)
+  viewer/           Analyst-side Electron app (renderer.js + CommonJS view modules)
   shared/           SCHEMA.md — the data-format contract
   docs/             This documentation set + design specs + ADRs
   scripts/          PowerShell/Node build, release, and admin scripts
@@ -96,12 +102,17 @@ process-discovery-tracker/
 2. **Hand-off** — the session folder is moved to the analyst's machine.
 3. **Load** — the analyst opens the folder in the Viewer.
 4. **Normalize** — the Viewer spawns the Python pipeline, which assigns cases,
-   suggests steps, computes statistics, and (with `--mine`) mines a process map.
-   Outputs are written back into the same folder; `annotations.json` is updated.
+   suggests steps (each stamped with a value-free `process_label`), classifies
+   activities, computes statistics + heuristic analysis findings, and (with
+   `--mine`) mines activity / step / phase process maps. Outputs are written back
+   into the same folder; `annotations.json` is updated non-destructively.
 5. **Analyze & edit** — the analyst reviews the timeline, edits steps and phases
-   (saved to `annotations.json`), and re-normalizes as needed.
-6. **Export** — process maps (BPMN / DFG / SVG), reports, and CSVs are exported;
-   multiple sessions can be compared in the Aggregate view.
+   (saved to `annotations.json`), reviews the Analysis findings, and re-normalizes
+   as needed.
+6. **Explore & export** — the Compare-Sessions view shows the process map as a
+   notation × level matrix (BPMN / DFG × Activity / Step / Phase) with drill-down
+   and a cross-session analysis panel; process maps (BPMN / DFG / SVG), reports,
+   CSVs, and a PDD are exported.
 
 ## Where to go next
 

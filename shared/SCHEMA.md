@@ -8,10 +8,12 @@ A captured session is a self-contained folder. This is the integration seam betw
 sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   events.jsonl       # raw event stream, append-only, one JSON object per line
   manifest.json      # session metadata, status, OBS reference
-  config.yaml        # session config snapshot (planned for iteration 2)
-  screenshots/       # event-triggered screenshots (planned)
-  obs/               # OBS recording reference and sync data (planned)
+  annotations.json   # analyst sidecar (created/updated by the viewer)
+  screenshots/       # event-triggered screenshots
+  obs/               # OBS recording reference and sync data
   session-integrity.json  # file manifest (name + size) written at session end
+  # + normalization outputs (events.xes/csv, stats.json, analysis.json,
+  #   process_map*.bpmn, dfg.json) — see "Post-normalization artifacts" below
 ```
 
 ## events.jsonl envelope
@@ -59,13 +61,13 @@ captured before this field existed simply omit it (treated as `0`).
 {
   "marker_type": "start" | "end",
   "label": "Order entry" | null,
-  "reason": "auto_end_idle" | null
+  "reason": "auto_end_idle" | "auto_close_for_sibling" | null
 }
 ```
 
 `case_id` and `parent_case_id` are NOT set by capture. The normalization layer walks the marker stream, builds the case tree, and stamps every activity event with the stack of open case IDs at the moment it was captured (§5.2). After normalization, marker events also carry `case_id` and `parent_case_id` so downstream consumers don't need to re-walk.
 
-End markers carry `null` label by convention; they close the innermost open Start. `reason` is set when an end was auto-fired (e.g. `auto_end_idle` from §3.3).
+End markers carry `null` label by convention; they close the innermost open Start. `reason` is set when an end was auto-fired — `auto_end_idle` (an idle stretch past the threshold, §3.3) or `auto_close_for_sibling` (pressing Start with a marker already open closes it and opens a sibling — the default close-then-open behaviour).
 
 ### `system` data
 
@@ -119,6 +121,12 @@ Sourced from Windows UI Automation via the C# sidecar recorder. See `docs/intera
 | `coverage_hint` | string | First interaction per process only — `rich` (stable `automation_id`) \| `basic` (control type, no id) \| `minimal` (class name only). Signals how richly UIA exposes that app. |
 
 Fields are omitted (not nulled) when the underlying UIA property throws on access.
+
+`text_changed` and `focus_changed` are emitted **only in the recorder's verbose
+(forensic) mode**; the default mode drops both — `text_changed` carries no payload
+(the value rides the next `value_changed`), and the `window_title` / `process_name`
+we care about ride the next signal event. A normally-captured session contains
+neither kind.
 
 #### Enrichment fields (added during normalization)
 
@@ -237,6 +245,7 @@ Time spans the analyst marked as out-of-scope from the viewer's timeline range s
   "session_id": "uuid",
   "case_id": "uuid or null",
   "name": "string",
+  "process_label": "string -- name with case values stripped, the value-free grouping key (ADR-0013)",
   "description": "string",
   "time_range": { "start": "iso", "end": "iso" },
   "evidence": {
@@ -308,6 +317,8 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
   "label": "analyst-given session name (optional; absent until set)",
+  "purpose": "process" | "app_prep",
+  "prep_app": "app name being curated (app_prep sessions only; null otherwise)",
   "config": { ...snapshot of session config... },
   "obs": {
     "recording_path": null,
@@ -340,6 +351,12 @@ nested config; it is `null` when never set. Sessions captured before this field
 existed carry the name inside `config.engagement_name`, and consumers fall back
 to that. Display precedence is `label` (a post-session rename) → `engagement_name`
 → the engagement-folder name.
+
+`purpose` is `"process"` for an ordinary business-process capture (the default) or
+`"app_prep"` for an App-Vocabulary curation session; `prep_app` names the app being
+curated on an `app_prep` session (`null` otherwise). App-prep sessions are filed
+under `engagement_id: "vocab-prep"` so they don't pollute a real engagement's
+captures — see [CAPTURE.md](../docs/architecture/CAPTURE.md).
 
 ## session-integrity.json
 
@@ -406,9 +423,11 @@ identifies the classifier generation.
 ```
 
 `waste_classification` has one entry per step; `time_study` and
-`automation_candidates` have one entry per *logical* step — instances sharing a
-`canonical_step_id` are grouped, falling back to one group per step when no
-process template was matched. `bnva_ms` is `0` by heuristic — the value-add vs.
+`automation_candidates` have one entry per *logical* step — instances are grouped
+by `step_group_key` = `canonical_step_id → process_label → step_id`, so with **no
+Process Template** repeated work still collapses to one entry with `instances = N`
+(it used to fall back to one group per raw step, fragmenting the list —
+[ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)). `bnva_ms` is `0` by heuristic — the value-add vs.
 business-required split needs analyst judgement — until the analyst sets it via
 `analysis_overrides[]` in `annotations.json`. `automation_candidates` scores are
 `null` with `data_sufficiency: "single_instance"` for a step observed only once
@@ -420,7 +439,7 @@ recordings; `automation_confirmed` carries the analyst's verdict (`true` /
 
 ## Invariants
 
-- Events are immutable once written. Corrections live in `annotations.json` (§9.3 -- the viewer writes notes here; marker edit / merge / split UIs are deferred).
+- Events are immutable once written. Corrections live in `annotations.json` (§9.3 -- the viewer writes notes, marker edits, and step split/merge edits here).
 - `event_id` is unique within a session.
 - `events.jsonl` is sorted by `timestamp` in practice (single-writer append); normalization sorts defensively by `(timestamp, _seq)` so a millisecond timestamp collision still resolves to true append order (§7.1 step 2).
 - Adjacent identical activity events (same app, title, label, case_ids) are collapsed during normalization (§7.1 step 7).
@@ -433,8 +452,10 @@ The normalization layer writes the following alongside `events.jsonl`:
 |---|---|
 | `events.xes` | IEEE 1849-2016 event log, one trace per top-level case |
 | `events.csv` | Flat CSV of activity events |
-| `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, app_outliers, rework_loops, screenshot_hashes, meta }` |
-| `process_map.bpmn` | BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
+| `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
+| `process_map.bpmn` | Activity-level BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
+| `process_map_step.bpmn` / `process_map_phase.bpmn` | Observed-flow Step/Phase BPMN mined from the annotations — no Process Template needed (with `--mine`; [ADR-0012](../docs/adr/0012-active-case-stamping-and-map-matrix.md)) |
+| `process_maps/<case_id>.bpmn` | Per-case BPMN maps (with `--mine`) |
 | `dfg.json` | Directly-Follows Graph as `{ edges, start_activities, end_activities }` (with `--mine`) |
 | `analysis.json` | Heuristic IE findings: `{ meta, waste_classification, time_study, automation_candidates, efficiency }` (when the session has steps — ADR-0008) |
 | `annotations.json` | Analyst-authored notes + future marker edits |
@@ -482,6 +503,10 @@ After normalization, every activity / interaction event carries `case_ids: [inne
 
 The XES export emits one trace per *top-level* case (the last entry in each event's `case_ids`). Child cases become trace attributes or sub-traces depending on the analysis target.
 
+## Anchor-based case detection ([ADR-0012](../docs/adr/0012-active-case-stamping-and-map-matrix.md))
+
+When the canonical set names a `case_anchor` field (e.g. the serial-search box), normalization can detect cases from **anchor fires** instead of (or alongside) markers. A case is named by its anchor value and is **stable per label** — `case_id = uuid5(label)`, so re-searching the same serial *resumes* that case rather than opening a new one. The most-recently-fired anchor is the **active case**, stamped onto every following interaction; because work interleaves (search A → … → search B → … → search A again), each case owns a list of *disjoint active segments* rather than one contiguous range. A degenerate-case guard drops slivers (below `min_case_interactions` / `min_case_duration_ms`) and an empty-label guard ignores a focus on an empty anchor box. This supersedes the older gap-based open/close-on-pause splitting: a pause is just a pause; the case resumes on the next anchor.
+
 ## Step states — the lifecycle
 
 Each step's `state` field describes how the step got into `annotations.json`:
@@ -493,7 +518,7 @@ Each step's `state` field describes how the step got into `annotations.json`:
 | `manually_authored` | The analyst clicked "New step" in the viewer's step editor. | Yes — `_merge_steps()` preserves it across runs. |
 | `edited` | The analyst modified an `auto_suggested` or `auto_matched` step. | Yes — same. |
 
-The merge order in [normalize.py `_merge_steps`](../normalization/normalize.py) is: `manually_authored + edited + fresh_auto_*`. This is why corrections survive re-normalization without re-doing work.
+The merge order in [`_merge_steps`](../normalization/step_suggest.py) is: `manually_authored + edited + fresh_auto_*`. This is why corrections survive re-normalization without re-doing work.
 
 `drift_markers[]` record when a previously `edited`/`manually_authored` step's `canonical_step_id` would now resolve differently against the current canonical version — a signal that the canonical set has shifted under the analyst's prior assignment. Recorded automatically; reviewed manually.
 
@@ -510,7 +535,8 @@ When both UIA `name` and App Vocab `meaningful_name` are present, the viewer pre
 | `activity_stats` | `[{ activity_label, frequency, total_duration_ms, median_ms, p90_ms, ... }]` | Per-activity rollups across all cases in this session. |
 | `case_stats` | `[{ case_id, parent_case_id, label, started_at, ended_at, active_ms, ... }]` | One row per case. `parent_case_id` is null for top-level cases. |
 | `trace_variants` | `[{ variant: ["A", "B", "C"], frequency, length }]` | Distinct activity sequences ranked by occurrence. |
-| `step_variants` | `[{ variant: ["Step A", "Step B"], frequency, length }]` | Distinct *step-name* sequences per case — the step-level analogue of `trace_variants`, the analyst's stepped view of the process rather than the raw activity sequence. Empty until the session has steps. |
+| `step_variants` | `[{ variant: ["Step A", "Step B"], frequency, length }]` | Distinct *step-name* sequences per case — the step-level analogue of `trace_variants`. Each element is the value-free `process_label`, so identical step-type sequences across cases collapse to one variant ([ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)). Empty until the session has steps. |
+| `step_stats` | `[{ step_name, frequency, total_duration_ms, mean_ms, median_ms, p90_ms, p99_ms }]` | Per-step duration distribution — the step-level analogue of `activity_stats`. Keyed on the value-free `process_label`, so a step seen across N cases is one row with `frequency = N` rather than N rows. Empty until the session has steps. |
 | `app_outliers` | `[{ app, frequency, share }]` | Apps that appear in < 5% of cases. |
 | `rework_loops` | `[{ activity_label, case_id, revisits }]` | Same activity revisited within a single case. |
 | `screenshot_hashes` | `[{ filename, hash }]` | Per-screenshot 64-bit average hash (16 hex chars). The viewer's gallery uses it to collapse runs of near-identical frames. Empty when Pillow is unavailable in the bundled runtime. |

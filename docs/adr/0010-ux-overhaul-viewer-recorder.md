@@ -427,15 +427,17 @@ session metadata written to `session.json`.
 
 ## Action Items
 
-1. [ ] D3: Pre-capture screenshot on hotkey press; use lastForegroundBounds for button-fired markers
-2. [ ] D4: Wire engagement_name from config into session.json and viewer header
-3. [ ] D1: Set alwaysOnTop level to "screen-saver"; build mini-mode toolbar; tray single-click to front
-4. [ ] A1: Add kind-bucket classes to interaction list items; add CSS colour accents for both themes
-5. [ ] A4: Add element-boundary split rule to step_suggest.py with step_split_on_element config flag
-6. [ ] B1: Fix CSS grid to shared-height two-column layout with independent scrolling
-7. [ ] C1a: Add unclassified-activity warning banner; add "Classify this app" right-click on activity bands
-8. [ ] A2: Add click-to-set-split-point in interaction list; modify splitStep() to use it
-9. [ ] A3: Surface flag badges in step list; plumb flags through to aggregate stats, PDD, and reports
-10. [ ] A5: Add right-click context menu on step timeline blocks
-11. [ ] C1b: Add step-level and phase-level DFG generation in the viewer; add depth-level dropdown
-12. [ ] D2: Add hotkey configuration section to session-config window with live capture
+All implemented 2026-05-22 (status: Accepted — fully implemented).
+
+1. [x] D3: Pre-capture screenshot on hotkey press; use lastForegroundBounds for button-fired markers. *(Recorder also dims its own windows during a grab — see ADR memory.)*
+2. [x] D4: Wire engagement_name from config into session.json and viewer header
+3. [x] D1: alwaysOnTop "screen-saver" level + tray single-click to front. *(Mini-mode toolbar folded into always-on-top + tray-click rather than a separate window.)*
+4. [x] A1: Add kind-bucket classes to interaction list items; CSS colour accents for both themes
+5. [x] A4: Element-boundary split rule in step_suggest.py with step_split_on_element config flag
+6. [x] B1: Shared-height two-column Steps layout with independent scrolling
+7. [x] C1a: Unclassified-activity warning + "Classify this app" / reclassify action
+8. [x] A2: Click-to-set-split-point in the interaction list; splitStep() honours it
+9. [x] A3: Flag badges in the step list + flag propagation to stats/exports
+10. [x] A5: Right-click context menu on step timeline blocks
+11. [x] C1b: Step- and phase-level DFG in the viewer + level control. *(Superseded by the notation × level matrix — [ADR-0012](./0012-active-case-stamping-and-map-matrix.md).)*
+12. [x] D2: Hotkey configuration section in the session-config window with live capture

@@ -16,11 +16,14 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   annotations.json    analyst edits (sidecar; created/updated by the Viewer)
   screenshots/        event-triggered screenshots
   obs/sync.json       tracker↔OBS clock offset
-  events.xes          IEEE-1849 event log         ┐
-  events.csv          flat activity CSV           │ written by
-  stats.json          activity/case/variant stats │ normalization
-  process_map.bpmn    mined BPMN 2.0 (--mine)     │
-  dfg.json            directly-follows graph (--mine) ┘
+  events.xes          IEEE-1849 event log                  ┐
+  events.csv          flat activity CSV                     │
+  stats.json          activity/case/step/variant stats      │ written by
+  analysis.json       heuristic waste/time-study (ADR-0008)  │ normalization
+  process_map.bpmn    mined activity BPMN (--mine)          │
+  process_map_step.bpmn / _phase.bpmn  observed-flow maps (--mine) │
+  process_maps/       per-case BPMNs (--mine)               │
+  dfg.json            directly-follows graph (--mine)        ┘
   capture.log / normalize.log
 ```
 
@@ -41,9 +44,18 @@ Every line is one JSON object with a fixed envelope; only `data` varies by `type
 | `interaction` | the C# UI Automation recorder | `kind`, `control_type`, `automation_id`, `name`, `framework_id`, `window_title`, `pid`, … |
 
 **Cases are not in the raw stream.** Capture records markers but assigns no
-`case_id`. Normalization walks the marker stream, builds the case tree, and stamps
-every activity/interaction with a `case_ids` stack — `[innermost, …, outermost]`,
-empty when outside any marker. See SCHEMA.md → "Marker events — nesting".
+`case_id`. Normalization assigns cases two ways:
+
+- **Marker-based** — walk the Start/End marker stream, build the case tree, and
+  stamp every activity/interaction with a `case_ids` stack —
+  `[innermost, …, outermost]`, empty when outside any marker.
+- **Anchor-based** ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md))
+  — when the canonical set names a `case_anchor` field, a case is named by its
+  anchor value and is **stable per label** (`case_id = uuid5(label)`), so
+  re-searching the same serial *resumes* that case rather than opening a new one;
+  the active case is stamped onto every following interaction by disjoint segment.
+
+See SCHEMA.md → "Marker events — nesting".
 
 ## annotations.json — the analyst sidecar
 
@@ -75,8 +87,14 @@ re-normalization run:
 | `manually_authored` | analyst clicked "New step" | **Yes** |
 | `edited` | analyst modified an auto step | **Yes** |
 
-`normalize.py`'s `_merge_steps()` keeps `manually_authored + edited` and only
-regenerates the `auto_*` set — this is why corrections are not lost.
+`_merge_steps()` (in `step_suggest.py`) keeps `manually_authored + edited` and
+only regenerates the `auto_*` set — this is why corrections are not lost. A
+regenerated auto step also **inherits** the prior step's `step_id` and curated
+`phase_id` / `canonical_step_id` when it re-covers the same interactions
+(`_inherit_step_identity`), so a grouping or template link is not silently lost.
+Every step also carries a value-free **`process_label`** (its name with case
+values stripped) used to group repeated work in the maps, stats, and analysis
+([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)).
 
 ## In-memory model (Viewer)
 
@@ -98,6 +116,7 @@ The renderer treats `currentSession` as having these fields:
 | `annotations` | `annotations.json` | the editable sidecar; `emptyAnnotationsShape()` when absent |
 | `stats` | `stats.json` | normalization output; absent until normalized |
 | `dfg` | `dfg.json` | directly-follows graph; absent until mined |
+| `analysis` | `analysis.json` | heuristic waste / time-study / automation / efficiency; absent until analyzed (ADR-0008) |
 | `recordingAvailable`, `recordingPath` | `manifest` / `obs/` | drives the video pane |
 | `obsSync`, `externalVideoOffsetMs` | `obs/sync.json` / `annotations.json` | video clock-sync offsets |
 
@@ -106,22 +125,23 @@ top-level state roots — both module-level `let`s in `renderer.js`.
 
 ### The edit round-trip
 
-All step / phase / marker / note edits funnel through one path:
+All step / phase / marker / note edits funnel through `session.js` and re-render
+**in place** — no full folder reload (ADR-0003 Phase 2, issue S6):
 
 ```
-edit → mutate currentSession.annotations
-     → saveAnnotationsWithUndo(annotations, label)
-         → snapshot previous annotations onto _undoStack  (cap UNDO_MAX = 50)
-         → ipcRenderer.invoke("viewer:saveAnnotations", { sessionFolder, annotations })
-     → loadSessionIntoView(sessionFolder)   // full reload → re-render
+edit → persistAnnotations(annotations, label, topics)          (session.js)
+     → saveAnnotationsWithUndo → snapshot prev onto _undoStack  (cap UNDO_MAX = 50)
+       → ipcRenderer.invoke("viewer:saveAnnotations", { sessionFolder, annotations })
+     → State.emit(topic) for each touched topic
+     → the subscribed view re-renders itself, in place
 ```
 
 Notable consequences:
 
-- **Every edit is a full session reload.** There is no in-place partial update;
-  `saveAnnotationsWithUndo` is followed by a re-read of the whole folder. Simple,
-  but a performance and complexity cost — see
-  [ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md).
+- **Edits are in-place, not a full reload.** The change bus (`State.emit`)
+  re-renders only the views subscribed to the touched topics — no folder re-read,
+  no scroll jump (ADR-0003 Phase 2 fixed the earlier full-reload model). Running a
+  re-*normalize* (the Python pipeline) is the only path that re-reads the folder.
 - **Undo/redo is in-memory only.** `_undoStack` / `_redoStack` hold cloned
   annotation snapshots, are capped at 50, are pinned to a `sessionFolder`, and are
   cleared on session switch (`resetUndoStack()`). They do not persist across a

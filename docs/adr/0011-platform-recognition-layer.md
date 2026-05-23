@@ -107,4 +107,4 @@ semantic class (`form_field`, `grid_cell`, `rich_text`, `primary_action`,
 2. [x] Rewire the alignment signature and `describeInteraction` onto `recognize()`.
 3. [x] Lift the signature table to a shared file consumed by Python normalization. *(2026-05-23 — `shared/recognition-patterns.json`, loaded by `viewer/recognition.js` and the new `normalization/recognition.py`.)*
 4. [x] Replace `step_suggest._is_browser_chrome` with the shared recognition. *(2026-05-23 — `step_suggest` now calls `recognition.is_browser_chrome`; the hardcoded class list is gone. `filter_browser_chrome` flag + tests retained.)*
-5. [ ] Reframe activity/step classification to lead with framework recognition. *(Open — NEXT-SESSION P2.)*
+5. [x] Reframe activity/step classification to lead with framework recognition. *(2026-05-23 — `classification._recognition_activity_label`: an unmatched activity gets a semantic label from the dominant recognised interaction category, e.g. `Form entry -- chrome.exe`, instead of `Unclassified -- app`.)*

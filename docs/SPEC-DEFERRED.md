@@ -4,11 +4,19 @@ This document inventories every UX / functional improvement that was identified 
 
 ## Context — what's already done
 
-Before starting work on anything below, read [docs/UX-CHANGES.md](./UX-CHANGES.md) and verify the working tree state. As of this writing:
+> **Stale-frame note (2026-05-23).** This doc was written when v0.2.0 was the latest
+> release and the UX overhaul sat uncommitted on `master`. Reality has moved well past
+> it — **v0.15.0 is shipped on the `viewer-refactor` branch**, after the v0.3 UX
+> overhaul, the Warm Editorial redesign, the analysis layer, the recognition layer,
+> value-free grouping, anchor-based cases, and more. Several items below have since
+> shipped and are flagged **✅ SHIPPED** inline; verify against the
+> [CHANGELOG.md](../CHANGELOG.md) before picking anything up.
+
+Before starting work on anything below, read [docs/UX-CHANGES.md](./UX-CHANGES.md) and the [CHANGELOG.md](../CHANGELOG.md) and verify the working tree state. The bullets below describe the v0.2.0 era and are kept as history:
 
 - **v0.2.0 is shipped** on GitHub Releases (recorder noise filter, GitHub Releases distribution, recorder.zip auto-extract).
 - **The UX overhaul is in the working tree** (uncommitted): close-then-open markers, themed confirm/prompt modals, multi-monitor screenshot, native toasts on failures, first-run welcome, hotkey overlay, Live Session window merge (operator + status), right-click discoverability hint, annotations undo stack, time-axis ticks, density histogram, per-case lanes, analysis progress streaming + cancel.
-- **Nothing has been built, committed, or pushed since v0.2.0.** Source on `master` lags the working tree by the UX overhaul described above.
+- **(historical)** True at v0.2.0; long since superseded — see the stale-frame note above.
 
 If anything in this spec already appears in [`docs/UX-CHANGES.md`](./UX-CHANGES.md) (especially the "What did NOT land in this pass" or "Regression / coverage pass" sections), it's been resolved — verify before duplicating work.
 
@@ -115,7 +123,7 @@ If anything in this spec already appears in [`docs/UX-CHANGES.md`](./UX-CHANGES.
 
 # P1 — Next release after the UX overhaul
 
-## P1.1 · Range selection on the timeline
+## P1.1 · Range selection on the timeline — ✅ SHIPPED (v0.4.0)
 
 **Rationale.** Drag across the timeline to select a range; the events list, screenshot grid, and marker list filter to events in that range. A "selection stats" mini-panel shows duration, event count, top apps, markers contained. This is how an analyst answers "what happened during the email-sending part?" in one motion.
 
@@ -152,7 +160,7 @@ If anything in this spec already appears in [`docs/UX-CHANGES.md`](./UX-CHANGES.
 
 **Dependencies.** None.
 
-## P1.3 · Mini-map overview above the timeline
+## P1.3 · Mini-map overview above the timeline — ✅ SHIPPED (v0.4.0)
 
 **Rationale.** When the user zooms the timeline (e.g. 5x for a long session), they lose the sense of "where am I in the session." A 30px-tall strip above the timeline shows the whole session compressed, with a rectangle indicating the visible region. Click anywhere in the mini-map to jump. Drag the rectangle to scroll. Premiere Pro / DaVinci Resolve / Logic / GoLand all converged on this UX.
 
@@ -170,7 +178,7 @@ If anything in this spec already appears in [`docs/UX-CHANGES.md`](./UX-CHANGES.
 
 **Dependencies.** None.
 
-## P1.4 · Per-step duration band when Steps exist
+## P1.4 · Per-step duration band when Steps exist — ✅ SHIPPED (v0.4.0)
 
 **Rationale.** Steps view computes step boundaries; the Flow view doesn't surface them. Once Steps have been computed, show each step as a labeled band beneath the activity band on the Flow timeline. Width = duration. Connects the two views visually.
 
@@ -271,7 +279,7 @@ If anything in this spec already appears in [`docs/UX-CHANGES.md`](./UX-CHANGES.
 
 **Dependencies.** P0.2 (help should mention).
 
-## P1.10 · Persistent timeline zoom + scroll per session
+## P1.10 · Persistent timeline zoom + scroll per session — ✅ SHIPPED (v0.4.0)
 
 **Rationale.** Reload a session you were just navigating — your zoom is back to 1 and your scroll is back to 0. Annoying. Persist zoom + scroll into localStorage keyed by sessionFolder.
 
@@ -415,7 +423,7 @@ Tabs become views of the project. Recent sessions becomes recent projects. Multi
 
 **Dependencies.** None.
 
-## P2.8 · Case scope dropdown deduplication + "scope to playhead" action
+## P2.8 · Case scope dropdown deduplication + "scope to playhead" action — ✅ SHIPPED (v0.4.0)
 
 **Rationale.** When markers share labels ("Finished sending email" appears 3x), the dropdown shows 3 indistinguishable entries. Also, "scope to the marker my video playhead is inside" is a common request — currently requires manual case selection.
 
@@ -477,7 +485,7 @@ Tabs become views of the project. Recent sessions becomes recent projects. Multi
 
 **Dependencies.** None (the cancel button already exists).
 
-## P2.12 · Window-title strip on the timeline
+## P2.12 · Window-title strip on the timeline — ✅ SHIPPED (v0.4.0)
 
 **Rationale.** Activity bands show app name; the *window title* changes within a single app run ("Outlook: Inbox" → "Outlook: Compose..." → "Outlook: Sent"). A small strip below the activity band showing window-title text (compressed) makes "what was the user doing in Outlook" answerable at a glance.
 

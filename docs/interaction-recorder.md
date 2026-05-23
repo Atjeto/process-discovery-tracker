@@ -1,6 +1,6 @@
 # Interaction Recorder — Feature Design
 
-**Status:** Proposed
+**Status:** Implemented — the recorder shipped; see [CAPTURE.md](architecture/CAPTURE.md) and [ADR-0001](adr/0001-click-recorder-sidecar-language.md)
 **Date:** 2026-05-14
 **Decisions of record:** [ADR-0001](adr/0001-click-recorder-sidecar-language.md)
 **Tool-wide design:** [`process_discovery_tracker_design.md`](../../process_discovery_tracker_design.md)
@@ -379,6 +379,9 @@ interactions: {
   required: false,
   auto_restart: true,
   max_restarts_per_session: 3,
+  exclude_processes: [],   // process names to skip recording for
+  verbose: false,          // forensic firehose: focus_changed / text_changed / per-keystroke value_changed
+  debounce_ms: 750,        // value_changed coalescing window (ms), passed to the recorder in `hello`
 },
 ```
 

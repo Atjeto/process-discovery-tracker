@@ -100,5 +100,5 @@ which is empty without `--canonical`).
 3. [x] Empty-label anchor guard + tests (`test_anchor_cases.py`). *(2026-05-23)*
 4. [x] Notation × level matrix in `renderMap()`; observed-flow Step/Phase BPMN (`bpmn_observed.py`).
 5. [x] Step/Phase BPMN **export** repointed at the observed-flow file. *(2026-05-23)*
-6. [ ] Phase → Step → Activity drill-down navigation (NEXT-SESSION P4).
+6. [x] Phase → Step → Activity drill-down navigation, with subtree scoping (a click filters to the clicked node's children on the Flow diagram) — [ADR-0013](./0013-value-free-grouping-and-map-readability.md).
 7. [ ] Recognition-driven anchor detection (ADR-0011), replacing the opaque-`automation_id` anchor.

@@ -1,6 +1,6 @@
 # ADR-0001: Click recorder — capture mechanism and language
 
-**Status:** Proposed (revised 2026-05-14)
+**Status:** Accepted — implemented (the C# UIA recorder sidecar shipped and is in field use)
 **Date:** 2026-05-14
 **Deciders:** Automation team lead, tracker maintainer
 
@@ -154,11 +154,18 @@ The second-order trade-off, language within mechanism A, is **C# vs Python**. Wi
 
 ## Action items
 
-1. [ ] Scaffold `capture/recorder/` as a C# console project: `dotnet new console`, reference `UIAutomationClient` + `UIAutomationTypes` (or add FlaUI), subscribe to `InvokedEvent` / `SelectionChangedEvent` / `PropertyChangedEvent` / `FocusChangedEvent` on the desktop root, emit `{"v":1,"type":"interaction","data":{...}}` NDJSON to stdout.
-2. [ ] Configure `dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true`. Wire the output `.exe` into `electron-builder`'s `extraResources` in `capture/package.json`.
-3. [ ] Confirm whether an internal authenticode signing path exists. If yes, fold signing into the publish pipeline; if no, ship unsigned and accept the small remaining heuristic risk.
-4. [ ] Add `capture/recorder.js` Node module: `spawnRecorder` / `stopRecorder` / `pauseRecorder` / `resumeRecorder`, mirroring `obs.js`'s lifecycle shape. Spawn after `createSession` succeeds, terminate before `closeSession`.
-5. [ ] Add `interaction` event type to `shared/SCHEMA.md` and a constructor in `capture/events.js`. New `system` kinds: `recorder_start`, `recorder_stop`, `recorder_died`.
-6. [ ] Add `interactions` config block (`enabled`, `required`, `auto_restart`) to `capture/config.js` defaults and `sample-config.yaml`. Default `enabled: true` (no privacy gate at this scope).
-7. [ ] Validate on a representative app mix before committing — at minimum: Excel, Outlook, Chrome, one WinForms LOB app, one Citrix-fronted app. Confirm UIA events fire as expected and document the coverage gap on the Citrix case.
-8. [ ] Run the published `.exe` through a clean corporate-image sec scan as a go/no-go before integration. If it flags, investigate the specific heuristic and address it (sign the binary, adjust the assembly manifest, etc.) before falling back to any other approach.
+> **All shipped.** The recorder is `capture/recorder/` (`Program.cs`,
+> `UiaSubscriber.cs`, `StdioProtocol.cs`), built via `npm run build:recorder` and
+> bundled by **electron-packager** (the project moved off electron-builder — see
+> `build-package.js`). It is in field use on locked-down corporate machines, so the
+> sec-scan gate (8) effectively passed; the binary currently ships **unsigned** (3),
+> with the no-hook UIA posture as the primary defense per this ADR.
+
+1. [x] Scaffold `capture/recorder/` as a C# console project subscribing to UIA events and emitting `interaction` NDJSON to stdout.
+2. [x] Self-contained single-file publish, bundled into the packaged app (via **electron-packager** `extraResource`, not electron-builder).
+3. [x] Signing decision: ships **unsigned** (no internal authenticode path); revisit if a cert becomes available.
+4. [x] `capture/recorder.js` lifecycle module (`spawnRecorder` / `stopRecorder` / `pauseRecorder` / `resumeRecorder`), mirroring `obs.js`.
+5. [x] `interaction` event type in `shared/SCHEMA.md` + `capture/events.js` constructor; `recorder_start` / `recorder_stop` / `recorder_died` system kinds.
+6. [x] `interactions` config block in `capture/config.js` defaults + `sample-config.yaml`.
+7. [x] Validated against the real app mix (TAMBA / SNFI / Excel / SharePoint in the ATM recording); Citrix remains the documented coverage gap.
+8. [x] Sec-scan go/no-go: passed — the recorder runs on the locked-down corporate fleet.

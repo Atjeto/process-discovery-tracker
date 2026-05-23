@@ -1,6 +1,6 @@
 # ADR-0006: Sequencing the IMPROVEMENTS Backlog — Execute IMPLEMENTATION-SPEC, Defer the Analysis Layer
 
-**Status:** Accepted — Phase A in progress
+**Status:** Accepted — Phases A–I shipped (by v0.8.0); the deferred analysis layer also shipped ([ADR-0008](0008-build-the-analysis-layer.md))
 **Date:** 2026-05-17
 **Deciders:** Project owner
 
@@ -8,13 +8,13 @@
 
 Two large planning documents landed in `docs/To-Do/` on 2026-05-17:
 
-- **`docs/To-Do/IMPROVEMENTS.md`** — an 81-entry pain-point register
+- **`docs/To-Do/Archive/IMPROVEMENTS.md`** — an 81-entry pain-point register
   (I1–I81), collapsed into 15 root-cause clusters (A–O), with an 8-phase
   plan (~30–35 days). It makes a new **analysis layer** (Cluster N — waste
   classification, time study, automation scoring, process-efficiency ratio)
   the foundational Phase 1, claiming "the data to produce them
   automatically is already captured."
-- **`docs/To-Do/IMPLEMENTATION-SPEC.md`** — a concrete,
+- **`docs/To-Do/Archive/IMPLEMENTATION-SPEC.md`** — a concrete,
   file-and-function-level how-to guide. It covers 61 of the 81 entries in
   9 phases (A–I) and **defers the analysis layer entirely** pending real
   8-hour passive-recording data.
@@ -35,7 +35,7 @@ in before implementation.
 
 ## Decision
 
-**Adopt `docs/To-Do/IMPLEMENTATION-SPEC.md` as the execution plan.**
+**Adopt `docs/To-Do/Archive/IMPLEMENTATION-SPEC.md` as the execution plan.**
 `IMPROVEMENTS.md` remains the rationale (the WHY); the spec is the
 instruction set (the HOW). **Defer the analysis layer** as the spec does.
 Execute Phases A–I in the order in *Recommended Execution Order* below,
@@ -185,7 +185,7 @@ pulled early** — but G depends on C1 + E1, so C and E come first.
 | 9 | **I** | Vocabulary + polish | — | Correction 3 |
 
 Each phase ships independently with its own CHANGELOG entry. Per-phase
-implementation detail lives in `docs/To-Do/IMPLEMENTATION-SPEC.md`; this
+implementation detail lives in `docs/To-Do/Archive/IMPLEMENTATION-SPEC.md`; this
 ADR governs sequencing and the corrections above.
 
 ## Consequences
@@ -210,8 +210,6 @@ ADR governs sequencing and the corrections above.
 ## Action Items
 
 1. [x] Land this ADR; fix the stale `CLAUDE.md` version (0.6.0 → 0.7.0).
-2. [ ] Phase A — session summary panel + Compare-Sessions outlier flag.
-3. [ ] Phases C → E → G → B → D → F → H → I, applying the corrections; one
-       CHANGELOG entry per phase.
-4. [ ] After the first 8-hour passive recording, write the analysis-layer
-       spec (I74–I81, I59) and calibrate heuristics against real data.
+2. [x] Phase A — session summary panel + Compare-Sessions outlier flag.
+3. [x] Phases C → E → G → B → D → F → H → I shipped (by v0.8.0), one CHANGELOG entry per phase.
+4. [x] The analysis layer was specified and built ([ADR-0008](0008-build-the-analysis-layer.md)); its heuristics remain **provisional** pending calibration against real 8-hour passive-recording data.

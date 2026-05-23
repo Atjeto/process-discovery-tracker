@@ -2,7 +2,54 @@
 
 Internal tool for capturing and analyzing process discovery sessions. Full design in [../process_discovery_tracker_design.md](../process_discovery_tracker_design.md).
 
-## What's new in v0.5.0
+## What's new in v0.15.0
+
+The current version is **0.15.0** (SemVer 0.x). Headline capabilities added since
+v0.5.0:
+
+- **Platform/framework recognition layer** ([ADR-0011](docs/adr/0011-platform-recognition-layer.md)).
+  Interactions are typed by documented, cross-app platform signatures (UIA
+  ControlTypes plus Chromium/Edge, Bootstrap, AG-Grid, SharePoint, Office 365 and
+  Win32 conventions) loaded from `shared/recognition-patterns.json` by **both** the
+  viewer and the Python pipeline — meaning transfers across engagements instead of
+  riding one app's opaque automation IDs.
+- **Process maps as a notation × level matrix.** Process diagram (BPMN) and Flow
+  diagram (DFG), each at Activity / Step / Phase level, with the level selector and
+  the notation tabs independent. Step/Phase maps are the *observed flow* mined from
+  your annotations, so the map is meaningful even with no taxonomy.
+- **Value-free `process_label` grouping** ([ADR-0013](docs/adr/0013-value-free-grouping-and-map-readability.md)).
+  A step's auto-name embeds case values ("Search — CUST-10852"); the value-free
+  label ("Search") is the grouping key for the step map *and* the analysis/stats, so
+  work repeated across cases collapses to one node/row instead of a per-instance
+  hairball. Phase→step→activity drill-down and a "Hide rare paths" toggle keep a
+  dense map readable.
+- **Anchor-based case detection** ([ADR-0012](docs/adr/0012-active-case-stamping-and-map-matrix.md)).
+  Cases can be detected from a recurring field value (a ticket or serial number),
+  stable per label and stamped onto interleaved work, with no manual markers —
+  replacing the old gap-based splitting.
+- **Heuristic IE/CI analysis layer** ([ADR-0008](docs/adr/0008-build-the-analysis-layer.md)).
+  Per-step waste classification, a time study, automation-candidate scoring and a
+  process-efficiency ratio, written to `analysis.json` and correctable by the
+  analyst; a cross-session Analysis panel pools findings across recordings.
+- **Classification you can fix in place.** A per-web-app taxonomy, reclassify from
+  the Flow map, an in-app classification manager, and team-taxonomy promotion — plus
+  App Vocabulary / App Library enrichment ([ADR-0002](docs/adr/0002-app-vocabularies.md)).
+- **Exports.** A self-contained HTML findings report, a Markdown report (Activity
+  *and* Step statistics), a PDD document, and process-map SVG export.
+- **Viewer/recorder UX overhaul** ([ADR-0010](docs/adr/0010-ux-overhaul-viewer-recorder.md)):
+  interaction colour-coding, click-to-split steps, a step context menu, step flags
+  that reach the outputs, configurable recorder hotkeys, an always-on-top
+  tray-reachable Live Session window, and a **Studio Dark** theme alongside the light
+  Warm Editorial default.
+- **Capture hardening.** The C# .NET 8 UI-Automation recorder gained health events,
+  uncaptured-app flags, per-app coverage hints and a forensic verbose mode; the
+  capture app writes events through a 500 ms batching queue (markers/system flush
+  immediately) and a session-integrity manifest.
+
+Full per-release history (including v0.6.0–v0.14.4) is in
+[CHANGELOG.md](CHANGELOG.md). Selected earlier highlights:
+
+### v0.5.0 — capture tech-debt remediation
 
 - **Capture-app tech-debt remediation** (capture). A `node:test` unit suite;
   `main.js` decomposed into focused modules (`boot-log`, `notify`,
@@ -15,7 +62,7 @@ Internal tool for capturing and analyzing process discovery sessions. Full desig
   migrated onto `timeline-core` as lane plugins, completing the ADR-0003 viewer
   refactor.
 
-## What's new in v0.3
+### v0.3 — Live Session window, hotkey overlay, marker close-then-open
 
 - **Live Session window** (capture). One window with the recording indicator, session timer, open-marker stack, counters, recent-events feed, fire-marker input, sync marker, and inline end-session confirm. Replaces the old operator panel + status window split.
 - **Hotkey overlay** (capture). Always-on-top, click-through corner widget showing the three primary hotkeys. Toggle from the tray; visibility persisted.
@@ -31,7 +78,7 @@ Internal tool for capturing and analyzing process discovery sessions. Full desig
 - **Analysis progress streaming + Cancel** (viewer). Long analyses show progress and can be aborted via a red Cancel button.
 - **Stratified-dark palette** across all surfaces. Sage / slate accents, no electric blue. Capture and viewer windows now share the same look.
 
-## What's new in v0.4.0
+### v0.4.0 — Warm Editorial redesign + project layer
 
 The **Warm Editorial** redesign — the dark "stratified-dark" theme replaced by a warm light theme, with a rebuilt Flow timeline and Steps view ([ADR-0004](docs/adr/0004-flow-timeline-steps-rework.md)) — plus the project layer, ten timeline / aggregate features, business-language relabeling, and a number of polish items:
 
@@ -46,7 +93,7 @@ The **Warm Editorial** redesign — the dark "stratified-dark" theme replaced by
 - **Mode-specific shortcuts overlay** (viewer). Dismissable bottom-right card in the Session view lists 3-4 most-used shortcuts for the active mode (Flow / Steps / Phases).
 - **Business-language relabeling** (viewer). "Aggregate" → "Compare Sessions", "Vocabularies" → "App Library", "DFG" → "Flow diagram", "BPMN" → "Process diagram (BPMN)". Toast + dialog copy rewritten. Process Template's raw definition lives behind an "Advanced" disclosure so non-engineer analysts see the step list as the default surface.
 
-## Round-2 UX feedback pass (v0.4.0)
+### v0.4.0 — round-2 UX feedback pass
 
 A pass driven by hands-on field testing of the above. Fixes friction and clarifies the parts that were hard to use:
 
@@ -135,7 +182,7 @@ Documented here so they're easy to revisit:
 
 | Open question | Default picked | Where |
 |---|---|---|
-| §3.7.1 Flush cadence | Per-event `appendFileSync` | `capture/tracker.js` |
+| §3.7.1 Flush cadence | 500 ms batch queue; markers/system flush immediately | `capture/tracker.js` |
 | §3.7.2 Open markers at crash | Orphan manifest marked `recovered`; normalization layer reconciles | `capture/session.js`, `normalization/case_assignment.py` |
 | §5.4 Case duration default | Active duration | `normalization/statistics.py` -- both metrics surface in `stats.json`, viewer shows both |
 | §6.4 OBS scene bootstrap | Programmatic via `CreateScene` + `CreateInput` | `capture/obs.js` |

@@ -49,7 +49,7 @@ All eight items were remediated in the v0.5.0 capture tech-debt pass (commits
 
 | ID | Resolved by |
 |----|-------------|
-| C1 | `node:test` harness + `capture/test/*.test.js` — 41 tests over config, events, session, tracker, window-manager; `npm test` script added. |
+| C1 | `node:test` harness + `capture/test/*.test.js` — 65 tests over config, events, session, tracker, window-manager (41 when the harness landed in v0.5.0); `npm test` script added. |
 | C2 | Screenshot failures raise a once-per-session OS notification via `notify.js`; OBS-connect and recorder-death failures already surfaced a toast. |
 | C3 | `config.js` `DEFAULTS` is the single source — inline `main.js` fallbacks removed; `session-config-window.js` reads its default from `config.js`. |
 | C4 | `recorder.js` runs a stdout-quiet watchdog (90 s) — the C# sidecar emits a stats line every 30 s, so prolonged silence ⇒ hung ⇒ killed, and the existing restart path recovers it. |

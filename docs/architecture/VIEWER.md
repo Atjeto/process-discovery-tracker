@@ -48,7 +48,7 @@ CommonJS, so real modules need no build step).
 
 | File | Role |
 |---|---|
-| `renderer.js` | **Thin wiring entry** — tab routing, the Flow/Steps/Phases level switcher, the state-bus subscriptions, global keyboard shortcuts, the project menu, export buttons, boot. Wires modules together; holds no view logic. |
+| `renderer.js` | **Thin wiring entry** — tab routing, the session-view level switcher (Flow / Steps / Phases / **Analysis**), the state-bus subscriptions, global keyboard shortcuts, the project menu, export buttons, boot. Wires modules together; holds no view logic. |
 | `state.js` | Central state store + topic pub/sub bus + undo/redo stacks (Phase 2). |
 | `session.js` | Annotations persistence + the undo/redo round-trip (Phase 3). |
 | `ipc.js` | Typed wrappers over every `viewer:*` IPC channel (Phase 3). |
@@ -65,9 +65,11 @@ CommonJS, so real modules need no build step).
 | `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, video sync, event table, the annotations/screenshots/markers panel, case scope, command-palette provider. |
 | `views/steps-view.js` | Steps level — step list/detail, step CRUD, the ignored-apps dialog. |
 | `views/phases-view.js` | Phases level — phase list/detail, phase CRUD, grouping suggestions. |
-| `views/aggregate-view.js` | Compare Sessions — process maps, statistics, drill-down, exports. |
+| `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)). |
+| `views/aggregate-view.js` | Compare Sessions — the notation × level process-map matrix, drill-down scoping, cross-session statistics + analysis, exports. |
 | `views/template-view.js` | Process Template tab — version compare, exemplar match. |
 | `views/vocab-view.js` | App Library (Vocabulary editor) tab. |
+| `views/identity-picker.js` | The per-step **Match rules** picker modal (Process Template tab) — composes a step's match rules from the App Library, a coarse app/window rule, or an interaction lifted from a captured session. |
 
 **Feature modules** — all CommonJS `module.exports` since Phase 3 Stage A (the
 former `window.Pdt*` globals were converted; the globals are gone):
@@ -75,9 +77,17 @@ former `window.Pdt*` globals were converted; the globals are gone):
 | File | Exports | Role |
 |---|---|---|
 | `charts.js` | `renderBarChart`, `fmtDurationS` | Inline-SVG bar charts |
-| `dfg-viewer.js` | `render`, `fit`, `zoomIn/Out`, `getZoom`, `exportSvg` | Directly-Follows Graph (cytoscape + dagre) |
-| `bpmn-viewer.js` | `render`, `fit`, `exportSvg` | BPMN 2.0 diagram (bpmn-js) |
-| `report-md.js` | `buildSessionReport`, `buildAggregateReport` | Markdown report generation |
+| `dfg-viewer.js` | `render`, `fit`, `zoomIn/Out`, `getZoom`, `exportSvg` | Directly-Follows Graph (cytoscape + dagre); persists dragged layout per node set. `exportSvg` is a **hand-written cytoscape→SVG serializer** (cytoscape has no native SVG export) — emits nodes/edges/labels as SVG primitives, driving the "Process map SVG" export |
+| `bpmn-viewer.js` | `render`, `fit`, `exportSvg` | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`) |
+| `process-map-levels.js` | `buildAnnotationDfg`, `processLabel`, `dropRareEdges` | Pure step/phase DFG from annotations, value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)) |
+| `recognition.js` | `recognize`, `isChrome`, … | Semantic interaction category from documented platform/framework signatures (`shared/recognition-patterns.json`); twin of the Python `recognition.py` ([ADR-0011](../adr/0011-platform-recognition-layer.md)) |
+| `step-alignment.js` | `alignRepeats`, … | Intra-session repetition alignment — aligns the same step across cases by recognised-category signature |
+| `analysis-aggregate.js` | `aggregateAnalysis` | Pure cross-session rollup of per-session `analysis.json` (time study / per-worker / automation / efficiency) for the Compare-Sessions Analysis panel |
+| `session-summary.js` | `summarize`, `detectDurationOutliers` | Pure per-session summary + duration-outlier detection |
+| `theme.js` | `stepPalette`, `dfgStyleTokens`, … | Light/dark theme tokens + chart/DFG colour palettes |
+| `report-md.js` | `buildSessionReport`, `buildAggregateReport` | Markdown report generation (Activity **and** Step statistics tables) |
+| `report-html.js` | `generateFindingsReport` | Self-contained **HTML findings report** (Phase D) — process summary, inline process-map SVG, steps table, waste/automation/efficiency findings, notes, starred screenshots; opens in any browser, no external assets |
+| `canonical-author.js` | (pure authoring helpers) | Pure functions for **authoring** Process Templates — the canonical step + match-rule shapes; shared by the Steps view and the Template tab, unit-testable (no DOM) |
 | `step-editor.js` | `renderStepList`, `renderStepDetail`, `renderStepTimeline`, … | Steps list/detail + Steps mini-timeline |
 | `phase-editor.js` | `renderPhaseList`, `renderPhaseDetail`, `renderPhaseTimeline` | Phases list/detail + Phases mini-timeline |
 | `layout-controls.js` | (side-effect import) | Drag-resize handles + video modes; self-inits at `require()` time |
@@ -157,7 +167,7 @@ The renderer has **four top-level surfaces** (containers in `index.html`):
 | `#view-canonical` | Process Template editor | `views/template-view.js` |
 | `#view-vocabularies` | App Library (App Vocabulary editor) | `views/vocab-view.js` |
 
-Inside `#view-session` there are **three levels**, switched by the `.view-mode-btn`
+Inside `#view-session` there are **four levels**, switched by the `.view-mode-btn`
 buttons → `applyLevel(name)` in `renderer.js`:
 
 | Level | Layout container | Render entry |
@@ -165,6 +175,7 @@ buttons → `applyLevel(name)` in `renderer.js`:
 | `flow` | `#session-layout-flow` | `renderTimeline()` — `flow-view.js` |
 | `steps` | `#session-layout-steps` | `renderStepsLevel()` — `steps-view.js` |
 | `phases` | `#session-layout-phases` | `renderPhasesLevel()` — `phases-view.js` |
+| `analysis` | `#session-layout-analysis` | `renderAnalysisLevel()` — `analysis-view.js` |
 
 `applyLevel()` keeps the level in `state.js` (`State.getLevel`/`setLevel`),
 toggles `display` on the three `#session-layout-*` containers, and snapshots /
@@ -249,11 +260,45 @@ in `flow-view.js`. All end at `session.js`.
 
 [`views/aggregate-view.js`](../../viewer/views/aggregate-view.js) drives
 `#view-aggregate`: activity-frequency and case-duration bar charts (`charts.js`),
-trace-variant / outlier / rework tables, and the process map. The map renders two
-ways in one tabbed panel — **DFG** via `dfg-viewer.js` (cytoscape + dagre) and
-**BPMN** via `bpmn-viewer.js` (bpmn-js). Clicking a DFG node opens a drill-down
-picker; the drill-to-session action is injected by `renderer.js` via
-`initAggregateView({ onDrillToSession })`.
+trace-variant / outlier / rework tables, the cross-session **Analysis panel**
+(`analysis-aggregate.js` rolls up each loaded session's `analysis.json` into a
+pooled time study / per-worker / automation / efficiency view), and the process
+map.
+
+**The process map is a notation × level matrix**
+([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)):
+
+- **Notation** — *Process diagram* (**BPMN**, `bpmn-viewer.js`) or *Flow diagram*
+  (**DFG**, `dfg-viewer.js`), as panel tabs.
+- **Level** — Activity / Step / Phase, via the `#map-level` dropdown.
+
+The axes are independent — changing level never swaps notation and vice versa;
+`renderMap()` is the single entry point. The activity DFG is the merged taxonomy
+graph; the step/phase DFG is built **live** from annotations
+(`process-map-levels.buildAnnotationDfg`), collapsing value-laden step names via
+`processLabel` so repeated work is one node
+([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)). The step/phase
+*Process diagram* is the observed-flow file mined by `bpmn_observed.py`.
+
+**Map interaction (Flow diagram):**
+
+- **Drill-down scoping** — clicking a phase node descends to the step level
+  *filtered to that phase's steps*; a step node descends to the activity level
+  *filtered to that step's activity labels*. A "scoped: ‹parent› · show all" chip
+  in the header is the inverse. The BPMN is a static mined file, so a click there
+  descends *unfiltered*.
+- **Hide rare paths** — a toggle drops one-off (frequency-1) edges so the dominant
+  flow is readable on a dense recording (`dropRareEdges`); the hidden count shows
+  in the label, reversible.
+- **Conformance overlay** — when loaded sessions matched a Process Template, DFG
+  nodes are coloured green (matches a canonical step) / amber (off-template).
+- **Drill to source** — clicking an *activity* node opens a picker of the loaded
+  sessions that contain it (drill-to-session injected by `renderer.js` via
+  `initAggregateView({ onDrillToSession })`); the picker also offers a
+  **Reclassify** action that writes a classification override and re-analyzes.
+
+Zoom/pan and dragged node layout persist — `dfg-viewer.js` per node set in
+`localStorage`, `bpmn-viewer.js` by saving XML back to the `.bpmn`.
 
 ## 10. Project layer
 

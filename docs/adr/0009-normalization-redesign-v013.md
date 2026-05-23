@@ -1,6 +1,6 @@
 # ADR-0009: Normalization Redesign (v0.13)
 
-**Status:** Superseded in part / redirected (2026-05-22) — see the note below
+**Status:** Superseded in part / redirected (2026-05-22) — see the note below; the replacement direction is now formalized in [ADR-0015](0015-intra-session-repetition-alignment.md)
 **Date:** 2026-05-19
 **Deciders:** Analyst (process-discovery lead)
 **Input:** SPEC-v0.13-normalization-redesign.md
@@ -427,6 +427,18 @@ the span. Two mitigations:
 ## Action Items
 
 Ordered by dependency — gating items first.
+
+> **Status reconciliation (2026-05-23).** The implementation building blocks shipped
+> on `viewer-refactor`: the AG-Grid GATE (1) is resolved — per-cell granularity is
+> unrecoverable (identityless `ag-cell-edit-input`), so the grid is treated as one
+> coarse step; `coalesce.py` (2); `detect_cases_from_anchors` + `stamp_anchor_cases`
+> in `case_assignment.py` (3); `_op_match` operators in `canonical_match.py` (4); the
+> corrected `rules:`/`app`/`title_regex` taxonomy schema (6); `canonical/atm-ticket-handling.yaml`
+> (8); and the fallback-heuristic tuning (7, v0.13.0). The **2026-05-22 redirect**
+> shelved not this code but the *strategy* — cross-session canonical-template
+> *matching* is mis-targeted for mostly-one-off processes, superseded by intra-session
+> repetition alignment. The unchecked boxes below are the original v0.13 plan; treat
+> this note as the authoritative status.
 
 1. [ ] **GATE:** Inspect real AG Grid events from the ATM recording. Check:
        `class_name`, `automation_id`, `name`, `framework_id`, `process_name`,

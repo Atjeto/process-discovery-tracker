@@ -1,85 +1,173 @@
 # CLAUDE.md
 
-Project context for Claude Code. For the full documentation set start at
-[docs/README.md](docs/README.md); for architecture,
-[docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
+Project context for Claude Code. **New session?** Read the *Active direction* block
+below, then jump to the doc you need from the *Documentation map*. Full index:
+[docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** **v0.15.0 shipped** — the P0
-coherence pass, active-case case segmentation, and a full notation×level
-process-map matrix (the Process diagram now renders Step/Phase as observed-flow
-BPMN — it is **not** activity-only). The next-session plan of record is
+**Active direction (2026-05) — START HERE:** **v0.15.0 shipped**, and a large
+follow-on cycle is **done and verified** (the analysis-layer "endless list" fix via
+the value-free `process_label` grouping, scoped phase→step→activity drill-down, a
+"Hide rare paths" Flow-diagram toggle) — plus a documentation refresh (ADR-0013 +
+the architecture reference) and a full coverage/consistency audit. All of it is
+**uncommitted on `viewer-refactor`**. The next-session plan of record is
 [docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md); it leads with
-**verifying v0.15.0 in a real run** (the cycle's UI was never eyeballed), then P1
-recognition cross-language lift + P2 classification. Hold every feature to the
-coherence discipline in [COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md)
-— a new "verb" needs its inverse, a legend, a control-interaction check, and a
-real-run check (UI bugs are invisible to green tests). Strategic frame:
-[VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md); ADRs in
+the **documentation fix pass** ([docs/DOC-COVERAGE-AUDIT.md](docs/DOC-COVERAGE-AUDIT.md)
+— 30 verified findings), then the open backlog (recognition-driven case anchors,
+calibration). Hold every feature to the coherence discipline in
+[COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — a new "verb" needs its
+inverse, a legend, a control-interaction check, and a real-run check (UI bugs are
+invisible to green tests); verify UI changes in the `_pdt_verify` harness. Strategic
+frame: [VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md); ADRs in
 `docs/adr/`. Validate by running the **packaged app** (it bundles its own
 Python), not dev-box pip.
 
 ## What this is
 
-Process Discovery Tracker — an internal Windows **process-mining** tool. A worker
-records how they perform a business process (Capture); an analyst transforms the
-recording (Normalization) and explores it (Viewer) to produce process maps, a
-step/phase breakdown, and statistics. Current version: **0.15.0** (SemVer 0.x).
+Process Discovery Tracker — an internal **Windows process-mining** tool, three
+layers that never talk over a network:
 
-The two halves never talk over a network — the hand-off is a self-contained
-**session folder** moved from the worker's machine to the analyst's.
+1. **Capture** (`capture/`) — a worker records a business process. An Electron tray
+   app + a C# UI-Automation recorder sidecar emit an append-only `events.jsonl`.
+2. **Normalization** (`normalization/`) — an analyst-side Python pipeline turns the
+   raw events into cases, steps, statistics, and mined process maps.
+3. **Viewer** (`viewer/`) — an analyst Electron app to explore, annotate, and export
+   (process maps, a step/phase breakdown, statistics, a PDD document).
+
+The hand-off between the two halves is a self-contained **session folder** moved
+from the worker's machine to the analyst's — no network, no shared services.
+Current version **0.15.0** (SemVer 0.x).
 
 ## Layout
 
 | Path | What |
 |------|------|
 | `capture/` | Worker-side Electron tray app + the C# .NET 8 recorder sidecar (`capture/recorder/`). |
-| `normalization/` | Analyst-side Python pipeline (`normalize.py` + ~13 modules). |
+| `normalization/` | Analyst-side Python pipeline (`normalize.py` + its modules). |
 | `viewer/` | Analyst-side Electron app; bundles a Python embeddable to run normalization. |
-| `shared/SCHEMA.md` | The authoritative session-data format contract. |
+| `shared/` | Cross-layer contracts — `SCHEMA.md` (authoritative session-data format) + `recognition-patterns.json` (platform/framework signatures used by both viewer and Python). |
 | `docs/` | Documentation set, ADRs, design specs — index at `docs/README.md`. |
-| `scripts/` | PowerShell / Node build, release, and admin scripts. |
+| `scripts/` | PowerShell / Node build, release, and admin scripts (incl. structure-only data peeks). |
 | `sessions/`, `dist/` | Gitignored — captured sessions and build output. |
+| `_pdt_verify/` | *(Outside the repo)* the Playwright UI-verification harness — see *Verification*. |
+
+## Documentation map
+
+Full index: [docs/README.md](docs/README.md). The high-traffic docs and when to read each:
+
+**Understand the system**
+- [architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md) — the three layers, data flow, key principles. Read first.
+- [architecture/DATA-MODEL.md](docs/architecture/DATA-MODEL.md) + [shared/SCHEMA.md](shared/SCHEMA.md) — the event/annotation model and the **authoritative** file-format + data dictionary. Touching session data → read SCHEMA.
+- [docs/FEATURES.md](docs/FEATURES.md) — capability catalogue (what the product does, by component).
+
+**Work on a layer**
+- [architecture/CAPTURE.md](docs/architecture/CAPTURE.md) — the worker app + C# recorder.
+- [architecture/NORMALIZATION.md](docs/architecture/NORMALIZATION.md) — the Python pipeline (stages + module map).
+- [architecture/VIEWER.md](docs/architecture/VIEWER.md) — viewer modules, views, state, IPC, render pipeline *(deep)*.
+- [architecture/VIEWER-TIMELINE.md](docs/architecture/VIEWER-TIMELINE.md) — the timeline subsystem.
+- [architecture/DESIGN-SYSTEM.md](docs/architecture/DESIGN-SYSTEM.md) — CSS tokens, light/dark palettes, contrast rules.
+
+**Decisions & current direction**
+- [docs/adr/](docs/adr/) — Architecture Decision Records (0001–0015); the newest decisions live here.
+- [architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — the coherence discipline every feature must pass.
+- [architecture/VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md) — the strategic frame (where meaning leaks).
+- [docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md) — the plan of record for the next session.
+- [docs/DOC-COVERAGE-AUDIT.md](docs/DOC-COVERAGE-AUDIT.md) — the live documentation coverage/consistency worklist.
+
+**Operate**
+- [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, build, test, conventions.
+- [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md) + [docs/DEPLOY.md](docs/DEPLOY.md) — build pipeline + field install.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — error messages and diagnostics.
+- [CHANGELOG.md](CHANGELOG.md) — per-release history.
+- [SECURITY.md](SECURITY.md) + [docs/Security-QA.md](docs/Security-QA.md) — threat model + corp-security Q&A.
+
+## Key concepts
+
+A few facts that recur and trip people up:
+
+- **Raw data is immutable; analysis is a sidecar.** `events.jsonl` is append-only.
+  Every analyst edit (steps, phases, markers, classification overrides) lives in
+  `annotations.json`. Re-normalization is **non-destructive** — it preserves
+  `manually_authored` / `edited` annotations and regenerates only the `auto_*` set.
+- **`process_label`** — a step's auto name embeds case values ("Search — CUST-10852");
+  the value-free `process_label` ("Search") is the grouping key for the step map **and**
+  the analysis/stats, so repeated work across cases collapses to one node/row. It is
+  computed in both Python (`step_suggest.process_label`) and JS
+  (`process-map-levels.processLabel`) — **keep the two in sync.**
+- **Recognition layer** — interactions are classified by documented platform/framework
+  signatures (`shared/recognition-patterns.json`), not per-session opaque selectors;
+  loaded by both the viewer (`recognition.js`) and Python (`recognition.py`).
+- **Process map = a notation × level matrix** — Process diagram (BPMN) vs. Flow diagram
+  (DFG), each at Activity / Step / Phase level. The level selector and the notation tabs
+  are independent. Step/Phase BPMN is the *observed flow* mined from the annotations.
+- **Cases** are detected by **anchor** (active-case stamping in `case_assignment.py`),
+  not by idle-gap splitting.
 
 ## Commands
 
-Run from `capture/` or `viewer/`:
-
+**Run / develop** (from `capture/` or `viewer/`):
 ```
 npm install
-npm start          # launch the Electron app
+npm start          # launch the Electron app (Ctrl+R in-app reloads renderer/CSS)
 npm test           # node:test unit suite
 ```
 
-Build the C# recorder (from `capture/`): `npm run build:recorder` (needs the
-.NET 8 SDK). Ship a release (from the repo root, PowerShell):
+**Python pipeline tests** — use a **system Python with pytest**; the bundled
+`viewer/python/` can't run pytest (missing deps):
+```
+python -m pytest normalization/test/
+```
 
+**Re-analyze a session** (regenerates stats / annotations / maps) with the bundled Python:
+```
+viewer/python/python.exe normalization/normalize.py <session_folder> --mine
+```
+
+**Build the C# recorder** (from `capture/`, needs the .NET 8 SDK): `npm run build:recorder`
+
+**Ship a release** (repo root, PowerShell):
 ```
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 .\scripts\build-distribution.ps1 -SkipPython
 .\scripts\publish-release.ps1 -Version X.Y.Z -NotesFromChangelog
 ```
+Detail: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Detail: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md) and
-[CONTRIBUTING.md](CONTRIBUTING.md).
+## Verification
+
+UI bugs are invisible to the unit suites — **validate behaviour, don't just write code.**
+- Real-run the app (`npm start` in `viewer/`), or drive the headless harness
+  `_pdt_verify/driver.js` (Playwright `_electron` launches the real viewer, drives it,
+  and screenshots — read the PNGs back). Use it for **any** UI change.
+- For released-build claims, validate the **packaged app** (it bundles its own Python),
+  not dev-box pip.
 
 ## Conventions
 
-- **No bundler.** Both Electron apps use CommonJS `require()` directly
-  (`nodeIntegration: true`); there is no webpack/Vite/esbuild step. New modules
-  are plain `module.exports`.
-- **Tests** use Node's built-in `node:test` — no test-framework dependency.
-- **Architecture decisions** are recorded as ADRs in `docs/adr/`.
-- **Raw capture data is immutable** — `events.jsonl` is append-only; analyst
-  edits live in the `annotations.json` sidecar, and re-normalization is
-  non-destructive.
-- Windows-only; PowerShell for scripts. The git repo root is this directory,
-  default branch `master`.
+- **No bundler.** Both Electron apps use CommonJS `require()` (`nodeIntegration: true`) —
+  no webpack/Vite/esbuild. New modules are plain `module.exports`.
+- **Tests:** Node's built-in `node:test` (JS) and `pytest` (Python) — no other frameworks.
+- **ADRs** in `docs/adr/` record architecture decisions; a new "verb" also clears the
+  COHERENCE-AUDIT checklist (inverse, legend, control-interaction, real-run).
+- **Git:** repo root is this directory. **Active branch `viewer-refactor`** (`master` is
+  stale). Commits use an imperative subject and **no `Co-Authored-By` trailer**.
+- **Docs:** don't hardcode line/test counts in prose — they drift (the coverage audit
+  found several stale ones).
+
+## Environment
+
+- **Two machines.** A dev box (node / python / git / .NET) and a **locked-down work
+  laptop** that runs only the released `.exe` — never suggest installs there.
+- **Company captures stay local.** Inspect a real `events.jsonl` only via the
+  structure-only `scripts/inspect-events.js` / `scripts/count-cases.js`; never read a
+  real capture into an assistant. `sessions/example-aggregate/` is committed demo data —
+  re-analyzing it for verification is fine, but **don't commit the regenerated files**.
+- **PowerShell** for scripts; scope-set `RemoteSigned`, not `-ExecutionPolicy Bypass`.
 
 ## Gotchas
 
-- The capture recorder is a **separate C# process**, not Node — see
-  [ADR-0001](docs/adr/0001-click-recorder-sidecar-language.md).
-- Distribution uses **electron-packager** (via each app's `build-package.js`),
-  not electron-builder.
-- The viewer ships a **bundled Python** (`viewer/python/`); the analyst machine
-  needs no Python install.
+- The capture recorder is a **separate C# process**, not Node — [ADR-0001](docs/adr/0001-click-recorder-sidecar-language.md).
+- Distribution uses **electron-packager** (each app's `build-package.js`), not electron-builder.
+- The viewer ships a **bundled Python** (`viewer/python/`) — the analyst machine needs no
+  Python install. (That bundled Python can't run pytest, though — see *Commands*.)
+- Capture writes are **batched** — activity/interaction events ride a 500 ms queue;
+  markers and system events flush immediately. (Not synchronous-per-event.)
