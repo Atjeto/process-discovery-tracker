@@ -92,6 +92,22 @@ function firstSessionWithMap(level) {
 }
 
 /* Render the Process diagram (BPMN) at the current level. */
+/* Drill-down navigation: clicking a node on the phase or step map descends one
+   level (phase -> step -> activity), so the hierarchy is navigable by clicking,
+   not only via the level dropdown. Activity is the bottom -- there a click
+   drills to the source session (drillToActivity) instead. */
+function drillDownLevel() {
+  const next = _mapLevel === "phase" ? "step" : _mapLevel === "step" ? "activity" : null;
+  if (!next) return;
+  _mapLevel = next;
+  syncMapLevelControl();
+  renderMap();
+  setTimeout(() => {
+    const v = activeMapViewer();
+    if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
+  }, 50);
+}
+
 function renderBpmnAtLevel() {
   const host = $("#bpmn-host");
   if (!host || !PdtBpmn) return;
@@ -109,6 +125,7 @@ function renderBpmnAtLevel() {
   // activity level only (step/phase nodes are step/phase names).
   const opts = {};
   if (_mapLevel === "activity") opts.onNodeClick = (label) => drillToActivity(label);
+  else opts.onNodeClick = () => drillDownLevel();   // phase/step node -> descend a level
   PdtBpmn.render(host, path.join(sess.sessionFolder, mapBpmnFile(_mapLevel)), opts)
     .then(() => setMapZoomPct(PdtBpmn.getZoom())).catch(() => {});
   setMapZoomVisible(true);
@@ -187,7 +204,7 @@ function applyMapLevel() {
     if (_lastConfActive && _lastConformance) opts.conformance = _lastConformance.status;
   } else {
     dfg = buildAnnotationDfg(_lastFilteredForMap || [], _mapLevel);
-    opts.onNodeClick = () => {};
+    opts.onNodeClick = () => drillDownLevel();   // phase/step node -> descend a level
   }
   if (dfg && dfg.edges && dfg.edges.length) {
     PdtDfg.render(host, dfg, opts);

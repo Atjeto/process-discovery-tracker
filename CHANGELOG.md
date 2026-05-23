@@ -29,6 +29,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   regenerates the map and resets it. The create/delete editor chrome is hidden,
   so it stays a move-only layout tool (`viewer/bpmn-viewer.js`, `viewer/index.html`,
   `viewer/styles.css`).
+- **Team-taxonomy promotion is in-app.** The Classify-activities manager gains a
+  "Save to team taxonomy…" button: pick or create a shared `taxonomy.yaml` and
+  the labels are merge-upserted into it (dupes skipped, other keys preserved),
+  so they classify every future session — not just this one
+  (`viewer/views/flow-view.js`, `viewer/main.js`, `viewer/ipc.js`).
+- **Flow-diagram layout persists.** Dragging a node in the Flow diagram now
+  survives a level/tab switch and re-open, saved per exact node set so a changed
+  graph (after re-analyze) gets a fresh layout (`viewer/dfg-viewer.js`).
+- **Click a map node to drill down a level.** On the process map, clicking a
+  phase node descends to the step level and a step node to the activity level
+  (phase→step→activity); the activity level still drills to the source session
+  (`viewer/views/aggregate-view.js`).
 
 ### Fixed
 

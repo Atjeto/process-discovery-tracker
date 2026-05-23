@@ -25,6 +25,30 @@
   const CONF_GREEN = "#4f9d5b";
   const CONF_AMBER = "#cf9233";
 
+  /* Persist a dragged DFG layout so it survives a re-render (tab/level switch)
+     and a re-open, keyed by the exact node set: a different graph gets a fresh
+     dagre layout and a changed node set self-heals (only matching nodes are
+     repositioned). localStorage, because the DFG is built live and has no
+     .bpmn to save into like the Process diagram does. */
+  function _hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+  function _layoutStore() { try { return window.localStorage; } catch (_) { return null; } }
+  function _layoutKey(c) { return "pdt.dfgLayout." + _hash(c.nodes().map((n) => n.id()).sort().join("")); }
+  function _restoreLayout(c) {
+    const ls = _layoutStore(); if (!ls) return;
+    let saved; try { saved = JSON.parse(ls.getItem(_layoutKey(c)) || "null"); } catch (_) { return; }
+    if (!saved) return;
+    c.nodes().forEach((n) => {
+      const p = saved[n.id()];
+      if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) n.position({ x: p.x, y: p.y });
+    });
+  }
+  function _saveLayout(c) {
+    const ls = _layoutStore(); if (!ls) return;
+    const pos = {};
+    c.nodes().forEach((n) => { const p = n.position(); pos[n.id()] = { x: p.x, y: p.y }; });
+    try { ls.setItem(_layoutKey(c), JSON.stringify(pos)); } catch (_) {}
+  }
+
   function render(host, dfg, opts) {
     opts = opts || {};
     host.innerHTML = "";
@@ -173,6 +197,8 @@
         onNodeClick(e.target.data("id"), e.originalEvent || null);
       });
     }
+    // Persist a dragged node arrangement so it survives a re-render / re-open.
+    cy.on("dragfree", "node", () => _saveLayout(cy));
     if (opts.onZoomChange) {
       cy.on("zoom", () => opts.onZoomChange(cy.zoom()));
     }
@@ -220,6 +246,7 @@
       });
     }
     setTimeout(() => {
+      _restoreLayout(cy);   // re-apply any saved drags over the fresh dagre layout
       try { cy.fit(undefined, 24); } catch (_) {}
       if (opts.onZoomChange && cy) opts.onZoomChange(cy.zoom());
     }, 50);

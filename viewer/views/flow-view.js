@@ -1548,6 +1548,7 @@ function showClassifyManager() {
       : '<p class="meta">No activity events in this session yet.</p>') +
     '</div>' +
     '<footer class="modal-footer"><button class="modal-cancel">Cancel</button>' +
+    '<button class="cm-promote" title="Write these labels into a shared taxonomy.yaml so they classify EVERY future session, not just this one. You pick the team taxonomy file.">Save to team taxonomy…</button>' +
     '<button class="primary cm-save">Save & re-analyze</button></footer>' +
     '</div>';
   document.body.appendChild(backdrop);
@@ -1591,6 +1592,21 @@ function showClassifyManager() {
     toast(changed + " app" + (changed === 1 ? "" : "s") + " relabelled — re-analyzing…", "success");
     const btn = document.getElementById("btn-normalize");
     if (btn) btn.click();
+  });
+
+  backdrop.querySelector(".cm-promote").addEventListener("click", async () => {
+    const rules = [];
+    backdrop.querySelectorAll(".cm-label").forEach((inp) => {
+      const app = inp.getAttribute("data-app");
+      const label = (inp.value || "").trim();
+      if (app && label) rules.push({ label, match: { app } });
+    });
+    if (!rules.length) { toast("Enter at least one label to promote.", ""); return; }
+    const res = await Ipc.promoteTaxonomyRules({ rules });
+    if (!res || res.canceled) return;
+    if (!res.ok) { toast("Promote failed: " + (res.error || "unknown"), "error"); return; }
+    toast("Promoted " + res.added + " rule" + (res.added === 1 ? "" : "s") +
+      " to team taxonomy (" + res.total + " total)", "success");
   });
 }
 

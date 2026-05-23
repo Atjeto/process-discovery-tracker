@@ -818,6 +818,49 @@ ipcMain.handle("viewer:addClassificationOverride", (_e, { sessionFolder, overrid
   }
 });
 
+/* Promote analyst classification rules into a SHARED taxonomy.yaml so they
+   apply to every future session (team-wide), not just this session's
+   annotations. The analyst picks (or names) the team taxonomy file; we
+   read-merge-write so existing rules are preserved and duplicates skipped --
+   the direct-write companion to the hand-merged promotion export and the
+   Python classification.upsert_taxonomy_rules. Each rule: {label, match}. */
+ipcMain.handle("viewer:promoteTaxonomyRules", async (_e, { rules }) => {
+  try {
+    if (!Array.isArray(rules) || !rules.length) {
+      return { ok: false, error: "No rules to promote" };
+    }
+    const r = await dialog.showSaveDialog(mainWindow, {
+      title: "Promote to team taxonomy",
+      defaultPath: "taxonomy.yaml",
+      filters: [{ name: "YAML", extensions: ["yaml", "yml"] }],
+    });
+    if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+    const yaml = require("js-yaml");
+    let doc = {};
+    if (fs.existsSync(r.filePath)) {
+      try { doc = yaml.load(fs.readFileSync(r.filePath, "utf-8")) || {}; }
+      catch (e) { return { ok: false, error: "Existing file is not valid YAML: " + e.message }; }
+    }
+    const list = Array.isArray(doc.rules) ? doc.rules : [];
+    const keyOf = (x) => JSON.stringify([
+      x.label || "", (x.match || {}).app || null, (x.match || {}).title_regex || null,
+    ]);
+    const have = new Set(list.map(keyOf));
+    let added = 0;
+    for (const rule of rules) {
+      if (!rule || !rule.label) continue;
+      const norm = { label: rule.label, match: { ...(rule.match || {}) } };
+      if (have.has(keyOf(norm))) continue;
+      list.push(norm); have.add(keyOf(norm)); added++;
+    }
+    doc.rules = list;
+    fs.writeFileSync(r.filePath, yaml.dump(doc, { sortKeys: false, lineWidth: -1 }), "utf-8");
+    return { ok: true, added, total: list.length, path: r.filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 /* --- App lifecycle ----------------------------------------------- */
 
 app.whenReady().then(() => {

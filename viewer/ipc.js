@@ -72,6 +72,12 @@ function addClassificationOverride(payload) {
   return ipcRenderer.invoke("viewer:addClassificationOverride", payload);
 }
 
+/** Promote classification rules into a shared taxonomy.yaml (team-wide).
+ * @param {{rules: Array}} payload @returns {Promise<any>} */
+function promoteTaxonomyRules(payload) {
+  return ipcRenderer.invoke("viewer:promoteTaxonomyRules", payload);
+}
+
 /* ---- Export / shell ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -213,7 +219,7 @@ module.exports = {
   loadSession, openSessionFolder, openMultipleSessions, loadMultipleSessions,
   runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
   cancelNormalize,
-  saveAnnotations, addClassificationOverride,
+  saveAnnotations, addClassificationOverride, promoteTaxonomyRules,
   exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal,
   openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
