@@ -16,6 +16,8 @@ from datetime import datetime
 from statistics import mean, median
 from typing import Any
 
+from analysis_common import step_group_label
+
 
 def _parse_ts(ts: str) -> datetime:
     s = ts.rstrip()
@@ -228,7 +230,7 @@ def step_variants(
         if not cid:
             continue
         start = ((s.get("time_range") or {}).get("start")) or ""
-        by_case[cid].append((start, s.get("name") or "(unnamed step)"))
+        by_case[cid].append((start, step_group_label(s)))
 
     variant_counts: Counter[tuple[str, ...]] = Counter()
     for seq in by_case.values():
@@ -263,7 +265,7 @@ def step_stats(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 dur = max(0.0, (_parse_ts(end) - _parse_ts(start)).total_seconds() * 1000)
             except (ValueError, TypeError):
                 dur = 0.0
-        by_name[s.get("name") or "(unnamed step)"].append(dur)
+        by_name[step_group_label(s)].append(dur)
     rows = []
     total = sum(len(v) for v in by_name.values()) or 1
     for name, durs in sorted(by_name.items(), key=lambda kv: -sum(kv[1])):

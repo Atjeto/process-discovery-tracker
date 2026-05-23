@@ -16,11 +16,12 @@ from __future__ import annotations
 from statistics import pstdev
 from typing import Any
 
-from analysis_common import percentile, segment_steps
-
-
-def _group_key(step: dict) -> str:
-    return step.get("canonical_step_id") or ("step:" + str(step.get("step_id")))
+from analysis_common import (
+    percentile,
+    segment_steps,
+    step_group_key,
+    step_group_label,
+)
 
 
 def compute_time_study(
@@ -33,7 +34,7 @@ def compute_time_study(
 
     groups: dict[str, list[dict]] = {}
     for step in steps:
-        groups.setdefault(_group_key(step), []).append(step)
+        groups.setdefault(step_group_key(step), []).append(step)
 
     out = []
     for group in groups.values():
@@ -43,7 +44,7 @@ def compute_time_study(
         out.append({
             "step_id": rep.get("step_id"),
             "canonical_step_id": rep.get("canonical_step_id"),
-            "name": rep.get("name") or "",
+            "name": step_group_label(rep),
             "instances": len(group),
             "cycle_ms": {
                 "mean": round(sum(elapsed) / len(elapsed)) if elapsed else 0,

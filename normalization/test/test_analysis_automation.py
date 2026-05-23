@@ -110,6 +110,24 @@ def test_same_sequence_yields_same_signature():
     assert a[0]["sequence_signature"] == b[0]["sequence_signature"]
 
 
+def test_groups_auto_steps_by_process_label():
+    # No canonical id, value-laden names, shared process_label -> one pooled
+    # candidate with instances=2 (was one-per-instance before the fix).
+    steps = [
+        {"step_id": "s1", "name": "Search — CUST-1", "process_label": "Search",
+         "time_range": {"start": _ts(0), "end": _ts(300)},
+         "evidence": {"interaction_event_ids": ["i1"]}, "canonical_step_id": None},
+        {"step_id": "s2", "name": "Search — CUST-2", "process_label": "Search",
+         "time_range": {"start": _ts(400), "end": _ts(700)},
+         "evidence": {"interaction_event_ids": ["i2"]}, "canonical_step_id": None},
+    ]
+    events = [_interaction("i1", 10, "field"), _interaction("i2", 410, "field")]
+    out = score_automation(steps, events)
+    assert len(out) == 1
+    assert out[0]["instances"] == 2
+    assert out[0]["name"] == "Search"
+
+
 def test_no_interactions_signature_is_none():
     out = score_automation([_step("s1", 0, 300)], [])
     assert out[0]["sequence_signature"] is None

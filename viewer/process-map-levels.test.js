@@ -7,7 +7,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildAnnotationDfg } = require("./process-map-levels.js");
+const { buildAnnotationDfg, dropRareEdges } = require("./process-map-levels.js");
 
 function step(id, name, caseId, startMs, phaseId) {
   return {
@@ -116,4 +116,69 @@ test("step level: value-free names are left untouched", () => {
   const dfg = buildAnnotationDfg(
     [sess([step("a", "Salesforce: Fill Customer ID field", "c1", 1000)])], "step");
   assert.deepEqual(dfg.start_activities, { "Salesforce: Fill Customer ID field": 1 });
+});
+
+test("step level: a phase filter scopes the map to that phase's steps (drill-down)", () => {
+  const s = sess([
+    step("a", "Search", "c1", 1000, "p1"),
+    step("b", "Validate", "c1", 2000, "p1"),
+    step("c", "Resolve", "c1", 3000, "p2"),
+  ], [
+    { phase_id: "p1", name: "Intake" },
+    { phase_id: "p2", name: "Closeout" },
+  ]);
+  // Unscoped: Search -> Validate -> Resolve (2 edges across both phases).
+  assert.equal(buildAnnotationDfg([s], "step").edges.length, 2);
+  // Scoped to "Intake": only its two steps remain -> one edge.
+  const scoped = buildAnnotationDfg([s], "step", { phaseName: "Intake" });
+  assert.equal(scoped.edges.length, 1);
+  assert.equal(scoped.edges[0].source, "Search");
+  assert.equal(scoped.edges[0].target, "Validate");
+  assert.deepEqual(scoped.start_activities, { "Search": 1 });
+  assert.deepEqual(scoped.end_activities, { "Validate": 1 });
+});
+
+test("step level: an unphased filter scopes to steps with no phase", () => {
+  const s = sess([
+    step("a", "Open", "c1", 1000, "p1"),
+    step("b", "Loose A", "c1", 2000),       // no phase
+    step("c", "Loose B", "c1", 3000),       // no phase
+  ], [{ phase_id: "p1", name: "Intake" }]);
+  const scoped = buildAnnotationDfg([s], "step", { phaseName: "(unphased)" });
+  assert.equal(scoped.edges.length, 1);
+  assert.equal(scoped.edges[0].source, "Loose A");
+  assert.equal(scoped.edges[0].target, "Loose B");
+});
+
+test("dropRareEdges hides one-off paths but keeps the dominant flow", () => {
+  const dfg = {
+    edges: [
+      { source: "A", target: "B", frequency: 5 },
+      { source: "B", target: "C", frequency: 4 },
+      { source: "B", target: "X", frequency: 1 },   // one-off deviation
+    ],
+    start_activities: { A: 5 },
+    end_activities: { C: 4, X: 1 },
+  };
+  const r = dropRareEdges(dfg);
+  assert.equal(r.hidden, 1);
+  assert.equal(r.dfg.edges.length, 2);
+  assert.ok(!r.dfg.edges.some((e) => e.target === "X"));
+  // X lost its only edge, so it drops out of the end markers too.
+  assert.deepEqual(r.dfg.end_activities, { C: 4 });
+});
+
+test("dropRareEdges is a no-op when every edge is a singleton (no spread)", () => {
+  const dfg = {
+    edges: [
+      { source: "A", target: "B", frequency: 1 },
+      { source: "B", target: "C", frequency: 1 },
+      { source: "C", target: "D", frequency: 1 },
+    ],
+    start_activities: { A: 1 },
+    end_activities: { D: 1 },
+  };
+  const r = dropRareEdges(dfg);
+  assert.equal(r.hidden, 0);
+  assert.equal(r.dfg.edges.length, 3);   // never blank the map
 });

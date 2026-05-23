@@ -190,6 +190,9 @@
         edgeSep: 10,
       },
     });
+    // Debug/test handle: expose the cytoscape instance on the container so the
+    // verification harness can drive node taps (the canvas has no clickable DOM).
+    host.__cy = cy;
     if (onNodeClick) {
       cy.on("tap", "node", (e) => {
         // Surface the original DOM event so the picker can position

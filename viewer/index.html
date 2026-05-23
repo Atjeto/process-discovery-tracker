@@ -435,11 +435,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <label class="cb" title="YYYY-MM-DD">From <input type="date" id="agg-from" /></label>
           <label class="cb" title="YYYY-MM-DD">To <input type="date" id="agg-to" /></label>
           <span class="hint" style="align-self:center">YYYY-MM-DD</span>
-          <div class="agg-level-switcher" id="agg-level-switcher">
-            <button class="agg-level-btn active" data-level="flow">Flow</button>
-            <button class="agg-level-btn" data-level="steps">Steps</button>
-            <button class="agg-level-btn" data-level="phases">Phases</button>
-          </div>
           <label class="cb" id="agg-group-worker-wrap" style="display:none" title="Colour the activity and case charts by worker, so you can compare how different people ran the same process."><input type="checkbox" id="cb-agg-group-worker" /> Group by worker</label>
           <div class="project-menu" id="agg-export-menu">
             <button class="project-btn" id="btn-agg-export-menu" title="Export process maps, reports, and data">
@@ -479,12 +474,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                   <option value="phase">Phase level</option>
                 </select>
               </div>
+              <span id="map-scope" class="map-scope" style="display:none"></span>
               <div class="map-zoom" id="map-zoom" style="display:none">
                 <span class="map-zoom-pct" id="map-zoom-pct">100%</span>
                 <button class="icon-btn xs" id="btn-dfg-zoom-out" title="Zoom out">−</button>
                 <button class="icon-btn xs" id="btn-dfg-zoom-fit" title="Fit to view">fit</button>
                 <button class="icon-btn xs" id="btn-dfg-zoom-in" title="Zoom in">+</button>
                 <label class="cb" id="dfg-conformance-wrap" style="display:none" title="Colour Flow-diagram nodes by how they match the loaded Process Template: green matches a canonical step, amber is off-template."><input type="checkbox" id="cb-dfg-conformance" /> Conformance</label>
+                <label class="cb" id="hide-rare-wrap" style="display:none" title="Hide one-off (frequency-1) paths so the dominant flow is readable on a long, dense recording. Toggle off to see every path."><input type="checkbox" id="cb-hide-rare" /> <span id="hide-rare-lbl">Hide rare paths</span></label>
                 <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
               </div>
             </div>

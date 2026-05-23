@@ -72,7 +72,6 @@
  * @property {number} phaseZoom
  * @property {number} zoomFactor        Flow timeline zoom.
  * @property {*} selectionRange         Flow timeline drag-selected range, or null.
- * @property {Level} aggregateLevel
  * @property {CanonicalState} canonicalState
  * @property {VocabState} vocabState
  * @property {string} aggregateFilter
@@ -100,7 +99,6 @@ const _s = {
   phaseZoom: 1,
   zoomFactor: 1,
   selectionRange: null,
-  aggregateLevel: "flow",
   canonicalState: { path: null, content: null, parsed: null, exemplarFolder: null },
   vocabState: { list: [], selectedPath: null, current: null, dirty: false },
   aggregateFilter: "",
@@ -248,10 +246,6 @@ function setAggregateSessions(v) { _s.aggregateSessions = v; }
 function getLevel() { return _s.currentLevel; }
 /** @param {Level} v */
 function setLevel(v) { _s.currentLevel = v; }
-/** @returns {Level} */
-function getAggregateLevel() { return _s.aggregateLevel; }
-/** @param {Level} v */
-function setAggregateLevel(v) { _s.aggregateLevel = v; }
 
 /* Selection */
 function getSelectedStepId() { return _s.selectedStepId; }
@@ -326,7 +320,7 @@ module.exports = {
   // session
   getSession, setSession, getAggregateSessions, setAggregateSessions,
   // level
-  getLevel, setLevel, getAggregateLevel, setAggregateLevel,
+  getLevel, setLevel,
   // selection
   getSelectedStepId, setSelectedStepId, getSelectedPhaseId, setSelectedPhaseId,
   getMultiSelectedStepIds, setMultiSelectedStepIds,

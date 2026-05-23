@@ -77,6 +77,30 @@ def overrides_by_step(annotations: dict | None) -> dict[Any, dict]:
     return out
 
 
+def step_group_key(step: dict[str, Any]) -> str:
+    """Key a step is grouped under for cross-instance statistics: its
+    template `canonical_step_id` when matched, else the value-free
+    `process_label` (stamped at normalize so repeated work across cases
+    collapses to one group instead of one row per instance), else the
+    unique `step_id`. The same abstraction the process map uses, so the
+    Analysis tab, the stats, and the map all agree."""
+    return (
+        step.get("canonical_step_id")
+        or step.get("process_label")
+        or ("step:" + str(step.get("step_id")))
+    )
+
+
+def step_group_label(step: dict[str, Any]) -> str:
+    """Display name for a grouped step. A template-matched step already
+    carries a value-free canonical name; an auto step's name embeds the
+    case's values ("Search — CUST-10852"), so fall back to the value-free
+    `process_label` ("Search") instead so the group reads as one thing."""
+    if step.get("canonical_step_id"):
+        return step.get("name") or step.get("process_label") or "(unnamed step)"
+    return step.get("process_label") or step.get("name") or "(unnamed step)"
+
+
 def _idle_intervals(events: list[dict]) -> list[tuple[datetime, datetime]]:
     """Pair idle_start / idle_end system events into [start, end] intervals."""
     intervals: list[tuple[datetime, datetime]] = []

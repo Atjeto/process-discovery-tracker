@@ -49,20 +49,33 @@ function _stepStart(st) {
 /**
  * @param {Array} sessions  loaded sessions, each with `.annotations`
  * @param {"step"|"phase"} level
+ * @param {{phaseName?: string}} [filter]  drill-down scope: when descending
+ *   from a phase node, restrict the step map to that phase's steps.
  * @returns {{edges: Array, start_activities: Object, end_activities: Object}}
  */
-function buildAnnotationDfg(sessions, level) {
+function buildAnnotationDfg(sessions, level, filter) {
   const edgeMap = new Map();
   const startAct = {};
   const endAct = {};
 
   for (const s of sessions || []) {
     const anno = (s && s.annotations) || {};
-    const steps = (anno.steps || []).filter((st) => st && st.state !== "hidden");
+    let steps = (anno.steps || []).filter((st) => st && st.state !== "hidden");
     if (!steps.length) continue;
 
     const phaseName = {};
     for (const ph of (anno.phases || [])) phaseName[ph.phase_id] = ph.name || "(phase)";
+
+    // Drill-down scope: a click on a phase node restricts the step-level map
+    // to that phase's steps (its children), not the whole session. Compare the
+    // exact phase-node label, "(unphased)" included.
+    if (filter && filter.phaseName != null) {
+      steps = steps.filter((st) => {
+        const lbl = st.phase_id ? (phaseName[st.phase_id] || "(phase)") : "(unphased)";
+        return lbl === filter.phaseName;
+      });
+      if (!steps.length) continue;
+    }
 
     // One trace per case -- repetitions of the same task across cases are
     // what give the edges meaningful frequencies.
@@ -100,4 +113,30 @@ function buildAnnotationDfg(sessions, level) {
   return { edges, start_activities: startAct, end_activities: endAct };
 }
 
-module.exports = { buildAnnotationDfg };
+/* Thin a DFG for readability: drop one-off (frequency-1) edges when the model
+ * has more-frequent paths, so rare deviations don't clutter the dominant flow
+ * on a long, dense recording. A no-op when there is no frequency spread (every
+ * edge is a singleton) so the map is never blanked. Nodes left with no edges
+ * are dropped. Returns { dfg, hidden } where `hidden` is the edge count removed.
+ */
+function dropRareEdges(dfg) {
+  const edges = (dfg && dfg.edges) || [];
+  if (edges.length < 3) return { dfg, hidden: 0 };
+  const maxF = Math.max(...edges.map((e) => e.frequency || 1));
+  if (maxF <= 1) return { dfg, hidden: 0 };
+  const kept = edges.filter((e) => (e.frequency || 1) > 1);
+  if (!kept.length) return { dfg, hidden: 0 };
+  const nodes = new Set();
+  for (const e of kept) { nodes.add(e.source); nodes.add(e.target); }
+  const filt = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => nodes.has(k)));
+  return {
+    dfg: {
+      edges: kept,
+      start_activities: filt(dfg.start_activities),
+      end_activities: filt(dfg.end_activities),
+    },
+    hidden: edges.length - kept.length,
+  };
+}
+
+module.exports = { buildAnnotationDfg, processLabel, dropRareEdges };

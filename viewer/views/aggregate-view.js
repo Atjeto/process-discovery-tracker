@@ -19,7 +19,7 @@ const Ipc = require("../ipc.js");
 const PdtCharts = require("../charts.js");
 const PdtBpmn = require("../bpmn-viewer.js");
 const PdtDfg = require("../dfg-viewer.js");
-const { buildAnnotationDfg } = require("../process-map-levels.js");
+const { buildAnnotationDfg, processLabel, dropRareEdges } = require("../process-map-levels.js");
 const { formModal } = require("../modals.js");
 const SessionSummary = require("../session-summary.js");
 const AnalysisAggregate = require("../analysis-aggregate.js");
@@ -69,6 +69,12 @@ function showMapNotation(which) {
   $("#bpmn-host").style.display = which === "bpmn" ? "" : "none";
   $("#dfg-host").style.display = which === "dfg" ? "" : "none";
   setMapZoomVisible(true);
+  // The rare-path toggle only applies to the live DFG; applyMapLevel re-shows
+  // it for the Flow diagram.
+  if (which === "bpmn") {
+    const rareWrap = document.getElementById("hide-rare-wrap");
+    if (rareWrap) rareWrap.style.display = "none";
+  }
 }
 
 /* Keep the level dropdown's shown value in step with _mapLevel. */
@@ -95,10 +101,24 @@ function firstSessionWithMap(level) {
 /* Drill-down navigation: clicking a node on the phase or step map descends one
    level (phase -> step -> activity), so the hierarchy is navigable by clicking,
    not only via the level dropdown. Activity is the bottom -- there a click
-   drills to the source session (drillToActivity) instead. */
-function drillDownLevel() {
+   drills to the source session (drillToActivity) instead.
+
+   Scoping: on the live Flow diagram (DFG) the descent is FILTERED to the
+   clicked node's children -- a phase drills to just its steps, a step to just
+   the activity labels seen inside it. The Process diagram (BPMN) is a pre-mined
+   static file that cannot be re-filtered live, so there a click descends
+   UNFILTERED (consistent with the BPMN only collapsing on a re-analyze). */
+function drillDownLevel(label) {
   const next = _mapLevel === "phase" ? "step" : _mapLevel === "step" ? "activity" : null;
   if (!next) return;
+  const canScope = _mapNotation === "dfg" && !!label;
+  if (canScope && _mapLevel === "phase") {
+    _mapDrillFilter = { level: "step", parent: label, phaseName: label };
+  } else if (canScope && _mapLevel === "step") {
+    _mapDrillFilter = { level: "activity", parent: label, labels: _activityLabelsForStep(label) };
+  } else {
+    _mapDrillFilter = null;
+  }
   _mapLevel = next;
   syncMapLevelControl();
   renderMap();
@@ -125,7 +145,7 @@ function renderBpmnAtLevel() {
   // activity level only (step/phase nodes are step/phase names).
   const opts = {};
   if (_mapLevel === "activity") opts.onNodeClick = (label) => drillToActivity(label);
-  else opts.onNodeClick = () => drillDownLevel();   // phase/step node -> descend a level
+  else opts.onNodeClick = (label) => drillDownLevel(label);   // descend a level (BPMN: unfiltered)
   PdtBpmn.render(host, path.join(sess.sessionFolder, mapBpmnFile(_mapLevel)), opts)
     .then(() => setMapZoomPct(PdtBpmn.getZoom())).catch(() => {});
   setMapZoomVisible(true);
@@ -134,6 +154,7 @@ function renderBpmnAtLevel() {
 /* Draw the active (notation × level) cell -- the single entry point. */
 function renderMap() {
   showMapNotation(_mapNotation);
+  renderMapScopeChip();
   if (_mapNotation === "bpmn") renderBpmnAtLevel();
   else applyMapLevel();
 }
@@ -143,6 +164,9 @@ function wireMapTabs() {
     tab.addEventListener("click", () => {
       // Notation changes IN PLACE -- the level is preserved.
       _mapNotation = tab.dataset.map === "dfg" ? "dfg" : "bpmn";
+      // The BPMN is a static mined file and cannot honour a live drill scope,
+      // so switching to it clears any Flow-diagram scope.
+      if (_mapNotation === "bpmn") _mapDrillFilter = null;
       renderMap();
       setTimeout(() => {
         const v = activeMapViewer();
@@ -176,6 +200,20 @@ function wireMapTabs() {
   if (lvl) {
     lvl.addEventListener("change", () => {
       _mapLevel = lvl.value || "activity";
+      _mapDrillFilter = null;   // an explicit level pick shows the whole level
+      renderMap();
+      setTimeout(() => {
+        const v = activeMapViewer();
+        if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
+      }, 50);
+    });
+  }
+
+  // §3: rare-path readability toggle (Flow diagram only).
+  const rareCb = document.getElementById("cb-hide-rare");
+  if (rareCb) {
+    rareCb.addEventListener("change", (e) => {
+      _hideRarePaths = !!e.target.checked;
       renderMap();
       setTimeout(() => {
         const v = activeMapViewer();
@@ -197,24 +235,122 @@ function applyMapLevel() {
   const opts = { onZoomChange: (z) => setMapZoomPct(z) };
   if (_mapLevel === "activity") {
     dfg = _lastActivityDfg;
+    // Drill scope: a step node was clicked, so show only the activity labels
+    // produced inside that step.
+    if (_mapDrillFilter && _mapDrillFilter.level === "activity") {
+      dfg = _filterDfgToLabels(_lastActivityDfg, _mapDrillFilter.labels);
+    }
     opts.onNodeClick = (label, ev) => drillToActivity(label, ev);
     opts.variants = _lastVariantsForMap;
     // H3: re-apply the conformance overlay across re-renders (set up in
     // renderAggregate when a template-matched DFG is available).
     if (_lastConfActive && _lastConformance) opts.conformance = _lastConformance.status;
   } else {
-    dfg = buildAnnotationDfg(_lastFilteredForMap || [], _mapLevel);
-    opts.onNodeClick = () => drillDownLevel();   // phase/step node -> descend a level
+    // Drill scope: a phase node was clicked, so build the step map from only
+    // that phase's steps.
+    const phaseFilter = (_mapDrillFilter && _mapDrillFilter.level === "step")
+      ? { phaseName: _mapDrillFilter.phaseName } : null;
+    dfg = buildAnnotationDfg(_lastFilteredForMap || [], _mapLevel, phaseFilter);
+    opts.onNodeClick = (label) => drillDownLevel(label);   // descend a level, scoped
   }
+  // §3: optionally hide one-off paths for readability (Flow diagram only). The
+  // toggle shows whenever the map has edges; the label carries the hidden count.
+  const rareWrap = document.getElementById("hide-rare-wrap");
+  const rareLbl = document.getElementById("hide-rare-lbl");
+  const cbRare = document.getElementById("cb-hide-rare");
+  if (cbRare) cbRare.checked = _hideRarePaths;
+  const baseHasEdges = !!(dfg && dfg.edges && dfg.edges.length);
+  let hiddenRare = 0;
+  if (_hideRarePaths && baseHasEdges) {
+    const r = dropRareEdges(dfg);
+    dfg = r.dfg;
+    hiddenRare = r.hidden;
+  }
+  if (rareWrap) rareWrap.style.display = baseHasEdges ? "" : "none";
+  if (rareLbl) rareLbl.textContent = hiddenRare ? ("Rare paths hidden (" + hiddenRare + ")") : "Hide rare paths";
   if (dfg && dfg.edges && dfg.edges.length) {
     PdtDfg.render(host, dfg, opts);
     setMapZoomVisible(true);
+  } else if (_mapDrillFilter) {
+    host.innerHTML = '<div class="map-empty-inline">No sub-flow inside “' +
+      escapeHtml(_mapDrillFilter.parent) + '” — it has a single ' +
+      (_mapLevel === "activity" ? "activity" : "step") +
+      '. Use “show all” to see the whole level.</div>';
   } else {
     host.innerHTML = '<div class="map-empty-inline">No ' + _mapLevel + '-level flow yet'
       + (_mapLevel === "activity"
           ? ' — classify your apps in the taxonomy'
           : ' — add steps or phases to this session') + '</div>';
   }
+}
+
+/* Activity labels produced inside every step whose value-free label matches
+   `stepLabel`, pooled across the loaded sessions -- the children the activity
+   Flow diagram is scoped to when a step node is drilled. */
+function _activityLabelsForStep(stepLabel) {
+  const labels = new Set();
+  for (const s of (_lastFilteredForMap || [])) {
+    const steps = ((s.annotations || {}).steps || []).filter((st) => st && st.state !== "hidden");
+    const events = s.events || [];
+    for (const st of steps) {
+      const lbl = st.process_label || processLabel(st.name) || "(unnamed)";
+      if (lbl !== stepLabel) continue;
+      const tr = st.time_range || {};
+      const a = tr.start ? new Date(tr.start).getTime() : NaN;
+      const b = tr.end ? new Date(tr.end).getTime() : NaN;
+      if (!isFinite(a) || !isFinite(b)) continue;
+      for (const ev of events) {
+        if (ev.type !== "activity") continue;
+        const t = new Date(ev.timestamp).getTime();
+        if (isFinite(t) && t >= a && t <= b) {
+          const al = (ev.data || {}).activity_label;
+          if (al) labels.add(al);
+        }
+      }
+    }
+  }
+  return labels;
+}
+
+/* Restrict a DFG to a set of node labels -- keep an edge only when BOTH
+   endpoints survive, with the matching start/end markers. */
+function _filterDfgToLabels(dfg, labels) {
+  if (!dfg || !labels) return dfg;
+  const keep = (n) => labels.has(n);
+  const filtObj = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => keep(k)));
+  return {
+    edges: (dfg.edges || []).filter((e) => keep(e.source) && keep(e.target)),
+    start_activities: filtObj(dfg.start_activities),
+    end_activities: filtObj(dfg.end_activities),
+  };
+}
+
+/* Show/hide the drill-down scope chip in the map header. It names the parent
+   the Flow diagram is scoped to and offers a one-click "show all" -- the
+   inverse of drilling in. Only the live DFG can be scoped, so the chip is
+   hidden on the BPMN. */
+function renderMapScopeChip() {
+  const chip = document.getElementById("map-scope");
+  if (!chip) return;
+  if (!_mapDrillFilter || _mapNotation !== "dfg") {
+    chip.style.display = "none";
+    chip.innerHTML = "";
+    return;
+  }
+  chip.style.display = "";
+  chip.innerHTML =
+    '<span class="map-scope-lbl" title="The Flow diagram is scoped to this parent\'s children">scoped: ' +
+    escapeHtml(_mapDrillFilter.parent) + '</span>' +
+    '<button type="button" class="map-scope-clear" title="Show the whole level">show all ✕</button>';
+  const btn = chip.querySelector(".map-scope-clear");
+  if (btn) btn.addEventListener("click", () => {
+    _mapDrillFilter = null;
+    renderMap();
+    setTimeout(() => {
+      const v = activeMapViewer();
+      if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
+    }, 50);
+  });
 }
 
 /* ============ Multi-session loading =============================== */
@@ -256,6 +392,14 @@ let _lastVariantsForMap = null;
 let _lastActivityDfg = null;
 let _lastConformance = null;
 let _lastConfActive = false;
+/* Drill-down scope: when set, the Flow diagram is restricted to one parent
+   node's children -- { level, parent, phaseName? | labels? }. Null = whole
+   level. Cleared by an explicit level pick, a notation switch to BPMN, and a
+   data refresh. */
+let _mapDrillFilter = null;
+/* Flow-diagram readability: hide one-off (frequency-1) edges so a long, dense
+   recording shows its dominant flow. A view toggle, DFG-only. */
+let _hideRarePaths = false;
 
 function wireAggregateControls() {
   $("#btn-open-multi-hero").addEventListener("click", openMultiFlow);
@@ -739,6 +883,7 @@ function renderAggregate() {
   _lastActivityDfg = null;
   _lastConformance = null;
   _lastConfActive = false;
+  _mapDrillFilter = null;   // a data refresh resets any drill-down scope
 
   // H3: hide the conformance toggle + legend by default; re-enabled below when
   // a template-matched activity DFG is available.

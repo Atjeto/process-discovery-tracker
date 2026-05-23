@@ -132,3 +132,35 @@ def test_compute_all_includes_step_stats():
         _step_dur("c1", "A", "2026-05-14T09:00:00Z", "2026-05-14T09:00:02Z")])
     assert summary["step_stats"][0]["step_name"] == "A"
     assert summary["step_stats"][0]["total_duration_ms"] == 2000
+
+
+# --- process_label collapses value-laden instances (the "endless list") -
+
+def test_step_stats_collapses_instances_by_process_label():
+    # Auto step names embed case values; the value-free process_label
+    # collapses them to ONE row instead of one row per instance.
+    steps = [
+        {"case_id": "c1", "name": "Search — CUST-1", "process_label": "Search",
+         "time_range": {"start": "2026-05-14T09:00:00Z", "end": "2026-05-14T09:00:10Z"}},
+        {"case_id": "c2", "name": "Search — CUST-2", "process_label": "Search",
+         "time_range": {"start": "2026-05-14T10:00:00Z", "end": "2026-05-14T10:00:30Z"}},
+    ]
+    rows = step_stats(steps)
+    assert len(rows) == 1
+    assert rows[0]["step_name"] == "Search"
+    assert rows[0]["frequency"] == 2
+
+
+def test_step_variants_collapse_by_process_label():
+    # Two cases ran the same step type with different case values -> one
+    # variant, frequency 2 (the value-free label drives the sequence).
+    steps = [
+        {"case_id": "c1", "name": "Search — CUST-1", "process_label": "Search",
+         "time_range": {"start": "2026-05-14T09:00:00Z", "end": "2026-05-14T09:00:00Z"}},
+        {"case_id": "c2", "name": "Search — CUST-2", "process_label": "Search",
+         "time_range": {"start": "2026-05-14T10:00:00Z", "end": "2026-05-14T10:00:00Z"}},
+    ]
+    variants = step_variants(steps)
+    assert len(variants) == 1
+    assert variants[0]["variant"] == ["Search"]
+    assert variants[0]["frequency"] == 2

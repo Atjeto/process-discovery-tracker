@@ -21,7 +21,12 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from analysis_common import overrides_by_step, segment_steps
+from analysis_common import (
+    overrides_by_step,
+    segment_steps,
+    step_group_key,
+    step_group_label,
+)
 
 
 def _interaction_sequence(step: dict, by_id: dict) -> tuple:
@@ -29,10 +34,6 @@ def _interaction_sequence(step: dict, by_id: dict) -> tuple:
     evs = [by_id[i] for i in ids if i in by_id]
     evs.sort(key=lambda e: e.get("timestamp") or "")
     return tuple((e.get("data") or {}).get("automation_id") or "" for e in evs)
-
-
-def _group_key(step: dict) -> str:
-    return step.get("canonical_step_id") or ("step:" + str(step.get("step_id")))
 
 
 def _signature(seq: tuple) -> str | None:
@@ -58,7 +59,7 @@ def score_automation(
 
     groups: dict[str, list[dict]] = {}
     for step in steps:
-        groups.setdefault(_group_key(step), []).append(step)
+        groups.setdefault(step_group_key(step), []).append(step)
 
     out = []
     for group in groups.values():
@@ -89,7 +90,7 @@ def score_automation(
         out.append({
             "step_id": rep.get("step_id"),
             "canonical_step_id": rep.get("canonical_step_id"),
-            "name": rep.get("name") or "",
+            "name": step_group_label(rep),
             "instances": instances,
             "scores": {
                 "repetitiveness": repetitiveness,

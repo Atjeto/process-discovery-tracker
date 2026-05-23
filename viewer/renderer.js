@@ -422,16 +422,6 @@ if (btnPrepBootstrap) {
   });
 }
 
-/* ============ Aggregate level switcher ============================ */
-
-$$("#agg-level-switcher .agg-level-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    $$("#agg-level-switcher .agg-level-btn").forEach((b) => b.classList.toggle("active", b === btn));
-    State.setAggregateLevel(btn.dataset.level);
-    renderAggregate();
-  });
-});
-
 /* ============ Step / phase / PDD exports ========================= */
 
 async function exportArtifact(kind) {

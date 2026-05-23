@@ -584,6 +584,15 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   font-size: 11px; color: var(--fg-3); border-radius: 3px; }
 .panel-tab.active { background: var(--bg-1); color: var(--fg); }
 .panel-tab:hover { color: var(--fg-2); }
+/* Drill-down scope chip (sits between the tabs and the zoom controls). */
+.map-scope { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--fg-2); }
+.map-scope-lbl { padding: 2px 8px; background: var(--bg-3); border: 1px solid var(--rule);
+  border-radius: 10px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.map-scope-clear { background: transparent; border: 1px solid var(--rule); color: var(--fg-3);
+  border-radius: 6px; padding: 1px 7px; font-size: 10px; cursor: pointer; }
+.map-scope-clear:hover { color: var(--fg); border-color: var(--accent); }
 
 /* DFG zoom controls */
 .map-zoom { display: flex; align-items: center; gap: 4px; margin-left: auto;

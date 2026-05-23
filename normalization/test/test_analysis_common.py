@@ -13,7 +13,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from analysis_common import parse_ts, percentile, segment_step, segment_steps
+from analysis_common import (
+    parse_ts,
+    percentile,
+    segment_step,
+    segment_steps,
+    step_group_key,
+    step_group_label,
+)
 
 _BASE = datetime(2026, 5, 17, 10, 0, 0, tzinfo=timezone.utc)
 
@@ -96,6 +103,36 @@ def test_segment_bad_time_range_returns_empty():
 def test_segment_steps_keys_by_id():
     segs = segment_steps([_step("s1", 0, 100), _step("s2", 100, 200)], [])
     assert set(segs.keys()) == {"s1", "s2"}
+
+
+def test_step_group_key_prefers_canonical_then_process_label():
+    # Template-matched -> canonical id wins.
+    assert step_group_key({"canonical_step_id": "c1", "process_label": "Search",
+                           "step_id": "s1"}) == "c1"
+    # Auto step -> the value-free process_label, so repeated work collapses.
+    assert step_group_key({"process_label": "Search", "step_id": "s1"}) == "Search"
+    # Neither -> the unique step_id, so distinct one-offs stay separate.
+    assert step_group_key({"step_id": "s1"}) == "step:s1"
+
+
+def test_step_group_key_collapses_distinct_value_names():
+    # Two instances with different case values but the same process_label
+    # share a key -- the fix for the per-instance "endless list".
+    a = step_group_key({"name": "Search — CUST-1", "process_label": "Search", "step_id": "s1"})
+    b = step_group_key({"name": "Search — CUST-2", "process_label": "Search", "step_id": "s2"})
+    assert a == b == "Search"
+
+
+def test_step_group_label_strips_values_only_for_auto_steps():
+    # Auto step: the value-laden name is replaced by the value-free label.
+    assert step_group_label({"name": "Search — CUST-1",
+                             "process_label": "Search"}) == "Search"
+    # Template step: the canonical name is authoritative and kept verbatim,
+    # never re-stripped (a legitimate "Review — Final" must survive).
+    assert step_group_label({"canonical_step_id": "c1", "name": "Review — Final",
+                             "process_label": "Review"}) == "Review — Final"
+    # Nothing usable -> a readable placeholder, never a crash.
+    assert step_group_label({"step_id": "s1"}) == "(unnamed step)"
 
 
 if __name__ == "__main__":
