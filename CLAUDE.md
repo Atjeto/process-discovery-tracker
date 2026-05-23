@@ -4,25 +4,26 @@ Project context for Claude Code. For the full documentation set start at
 [docs/README.md](docs/README.md); for architecture,
 [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** the next-session plan of record is
-[docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md). It leads with
-a **P0 coherence pass** (fix split/merge symmetry, the map level-vs-notation IA,
-the repeat badge, and legends) *before any new feature*, per
-[docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — a
-new "verb" needs its inverse, a legend, a control-interaction check, and a
-real-run check (the cycle's UI bugs were invisible to green tests). Strategic
-frame: [VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md). State:
-ADR-0010 (viewer/recorder UX) implemented; [ADR-0011](docs/adr/0011-platform-recognition-layer.md)
-added a platform recognition layer; [ADR-0009](docs/adr/0009-normalization-redesign-v013.md)'s
-cross-session templates are redirected to intra-session repetition alignment.
-Validate by running the **packaged app** (it bundles its own Python), not dev-box pip.
+**Active direction (2026-05) — START HERE:** **v0.15.0 shipped** — the P0
+coherence pass, active-case case segmentation, and a full notation×level
+process-map matrix (the Process diagram now renders Step/Phase as observed-flow
+BPMN — it is **not** activity-only). The next-session plan of record is
+[docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md); it leads with
+**verifying v0.15.0 in a real run** (the cycle's UI was never eyeballed), then P1
+recognition cross-language lift + P2 classification. Hold every feature to the
+coherence discipline in [COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md)
+— a new "verb" needs its inverse, a legend, a control-interaction check, and a
+real-run check (UI bugs are invisible to green tests). Strategic frame:
+[VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md); ADRs in
+`docs/adr/`. Validate by running the **packaged app** (it bundles its own
+Python), not dev-box pip.
 
 ## What this is
 
 Process Discovery Tracker — an internal Windows **process-mining** tool. A worker
 records how they perform a business process (Capture); an analyst transforms the
 recording (Normalization) and explores it (Viewer) to produce process maps, a
-step/phase breakdown, and statistics. Current version: **0.12.0** (SemVer 0.x).
+step/phase breakdown, and statistics. Current version: **0.15.0** (SemVer 0.x).
 
 The two halves never talk over a network — the hand-off is a self-contained
 **session folder** moved from the worker's machine to the analyst's.

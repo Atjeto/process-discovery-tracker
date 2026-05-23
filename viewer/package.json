@@ -80,6 +80,13 @@
         ]
       },
       {
+        "from": "../shared",
+        "to": "shared",
+        "filter": [
+          "recognition-patterns.json"
+        ]
+      },
+      {
         "from": "python",
         "to": "python"
       }

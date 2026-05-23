@@ -439,17 +439,39 @@ async function exportArtifact(kind) {
   const filtered = State.getAggregateSessions().length ? filteredAggregateSessions() : [State.getSession()];
   if (!filtered.length) return;
   const target = filtered[0];
-  // Run normalize with the corresponding --*-out flag against a temp path
+
+  // Step / Phase BPMN export = the OBSERVED-FLOW map the viewer already shows
+  // (process_map_step|phase.bpmn, mined from the annotations by
+  // bpmn_observed.py under --mine). The old --step-bpmn-out / --phase-bpmn-out
+  // route is the TEMPLATE-derived bpmn_step, which emits an empty Start->End
+  // without a --canonical template — so export the session-folder observed
+  // file instead (mining it first if it is not there yet).
+  if (kind === "step-bpmn" || kind === "phase-bpmn") {
+    const level = kind === "step-bpmn" ? "step" : "phase";
+    const sourcePath = path.join(target.sessionFolder, "process_map_" + level + ".bpmn");
+    if (!fs.existsSync(sourcePath)) {
+      const r = await Ipc.runNormalizeExtended({ sessionFolder: target.sessionFolder, mine: true });
+      if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
+    }
+    if (!fs.existsSync(sourcePath)) {
+      toast("No " + level + "-level flow to export — analyze a session that has steps first.", "error");
+      return;
+    }
+    const out = await Ipc.exportFile({ sourcePath, suggestedName: "process." + kind + ".bpmn" });
+    if (out) {
+      await Ipc.revealFile(out);
+      toast("Exported: " + path.basename(out), "success");
+    }
+    return;
+  }
+
+  // PDD / step-CSV: normalize writes the artifact straight to a temp path.
   const os = require("os");
-  let ext = "bpmn";
-  if (kind === "pdd") ext = "docx";
-  else if (kind === "step-csv") ext = "csv";
+  const ext = kind === "pdd" ? "docx" : "csv";
   const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + "." + ext);
   const opts = { sessionFolder: target.sessionFolder, mine: false };
-  if (kind === "step-bpmn")  opts.stepBpmnOut  = tmpPath;
-  if (kind === "phase-bpmn") opts.phaseBpmnOut = tmpPath;
-  if (kind === "pdd")        opts.pddOut       = tmpPath;
-  if (kind === "step-csv")   opts.stepCsvOut   = tmpPath;
+  if (kind === "pdd")      opts.pddOut     = tmpPath;
+  if (kind === "step-csv") opts.stepCsvOut = tmpPath;
   const r = await Ipc.runNormalizeExtended(opts);
   if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
   const suggested = "process." + kind + "." + ext;

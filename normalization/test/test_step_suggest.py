@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from coalesce import coalesce_typing_bursts
 from step_suggest import (
     auto_suggest_steps, drop_overlapping_auto_steps, steps_overlap_seconds,
+    process_label,
 )
 
 
@@ -527,3 +528,30 @@ def test_step_description_caps_long_steps_with_a_tail():
     assert len(steps) == 1
     desc = steps[0]["description"]
     assert desc.endswith("Plus 4 more actions.")
+
+
+# --- process_label: value-free step labels for the step-level map/flow -------
+
+def test_process_label_strips_trailing_value_object():
+    assert process_label("Salesforce: Search — CUST-10001") == "Salesforce: Search"
+    assert process_label("iLost: Create sales order — Order #10080") == "iLost: Create sales order"
+    assert process_label("Salesforce: Open customer record — SKU-4471") == "Salesforce: Open customer record"
+
+
+def test_process_label_keeps_field_drops_typed_value():
+    assert process_label("Salesforce: Enter 25 in Quantity") == "Salesforce: Enter Quantity"
+    assert process_label("iLost: Enter 1035 in Sales organization") == "iLost: Enter Sales organization"
+    assert process_label("Outlook: Enter Order #10087 confirmed in Subject") == "Outlook: Enter Subject"
+
+
+def test_process_label_collapses_across_cases():
+    """The whole point: different cases' value-laden names map to one label."""
+    assert (process_label("Salesforce: Search — CUST-10001")
+            == process_label("Salesforce: Search — CUST-10009")
+            == "Salesforce: Search")
+
+
+def test_process_label_leaves_value_free_names_untouched():
+    assert process_label("Salesforce: Fill Customer ID field") == "Salesforce: Fill Customer ID field"
+    assert process_label("Lookup customer") == "Lookup customer"   # analyst rename
+    assert process_label("") == ""

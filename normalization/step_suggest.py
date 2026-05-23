@@ -3,9 +3,12 @@ exists or no canonical match fires. See annotation-model.md §4.1.
 """
 
 from __future__ import annotations
+import re
 import uuid
 from typing import Any
 from datetime import datetime
+
+from recognition import is_browser_chrome
 
 
 def parse_ts(s: str) -> datetime:
@@ -27,31 +30,6 @@ def _is_ignored(data: dict, ignored: list[str] | None) -> bool:
         t = (term or "").strip().lower()
         if t and (t in proc or t in title):
             return True
-    return False
-
-
-_BROWSER_CHROME_CLASSES = frozenset({
-    "OmniboxViewViews",                  # Chrome address / search bar
-    "BackForwardButton", "ReloadButton", "HomeButton",
-    "BookmarkButton", "StarView", "AppMenuButton", "BrowserAppMenuButton",
-    "DownloadBubbleTransparentButton", "NewTabButton",
-})
-
-
-def _is_browser_chrome(data: dict) -> bool:
-    """True for interactions on the browser's OWN chrome -- the address bar,
-    toolbar buttons, and tab strip -- rather than the web app inside it. That
-    is browser navigation, not a process step. Web-app content carries page
-    CSS classes (form-control, ag-cell-edit-input, ...); the browser frame
-    carries these fixed Chromium/Edge view class names. Verified against a real
-    ATM capture where the omnibox alone produced 55 value_changed events
-    (ADR-0009 fact-find)."""
-    cls = data.get("class_name") or ""
-    if cls in _BROWSER_CHROME_CLASSES:
-        return True
-    # Browser tab switches: a TabItem in the Chromium/Edge tab strip.
-    if data.get("control_type") == "TabItem" and cls in ("Tab", "EdgeTab"):
-        return True
     return False
 
 
@@ -152,7 +130,7 @@ def auto_suggest_steps(
             continue
         if _ts_excluded(ev.get("timestamp", ""), excluded):
             continue
-        if filter_browser_chrome and _is_browser_chrome(ev.get("data", {})):
+        if filter_browser_chrome and is_browser_chrome(ev.get("data", {})):
             continue
         cids = ev.get("data", {}).get("case_ids") or []
         top = cids[-1] if cids else None
@@ -579,3 +557,108 @@ def drop_overlapping_auto_steps(
                     break
         (dropped if overlapped else kept).append(f)
     return kept, dropped
+
+
+def _inherit_step_identity(fresh: list, existing: list, preserved: list) -> list:
+    """Carry a prior step's IDENTITY and curated links onto the fresh auto
+    step that re-covers the same interactions, so a re-analyze does not orphan
+    relationships keyed on `step_id`.
+
+    A curated step->phase grouping is stored as `phase.step_ids` (and a
+    `phase_id` stamp on the step), but an auto_suggested step keeps its state
+    when grouped -- so on re-analyze it would be replaced by a fresh step with
+    a NEW uuid4 id, leaving the preserved phase's `step_ids` dangling and the
+    grouping silently lost. Re-using the prior id (and carrying its `phase_id`
+    / `canonical_step_id`) keeps those links intact.
+
+    Matching is by interaction_event_id overlap -- event ids are STABLE because
+    events.jsonl is immutable -- and requires a MAJORITY of BOTH the fresh and
+    the prior step's events in common, so only a genuine "same step" inherits.
+    Each prior is claimed at most once. Purely additive: a fresh step with no
+    confident match keeps its new id (the prior behaviour)."""
+    preserved_ids = {s.get("step_id") for s in preserved}
+    priors: list[tuple[dict, set]] = []
+    for s in existing or []:
+        if s.get("step_id") in preserved_ids:
+            continue  # preserved steps are kept verbatim; their ids are safe
+        evs = set((s.get("evidence") or {}).get("interaction_event_ids") or [])
+        if evs:
+            priors.append((s, evs))
+    claimed: set = set()
+    for f in fresh:
+        f_evs = set((f.get("evidence") or {}).get("interaction_event_ids") or [])
+        if not f_evs:
+            continue
+        best, best_overlap, best_p_evs = None, 0, set()
+        for prior, p_evs in priors:
+            if prior.get("step_id") in claimed:
+                continue
+            overlap = len(f_evs & p_evs)
+            if overlap > best_overlap:
+                best, best_overlap, best_p_evs = prior, overlap, p_evs
+        if best is not None and best_overlap * 2 > len(f_evs) \
+                and best_overlap * 2 > len(best_p_evs):
+            claimed.add(best.get("step_id"))
+            f["step_id"] = best.get("step_id")
+            if best.get("phase_id") and not f.get("phase_id"):
+                f["phase_id"] = best.get("phase_id")
+            if best.get("canonical_step_id") and not f.get("canonical_step_id"):
+                f["canonical_step_id"] = best.get("canonical_step_id")
+    return fresh
+
+
+def _merge_steps(existing: list, fresh: list) -> list:
+    """Preserve manually_authored, edited, and hidden steps. Replace auto_*
+    steps with the latest fresh suggestions. A `hidden` step is one the analyst
+    manually suppressed -- preserving it means a re-analyze won't resurrect it
+    as a fresh auto_suggested row.
+
+    Fresh auto steps that overlap an analyst-owned (manual / edited / hidden)
+    step are dropped: the analyst already owns that span, and an overlapping
+    auto step is a duplicate they would otherwise have to find and delete by
+    hand (§I37). The remaining fresh steps inherit the identity (and curated
+    phase/template links) of the prior step they re-cover, so a re-analyze
+    keeps curated relationships, not just rows."""
+    by_state = {"manually_authored": [], "edited": [], "hidden": []}
+    for s in existing or []:
+        st = s.get("state")
+        if st in by_state:
+            by_state[st].append(s)
+    preserved = (by_state["manually_authored"] + by_state["edited"]
+                 + by_state["hidden"])
+    kept, dropped = drop_overlapping_auto_steps(fresh or [], preserved)
+    if dropped:
+        print(f"[normalize] dropped {len(dropped)} auto step(s) "
+              f"overlapping analyst-owned steps")
+    kept = _inherit_step_identity(kept, existing or [], preserved)
+    result = preserved + kept
+    # Stamp a value-free process_label for the step-level maps (recomputed
+    # every analyze, so it tracks analyst renames).
+    for s in result:
+        s["process_label"] = process_label(s.get("name") or "")
+    return result
+
+
+# A step's auto name embeds the case's values ("Search — CUST-10001",
+# "Enter 25 in Quantity"), so on the step-level process map / flow EVERY case
+# yields a different node and the diagram explodes into one node per instance.
+# `process_label` strips those values to the step TYPE so the same kind of step
+# collapses to one node. Only the two value-laden shapes the suggester emits
+# are rewritten; an analyst-renamed step or "Fill <field>" is left untouched.
+_ENTER_IN_RE = re.compile(r"(:\s*Enter)\s+.+?\s+in\s+(.+)$")     # "Enter 25 in Quantity" -> "Enter Quantity"
+_VALUE_TAIL_RE = re.compile(r"\s+[—–-]\s+.*$")                   # "Search — CUST-10001"  -> "Search"
+
+
+def process_label(name: str) -> str:
+    """Value-free label for the step-level process map + flow, so repeated work
+    across cases collapses to one node instead of one-per-instance. Shared by
+    the observed-flow BPMN (`bpmn_observed`) and the DFG (`process-map-levels`),
+    which must agree. Conservative: returns the name unchanged when it matches
+    neither value-laden shape."""
+    s = (name or "").strip()
+    if not s:
+        return s
+    rewritten = _ENTER_IN_RE.sub(r"\1 \2", s)   # keep the field, drop the typed value
+    if rewritten != s:
+        return rewritten.strip()
+    return _VALUE_TAIL_RE.sub("", s).strip()     # drop a trailing " — <value>" object

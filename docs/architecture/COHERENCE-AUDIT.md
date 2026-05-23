@@ -56,6 +56,12 @@ The additions don't sit in isolation; each raises the load on something else:
   the dropdown yanks the user off the BPMN "Process diagram" tab. The bug *is*
   the missing IA decision: **notation** (BPMN vs DFG) and **level** (activity /
   step / phase) are orthogonal axes that we mashed into one control.
+  - **Correction (2026-05-23, v0.15.0):** the orthogonal-axes diagnosis was
+    right and shipped as the full notation × level **matrix**. The premise
+    "step can only render as a DFG" was **wrong**, though — the Process diagram
+    (BPMN) renders Step and Phase too, as an **observed-flow** BPMN mined from
+    the annotations (`normalization/bpmn_observed.py`). Every notation × level
+    cell is valid; no tab is greyed out.
 - **Alignment badges ⟶ case quality + presentation.** The badge's value depends
   on cases being *meaningfully* repeated. On the demo's 5 identical cases every
   step is `↻5` — trivially true, zero signal. On real data the case count is
@@ -96,6 +102,9 @@ it restores the curation loop the additions broke:
   changes the level *in place* and never swaps notation. Decide whether BPMN
   supports levels or whether level applies only to the Flow diagram (and grey
   the selector out on the BPMN tab if so).
+  - **Resolved (2026-05-23, v0.15.0):** BPMN supports **all** levels — Step and
+    Phase render as observed-flow BPMN — so neither tab is greyed; the matrix is
+    fully orthogonal.
 - **P0.3 Repeat badge: signal, not noise.** Don't badge a step that recurs in
   *all* cases the same way; surface repetition where it discriminates (e.g. a
   grouped/aligned view), with a legible label ("5×") and a one-line legend.

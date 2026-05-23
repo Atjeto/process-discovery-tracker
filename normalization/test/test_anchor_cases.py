@@ -238,3 +238,50 @@ def test_degenerate_guard_drops_subsecond_case():
     ]
     cases = detect_cases_from_anchors(interactions, ANCHOR_CFG)
     assert [c["label"] for c in cases] == ["REAL"]
+
+
+# --- Empty-value anchor fires (focus/click on the serial box before typing) ---
+
+
+def test_empty_value_anchor_does_not_open_a_case():
+    """A focus/click on the empty serial box fires the anchor with no value. It
+    must NOT open an empty-label case (which the guard would later drop,
+    orphaning the interactions stamped to it); the work stays with the active
+    ticket. Mirrors the real ATM capture, where ~1/3 of anchor fires are empty."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    interactions = [
+        _inter(base,                        automation_id="txtsr", value="SN001"),
+        _inter(base + timedelta(seconds=2), value="work1"),
+        _inter(base + timedelta(seconds=4), automation_id="txtsr", value=""),  # empty box click
+        _inter(base + timedelta(seconds=6), value="work2"),
+        _inter(base + timedelta(seconds=8), value="work3"),
+    ]
+    cases = detect_cases_from_anchors(interactions, ANCHOR_CFG)
+    assert [c["label"] for c in cases] == ["SN001"]
+    # The empty-box click and all work after it stay attributed to SN001 -- none
+    # orphaned to a dropped empty-label case.
+    cid = cases[0]["case_id"]
+    stamped, _ = stamp_anchor_cases(interactions, cases)
+    assert all(e["data"]["case_ids"] == [cid] for e in stamped)
+
+
+def test_leading_empty_anchor_creates_no_case():
+    """An empty-box click BEFORE any serial is searched opens no case; those
+    leading interactions are simply uncased until the first real serial."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    interactions = [
+        _inter(base,                        automation_id="txtsr", value=""),   # empty, pre-serial
+        _inter(base + timedelta(seconds=1), value="pre"),
+        _inter(base + timedelta(seconds=3), automation_id="txtsr", value="SN001"),
+        _inter(base + timedelta(seconds=5), value="work"),
+        _inter(base + timedelta(seconds=7), value="work2"),
+    ]
+    cases = detect_cases_from_anchors(interactions, ANCHOR_CFG)
+    assert [c["label"] for c in cases] == ["SN001"]
+    cid = cases[0]["case_id"]
+    stamped, _ = stamp_anchor_cases(interactions, cases)
+    assert stamped[0]["data"]["case_ids"] == []   # empty fire, before any serial
+    assert stamped[1]["data"]["case_ids"] == []   # leading work, still uncased
+    assert stamped[2]["data"]["case_ids"] == [cid]
+    assert stamped[3]["data"]["case_ids"] == [cid]
+    assert stamped[4]["data"]["case_ids"] == [cid]

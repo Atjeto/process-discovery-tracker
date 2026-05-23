@@ -24,6 +24,22 @@
 // code so no literal control byte sits in the source.
 const SEP = String.fromCharCode(1);
 
+// Value-free step label so repeated work across cases collapses to ONE node
+// instead of one-per-instance (every case's order #, customer id, SKU, qty
+// makes the raw name unique). Computed live here -- mirrors
+// step_suggest.process_label (Python) so the DFG and the observed-flow BPMN
+// agree -- so the flow collapses without needing a re-analyze. Keep the two in
+// sync if either changes.
+const _ENTER_IN_RE = /(:\s*Enter)\s+.+?\s+in\s+(.+)$/;   // "Enter 25 in Quantity" -> "Enter Quantity"
+const _VALUE_TAIL_RE = /\s+[—–-]\s+.*$/;                 // "Search — CUST-10001"  -> "Search"
+function processLabel(name) {
+  const s = (name || "").trim();
+  if (!s) return s;
+  const rewritten = s.replace(_ENTER_IN_RE, "$1 $2");
+  if (rewritten !== s) return rewritten.trim();
+  return s.replace(_VALUE_TAIL_RE, "").trim();
+}
+
 function _stepStart(st) {
   const t = (st && st.time_range && st.time_range.start) || null;
   const n = t ? new Date(t).getTime() : 0;
@@ -61,7 +77,9 @@ function buildAnnotationDfg(sessions, level) {
       caseSteps.sort((a, b) => _stepStart(a) - _stepStart(b));
       let seq = caseSteps.map((st) => level === "phase"
         ? (st.phase_id ? (phaseName[st.phase_id] || "(phase)") : "(unphased)")
-        : (st.name || "(unnamed)"));
+        // Value-free label, computed live so the flow collapses without a
+        // re-analyze; prefer the persisted process_label when present.
+        : (st.process_label || processLabel(st.name) || "(unnamed)"));
       // Collapse consecutive duplicates (a run of steps in one phase = one node).
       seq = seq.filter((v, i) => i === 0 || v !== seq[i - 1]);
       if (!seq.length) continue;

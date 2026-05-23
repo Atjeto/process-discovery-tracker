@@ -11,11 +11,15 @@ or directly, with no pytest needed (e.g. the bundled embeddable Python):
 
 from __future__ import annotations
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from classification import collapse_activity_occurrences, classify_events
+from classification import (
+    collapse_activity_occurrences, classify_events, upsert_taxonomy_rules,
+    load_taxonomy,
+)
 
 
 def _activity(label, title, dur, case_ids=("c1",)):
@@ -150,6 +154,141 @@ def test_classify_events_empty_taxonomy_empty_report():
     out, report = classify_events(events, {"rules": []})
     assert report == []
     assert out[0]["data"]["activity_label"] == "Unclassified -- x.exe"
+
+
+# --- Recognition-led fallback for unmatched activities (ADR-0011 follow-up 3) ---
+
+def _iso(t: datetime) -> str:
+    return t.replace(tzinfo=timezone.utc).isoformat()
+
+
+def _act_at(ts: datetime, dur_ms: int, app: str = "chrome.exe", title: str = "App"):
+    return {"type": "activity", "timestamp": _iso(ts),
+            "data": {"app": app, "title": title, "duration_ms": dur_ms}}
+
+
+def _inter_at(ts: datetime, *, control_type: str = "", class_name: str = ""):
+    return {"type": "interaction", "timestamp": _iso(ts),
+            "data": {"kind": "value_changed", "control_type": control_type,
+                     "class_name": class_name}}
+
+
+def test_recognition_fallback_labels_form_entry():
+    """An activity the taxonomy can't match gets a semantic label from the
+    framework recognition of the interactions in its window."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    events = [
+        _act_at(base, 5000, title="Some web app"),
+        _inter_at(base + timedelta(seconds=1), control_type="Edit", class_name="form-control"),
+        _inter_at(base + timedelta(seconds=2), control_type="Edit", class_name="form-control"),
+    ]
+    out, _ = classify_events(events, {"rules": []})
+    act = next(e for e in out if e["type"] == "activity")
+    assert act["data"]["activity_label"] == "Form entry -- chrome.exe"
+
+
+def test_recognition_fallback_labels_data_grid():
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    events = [
+        _act_at(base, 5000),
+        _inter_at(base + timedelta(seconds=1), control_type="Edit", class_name="ag-cell-edit-input"),
+    ]
+    out, _ = classify_events(events, {"rules": []})
+    act = next(e for e in out if e["type"] == "activity")
+    assert act["data"]["activity_label"] == "Data grid -- chrome.exe"
+
+
+def test_taxonomy_match_wins_over_recognition():
+    """A business label from the taxonomy beats the recognition fallback."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    events = [
+        _act_at(base, 5000, title="Salesforce - Home"),
+        _inter_at(base + timedelta(seconds=1), control_type="Edit", class_name="form-control"),
+    ]
+    out, _ = classify_events(events, _taxonomy())
+    act = next(e for e in out if e["type"] == "activity")
+    assert act["data"]["activity_label"] == "CRM"
+
+
+def test_generic_interactions_keep_unclassified():
+    """A bare button (generic 'action') and browser chrome carry no activity
+    meaning, so they don't dislodge the Unclassified fallback."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    events = [
+        _act_at(base, 5000),
+        _inter_at(base + timedelta(seconds=1), control_type="Button"),
+        _inter_at(base + timedelta(seconds=2), control_type="Edit", class_name="OmniboxViewViews"),
+    ]
+    out, _ = classify_events(events, {"rules": []})
+    act = next(e for e in out if e["type"] == "activity")
+    assert act["data"]["activity_label"] == "Unclassified -- chrome.exe"
+
+
+def test_interaction_outside_window_ignored():
+    """Only interactions inside [start, start+duration) inform the label."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    events = [
+        _act_at(base, 2000),  # window is [0s, 2s)
+        _inter_at(base + timedelta(seconds=5), control_type="Edit", class_name="form-control"),
+    ]
+    out, _ = classify_events(events, {"rules": []})
+    act = next(e for e in out if e["type"] == "activity")
+    assert act["data"]["activity_label"] == "Unclassified -- chrome.exe"
+
+
+def test_timestampless_activity_keeps_unclassified():
+    """A timestamp-less activity (no window to join on) keeps the fallback."""
+    events = [
+        {"type": "activity", "data": {"app": "x.exe", "title": "t"}},
+        _inter_at(datetime(2026, 5, 18, 9, 0, 1), control_type="Edit", class_name="form-control"),
+    ]
+    out, _ = classify_events(events, {"rules": []})
+    act = next(e for e in out if e["type"] == "activity")
+    assert act["data"]["activity_label"] == "Unclassified -- x.exe"
+
+
+# --- Team-wide taxonomy promotion (direct write to taxonomy.yaml) ------
+
+def test_upsert_taxonomy_rules_adds_and_dedupes():
+    import os
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".yaml")
+    os.close(fd)
+    try:
+        added = upsert_taxonomy_rules(path, [
+            {"label": "CRM", "match": {"app": "chrome.exe", "title_regex": "Salesforce"}},
+            {"label": "Mail", "match": {"title_regex": "Inbox"}},
+        ])
+        assert added == 2
+        # Re-promoting the same rule is a no-op (no duplicate rows).
+        again = upsert_taxonomy_rules(path, [
+            {"label": "CRM", "match": {"app": "chrome.exe", "title_regex": "Salesforce"}},
+        ])
+        assert again == 0
+        doc = load_taxonomy(path)
+        assert [r["label"] for r in doc["rules"]] == ["CRM", "Mail"]
+        # The promoted rule classifies a future session's matching activity.
+        out, _ = classify_events(
+            [{"type": "activity", "data": {"app": "chrome.exe", "title": "Salesforce - Home"}}],
+            doc,
+        )
+        assert out[0]["data"]["activity_label"] == "CRM"
+    finally:
+        os.remove(path)
+
+
+def test_upsert_taxonomy_rules_creates_missing_file():
+    import os
+    import shutil
+    import tempfile
+    d = tempfile.mkdtemp()
+    path = os.path.join(d, "team-taxonomy.yaml")
+    try:
+        added = upsert_taxonomy_rules(path, [{"label": "X", "match": {"app": "x.exe"}}])
+        assert added == 1
+        assert load_taxonomy(path)["rules"][0]["label"] == "X"
+    finally:
+        shutil.rmtree(d)
 
 
 if __name__ == "__main__":

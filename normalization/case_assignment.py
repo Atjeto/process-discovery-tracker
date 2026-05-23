@@ -204,16 +204,23 @@ def detect_cases_from_anchors(
 
         if _anchor_field_matches(data, anchor_cfg):
             label = str(data.get(label_field) or "")
-            c = case_for(label)
-            if active_id != c["case_id"]:
-                # Switch of active case: close the prior segment at this ts
-                # (half-open) and open a fresh segment for the new active case.
-                if active_id is not None:
-                    cases[active_id]["segments"][-1][1] = ts_str
-                c["segments"].append([ts_str, None])
-                active_id = c["case_id"]
-            if c["start_ts"] is None:
-                c["start_ts"] = ts_str
+            # An empty serial box does not name a ticket: a focus/click on the
+            # search field before anything is typed fires the anchor with no
+            # value. Ignoring it keeps the work attributed to the ticket in
+            # progress, instead of opening a throwaway empty-label case that the
+            # degenerate guard later drops -- which would orphan every
+            # interaction stamped to it.
+            if label:
+                c = case_for(label)
+                if active_id != c["case_id"]:
+                    # Switch of active case: close the prior segment at this ts
+                    # (half-open) and open a fresh segment for the new active case.
+                    if active_id is not None:
+                        cases[active_id]["segments"][-1][1] = ts_str
+                    c["segments"].append([ts_str, None])
+                    active_id = c["case_id"]
+                if c["start_ts"] is None:
+                    c["start_ts"] = ts_str
 
         if active_id is not None:
             c = cases[active_id]

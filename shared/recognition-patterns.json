@@ -1,0 +1,43 @@
+{
+  "_README": "Single source of truth for platform/framework interaction recognition (ADR-0011). Consumed by BOTH viewer/recognition.js (require) and normalization/recognition.py (json.load) so the viewer and the Python pipeline classify interactions identically. Keep it dependency-free JSON (no comments) -- the viewer is bundler-free and the Python embeddable has no YAML. frameworkSignatures is ordered MOST-SPECIFIC FIRST; first match wins. `cls` entries are substring-matched against class_name unless `exactCls` is true; `ctIn` optionally constrains control_type. See recognition.js / ADR-0011 for grounding citations.",
+  "frameworkSignatures": [
+    { "cls": ["OmniboxViewViews"], "category": "browser_chrome", "framework": "chromium", "isChrome": true, "typeLabel": "browser address bar" },
+    { "cls": ["BackForwardButton", "ReloadButton", "HomeButton", "BookmarkButton", "StarView", "AppMenuButton", "BrowserAppMenuButton", "DownloadBubbleTransparentButton", "NewTabButton", "TabStripControlButton", "TabStrip"],
+      "category": "browser_chrome", "framework": "chromium", "isChrome": true, "typeLabel": "browser toolbar" },
+    { "ctIn": ["TabItem", "Tab"], "cls": ["Tab", "EdgeTab"], "exactCls": true,
+      "category": "browser_chrome", "framework": "chromium", "isChrome": true, "typeLabel": "browser tab" },
+
+    { "cls": ["ag-cell-edit-input"], "category": "grid_cell", "framework": "ag-grid", "typeLabel": "data-grid cell" },
+    { "cls": ["ag-filter", "ag-select", "ag-list", "ag-picker"], "category": "selection", "framework": "ag-grid", "typeLabel": "grid filter" },
+
+    { "cls": ["btn-primary"], "category": "primary_action", "framework": "bootstrap", "typeLabel": "primary button" },
+    { "cls": ["form-control"], "category": "form_field", "framework": "bootstrap", "typeLabel": "form field" },
+
+    { "cls": ["ReactFieldEditor"], "richTextIf": "RichText", "category": "form_field", "framework": "sharepoint", "typeLabel": "SharePoint field" },
+
+    { "cls": ["od-addNewCommentTextField", "mentionableTextBox"], "category": "comment", "framework": "office365", "typeLabel": "comment field" },
+    { "cls": ["o365sx-", "mssxsb-"], "category": "search", "framework": "office365", "typeLabel": "Office 365 search" },
+
+    { "cls": ["RichEdit"], "category": "rich_text", "framework": "win32-office", "typeLabel": "rich-text field" },
+    { "cls": ["NetUIHWND"], "category": "office_ui", "framework": "win32-office", "typeLabel": "Office ribbon/pane" }
+  ],
+  "uiaBase": {
+    "Edit":        { "category": "text_entry", "typeLabel": "text field" },
+    "Document":    { "category": "text_entry", "typeLabel": "document" },
+    "Button":      { "category": "action", "typeLabel": "button" },
+    "SplitButton": { "category": "action", "typeLabel": "button" },
+    "Hyperlink":   { "category": "action", "typeLabel": "link" },
+    "MenuItem":    { "category": "action", "typeLabel": "menu item" },
+    "ComboBox":    { "category": "selection", "typeLabel": "dropdown" },
+    "List":        { "category": "selection", "typeLabel": "list" },
+    "ListItem":    { "category": "selection", "typeLabel": "list item" },
+    "DataItem":    { "category": "grid_cell", "typeLabel": "data item" },
+    "CheckBox":    { "category": "toggle", "typeLabel": "checkbox" },
+    "RadioButton": { "category": "toggle", "typeLabel": "radio button" },
+    "TabItem":     { "category": "tab_nav", "typeLabel": "tab" },
+    "TreeItem":    { "category": "tree_nav", "typeLabel": "tree item" },
+    "Tree":        { "category": "tree_nav", "typeLabel": "tree" },
+    "Slider":      { "category": "form_field", "typeLabel": "slider" },
+    "Spinner":     { "category": "form_field", "typeLabel": "spinner" }
+  }
+}

@@ -70,7 +70,10 @@ def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
                 pid = s.get("phase_id")
                 label = (phase_name.get(pid, "(phase)") if pid else "(unphased)")
             else:
-                label = s.get("name") or "(unnamed)"
+                # Value-free label so repeated work across cases collapses to
+                # one node (not one per case). Falls back to name for steps
+                # from a pre-process_label analyze.
+                label = s.get("process_label") or s.get("name") or "(unnamed)"
             if label == prev_label:
                 continue  # collapse consecutive duplicates (== the DFG's rule)
             prev_label = label

@@ -6,6 +6,86 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Step-level statistics (resolves the activity/step stats split-brain).**
+  `stats.json` now carries `step_stats` — per-step-name frequency + duration
+  distribution (mean / median / p90 / p99), the step-level analogue of
+  `activity_stats` — and the Markdown report gains a **Step statistics** table
+  beside the Activity one, so the stepped view gets the same treatment as the
+  activity view (`normalization/stats_compute.py`, `viewer/report-md.js`).
+- **Team-wide taxonomy promotion.** `classification.upsert_taxonomy_rules`
+  writes analyst rules directly into a shared `taxonomy.yaml` (de-duped,
+  preserving other keys) so they classify every future session — the
+  direct-write companion to the existing hand-merged "promote to taxonomy"
+  export. (Backend; the in-app button + the choice of which file is the team
+  taxonomy still need wiring for the locked-down deployment.)
+- **Rearrange the process map by dragging — and it sticks.** The BPMN process
+  map now uses the bpmn-js Modeler instead of the read-only viewer bundle, so:
+  drag a box to reorganize the auto-layout, click a box to drill to the source,
+  and scroll-to-zoom / drag-to-pan actually work (the old bundle had no
+  navigation at all). Dragged positions are saved back to the `.bpmn`, so they
+  survive a level/tab switch and re-opening the session; a re-analyze
+  regenerates the map and resets it. The create/delete editor chrome is hidden,
+  so it stays a move-only layout tool (`viewer/bpmn-viewer.js`, `viewer/index.html`,
+  `viewer/styles.css`).
+
+### Fixed
+
+- **Empty serial-box clicks no longer fragment case detection.** A focus or
+  click on the case-anchor field before anything is typed fired the anchor with
+  an empty value, opening a throwaway empty-label "case" that the
+  degenerate-case guard then dropped — orphaning the interactions that had been
+  stamped to it. Such empty-value fires are now ignored, so the work stays
+  attributed to the ticket in progress (`normalization/case_assignment.py`,
+  mirrored in `scripts/count-cases.js`).
+- **Step / Phase BPMN export is no longer empty.** The export buttons emitted a
+  bare Start→End because they ran the template-derived BPMN path with no
+  Process Template. They now export the **observed-flow** Step/Phase diagram —
+  the same `process_map_step|phase.bpmn` the viewer displays — mining it first
+  if needed (`viewer/renderer.js`).
+- **Re-analyze keeps curated step→phase / step→template links.** A re-analyze
+  regenerates auto steps with new ids, so a phase's `step_ids` (and any template
+  link) on a step that was grouped but not otherwise edited used to dangle — the
+  grouping was silently lost. A fresh step now inherits the prior step's id and
+  curated `phase_id` / `canonical_step_id` when it re-covers the same
+  interactions (`step_suggest._merge_steps` / `_inherit_step_identity`).
+- **Recorder windows no longer occlude screenshots on a single monitor (D3).**
+  The capture dims its own always-on-top windows (panel / label picker / status)
+  to opacity 0 for the duration of each grab and restores them in a `finally`,
+  so the worker's screen is captured cleanly even with one display
+  (`capture/screenshots.js`, `capture/main.js`).
+- **Step-level Flow / map no longer explodes into one node per case.** Auto step
+  names embed each case's values ("Search — CUST-10101", "Enter 25 in Quantity"),
+  so every case produced unique nodes and the step-level diagram became a
+  hairball (unusable on a long recording). A value-free `process_label` collapses
+  the same kind of step to one node — computed **live** in the viewer
+  (`process-map-levels.js`) so the Flow collapses without a re-analyze, and
+  stamped at normalize (`step_suggest.process_label`) for the observed-flow BPMN,
+  so both diagrams agree.
+- **Raw Events panel no longer paints over the Steps screen.** A `min-height:0`
+  re-added to `.session-layout-stepsphases` (to bound the editor) had silently
+  undone the earlier overlap fix (commit `1833fb5`): the column could shrink
+  below its content, so an open Raw Events panel overflowed and overlapped the
+  editor instead of scrolling. Removed it, with a comment so it isn't re-added
+  (`viewer/styles.css`).
+
+### Changed
+
+- **Recognition signature table is now shared (ADR-0011 follow-ups 1–2).** The
+  platform/framework signatures moved to `shared/recognition-patterns.json`,
+  loaded by both the viewer (`viewer/recognition.js`) and the Python pipeline
+  (new `normalization/recognition.py`). The step auto-suggester's browser-chrome
+  noise filter now uses the shared recognition instead of its own hardcoded
+  class list, so the viewer and the pipeline classify interactions identically.
+- **Activity classification leads with framework recognition (ADR-0011 follow-up
+  3).** When the window-title taxonomy doesn't match an activity, its label is
+  now derived from the dominant framework-recognised category of the
+  interactions in that window ("Form entry", "Data grid", "Search", …) instead
+  of "Unclassified — app", so the activity map shows meaningful work even with
+  no taxonomy. The taxonomy still owns business labels (it wins);
+  `normalization/classification.py`.
+
 ## [0.15.0] - 2026-05-23
 
 ### Added

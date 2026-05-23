@@ -245,6 +245,41 @@ def step_variants(
     return rows
 
 
+def step_stats(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per-step-name duration distribution -- the step-level analogue of
+    `activity_stats`, so the stepped view gets the SAME frequency + duration
+    treatment as the activity view (resolving the activity/step stats
+    split-brain, where only the activity level had a distribution). A step's
+    duration is its `time_range`; a missing or inverted range counts as 0 ms
+    but still contributes to frequency. Same row shape as `activity_stats`,
+    keyed on `step_name`."""
+    by_name: dict[str, list[float]] = defaultdict(list)
+    for s in steps or []:
+        tr = s.get("time_range") or {}
+        start, end = tr.get("start"), tr.get("end")
+        dur = 0.0
+        if start and end:
+            try:
+                dur = max(0.0, (_parse_ts(end) - _parse_ts(start)).total_seconds() * 1000)
+            except (ValueError, TypeError):
+                dur = 0.0
+        by_name[s.get("name") or "(unnamed step)"].append(dur)
+    rows = []
+    total = sum(len(v) for v in by_name.values()) or 1
+    for name, durs in sorted(by_name.items(), key=lambda kv: -sum(kv[1])):
+        rows.append({
+            "step_name": name,
+            "frequency": len(durs),
+            "frequency_pct": round(100.0 * len(durs) / total, 2),
+            "total_duration_ms": int(sum(durs)),
+            "mean_ms": int(mean(durs)) if durs else 0,
+            "median_ms": int(median(durs)) if durs else 0,
+            "p90_ms": int(_percentile(durs, 90)),
+            "p99_ms": int(_percentile(durs, 99)),
+        })
+    return rows
+
+
 def compute_all(
     events: list[dict[str, Any]],
     cases: dict[str, dict[str, Any]],
@@ -257,6 +292,7 @@ def compute_all(
         "case_stats": case_stats(events, cases),
         "trace_variants": trace_variants(events, cases),
         "step_variants": step_variants(steps or []),
+        "step_stats": step_stats(steps or []),
         "app_outliers": app_outliers(events, cases),
         "rework_loops": rework_loops(events),
     }

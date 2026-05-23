@@ -602,6 +602,14 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .map-pane.active { display: block; }
 .bpmn-warning { position: absolute; bottom: 8px; right: 8px; padding: 4px 10px;
   background: var(--warn); color: var(--bg); font-size: 11px; border-radius: 3px; }
+/* The BPMN map uses the bpmn-js Modeler so its boxes can be DRAGGED to
+   reorganize the layout (the read-only Viewer can't move elements). Hide the
+   editor chrome -- the palette (create) and the context pad (append/delete) --
+   so it stays a move-only layout tool, not a full diagram editor. Keyboard is
+   left unbound (bpmn-viewer.js passes no keyboard config), so there's no
+   accidental delete. Drag = move a box; click = drill to the source. */
+.map-host .djs-palette,
+.map-host .djs-context-pad { display: none !important; }
 
 .chart-host { flex: 1; padding: 4px 0; min-height: 200px; }
 .bar-chart { width: 100%; height: auto; }
@@ -767,10 +775,14 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .session-layout-stepsphases {
   display: flex; flex-direction: column; gap: 8px;
   flex: 1;
-  /* B1: allow this flex child to be bounded by the workspace height so the
-     editor-split below can claim a fixed row instead of growing with the
-     selected-step content. */
-  min-height: 0;
+  /* DO NOT add min-height:0 here. It lets this flex child shrink below its
+     content, so when the Raw Events panel opens the column overflows and
+     PAINTS OVER the editor instead of scrolling -- the overlap fixed in
+     commit 1833fb5 and re-broken when B1 re-added min-height:0 to bound the
+     editor-split. Content-height + the view's own overflow:auto is the fix.
+     The editor-split stays bounded by its panes' internal overflow-y:auto and
+     the 240px interaction-list cap, so a tall step detail scrolls inside its
+     pane rather than dragging the layout taller. */
 }
 
 /* ===== Analysis view (Cluster N / ADR-0008) ===== */

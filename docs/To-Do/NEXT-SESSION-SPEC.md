@@ -1,204 +1,151 @@
-# Next-Session Spec — Recognition, Segmentation & Alignment
+# Next-Session Spec — Verify v0.15.0, then recognition & classification
 
-**Written:** 2026-05-22 · **Branch:** `viewer-refactor` (many commits ahead of
-`master`, **unpushed**) · **Status of this doc:** plan of record for the next
-working session.
+**Written:** 2026-05-23 · **Branch:** `viewer-refactor` (released through
+**v0.15.0**) · **Status:** plan of record for the next working session.
 
-This is a self-contained hand-off. Read it top to bottom; it assumes no memory
-of the prior session.
+Self-contained hand-off — read top to bottom; assumes no memory of the prior
+session. The previous spec (P0 coherence + segmentation, now done) is archived at
+[Archive/NEXT-SESSION-SPEC-2026-05-22.md](Archive/NEXT-SESSION-SPEC-2026-05-22.md).
 
 ---
 
 ## 1. Where we are
 
-Three layers of work landed this cycle. Read these first for context:
+**v0.15.0 shipped** (GitHub Release at `Atjeto/process-discovery-tracker`, commit
+`a2b2f85` on `viewer-refactor`). Three things landed this cycle:
 
-- **[VALUE-CHAIN-REVIEW.md](../architecture/VALUE-CHAIN-REVIEW.md)** — the
-  strategic frame: the app loses meaning at five seams; the fix reduces to
-  three decisions. *Read this first.*
-- **[ADR-0010](../adr/0010-ux-overhaul-viewer-recorder.md)** — 12 viewer/recorder
-  UX fixes. **All implemented** (commits `d9fbc13`, `ff9922d`, `89417b5`,
-  `b1464d8`, `98e5a2b`, `8e0c168`, `8d667cf`).
-- **[ADR-0009](../adr/0009-normalization-redesign-v013.md)** — redirected:
-  cross-session canonical templates are mis-targeted for one-off processes;
-  the segmentation fix is **intra-session repetition alignment**. Anchor-based
-  case detection (`case_assignment.py`) was already built + wired.
-- **[ADR-0011](../adr/0011-platform-recognition-layer.md)** — the **recognition
-  layer**: classify interactions by documented platform/framework signatures
-  (UIA ControlTypes + Chromium/Bootstrap/AG-Grid/SharePoint/O365/Win32), not
-  per-session opaque selectors. Implemented viewer-side (`viewer/recognition.js`).
+- **P0 coherence pass** (`docs/architecture/COHERENCE-AUDIT.md`) — step merge
+  symmetry (`mergeStepWithNext` = step+next; `mergeSelectedSteps` = the
+  multi-selection; `viewer/views/steps-view.js`), the repeat badge only when it
+  discriminates ("N×"; `viewer/step-editor.js`), interaction-colour + repeat
+  legends.
+- **Case segmentation → active-case stamping** (`normalization/case_assignment.py`):
+  `case_id` is stable per anchor label, every event is stamped to the
+  most-recent preceding anchor (correct under interleaving), and a
+  degenerate-case guard drops slivers (`min_case_interactions` /
+  `min_case_duration_ms`). Replaces the old gap/pause split.
+  `scripts/count-cases.js` + `normalization/canonical/atm-ticket-handling.yaml`
+  aligned.
+- **Process map = notation × level matrix** — the Process diagram (BPMN) **and**
+  the Flow diagram (DFG) each render at Activity / Step / Phase; the level
+  selector never swaps notation and the notation tabs never reset the level
+  (`viewer/views/aggregate-view.js` `renderMap()`). **Step/phase BPMN is the
+  observed flow**, mined from the annotations via `normalization/bpmn_observed.py`
+  (one trace per case → PM4Py `discover_inductive` → `mining.export_bpmn` with a
+  pure-Python BPMNDI layout, so bpmn-js renders it). `normalize.py` writes
+  `process_map_step.bpmn` / `process_map_phase.bpmn` under `--mine`.
 
-Built + unit-tested this cycle (capture 65, viewer 164, normalization 35 in
-step_suggest; all green):
-
-- Browser-chrome noise filter in `step_suggest.py` (`175bec7`).
-- ATM template validated against the real capture (`9b2c401`).
-- **Intra-session alignment**: engine `viewer/step-alignment.js` (`5eb7a60`) +
-  Steps-view wiring — repeat badges, "Apply to N repeats" (`43f6002`).
-- **Recognition layer** `viewer/recognition.js` (`0577c46`), wired into the
-  alignment signature + `describeInteraction`.
-- Diagnostic tools `scripts/inspect-events.js`, `scripts/count-cases.js` (`ef7e64a`).
-
-**The AG-Grid fact-find is resolved** (against the real ATM capture,
-`C:\Users\rasha\Downloads\Event Analysis.jsonl`, 2037 events):
-`class_name` carries CSS classes (`ag-cell-edit-input` confirmed); per-cell
-identity is **not** recoverable (grid = one coarse step); two browsers
-(`chrome.exe` = TAMBA, `msedge.exe` = call-mgmt); `txtsr` is the serial-search
-field; the omnibox/tabs are browser-chrome noise. **Per-cell granularity is a
-permanent capture limitation** — design around coarse grid steps.
+**Correction to carry forward:** the Process diagram supports **all three
+levels** — it is *not* activity-only. (The old claim in `COHERENCE-AUDIT.md` /
+ADR-0009 that "step can only render as a DFG" is wrong — do not act on it.)
 
 ---
 
-## 2. Open decision — resolve FIRST (gates alignment value)
+## 2. Verify v0.15.0 in a real run — DO THIS FIRST
 
-**Case segmentation over-segments.** On the full capture, the `txtsr` anchor →
-**16 hits, 13 cases, but only 2 distinct serials.** The worker re-searches the
-same serial repeatedly; current `detect_cases_from_anchors` opens a new case on
-same-label-after-gap, inflating 2 tickets into 13.
+Nothing this cycle has been eyeballed in a running build (the cycle's UI bugs
+were invisible to the green tests, and one shipped map bug only surfaced when the
+owner looked). Validate via the **packaged app** (it bundles its own Python — no
+dev-box pip) or the dev viewer (`npm start` in `viewer/`). The real session is on
+the dev box (see §5).
 
-Pick the model (then implement in `normalization/case_assignment.py`):
+1. **Case count** — re-analyze the real ATM session, or run
+   `node scripts/count-cases.js <events.jsonl>`: active-case stamping should now
+   report ~2 cases, not the old ~13. If still inflated, tune the degenerate guard
+   / label handling in `case_assignment.py`.
+2. **Steps view** — "Merge with next" vs "Merge selected"; "N×" badges only on
+   steps that recur in *some* (not all) cases; the interaction-colour + repeat
+   legends.
+3. **Map matrix** — toggle every notation × level cell; the Step/Phase **Process
+   diagram** must render an observed-flow BPMN *with branches* (re-analyze first
+   so the new files exist — a session analyzed before 0.15.0 shows the "Analyze a
+   session that has steps" message).
+4. **ADR-0010 items never eyeballed** — recorder always-on-top + tray-click +
+   marker-screenshot targeting + hotkey config; session name in recents/viewer.
 
-| Option | Result | Cost |
-|---|---|---|
-| **A. Merge same-label cases** | ~2 clean tickets | Overlapping time-ranges break `stamp_anchor_cases`' time-containment when tickets interleave |
-| **B. Keep occurrences** | 13 traces / 2 variants | Inflated ticket count, but lots of repetition for alignment |
-| **C. Active-case stamping** *(recommended)* | correct for interleaving | Bigger change: case_id stable per label; stamp each event to the *most-recent preceding anchor's* case, not by time-range containment |
-
-**Recommendation: C.** It is the only model correct for interleaved multi-app
-work (search A → work → search B → back to A). Also add a **degenerate-case
-guard** (drop cases below ~2 interactions / ~1s — the 0.6s sliver seen in the
-partial). Both go in `case_assignment.py`; extend `test_anchor_cases.py`.
-
-Confirm the model with the owner before building — it is a process-modeling
-choice, not just code.
+Fix any regression here **before** building new features.
 
 ---
 
-## 3. Prioritized work
+## 3. Prioritized feature work (carried forward as P1–P5)
 
-### P0 — Coherence pass FIRST (see [COHERENCE-AUDIT.md](../architecture/COHERENCE-AUDIT.md))
-The first live run surfaced four defects the green tests missed — all the same
-shape (a verb shipped without its inverse / legend / IA). Fix these before any
-new feature; they restore the curation loop the cycle's additions broke.
-- **P0.1 — merge symmetry.** A clear "merge back" after split; make merge act on
-  the user's actual selection with unambiguous labels ("Merge selected" vs
-  "Merge with next" as distinct items). `mergeStepWithNext`
-  (`views/steps-view.js:440`) silently falls to `step + next` when the chosen
-  steps aren't in the multi-select set (a row-click is single-select, not
-  multi) — that is the "merged the wrong pair" bug. Show merge wherever split is.
-- **P0.2 — map IA.** Notation (Process / Flow diagram) and level (Activity /
-  Step / Phase) are orthogonal; the depth selector currently force-activates the
-  Flow pane (`views/aggregate-view.js` `map-level` change handler). The level
-  selector must change level *in place* and never swap notation. Decide if BPMN
-  supports levels or grey the selector out on the BPMN tab.
-- **P0.3 — repeat badge.** Don't badge steps that recur in *all* cases (zero
-  signal — every demo step shows `↻5`); legible label ("5×") + legend; surface
-  repetition where it discriminates.
-- **P0.4 — legends.** Colour key for the interaction bars (A1); one-liner for the
-  repeat indicator. Cheap; makes both self-explanatory.
-Hold every subsequent item to the four-point discipline in COHERENCE-AUDIT.md
-(inverse works · comprehension affordance · control-interaction check · verified
-in a real run).
-
-### P1 — Recognition: cross-language + drive the pipeline (ADR-0011 follow-ups 1-2)
-Right now `recognition.js` is viewer-only; the Python pipeline still uses a
+### P1 — Recognition: cross-language + drive the pipeline (ADR-0011 follow-ups 1–2)
+`viewer/recognition.js` is viewer-only; the Python pipeline still uses a
 hardcoded browser-chrome list. Unify them:
-1. Lift the signature table to a shared data file (e.g.
-   `shared/recognition-patterns.json`) consumed by **both** `viewer/recognition.js`
-   and a new `normalization/recognition.py`. (Viewer loads JSON natively;
-   Python `json.load`. Avoid YAML to keep the viewer dependency-free.)
-2. Replace `step_suggest._is_browser_chrome` (and its `_BROWSER_CHROME_CLASSES`)
-   with the shared recognition. Keep the `filter_browser_chrome` flag + tests.
-3. Re-run `normalization/test/test_step_suggest.py` (35) + viewer suite (164).
+1. Lift the signature table to `shared/recognition-patterns.json`, consumed by
+   **both** `viewer/recognition.js` and a new `normalization/recognition.py`
+   (viewer loads JSON natively; Python `json.load` — avoid YAML to keep the
+   viewer dependency-free).
+2. Replace `step_suggest._is_browser_chrome` (+ `_BROWSER_CHROME_CLASSES`) with
+   the shared recognition; keep the `filter_browser_chrome` flag + tests.
+3. Re-run `normalization/test/test_step_suggest.py` + the viewer suite.
 
 ### P2 — Reframe classification on recognition (ADR-0011 follow-up 3)
-Activity/step classification (Seam 2) should **lead with framework recognition**
-(semantic type — "form field", "grid cell", "rich-text", "primary action") and
-use the window-title `taxonomy.yaml` only for *business* labels. This shrinks
-the empty-map problem: even with zero taxonomy, the map/lane show real
-semantic activity instead of "Unclassified". Touches
+Activity/step classification should **lead with framework recognition** (semantic
+type — "form field", "grid cell", "primary action") and use the window-title
+`taxonomy.yaml` only for *business* labels. Shrinks the empty-map problem (the
+map/lane show real semantic activity with zero taxonomy). Touches
 `normalization/classification.py` + the Flow activity lane / DFG.
 
-### P3 — Validate on real data via the PACKAGED APP (no dev-box pip)
-The shipped viewer bundles its own Python embeddable with pandas/pm4py
-(`scripts/build-distribution.ps1`) — the analyst machine needs no Python. So
-the real validation is to **run the actual app**, not to reconstruct the
-pipeline on bare system Python (that was a prior-session time-sink: the
-`pip install` + CLI `normalize.py` dance is unnecessary).
-1. Build/run the packaged viewer (bundles Python + analysis deps). The real
-   session is already on the dev box (`C:\Users\rasha\Downloads\Event
-   Analysis.jsonl`), so this can be validated on the dev box before the
-   locked-down laptop — iterate where it's fast.
-2. Load the session, Match Process Template →
-   `normalization/canonical/atm-ticket-handling.yaml`.
-3. The app normalizes with the bundled Python and renders everything at once:
-   case count, maps, steps, repeat badges (`↻N`), "Apply to N repeats". One run
-   validates the UI **and** the pipeline **and** surfaces the calibration data
-   (how many cases the anchor produces, §2).
-4. If alignment over/under-groups, tune `stepSignature` (`step-alignment.js`)
-   toward fuzzy/variant-aware matching, not exact category-set match.
-
-### P4 — Value-chain "what else" (review §"what else needs changing")
-- Team-wide **taxonomy editor** (the in-app classification manager `a3a179f`
-  only writes per-session overrides).
+### P4 — Value-chain "what else"
+- Team-wide **taxonomy editor** (the in-app classification manager `a3a179f` only
+  writes per-session overrides).
 - **PDD/report as a living projection** of the annotated model, not a one-time
   snapshot.
 - Resolve the **activity-level vs step-level stats split-brain** (`stats.json`).
 - Guarantee **re-normalization preserves curated relationships** (step→phase,
   step→template), not just step rows.
-- Explicit **two-map IA** (phase default → step → activity drill-down).
+- The notation×level matrix landed; the **phase→step→activity drill-down**
+  navigation is still open.
 
 ### P5 — ADR-0010 deferred sub-parts
-- D3 **single-monitor screenshot occlusion** — the pre-capture mechanism (the
-  multi-monitor case is handled).
-- D1 **mini-mode recorder toolbar** (the screen-saver level + tray-click cover
-  the stated pain).
+- D3 **single-monitor screenshot occlusion** (the multi-monitor case is handled).
+- D1 **mini-mode recorder toolbar** (the always-on-top + tray-click cover the
+  stated pain).
 
 ---
 
-## 4. Verification debt (the standing job)
-
-Everything above is unit/syntax-tested only — **none of the UI is verified in a
-running Electron build.** Next session (or the owner) should launch and eyeball:
-- **Recorder:** stays on top, tray left-click brings it forward mid-session,
-  marker screenshot targets the work monitor (D1/D3); hotkey config records
-  (D2); session name shows in recents + viewer (D4).
-- **Viewer Steps:** interaction colour-coding (A1), click-to-split scissors (A2),
-  step context menu (A5), panel layout no longer shoves the list off-screen
-  (B1), flag badges + summary (A3), repeat badges + "Apply to N repeats".
-- **Viewer maps:** Step/Phase depth selector + empty-activity auto-fallback
-  (C1b); unclassified banner + "Classify activities…" manager (C1a + `a3a179f`).
-- **Recognition:** unnamed interactions read as their type ("a data-grid cell").
+## 4. Cleanup / debt found this cycle
+- **Step/Phase BPMN export buttons are degenerate without a matched template.**
+  `exportArtifact("step-bpmn"/"phase-bpmn")` (`viewer/renderer.js` ~448) runs
+  `normalize` with no `--canonical`, so the template-derived `bpmn_step` /
+  `bpmn_phase` emit an empty Start→End. Repoint export at the new observed-flow
+  generator (`bpmn_observed`), or copy the session-folder
+  `process_map_step|phase.bpmn`, or pass the persisted
+  `annotations.matched_against.template_path`.
+- **New ADR + stale-doc fix.** Write an ADR for active-case stamping + the
+  notation×level matrix / observed-flow BPMN, and correct the "step can only
+  render as a DFG" claim in `COHERENCE-AUDIT.md` and ADR-0009.
 
 ---
 
 ## 5. Environment & governance notes
-
-- **Two machines:** the dev box (this one — node/python/git/pip OK) vs. the
-  locked-down work laptop (released `.exe` only — never suggest installs there).
+- **Two machines:** the dev box (node/python/git/pip OK) vs. the locked-down work
+  laptop (released `.exe` only — never suggest installs there).
 - **Company data stays local.** The real capture is company data on a personal
-  account. Use the **structure-only** scripts (`inspect-events.js`,
-  `count-cases.js`) which print counts/timestamps, never values or titles. Do
-  not read the raw `events.jsonl` into the assistant context. Partial + full
-  copies are at `D:\atm-test\events.jsonl` and `C:\Users\rasha\Downloads\Event
-  Analysis.jsonl` — the owner may clear these.
-- **Commit style:** imperative subject; no Co-Authored-By trailer; avoid quote
-  characters in the body (PowerShell here-string safety). Branch `viewer-refactor`.
-- **Nothing is pushed.** Pushing / cutting a release is an owner decision; the
-  release flow is in `reference_release_workflow` (build → verify Shell extract
-  → push → publish-release.ps1).
+  account. Use the **structure-only** scripts (`scripts/inspect-events.js`,
+  `scripts/count-cases.js`) which print counts/timestamps, never values/titles.
+  Do not read the raw `events.jsonl` into the assistant. Copies are at
+  `D:\atm-test\events.jsonl` (partial) and `C:\Users\rasha\Downloads\Event
+  Analysis.jsonl` (full) — the owner may clear these.
+- **Validate via the packaged app**, not dev-box pip + CLI `normalize.py`. pm4py
+  lives in the bundled Python (`viewer/python/`), **not** the bare dev Python —
+  pm4py-dependent tests use `pytest.importorskip("pm4py")` and are validated by
+  running the bundled interpreter (`viewer/python/python.exe`).
+- **Commit style:** imperative subject; no Co-Authored-By trailer; quote-safe
+  body. Branch `viewer-refactor`. Release flow (build → verify zips → push →
+  **pre-tag** → `publish-release.ps1`) is in the release-workflow reference;
+  `gh` is authed as `Atjeto`.
 
 ---
 
-## 6. Suggested order for next session
-
-1. **P0 coherence pass** ([COHERENCE-AUDIT.md](../architecture/COHERENCE-AUDIT.md))
-   — merge symmetry, map-IA split, repeat-badge signal, legends. Restores the
-   curation loop first.
-2. Confirm the **case-segmentation model** (§2) with the owner; implement C +
-   degenerate guard in `case_assignment.py` (+ tests).
-3. **P1** recognition cross-language lift (shared table → Python).
-4. **P3** build/run the packaged viewer on the real session and eyeball maps +
-   alignment + case count — the app bundles its own Python, so no dev-box pip
-   or CLI `normalize.py`.
-5. Then P2 / P4 / P5, each held to the four-point discipline.
+## 6. Suggested order
+1. **Verify v0.15.0** (§2) — case count + Steps + map matrix on the real session;
+   fix regressions first.
+2. **P1** recognition cross-language lift.
+3. **P2** classification on recognition.
+4. **Cleanup** (§4) — the export-button fix + the ADR/doc correction (fold the
+   doc work into the P1/P2 batch).
+5. Then **P4 / P5**, each held to the four-point coherence discipline
+   (inverse works · comprehension affordance · control-interaction check ·
+   verified in a real run).

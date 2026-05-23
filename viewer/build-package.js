@@ -129,6 +129,13 @@ function stripLocales(appDir) {
     extraResource: [
       path.join(PROJECT_DIR, "python"),
       path.join(PROJECT_DIR, "..", "normalization"),
+      /* Shared recognition table (ADR-0011): both recognition.js (in the
+         asar) and normalization/recognition.py read shared/recognition-
+         patterns.json. Shipping shared/ here keeps it a sibling of
+         normalization/ under resources/, so `../shared` resolves in both the
+         dev tree and the package. Without this the released app's recognition
+         silently breaks while dev tests stay green. */
+      path.join(PROJECT_DIR, "..", "shared"),
       /* Example sessions for the empty state on first launch.
          renderer.js listBundledExamples() looks for these in
          process.resourcesPath/example-aggregate/ and renders them

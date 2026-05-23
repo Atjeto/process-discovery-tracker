@@ -85,3 +85,35 @@ test("no steps yields an empty graph", () => {
   assert.deepEqual(dfg.edges, []);
   assert.deepEqual(dfg.start_activities, {});
 });
+
+test("step level: value-laden names collapse to one node per step type (live)", () => {
+  // Each case's order # / customer id makes the raw name unique; without
+  // stripping the step-level DFG explodes into one node per instance. The
+  // viewer strips the values live (processLabel) so the flow collapses
+  // without a re-analyze.
+  const s = sess([
+    step("a1", "Salesforce: Search — CUST-10101", "c1", 1000),
+    step("b1", "Salesforce: Enter 25 in Quantity", "c1", 2000),
+    step("a2", "Salesforce: Search — CUST-10102", "c2", 3000),
+    step("b2", "Salesforce: Enter 30 in Quantity", "c2", 4000),
+  ]);
+  const dfg = buildAnnotationDfg([s], "step");
+  const edge = dfg.edges.find((e) => e.source === "Salesforce: Search");
+  assert.equal(edge.target, "Salesforce: Enter Quantity");
+  assert.equal(edge.frequency, 2);          // both cases share the transition
+  assert.equal(dfg.start_activities["Salesforce: Search"], 2);
+  assert.equal(Object.keys(dfg.start_activities).length, 1);
+});
+
+test("step level: a persisted process_label wins over the live strip", () => {
+  const steps = [step("a", "raw name — Value-1", "c1", 1000)];
+  steps[0].process_label = "Canonical step";
+  const dfg = buildAnnotationDfg([sess(steps)], "step");
+  assert.deepEqual(dfg.start_activities, { "Canonical step": 1 });
+});
+
+test("step level: value-free names are left untouched", () => {
+  const dfg = buildAnnotationDfg(
+    [sess([step("a", "Salesforce: Fill Customer ID field", "c1", 1000)])], "step");
+  assert.deepEqual(dfg.start_activities, { "Salesforce: Fill Customer ID field": 1 });
+});

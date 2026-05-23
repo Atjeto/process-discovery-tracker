@@ -66,7 +66,32 @@ function resolveTargetDisplays({ mode, foregroundBounds }) {
   }
 }
 
-async function captureScreenshot({ screenshotsFolder, quality, mode, foregroundBounds }) {
+/* D3: hide our OWN recorder windows during the grab so the always-on-top
+   panel / label picker / status window don't occlude the worker's screen --
+   the single-monitor case, where there is no other display to push them to.
+   `windows` are this process's BrowserWindows (passed by the caller); the
+   worker's apps are native OS windows, not BrowserWindows, so they are never
+   touched. Opacity 0 (not hide) avoids focus/z-order churn. Returns a restore
+   fn the caller MUST run in a finally, so a window can never get stuck
+   invisible even if the capture throws. */
+function _dimOwnWindows(windows) {
+  const dimmed = [];
+  for (const w of windows || []) {
+    try {
+      if (w && !w.isDestroyed() && w.isVisible() && w.getOpacity() > 0) {
+        dimmed.push([w, w.getOpacity()]);
+        w.setOpacity(0);
+      }
+    } catch (_) { /* window torn down mid-capture -- skip it */ }
+  }
+  return () => {
+    for (const [w, prior] of dimmed) {
+      try { if (!w.isDestroyed()) w.setOpacity(prior); } catch (_) { /* ignore */ }
+    }
+  };
+}
+
+async function captureScreenshot({ screenshotsFolder, quality, mode, foregroundBounds, occludingWindows }) {
   fs.mkdirSync(screenshotsFolder, { recursive: true });
   const targets = resolveTargetDisplays({
     mode: mode || "active",
@@ -74,38 +99,43 @@ async function captureScreenshot({ screenshotsFolder, quality, mode, foregroundB
   });
   if (!targets.length) return null;
 
-  // Sources from desktopCapturer aren't tied to scaleFactor; we ask
-  // for the largest target's pixel dimensions and let the per-source
-  // thumbnailSize match its native resolution. desktopCapturer.getSources
-  // only takes a single thumbnailSize, so we make one request per
-  // display and pick the thumbnail whose display_id matches.
-  let sources;
+  const restoreWindows = _dimOwnWindows(occludingWindows);
   try {
-    const w = Math.max(...targets.map(d => Math.round(d.size.width * (d.scaleFactor || 1))));
-    const h = Math.max(...targets.map(d => Math.round(d.size.height * (d.scaleFactor || 1))));
-    sources = await desktopCapturer.getSources({
-      types: ["screen"],
-      thumbnailSize: { width: w, height: h },
-    });
-  } catch (_e) {
-    return null;
-  }
-  if (!sources || !sources.length) return null;
+    // Sources from desktopCapturer aren't tied to scaleFactor; we ask
+    // for the largest target's pixel dimensions and let the per-source
+    // thumbnailSize match its native resolution. desktopCapturer.getSources
+    // only takes a single thumbnailSize, so we make one request per
+    // display and pick the thumbnail whose display_id matches.
+    let sources;
+    try {
+      const w = Math.max(...targets.map(d => Math.round(d.size.width * (d.scaleFactor || 1))));
+      const h = Math.max(...targets.map(d => Math.round(d.size.height * (d.scaleFactor || 1))));
+      sources = await desktopCapturer.getSources({
+        types: ["screen"],
+        thumbnailSize: { width: w, height: h },
+      });
+    } catch (_e) {
+      return null;
+    }
+    if (!sources || !sources.length) return null;
 
-  const written = [];
-  const multi = targets.length > 1;
-  for (const display of targets) {
-    let src = sources.find(s => s.display_id && String(s.display_id) === String(display.id))
-      || (targets.length === 1 ? sources[0] : null);
-    if (!src || !src.thumbnail || src.thumbnail.isEmpty()) continue;
-    const jpegBuffer = src.thumbnail.toJPEG(quality || 60);
-    const filename = timestampFilename(multi ? `d${display.id}` : null);
-    const outPath = path.join(screenshotsFolder, filename);
-    fs.writeFileSync(outPath, jpegBuffer);
-    written.push(`screenshots/${filename}`);
+    const written = [];
+    const multi = targets.length > 1;
+    for (const display of targets) {
+      let src = sources.find(s => s.display_id && String(s.display_id) === String(display.id))
+        || (targets.length === 1 ? sources[0] : null);
+      if (!src || !src.thumbnail || src.thumbnail.isEmpty()) continue;
+      const jpegBuffer = src.thumbnail.toJPEG(quality || 60);
+      const filename = timestampFilename(multi ? `d${display.id}` : null);
+      const outPath = path.join(screenshotsFolder, filename);
+      fs.writeFileSync(outPath, jpegBuffer);
+      written.push(`screenshots/${filename}`);
+    }
+    if (!written.length) return null;
+    return multi ? written : written[0];
+  } finally {
+    restoreWindows();
   }
-  if (!written.length) return null;
-  return multi ? written : written[0];
 }
 
 module.exports = { captureScreenshot };

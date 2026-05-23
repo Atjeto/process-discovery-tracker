@@ -143,6 +143,10 @@ async function fireScreenshot(kind, opts) {
       quality: config.screenshots.quality,
       mode: config.screenshots.display,
       foregroundBounds: lastWorkBounds || (lastStatus ? lastStatus.currentBounds : null),
+      // D3: our own always-on-top windows are the only BrowserWindows in this
+      // process; screenshots.js dims them during the grab so they don't
+      // occlude the capture on a single monitor.
+      occludingWindows: BrowserWindow.getAllWindows(),
     });
     if (!result) return;
     // captureScreenshot returns string|string[]. Emit one system
@@ -170,7 +174,8 @@ async function onTickHandler(status) {
      BrowserWindow.getFocusedWindow() is non-null -- skip the update so a
      marker screenshot keeps targeting the worker's monitor, not the
      recorder's. (Single-monitor occlusion -- the panel physically covering
-     the work app -- would still need a pre-capture; tracked as a follow-up.) */
+     the work app -- is handled in screenshots.js, which dims our own windows
+     to opacity 0 for the duration of the grab.) */
   if (status && status.currentBounds && !BrowserWindow.getFocusedWindow()) {
     lastWorkBounds = status.currentBounds;
   }

@@ -45,8 +45,12 @@ for (const ev of interactions) {
   const ts = new Date(ev.timestamp).getTime();
   if (String(d[field] ?? "") === equals) {
     const label = String(d[labelField] ?? "");
-    if (!byLabel.has(label)) { byLabel.set(label, { label, startTs: ts, endTs: ts, count: 0 }); order.push(label); }
-    activeLabel = label;
+    // Mirror case_assignment: an empty serial box does not name a case -- ignore
+    // the fire and keep the current active case.
+    if (label) {
+      if (!byLabel.has(label)) { byLabel.set(label, { label, startTs: ts, endTs: ts, count: 0 }); order.push(label); }
+      activeLabel = label;
+    }
   }
   if (activeLabel) {
     const c = byLabel.get(activeLabel);
@@ -57,10 +61,18 @@ for (const ev of interactions) {
 let cases = order.map((l) => byLabel.get(l)).filter((c) =>
   c.count >= MIN_CASE_INTERACTIONS && (c.endTs - c.startTs) >= MIN_CASE_DURATION_MS);
 
+// Governance-safe label diagnostics (counts/cardinality only -- never values):
+// how many DISTINCT anchor labels existed before the degenerate guard, and how
+// many anchor hits carried an empty/missing label-value (which would collapse
+// every distinct case into one).
+const anchorEmpty = anchorHits.filter((e) => String((e.data || {})[labelField] ?? "") === "").length;
+
 const iso = (ms) => new Date(ms).toISOString();
-console.log(`anchor: ${field} == ${equals}`);
+console.log(`anchor: ${field} == ${equals}  (case key = data.${labelField})`);
 console.log(`raw events: ${raw.length}  interactions: ${interactions.length}  anchor-field hits: ${anchorHits.length}`);
+console.log(`anchor hits with empty/missing ${labelField}: ${anchorEmpty} / ${anchorHits.length}`);
+console.log(`distinct anchor labels (pre-guard): ${order.length}`);
 console.log(`CASES DETECTED: ${cases.length}`);
 const distinctLabels = new Set(cases.map((c) => c.label)).size;
-console.log(`distinct case keys: ${distinctLabels}`);
+console.log(`distinct case keys (post-guard): ${distinctLabels}`);
 cases.forEach((c, i) => console.log(`  case ${i + 1}: ${iso(c.startTs)} -> ${iso(c.endTs)}`));

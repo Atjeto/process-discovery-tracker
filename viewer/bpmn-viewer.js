@@ -1,6 +1,12 @@
 /*
- * BPMN renderer using bpmn-js (BpmnViewer global from
- * dist/bpmn-viewer.production.min.js, exposed as BpmnJS).
+ * BPMN renderer using bpmn-js. We load the MODELER bundle
+ * (dist/bpmn-modeler.production.min.js, still exposed as the BpmnJS global),
+ * not the read-only Viewer, so the analyst can DRAG the boxes to reorganize
+ * the auto-laid-out map. The editor chrome (palette, context pad) is hidden in
+ * CSS (.map-host .djs-palette/.djs-context-pad) and we pass no keyboard config,
+ * so it behaves as a move-only layout tool: drag a box to move it, click a box
+ * to drill to the source. Layout changes are in-memory (a re-render or
+ * re-analyze regenerates the map); persisting them is a follow-up.
  *
  * Reads an exported `process_map.bpmn` and renders it into the host
  * element. Falls back gracefully if bpmn-js failed to load.
@@ -10,6 +16,7 @@
 
 (function () {
   let viewer = null;
+  let saveTimer = null;  // debounce for persisting a dragged layout
   const fs = require("node:fs");
 
   async function render(host, bpmnFilePath, opts) {
@@ -29,12 +36,35 @@
       try { viewer.destroy(); } catch (_) {}
       viewer = null;
     }
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     viewer = new BpmnJS({ container: host });
     try {
       const result = await viewer.importXML(xml);
       const warnings = (result && result.warnings) || [];
       const canvas = viewer.get("canvas");
       canvas.zoom("fit-viewport", "auto");
+      /* Persist a dragged layout: when the analyst moves a box, save the
+         modeler's XML (which carries the new DI coordinates) back to the
+         .bpmn, debounced, so switching level/tab or re-opening the session
+         keeps the arrangement. Guarded on commandStack.canUndo() so the
+         one-off fire importXML emits doesn't rewrite the file on every load.
+         (A re-analyze regenerates the map from scratch and resets it.) */
+      if (bpmnFilePath) {
+        viewer.get("eventBus").on("commandStack.changed", () => {
+          let edited = false;
+          try { edited = !!(viewer && viewer.get("commandStack").canUndo()); } catch (_) { edited = false; }
+          if (!edited) return;
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(async () => {
+            saveTimer = null;
+            if (!viewer) return;
+            try {
+              const { xml: out } = await viewer.saveXML({ format: true });
+              if (out) fs.writeFileSync(bpmnFilePath, out, "utf-8");
+            } catch (_) { /* best-effort; the in-memory layout still holds */ }
+          }, 600);
+        });
+      }
       if (warnings.length) {
         const note = document.createElement("div");
         note.className = "bpmn-warning";

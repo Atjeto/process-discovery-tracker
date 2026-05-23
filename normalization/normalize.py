@@ -52,7 +52,9 @@ from classification import (
 from classification_overrides import apply_classification_overrides
 from log_setup import setup_logging
 from xes_export import build_event_log, export_xes, export_csv
-from step_suggest import auto_suggest_steps, drop_overlapping_auto_steps
+from step_suggest import (
+    auto_suggest_steps, drop_overlapping_auto_steps, _merge_steps,
+)
 import app_vocab
 import stats_compute as stats
 
@@ -147,30 +149,6 @@ def compute_screenshot_hashes(session_folder: Path) -> list[dict[str, str]]:
             bits = (bits << 1) | (1 if p >= avg else 0)
         out.append({"filename": f.name, "hash": f"{bits:016x}"})
     return out
-
-
-def _merge_steps(existing: list, fresh: list) -> list:
-    """Preserve manually_authored, edited, and hidden steps. Replace
-    auto_* steps with the latest fresh suggestions. A `hidden` step is
-    one the analyst manually suppressed -- preserving it means a
-    re-analyze won't resurrect it as a fresh auto_suggested row.
-
-    Fresh auto steps that overlap an analyst-owned (manual / edited /
-    hidden) step are dropped: the analyst already owns that span, and an
-    overlapping auto step is a duplicate they would otherwise have to
-    find and delete by hand (§I37)."""
-    by_state = {"manually_authored": [], "edited": [], "hidden": []}
-    for s in existing or []:
-        st = s.get("state")
-        if st in by_state:
-            by_state[st].append(s)
-    preserved = (by_state["manually_authored"] + by_state["edited"]
-                 + by_state["hidden"])
-    kept, dropped = drop_overlapping_auto_steps(fresh or [], preserved)
-    if dropped:
-        print(f"[normalize] dropped {len(dropped)} auto step(s) "
-              f"overlapping analyst-owned steps")
-    return preserved + kept
 
 
 def _merge_phases(existing: list, fresh: list) -> list:

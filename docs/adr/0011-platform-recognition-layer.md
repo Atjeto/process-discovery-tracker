@@ -105,6 +105,6 @@ semantic class (`form_field`, `grid_cell`, `rich_text`, `primary_action`,
 ## Action Items
 1. [x] `viewer/recognition.js` + tests, grounded in documented invariants, verified against the real capture signatures.
 2. [x] Rewire the alignment signature and `describeInteraction` onto `recognize()`.
-3. [ ] Lift the signature table to a shared file consumed by Python normalization.
-4. [ ] Replace `step_suggest._is_browser_chrome` with the shared recognition.
-5. [ ] Reframe activity/step classification to lead with framework recognition.
+3. [x] Lift the signature table to a shared file consumed by Python normalization. *(2026-05-23 — `shared/recognition-patterns.json`, loaded by `viewer/recognition.js` and the new `normalization/recognition.py`.)*
+4. [x] Replace `step_suggest._is_browser_chrome` with the shared recognition. *(2026-05-23 — `step_suggest` now calls `recognition.is_browser_chrome`; the hardcoded class list is gone. `filter_browser_chrome` flag + tests retained.)*
+5. [ ] Reframe activity/step classification to lead with framework recognition. *(Open — NEXT-SESSION P2.)*

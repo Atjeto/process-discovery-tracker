@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from stats_compute import step_variants, _filter_excluded, compute_all
+from stats_compute import step_variants, step_stats, _filter_excluded, compute_all
 
 
 def _step(case_id, name, start):
@@ -93,3 +93,42 @@ def test_compute_all_includes_step_variants():
     summary = compute_all([], {}, steps=[_step("c1", "A", "2026-05-14T09:00:00Z")])
     assert summary["step_variants"] == [
         {"variant": ["A"], "frequency": 1, "length": 1}]
+
+
+# --- Step stats: step-level duration distribution (split-brain fix) ----
+
+def _step_dur(case_id, name, start, end):
+    return {"case_id": case_id, "name": name,
+            "time_range": {"start": start, "end": end}}
+
+
+def test_step_stats_aggregates_duration_per_name():
+    steps = [
+        _step_dur("c1", "Search", "2026-05-14T09:00:00Z", "2026-05-14T09:00:10Z"),  # 10s
+        _step_dur("c2", "Search", "2026-05-14T10:00:00Z", "2026-05-14T10:00:30Z"),  # 30s
+        _step_dur("c1", "Save",   "2026-05-14T09:01:00Z", "2026-05-14T09:01:05Z"),  # 5s
+    ]
+    rows = step_stats(steps)
+    by = {r["step_name"]: r for r in rows}
+    assert by["Search"]["frequency"] == 2
+    assert by["Search"]["total_duration_ms"] == 40000
+    assert by["Search"]["mean_ms"] == 20000
+    # rows are ranked by total duration desc -- Search (40s) before Save (5s)
+    assert rows[0]["step_name"] == "Search"
+    # same row shape as activity_stats
+    assert set(rows[0]) == {"step_name", "frequency", "frequency_pct",
+                            "total_duration_ms", "mean_ms", "median_ms",
+                            "p90_ms", "p99_ms"}
+
+
+def test_step_stats_handles_missing_range():
+    rows = step_stats([{"case_id": "c1", "name": "X", "time_range": {}}])
+    assert rows[0]["frequency"] == 1
+    assert rows[0]["total_duration_ms"] == 0
+
+
+def test_compute_all_includes_step_stats():
+    summary = compute_all([], {}, steps=[
+        _step_dur("c1", "A", "2026-05-14T09:00:00Z", "2026-05-14T09:00:02Z")])
+    assert summary["step_stats"][0]["step_name"] == "A"
+    assert summary["step_stats"][0]["total_duration_ms"] == 2000

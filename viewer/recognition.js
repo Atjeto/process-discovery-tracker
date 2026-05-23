@@ -29,65 +29,25 @@
  * Returns a semantic TYPE, not business meaning. "form field", "data-grid
  * cell", "primary button" are knowable from the platform; "serial number" is
  * not -- that stays an analyst label on top. Pure (no DOM): unit-testable and
- * shared by the viewer's phrasing + the alignment signature. The Python
- * capture pipeline should consume the same table (follow-up in ADR-0011).
+ * shared by the viewer's phrasing + the alignment signature.
+ *
+ * The signature TABLE itself lives in shared/recognition-patterns.json so the
+ * Python pipeline (normalization/recognition.py) recognises interactions from
+ * the SAME data (ADR-0011 follow-up). This file owns only the matching LOGIC.
+ * The JSON ships to resources/shared/ as an extraResource; in dev it is
+ * ../shared/ -- `__dirname/../shared` resolves to both (see build-package.js).
  */
+
+const path = require("node:path");
+const PATTERNS = require(path.join(__dirname, "..", "shared", "recognition-patterns.json"));
 
 // Ordered most-specific first; first match wins. `cls` entries are matched as
 // substrings of class_name unless `exactCls` is set. `ctIn` optionally
 // constrains the UIA control_type.
-const FRAMEWORK_SIGNATURES = [
-  // --- Chromium / Edge browser chrome. isChrome=true => navigation, not a
-  //     process step (the frame around the page, not the page). ---
-  { cls: ["OmniboxViewViews"], category: "browser_chrome", framework: "chromium", isChrome: true, typeLabel: "browser address bar" },
-  { cls: ["BackForwardButton", "ReloadButton", "HomeButton", "BookmarkButton", "StarView",
-          "AppMenuButton", "BrowserAppMenuButton", "DownloadBubbleTransparentButton",
-          "NewTabButton", "TabStripControlButton", "TabStrip"],
-    category: "browser_chrome", framework: "chromium", isChrome: true, typeLabel: "browser toolbar" },
-  { ctIn: ["TabItem", "Tab"], cls: ["Tab", "EdgeTab"], exactCls: true,
-    category: "browser_chrome", framework: "chromium", isChrome: true, typeLabel: "browser tab" },
-
-  // --- AG-Grid (data grid). `ag-` is AG-Grid's CSS namespace. ---
-  { cls: ["ag-cell-edit-input"], category: "grid_cell", framework: "ag-grid", typeLabel: "data-grid cell" },
-  { cls: ["ag-filter", "ag-select", "ag-list", "ag-picker"], category: "selection", framework: "ag-grid", typeLabel: "grid filter" },
-
-  // --- Bootstrap (+ ASP.NET/jQuery validation). btn-primary before form-control. ---
-  { cls: ["btn-primary"], category: "primary_action", framework: "bootstrap", typeLabel: "primary button" },
-  { cls: ["form-control"], category: "form_field", framework: "bootstrap", typeLabel: "form field" },
-
-  // --- SharePoint (SPFx React field editors). RichText variant => rich_text. ---
-  { cls: ["ReactFieldEditor"], richTextIf: "RichText", category: "form_field", framework: "sharepoint", typeLabel: "SharePoint field" },
-
-  // --- Office 365 / OneDrive. ---
-  { cls: ["od-addNewCommentTextField", "mentionableTextBox"], category: "comment", framework: "office365", typeLabel: "comment field" },
-  { cls: ["o365sx-", "mssxsb-"], category: "search", framework: "office365", typeLabel: "Office 365 search" },
-
-  // --- Win32 / Office native. ---
-  { cls: ["RichEdit"], category: "rich_text", framework: "win32-office", typeLabel: "rich-text field" },
-  { cls: ["NetUIHWND"], category: "office_ui", framework: "win32-office", typeLabel: "Office ribbon/pane" },
-];
-
+const FRAMEWORK_SIGNATURES = PATTERNS.frameworkSignatures;
 // UIA ControlType -> semantic base. Microsoft's documented taxonomy; always
 // available even when no framework signature matches.
-const UIA_BASE = {
-  Edit:        { category: "text_entry", typeLabel: "text field" },
-  Document:    { category: "text_entry", typeLabel: "document" },
-  Button:      { category: "action", typeLabel: "button" },
-  SplitButton: { category: "action", typeLabel: "button" },
-  Hyperlink:   { category: "action", typeLabel: "link" },
-  MenuItem:    { category: "action", typeLabel: "menu item" },
-  ComboBox:    { category: "selection", typeLabel: "dropdown" },
-  List:        { category: "selection", typeLabel: "list" },
-  ListItem:    { category: "selection", typeLabel: "list item" },
-  DataItem:    { category: "grid_cell", typeLabel: "data item" },
-  CheckBox:    { category: "toggle", typeLabel: "checkbox" },
-  RadioButton: { category: "toggle", typeLabel: "radio button" },
-  TabItem:     { category: "tab_nav", typeLabel: "tab" },
-  TreeItem:    { category: "tree_nav", typeLabel: "tree item" },
-  Tree:        { category: "tree_nav", typeLabel: "tree" },
-  Slider:      { category: "form_field", typeLabel: "slider" },
-  Spinner:     { category: "form_field", typeLabel: "spinner" },
-};
+const UIA_BASE = PATTERNS.uiaBase;
 
 /**
  * Recognise one interaction's data.

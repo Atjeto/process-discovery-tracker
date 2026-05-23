@@ -117,6 +117,20 @@ function buildSessionReport(session) {
     lines.push("");
   }
 
+  /* Per-step statistics -- the step-level analogue of the activity table, so
+     the analyst's stepped view gets the same distribution (no split-brain). */
+  if (stats.step_stats && stats.step_stats.length) {
+    lines.push(`## Step statistics`);
+    lines.push("");
+    lines.push(`| Step | Frequency | Total time | Median | p90 |`);
+    lines.push(`|---|---:|---:|---:|---:|`);
+    for (const r of stats.step_stats.slice(0, 25)) {
+      lines.push(`| ${mdEscape(r.step_name)} | ${r.frequency} ` +
+        `| ${fmtDuration(r.total_duration_ms)} | ${fmtDuration(r.median_ms)} | ${fmtDuration(r.p90_ms)} |`);
+    }
+    lines.push("");
+  }
+
   /* Cases */
   if (stats.case_stats && stats.case_stats.length) {
     lines.push(`## Cases`);
