@@ -209,16 +209,14 @@ function wireMapTabs() {
     });
   }
 
-  // §3: rare-path readability toggle (Flow diagram only).
-  const rareCb = document.getElementById("cb-hide-rare");
-  if (rareCb) {
-    rareCb.addEventListener("change", (e) => {
-      _hideRarePaths = !!e.target.checked;
-      renderMap();
-      setTimeout(() => {
-        const v = activeMapViewer();
-        if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
-      }, 50);
+  // ADR-0013 #5: rare-path frequency slider (Flow diagram only). Drag to raise
+  // the minimum edge frequency shown; 1 = every path. Re-renders live as it
+  // drags, without an auto-fit so the user's pan/zoom is preserved.
+  const rareRange = document.getElementById("rng-rare");
+  if (rareRange) {
+    rareRange.addEventListener("input", (e) => {
+      _rarePathCutoff = Math.max(1, parseInt(e.target.value, 10) || 1);
+      applyMapLevel();
     });
   }
 }
@@ -253,21 +251,36 @@ function applyMapLevel() {
     dfg = buildAnnotationDfg(_lastFilteredForMap || [], _mapLevel, phaseFilter);
     opts.onNodeClick = (label) => drillDownLevel(label);   // descend a level, scoped
   }
-  // §3: optionally hide one-off paths for readability (Flow diagram only). The
-  // toggle shows whenever the map has edges; the label carries the hidden count.
+  // ADR-0013 #5: rare-path frequency slider (Flow diagram only). The slider's
+  // range tracks this map's busiest edge; a cutoff of 1 shows every path, higher
+  // hides paths seen fewer times. dropRareEdges clamps the cutoff to maxFreq, so
+  // the map is never blanked. The slider hides on the BPMN (showMapNotation) and
+  // when the map has no edges; it disables when there is no spread to thin.
   const rareWrap = document.getElementById("hide-rare-wrap");
   const rareLbl = document.getElementById("hide-rare-lbl");
-  const cbRare = document.getElementById("cb-hide-rare");
-  if (cbRare) cbRare.checked = _hideRarePaths;
+  const rareRange = document.getElementById("rng-rare");
   const baseHasEdges = !!(dfg && dfg.edges && dfg.edges.length);
+  const maxFreq = baseHasEdges ? Math.max(...dfg.edges.map((e) => e.frequency || 1)) : 1;
+  const canThin = baseHasEdges && maxFreq > 1 && dfg.edges.length >= 3;
   let hiddenRare = 0;
-  if (_hideRarePaths && baseHasEdges) {
-    const r = dropRareEdges(dfg);
+  let appliedCutoff = 1;
+  if (canThin && _rarePathCutoff > 1) {
+    const r = dropRareEdges(dfg, _rarePathCutoff);
     dfg = r.dfg;
     hiddenRare = r.hidden;
+    appliedCutoff = r.cutoff;
   }
   if (rareWrap) rareWrap.style.display = baseHasEdges ? "" : "none";
-  if (rareLbl) rareLbl.textContent = hiddenRare ? ("Rare paths hidden (" + hiddenRare + ")") : "Hide rare paths";
+  if (rareRange) {
+    rareRange.max = String(Math.max(1, maxFreq));
+    rareRange.value = String(Math.min(_rarePathCutoff, Math.max(1, maxFreq)));
+    rareRange.disabled = !canThin;
+  }
+  if (rareLbl) {
+    rareLbl.textContent = appliedCutoff > 1
+      ? ("≥ " + appliedCutoff + "×  (" + hiddenRare + " hidden)")
+      : "All paths";
+  }
   if (dfg && dfg.edges && dfg.edges.length) {
     PdtDfg.render(host, dfg, opts);
     setMapZoomVisible(true);
@@ -397,9 +410,11 @@ let _lastConfActive = false;
    level. Cleared by an explicit level pick, a notation switch to BPMN, and a
    data refresh. */
 let _mapDrillFilter = null;
-/* Flow-diagram readability: hide one-off (frequency-1) edges so a long, dense
-   recording shows its dominant flow. A view toggle, DFG-only. */
-let _hideRarePaths = false;
+/* Flow-diagram readability: a frequency CUTOFF (ADR-0013 #5) -- keep only edges
+   seen >= _rarePathCutoff times, so a long, dense recording shows its dominant
+   flow. 1 = show every path. A view setting, DFG-only; the slider's range tracks
+   the current map's busiest edge. */
+let _rarePathCutoff = 1;
 
 function wireAggregateControls() {
   $("#btn-open-multi-hero").addEventListener("click", openMultiFlow);

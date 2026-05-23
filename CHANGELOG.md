@@ -54,12 +54,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the map header is the inverse. The Process diagram (BPMN) is a static mined
   file, so there a click descends unfiltered, as before
   (`viewer/views/aggregate-view.js`, `viewer/process-map-levels.js`).
-- **"Hide rare paths" toggle for the Flow diagram.** On a long, dense recording
-  the map can carry many one-off (frequency-1) deviations. The toggle drops those
-  edges so the dominant flow is readable — the hidden count shows in the label and
-  it is reversible by un-ticking; a no-op when there is no frequency spread, so the
-  map is never blanked (`viewer/process-map-levels.js` `dropRareEdges`,
-  `viewer/views/aggregate-view.js`).
+- **Rare-path frequency slider for the Flow diagram.** On a long, dense recording
+  the map can carry many low-frequency deviations. A slider sets the minimum edge
+  frequency shown — at 1× every path shows; raising it hides paths seen fewer than
+  N times, the live label reading "≥ N× (M hidden)". The cutoff is clamped to the
+  busiest edge so the map is never blanked, and the slider disables when there is no
+  frequency spread to thin. (Generalises the earlier binary "hide rare paths"
+  toggle — `viewer/process-map-levels.js` `dropRareEdges`,
+  `viewer/views/aggregate-view.js`; ADR-0013 #5.)
 
 ### Fixed
 

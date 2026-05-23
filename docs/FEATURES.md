@@ -115,8 +115,8 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   persist.
 - **Map navigation** — drill-down *scopes* to a clicked node's children
   (phase → its steps → that step's activities) on the Flow diagram, with a
-  "show all" chip; a "Hide rare paths" toggle thins one-off branches for
-  readability on dense recordings (ADR-0013). Clicking an activity node drills to
+  "show all" chip; a rare-path frequency **slider** thins low-frequency branches
+  for readability on dense recordings (ADR-0013). Clicking an activity node drills to
   the source session or reclassifies it.
 - **Cross-session statistics + analysis** — activity-frequency and case-duration
   charts; trace-variant, outlier, and rework tables; and a pooled Analysis panel

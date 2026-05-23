@@ -481,7 +481,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <button class="icon-btn xs" id="btn-dfg-zoom-fit" title="Fit to view">fit</button>
                 <button class="icon-btn xs" id="btn-dfg-zoom-in" title="Zoom in">+</button>
                 <label class="cb" id="dfg-conformance-wrap" style="display:none" title="Colour Flow-diagram nodes by how they match the loaded Process Template: green matches a canonical step, amber is off-template."><input type="checkbox" id="cb-dfg-conformance" /> Conformance</label>
-                <label class="cb" id="hide-rare-wrap" style="display:none" title="Hide one-off (frequency-1) paths so the dominant flow is readable on a long, dense recording. Toggle off to see every path."><input type="checkbox" id="cb-hide-rare" /> <span id="hide-rare-lbl">Hide rare paths</span></label>
+                <span class="map-rare" id="hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
                 <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
               </div>
             </div>

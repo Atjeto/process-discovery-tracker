@@ -86,14 +86,16 @@ so a click there descends *unfiltered*, consistent with "the BPMN only collapses
 on re-analyze." The scope is cleared by an explicit level pick, a switch to the
 BPMN notation, and a data refresh.
 
-### 3. "Hide rare paths" thins one-off edges for readability
+### 3. A rare-path frequency slider thins low-frequency edges for readability
 
-A Flow-diagram toggle (`process-map-levels.dropRareEdges`) drops frequency-1
-edges *when the model has more-frequent paths*, leaving the dominant flow; the
-hidden count shows in the label and it is reversible. It is a **no-op when there
-is no frequency spread** (every edge a singleton), so the map is never blanked.
-This is the "+N more / show rare paths" affordance for scale; BPMN-XOR fan-out
-itself is valid notation, not a bug (see COHERENCE-AUDIT.md / NEXT-SESSION §3).
+A Flow-diagram **slider** sets a minimum edge frequency
+(`process-map-levels.dropRareEdges(dfg, minFreq)`, `aggregate-view._rarePathCutoff`):
+at 1× every path shows; raising it hides paths seen fewer than N times, leaving the
+dominant flow. The live label reads "≥ N× (M hidden)" and the cutoff is **clamped to
+the busiest edge**, so the map is never blanked. It started as a binary
+"hide one-off paths" toggle and was generalised to a slider (action item 5); it
+disables when there is no frequency spread to thin. BPMN-XOR fan-out itself is valid
+notation, not a bug (see COHERENCE-AUDIT.md / NEXT-SESSION §3).
 
 ## Consequences
 
@@ -120,6 +122,6 @@ itself is valid notation, not a bug (see COHERENCE-AUDIT.md / NEXT-SESSION §3).
 1. [x] `process_label` stamped at normalize + live `processLabel` in the viewer (v0.15.0 real-run fix).
 2. [x] `step_group_key` / `step_group_label` in `analysis_common`; applied in `analysis_time_study`, `analysis_automation`, `stats_compute`. Tests: value-laden-name collapse on both Python and JS sides.
 3. [x] Drill-down subtree scoping (`drillDownLevel(label)`, `buildAnnotationDfg` filter, `_filterDfgToLabels`) + scope chip + clear.
-4. [x] "Hide rare paths" toggle (`dropRareEdges`) + hidden-count label.
-5. [ ] Calibrate `process_label` and the rare-path threshold against more real captures; consider a frequency *slider* if a binary toggle proves too coarse.
+4. [x] Rare-path thinning (`dropRareEdges`) — shipped first as a binary toggle, now generalised to a frequency slider (#5).
+5. [x] **Rare-path frequency slider** — `dropRareEdges(dfg, minFreq)` + the `#rng-rare` control (`aggregate-view._rarePathCutoff`), replacing the binary toggle; verified in the `_pdt_verify` harness (17 → 15 → 1 edges, never blanked). Calibrating `process_label`'s value-stripping and the default cutoff against more representative real captures remains owner-side. *(2026-05-23)*
 6. [ ] Drill-scoping for the BPMN would need live re-mining in JS or a server round-trip — deferred.

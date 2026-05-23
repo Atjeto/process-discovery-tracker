@@ -113,19 +113,26 @@ function buildAnnotationDfg(sessions, level, filter) {
   return { edges, start_activities: startAct, end_activities: endAct };
 }
 
-/* Thin a DFG for readability: drop one-off (frequency-1) edges when the model
- * has more-frequent paths, so rare deviations don't clutter the dominant flow
- * on a long, dense recording. A no-op when there is no frequency spread (every
- * edge is a singleton) so the map is never blanked. Nodes left with no edges
- * are dropped. Returns { dfg, hidden } where `hidden` is the edge count removed.
+/* Thin a DFG for readability: keep only edges seen at least `minFreq` times, so
+ * rare deviations don't clutter the dominant flow on a long, dense recording.
+ * `minFreq` is the rare-path slider's cutoff (ADR-0013 #5): 1 shows every path,
+ * higher hides paths below the cutoff; it defaults to 2 (the old binary
+ * "hide one-off paths" behaviour). The cutoff is CLAMPED to the map's busiest
+ * edge frequency, so it can never drop every edge -- the map is never blanked.
+ * A no-op when there is no frequency spread (every edge a singleton) or fewer
+ * than 3 edges. Nodes left with no edges are dropped. Returns
+ * { dfg, hidden, cutoff, maxFreq }: `hidden` is the edge count removed, `cutoff`
+ * the effective (clamped) threshold applied, `maxFreq` the busiest edge.
  */
-function dropRareEdges(dfg) {
+function dropRareEdges(dfg, minFreq = 2) {
   const edges = (dfg && dfg.edges) || [];
-  if (edges.length < 3) return { dfg, hidden: 0 };
-  const maxF = Math.max(...edges.map((e) => e.frequency || 1));
-  if (maxF <= 1) return { dfg, hidden: 0 };
-  const kept = edges.filter((e) => (e.frequency || 1) > 1);
-  if (!kept.length) return { dfg, hidden: 0 };
+  const maxFreq = edges.length ? Math.max(...edges.map((e) => e.frequency || 1)) : 1;
+  // Clamp into [1, maxFreq] so a high cutoff can never blank the map.
+  const cutoff = Math.max(1, Math.min(Math.floor(minFreq || 1), maxFreq));
+  if (cutoff <= 1 || edges.length < 3 || maxFreq <= 1) {
+    return { dfg, hidden: 0, cutoff: 1, maxFreq };
+  }
+  const kept = edges.filter((e) => (e.frequency || 1) >= cutoff);
   const nodes = new Set();
   for (const e of kept) { nodes.add(e.source); nodes.add(e.target); }
   const filt = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => nodes.has(k)));
@@ -136,6 +143,8 @@ function dropRareEdges(dfg) {
       end_activities: filt(dfg.end_activities),
     },
     hidden: edges.length - kept.length,
+    cutoff,
+    maxFreq,
   };
 }
 

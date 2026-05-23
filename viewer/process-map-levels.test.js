@@ -182,3 +182,57 @@ test("dropRareEdges is a no-op when every edge is a singleton (no spread)", () =
   assert.equal(r.hidden, 0);
   assert.equal(r.dfg.edges.length, 3);   // never blank the map
 });
+
+test("dropRareEdges cutoff: minFreq=3 keeps only edges seen >= 3 times", () => {
+  const dfg = {
+    edges: [
+      { source: "A", target: "B", frequency: 5 },
+      { source: "B", target: "C", frequency: 3 },
+      { source: "B", target: "X", frequency: 2 },
+      { source: "X", target: "Y", frequency: 1 },
+    ],
+    start_activities: { A: 5 },
+    end_activities: { C: 3, Y: 1 },
+  };
+  const r = dropRareEdges(dfg, 3);
+  assert.equal(r.cutoff, 3);
+  assert.equal(r.maxFreq, 5);
+  assert.equal(r.hidden, 2);                            // the freq-2 and freq-1 edges
+  assert.deepEqual(r.dfg.edges.map((e) => e.target).sort(), ["B", "C"]);
+  assert.deepEqual(r.dfg.end_activities, { C: 3 });     // Y dropped with its edge
+});
+
+test("dropRareEdges cutoff: minFreq=1 shows every path (no-op)", () => {
+  const dfg = {
+    edges: [
+      { source: "A", target: "B", frequency: 5 },
+      { source: "B", target: "C", frequency: 1 },
+      { source: "B", target: "X", frequency: 1 },
+    ],
+    start_activities: { A: 5 },
+    end_activities: { C: 1, X: 1 },
+  };
+  const r = dropRareEdges(dfg, 1);
+  assert.equal(r.hidden, 0);
+  assert.equal(r.cutoff, 1);
+  assert.equal(r.dfg.edges.length, 3);
+});
+
+test("dropRareEdges cutoff is clamped so the map is never blanked", () => {
+  const dfg = {
+    edges: [
+      { source: "A", target: "B", frequency: 3 },
+      { source: "B", target: "C", frequency: 2 },
+      { source: "B", target: "X", frequency: 1 },
+    ],
+    start_activities: { A: 3 },
+    end_activities: { C: 2, X: 1 },
+  };
+  // A cutoff above the busiest edge clamps to maxFreq (3), keeping just A->B.
+  const r = dropRareEdges(dfg, 99);
+  assert.equal(r.cutoff, 3);
+  assert.equal(r.maxFreq, 3);
+  assert.equal(r.dfg.edges.length, 1);
+  assert.equal(r.dfg.edges[0].source, "A");
+  assert.equal(r.dfg.edges[0].target, "B");
+});
