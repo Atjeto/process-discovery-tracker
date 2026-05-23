@@ -35,7 +35,7 @@ const { initAggregateView, renderAggregate, filteredAggregateSessions } = requir
 const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
 const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
 const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = require("./views/template-view.js");
-const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, addStepAtTimestamp } = require("./views/steps-view.js");
+const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
@@ -788,7 +788,10 @@ document.addEventListener("keydown", (e) => {
     } else if (e.key === "s") {
       if (State.getSelectedStepId()) { splitStep(State.getSelectedStepId()); e.preventDefault(); }
     } else if (e.key === "m") {
-      if (State.getSelectedStepId()) { mergeStepWithNext(State.getSelectedStepId()); e.preventDefault(); }
+      // P0.1: with a 2+ multi-selection, M merges that selection; otherwise it
+      // merges the selected step with the next one. No hidden "wrong pair".
+      if (State.getMultiSelectedStepIds().size >= 2) { mergeSelectedSteps(); e.preventDefault(); }
+      else if (State.getSelectedStepId()) { mergeStepWithNext(State.getSelectedStepId()); e.preventDefault(); }
     }
   }
   else if (e.key === " ") {

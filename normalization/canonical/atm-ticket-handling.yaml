@@ -23,8 +23,13 @@ canonical_process:
     field: "automation_id"
     equals: "txtsr"
     case_label_from: "value"
-    min_gap_ms: 10000
-    close_on_pause_ms: 300000
+    # Active-case stamping (NEXT-SESSION §2, option C): the case_id is stable
+    # per serial, so re-searching the same serial RESUMES its case instead of
+    # opening a new one (this is what stops a couple of serials inflating into
+    # a dozen "cases"). The degenerate-case guard drops accidental anchor fires
+    # -- a case below EITHER threshold is discarded.
+    min_case_interactions: 2
+    min_case_duration_ms: 1000
 
   phases:
     - phase_id: "investigation"

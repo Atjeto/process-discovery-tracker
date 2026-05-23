@@ -613,6 +613,23 @@ def normalize(
             print(f"[normalize] wrote {bpmn_path}")
         except Exception as e:
             print(f"[normalize] WARNING: BPMN mining failed: {e}")
+        # Step/phase observed-flow BPMN: the ACTUAL annotated step/phase flow
+        # mined into BPMN (the Process-diagram counterpart of the step/phase
+        # Flow diagram). Built from annotations -- no Process Template needed.
+        try:
+            import bpmn_observed
+            if any(s.get("state") != "hidden"
+                   for s in (existing_anno.get("steps") or [])):
+                if bpmn_observed.write_observed_bpmn(
+                        existing_anno, "step",
+                        str(session_folder / "process_map_step.bpmn")):
+                    print(f"[normalize] wrote {session_folder / 'process_map_step.bpmn'}")
+                if (existing_anno.get("phases") or []) and bpmn_observed.write_observed_bpmn(
+                        existing_anno, "phase",
+                        str(session_folder / "process_map_phase.bpmn")):
+                    print(f"[normalize] wrote {session_folder / 'process_map_phase.bpmn'}")
+        except Exception as e:
+            print(f"[normalize] WARNING: step/phase BPMN failed: {e}")
         # Per-case BPMN: one model per individual case. Right answer
         # when the session contains MIXED processes (the aggregate would
         # mash them into one nonsense model), or for instance-to-instance

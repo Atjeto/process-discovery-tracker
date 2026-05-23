@@ -152,116 +152,118 @@ def detect_cases_from_anchors(
     interactions: list[dict[str, Any]],
     anchor_cfg: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Detect case boundaries from anchor-field interactions.
+    """Detect cases by ACTIVE-CASE stamping (NEXT-SESSION §2, option C).
 
     interactions: COALESCED, timestamp-sorted interaction events.
-    Returns list of {case_id, label, start_ts, end_ts}.
+
+    The anchor field (e.g. the serial-search box) names a case. A `case_id` is
+    STABLE PER LABEL -- re-searching the same serial RESUMES that case rather
+    than opening a new one. This is what stops a worker re-searching two
+    serials from inflating into a dozen "cases". The *active* case is whichever
+    anchor fired most recently, and every following interaction is attributed
+    to it; because work interleaves (search A -> ... -> search B -> ... ->
+    search A again), a case owns a list of disjoint active `segments` rather
+    than one contiguous range.
+
+    Supersedes the old open/close-by-gap model: `min_gap_ms` /
+    `close_on_pause_ms` no longer split a same-label case (a pause is just a
+    pause; the case resumes on the next anchor). Two new optional keys drive a
+    degenerate-case guard that drops slivers (an accidental anchor fire):
+    `min_case_interactions` (default 2) and `min_case_duration_ms` (default
+    1000). A case below EITHER threshold is discarded.
+
+    Returns a list (first-seen order) of
+    {case_id, label, start_ts, end_ts, segments, interaction_count}.
+    `segments` is a list of [start_ts, end_ts] half-open active intervals; the
+    final segment of the last-active case has end_ts None (open to stream end).
     """
     label_field = anchor_cfg.get("case_label_from", "value")
-    min_gap_ms = anchor_cfg.get("min_gap_ms", 10000)
-    close_on_pause_ms = anchor_cfg.get("close_on_pause_ms", 300000)
+    min_interactions = anchor_cfg.get("min_case_interactions", 2)
+    min_duration_ms = anchor_cfg.get("min_case_duration_ms", 1000)
 
-    cases: list[dict[str, Any]] = []
-    open_case: dict[str, Any] | None = None
+    cases: dict[str, dict[str, Any]] = {}   # case_id -> record
+    order: list[str] = []                   # case_ids in first-seen order
+    active_id: str | None = None
+
+    def case_for(label: str) -> dict[str, Any]:
+        cid = str(uuid.uuid5(_ANCHOR_NS, label))
+        c = cases.get(cid)
+        if c is None:
+            c = {
+                "case_id": cid, "label": label,
+                "start_ts": None, "end_ts": None,
+                "segments": [], "interaction_count": 0,
+            }
+            cases[cid] = c
+            order.append(cid)
+        return c
 
     for ev in interactions:
-        data = ev.get("data", {})
         ts_str = ev.get("timestamp", "")
-        ts = _parse_ts(ts_str)
+        data = ev.get("data", {})
 
         if _anchor_field_matches(data, anchor_cfg):
-            case_label = str(data.get(label_field) or "")
+            label = str(data.get(label_field) or "")
+            c = case_for(label)
+            if active_id != c["case_id"]:
+                # Switch of active case: close the prior segment at this ts
+                # (half-open) and open a fresh segment for the new active case.
+                if active_id is not None:
+                    cases[active_id]["segments"][-1][1] = ts_str
+                c["segments"].append([ts_str, None])
+                active_id = c["case_id"]
+            if c["start_ts"] is None:
+                c["start_ts"] = ts_str
 
-            if open_case is not None:
-                if case_label == open_case["label"]:
-                    gap = (ts - _parse_ts(open_case["last_ts"])
-                           ).total_seconds() * 1000
-                    if gap <= min_gap_ms:
-                        open_case["last_ts"] = ts_str
-                        continue
-                open_case["end_ts"] = open_case["last_ts"]
-                cases.append(open_case)
+        if active_id is not None:
+            c = cases[active_id]
+            c["end_ts"] = ts_str
+            c["interaction_count"] += 1
 
-            case_id = str(uuid.uuid5(_ANCHOR_NS, case_label + "|" + ts_str))
-            open_case = {
-                "case_id": case_id,
-                "label": case_label,
-                "start_ts": ts_str,
-                "end_ts": ts_str,
-                "last_ts": ts_str,
-            }
-        elif open_case is not None:
-            open_case["last_ts"] = ts_str
-
-    if open_case is not None:
-        open_case["end_ts"] = open_case["last_ts"]
-        cases.append(open_case)
-
-    # Split cases with internal gaps > close_on_pause_ms
-    if close_on_pause_ms and len(interactions) > 1:
-        split_cases: list[dict[str, Any]] = []
-        events_by_case: dict[str, list[dict]] = {}
-        for c in cases:
-            events_by_case[c["case_id"]] = []
-        for ev in interactions:
-            ts_str = ev.get("timestamp", "")
-            ts = _parse_ts(ts_str)
-            for c in cases:
-                if _parse_ts(c["start_ts"]) <= ts <= _parse_ts(c["end_ts"]):
-                    events_by_case[c["case_id"]].append(ev)
-                    break
-
-        for c in cases:
-            case_evs = events_by_case.get(c["case_id"], [])
-            if len(case_evs) < 2:
-                split_cases.append(c)
-                continue
-            segments: list[list[dict]] = [[case_evs[0]]]
-            for i in range(1, len(case_evs)):
-                gap = (_parse_ts(case_evs[i]["timestamp"])
-                       - _parse_ts(case_evs[i - 1]["timestamp"])
-                       ).total_seconds() * 1000
-                if gap > close_on_pause_ms:
-                    segments.append([case_evs[i]])
-                else:
-                    segments[-1].append(case_evs[i])
-            if len(segments) == 1:
-                split_cases.append(c)
-            else:
-                for seg in segments:
-                    seg_start = seg[0]["timestamp"]
-                    seg_end = seg[-1]["timestamp"]
-                    seg_id = str(uuid.uuid5(
-                        _ANCHOR_NS, c["label"] + "|" + seg_start))
-                    split_cases.append({
-                        "case_id": seg_id,
-                        "label": c["label"],
-                        "start_ts": seg_start,
-                        "end_ts": seg_end,
-                        "last_ts": seg_end,
-                    })
-        cases = split_cases
-
-    return cases
+    # Degenerate-case guard: drop slivers (an accidental anchor fire produces a
+    # one-interaction / sub-second "case" that is noise, not a ticket).
+    kept: list[dict[str, Any]] = []
+    for cid in order:
+        c = cases[cid]
+        dur_ms = 0.0
+        if c["start_ts"] and c["end_ts"]:
+            dur_ms = (_parse_ts(c["end_ts"]) - _parse_ts(c["start_ts"])
+                      ).total_seconds() * 1000
+        if c["interaction_count"] < min_interactions or dur_ms < min_duration_ms:
+            continue
+        kept.append(c)
+    return kept
 
 
 def stamp_anchor_cases(
     events: list[dict[str, Any]],
     anchor_cases: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    """Stamp case_ids on events using anchor-detected case boundaries.
+    """Stamp case_ids on events from ACTIVE-CASE segments.
 
-    Stamps both interaction AND activity events.  Returns
-    (stamped_events, cases_map) where cases_map has the same shape as
-    collect_cases() output.
+    Each event is attributed to the case whose active segment contains its
+    timestamp -- half-open [start, end); the final open segment (end None) runs
+    to the end of the stream. This realises "stamp to the most-recent preceding
+    anchor" and is correct when cases interleave, since one case can own
+    several disjoint segments. Stamps both interaction AND activity events.
+
+    Back-compat: a case dict carrying no `segments` is treated as one segment
+    spanning [start_ts, end_ts]. Returns (stamped_events, cases_map) where
+    cases_map has the same shape as collect_cases() output.
     """
-    parsed_cases = []
+    # Flatten every case's active segments into a single lookup, keeping case
+    # identity. Segments are non-overlapping by construction.
+    segments: list[tuple[datetime, datetime | None, str]] = []
     for c in anchor_cases:
-        parsed_cases.append((
-            _parse_ts(c["start_ts"]),
-            _parse_ts(c["end_ts"]),
-            c["case_id"],
-        ))
+        segs = c.get("segments") or [[c.get("start_ts"), c.get("end_ts")]]
+        for s, e in segs:
+            if not s:
+                continue
+            segments.append((
+                _parse_ts(s),
+                _parse_ts(e) if e else None,
+                c["case_id"],
+            ))
 
     cases_map: dict[str, dict[str, Any]] = {}
     for c in anchor_cases:
@@ -269,11 +271,17 @@ def stamp_anchor_cases(
             "case_id": c["case_id"],
             "label": c["label"],
             "parent_case_id": None,
-            "start_ts": c["start_ts"],
-            "end_ts": c["end_ts"],
+            "start_ts": c.get("start_ts"),
+            "end_ts": c.get("end_ts"),
             "end_reason": "anchor_boundary",
             "activity_event_ids": [],
         }
+
+    def case_at(ts: datetime) -> str | None:
+        for cs, ce, cid in segments:
+            if cs <= ts and (ce is None or ts < ce):
+                return cid
+        return None
 
     out: list[dict[str, Any]] = []
     for ev in events:
@@ -289,12 +297,7 @@ def stamp_anchor_cases(
             out.append(ev)
             continue
 
-        matched_case = None
-        for cs, ce, cid in parsed_cases:
-            if cs <= ts <= ce:
-                matched_case = cid
-                break
-
+        matched_case = case_at(ts)
         new_ev = dict(ev)
         new_ev["data"] = {
             **ev["data"],

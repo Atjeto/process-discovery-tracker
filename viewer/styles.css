@@ -1301,6 +1301,23 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .editor-detail-pane .si-time {
   flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px;
 }
+/* P0.4: colour key for the A1 interaction bars, under the list summary. Solid
+   swatches in the same hues as the rows' left borders, so the code is no
+   longer unexplained. Only kinds present in the step are rendered (step-editor.js).
+   The hues are theme-neutral -- they read the same on light and dark. */
+.editor-detail-pane .si-legend {
+  display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 4px 0 2px;
+  font-size: 10px; color: var(--fg-3);
+}
+.editor-detail-pane .si-legend .si-lg-item { display: inline-flex; align-items: center; gap: 5px; }
+.editor-detail-pane .si-legend .si-sw {
+  width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none;
+}
+.editor-detail-pane .si-legend .si-sw.si-value  { background: #C8862A; }
+.editor-detail-pane .si-legend .si-sw.si-action { background: #4A78B0; }
+.editor-detail-pane .si-legend .si-sw.si-select { background: #3E9E96; }
+.editor-detail-pane .si-legend .si-sw.si-toggle { background: #8A6CB0; }
+.editor-detail-pane .si-legend .si-sw.si-other  { background: var(--fg-4); }
 .editor-detail-pane .actions {
   display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
 }

@@ -53,17 +53,83 @@ function activeMapViewer() {
   return bpmnVisible ? PdtBpmn : PdtDfg;
 }
 
+/* P0.2: notation (Process diagram = BPMN, Flow diagram = DFG) and level
+   (Activity / Step / Phase) are fully ORTHOGONAL. Each cell of the matrix has
+   its own artifact:
+     BPMN × activity   -> process_map.bpmn (PM4Py inductive miner)
+     BPMN × step/phase -> process_map_step|phase.bpmn (observed flow mined from
+                          the annotations -- normalization/bpmn_observed.py)
+     DFG  × activity   -> the merged taxonomy DFG
+     DFG  × step/phase -> buildAnnotationDfg (the annotation DFG)
+   The level selector changes level and re-renders the CURRENT notation; the
+   notation tabs change notation and re-render the CURRENT level. Neither resets
+   the other. renderMap() draws the active cell -- the single entry point. */
+function showMapNotation(which) {
+  $$(".panel-tab").forEach((t) => t.classList.toggle("active", t.dataset.map === which));
+  $("#bpmn-host").style.display = which === "bpmn" ? "" : "none";
+  $("#dfg-host").style.display = which === "dfg" ? "" : "none";
+  setMapZoomVisible(true);
+}
+
+/* Keep the level dropdown's shown value in step with _mapLevel. */
+function syncMapLevelControl() {
+  const lvl = document.getElementById("map-level");
+  if (lvl) lvl.value = _mapLevel;
+}
+
+/* Session-folder BPMN filename for a level, and the first loaded session that
+   has it (the BPMN pane shows one representative session, as the activity map
+   always has). */
+function mapBpmnFile(level) {
+  return level === "step" ? "process_map_step.bpmn"
+       : level === "phase" ? "process_map_phase.bpmn"
+       : "process_map.bpmn";
+}
+function firstSessionWithMap(level) {
+  const fname = mapBpmnFile(level);
+  return (_lastFilteredForMap || []).find((s) =>
+    s && s.sessionFolder && fs.existsSync(path.join(s.sessionFolder, fname))) || null;
+}
+
+/* Render the Process diagram (BPMN) at the current level. */
+function renderBpmnAtLevel() {
+  const host = $("#bpmn-host");
+  if (!host || !PdtBpmn) return;
+  const sess = firstSessionWithMap(_mapLevel);
+  if (!sess) {
+    host.innerHTML = '<div class="map-empty-inline">' +
+      (_mapLevel === "activity"
+        ? 'No process map yet — click "Analyze all sessions".'
+        : 'No ' + _mapLevel + '-level Process diagram yet — Analyze a session that has ' +
+          (_mapLevel === "phase" ? "phases" : "steps") +
+          ' (it is mined from your annotations).') + '</div>';
+    return;
+  }
+  // Drill-down maps node labels to activity stats, so it applies at the
+  // activity level only (step/phase nodes are step/phase names).
+  const opts = {};
+  if (_mapLevel === "activity") opts.onNodeClick = (label) => drillToActivity(label);
+  PdtBpmn.render(host, path.join(sess.sessionFolder, mapBpmnFile(_mapLevel)), opts)
+    .then(() => setMapZoomPct(PdtBpmn.getZoom())).catch(() => {});
+  setMapZoomVisible(true);
+}
+
+/* Draw the active (notation × level) cell -- the single entry point. */
+function renderMap() {
+  showMapNotation(_mapNotation);
+  if (_mapNotation === "bpmn") renderBpmnAtLevel();
+  else applyMapLevel();
+}
+
 function wireMapTabs() {
   $$(".panel-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      $$(".panel-tab").forEach((t) => t.classList.toggle("active", t === tab));
-      const which = tab.dataset.map;
-      $("#bpmn-host").style.display = which === "bpmn" ? "" : "none";
-      $("#dfg-host").style.display = which === "dfg" ? "" : "none";
-      setMapZoomVisible(true);
+      // Notation changes IN PLACE -- the level is preserved.
+      _mapNotation = tab.dataset.map === "dfg" ? "dfg" : "bpmn";
+      renderMap();
       setTimeout(() => {
-        if (which === "bpmn" && PdtBpmn) { PdtBpmn.fit(); setMapZoomPct(PdtBpmn.getZoom()); }
-        if (which === "dfg" && PdtDfg) { PdtDfg.fit(); setMapZoomPct(PdtDfg.getZoom()); }
+        const v = activeMapViewer();
+        if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
       }, 50);
     });
   });
@@ -86,16 +152,18 @@ function wireMapTabs() {
     if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
   });
 
-  // C1b: process-map depth selector.
+  // C1b / P0.2: the level selector changes level IN PLACE on the current
+  // notation -- it never swaps notation. Every (notation × level) cell renders
+  // (the step/phase Process diagram is the observed-flow BPMN).
   const lvl = document.getElementById("map-level");
   if (lvl) {
     lvl.addEventListener("change", () => {
       _mapLevel = lvl.value || "activity";
-      // The level applies to the Flow diagram (DFG), so surface that pane.
-      $$(".panel-tab").forEach((t) => t.classList.toggle("active", t.dataset.map === "dfg"));
-      $("#bpmn-host").style.display = "none";
-      $("#dfg-host").style.display = "";
-      applyMapLevel();
+      renderMap();
+      setTimeout(() => {
+        const v = activeMapViewer();
+        if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
+      }, 50);
     });
   }
 }
@@ -114,6 +182,9 @@ function applyMapLevel() {
     dfg = _lastActivityDfg;
     opts.onNodeClick = (label, ev) => drillToActivity(label, ev);
     opts.variants = _lastVariantsForMap;
+    // H3: re-apply the conformance overlay across re-renders (set up in
+    // renderAggregate when a template-matched DFG is available).
+    if (_lastConfActive && _lastConformance) opts.conformance = _lastConformance.status;
   } else {
     dfg = buildAnnotationDfg(_lastFilteredForMap || [], _mapLevel);
     opts.onNodeClick = () => {};
@@ -158,14 +229,16 @@ let _groupByWorker = false;        // H1
 let _variantMode = "activity";     // H10: "activity" | "step"
 let _sxsAlign = "time";            // H2: "time" | "case"
 let _dfgConformance = false;       // H3
-/* C1b: process-map depth. "activity" is the taxonomy-classified DFG;
-   "step"/"phase" build a DFG from the analyst's annotations (no taxonomy
-   needed). The last render's inputs are cached so the depth selector can
-   re-render without a full aggregate re-run. */
+/* C1b/P0.2: process-map axes + cached render inputs. _mapNotation (bpmn|dfg) ×
+   _mapLevel (activity|step|phase) select the matrix cell; the cached inputs let
+   the selectors re-render any cell without a full aggregate re-run. */
+let _mapNotation = "bpmn";
 let _mapLevel = "activity";
 let _lastFilteredForMap = [];
 let _lastVariantsForMap = null;
 let _lastActivityDfg = null;
+let _lastConformance = null;
+let _lastConfActive = false;
 
 function wireAggregateControls() {
   $("#btn-open-multi-hero").addEventListener("click", openMultiFlow);
@@ -625,16 +698,7 @@ function renderAggregate() {
   }
   fillTable("#rework", reworkRows);
 
-  // BPMN + DFG render from the first available session
-  const sessionWithBpmn = filtered.find((s) =>
-    fs.existsSync(path.join(s.sessionFolder, "process_map.bpmn")));
-  if (sessionWithBpmn && PdtBpmn) {
-    PdtBpmn.render($("#bpmn-host"),
-      path.join(sessionWithBpmn.sessionFolder, "process_map.bpmn"),
-      { onNodeClick: (activityLabel) => drillToActivity(activityLabel) })
-      .then(() => setMapZoomPct(PdtBpmn.getZoom())).catch(() => {});
-  }
-  // Merge DFG edges across the filtered sessions
+  // Merge DFG edges across the filtered sessions (the activity Flow diagram).
   const edgeMap = new Map();
   const starts = new Map();
   const ends = new Map();
@@ -651,19 +715,21 @@ function renderAggregate() {
       ends.set(k, (ends.get(k) || 0) + v);
     }
   }
-  // C1b: cache the map inputs so the depth selector can re-render the Flow
-  // diagram at step/phase level without a full aggregate re-run.
+  // P0.2: cache the map inputs so the notation/level selectors can re-render
+  // any (notation × level) cell without a full aggregate re-run.
   _lastFilteredForMap = filtered;
   _lastVariantsForMap = variantsForDfg;
   _lastActivityDfg = null;
+  _lastConformance = null;
+  _lastConfActive = false;
 
-  // H3: hide the conformance toggle + legend by default; the DFG block
-  // re-enables them when a template-matched DFG is available.
+  // H3: hide the conformance toggle + legend by default; re-enabled below when
+  // a template-matched activity DFG is available.
   renderConformanceLegend(null);
   const _confWrap = document.getElementById("dfg-conformance-wrap");
   if (_confWrap) _confWrap.style.display = "none";
-  if (edgeMap.size && PdtDfg) {
-    const dfg = {
+  if (edgeMap.size) {
+    _lastActivityDfg = {
       edges: [...edgeMap.entries()].map(([k, freq]) => {
         const [source, target] = k.split("\x00");
         return { source, target, frequency: freq };
@@ -671,51 +737,27 @@ function renderAggregate() {
       start_activities: Object.fromEntries(starts),
       end_activities: Object.fromEntries(ends),
     };
-    _lastActivityDfg = dfg;
-    // H3: conformance overlay -- offered when any session matched a
-    // Process Template (auto_matched steps exist).
-    const conf = computeConformance(filtered, dfg);
-    if (_confWrap) _confWrap.style.display = conf ? "" : "none";
-    const confActive = !!(conf && _dfgConformance);
+    // H3: conformance overlay -- offered when any session matched a Process
+    // Template. Stored so applyMapLevel re-applies it across re-renders.
+    _lastConformance = computeConformance(filtered, _lastActivityDfg);
+    _lastConfActive = !!(_lastConformance && _dfgConformance);
+    if (_confWrap) _confWrap.style.display = _lastConformance ? "" : "none";
     const confCb = document.getElementById("cb-dfg-conformance");
-    if (confCb) confCb.checked = confActive;
-    PdtDfg.render($("#dfg-host"), dfg, {
-      onNodeClick: (activityLabel, ev) => drillToActivity(activityLabel, ev),
-      onZoomChange: (z) => setMapZoomPct(z),
-      // Phase E: variant overlay. Hovering a node highlights the
-      // session paths (variants) that pass through that activity.
-      variants: variantsForDfg,
-      // H3: green/amber conformance node colouring when the toggle is on.
-      conformance: confActive ? conf.status : null,
-    });
-    renderConformanceLegend(confActive ? conf : null);
+    if (confCb) confCb.checked = _lastConfActive;
+    renderConformanceLegend(_lastConfActive ? _lastConformance : null);
   }
-  // C1b: if the activity map is empty (no taxonomy) but the analyst has
-  // steps/phases, fall back to that level so the map is not blank -- and
-  // surface the Flow-diagram pane where the annotation DFG renders.
-  let _autoLevel = false;
+
+  // Default cell: if the activity Flow diagram is empty (e.g. no taxonomy) but
+  // the analyst has steps/phases, fall back to that level on the Flow diagram
+  // so the map is not blank. Only overrides an untouched (activity) selection.
   if (_mapLevel === "activity" && !(_lastActivityDfg && _lastActivityDfg.edges.length)) {
     const anyPhases = filtered.some((s) => ((s.annotations || {}).phases || []).length);
     const anySteps = filtered.some((s) => ((s.annotations || {}).steps || []).some((st) => st.state !== "hidden"));
-    if (anyPhases) { _mapLevel = "phase"; _autoLevel = true; }
-    else if (anySteps) { _mapLevel = "step"; _autoLevel = true; }
+    if (anyPhases) { _mapLevel = "phase"; _mapNotation = "dfg"; }
+    else if (anySteps) { _mapLevel = "step"; _mapNotation = "dfg"; }
   }
-  const _lvlSel = document.getElementById("map-level");
-  if (_lvlSel) _lvlSel.value = _mapLevel;
-  if (_mapLevel !== "activity") {
-    if (_autoLevel) {
-      $$(".panel-tab").forEach((t) => t.classList.toggle("active", t.dataset.map === "dfg"));
-      $("#bpmn-host").style.display = "none";
-      $("#dfg-host").style.display = "";
-    }
-    applyMapLevel();
-  }
-
-  // Zoom/fit controls serve whichever map tab is active -- both the BPMN
-  // and DFG viewers support zoom, so show them once a map has rendered.
-  if ((sessionWithBpmn && PdtBpmn) || (edgeMap.size && PdtDfg) || _mapLevel !== "activity") {
-    setMapZoomVisible(true);
-  }
+  syncMapLevelControl();
+  renderMap();
 
   // Export buttons
   const firstWithBpmn = filtered.find((s) =>
@@ -1317,6 +1359,8 @@ function initAggregateView(opts) {
   onDrillToSession = (opts && opts.onDrillToSession) || (async () => {});
   wireMapTabs();
   wireAggregateControls();
+  // P0.2: BPMN is the default tab, so the level dropdown starts at Activity.
+  syncMapLevelControl();
 }
 
 module.exports = { initAggregateView, renderAggregate, openMultiFlow, filteredAggregateSessions };

@@ -1,0 +1,109 @@
+"""Observed-flow step/phase BPMN.
+
+The activity-level `process_map.bpmn` is mined from the real event log. This
+module does the same one level up: it mines the ACTUAL annotated step/phase
+flow -- one trace per case, labelled by step or phase name -- into a BPMN with
+branches/loops. It is the Process-diagram counterpart of the step/phase Flow
+diagram (viewer/process-map-levels.js `buildAnnotationDfg`), and the two share
+the same trace logic so they agree.
+
+No Process Template is required (unlike bpmn_step/bpmn_phase, which render a
+template's declared order). The model comes purely from the annotations, mined
+with the same PM4Py inductive miner + pure-Python BPMNDI layout used for the
+activity map (`mining.discover_inductive` + `mining.export_bpmn`).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from pm4py.objects.log.obj import Event, EventLog, Trace
+
+
+def _parse_ts(ts: str) -> datetime:
+    """ISO 8601 with optional Z suffix (mirrors xes_export._parse_ts)."""
+    s = str(ts).rstrip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    return datetime.fromisoformat(s)
+
+
+def _start_key(step: dict[str, Any]) -> float:
+    """Sortable epoch for a step's start; missing/invalid sorts first."""
+    ts = (step.get("time_range") or {}).get("start")
+    if not ts:
+        return 0.0
+    try:
+        return _parse_ts(ts).timestamp()
+    except (ValueError, TypeError, OverflowError):
+        return 0.0
+
+
+def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
+    """One trace per case, events labelled by step name (level="step") or phase
+    name (level="phase"), time-ordered, consecutive duplicates collapsed.
+
+    Mirrors `buildAnnotationDfg` so the observed-flow BPMN and the Flow-diagram
+    DFG describe the same flow.
+    """
+    steps = [s for s in (anno.get("steps") or [])
+             if s and s.get("state") != "hidden"]
+    phase_name: dict[Any, str] = {}
+    for ph in (anno.get("phases") or []):
+        phase_name[ph.get("phase_id")] = ph.get("name") or "(phase)"
+
+    by_case: dict[str, list[dict[str, Any]]] = {}
+    for s in steps:
+        cid = s.get("case_id") or "__nocase__"
+        by_case.setdefault(cid, []).append(s)
+
+    log = EventLog()
+    for cid, case_steps in by_case.items():
+        case_steps = sorted(case_steps, key=_start_key)
+        trace = Trace()
+        trace.attributes["concept:name"] = cid
+        trace.attributes["case:id"] = cid
+        prev_label: str | None = None
+        for s in case_steps:
+            if level == "phase":
+                pid = s.get("phase_id")
+                label = (phase_name.get(pid, "(phase)") if pid else "(unphased)")
+            else:
+                label = s.get("name") or "(unnamed)"
+            if label == prev_label:
+                continue  # collapse consecutive duplicates (== the DFG's rule)
+            prev_label = label
+            e = Event()
+            e["concept:name"] = label
+            ts = (s.get("time_range") or {}).get("start")
+            if ts:
+                try:
+                    e["time:timestamp"] = _parse_ts(ts)
+                except (ValueError, TypeError):
+                    pass
+            trace.append(e)
+        if len(trace) > 0:
+            log.append(trace)
+    return log
+
+
+def write_observed_bpmn(
+    anno: dict[str, Any],
+    level: str,
+    out_path: str,
+    noise_threshold: float = 0.2,
+) -> bool:
+    """Mine the observed step/phase flow into BPMN and write it (with layout).
+
+    Returns True if a model was written, False when there is nothing to mine
+    (no non-hidden steps / no traces).
+    """
+    import mining  # local import: PM4Py is only needed when --mine is on
+
+    log = build_annotation_log(anno, level)
+    if len(log) == 0:
+        return False
+    bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
+    mining.export_bpmn(bpmn, out_path)
+    return True

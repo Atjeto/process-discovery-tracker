@@ -53,13 +53,22 @@ function decorateDrift(steps) {
 }
 
 /* Decision 1: tag each step with how many cases (tickets) it recurs in, so
-   the list can badge repeated work and the detail can offer "apply to all".
-   A step that appears in only one case gets no _repeat tag. */
+   the detail can offer "apply to all". `_repeat` is the case span and drives
+   the propagate action. P0.3: the LIST badge is shown only when the repetition
+   DISCRIMINATES -- the step recurs across some but not all cases. A step in
+   *every* case is the uniform backbone (on 5 identical demo cases every step
+   would read "5×" -- zero signal), so it gets no badge even though the
+   propagate action stays available. A step in only one case gets no tag. */
 function decorateRepeats(steps, interactionsById) {
-  const { groups } = PdtAlign.alignSteps(steps, interactionsById);
+  const { caseCount, groups } = PdtAlign.alignSteps(steps, interactionsById);
   const span = new Map();
   for (const g of groups) for (const m of g.members) span.set(m.stepId, g.caseSpan);
-  return (steps || []).map(s => span.has(s.step_id) ? { ...s, _repeat: span.get(s.step_id) } : s);
+  return (steps || []).map(s => {
+    if (!span.has(s.step_id)) return s;
+    const caseSpan = span.get(s.step_id);
+    return { ...s, _repeat: caseSpan, _repeatCaseCount: caseCount,
+      _repeatDiscriminating: caseSpan < caseCount };
+  });
 }
 
 function stepMatchesFilter(s, f, scopeCaseId) {
@@ -141,15 +150,22 @@ function renderStepsLevel() {
     if (fc.exception_path) parts.push(fc.exception_path + " exception");
     sumEl.textContent = parts.length ? ("Flagged: " + parts.join(" · ")) : "";
   }
+  // P0.4: a one-line key for the repeat badge, shown only when at least one
+  // discriminating badge is on screen (otherwise the legend is just noise).
+  const legendEl = $("#steps-legend");
+  if (legendEl) {
+    const anyRepeat = allSteps.some(s => s._repeatDiscriminating);
+    legendEl.innerHTML = anyRepeat
+      ? '<span class="step-repeat">N×</span> = recurs in some (not all) cases — curate one, then "Apply to repeats"'
+      : "";
+    legendEl.style.display = anyRepeat ? "" : "none";
+  }
   PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
     (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
     (sid) => {
       if (State.getMultiSelectedStepIds().has(sid)) State.getMultiSelectedStepIds().delete(sid);
       else State.getMultiSelectedStepIds().add(sid);
-      const grpBtn = $("#btn-group-into-phase");
-      if (grpBtn) grpBtn.disabled = State.getMultiSelectedStepIds().size < 2;
-      const delBtn = $("#btn-delete-selected-steps");
-      if (delBtn) delBtn.disabled = State.getMultiSelectedStepIds().size < 2;
+      syncMultiSelectButtons();
       // Re-render so the user sees the multi-selected state -- otherwise
       // Ctrl+click feels broken because nothing visibly changes.
       renderStepsLevel();
@@ -164,6 +180,8 @@ function renderStepsLevel() {
     onDelete: deleteStep,
     onSplit: splitStep,
     onMerge: mergeStepWithNext,
+    onMergeSelected: mergeSelectedSteps,
+    multiSelectedCount: State.getMultiSelectedStepIds().size,
     onJumpToFlow: (step) => jumpToStepInFlow(step),
     onWatchStep: (step) => watchStep(step),
     onToggleHide: toggleStepHidden,
@@ -437,29 +455,16 @@ function nextStepName(steps) {
   return "Step " + (max + 1);
 }
 
-async function mergeStepWithNext(stepId) {
-  if (!State.getSession()) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  const byStart = (a, b) =>
-    (a.time_range && a.time_range.start || "").localeCompare(b.time_range && b.time_range.start || "");
+const byStartTime = (a, b) =>
+  ((a.time_range && a.time_range.start) || "").localeCompare((b.time_range && b.time_range.start) || "");
 
-  // 2+ steps multi-selected -> merge exactly those. Otherwise fall back
-  // to merging the clicked step with the chronologically next one.
-  const multi = State.getMultiSelectedStepIds();
-  let toMerge;
-  if (multi && multi.size >= 2) {
-    toMerge = anno.steps.filter(s => multi.has(s.step_id)).sort(byStart);
-  } else {
-    const sorted = anno.steps.slice().sort(byStart);
-    const idx = sorted.findIndex(s => s.step_id === stepId);
-    if (idx < 0 || idx === sorted.length - 1) { toast("No next step to merge with", "error"); return; }
-    toMerge = [sorted[idx], sorted[idx + 1]];
-  }
-  if (toMerge.length < 2) { toast("Select at least two steps to merge", "error"); return; }
-
+/* Fold an ordered list of steps into one. The first step's identity +
+   metadata wins; the time range stretches to cover the last; evidence is
+   concatenated. Shared by both merge entry points so they cannot diverge. */
+function mergeStepObjects(toMerge) {
   const first = toMerge[0];
   const last = toMerge[toMerge.length - 1];
-  const merged = {
+  return {
     ...first,
     name: toMerge.map(s => s.name).join(" + "),
     time_range: { start: first.time_range.start, end: last.time_range.end },
@@ -470,13 +475,58 @@ async function mergeStepWithNext(stepId) {
     },
     state: "edited",
   };
+}
+
+async function commitMerge(anno, toMerge, undoLabel) {
+  const merged = mergeStepObjects(toMerge);
   const mergedIds = new Set(toMerge.map(s => s.step_id));
   anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
   anno.steps.push(merged);
   State.setSelectedStepId(merged.step_id);
-  if (multi) multi.clear();
-  await persistAnnotations(anno, 'merge steps');
+  await persistAnnotations(anno, undoLabel);
+  return merged;
+}
+
+/* P0.1: merge the clicked step with the chronologically NEXT step -- always,
+   regardless of any multi-selection. The selection-aware merge is a separate,
+   explicitly-labelled action (mergeSelectedSteps) so one control never does
+   two things on hidden state (the "merged the wrong pair" defect). */
+async function mergeStepWithNext(stepId) {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const sorted = anno.steps.slice().sort(byStartTime);
+  const idx = sorted.findIndex(s => s.step_id === stepId);
+  if (idx < 0) { toast("Step not found", "error"); return; }
+  if (idx === sorted.length - 1) { toast("No next step to merge with", "error"); return; }
+  const toMerge = [sorted[idx], sorted[idx + 1]];
+  await commitMerge(anno, toMerge, 'merge step with next');
+  toast('Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"', "success");
+}
+
+/* P0.1: merge exactly the Ctrl/checkbox multi-selected steps (chronologically
+   ordered), the inverse of split for an arbitrary set. Acts on the user's
+   actual selection -- never falls back to "next". */
+async function mergeSelectedSteps() {
+  if (!State.getSession()) return;
+  const multi = State.getMultiSelectedStepIds();
+  if (!multi || multi.size < 2) { toast("Tick 2+ steps to merge", "error"); return; }
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const toMerge = anno.steps.filter(s => multi.has(s.step_id)).sort(byStartTime);
+  if (toMerge.length < 2) { toast("Select at least two steps to merge", "error"); return; }
+  const merged = await commitMerge(anno, toMerge, 'merge selected steps');
+  multi.clear();
+  syncMultiSelectButtons();
   toast('Merged ' + toMerge.length + ' steps into "' + merged.name + '"', "success");
+}
+
+/* Keep the three multi-selection toolbar actions (group / delete / merge) in
+   lockstep with the selection size, from one place so they cannot drift. */
+function syncMultiSelectButtons() {
+  const n = State.getMultiSelectedStepIds().size;
+  for (const id of ["btn-group-into-phase", "btn-delete-selected-steps", "btn-merge-selected"]) {
+    const b = $("#" + id);
+    if (b) b.disabled = n < 2;
+  }
 }
 
 /* Move a step one slot up/down. The swap is relative to the step's
@@ -573,10 +623,7 @@ async function deleteSelectedSteps() {
   if (idSet.has(State.getSelectedStepId())) State.setSelectedStepId(null);
   State.getMultiSelectedStepIds().clear();
   await persistAnnotations(anno, "delete " + ids.length + " steps");
-  const grpBtn = $("#btn-group-into-phase");
-  if (grpBtn) grpBtn.disabled = true;
-  const delBtn = $("#btn-delete-selected-steps");
-  if (delBtn) delBtn.disabled = true;
+  syncMultiSelectButtons();
   toast(ids.length + " steps deleted", "success");
 }
 
@@ -754,6 +801,7 @@ function initStepsView(deps) {
   if ($("#btn-add-manual-step")) $("#btn-add-manual-step").addEventListener("click", addManualStep);
   if ($("#btn-sort-steps-time")) $("#btn-sort-steps-time").addEventListener("click", sortStepsByTime);
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
+  if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
   if ($("#btn-steps-to-template")) $("#btn-steps-to-template").addEventListener("click", exportStepsAsTemplate);
 }
@@ -847,6 +895,12 @@ function showStepContextMenu(stepId, x, y) {
     toast("Click the scissors on an interaction, then Split", "success");
   });
   addItem("Merge with next", () => mergeStepWithNext(stepId));
+  // P0.1: the selection-aware merge is a distinct item, shown only when a
+  // multi-selection exists -- so its label can name the count it acts on.
+  const _multiSel = State.getMultiSelectedStepIds();
+  if (_multiSel && _multiSel.size >= 2) {
+    addItem("Merge " + _multiSel.size + " selected steps", () => mergeSelectedSteps());
+  }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
   addItem(step.state === "hidden" ? "Unhide" : "Hide as noise", () => toggleStepHidden(stepId));
   addItem("Jump to in Flow", () => {
@@ -893,5 +947,6 @@ function showStepContextMenu(stepId, x, y) {
 
 module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
-  deleteSelectedSteps, splitStep, mergeStepWithNext, addStepAtTimestamp,
+  deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps,
+  addStepAtTimestamp,
 };

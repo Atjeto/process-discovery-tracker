@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-05-23
+
 ### Added
 
 - **Recorder stays reachable (D1).** The Live Session window and the
@@ -48,6 +50,22 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   engagement's opaque automation_ids. Steps align across tickets by semantic
   category, unnamed elements read as their real type ("a data-grid cell"), and
   per-session selectors (`txtsr`, window-title taxonomy) drop to examples.
+- **Step- and phase-level Process diagram (observed flow).** The Process diagram
+  (BPMN) now renders at Step and Phase levels, not just Activity — each mined
+  from your actual annotated step/phase flow (with its branches), the BPMN
+  counterpart of the Flow diagram. Notation (Process diagram / Flow diagram) and
+  level (Activity / Step / Phase) are now fully independent controls: changing
+  one never resets the other.
+
+### Changed
+
+- **Case segmentation now uses active-case stamping.** A case_id is stable per
+  anchor label (e.g. a serial number), so re-searching the same value resumes
+  its case instead of opening a new one, and every event is attributed to the
+  most-recently-anchored case — correct even when work on several cases
+  interleaves. A degenerate-case guard drops slivers (under ~2 interactions or
+  ~1s). This replaces the old gap/pause split, which inflated a couple of
+  repeated searches into a dozen "cases".
 
 ### Fixed
 
@@ -70,6 +88,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now ends a step when typing moves to a different field, so filling N fields
   yields N steps instead of one glued blob. Type-then-click coupling (e.g. type
   a serial then click Search) is preserved; gated by a default-on config flag.
+- **Step merge is the clean inverse of split.** "Merge with next" always merges
+  the step with the one after it; a separate "Merge selected" merges exactly the
+  ticked steps — so one control no longer silently merges the wrong pair. Merge
+  is now offered wherever split is (step detail, context menu, toolbar, and the
+  M shortcut).
+- **The map level selector no longer hijacks the notation.** Choosing Step or
+  Phase changes the level in place on the current diagram instead of yanking you
+  onto the Flow diagram, and switching diagram keeps the chosen level.
+- **The repeat badge is signal, not noise.** A step is badged ("N×") only when
+  it recurs in some — but not all — cases; a step that recurs in every case (the
+  uniform backbone) gets no badge. "Apply to repeats" stays available regardless.
+- **Legends for the new encodings.** A colour key for the interaction-kind bars
+  and a one-line key for the repeat badge, so neither reads as an unexplained code.
 
 ## [0.14.4] - 2026-05-19
 

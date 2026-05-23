@@ -17,8 +17,8 @@ const fs = require("node:fs");
 const file = process.argv[2];
 const field = process.argv[3] || "automation_id";
 const equals = process.argv[4] || "txtsr";
-const MIN_GAP_MS = 10000;          // same defaults as the ATM template
-const CLOSE_ON_PAUSE_MS = 300000;
+const MIN_CASE_INTERACTIONS = 2;   // degenerate-case guard (ATM template defaults)
+const MIN_CASE_DURATION_MS = 1000;
 if (!file) { console.error("usage: node scripts/count-cases.js <events.jsonl> [field] [equals]"); process.exit(1); }
 
 const raw = [];
@@ -31,45 +31,31 @@ const interactions = raw.filter((e) => e.type === "interaction");
 // How many interactions match the anchor field? (e.g. the serial field)
 const anchorHits = interactions.filter((e) => String((e.data || {})[field] ?? "") === equals);
 
-// Same-label-within-min-gap dedup, mirroring detect_cases_from_anchors.
+// Active-case stamping (NEXT-SESSION §2, option C), mirroring
+// detect_cases_from_anchors: a case is STABLE PER LABEL (re-searching the same
+// serial resumes its case rather than opening a new one), the most-recent
+// anchor is the active case, and a degenerate-case guard drops slivers (an
+// accidental anchor fire below either threshold).
 const labelField = "value";
-let cases = [];
-let open = null;
+const byLabel = new Map();   // label -> { label, startTs, endTs, count }
+const order = [];
+let activeLabel = null;
 for (const ev of interactions) {
   const d = ev.data || {};
   const ts = new Date(ev.timestamp).getTime();
   if (String(d[field] ?? "") === equals) {
     const label = String(d[labelField] ?? "");
-    if (open) {
-      if (label === open.label && (ts - open.lastTs) <= MIN_GAP_MS) { open.lastTs = ts; continue; }
-      open.endTs = open.lastTs; cases.push(open);
-    }
-    open = { label, startTs: ts, endTs: ts, lastTs: ts };
-  } else if (open) {
-    open.lastTs = ts;
+    if (!byLabel.has(label)) { byLabel.set(label, { label, startTs: ts, endTs: ts, count: 0 }); order.push(label); }
+    activeLabel = label;
+  }
+  if (activeLabel) {
+    const c = byLabel.get(activeLabel);
+    c.endTs = ts;
+    c.count += 1;
   }
 }
-if (open) { open.endTs = open.lastTs; cases.push(open); }
-
-// close_on_pause_ms split (a long internal pause splits a case).
-const split = [];
-for (const c of cases) {
-  const evs = interactions.filter((e) => {
-    const t = new Date(e.timestamp).getTime();
-    return t >= c.startTs && t <= c.endTs;
-  });
-  if (evs.length < 2) { split.push(c); continue; }
-  let seg = [evs[0]];
-  const segs = [seg];
-  for (let i = 1; i < evs.length; i++) {
-    const gap = new Date(evs[i].timestamp) - new Date(evs[i - 1].timestamp);
-    if (gap > CLOSE_ON_PAUSE_MS) { seg = [evs[i]]; segs.push(seg); }
-    else seg.push(evs[i]);
-  }
-  if (segs.length === 1) split.push(c);
-  else for (const sg of segs) split.push({ label: c.label, startTs: new Date(sg[0].timestamp).getTime(), endTs: new Date(sg[sg.length - 1].timestamp).getTime() });
-}
-cases = split;
+let cases = order.map((l) => byLabel.get(l)).filter((c) =>
+  c.count >= MIN_CASE_INTERACTIONS && (c.endTs - c.startTs) >= MIN_CASE_DURATION_MS);
 
 const iso = (ms) => new Date(ms).toISOString();
 console.log(`anchor: ${field} == ${equals}`);

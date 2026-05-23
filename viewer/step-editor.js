@@ -71,9 +71,11 @@
         (_f.automation_candidate ? '<span class="step-flag flag-auto" title="Automation candidate">A</span>' : "") +
         (_f.conditional ? '<span class="step-flag flag-cond" title="Conditional — only sometimes happens">?</span>' : "") +
         (_f.exception_path ? '<span class="step-flag flag-exc" title="Exception path — error or workaround">!</span>' : "");
-      // Decision 1: repeat badge -- this step recurs across N tickets.
-      const repeatBadge = (s._repeat > 1)
-        ? `<span class="step-repeat" title="Recurs in ${s._repeat} tickets — edit one, then Apply to repeats">&#8635;${s._repeat}</span>`
+      // P0.3: repeat badge -- shown only when the repetition discriminates
+      // (the step recurs in some, not all, cases). A legible "N×" label; a
+      // step in every case is the uniform backbone and carries no badge.
+      const repeatBadge = s._repeatDiscriminating
+        ? `<span class="step-repeat" title="Appears in ${s._repeat} of ${s._repeatCaseCount} cases (not all) — edit one, then Apply to repeats">${s._repeat}×</span>`
         : "";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
@@ -191,6 +193,14 @@
     const propagateBtn = repeatCount > 1
       ? `<button id="btn-step-propagate" title="Apply this step's name, description and flags to the ${repeatCount - 1} matching step(s) in other tickets">Apply to ${repeatCount - 1} repeat(s)</button>`
       : "";
+    // P0.1: merge is the inverse of split, shown right beside it. "Merge with
+    // next" always merges this step + the following one; the count-labelled
+    // "Merge N selected" appears only when 2+ steps are ticked, so one button
+    // never silently does two things.
+    const mergeSelCount = (callbacks && callbacks.multiSelectedCount) || 0;
+    const mergeSelectedBtn = mergeSelCount >= 2
+      ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
+      : "";
     host.innerHTML = `
       <div class="step-stat-tiles">
         <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
@@ -218,7 +228,8 @@
         <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
         ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
         <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
-        <button id="btn-step-merge">Merge with next</button>
+        <button id="btn-step-merge" title="Merge this step with the one that follows it (the inverse of Split)">Merge with next</button>
+        ${mergeSelectedBtn}
         <button id="btn-step-hide" title="${step.state === "hidden" ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${step.state === "hidden" ? "Unhide" : "Hide as noise"}</button>
         <button id="btn-step-delete" class="danger">Delete</button>
       </div>`;
@@ -258,6 +269,9 @@
     });
     document.getElementById("btn-step-merge").addEventListener("click", () =>
       callbacks.onMerge && callbacks.onMerge(step.step_id));
+    const _mergeSelBtn = document.getElementById("btn-step-merge-selected");
+    if (_mergeSelBtn) _mergeSelBtn.addEventListener("click", () =>
+      callbacks.onMergeSelected && callbacks.onMergeSelected());
     const jumpBtn = document.getElementById("btn-step-jump");
     if (jumpBtn) {
       jumpBtn.addEventListener("click", () => callbacks.onJumpToFlow && callbacks.onJumpToFlow(step));
@@ -404,6 +418,22 @@
     return "si-other";
   }
 
+  /* P0.4: a colour key for the A1 interaction bars, so the hues are not an
+     unexplained code. Only the kinds actually present in this step are shown;
+     if every interaction is the muted "other", there is nothing to explain. */
+  const SI_LEGEND_LABELS = {
+    "si-value": "Value entry", "si-action": "Action",
+    "si-select": "Selection", "si-toggle": "Toggle", "si-other": "Other",
+  };
+  function interactionLegendHtml(events) {
+    const present = new Set((events || []).map(siKindClass));
+    if (!present.size || (present.size === 1 && present.has("si-other"))) return "";
+    const order = ["si-value", "si-action", "si-select", "si-toggle", "si-other"];
+    const items = order.filter((k) => present.has(k)).map((k) =>
+      `<span class="si-lg-item"><span class="si-sw ${k}"></span>${SI_LEGEND_LABELS[k]}</span>`).join("");
+    return `<div class="si-legend">${items}</div>`;
+  }
+
   function renderInteractionList(events, total, opts) {
     if (!total) return `<p class="meta">No interactions recorded for this step.</p>`;
     opts = opts || {};
@@ -429,6 +459,7 @@
     }
     return `<details class="step-interactions"${total <= 15 ? " open" : ""}>` +
       `<summary>Interactions (${total})</summary>` +
+      interactionLegendHtml(events) +
       `<ol class="step-interaction-list">${rows.join("")}</ol>` +
       `</details>`;
   }
