@@ -35,7 +35,11 @@ a bundled Python 3.12 embeddable distribution.
    that case rather than opening a new one), the most-recently-fired anchor is the
    active case, and stamping follows each case's disjoint active segments. A
    degenerate-case guard drops slivers and an empty-label guard ignores a focus on
-   an empty anchor box (`detect_cases_from_anchors` / `stamp_anchor_cases`).
+   an empty anchor box (`detect_cases_from_anchors` / `stamp_anchor_cases`). The
+   `case_anchor` field is named either by a **recognised** category (`recognized`,
+   [ADR-0011](../adr/0011-platform-recognition-layer.md) — portable across
+   engagements) or by an explicit `automation_id` / value rule (the per-engagement
+   fallback; ADR-0012 #7).
 4. **Collapse** — merge adjacent identical activity events (same app/title/label/case).
 5. **Interaction enrichment** — apply App Vocabularies to add `meaningful_name`,
    `screen_id`, and `vocab_flags`.

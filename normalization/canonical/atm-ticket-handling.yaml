@@ -20,6 +20,17 @@ canonical_process:
   version: 1
 
   case_anchor:
+    # Two ways to name the case-anchor field (ADR-0012 #7):
+    #  (a) a RECOGNISED signature (ADR-0011) -- the portable form, keyed on a
+    #      documented platform category instead of a per-app automation_id:
+    #          recognized: "search"                  # e.g. an Office 365 search box
+    #      or compose recognition with a label pattern for a generic text field:
+    #          recognized: ["text_entry", "search"]
+    #          field: "name"
+    #          matches: "(?i)serial|ticket|case"
+    #  (b) an explicit field rule -- the per-engagement fallback used here,
+    #      because the ATM serial box `txtsr` is a plain Edit with no
+    #      distinctive recognised signature.
     field: "automation_id"
     equals: "txtsr"
     case_label_from: "value"

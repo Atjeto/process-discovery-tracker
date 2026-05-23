@@ -29,16 +29,17 @@ ANCHOR_CFG = {
 
 
 def _inter(ts, *, automation_id="", value="", name="", window="App",
-           proc="chrome.exe"):
+           proc="chrome.exe", cls="", control_type="Edit"):
     return {
         "event_id": str(uuid.uuid4()),
         "type": "interaction",
         "timestamp": _iso(ts),
         "data": {
             "kind": "value_changed",
-            "control_type": "Edit",
+            "control_type": control_type,
             "automation_id": automation_id,
             "name": name,
+            "class_name": cls,
             "window_title": window,
             "process_name": proc,
             "value": value,
@@ -285,3 +286,66 @@ def test_leading_empty_anchor_creates_no_case():
     assert stamped[2]["data"]["case_ids"] == [cid]
     assert stamped[3]["data"]["case_ids"] == [cid]
     assert stamped[4]["data"]["case_ids"] == [cid]
+
+
+# --- Recognition-driven anchors (ADR-0012 #7): a portable case anchor keyed on
+# a documented platform signature (ADR-0011) instead of an opaque automation_id.
+
+
+RECOGNIZED_SEARCH_CFG = {
+    "recognized": "search",
+    "case_label_from": "value",
+    "min_case_interactions": 2,
+    "min_case_duration_ms": 1000,
+}
+
+
+def test_recognized_search_anchor_detects_cases():
+    """Anchor on the RECOGNISED 'search' category instead of an automation_id:
+    an Office 365 search box (class `o365sx-`) fires the anchor; the plain text
+    fields around it do not. Generalises across engagements -- no per-app id."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    interactions = [
+        _inter(base, cls="o365sx-SearchBox", value="SN001"),         # search -> anchor
+        _inter(base + timedelta(seconds=3), value="work"),           # plain Edit -> no
+        _inter(base + timedelta(seconds=5), value="work2"),
+        _inter(base + timedelta(seconds=30), cls="o365sx-SearchBox", value="SN002"),
+        _inter(base + timedelta(seconds=33), value="more"),
+        _inter(base + timedelta(seconds=35), value="more2"),
+    ]
+    cases = detect_cases_from_anchors(interactions, RECOGNIZED_SEARCH_CFG)
+    assert [c["label"] for c in cases] == ["SN001", "SN002"]
+
+
+def test_recognized_anchor_ignores_unrecognized_fields():
+    """Plain Edits (text_entry) never fire a 'search'-category anchor, so
+    ordinary typing forms no spurious cases."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    interactions = [
+        _inter(base, value="typed"),
+        _inter(base + timedelta(seconds=2), value="more"),
+    ]
+    cases = detect_cases_from_anchors(interactions, RECOGNIZED_SEARCH_CFG)
+    assert cases == []
+
+
+def test_recognized_plus_name_pattern_anchor():
+    """Compose recognition with a label pattern -- a recognised text/search
+    field WHOSE NAME looks like a case key. Generalises a bespoke field without
+    naming its automation_id; only the matching field fires the anchor."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    cfg = {
+        "recognized": ["text_entry", "search"],
+        "field": "name",
+        "matches": "(?i)serial|ticket",
+        "case_label_from": "value",
+        "min_case_interactions": 2,
+        "min_case_duration_ms": 1000,
+    }
+    interactions = [
+        _inter(base, name="Serial Number", value="SN001"),            # text_entry + name match
+        _inter(base + timedelta(seconds=3), name="Notes", value="x"),  # name no match
+        _inter(base + timedelta(seconds=5), name="Notes", value="y"),
+    ]
+    cases = detect_cases_from_anchors(interactions, cfg)
+    assert [c["label"] for c in cases] == ["SN001"]

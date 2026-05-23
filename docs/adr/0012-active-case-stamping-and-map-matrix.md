@@ -1,7 +1,7 @@
 # ADR-0012: Active-Case Stamping & the Notation × Level Process-Map Matrix
 
 **Status:** Accepted — shipped in v0.15.0 (2026-05-23); empty-value anchor guard
-+ observed-flow export added 2026-05-23 (unreleased)
++ observed-flow export + recognition-driven anchors added 2026-05-23 (unreleased)
 **Date:** 2026-05-23
 **Deciders:** Rasha (analyst/owner)
 **Related:** [ADR-0009](./0009-normalization-redesign-v013.md) (anchor detection),
@@ -85,9 +85,10 @@ which is empty without `--canonical`).
 
 ### Harder / to revisit
 - Anchor detection still depends on the canonical template naming the right
-  `case_anchor` field; recognising the *anchor itself* from documented platform
-  signatures (rather than an opaque `automation_id` like `txtsr`) is the
-  ADR-0011 direction, not yet wired into case detection.
+  `case_anchor` field, but that field can now be a **recognised signature**
+  (`recognized: "search"`, ADR-0011) rather than an opaque `automation_id` —
+  portable across engagements; the explicit id rule remains the fallback for a
+  bespoke field with no distinctive signature (action item 7).
 - "One serial = one ticket" is a **capture-completeness** assumption: if a
   session handled two tickets but only one serial reached the anchor field,
   stamping correctly yields one case — the gap is in capture, not here.
@@ -101,4 +102,4 @@ which is empty without `--canonical`).
 4. [x] Notation × level matrix in `renderMap()`; observed-flow Step/Phase BPMN (`bpmn_observed.py`).
 5. [x] Step/Phase BPMN **export** repointed at the observed-flow file. *(2026-05-23)*
 6. [x] Phase → Step → Activity drill-down navigation, with subtree scoping (a click filters to the clicked node's children on the Flow diagram) — [ADR-0013](./0013-value-free-grouping-and-map-readability.md).
-7. [ ] Recognition-driven anchor detection (ADR-0011), replacing the opaque-`automation_id` anchor.
+7. [x] Recognition-driven anchor detection — `case_anchor.recognized` matches the recognised category ([ADR-0011](./0011-platform-recognition-layer.md)), composable with a value/label pattern; the explicit `automation_id` rule remains the per-engagement fallback (`case_assignment._anchor_field_matches`; tests in `test_anchor_cases.py`). *(2026-05-23)*

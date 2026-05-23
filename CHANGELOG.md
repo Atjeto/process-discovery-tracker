@@ -8,6 +8,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Recognition-driven case anchors.** A case anchor can now be named by a
+  *recognised* platform signature (`case_anchor.recognized: "search"`, ADR-0011)
+  instead of an engagement-specific `automation_id` — composable with a value/label
+  pattern, with the explicit id rule kept as a fallback. Case detection generalises
+  across apps without per-engagement selectors (`normalization/case_assignment.py`;
+  ADR-0012 #7).
 - **Step-level statistics (resolves the activity/step stats split-brain).**
   `stats.json` now carries `step_stats` — per-step-name frequency + duration
   distribution (mean / median / p90 / p99), the step-level analogue of

@@ -123,8 +123,10 @@ def _parse_ts(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
-def _anchor_field_matches(data: dict, anchor_cfg: dict) -> bool:
-    """Check if an interaction matches the anchor field rule."""
+def _explicit_field_matches(data: dict, anchor_cfg: dict) -> bool:
+    """Match the explicit field rule (`field` + equals/contains/starts_with/
+    matches). The per-engagement path -- a specific app's automation_id / value
+    pattern (e.g. the ATM `txtsr`)."""
     from canonical_match import _op_match
     field = anchor_cfg.get("field", "")
     actual = data.get(field)
@@ -146,6 +148,46 @@ def _anchor_field_matches(data: dict, anchor_cfg: dict) -> bool:
         import re
         return re.search(matches, str(actual)) is not None
     return False
+
+
+def _recognized_matches(data: dict, recognized: Any) -> bool:
+    """Match the interaction's RECOGNISED category (ADR-0011) against a
+    configured category or list of categories. This is the *portable* anchor:
+    it keys on a documented platform/framework signature (e.g. an Office 365
+    `search` box, an AG-Grid `grid_cell`) rather than one engagement's opaque
+    automation_id, so the same template recognises the case-key field across
+    apps. Imported lazily so `case_assignment` stays usable without the shared
+    recognition table when no recognised anchor is configured."""
+    from recognition import recognize
+    cats = [recognized] if isinstance(recognized, str) else list(recognized)
+    return recognize(data).get("category") in cats
+
+
+def _anchor_field_matches(data: dict, anchor_cfg: dict) -> bool:
+    """True when an interaction is a case anchor (ADR-0012 #7).
+
+    Two composable matchers, at least one required:
+
+    - **`recognized`** -- a recognition category (str) or list (ADR-0011). The
+      portable anchor: it generalises across engagements because it keys on a
+      documented platform signature, not a per-session automation_id.
+    - **explicit field rule** (`field` + equals/contains/starts_with/matches) --
+      the per-engagement fallback for a bespoke field with no distinctive
+      recognised signature (e.g. a plain Edit such as the ATM `txtsr`).
+
+    When BOTH are present they are AND-ed -- "a recognised text/search field
+    *whose name matches* /serial/i" -- which generalises a bespoke field without
+    naming its automation_id.
+    """
+    recognized = anchor_cfg.get("recognized")
+    has_field = bool(anchor_cfg.get("field"))
+    if recognized is None and not has_field:
+        return False
+    if recognized is not None and not _recognized_matches(data, recognized):
+        return False
+    if has_field and not _explicit_field_matches(data, anchor_cfg):
+        return False
+    return True
 
 
 def detect_cases_from_anchors(
