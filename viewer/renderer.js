@@ -944,7 +944,7 @@ $("#help-modal").addEventListener("click", (e) => {
 /* ============ Boot ================================================ */
 
 renderRecent();
-$("#topbar-meta").textContent = "v0.2 · " + new Date().toLocaleDateString();
+$("#topbar-meta").textContent = "v" + require("./package.json").version + " · " + new Date().toLocaleDateString();
 
 /* If launched with --session=<path>, the main process pushes the path
    via this channel. Open it without any further user click. */

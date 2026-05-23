@@ -12,9 +12,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
 
-/* Static read-only content -- served verbatim from ui/help-window.html. */
+/* Read-only content from ui/help-window.html, with the app version injected. */
 function buildHelpHtml() {
-  return fs.readFileSync(path.join(__dirname, "ui", "help-window.html"), "utf-8");
+  const html = fs.readFileSync(path.join(__dirname, "ui", "help-window.html"), "utf-8");
+  return html.replace("{{VERSION}}", require("./package.json").version);
 }
 
 function showHelpWindow() {
