@@ -8,15 +8,22 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from recognition import is_browser_chrome
 
 
 def parse_ts(s: str) -> datetime:
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    return datetime.fromisoformat(s)
+    try:
+        if isinstance(s, str) and s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        # A corrupt or hand-edited log can carry a non-ISO / empty / non-string
+        # timestamp; fall back to the epoch so segmentation degrades instead of
+        # crashing. The boundary (load_events) already coerces timestamp to a
+        # string; this guards the remaining "string but not ISO" case.
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def _is_ignored(data: dict, ignored: list[str] | None) -> bool:
@@ -385,7 +392,9 @@ def _describe_interaction(data: dict[str, Any]) -> str | None:
         return None  # navigation noise -- never narrated in the summary
 
     if kind:
-        return f"{kind.replace('_', ' ')} on {target}" if target else None
+        # kind is normally a string enum, but a corrupt log may carry a
+        # non-string; coerce so the narration never crashes on .replace.
+        return f"{str(kind).replace('_', ' ')} on {target}" if target else None
     return None
 
 

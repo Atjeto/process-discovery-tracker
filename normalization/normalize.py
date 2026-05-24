@@ -59,6 +59,24 @@ import app_vocab
 import stats_compute as stats
 
 
+def _coerce_event_shape(obj: dict[str, Any], line_no: int) -> dict[str, Any]:
+    """Guarantee the structural invariants the rest of the pipeline relies on, so
+    a corrupt or hand-edited events.jsonl line degrades instead of crashing a
+    downstream consumer (coalesce / case_assignment / step_suggest all assume
+    these): `data` is a dict, `event_id` is a non-empty string, and `timestamp`
+    is a string. Field VALUES inside `data` are validated where they're
+    interpreted -- e.g. parse_ts tolerates a non-ISO timestamp string."""
+    if not isinstance(obj.get("data"), dict):
+        obj["data"] = {}
+    eid = obj.get("event_id")
+    if not isinstance(eid, str) or not eid:
+        obj["event_id"] = f"_gen{line_no}"
+    ts = obj.get("timestamp")
+    if not isinstance(ts, str):
+        obj["timestamp"] = "" if ts is None else str(ts)
+    return obj
+
+
 def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
     events = []
     dropped = 0
@@ -68,7 +86,7 @@ def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
             if not line:
                 continue
             try:
-                events.append(json.loads(line))
+                obj = json.loads(line)
             except json.JSONDecodeError as exc:
                 dropped += 1
                 snippet = line[:120] + ("..." if len(line) > 120 else "")
@@ -76,7 +94,30 @@ def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
                     "load_events: dropping malformed line %d in %s: %s | %s",
                     line_no, events_file, exc, snippet,
                 )
-    events.sort(key=lambda e: (e.get("timestamp", ""), e.get("_seq", 0)))
+                continue
+            # A line can be valid JSON yet not an event object (a bare number,
+            # string, array, null/true) -- e.g. a truncated or corrupt log.
+            # Drop it like a malformed line instead of crashing downstream on
+            # `.get`.
+            if not isinstance(obj, dict):
+                dropped += 1
+                logger.warning(
+                    "load_events: dropping non-object line %d in %s: %s",
+                    line_no, events_file, type(obj).__name__,
+                )
+                continue
+            events.append(_coerce_event_shape(obj, line_no))
+    # Defensive ordering: timestamps are normally ISO strings (which sort
+    # chronologically as strings), but a corrupt log may carry a numeric or
+    # null timestamp -- coerce so heterogeneous types never crash the sort.
+    def _order(e: dict[str, Any]) -> tuple[str, float]:
+        ts = e.get("timestamp")
+        ts = ts if isinstance(ts, str) else ("" if ts is None else str(ts))
+        seq = e.get("_seq", 0)
+        if isinstance(seq, bool) or not isinstance(seq, (int, float)):
+            seq = 0
+        return (ts, seq)
+    events.sort(key=_order)
     return events, dropped
 
 
