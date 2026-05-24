@@ -23,7 +23,7 @@ const Ipc = require("../ipc.js");
 const PdtPalette = require("../command-palette.js");
 const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
-const { resetUndoStack, saveAnnotationsWithUndo, persistAnnotations, ensureAnnoShape } = require("../session.js");
+const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations, ensureAnnoShape } = require("../session.js");
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
@@ -475,6 +475,9 @@ async function loadSessionIntoView(folder) {
   // anyway, but cleaning here avoids unbounded memory growth across
   // many session switches.
   if (prevFolder !== folder) resetUndoStack();
+  // Capture the loaded annotations as the undo baseline on EVERY load (including
+  // a same-folder re-analyze), so the first edit records the true pre-edit state.
+  captureBaseline();
   $("#session-empty").style.display = "none";
   $("#session-loaded").style.display = "";
   $("#btn-normalize").disabled = false;

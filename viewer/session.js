@@ -42,16 +42,31 @@ function snapshotAnnotations(a) {
   try { return JSON.parse(JSON.stringify(a)); }
   catch (_) { return emptyAnnotationsShape(); }
 }
+
+/* The last COMMITTED annotations state (as loaded, or after the last
+   persist / undo / redo). Edit handlers mutate session.annotations IN PLACE
+   (ensureAnnoShape hands back the live object), so by the time
+   saveAnnotationsWithUndo runs, session.annotations is ALREADY the new state --
+   snapshotting it there would record the POST-edit state and make Ctrl+Z a
+   no-op. _baseline keeps the pre-edit state; captureBaseline() refreshes it on
+   every session load. */
+let _baseline = null;
+function captureBaseline() {
+  const s = State.getSession();
+  _baseline = snapshotAnnotations(s && s.annotations);
+}
 async function saveAnnotationsWithUndo(annotations, label) {
   const session = State.getSession();
   if (!session || !session.sessionFolder) return null;
   const sf = session.sessionFolder;
-  // Snapshot the PREVIOUS state before we replace it.
-  State.recordEdit({
-    label: label || "edit",
-    annotations: snapshotAnnotations(session.annotations),
-    sessionFolder: sf,
-  });
+  // Record the PRE-edit state. The handler already mutated session.annotations
+  // in place, so the pre-edit state is _baseline (the last-committed snapshot),
+  // NOT snapshotAnnotations(session.annotations) -- that is the post-edit state,
+  // which would make undo a no-op. Fall back defensively if the load hook never
+  // ran (no worse than the old behaviour, and never writes null).
+  const prev = _baseline !== null ? _baseline : snapshotAnnotations(session.annotations);
+  State.recordEdit({ label: label || "edit", annotations: prev, sessionFolder: sf });
+  _baseline = snapshotAnnotations(annotations);   // this edit is now the committed state
   return await Ipc.saveAnnotations({
     sessionFolder: sf,
     annotations,
@@ -70,9 +85,10 @@ async function performUndo() {
   // Push the CURRENT state onto the redo stack before reverting.
   State.pushRedo({
     label: popped.label,
-    annotations: snapshotAnnotations(session.annotations),
+    annotations: _baseline !== null ? _baseline : snapshotAnnotations(session.annotations),
     sessionFolder: popped.sessionFolder,
   });
+  _baseline = snapshotAnnotations(popped.annotations);   // the reverted state is now committed
   await Ipc.saveAnnotations({
     sessionFolder: popped.sessionFolder,
     annotations: popped.annotations,
@@ -88,9 +104,10 @@ async function performRedo() {
   // Push current state to undo so the user can flip back.
   State.pushUndo({
     label: popped.label,
-    annotations: snapshotAnnotations(session.annotations),
+    annotations: _baseline !== null ? _baseline : snapshotAnnotations(session.annotations),
     sessionFolder: popped.sessionFolder,
   });
+  _baseline = snapshotAnnotations(popped.annotations);   // the redone state is now committed
   await Ipc.saveAnnotations({
     sessionFolder: popped.sessionFolder,
     annotations: popped.annotations,
@@ -153,7 +170,7 @@ function initSession(deps) {
 }
 
 module.exports = {
-  initSession, resetUndoStack, canUndo, canRedo,
+  initSession, resetUndoStack, captureBaseline, canUndo, canRedo,
   saveAnnotationsWithUndo, performUndo, performRedo, applyRevertedAnnotations,
   ensureAnnoShape, persistAnnotations,
 };
