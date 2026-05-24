@@ -208,9 +208,16 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .tabs { display: flex; gap: 4px; background: var(--bg-3); padding: 3px;
   border-radius: var(--radius-sm); border: 1px solid var(--rule); }
 .tab { background: transparent; border: 1px solid transparent; padding: 6px 16px;
-  border-radius: var(--radius-sm); color: var(--fg-3); transition: all var(--transition); }
+  border-radius: var(--radius-sm); color: var(--fg-3); transition: all var(--transition);
+  white-space: nowrap; }
 .tab:hover { color: var(--fg-2); }
 .tab.active { background: var(--bg-2); color: var(--fg); box-shadow: var(--shadow); }
+/* Narrow / laptop widths: drop the decorative tagline and tighten the top tabs
+   so the header stays a single row instead of wrapping (clutter pass). */
+@media (max-width: 1200px) {
+  .brand .tagline { display: none; }
+  .tab { padding: 6px 10px; }
+}
 .topbar-meta { justify-self: end; color: var(--fg-3); font-size: 11px;
   font-family: var(--font-mono); display: flex; align-items: center; gap: 10px; }
 .help-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%;
@@ -286,6 +293,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 /* Facts row: process-map status (left) + session chips (right) -- merged from
    what used to be three separate stacked metadata rows above the view bar. */
 .session-facts { display: flex; align-items: center; gap: 10px; padding: 0 0 6px; flex-wrap: wrap; min-height: 20px; }
+/* Demoted keyboard-shortcut hint: a quiet hover affordance, not a permanent
+   wall of single-key shortcuts that analysts won't use (clutter pass). */
+.kbd-hint { cursor: help; border-bottom: 1px dotted var(--fg-4); color: var(--fg-3); }
 .pill { padding: 3px 10px; background: var(--bg-3); border: 1px solid var(--rule);
   border-radius: 12px; font-size: 11px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; }
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); }

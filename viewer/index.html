@@ -307,9 +307,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <div class="editor-toolbar">
             <button id="btn-add-manual-step" class="primary">+ Add step</button>
             <button id="btn-sort-steps-time" title="Reorder the step list into chronological order by start time.">Sort by time</button>
-            <button id="btn-group-into-phase" disabled title="Tick 2+ steps in the list below, then click to group them into a new phase">Group selected into phase</button>
-            <button id="btn-delete-selected-steps" disabled title="Tick 2+ steps in the list below, then delete them all at once">Delete selected</button>
-            <button id="btn-merge-selected" disabled title="Tick 2+ steps in the list below, then merge them into a single step (the inverse of Split)">Merge selected</button>
+            <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
+                 syncMultiSelectButtons() toggles `hidden`. -->
+            <button id="btn-group-into-phase" hidden title="Group the ticked steps into a new phase">Group selected into phase</button>
+            <button id="btn-delete-selected-steps" hidden title="Delete all the ticked steps at once">Delete selected</button>
+            <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
             <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
             <button id="btn-steps-to-template" title="Turn this session's steps into a new Process Template YAML, with a match rule derived from each step's interactions.">Export as Process Template...</button>
             <span class="meta" id="steps-summary"></span>
@@ -322,7 +324,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <button type="button" data-mode="aligned">Aligned</button>
               </span>
             </span>
-            <span class="hint">J / K navigate · S split · M merge · N new · Ctrl+click multi-select · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
+            <span class="hint"><span class="kbd-hint" title="J / K navigate · S split · M merge · N new · Ctrl+click multi-select">⌨ shortcuts</span> · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="mini-timeline-pane">
             <div class="mini-timeline-header">

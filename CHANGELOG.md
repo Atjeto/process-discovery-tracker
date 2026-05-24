@@ -19,6 +19,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   promoted above the Session Summary. The timeline now starts ~50px higher and the
   bar no longer wraps at 1100px (`viewer/index.html`, `viewer/renderer.js`,
   `viewer/styles.css`).
+- **The Steps editor and the header are tidier at laptop widths too.** The Steps
+  bulk actions (Group / Delete / Merge selected) used to sit permanently greyed-out;
+  they now appear only when 2+ steps are ticked, and the single-key shortcut list
+  (J / K / S / M / N) is demoted from a full inline row to a hover hint. The
+  decorative "Capture · Mine · Synthesize" tagline is hidden below 1200px and the
+  top tabs no longer wrap, so the header stays a single row on a laptop. Together
+  with the change above, the Session timeline starts ~90px higher at 1100px
+  (`viewer/index.html`, `viewer/views/steps-view.js`, `viewer/styles.css`).
 
 ### Fixed
 

@@ -663,12 +663,14 @@ async function mergeSelectedSteps() {
 }
 
 /* Keep the three multi-selection toolbar actions (group / delete / merge) in
-   lockstep with the selection size, from one place so they cannot drift. */
+   lockstep with the selection size, from one place so they cannot drift. They
+   are HIDDEN until 2+ steps are ticked -- a permanently-disabled button is just
+   noise in the toolbar (clutter pass); it appears only when it can be used. */
 function syncMultiSelectButtons() {
   const n = State.getMultiSelectedStepIds().size;
   for (const id of ["btn-group-into-phase", "btn-delete-selected-steps", "btn-merge-selected"]) {
     const b = $("#" + id);
-    if (b) b.disabled = n < 2;
+    if (b) b.hidden = n < 2;
   }
 }
 
