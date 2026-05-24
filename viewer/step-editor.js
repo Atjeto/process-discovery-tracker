@@ -464,8 +464,152 @@
       `</details>`;
   }
 
+  /* ADR-0015 Phase 2: the aligned reading. Render the consensus BACKBONE -- the
+     modal step sequence across the detected cases (tickets) -- into the list
+     pane. Each row carries a frequency pill: how many of N cases hit that
+     position. A full-strength pill at n = N (in every case); a muted "partial"
+     pill below that (the step is not universal). The analyst curates ONE
+     backbone step and propagates to its instances (Phase 3); exceptions -- steps
+     a case has that the backbone lacks -- render below when supplied (Phase 4).
+       opts: { caseCount, backbone, selectedIndex, onSelectBackbone,
+               exceptions?, selectedStepId?, onSelectException? } */
+  function renderBackboneList(host, opts) {
+    opts = opts || {};
+    const backbone = opts.backbone || [];
+    host.innerHTML = "";
+    if (!backbone.length) {
+      host.innerHTML = `
+        <div class="empty-pane">
+          <p><strong>No aligned reading yet.</strong></p>
+          <p>The aligned reading lines up the repeating work across the session's cases (tickets). It needs the session split into 2+ cases — detect a case key first, then the consensus steps appear here.</p>
+        </div>`;
+      return;
+    }
+    const caseCount = opts.caseCount || 0;
+    const frag = document.createDocumentFragment();
+    backbone.forEach((e, i) => {
+      const row = document.createElement("div");
+      const partial = caseCount && e.frequency < caseCount;
+      row.className = "backbone-row" + (i === opts.selectedIndex ? " selected" : "");
+      row.dataset.bbIndex = String(i);
+      row.innerHTML =
+        `<span class="bb-seq">${i + 1}</span>` +
+        `<span class="bb-name" title="${escapeAttr(e.token)}">${escapeHtml(e.token)}</span>` +
+        `<span class="bb-freq${partial ? " partial" : ""}" title="In ${e.frequency} of ${caseCount} cases">${e.frequency}/${caseCount}</span>`;
+      row.addEventListener("click", () => opts.onSelectBackbone && opts.onSelectBackbone(i));
+      frag.appendChild(row);
+    });
+    host.appendChild(frag);
+
+    // Phase 4: exceptions -- steps a case has that the consensus does not.
+    const exceptions = opts.exceptions || [];
+    if (exceptions.length) {
+      const sec = document.createElement("div");
+      sec.className = "bb-exceptions";
+      sec.innerHTML =
+        `<div class="bb-exc-head" title="Steps a single case has that the consensus backbone does not — an exception ticket's extra work. Edit each one in place.">` +
+          `Exceptions · ${exceptions.length}</div>`;
+      const exFrag = document.createDocumentFragment();
+      exceptions.forEach((ex) => {
+        const row = document.createElement("div");
+        row.className = "bb-exc-row" + (ex.stepId === opts.selectedStepId ? " selected" : "");
+        row.dataset.stepId = ex.stepId;
+        row.innerHTML =
+          `<span class="bb-inst-case" title="Case (ticket)">${escapeHtml(ex.caseId)}</span>` +
+          `<span class="bb-name" title="${escapeAttr(ex.token)}">${escapeHtml(ex.token)}</span>`;
+        row.addEventListener("click", () => opts.onSelectException && opts.onSelectException(ex.stepId));
+        exFrag.appendChild(row);
+      });
+      sec.appendChild(exFrag);
+      host.appendChild(sec);
+    }
+  }
+
+  /* ADR-0015 Phase 2/3: the consensus-step detail. Shows the backbone step's
+     frequency and its aligned instances across cases (each with a jump to the
+     Flow view). Phase 3 adds the curate form (name / description / flags) seeded
+     from a representative instance and an "Apply to all instances" button that
+     propagates the curation to every member in ONE write (one Ctrl+Z).
+       entry: { token, frequency, members } (or null for the empty hint)
+       opts:  { caseCount, instances:[{caseId, step}], seed:{name,description,flags},
+                onJump, onApply } */
+  function renderBackboneDetail(host, entry, opts) {
+    opts = opts || {};
+    if (!entry) {
+      host.innerHTML = `
+        <div class="empty-pane">
+          <p>Pick a step in the consensus backbone to see its instances across cases, then curate one name + flags and apply to all.</p>
+          <p class="meta">Steps below the backbone are <strong>exceptions</strong> — one case's extra work. Select an exception to edit it in place.</p>
+        </div>`;
+      return;
+    }
+    const caseCount = opts.caseCount || 0;
+    const partial = caseCount && entry.frequency < caseCount;
+    const instances = opts.instances || [];
+    const seed = opts.seed || {};
+    const flags = seed.flags || {};
+    const instHtml = instances.map((it) => {
+      const sid = it.step ? it.step.step_id : "";
+      const nm = (it.step && it.step.name) || "(unnamed)";
+      const tm = it.step && it.step.time_range ? localTime(it.step.time_range.start) : "";
+      return `<li class="bb-instance" data-step-id="${escapeAttr(sid)}">` +
+        `<span class="bb-inst-case" title="Case (ticket): ${escapeAttr(it.caseId || "")}">${escapeHtml(it.caseLabel || it.caseId || "")}</span>` +
+        `<span class="bb-inst-name" title="${escapeAttr(nm)}">${escapeHtml(nm)}</span>` +
+        `<span class="bb-inst-time">${escapeHtml(tm)}</span>` +
+        `<button type="button" class="bb-inst-jump" data-step-id="${escapeAttr(sid)}" title="Jump to this instance in the Flow view">Flow ▸</button>` +
+        `</li>`;
+    }).join("");
+    // The curate form + Apply button only render when the caller wires onApply
+    // (ADR-0015 Phase 3). Phase 2 is a read-only reading: head + instances only,
+    // so no inert control is shown.
+    const curateHtml = opts.onApply ? `
+      <label>Name <input type="text" id="bb-name" value="${escapeAttr(seed.name || entry.token)}"></label>
+      <label>Description <textarea id="bb-desc">${escapeHtml(seed.description || "")}</textarea></label>
+      <div class="flags">
+        <label title="This step only happens in some cases (branching path)."><input type="checkbox" id="bb-flag-conditional" ${flags.conditional ? "checked" : ""}> Conditional</label>
+        <label title="This step represents an error, workaround, or recovery action."><input type="checkbox" id="bb-flag-exception" ${flags.exception_path ? "checked" : ""}> Exception path</label>
+        <label title="This step shouldn't be necessary (rework, duplicate effort)."><input type="checkbox" id="bb-flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
+        <label title="This step could be replaced by automation (RPA / integration / script)."><input type="checkbox" id="bb-flag-auto" ${flags.automation_candidate ? "checked" : ""}> Automation candidate</label>
+      </div>
+      <div class="actions">
+        <button id="btn-bb-apply" class="primary" title="Apply this name, description and flags to all ${instances.length} aligned instance(s) across cases — one edit, one Ctrl+Z.">Apply to all ${instances.length} instances</button>
+      </div>` : "";
+    host.innerHTML = `
+      <div class="bb-detail-head">
+        <div class="bb-detail-title" title="The value-free process label these instances share">${escapeHtml(entry.token)}</div>
+        <div class="bb-detail-freq${partial ? " partial" : ""}">Seen in ${entry.frequency} of ${caseCount} cases</div>
+      </div>
+      <p class="meta">${partial
+        ? "Not in every case — review whether it belongs in the consensus before applying."
+        : "In every case — the consensus backbone for this process."}</p>
+      ${curateHtml}
+      <div class="bb-instances">
+        <div class="bb-instances-title">Aligned instances (${instances.length})</div>
+        <ol class="bb-instance-list">${instHtml}</ol>
+      </div>`;
+    host.querySelectorAll(".bb-inst-jump").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (opts.onJump) opts.onJump(b.dataset.stepId);
+    }));
+    const applyBtn = document.getElementById("btn-bb-apply");
+    if (applyBtn) applyBtn.addEventListener("click", () => {
+      if (!opts.onApply) return;
+      opts.onApply({
+        name: document.getElementById("bb-name").value.trim(),
+        description: document.getElementById("bb-desc").value.trim(),
+        flags: {
+          conditional: document.getElementById("bb-flag-conditional").checked,
+          exception_path: document.getElementById("bb-flag-exception").checked,
+          waste: document.getElementById("bb-flag-waste").checked,
+          automation_candidate: document.getElementById("bb-flag-auto").checked,
+        },
+      });
+    });
+  }
+
   module.exports = {
     renderStepList, renderStepDetail, renderStepTimeline,
     describeInteraction, renderInteractionList, siKindClass,
+    renderBackboneList, renderBackboneDetail,
   };
 })();

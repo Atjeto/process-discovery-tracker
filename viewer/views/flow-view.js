@@ -3417,5 +3417,5 @@ module.exports = {
   loadSessionIntoView, renderTimeline, renderMarkersList,
   renderAnnotations, renderSessionPills,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
-  activateAnnoTab, addStepAtPlayhead,
+  activateAnnoTab, addStepAtPlayhead, deriveCases,
 };

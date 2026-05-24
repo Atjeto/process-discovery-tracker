@@ -34,6 +34,14 @@ let openCanonicalInTemplateTab = () => {};
    index when no boundary is picked (Split then falls back to the midpoint). */
 let _splitAfter = { stepId: null, index: null };
 
+/* ADR-0015: the Steps list has two readings. Flat (default) is the
+   chronological step list; Aligned is the consensus backbone across the
+   detected cases (curate one -> apply to all). _alignSelIndex is the selected
+   backbone position in aligned mode; null means an exception/instance step is
+   selected instead (its per-instance editor shows, keyed on getSelectedStepId). */
+let _alignMode = false;
+let _alignSelIndex = null;
+
 function getSpan() {
   const evs = (State.getSession() && State.getSession().events) || [];
   if (!evs.length) return null;
@@ -150,58 +158,56 @@ function renderStepsLevel() {
     if (fc.exception_path) parts.push(fc.exception_path + " exception");
     sumEl.textContent = parts.length ? ("Flagged: " + parts.join(" · ")) : "";
   }
-  // P0.4: a one-line key for the repeat badge, shown only when at least one
-  // discriminating badge is on screen (otherwise the legend is just noise).
-  const legendEl = $("#steps-legend");
-  if (legendEl) {
-    const anyRepeat = allSteps.some(s => s._repeatDiscriminating);
-    legendEl.innerHTML = anyRepeat
-      ? '<span class="step-repeat">N×</span> = recurs in some (not all) cases — curate one, then "Apply to repeats"'
-      : "";
-    legendEl.style.display = anyRepeat ? "" : "none";
+  // ADR-0015: the aligned reading needs 2+ detected cases. Gate the toggle on
+  // that and fall back to flat for a single-case session. The per-step filter
+  // (text + state chips) doesn't act on a consensus, so hide it in aligned mode
+  // rather than leave a control that does nothing (coherence discipline).
+  const distinctCases = new Set(
+    ((State.getSession().annotations && State.getSession().annotations.steps) || [])
+      .filter(s => s && s.state !== "hidden" && s.case_id).map(s => s.case_id));
+  const canAlign = distinctCases.size >= 2;
+  if (_alignMode && !canAlign) _alignMode = false;
+  const alignToggle = $("#step-align-toggle");
+  if (alignToggle) {
+    alignToggle.style.display = canAlign ? "" : "none";
+    for (const b of alignToggle.querySelectorAll("button"))
+      b.classList.toggle("active", (b.dataset.mode === "aligned") === _alignMode);
   }
-  PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
-    (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
-    (sid) => {
-      if (State.getMultiSelectedStepIds().has(sid)) State.getMultiSelectedStepIds().delete(sid);
-      else State.getMultiSelectedStepIds().add(sid);
-      syncMultiSelectButtons();
-      // Re-render so the user sees the multi-selected state -- otherwise
-      // Ctrl+click feels broken because nothing visibly changes.
-      renderStepsLevel();
-    },
-    inlineRenameStep,
-    State.getMultiSelectedStepIds(),
-    reorderStep,
-  );
-  const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
-  PdtSteps.renderStepDetail($("#step-detail"), selected, {
-    onSave: saveStep,
-    onDelete: deleteStep,
-    onSplit: splitStep,
-    onMerge: mergeStepWithNext,
-    onMergeSelected: mergeSelectedSteps,
-    multiSelectedCount: State.getMultiSelectedStepIds().size,
-    onJumpToFlow: (step) => jumpToStepInFlow(step),
-    onWatchStep: (step) => watchStep(step),
-    onToggleHide: toggleStepHidden,
-    interactionsById,
-    recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
-    // Decision 1: how many tickets this step recurs in + the propagate action.
-    repeatCount: (selected && selected._repeat) || 0,
-    onPropagate: () => { if (selected) propagateStepToGroup(selected.step_id); },
-    // A2: the chosen split boundary for this step (if any) + the picker.
-    splitAfterIndex: (selected && _splitAfter.stepId === selected.step_id) ? _splitAfter.index : null,
-    onPickSplit: (idx) => {
-      if (!selected) return;
-      if (_splitAfter.stepId === selected.step_id && _splitAfter.index === idx) {
-        _splitAfter = { stepId: null, index: null };   // toggle the boundary off
-      } else {
-        _splitAfter = { stepId: selected.step_id, index: idx };
-      }
-      renderStepsLevel();
-    },
-  });
+  const listFilterEl = $("#step-list-filter");
+  if (listFilterEl) listFilterEl.style.display = _alignMode ? "none" : "";
+
+  if (!_alignMode) {
+    // ---- Flat reading: the chronological step list + per-step editor ----
+    // P0.4: a one-line key for the repeat badge, shown only when at least one
+    // discriminating badge is on screen (otherwise the legend is just noise).
+    const legendEl = $("#steps-legend");
+    if (legendEl) {
+      const anyRepeat = allSteps.some(s => s._repeatDiscriminating);
+      legendEl.innerHTML = anyRepeat
+        ? '<span class="step-repeat">N×</span> = recurs in some (not all) cases — curate one, then "Apply to repeats"'
+        : "";
+      legendEl.style.display = anyRepeat ? "" : "none";
+    }
+    PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
+      (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
+      (sid) => {
+        if (State.getMultiSelectedStepIds().has(sid)) State.getMultiSelectedStepIds().delete(sid);
+        else State.getMultiSelectedStepIds().add(sid);
+        syncMultiSelectButtons();
+        // Re-render so the user sees the multi-selected state -- otherwise
+        // Ctrl+click feels broken because nothing visibly changes.
+        renderStepsLevel();
+      },
+      inlineRenameStep,
+      State.getMultiSelectedStepIds(),
+      reorderStep,
+    );
+    const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
+    PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById));
+  } else {
+    // ---- Aligned reading: the consensus backbone across detected cases ----
+    renderAlignedReading(interactionsById);
+  }
   const span = getSpan();
   if (span) {
     // Mini-timeline keeps the full set as context; non-matching blocks
@@ -227,6 +233,94 @@ function renderStepsLevel() {
       const row = document.querySelector('.step-row[data-step-id="' + State.getSelectedStepId() + '"]');
       if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 0);
+  }
+}
+
+/* The callbacks the per-step detail editor needs. Factored so both the flat
+   reading and the aligned reading's exception editor (ADR-0015 Phase 4) wire the
+   same verbs to a selected step. */
+function stepDetailCallbacks(selected, interactionsById) {
+  return {
+    onSave: saveStep,
+    onDelete: deleteStep,
+    onSplit: splitStep,
+    onMerge: mergeStepWithNext,
+    onMergeSelected: mergeSelectedSteps,
+    multiSelectedCount: State.getMultiSelectedStepIds().size,
+    onJumpToFlow: (step) => jumpToStepInFlow(step),
+    onWatchStep: (step) => watchStep(step),
+    onToggleHide: toggleStepHidden,
+    interactionsById,
+    recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
+    // Decision 1: how many tickets this step recurs in + the propagate action.
+    repeatCount: (selected && selected._repeat) || 0,
+    onPropagate: () => { if (selected) propagateStepToGroup(selected.step_id); },
+    // A2: the chosen split boundary for this step (if any) + the picker.
+    splitAfterIndex: (selected && _splitAfter.stepId === selected.step_id) ? _splitAfter.index : null,
+    onPickSplit: (idx) => {
+      if (!selected) return;
+      if (_splitAfter.stepId === selected.step_id && _splitAfter.index === idx) {
+        _splitAfter = { stepId: null, index: null };   // toggle the boundary off
+      } else {
+        _splitAfter = { stepId: selected.step_id, index: idx };
+      }
+      renderStepsLevel();
+    },
+  };
+}
+
+/* A friendly, stable label per case_id for the aligned reading: the canonical
+   marker-enriched label from deriveCases when one exists, else a stable "Case N"
+   index (never the opaque case_id hash). Lazy-require flow-view so the
+   steps<->flow module cycle resolves at call time, not load time. */
+function caseLabeler() {
+  let cases = [];
+  try { cases = require("./flow-view.js").deriveCases(State.getSession()) || []; } catch (_) { cases = []; }
+  const m = {};
+  cases.forEach((c, i) => { m[c.id] = (c.label && c.label !== c.id) ? c.label : ("Case " + (i + 1)); });
+  return (id) => m[id] || "Case ?";
+}
+
+/* ADR-0015 Phase 2-4: render the aligned reading into the Steps list + detail.
+   The consensus backbone is computed LIVE from the current annotation steps
+   (no persisted template, per VALUE-CHAIN Decision 1), so it tracks analyst
+   edits with no re-analyze. A backbone row selected -> the curate/instances
+   detail; an exception (or a deselected backbone) -> the per-instance editor. */
+function renderAlignedReading(interactionsById) {
+  const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
+  const aligned = PdtAlign.alignCases(steps);
+  const byId = {};
+  for (const s of steps) byId[s.step_id] = s;
+  const caseLabel = caseLabeler();
+
+  // P0.4 discipline: an on-screen key for the frequency-pill encoding.
+  const legendEl = $("#steps-legend");
+  if (legendEl) {
+    legendEl.innerHTML = '<span class="bb-freq">n/N</span> = cases (tickets) that include this step — curate one, then Apply to all instances';
+    legendEl.style.display = "";
+  }
+
+  if (_alignSelIndex == null || _alignSelIndex >= aligned.backbone.length) {
+    _alignSelIndex = aligned.backbone.length ? 0 : null;
+  }
+
+  PdtSteps.renderBackboneList($("#step-list"), {
+    caseCount: aligned.caseCount,
+    backbone: aligned.backbone,
+    selectedIndex: _alignSelIndex,
+    onSelectBackbone: (i) => { _alignSelIndex = i; State.setSelectedStepId(null); renderStepsLevel(); },
+  });
+
+  const entry = (_alignSelIndex != null) ? aligned.backbone[_alignSelIndex] : null;
+  if (entry) {
+    const instances = entry.members.map(m => ({ caseId: m.caseId, caseLabel: caseLabel(m.caseId), step: byId[m.stepId] }));
+    PdtSteps.renderBackboneDetail($("#step-detail"), entry, {
+      caseCount: aligned.caseCount,
+      instances,
+      onJump: (sid) => { const s = byId[sid]; if (s) jumpToStepInFlow(s); },
+    });
+  } else {
+    PdtSteps.renderBackboneDetail($("#step-detail"), null, {});
   }
 }
 
@@ -804,6 +898,20 @@ function initStepsView(deps) {
   if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
   if ($("#btn-steps-to-template")) $("#btn-steps-to-template").addEventListener("click", exportStepsAsTemplate);
+
+  // ADR-0015: the Flat / Aligned reading toggle (shown only with 2+ cases).
+  const alignToggle = $("#step-align-toggle");
+  if (alignToggle) {
+    alignToggle.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-mode]");
+      if (!b) return;
+      const next = b.dataset.mode === "aligned";
+      if (next === _alignMode) return;
+      _alignMode = next;
+      _alignSelIndex = next ? 0 : null;
+      renderStepsLevel();
+    });
+  }
 }
 
 /* A2/A5: toggle one boolean flag on a step and persist. Shared by the step

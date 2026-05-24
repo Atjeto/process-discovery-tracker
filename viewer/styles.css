@@ -1379,6 +1379,64 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   color: var(--accent); background: var(--accent-muted); border: 1px solid var(--accent);
 }
 
+/* ===== ADR-0015: the aligned reading (Steps view) =====
+   The Flat/Aligned toggle, the consensus backbone list, and the consensus
+   detail. All colours come from theme tokens (--accent strong = universal,
+   --warn = partial/exception), so light and dark read in parity. */
+.reading-toggle { display: inline-flex; align-items: center; gap: 6px; }
+.reading-toggle-label { font-size: 11px; color: var(--fg-3); }
+.seg-toggle { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--radius-sm); overflow: hidden; }
+.seg-toggle button {
+  border: 0; border-radius: 0; padding: 3px 12px; font-size: 11px;
+  background: transparent; color: var(--fg-3); cursor: pointer;
+}
+.seg-toggle button + button { border-left: 1px solid var(--rule); }
+.seg-toggle button.active { background: var(--accent); color: var(--accent-text); }
+.seg-toggle button:hover:not(.active) { background: var(--bg-3); color: var(--fg); }
+
+/* Backbone list rows */
+.backbone-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 13px;
+}
+.backbone-row:hover { background: var(--bg-3); }
+.backbone-row.selected { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
+.backbone-row .bb-seq {
+  flex: none; min-width: 18px; text-align: right; color: var(--fg-4);
+  font-family: var(--font-mono); font-size: 11px;
+}
+.backbone-row .bb-name {
+  flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bb-freq {
+  flex: none; padding: 0 5px; height: 16px; display: inline-flex; align-items: center;
+  border-radius: 3px; font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  color: var(--accent); background: var(--accent-muted); border: 1px solid var(--accent);
+}
+.bb-freq.partial {
+  color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: var(--warn);
+}
+
+/* Backbone detail (consensus step) */
+.bb-detail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.bb-detail-title { font-size: 15px; font-weight: 600; color: var(--fg); }
+.bb-detail-freq { flex: none; font-size: 11px; font-family: var(--font-mono); color: var(--accent); }
+.bb-detail-freq.partial { color: var(--warn); }
+.bb-instances { margin-top: 12px; }
+.bb-instances-title { font-size: 11px; color: var(--fg-3); margin-bottom: 4px; }
+.bb-instance-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
+.bb-instance {
+  display: flex; align-items: center; gap: 8px; padding: 4px 6px;
+  border-bottom: 1px solid var(--rule); font-size: 12px;
+}
+.bb-inst-case {
+  flex: none; font-family: var(--font-mono); font-size: 10px; color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 14%, transparent); padding: 0 5px; border-radius: 3px;
+}
+.bb-inst-name { flex: 1; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bb-inst-time { flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px; }
+.bb-inst-jump { flex: none; padding: 1px 7px; font-size: 10px; }
+
 .phase-step-row {
   display: flex; align-items: center; gap: 6px;
   padding: 4px 6px; background: var(--bg-2); border-radius: 3px;

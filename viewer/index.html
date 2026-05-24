@@ -298,6 +298,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="meta" id="steps-summary"></span>
             <span class="meta" id="steps-legend" style="display:none"></span>
             <span class="flex-spacer"></span>
+            <span class="reading-toggle" id="step-align-toggle" style="display:none" title="Flat: the chronological step list. Aligned: the consensus backbone across the detected cases (tickets) — curate one step and apply it to every case.">
+              <span class="reading-toggle-label">Reading:</span>
+              <span class="seg-toggle">
+                <button type="button" data-mode="flat" class="active">Flat</button>
+                <button type="button" data-mode="aligned">Aligned</button>
+              </span>
+            </span>
             <span class="hint">J / K navigate · S split · M merge · N new · Ctrl+click multi-select · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="mini-timeline-pane">
