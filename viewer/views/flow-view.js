@@ -1431,6 +1431,41 @@ function syncMinimapViewport() {
   });
 })();
 
+/* Middle-button drag-to-pan the Flow timeline. Without this, middle-clicking the
+   scrollable #timeline-scroll triggered Chromium's native auto-scroll: it bounced
+   erratically toward the cursor and left the page in auto-scroll mode, so the next
+   click was swallowed exiting it ("locked controls"). We suppress the native
+   behaviour (preventDefault on the middle-button mousedown + the trailing
+   auxclick) and pan by adjusting scrollLeft directly. Any mouseup clears the pan
+   state, so it can never stick; the move/up listeners are inert unless a
+   middle-drag is in progress. */
+(function wireTimelinePan() {
+  const scroll = document.getElementById("timeline-scroll");
+  if (!scroll || scroll._pdtPanWired) return;
+  scroll._pdtPanWired = true;
+  let pan = null;
+  scroll.addEventListener("mousedown", (e) => {
+    if (e.button !== 1) return;            // middle button only
+    e.preventDefault();                     // suppress Chromium's native auto-scroll
+    pan = { startX: e.clientX, startScrollLeft: scroll.scrollLeft };
+    scroll.classList.add("panning");
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!pan) return;
+    scroll.scrollLeft = Math.max(0, pan.startScrollLeft - (e.clientX - pan.startX));
+    syncMinimapViewport();
+  });
+  document.addEventListener("mouseup", () => {
+    if (!pan) return;
+    pan = null;
+    scroll.classList.remove("panning");
+    persistTimelineForCurrent();
+  });
+  // The auxclick that fires after a middle release can re-enter auto-scroll on
+  // some builds; swallow it while we own the gesture.
+  scroll.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
+})();
+
 /* P1.2: hover thumbnail for timeline screenshot dots. Single shared
    element — created lazily, repositioned on each show. */
 let _screenshotThumbEl = null;

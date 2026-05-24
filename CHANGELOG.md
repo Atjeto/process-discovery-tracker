@@ -6,6 +6,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Middle-clicking the Flow timeline pans it instead of locking up.** Middle-click
+  on the scrollable timeline triggered Chromium's native auto-scroll, which bounced
+  erratically toward the cursor and left the page in auto-scroll mode so the next
+  click was swallowed ("locked controls"). Middle-button now drag-pans the timeline
+  (the native behaviour is suppressed); any mouse release ends the pan cleanly so it
+  can't stick (`viewer/views/flow-view.js`, `viewer/styles.css`).
+
 ## [0.16.0] - 2026-05-24
 
 ### Added

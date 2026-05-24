@@ -376,6 +376,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .timeline-scroll { flex: 0 0 auto; overflow-x: auto; overflow-y: auto;
   background: var(--bg-3); border: 1px solid var(--rule); border-radius: var(--radius-sm);
   min-height: var(--timeline-height, 160px); }
+/* Middle-button drag-to-pan feedback (flow-view.js wireTimelinePan). */
+.timeline-scroll.panning { cursor: grabbing; }
 .timeline { position: relative; height: 100%; min-height: 80px;
   cursor: default; min-width: 100%; }
 .tl-row { position: absolute; left: 0; right: 0; }
