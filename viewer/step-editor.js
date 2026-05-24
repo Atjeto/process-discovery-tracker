@@ -515,7 +515,7 @@
         row.className = "bb-exc-row" + (ex.stepId === opts.selectedStepId ? " selected" : "");
         row.dataset.stepId = ex.stepId;
         row.innerHTML =
-          `<span class="bb-inst-case" title="Case (ticket)">${escapeHtml(ex.caseId)}</span>` +
+          `<span class="bb-inst-case" title="Case (ticket): ${escapeAttr(ex.caseId || "")}">${escapeHtml(ex.caseLabel || ex.caseId || "")}</span>` +
           `<span class="bb-name" title="${escapeAttr(ex.token)}">${escapeHtml(ex.token)}</span>`;
         row.addEventListener("click", () => opts.onSelectException && opts.onSelectException(ex.stepId));
         exFrag.appendChild(row);

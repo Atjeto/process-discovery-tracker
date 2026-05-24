@@ -145,6 +145,6 @@ call; the fuzzy threshold (F4) is where the calibration loop first pays off.
 
 1. [x] Anchor-based case detection (the prerequisite that finds the repeating unit) — [ADR-0012](0012-active-case-stamping-and-map-matrix.md).
 2. [x] First-cut alignment engine + repeat badges + "Apply to N repeats" (`step-alignment.js`).
-3. [ ] Fuzzy / variant-aware alignment across detected cases (step-level trace clustering).
+3. [x] Fuzzy / variant-aware alignment across detected cases (step-level trace clustering) — NW sequence alignment (`alignCaseSequences`) surfaced as the aligned reading: a consensus backbone with per-position frequency plus per-case exceptions (phases 2/4). The edit-distance threshold (fork **F4**) still needs calibration against real captures.
 4. [x] The full curate-once-apply-to-all editing loop (propagate a curated instance to its siblings) — aligned reading + curate form (`viewer/views/steps-view.js`, `viewer/step-editor.js`), one write / one Ctrl+Z.
 5. [x] AG-Grid capture gate resolved (identityless cells → coarse step).

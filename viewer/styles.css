@@ -1437,6 +1437,22 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .bb-inst-time { flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px; }
 .bb-inst-jump { flex: none; padding: 1px 7px; font-size: 10px; }
 
+/* Phase 4: exceptions -- steps a single case has that the consensus lacks.
+   Warn-toned (the partial/divergent colour), edited per-instance. */
+.bb-exceptions { border-top: 1px solid var(--rule); margin-top: 4px; }
+.bb-exc-head {
+  padding: 7px 8px 4px; font-size: 10px; font-weight: 700; color: var(--warn);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.bb-exc-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 12px;
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+.bb-exc-row:hover { background: var(--bg-3); }
+.bb-exc-row.selected { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.bb-exc-row .bb-name { flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .phase-step-row {
   display: flex; align-items: center; gap: 6px;
   padding: 4px 6px; background: var(--bg-2); border-radius: 3px;

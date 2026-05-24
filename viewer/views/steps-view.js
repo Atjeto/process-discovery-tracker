@@ -300,8 +300,13 @@ function renderAlignedReading(interactionsById) {
     legendEl.style.display = "";
   }
 
-  if (_alignSelIndex == null || _alignSelIndex >= aligned.backbone.length) {
+  // null _alignSelIndex is a VALID state: an exception/instance step is selected
+  // instead of a backbone row. Only default to the first backbone row when
+  // nothing at all is selected; only snap back to 0 if the index fell off the end.
+  if (_alignSelIndex != null && _alignSelIndex >= aligned.backbone.length) {
     _alignSelIndex = aligned.backbone.length ? 0 : null;
+  } else if (_alignSelIndex == null && !State.getSelectedStepId() && aligned.backbone.length) {
+    _alignSelIndex = 0;
   }
 
   PdtSteps.renderBackboneList($("#step-list"), {
@@ -309,6 +314,11 @@ function renderAlignedReading(interactionsById) {
     backbone: aligned.backbone,
     selectedIndex: _alignSelIndex,
     onSelectBackbone: (i) => { _alignSelIndex = i; State.setSelectedStepId(null); renderStepsLevel(); },
+    // Phase 4: steps a case has that the consensus lacks. Selecting one drops
+    // the backbone selection and shows the normal per-instance editor below.
+    exceptions: aligned.exceptions.map(ex => Object.assign({ caseLabel: caseLabel(ex.caseId) }, ex)),
+    selectedStepId: State.getSelectedStepId(),
+    onSelectException: (sid) => { _alignSelIndex = null; State.setSelectedStepId(sid); renderStepsLevel(); },
   });
 
   const entry = (_alignSelIndex != null) ? aligned.backbone[_alignSelIndex] : null;
@@ -325,7 +335,15 @@ function renderAlignedReading(interactionsById) {
       onApply: (curated) => applyCurationToBackbone(idx, curated),
     });
   } else {
-    PdtSteps.renderBackboneDetail($("#step-detail"), null, {});
+    // Phase 4: an exception step selected -> edit it in place with the normal
+    // per-instance editor (rename / flag / delete / split / jump). Otherwise the
+    // empty hint.
+    const sel = byId[State.getSelectedStepId()] || null;
+    if (sel) {
+      PdtSteps.renderStepDetail($("#step-detail"), sel, stepDetailCallbacks(sel, interactionsById));
+    } else {
+      PdtSteps.renderBackboneDetail($("#step-detail"), null, {});
+    }
   }
 }
 
