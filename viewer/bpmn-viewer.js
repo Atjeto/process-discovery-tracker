@@ -1,11 +1,12 @@
 /*
- * BPMN renderer using bpmn-js. We load the read-only NAVIGATED-VIEWER bundle
- * (dist/bpmn-navigated-viewer.production.min.js, exposed as the BpmnJS global) --
- * pan + zoom + click-to-drill, but no dragging. Dragging boxes in the old Modeler
- * bundle re-docked edges to arbitrary borders and tangled the map; it only existed
- * to compensate for a poor auto-layout. Instead we now re-lay-out the mined diagram
- * with bpmn.io's own engine (bpmn-auto-layout): strip the file's hand-rolled DI and
- * lay it out fresh -> a clean, layered, read-only deliverable.
+ * BPMN renderer using bpmn-js. Loads the MODELER bundle (the BpmnJS global from
+ * dist/bpmn-modeler.production.min.js) so the analyst can DRAG boxes to nudge the
+ * layout; the editor palette/context-pad are hidden in CSS so it's a move-only
+ * tool. The mined file's own coordinates are poor, so after import we re-lay-out
+ * the diagram with DAGRE -- the same layered, crossing-minimised engine that lays
+ * out the Flow diagram (DFG) cleanly -- as a readable starting point. That auto
+ * layout is made the baseline (the command stack is cleared) so only the
+ * analyst's own drags count as edits and persist back to the .bpmn.
  *
  * Reads an exported `process_map*.bpmn` and renders it into the host element.
  * Falls back gracefully if bpmn-js failed to load.
@@ -15,7 +16,45 @@
 
 (function () {
   let viewer = null;
+  let saveTimer = null;  // debounce for persisting a dragged layout
   const fs = require("node:fs");
+
+  /* Re-position every node with dagre (layered, crossing-minimised) and re-route
+     the sequence flows, replacing the mined file's weak coordinates. dagre is a
+     global (loaded in index.html; the DFG uses it too). No-op + false if dagre
+     or the modeling services are unavailable. */
+  function applyDagreLayout(v) {
+    if (typeof dagre === "undefined") return false;
+    let modeling, elementRegistry, canvas;
+    try {
+      modeling = v.get("modeling");
+      elementRegistry = v.get("elementRegistry");
+      canvas = v.get("canvas");
+    } catch (_) { return false; }
+    const root = canvas.getRootElement();
+    const nodes = elementRegistry.filter((e) =>
+      e !== root && !e.waypoints && !e.labelTarget && e.parent &&
+      typeof e.width === "number" && typeof e.x === "number");
+    const edges = elementRegistry.filter((e) => e.waypoints && e.source && e.target);
+    if (!nodes.length) return false;
+    const g = new dagre.graphlib.Graph({ multigraph: true });
+    g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 90, marginx: 30, marginy: 30 });
+    g.setDefaultEdgeLabel(() => ({}));
+    nodes.forEach((n) => g.setNode(n.id, { width: n.width, height: n.height }));
+    edges.forEach((e) => g.setEdge(e.source.id, e.target.id, {}, e.id));
+    dagre.layout(g);
+    // dagre reports node centres; bpmn-js positions by top-left. Move by delta.
+    nodes.forEach((n) => {
+      const gn = g.node(n.id);
+      if (!gn) return;
+      const dx = (gn.x - n.width / 2) - n.x;
+      const dy = (gn.y - n.height / 2) - n.y;
+      if (dx || dy) { try { modeling.moveShape(n, { x: dx, y: dy }); } catch (_) {} }
+    });
+    // Re-route every flow now that the nodes moved (orthogonal manhattan routing).
+    edges.forEach((e) => { try { modeling.layoutConnection(e); } catch (_) {} });
+    return true;
+  }
 
   async function render(host, bpmnFilePath, opts) {
     opts = opts || {};
@@ -29,40 +68,53 @@
       host.innerHTML = '<div class="map-empty-inline">no BPMN file yet</div>';
       return;
     }
-    let xml = fs.readFileSync(bpmnFilePath, "utf-8");
-    // Re-layout with bpmn.io's own engine (bpmn-auto-layout) instead of the
-    // mined file's hand-rolled coordinates: strip the DI and lay it out fresh,
-    // so the read-only diagram is clean -- layered left-to-right, end terminal,
-    // far fewer crossings -- with no manual dragging. Falls back to the file's
-    // own layout if the layouter is unavailable (worst case = the old layout,
-    // never a broken map).
-    try {
-      // require() resolves bpmn-auto-layout's CommonJS build (index.cjs). A
-      // dynamic import() of its ESM build hard-crashes the Electron renderer.
-      const { layoutProcess } = require("bpmn-auto-layout");
-      const stripped = xml.replace(/<bpmndi:BPMNDiagram[\s\S]*?<\/bpmndi:BPMNDiagram>/g, "");
-      xml = await layoutProcess(stripped);
-    } catch (e) {
-      console.warn("[bpmn] auto-layout unavailable; using the file's own layout:", e && e.message);
-    }
+    const xml = fs.readFileSync(bpmnFilePath, "utf-8");
     if (viewer) {
       try { viewer.destroy(); } catch (_) {}
       viewer = null;
     }
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     viewer = new BpmnJS({ container: host });
     try {
       const result = await viewer.importXML(xml);
       const warnings = (result && result.warnings) || [];
+      // The mined coordinates are poor; re-lay-out with dagre, then make that the
+      // baseline (clear undo) so neither the import nor the auto-layout counts as
+      // an edit -- only the analyst's own drags do.
+      try {
+        applyDagreLayout(viewer);
+        viewer.get("commandStack").clear();
+      } catch (e) {
+        console.warn("[bpmn] dagre layout failed; using the file's layout:", e && e.message);
+      }
       viewer.get("canvas").zoom("fit-viewport", "auto");
+      /* Persist the analyst's manual nudges back to the .bpmn (debounced),
+         guarded on canUndo so neither the import nor the baseline auto-layout
+         rewrites the file. A re-analyze regenerates + re-lays-out the map. */
+      if (bpmnFilePath) {
+        viewer.get("eventBus").on("commandStack.changed", () => {
+          let edited = false;
+          try { edited = !!(viewer && viewer.get("commandStack").canUndo()); } catch (_) { edited = false; }
+          if (!edited) return;
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(async () => {
+            saveTimer = null;
+            if (!viewer) return;
+            try {
+              const { xml: out } = await viewer.saveXML({ format: true });
+              if (out) fs.writeFileSync(bpmnFilePath, out, "utf-8");
+            } catch (_) { /* best-effort; the in-memory layout still holds */ }
+          }, 600);
+        });
+      }
       if (warnings.length) {
         const note = document.createElement("div");
         note.className = "bpmn-warning";
         note.textContent = `${warnings.length} BPMN parse warning(s) -- diagram may be imperfect.`;
         host.appendChild(note);
       }
-      /* Drill-down: click a task / activity node to drill back to the
-         source session at the matching activity. Filter by element
-         type so panning the canvas doesn't fire drills. */
+      /* Drill-down: click a task / activity node to drill back to the source
+         session at the matching activity. */
       if (opts.onNodeClick) {
         const eventBus = viewer.get("eventBus");
         eventBus.on("element.click", (e) => {

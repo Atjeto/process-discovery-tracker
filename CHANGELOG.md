@@ -8,16 +8,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **The BPMN Process diagram is a clean, read-only deliverable now.** It was laid
-  out by a hand-rolled coordinate routine (so `end` stranded mid-diagram, edges
-  crossing) and rendered in the editable bpmn-js *Modeler* — so dragging a box
-  re-docked its edges to arbitrary borders and tangled the map (the drag only
-  existed to compensate for the poor layout). It now lays out with bpmn.io's own
-  engine (`bpmn-auto-layout`) into a proper layered left-to-right flow and renders
-  in the read-only *NavigatedViewer* (pan / zoom / click-to-drill, no dragging),
-  so it can't be tangled. Falls back to the file's own layout if the layouter is
-  unavailable (`viewer/bpmn-viewer.js`, `viewer/index.html`; adds the
-  `bpmn-auto-layout` dependency).
+- **The BPMN Process diagram lays out cleanly now.** Its coordinates came from a
+  hand-rolled routine, so `end` stranded mid-diagram with crossing edges, and the
+  drag-to-reorganize affordance was really there to compensate. It now re-lays-out
+  with **dagre** — the same layered, crossing-minimised engine that lays out the
+  Flow diagram (DFG) cleanly — into a left-to-right flow with orthogonal edge
+  routing, then makes that the baseline. The diagram stays draggable (bpmn-js
+  Modeler) for manual nudges, but a clean layout is the starting point
+  (`viewer/bpmn-viewer.js`).
 
 ### Fixed
 

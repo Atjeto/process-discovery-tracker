@@ -16,7 +16,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "bpmn-auto-layout": "^1.3.0",
     "bpmn-js": "^17.9.1",
     "cytoscape": "^3.30.0",
     "cytoscape-dagre": "^2.5.0",
