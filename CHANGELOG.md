@@ -6,6 +6,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The BPMN Process diagram is a clean, read-only deliverable now.** It was laid
+  out by a hand-rolled coordinate routine (so `end` stranded mid-diagram, edges
+  crossing) and rendered in the editable bpmn-js *Modeler* — so dragging a box
+  re-docked its edges to arbitrary borders and tangled the map (the drag only
+  existed to compensate for the poor layout). It now lays out with bpmn.io's own
+  engine (`bpmn-auto-layout`) into a proper layered left-to-right flow and renders
+  in the read-only *NavigatedViewer* (pan / zoom / click-to-drill, no dragging),
+  so it can't be tangled. Falls back to the file's own layout if the layouter is
+  unavailable (`viewer/bpmn-viewer.js`, `viewer/index.html`; adds the
+  `bpmn-auto-layout` dependency).
+
 ### Fixed
 
 - **Middle-clicking the Flow timeline pans it instead of locking up.** Middle-click

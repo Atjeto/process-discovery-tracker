@@ -1,22 +1,20 @@
 /*
- * BPMN renderer using bpmn-js. We load the MODELER bundle
- * (dist/bpmn-modeler.production.min.js, still exposed as the BpmnJS global),
- * not the read-only Viewer, so the analyst can DRAG the boxes to reorganize
- * the auto-laid-out map. The editor chrome (palette, context pad) is hidden in
- * CSS (.map-host .djs-palette/.djs-context-pad) and we pass no keyboard config,
- * so it behaves as a move-only layout tool: drag a box to move it, click a box
- * to drill to the source. Layout changes are in-memory (a re-render or
- * re-analyze regenerates the map); persisting them is a follow-up.
+ * BPMN renderer using bpmn-js. We load the read-only NAVIGATED-VIEWER bundle
+ * (dist/bpmn-navigated-viewer.production.min.js, exposed as the BpmnJS global) --
+ * pan + zoom + click-to-drill, but no dragging. Dragging boxes in the old Modeler
+ * bundle re-docked edges to arbitrary borders and tangled the map; it only existed
+ * to compensate for a poor auto-layout. Instead we now re-lay-out the mined diagram
+ * with bpmn.io's own engine (bpmn-auto-layout): strip the file's hand-rolled DI and
+ * lay it out fresh -> a clean, layered, read-only deliverable.
  *
- * Reads an exported `process_map.bpmn` and renders it into the host
- * element. Falls back gracefully if bpmn-js failed to load.
+ * Reads an exported `process_map*.bpmn` and renders it into the host element.
+ * Falls back gracefully if bpmn-js failed to load.
  */
 
 "use strict";
 
 (function () {
   let viewer = null;
-  let saveTimer = null;  // debounce for persisting a dragged layout
   const fs = require("node:fs");
 
   async function render(host, bpmnFilePath, opts) {
@@ -31,40 +29,31 @@
       host.innerHTML = '<div class="map-empty-inline">no BPMN file yet</div>';
       return;
     }
-    const xml = fs.readFileSync(bpmnFilePath, "utf-8");
+    let xml = fs.readFileSync(bpmnFilePath, "utf-8");
+    // Re-layout with bpmn.io's own engine (bpmn-auto-layout) instead of the
+    // mined file's hand-rolled coordinates: strip the DI and lay it out fresh,
+    // so the read-only diagram is clean -- layered left-to-right, end terminal,
+    // far fewer crossings -- with no manual dragging. Falls back to the file's
+    // own layout if the layouter is unavailable (worst case = the old layout,
+    // never a broken map).
+    try {
+      // require() resolves bpmn-auto-layout's CommonJS build (index.cjs). A
+      // dynamic import() of its ESM build hard-crashes the Electron renderer.
+      const { layoutProcess } = require("bpmn-auto-layout");
+      const stripped = xml.replace(/<bpmndi:BPMNDiagram[\s\S]*?<\/bpmndi:BPMNDiagram>/g, "");
+      xml = await layoutProcess(stripped);
+    } catch (e) {
+      console.warn("[bpmn] auto-layout unavailable; using the file's own layout:", e && e.message);
+    }
     if (viewer) {
       try { viewer.destroy(); } catch (_) {}
       viewer = null;
     }
-    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     viewer = new BpmnJS({ container: host });
     try {
       const result = await viewer.importXML(xml);
       const warnings = (result && result.warnings) || [];
-      const canvas = viewer.get("canvas");
-      canvas.zoom("fit-viewport", "auto");
-      /* Persist a dragged layout: when the analyst moves a box, save the
-         modeler's XML (which carries the new DI coordinates) back to the
-         .bpmn, debounced, so switching level/tab or re-opening the session
-         keeps the arrangement. Guarded on commandStack.canUndo() so the
-         one-off fire importXML emits doesn't rewrite the file on every load.
-         (A re-analyze regenerates the map from scratch and resets it.) */
-      if (bpmnFilePath) {
-        viewer.get("eventBus").on("commandStack.changed", () => {
-          let edited = false;
-          try { edited = !!(viewer && viewer.get("commandStack").canUndo()); } catch (_) { edited = false; }
-          if (!edited) return;
-          if (saveTimer) clearTimeout(saveTimer);
-          saveTimer = setTimeout(async () => {
-            saveTimer = null;
-            if (!viewer) return;
-            try {
-              const { xml: out } = await viewer.saveXML({ format: true });
-              if (out) fs.writeFileSync(bpmnFilePath, out, "utf-8");
-            } catch (_) { /* best-effort; the in-memory layout still holds */ }
-          }, 600);
-        });
-      }
+      viewer.get("canvas").zoom("fit-viewport", "auto");
       if (warnings.length) {
         const note = document.createElement("div");
         note.className = "bpmn-warning";
