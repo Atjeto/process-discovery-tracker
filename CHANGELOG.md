@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-05-24
+
 ### Changed
 
 - **The BPMN Process diagram lays out cleanly now.** Its coordinates came from a
