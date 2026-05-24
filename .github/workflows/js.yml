@@ -1,0 +1,40 @@
+name: JS syntax + unit tests
+
+# Complements pytest.yml (Python CI). Runs the bundler-free viewer/capture
+# node:test suites and a node --check parse gate, on the Windows target the apps
+# ship to. The Electron binary download is skipped: the suites only `require`
+# modules (require("electron") resolves to a path string), they never launch the
+# app -- the live UI is covered by the _pdt_verify Playwright harness, a separate
+# follow-up to fold into CI.
+on:
+  push:
+    branches: [master, viewer-refactor]
+  pull_request:
+
+jobs:
+  js:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Syntax-check all JS (node --check)
+        run: node scripts/check-js-syntax.js
+
+      - name: Viewer unit tests
+        working-directory: viewer
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          npm ci
+          npm test
+
+      - name: Capture unit tests
+        working-directory: capture
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          npm ci
+          npm test
