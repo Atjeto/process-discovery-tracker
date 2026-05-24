@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-05-25
+
 ### Changed
 
 - **The Session view's top is far less cluttered at laptop widths.** The action
