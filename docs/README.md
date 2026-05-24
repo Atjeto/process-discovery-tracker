@@ -47,6 +47,7 @@ for v0.15.0 plus the analysis & recognition layers. Describes the code as it is 
 | [CAPTURE-ARCHITECTURE-ISSUES.md](CAPTURE-ARCHITECTURE-ISSUES.md) | Capture refactor register — tech-debt items C1-C8 (all resolved in v0.5.0) |
 | [architecture/VALUE-CHAIN-REVIEW.md](architecture/VALUE-CHAIN-REVIEW.md) | Strategic review — where meaning leaks across the capture→insight value chain |
 | [architecture/COHERENCE-AUDIT.md](architecture/COHERENCE-AUDIT.md) | Coherence discipline — every "verb" needs its inverse, a legend, and a real-run check |
+| [architecture/NORTH-STAR.md](architecture/NORTH-STAR.md) | The target ("perfect") state — the value chain at its best, the gap, and the path |
 
 ## Current — operational & component docs
 
