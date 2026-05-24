@@ -200,7 +200,13 @@ function alignCaseSequences(cases) {
       if (bi != null && cj != null && backboneTokens[bi] === caseTokens[cj]) {
         backbone[bi].frequency++;
         backbone[bi].members.push({ caseId: c.caseId, stepId: c.steps[cj].stepId });
-      } else if (bi == null && cj != null) {
+      } else if (cj != null) {
+        // Any unmatched case step is divergent work the consensus lacks at this
+        // point -> an exception. This is BOTH a backbone-side gap (bi == null)
+        // AND a substitution (bi != null but the tokens differ: NW aligned cj
+        // diagonally onto a different backbone token). The substitution case
+        // must NOT fall through silently -- the step would vanish from both the
+        // backbone and the exceptions, hiding divergent work from the analyst.
         exceptions.push({ caseId: c.caseId, stepId: c.steps[cj].stepId, token: caseTokens[cj] });
       }
       // bi present, cj null = this case SKIPS backbone[bi] (its frequency stays

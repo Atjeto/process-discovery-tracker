@@ -178,6 +178,21 @@ test("alignCases: steps within a case are ordered by time before aligning", () =
   assert.deepEqual(r.backbone.map((b) => b.token), ["Search", "Resolve"]);
 });
 
+test("alignCases: a substituted (divergent) step surfaces as an exception, never lost", () => {
+  // cA + cB share Search -> Submit -> Resolve; cC substitutes Escalate for Submit.
+  // NW aligns Escalate diagonally onto Submit (a mismatch), so it must be
+  // recorded as an exception -- not silently dropped (the fuzzer's catch).
+  const steps = [
+    seqStep("a1", "cA", "Search", 1000), seqStep("a2", "cA", "Submit", 2000), seqStep("a3", "cA", "Resolve", 3000),
+    seqStep("b1", "cB", "Search", 1000), seqStep("b2", "cB", "Submit", 2000), seqStep("b3", "cB", "Resolve", 3000),
+    seqStep("c1", "cC", "Search", 1000), seqStep("c2", "cC", "Escalate", 2000), seqStep("c3", "cC", "Resolve", 3000),
+  ];
+  const r = alignCases(steps);
+  assert.deepEqual(r.backbone.map((b) => b.token), ["Search", "Submit", "Resolve"]);
+  assert.deepEqual(r.backbone.map((b) => b.frequency), [3, 2, 3]);   // cC did NOT hit Submit
+  assert.deepEqual(r.exceptions, [{ caseId: "cC", stepId: "c2", token: "Escalate" }]);
+});
+
 test("alignCaseSequences: empty input is empty", () => {
   assert.deepEqual(alignCaseSequences([]), { caseCount: 0, backbone: [], exceptions: [] });
   assert.deepEqual(alignCaseSequences([{ caseId: "x", steps: [] }]), { caseCount: 0, backbone: [], exceptions: [] });
