@@ -1,6 +1,6 @@
 # ADR-0015: Intra-session repetition alignment — curate one, propagate to all
 
-**Status:** Accepted (strategic direction) — partially implemented
+**Status:** Accepted (strategic direction) — partially implemented; build design added 2026-05-23
 **Date:** 2026-05-23 (consolidates the 2026-05-22 redirect of [ADR-0009](0009-normalization-redesign-v013.md) and Decision 1 of [VALUE-CHAIN-REVIEW.md](../architecture/VALUE-CHAIN-REVIEW.md))
 **Deciders:** Analyst (process-discovery lead), project owner
 
@@ -82,6 +82,64 @@ recurring sub-sequences by self-similarity).
 **Supersedes:** the canonical-template-matching mechanism of
 [ADR-0009](0009-normalization-redesign-v013.md) (Issues 4, 5, 8). ADR-0009's
 anchor-detection idea (Issue 3) is kept and shipped.
+
+## Design — the alignment build (2026-05-23)
+
+The pieces below turn "curate one, propagate to all" into something buildable. A
+few **forks are analyst-workflow calls** carrying a recommended default — flag any
+you'd decide differently before the build leans on it.
+
+### 1. Aligning the instances
+Each detected case (anchor-based, shipped) is an ordered step sequence. Represent
+each step by its value-free **`process_label`** (the token the map and stats
+already group on; recognised category as a tiebreaker) so instances compare by
+*type*, not by embedded values. Then:
+- Cluster cases by exact token sequence → the dominant variant is the backbone;
+  minority sequences are candidate exceptions.
+- Fuzzy-merge near-identical variants by pairwise sequence alignment
+  (Needleman–Wunsch over the token sequences — cheap at this scale, tens of steps
+  × dozens of cases), so an exception ticket with one extra/missing step aligns to
+  the backbone with a *gap* instead of forking a whole new variant.
+- Output: a consensus backbone, each position carrying a **frequency** (n/N cases)
+  and the set of cases that hit / skip / vary at it.
+
+*(Fork **F1** — token: `process_label` primary + category tiebreaker. Fork **F4**
+— fuzzy-merge edit-distance threshold k: start k ≤ 2, then calibrate against real
+captures — this is the calibration item's first customer.)*
+
+### 2. Where it lives — ephemeral, not a template
+Per VALUE-CHAIN Decision 1 the alignment is **not** a persisted cross-session
+template. Compute it **live in the viewer** from the detected cases (like
+`buildAnnotationDfg`), reusing `step-alignment.js`, so it tracks analyst edits with
+no re-analyze. The only persisted artifact is the analyst's curation itself (step
+renames / flags / phase membership), which already lives in `annotations.json`.
+*(Fork **F3** — live-computed vs persisted alignment: recommend live.)*
+
+### 3. Curate once, propagate
+The Steps view gains an aligned reading: the backbone steps with their
+frequencies, each linked to its instances across cases. When the analyst renames /
+flags / groups a backbone step, the edit **propagates to the aligned step in every
+case** (matched by alignment position + signature), written to `annotations.json`
+as one operation — and therefore **one Ctrl+Z** (the undo fix makes this safe).
+Non-aligned (exception) positions are surfaced and edited per-instance. *(Fork
+**F2** — propagation auto vs confirmed: recommend **confirmed**, extending the
+shipped "Apply to N repeats" affordance so the analyst stays in control.)*
+
+### 4. The map + stats are already ready
+The step map and `step_stats` collapse by `process_label` already; alignment
+supplies the **frequencies** that turn the step DFG from a single line (one
+instance) or a hairball (all-unique) into a real "this path 10/12 times" model — no
+further map work needed.
+
+### Phased build
+1. **Alignment engine** (pure, unit-testable): cluster + pairwise-align case token
+   sequences → consensus + frequency + variant map. Extends `step-alignment.js`.
+2. **Aligned reading** in the Steps view: backbone + per-step frequency + instances.
+3. **Propagation**: curate one → apply to aligned siblings, one undo, persisted.
+4. **Exception handling**: surface + per-instance edit of divergent cases.
+
+Phases 1–2 are buildable now and harness-verifiable; phase 3 depends on the F2
+call; the fuzzy threshold (F4) is where the calibration loop first pays off.
 
 ## Action items
 
