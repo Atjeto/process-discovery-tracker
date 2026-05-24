@@ -7,7 +7,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { stepSignature, alignSteps, groupForStep } = require("./step-alignment.js");
+const { stepSignature, alignSteps, groupForStep, alignCases, alignCaseSequences } = require("./step-alignment.js");
 
 // Build a step + its interactions. `elems` is a list of
 // [kind, control_type, automation_id] tuples; values are intentionally
@@ -100,4 +100,85 @@ test("groupForStep returns the repeat group for a member step", () => {
   assert.equal(g.caseSpan, 2);
   const g2 = groupForStep("nonexistent", steps, interactionsById);
   assert.equal(g2, null);
+});
+
+// --- Ordered sequence alignment (ADR-0015 phase 1) -------------------------
+
+/** A step with a controllable token (process_label) + a time for ordering. */
+function seqStep(stepId, caseId, label, startMs, opts = {}) {
+  return {
+    step_id: stepId, case_id: caseId,
+    process_label: opts.usePlain ? undefined : label,   // else stepToken strips name
+    name: opts.name || label,
+    state: opts.state || "edited",
+    time_range: { start: new Date(startMs).toISOString() },
+  };
+}
+
+test("alignCases: identical cases -> backbone hit by every case", () => {
+  const steps = [
+    seqStep("a1", "cA", "Search", 1000), seqStep("a2", "cA", "Resolve", 2000),
+    seqStep("b1", "cB", "Search", 1000), seqStep("b2", "cB", "Resolve", 2000),
+    seqStep("c1", "cC", "Search", 1000), seqStep("c2", "cC", "Resolve", 2000),
+  ];
+  const r = alignCases(steps);
+  assert.equal(r.caseCount, 3);
+  assert.deepEqual(r.backbone.map((b) => b.token), ["Search", "Resolve"]);
+  assert.deepEqual(r.backbone.map((b) => b.frequency), [3, 3]);
+  assert.equal(r.exceptions.length, 0);
+  assert.deepEqual(r.backbone[0].members.map((m) => m.caseId).sort(), ["cA", "cB", "cC"]);
+});
+
+test("alignCases: an exception ticket's extra step is a gap, not a backbone node", () => {
+  const steps = [
+    seqStep("a1", "cA", "Search", 1000), seqStep("a2", "cA", "Resolve", 2000),
+    seqStep("b1", "cB", "Search", 1000), seqStep("b2", "cB", "Resolve", 2000),
+    // cC detours mid-ticket
+    seqStep("c1", "cC", "Search", 1000), seqStep("c2", "cC", "Detour", 1500), seqStep("c3", "cC", "Resolve", 2000),
+  ];
+  const r = alignCases(steps);
+  assert.deepEqual(r.backbone.map((b) => b.token), ["Search", "Resolve"]);
+  assert.deepEqual(r.backbone.map((b) => b.frequency), [3, 3]);   // all 3 still hit Search + Resolve
+  assert.deepEqual(r.exceptions, [{ caseId: "cC", stepId: "c2", token: "Detour" }]);
+});
+
+test("alignCases: a step missing in one case lowers that position's frequency", () => {
+  const steps = [];
+  for (const c of ["cA", "cB", "cC"]) {
+    steps.push(seqStep(c + "1", c, "Search", 1000), seqStep(c + "2", c, "Validate", 2000), seqStep(c + "3", c, "Resolve", 3000));
+  }
+  steps.push(seqStep("d1", "cD", "Search", 1000), seqStep("d2", "cD", "Resolve", 3000));   // cD skips Validate
+  const r = alignCases(steps);
+  assert.equal(r.caseCount, 4);
+  assert.deepEqual(r.backbone.map((b) => b.token), ["Search", "Validate", "Resolve"]);
+  assert.deepEqual(r.backbone.map((b) => b.frequency), [4, 3, 4]);   // Validate hit by 3 of 4
+  assert.equal(r.exceptions.length, 0);
+});
+
+test("alignCases: value-laden names align by their value-free process_label", () => {
+  // No process_label set -> stepToken strips the name (Search — CUST-1 -> Search).
+  const steps = [
+    seqStep("a1", "cA", "Search — CUST-1", 1000, { usePlain: true, name: "Search — CUST-1" }),
+    seqStep("a2", "cA", "Resolve", 2000, { usePlain: true, name: "Resolve" }),
+    seqStep("b1", "cB", "Search — CUST-2", 1000, { usePlain: true, name: "Search — CUST-2" }),
+    seqStep("b2", "cB", "Resolve", 2000, { usePlain: true, name: "Resolve" }),
+  ];
+  const r = alignCases(steps);
+  assert.deepEqual(r.backbone.map((b) => b.token), ["Search", "Resolve"]);
+  assert.deepEqual(r.backbone.map((b) => b.frequency), [2, 2]);
+});
+
+test("alignCases: steps within a case are ordered by time before aligning", () => {
+  // Given out of order; the backbone must still read Search -> Resolve.
+  const steps = [
+    seqStep("a2", "cA", "Resolve", 2000), seqStep("a1", "cA", "Search", 1000),
+    seqStep("b1", "cB", "Search", 1000), seqStep("b2", "cB", "Resolve", 2000),
+  ];
+  const r = alignCases(steps);
+  assert.deepEqual(r.backbone.map((b) => b.token), ["Search", "Resolve"]);
+});
+
+test("alignCaseSequences: empty input is empty", () => {
+  assert.deepEqual(alignCaseSequences([]), { caseCount: 0, backbone: [], exceptions: [] });
+  assert.deepEqual(alignCaseSequences([{ caseId: "x", steps: [] }]), { caseCount: 0, backbone: [], exceptions: [] });
 });
