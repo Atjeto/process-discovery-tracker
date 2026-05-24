@@ -96,6 +96,12 @@ retroactive ADR. Decide per item; don't manufacture ADRs for their own sake.
 
 ## 3. Open implementation backlog (carried from the ADRs)
 
+> **Session update (2026-05-23).** ADR-0012 #7 (recognition-driven anchors) and
+> ADR-0013 #5's **frequency slider** both shipped and are committed; ADR-0013 #6
+> was **decided — deferred** (no live BPMN re-mine is possible; see the ADR). The
+> only item still open here is ADR-0013 #5's **calibration**, which is data-blocked
+> (needs more representative real captures — owner-side).
+
 - **ADR-0012 #7 — recognition-driven anchor detection (the headline functional
   item).** Replace the opaque `automation_id == "txtsr"` case anchor with a
   recognised signature, so case detection generalises across engagements (ties
@@ -116,11 +122,15 @@ retroactive ADR. Decide per item; don't manufacture ADRs for their own sake.
   the owner before it's buildable (regenerate-on-view? embed the model in the
   viewer? a queryable projection?). The export already re-derives from current
   annotations on each run. **Get the definition first.**
-- **Released-`.exe` smoke.** Confirm the packaged app finds
-  `resources/shared/recognition-patterns.json` (the P1 bundling), and verify the
-  recorder's D3 screenshot occlusion (it dims its own always-on-top windows during
-  a grab) on a real **single-monitor** capture. Needs the work laptop + a
-  one-display recording.
+- **Released-`.exe` smoke.** The **bundling config is verified** (2026-05-23): both
+  build paths ship `shared/` next to `normalization/` under `resources/` —
+  `viewer/build-package.js` `extraResource` (electron-packager, the ship route) and
+  `viewer/package.json` `extraResources` (electron-builder) — so the packaged
+  `recognition.py` / `recognition.js` will resolve `resources/shared/recognition-patterns.json`.
+  What remains is the **runtime** confirmation: launch the packaged `.exe` and
+  verify recognition works, plus the recorder's D3 screenshot occlusion (it dims
+  its own always-on-top windows during a grab) on a real **single-monitor**
+  capture. Needs the work laptop + a one-display recording.
 
 ---
 

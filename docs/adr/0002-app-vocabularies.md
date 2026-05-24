@@ -265,5 +265,5 @@ Override: `PDT_APP_VOCABULARIES` env var pointing at one or more directories (se
 6. [x] Viewer surfaces `meaningful_name` in the raw events table and step detail.
 7. [x] `shared/SCHEMA.md` documents `meaningful_name` / `screen_id` / `vocab_flags` / `vocab_source`.
 8. [x] Stats meta records applied vocabularies (`app_vocabularies` / `app_vocabulary_matches` / `vocab_coverage`).
-9. [ ] User Guide: chapter on app vocabularies (unverified — check `User-Guide.docx`).
-10. [ ] Pytest smoke for `app_vocab.py` (unverified in this pass).
+9. [ ] User Guide chapter — `docs/User-Guide.docx` is a maintained **binary** (copied at release by `build-distribution.ps1`), so its contents aren't audited here. The App Vocabulary layer *is* fully documented in the docs set (this ADR, FEATURES.md, VIEWER.md); the end-user `.docx` is owner-maintained.
+10. [x] Pytest coverage for `app_vocab.py` — `normalization/test/test_app_vocab.py`. *(verified 2026-05-23)*
