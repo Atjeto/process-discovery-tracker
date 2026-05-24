@@ -216,7 +216,31 @@ function alignCases(steps) {
   return alignCaseSequences(caseSequences(steps));
 }
 
+/**
+ * Seed values for curating a backbone step (ADR-0015 phase 3). The value-free
+ * name (the token) is supplied by the caller; this summarises the rest from the
+ * step's aligned instances: the description of the first instance that has one,
+ * and each flag set when a STRICT MAJORITY of instances carry it -- so the
+ * curate form reflects the current consensus before the analyst applies. Pure.
+ * @param {Array} memberSteps  the annotation steps aligned at one backbone position
+ * @returns {{description:string, flags:Object}}
+ */
+function representativeCuration(memberSteps) {
+  const steps = (memberSteps || []).filter(Boolean);
+  let description = "";
+  for (const s of steps) { if (s.description && String(s.description).trim()) { description = s.description; break; } }
+  const FLAGS = ["conditional", "exception_path", "waste", "automation_candidate"];
+  const flags = {};
+  const n = steps.length;
+  for (const k of FLAGS) {
+    const c = steps.reduce((acc, s) => acc + ((s.flags && s.flags[k]) ? 1 : 0), 0);
+    flags[k] = n > 0 && c * 2 > n;   // strict majority
+  }
+  return { description, flags };
+}
+
 module.exports = {
   stepSignature, alignSteps, groupForStep,
   stepToken, caseSequences, alignCaseSequences, alignCases,
+  representativeCuration,
 };

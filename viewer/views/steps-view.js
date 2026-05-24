@@ -314,14 +314,45 @@ function renderAlignedReading(interactionsById) {
   const entry = (_alignSelIndex != null) ? aligned.backbone[_alignSelIndex] : null;
   if (entry) {
     const instances = entry.members.map(m => ({ caseId: m.caseId, caseLabel: caseLabel(m.caseId), step: byId[m.stepId] }));
+    const memberSteps = entry.members.map(m => byId[m.stepId]).filter(Boolean);
+    const seed = Object.assign({ name: entry.token }, PdtAlign.representativeCuration(memberSteps));
+    const idx = _alignSelIndex;
     PdtSteps.renderBackboneDetail($("#step-detail"), entry, {
       caseCount: aligned.caseCount,
       instances,
+      seed,
       onJump: (sid) => { const s = byId[sid]; if (s) jumpToStepInFlow(s); },
+      onApply: (curated) => applyCurationToBackbone(idx, curated),
     });
   } else {
     PdtSteps.renderBackboneDetail($("#step-detail"), null, {});
   }
+}
+
+/* ADR-0015 Phase 3: curate one consensus step -> propagate to ALL its aligned
+   instances across cases in ONE annotations write (therefore one Ctrl+Z). Fork
+   F2 default = confirmed: the analyst edits the consensus name/description/flags
+   then clicks Apply; nothing auto-applies. Re-derives the backbone from the live
+   steps so the member set is current at apply time. */
+async function applyCurationToBackbone(backboneIndex, curated) {
+  if (!State.getSession() || !curated) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const aligned = PdtAlign.alignCases(anno.steps || []);
+  const entry = aligned.backbone[backboneIndex];
+  if (!entry || !entry.members.length) { toast("No instances to apply to", "error"); return; }
+  let applied = 0;
+  for (const m of entry.members) {
+    const t = (anno.steps || []).find(s => s.step_id === m.stepId);
+    if (!t) continue;
+    if (curated.name) t.name = curated.name;
+    t.description = curated.description || "";
+    t.flags = Object.assign({}, t.flags || {}, curated.flags || {});
+    t.state = t.state === "manually_authored" ? "manually_authored" : "edited";
+    applied++;
+  }
+  await persistAnnotations(anno, "apply to all instances");   // one write -> one Ctrl+Z
+  toast("Applied to " + applied + " instance(s) across cases", "success");
+  renderStepsLevel();
 }
 
 async function inlineRenameStep(stepId, newName, advance) {

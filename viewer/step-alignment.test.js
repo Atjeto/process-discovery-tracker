@@ -7,7 +7,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { stepSignature, alignSteps, groupForStep, alignCases, alignCaseSequences } = require("./step-alignment.js");
+const { stepSignature, alignSteps, groupForStep, alignCases, alignCaseSequences, representativeCuration } = require("./step-alignment.js");
 
 // Build a step + its interactions. `elems` is a list of
 // [kind, control_type, automation_id] tuples; values are intentionally
@@ -181,4 +181,34 @@ test("alignCases: steps within a case are ordered by time before aligning", () =
 test("alignCaseSequences: empty input is empty", () => {
   assert.deepEqual(alignCaseSequences([]), { caseCount: 0, backbone: [], exceptions: [] });
   assert.deepEqual(alignCaseSequences([{ caseId: "x", steps: [] }]), { caseCount: 0, backbone: [], exceptions: [] });
+});
+
+// --- representativeCuration (ADR-0015 phase 3 seed) ------------------------
+
+test("representativeCuration: empty members -> no description, all flags false", () => {
+  const r = representativeCuration([]);
+  assert.equal(r.description, "");
+  assert.deepEqual(r.flags, { conditional: false, exception_path: false, waste: false, automation_candidate: false });
+});
+
+test("representativeCuration: a flag set on a strict majority is seeded on", () => {
+  const members = [
+    { description: "", flags: { waste: true } },
+    { description: "look up the serial", flags: { waste: true } },
+    { description: "", flags: { waste: false, automation_candidate: true } },
+  ];
+  const r = representativeCuration(members);
+  assert.equal(r.flags.waste, true);                 // 2 of 3 -> majority
+  assert.equal(r.flags.automation_candidate, false); // 1 of 3 -> not majority
+  assert.equal(r.description, "look up the serial");  // first non-empty
+});
+
+test("representativeCuration: an exactly-half flag is NOT seeded (strict majority)", () => {
+  const members = [{ flags: { waste: true } }, { flags: { waste: false } }];
+  assert.equal(representativeCuration(members).flags.waste, false);
+});
+
+test("representativeCuration: ignores null members", () => {
+  const r = representativeCuration([null, { flags: { conditional: true } }, undefined]);
+  assert.equal(r.flags.conditional, true);   // 1 of 1 real member
 });
