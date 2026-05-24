@@ -1,6 +1,6 @@
 # ADR-0015: Intra-session repetition alignment — curate one, propagate to all
 
-**Status:** Accepted (strategic direction) — partially implemented; build design added 2026-05-23
+**Status:** Accepted — phases 1–4 implemented (alignment engine + aligned reading + curate-once-propagate + exceptions, 2026-05-24); the fuzzy edit-distance threshold (fork F4) remains, data-blocked
 **Date:** 2026-05-23 (consolidates the 2026-05-22 redirect of [ADR-0009](0009-normalization-redesign-v013.md) and Decision 1 of [VALUE-CHAIN-REVIEW.md](../architecture/VALUE-CHAIN-REVIEW.md))
 **Deciders:** Analyst (process-discovery lead), project owner
 
@@ -61,9 +61,12 @@ This re-uses parts of ADR-0009 and discards others:
   first-cut alignment engine (`viewer/step-alignment.js`) with repeat badges and an
   "Apply to N repeats" affordance; the step-level process map that gains its
   frequencies from the aligned instances ([ADR-0013](0013-value-free-grouping-and-map-readability.md)).
-- **Open (the hard build):** fuzzy / variant-aware alignment (ticket 3 had an
-  exception — a step-level trace-clustering problem) and the full
-  curate-once-apply-to-all editing loop. Tracked in `docs/To-Do/NEXT-SESSION-SPEC.md`.
+- **Shipped (2026-05-24):** variant-aware alignment (`alignCases` — Needleman–Wunsch
+  over value-free tokens → consensus backbone + per-position frequency + exceptions)
+  and the full curate-once-apply-to-all editing loop, surfaced as the Steps view's
+  **Aligned reading** (phases 2–4; `viewer/views/steps-view.js`, `viewer/step-editor.js`).
+- **Open:** calibrating the fuzzy edit-distance threshold (fork **F4**) against real
+  multi-ticket captures — data-blocked (owner-side).
 
 ## Consequences
 

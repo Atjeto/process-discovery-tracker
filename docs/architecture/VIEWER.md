@@ -63,7 +63,7 @@ CommonJS, so real modules need no build step).
 | File | Surface |
 |---|---|
 | `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, video sync, event table, the annotations/screenshots/markers panel, case scope, command-palette provider. |
-| `views/steps-view.js` | Steps level — step list/detail, step CRUD, the ignored-apps dialog. |
+| `views/steps-view.js` | Steps level — step list/detail, step CRUD, the **Flat / Aligned** reading toggle (consensus backbone, curate-one→propagate, exceptions — [ADR-0015](../adr/0015-intra-session-repetition-alignment.md)), the ignored-apps dialog. |
 | `views/phases-view.js` | Phases level — phase list/detail, phase CRUD, grouping suggestions. |
 | `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)). |
 | `views/aggregate-view.js` | Compare Sessions — the notation × level process-map matrix, drill-down scoping, cross-session statistics + analysis, exports. |
@@ -81,7 +81,7 @@ former `window.Pdt*` globals were converted; the globals are gone):
 | `bpmn-viewer.js` | `render`, `fit`, `exportSvg` | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`) |
 | `process-map-levels.js` | `buildAnnotationDfg`, `processLabel`, `dropRareEdges` | Pure step/phase DFG from annotations, value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)) |
 | `recognition.js` | `recognize`, `isChrome`, … | Semantic interaction category from documented platform/framework signatures (`shared/recognition-patterns.json`); twin of the Python `recognition.py` ([ADR-0011](../adr/0011-platform-recognition-layer.md)) |
-| `step-alignment.js` | `alignRepeats`, … | Intra-session repetition alignment — aligns the same step across cases by recognised-category signature |
+| `step-alignment.js` | `alignCases`, `alignSteps`, `groupForStep`, `representativeCuration`, … | Intra-session repetition alignment ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md)). `alignCases` builds the consensus **backbone** across detected cases (Needleman–Wunsch over value-free `process_label` tokens) with per-position frequency + exceptions — behind the Steps view's Aligned reading; `alignSteps`/`groupForStep` are the older signature-based repeat grouping (per-row badges + "Apply to N repeats"). Pure, fuzz-tested |
 | `analysis-aggregate.js` | `aggregateAnalysis` | Pure cross-session rollup of per-session `analysis.json` (time study / per-worker / automation / efficiency) for the Compare-Sessions Analysis panel |
 | `session-summary.js` | `summarize`, `detectDurationOutliers` | Pure per-session summary + duration-outlier detection |
 | `theme.js` | `stepPalette`, `dfgStyleTokens`, … | Light/dark theme tokens + chart/DFG colour palettes |

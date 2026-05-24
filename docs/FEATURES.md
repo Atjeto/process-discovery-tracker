@@ -95,6 +95,11 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   range stats, and a video-synced playhead.
 - **Steps & Phases** — review and edit machine-suggested steps (split / merge /
   hide / bulk-delete), group steps into phases, with a mini-timeline for each.
+- **Aligned reading — curate one, apply to all** — a Flat / Aligned toggle on the
+  Steps view shows the consensus backbone across the detected cases, each step
+  with a frequency ("seen in N of M cases"); curate one step and propagate its
+  name / description / flags to every case in a single undo, with divergent steps
+  surfaced as editable exceptions (ADR-0015).
 - **Annotations** — notes, a screenshot gallery, and a marker list, with full
   undo / redo; edits save to `annotations.json` and never touch the raw events.
 - **Run normalization in-app** — spawn the bundled Python pipeline with progress

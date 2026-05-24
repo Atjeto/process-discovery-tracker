@@ -60,12 +60,14 @@ deliverable`. Perfect = no rung loses meaning. Per seam: the target, where it st
   (intra-session alignment); short one-off sessions get good-enough heuristic segmentation plus fast
   manual curation. The 308-fragment failure never recurs.
 - **Today.** Anchor-based case detection ships, now keyed on a **recognised signature** (ADR-0012 #7)
-  so it generalises across engagements; `process_label` collapses repeated work; a *first-cut*
-  alignment engine (`step-alignment.js` + repeat badges) exists.
-- **Gap.** The **full build is unbuilt** ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md)):
-  fuzzy / variant-aware alignment (the exception ticket), and the curate-once-apply-to-all editing
-  loop, with the step map drawing its frequencies from the aligned instances. *This is the single
-  biggest meaning-leak between here and the north star.*
+  so it generalises across engagements; `process_label` collapses repeated work; and the
+  **aligned reading** ships ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md) phases 2–4):
+  the Steps view's Flat/Aligned toggle shows the consensus backbone (Needleman–Wunsch over value-free
+  tokens) with per-position frequency, curate-one→propagate-to-all in one undo, and per-instance
+  exceptions.
+- **Gap.** Only **calibration** remains: tuning the fuzzy edit-distance threshold (fork F4) against
+  real multi-ticket captures — data-blocked (owner-side). The mechanism is built and harness-verified;
+  what's unproven is the threshold against real variance.
 
 ### Seam 4 — Steps → analyst meaning (annotation)
 - **Target.** Imposing meaning is fast *and* safe *and* it counts: every verb has a working inverse,
@@ -136,9 +138,9 @@ Features alone don't reach the north star. Four qualities cut across every seam.
 1. **Make the failure mode impossible first.** Commit the `_pdt_verify` harness as a real e2e suite +
    add CI (`node --check`, units, e2e gating merge). Everything else depends on being able to ship
    *verified*; this is the highest-leverage move and unblocks confident work on the rest.
-2. **Build ADR-0015 intra-session alignment** (Seam 3) — the biggest functional meaning-leak. Needs a
-   design pass on the fuzzy-alignment algorithm and the curate-propagate UX (owner-steered), then the
-   build, verified in the harness.
+2. **Calibrate ADR-0015 alignment** (Seam 3) — the engine + the aligned reading shipped (phases 1–4,
+   harness-verified): consensus backbone, curate-once→propagate, exceptions. What remains is tuning the
+   fuzzy edit-distance threshold (fork F4) against real multi-ticket captures — *data-blocked*.
 3. **Define + build the living-projection deliverable** (Seam 5) — *blocked on an owner definition*;
    get that first, then build.
 4. **Stand up the calibration loop** (Seams 2–3 heuristics) — *blocked on real captures*; calibrate
@@ -148,9 +150,9 @@ Features alone don't reach the north star. Four qualities cut across every seam.
 6. **Earn trust on the machine:** sign the binaries, run the packaged-app field smoke + sec scan on
    the locked-down laptop.
 
-Items 1, 2, 5 are buildable now (1 and 5 need no owner input; 2 needs design direction). Items 3, 4, 6
-are gated on the owner's definition, data, or hardware — the same three external dependencies that
-bound every "make it perfect" attempt.
+Items 1 and 5 are buildable now with no owner input; item 2's build shipped and only its calibration
+remains. That calibration plus items 3, 4, 6 are gated on the owner's definition, data, or hardware —
+the same external dependencies that bound every "make it perfect" attempt.
 
 ## The gap in one view
 
@@ -158,7 +160,7 @@ bound every "make it perfect" attempt.
 |---|---|---|
 | Capture fidelity | Small — recorder tests + coverage surfacing | Me |
 | Classification | Small — drop misleading defaults, first-run prompt | Me |
-| **Segmentation (alignment)** | **Large — the headline build** | Me + owner design steer |
+| **Segmentation (alignment)** | Small — built (ADR-0015 phases 1–4); only F4 threshold calibration remains | Owner data (calibration) |
 | Annotation | Small — undo fixed; lost-update hardening | Me |
 | Deliverable (living projection) | Medium — **undefined** | Owner definition |
 | Correctness coverage | Small — test the data paths | Me |
@@ -168,7 +170,8 @@ bound every "make it perfect" attempt.
 | Inherent limits | Zero — accepted, handled, flagged | (n/a) |
 
 **Bottom line.** The tool is much of the way there: capture, classification, the map, the analysis
-layer, and a now-trustworthy annotation loop all work. The distance to the north star is **one large
-buildable feature (alignment), one structural investment (verified-by-CI), a handful of small
-hardening tasks, and three things only the owner can unblock.** "Perfect" is not a state to be
-certified — but it is, written down here, a direction to be measured against.
+layer, the alignment loop, and a now-trustworthy annotation loop all work. The distance to the north
+star is **one structural investment (verified-by-CI), a handful of small hardening tasks, and the
+owner-gated items (alignment calibration, the PDD definition, real captures, and signing + a field
+smoke).** "Perfect" is not a state to be certified — but it is, written down here, a direction to be
+measured against.

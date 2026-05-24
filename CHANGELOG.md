@@ -8,6 +8,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Aligned reading of repeated work — curate one ticket, apply to all.** The
+  Steps view gains a **Flat / Aligned** toggle. Aligned shows the consensus
+  **backbone** across the session's detected cases — each step with a frequency
+  pill ("seen in 10/12 cases") and its aligned instances (jump to any in Flow).
+  Editing a backbone step's name / description / flags and clicking **Apply to all
+  N instances** propagates the curation to every case in a *single* annotations
+  write, so one Ctrl+Z reverts the whole thing. Steps a single case has that the
+  consensus lacks surface as **exceptions**, edited in place. The per-step filter
+  hides in Aligned mode and the toggle shows only with 2+ cases (ADR-0015 phases
+  2–4; `viewer/step-alignment.js` `alignCases`, `viewer/views/steps-view.js`,
+  `viewer/step-editor.js`).
 - **Recognition-driven case anchors.** A case anchor can now be named by a
   *recognised* platform signature (`case_anchor.recognized: "search"`, ADR-0011)
   instead of an engagement-specific `automation_id` — composable with a value/label
@@ -65,6 +76,29 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Divergent steps no longer vanish from the aligned reading.** A step a case
+  performs differently from the consensus (a substitution) was aligned diagonally
+  and counted as neither a backbone member nor an exception — it disappeared from
+  the analyst's view entirely. Every non-hidden step now surfaces as exactly one
+  or the other, guarded by a property-based fuzzer (`viewer/step-alignment.js`,
+  `viewer/step-alignment.fuzz.test.js`).
+- **Normalization survives a corrupt or hand-edited `events.jsonl`.** A
+  valid-JSON-but-non-object line (`123` / `"x"` / `[]` / `null`), a
+  numeric/null/missing timestamp, a null or missing `data`, a missing `event_id`,
+  or a non-string interaction `kind` each used to crash the whole run with an
+  uncaught exception. `load_events` now drops non-object lines (like malformed
+  JSON) and a boundary guarantees the event shape every downstream stage relies
+  on; `parse_ts` falls back rather than throwing (`normalization/normalize.py`,
+  `normalization/step_suggest.py`).
+- **A repeated recorder `hello` no longer double-captures.** The C# recorder
+  reassigned its UIA subscriber on a second `hello` without stopping the first,
+  leaking its handlers so every interaction was recorded twice (a silent
+  data-integrity bug). `hello` is now idempotent (`capture/recorder/Program.cs`).
+- **Anchor case detection tolerates bad timestamps + a misconfigured regex.** A
+  non-ISO timestamp on an anchor event, or a typo in a template's
+  `case_anchor.matches` regex, crashed the run; timestamps now fall back to the
+  epoch and an invalid regex warns + matches nothing
+  (`normalization/case_assignment.py`).
 - **Empty serial-box clicks no longer fragment case detection.** A focus or
   click on the case-anchor field before anything is typed fired the anchor with
   an empty value, opening a throwaway empty-label "case" that the
