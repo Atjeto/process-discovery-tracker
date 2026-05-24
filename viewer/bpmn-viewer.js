@@ -49,7 +49,16 @@
       if (!gn) return;
       const dx = (gn.x - n.width / 2) - n.x;
       const dy = (gn.y - n.height / 2) - n.y;
-      if (dx || dy) { try { modeling.moveShape(n, { x: dx, y: dy }); } catch (_) {} }
+      if (!dx && !dy) return;
+      try { modeling.moveShape(n, { x: dx, y: dy }); } catch (_) {}
+      // A node's NAME (start/end-event labels, named gateways) is a SEPARATE
+      // external-label element; moveShape does not carry it, so it would be left
+      // behind at the node's old spot (the "Start label fell off the box" bug).
+      // Shift each attached label by the same delta to keep it glued to its node.
+      (n.labels || []).forEach((lbl) => {
+        if (!lbl || typeof lbl.x !== "number") return;
+        try { modeling.moveShape(lbl, { x: dx, y: dy }); } catch (_) {}
+      });
     });
     // Route each flow along dagre's computed path. dagre routes long edges
     // through the lanes BETWEEN node rows, so they don't cut through an
@@ -70,6 +79,50 @@
       } catch (_) { try { modeling.layoutConnection(e); } catch (__) {} }
     });
     return true;
+  }
+
+  /* A block-structured miner closes every split with a matching join. When that
+     join's ONLY successor is the terminal node, the diamond carries no information
+     -- it just impersonates a decision (same symbol as an IF, but it merges rather
+     than branches into nothing). Collapse it: reconnect each incoming flow straight
+     to the terminal, then drop the gateway, so the branches converge directly on
+     the end. BPMN lets a node take several incoming flows (an uncontrolled merge),
+     so no meaning is lost -- a gateway with a single outgoing flow is never a split.
+
+     The terminal is detected STRUCTURALLY -- any non-gateway node with no outgoing
+     flow (out-degree 0) -- because this exporter ends the map with a Task named
+     "end" rather than a bpmn:EndEvent, so keying on the element type would miss it.
+     Runs before the dagre layout and folds into the cleared-undo baseline, so it is
+     a read-clean normalisation, not an analyst edit. Idempotent; loops so a chain
+     (G1 -> G2 -> end) fully collapses. */
+  function collapseTerminalJoins(v) {
+    let modeling, elementRegistry;
+    try {
+      modeling = v.get("modeling");
+      elementRegistry = v.get("elementRegistry");
+    } catch (_) { return; }
+    const isGateway = (el) => !!(el && el.type && el.type.indexOf("Gateway") !== -1);
+    const flows = (el, dir) => ((el && el[dir]) || []).filter((c) => c && c.waypoints);
+    const isSink = (el) => !!(el && !isGateway(el) && flows(el, "outgoing").length === 0);
+    for (let pass = 0; pass < 25; pass++) {
+      const gateways = elementRegistry.filter(isGateway);
+      let changed = false;
+      gateways.forEach((gw) => {
+        const outs = flows(gw, "outgoing");
+        const ins = flows(gw, "incoming");
+        if (outs.length !== 1 || !ins.length) return;        // not a pure join / pass-through
+        const term = outs[0].target;
+        if (!isSink(term)) return;                            // only collapse joins INTO the end node
+        const dock = { x: term.x + term.width / 2, y: term.y + term.height / 2 };
+        ins.slice().forEach((inc) => {
+          try { modeling.reconnectEnd(inc, term, dock); }
+          catch (_) { try { modeling.connect(inc.source, term); } catch (__) {} }
+        });
+        try { modeling.removeShape(gw); } catch (_) {}        // drops gw + its lone gw->end flow
+        changed = true;
+      });
+      if (!changed) break;
+    }
   }
 
   async function render(host, bpmnFilePath, opts) {
@@ -98,12 +151,14 @@
       // baseline (clear undo) so neither the import nor the auto-layout counts as
       // an edit -- only the analyst's own drags do.
       try {
+        collapseTerminalJoins(viewer);
         applyDagreLayout(viewer);
         viewer.get("commandStack").clear();
       } catch (e) {
         console.warn("[bpmn] dagre layout failed; using the file's layout:", e && e.message);
       }
       viewer.get("canvas").zoom("fit-viewport", "auto");
+      try { host.__bpmnViewer = viewer; } catch (_) {}   // debug/verification handle (cf. dfg host.__cy)
       /* Persist the analyst's manual nudges back to the .bpmn (debounced),
          guarded on canUndo so neither the import nor the baseline auto-layout
          rewrites the file. A re-analyze regenerates + re-lays-out the map. */

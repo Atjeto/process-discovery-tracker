@@ -15,6 +15,21 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   padded, left-aligned, scrollable body and a footer pinned bottom-right; the
   two-column grid is scoped to the Help modal alone via `:has(.help-nav)`
   (`viewer/styles.css`).
+- **BPMN Process diagram: event names stay on their node, and flows converge
+  straight into the end.** After the dagre relayout a node's *name* — a separate
+  external label, not drawn inside the box — was left behind at the node's old
+  position (the "Start label fell off the start mark box"); each external label now
+  moves with its node. Separately, a block-structured miner closes every branch
+  with a matching join, so the map ended on a gateway whose only exit was the
+  terminal node — a merge diamond that reads like a decision branching into nothing
+  (and an XOR-join carries the identical symbol to an XOR-split, so it is genuinely
+  misleading). Such a terminal join is now collapsed: its incoming flows reconnect
+  straight to the end node so the branches converge directly, while a meaningful
+  mid-process join is left intact (`viewer/bpmn-viewer.js`).
+- **BPMN external labels are legible in dark mode.** Event and gateway names float
+  on the canvas rather than inside a box, and bpmn-js paints them near-black, so
+  they vanished against the dark canvas. They now take the foreground colour while
+  internal task labels (on their white boxes) stay dark (`viewer/styles.css`).
 
 ## [0.16.1] - 2026-05-24
 
