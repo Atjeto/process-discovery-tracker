@@ -14,9 +14,12 @@ and stamp_anchor_cases.
 
 from __future__ import annotations
 
+import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -118,9 +121,15 @@ _ANCHOR_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
 def _parse_ts(s: str) -> datetime:
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    return datetime.fromisoformat(s)
+    try:
+        if isinstance(s, str) and s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        # A corrupt or hand-edited log can carry a non-ISO / empty / non-string
+        # timestamp; fall back to the epoch so anchor case detection degrades
+        # instead of crashing (matches step_suggest.parse_ts).
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def _explicit_field_matches(data: dict, anchor_cfg: dict) -> bool:
@@ -146,7 +155,14 @@ def _explicit_field_matches(data: dict, anchor_cfg: dict) -> bool:
     matches = anchor_cfg.get("matches")
     if matches is not None:
         import re
-        return re.search(matches, str(actual)) is not None
+        try:
+            return re.search(matches, str(actual)) is not None
+        except re.error as exc:
+            # A typo in the template's case_anchor regex must not crash the whole
+            # run with an opaque stack trace -- warn and treat as no-match so the
+            # analyst sees "0 cases" + the reason and can fix the template.
+            logger.warning("case_anchor 'matches' is not a valid regex (%r): %s", matches, exc)
+            return False
     return False
 
 

@@ -60,6 +60,16 @@ def _activity(ts, *, app="chrome.exe", title="App"):
     }
 
 
+def _raw_inter(ts_str, automation_id="txtsr", value="SN1"):
+    """An interaction with a RAW (possibly non-ISO) timestamp string, to probe
+    the parse-robustness of the anchor path."""
+    return {
+        "event_id": str(uuid.uuid4()), "type": "interaction", "timestamp": ts_str,
+        "data": {"kind": "value_changed", "control_type": "Edit",
+                 "automation_id": automation_id, "value": value},
+    }
+
+
 def test_three_distinct_serials_produce_three_cases():
     base = datetime(2026, 5, 18, 9, 0, 0)
     # Each serial does some follow-up work so none is a degenerate sliver.
@@ -349,3 +359,29 @@ def test_recognized_plus_name_pattern_anchor():
     ]
     cases = detect_cases_from_anchors(interactions, cfg)
     assert [c["label"] for c in cases] == ["SN001"]
+
+
+# --- Robustness: a corrupt log / misconfigured template must degrade, not crash
+# (found by the adversarial fuzz harness). ---
+
+
+def test_non_iso_timestamp_degrades_not_crashes():
+    """A corrupt or hand-edited log can carry a non-ISO timestamp on an anchor
+    event. The anchor path's _parse_ts must fall back (to the epoch) rather than
+    raise ValueError mid-run."""
+    cfg = {**ANCHOR_CFG, "min_case_interactions": 1, "min_case_duration_ms": 0}
+    interactions = [_raw_inter("not-a-date", value="SN1"), _raw_inter("also-bad", value="SN1")]
+    cases = detect_cases_from_anchors(interactions, cfg)   # must not raise
+    assert len(cases) == 1
+    stamped, _ = stamp_anchor_cases(interactions, cases)   # must not raise on bad segment ts
+    assert len(stamped) == 2
+
+
+def test_invalid_regex_anchor_yields_no_cases_without_crashing():
+    """A typo in the template's case_anchor `matches` regex must warn + match
+    nothing, not crash the run with an opaque re.error."""
+    cfg = {"field": "value", "matches": "[", "case_label_from": "value",
+           "min_case_interactions": 1, "min_case_duration_ms": 0}
+    interactions = [_raw_inter("2026-05-18T09:00:00Z", value="whatever")]
+    cases = detect_cases_from_anchors(interactions, cfg)   # must not raise re.error
+    assert cases == []
