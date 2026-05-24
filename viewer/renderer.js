@@ -1190,6 +1190,7 @@ function wireDropdownMenu(btnId, popupId) {
   });
 }
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");
+wireDropdownMenu("btn-session-more-menu", "session-more-popup");
 wireDropdownMenu("btn-agg-export-menu", "agg-export-popup");
 
 async function projectSaveAs() {

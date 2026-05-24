@@ -6,6 +6,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The Session view's top is far less cluttered at laptop widths.** The action
+  bar packed eight buttons (wrapping to three rows on a 13" screen), and the
+  process-map status, the session chips, and the Session Summary each took their
+  own row — pushing the timeline a third of the way down the screen. Occasional
+  actions (Match Process Template, Classify activities, Save to App Library, Attach
+  & Sync video) and the *Build process map* setting now live behind one visible
+  "⋯ More" menu; the process-map status rides the slimmed action row; the chips sit
+  on a single line; and the level switcher (Flow / Steps / Phases / Analysis) is
+  promoted above the Session Summary. The timeline now starts ~50px higher and the
+  bar no longer wraps at 1100px (`viewer/index.html`, `viewer/renderer.js`,
+  `viewer/styles.css`).
+
 ### Fixed
 
 - **Dialog body text no longer clipped or mis-aligned.** Every non-Help popup

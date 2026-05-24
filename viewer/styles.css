@@ -283,6 +283,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .actions-bar input[type=search] { min-width: 220px; max-width: 360px; flex: 0 1 auto; }
 .actions-bar input[type=search]::-webkit-search-cancel-button { filter: invert(0.5); }
 .session-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Facts row: process-map status (left) + session chips (right) -- merged from
+   what used to be three separate stacked metadata rows above the view bar. */
+.session-facts { display: flex; align-items: center; gap: 10px; padding: 0 0 6px; flex-wrap: wrap; min-height: 20px; }
 .pill { padding: 3px 10px; background: var(--bg-3); border: 1px solid var(--rule);
   border-radius: 12px; font-size: 11px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; }
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); }
@@ -2067,6 +2070,12 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 .project-menu-item:hover { background: var(--bg-3); color: var(--fg); }
 .project-menu-item:disabled { opacity: 0.4; cursor: default; }
 .project-menu-item:disabled:hover { background: transparent; color: var(--fg-2); }
+/* The "More" menu sits at the LEFT of the session actions bar, so open it
+   rightward -- the shared popup anchors to the right, which suits Export. */
+#session-more-popup { right: auto; left: 0; }
+/* A setting (checkbox) living among the menu's action items. */
+.project-menu-item.cb { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.project-menu-item.cb input { margin: 0; }
 
 /* Recent dropdown (top-bar) -- sessions + projects reachable any time */
 .recent-menu-section { max-height: 380px; overflow-y: auto; }
