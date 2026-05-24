@@ -1,6 +1,6 @@
 {
   "name": "process-discovery-tracker-viewer",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "Analyst-side viewer for process discovery sessions. Session view (video-synced timeline) + aggregate view (mined map + statistics + BPMN export).",
   "main": "main.js",
