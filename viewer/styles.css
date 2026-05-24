@@ -665,10 +665,24 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   z-index: 100; padding: 40px 20px; animation: fadeIn 0.15s ease-out; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .modal { background: var(--bg-1); border: 1px solid var(--rule);
-  border-radius: var(--radius); box-shadow: var(--shadow); display: grid;
-  grid-template-rows: auto 1fr; grid-template-columns: 200px 1fr;
-  grid-template-areas: "header header" "nav body";
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
   width: min(960px, 100%); max-height: 88vh; overflow: hidden; }
+/* The Help modal is the ONLY two-column (nav + body) dialog; everything else is a
+   single flex column. Before this, a non-`modal-simple` modal (e.g. Classify
+   activities) inherited the grid: its body was squeezed into the 200px "nav"
+   column and clipped on the left, and its footer jumped to the top. */
+.modal:has(.help-nav) { display: grid;
+  grid-template-rows: auto 1fr; grid-template-columns: 200px 1fr;
+  grid-template-areas: "header header" "nav body"; }
+.modal:has(.help-nav) .modal-body { grid-area: body; }
+/* Defaults for every single-column dialog: a padded, left-aligned, scrollable
+   body and a footer pinned bottom-right. Specific modals (simple/prompt/confirm)
+   override where needed; this stops a base modal's text running to the edge. */
+.modal-body { padding: 14px 18px; overflow-y: auto; min-height: 0; text-align: left; }
+.modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 10px; line-height: 1.55; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end;
+  padding: 12px 18px; border-top: 1px solid var(--rule); flex-wrap: wrap; }
 /* Simple single-column modal (e.g. Ignored apps). Overrides the help
    modal's two-column grid so content fills the full width, and a long
    body scrolls with the footer pinned. */

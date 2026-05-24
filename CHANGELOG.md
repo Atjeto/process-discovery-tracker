@@ -6,6 +6,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dialog body text no longer clipped or mis-aligned.** Every non-Help popup
+  (e.g. "Classify activities") inherited the Help modal's two-column grid, so its
+  body was squeezed into the 200px nav column and clipped on the left while the
+  footer jumped to the top. The base modal is now a single flex column with a
+  padded, left-aligned, scrollable body and a footer pinned bottom-right; the
+  two-column grid is scoped to the Help modal alone via `:has(.help-nav)`
+  (`viewer/styles.css`).
+
 ## [0.16.1] - 2026-05-24
 
 ### Changed
