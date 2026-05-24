@@ -51,8 +51,24 @@
       const dy = (gn.y - n.height / 2) - n.y;
       if (dx || dy) { try { modeling.moveShape(n, { x: dx, y: dy }); } catch (_) {} }
     });
-    // Re-route every flow now that the nodes moved (orthogonal manhattan routing).
-    edges.forEach((e) => { try { modeling.layoutConnection(e); } catch (_) {} });
+    // Route each flow along dagre's computed path. dagre routes long edges
+    // through the lanes BETWEEN node rows, so they don't cut through an
+    // intervening box -- bpmn-js's own layoutConnection only routes between the
+    // two endpoints and will happily cross a node sitting in the way. Fall back
+    // to bpmn-js routing if dagre gave no points.
+    edges.forEach((e) => {
+      let pts = null;
+      try {
+        const ge = g.edge(e.source.id, e.target.id, e.id);
+        if (ge && Array.isArray(ge.points) && ge.points.length >= 2) {
+          pts = ge.points.map((p) => ({ x: p.x, y: p.y }));
+        }
+      } catch (_) { pts = null; }
+      try {
+        if (pts) modeling.updateWaypoints(e, pts);
+        else modeling.layoutConnection(e);
+      } catch (_) { try { modeling.layoutConnection(e); } catch (__) {} }
+    });
     return true;
   }
 

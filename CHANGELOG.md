@@ -12,10 +12,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hand-rolled routine, so `end` stranded mid-diagram with crossing edges, and the
   drag-to-reorganize affordance was really there to compensate. It now re-lays-out
   with **dagre** — the same layered, crossing-minimised engine that lays out the
-  Flow diagram (DFG) cleanly — into a left-to-right flow with orthogonal edge
-  routing, then makes that the baseline. The diagram stays draggable (bpmn-js
-  Modeler) for manual nudges, but a clean layout is the starting point
-  (`viewer/bpmn-viewer.js`).
+  Flow diagram (DFG) cleanly — into a left-to-right flow, then makes that the
+  baseline. Flows follow dagre's **node-avoiding** routing (a long edge runs in
+  the lane between node rows instead of cutting through an unrelated box). The
+  diagram stays draggable (bpmn-js Modeler) for manual nudges, but a clean layout
+  is the starting point (`viewer/bpmn-viewer.js`).
 
 ### Fixed
 
