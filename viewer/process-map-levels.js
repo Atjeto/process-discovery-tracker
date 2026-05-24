@@ -26,18 +26,24 @@ const SEP = String.fromCharCode(1);
 
 // Value-free step label so repeated work across cases collapses to ONE node
 // instead of one-per-instance (every case's order #, customer id, SKU, qty
-// makes the raw name unique). Computed live here -- mirrors
-// step_suggest.process_label (Python) so the DFG and the observed-flow BPMN
-// agree -- so the flow collapses without needing a re-analyze. Keep the two in
-// sync if either changes.
-const _ENTER_IN_RE = /(:\s*Enter)\s+.+?\s+in\s+(.+)$/;   // "Enter 25 in Quantity" -> "Enter Quantity"
-const _VALUE_TAIL_RE = /\s+[—–-]\s+.*$/;                 // "Search — CUST-10001"  -> "Search"
+// makes the raw name unique). The rewrite RULES are the SINGLE SOURCE in
+// shared/process-label-patterns.json, loaded here AND by Python
+// (step_suggest.process_label) so the live DFG, the observed-flow BPMN, and the
+// stats collapse identically -- no two hand-synced regexes to drift. The JSON
+// ships to resources/shared/ (build-package.js); `__dirname/../shared` resolves
+// in dev and in the package, same as recognition.js.
+const _labelPath = require("node:path").join(__dirname, "..", "shared", "process-label-patterns.json");
+const _LABEL_RULES = require(_labelPath).rules.map(
+  (r) => ({ re: new RegExp(r.pattern), replacement: r.replacement }));
 function processLabel(name) {
   const s = (name || "").trim();
   if (!s) return s;
-  const rewritten = s.replace(_ENTER_IN_RE, "$1 $2");
-  if (rewritten !== s) return rewritten.trim();
-  return s.replace(_VALUE_TAIL_RE, "").trim();
+  // First rule that CHANGES the name wins (enter-in rewrite, else value-tail strip).
+  for (const rule of _LABEL_RULES) {
+    const out = s.replace(rule.re, rule.replacement);
+    if (out !== s) return out.trim();
+  }
+  return s;
 }
 
 function _stepStart(st) {

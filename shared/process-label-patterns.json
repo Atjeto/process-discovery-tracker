@@ -1,0 +1,7 @@
+{
+  "_README": "Single source for the value-free step-label rules (ADR-0013). A step's auto name embeds case values ('Search — CUST-10001', 'Enter 25 in Quantity'); process_label strips those to the step TYPE so repeated work collapses to one node/row instead of one-per-instance. Consumed by BOTH normalization/step_suggest.process_label (Python) and viewer/process-map-levels.processLabel (JS) so the mined BPMN, the live DFG, and the stats collapse identically -- there is no longer a second hand-synced regex to drift. Rules are ORDERED; the first rule that CHANGES the name wins (enter-in rewrite, else value-tail strip). `replacement` uses $1/$2 capture refs (JS String.replace style); the Python loader maps $N -> backref. Keep it dependency-free JSON.",
+  "rules": [
+    { "pattern": "(:\\s*Enter)\\s+.+?\\s+in\\s+(.+)$", "replacement": "$1 $2" },
+    { "pattern": "\\s+[—–-]\\s+.*$", "replacement": "" }
+  ]
+}

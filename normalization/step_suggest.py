@@ -3,8 +3,10 @@ exists or no canonical match fires. See annotation-model.md §4.1.
 """
 
 from __future__ import annotations
+import json
 import re
 import uuid
+from pathlib import Path
 from typing import Any
 from datetime import datetime
 
@@ -643,22 +645,42 @@ def _merge_steps(existing: list, fresh: list) -> list:
 # "Enter 25 in Quantity"), so on the step-level process map / flow EVERY case
 # yields a different node and the diagram explodes into one node per instance.
 # `process_label` strips those values to the step TYPE so the same kind of step
-# collapses to one node. Only the two value-laden shapes the suggester emits
-# are rewritten; an analyst-renamed step or "Fill <field>" is left untouched.
-_ENTER_IN_RE = re.compile(r"(:\s*Enter)\s+.+?\s+in\s+(.+)$")     # "Enter 25 in Quantity" -> "Enter Quantity"
-_VALUE_TAIL_RE = re.compile(r"\s+[—–-]\s+.*$")                   # "Search — CUST-10001"  -> "Search"
+# collapses to one node. The rewrite RULES are the SINGLE SOURCE in
+# shared/process-label-patterns.json, shared with the viewer's
+# process-map-levels.processLabel (JS) so the mined BPMN, the live DFG, and the
+# stats collapse identically -- no second hand-synced regex to drift.
+_LABEL_PATTERNS_PATH = (
+    Path(__file__).resolve().parent.parent / "shared" / "process-label-patterns.json"
+)
+
+
+def _load_label_rules() -> list[tuple[Any, str]]:
+    with open(_LABEL_PATTERNS_PATH, encoding="utf-8") as fh:
+        raw = json.load(fh)["rules"]
+    rules: list[tuple[Any, str]] = []
+    for r in raw:
+        # The shared file uses JS-style $1/$2 capture refs; map them to Python
+        # backreferences (\1/\2) for re.sub.
+        repl = re.sub(r"\$(\d+)", r"\\\1", r["replacement"])
+        rules.append((re.compile(r["pattern"]), repl))
+    return rules
+
+
+_LABEL_RULES = _load_label_rules()
 
 
 def process_label(name: str) -> str:
     """Value-free label for the step-level process map + flow, so repeated work
     across cases collapses to one node instead of one-per-instance. Shared by
     the observed-flow BPMN (`bpmn_observed`) and the DFG (`process-map-levels`),
-    which must agree. Conservative: returns the name unchanged when it matches
-    neither value-laden shape."""
+    which must agree -- the rules live in shared/process-label-patterns.json.
+    Conservative: returns the name unchanged when no rule matches."""
     s = (name or "").strip()
     if not s:
         return s
-    rewritten = _ENTER_IN_RE.sub(r"\1 \2", s)   # keep the field, drop the typed value
-    if rewritten != s:
-        return rewritten.strip()
-    return _VALUE_TAIL_RE.sub("", s).strip()     # drop a trailing " — <value>" object
+    # First rule that CHANGES the name wins (enter-in rewrite, else value-tail strip).
+    for rx, repl in _LABEL_RULES:
+        out = rx.sub(repl, s)
+        if out != s:
+            return out.strip()
+    return s

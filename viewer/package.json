@@ -83,7 +83,8 @@
         "from": "../shared",
         "to": "shared",
         "filter": [
-          "recognition-patterns.json"
+          "recognition-patterns.json",
+          "process-label-patterns.json"
         ]
       },
       {
