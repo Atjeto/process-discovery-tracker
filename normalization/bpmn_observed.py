@@ -91,6 +91,31 @@ def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
     return log
 
 
+def _linear_bpmn(labels: list[str]):
+    """Render one trace as a literal chain: start -> t1 -> t2 -> ... -> end.
+
+    A single case is one observed path, so there is nothing to generalise. Run
+    through the inductive miner it would wrap any repeated label in branch/loop
+    gateways the lone trace can't justify -- and, being block-structured, smear
+    those diamonds across the whole diagram. A straight chain shows exactly what
+    the one case did; a label that recurs simply appears again in sequence.
+    """
+    from pm4py.objects.bpmn.obj import BPMN
+    bpmn = BPMN()
+    start = BPMN.StartEvent(name="start")
+    end = BPMN.EndEvent(name="end")
+    bpmn.add_node(start)
+    bpmn.add_node(end)
+    prev = start
+    for lab in labels:
+        task = BPMN.Task(name=lab)
+        bpmn.add_node(task)
+        bpmn.add_flow(BPMN.Flow(prev, task))
+        prev = task
+    bpmn.add_flow(BPMN.Flow(prev, end))
+    return bpmn
+
+
 def write_observed_bpmn(
     anno: dict[str, Any],
     level: str,
@@ -101,12 +126,22 @@ def write_observed_bpmn(
 
     Returns True if a model was written, False when there is nothing to mine
     (no non-hidden steps / no traces).
+
+    A SINGLE case is rendered as a literal sequence rather than mined: with one
+    observed path there is nothing to generalise, and the inductive miner would
+    otherwise turn a repeated step label into spurious optional/loop gateways
+    (see _linear_bpmn). The miner is used only when there are 2+ cases, where
+    cross-case variation is a real basis for branches.
     """
     import mining  # local import: PM4Py is only needed when --mine is on
 
     log = build_annotation_log(anno, level)
     if len(log) == 0:
         return False
-    bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
+    if len(log) == 1:
+        labels = [ev["concept:name"] for ev in log[0]]
+        bpmn = _linear_bpmn(labels)
+    else:
+        bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
     mining.export_bpmn(bpmn, out_path)
     return True

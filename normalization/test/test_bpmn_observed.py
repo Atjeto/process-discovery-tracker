@@ -110,3 +110,36 @@ def test_write_observed_step_bpmn_has_tasks_layout_and_branch():
 
 def test_write_returns_false_when_no_steps():
     assert write_observed_bpmn({"steps": []}, "step", "unused.bpmn") is False
+
+
+def test_single_case_repeated_label_renders_without_gateways():
+    # The live-session regression: one case is one observed path. A step label
+    # that recurs (Open ... Open) must NOT be mined into optional/loop gateways
+    # -- a single trace can't justify them. It renders as a straight chain.
+    anno = {"steps": [
+        _step("A", "Open",    "2026-05-18T09:00:00Z"),
+        _step("A", "Enter",   "2026-05-18T09:00:10Z"),
+        _step("A", "Open",    "2026-05-18T09:00:20Z"),   # label recurs
+        _step("A", "Approve", "2026-05-18T09:00:30Z"),
+    ]}
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "step.bpmn")
+        assert write_observed_bpmn(anno, "step", out) is True
+        xml = Path(out).read_text(encoding="utf-8")
+    assert "Gateway" not in xml          # no invented branches from one path
+    assert "BPMNDiagram" in xml          # still laid out for bpmn-js
+    for name in ("Open", "Enter", "Approve"):
+        assert name in xml
+
+
+def test_single_case_linear_renders_without_gateways():
+    anno = {"steps": [
+        _step("A", "One",   "2026-05-18T09:00:00Z"),
+        _step("A", "Two",   "2026-05-18T09:00:10Z"),
+        _step("A", "Three", "2026-05-18T09:00:20Z"),
+    ]}
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "step.bpmn")
+        write_observed_bpmn(anno, "step", out)
+        xml = Path(out).read_text(encoding="utf-8")
+    assert "Gateway" not in xml
