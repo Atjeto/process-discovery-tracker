@@ -12,7 +12,27 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from canonical_match import match_canonical, rollup_phases
+from canonical_match import match_canonical, rollup_phases, load_canonical
+
+
+def test_load_canonical_missing_file_returns_empty(tmp_path):
+    """A stale/missing template path must degrade to {} rather than raising. This
+    is the FileNotFoundError that crashed analysis when a session matched on one
+    machine was moved to another that lacks the template file."""
+    assert load_canonical(str(tmp_path / "does-not-exist.yaml")) == {}
+
+
+def test_load_canonical_malformed_returns_empty(tmp_path):
+    p = tmp_path / "bad.yaml"
+    p.write_text("just a scalar, not a mapping", encoding="utf-8")
+    assert load_canonical(str(p)) == {}
+
+
+def test_load_canonical_reads_canonical_process(tmp_path):
+    p = tmp_path / "ok.yaml"
+    p.write_text("canonical_process:\n  id: demo\n  version: 2\n", encoding="utf-8")
+    cp = load_canonical(str(p))
+    assert cp.get("id") == "demo" and cp.get("version") == 2
 
 
 def _iso(t: datetime) -> str:

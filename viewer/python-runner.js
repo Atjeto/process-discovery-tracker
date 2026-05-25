@@ -91,7 +91,14 @@ function runNormalize(opts) {
       args.push(sessionFolder);
       if (tax) args.push("--taxonomy", tax);
       if (mine) args.push("--mine");
-      if (canonical) args.push("--canonical", canonical);
+      // A remembered Process Template path can go stale (a session matched on
+      // another machine, then handed off). Skip a missing file rather than
+      // handing normalize.py a dead --canonical path that would crash it.
+      if (canonical && fs.existsSync(canonical)) {
+        args.push("--canonical", canonical);
+      } else if (canonical) {
+        try { onLog && onLog(`[viewer] Process Template not found, analyzing without it: ${canonical}\n`); } catch (_) {}
+      }
       if (pddOut) args.push("--pdd-out", pddOut);
       if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
       if (phaseBpmnOut) args.push("--phase-bpmn-out", phaseBpmnOut);

@@ -363,6 +363,15 @@ def normalize(
     if edits_applied:
         print(f"[normalize] applied {edits_applied} annotation edit(s) from annotations.json")
 
+    # A remembered Process Template path can go stale: the file may be absent on
+    # this machine (a session matched elsewhere, then handed off). Treat a missing
+    # template as "no template" and analyze without it, rather than crashing the
+    # whole run on a FileNotFoundError.
+    if canonical_path and not os.path.exists(canonical_path):
+        print(f"[normalize] WARNING: Process Template not found: {canonical_path} "
+              "-- analyzing without it.", file=sys.stderr)
+        canonical_path = None
+
     # Stage 2a/3: case assignment — anchor mode or marker mode
     canonical = None
     anchor_cfg = None

@@ -4,6 +4,7 @@ auto_matched steps per annotation-model.md §3.5.
 
 from __future__ import annotations
 import re
+import sys
 import uuid
 from datetime import datetime
 from typing import Any
@@ -11,8 +12,24 @@ import yaml
 
 
 def load_canonical(path: str) -> dict[str, Any]:
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f).get("canonical_process", {})
+    """Load the ``canonical_process`` block from a Process Template YAML.
+
+    Degrades to ``{}`` (with a warning) when the file is missing, unreadable, or
+    malformed instead of raising. A stale or missing template reference -- e.g. a
+    session matched on another machine, then moved -- must not crash the whole
+    normalization run; it just means "analyze without a template".
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError) as e:
+        print(f"[normalize] WARNING: could not read Process Template {path!r}: {e}",
+              file=sys.stderr)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    cp = data.get("canonical_process", {})
+    return cp if isinstance(cp, dict) else {}
 
 
 INTERACTION_FIELDS = (
