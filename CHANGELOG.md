@@ -6,6 +6,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-05-25
+
+### Fixed
+
+- **Analysis no longer crashes when a session's Process Template file is missing.**
+  A session matched against a template on one machine remembers that template's
+  path; opened on a machine that doesn't have the file (a hand-off), re-analysis
+  died with `FileNotFoundError` and the session couldn't be analyzed at all. A
+  missing, unreadable, or malformed template is now treated as "no template" — the
+  run logs a warning and proceeds without it (`normalization/canonical_match.py`,
+  `normalization/normalize.py`, `viewer/python-runner.js`).
+
 ## [0.16.2] - 2026-05-25
 
 ### Changed
