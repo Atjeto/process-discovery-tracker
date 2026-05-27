@@ -8,6 +8,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **"View map" — one-click access to a single session's process map.** The
+  interactive map (zoom/pan, Activity/Step/Phase × Flow/BPMN) lived only in the
+  Compare-Sessions view, so an analyst working one session had to go there and
+  re-pick the folder. The Session view's process-map status bar now has a "View
+  map" action that opens the current session in that view directly — also the
+  path to getting the map into the PDD (`viewer/index.html`, `viewer/renderer.js`,
+  `viewer/views/aggregate-view.js`).
 - **The PDD (.docx) now follows a standard RPA Process Definition Document
   structure.** The flagship stakeholder deliverable previously jumped from a
   three-line title block into the step-by-step body. It now mirrors the outline

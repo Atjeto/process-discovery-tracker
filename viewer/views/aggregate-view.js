@@ -368,8 +368,7 @@ function renderMapScopeChip() {
 
 /* ============ Multi-session loading =============================== */
 
-async function openMultiFlow() {
-  const folders = await Ipc.openMultipleSessions();
+async function loadAggregateFolders(folders) {
   if (!folders || !folders.length) return;
   const sessions = await Ipc.loadMultipleSessions(folders);
   State.setAggregateSessions(sessions.filter((s) => !s.error));
@@ -380,6 +379,11 @@ async function openMultiFlow() {
   if (State.getAggregateSessions().length) {
     toast(`Loaded ${State.getAggregateSessions().length} session(s)`, "success");
   }
+}
+
+async function openMultiFlow() {
+  const folders = await Ipc.openMultipleSessions();
+  await loadAggregateFolders(folders);
 }
 
 /* Aggregate "Analyze all" supports the same cancel flow as the
@@ -1540,4 +1544,4 @@ function initAggregateView(opts) {
   syncMapLevelControl();
 }
 
-module.exports = { initAggregateView, renderAggregate, openMultiFlow, filteredAggregateSessions };
+module.exports = { initAggregateView, renderAggregate, openMultiFlow, loadAggregateFolders, filteredAggregateSessions };

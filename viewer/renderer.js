@@ -31,7 +31,7 @@ require("./layout-controls.js"); // side-effect import: self-wires resize handle
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
 const { promptModal, confirmModal, checklistModal } = require("./modals.js");
 const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent, relTime } = require("./recent.js");
-const { initAggregateView, renderAggregate, filteredAggregateSessions } = require("./views/aggregate-view.js");
+const { initAggregateView, renderAggregate, loadAggregateFolders, filteredAggregateSessions } = require("./views/aggregate-view.js");
 const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
 const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
 const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = require("./views/template-view.js");
@@ -503,6 +503,19 @@ initAggregateView({
     if (timestamp) seekToTimestamp(timestamp);
   },
 });
+
+/* One-click: open the CURRENT single session's process map in the interactive
+   Compare view -- saves manually re-picking the folder there, and is the path
+   to getting the map into the PDD. The map UI lives in that view; this just
+   loads the one session into it. */
+if ($("#btn-view-map")) {
+  $("#btn-view-map").addEventListener("click", async () => {
+    const sess = State.getSession();
+    if (!sess || !sess.sessionFolder) return;
+    activateTab("aggregate");
+    await loadAggregateFolders([sess.sessionFolder]);
+  });
+}
 
 /* Re-fit the process map after its panel is drag-resized (layout-controls
    fires pdt:mapresized on drag release). */
