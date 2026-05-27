@@ -78,6 +78,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the PDD tables, the findings report, and the Analysis view. Such values now
   degrade to 0 / an unknown duration. Found by a new seeded fuzzer over
   `stats_compute` (`normalization/test/test_stats_compute_fuzz.py`).
+- **Step suggestion no longer crashes on a corrupt log — a non-string field or a
+  mixed-timezone timestamp.** Two reachable crashes in the segmentation path,
+  surfaced by a new seeded fuzzer over `auto_suggest_steps`: the shared
+  recognition classifier ran `.lower()` / substring matching on `class_name` /
+  `control_type` and threw if a hand-edited record made one a non-string
+  (`recognition.py` + `viewer/recognition.js` now coerce, keeping the Python/JS
+  pair in lock-step); and `step_suggest.parse_ts` returned a naive datetime for a
+  zone-less timestamp but tz-aware for the rest, so a case mixing them died with
+  "can't subtract offset-naive and offset-aware" — it now normalizes to UTC.
 
 ### Fixed
 

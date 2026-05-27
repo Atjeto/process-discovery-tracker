@@ -41,8 +41,12 @@ def recognize(data: dict[str, Any] | None) -> dict[str, Any]:
     ControlType base. `cls` entries are substring-matched against class_name
     unless `exactCls`; `ctIn` optionally constrains control_type."""
     data = data or {}
-    cls = data.get("class_name") or ""
-    ct = data.get("control_type") or ""
+    # A corrupt/hand-edited log can carry a non-string class_name / control_type
+    # (_coerce_event_shape guarantees `data` is a dict, not its value types);
+    # coerce so the substring / .lower() matching below degrades instead of
+    # crashing on the interaction hot path.
+    cls = str(data.get("class_name") or "")
+    ct = str(data.get("control_type") or "")
 
     for sig in _FRAMEWORK_SIGNATURES:
         ct_in = sig.get("ctIn")

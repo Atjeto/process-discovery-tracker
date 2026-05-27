@@ -15,8 +15,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from coalesce import coalesce_typing_bursts
 from step_suggest import (
     auto_suggest_steps, drop_overlapping_auto_steps, steps_overlap_seconds,
-    process_label,
+    process_label, parse_ts,
 )
+
+
+def test_parse_ts_normalizes_naive_to_aware():
+    """A hand-edited timestamp without a zone parses naive; parse_ts must return
+    it tz-aware so it compares/subtracts against the zone-aware timestamps in the
+    same case instead of raising "can't subtract offset-naive and offset-aware".
+    Found by the step-segmenter fuzzer."""
+    naive = parse_ts("2026-05-18T09:00:00")        # no Z / offset
+    aware = parse_ts("2026-05-18T09:00:05Z")
+    assert naive.tzinfo is not None and aware.tzinfo is not None
+    assert (aware - naive).total_seconds() == 5    # subtraction must not raise
 
 
 def _iso(t: datetime) -> str:

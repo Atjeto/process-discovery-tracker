@@ -17,7 +17,14 @@ def parse_ts(s: str) -> datetime:
     try:
         if isinstance(s, str) and s.endswith("Z"):
             s = s[:-1] + "+00:00"
-        return datetime.fromisoformat(s)
+        dt = datetime.fromisoformat(s)
+        # A timestamp WITHOUT a zone (a hand-edited "...T09:00:00", or a bare
+        # date that fromisoformat accepts) parses naive; assume UTC so it can be
+        # compared/subtracted against the zone-aware ones in the same case
+        # without "can't subtract offset-naive and offset-aware datetimes".
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except (ValueError, TypeError):
         # A corrupt or hand-edited log can carry a non-ISO / empty / non-string
         # timestamp; fall back to the epoch so segmentation degrades instead of

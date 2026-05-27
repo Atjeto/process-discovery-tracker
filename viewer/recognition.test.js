@@ -22,6 +22,15 @@ test("Chrome omnibox is browser chrome (navigation, not a step)", () => {
   assert.ok(isBrowserChrome(d({ class_name: "OmniboxViewViews" })));
 });
 
+test("non-string class_name / control_type are coerced, not crashed on", () => {
+  // A corrupt/hand-edited session can carry a number where a string is expected;
+  // recognize must coerce, not throw on substring / toLowerCase. Mirrors
+  // test_recognition.py.
+  const r = recognize(d({ control_type: 42, class_name: 7 }));
+  assert.ok(r && typeof r.category === "string");
+  assert.equal(typeof isBrowserChrome(d({ control_type: 42, class_name: 7 })), "boolean");
+});
+
 test("browser tab strip switches are chrome", () => {
   assert.equal(recognize(d({ control_type: "TabItem", class_name: "Tab" })).isChrome, true);
   assert.equal(recognize(d({ control_type: "TabItem", class_name: "EdgeTab" })).isChrome, true);

@@ -57,8 +57,11 @@ const UIA_BASE = PATTERNS.uiaBase;
  */
 function recognize(data) {
   data = data || {};
-  const cls = data.class_name || "";
-  const ct = data.control_type || "";
+  // Coerce: a corrupt/hand-edited session can carry a non-string class_name /
+  // control_type, and the substring / toLowerCase matching below would throw on
+  // a number. Mirror recognition.py.
+  const cls = String(data.class_name || "");
+  const ct = String(data.control_type || "");
 
   for (const sig of FRAMEWORK_SIGNATURES) {
     if (sig.ctIn && !sig.ctIn.includes(ct)) continue;

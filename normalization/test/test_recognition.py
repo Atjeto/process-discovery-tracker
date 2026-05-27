@@ -21,6 +21,16 @@ def d(**kw):
     return dict(kw)
 
 
+def test_non_string_fields_degrade_not_crash():
+    """A corrupt/hand-edited log can carry a non-string class_name / control_type
+    (the load boundary guarantees a dict `data`, not its value types). recognize
+    must coerce and classify, not crash on .lower() / substring matching. Found
+    by the step-segmenter fuzzer."""
+    r = recognize(d(control_type=42, class_name=7))
+    assert isinstance(r, dict) and "category" in r
+    assert is_browser_chrome(d(control_type=42, class_name=7)) in (True, False)
+
+
 # --- Chromium / Edge browser chrome ------------------------------------
 
 def test_omnibox_is_browser_chrome():
