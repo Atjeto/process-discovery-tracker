@@ -31,6 +31,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   single bad line degrades instead of failing the session. Found by a new seeded
   property-based fuzzer over the case-assignment pipeline
   (`normalization/test/test_case_assignment_fuzz.py`).
+- **The Phases view no longer shows a blank bordered box when a session has no
+  phases.** An un-phased session (the common starting state) left the phase
+  timeline as an empty void; it now shows a centered hint ("No phases yet —
+  group steps into phases…"), matching the empty-state treatment used elsewhere
+  (`viewer/phase-editor.js`).
 
 ### Fixed
 

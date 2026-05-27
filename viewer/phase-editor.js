@@ -156,7 +156,16 @@
      timelines). A phase's time range is the union of its contained steps. */
   function renderPhaseTimeline(host, phases, steps, span, opts) {
     opts = opts || {};
-    if (!phases || !phases.length || !span) { host.innerHTML = ""; return; }
+    if (!span) { host.innerHTML = ""; return; }
+    if (!phases || !phases.length) {
+      // An un-phased session is the common starting state -- fill the timeline
+      // box with a centred hint instead of leaving a blank bordered void. The
+      // left pane explains how to create phases; this just labels the strip.
+      host.innerHTML =
+        '<div class="map-empty">No phases yet — group steps into phases ' +
+        "(in the Steps view) to see them on this timeline.</div>";
+      return;
+    }
 
     // Palette + band alphas track the active theme (see theme.js).
     const PHASE_PALETTE = PdtTheme.phasePalette();
