@@ -22,6 +22,18 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _event_data(ev: dict[str, Any]) -> dict[str, Any]:
+    """The event's `data` payload, or `{}` if it is missing or not a dict.
+
+    A truncated or hand-edited log can carry a null (or otherwise non-dict)
+    `data` field; treating it as empty lets one bad record degrade to "uncased"
+    instead of crashing the whole analysis run -- the same posture `_parse_ts`
+    takes for a corrupt timestamp.
+    """
+    data = ev.get("data")
+    return data if isinstance(data, dict) else {}
+
+
 def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return a new event list with `case_ids` stamped on activity events.
 
@@ -33,9 +45,10 @@ def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     for ev in events:
         etype = ev.get("type")
+        data = _event_data(ev)
         if etype == "marker":
-            mtype = ev["data"].get("marker_type")
-            label = ev["data"].get("label")
+            mtype = data.get("marker_type")
+            label = data.get("label")
             if mtype == "start":
                 case_id = str(uuid.uuid4())
                 parent = stack[-1]["case_id"] if stack else None
@@ -48,7 +61,7 @@ def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 # Annotate the event itself with assigned IDs
                 new_ev = dict(ev)
                 new_ev["data"] = {
-                    **ev["data"],
+                    **data,
                     "case_id": case_id,
                     "parent_case_id": parent,
                 }
@@ -57,7 +70,7 @@ def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 closed = stack.pop() if stack else None
                 new_ev = dict(ev)
                 new_ev["data"] = {
-                    **ev["data"],
+                    **data,
                     "case_id": closed["case_id"] if closed else None,
                     "parent_case_id": closed["parent_case_id"] if closed else None,
                 }
@@ -67,7 +80,7 @@ def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif etype == "activity" or etype == "interaction":
             case_ids = [s["case_id"] for s in reversed(stack)]
             new_ev = dict(ev)
-            new_ev["data"] = {**ev["data"], "case_ids": case_ids}
+            new_ev["data"] = {**data, "case_ids": case_ids}
             out.append(new_ev)
         else:
             out.append(ev)
@@ -84,7 +97,7 @@ def collect_cases(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     for ev in events:
         if ev.get("type") != "marker":
             continue
-        data = ev.get("data", {})
+        data = _event_data(ev)
         mtype = data.get("marker_type")
         case_id = data.get("case_id")
         if not case_id:
@@ -106,7 +119,7 @@ def collect_cases(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     for ev in events:
         if ev.get("type") != "activity":
             continue
-        cids = ev["data"].get("case_ids") or []
+        cids = _event_data(ev).get("case_ids") or []
         if not cids:
             continue
         innermost = cids[0]
@@ -258,7 +271,7 @@ def detect_cases_from_anchors(
 
     for ev in interactions:
         ts_str = ev.get("timestamp", "")
-        data = ev.get("data", {})
+        data = _event_data(ev)
 
         if _anchor_field_matches(data, anchor_cfg):
             label = str(data.get(label_field) or "")
@@ -365,7 +378,7 @@ def stamp_anchor_cases(
         matched_case = case_at(ts)
         new_ev = dict(ev)
         new_ev["data"] = {
-            **ev["data"],
+            **_event_data(ev),
             "case_ids": [matched_case] if matched_case else [],
         }
         out.append(new_ev)

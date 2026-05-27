@@ -12,7 +12,12 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from case_assignment import detect_cases_from_anchors, stamp_anchor_cases
+from case_assignment import (
+    assign_case_ids,
+    collect_cases,
+    detect_cases_from_anchors,
+    stamp_anchor_cases,
+)
 
 
 def _iso(t: datetime) -> str:
@@ -385,3 +390,51 @@ def test_invalid_regex_anchor_yields_no_cases_without_crashing():
     interactions = [_raw_inter("2026-05-18T09:00:00Z", value="whatever")]
     cases = detect_cases_from_anchors(interactions, cfg)   # must not raise re.error
     assert cases == []
+
+
+def test_null_or_nondict_data_degrades_not_crashes():
+    """A truncated/hand-edited log can carry a record whose `data` is null (or a
+    non-dict). Anchor detection and stamping must treat it as uncased and keep
+    going, not crash the whole run with `'NoneType' object has no attribute
+    'get'` / `argument of type 'NoneType' is not a mapping`. Found by the
+    adversarial fuzz harness on iteration 0."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    cfg = {**ANCHOR_CFG, "min_case_interactions": 1, "min_case_duration_ms": 0}
+    interactions = [
+        _inter(base, automation_id="txtsr", value="SN1"),
+        {"event_id": str(uuid.uuid4()), "type": "interaction",
+         "timestamp": _iso(base + timedelta(seconds=2)), "data": None},
+        {"event_id": str(uuid.uuid4()), "type": "interaction",
+         "timestamp": _iso(base + timedelta(seconds=4)), "data": "corrupt-not-a-dict"},
+    ]
+    cases = detect_cases_from_anchors(interactions, cfg)        # must not raise
+    assert [c["label"] for c in cases] == ["SN1"]
+    cid = cases[0]["case_id"]
+    stamped, _ = stamp_anchor_cases(interactions, cases)        # must not raise on {**None}
+    assert len(stamped) == 3
+    for st in stamped:
+        cids = st["data"]["case_ids"]
+        assert isinstance(cids, list) and cids in ([], [cid])
+
+
+def test_null_or_nondict_data_marker_path_degrades_not_crashes():
+    """The marker path (assign_case_ids / collect_cases) shares the same
+    corrupt-`data` exposure: a null or non-dict `data` on a marker/activity must
+    not crash `{**ev['data']}`. Only the well-formed start opens a case."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    events = [
+        {"event_id": "a", "type": "marker", "timestamp": _iso(base),
+         "data": {"marker_type": "start", "label": "c1"}},
+        {"event_id": "b", "type": "activity", "timestamp": _iso(base + timedelta(seconds=1)),
+         "data": None},
+        {"event_id": "c", "type": "marker", "timestamp": _iso(base + timedelta(seconds=2)),
+         "data": "corrupt-not-a-dict"},
+        {"event_id": "d", "type": "marker", "timestamp": _iso(base + timedelta(seconds=3)),
+         "data": {"marker_type": "end", "reason": "done"}},
+    ]
+    out = assign_case_ids(events)                               # must not raise {**None}
+    assert len(out) == len(events)
+    # the corrupt-data activity is still stamped with the one open case
+    assert len(out[1]["data"]["case_ids"]) == 1
+    cases = collect_cases(out)                                  # must not raise
+    assert len(cases) == 1

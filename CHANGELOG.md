@@ -6,7 +6,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.16.3] - 2026-05-25
+### Fixed
+
+- **Analysis no longer crashes on a corrupt log record whose `data` is null or
+  not an object.** A truncated or hand-edited `events.jsonl` line carrying
+  `"data": null` (or a non-dict `data`) aborted the whole run with an
+  `AttributeError` / mapping `TypeError` during case detection and stamping — the
+  timestamp path already degraded to a fallback, but the `data` path did not.
+  Every `data` access in `normalization/case_assignment.py` now treats a missing
+  or non-dict payload as empty (the record is preserved and left uncased), so a
+  single bad line degrades instead of failing the session. Found by a new seeded
+  property-based fuzzer over the case-assignment pipeline
+  (`normalization/test/test_case_assignment_fuzz.py`).
 
 ### Fixed
 
