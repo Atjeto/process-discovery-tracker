@@ -8,16 +8,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **The PDD (.docx) now opens with an executive Overview.** The flagship
-  stakeholder deliverable previously jumped straight from a three-line title
-  block into the step-by-step body. It now leads with the headline figures
-  (cases observed + average duration, steps with auto/confirmed split, phases,
-  distinct activities, process-efficiency estimate) and a "Where the time went"
-  breakdown of the top activities by time — mirroring the HTML findings report.
-  Also added: a Generated date and a footer, humanized step-flag labels, an
-  "N of M activities" note when the activity table is capped at 25, and an
-  empty-state line when no steps are annotated yet. All additive — the existing
-  phase/step narrative is unchanged (`normalization/pdd_export.py`).
+- **The PDD (.docx) now follows a standard RPA Process Definition Document
+  structure.** The flagship stakeholder deliverable previously jumped from a
+  three-line title block into the step-by-step body. It now mirrors the outline
+  of a real PDD (modelled on the document UiPath Task Capture generates from a
+  recording): document control, an introduction (purpose / objectives / key
+  contacts), an As-Is process description (overview, an **applications-used**
+  table, a process-map placeholder, statistics with a "where the time went"
+  breakdown, the detailed steps, input data), an **automation assessment** with
+  a scored automation-candidates table, and an **exceptions & variations**
+  section. Sections are auto-filled where the pipeline has the data and carry
+  explicit "[To be completed]" placeholders for the analyst-judgement parts
+  (purpose, scope, exception handling), so the document reads as a structured
+  PDD rather than a data dump. Embedding the rendered process map into the
+  document is the one remaining piece (`normalization/pdd_export.py`).
 
 ### Fixed
 
