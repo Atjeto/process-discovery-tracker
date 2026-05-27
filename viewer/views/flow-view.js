@@ -27,6 +27,7 @@ const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotat
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
+const { renderAnalysisLevel } = require("./analysis-view.js");
 const SessionSummary = require("../session-summary.js");
 const PdtProject = require("../project.js");
 
@@ -526,6 +527,10 @@ async function loadSessionIntoView(folder) {
   if ($("#btn-group-into-phase")) $("#btn-group-into-phase").disabled = true;
   renderStepsLevel();
   renderPhasesLevel();
+  // The Analysis level must refresh on (re)load too -- it was missing here, so a
+  // same-folder re-analyze wrote analysis.json yet the Analysis view kept showing
+  // "No analysis available" until the session was reopened.
+  renderAnalysisLevel();
   updateProcessMapStatus();
   // Refresh case-scope dropdown -- clear scope if the new session no
   // longer contains the previously-selected case.

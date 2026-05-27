@@ -94,6 +94,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wherever those compare or subtract timestamps. All eight copies now return a
   tz-aware datetime; a family-wide guard (`test_parse_ts_consistency.py`) keeps
   them from drifting apart again.
+- **The Analysis view now refreshes after an in-app "Analyze session".** A
+  re-analyze wrote `analysis.json` and reloaded the session, but
+  `loadSessionIntoView` re-rendered the Flow, Steps, and Phases levels and *not*
+  the Analysis level (which was added later) — so the view kept saying "No
+  analysis available" despite "Analysis complete," until the session was
+  reopened. It now re-renders on every (re)load (`viewer/views/flow-view.js`).
 
 ### Fixed
 
