@@ -6,6 +6,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The PDD (.docx) now opens with an executive Overview.** The flagship
+  stakeholder deliverable previously jumped straight from a three-line title
+  block into the step-by-step body. It now leads with the headline figures
+  (cases observed + average duration, steps with auto/confirmed split, phases,
+  distinct activities, process-efficiency estimate) and a "Where the time went"
+  breakdown of the top activities by time — mirroring the HTML findings report.
+  Also added: a Generated date and a footer, humanized step-flag labels, an
+  "N of M activities" note when the activity table is capped at 25, and an
+  empty-state line when no steps are annotated yet. All additive — the existing
+  phase/step narrative is unchanged (`normalization/pdd_export.py`).
+
 ### Fixed
 
 - **Analysis no longer crashes on a corrupt log record whose `data` is null or
