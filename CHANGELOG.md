@@ -46,6 +46,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   when nothing is scoreable yet. Also fixes a stray "Heuristic IE findings" typo in
   the panel caption (`viewer/views/aggregate-view.js`, `viewer/index.html`,
   `viewer/styles.css`).
+- **The single-session "Waste by step" list is decluttered too.** It rendered one
+  bar per step instance (64 for a 4-case session), most of them instant 0 ms
+  micro-steps with empty bars. It now sorts by waste then duration — so the
+  wasteful and time-heavy steps surface first — and tucks the instant steps
+  behind an "N instant steps" expander; every row stays editable
+  (`viewer/views/analysis-view.js`, `viewer/styles.css`).
 
 ### Fixed
 

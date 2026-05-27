@@ -119,37 +119,53 @@ function _efficiencySection(eff) {
     "</div></div>";
 }
 
+function _buildWasteRow(w) {
+  const total = (w.va_ms || 0) + (w.bnva_ms || 0) + (w.nva_ms || 0);
+  const seg = (ms, cls) => (!ms || total <= 0) ? "" :
+    '<span class="waste-seg ' + cls + '" style="width:' +
+    ((ms / total) * 100).toFixed(1) + '%"></span>';
+  const tags = (w.waste_types || [])
+    .map((t) => '<span class="waste-tag">' + escapeHtml(t) + "</span>")
+    .join("");
+  return '<div class="waste-row waste-row-editable" data-step-id="' +
+      escapeAttr(w.step_id || "") +
+      '" title="Click to set the business-required share of this step">' +
+    '<span class="waste-name" title="' + escapeAttr(w.name || "") + '">' +
+      escapeHtml(w.name || "(step)") + "</span>" +
+    '<span class="waste-bar">' +
+      seg(w.va_ms, "seg-va") + seg(w.bnva_ms, "seg-bnva") +
+      seg(w.nva_ms, "seg-nva") +
+    "</span>" +
+    '<span class="waste-tags">' + tags + "</span>" +
+    '<span class="waste-edit">adjust</span>' +
+  "</div>";
+}
+
 function _wasteSection(waste) {
   if (!waste.length) return "";
-  const rows = waste.map((w) => {
-    const total = (w.va_ms || 0) + (w.bnva_ms || 0) + (w.nva_ms || 0);
-    const seg = (ms, cls) => (!ms || total <= 0) ? "" :
-      '<span class="waste-seg ' + cls + '" style="width:' +
-      ((ms / total) * 100).toFixed(1) + '%"></span>';
-    const tags = (w.waste_types || [])
-      .map((t) => '<span class="waste-tag">' + escapeHtml(t) + "</span>")
-      .join("");
-    return '<div class="waste-row waste-row-editable" data-step-id="' +
-        escapeAttr(w.step_id || "") +
-        '" title="Click to set the business-required share of this step">' +
-      '<span class="waste-name" title="' + escapeAttr(w.name || "") + '">' +
-        escapeHtml(w.name || "(step)") + "</span>" +
-      '<span class="waste-bar">' +
-        seg(w.va_ms, "seg-va") + seg(w.bnva_ms, "seg-bnva") +
-        seg(w.nva_ms, "seg-nva") +
-      "</span>" +
-      '<span class="waste-tags">' + tags + "</span>" +
-      '<span class="waste-edit">adjust</span>' +
-    "</div>";
-  }).join("");
+  const dur = (w) => (w.va_ms || 0) + (w.bnva_ms || 0) + (w.nva_ms || 0);
+  const hasSignal = (w) => dur(w) > 0 || (w.waste_types && w.waste_types.length);
+  // Surface the wasteful + time-heavy steps; tuck the instant (0-duration) steps
+  // behind an expander so the default view isn't a wall of empty bars. All rows
+  // stay in the DOM, so each remains editable ("adjust").
+  const sorted = waste.slice().sort((a, b) =>
+    (b.nva_ms || 0) - (a.nva_ms || 0) || dur(b) - dur(a));
+  const main = sorted.filter(hasSignal);
+  const instant = sorted.filter((w) => !hasSignal(w));
+  const legend = '<div class="waste-legend">' +
+    '<span><span class="swatch seg-va"></span>value-add</span>' +
+    '<span><span class="swatch seg-bnva"></span>business-required</span>' +
+    '<span><span class="swatch seg-nva"></span>waste</span>' +
+  "</div>";
+  let body = main.length ? '<div class="waste-rows">' + main.map(_buildWasteRow).join("") + "</div>" : "";
+  if (instant.length) {
+    body += '<details class="waste-instant"><summary>' + instant.length +
+      " instant step" + (instant.length === 1 ? "" : "s") +
+      " (no measured duration)</summary>" +
+      '<div class="waste-rows">' + instant.map(_buildWasteRow).join("") + "</div></details>";
+  }
   return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Waste by step</div>' +
-    '<div class="waste-legend">' +
-      '<span><span class="swatch seg-va"></span>value-add</span>' +
-      '<span><span class="swatch seg-bnva"></span>business-required</span>' +
-      '<span><span class="swatch seg-nva"></span>waste</span>' +
-    "</div>" +
-    '<div class="waste-rows">' + rows + "</div></div>";
+    '<div class="analysis-section-title">Waste by step</div>' + legend + body + "</div>";
 }
 
 function _timeStudySection(ts) {
