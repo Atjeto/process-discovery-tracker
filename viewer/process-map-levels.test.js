@@ -7,7 +7,12 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildAnnotationDfg, dropRareEdges } = require("./process-map-levels.js");
+const fs = require("node:fs");
+const path = require("node:path");
+const { buildAnnotationDfg, dropRareEdges, processLabel } = require("./process-map-levels.js");
+
+const GOLDEN = JSON.parse(fs.readFileSync(
+  path.join(__dirname, "..", "shared", "process-label-golden.json"), "utf8"));
 
 function step(id, name, caseId, startMs, phaseId) {
   return {
@@ -148,6 +153,14 @@ test("step level: an unphased filter scopes to steps with no phase", () => {
   assert.equal(scoped.edges.length, 1);
   assert.equal(scoped.edges[0].source, "Loose A");
   assert.equal(scoped.edges[0].target, "Loose B");
+});
+
+test("processLabel matches the cross-language golden (Python twin must agree)", () => {
+  // The same golden is asserted in normalization/test/test_process_label.py;
+  // if these diverge, the live DFG and the mined BPMN/stats collapse differently.
+  for (const [name, expected] of GOLDEN.cases) {
+    assert.equal(processLabel(name), expected, JSON.stringify(name));
+  }
 });
 
 test("dropRareEdges hides one-off paths but keeps the dominant flow", () => {

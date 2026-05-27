@@ -7,12 +7,18 @@ step map relies on. The JS twin is covered in viewer/process-map-levels.test.js.
 Run: python -m pytest normalization/test/test_process_label.py
 """
 from __future__ import annotations
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from step_suggest import process_label
+
+_GOLDEN = json.loads(
+    (Path(__file__).resolve().parent.parent.parent / "shared"
+     / "process-label-golden.json").read_text(encoding="utf-8")
+)
 
 
 def test_enter_in_drops_the_typed_value():
@@ -40,3 +46,11 @@ def test_enter_in_wins_over_tail_when_both_could_apply():
     # The enter-in rule is first; a name that also has a trailing dash keeps the
     # enter-in rewrite rather than being tail-stripped.
     assert process_label("App: Enter 5 in Qty — CUST-1") == "App: Enter Qty — CUST-1"
+
+
+def test_matches_cross_language_golden():
+    """Every golden case must hold here AND in the JS twin
+    (viewer/process-map-levels.test.js). A divergence means the Python and JS
+    labelers disagree -- the maps and stats would collapse differently."""
+    for name, expected in _GOLDEN["cases"]:
+        assert process_label(name) == expected, repr(name)

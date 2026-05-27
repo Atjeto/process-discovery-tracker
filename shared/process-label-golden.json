@@ -1,0 +1,28 @@
+{
+  "_README": "Cross-language golden for the value-free step label (ADR-0013). Each [input, expected] pair must hold for BOTH normalization/step_suggest.process_label (Python) and viewer/process-map-levels.processLabel (JS), which share process-label-patterns.json. The two engines differ in ways that can silently diverge (Python re.sub replaces ALL matches, JS String.replace replaces the FIRST; regex dialects differ), so this fixture pins their agreement. Tested by normalization/test/test_process_label.py and viewer/process-map-levels.test.js -- if you change the rules, regenerate these and confirm BOTH suites still pass, or the mined BPMN, the live DFG, and the stats would collapse differently.",
+  "cases": [
+    ["Salesforce: Search — CUST-10900", "Salesforce: Search"],
+    ["Salesforce: Enter 29 in Quantity", "Salesforce: Enter Quantity"],
+    ["Excel: Save workbook — demo-worker", "Excel: Save workbook"],
+    ["SAP: Enter OR", "SAP: Enter OR"],
+    ["Open customer record", "Open customer record"],
+    ["Click Save", "Click Save"],
+    ["", ""],
+    ["   ", ""],
+    ["  spaced label  ", "spaced label"],
+    ["A — B — C", "A"],
+    ["X: Enter 1 in Y in Z", "X: Enter Y in Z"],
+    ["Foo – Bar", "Foo"],
+    ["Foo - Bar", "Foo"],
+    ["Foo-Bar", "Foo-Bar"],
+    ["Enter without colon in Field", "Enter without colon in Field"],
+    [": Enter 5 in Qty", ": Enter Qty"],
+    ["Enter $5 in Total (USD)", "Enter $5 in Total (USD)"],
+    ["a in b in c — d — e", "a in b in c"],
+    ["App: Enter 5 in Qty — CUST-1", "App: Enter Qty — CUST-1"],
+    ["Trailing newline — Y\n", "Trailing newline"],
+    ["Tabbed\t— Y", "Tabbed"],
+    ["Mixed   —   spaces around dash", "Mixed"],
+    ["Salesforce: Enter  in  Quantity", "Salesforce: Enter  in  Quantity"]
+  ]
+}
