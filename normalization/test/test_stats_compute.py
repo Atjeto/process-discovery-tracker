@@ -11,7 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from stats_compute import step_variants, step_stats, _filter_excluded, compute_all
+from stats_compute import (
+    activity_stats, case_stats, step_variants, step_stats, _filter_excluded, compute_all,
+)
 
 
 def _step(case_id, name, start):
@@ -164,3 +166,34 @@ def test_step_variants_collapse_by_process_label():
     assert len(variants) == 1
     assert variants[0]["variant"] == ["Search"]
     assert variants[0]["frequency"] == 2
+
+
+# --- Robustness: corrupt field values degrade, not crash (found by the stats
+# fuzzer). _coerce_event_shape guarantees `data` is a dict but not that its
+# values are numbers/ISO timestamps; stats interprets them, so it must tolerate.
+
+def test_activity_stats_tolerates_non_numeric_duration():
+    events = [
+        {"type": "activity", "timestamp": "2026-05-14T09:00:00Z",
+         "data": {"activity_label": "A", "duration_ms": "lots"}},   # hand-edited
+        {"type": "activity", "timestamp": "2026-05-14T09:00:01Z",
+         "data": {"activity_label": "A", "duration_ms": 1000}},
+    ]
+    rows = activity_stats(events)              # must not raise TypeError on sum
+    a = next(r for r in rows if r["activity_label"] == "A")
+    assert a["frequency"] == 2
+    assert a["total_duration_ms"] == 1000      # the bad value counts as 0
+
+
+def test_activity_stats_clamps_negative_duration():
+    events = [{"type": "activity", "timestamp": "2026-05-14T09:00:00Z",
+               "data": {"activity_label": "A", "duration_ms": -5}}]
+    assert activity_stats(events)[0]["total_duration_ms"] == 0
+
+
+def test_case_stats_tolerates_corrupt_timestamps():
+    cases = {"c1": {"label": "C1", "start_ts": "not-a-date", "end_ts": "also-bad"}}
+    rows = case_stats([], cases)               # must not raise ValueError on parse
+    assert len(rows) == 1
+    assert rows[0]["wall_clock_ms"] is None
+    assert rows[0]["active_ms"] == 0

@@ -72,6 +72,26 @@ def _percentile(values: list[float], pct: float) -> float:
     return s[f] + (s[c] - s[f]) * (k - f)
 
 
+def _num(x: Any) -> float:
+    """A duration value from a corrupt/hand-edited log may be non-numeric or
+    negative; coerce to a non-negative number so a `sum` degrades to 0 instead
+    of crashing. (`_coerce_event_shape` guarantees `data` is a dict, but its
+    field VALUES are validated by each consumer that interprets them.)"""
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return 0
+    return x if x > 0 else 0
+
+
+def _safe_parse(ts: Any) -> datetime | None:
+    """Parse a timestamp, tolerating a corrupt/non-ISO value (returns None)."""
+    if not ts:
+        return None
+    try:
+        return _parse_ts(ts)
+    except (ValueError, TypeError):
+        return None
+
+
 def activity_stats(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Per-activity_label statistics."""
     by_label: dict[str, list[float]] = defaultdict(list)
@@ -79,7 +99,7 @@ def activity_stats(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if ev.get("type") != "activity":
             continue
         label = ev["data"].get("activity_label") or "Unclassified"
-        dur = ev["data"].get("duration_ms") or 0
+        dur = _num(ev["data"].get("duration_ms"))
         by_label[label].append(dur)
     rows = []
     total = sum(len(v) for v in by_label.values()) or 1
@@ -107,15 +127,15 @@ def case_stats(
         if ev.get("type") != "activity":
             continue
         cids = ev["data"].get("case_ids") or []
-        dur = ev["data"].get("duration_ms") or 0
+        dur = _num(ev["data"].get("duration_ms"))
         for cid in cids:
             active_by_case[cid] += dur
 
     rows = []
     for cid, meta in cases.items():
-        start = _parse_ts(meta["start_ts"]) if meta.get("start_ts") else None
-        end = _parse_ts(meta["end_ts"]) if meta.get("end_ts") else None
-        wall = int((end - start).total_seconds() * 1000) if (start and end) else None
+        start = _safe_parse(meta.get("start_ts"))
+        end = _safe_parse(meta.get("end_ts"))
+        wall = int((end - start).total_seconds() * 1000) if (start and end and end >= start) else None
         rows.append({
             "case_id": cid,
             "label": meta.get("label"),

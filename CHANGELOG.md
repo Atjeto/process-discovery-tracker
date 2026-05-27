@@ -42,6 +42,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   timeline as an empty void; it now shows a centered hint ("No phases yet —
   group steps into phases…"), matching the empty-state treatment used elsewhere
   (`viewer/phase-editor.js`).
+- **Statistics no longer crash on a corrupt duration or case timestamp.** A
+  hand-edited `events.jsonl` could carry a non-numeric `duration_ms` or a
+  non-ISO case timestamp (the load-time shape coercion guarantees `data` is a
+  dict, but not its value types). `activity_stats` / `case_stats` then crashed on
+  `sum()` / timestamp parsing — taking down the whole statistics step that feeds
+  the PDD tables, the findings report, and the Analysis view. Such values now
+  degrade to 0 / an unknown duration. Found by a new seeded fuzzer over
+  `stats_compute` (`normalization/test/test_stats_compute_fuzz.py`).
 
 ### Fixed
 
