@@ -4,21 +4,27 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** **v0.15.0 shipped**, and a large
-follow-on cycle is **done and verified** (the analysis-layer "endless list" fix via
-the value-free `process_label` grouping, scoped phase→step→activity drill-down, a
-"Hide rare paths" Flow-diagram toggle) — plus a documentation refresh (ADR-0013 +
-the architecture reference) and a full coverage/consistency audit. All of it is
-**uncommitted on `viewer-refactor`**. The next-session plan of record is
-[docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md); it leads with
-the **documentation fix pass** ([docs/DOC-COVERAGE-AUDIT.md](docs/DOC-COVERAGE-AUDIT.md)
-— 30 verified findings), then the open backlog (recognition-driven case anchors,
-calibration). Hold every feature to the coherence discipline in
+**Active direction (2026-05) — START HERE:** Last release **v0.16.3**; a large
+**polishing cycle is committed but unreleased on `viewer-refactor`** (clean tree)
+— see the CHANGELOG `[Unreleased]` section for the full list. The goal is
+**productization toward a small internal rollout, analyst-deliverable first.**
+What landed this cycle: the **PDD export now follows a real Process Definition
+Document structure** (document control, As-Is process with an embedded process
+map, automation assessment, exceptions) instead of piling up pipeline data; a
+single session reaches the interactive map in one click (**"View map"** in the
+Session view's process-map bar); the Compare-Sessions **Analysis panel** and the
+single-session **"Waste by step"** list are decluttered (signal-only, adaptive);
+and the normalization pipeline is hardened against corrupt/hand-edited logs with
+committed **seeded property-based fuzzers** (`case_assignment`, `stats_compute`,
+the analysis layer, `step_suggest`), a `parse_ts` timezone-consistency sweep, and
+a `process_label` Python↔JS golden. Bar: **"as polished as it can be."** Hold
+every feature to the coherence discipline in
 [COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — a new "verb" needs its
 inverse, a legend, a control-interaction check, and a real-run check (UI bugs are
-invisible to green tests); verify UI changes in the `_pdt_verify` harness. Strategic
-frame: [VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md); ADRs in
-`docs/adr/`. Validate by running the **packaged app** (it bundles its own
+invisible to green tests); verify UI changes in the `_pdt_verify` harness. Plan of
+record + queued backlog: [docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md).
+Strategic frame: [VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md);
+ADRs in `docs/adr/`. Validate by running the **packaged app** (it bundles its own
 Python), not dev-box pip.
 
 ## What this is
@@ -35,7 +41,8 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current version **0.15.0** (SemVer 0.x).
+Current released version **0.16.3** (SemVer 0.x); a large polishing cycle sits
+committed-but-unreleased on `viewer-refactor` (see CHANGELOG `[Unreleased]`).
 
 ## Layout
 

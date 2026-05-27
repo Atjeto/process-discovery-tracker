@@ -1,158 +1,102 @@
-# Next-Session Spec — Documentation fix pass + the remaining implementation backlog
+# Next-Session Spec — plan of record
 
-**Written:** 2026-05-23 (late) · **Branch:** `viewer-refactor` ·
-**Status:** plan of record for the next working session.
+**Updated:** 2026-05-28 · **Branch:** `viewer-refactor` · **Status:** plan of record.
 
 Self-contained hand-off — read top to bottom; assumes no memory of the prior
-session. The spec just executed (analysis-layer abstraction, map readability,
-drill-down filtering) is archived at
-[Archive/NEXT-SESSION-SPEC-2026-05-23-evening.md](Archive/NEXT-SESSION-SPEC-2026-05-23-evening.md).
+session. Earlier specs live in git history and [Archive/](Archive/).
 
 ---
 
-## 0. The verification harness exists — USE IT for any UI change
+## 0. Verify UI changes in the harness — proactively, not as an offer
 
-This project's recurring failure was shipping UI changes that were never
-eyeballed. There is a Playwright harness that drives the **real** viewer and
-screenshots it, so a headless agent CAN see the UI. **Use it to confirm every UI
-change before claiming it done — proactively, not as an offer.**
+This project's recurring failure is shipping UI that was never eyeballed. A
+Playwright harness drives the **real** viewer and screenshots it, so a headless
+agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
-- **Where:** `_pdt_verify/driver.js` (a scratch dir *outside* the repo;
-  `playwright-core` installed there — not a repo dependency).
-- **How it works:** `_electron.launch` runs the viewer's own Electron with
-  `--session=<analyzed session folder>` (see `main.js parseInitialSessionArg`),
-  drives the page, and writes `shot-*.png`. Read the PNGs back to see the render.
-  It logs `PAGE ERROR:` for any console error.
-- **Reaching the aggregate map:** mock the native folder picker, then click the
-  tab + open button —
-  `await app.evaluate(({dialog}, p) => { dialog.showOpenDialog = async () => ({canceled:false, filePaths:[p]}); }, SESSION)`,
-  then click `.tab[data-view="aggregate"]` and `#btn-open-multi-hero`. Switch
-  level with `#map-level` (`activity|step|phase`), notation with
-  `.panel-tab[data-map="bpmn"|"dfg"]`. The DFG canvas exposes its cytoscape
-  instance on `#dfg-host.__cy` so node taps can be driven (`cy.nodes()[i].emit("tap")`).
-- **A loadable analyzed session:** re-analyze a bundled example —
+- **Where:** `_pdt_verify/` (a dir *outside* the repo; `playwright-core` installed
+  there, not a repo dependency) — `driver.js` plus per-task scratch drivers.
+- **How:** `_electron.launch` runs the viewer's own Electron with
+  `--session=<analyzed folder>` (see `main.js parseInitialSessionArg`), drives the
+  page, writes `*.png` to read back. It logs `PAGE ERROR:` on any console error.
+- **A loadable session:** re-analyze a bundled example —
   `viewer/python/python.exe normalization/normalize.py sessions/example-aggregate/sess-2026-0514-0900 --mine`.
-- The driver already covers: step-level collapse, scoped drill-down + chip,
-  "Hide rare paths", and the Analysis-tab time study. **The example-aggregate is
-  gitignored-but-tracked demo data — do NOT commit the regenerated session files.**
+  **`example-aggregate` is committed demo data — do NOT commit the regenerated files**
+  (`git checkout -- ...` + `git clean -f ...` that folder when done).
+- **Tests:** system Python with pytest (`python -m pytest normalization/test/`);
+  the bundled `viewer/python` has the runtime deps (pm4py, python-docx) but no
+  pytest, so use it for direct/`--mine` runs. Viewer: `npm test` in `viewer/`.
 
 ---
 
 ## 1. Where we are
 
-v0.15.0 plus a large follow-on cycle, **done and verified but uncommitted on
-`viewer-refactor`**:
+Last release **v0.16.3**. A large **polishing cycle is committed but unreleased on
+`viewer-refactor`** (clean tree) — full list in CHANGELOG `[Unreleased]`.
+Direction: **productization toward a small internal rollout, analyst-deliverable
+first**; bar = "as polished as it can be." Landed this cycle:
 
-- **Code (harness-verified):** removed the dead aggregate Flow/Steps/Phases
-  switcher; the P0 analysis "endless list" fix (value-free `process_label` is now
-  the step-grouping key in `analysis_time_study`, `analysis_automation`,
-  `stats_compute.step_stats`/`step_variants` — a step seen across N cases collapses
-  to one row with `instances=N`); scoped phase→step→activity drill-down on the Flow
-  diagram with a "scoped: …/show all" chip; a "Hide rare paths" Flow-diagram toggle
-  (`process-map-levels.dropRareEdges`). Tests green: **171 viewer + 51 Python
-  analysis/stats** (plus the rest of the suites).
-- **Docs:** wrote **ADR-0013** (the `process_label` grouping + map readability),
-  refreshed NORMALIZATION / VIEWER / DATA-MODEL / SCHEMA / OVERVIEW / FEATURES, and
-  ticked the now-done action items in ADR-0010 (all), ADR-0011, ADR-0012 (#1–6).
-- **Audit:** ran a full coverage/consistency pass → **`docs/DOC-COVERAGE-AUDIT.md`**
-  (30 verified findings). That audit is this session's headline output and the
-  worklist for §2.
-
-Nothing here is committed yet; the example-aggregate session was re-analyzed for
-verification and must not be committed.
-
----
-
-## 2. PRIMARY — the documentation fix pass
-
-**Source of truth:** [`docs/DOC-COVERAGE-AUDIT.md`](../DOC-COVERAGE-AUDIT.md) — 30
-verified findings (9 NOT COVERED, 9 SHOULD BE COVERED, 12 INCONSISTENT), each with
-a file (often a line), what's wrong, and the corrected fact. Work it in the
-audit's own six-step order:
-
-1. **Correctness-first (IN-1…IN-6).** Statements that actively mislead: the
-   crash-loss bound (CAPTURE.md says synchronous append; it's a 500 ms batch
-   queue), `_merge_steps` location + "split/merge UIs deferred" (SCHEMA.md),
-   "Pdt\* modules" (OVERVIEW.md), interaction-recorder.md "Proposed".
-2. **Version truth (IN-8, IN-9).** README is stuck at v0.5.0 → bring to 0.15.0;
-   add the missing `[0.11.0]` CHANGELOG section (or note the skipped tag).
-3. **ADR hygiene (SC-1…SC-5, IN-12, IN-7).** Flip stale statuses (ADR-0001 still
-   "Proposed", ADR-0006 "Phase A in progress"), tick done action items
-   (0002/0009), fix the broken ADR-0008 link + the stale line/test counts.
-4. **Stale frames (IN-10, IN-11).** SPEC-DEFERRED.md context + its shipped items;
-   the COHERENCE-AUDIT "recognition is viewer-only" point (Python side shipped).
-5. **Coverage fills (NC-1…NC-9).** Missing config keys, manifest fields, modules
-   (`coalesce.py`, `classification_overrides.py`, `report-html.js`,
-   `canonical-author.js`, `views/identity-picker.js`), and export surfaces (HTML
-   findings report, Step-statistics table, DFG→SVG serializer).
-
-Rows for steps 1–5 are self-contained. **Step 6 — the new-ADR judgment calls
-(SC-6…SC-9)** — needs a quick read of the cited source docs and an owner steer:
-the "Studio Dark" theme, the v0.2.0 distribution pivot, intra-session repetition
-alignment, and the VALUE-CHAIN-REVIEW decisions each *might* warrant a short
-retroactive ADR. Decide per item; don't manufacture ADRs for their own sake.
+- **PDD = a real Process Definition Document.** `normalization/pdd_export.py` now
+  mirrors a standard RPA PDD (document control · introduction · As-Is process
+  [overview, applications, **embedded process-map image**, statistics, detailed
+  steps, input data] · automation assessment · exceptions), auto-filling what the
+  pipeline has and marking analyst-judgement gaps with `[To be completed]`.
+- **One-click "View map"** from a single session (Session view's process-map bar →
+  loads it into the Compare/map view) — also the route that supplies the PDD's map.
+- **Decluttered Analysis** — the Compare-Sessions Analysis panel (adaptive columns,
+  signal-only rows, the all-`—` automation table → a note) and the single-session
+  "Waste by step" (sorted by waste, instant steps behind an expander, rows still editable).
+- **Pipeline hardened** — committed seeded fuzzers for `case_assignment`,
+  `stats_compute`, the analysis layer, and `step_suggest` (each pins invariants +
+  a corrupt-log robustness regime; found + fixed real crashes), a `parse_ts`
+  timezone-consistency sweep across all 8 copies, and a `process_label` Python↔JS golden.
 
 ---
 
-## 3. Open implementation backlog (carried from the ADRs)
+## 2. Queued backlog (next work)
 
-> **Session update (2026-05-23).** ADR-0012 #7 (recognition-driven anchors) and
-> ADR-0013 #5's **frequency slider** both shipped and are committed; ADR-0013 #6
-> was **decided — deferred** (no live BPMN re-mine is possible; see the ADR). The
-> only item still open here is ADR-0013 #5's **calibration**, which is data-blocked
-> (needs more representative real captures — owner-side).
-
-- **ADR-0012 #7 — recognition-driven anchor detection (the headline functional
-  item).** Replace the opaque `automation_id == "txtsr"` case anchor with a
-  recognised signature, so case detection generalises across engagements (ties
-  into ADR-0011's recognition layer).
-- **ADR-0013 #5 — calibration.** Tune `process_label`'s value-stripping and the
-  rare-path frequency cutoff against more / more-representative real captures;
-  consider a frequency *slider* if the binary "Hide rare paths" toggle proves too
-  coarse.
-- **ADR-0013 #6 — BPMN drill-scoping (deferred).** Drill-down scoping is
-  DFG-only; the Process diagram (BPMN) is a static mined file, so scoping it needs
-  live re-mining in JS or a normalize round-trip. Decide if it's worth it.
-
----
-
-## 4. Owner-blocked / owner-side (cannot be done headless)
-
-- **PDD "living projection" — still undefined.** Needs a concrete definition from
-  the owner before it's buildable (regenerate-on-view? embed the model in the
-  viewer? a queryable projection?). The export already re-derives from current
-  annotations on each run. **Get the definition first.**
-- **Released-`.exe` smoke.** The **bundling config is verified** (2026-05-23): both
-  build paths ship `shared/` next to `normalization/` under `resources/` —
-  `viewer/build-package.js` `extraResource` (electron-packager, the ship route) and
-  `viewer/package.json` `extraResources` (electron-builder) — so the packaged
-  `recognition.py` / `recognition.js` will resolve `resources/shared/recognition-patterns.json`.
-  What remains is the **runtime** confirmation: launch the packaged `.exe` and
-  verify recognition works, plus the recorder's D3 screenshot occlusion (it dims
-  its own always-on-top windows during a grab) on a real **single-monitor**
-  capture. Needs the work laptop + a one-display recording.
+1. **Segment-level automation / waste (headline).** Owner steer: marking an
+   *atomic* step/click as an "automation candidate" is the wrong grain —
+   automating one click mid-flow has no value (it forces a human→bot→human
+   handoff). Reframe `analysis_automation` (and likely `analysis_waste`) +
+   **PDD §4** to assess an automatable **segment** — a contiguous, same-app,
+   human-uninterrupted run that forms a narrative — not individual steps.
+2. **Full in-view single-session map.** Embed the interactive map *inside* the
+   Session view instead of routing through Compare-Sessions. Bigger build: the map
+   UI (level/notation controls, drill-scope, rare-path slider, `#map-level` /
+   `#dfg-host` / `.panel-tab` DOM) is tightly coupled to `views/aggregate-view.js`
+   state + element IDs — needs a careful refactor-for-reuse + full
+   level×notation×theme harness check. The one-click "View map" is the low-risk interim.
+3. **Group "Waste by step" by step type.** The single-session list is still
+   per-instance (4× "Search — CUST-X" across cases). Grouping by type cuts it
+   further but changes the per-step edit model — design the edit semantics first.
+4. **Consolidate the `parse_ts` family.** Eight near-duplicate copies; the tz sweep
+   made them consistent but they still differ in fallback (raise / None / epoch).
+   Extract one shared helper that callers wrap with their own fallback.
+   `test_parse_ts_consistency.py` guards the behaviour during the refactor.
+5. **Broader doc-coverage audit.** Beyond this truth-up: README version, the older
+   `docs/DOC-COVERAGE-AUDIT.md` findings, ADR statuses — confirm what's still real.
 
 ---
 
-## 5. Environment & conventions
+## 3. Owner-blocked / calibration (cannot be done headless)
 
-- **Two machines:** dev box (node/python/git OK) vs. the locked-down work laptop
-  (released `.exe` only — never suggest installs there).
-- **Company data stays local.** Use `scripts/inspect-events.js` /
+- **Calibration on real captures** — `process_label` value-stripping, the
+  rare-path cutoff, the fuzzy "same step" thresholds. Needs more representative
+  real captures (owner-side). Fuzzing proves robustness, NOT calibration.
+- **Released-`.exe` smoke** on the locked-down work laptop: the packaged app's
+  recognition-JSON load + the recorder's single-monitor screenshot occlusion.
+- **PDD "living projection"** — still undefined; needs a concrete owner definition.
+
+---
+
+## 4. Environment & conventions
+
+- **Two machines:** dev box (node / python / git / .NET) vs. the locked-down work
+  laptop (released `.exe` only — never suggest installs there).
+- **Company captures stay local.** Use `scripts/inspect-events.js` /
   `scripts/count-cases.js`; never read a real `events.jsonl` into the assistant.
 - **Validate via the packaged app *and* the §0 harness**, not just green tests —
   UI bugs are invisible to the unit suites.
 - **Commit style:** imperative subject; **no Co-Authored-By trailer**; quote-safe
   body. Branch `viewer-refactor`; `gh` authed as `Atjeto`. For `.ps1`, scope-set
-  `RemoteSigned` in-shell — do **not** use `-ExecutionPolicy Bypass`.
-
----
-
-## 6. Suggested order
-
-1. **Documentation fix pass (§2)** — the bulk; mostly mechanical and
-   self-contained, and it's the agreed next-session focus.
-2. **ADR-0012 #7 recognition-driven anchors (§3)** — the headline functional item.
-3. **ADR-0013 #5 calibration (§3)** — once more real captures exist.
-4. **New-ADR judgment calls (§2 step 6) + ADR-0013 #6** — with owner input.
-5. **Owner-blocked items (§4)** — when the owner defines PDD / runs the packaged smoke.
+  `RemoteSigned`, not `-ExecutionPolicy Bypass`.
