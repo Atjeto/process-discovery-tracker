@@ -15,7 +15,7 @@ exists. See ADR-0008.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 # --- Tunable heuristic thresholds -------------------------------------
@@ -40,7 +40,8 @@ def parse_ts(ts: Any) -> datetime | None:
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
     try:
-        return datetime.fromisoformat(s)
+        dt = datetime.fromisoformat(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     except ValueError:
         return None
 

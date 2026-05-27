@@ -137,7 +137,8 @@ def _parse_ts(s: str) -> datetime:
     try:
         if isinstance(s, str) and s.endswith("Z"):
             s = s[:-1] + "+00:00"
-        return datetime.fromisoformat(s)
+        dt = datetime.fromisoformat(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
         # A corrupt or hand-edited log can carry a non-ISO / empty / non-string
         # timestamp; fall back to the epoch so anchor case detection degrades

@@ -87,6 +87,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pair in lock-step); and `step_suggest.parse_ts` returned a naive datetime for a
   zone-less timestamp but tz-aware for the rest, so a case mixing them died with
   "can't subtract offset-naive and offset-aware" — it now normalizes to UTC.
+- **The same timezone normalization now applies to every `parse_ts` copy across
+  the pipeline.** A zone-less timestamp parsed naive in `analysis_common`,
+  `bpmn_observed`, `canonical_match`, `case_assignment`, `coalesce`,
+  `stats_compute`, and `xes_export` too — the same latent crash, reachable
+  wherever those compare or subtract timestamps. All eight copies now return a
+  tz-aware datetime; a family-wide guard (`test_parse_ts_consistency.py`) keeps
+  them from drifting apart again.
 
 ### Fixed
 

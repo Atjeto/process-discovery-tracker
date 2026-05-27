@@ -12,7 +12,7 @@ Computes the standard set the aggregate viewer renders:
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from statistics import mean, median
 from typing import Any
 
@@ -23,7 +23,8 @@ def _parse_ts(ts: str) -> datetime:
     s = ts.rstrip()
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
-    return datetime.fromisoformat(s)
+    dt = datetime.fromisoformat(s)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def _filter_excluded(

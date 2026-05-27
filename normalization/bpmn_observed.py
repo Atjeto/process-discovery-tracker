@@ -15,7 +15,7 @@ activity map (`mining.discover_inductive` + `mining.export_bpmn`).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pm4py.objects.log.obj import Event, EventLog, Trace
@@ -26,7 +26,8 @@ def _parse_ts(ts: str) -> datetime:
     s = str(ts).rstrip()
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
-    return datetime.fromisoformat(s)
+    dt = datetime.fromisoformat(s)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def _start_key(step: dict[str, Any]) -> float:
