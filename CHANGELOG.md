@@ -20,8 +20,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   section. Sections are auto-filled where the pipeline has the data and carry
   explicit "[To be completed]" placeholders for the analyst-judgement parts
   (purpose, scope, exception handling), so the document reads as a structured
-  PDD rather than a data dump. Embedding the rendered process map into the
-  document is the one remaining piece (`normalization/pdd_export.py`).
+  PDD rather than a data dump. When exporting from the viewer, the currently-
+  rendered Flow map is rasterised and embedded as the As-Is process map
+  (section 3.3) (`normalization/pdd_export.py`, `viewer/dfg-viewer.js`,
+  `viewer/renderer.js`, `viewer/python-runner.js`).
 
 ### Fixed
 

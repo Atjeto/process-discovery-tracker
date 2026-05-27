@@ -323,5 +323,17 @@
     return parts.join("\n");
   }
 
-  module.exports = { render, fit, zoomIn, zoomOut, getZoom, exportSvg };
+  /* Rasterise the current Flow diagram to a PNG data URL for embedding in the
+     PDD. Light background to match exportSvg (a document expects light).
+     Returns null when no graph is rendered. */
+  function exportPng() {
+    if (!cy) return null;
+    try {
+      return cy.png({ output: "base64uri", bg: "#faf8f4", full: true, scale: 2 });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  module.exports = { render, fit, zoomIn, zoomOut, getZoom, exportSvg, exportPng };
 })();

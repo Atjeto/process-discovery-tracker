@@ -460,9 +460,25 @@ async function exportArtifact(kind) {
   const ext = kind === "pdd" ? "docx" : "csv";
   const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + "." + ext);
   const opts = { sessionFolder: target.sessionFolder, mine: false };
-  if (kind === "pdd")      opts.pddOut     = tmpPath;
+  let mapImgPath = null;
+  if (kind === "pdd") {
+    opts.pddOut = tmpPath;
+    // Embed the currently-rendered Flow (DFG) as the PDD's As-Is process map.
+    // cytoscape rasterises cleanly; if no map is on screen we skip it and the
+    // PDD falls back to its placeholder.
+    try {
+      const dataUrl = (PdtDfg && PdtDfg.exportPng) ? PdtDfg.exportPng() : null;
+      const comma = dataUrl ? dataUrl.indexOf("base64,") : -1;
+      if (comma !== -1) {
+        mapImgPath = path.join(os.tmpdir(), "pdt-pddmap-" + Date.now() + ".png");
+        fs.writeFileSync(mapImgPath, Buffer.from(dataUrl.slice(comma + 7), "base64"));
+        opts.pddMapImage = mapImgPath;
+      }
+    } catch (_) { mapImgPath = null; }
+  }
   if (kind === "step-csv") opts.stepCsvOut = tmpPath;
   const r = await Ipc.runNormalizeExtended(opts);
+  if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
   if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
   const suggested = "process." + kind + "." + ext;
   const out = await Ipc.exportFile({ sourcePath: tmpPath, suggestedName: suggested });

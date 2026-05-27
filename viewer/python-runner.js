@@ -69,7 +69,7 @@ function resolveDefaultTaxonomy() {
 function runNormalize(opts) {
   const {
     sessionFolder, taxonomyPath, mine, onLog, onProc,
-    canonical, pddOut, stepBpmnOut, phaseBpmnOut, stepCsvOut,
+    canonical, pddOut, pddMapImage, stepBpmnOut, phaseBpmnOut, stepCsvOut,
     bootstrapVocabOut, vocabId, vocabName,
   } = opts || {};
   /* onProc(child) fires once with the spawned process handle so the
@@ -100,6 +100,7 @@ function runNormalize(opts) {
         try { onLog && onLog(`[viewer] Process Template not found, analyzing without it: ${canonical}\n`); } catch (_) {}
       }
       if (pddOut) args.push("--pdd-out", pddOut);
+      if (pddMapImage) args.push("--pdd-map-image", pddMapImage);
       if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
       if (phaseBpmnOut) args.push("--phase-bpmn-out", phaseBpmnOut);
       if (stepCsvOut) args.push("--step-csv-out", stepCsvOut);
