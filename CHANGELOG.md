@@ -32,6 +32,21 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (section 3.3) (`normalization/pdd_export.py`, `viewer/dfg-viewer.js`,
   `viewer/renderer.js`, `viewer/python-runner.js`).
 
+### Changed
+
+- **The Compare-Sessions Analysis panel is far less cluttered.** The cross-session
+  time study rendered every step in a fixed 9-column table — including the ~26
+  instant (0 ms) micro-steps and columns that were all-zero or always "1" — and the
+  automation-candidates table showed a full grid of "—" whenever a step lacked the
+  2+ sessions needed to score it. Now the time study is sorted by time and lists
+  only steps with a measured duration (with a "+N instant steps" note), and each
+  column appears only when it carries signal (Sessions / Min-Max / Waiting /
+  Switching show just when non-trivial — a single session collapses to Step /
+  Instances / Mean / Active); the automation table collapses to a one-line note
+  when nothing is scoreable yet. Also fixes a stray "Heuristic IE findings" typo in
+  the panel caption (`viewer/views/aggregate-view.js`, `viewer/index.html`,
+  `viewer/styles.css`).
+
 ### Fixed
 
 - **Analysis no longer crashes on a corrupt log record whose `data` is null or

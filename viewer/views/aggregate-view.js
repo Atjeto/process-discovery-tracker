@@ -1047,23 +1047,50 @@ function _aggScore(v) {
 
 function _aggTimeStudySection(agg) {
   if (!agg.time_study.length) return "";
-  const rows = agg.time_study.map((t) =>
-    "<tr><td>" + escapeHtml(t.name) + "</td>" +
-    '<td class="num">' + t.sessions + "</td>" +
-    '<td class="num">' + t.instances + "</td>" +
-    '<td class="num">' + _aggDur(t.cycle_ms.mean) + "</td>" +
-    '<td class="num">' + _aggDur(t.cycle_ms.min) + "</td>" +
-    '<td class="num">' + _aggDur(t.cycle_ms.max) + "</td>" +
-    '<td class="num">' + _aggDur(t.active_ms) + "</td>" +
-    '<td class="num">' + _aggDur(t.waiting_ms) + "</td>" +
-    '<td class="num">' + _aggDur(t.switching_ms) + "</td></tr>"
-  ).join("");
-  return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Cross-session time study</div>' +
-    '<table class="analysis-table"><thead><tr><th>Step</th><th>Sessions</th>' +
-    "<th>Instances</th><th>Mean</th><th>Min</th><th>Max</th><th>Active</th>" +
-    "<th>Waiting</th><th>Switching</th></tr></thead><tbody>" +
-    rows + "</tbody></table></div>";
+  const title = '<div class="analysis-section-title">Cross-session time study</div>';
+  // Where does the time actually go? Sort by active time and split off the
+  // instant (0-duration) steps so this shows signal, not 30 rows of 0ms.
+  const all = agg.time_study.slice().sort((a, b) =>
+    (b.active_ms || 0) - (a.active_ms || 0) ||
+    (b.cycle_ms.mean || 0) - (a.cycle_ms.mean || 0));
+  const timed = all.filter((t) => (t.active_ms || 0) > 0 || (t.cycle_ms.mean || 0) > 0);
+  const instant = all.length - timed.length;
+  if (!timed.length) {
+    return '<div class="analysis-section">' + title +
+      '<div class="analysis-note">No measured step durations in the loaded session(s).</div></div>';
+  }
+  // Data-adaptive columns: show one only when it carries signal, so a
+  // single-session view collapses to Step / Instances / Mean / Active.
+  const multiSession = all.some((t) => t.sessions > 1);
+  const hasSpread = timed.some((t) => t.cycle_ms.min !== t.cycle_ms.max);
+  const anyWaiting = timed.some((t) => (t.waiting_ms || 0) > 0);
+  const anySwitching = timed.some((t) => (t.switching_ms || 0) > 0);
+  const head = ["<th>Step</th>"];
+  if (multiSession) head.push("<th>Sessions</th>");
+  head.push("<th>Instances</th>", "<th>Mean</th>");
+  if (hasSpread) head.push("<th>Min</th>", "<th>Max</th>");
+  head.push("<th>Active</th>");
+  if (anyWaiting) head.push("<th>Waiting</th>");
+  if (anySwitching) head.push("<th>Switching</th>");
+  const rows = timed.map((t) => {
+    const tds = ["<td>" + escapeHtml(t.name) + "</td>"];
+    if (multiSession) tds.push('<td class="num">' + t.sessions + "</td>");
+    tds.push('<td class="num">' + t.instances + "</td>",
+             '<td class="num">' + _aggDur(t.cycle_ms.mean) + "</td>");
+    if (hasSpread) tds.push('<td class="num">' + _aggDur(t.cycle_ms.min) + "</td>",
+                            '<td class="num">' + _aggDur(t.cycle_ms.max) + "</td>");
+    tds.push('<td class="num">' + _aggDur(t.active_ms) + "</td>");
+    if (anyWaiting) tds.push('<td class="num">' + _aggDur(t.waiting_ms) + "</td>");
+    if (anySwitching) tds.push('<td class="num">' + _aggDur(t.switching_ms) + "</td>");
+    return "<tr>" + tds.join("") + "</tr>";
+  }).join("");
+  const note = instant
+    ? '<div class="analysis-note">' + instant + " more step" + (instant === 1 ? "" : "s") +
+      " had no measured duration (instant entries).</div>"
+    : "";
+  return '<div class="analysis-section">' + title +
+    '<table class="analysis-table"><thead><tr>' + head.join("") +
+    "</tr></thead><tbody>" + rows + "</tbody></table>" + note + "</div>";
 }
 
 function _aggWorkerSection(agg) {
@@ -1088,25 +1115,42 @@ function _aggWorkerSection(agg) {
 
 function _aggAutomationSection(agg) {
   if (!agg.automation.length) return "";
-  const rows = agg.automation.map((a) => {
-    const parts = [];
-    if (a.confirmed) parts.push(a.confirmed + " confirmed");
-    if (a.dismissed) parts.push(a.dismissed + " dismissed");
-    const decision = parts.length ? parts.join(" · ") : "—";
-    return "<tr><td>" + escapeHtml(a.name) + "</td>" +
-      '<td class="num">' + a.sessions + "</td>" +
-      '<td class="num">' + a.instances + "</td>" +
-      '<td class="num">' + _aggScore(a.repetitiveness) + "</td>" +
-      '<td class="num">' + _aggScore(a.rule_based) + "</td>" +
-      '<td class="num">' + _aggDur(a.volume) + "</td>" +
-      "<td>" + escapeHtml(decision) + "</td></tr>";
+  const title = '<div class="analysis-section-title">Automation candidates (pooled)</div>';
+  const has = (v) => v !== null && v !== undefined;
+  // A candidate is only meaningful once it can be scored; single-instance data
+  // yields a full table of "—", which is pure noise -- collapse it to a note.
+  const scored = agg.automation.filter((a) => has(a.repetitiveness) || has(a.rule_based));
+  if (!scored.length) {
+    return '<div class="analysis-section">' + title +
+      '<div class="analysis-note">Scoring a candidate needs the step seen in 2+ ' +
+      "sessions. Load more sessions of this process to rank automation candidates." +
+      "</div></div>";
+  }
+  scored.sort((a, b) => (b.repetitiveness || 0) - (a.repetitiveness || 0));
+  const multiSession = scored.some((a) => a.sessions > 1);
+  const anyDecision = scored.some((a) => a.confirmed || a.dismissed);
+  const head = ["<th>Step</th>"];
+  if (multiSession) head.push("<th>Sessions</th>");
+  head.push("<th>Instances</th>", "<th>Repetitive</th>", "<th>Rule-based</th>", "<th>Volume</th>");
+  if (anyDecision) head.push("<th>Analyst decision</th>");
+  const rows = scored.map((a) => {
+    const tds = ["<td>" + escapeHtml(a.name) + "</td>"];
+    if (multiSession) tds.push('<td class="num">' + a.sessions + "</td>");
+    tds.push('<td class="num">' + a.instances + "</td>",
+             '<td class="num">' + _aggScore(a.repetitiveness) + "</td>",
+             '<td class="num">' + _aggScore(a.rule_based) + "</td>",
+             '<td class="num">' + _aggDur(a.volume) + "</td>");
+    if (anyDecision) {
+      const parts = [];
+      if (a.confirmed) parts.push(a.confirmed + " confirmed");
+      if (a.dismissed) parts.push(a.dismissed + " dismissed");
+      tds.push("<td>" + escapeHtml(parts.join(" · ") || "—") + "</td>");
+    }
+    return "<tr>" + tds.join("") + "</tr>";
   }).join("");
-  return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Automation candidates (pooled)</div>' +
-    '<table class="analysis-table"><thead><tr><th>Step</th><th>Sessions</th>' +
-    "<th>Instances</th><th>Repetitive</th><th>Rule-based</th><th>Volume</th>" +
-    "<th>Analyst decision</th></tr></thead><tbody>" +
-    rows + "</tbody></table></div>";
+  return '<div class="analysis-section">' + title +
+    '<table class="analysis-table"><thead><tr>' + head.join("") +
+    "</tr></thead><tbody>" + rows + "</tbody></table></div>";
 }
 
 function _aggEfficiencySection(agg) {
