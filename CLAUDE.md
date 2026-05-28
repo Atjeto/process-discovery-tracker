@@ -14,10 +14,16 @@ map, automation assessment, exceptions) instead of piling up pipeline data; a
 single session reaches the interactive map in one click (**"View map"** in the
 Session view's process-map bar); the Compare-Sessions **Analysis panel** and the
 single-session **"Waste by step"** list are decluttered (signal-only, adaptive);
-and the normalization pipeline is hardened against corrupt/hand-edited logs with
-committed **seeded property-based fuzzers** (`case_assignment`, `stats_compute`,
-the analysis layer, `step_suggest`), a `parse_ts` timezone-consistency sweep, and
-a `process_label` Python↔JS golden. Bar: **"as polished as it can be."** Hold
+the **capture tray IA was split by lifetime** — top-level **Settings…** (Hotkeys
+/ Video-OBS / Screenshots / Storage), top-level **Profile…** (worker identity),
+and a slim **Session setup…** (engagement + labels only), backed by a
+`userData/user-config.json` overlay merged on top of the YAML; the **~5s session-
+start freeze is gone** (best-effort OBS connect now in the background; blocking
+modals on the start path replaced with toasts; recorder-zip extraction moved off
+the start path to app launch); and the normalization pipeline is hardened against
+corrupt/hand-edited logs with committed **seeded property-based fuzzers**
+(`case_assignment`, `stats_compute`, the analysis layer, `step_suggest`), a
+`parse_ts` timezone-consistency sweep, and a `process_label` Python↔JS golden. Bar: **"as polished as it can be."** Hold
 every feature to the coherence discipline in
 [COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — a new "verb" needs its
 inverse, a legend, a control-interaction check, and a real-run check (UI bugs are

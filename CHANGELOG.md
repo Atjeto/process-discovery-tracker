@@ -8,6 +8,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Settings and Profile become top-level tray entries with a real persistence
+  layer.** Configuration was buried under "Help & config → Set up a recording
+  session" and conflated three concerns: worker identity, persistent settings,
+  and per-session inputs. The capture tray now has three discoverable surfaces
+  split by lifetime — **Settings…** (Hotkeys, Video/OBS, Screenshots, Storage &
+  recording limits — persistent across sessions), **Profile…** (worker identity:
+  id, display name, role, team — stamped onto every recording's manifest), and
+  **Session setup…** (engagement code/name and process labels — per-engagement,
+  shown only when idle). Persistence is a new partial-config overlay at
+  `userData/user-config.json` that's deep-merged ON TOP of the YAML config at
+  launch, so the YAML supplies session-level shape and the UI-edited slices win
+  for what they own. The first-run welcome gets a "Set up your profile" CTA so a
+  fresh operator hits identity setup before recording. The legacy standalone
+  `obs-settings.json` is migrated into the overlay automatically on first load
+  (`capture/user-config.js`, `capture/settings-window.js`,
+  `capture/profile-window.js`, `capture/ui/settings.html`, `capture/ui/profile.html`,
+  `capture/main.js`, `capture/config.js`, `capture/ui/welcome.html`).
 - **"View map" — one-click access to a single session's process map.** The
   interactive map (zoom/pan, Activity/Step/Phase × Flow/BPMN) lived only in the
   Compare-Sessions view, so an analyst working one session had to go there and
@@ -52,6 +69,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wasteful and time-heavy steps surface first — and tucks the instant steps
   behind an "N instant steps" expander; every row stays editable
   (`viewer/views/analysis-view.js`, `viewer/styles.css`).
+- **The capture tray's legacy status window and standalone OBS-settings window
+  are gone.** `status-window.js` + `ui/status-window.html` were the kept-for-one-
+  release fallback before the Live Session window subsumed their counters, recent
+  events, and quick actions; `obs-settings-window.js` + `ui/obs-settings.html` are
+  subsumed by the new Settings window's Video/OBS section. The "Help & config"
+  submenu collapses to just "Help" — config no longer lives there, since Settings
+  and Profile are top-level. The capture README + help-window doc reflect the new
+  IA, and `package.json`'s build files list is updated (it was both stale —
+  referenced the deleted `status-window.js` — and incomplete: missed several JS
+  modules) (`capture/main.js`, `capture/package.json`, `capture/ui/help-window.html`,
+  `capture/README.md`, `capture/operator-panel.js`).
 - **Consolidate the eight `parse_ts` copies into one shared helper.** Each
   pipeline module (`analysis_common`, `bpmn_observed`, `canonical_match`,
   `case_assignment`, `coalesce`, `stats_compute`, `step_suggest`, `xes_export`)
@@ -65,6 +93,33 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Starting a capture session is instant — no more ~5s freeze when OBS isn't
+  running.** `startSession()` awaited a best-effort `setupOBS()` on the critical
+  path, so a missing or idle OBS held up the start by the OBS WebSocket
+  connect-timeout (~5 seconds, every time). Best-effort OBS now connects in the
+  background after the session folder + tracker + recorder are already live; if
+  and when OBS connects, `attachObsRecording()` wires the video-sync record into
+  the running session and fires the `obs_recording_start` system event. Strict
+  mode (`config.obs.required = true`) is unchanged — it still awaits up front so
+  a forced-OBS failure tears down before any session folder is created. Verified
+  by the new `_pdt_verify/capture-smoke.js` Playwright driver: `pdt:startSession`
+  resolves in 625–685 ms with OBS unreachable (`capture/main.js`).
+- **Two blocking modals on the session-start path replaced with non-blocking
+  toasts.** A `validateConfig` warning ("Engagement ID is still 'default'") used
+  to halt with a `Start anyway / Cancel` dialog, and the once-only "recording
+  without OBS video" hint was a full `dialog.showMessageBox`. Both are now
+  `notifyUser()` toasts — starting always proceeds; the once-only hint keeps its
+  `userData/obs-hint-shown.json` flag and surfaces only the first time best-effort
+  OBS fails (`capture/main.js`).
+- **First-session `recorder.zip` extraction no longer freezes the start.** The
+  >100 MB `recorder.zip` was synchronously extracted via `spawnSync("tar", …)`
+  inside `resolveRecorderPath` the first time a session started — a multi-second
+  freeze on first capture after install. `recorder.js` now exposes an async
+  `ensureRecorderExtracted()` that runs during `app.whenReady()`, shows a
+  "Preparing interaction recorder" notification while it runs, and resolves to a
+  no-op when `recorder.exe` is already on disk. The sync extraction remains as a
+  safety fallback but is no longer reached on the normal session-start path
+  (`capture/recorder.js`, `capture/main.js`).
 - **Analysis no longer crashes on a corrupt log record whose `data` is null or
   not an object.** A truncated or hand-edited `events.jsonl` line carrying
   `"data": null` (or a non-dict `data`) aborted the whole run with an
