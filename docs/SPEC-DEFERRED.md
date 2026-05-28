@@ -4,13 +4,14 @@ This document inventories every UX / functional improvement that was identified 
 
 ## Context — what's already done
 
-> **Stale-frame note (2026-05-23).** This doc was written when v0.2.0 was the latest
-> release and the UX overhaul sat uncommitted on `master`. Reality has moved well past
-> it — **v0.15.0 is shipped on the `viewer-refactor` branch**, after the v0.3 UX
-> overhaul, the Warm Editorial redesign, the analysis layer, the recognition layer,
-> value-free grouping, anchor-based cases, and more. Several items below have since
-> shipped and are flagged **✅ SHIPPED** inline; verify against the
-> [CHANGELOG.md](../CHANGELOG.md) before picking anything up.
+> **Superseded — 2026-05-28.** This doc was written when v0.2.0 was the latest
+> release; **v0.17.1 has now shipped on `master`** (the long-running
+> `viewer-refactor` branch was merged in at v0.17.0). It is kept as a historical
+> reference for the v0.3 UX-overhaul era. The **active backlog** is at
+> [docs/To-Do/NEXT-SESSION-SPEC.md](To-Do/NEXT-SESSION-SPEC.md). Items below
+> flagged **✅ SHIPPED** inline have landed; many others have shipped too but
+> were never marked — verify against [CHANGELOG.md](../CHANGELOG.md) before
+> picking anything up.
 
 Before starting work on anything below, read [docs/UX-CHANGES.md](./UX-CHANGES.md) and the [CHANGELOG.md](../CHANGELOG.md) and verify the working tree state. The bullets below describe the v0.2.0 era and are kept as history:
 

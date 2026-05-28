@@ -50,7 +50,14 @@ The wake-up is also documented in [docs/architecture/CAPTURE.md](architecture/CA
 No prereqs. Python is bundled in the zip via Python embeddable — no host Python install required, no `pip install`.
 
 1. Download `viewer-vX.Y.Z.zip` from the [Releases page](../../../releases).
-2. Unzip wherever. Common: `C:\Users\<user>\PDT\viewer\`.
+2. Unzip wherever. Common: `C:\Users\<user>\PDT\viewer\`. **Pick a short
+   destination path** — the bundled Python's deepest paths reach ~175 characters
+   (PM4Py inductive-variant filenames), and Windows' 260-char MAX_PATH limit means
+   that extracting into a deeply-nested folder (an indexed OneDrive sync path, a
+   long project tree under `Documents\…`) can cause Shell "Extract All" (and
+   PowerShell `Expand-Archive`) to silently fail mid-rollback with no error
+   shown. Anything under ~80 chars is safe; `C:\Tools\pdt\` or a folder directly
+   under your user profile is fine.
 3. Run `Process Discovery Viewer.exe`. Use `Open session folder...` to load a session pulled from a worker machine.
 
 The viewer never modifies the session folder it opens — normalization writes new files (`events.xes`, `events.csv`, `stats.json`, `process_map.bpmn`, etc.) alongside `events.jsonl`, but `events.jsonl` itself is immutable. Re-running normalization is always safe.

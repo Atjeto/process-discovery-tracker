@@ -79,6 +79,33 @@ The auto-extract step is a safety net — it should rarely fire now that Release
                             gh release create v0.2.0 dist\release\*.zip --title "..."
 ```
 
+## Release checklist
+
+When bumping the version for a release:
+
+1. Update `version` in **both** `capture/package.json` and `viewer/package.json`.
+2. **Run `npm install` in each app dir afterward.** That propagates the new
+   version into `package-lock.json`'s root `version` field. Skipping this leaves
+   the lockfile's `version` stale (`viewer/package-lock.json` lagged four minor
+   versions before the v0.17.0 release prep noticed).
+3. In `CHANGELOG.md`, convert `## [Unreleased]` to a dated `## [X.Y.Z] - YYYY-MM-DD`
+   section and add an empty `## [Unreleased]` placeholder above it.
+4. Update the "current released version" / "Active direction" lines in
+   `CLAUDE.md` and the version line in `README.md`.
+5. Commit the bump (imperative subject, no Co-Authored-By trailer, quote-safe
+   HEREDOC body for multi-line messages).
+6. Run `scripts\build-distribution.ps1 -SkipPython` (omit `-SkipPython` only if
+   `normalization/requirements.txt` changed — the bundled Python rebuild costs
+   3-5 minutes).
+7. Push the branch.
+8. Run `scripts\publish-release.ps1 -Version X.Y.Z -NotesFromChangelog` — this
+   creates the `vX.Y.Z` tag on `gh`'s default-branch HEAD and uploads the two
+   `dist\release\*.zip` assets to a GitHub Release.
+
+The tag is created at the remote default branch's HEAD at the moment `gh release
+create` runs, so push **before** publish, and land any "post-release" docs cleanup
+**after** publish (otherwise the tag points at the cleanup commit, not the bump).
+
 ## What's safe to delete
 
 When the disk is full and you need to reclaim space:

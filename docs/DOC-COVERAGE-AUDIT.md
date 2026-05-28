@@ -1,6 +1,6 @@
 # Documentation Coverage & Consistency Audit
 
-**Date:** 2026-05-23 · **Branch:** `viewer-refactor` · **Method:** a full pass across
+**Date:** 2026-05-23 · **Status:** RESOLVED (worked through 2026-05-23; the branch this was performed on, `viewer-refactor`, was merged into `master` at v0.17.0) · **Method:** a full pass across
 everything delivered — the capture component, the CHANGELOG/git delivery record vs.
 the ADRs + architecture reference, and ADRs 0001–0009 plus the architecture docs not
 refreshed in the v0.15.0 pass — cross-checked against the on-disk code. Every finding

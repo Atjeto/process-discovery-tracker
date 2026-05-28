@@ -2,10 +2,46 @@
 
 Internal tool for capturing and analyzing process discovery sessions. Full design in [../process_discovery_tracker_design.md](../process_discovery_tracker_design.md).
 
-## What's new in v0.15.0
+## What's new in v0.17.0
 
-The current version is **0.17.0** (SemVer 0.x). Headline capabilities added since
-v0.5.0:
+The current version is **0.17.1** (SemVer 0.x). v0.16.x – v0.17.0 landed the
+**productization cycle** — analyst deliverable polished to a small-internal-rollout
+bar:
+
+- **Segment-level automation candidacy** ([ADR-0016](docs/adr/0016-segment-level-automation-candidacy.md)).
+  Automation is scored at the coherent-segment grain — a contiguous, same-app run
+  the robot could take end-to-end — not per atomic step. Sub-5 s single-step
+  segments are dropped because they can't be automation units on their own. PDD §4
+  renders the segment table; the Analysis view and Compare-Sessions automation
+  panel use the same shape.
+- **PDD = a standard RPA Process Definition Document.** Document control,
+  introduction (purpose / objectives / contacts), As-Is process description
+  (overview, applications-used table, embedded process-map image, statistics with
+  a where-the-time-went breakdown, detailed steps, input data), automation
+  assessment, exceptions & variations. Pipeline-filled where the data exists,
+  explicit `[To be completed]` for the analyst-judgement parts.
+- **One-click "View map"** from a single Session — the interactive map
+  (zoom/pan, Activity/Step/Phase × Flow/BPMN) used to be Compare-Sessions only.
+- **Decluttered Analysis.** The Compare-Sessions Analysis panel (adaptive
+  columns, signal-only rows, automation table collapses to a note when nothing's
+  scoreable) and the single-session Waste-by-step (rolled up by `process_label`,
+  instant micro-steps behind an expander, edits propagate across instances).
+- **Capture polish for the field laptop.** Settings / Profile / Session-setup
+  tray IA split by lifetime, backed by a `userData/user-config.json` overlay
+  deep-merged on top of the YAML config. The ~5 s session-start freeze is gone
+  (best-effort OBS connect moved off the critical path). Chromium web-content
+  reaches the recorder out of the box.
+- **Intra-session repetition alignment** ([ADR-0015](docs/adr/0015-intra-session-repetition-alignment.md)).
+  Steps view's Flat / Aligned toggle shows a consensus backbone across detected
+  cases; edit a backbone step and "Apply to all N instances" propagates the
+  curation in one annotations write, reversible with one Ctrl+Z.
+- **Pipeline hardening.** Committed seeded fuzzers
+  (`case_assignment` / `stats_compute` / analysis layer / `step_suggest`) pin
+  invariants and the corrupt-log robustness regime. The eight `parse_ts` copies
+  consolidate to one shared helper. A `process_label` Python↔JS golden keeps the
+  two engines in lock-step.
+
+Headline capabilities added since v0.5.0:
 
 - **Platform/framework recognition layer** ([ADR-0011](docs/adr/0011-platform-recognition-layer.md)).
   Interactions are typed by documented, cross-app platform signatures (UIA

@@ -6,6 +6,53 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-05-28
+
+Doc-only follow-up to v0.17.0 (same-day). The `.exe` binaries are functionally
+identical — the running code is unchanged. What catches up: the README, the
+backlog spec, a couple of release-process ops notes, and the active-branch
+guidance.
+
+### Changed
+
+- **README leads with "What's new in v0.17.0".** It had been tops at v0.15.0 —
+  ten versions behind reality. Now lists the v0.16.x – v0.17.0 highlights:
+  segment-level automation candidacy, the PDD restructure, one-click "View map",
+  decluttered Analysis, capture polish (Settings/Profile IA + the freeze fix +
+  the Chromium fix), intra-session repetition alignment, and pipeline hardening.
+- **`docs/To-Do/NEXT-SESSION-SPEC.md` backlog refreshed.** The four big items
+  from the v0.16.x – v0.17.0 cycle (segment-level automation, group-Waste-by-step,
+  parse_ts consolidation, broader doc-coverage audit) all landed; the only
+  remaining feature-sized item is the in-view single-session map (the one-click
+  "View map" shipped in v0.17.0 is the low-risk interim). Three small follow-ups
+  noticed during the release prep are queued.
+- **Active-branch guidance flipped from `viewer-refactor` → `master`.** The
+  long-running `viewer-refactor` refactor branch was merged into `master` at
+  v0.17.0 (clean fast-forward); `viewer-refactor` is preserved on origin at the
+  same commit but is no longer used for active work. `CLAUDE.md` +
+  `docs/To-Do/NEXT-SESSION-SPEC.md` updated to point new sessions at `master`.
+- **`docs/SPEC-DEFERRED.md` superseded notice** strengthened — the doc was
+  written at v0.2.0 and many items have since shipped without being marked.
+  Readers are pointed at `NEXT-SESSION-SPEC.md` for the live backlog.
+- **`docs/DOC-COVERAGE-AUDIT.md`** — stale `Branch: viewer-refactor` reference
+  in the header reframed to note the branch was merged into `master` at v0.17.0.
+
+### Added
+
+- **`docs/DEPLOY.md`: MAX_PATH extraction note.** The viewer zip's deepest paths
+  reach ~175 chars (PM4Py inductive-variant filenames), and a deeply-nested
+  extract destination (an indexed OneDrive sync path, a long project tree) can
+  push past Windows' 260-char MAX_PATH and cause Shell "Extract All" / PowerShell
+  `Expand-Archive` to silently fail mid-rollback. The new bullet on the analyst
+  install step calls out an extract destination under ~80 chars as safe.
+- **`docs/BUILD-AND-DIST.md`: Release checklist section.** Captures the
+  lockfile-bump reminder (`viewer/package-lock.json` had lagged four minor
+  versions before the v0.17.0 prep noticed — `npm install` in each app dir
+  after a version bump propagates it into the lockfile), plus the bump → build →
+  push → publish sequence, and the order constraint that `gh release create`
+  tags the remote default-branch HEAD at the moment it runs (so push before
+  publish, and land any post-release docs cleanup after publish).
+
 ## [0.17.0] - 2026-05-28
 
 The productization-toward-internal-rollout cycle. The analyst-deliverable loop

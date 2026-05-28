@@ -30,51 +30,52 @@ agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
 ## 1. Where we are
 
-Last release **v0.17.0** — the large polishing cycle previously sitting unreleased
-on `viewer-refactor` has shipped (full list in the CHANGELOG).
-Direction: **productization toward a small internal rollout, analyst-deliverable
-first**; bar = "as polished as it can be." Landed this cycle:
+Last release **v0.17.1** (2026-05-28, doc-only follow-up to v0.17.0 same-day).
+v0.17.0 closed the **productization cycle** — PDD restructured to a standard RPA
+Process Definition Document with an embedded process map, segment-level
+automation candidacy ([ADR-0016](../adr/0016-segment-level-automation-candidacy.md)),
+the Compare-Sessions Analysis panel + single-session Waste-by-step decluttered,
+capture tray IA split by lifetime (Settings / Profile / Session setup), ~5 s
+session-start freeze gone, Chromium web-content reaches the recorder out of the
+box, seeded fuzzers + parse_ts consolidation + a process_label Python↔JS golden
+pin the normalization pipeline. v0.17.1 is the doc catch-up.
 
-- **PDD = a real Process Definition Document.** `normalization/pdd_export.py` now
-  mirrors a standard RPA PDD (document control · introduction · As-Is process
-  [overview, applications, **embedded process-map image**, statistics, detailed
-  steps, input data] · automation assessment · exceptions), auto-filling what the
-  pipeline has and marking analyst-judgement gaps with `[To be completed]`.
-- **One-click "View map"** from a single session (Session view's process-map bar →
-  loads it into the Compare/map view) — also the route that supplies the PDD's map.
-- **Decluttered Analysis** — the Compare-Sessions Analysis panel (adaptive columns,
-  signal-only rows, the all-`—` automation table → a note) and the single-session
-  "Waste by step" (sorted by waste, instant steps behind an expander, rows still editable).
-- **Pipeline hardened** — committed seeded fuzzers for `case_assignment`,
-  `stats_compute`, the analysis layer, and `step_suggest` (each pins invariants +
-  a corrupt-log robustness regime; found + fixed real crashes), a `parse_ts`
-  timezone-consistency sweep across all 8 copies, and a `process_label` Python↔JS golden.
+Direction: **productization toward a small internal rollout, analyst-deliverable
+first**; bar = "as polished as it can be." Internal-rollout phase begins now.
 
 ---
 
 ## 2. Queued backlog (next work)
 
-1. **Segment-level automation / waste (headline).** Owner steer: marking an
-   *atomic* step/click as an "automation candidate" is the wrong grain —
-   automating one click mid-flow has no value (it forces a human→bot→human
-   handoff). Reframe `analysis_automation` (and likely `analysis_waste`) +
-   **PDD §4** to assess an automatable **segment** — a contiguous, same-app,
-   human-uninterrupted run that forms a narrative — not individual steps.
-2. **Full in-view single-session map.** Embed the interactive map *inside* the
-   Session view instead of routing through Compare-Sessions. Bigger build: the map
-   UI (level/notation controls, drill-scope, rare-path slider, `#map-level` /
-   `#dfg-host` / `.panel-tab` DOM) is tightly coupled to `views/aggregate-view.js`
-   state + element IDs — needs a careful refactor-for-reuse + full
-   level×notation×theme harness check. The one-click "View map" is the low-risk interim.
-3. **Group "Waste by step" by step type.** The single-session list is still
-   per-instance (4× "Search — CUST-X" across cases). Grouping by type cuts it
-   further but changes the per-step edit model — design the edit semantics first.
-4. **Consolidate the `parse_ts` family.** Eight near-duplicate copies; the tz sweep
-   made them consistent but they still differ in fallback (raise / None / epoch).
-   Extract one shared helper that callers wrap with their own fallback.
-   `test_parse_ts_consistency.py` guards the behaviour during the refactor.
-5. **Broader doc-coverage audit.** Beyond this truth-up: README version, the older
-   `docs/DOC-COVERAGE-AUDIT.md` findings, ADR statuses — confirm what's still real.
+The big-ticket items from the v0.16.x – v0.17.0 cycle (segment-level automation,
+group-Waste-by-step, parse_ts consolidation, broader doc-coverage audit) all
+landed. What's left:
+
+1. **Full in-view single-session map.** Embed the interactive map *inside* the
+   Session view instead of routing through Compare-Sessions. Bigger build: the
+   map UI (level/notation controls, drill-scope, rare-path slider, `#map-level` /
+   `#dfg-host` / `.panel-tab` DOM) is tightly coupled to
+   `views/aggregate-view.js` state + element IDs — needs a careful
+   refactor-for-reuse + full level×notation×theme harness check. The one-click
+   "View map" shipped in v0.17.0 is the low-risk interim.
+
+2. **Small follow-ups noticed during the v0.17.0 release prep:**
+   - **CHANGELOG header-integrity guard.** Commit `114edfa` accidentally deleted
+     the `## [0.16.3]` section header, rolling its content into `[Unreleased]`
+     where it would have shipped under v0.17.0 if the bump-time audit hadn't
+     caught it. A pre-commit hook that warns when an entry under `[Unreleased]`
+     looks structurally identical to the content above an existing released
+     section prevents recurrence. Cheap, low priority.
+   - **MAX_PATH brittleness on Shell-extract.** The viewer zip's deepest path is
+     ~175 chars (PM4Py inductive-variant filenames). Reasonable extract
+     destinations are fine; deeply-nested ones silently fail. v0.17.1's
+     [DEPLOY.md](../DEPLOY.md) carries the "extract to a short path" note;
+     a follow-up could permanently shave the longest unused PM4Py paths from
+     `viewer/python/`.
+   - **Lockfile drift.** `viewer/package-lock.json` lagged four minor versions
+     before the v0.17.0 prep noticed. v0.17.1's [BUILD-AND-DIST.md](../BUILD-AND-DIST.md)
+     adds a release-checklist note; a future pre-commit hook could automate the
+     check.
 
 ---
 
