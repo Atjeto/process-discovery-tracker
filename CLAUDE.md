@@ -4,10 +4,10 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** Last release **v0.16.3**; a large
-**polishing cycle is committed but unreleased on `viewer-refactor`** (clean tree)
-— see the CHANGELOG `[Unreleased]` section for the full list. The goal is
-**productization toward a small internal rollout, analyst-deliverable first.**
+**Active direction (2026-05) — START HERE:** Last release **v0.17.0** — the
+large polishing cycle that had been sitting unreleased on `viewer-refactor` has
+shipped (full list in the CHANGELOG). The goal is **productization toward a
+small internal rollout, analyst-deliverable first.**
 What landed this cycle: the **PDD export now follows a real Process Definition
 Document structure** (document control, As-Is process with an embedded process
 map, automation assessment, exceptions) instead of piling up pipeline data; a
@@ -47,8 +47,7 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **0.16.3** (SemVer 0.x); a large polishing cycle sits
-committed-but-unreleased on `viewer-refactor` (see CHANGELOG `[Unreleased]`).
+Current released version **0.17.0** (SemVer 0.x).
 
 ## Layout
 

@@ -6,76 +6,22 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
+## [0.17.0] - 2026-05-28
 
-- **Chromium web-content interactions now reach the recorder out of the
-  box.** The C# UIA recorder previously relied on Chrome's accessibility
-  tree being already enabled — which Chrome only does lazily, after an
-  external accessibility tool queries it. On a stock user-launched Chrome
-  this meant the recorder captured only the omnibox / browser chrome and
-  was silent on the web content the user was actually working in. A real
-  Salesforce / ServiceNow / web-ERP session would produce a session log
-  that contained next to nothing analytical, even though the recorder
-  appeared healthy. `UiaSubscriber.Start()` now (a) does a **synchronous
-  wake on Start** so any Chromium window already up has its AXTree built
-  before the first event of interest could fire, then (b) runs a
-  **ramped background poller** — 250 ms ticks for the first 5 s
-  (catches windows opened after session start), settling to 1 s after
-  that. The targeted query uses a cached `OrCondition` over the
-  Chromium family of window classes (`Chrome_WidgetWin_0..3`,
-  `ApplicationFrameWindow`) plus `FrameworkId == "Chrome"` so it covers
-  Chrome, Edge, Brave, Electron-host apps, and Win11 Chromium variants
-  without an every-second top-level-window walk. With the fix, a real
-  httpbin.org form-fill on a plain Chromium produces 16 real
-  interactions with labelled inputs (`Customer name:`, `E-mail
-  address:`) and the typed values, identical to forcing
-  `--force-renderer-accessibility`. Edge (`msedge.exe`) is observed
-  identically. A `capture/test/wake-up.smoke.test.js` smoke test guards
-  the wake-up against silent regression
-  (`capture/recorder/UiaSubscriber.cs`, `docs/architecture/CAPTURE.md`,
-  `docs/DEPLOY.md`).
-- **`recorder_died` event no longer fires on clean shutdowns.** The
-  exit handler used to emit `recorder_died` on every recorder process
-  exit — including the normal end-of-session shutdown, where the
-  tracker has just sent `recorder_stop` and the C# process exits with
-  code 0. Every session log carried a misleading "recorder_died"
-  entry. The handler now treats `code === 0 && !signal` as a clean
-  shutdown and skips both the `recorder_died` emission and the
-  auto-restart path. The `recorder_died` event keeps its documented
-  "the recorder crashed" semantics from the schema
-  (`capture/main.js`).
-- **`case_assignment._explicit_field_matches` no longer crashes on a
-  malformed anchor template.** A template that put a dict under
-  `case_anchor.field` (a misreading of the schema — `field` is the
-  property NAME, not a match spec) used to take the whole normalize
-  run down with `TypeError: unhashable type: 'dict'`. The function
-  now warns and treats the bad input as no-match so a single typo
-  doesn't lose the rest of the analysis (`normalization/case_assignment.py`).
-
-### Added
-
-- **Toast: browser foreground without UIA events.** A
-  belt-and-braces safety net for the rare case where the wake-up
-  poller still can't surface a Chromium window's AXTree (managed
-  Chrome with accessibility policy disabled, AppContainer-restricted
-  builds). When a browser process (`chrome.exe` / `msedge.exe` /
-  `brave.exe` / others) is foreground for 8 s and zero interactions
-  have reached the tracker from a browser, a once-per-session toast
-  tells the analyst the session is rolling but the browser is opaque
-  to UIA, with a pointer to the registry-policy fallback in
-  `docs/DEPLOY.md` (`capture/main.js`).
-- **Smoke test for the wake-up.** `capture/test/wake-up.smoke.test.js`
-  + `_pdt_verify/real-capture-test/wake-up-smoke.js`: launches a
-  stock Chromium, types into a local form, asserts the recorder
-  emits ≥ 2 web-content `value_changed` events with
-  `framework_id="Chrome"` and recognisable form labels. Skipped
-  cleanly when Playwright isn't installed so the capture test suite
-  still passes on a checkout without Playwright.
-- **Settings and Profile become top-level tray entries with a real persistence
-  layer.** Configuration was buried under "Help & config → Set up a recording
-  session" and conflated three concerns: worker identity, persistent settings,
-  and per-session inputs. The capture tray now has three discoverable surfaces
-  split by lifetime — **Settings…** (Hotkeys, Video/OBS, Screenshots, Storage &
+The productization-toward-internal-rollout cycle. The analyst-deliverable loop
+— process map + step/phase breakdown + PDD/report — has been polished to a
+real-world bar: the PDD now follows a standard RPA Process Definition Document
+structure with an embedded process map, a single session reaches the
+interactive map in one click, and the cross-session Analysis panel +
+single-session Waste-by-step list are decluttered to signal-only. The analysis
+model is reframed from per-click candidates to coherent automatable segments
+([ADR-0016](docs/adr/0016-segment-level-automation-candidacy.md)). Capture is
+hardened for the field laptop: the ~5 s session-start freeze is gone, the
+Settings / Profile / Session-setup tray IA is split by lifetime, Chromium
+web-content reaches the recorder out of the box, and a family of seeded
+property-based fuzzers + a `process_label` Python↔JS golden + a `parse_ts`
+consistency sweep pin the normalization pipeline against corrupt or
+hand-edited logs.
 
 ### Added
 
@@ -119,6 +65,21 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rendered Flow map is rasterised and embedded as the As-Is process map
   (section 3.3) (`normalization/pdd_export.py`, `viewer/dfg-viewer.js`,
   `viewer/renderer.js`, `viewer/python-runner.js`).
+- **Toast: browser foreground without UIA events.** A belt-and-braces safety
+  net for the rare case where the wake-up poller still can't surface a Chromium
+  window's AXTree (managed Chrome with accessibility policy disabled,
+  AppContainer-restricted builds). When a browser process (`chrome.exe` /
+  `msedge.exe` / `brave.exe` / others) is foreground for 8 s and zero
+  interactions have reached the tracker from a browser, a once-per-session
+  toast tells the analyst the session is rolling but the browser is opaque to
+  UIA, with a pointer to the registry-policy fallback in `docs/DEPLOY.md`
+  (`capture/main.js`).
+- **Smoke test for the wake-up.** `capture/test/wake-up.smoke.test.js` +
+  `_pdt_verify/real-capture-test/wake-up-smoke.js`: launches a stock Chromium,
+  types into a local form, asserts the recorder emits ≥ 2 web-content
+  `value_changed` events with `framework_id="Chrome"` and recognisable form
+  labels. Skipped cleanly when Playwright isn't installed so the capture test
+  suite still passes on a checkout without Playwright.
 
 ### Changed
 
@@ -209,6 +170,45 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Chromium web-content interactions now reach the recorder out of the box.**
+  The C# UIA recorder previously relied on Chrome's accessibility tree being
+  already enabled — which Chrome only does lazily, after an external
+  accessibility tool queries it. On a stock user-launched Chrome this meant the
+  recorder captured only the omnibox / browser chrome and was silent on the web
+  content the user was actually working in. A real Salesforce / ServiceNow /
+  web-ERP session would produce a session log that contained next to nothing
+  analytical, even though the recorder appeared healthy. `UiaSubscriber.Start()`
+  now (a) does a **synchronous wake on Start** so any Chromium window already
+  up has its AXTree built before the first event of interest could fire, then
+  (b) runs a **ramped background poller** — 250 ms ticks for the first 5 s
+  (catches windows opened after session start), settling to 1 s after that. The
+  targeted query uses a cached `OrCondition` over the Chromium family of window
+  classes (`Chrome_WidgetWin_0..3`, `ApplicationFrameWindow`) plus
+  `FrameworkId == "Chrome"` so it covers Chrome, Edge, Brave, Electron-host
+  apps, and Win11 Chromium variants without an every-second top-level-window
+  walk. With the fix, a real httpbin.org form-fill on a plain Chromium produces
+  16 real interactions with labelled inputs (`Customer name:`, `E-mail
+  address:`) and the typed values, identical to forcing
+  `--force-renderer-accessibility`. Edge (`msedge.exe`) is observed identically.
+  A `capture/test/wake-up.smoke.test.js` smoke test guards the wake-up against
+  silent regression (`capture/recorder/UiaSubscriber.cs`,
+  `docs/architecture/CAPTURE.md`, `docs/DEPLOY.md`).
+- **`recorder_died` event no longer fires on clean shutdowns.** The exit
+  handler used to emit `recorder_died` on every recorder process exit —
+  including the normal end-of-session shutdown, where the tracker has just sent
+  `recorder_stop` and the C# process exits with code 0. Every session log
+  carried a misleading "recorder_died" entry. The handler now treats
+  `code === 0 && !signal` as a clean shutdown and skips both the
+  `recorder_died` emission and the auto-restart path. The `recorder_died`
+  event keeps its documented "the recorder crashed" semantics from the schema
+  (`capture/main.js`).
+- **`case_assignment._explicit_field_matches` no longer crashes on a malformed
+  anchor template.** A template that put a dict under `case_anchor.field` (a
+  misreading of the schema — `field` is the property NAME, not a match spec)
+  used to take the whole normalize run down with
+  `TypeError: unhashable type: 'dict'`. The function now warns and treats the
+  bad input as no-match so a single typo doesn't lose the rest of the analysis
+  (`normalization/case_assignment.py`).
 - **Starting a capture session is instant — no more ~5s freeze when OBS isn't
   running.** `startSession()` awaited a best-effort `setupOBS()` on the critical
   path, so a missing or idle OBS held up the start by the OBS WebSocket
@@ -246,11 +246,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   single bad line degrades instead of failing the session. Found by a new seeded
   property-based fuzzer over the case-assignment pipeline
   (`normalization/test/test_case_assignment_fuzz.py`).
-- **The Phases view no longer shows a blank bordered box when a session has no
-  phases.** An un-phased session (the common starting state) left the phase
-  timeline as an empty void; it now shows a centered hint ("No phases yet —
-  group steps into phases…"), matching the empty-state treatment used elsewhere
-  (`viewer/phase-editor.js`).
 - **Statistics no longer crash on a corrupt duration or case timestamp.** A
   hand-edited `events.jsonl` could carry a non-numeric `duration_ms` or a
   non-ISO case timestamp (the load-time shape coercion guarantees `data` is a
@@ -275,12 +270,30 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wherever those compare or subtract timestamps. All eight copies now return a
   tz-aware datetime; a family-wide guard (`test_parse_ts_consistency.py`) keeps
   them from drifting apart again.
+- **A single-case observed BPMN renders as the path it actually took, not a
+  mined model.** `write_observed_bpmn` ran the lone case through PM4Py's
+  inductive miner regardless — but a single case is one observed path with
+  nothing to generalize. When a step label recurred in that one trace (a
+  re-entered field, or the value-free `process_label` collapsing two entries to
+  one name) the miner turned the repeat into optional/loop gateways the lone
+  path couldn't justify, and being block-structured smeared those diamonds
+  across the whole diagram even around unrelated steps. A `len(log) == 1` path
+  now builds the BPMN as a literal `start → t1 → … → end` chain (new
+  `_linear_bpmn`), so one case renders as the path it actually took and a
+  recurring step simply appears again in sequence (`normalization/bpmn_observed.py`).
+- **The Phases view no longer shows a blank bordered box when a session has no
+  phases.** An un-phased session (the common starting state) left the phase
+  timeline as an empty void; it now shows a centered hint ("No phases yet —
+  group steps into phases…"), matching the empty-state treatment used elsewhere
+  (`viewer/phase-editor.js`).
 - **The Analysis view now refreshes after an in-app "Analyze session".** A
   re-analyze wrote `analysis.json` and reloaded the session, but
   `loadSessionIntoView` re-rendered the Flow, Steps, and Phases levels and *not*
   the Analysis level (which was added later) — so the view kept saying "No
   analysis available" despite "Analysis complete," until the session was
   reopened. It now re-renders on every (re)load (`viewer/views/flow-view.js`).
+
+## [0.16.3] - 2026-05-25
 
 ### Fixed
 

@@ -4,7 +4,7 @@ Internal tool for capturing and analyzing process discovery sessions. Full desig
 
 ## What's new in v0.15.0
 
-The current version is **0.15.0** (SemVer 0.x). Headline capabilities added since
+The current version is **0.17.0** (SemVer 0.x). Headline capabilities added since
 v0.5.0:
 
 - **Platform/framework recognition layer** ([ADR-0011](docs/adr/0011-platform-recognition-layer.md)).

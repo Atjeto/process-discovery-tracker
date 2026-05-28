@@ -30,8 +30,8 @@ agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
 ## 1. Where we are
 
-Last release **v0.16.3**. A large **polishing cycle is committed but unreleased on
-`viewer-refactor`** (clean tree) — full list in CHANGELOG `[Unreleased]`.
+Last release **v0.17.0** — the large polishing cycle previously sitting unreleased
+on `viewer-refactor` has shipped (full list in the CHANGELOG).
 Direction: **productization toward a small internal rollout, analyst-deliverable
 first**; bar = "as polished as it can be." Landed this cycle:
 
