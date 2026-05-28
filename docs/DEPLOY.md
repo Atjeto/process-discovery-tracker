@@ -15,6 +15,36 @@ Prereqs: OBS Studio 28+ with WebSocket enabled (the team standard). No admin rig
 
 Sessions land under `%APPDATA%\process-discovery-tracker\sessions\<engagement>\<timestamp>\`. The capture app never writes to its install folder, so the install is read-only at runtime.
 
+### Browser-based processes (Chrome / Edge)
+
+Most modern enterprise processes (Salesforce, ServiceNow, web-based ERPs)
+run inside Chrome or Edge. The recorder reads those interactions through
+Windows UI Automation (UIA). Chromium browsers build their accessibility
+tree **lazily** — without an external tool asking for it, web content is
+invisible to UIA and the recorder sees only the omnibox.
+
+The recorder wakes this up automatically: on session start it touches
+every Chromium top-level window's accessibility tree, then keeps a
+1 s background poller doing the same so newly-opened windows / tabs
+get woken too. The result is that **stock Chrome and Edge work out of
+the box** — no special launch flag, no extension, no admin rights.
+
+If you ever see the in-app toast "<browser> is foreground but no
+interactions are reaching the recorder" during a session, two safe
+fallbacks exist:
+
+- **Per-launch flag**: start the browser with `--force-renderer-accessibility`. Mainly useful as a one-off diagnostic.
+- **Persistent registry policy** (managed environments):
+
+  ```
+  reg add "HKLM\Software\Policies\Google\Chrome" /v AccessibilityModeEnabled /t REG_DWORD /d 1 /f
+  reg add "HKLM\Software\Policies\Microsoft\Edge" /v AccessibilityModeEnabled /t REG_DWORD /d 1 /f
+  ```
+
+  Needs admin and policy-friendly Chrome/Edge (most enterprise builds are). Survives browser updates.
+
+The wake-up is also documented in [docs/architecture/CAPTURE.md](architecture/CAPTURE.md#chromium-accessibility-wake-up) for the engineering side.
+
 ## Viewer (analyst machine)
 
 No prereqs. Python is bundled in the zip via Python embeddable — no host Python install required, no `pip install`.

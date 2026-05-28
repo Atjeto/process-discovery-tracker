@@ -168,6 +168,55 @@ async function fireScreenshot(kind, opts) {
   }
 }
 
+/* Browser-foreground-no-events watchdog (ADR-0001 footnote: Chrome /
+   Edge expose web content via UIA, but only after the AXTree is woken
+   up). The recorder's own wake-up poller closes most of the gap, but
+   if Chrome is foreground for >= BROWSER_NO_EVENTS_MS and zero
+   interactions have been forwarded from a browser process in the same
+   window, surface a once-per-session toast so the analyst knows the
+   session is rolling but the browser is invisible to UIA. */
+const BROWSER_FOREGROUND_NAMES = new Set([
+  "chrome.exe", "msedge.exe", "brave.exe", "iexplore.exe", "opera.exe",
+  "vivaldi.exe", "Google Chrome", "Microsoft Edge", "Brave",
+]);
+const BROWSER_NO_EVENTS_MS = 8000;
+let _browserForegroundSinceMs = 0;
+let _lastBrowserInteractionMs = 0;
+let _browserToastShownThisSession = false;
+function _isBrowserName(app) {
+  if (!app) return false;
+  return BROWSER_FOREGROUND_NAMES.has(app);
+}
+function _noteBrowserInteractionIfApplicable(data) {
+  // Called from the recorder's onEvent hook for every interaction the
+  // recorder emits; if the source app is a browser, refresh the
+  // timestamp so the watchdog stays quiet.
+  const proc = (data && data.process_name) || "";
+  if (_isBrowserName(proc)) _lastBrowserInteractionMs = Date.now();
+}
+function _checkBrowserForegroundWatchdog() {
+  if (!session || !tracker || _browserToastShownThisSession) return;
+  const status = lastStatus;
+  if (!status || !_isBrowserName(status.currentApp)) {
+    _browserForegroundSinceMs = 0;
+    return;
+  }
+  if (_browserForegroundSinceMs === 0) _browserForegroundSinceMs = Date.now();
+  const since = Date.now() - _browserForegroundSinceMs;
+  const sinceLastInt = Date.now() - _lastBrowserInteractionMs;
+  if (since >= BROWSER_NO_EVENTS_MS && sinceLastInt >= BROWSER_NO_EVENTS_MS) {
+    _browserToastShownThisSession = true;
+    notifyUser(
+      "Process Discovery Tracker",
+      status.currentApp + " is foreground but no interactions are reaching the " +
+      "recorder. Chrome / Edge may be blocking accessibility (UIA). Try closing " +
+      "and re-opening the browser, or enabling the AccessibilityModeEnabled " +
+      "registry policy. The session is still recording markers + screenshots.",
+      { urgency: "normal" }
+    );
+  }
+}
+
 async function onTickHandler(status) {
   lastStatus = status;
   /* D3: remember the last work-window bounds, excluding our own recorder
@@ -181,6 +230,7 @@ async function onTickHandler(status) {
     lastWorkBounds = status.currentBounds;
   }
   refreshTray();
+  _checkBrowserForegroundWatchdog();
   /* App-switch screenshot trigger -- detect new currentApp value and
      fire a screenshot. lastTrackedApp persists across ticks. */
   if (
@@ -678,6 +728,10 @@ async function startSession(opts) {
     interactionsExpected: !!(config.interactions && config.interactions.enabled),
     onNotice: handleTrackerNotice,
   });
+  // Reset browser-foreground-no-events watchdog state for the new session.
+  _browserForegroundSinceMs = 0;
+  _lastBrowserInteractionMs = 0;
+  _browserToastShownThisSession = false;
   if (obsConnected) {
     tracker.fireSystem("obs_recording_start");
   }
@@ -751,6 +805,9 @@ async function startRecorderForSession() {
         if (!tracker) return;
         try { tracker.fireInteraction(data); }
         catch (e) { bootLog(`fireInteraction failed: ${e && e.message}`); }
+        // Feed the browser-no-events watchdog so we don't alarm on a
+        // browser that is actually producing UIA traffic.
+        try { _noteBrowserInteractionIfApplicable(data); } catch (_) {}
       },
       onWarning: (w) => bootLog(`[recorder] ${w.msg || ""}: ${w.detail || ""}`),
       onStats: (s) => {
@@ -787,11 +844,24 @@ function handleRecorderExit(info) {
     recorder = null;
     return;
   }
-  tracker.fireSystem("recorder_died", {
-    code: info.code, signal: info.signal, restart_count: recorderRestartCount,
-  });
+  // recorder_died has "the recorder failed" semantics per the schema --
+  // every session log used to carry one even on a clean session-end
+  // shutdown (the tracker emits `recorder_stop`, the C# process exits
+  // with code 0, and we used to unconditionally fire recorder_died
+  // here). Treat an exit code of 0 as a clean shutdown; only fire the
+  // failure event when the recorder actually crashed.
+  const cleanExit = info && info.code === 0 && !info.signal;
+  if (!cleanExit) {
+    tracker.fireSystem("recorder_died", {
+      code: info.code, signal: info.signal, restart_count: recorderRestartCount,
+    });
+  }
   recorder = null;
+  // Only auto-restart on a non-clean exit. A clean exit is the result
+  // of endSession() asking the recorder to stop -- restarting would
+  // race the rest of the shutdown.
   if (
+    !cleanExit &&
     config.interactions &&
     config.interactions.auto_restart &&
     recorderRestartCount < config.interactions.max_restarts_per_session
@@ -801,7 +871,7 @@ function handleRecorderExit(info) {
       if (!tracker) return;
       startRecorderForSession();
     }, 5000);
-  } else {
+  } else if (!cleanExit) {
     recorderPermanentlyDead = true;
     tracker.fireSystem("recorder_dead_permanent");
     notifyUser(

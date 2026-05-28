@@ -6,6 +6,77 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Chromium web-content interactions now reach the recorder out of the
+  box.** The C# UIA recorder previously relied on Chrome's accessibility
+  tree being already enabled — which Chrome only does lazily, after an
+  external accessibility tool queries it. On a stock user-launched Chrome
+  this meant the recorder captured only the omnibox / browser chrome and
+  was silent on the web content the user was actually working in. A real
+  Salesforce / ServiceNow / web-ERP session would produce a session log
+  that contained next to nothing analytical, even though the recorder
+  appeared healthy. `UiaSubscriber.Start()` now (a) does a **synchronous
+  wake on Start** so any Chromium window already up has its AXTree built
+  before the first event of interest could fire, then (b) runs a
+  **ramped background poller** — 250 ms ticks for the first 5 s
+  (catches windows opened after session start), settling to 1 s after
+  that. The targeted query uses a cached `OrCondition` over the
+  Chromium family of window classes (`Chrome_WidgetWin_0..3`,
+  `ApplicationFrameWindow`) plus `FrameworkId == "Chrome"` so it covers
+  Chrome, Edge, Brave, Electron-host apps, and Win11 Chromium variants
+  without an every-second top-level-window walk. With the fix, a real
+  httpbin.org form-fill on a plain Chromium produces 16 real
+  interactions with labelled inputs (`Customer name:`, `E-mail
+  address:`) and the typed values, identical to forcing
+  `--force-renderer-accessibility`. Edge (`msedge.exe`) is observed
+  identically. A `capture/test/wake-up.smoke.test.js` smoke test guards
+  the wake-up against silent regression
+  (`capture/recorder/UiaSubscriber.cs`, `docs/architecture/CAPTURE.md`,
+  `docs/DEPLOY.md`).
+- **`recorder_died` event no longer fires on clean shutdowns.** The
+  exit handler used to emit `recorder_died` on every recorder process
+  exit — including the normal end-of-session shutdown, where the
+  tracker has just sent `recorder_stop` and the C# process exits with
+  code 0. Every session log carried a misleading "recorder_died"
+  entry. The handler now treats `code === 0 && !signal` as a clean
+  shutdown and skips both the `recorder_died` emission and the
+  auto-restart path. The `recorder_died` event keeps its documented
+  "the recorder crashed" semantics from the schema
+  (`capture/main.js`).
+- **`case_assignment._explicit_field_matches` no longer crashes on a
+  malformed anchor template.** A template that put a dict under
+  `case_anchor.field` (a misreading of the schema — `field` is the
+  property NAME, not a match spec) used to take the whole normalize
+  run down with `TypeError: unhashable type: 'dict'`. The function
+  now warns and treats the bad input as no-match so a single typo
+  doesn't lose the rest of the analysis (`normalization/case_assignment.py`).
+
+### Added
+
+- **Toast: browser foreground without UIA events.** A
+  belt-and-braces safety net for the rare case where the wake-up
+  poller still can't surface a Chromium window's AXTree (managed
+  Chrome with accessibility policy disabled, AppContainer-restricted
+  builds). When a browser process (`chrome.exe` / `msedge.exe` /
+  `brave.exe` / others) is foreground for 8 s and zero interactions
+  have reached the tracker from a browser, a once-per-session toast
+  tells the analyst the session is rolling but the browser is opaque
+  to UIA, with a pointer to the registry-policy fallback in
+  `docs/DEPLOY.md` (`capture/main.js`).
+- **Smoke test for the wake-up.** `capture/test/wake-up.smoke.test.js`
+  + `_pdt_verify/real-capture-test/wake-up-smoke.js`: launches a
+  stock Chromium, types into a local form, asserts the recorder
+  emits ≥ 2 web-content `value_changed` events with
+  `framework_id="Chrome"` and recognisable form labels. Skipped
+  cleanly when Playwright isn't installed so the capture test suite
+  still passes on a checkout without Playwright.
+- **Settings and Profile become top-level tray entries with a real persistence
+  layer.** Configuration was buried under "Help & config → Set up a recording
+  session" and conflated three concerns: worker identity, persistent settings,
+  and per-session inputs. The capture tray now has three discoverable surfaces
+  split by lifetime — **Settings…** (Hotkeys, Video/OBS, Screenshots, Storage &
+
 ### Added
 
 - **Settings and Profile become top-level tray entries with a real persistence

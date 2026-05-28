@@ -111,6 +111,21 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   (a property that throws is omitted, not nulled). The first interaction per
   process carries a `coverage_hint` (`rich` / `basic` / `minimal`); a clamped
   256-char value is flagged `value_truncated`.
+- **Chromium accessibility wake-up.** Chrome / Edge / Electron-based apps build
+  their UIA accessibility tree **lazily** — without an external query, web
+  content fires no UIA events and the recorder sees only the omnibox / native
+  browser chrome. `UiaSubscriber.Start()` therefore kicks off a background
+  `Timer` (1 s period) whose only job is to walk every top-level window whose
+  `ClassName` begins with `Chrome_` or whose `FrameworkId` is `Chrome`, read
+  its `Name` / `ControlType` / `LocalizedControlType`, and descend to find a
+  `ControlType.Document` (the web-content root) and read its `Name`. The act of
+  asking is what flips Chrome into accessibility-on mode for that window — the
+  same mechanism NVDA / Narrator / inspect.exe rely on. Without this poller, a
+  stock user-launched Chrome captures only browser-chrome events; with it, the
+  recorder sees the labelled HTML form fields (`Customer name:`, `E-mail
+  address:`) and the typed values as `value_changed` interactions. This is
+  important because most modern enterprise processes (Salesforce, ServiceNow,
+  web-based ERPs) run in Chrome.
 
 `recorder.js` resolves the executable (packaged `resources/recorder/`, source tree,
 or auto-extracted `recorder.zip`), spawns it, and restarts it up to a configured

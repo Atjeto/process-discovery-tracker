@@ -142,9 +142,23 @@ from _dt import parse_ts_or_epoch as _parse_ts  # public re-export
 def _explicit_field_matches(data: dict, anchor_cfg: dict) -> bool:
     """Match the explicit field rule (`field` + equals/contains/starts_with/
     matches). The per-engagement path -- a specific app's automation_id / value
-    pattern (e.g. the ATM `txtsr`)."""
+    pattern (e.g. the ATM `txtsr`).
+
+    Defensive: a stale or hand-edited template that put a dict under `field`
+    (a misreading of the schema -- `field` is the property NAME, not a match
+    spec) used to crash with `TypeError: unhashable type: 'dict'`. Now we
+    coerce non-string `field` values to a no-match + a one-shot warning, so
+    a single typo doesn't take the whole normalize run down.
+    """
     from canonical_match import _op_match
     field = anchor_cfg.get("field", "")
+    if not isinstance(field, str):
+        logger.warning("case_anchor.field must be a string (the property name "
+                       "to look up on the interaction); got %r -- treating "
+                       "as no-match", type(field).__name__)
+        return False
+    if not field:
+        return False
     actual = data.get(field)
     if actual is None:
         return False

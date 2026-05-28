@@ -1,0 +1,59 @@
+app_vocabulary:
+  id: "test-crm"
+  name: "Test CRM (onboarding)"
+  version: 1
+  owner: "test-suite@team"
+  scope:
+    process_name: "chrome.exe"
+    window_title_regex: ".*Salesforce.*"
+  screens:
+    - id: "account-search"
+      name: "Account Search"
+      window_title_regex: ".*Search Accounts.*"
+    - id: "account-new"
+      name: "Account (new)"
+      window_title_regex: ".*Account New.*"
+  interactions:
+    # The unique signature -- only test-crm knows about
+    # `testCrmExclusiveBusinessUnit`, so T03b can prove enrichment
+    # actually came from THIS vocab (not from the default sample-
+    # salesforce vocab, which would otherwise win on shared fields).
+    - signature:
+        control_type: "Edit"
+        automation_id: "testCrmExclusiveBusinessUnit"
+      name: "Type business unit"
+      screen: "account-search"
+      flags:
+        automation_candidate: true
+
+    - signature:
+        control_type: "Edit"
+        automation_id: "searchInput"
+      name: "Type into CRM search"
+      screen: "account-search"
+    - signature:
+        control_type: "Button"
+        name: "Search"
+        window_title_regex: ".*Search Accounts.*"
+      name: "Run CRM search"
+      screen: "account-search"
+      flags:
+        automation_candidate: true
+    - signature:
+        control_type: "Edit"
+        automation_id: "accountName"
+      name: "Type account name"
+      screen: "account-new"
+    - signature:
+        control_type: "Edit"
+        automation_id: "accountPhone"
+      name: "Type phone number"
+      screen: "account-new"
+    - signature:
+        control_type: "Button"
+        name: "Save"
+        window_title_regex: ".*Account New.*"
+      name: "Save new account"
+      screen: "account-new"
+      flags:
+        automation_candidate: true

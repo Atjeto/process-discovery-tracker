@@ -1,0 +1,59 @@
+canonical_process:
+  id: "onboarding-test"
+  name: "Customer Onboarding (test)"
+  version: 1
+  owners: ["test-suite@team"]
+
+  phases:
+    - phase_id: "validate"
+      name: "Validate customer"
+      step_ids: ["search-crm", "kyc-verify"]
+    - phase_id: "provision"
+      name: "Provision account"
+      step_ids: ["create-account", "send-welcome"]
+
+  steps:
+    - step_id: "search-crm"
+      name: "Search CRM"
+      match:
+        - process_name: "chrome.exe"
+          window_title_regex: ".*Salesforce.*Search.*"
+          interaction:
+            control_type: "Edit"
+            automation_id: "searchInput"
+          end_when:
+            interaction:
+              control_type: "Button"
+              name: "Search"
+
+    - step_id: "kyc-verify"
+      name: "KYC verification"
+      match:
+        - process_name: "chrome.exe"
+          window_title_regex: ".*KYC.*"
+          interaction:
+            control_type: "Edit"
+            automation_id: "kyc_id"
+          end_when:
+            interaction:
+              control_type: "Button"
+              name: "Verify"
+
+    - step_id: "create-account"
+      name: "Create account"
+      match:
+        - process_name: "chrome.exe"
+          window_title_regex: ".*Salesforce.*Account New.*"
+          interaction:
+            control_type: "Edit"
+            automation_id: "accountName"
+          end_when:
+            interaction:
+              control_type: "Button"
+              name: "Save"
+
+    - step_id: "send-welcome"
+      name: "Send welcome email"
+      match:
+        - process_name: "OUTLOOK.EXE"
+          window_title_regex: ".*Welcome.*"

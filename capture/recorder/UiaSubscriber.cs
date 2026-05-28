@@ -73,6 +73,34 @@ public sealed class UiaSubscriber {
     // pids that have already emitted an event carrying a coverage_hint.
     private readonly ConcurrentDictionary<int, byte> _coveredPids = new();
 
+    // Chromium accessibility wake-up. Chrome builds its accessibility
+    // tree lazily; without an external query, web content fires no UIA
+    // events and the recorder sees only the omnibox / browser chrome.
+    // We touch the desktop tree on a ramped schedule -- a synchronous
+    // first pass at Start(), then 250 ms ticks for 5 s (the window
+    // during which Chrome can still be deciding whether to enable
+    // accessibility), then settle to 1 s. Without the burst, a
+    // short-session form-fill can fire BEFORE Chrome flips its
+    // accessibility-on bit and the recorder produces no value_changed
+    // events for the typed content. See ADR-0001 + CAPTURE.md.
+    private Timer? _chromeWakeTimer;
+    private DateTime _wakeStartedUtc;
+    private const int WAKE_BURST_MS    = 250;
+    private const int WAKE_BURST_SPAN_SECONDS = 5;
+    private const int WAKE_SETTLE_MS   = 1000;
+    // Cached OrCondition matching the family of Chromium-rendered top-
+    // level windows. ClassNames vary across Chrome versions / Edge /
+    // Electron host apps; we match what we know in production today.
+    // Property is computed lazily to avoid touching UIA at construction.
+    private static readonly Condition _chromiumWindowCondition = new OrCondition(
+        new PropertyCondition(AutomationElement.ClassNameProperty, "Chrome_WidgetWin_0"),
+        new PropertyCondition(AutomationElement.ClassNameProperty, "Chrome_WidgetWin_1"),
+        new PropertyCondition(AutomationElement.ClassNameProperty, "Chrome_WidgetWin_2"),
+        new PropertyCondition(AutomationElement.ClassNameProperty, "Chrome_WidgetWin_3"),
+        // Edge legacy: ApplicationFrameWindow hosts modern Edge tabs
+        new PropertyCondition(AutomationElement.ClassNameProperty, "ApplicationFrameWindow"),
+        new PropertyCondition(AutomationElement.FrameworkIdProperty, "Chrome"));
+
     public UiaSubscriber(JsonSerializerOptions opts, Action<object> onEvent,
                          bool verbose = false, int debounceMs = 750) {
         _opts = opts;
@@ -118,10 +146,49 @@ public sealed class UiaSubscriber {
                 TextPattern.TextChangedEvent, root, TreeScope.Subtree,
                 (s, e) => EmitFiltered("text_changed", (AutomationElement)s, null));
         }
+
+        // Chromium accessibility wake-up. Wake synchronously NOW so any
+        // existing Chrome window has its AXTree ready before the first
+        // event we'd care about fires. Then start a ramped poller: 250
+        // ms ticks for the first 5 s (catches windows opened after
+        // session-start), then settle to 1 s.
+        _wakeStartedUtc = DateTime.UtcNow;
+        WakeChromiumAccessibility();
+        _chromeWakeTimer = new Timer(_ => WakeTick(), null,
+                                     dueTime: WAKE_BURST_MS,
+                                     period: WAKE_BURST_MS);
+    }
+
+    private void WakeTick() {
+        WakeChromiumAccessibility();
+        // If the burst window has elapsed, settle the timer to the
+        // longer interval. We replace the timer (cheap on .NET) so a
+        // late-arriving Chrome window still gets touched, just less
+        // aggressively.
+        var elapsed = (DateTime.UtcNow - _wakeStartedUtc).TotalSeconds;
+        if (elapsed >= WAKE_BURST_SPAN_SECONDS && _chromeWakeTimer != null) {
+            try {
+                _chromeWakeTimer.Change(WAKE_SETTLE_MS, WAKE_SETTLE_MS);
+            } catch { }
+        }
     }
 
     public void Stop() {
         if (!_started) return;
+        // Wait for an in-flight WakeTick to finish before tearing down
+        // event handlers, so we don't race a partial AutomationElement
+        // walk against RemoveAllEventHandlers. Timer.Dispose(WaitHandle)
+        // signals the handle once all pending callbacks have returned.
+        if (_chromeWakeTimer != null) {
+            try {
+                using var done = new ManualResetEvent(false);
+                _chromeWakeTimer.Dispose(done);
+                done.WaitOne(500);
+            } catch {
+                try { _chromeWakeTimer.Dispose(); } catch { }
+            }
+            _chromeWakeTimer = null;
+        }
         try { Automation.RemoveAllEventHandlers(); } catch { }
         // Flush anything still pending in the value coalescer so we
         // don't lose the last keystroke before shutdown.
@@ -181,6 +248,64 @@ public sealed class UiaSubscriber {
                 _onEvent(pending.Event);
             }
         }, null, _valueCoalesceWindow, Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>
+    /// Touch every Chromium top-level window's accessibility tree so
+    /// Chrome flips into accessibility-on mode for that window. Chrome
+    /// builds the AXTree on demand the first time something (a screen
+    /// reader, a UIA tool) queries an interesting property on the
+    /// window AND walks into the renderer's content. We do both, every
+    /// tick, on EVERY Chromium top-level window we can see.
+    ///
+    /// Chromium top-level windows historically had ClassName
+    /// "Chrome_WidgetWin_1"; on modern Win11 Chrome / Edge / Playwright
+    /// Chromium they can be "Chrome_WidgetWin_2" or other variants, and
+    /// some Electron app windows show up under different classes. We
+    /// match the prefix "Chrome_" to cover the family, and we ALSO walk
+    /// every top-level window whose FrameworkId is "Chrome" -- the most
+    /// reliable signal that we're looking at a Chromium-rendered top-
+    /// level window.
+    ///
+    /// We deliberately do NOT cache "woken" windows; each tick re-touches
+    /// the AXTree so that a per-tab navigation can't silently drop us
+    /// back to "accessibility-off". The cost is bounded (children of
+    /// RootElement, filtered).
+    /// </summary>
+    private void WakeChromiumAccessibility() {
+        try {
+            var root = AutomationElement.RootElement;
+            // Targeted query: only the known Chromium top-level window
+            // classes + the FrameworkId=="Chrome" catch-all. Avoids
+            // walking every top-level window on the desktop.
+            var found = root.FindAll(TreeScope.Children, _chromiumWindowCondition);
+            foreach (AutomationElement win in found) {
+                // Reading any property triggers Chrome's accessibility
+                // initialization. The combination of Name + ControlType
+                // + a descendant walk for ControlType.Document mirrors
+                // what an external accessibility tool would do.
+                try { _ = win.Current.Name; } catch { }
+                try { _ = win.Current.ControlType; } catch { }
+                try { _ = win.Current.LocalizedControlType; } catch { }
+                try {
+                    var doc = win.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(
+                            AutomationElement.ControlTypeProperty,
+                            ControlType.Document));
+                    // Touching the document's Name lifts the renderer-
+                    // side accessibility flag -- without this, the
+                    // top-level query alone isn't always enough for
+                    // freshly-launched Chromium builds (e.g. headed
+                    // Playwright Chrome).
+                    if (doc != null) {
+                        try { _ = doc.Current.Name; } catch { }
+                    }
+                } catch { }
+            }
+        } catch {
+            // Best-effort. If the desktop tree is in a transient bad
+            // state (e.g., a window closing) we just retry next tick.
+        }
     }
 
     private static string? CoalesceKey(AutomationElement el) {
