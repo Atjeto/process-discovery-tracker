@@ -133,17 +133,10 @@ def collect_cases(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 _ANCHOR_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
-def _parse_ts(s: str) -> datetime:
-    try:
-        if isinstance(s, str) and s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        dt = datetime.fromisoformat(s)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except (ValueError, TypeError):
-        # A corrupt or hand-edited log can carry a non-ISO / empty / non-string
-        # timestamp; fall back to the epoch so anchor case detection degrades
-        # instead of crashing (matches step_suggest.parse_ts).
-        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+from _dt import parse_ts_or_epoch as _parse_ts  # public re-export
+# A corrupt or hand-edited log can carry a non-ISO / empty / non-string
+# timestamp; the epoch-fallback variant keeps anchor case detection sortable
+# instead of crashing (matches step_suggest.parse_ts).
 
 
 def _explicit_field_matches(data: dict, anchor_cfg: dict) -> bool:

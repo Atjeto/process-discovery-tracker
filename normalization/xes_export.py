@@ -23,15 +23,7 @@ import pm4py
 from pm4py.objects.log.obj import Event, EventLog, Trace
 from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 
-
-def _parse_ts(ts: str) -> datetime:
-    """Parse an ISO 8601 timestamp with optional millisecond + Z suffix."""
-    # Python <3.11 datetime.fromisoformat doesn't accept the Z suffix
-    s = ts.rstrip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+from _dt import parse_ts as _parse_ts  # public re-export
 
 
 def build_event_log(

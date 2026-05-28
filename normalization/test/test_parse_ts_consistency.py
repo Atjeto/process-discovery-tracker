@@ -1,14 +1,15 @@
 """Consistency guard for the parse_ts family.
 
-There are several near-duplicate `parse_ts` / `_parse_ts` copies across the
-pipeline (one per module). Every one MUST return a tz-AWARE datetime for a valid
-timestamp -- including a zone-LESS one -- so timestamps from different events
-(some hand-edited without a zone) can be compared / subtracted without
+The eight per-module ``parse_ts`` / ``_parse_ts`` symbols are now thin
+re-exports of three modes in :mod:`_dt` (``parse_ts`` / ``parse_ts_or_none`` /
+``parse_ts_or_epoch``). This test still pins the family contract -- a valid
+timestamp, INCLUDING a zone-less one, must come back tz-AWARE so events from
+different sources (e.g. a hand-edited entry without a zone alongside the
+recorder's zoned timestamps) can be compared / subtracted without
 "can't subtract offset-naive and offset-aware datetimes". The step-segmenter
-fuzzer surfaced this in step_suggest.parse_ts; this pins the WHOLE family so a
-copy can't quietly drift back. (Consolidating the copies into one shared helper
-is a separate refactor -- they have different fallback semantics: raise vs None
-vs epoch.)
+fuzzer originally surfaced this in ``step_suggest.parse_ts``; the test now
+guards both the shared helper and every re-export so a future module can't
+quietly reintroduce a naive-returning copy.
 
 Run: pytest normalization/test/test_parse_ts_consistency.py
 """
@@ -25,6 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # module with an optional dependency (e.g. pm4py) is skipped where it is absent
 # rather than erroring the whole file.
 _SPECS = [
+    ("_dt", "parse_ts"),
+    ("_dt", "parse_ts_or_none"),
+    ("_dt", "parse_ts_or_epoch"),
     ("analysis_common", "parse_ts"),
     ("bpmn_observed", "_parse_ts"),
     ("canonical_match", "_parse_ts"),

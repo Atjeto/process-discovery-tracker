@@ -18,6 +18,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from _dt import parse_ts_or_none as parse_ts  # public re-export
+
 # --- Tunable heuristic thresholds -------------------------------------
 # An activity segment shorter than this, opening in an app different
 # from the previous one, reads as motion waste -- a brief detour (a
@@ -30,20 +32,6 @@ TRANSFER_WINDOW_MS = 30000
 # Shortest interaction value considered for transfer matching. Below
 # this, equal values are noise (single digits, "OK", blanks).
 TRANSFER_MIN_LEN = 4
-
-
-def parse_ts(ts: Any) -> datetime | None:
-    """Parse an ISO-8601 timestamp, tolerating a trailing Z. None on failure."""
-    if not ts:
-        return None
-    s = str(ts).rstrip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    try:
-        dt = datetime.fromisoformat(s)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
 
 
 def percentile(values: list[float], pct: float) -> float:

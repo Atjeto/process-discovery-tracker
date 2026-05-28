@@ -16,15 +16,8 @@ from datetime import datetime, timezone
 from statistics import mean, median
 from typing import Any
 
+from _dt import parse_ts as _parse_ts  # public re-export
 from analysis_common import step_group_label
-
-
-def _parse_ts(ts: str) -> datetime:
-    s = ts.rstrip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def _filter_excluded(

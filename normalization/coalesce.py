@@ -11,12 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-
-def _parse_ts(s: str) -> datetime:
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+from _dt import parse_ts as _parse_ts  # public re-export
 
 
 def _coalesce_key(data: dict) -> str:

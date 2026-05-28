@@ -10,27 +10,13 @@ from pathlib import Path
 from typing import Any
 from datetime import datetime, timezone
 
+from _dt import parse_ts_or_epoch as parse_ts  # public re-export
+# A corrupt or hand-edited log can carry a non-ISO / empty / non-string
+# timestamp; the epoch-fallback variant keeps segmentation sortable instead of
+# crashing. The boundary (load_events) already coerces timestamp to a string;
+# this guards the remaining "string but not ISO" case. Mirrors the same choice
+# in case_assignment._parse_ts.
 from recognition import is_browser_chrome
-
-
-def parse_ts(s: str) -> datetime:
-    try:
-        if isinstance(s, str) and s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        dt = datetime.fromisoformat(s)
-        # A timestamp WITHOUT a zone (a hand-edited "...T09:00:00", or a bare
-        # date that fromisoformat accepts) parses naive; assume UTC so it can be
-        # compared/subtracted against the zone-aware ones in the same case
-        # without "can't subtract offset-naive and offset-aware datetimes".
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except (ValueError, TypeError):
-        # A corrupt or hand-edited log can carry a non-ISO / empty / non-string
-        # timestamp; fall back to the epoch so segmentation degrades instead of
-        # crashing. The boundary (load_events) already coerces timestamp to a
-        # string; this guards the remaining "string but not ISO" case.
-        return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def _is_ignored(data: dict, ignored: list[str] | None) -> bool:

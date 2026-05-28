@@ -52,6 +52,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wasteful and time-heavy steps surface first — and tucks the instant steps
   behind an "N instant steps" expander; every row stays editable
   (`viewer/views/analysis-view.js`, `viewer/styles.css`).
+- **Consolidate the eight `parse_ts` copies into one shared helper.** Each
+  pipeline module (`analysis_common`, `bpmn_observed`, `canonical_match`,
+  `case_assignment`, `coalesce`, `stats_compute`, `step_suggest`, `xes_export`)
+  carried its own near-duplicate ISO-8601 parser — the same surface, three
+  fallback semantics (raise / `None` / epoch). The behaviour now lives in
+  `normalization/_dt.py` as three named modes (`parse_ts`, `parse_ts_or_none`,
+  `parse_ts_or_epoch`); each module re-exports the right one so no caller
+  changes. Removes the drift surface that produced the recent tz-naive bug in
+  the first place; the family-wide guard (`test_parse_ts_consistency.py`) now
+  also covers the shared helper directly.
 
 ### Fixed
 

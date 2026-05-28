@@ -20,14 +20,7 @@ from typing import Any
 
 from pm4py.objects.log.obj import Event, EventLog, Trace
 
-
-def _parse_ts(ts: str) -> datetime:
-    """ISO 8601 with optional Z suffix (mirrors xes_export._parse_ts)."""
-    s = str(ts).rstrip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+from _dt import parse_ts as _parse_ts  # public re-export
 
 
 def _start_key(step: dict[str, Any]) -> float:

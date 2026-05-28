@@ -72,11 +72,7 @@ def _interaction_matches(rule: dict, ev: dict) -> bool:
     return True
 
 
-def _parse_ts(s: str) -> datetime:
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+from _dt import parse_ts as _parse_ts  # public re-export
 
 
 def _event_case(ev: dict) -> str | None:
