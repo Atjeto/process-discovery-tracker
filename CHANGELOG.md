@@ -6,8 +6,44 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-05-28
+
+The in-view single-session Map level. The interactive process map (notation ×
+level × drill-scope × rare-path cutoff) used to live only in
+Compare-Sessions; this cycle adds it as a 5th level inside the Session view,
+alongside Flow / Steps / Phases / Analysis. The v0.17.0 "View map" one-click
+that routed through Compare-Sessions retires — the Map level supersedes it.
+The map UI is now a reusable controller (`viewer/map-controller.js`) shared
+by both surfaces. Build-pipeline guards added against three failure modes the
+recent release prep tripped over.
+
+### Added
+
+- **Map level in the Session view.** Click "Map" in the level switcher
+  (Flow / Steps / Phases / **Map** / Analysis) to open the interactive process
+  map for the current session: Process diagram (BPMN) or Flow diagram (DFG)
+  at Activity / Step / Phase level, with zoom, drill-down (click a phase to
+  scope to its steps, click a step to scope to its activities), and the
+  rare-path slider for thinning a long flow's tail. Clicking an
+  activity-level node seeks the Flow timeline to that event and switches to
+  the Flow level. Same notation × level matrix as Compare-Sessions, bound to
+  a single-session data source. Verified in the `_pdt_verify` harness across
+  all 2 × 3 × 2 = 12 notation × level × theme combinations + a
+  Compare-Sessions regression check (`viewer/index.html`, `viewer/renderer.js`,
+  `viewer/styles.css`, `viewer/map-controller.js`).
+
 ### Changed
 
+- **The process map UI is now a reusable controller**
+  (`viewer/map-controller.js`). The cross-cutting state (notation, level,
+  drill scope, rare-path cutoff) and the wiring of the tab / level pill /
+  zoom / slider / scope chip used to be tangled with `aggregate-view.js`'s
+  multi-session lifecycle and hardcoded DOM IDs (`#bpmn-host`, `#dfg-host`,
+  `#map-level`, etc.); pulled into a `createMapController(config)` factory
+  that takes DOM nodes + a `dataSource` callback so both Compare-Sessions
+  (multi-session merged map) and the new Session-view Map level
+  (single-session map) share the same UI. Net: aggregate-view.js shrinks
+  by 208 lines; no user-visible behaviour change in Compare-Sessions.
 - **`scripts/preflight.ps1` now gates CHANGELOG header integrity and lockfile
   version sync** in addition to the existing npm-audit check. The CHANGELOG
   check fails if any `## [X.Y.Z]` header that was present at the latest git
@@ -28,6 +64,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   electron-packager die with `ENOENT` on a freshly-written asset (verified
   against `bpmn-js/dist/assets/bpmn-font/font/bpmn.svg` during the v0.17.1
   build).
+
+### Removed
+
+- **The v0.17.0 "View map" one-click interim** — `#btn-view-map` in the
+  Session view's process-map status bar — is gone. It was the low-risk path
+  to the interactive map before this cycle's in-view Map level shipped;
+  the level switcher now goes straight there.
 
 ## [0.17.1] - 2026-05-28
 

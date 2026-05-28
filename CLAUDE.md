@@ -4,12 +4,13 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** Last release **v0.17.1** (a same-day
-doc-only follow-up to v0.17.0). v0.17.0 closed the large polishing cycle that
-had been sitting unreleased on `viewer-refactor` (full list in the CHANGELOG);
-v0.17.1 catches the README, backlog, and release-process notes up to that
-reality. The goal is **productization toward a small internal rollout,
-analyst-deliverable first.**
+**Active direction (2026-05) — START HERE:** Last release **v0.18.0** — adds
+the **in-view Session-view Map level** as a 5th entry in the level switcher
+(Flow / Steps / Phases / Map / Analysis), retiring the v0.17.0 "View map"
+one-click into Compare-Sessions. The interactive process map UI lives in a
+new `viewer/map-controller.js` and is shared by both surfaces. The goal is
+**productization toward a small internal rollout, analyst-deliverable
+first.**
 What landed this cycle: the **PDD export now follows a real Process Definition
 Document structure** (document control, As-Is process with an embedded process
 map, automation assessment, exceptions) instead of piling up pipeline data; a
@@ -49,7 +50,7 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **0.17.1** (SemVer 0.x).
+Current released version **0.18.0** (SemVer 0.x).
 
 ## Layout
 
