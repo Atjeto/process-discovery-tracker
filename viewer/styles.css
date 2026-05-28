@@ -530,6 +530,62 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .markers-list .marker-row:hover .marker-actions { opacity: 1; }
 .markers-list .marker-row.deleted { opacity: 0.45; text-decoration: line-through; }
 .markers-list .marker-row.deleted .meta.bad { text-decoration: none; color: var(--bad); }
+
+/* Anchor candidates (ADR-0018) -- pattern-mined case anchors for an
+   unbracketed session. Renders above the markers list with strongest
+   first. When the analyst Accepts one, the override badge above
+   replaces this panel until they Clear it. */
+.anchor-candidates-panel {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg-2);
+  font-size: 12px;
+}
+.anchor-candidates-panel .ac-header {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.anchor-candidates-panel .ac-hint {
+  color: var(--fg-3);
+  font-size: 11px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.anchor-candidates-panel .ac-row {
+  display: flex; gap: 8px; align-items: center;
+  padding: 6px 8px; margin-bottom: 4px;
+  background: var(--bg); border: 1px solid var(--rule); border-radius: 3px;
+}
+.anchor-candidates-panel .ac-row .ac-field {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--fg); font-weight: 600;
+}
+.anchor-candidates-panel .ac-row .ac-meta {
+  color: var(--fg-3); font-size: 10px; margin-left: 4px;
+}
+.anchor-candidates-panel .ac-row .ac-samples {
+  flex: 1; color: var(--fg-3); font-size: 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.anchor-candidates-panel .ac-row .ac-actions {
+  display: flex; gap: 2px; flex: 0 0 auto;
+}
+.anchor-candidates-panel.ac-active {
+  background: var(--accent-2-bg, var(--bg-3));
+  border-left: 3px solid var(--accent);
+}
+.anchor-candidates-panel .ac-active-label {
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 600;
+  color: var(--fg);
+}
+.anchor-candidates-panel .ac-active-row {
+  display: flex; gap: 8px; align-items: center;
+}
 /* Suggested markers (ADR-0017): change-point candidates. Dashed
    left-border mirrors the timeline's tl-suggested encoding. */
 .markers-list .marker-row.suggested {

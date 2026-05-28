@@ -155,6 +155,9 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "marker_edits": [],
   "marker_suggestions": [],
   "marker_suggestions_dismissed": [],
+  "anchor_candidates": [],
+  "anchor_candidates_dismissed": [],
+  "case_anchor_override": null,
   "classification_overrides": [],
   "analysis_overrides": [],
   "excluded_ranges": [],
@@ -167,7 +170,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
 
 The viewer keeps up to four rotating backups of this file — `annotations.json.2` (most recent) through `annotations.json.5` (oldest); each save shifts the previous versions down one slot. It is a safety net against a regretted bulk edit or a corrupt write; recovery is a manual file copy of a `.N` file back over `annotations.json`.
 
@@ -321,6 +324,85 @@ Signatures the analyst has Dismissed. The detector's merge consults this set on 
 ```
 
 The `signature` alone is what the merge matches; `marker_type` and `approximate_timestamp` are kept for human inspection of the JSON (debug / audit) and are not consulted by the merge.
+
+### Anchor candidate (`anchor_candidates[]`)
+
+Candidate case anchors produced by `normalization/anchor_suggest.py` ([ADR-0018](../docs/adr/0018-anchor-candidates.md)). For a session captured without markers or a Process Template, the detector pattern-mines `value_changed` / `text_changed` events to find fields whose typing would naturally segment the work into cases (a "customer ID" search box, a serial-number entry, an order-number cell). Each candidate is rendered in the viewer as a "Looks like a case anchor — `<field>` typed N distinct values, splits into M cases. Use this anchor?" row; the analyst Accepts to write a `case_anchor_override` (below) or Dismisses to suppress the signature on future re-normalizes.
+
+The detector **simulates** what `detect_cases_from_anchors` would produce if each candidate field were the anchor, then scores the resulting case structure on four signals (coverage, balance, label diversity, focus). The top 5 are kept.
+
+```json
+{
+  "anchor_candidates": [
+    {
+      "candidate_id": "uuid",
+      "signature": "12-hex-chars",
+      "anchor_config": {
+        "field": "automation_id",
+        "equals": "customer-id-field",
+        "case_label_from": "value"
+      },
+      "display": {
+        "field_property": "automation_id",
+        "field_value": "customer-id-field",
+        "window_title_hint": "Salesforce - Account lookup",
+        "sample_values": ["CUST-11255", "CUST-11256", "CUST-11257"]
+      },
+      "metrics": {
+        "fire_count": 3,
+        "distinct_labels": 3,
+        "case_count": 3,
+        "mean_case_interactions": 27.67,
+        "case_size_cv": 0.034,
+        "coverage": 0.988
+      },
+      "score": 0.935,
+      "created_at": "<ISO>",
+      "heuristic_version": 1
+    }
+  ]
+}
+```
+
+- **`signature`** — 12-char blake2b over `(field_property, field_value, window_title)`. Stable across re-runs; what the dismiss-set and `case_anchor_override._accepted_signature` match on.
+- **`anchor_config`** — the **exact** `case_anchor` block `case_assignment.detect_cases_from_anchors` expects. On Accept the viewer copies this verbatim into `case_anchor_override` and adds the audit fields.
+- **`display`** — UI-only fields the detector pre-computes so the viewer doesn't re-derive them. `window_title_hint` is the most common window-title across the fires (an "Order entry" / "Customer view" hint to disambiguate two fields with the same `name`).
+- **`metrics`** — the four scoring inputs: `coverage` is the fraction of interactions caught by the simulated cases; `case_size_cv` is the coefficient of variation of case interaction counts (lower = more balanced); `distinct_labels` should match `case_count` for a good anchor (one unique label per case).
+- **`score`** — `0..1` weighted blend of `coverage`, `1 - case_size_cv`, `distinct_labels / fire_count`, and `1 / log2(case_count + 1)`. Sorted descending; the viewer renders strongest-first.
+
+Like `marker_suggestions[]`, `anchor_candidates[]` is regenerated wholesale every normalize. The analyst owns the dismiss-list and the override.
+
+### Anchor-candidate dismissal (`anchor_candidates_dismissed[]`)
+
+Signatures the analyst has Dismissed. Consulted by `anchor_suggest.merge_anchor_candidates` on every re-normalize; a dismissed candidate stays dismissed.
+
+```json
+{
+  "anchor_candidates_dismissed": [
+    { "signature": "12-hex-chars", "dismissed_at": "<ISO>" }
+  ]
+}
+```
+
+### Case-anchor override (`case_anchor_override`)
+
+The session-level anchor the analyst Accepted. When set AND no Process Template `case_anchor` is in play (the template wins when both exist), `normalize.py` feeds this directly to `detect_cases_from_anchors` and `stamp_anchor_cases`, so the session gets case-stamped without needing a template.
+
+```json
+{
+  "case_anchor_override": {
+    "field": "automation_id",
+    "equals": "customer-id-field",
+    "case_label_from": "value",
+    "_accepted_signature": "12-hex-chars",
+    "_accepted_at": "<ISO>"
+  }
+}
+```
+
+The non-`_`-prefixed keys are the standard `case_anchor` shape (see `normalization/canonical/sample-anchor-based.yaml` for the full vocab — `field` + one of `equals`/`contains`/`starts_with`/`matches`, OR a `recognized` category). The `_accepted_*` audit fields are stripped by `anchor_suggest.coerce_anchor_override` before the config reaches `detect_cases_from_anchors`. `_accepted_signature` ties the override back to the candidate it came from so `merge_anchor_candidates` can drop the now-accepted candidate from the live list.
+
+`null` (the default) means "no override set" — the pipeline falls back to marker mode.
 
 ### Step entity (`steps[]`)
 

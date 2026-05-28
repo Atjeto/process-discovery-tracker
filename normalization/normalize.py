@@ -56,6 +56,9 @@ from step_suggest import (
     auto_suggest_steps, drop_overlapping_auto_steps, _merge_steps,
 )
 from marker_suggest import suggest_markers, merge_marker_suggestions
+from anchor_suggest import (
+    suggest_anchors, merge_anchor_candidates, coerce_anchor_override,
+)
 import app_vocab
 import stats_compute as stats
 
@@ -374,20 +377,34 @@ def normalize(
               "-- analyzing without it.", file=sys.stderr)
         canonical_path = None
 
-    # Stage 2a/3: case assignment — anchor mode or marker mode
+    # Stage 2a/3: case assignment -- anchor mode or marker mode.
+    # Precedence: Process Template's case_anchor (template wins; the
+    # canonical engagement contract) > annotations.case_anchor_override
+    # (the analyst's session-level pick from an anchor candidate,
+    # ADR-0018) > marker pairs.
     canonical = None
     anchor_cfg = None
+    anchor_source = None
     if canonical_path:
         from canonical_match import load_canonical
         canonical = load_canonical(canonical_path)
         anchor_cfg = canonical.get("case_anchor")
+        if anchor_cfg:
+            anchor_source = "template"
+
+    if not anchor_cfg and isinstance(annotations, dict):
+        override = coerce_anchor_override(annotations.get("case_anchor_override"))
+        if override:
+            anchor_cfg = override
+            anchor_source = "override"
 
     if anchor_cfg:
         anchor_interactions = [
             e for e in edited if e.get("type") == "interaction"]
         anchor_cases = detect_cases_from_anchors(anchor_interactions, anchor_cfg)
         with_cases, cases = stamp_anchor_cases(edited, anchor_cases)
-        print(f"[normalize] anchor cases: {len(cases)} cases detected")
+        print(f"[normalize] anchor cases ({anchor_source}): "
+              f"{len(cases)} cases detected")
     else:
         with_cases = assign_case_ids(edited)
         cases = collect_cases(with_cases)
@@ -445,6 +462,30 @@ def normalize(
             print(f"[normalize] {n} suggested marker(s) (ADR-0017)")
     except Exception as e:
         print(f"[normalize] WARNING: marker_suggest failed: {e}")
+
+    # Anchor candidates (ADR-0018). Pattern-mine value_changed events
+    # for fields that look like case anchors -- a session-level Accept
+    # writes a case_anchor_override into annotations and the next
+    # normalize stamps cases by that anchor instead of needing a
+    # Process Template. Best-effort.
+    existing_anno.setdefault(
+        "anchor_candidates", existing_anno.get("anchor_candidates") or [])
+    existing_anno.setdefault(
+        "anchor_candidates_dismissed",
+        existing_anno.get("anchor_candidates_dismissed") or [])
+    try:
+        fresh_anchors = suggest_anchors(with_cases)
+        existing_anno["anchor_candidates"] = merge_anchor_candidates(
+            existing=existing_anno.get("anchor_candidates") or [],
+            fresh=fresh_anchors,
+            dismissed=existing_anno.get("anchor_candidates_dismissed") or [],
+            case_anchor_override=existing_anno.get("case_anchor_override"),
+        )
+        n = len(existing_anno["anchor_candidates"])
+        if n:
+            print(f"[normalize] {n} anchor candidate(s) (ADR-0018)")
+    except Exception as e:
+        print(f"[normalize] WARNING: anchor_suggest failed: {e}")
 
     matched_interactions = 0
     unmatched_evs: list[dict[str, Any]] = []

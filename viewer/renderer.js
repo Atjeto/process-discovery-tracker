@@ -38,7 +38,7 @@ const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = requ
 const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnchorCandidates, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
 const { renderAnalysisLevel } = require("./views/analysis-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
@@ -341,6 +341,7 @@ State.subscribe("steps",    renderStepsLevel);
 State.subscribe("phases",   renderPhasesLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
+State.subscribe("markers",  renderAnchorCandidates);
 State.subscribe("analysis", renderAnalysisLevel);
 State.subscribe("steps",    renderMapLevel);
 State.subscribe("phases",   renderMapLevel);

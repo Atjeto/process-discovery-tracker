@@ -39,16 +39,27 @@ Compare-Sessions. Also a build-pipeline hardening pass (`preflight.ps1` gates
 CHANGELOG header integrity + lockfile sync; `build-distribution.ps1` retries
 electron-packager on the Defender / Search-indexer temp-dir race).
 
-In-flight on `master` (uncommitted at the time of writing) — **suggested
-markers** ([ADR-0017](../adr/0017-suggested-markers.md)). A hand-rolled change-
-point detector (`normalization/marker_suggest.py`) surfaces candidate Start/End
-boundaries for unbracketed sessions as dashed markers in the Flow timeline; the
-analyst Accepts (promoting into the existing `marker_edits[]` op:insert path)
-or Dismisses (signature added to `marker_suggestions_dismissed[]`, suppressed
-across re-normalize). Phase 0 item #2 of the ML Integration Recommendation;
-non-ML, no new deps. 19 deterministic regression scenarios + a seeded fuzzer
-with three regimes (~11k randomized inputs) pin the invariants. Item #5
-(transaction-ID anchor candidates) is the next chip.
+Landed on `master` since v0.18.0 — Phase 0 of the ML Integration Recommendation,
+shipped as two complementary chips:
+
+- **Suggested markers** ([ADR-0017](../adr/0017-suggested-markers.md), commit
+  `5ec6d54`). A hand-rolled change-point detector
+  (`normalization/marker_suggest.py`) surfaces candidate Start/End boundaries
+  for unbracketed sessions as dashed markers in the Flow timeline; Accept
+  promotes into the existing `marker_edits[]` op:insert path; Dismiss writes
+  to `marker_suggestions_dismissed[]`. Item #2 of the recommendation.
+- **Anchor candidates** ([ADR-0018](../adr/0018-anchor-candidates.md),
+  uncommitted at the time of writing). A pattern-mining detector
+  (`normalization/anchor_suggest.py`) ranks fields that look like case
+  anchors (a customer-ID search box, a serial-number entry) and surfaces them
+  above the Markers list; Accept writes a session-level
+  `case_anchor_override` that `normalize.py` consults before falling back to
+  marker mode. Item #5 of the recommendation; closes Phase 0.
+
+Both detectors are non-ML, zero new pip deps, regenerated wholesale each
+normalize, and idempotent across re-runs via stable 12-char signatures. Total
+test coverage added: 36 deterministic scenarios + 10 fuzzer regimes
+(~19k randomized inputs).
 
 v0.17.0 (same cycle) closed the **productization cycle** — PDD restructured to
 a standard RPA Process Definition Document with an embedded process map,
@@ -114,6 +125,14 @@ prep:
   per hour on real Salesforce / Excel / Outlook captures is owner-side. Bumping
   `heuristic_version` on `marker_suggest.py` is the contract for breaking
   recalibrations — it invalidates the prior dismiss-set.
+- **Anchor-candidate scoring weights on real captures (ADR-0018).** The
+  four-signal blend (coverage 0.40 / balance 0.30 / diversity 0.20 /
+  focus 0.10), the `_MIN_FIRES=2` / `_MIN_CASES=2` floors, and the top-5
+  cap ship calibrated against the seeded fuzzer and the unbracketed
+  fixture (where `customer-id-field` ranks first at 0.935). Whether this
+  ranking surfaces the right field FIRST on real captures with 30+
+  candidate fields is owner-side. Same `heuristic_version` posture as
+  ADR-0017.
 - **Released-`.exe` smoke** on the locked-down work laptop: the packaged app's
   recognition-JSON load + the recorder's single-monitor screenshot occlusion.
 - **PDD "living projection"** — still undefined; needs a concrete owner definition.

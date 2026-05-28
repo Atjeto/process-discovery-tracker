@@ -139,6 +139,14 @@ function ensureAnnoShape(anno) {
   a.annotations = a.annotations || [];
   a.notes = a.notes || [];
   a.marker_edits = a.marker_edits || [];
+  a.marker_suggestions = a.marker_suggestions || [];
+  a.marker_suggestions_dismissed = a.marker_suggestions_dismissed || [];
+  a.anchor_candidates = a.anchor_candidates || [];
+  a.anchor_candidates_dismissed = a.anchor_candidates_dismissed || [];
+  // case_anchor_override is null (not [], not {}) until accepted -- the
+  // shape lets normalize.py and coerce_anchor_override distinguish
+  // "no override" from "garbage override".
+  if (a.case_anchor_override === undefined) a.case_anchor_override = null;
   a.drift_markers = a.drift_markers || [];
   a.excluded_ranges = a.excluded_ranges || [];
   a.step_filters = a.step_filters || { ignored_processes: [], ignored_window_titles: [] };

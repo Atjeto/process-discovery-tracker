@@ -519,6 +519,7 @@ async function loadSessionIntoView(folder) {
   renderAnnotations();
   renderScreenshots();
   renderMarkersList();
+  renderAnchorCandidates();
   renderTimelineSummary();
   // Phase B+ surfaces
   State.setSelectedStepId(null);
@@ -1901,6 +1902,155 @@ async function dismissMarkerSuggestion(sugg) {
   } catch (err) {
     toast("Failed to save annotation: " + (err && err.message), "error");
   }
+}
+
+/* ADR-0018: anchor candidates. The Python detector
+   (normalization/anchor_suggest.py) writes pattern-mined candidate
+   case anchors into annotations.json:anchor_candidates[]. Each
+   candidate has a stable `signature` over (field_property,
+   field_value, window_title) so accepts (written into
+   case_anchor_override with `_accepted_signature`) and dismisses
+   (written into anchor_candidates_dismissed[]) survive re-normalize.
+
+   acceptAnchorCandidate writes a session-level anchor override that
+   normalize.py consults BEFORE the marker-mode fallback. dismiss
+   suppresses re-suggestion. clearAnchorOverride removes a previously
+   accepted override (the inverse). */
+async function acceptAnchorCandidate(cand) {
+  if (!State.getSession() || !cand) return;
+  const a = State.getSession().annotations || {};
+  a.case_anchor_override = Object.assign({}, cand.anchor_config, {
+    _accepted_signature: cand.signature,
+    _accepted_at: new Date().toISOString(),
+  });
+  if (!Array.isArray(a.anchor_candidates)) a.anchor_candidates = [];
+  a.anchor_candidates = a.anchor_candidates.filter(
+    (c) => c && c.signature !== cand.signature);
+  try {
+    await saveAnnotationsWithUndo(a, "accept anchor candidate");
+    State.getSession().annotations = a;
+    toast(
+      `Anchor set to ${cand.display && cand.display.field_value} — re-run Analyze to apply`,
+      "success",
+    );
+    renderAnchorCandidates();
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
+async function dismissAnchorCandidate(cand) {
+  if (!State.getSession() || !cand) return;
+  const a = State.getSession().annotations || {};
+  if (!Array.isArray(a.anchor_candidates_dismissed)) a.anchor_candidates_dismissed = [];
+  if (!Array.isArray(a.anchor_candidates)) a.anchor_candidates = [];
+  a.anchor_candidates_dismissed.push({
+    signature: cand.signature,
+    dismissed_at: new Date().toISOString(),
+  });
+  a.anchor_candidates = a.anchor_candidates.filter(
+    (c) => c && c.signature !== cand.signature);
+  try {
+    await saveAnnotationsWithUndo(a, "dismiss anchor candidate");
+    State.getSession().annotations = a;
+    toast("Anchor candidate dismissed", "");
+    renderAnchorCandidates();
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
+async function clearAnchorOverride() {
+  if (!State.getSession()) return;
+  const a = State.getSession().annotations || {};
+  if (!a.case_anchor_override) return;
+  delete a.case_anchor_override;
+  try {
+    await saveAnnotationsWithUndo(a, "clear anchor override");
+    State.getSession().annotations = a;
+    toast("Anchor cleared — re-run Analyze to apply", "");
+    renderAnchorCandidates();
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
+function renderAnchorCandidates() {
+  const host = document.getElementById("anchor-candidates-panel");
+  if (!host) return;
+  const sess = State.getSession();
+  const anno = (sess && sess.annotations) || {};
+  const cands = Array.isArray(anno.anchor_candidates) ? anno.anchor_candidates : [];
+  const override = anno.case_anchor_override;
+
+  if (!cands.length && !override) {
+    host.style.display = "none";
+    host.innerHTML = "";
+    host.classList.remove("ac-active");
+    return;
+  }
+
+  host.style.display = "";
+  if (override) {
+    host.classList.add("ac-active");
+    const sig = override._accepted_signature || "";
+    const label = override.equals || override.recognized || "(custom)";
+    host.innerHTML =
+      '<div class="ac-header">Active case anchor</div>' +
+      '<div class="ac-active-row">' +
+        '<span class="ac-active-label">' + escapeHtml(String(override.field || "recognized")) +
+        ' = ' + escapeHtml(String(label)) + '</span>' +
+        '<span class="ac-samples">re-run Analyze to apply</span>' +
+        '<span class="ac-actions">' +
+          '<button class="icon-btn xs" data-act="clear" title="Clear the override (the inverse of Accept)">↺</button>' +
+        '</span>' +
+      '</div>';
+    const clearBtn = host.querySelector('[data-act="clear"]');
+    if (clearBtn) clearBtn.addEventListener("click", () => clearAnchorOverride());
+    return;
+  }
+
+  // Render the live candidate list.
+  host.classList.remove("ac-active");
+  const rows = cands.map((c) => {
+    const d = c.display || {};
+    const m = c.metrics || {};
+    const samples = (d.sample_values || []).slice(0, 3).join(", ");
+    const fieldKey = (d.field_property || "") + " = " + (d.field_value || "");
+    const meta = `${m.case_count || "?"} cases · ${
+      (m.coverage != null ? (m.coverage * 100).toFixed(0) + "%" : "?")
+    } coverage · score ${(c.score != null ? c.score.toFixed(2) : "?")}`;
+    return (
+      '<div class="ac-row" data-sig="' + escapeHtml(c.signature || "") + '">' +
+        '<span class="ac-field">' + escapeHtml(fieldKey) +
+          ' <span class="ac-meta">' + escapeHtml(meta) + '</span></span>' +
+        '<span class="ac-samples">' + (samples ? "e.g. " + escapeHtml(samples) : "") + '</span>' +
+        '<span class="ac-actions">' +
+          '<button class="icon-btn xs" data-act="accept" title="Accept (set as case anchor, re-run Analyze to apply)">✓</button>' +
+          '<button class="icon-btn xs" data-act="dismiss" title="Dismiss (suppress on re-normalize)">✕</button>' +
+        '</span>' +
+      '</div>'
+    );
+  }).join("");
+  host.innerHTML =
+    '<div class="ac-header">Anchor candidates</div>' +
+    '<div class="ac-hint">This session has ' + cands.length +
+      ' field' + (cands.length === 1 ? "" : "s") +
+      ' that look like case anchors. Accept one to stamp cases on the next Analyze.</div>' +
+    rows;
+
+  // Wire the per-row buttons by walking each .ac-row and resolving its
+  // signature back to the live candidate object (so we pass the current
+  // shape, not a stale closure).
+  host.querySelectorAll(".ac-row").forEach((row) => {
+    const sig = row.dataset.sig;
+    const cand = cands.find((c) => c.signature === sig);
+    if (!cand) return;
+    const accept = row.querySelector('[data-act="accept"]');
+    if (accept) accept.addEventListener("click", () => acceptAnchorCandidate(cand));
+    const dismiss = row.querySelector('[data-act="dismiss"]');
+    if (dismiss) dismiss.addEventListener("click", () => dismissAnchorCandidate(cand));
+  });
 }
 
 /* H6: mark the current timeline range as excluded from analysis. The
@@ -3637,6 +3787,7 @@ function initFlowView(deps) {
 module.exports = {
   initFlowView,
   loadSessionIntoView, renderTimeline, renderMarkersList,
+  renderAnchorCandidates,
   renderAnnotations, renderSessionPills,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
