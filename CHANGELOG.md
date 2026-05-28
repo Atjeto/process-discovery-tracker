@@ -6,6 +6,29 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`scripts/preflight.ps1` now gates CHANGELOG header integrity and lockfile
+  version sync** in addition to the existing npm-audit check. The CHANGELOG
+  check fails if any `## [X.Y.Z]` header that was present at the latest git
+  tag has disappeared from `CHANGELOG.md` — catches the regression where
+  `114edfa` accidentally absorbed the `[0.16.3]` section into `[Unreleased]`,
+  where it would have shipped under v0.17.0 if the bump-time audit hadn't
+  noticed. The lockfile check fails if `package.json`'s `version` doesn't
+  match `package-lock.json`'s root `version` — catches lockfile drift like
+  the four-version lag `viewer/package-lock.json` had before the v0.17.0
+  prep. Both new checks use a head + regex (not `ConvertFrom-Json`, which in
+  PS 5.1 trips on the empty-string keys npm v3+ lockfiles use in
+  `"packages": {"": {...}}`).
+- **`scripts/build-distribution.ps1`** now runs `preflight.ps1` as step 0 (so
+  the three sanity checks gate every release build, not just commits), and
+  wraps the electron-packager `npm run package` step in a 3-attempt retry
+  with `$env:TEMP\electron-packager\` cleanup between attempts. Defender /
+  Search-indexer scanning the staging dir mid-copy occasionally makes
+  electron-packager die with `ENOENT` on a freshly-written asset (verified
+  against `bpmn-js/dist/assets/bpmn-font/font/bpmn.svg` during the v0.17.1
+  build).
+
 ## [0.17.1] - 2026-05-28
 
 Doc-only follow-up to v0.17.0 (same-day). The `.exe` binaries are functionally

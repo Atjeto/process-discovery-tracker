@@ -71,6 +71,45 @@ Write-Host "Process Discovery Tracker - Distribution build" -ForegroundColor Cya
 Write-Host "Repo: $repoRoot"
 Write-Host ""
 
+function Invoke-NpmPackage([string]$appDir, [int]$maxRetries = 3) {
+  # electron-packager copies node_modules into a temp staging dir
+  # ($env:TEMP\electron-packager\tmp-*) before asar packaging. On
+  # machines with active Defender / Search-indexer scanning, files in
+  # that staging dir can vanish mid-copy and electron-packager dies
+  # with ENOENT on a path it just wrote (verified against
+  # bpmn-js/dist/assets/bpmn-font/font/bpmn.svg during the v0.17.1
+  # build). The package step is idempotent on retry once the temp
+  # dir is cleared, so wrap it.
+  $name = Split-Path -Leaf $appDir
+  Push-Location $appDir
+  try {
+    $attempt = 0
+    while ($true) {
+      $attempt++
+      # See the broader npm-notice / NativeCommandError discussion at
+      # the slim step: locally relax the script-level "Stop" preference
+      # around the native call and check $LASTEXITCODE explicitly.
+      $prevPref = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
+      & npm run package
+      $pkgExit = $LASTEXITCODE
+      $ErrorActionPreference = $prevPref
+      if ($pkgExit -eq 0) { return }
+      if ($attempt -ge $maxRetries) {
+        throw "$name package failed (exit $pkgExit) after $maxRetries attempt(s)"
+      }
+      Write-Host ""
+      Write-Host "  $name package failed on attempt $attempt of $maxRetries (likely a Defender/indexer race in `$env:TEMP\electron-packager\). Cleaning temp + retrying..." -ForegroundColor Yellow
+      Get-ChildItem -Path $env:TEMP -Filter "electron-packager" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
+      }
+      Start-Sleep -Seconds 2
+    }
+  } finally {
+    Pop-Location
+  }
+}
+
 function Remove-LongPathFolder([string]$folder) {
   #PowerShell's Remove-Item -Recurse hits MAX_PATH on deep pm4py
   #__pycache__ trees. cmd's rmdir /S /Q handles long paths via the
@@ -111,6 +150,15 @@ if ($Clean) {
   }
 }
 
+# Step 0: preflight (npm audit + CHANGELOG header integrity + lockfile sync).
+# Implicit in every release build; catches three failure modes that have
+# bitten this project (corrupt CHANGELOG, drifted lockfile, fresh-advisory
+# regression).
+Write-Host "[0/5] Preflight sanity checks" -ForegroundColor Yellow
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "preflight.ps1")
+if ($LASTEXITCODE -ne 0) { throw "preflight failed -- see messages above. Fix before building." }
+Write-Host ""
+
 # Step 1: Python embeddable
 if (-not $SkipPython) {
   Write-Host "[1/5] Building Python embeddable bundle (3-5 min)" -ForegroundColor Yellow
@@ -147,39 +195,12 @@ foreach ($sub in @("canonical", "app_vocabularies")) {
 # Step 3: Capture
 Write-Host ""
 Write-Host "[3/5] Packaging capture (electron-packager)" -ForegroundColor Yellow
-Push-Location $captureDir
-try {
-  # npm prints "npm notice" lines (version / deprecation notices) to
-  # stderr periodically. PowerShell 5.1 wraps native-command stderr as
-  # NativeCommandError records, and the script-level "Stop" preference
-  # turns those into a fatal abort even though npm exited 0. Relax the
-  # preference around the call and check $LASTEXITCODE explicitly.
-  $prevPref = $ErrorActionPreference
-  $ErrorActionPreference = "Continue"
-  & npm run package
-  $pkgExit = $LASTEXITCODE
-  $ErrorActionPreference = $prevPref
-  if ($pkgExit -ne 0) { throw "capture package failed (exit $pkgExit)" }
-} finally {
-  Pop-Location
-}
+Invoke-NpmPackage $captureDir
 
 # Step 4: Viewer
 Write-Host ""
 Write-Host "[4/5] Packaging viewer (electron-packager, includes Python + normalization)" -ForegroundColor Yellow
-Push-Location $viewerDir
-try {
-  # See the capture step above -- same npm-notice / NativeCommandError
-  # guard.
-  $prevPref = $ErrorActionPreference
-  $ErrorActionPreference = "Continue"
-  & npm run package
-  $pkgExit = $LASTEXITCODE
-  $ErrorActionPreference = $prevPref
-  if ($pkgExit -ne 0) { throw "viewer package failed (exit $pkgExit)" }
-} finally {
-  Pop-Location
-}
+Invoke-NpmPackage $viewerDir
 
 # Slim the packaged Python tree. -SkipPython skips the embeddable
 # rebuild (and the slim that runs at the end of that rebuild), so
