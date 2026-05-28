@@ -30,15 +30,24 @@ agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
 ## 1. Where we are
 
-Last release **v0.17.1** (2026-05-28, doc-only follow-up to v0.17.0 same-day).
-v0.17.0 closed the **productization cycle** — PDD restructured to a standard RPA
-Process Definition Document with an embedded process map, segment-level
-automation candidacy ([ADR-0016](../adr/0016-segment-level-automation-candidacy.md)),
-the Compare-Sessions Analysis panel + single-session Waste-by-step decluttered,
+Last release **v0.18.0** (2026-05-28) — adds the in-view Session-view Map level
+as a 5th entry in the level switcher (Flow / Steps / Phases / **Map** /
+Analysis), retiring the v0.17.0 "View map" one-click into Compare-Sessions. The
+interactive process-map UI is now a reusable controller (`viewer/map-controller.js`)
+shared by both surfaces; aggregate-view.js shrunk by 208 lines, no regression in
+Compare-Sessions. Also a build-pipeline hardening pass (`preflight.ps1` gates
+CHANGELOG header integrity + lockfile sync; `build-distribution.ps1` retries
+electron-packager on the Defender / Search-indexer temp-dir race).
+
+v0.17.0 (same cycle) closed the **productization cycle** — PDD restructured to
+a standard RPA Process Definition Document with an embedded process map,
+segment-level automation candidacy
+([ADR-0016](../adr/0016-segment-level-automation-candidacy.md)), the
+Compare-Sessions Analysis panel + single-session Waste-by-step decluttered,
 capture tray IA split by lifetime (Settings / Profile / Session setup), ~5 s
 session-start freeze gone, Chromium web-content reaches the recorder out of the
 box, seeded fuzzers + parse_ts consolidation + a process_label Python↔JS golden
-pin the normalization pipeline. v0.17.1 is the doc catch-up.
+pin the normalization pipeline. v0.17.1 was the same-day doc catch-up.
 
 Direction: **productization toward a small internal rollout, analyst-deliverable
 first**; bar = "as polished as it can be." Internal-rollout phase begins now.
@@ -47,35 +56,37 @@ first**; bar = "as polished as it can be." Internal-rollout phase begins now.
 
 ## 2. Queued backlog (next work)
 
-The big-ticket items from the v0.16.x – v0.17.0 cycle (segment-level automation,
-group-Waste-by-step, parse_ts consolidation, broader doc-coverage audit) all
-landed. What's left:
+All five feature-sized items from the v0.16.x – v0.18.0 cycle have landed —
+segment-level automation, group-Waste-by-step, parse_ts consolidation, the
+doc-coverage audit, and the in-view Map level. What's left in the
+codebase-side backlog is small follow-ups noticed during the recent release
+prep:
 
-1. **Full in-view single-session map.** Embed the interactive map *inside* the
-   Session view instead of routing through Compare-Sessions. Bigger build: the
-   map UI (level/notation controls, drill-scope, rare-path slider, `#map-level` /
-   `#dfg-host` / `.panel-tab` DOM) is tightly coupled to
-   `views/aggregate-view.js` state + element IDs — needs a careful
-   refactor-for-reuse + full level×notation×theme harness check. The one-click
-   "View map" shipped in v0.17.0 is the low-risk interim.
+1. **CHANGELOG header-integrity pre-commit hook.** v0.18.0's
+   `scripts/preflight.ps1` already gates this at build time (and
+   `build-distribution.ps1` runs preflight as step 0). A `core.hooksPath`
+   pre-commit hook would catch the regression at commit time instead of
+   build time — better feedback loop, but the current build-time gate is
+   sufficient. Cheap, low priority.
 
-2. **Small follow-ups noticed during the v0.17.0 release prep:**
-   - **CHANGELOG header-integrity guard.** Commit `114edfa` accidentally deleted
-     the `## [0.16.3]` section header, rolling its content into `[Unreleased]`
-     where it would have shipped under v0.17.0 if the bump-time audit hadn't
-     caught it. A pre-commit hook that warns when an entry under `[Unreleased]`
-     looks structurally identical to the content above an existing released
-     section prevents recurrence. Cheap, low priority.
-   - **MAX_PATH brittleness on Shell-extract.** The viewer zip's deepest path is
-     ~175 chars (PM4Py inductive-variant filenames). Reasonable extract
-     destinations are fine; deeply-nested ones silently fail. v0.17.1's
-     [DEPLOY.md](../DEPLOY.md) carries the "extract to a short path" note;
-     a follow-up could permanently shave the longest unused PM4Py paths from
-     `viewer/python/`.
-   - **Lockfile drift.** `viewer/package-lock.json` lagged four minor versions
-     before the v0.17.0 prep noticed. v0.17.1's [BUILD-AND-DIST.md](../BUILD-AND-DIST.md)
-     adds a release-checklist note; a future pre-commit hook could automate the
-     check.
+2. **MAX_PATH brittleness on Shell-extract.** The viewer zip's deepest path is
+   ~175 chars (PM4Py inductive-variant filenames). Reasonable extract
+   destinations are fine; deeply-nested ones silently fail. v0.17.1's
+   [DEPLOY.md](../DEPLOY.md) carries the "extract to a short path" note as
+   user-facing mitigation; a follow-up could permanently shave the longest
+   unused PM4Py paths from `viewer/python/`. Bigger refactor than it sounds —
+   the slim script needs to know which PM4Py modules our pipeline actually
+   uses.
+
+3. **Code-signing scaffolding.** The company has an internal self-sign
+   certificate. The codebase needs ~30 lines in `build-distribution.ps1`:
+   a `-CertThumbprint` parameter + `signtool sign` invocations after each
+   `.exe` is produced (`recorder.exe`,
+   `Process Discovery Tracker.exe`, `Process Discovery Viewer.exe`). Worth
+   doing before the internal-rollout phase widens — eliminates the "Windows
+   protected your PC" SmartScreen prompt on fresh laptops (assuming IT has
+   distributed the internal root cert in the Trust Store, which corp-managed
+   environments usually do).
 
 ---
 
