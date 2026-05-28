@@ -96,6 +96,21 @@ def _gen_annotations(rng, steps, *, wellformed):
                       "bnva_ms": rng.choice(["lots", None, -5, 1.5e9]),
                       "automation_confirmed": rng.choice([1, "yes", None])}
             overrides.append(ov)
+    # Also exercise grouped 'Waste by step' overrides: an entry keyed by
+    # process_label with no step_id, propagated to every matching instance.
+    for nm in _NAMES:
+        if rng.random() < 0.25:
+            if wellformed:
+                ov = {"process_label": nm}
+                if rng.random() < 0.6:
+                    ov["waste_types"] = rng.sample(_WASTE_TYPES, rng.randint(0, 3))
+                if rng.random() < 0.6:
+                    ov["bnva_ms"] = rng.randint(0, 30000)
+            else:
+                ov = {"process_label": rng.choice([nm, "", None, 5]),
+                      "waste_types": rng.choice([42, None, ["x"]]),
+                      "bnva_ms": rng.choice(["lots", None, -5])}
+            overrides.append(ov)
     return {"analysis_overrides": overrides}
 
 

@@ -22,7 +22,7 @@ def _ts(sec):
     return (_BASE + timedelta(seconds=sec)).isoformat().replace("+00:00", "Z")
 
 
-def _step(sid, start_s, end_s, interaction_ids=None):
+def _step(sid, start_s, end_s, interaction_ids=None, process_label=None):
     return {
         "step_id": sid,
         "name": "Step " + sid,
@@ -30,6 +30,7 @@ def _step(sid, start_s, end_s, interaction_ids=None):
         "evidence": {"interaction_event_ids": interaction_ids or []},
         "canonical_step_id": None,
         "state": "auto_suggested",
+        "process_label": process_label or "",
     }
 
 
@@ -141,6 +142,56 @@ def test_override_for_other_step_ignored():
     w = classify_waste([_step("s1", 0, 600)], _idle(100, 300), {},
                        annotations=anno)[0]
     assert w["bnva_ms"] == 0
+
+
+def test_process_label_override_propagates_to_all_instances():
+    # A grouped 'Waste by step' row writes an override keyed by
+    # process_label; it must apply to every step with that label.
+    steps = [
+        _step("a", 0, 600, process_label="Search"),
+        _step("b", 1000, 1600, process_label="Search"),
+        _step("c", 2000, 2600, process_label="Search"),
+    ]
+    anno = {"analysis_overrides": [
+        {"process_label": "Search", "bnva_ms": 60000,
+         "waste_types": ["overprocessing"]},
+    ]}
+    out = classify_waste(steps, [], {}, annotations=anno)
+    assert len(out) == 3
+    for w in out:
+        assert w["bnva_ms"] == 60000
+        assert w["waste_types"] == ["overprocessing"]
+        assert w["va_ms"] + w["bnva_ms"] + w["nva_ms"] == w["elapsed_ms"]
+
+
+def test_step_id_override_wins_over_process_label_override():
+    # A more-specific per-step_id override beats the group override on
+    # the matching instance; the others still get the group override.
+    steps = [
+        _step("a", 0, 600, process_label="Search"),
+        _step("b", 1000, 1600, process_label="Search"),
+    ]
+    anno = {"analysis_overrides": [
+        {"process_label": "Search", "bnva_ms": 60000},
+        {"step_id": "b", "bnva_ms": 120000},
+    ]}
+    out = classify_waste(steps, [], {}, annotations=anno)
+    by_sid = {w["step_id"]: w for w in out}
+    assert by_sid["a"]["bnva_ms"] == 60000   # group override
+    assert by_sid["b"]["bnva_ms"] == 120000  # per-step override wins
+
+
+def test_process_label_override_ignored_when_label_missing():
+    # A step without a process_label cannot be matched by a group override.
+    steps = [_step("a", 0, 600)]  # default process_label=""
+    anno = {"analysis_overrides": [{"process_label": "Search", "bnva_ms": 60000}]}
+    w = classify_waste(steps, [], {}, annotations=anno)[0]
+    assert w["bnva_ms"] == 0
+
+
+def test_waste_entry_carries_process_label():
+    w = classify_waste([_step("a", 0, 600, process_label="Search")], [], {})[0]
+    assert w["process_label"] == "Search"
 
 
 if __name__ == "__main__":

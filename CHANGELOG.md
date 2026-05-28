@@ -69,6 +69,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wasteful and time-heavy steps surface first — and tucks the instant steps
   behind an "N instant steps" expander; every row stays editable
   (`viewer/views/analysis-view.js`, `viewer/styles.css`).
+- **Group single-session "Waste by step" rows by step type with aggregate
+  VA/NVA; "adjust" propagates across instances.** A 4-case capture still
+  produced one row per instance (4× "Search — CUST-XXX", 4× "Save order —
+  Express"…) — the analyst was reading the same step type repeated. Rows are
+  now rolled up by `process_label` (the value-free step-type key the process
+  map and stats already group on), aggregating va_ms / bnva_ms / nva_ms across
+  every instance, with an "N×" instance badge and the existing nva-then-total
+  sort. The 64-row demo session collapses to 17 step-type rows (8 with a
+  measured duration + 9 instant). Editing one with "adjust" writes the
+  override keyed by `process_label` instead of `step_id`, so it propagates to
+  every instance of that step type ("this step type is actually waste"); a
+  more-specific per-step_id override still wins on conflicts. The
+  normalization side (`analysis_waste.classify_waste`) reads the new scope
+  through `analysis_common.overrides_by_process_label` and stamps
+  `process_label` onto each waste entry so the merge is identical in Python
+  and JS (`viewer/views/analysis-view.js`, `viewer/styles.css`,
+  `normalization/analysis_waste.py`, `normalization/analysis_common.py`).
 - **The capture tray's legacy status window and standalone OBS-settings window
   are gone.** `status-window.js` + `ui/status-window.html` were the kept-for-one-
   release fallback before the Live Session window subsumed their counters, recent

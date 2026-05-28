@@ -66,6 +66,21 @@ def overrides_by_step(annotations: dict | None) -> dict[Any, dict]:
     return out
 
 
+def overrides_by_process_label(annotations: dict | None) -> dict[str, dict]:
+    """Index analyst `analysis_overrides[]` written from a grouped row in
+    the Analysis view (one row per `process_label` step type, aggregating
+    every instance). Such entries have `process_label` set and no
+    `step_id`; they propagate to every step whose process_label matches.
+    A per-step_id override (more specific) wins over the group entry."""
+    out: dict[str, dict] = {}
+    for ov in ((annotations or {}).get("analysis_overrides") or []):
+        if (isinstance(ov, dict)
+                and ov.get("step_id") is None
+                and ov.get("process_label")):
+            out[ov["process_label"]] = ov
+    return out
+
+
 def step_group_key(step: dict[str, Any]) -> str:
     """Key a step is grouped under for cross-instance statistics: its
     template `canonical_step_id` when matched, else the value-free

@@ -21,6 +21,7 @@ from analysis_common import (
     TRANSFER_MIN_LEN,
     TRANSFER_WINDOW_MS,
     norm_value,
+    overrides_by_process_label,
     overrides_by_step,
     parse_ts,
     segment_steps,
@@ -91,6 +92,11 @@ def classify_waste(
         segments = segment_steps(steps, events)
     by_id = {e.get("event_id"): e for e in events if e.get("event_id")}
     ovr = overrides_by_step(annotations)
+    # Grouped 'Waste by step' rows in the Analysis view write overrides keyed
+    # by process_label (the value-free step-type key); they propagate to every
+    # instance of that step type, while a per-step_id override (more specific)
+    # still wins.
+    ovr_pl = overrides_by_process_label(annotations)
 
     # Activity labels stats_compute flagged as reworked within a case.
     rework_labels = {
@@ -134,9 +140,11 @@ def classify_waste(
             if s0 and s1 and any(s0 <= t <= s1 for t in reworked_ts):
                 waste_types.append("rework")
 
+        pl = step.get("process_label") or ""
         entry = {
             "step_id": sid,
             "name": step.get("name") or "",
+            "process_label": pl,
             "elapsed_ms": round(elapsed),
             "va_ms": round(active),
             "bnva_ms": 0,
@@ -144,7 +152,12 @@ def classify_waste(
             "waste_types": waste_types,
             "cross_app_transfers": transfers,
         }
-        if sid in ovr:
-            _apply_waste_override(entry, ovr[sid])
+        # Per-step_id override wins; otherwise the process_label-scoped override
+        # propagates to this instance.
+        ov = ovr.get(sid)
+        if ov is None and pl:
+            ov = ovr_pl.get(pl)
+        if ov is not None:
+            _apply_waste_override(entry, ov)
         out.append(entry)
     return out
