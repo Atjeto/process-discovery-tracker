@@ -39,6 +39,17 @@ Compare-Sessions. Also a build-pipeline hardening pass (`preflight.ps1` gates
 CHANGELOG header integrity + lockfile sync; `build-distribution.ps1` retries
 electron-packager on the Defender / Search-indexer temp-dir race).
 
+In-flight on `master` (uncommitted at the time of writing) — **suggested
+markers** ([ADR-0017](../adr/0017-suggested-markers.md)). A hand-rolled change-
+point detector (`normalization/marker_suggest.py`) surfaces candidate Start/End
+boundaries for unbracketed sessions as dashed markers in the Flow timeline; the
+analyst Accepts (promoting into the existing `marker_edits[]` op:insert path)
+or Dismisses (signature added to `marker_suggestions_dismissed[]`, suppressed
+across re-normalize). Phase 0 item #2 of the ML Integration Recommendation;
+non-ML, no new deps. 19 deterministic regression scenarios + a seeded fuzzer
+with three regimes (~11k randomized inputs) pin the invariants. Item #5
+(transaction-ID anchor candidates) is the next chip.
+
 v0.17.0 (same cycle) closed the **productization cycle** — PDD restructured to
 a standard RPA Process Definition Document with an embedded process map,
 segment-level automation candidacy
@@ -95,6 +106,14 @@ prep:
 - **Calibration on real captures** — `process_label` value-stripping, the
   rare-path cutoff, the fuzzy "same step" thresholds. Needs more representative
   real captures (owner-side). Fuzzing proves robustness, NOT calibration.
+- **Marker-suggestion thresholds on real captures (ADR-0017).** The detector's
+  signal weights (`0.5 / 0.5 / 0.6 / 0.2`), the `0.5` score threshold, the
+  `40%` home-app share, the `20%` cluster edge fraction, and the
+  `min_case_interactions=5` floor ship calibrated against the seeded fuzzer
+  and the bundled demo. Whether they produce the right number of suggestions
+  per hour on real Salesforce / Excel / Outlook captures is owner-side. Bumping
+  `heuristic_version` on `marker_suggest.py` is the contract for breaking
+  recalibrations — it invalidates the prior dismiss-set.
 - **Released-`.exe` smoke** on the locked-down work laptop: the packaged app's
   recognition-JSON load + the recorder's single-monitor screenshot occlusion.
 - **PDD "living projection"** — still undefined; needs a concrete owner definition.

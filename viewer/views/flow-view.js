@@ -1820,6 +1820,89 @@ async function queueCaseFromSelection() {
   }
 }
 
+/* ADR-0017: suggested markers. The Python detector
+   (normalization/marker_suggest.py) writes candidate case boundaries
+   into annotations.json:marker_suggestions[]. Each suggestion has a
+   stable `signature` so accepts (recorded as `derived_from_signature`
+   on the resulting marker_edits[] op:insert) and dismisses (recorded
+   in marker_suggestions_dismissed[]) survive re-normalize.
+
+   The helper below filters the live render so a suggestion that's
+   already been Accepted (its signature appears as
+   derived_from_signature on an op:insert) doesn't render twice for
+   the few seconds before its row is dropped. */
+function acceptedSuggestionSignatures(annotations) {
+  const out = new Set();
+  for (const e of ((annotations && annotations.marker_edits) || [])) {
+    if (e && e.op === "insert" && typeof e.derived_from_signature === "string"
+        && e.derived_from_signature) {
+      out.add(e.derived_from_signature);
+    }
+  }
+  return out;
+}
+
+function visibleMarkerSuggestions(annotations) {
+  const sugs = (annotations && annotations.marker_suggestions) || [];
+  if (!sugs.length) return [];
+  const accepted = acceptedSuggestionSignatures(annotations);
+  return sugs.filter((s) => s && s.signature && !accepted.has(s.signature));
+}
+
+async function acceptMarkerSuggestion(sugg) {
+  if (!State.getSession() || !sugg) return;
+  const a = State.getSession().annotations || {};
+  if (!Array.isArray(a.marker_edits)) a.marker_edits = [];
+  if (!Array.isArray(a.marker_suggestions)) a.marker_suggestions = [];
+  a.marker_edits.push({
+    id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+    op: "insert",
+    marker_type: sugg.marker_type,
+    label: sugg.label,
+    timestamp: sugg.timestamp,
+    derived_from_signature: sugg.signature,
+    ts: new Date().toISOString(),
+  });
+  a.marker_suggestions = a.marker_suggestions.filter(
+    (s) => s && s.signature !== sugg.signature);
+  try {
+    await saveAnnotationsWithUndo(a, "accept suggested marker");
+    State.getSession().annotations = a;
+    toast(
+      `${sugg.marker_type === "start" ? "Start" : "End"} marker accepted — re-run normalization to apply`,
+      "success",
+    );
+    renderTimeline();
+    renderMarkersList();
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
+async function dismissMarkerSuggestion(sugg) {
+  if (!State.getSession() || !sugg) return;
+  const a = State.getSession().annotations || {};
+  if (!Array.isArray(a.marker_suggestions_dismissed)) a.marker_suggestions_dismissed = [];
+  if (!Array.isArray(a.marker_suggestions)) a.marker_suggestions = [];
+  a.marker_suggestions_dismissed.push({
+    signature: sugg.signature,
+    marker_type: sugg.marker_type,
+    approximate_timestamp: sugg.timestamp,
+    dismissed_at: new Date().toISOString(),
+  });
+  a.marker_suggestions = a.marker_suggestions.filter(
+    (s) => s && s.signature !== sugg.signature);
+  try {
+    await saveAnnotationsWithUndo(a, "dismiss suggested marker");
+    State.getSession().annotations = a;
+    toast("Suggestion dismissed", "");
+    renderTimeline();
+    renderMarkersList();
+  } catch (err) {
+    toast("Failed to save annotation: " + (err && err.message), "error");
+  }
+}
+
 /* H6: mark the current timeline range as excluded from analysis. The
    range is stored in annotations.json.excluded_ranges; on the next
    analysis, step suggestion and statistics skip every event inside it.
@@ -2180,6 +2263,41 @@ function renderTimeline() {
             lbl.style.left = "calc(" + x + "% + 4px)";
             lbl.style.top = (activityTop + 2) + "px";
             lbl.textContent = label;
+            host.appendChild(lbl);
+          }
+        }
+      }
+
+      // Suggested markers (ADR-0017): dashed bars on the same lane as
+      // captured markers, with the markers lane toggle in charge of
+      // visibility. visibleMarkerSuggestions filters out signatures
+      // already promoted to op:insert so we don't render a ghost
+      // alongside the real bar in the moments before the suggestion
+      // row is dropped.
+      if (lanes.markers) {
+        const sess = State.getSession();
+        const sugs = sess ? visibleMarkerSuggestions(sess.annotations) : [];
+        for (const s of sugs) {
+          if (!s.timestamp) continue;
+          const t = new Date(s.timestamp).getTime();
+          if (!isFinite(t)) continue;
+          const x = ((t - first) / span) * 100;
+          const bar = document.createElement("div");
+          bar.className = "tl-marker tl-suggested" +
+            ((typeof s.score === "number" && s.score >= 0.75) ? " tl-suggested-hi" : "");
+          bar.style.left = x + "%";
+          bar.style.height = activityH + "px";
+          bar.style.top = activityTop + "px";
+          const scoreStr = (typeof s.score === "number") ? s.score.toFixed(2) : "?";
+          bar.title = s.marker_type + ": " + (s.label || "(suggested)") +
+            " (" + (s.reason || "") + ", suggested, score " + scoreStr + ")";
+          host.appendChild(bar);
+          if (s.marker_type === "start") {
+            const lbl = document.createElement("div");
+            lbl.className = "tl-marker-label tl-suggested";
+            lbl.style.left = "calc(" + x + "% + 4px)";
+            lbl.style.top = (activityTop + 2) + "px";
+            lbl.textContent = s.label || "suggested";
             host.appendChild(lbl);
           }
         }
@@ -3304,8 +3422,10 @@ function effectiveTimestamp(markerEvent) {
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
-  const allMarkers = (State.getSession().events || []).filter((e) => e.type === "marker");
-  if (!allMarkers.length) {
+  const sess = State.getSession();
+  const allMarkers = (sess.events || []).filter((e) => e.type === "marker");
+  const allSuggestions = sess ? visibleMarkerSuggestions(sess.annotations) : [];
+  if (!allMarkers.length && !allSuggestions.length) {
     host.innerHTML = '<p class="hint">No markers fired in this session.</p>';
     return;
   }
@@ -3315,20 +3435,69 @@ function renderMarkersList() {
     ? allMarkers.filter(m => (effectiveLabel(m) || "").toLowerCase().includes(query)
         || (m.data.reason || "").toLowerCase().includes(query))
     : allMarkers;
+  const suggestions = query
+    ? allSuggestions.filter(s => (s.label || "").toLowerCase().includes(query)
+        || (s.reason || "").toLowerCase().includes(query))
+    : allSuggestions;
   const meta = $("#marker-filter-meta");
-  if (meta) meta.textContent = markers.length === allMarkers.length
-    ? `${allMarkers.length} markers`
-    : `${markers.length} of ${allMarkers.length}`;
-  if (!markers.length) {
+  if (meta) {
+    const totalAll = allMarkers.length + allSuggestions.length;
+    const totalShown = markers.length + suggestions.length;
+    const sNote = allSuggestions.length
+      ? ` (incl. ${allSuggestions.length} suggested)` : "";
+    meta.textContent = totalShown === totalAll
+      ? `${totalAll} markers${sNote}`
+      : `${totalShown} of ${totalAll}${sNote}`;
+  }
+  if (!markers.length && !suggestions.length) {
     host.innerHTML = '<p class="hint">No markers match the filter.</p>';
     return;
   }
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "Double-click a Start to rename. Use the row buttons to adjust the timestamp or delete. Edits save to annotations.json; re-run normalization to apply downstream.";
+  hint.textContent = allSuggestions.length
+    ? "Dashed rows are suggested markers (change-point candidates). Accept to insert, Dismiss to suppress on re-normalize. Double-click a captured Start to rename. Edits save to annotations.json; re-run Analyze to apply downstream."
+    : "Double-click a Start to rename. Use the row buttons to adjust the timestamp or delete. Edits save to annotations.json; re-run normalization to apply downstream.";
   host.appendChild(hint);
+
+  // Interleave captured + suggested by effective timestamp so the
+  // analyst reads them in story order, not segregated by kind.
+  const tsOf = (e) => e._isSuggested ? new Date(e.timestamp).getTime()
+                                     : new Date(effectiveTimestamp(e)).getTime();
+  const combined = []
+    .concat(markers.map(m => ({...m, _isSuggested: false})))
+    .concat(suggestions.map(s => ({...s, _isSuggested: true})));
+  combined.sort((a, b) => tsOf(a) - tsOf(b));
+
   let depth = 0;
-  for (const m of markers) {
+  for (const item of combined) {
+    if (item._isSuggested) {
+      const row = document.createElement("div");
+      row.className = "marker-row " + item.marker_type + " suggested";
+      const lbl = item.label || (item.marker_type === "start" ? "(suggested case)" : "(suggested end)");
+      const reasonChip = item.reason
+        ? ' <span class="meta suggested">' + escapeHtml(_humanReason(item)) + '</span>' : '';
+      row.innerHTML =
+        '<span class="ts">' + escapeHtml((item.timestamp || "").slice(11, 19)) + '</span>' +
+        '<span class="dir">' + (item.marker_type === "start" ? "▶" : "■") + '</span>' +
+        '<span class="lbl">' + escapeHtml(lbl) + reasonChip + '</span>' +
+        '<span class="depth">·</span>' +
+        '<span class="marker-actions">' +
+          '<button class="icon-btn xs" data-act="accept" title="Accept (insert as real marker, re-run Analyze to apply)">✓</button>' +
+          '<button class="icon-btn xs" data-act="dismiss" title="Dismiss (suppress on re-normalize)">✕</button>' +
+        '</span>';
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".marker-actions")) return;
+        seekToTimestamp(item.timestamp);
+      });
+      row.querySelector('[data-act="accept"]').addEventListener("click", () =>
+        acceptMarkerSuggestion(item));
+      row.querySelector('[data-act="dismiss"]').addEventListener("click", () =>
+        dismissMarkerSuggestion(item));
+      host.appendChild(row);
+      continue;
+    }
+    const m = item;
     const row = document.createElement("div");
     const deleted = isDeletedMarker(m.event_id);
     row.className = "marker-row " + m.data.marker_type + (deleted ? " deleted" : "");
@@ -3368,6 +3537,19 @@ function renderMarkersList() {
     row.querySelector('[data-act="delete"]').addEventListener("click", () =>
       deleteMarker(m));
     host.appendChild(row);
+  }
+}
+
+/* Human label for a marker_suggestions[] row's reason chip. Mirrors the
+   detector's `reason` enum -- update both together when adding a new
+   signal in normalization/marker_suggest.py. */
+function _humanReason(s) {
+  switch (s.reason) {
+    case "transaction_id_typed": return "txn id: " + (s.label || "?");
+    case "home_app_return":     return "home-app return";
+    case "idle_gap":            return "idle gap";
+    case "app_cluster_boundary": return "app boundary";
+    default:                    return s.reason || "suggested";
   }
 }
 

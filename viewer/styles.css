@@ -530,6 +530,18 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .markers-list .marker-row:hover .marker-actions { opacity: 1; }
 .markers-list .marker-row.deleted { opacity: 0.45; text-decoration: line-through; }
 .markers-list .marker-row.deleted .meta.bad { text-decoration: none; color: var(--bad); }
+/* Suggested markers (ADR-0017): change-point candidates. Dashed
+   left-border mirrors the timeline's tl-suggested encoding. */
+.markers-list .marker-row.suggested {
+  border-left: 2px dashed var(--accent);
+  padding-left: 8px;
+}
+.markers-list .marker-row.suggested .dir { color: var(--fg-3); }
+.markers-list .marker-row.suggested .meta.suggested {
+  background: var(--bg-3); color: var(--fg-3);
+  padding: 1px 5px; border-radius: 2px;
+  font-size: 10px; margin-left: 6px;
+}
 .icon-btn.xs { width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 1; }
 
 .actions-bar input[type=date] { background: var(--bg-3); color: var(--fg);
@@ -2106,6 +2118,27 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
   font-family: var(--font-mono); letter-spacing: 0.3px;
   pointer-events: none;
 }
+/* Suggested markers (ADR-0017): change-point candidates rendered as
+   dashed/ghost variants of the captured-marker bars. Dashed (not just
+   opacity-ghosted) reads as "tentative" on lossy projectors and to
+   colorblind users; opacity carries the score tier as a secondary
+   signal. A legend chip in the timeline legend strip explains the
+   encoding. */
+.tl-marker.tl-suggested {
+  background: transparent;
+  border-left: 2px dashed var(--fg);
+  box-shadow: none;
+  opacity: 0.50;
+}
+.tl-marker.tl-suggested.tl-suggested-hi { opacity: 0.72; }
+.tl-marker-label.tl-suggested {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px dashed var(--fg);
+  box-shadow: none;
+  opacity: 0.75;
+}
+.tl-marker-label.tl-suggested::before { content: "? "; opacity: 0.7; }
 
 /* Legend: per-app swatches + element entries */
 .legend { display: flex; gap: 12px; padding: 6px 4px 0;
@@ -2119,6 +2152,12 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
   background: var(--fg-4); opacity: 0.5;
 }
 .legend .lg-marker::before { background: var(--warn); width: 8px !important; height: 2px !important; border-radius: 1px !important; }
+.legend .lg-marker-suggested::before {
+  background: transparent;
+  border-left: 2px dashed var(--fg);
+  width: 8px !important; height: 8px !important; border-radius: 0 !important;
+  opacity: 0.7;
+}
 .legend .lg-screenshot::before {
   background: var(--accent-2); border-radius: 50% !important; width: 7px !important; height: 7px !important;
   border: 1px solid var(--bg);

@@ -55,6 +55,7 @@ from xes_export import build_event_log, export_xes, export_csv
 from step_suggest import (
     auto_suggest_steps, drop_overlapping_auto_steps, _merge_steps,
 )
+from marker_suggest import suggest_markers, merge_marker_suggestions
 import app_vocab
 import stats_compute as stats
 
@@ -414,6 +415,36 @@ def normalize(
     existing_anno.setdefault("drift_markers", existing_anno.get("drift_markers") or [])
     existing_anno["version"] = 1
     existing_anno["session_id"] = session_id_str
+
+    # Suggested markers (ADR-0017). Hand-rolled change-point detector
+    # surfaces candidate Start/End pairs for any stretch of work outside
+    # an open marker case. Suggestions live in annotations.json as a
+    # separate block; the analyst Accepts (which writes an op:insert into
+    # marker_edits[] with derived_from_signature) or Dismisses (which
+    # adds the signature to marker_suggestions_dismissed[] so it's
+    # suppressed across re-normalize). Best-effort -- a detector edge
+    # case never blocks the pipeline.
+    existing_anno.setdefault(
+        "marker_suggestions", existing_anno.get("marker_suggestions") or [])
+    existing_anno.setdefault(
+        "marker_suggestions_dismissed",
+        existing_anno.get("marker_suggestions_dismissed") or [])
+    try:
+        fresh_sugs = suggest_markers(
+            with_cases, cases,
+            excluded_ranges=_excluded_ranges(existing_anno),
+        )
+        existing_anno["marker_suggestions"] = merge_marker_suggestions(
+            existing=existing_anno.get("marker_suggestions") or [],
+            fresh=fresh_sugs,
+            dismissed=existing_anno.get("marker_suggestions_dismissed") or [],
+            accepted_edits=existing_anno.get("marker_edits") or [],
+        )
+        n = len(existing_anno["marker_suggestions"])
+        if n:
+            print(f"[normalize] {n} suggested marker(s) (ADR-0017)")
+    except Exception as e:
+        print(f"[normalize] WARNING: marker_suggest failed: {e}")
 
     matched_interactions = 0
     unmatched_evs: list[dict[str, Any]] = []

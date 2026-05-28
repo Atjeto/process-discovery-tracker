@@ -153,6 +153,8 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "phases": [],
   "annotations": [],
   "marker_edits": [],
+  "marker_suggestions": [],
+  "marker_suggestions_dismissed": [],
   "classification_overrides": [],
   "analysis_overrides": [],
   "excluded_ranges": [],
@@ -165,7 +167,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
 
 The viewer keeps up to four rotating backups of this file — `annotations.json.2` (most recent) through `annotations.json.5` (oldest); each save shifts the previous versions down one slot. It is a safety net against a regretted bulk edit or a corrupt write; recovery is a manual file copy of a `.N` file back over `annotations.json`.
 
@@ -261,6 +263,64 @@ Time spans the analyst marked as out-of-scope from the viewer's timeline range s
 ```
 
 `start` and `end` are inclusive ISO 8601 bounds. `reason` is free text — `"manual"` for a range the analyst selected by hand. A malformed entry (missing `start` or `end`, or `end` earlier than `start`) is ignored rather than failing the run.
+
+### Marker suggestion (`marker_suggestions[]`)
+
+Candidate case-boundary markers produced by the change-point detector in `normalization/marker_suggest.py` ([ADR-0017](../docs/adr/0017-suggested-markers.md)). When a long passive capture lacks Start/End markers, `assign_case_ids` collapses everything into one default case and downstream analysis is meaningless. The detector scans the **uncased** stretches of the event stream (events with no `case_ids` stamped on them), scores four signals (idle gap, return to a "home" app, transaction-ID-like value typed, app-cluster boundary), and emits paired Start/End suggestions for any boundary above the score threshold. The viewer renders them as dashed `.tl-marker.tl-suggested` bars on the Flow timeline and offers Accept / Dismiss in the markers side-panel.
+
+Suggestions are **regenerated on every normalize run** — the analyst owns the dismiss-set and the accepted-edits (both of which DO survive), not the suggestions themselves. The same posture `step_suggest._merge_steps` takes with `auto_suggested` steps.
+
+```json
+{
+  "marker_suggestions": [
+    {
+      "suggestion_id": "uuid",
+      "signature": "12-hex-chars",
+      "marker_type": "start" | "end",
+      "timestamp": "<ISO>",
+      "label": "string or null",
+      "score": 0.5..1.0,
+      "reason": "idle_gap" | "home_app_return" | "transaction_id_typed" | "app_cluster_boundary",
+      "evidence": {
+        "near_event_ids": ["<event_id>", "..."],
+        "before_app": "outlook.exe",
+        "after_app": "salesforce.exe",
+        "idle_ms_before": 0
+      },
+      "created_at": "<ISO>",
+      "heuristic_version": 1
+    }
+  ]
+}
+```
+
+- **`signature`** — stable 12-char blake2b hex over `(marker_type, ts bucketed to 5 s, before_app, after_app, reason)`. This is the identity that survives re-normalize even if `score` drifts slightly; it's the key the dismiss-set and the Accept path (`derived_from_signature` on the resulting `marker_edits[]` op:insert) match on. Mirrors the `segment_signature` pattern from [ADR-0016](../docs/adr/0016-segment-level-automation-candidacy.md).
+- **`marker_type`** — `start` or `end`. Suggestions are emitted in pairs (one Start, one End), but each pair entry is independent so the analyst can accept one and reject the other.
+- **`label`** — proposed name. Non-null for `reason == "transaction_id_typed"` (carries the typed value, e.g. `"ABC-12345"`); null otherwise.
+- **`score`** — combined `[0.0, 1.0]` heuristic score. The viewer maps `score >= 0.75` to a slightly higher-opacity tier — the only confidence signal a 2 px dashed line can carry.
+- **`reason`** — which signal dominated. Used to render the chip in the markers side-panel (e.g. `[idle gap]`, `[txn id: ABC-12345]`).
+- **`heuristic_version`** — bumps when the detector algorithm changes meaningfully. The contract for breaking recalibration: a suggestion under v2 may legitimately re-surface a boundary that was dismissed under v1.
+
+The detector's **guards** drop any suggestion whose timestamp would fall inside an `excluded_range`, inside an existing case's `(start_ts, end_ts)` window, within 5 s of a real Start (captured or `marker_edits[]` `op:"insert"`), or whose proposed case would contain fewer than `min_case_interactions=5` interactions. Ends pair to their Start and clear the excluded/inside-case guards; the 5 s guard does *not* apply to Ends — an End landing right before a real Start is a clean case-to-case handoff.
+
+### Marker-suggestion dismissal (`marker_suggestions_dismissed[]`)
+
+Signatures the analyst has Dismissed. The detector's merge consults this set on every re-normalize and drops any fresh suggestion whose signature matches — so a dismissed boundary stays dismissed across an arbitrary number of re-normalizes. A separate block (rather than a `state: "dismissed"` row in `marker_suggestions[]`) keeps the live "things to render" array trivially clean — every entry the viewer reads is actionable. Matches the `analysis_overrides[]` precedent at [§Analysis override](#analysis-override-analysis_overrides) which records analyst verdicts keyed by a stable identity.
+
+```json
+{
+  "marker_suggestions_dismissed": [
+    {
+      "signature": "12-hex-chars",
+      "dismissed_at": "<ISO>",
+      "marker_type": "start" | "end",
+      "approximate_timestamp": "<ISO>"
+    }
+  ]
+}
+```
+
+The `signature` alone is what the merge matches; `marker_type` and `approximate_timestamp` are kept for human inspection of the JSON (debug / audit) and are not consulted by the merge.
 
 ### Step entity (`steps[]`)
 
