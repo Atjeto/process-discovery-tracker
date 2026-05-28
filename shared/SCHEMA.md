@@ -561,6 +561,57 @@ The XES export emits one trace per *top-level* case (the last entry in each even
 
 When the canonical set names a `case_anchor` field (e.g. the serial-search box), normalization can detect cases from **anchor fires** instead of (or alongside) markers. The anchor field is matched either by a **recognised** platform category (`recognized`, [ADR-0011](../docs/adr/0011-platform-recognition-layer.md) — portable across engagements) or by an explicit `automation_id` / value rule (the per-engagement fallback; ADR-0012 #7). A case is named by its anchor value and is **stable per label** — `case_id = uuid5(label)`, so re-searching the same serial *resumes* that case rather than opening a new one. The most-recently-fired anchor is the **active case**, stamped onto every following interaction; because work interleaves (search A → … → search B → … → search A again), each case owns a list of *disjoint active segments* rather than one contiguous range. A degenerate-case guard drops slivers (below `min_case_interactions` / `min_case_duration_ms`) and an empty-label guard ignores a focus on an empty anchor box. This supersedes the older gap-based open/close-on-pause splitting: a pause is just a pause; the case resumes on the next anchor.
 
+### `case_anchor` block — schema
+
+The `case_anchor` block lives under `canonical_process` in the canonical YAML.
+
+```yaml
+canonical_process:
+  id: "..."
+  case_anchor:
+    # === at least ONE of these matchers ===
+    recognized: "search"            # ADR-0011 platform category (str or list); the portable matcher
+    field: "automation_id"          # name of a property on the interaction's data
+    equals: "txtSerialNumber"       # operator (one of equals / contains / starts_with / matches)
+
+    # === optional refinements ===
+    case_label_from: "value"        # which property on the anchor event names the case (default "value")
+    min_case_interactions: 2        # discard cases below this (default 2)
+    min_case_duration_ms: 1000      # discard cases shorter than this (default 1000)
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `recognized` | string \| list[string] | Match by ADR-0011 category. The **portable** anchor: keys on a documented platform/framework signature (e.g. `search`, `grid_cell`), so the same template recognises the case-key field across engagements. |
+| `field` | **string** (the property NAME) | Match by an explicit data property — for bespoke fields with no recognised category. **NOT a dict** — `field: "automation_id"`, then `equals: "txtSerialNumber"` (the operator is a sibling key, not a sub-key). |
+| `equals` / `contains` / `starts_with` / `matches` | string | Operator applied to the value of `field`. Pick one. `matches` is a regex. |
+| `case_label_from` | string | Which event-data property names the case (default `value`). A typed serial becomes the case label. |
+| `min_case_interactions` | int | Drop cases with fewer interactions than this (degenerate guard). |
+| `min_case_duration_ms` | int | Drop cases shorter than this in ms (degenerate guard). |
+
+When both `recognized` and the explicit `field` rule are present they are **AND-ed** ("a recognised text/search field *whose name matches* /serial/i"), which generalises a bespoke field without naming its automation_id.
+
+A common mistake is to write `field` as a dict, like a match spec:
+
+```yaml
+# WRONG -- field is the property NAME, not a match spec
+case_anchor:
+  field:
+    process_name: "chrome.exe"
+    name: "Customer name:"
+```
+
+The pipeline now warns on this (`case_anchor.field must be a string ... -- treating as no-match`) and continues with zero anchor cases rather than crashing. The correct shape is:
+
+```yaml
+# RIGHT -- field is the name, operator is a sibling key
+case_anchor:
+  field: "name"
+  equals: "Customer name:"
+```
+
+A worked example is in [`normalization/canonical/sample-anchor-based.yaml`](../normalization/canonical/sample-anchor-based.yaml).
+
 ## Step states — the lifecycle
 
 Each step's `state` field describes how the step got into `annotations.json`:
