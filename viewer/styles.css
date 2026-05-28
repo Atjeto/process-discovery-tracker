@@ -649,7 +649,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
    "_label" (the shape itself has no such suffix), so key the override on that to
    recolour only the floating labels. */
 :root[data-theme="dark"] #bpmn-host g[data-element-id$="_label"] text,
-:root[data-theme="dark"] #bpmn-host g[data-element-id$="_label"] tspan {
+:root[data-theme="dark"] #bpmn-host g[data-element-id$="_label"] tspan,
+:root[data-theme="dark"] #session-map-bpmn-host g[data-element-id$="_label"] text,
+:root[data-theme="dark"] #session-map-bpmn-host g[data-element-id$="_label"] tspan {
   fill: var(--fg) !important;
 }
 
@@ -839,6 +841,23 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
      The editor-split stays bounded by its panes' internal overflow-y:auto and
      the 240px interaction-list cap, so a tall step detail scrolls inside its
      pane rather than dragging the layout taller. */
+}
+
+/* ===== Map level (Session view) =====
+   The Session view's "Map" level mounts the same .panel.panel-wide.map-panel
+   shape as Compare-Sessions, but it takes the full main-view area (no
+   stats sidebar, no resize handle). We override .map-host's fixed 420px
+   height so the map fills the level area on tall monitors. */
+.session-layout-map {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0; margin-top: 12px;
+}
+.session-layout-map .panel.map-panel {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.session-layout-map .map-host {
+  flex: 1; min-height: 360px; height: auto;
 }
 
 /* ===== Analysis view (Cluster N / ADR-0008) ===== */

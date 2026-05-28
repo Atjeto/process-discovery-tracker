@@ -40,6 +40,8 @@ const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = re
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
 const { renderAnalysisLevel } = require("./views/analysis-view.js");
+const { createMapController } = require("./map-controller.js");
+const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
 
@@ -113,6 +115,7 @@ const VIEW_MODE_HELP = {
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured in this session.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
+  map:    "Map view: the process diagram (BPMN) or Flow diagram (DFG) for this session, at Activity / Step / Phase level.",
   analysis: "Analysis view: heuristic waste, time-study and automation findings — review before relying on them.",
 };
 
@@ -174,16 +177,151 @@ function _viewportApplyToMode(mode, snap) {
   });
 }
 
-const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, analysis: renderAnalysisLevel };
+/* ============ Map level (Session view) ============================ */
+
+/* The Session view's "Map" level shares the interactive process-map UI with
+   Compare-Sessions, but bound to a single-session data source via
+   map-controller.js. Lazily created on first render so its querySelector
+   lookups land after the DOM is ready. State (notation × level × scope ×
+   rare-cutoff) lives in the controller and persists across session switches. */
+let _sessionMapCtrl = null;
+
+function _sessionBpmnFile(level) {
+  return level === "step" ? "process_map_step.bpmn"
+       : level === "phase" ? "process_map_phase.bpmn"
+       : "process_map.bpmn";
+}
+
+/* Activity labels emitted inside every step whose value-free label matches
+   `stepLabel` in the current session -- the children the activity Flow diagram
+   is scoped to when a step node is drilled. Single-session analogue of
+   aggregate-view's pooled version. */
+function _sessionActivityLabelsForStep(stepLabel) {
+  const sess = State.getSession();
+  const labels = new Set();
+  if (!sess) return labels;
+  const steps = ((sess.annotations || {}).steps || []).filter((st) => st && st.state !== "hidden");
+  const events = sess.events || [];
+  for (const st of steps) {
+    const lbl = st.process_label || processLabel(st.name) || "(unnamed)";
+    if (lbl !== stepLabel) continue;
+    const tr = st.time_range || {};
+    const a = tr.start ? new Date(tr.start).getTime() : NaN;
+    const b = tr.end ? new Date(tr.end).getTime() : NaN;
+    if (!isFinite(a) || !isFinite(b)) continue;
+    for (const ev of events) {
+      if (ev.type !== "activity") continue;
+      const t = new Date(ev.timestamp).getTime();
+      if (isFinite(t) && t >= a && t <= b) {
+        const al = (ev.data || {}).activity_label;
+        if (al) labels.add(al);
+      }
+    }
+  }
+  return labels;
+}
+
+/* DataSource: resolve the (notation × level × scope) cell for the controller.
+   Pulls from State.getSession() so it always sees the current session. */
+function _sessionMapDataSource({ notation, level, scope }) {
+  const sess = State.getSession();
+  if (!sess) return { emptyMessage: "Open a session to see its process map." };
+  if (notation === "bpmn") {
+    const file = _sessionBpmnFile(level);
+    const bpmnPath = sess.sessionFolder ? path.join(sess.sessionFolder, file) : null;
+    if (!bpmnPath || !fs.existsSync(bpmnPath)) {
+      return {
+        emptyMessage: level === "activity"
+          ? 'No process map yet — click "Analyze session".'
+          : 'No ' + level + '-level Process diagram yet — Analyze a session that has ' +
+            (level === "phase" ? "phases" : "steps") + ' (it is mined from your annotations).',
+      };
+    }
+    return { bpmnPath };
+  }
+  // notation === "dfg"
+  if (level === "activity") {
+    return {
+      dfg: sess.dfg,
+      emptyMessage: 'No activity-level flow yet — Analyze the session and classify your apps in the taxonomy.',
+    };
+  }
+  // step / phase
+  const phaseFilter = (scope && scope.level === "step")
+    ? { phaseName: scope.phaseName } : null;
+  return {
+    dfg: buildAnnotationDfg([sess], level, phaseFilter),
+    emptyMessage: 'No ' + level + '-level flow yet — add ' +
+      (level === "phase" ? "phases" : "steps") + ' to this session.',
+  };
+}
+
+/* Activity-node click in the Session-view map: seek the Flow timeline to the
+   first matching event and switch to the Flow level. */
+function _sessionOnActivityNodeClick(label /*, ev */) {
+  const sess = State.getSession();
+  if (!sess || !sess.events || !label) return;
+  const want = String(label).toLowerCase();
+  const target = sess.events.find((e) =>
+    e.type === "activity" &&
+    (((e.data || {}).activity_label || "").toLowerCase() === want));
+  if (target && target.timestamp) {
+    applyLevel("flow");
+    setTimeout(() => seekToTimestamp(target.timestamp), 0);
+  }
+}
+
+function _ensureSessionMapCtrl() {
+  if (_sessionMapCtrl) return _sessionMapCtrl;
+  _sessionMapCtrl = createMapController({
+    hostBpmn: document.getElementById("session-map-bpmn-host"),
+    hostDfg: document.getElementById("session-map-dfg-host"),
+    notationTabs: Array.from(document.querySelectorAll("#session-layout-map .panel-tab[data-map]")),
+    levelSelect: document.getElementById("session-map-level"),
+    scopeChip: document.getElementById("session-map-scope"),
+    zoomControls: {
+      in: document.getElementById("btn-session-map-zoom-in"),
+      out: document.getElementById("btn-session-map-zoom-out"),
+      fit: document.getElementById("btn-session-map-zoom-fit"),
+      wrap: document.getElementById("session-map-zoom"),
+      pct: document.getElementById("session-map-zoom-pct"),
+    },
+    rareSlider: {
+      wrap: document.getElementById("session-hide-rare-wrap"),
+      range: document.getElementById("session-rng-rare"),
+      label: document.getElementById("session-hide-rare-lbl"),
+    },
+    dataSource: _sessionMapDataSource,
+    activityLabelsForStep: _sessionActivityLabelsForStep,
+    onActivityNodeClick: _sessionOnActivityNodeClick,
+    initialNotation: "bpmn",
+    initialLevel: "activity",
+  });
+  return _sessionMapCtrl;
+}
+
+function renderMapLevel() {
+  // Cheap to call when the Map level isn't visible: the controller's tabs and
+  // hosts are hidden anyway. We early-return mainly to skip BPMN's async render
+  // when nothing's on screen.
+  if (State.getLevel() !== "map") return;
+  _ensureSessionMapCtrl().render();
+}
+
+const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };
 
 /* Wire the state change-notification bus: an annotation edit emits the
    topics it touched (see persistAnnotations / performUndo / performRedo)
-   and the matching view re-renders itself -- no full-session reload. */
+   and the matching view re-renders itself -- no full-session reload.
+   The Map level early-returns when not visible, so subscribing it to the
+   annotation topics is cheap and keeps step/phase-level DFGs fresh. */
 State.subscribe("steps",    renderStepsLevel);
 State.subscribe("phases",   renderPhasesLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
 State.subscribe("analysis", renderAnalysisLevel);
+State.subscribe("steps",    renderMapLevel);
+State.subscribe("phases",   renderMapLevel);
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
@@ -205,7 +343,7 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
-  const layouts = ["flow", "steps", "phases", "analysis"];
+  const layouts = ["flow", "steps", "phases", "map", "analysis"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";
@@ -227,6 +365,11 @@ function applyLevel(name) {
    localStorage so the analyst doesn't have to dismiss every launch. */
 const SHORTCUTS_OVERLAY_KEY = "pdt.shortcutsOverlayHidden";
 const VIEW_SHORTCUTS = {
+  map: [
+    ["Click node", "Drill into details"],
+    ["Scroll",     "Zoom map"],
+    ["Drag",       "Pan map"],
+  ],
   flow: [
     ["Space", "Play / pause video"],
     ["← →",  "Scrub 5s"],
@@ -503,19 +646,6 @@ initAggregateView({
     if (timestamp) seekToTimestamp(timestamp);
   },
 });
-
-/* One-click: open the CURRENT single session's process map in the interactive
-   Compare view -- saves manually re-picking the folder there, and is the path
-   to getting the map into the PDD. The map UI lives in that view; this just
-   loads the one session into it. */
-if ($("#btn-view-map")) {
-  $("#btn-view-map").addEventListener("click", async () => {
-    const sess = State.getSession();
-    if (!sess || !sess.sessionFolder) return;
-    activateTab("aggregate");
-    await loadAggregateFolders([sess.sessionFolder]);
-  });
-}
 
 /* Re-fit the process map after its panel is drag-resized (layout-controls
    fires pdt:mapresized on drag release). */

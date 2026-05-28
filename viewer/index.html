@@ -117,7 +117,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="map-status-label">Process map:</span>
             <span class="map-status-detail" id="process-map-detail">—</span>
             <select id="process-map-case-select" class="map-status-select" title="Aggregate model across all cases, or pick a single case" style="display:none"></select>
-            <button class="link-btn" id="btn-view-map" title="Open this session's process map in the interactive Compare view (zoom, pan, switch Activity/Step/Phase and Flow/BPMN)">View map</button>
             <button class="link-btn" id="btn-open-bpmn" title="Open the selected BPMN file in the system default app">Open</button>
             <button class="link-btn" id="btn-reveal-bpmn" title="Show the BPMN file in File Explorer">Reveal in folder</button>
           </span>
@@ -192,6 +191,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-icon">▦</span> Phases
             <span class="view-mode-desc">milestones</span>
             <span class="badge" id="phases-badge">0</span>
+          </button>
+          <button class="view-mode-btn" data-level="map" title="The interactive process map (Flow diagram / Process diagram BPMN) at Activity / Step / Phase level for this single session">
+            <span class="view-mode-icon">◯</span> Map
+            <span class="view-mode-desc">process diagram</span>
           </button>
           <button class="view-mode-btn" data-level="analysis" title="Heuristic waste, time-study and automation findings">
             <span class="view-mode-icon">⊞</span> Analysis
@@ -405,6 +408,39 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="editor-detail-pane">
               <div class="editor-pane-title">Selected phase</div>
               <div id="phase-detail"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========= MAP view (interactive process map: notation x level matrix
+             for this single session, same UI as Compare-Sessions but bound to
+             one session's data via viewer/map-controller.js) ========= -->
+        <div class="session-layout-map" id="session-layout-map" style="display:none">
+          <div class="panel panel-wide map-panel">
+            <div class="panel-header">
+              <h3>Process map</h3>
+              <div class="panel-tabs">
+                <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
+                <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
+                <select id="session-map-level" class="map-status-select" title="Level of the map: Activity (application-level, needs taxonomy rules), Step or Phase (built from your annotations, works with no taxonomy).">
+                  <option value="activity">Activity level</option>
+                  <option value="step">Step level</option>
+                  <option value="phase">Phase level</option>
+                </select>
+              </div>
+              <span id="session-map-scope" class="map-scope" style="display:none"></span>
+              <div class="map-zoom" id="session-map-zoom" style="display:none">
+                <span class="map-zoom-pct" id="session-map-zoom-pct">100%</span>
+                <button class="icon-btn xs" id="btn-session-map-zoom-out" title="Zoom out">−</button>
+                <button class="icon-btn xs" id="btn-session-map-zoom-fit" title="Fit to view">fit</button>
+                <button class="icon-btn xs" id="btn-session-map-zoom-in" title="Zoom in">+</button>
+                <span class="map-rare" id="session-hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="session-hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="session-rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
+                <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
+              </div>
+            </div>
+            <div class="map-host">
+              <div class="map-pane active" id="session-map-bpmn-host"></div>
+              <div class="map-pane" id="session-map-dfg-host" style="display:none"></div>
             </div>
           </div>
         </div>
