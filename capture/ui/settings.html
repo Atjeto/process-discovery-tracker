@@ -1,0 +1,346 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Settings</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --bg-3:     #2E2E37;
+    --bg-hover: #3A3A44;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --accent-2: #5A7488;
+    --good:     #6E8A66;
+    --bad:      #885A42;
+    --mono:     ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5;
+  }
+  body { padding: 18px 22px 16px; display: flex; flex-direction: column; gap: 12px; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--fg-3); font-size: 12px; margin-top: 2px; }
+  .scroll {
+    flex: 1; overflow-y: auto; padding-right: 4px; margin-right: -4px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  fieldset {
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 10px 14px 14px; margin: 0;
+  }
+  legend {
+    font-size: 11px; color: var(--fg-3); text-transform: uppercase;
+    letter-spacing: 1.5px; padding: 0 6px;
+  }
+  label.fld { display: block; font-size: 11px; color: var(--fg-3); margin-bottom: 4px; margin-top: 10px; }
+  label.fld:first-of-type { margin-top: 0; }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 7px 9px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 3px;
+    font-family: inherit; font-size: 12px; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .help-hint { font-size: 11px; color: var(--fg-3); margin-top: 6px; line-height: 1.5; }
+  .help-hint code { background: var(--bg-2); padding: 1px 5px; border-radius: 3px;
+    font-family: var(--mono); font-size: 10px; color: var(--fg-2); }
+
+  .check {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0; cursor: pointer; user-select: none;
+  }
+  .check input[type=checkbox] { width: auto; margin: 0; accent-color: var(--accent); }
+  .check span { font-size: 12px; color: var(--fg-2); }
+
+  .hk-row { display: grid; grid-template-columns: 1fr 150px 72px; gap: 8px; align-items: center; margin-top: 8px; }
+  .hk-row:first-of-type { margin-top: 0; }
+  .hk-label { font-size: 11px; color: var(--fg-2); }
+  .hk-input { font-family: var(--mono); font-size: 11px; text-align: center; }
+  .hk-rec { padding: 6px 8px; font-size: 11px; }
+  .hk-rec.recording { border-color: var(--accent); color: var(--accent); }
+
+  .pw-row { position: relative; }
+  .pw-toggle {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: transparent; border: 0; color: var(--fg-3); cursor: pointer;
+    padding: 2px 6px; font-size: 11px;
+  }
+  .pw-toggle:hover { color: var(--accent); }
+
+  .status {
+    padding: 9px 12px; border-radius: 4px; font-size: 12px; line-height: 1.5;
+    background: var(--bg-2); border-left: 3px solid var(--fg-3); min-height: 36px;
+  }
+  .status.good { border-color: var(--good); color: var(--fg); }
+  .status.bad  { border-color: var(--bad);  color: var(--fg); }
+
+  .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .actions .left { margin-right: auto; }
+  button { padding: 8px 16px; background: var(--bg-3); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 3px;
+    font-family: inherit; font-size: 12px; cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+  .restart-note {
+    font-size: 11px; color: var(--fg-3); font-style: italic;
+    padding: 4px 0 0; margin-top: 4px; border-top: 1px dashed var(--border);
+  }
+</style></head><body>
+
+<header>
+  <h1>Settings</h1>
+  <div class="sub">Persistent across sessions. Saved to your user profile, not into the per-session config.</div>
+</header>
+
+<div class="scroll">
+
+<fieldset>
+  <legend>Hotkeys</legend>
+  <div class="hk-row">
+    <span class="hk-label">Start marker / label picker</span>
+    <input type="text" id="hk-start" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-start">Record</button>
+  </div>
+  <div class="hk-row">
+    <span class="hk-label">End marker (close innermost)</span>
+    <input type="text" id="hk-end" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-end">Record</button>
+  </div>
+  <div class="hk-row">
+    <span class="hk-label">Manual screenshot</span>
+    <input type="text" id="hk-shot" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-shot">Record</button>
+  </div>
+  <div class="hk-row">
+    <span class="hk-label">Sync marker (cross-machine)</span>
+    <input type="text" id="hk-sync" class="hk-input" readonly />
+    <button type="button" class="hk-rec" data-target="hk-sync">Record</button>
+  </div>
+  <div class="restart-note">Hotkeys re-register on the next app launch.</div>
+</fieldset>
+
+<fieldset>
+  <legend>Video / OBS</legend>
+  <label class="fld" for="obs-url">WebSocket URL</label>
+  <input type="text" id="obs-url" placeholder="ws://127.0.0.1:4455" />
+  <label class="fld" for="obs-pw">Password</label>
+  <div class="pw-row">
+    <input type="password" id="obs-pw" placeholder="leave blank if OBS auth is disabled" autocomplete="off" />
+    <button type="button" class="pw-toggle" id="obs-pw-toggle">show</button>
+  </div>
+  <div class="help-hint">
+    In OBS: <code>Tools → WebSocket Server Settings → Show Connect Info</code> reveals the password.
+  </div>
+  <label class="fld" for="obs-scene">Scene name</label>
+  <input type="text" id="obs-scene" placeholder="Process Discovery -- Default" />
+  <label class="check"><input type="checkbox" id="obs-required" /><span>Require OBS for new sessions (refuse to start if it isn't reachable)</span></label>
+  <label class="check"><input type="checkbox" id="obs-autoscene" /><span>Auto-create the scene if it doesn't exist yet</span></label>
+</fieldset>
+
+<fieldset>
+  <legend>Screenshots</legend>
+  <label class="check"><input type="checkbox" id="ss-enabled" /><span>Capture screenshots</span></label>
+  <div class="row2">
+    <div>
+      <label class="fld" for="ss-quality">JPEG quality (1–100)</label>
+      <input type="number" id="ss-quality" min="1" max="100" step="1" />
+    </div>
+    <div>
+      <label class="fld" for="ss-display">Display selection</label>
+      <select id="ss-display">
+        <option value="active">Active (follow focused window)</option>
+        <option value="primary">Primary monitor only</option>
+        <option value="all">All connected monitors</option>
+      </select>
+    </div>
+  </div>
+  <label class="check"><input type="checkbox" id="ss-onswitch" /><span>Capture on app switch</span></label>
+  <label class="check"><input type="checkbox" id="ss-onmarker" /><span>Capture on marker fire</span></label>
+  <label class="fld" for="ss-idle">Capture on resume after idle (minutes)</label>
+  <input type="number" id="ss-idle" min="0" max="240" step="1" />
+  <div class="help-hint">After this many minutes of idle, the next activity triggers one screenshot.</div>
+</fieldset>
+
+<fieldset>
+  <legend>Storage &amp; recording limits</legend>
+  <label class="fld" for="store-warn">Warn when total recorded storage exceeds (GB)</label>
+  <input type="number" id="store-warn" min="1" max="10000" step="1" />
+  <div class="help-hint">Toast at the end of a session if recorded sessions on this machine now exceed this size. Use the tray <strong>Storage → Prune old sessions</strong> tool to free space.</div>
+  <label class="fld" for="store-idle">Auto-stop recording after inactivity (minutes)</label>
+  <input type="number" id="store-idle" min="1" max="480" step="1" />
+  <label class="check"><input type="checkbox" id="store-autoend" /><span>Actually auto-stop on long idle (uncheck for 8-hour passive recordings — idle is still logged either way)</span></label>
+</fieldset>
+
+</div>
+
+<div class="status" id="status">Edit a field, then click Save.</div>
+
+<div class="actions">
+  <button id="btn-test" class="left">Test OBS connection</button>
+  <button id="btn-cancel">Cancel</button>
+  <button id="btn-save" class="primary">Save</button>
+</div>
+
+<script>
+const { ipcRenderer } = require("electron");
+const $ = (s) => document.getElementById(s);
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function load() {
+  const s = await ipcRenderer.invoke("pdt:settingsGet") || {};
+  const hk = s.hotkeys || {};
+  $("hk-start").value = hk.start_picker      || "Control+Shift+S";
+  $("hk-end").value   = hk.end_innermost     || "Control+Shift+E";
+  $("hk-shot").value  = hk.manual_screenshot || "Control+Shift+P";
+  $("hk-sync").value  = hk.sync_marker       || "Control+Shift+Y";
+
+  const obs = s.obs || {};
+  $("obs-url").value     = obs.websocket_url      || "ws://127.0.0.1:4455";
+  $("obs-pw").value      = obs.websocket_password || "";
+  $("obs-scene").value   = obs.scene_name         || "";
+  $("obs-required").checked  = !!obs.required;
+  $("obs-autoscene").checked = obs.auto_create_scene !== false;
+
+  const ss = s.screenshots || {};
+  $("ss-enabled").checked  = ss.enabled !== false;
+  $("ss-quality").value    = Number.isFinite(ss.quality) ? ss.quality : 60;
+  $("ss-onswitch").checked = ss.on_app_switch !== false;
+  $("ss-onmarker").checked = ss.on_marker_fire !== false;
+  $("ss-idle").value       = Number.isFinite(ss.on_idle_resume_minutes) ? ss.on_idle_resume_minutes : 5;
+  $("ss-display").value    = ss.display || "active";
+
+  $("store-warn").value    = Number.isFinite(s.storage_warn_gb) ? s.storage_warn_gb : 50;
+  $("store-idle").value    = Number.isFinite(s.auto_end_idle_minutes) ? s.auto_end_idle_minutes : 30;
+  $("store-autoend").checked = s.auto_end_on_idle !== false;
+}
+load();
+
+function build() {
+  const num = (id, fallback) => {
+    const n = parseInt($(id).value, 10);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    hotkeys: {
+      start_picker:      $("hk-start").value.trim() || "Control+Shift+S",
+      end_innermost:     $("hk-end").value.trim()   || "Control+Shift+E",
+      manual_screenshot: $("hk-shot").value.trim()  || "Control+Shift+P",
+      sync_marker:       $("hk-sync").value.trim()  || "Control+Shift+Y",
+    },
+    obs: {
+      websocket_url:      $("obs-url").value.trim()   || null,
+      websocket_password: $("obs-pw").value          || null,
+      scene_name:         $("obs-scene").value.trim() || null,
+      required:           $("obs-required").checked,
+      auto_create_scene:  $("obs-autoscene").checked,
+    },
+    screenshots: {
+      enabled:                 $("ss-enabled").checked,
+      quality:                 num("ss-quality", 60),
+      on_app_switch:           $("ss-onswitch").checked,
+      on_marker_fire:          $("ss-onmarker").checked,
+      on_idle_resume_minutes:  num("ss-idle", 5),
+      display:                 $("ss-display").value || "active",
+    },
+    storage_warn_gb:        num("store-warn", 50),
+    auto_end_idle_minutes:  num("store-idle", 30),
+    auto_end_on_idle:       $("store-autoend").checked,
+  };
+}
+
+$("btn-save").addEventListener("click", async () => {
+  const status = $("status");
+  status.className = "status";
+  status.textContent = "Saving...";
+  const r = await ipcRenderer.invoke("pdt:settingsSave", build());
+  if (r && r.saved) {
+    status.className = "status good";
+    status.innerHTML = "<strong>Saved.</strong> Hotkey changes take effect at next launch; everything else is live now.";
+  } else {
+    status.className = "status bad";
+    status.textContent = "Failed: " + ((r && r.error) || "unknown");
+  }
+});
+
+$("btn-cancel").addEventListener("click", () => window.close());
+
+$("obs-pw-toggle").addEventListener("click", () => {
+  const pw = $("obs-pw");
+  if (pw.type === "password") { pw.type = "text"; $("obs-pw-toggle").textContent = "hide"; }
+  else { pw.type = "password"; $("obs-pw-toggle").textContent = "show"; }
+});
+
+$("btn-test").addEventListener("click", async () => {
+  $("btn-test").disabled = true;
+  const status = $("status");
+  status.className = "status";
+  status.textContent = "Testing OBS connection...";
+  const r = await ipcRenderer.invoke("pdt:obsTest", {
+    url: $("obs-url").value.trim(),
+    password: $("obs-pw").value,
+  });
+  $("btn-test").disabled = false;
+  status.className = "status " + (r.ok ? "good" : "bad");
+  status.innerHTML = (r.ok ? "<strong>OBS reachable.</strong> " : "<strong>OBS not reachable.</strong> ") + escapeHtml(r.message || "");
+});
+
+/* Capture a keyboard shortcut as an Electron accelerator string. */
+function accelFromEvent(e) {
+  if (["Control", "Alt", "Shift", "Meta", "OS"].includes(e.key)) return null;
+  const parts = [];
+  if (e.ctrlKey) parts.push("Control");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.metaKey) parts.push("Super");
+  let key = e.key;
+  const named = {
+    " ": "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left",
+    ArrowRight: "Right", Escape: "Esc",
+  };
+  if (named[key]) key = named[key];
+  else if (key.length === 1) key = key.toUpperCase();
+  parts.push(key);
+  return parts.join("+");
+}
+
+let _recording = false;
+document.querySelectorAll(".hk-rec").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (_recording) return;
+    _recording = true;
+    const orig = btn.textContent;
+    btn.textContent = "Press keys…";
+    btn.classList.add("recording");
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const accel = accelFromEvent(e);
+      if (!accel) return;
+      const inp = $(btn.getAttribute("data-target"));
+      if (inp) inp.value = accel;
+      document.removeEventListener("keydown", onKey, true);
+      btn.textContent = orig;
+      btn.classList.remove("recording");
+      _recording = false;
+    };
+    document.addEventListener("keydown", onKey, true);
+  });
+});
+</script></body></html>
