@@ -4,20 +4,30 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** Last release **v0.18.1** —
-restores the single-session **PDD export** path that v0.18.0 had stranded
-behind Compare-Sessions (new `PDD (.docx)` entry in the Session view's
-Export menu pre-renders the Map level's Flow diagram, then runs the shared
-export with `{singleSession:true}`), makes the **waste-type chips** on the
-Analysis view's Waste-by-step list **clickable filters** (click `motion` or
-`rework` to scope the list to that waste type), and sharpens the **Map
-empty-state messages** to mention the "Build process map" checkbox under
-the ⋯ More menu. v0.18.0 added the in-view Session-view Map level as a 5th
-entry in the level switcher (Flow / Steps / Phases / Map / Analysis),
-retiring the v0.17.0 "View map" one-click; the interactive process-map UI
-lives in `viewer/map-controller.js` and is shared by the Session and
-Compare-Sessions surfaces. The goal is **productization toward a small
-internal rollout, analyst-deliverable first.**
+**Active direction (2026-05) — START HERE:** Last release **v0.19.0** —
+ships **Phase 0** of the ML integration recommendation, two non-ML
+detectors that close the "worker forgot to fire markers, no Process
+Template configured" failure mode. **Suggested markers**
+([ADR-0017](docs/adr/0017-suggested-markers.md),
+`normalization/marker_suggest.py`) — a hand-rolled change-point detector
+surfaces candidate Start/End boundaries on the (idle gap / home-app
+return / transaction-ID typed / app-cluster) signals; they render as
+dashed `.tl-marker.tl-suggested` bars on the Flow timeline plus
+Accept/Dismiss rows in the markers side-panel. **Anchor candidates**
+([ADR-0018](docs/adr/0018-anchor-candidates.md),
+`normalization/anchor_suggest.py`) — a pattern-mining detector ranks
+fields whose typing would naturally segment the session into cases (a
+customer-ID search box, a serial-number entry); the analyst Accepts the
+top candidate to write a session-level `case_anchor_override` that
+`normalize.py` consults before the marker-mode fallback. Both detectors
+honour the suggest-don't-mutate invariant: detection lives in
+`annotations.json`; raw `events.jsonl` is untouched; ~19k randomized
+fuzzer inputs pin the invariants; Ctrl+Z reverts each Accept/Dismiss.
+Phase 0 closes the non-ML surface — Phase 1 (LLM rationale on the PDD
+side) stays deferred. The goal remains **productization toward a small
+internal rollout, analyst-deliverable first.** Prior cycle (v0.18.x):
+in-view Session-view Map level, PDD export from the Session view,
+clickable waste-type chips, sharper Map empty-state messages.
 What landed this cycle: the **PDD export now follows a real Process Definition
 Document structure** (document control, As-Is process with an embedded process
 map, automation assessment, exceptions) instead of piling up pipeline data; a
@@ -57,7 +67,7 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **0.18.1** (SemVer 0.x).
+Current released version **0.19.0** (SemVer 0.x).
 
 ## Layout
 

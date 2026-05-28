@@ -6,6 +6,93 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-05-29
+
+**Phase 0 of the ML integration recommendation — non-ML, classical-statistics
+support for unbracketed sessions.** Two complementary detectors close the
+"worker forgot to fire markers, no Process Template configured" failure
+mode that was the recurring cause of one-big-default-case sessions. Both
+honour the suggest-don't-mutate invariant: detection lives in
+`annotations.json`; the analyst Accepts or Dismisses; raw `events.jsonl`
+is untouched. Zero new pip dependencies.
+
+### Added
+
+- **Suggested markers ([ADR-0017](docs/adr/0017-suggested-markers.md)).**
+  A hand-rolled change-point detector (`normalization/marker_suggest.py`,
+  ~420 lines, pandas + stdlib) walks the uncased stretches of the event
+  stream and surfaces candidate Start/End boundaries on four heuristic
+  signals — idle gap, return to a "home" app, transaction-ID-like value
+  typed, app-cluster boundary (hand-rolled Union-Find over a Markov
+  adjacency graph). Each suggestion gets a stable 12-char blake2b
+  signature over `(marker_type, ts bucketed to 5 s, before_app,
+  after_app, reason)` so dismiss and accept survive re-normalize.
+  Candidates render as **dashed `.tl-marker.tl-suggested` bars** on the
+  Flow timeline (with a new "suggested marker" chip in the legend strip)
+  and as `.marker-row.suggested` rows in the markers side-panel with
+  Accept (`✓`) / Dismiss (`✕`) buttons. Accept queues a real
+  `marker_edits[]` `op:"insert"` with a `derived_from_signature` link
+  for audit; the next normalize sees the link and drops the now-handled
+  suggestion. Dismiss writes the signature to
+  `marker_suggestions_dismissed[]`, suppressed on every future run.
+  Both reversible via Ctrl+Z.
+- **Anchor candidates ([ADR-0018](docs/adr/0018-anchor-candidates.md)).**
+  A pattern-mining detector (`normalization/anchor_suggest.py`, stdlib
+  only) ranks fields that look like case anchors. For each candidate
+  `(automation_id, name)` field, the detector **simulates** what
+  `case_assignment.detect_cases_from_anchors` would produce with that
+  field as the anchor, then scores the resulting case structure on four
+  signals — coverage, balance (1 − CV of case sizes), label diversity,
+  focus (right-sized handful of cases). Top 5 surface as an
+  **"Anchor candidates" panel** above the markers list. Accept writes
+  a session-level `case_anchor_override` into `annotations.json`;
+  `normalize.py` consults it BEFORE the marker-mode fallback so the next
+  Analyze stamps cases by the chosen field. Dismiss writes to
+  `anchor_candidates_dismissed[]`; Clear is the inverse of Accept.
+  Precedence: **Process Template `case_anchor` > session-level override
+  > markers** — the engagement contract still wins when both exist.
+- **`marker_suggestions[]`, `marker_suggestions_dismissed[]`,
+  `anchor_candidates[]`, `anchor_candidates_dismissed[]`, and
+  `case_anchor_override`** as new additive top-level blocks on
+  `annotations.json`; all documented in
+  [shared/SCHEMA.md](shared/SCHEMA.md).
+- **A `derived_from_signature` field on `marker_edits[]` `op:"insert"`
+  entries** for accepted marker suggestions — provides a human-readable
+  audit trail and is what the merge consults on re-normalize to suppress
+  the accepted candidate.
+- **`scripts/preflight.ps1` and `build-distribution.ps1` integrity gates
+  unchanged.** No build-pipeline changes this cycle.
+
+### Tests
+
+- 36 new deterministic regression scenarios (19 marker + 17 anchor)
+  pinning behaviour on hand-built fixtures.
+- 10 seeded property-based fuzzer regimes (5 marker + 5 anchor) covering
+  **~19,000 randomised inputs**. The headline anchor invariant: every
+  emitted `anchor_config` round-trips through the production
+  `case_assignment.detect_cases_from_anchors` and produces ≥ 2 cases —
+  guaranteeing every candidate is actionable. The marker fuzzer pins
+  the four guards (excluded_range, inside existing case, near a real
+  Start, sub-`min_case_interactions` slivers) and the merge's
+  idempotence under dismiss + accept.
+- Full Python suite: **277 passing, 3 skipped** (1 mine for pandas, 2
+  pre-existing). Viewer node:test suite: **194 passing**.
+
+### Verified
+
+End-to-end via the project's `_pdt_verify` Playwright harness against a
+markers-stripped fixture (`sessions/_fixtures/sess-unbracketed-fixture`).
+The unbracketed session correctly produces 6 paired Start/End suggested
+markers (labelled with the typed customer IDs the worker would otherwise
+have to bracket by hand) and 3 anchor candidates with `customer-id-field`
+ranked first at score 0.935 (98.8 % coverage, CV 0.034). Accept the
+anchor → 3 cases stamped via override on the next normalize; Clear
+restores the unbracketed state; Accept a marker → real op:insert in
+`marker_edits[]` with the derived_from_signature link. Zero console
+errors throughout. Control on the cleanly-bracketed
+`sess-2026-0515-1255` produces 0 suggested markers (correct — no missing
+boundaries), 3 anchor candidates (informational), no regression.
+
 ## [0.18.1] - 2026-05-28
 
 Same-day follow-up to v0.18.0 — four real-user issues that surfaced
