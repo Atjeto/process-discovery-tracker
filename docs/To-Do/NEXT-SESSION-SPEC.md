@@ -1,6 +1,6 @@
 # Next-Session Spec — plan of record
 
-**Updated:** 2026-05-28 · **Branch:** `viewer-refactor` · **Status:** plan of record.
+**Updated:** 2026-05-28 · **Branch:** `master` · **Status:** plan of record.
 
 Self-contained hand-off — read top to bottom; assumes no memory of the prior
 session. Earlier specs live in git history and [Archive/](Archive/).
@@ -98,5 +98,5 @@ first**; bar = "as polished as it can be." Landed this cycle:
 - **Validate via the packaged app *and* the §0 harness**, not just green tests —
   UI bugs are invisible to the unit suites.
 - **Commit style:** imperative subject; **no Co-Authored-By trailer**; quote-safe
-  body. Branch `viewer-refactor`; `gh` authed as `Atjeto`. For `.ps1`, scope-set
+  body. Branch `master`; `gh` authed as `Atjeto`. For `.ps1`, scope-set
   `RemoteSigned`, not `-ExecutionPolicy Bypass`.

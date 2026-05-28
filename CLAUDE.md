@@ -160,8 +160,10 @@ UI bugs are invisible to the unit suites — **validate behaviour, don't just wr
 - **Tests:** Node's built-in `node:test` (JS) and `pytest` (Python) — no other frameworks.
 - **ADRs** in `docs/adr/` record architecture decisions; a new "verb" also clears the
   COHERENCE-AUDIT checklist (inverse, legend, control-interaction, real-run).
-- **Git:** repo root is this directory. **Active branch `viewer-refactor`** (`master` is
-  stale). Commits use an imperative subject and **no `Co-Authored-By` trailer**.
+- **Git:** repo root is this directory. **Active branch `master`** (the long-running
+  `viewer-refactor` refactor branch was merged into `master` at v0.17.0 and is
+  preserved on origin at the same commit, but is no longer used for active work).
+  Commits use an imperative subject and **no `Co-Authored-By` trailer**.
 - **Docs:** don't hardcode line/test counts in prose — they drift (the coverage audit
   found several stale ones).
 
