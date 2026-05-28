@@ -39,23 +39,25 @@
   <li><span class="kbd">{{HK_END}}</span> &mdash; End the innermost open marker.</li>
   <li><span class="kbd">{{HK_SHOT}}</span> &mdash; Take a manual screenshot any time.</li>
 </ol>
-<p>For guided walkthroughs (record + name + close in one panel), open the <strong>Operator panel</strong>.</p>
+<p>For guided walkthroughs (record + name + close in one panel), open the <strong>Live session window</strong>.</p>
+<p>First time? Tell us who's recording &mdash; it's stamped onto every session so the analyst can tell sessions apart.</p>
 <div class="row">
-  <button id="btn-operator" class="primary">Show me the operator panel</button>
-  <button id="btn-help">Open Help</button>
-  <button id="btn-close">I know what to do</button>
+  <button id="btn-profile" class="primary">Set up your profile</button>
+  <button id="btn-operator">Open Live session</button>
+  <button id="btn-help">Help</button>
 </div>
-<div class="footer-hint">You can reopen this from the tray &rarr; Help submenu.</div>
+<div class="footer-hint">Reopen this from the tray &rarr; Help. Profile and Settings live at the top level of the tray menu.</div>
 <script>
   const { ipcRenderer } = require("electron");
+  document.getElementById("btn-profile").addEventListener("click", () => {
+    ipcRenderer.invoke("pdt:welcomeAction", "profile");
+    window.close();
+  });
   document.getElementById("btn-operator").addEventListener("click", () => {
     ipcRenderer.invoke("pdt:welcomeAction", "operator");
   });
   document.getElementById("btn-help").addEventListener("click", () => {
     ipcRenderer.invoke("pdt:welcomeAction", "help");
-  });
-  document.getElementById("btn-close").addEventListener("click", () => {
-    window.close();
   });
 </script>
 </body></html>

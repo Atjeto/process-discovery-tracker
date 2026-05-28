@@ -9,6 +9,10 @@ const DEFAULTS = {
   engagement_name: "Default engagement",
   worker: {
     id: process.env.USERNAME || process.env.USER || "unknown",
+    /* Display name -- what the analyst sees in the viewer when more than
+       one operator's recordings land in the same engagement. Defaults to
+       the id; set from the Profile window. */
+    name: null,
     bu: null,
     role: null,
   },

@@ -1,12 +1,17 @@
 /*
- * Session config window. Form for editing the per-session YAML that the
- * tracker loads at startup -- engagement metadata, worker identity,
- * label list for the tray menu, idle threshold, OBS scene.
+ * Session-setup window. Edits the per-session inputs only:
+ *   - engagement_id, engagement_name (project code + plain-English name)
+ *   - process_labels (the quick-pick task list)
  *
- * Save target: `<userData>/quick-config.yaml`. The next launch picks
- * this up automatically if PDT_CONFIG is unset (see main.js startup).
- * Editing takes effect on restart; the current session keeps its
- * loaded config.
+ * Hotkeys, OBS, screenshots and storage / lifecycle limits are no longer
+ * here -- those are persistent and live in the Settings window. Worker
+ * identity lives in the Profile window. Splitting these three concerns
+ * was the headline of the IA polish pass.
+ *
+ * Save target: `<userData>/quick-config.yaml`. The next launch loads it
+ * as the per-session YAML if PDT_CONFIG is unset (see main.js startup).
+ * Editing takes effect on restart; the current session keeps the config
+ * it was started with.
  *
  * IPC contract:
  *   pdt:sessionConfigGet   -> { yaml: string, path: string|null }
@@ -18,23 +23,19 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
-const { DEFAULTS } = require("./config.js");
 
-/* Markup lives in ui/session-config.html, loaded via a data: URL.
-   {{IDLE}} is substituted with the auto-stop default from config.js
-   DEFAULTS, keeping that the single source of truth. */
+/* Markup is served verbatim from ui/session-config.html -- the slimmer
+   form has no runtime-templated slots (the old {{IDLE}} substitution
+   left with the hotkeys / OBS / idle fields). */
 function buildHtml() {
-  return fs
-    .readFileSync(path.join(__dirname, "ui", "session-config.html"), "utf-8")
-    .split("{{IDLE}}")
-    .join(String(DEFAULTS.auto_end_idle_minutes));
+  return fs.readFileSync(path.join(__dirname, "ui", "session-config.html"), "utf-8");
 }
 
 function showSessionConfigWindow(opts) {
   const win = new BrowserWindow({
     width: 580,
-    height: 640,
-    title: "Set up a recording session",
+    height: 520,
+    title: "Session setup",
     resizable: true,
     autoHideMenuBar: true,
     backgroundColor: "#14141A",

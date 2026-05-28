@@ -5,40 +5,98 @@ const path = require("node:path");
 const fs = require("node:fs");
 const readline = require("node:readline");
 
-function resolveRecorderPath(bootLog) {
+function recorderExeCandidates() {
   /* The packaged layout varies by how electron-packager handles
      --extra-resource. The source --extra-resource=recorder/publish ends
      up at resources/publish/ (basename-of-source rule), so check both
      names. */
-  const candidates = [
+  return [
     process.env.PDT_RECORDER_PATH,
     path.join(process.resourcesPath || "", "recorder", "recorder.exe"),
     path.join(process.resourcesPath || "", "publish", "recorder.exe"),
     path.join(__dirname, "recorder", "publish", "recorder.exe"),
   ].filter(Boolean);
-  for (const c of candidates) if (fs.existsSync(c)) return c;
+}
 
+function recorderZipCandidates() {
   /* recorder.exe is too big for a single GitHub-tracked file (>100 MB
      compressed self-contained .NET single-file), so the build pipeline
-     ships it as recorder.zip alongside where the .exe would land. On
-     first run, extract it in place. Win10+ bundles tar.exe with libarchive,
-     which handles .zip without third-party deps. */
-  const zipCandidates = candidates
+     ships it as recorder.zip alongside where the .exe would land. */
+  return recorderExeCandidates()
     .filter((c) => c && c !== process.env.PDT_RECORDER_PATH)
     .map((c) => c.replace(/recorder\.exe$/i, "recorder.zip"));
-  for (const zip of zipCandidates) {
-    if (!fs.existsSync(zip)) continue;
+}
+
+function findRecorderExe() {
+  for (const c of recorderExeCandidates()) if (fs.existsSync(c)) return c;
+  return null;
+}
+
+function findRecorderZip() {
+  for (const z of recorderZipCandidates()) if (fs.existsSync(z)) return z;
+  return null;
+}
+
+function resolveRecorderPath(bootLog) {
+  const exe = findRecorderExe();
+  if (exe) return exe;
+
+  /* Fallback path for callers that didn't run `ensureRecorderExtracted`
+     at app launch: do a one-shot synchronous extract. Normal session
+     starts no longer hit this since main.js extracts during whenReady. */
+  const zip = findRecorderZip();
+  if (zip) {
     const targetDir = path.dirname(zip);
-    if (bootLog) bootLog(`[recorder] extracting ${zip} -> ${targetDir}`);
+    if (bootLog) bootLog(`[recorder] sync-extracting ${zip} -> ${targetDir} (fallback path)`);
     const r = spawnSync("tar.exe", ["-xf", zip, "-C", targetDir], { windowsHide: true });
     if (r.status === 0) {
-      const exe = path.join(targetDir, "recorder.exe");
-      if (fs.existsSync(exe)) return exe;
+      const found = path.join(targetDir, "recorder.exe");
+      if (fs.existsSync(found)) return found;
     }
     if (bootLog) bootLog(`[recorder] tar extract failed (status=${r.status}): ${(r.stderr || "").toString().slice(0, 200)}`);
   }
 
   throw new Error("recorder.exe not found in any candidate path (and no recorder.zip to extract)");
+}
+
+/* Asynchronously ensure recorder.exe is on disk. Returns:
+   - { ok: true, alreadyPresent: true, exe }     — nothing to do
+   - { ok: true, extracted: true, exe }          — extracted from zip
+   - { ok: false, reason: "no-zip" }             — neither exe nor zip
+                                                   (dev box without the
+                                                   built recorder; OK)
+   - { ok: false, reason: "extract-failed", ... } — tar exit != 0
+   Called at app launch from main.js so the first session start never
+   pays the multi-second extraction cost (recorder.zip is >100 MB). */
+function ensureRecorderExtracted({ bootLog, onStart } = {}) {
+  return new Promise((resolve) => {
+    const exe = findRecorderExe();
+    if (exe) { resolve({ ok: true, alreadyPresent: true, exe }); return; }
+    const zip = findRecorderZip();
+    if (!zip) { resolve({ ok: false, reason: "no-zip" }); return; }
+    const targetDir = path.dirname(zip);
+    if (bootLog) bootLog(`[recorder] async-extracting ${zip} -> ${targetDir}`);
+    if (onStart) { try { onStart(); } catch (_) {} }
+    const child = spawn("tar.exe", ["-xf", zip, "-C", targetDir], { windowsHide: true });
+    let stderr = "";
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+    child.on("error", (e) => {
+      if (bootLog) bootLog(`[recorder] tar spawn error: ${e && e.message}`);
+      resolve({ ok: false, reason: "spawn-failed", error: String(e && e.message) });
+    });
+    child.on("exit", (code) => {
+      if (code === 0) {
+        const found = path.join(targetDir, "recorder.exe");
+        if (fs.existsSync(found)) {
+          if (bootLog) bootLog(`[recorder] extracted ${found}`);
+          resolve({ ok: true, extracted: true, exe: found });
+          return;
+        }
+      }
+      if (bootLog) bootLog(`[recorder] async tar extract failed (status=${code}): ${stderr.slice(0, 200)}`);
+      resolve({ ok: false, reason: "extract-failed", status: code, stderr: stderr.slice(0, 200) });
+    });
+  });
 }
 
 function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, onEvent, onWarning, onStats, onExit, bootLog }) {
@@ -130,4 +188,4 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, onEvent, 
   };
 }
 
-module.exports = { spawnRecorder, resolveRecorderPath };
+module.exports = { spawnRecorder, resolveRecorderPath, ensureRecorderExtracted };

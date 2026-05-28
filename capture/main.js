@@ -40,7 +40,8 @@ const {
   setSessionLabel,
 } = require("./session.js");
 const { spawn } = require("node:child_process");
-const { loadConfig, writeConfigSnapshot, validateConfig } = require("./config.js");
+const { loadConfig, writeConfigSnapshot, validateConfig, deepMerge } = require("./config.js");
+const userConfig = require("./user-config.js");
 const {
   connectOBS,
   ensureScene,
@@ -49,11 +50,11 @@ const {
   writeSyncFile,
 } = require("./obs.js");
 const { captureScreenshot } = require("./screenshots.js");
-const { showStatusWindow } = require("./status-window.js");
 const { showHelpWindow } = require("./help-window.js");
 const { showOperatorPanel } = require("./operator-panel.js");
-const { showObsSettingsWindow } = require("./obs-settings-window.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
+const { showSettingsWindow } = require("./settings-window.js");
+const { showProfileWindow } = require("./profile-window.js");
 const welcomeWin = require("./welcome-window.js");
 const hotkeyOverlay = require("./hotkey-overlay.js");
 const { createWindowManager } = require("./window-manager.js");
@@ -285,45 +286,24 @@ function openInViewer(sessionFolder) {
   }
 }
 
-function obsSettingsPath() {
-  return path.join(app.getPath("userData"), "obs-settings.json");
-}
-function loadObsSettings() {
-  try {
-    const p = obsSettingsPath();
-    if (!fs.existsSync(p)) return {};
-    return JSON.parse(fs.readFileSync(p, "utf-8")) || {};
-  } catch (_e) { return {}; }
-}
-function saveObsSettings(s) {
-  try {
-    const p = obsSettingsPath();
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, JSON.stringify(s, null, 2));
-  } catch (e) { bootLog(`obs-settings write failed: ${e && e.message}`); }
-}
 function effectiveObsCfg() {
-  /* Layered config: per-session YAML provides defaults; userData
-     obs-settings.json overrides URL and password since those are
-     workstation-specific and the user can edit them from the tray. */
+  /* The whole `obs` slice (url, password, scene, required, auto-create)
+     is now merged into `config.obs` from the user-config overlay at
+     launch, so the in-memory config is already the truth. The legacy
+     `obs-settings.json` carrier was migrated on first run by
+     user-config.js -- this helper just reads `config.obs` with a sane
+     fallback URL. */
   const base = (config && config.obs) || {};
-  const override = loadObsSettings();
   return {
     ...base,
-    websocket_url: override.url || base.websocket_url || "ws://127.0.0.1:4455",
-    websocket_password: override.password || base.websocket_password || null,
+    websocket_url: base.websocket_url || "ws://127.0.0.1:4455",
+    websocket_password: base.websocket_password || null,
   };
 }
 
-function showObsSetupDialog() {
-  windows.show("obsSettings", () => showObsSettingsWindow());
-}
-
-ipcMain.handle("pdt:obsGet", () => {
-  const eff = effectiveObsCfg();
-  return { url: eff.websocket_url, password: eff.websocket_password || "" };
-});
-
+/* Used by the Settings window's "Test OBS connection" button. The old
+   standalone OBS-setup window is gone -- everything that wrote OBS
+   creds (pdt:obsGet/Save) is subsumed by pdt:settingsGet/Save. */
 ipcMain.handle("pdt:obsTest", async (_e, { url, password }) => {
   try {
     const probe = await connectOBS({ websocketUrl: url, password: password || undefined });
@@ -333,12 +313,6 @@ ipcMain.handle("pdt:obsTest", async (_e, { url, password }) => {
     const msg = (e && e.message) || String(e);
     return { ok: false, message: msg };
   }
-});
-
-ipcMain.handle("pdt:obsSave", (_e, { url, password }) => {
-  saveObsSettings({ url, password });
-  bootLog("obs-settings saved");
-  return { saved: true };
 });
 
 function quickConfigPath() {
@@ -370,7 +344,83 @@ function showSessionConfigDialog() {
   windows.show("sessionConfig", () => showSessionConfigWindow());
 }
 
-async function setupOBS() {
+function showSettingsDialog() {
+  windows.show("settings", () => showSettingsWindow());
+}
+
+function showProfileDialog() {
+  windows.show("profile", () => showProfileWindow());
+}
+
+/* The Profile window edits only the worker identity slice. Identity is
+   stamped onto every session manifest via the config snapshot, so saves
+   take effect for the next session start. */
+ipcMain.handle("pdt:profileGet", () => {
+  const w = (config && config.worker) || {};
+  return { id: w.id || null, name: w.name || null, role: w.role || null, bu: w.bu || null };
+});
+
+ipcMain.handle("pdt:profileSave", (_e, profile) => {
+  try {
+    const clean = {
+      id:   (profile && profile.id)   || null,
+      name: (profile && profile.name) || null,
+      role: (profile && profile.role) || null,
+      bu:   (profile && profile.bu)   || null,
+    };
+    userConfig.saveUserConfig({ worker: clean });
+    config = deepMerge(config, { worker: clean });
+    bootLog(`profile saved: ${clean.id || "(blank)"}`);
+    return { saved: true };
+  } catch (e) {
+    bootLog(`profile save failed: ${e && e.message}`);
+    return { saved: false, error: String(e && e.message) };
+  }
+});
+
+/* The Settings window edits everything persistent across sessions:
+   hotkeys, OBS, screenshots, storage / lifecycle limits. Profile (worker
+   identity) and Session setup (engagement + labels) have their own
+   windows. Returns ONLY the slices Settings owns -- the renderer fills
+   the form from this. */
+ipcMain.handle("pdt:settingsGet", () => {
+  return {
+    hotkeys: (config && config.hotkeys) || {},
+    obs: (config && config.obs) || {},
+    screenshots: (config && config.screenshots) || {},
+    storage_warn_gb: (config && config.storage_warn_gb) || 50,
+    auto_end_idle_minutes: (config && config.auto_end_idle_minutes) || 30,
+    auto_end_on_idle: !(config && config.auto_end_on_idle === false),
+  };
+});
+
+ipcMain.handle("pdt:settingsSave", (_e, partial) => {
+  try {
+    if (!partial || typeof partial !== "object") {
+      return { saved: false, error: "empty settings payload" };
+    }
+    /* Persist to userData/user-config.json AND mirror into the live
+       config so screenshots / obs / storage limits take effect without
+       a relaunch. Hotkeys still require restart (global shortcuts were
+       registered at app launch and aren't re-registered here). */
+    userConfig.saveUserConfig(partial);
+    config = deepMerge(config, partial);
+    bootLog(`settings saved: ${Object.keys(partial).join(",")}`);
+    refreshTray();
+    return { saved: true };
+  } catch (e) {
+    bootLog(`settings save failed: ${e && e.message}`);
+    return { saved: false, error: String(e && e.message) };
+  }
+});
+
+async function setupOBS(opts) {
+  /* `opts.silent` suppresses the per-failure toast -- used by the
+     background best-effort path in startSession(), which owns its own
+     once-only "no OBS" messaging so the operator doesn't get a fresh
+     "OBS not reachable" toast on every session start. Strict mode
+     still surfaces the failure (the operator opted into fail-fast). */
+  const silent = !!(opts && opts.silent);
   const eff = effectiveObsCfg();
   if (!eff.websocket_url) return false;
   try {
@@ -402,21 +452,63 @@ async function setupOBS() {
         `Could not connect to OBS at ${eff.websocket_url}.\n\n` +
           `${e && e.message}\n\n` +
           `Per session config, OBS is required. Launch OBS (with WebSocket enabled) and try again.\n\n` +
-          `If OBS has authentication enabled, set the password via tray menu -> Set up OBS recording.`
+          `If OBS has authentication enabled, set the password via tray menu -> Settings.`
       );
       return false;
     }
-    // Non-strict mode: surface a non-blocking toast instead of failing
-    // silently. This is the most common cause of "I captured a session
-    // and there's no video" -- the user genuinely didn't realise OBS
-    // wasn't connected.
-    notifyUser(
-      "Process Discovery Tracker",
-      `OBS not reachable at ${eff.websocket_url}. Recording will continue without video.`,
-      { urgency: "low" }
-    );
+    if (!silent) {
+      notifyUser(
+        "Process Discovery Tracker",
+        `OBS not reachable at ${eff.websocket_url}. Recording will continue without video.`,
+        { urgency: "low" }
+      );
+    }
     return true; // proceed without OBS in non-strict mode
   }
+}
+
+/* Wire the OBS recording into the live session: kick off the actual
+   recording, write the video-sync record, and stamp the manifest with
+   the resulting paths. Used both from the strict-mode startSession path
+   (where obs was already connected) and from the background best-effort
+   path that connects after the session is already running. Guarded so a
+   late-arriving connect after endSession is a no-op. */
+async function attachObsRecording() {
+  if (!session || !tracker || !obsConnected || !obs) return false;
+  try {
+    const sync = await startRecording(obs);
+    writeSyncFile(path.join(session.sessionFolder, "obs"), sync);
+    const manifestFile = path.join(session.sessionFolder, "manifest.json");
+    const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+    m.obs.recording_path = sync.recording_path;
+    m.obs.recording_start_ts = sync.obs_recording_start_ts;
+    m.obs.offset_ms = sync.offset_ms;
+    fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2));
+    return true;
+  } catch (e) {
+    bootLog(`OBS startRecording failed: ${e && e.message}`);
+    appLogger().error("OBS startRecording failed", e);
+    return false;
+  }
+}
+
+/* Once-only "recording without video" toast for best-effort mode when
+   OBS isn't reachable. The flag lives in userData/obs-hint-shown.json
+   so it persists across launches. Replaces the previous blocking
+   dialog.showMessageBox on the session-start path. */
+function showOnceNoObsHint() {
+  try {
+    const flagPath = path.join(app.getPath("userData"), "obs-hint-shown.json");
+    if (fs.existsSync(flagPath)) return;
+    fs.writeFileSync(flagPath, JSON.stringify({ shown_at: new Date().toISOString() }));
+    notifyUser(
+      "Recording without OBS video",
+      "You'll still get a full timeline, screenshots, and interactions. " +
+      "To add screen recording: install OBS Studio, enable Tools → WebSocket Server, " +
+      "then end this session and start a new one. Settings → Video/OBS in the tray.",
+      { urgency: "low" }
+    );
+  } catch (_e) { /* best-effort */ }
 }
 
 function promptForAppName() {
@@ -541,33 +633,23 @@ async function startSession(opts) {
   if (session) return session;
   fs.mkdirSync(baseDir, { recursive: true });
 
-  /* B2: pre-flight config validation. An unset engagement or an
-     unwritable folder is worth catching before recording, not after.
-     App-prep sessions skip this -- they file under "vocab-prep" by
-     design. The operator can still override and start anyway. */
+  /* B2: pre-flight config sanity check. Non-blocking now -- the start
+     path used to halt with a "Start anyway / Cancel" modal that froze
+     the worker in front of a recording they wanted. Surface problems
+     as a low-urgency toast and proceed; the operator can address them
+     between recordings via tray -> Session setup / Settings. */
   if (!(opts && opts.purpose === "app_prep")) {
     const problems = validateConfig(config, baseDir);
     if (problems.length) {
-      const { response } = await dialog.showMessageBox({
-        type: "warning",
-        title: "Check the recording setup",
-        message: "Some settings may cause problems:",
-        detail: problems.join("\n\n") + "\n\nStart the recording anyway?",
-        buttons: ["Start anyway", "Cancel"],
-        defaultId: 1,
-        cancelId: 1,
-      });
-      if (response === 1) return null;
+      notifyUser("Check the recording setup", problems.join(" "), { urgency: "low" });
     }
   }
 
-  /* OBS preflight before creating the session folder so a failed OBS
-     start in strict mode doesn't litter the filesystem. */
+  /* Strict-mode OBS preflight: connect synchronously so a failed
+     required-OBS doesn't create a half-baked session on disk. */
   if (config.obs && config.obs.required) {
     const ok = await setupOBS();
     if (!ok) return null;
-  } else if (config.obs && config.obs.websocket_url) {
-    await setupOBS(); // best effort
   }
 
   /* App-prep sessions get parked under engagement_id="vocab-prep" so
@@ -583,22 +665,10 @@ async function startSession(opts) {
   });
   writeConfigSnapshot(session.sessionFolder, config);
 
-  /* Start OBS recording after the folder exists so we can write sync.json
-     immediately. */
+  /* If strict mode succeeded above, attach the OBS recording now -- the
+     folder exists, so sync.json + manifest writes can land. */
   if (obsConnected && obs) {
-    try {
-      const sync = await startRecording(obs);
-      writeSyncFile(path.join(session.sessionFolder, "obs"), sync);
-      const manifestFile = path.join(session.sessionFolder, "manifest.json");
-      const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
-      m.obs.recording_path = sync.recording_path;
-      m.obs.recording_start_ts = sync.obs_recording_start_ts;
-      m.obs.offset_ms = sync.offset_ms;
-      fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2));
-    } catch (e) {
-      bootLog(`OBS startRecording failed: ${e && e.message}`);
-      appLogger().error("OBS startRecording failed", e);
-    }
+    await attachObsRecording();
   }
 
   tracker = startTracker({
@@ -610,31 +680,38 @@ async function startSession(opts) {
   });
   if (obsConnected) {
     tracker.fireSystem("obs_recording_start");
-  } else if (config.obs && config.obs.websocket_url && !config.obs.required) {
-    /* One-time info hint: tell the user the session is running without
-       video and how to enable it. The flag lives in a tiny JSON file in
-       userData so it persists across sessions and only fires once. */
-    try {
-      const flagPath = path.join(app.getPath("userData"), "obs-hint-shown.json");
-      if (!fs.existsSync(flagPath)) {
-        fs.writeFileSync(flagPath, JSON.stringify({ shown_at: new Date().toISOString() }));
-        dialog.showMessageBox({
-          type: "info",
-          title: "Recording without OBS video",
-          message: "This session is running without video.",
-          detail:
-            "You'll still get a full timeline, screenshots, and interaction events. " +
-            "If you'd like screen recording too:\n\n" +
-            "1. Install OBS Studio (obsproject.com).\n" +
-            "2. Tools -> WebSocket Server Settings -> tick Enable, leave port 4455.\n" +
-            "3. End this session, then start a new one with OBS running.\n\n" +
-            "You can also click 'Set up OBS recording...' in the tray menu any time.\n\n" +
-            "This hint only shows once.",
-          buttons: ["OK"],
-        });
-      }
-    } catch (_e) { /* best-effort */ }
   }
+
+  /* Best-effort OBS: connect in the background so a missing/idle OBS
+     no longer freezes session start by the WebSocket connect timeout
+     (~5s). The session is already live and recording markers/screens/
+     interactions; if OBS connects, attachObsRecording() wires in the
+     video-sync record and fires obs_recording_start. If it fails, the
+     once-only friendly hint is surfaced as a toast (not a modal). */
+  if (!obsConnected && config.obs && config.obs.websocket_url && !config.obs.required) {
+    const sessionAtStart = session;
+    setupOBS({ silent: true }).then(async () => {
+      if (!session || session !== sessionAtStart || !tracker) {
+        /* User ended the session before OBS finished connecting --
+           disconnect the now-orphaned client so we don't leak it. */
+        if (obsConnected && obs) {
+          try { await obs.disconnect(); } catch (_) {}
+          obs = null;
+          obsConnected = false;
+        }
+        return;
+      }
+      if (obsConnected && obs) {
+        const ok = await attachObsRecording();
+        if (ok) {
+          try { tracker.fireSystem("obs_recording_start"); } catch (_) {}
+        }
+      } else {
+        showOnceNoObsHint();
+      }
+    }).catch((e) => bootLog(`background OBS connect failed: ${e && e.message}`));
+  }
+
   lastTrackedApp = null;
   screenshotFailureNotified = false;
   lastStatus = tracker.getStatus();
@@ -1166,10 +1243,6 @@ ipcMain.handle("pdt:fireSync", (_e, syncId) => {
   return id;
 });
 
-function toggleStatusWindow() {
-  windows.toggle("status", () => showStatusWindow());
-}
-
 function showHelp() {
   windows.show("help", () => showHelpWindow());
 }
@@ -1276,6 +1349,17 @@ function buildMenu() {
     });
   }
   items.push({ type: "separator" });
+  /* When idle, surface the per-session setup right next to "Start
+     capture session" -- it's where the operator is looking when they're
+     about to record. Hidden mid-session (edits only apply at next
+     launch, so showing it would just confuse). Persistent Settings and
+     Profile live further down and are reachable in either state. */
+  if (!tracker) {
+    items.push({
+      label: "Session setup...",
+      click: () => showSessionConfigDialog(),
+    });
+  }
   // P2.13: group everything beyond the muscle-memory action items
   // (Fire Start / End / Pause / End session) into named submenus so
   // the flat tray fits even at small DPI.
@@ -1287,10 +1371,6 @@ function buildMenu() {
       {
         label: windows.isOpen("operator") ? "Hide Live Session window" : "Show Live Session window",
         click: () => toggleOperatorPanel(),
-      },
-      {
-        label: windows.isOpen("status") ? "Hide status window (legacy)" : "Show status window (legacy)",
-        click: () => toggleStatusWindow(),
       },
       {
         label: hotkeyOverlay.isVisible() ? "Hide hotkey overlay" : "Show hotkey overlay",
@@ -1347,22 +1427,27 @@ function buildMenu() {
   }
   items.push({ label: "Storage", submenu: storageItems });
 
-  // === Help & config submenu ===
+  /* Top-level Settings + Profile -- the IA polish moved these out of
+     the old "Help & config" submenu so they're discoverable in one
+     click. Settings covers everything persistent (hotkeys, OBS,
+     screenshots, storage limits); Profile is just worker identity. */
+  items.push({ type: "separator" });
+  items.push({ label: "Settings...", click: () => showSettingsDialog() });
+  items.push({ label: "Profile...",  click: () => showProfileDialog() });
+
+  // === Help submenu (config no longer lives here) ===
   const helpItems = [
     { label: "How to use...", click: () => showHelp() },
     { label: "Show welcome screen", click: () => welcomeWin.showWelcomeWindow({ hotkeys: config && config.hotkeys }) },
     { type: "separator" },
-    { label: "Set up OBS recording...", click: () => showObsSetupDialog() },
-    { label: "Set up a recording session...", click: () => showSessionConfigDialog() },
-    { type: "separator" },
     {
       label: configSourcePath
-        ? `Config: ${path.basename(configSourcePath)}`
-        : "Config: defaults (set PDT_CONFIG to override)",
+        ? `Per-session YAML: ${path.basename(configSourcePath)}`
+        : "Per-session YAML: defaults (set PDT_CONFIG to override)",
       enabled: false,
     },
   ];
-  items.push({ label: "Help & config", submenu: helpItems });
+  items.push({ label: "Help", submenu: helpItems });
 
   items.push({ type: "separator" });
   items.push({
@@ -1397,9 +1482,18 @@ app.whenReady().then(() => {
     if (fs.existsSync(qc)) cfgPath = qc;
   }
   const loaded = loadConfig(cfgPath);
-  config = loaded.config;
+  /* User-edited Profile + Settings live as a partial-config overlay at
+     `userData/user-config.json`; merge it ON TOP of the YAML so the UI
+     always wins for the fields it owns (worker identity, hotkeys, OBS,
+     screenshots, storage limits). Migrates the legacy obs-settings.json
+     on first load -- see user-config.js. */
+  const overlay = userConfig.loadUserConfig();
+  config = deepMerge(loaded.config, overlay || {});
   configSourcePath = loaded.sourcePath;
-  bootLog(`config loaded from ${configSourcePath || "(defaults)"}`);
+  bootLog(
+    `config loaded from ${configSourcePath || "(defaults)"} ` +
+    `+ overlay (${Object.keys(overlay || {}).join(",") || "empty"})`
+  );
 
   const orphans = findOrphanedSessions(baseDir);
   recoveredCount = orphans.length;
@@ -1485,7 +1579,7 @@ app.whenReady().then(() => {
     const list = failed.map((h) => `${h[0]} (${h[1]})`).join(", ");
     notifyUser(
       "Hotkey conflict",
-      `Couldn't register: ${list}. Another app is using these shortcuts. Use the tray menu, or change the bindings via the "Set up a recording session" window.`,
+      `Couldn't register: ${list}. Another app is using these shortcuts. Use the tray menu, or change the bindings in tray → Settings → Hotkeys.`,
       { urgency: "low" }
     );
   }
@@ -1500,6 +1594,50 @@ app.whenReady().then(() => {
   if (hotkeyOverlay.shouldRestoreOnLaunch()) {
     hotkeyOverlay.showOverlay(config.hotkeys);
   }
+
+  /* First-run recorder extraction. recorder.zip ships at >100 MB and was
+     historically extracted synchronously the first time startSession()
+     ran -- a multi-second freeze on first capture. Do it async here at
+     launch so the first session start is instant. Quiet no-op when the
+     exe is already present or the zip isn't shipped (dev box). */
+  if (config.interactions && config.interactions.enabled) {
+    const { ensureRecorderExtracted } = require("./recorder.js");
+    let notif = null;
+    ensureRecorderExtracted({
+      bootLog,
+      onStart: () => {
+        try {
+          const { Notification } = require("electron");
+          if (Notification.isSupported()) {
+            notif = new Notification({
+              title: "Preparing interaction recorder",
+              body: "Unpacking the recorder sidecar on first launch -- this takes a few seconds.",
+              silent: true,
+            });
+            notif.show();
+          }
+        } catch (_) {}
+      },
+    }).then((r) => {
+      if (notif) { try { notif.close(); } catch (_) {} }
+      if (r.ok && r.extracted) {
+        notifyUser(
+          "Process Discovery Tracker",
+          "Interaction recorder ready.",
+          { urgency: "low" }
+        );
+      } else if (!r.ok && r.reason !== "no-zip") {
+        notifyUser(
+          "Interaction recorder",
+          "Could not unpack recorder.exe. Markers and screenshots will still work; interactions will not be captured. See boot.log.",
+          { urgency: "normal" }
+        );
+      }
+      /* reason === "no-zip" on a dev box is fine -- a hand-built
+         recorder/publish/recorder.exe is already on disk, or the user
+         doesn't have one yet. */
+    }).catch((e) => bootLog(`recorder extraction failed: ${e && e.message}`));
+  }
 }).catch((e) => bootLog(`whenReady failed: ${(e && e.stack) || e}`));
 
 // Welcome-window CTA dispatcher
@@ -1508,6 +1646,8 @@ ipcMain.handle("pdt:welcomeAction", (_e, action) => {
     toggleOperatorPanel();   // existing helper that handles show/hide + IPC
   } else if (action === "help") {
     showHelp();
+  } else if (action === "profile") {
+    showProfileDialog();
   }
 });
 

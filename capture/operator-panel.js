@@ -12,9 +12,9 @@
  *   - end session (inline confirm, no window.confirm)
  *
  * Previously the counter grid + recent events feed lived in a
- * separate status-window.js; that window is now deprecated -- the
- * tray still exposes it for backward compatibility but new affordances
- * land here. See ../docs/UX-CHANGES.md for the merge rationale.
+ * separate status-window.js; that legacy window was removed in the
+ * v0.16 polish cycle -- this is now the only live-session surface.
+ * See ../docs/UX-CHANGES.md for the merge rationale.
  *
  * Renderer talks to main.js via the same IPC channels as before
  * (pdt:fireStart, pdt:fireEnd, pdt:status, pdt:fireSync,

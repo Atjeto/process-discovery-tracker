@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Set up a recording session</title>
+<title>Session setup</title>
 <style>
   :root {
     color-scheme: dark;
@@ -14,7 +14,6 @@
     --fg-2:     #A8A69E;
     --fg-3:     #807E78;
     --accent:   #6E8A66;
-    --accent-2: #5A7488;
     --good:     #6E8A66;
     --bad:      #885A42;
   }
@@ -25,27 +24,41 @@
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
     font-size: 13px; line-height: 1.5;
   }
-  body { padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; }
-  h1 { font-size: 15px; margin: 0; font-weight: 600; }
-  .sub { color: var(--fg-3); font-size: 12px; }
-  fieldset { border: 1px solid var(--border); border-radius: 5px; padding: 10px 12px 12px; margin: 0; }
-  legend { font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 1.5px; padding: 0 6px; }
-  label { display: block; font-size: 11px; color: var(--fg-3); margin-bottom: 4px; margin-top: 8px; }
-  label:first-child { margin-top: 0; }
-  input[type=text], input[type=number], textarea {
+  body { padding: 20px 24px 18px; display: flex; flex-direction: column; gap: 14px; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--fg-3); font-size: 12px; margin-top: 2px; }
+  .nav-hint { font-size: 11px; color: var(--fg-3); }
+  .nav-hint code { background: var(--bg-2); padding: 1px 5px; border-radius: 3px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 10px; color: var(--fg-2); }
+
+  fieldset {
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 12px 14px 14px; margin: 0;
+  }
+  legend {
+    font-size: 11px; color: var(--fg-3); text-transform: uppercase;
+    letter-spacing: 1.5px; padding: 0 6px;
+  }
+  label.fld { display: block; font-size: 11px; color: var(--fg-3); margin-bottom: 4px; margin-top: 10px; }
+  label.fld:first-of-type { margin-top: 0; }
+  input[type=text], textarea {
     width: 100%; padding: 7px 9px;
     background: var(--bg-2); border: 1px solid var(--border);
     color: var(--fg); border-radius: 3px;
     font-family: inherit; font-size: 12px; outline: none;
   }
-  textarea { min-height: 90px; resize: vertical; font-family: ui-monospace, Consolas, monospace; }
+  textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, Consolas, monospace; }
   input:focus, textarea:focus { border-color: var(--accent); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .help-hint { font-size: 11px; color: var(--fg-3); margin-top: 6px; }
-  .status { padding: 8px 10px; border-radius: 4px; font-size: 12px;
-    background: var(--bg-2); border-left: 3px solid var(--fg-3); min-height: 32px; }
+  .help-hint { font-size: 11px; color: var(--fg-3); margin-top: 6px; line-height: 1.5; }
+
+  .status {
+    padding: 9px 12px; border-radius: 4px; font-size: 12px; line-height: 1.5;
+    background: var(--bg-2); border-left: 3px solid var(--fg-3); min-height: 36px;
+  }
   .status.good { border-color: var(--good); color: var(--fg); }
   .status.bad  { border-color: var(--bad);  color: var(--fg); }
+
   .actions { display: flex; gap: 8px; justify-content: flex-end; }
   button { padding: 8px 16px; background: var(--bg-3); color: var(--fg);
     border: 1px solid var(--border); border-radius: 3px;
@@ -53,47 +66,30 @@
   button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
   button.primary:hover { filter: brightness(1.1); }
-  .hk-row { display: grid; grid-template-columns: 1fr 140px 72px; gap: 8px; align-items: center; margin-top: 8px; }
-  .hk-row:first-of-type { margin-top: 0; }
-  .hk-label { font-size: 11px; color: var(--fg-2); }
-  .hk-input { font-family: ui-monospace, Consolas, monospace; font-size: 11px; text-align: center; }
-  .hk-rec { padding: 6px 8px; font-size: 11px; }
-  .hk-rec.recording { border-color: var(--accent); color: var(--accent); }
 </style></head><body>
 
-<div>
-  <h1>Set up a recording session</h1>
-  <div class="sub">These settings apply the next time you start the tracker. You can leave any field blank.</div>
+<header>
+  <h1>Session setup</h1>
+  <div class="sub">Per-session inputs. Stamps every recording so you can find it later.</div>
+</header>
+
+<div class="nav-hint">
+  Looking for hotkeys, OBS or screenshot options? Those are persistent and live in <strong>Settings</strong> (tray menu).
+  Worker identity is in <strong>Profile</strong>.
 </div>
 
 <fieldset>
-  <legend>What are you recording?</legend>
+  <legend>Engagement</legend>
   <div class="row2">
     <div>
-      <label for="eng-id">Project code</label>
+      <label class="fld" for="eng-id">Project code</label>
       <input type="text" id="eng-id" placeholder="e.g. ENG-2026-001" />
-      <div class="help-hint">Your team's short code for this piece of work. Used to group recordings.</div>
+      <div class="help-hint">Your team's short code for this piece of work. Used as the folder name on disk.</div>
     </div>
     <div>
-      <label for="eng-name">Project name</label>
+      <label class="fld" for="eng-name">Project name</label>
       <input type="text" id="eng-name" placeholder="e.g. Customer onboarding review" />
-      <div class="help-hint">A plain-English name so you recognise it later.</div>
-    </div>
-  </div>
-</fieldset>
-
-<fieldset>
-  <legend>Who is being recorded?</legend>
-  <div class="row2">
-    <div>
-      <label for="worker-id">Person</label>
-      <input type="text" id="worker-id" placeholder="Leave blank to use the Windows login" />
-      <div class="help-hint">The person doing the work in this recording. Blank = the current Windows username.</div>
-    </div>
-    <div>
-      <label for="worker-role">Their role</label>
-      <input type="text" id="worker-role" placeholder="e.g. Customer service rep" />
-      <div class="help-hint">Optional. Helps the analyst read the recording.</div>
+      <div class="help-hint">Plain-English label so you recognise it later.</div>
     </div>
   </div>
 </fieldset>
@@ -101,51 +97,10 @@
 <fieldset>
   <legend>Task shortcuts</legend>
   <textarea id="labels" placeholder="Order entry&#10;Refund flow&#10;Identity check"></textarea>
-  <div class="help-hint">One task name per line. These show up as quick-pick buttons in the tray menu so the worker can label what they're doing without typing.</div>
+  <div class="help-hint">One task name per line. Surface as quick-pick buttons in the live session window and tray menu, so the worker labels what they're doing without typing.</div>
 </fieldset>
 
-<fieldset>
-  <legend>Keyboard shortcuts</legend>
-  <div class="hk-row">
-    <span class="hk-label">Start marker / label picker</span>
-    <input type="text" id="hk-start" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-start">Record</button>
-  </div>
-  <div class="hk-row">
-    <span class="hk-label">End marker (close innermost)</span>
-    <input type="text" id="hk-end" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-end">Record</button>
-  </div>
-  <div class="hk-row">
-    <span class="hk-label">Manual screenshot</span>
-    <input type="text" id="hk-shot" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-shot">Record</button>
-  </div>
-  <div class="hk-row">
-    <span class="hk-label">Sync marker</span>
-    <input type="text" id="hk-sync" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-sync">Record</button>
-  </div>
-  <div class="help-hint">Click Record, then press the key combination (e.g. Ctrl+Shift+S). Changes take effect when you restart the tracker.</div>
-</fieldset>
-
-<fieldset>
-  <legend>Recording behaviour</legend>
-  <div class="row2">
-    <div>
-      <label for="idle">Auto-stop after inactivity</label>
-      <input type="number" id="idle" min="1" max="240" step="1" placeholder="{{IDLE}}" />
-      <div class="help-hint">Minutes of no keyboard / mouse activity before the recording stops on its own. Default {{IDLE}}.</div>
-    </div>
-    <div>
-      <label for="obs-scene">OBS scene</label>
-      <input type="text" id="obs-scene" placeholder="Process Discovery -- Default" />
-      <div class="help-hint">Only matters if you record video with OBS. Leave blank otherwise.</div>
-    </div>
-  </div>
-</fieldset>
-
-<div class="status" id="status">Fill in what you need, then click Save. Blank fields are fine.</div>
+<div class="status" id="status">Edit fields, then click Save. Takes effect at the next app launch.</div>
 
 <div class="actions">
   <button id="btn-cancel">Cancel</button>
@@ -157,25 +112,21 @@ const { ipcRenderer } = require("electron");
 const yaml = require("js-yaml");
 const $ = (s) => document.getElementById(s);
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 async function load() {
   const cur = await ipcRenderer.invoke("pdt:sessionConfigGet");
   let parsed = {};
   try { parsed = yaml.load(cur.yaml || "") || {}; }
   catch (_) { parsed = {}; }
-  $("eng-id").value      = parsed.engagement_id   || "";
-  $("eng-name").value    = parsed.engagement_name || "";
-  $("worker-id").value   = (parsed.worker && parsed.worker.id) || "";
-  $("worker-role").value = (parsed.worker && parsed.worker.role) || "";
-  $("idle").value        = parsed.auto_end_idle_minutes || {{IDLE}};
-  $("obs-scene").value   = (parsed.obs && parsed.obs.scene_name) || "";
+  $("eng-id").value   = parsed.engagement_id   || "";
+  $("eng-name").value = parsed.engagement_name || "";
   const labels = Array.isArray(parsed.process_labels)
     ? parsed.process_labels.join("\n") : "";
   $("labels").value = labels;
-  const hk = parsed.hotkeys || {};
-  $("hk-start").value = hk.start_picker      || "Control+Shift+S";
-  $("hk-end").value   = hk.end_innermost     || "Control+Shift+E";
-  $("hk-shot").value  = hk.manual_screenshot || "Control+Shift+P";
-  $("hk-sync").value  = hk.sync_marker       || "Control+Shift+Y";
 }
 load();
 
@@ -183,27 +134,11 @@ function buildYaml() {
   const labels = $("labels").value.split("\n")
     .map((s) => s.replace(/#.*$/, "").trim())
     .filter(Boolean);
-  const idle = parseInt($("idle").value, 10);
   const obj = {
-    engagement_id:        $("eng-id").value.trim()   || undefined,
-    engagement_name:      $("eng-name").value.trim() || undefined,
-    worker: {
-      id:   $("worker-id").value.trim()   || undefined,
-      role: $("worker-role").value.trim() || undefined,
-    },
-    auto_end_idle_minutes: Number.isFinite(idle) ? idle : undefined,
-    process_labels:        labels.length ? labels : undefined,
-    obs: $("obs-scene").value.trim()
-      ? { scene_name: $("obs-scene").value.trim() }
-      : undefined,
-    hotkeys: {
-      start_picker:      $("hk-start").value.trim() || undefined,
-      end_innermost:     $("hk-end").value.trim()   || undefined,
-      manual_screenshot: $("hk-shot").value.trim()  || undefined,
-      sync_marker:       $("hk-sync").value.trim()  || undefined,
-    },
+    engagement_id:   $("eng-id").value.trim()   || undefined,
+    engagement_name: $("eng-name").value.trim() || undefined,
+    process_labels:  labels.length ? labels : undefined,
   };
-  /* Trim undefined fields so the YAML doesn't carry nulls everywhere */
   function prune(o) {
     if (o === null || typeof o !== "object") return o;
     if (Array.isArray(o)) return o.map(prune);
@@ -228,60 +163,11 @@ $("btn-save").addEventListener("click", async () => {
   if (r && r.saved) {
     status.className = "status good";
     status.innerHTML = "<strong>Saved to</strong> " + escapeHtml(r.path) +
-      ".<br>Restart the tracker to load the new config.";
+      ". Takes effect at next launch.";
   } else {
     status.className = "status bad";
     status.textContent = "Failed: " + ((r && r.error) || "unknown");
   }
 });
 $("btn-cancel").addEventListener("click", () => window.close());
-
-/* D2: capture a keyboard shortcut as an Electron accelerator string
-   (https://www.electronjs.org/docs/latest/api/accelerator). */
-function accelFromEvent(e) {
-  if (["Control", "Alt", "Shift", "Meta", "OS"].includes(e.key)) return null;
-  const parts = [];
-  if (e.ctrlKey) parts.push("Control");
-  if (e.altKey) parts.push("Alt");
-  if (e.shiftKey) parts.push("Shift");
-  if (e.metaKey) parts.push("Super");
-  let key = e.key;
-  const named = {
-    " ": "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left",
-    ArrowRight: "Right", Escape: "Esc",
-  };
-  if (named[key]) key = named[key];
-  else if (key.length === 1) key = key.toUpperCase();
-  parts.push(key);
-  return parts.join("+");
-}
-
-let _recording = false;
-document.querySelectorAll(".hk-rec").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    if (_recording) return;
-    _recording = true;
-    const orig = btn.textContent;
-    btn.textContent = "Press keys…";
-    btn.classList.add("recording");
-    const onKey = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const accel = accelFromEvent(e);
-      if (!accel) return;                 // a lone modifier -- keep waiting
-      const inp = $(btn.getAttribute("data-target"));
-      if (inp) inp.value = accel;
-      document.removeEventListener("keydown", onKey, true);
-      btn.textContent = orig;
-      btn.classList.remove("recording");
-      _recording = false;
-    };
-    document.addEventListener("keydown", onKey, true);
-  });
-});
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 </script></body></html>
