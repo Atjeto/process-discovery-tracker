@@ -153,6 +153,17 @@ const MODE_VIEWPORT = {
     getZoom: () => 1, setZoom: () => {},
     render: renderAnalysisLevel,
   },
+  // v0.18.1: the Map level also has no timeline / scroll / zoom of its own
+  // (the BPMN + DFG viewers have their own zoom controls inside the map
+  // panel). Crucially, MUST appear here -- _viewportApplyToMode early-returns
+  // if `MODE_VIEWPORT[mode]` is undefined, which silently SKIPS the render
+  // every time the user switches TO Map from another level. That was the
+  // v0.18.0 "Map opens but is empty" failure mode.
+  map: {
+    scrollSel: "#session-layout-map",
+    getZoom: () => 1, setZoom: () => {},
+    render: renderMapLevel,
+  },
 };
 function _viewportSnapshotForMode(mode) {
   const m = MODE_VIEWPORT[mode];
@@ -316,14 +327,7 @@ function renderMapLevel() {
   // hosts are hidden anyway. We early-return mainly to skip BPMN's async render
   // when nothing's on screen.
   if (State.getLevel() !== "map") return;
-  // v0.18.1: defer to next animation frame so the browser has applied the
-  // display:"" change from applyLevel BEFORE bpmn-js / cytoscape measure the
-  // host's clientWidth / clientHeight. Without this, the render-on-first-
-  // activation path can hand bpmn-js a 0-dimension canvas, producing the
-  // "Map opens but is empty space" failure mode the v0.18.0 user hit.
-  requestAnimationFrame(() => {
-    _ensureSessionMapCtrl().render();
-  });
+  _ensureSessionMapCtrl().render();
 }
 
 const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };

@@ -13,21 +13,34 @@ immediately after the in-view Map level shipped.
 
 ### Fixed
 
-- **Session-view Map level no longer renders into a 0-dimension canvas
-  on first activation.** The Map level's BPMN host became visible
-  synchronously inside `applyLevel("map")`, then `renderMapLevel` called
-  the controller's render immediately — but bpmn-js measures the host's
-  `clientWidth` / `clientHeight` during its render pass, and the browser
-  may not yet have applied the `display:""` change, so it captured 0×0
-  and produced an invisible diagram. `renderMapLevel` now defers the
-  controller render to the next `requestAnimationFrame` so the layout
-  pass completes first. The BPMN render also re-fits after a short
-  delay, so a Map level switched to from a previously-hidden state still
-  lands the diagram in the visible canvas. The controller no longer
-  swallows BPMN render exceptions silently — a failure now shows a
-  diagnostic fallback in the host (file path + error message + a hint to
-  re-run Analyze with "Build process map" checked) instead of an empty
-  area that looked like "the map is broken".
+- **Session-view Map level was silently never rendering.** v0.18.0 added
+  `"map"` to `LEVEL_RENDERERS` and to the layouts that `applyLevel` swaps
+  in/out, but forgot to add it to `MODE_VIEWPORT` — the table the
+  viewport-transfer code uses to carry zoom + scroll across mode switches.
+  When the user clicked Map from any other level (Flow / Steps / Phases
+  / Analysis), `applyLevel("map")` called `_viewportApplyToMode("map",
+  snap)` which early-returned on `if (!m) return` because
+  `MODE_VIEWPORT["map"]` was undefined — **silently skipping
+  `m.render()` and therefore skipping `renderMapLevel` entirely**. The
+  panel chrome (notation tabs, level dropdown) was visible because
+  `applyLevel` had already swapped `display:""` on the layout, but the
+  BPMN / DFG host stayed empty forever — no diagram, not even the
+  empty-state message (the controller's render was the thing that would
+  have set it). On the very first session load (`--session=<path>` from
+  launch) the code path is different and the controller renders, which
+  is why the harness never caught this and v0.18.0 shipped broken. Fix:
+  add a `MODE_VIEWPORT.map` entry with no-op zoom accessors (analogous
+  to Analysis) and `render: renderMapLevel`. Verified by reproducing the
+  empty host in the harness (`bpmnHostInnerHTMLStart: ""`,
+  `zoomWrapDisplay: "none"`), then confirming the host now contains a
+  populated `<div class="bjs-container">` with the activity-BPMN
+  diagram after the fix.
+- **The map-controller's BPMN render no longer swallows exceptions
+  silently.** Defensive cleanup: any future bpmn-js failure now logs
+  to console and shows a fallback in the host with the file path,
+  error message, and a hint to re-run Analyze with "Build process map"
+  checked. Turns "Map is mysteriously empty" into "Map says exactly
+  why" if any future failure mode does land an exception.
 
 ### Added
 
