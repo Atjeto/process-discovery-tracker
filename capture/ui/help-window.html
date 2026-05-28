@@ -67,10 +67,10 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 
 <h2>Running a session</h2>
 <ol>
-  <li>(Optional) Launch OBS with WebSocket enabled. <em>Tools → WebSocket Server Settings → Enable</em>, port 4455.</li>
-  <li>(Optional) Set <code>PDT_CONFIG=path\to\your-config.yaml</code> before launch. See <code>sample-config.yaml</code> for the schema.</li>
+  <li>(Optional) Launch OBS with WebSocket enabled. <em>Tools → WebSocket Server Settings → Enable</em>, port 4455. (You can also configure this from tray → Settings → Video/OBS.)</li>
+  <li>(Optional) Tray → <em>Session setup…</em> to set the project code and task shortcuts for what you're about to record.</li>
   <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey — the session auto-starts.</li>
-  <li>Open the live status window from the tray to see what's being captured.</li>
+  <li>Open the <strong>Live Session window</strong> from the tray to see what's being captured (or click the tray icon during a session).</li>
   <li>Fire markers as the SME walks through processes. Tray → <em>End capture session</em> when done.</li>
 </ol>
 
@@ -90,7 +90,7 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <p>If a Start marker is already open when you fire a new one, the picker shows a banner naming what will close. Default behaviour is <strong>close-then-open</strong> — closes the open marker, then opens the new one as a sibling. Press <span class="kbd">Shift</span>+<span class="kbd">Enter</span> instead of plain Enter to nest the new marker inside the current one for one fire, or click the <em>Nest under current</em> button. The tray gains <em>Fire Start (nest under current)</em> and <em>Quick start (nested)</em> sub-menus when a marker is open if you prefer to opt into nesting from the tray.</p>
 
 <h2>Live Session window</h2>
-<p>The tray entry <em>Show Live Session window</em> opens a 460×720 always-on-top window that merges everything the old operator panel and status window did:</p>
+<p>The tray entry <em>Show Live Session window</em> opens a 460×720 always-on-top window that is the single live-session surface:</p>
 <ul>
   <li><strong>Start capture session</strong> button — shown while idle. Click it to begin a session; the marker controls below dim until a session is running. (Firing a marker also auto-starts a session.)</li>
   <li>Recording indicator + session timer</li>
@@ -102,10 +102,9 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li>Sync-marker fire button (with optional shared sync ID)</li>
   <li>Inline end-session confirm — no browser dialog</li>
 </ul>
-<p>The legacy status window remains in the tray as <em>Show status window (legacy)</em> for one release as a fallback in case the merged window has a regression. New work lands in the Live Session window.</p>
 
 <h2>First-run welcome</h2>
-<p>The first launch on a machine pops a 560×540 welcome window with three buttons: open the Live Session window, open this help, dismiss. After dismissal it never re-pops automatically. Reopenable any time via tray → Help → <em>Show welcome window</em>.</p>
+<p>The first launch on a machine pops a welcome window with three buttons: <em>Set up your profile</em> (recommended first step), open the Live Session window, open this help. After dismissal it never re-pops automatically. Reopenable any time via tray → Help → <em>Show welcome screen</em>.</p>
 
 <h2>Multi-monitor screenshot</h2>
 <p>By default, screenshots follow the foreground display rather than always capturing the primary monitor. Override via <code>screenshots.display</code> in your config:</p>
@@ -123,27 +122,19 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li><strong>Manual screenshot</strong> — capture regardless of trigger config</li>
   <li><strong>Pause / Resume polling</strong></li>
   <li><strong>End capture session</strong> — close out, finalize manifest, stop OBS recording</li>
-  <li><strong>Show / Hide status window</strong> — toggle the live dashboard</li>
-  <li><strong>Open sessions folder</strong> — jump to <code>%APPDATA%\process-discovery-tracker\sessions\</code></li>
+  <li><strong>Live status → Show / Hide Live Session window</strong> — toggle the always-on-top dashboard</li>
+  <li><strong>Storage → Open sessions folder</strong> — jump to <code>%APPDATA%\process-discovery-tracker\sessions\</code></li>
+  <li><strong>Settings…</strong> — hotkeys, OBS, screenshots, storage limits (persists across sessions)</li>
+  <li><strong>Profile…</strong> — worker identity stamped onto every recording</li>
 </ul>
 
-<h2>Status window</h2>
-<p>Optional live dashboard. Shows:</p>
+<h2>Configuration</h2>
+<p>Configuration is split into three places, by lifetime:</p>
 <ul>
-  <li>Recording dot — red while OBS is recording, yellow when paused, grey when idle</li>
-  <li>Session timer — wall-clock elapsed since session start</li>
-  <li>Current app + title</li>
-  <li>Open marker stack with nesting indentation</li>
-  <li>Event / marker / screenshot counters</li>
-  <li>Last 8 events (live feed)</li>
-  <li>Quick actions: Pause/Resume, Manual screenshot, End session</li>
-</ul>
-
-<h2>Per-session config</h2>
-<p>Two ways to configure a session:</p>
-<ul>
-  <li><strong>Set up a recording session</strong> (recommended) — tray → <em>Set up a recording session…</em> opens a plain-language form for the project code/name, who's being recorded, task shortcuts, auto-stop timeout, and OBS scene. Every field is optional. The next launch picks it up automatically.</li>
-  <li><strong>Manual YAML</strong> — set <code>PDT_CONFIG=path\to\config.yaml</code> before launch for the full schema (process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, engagement metadata). See <code>capture/sample-config.yaml</code> in the repo.</li>
+  <li><strong>Settings</strong> (tray → <em>Settings…</em>) — persistent across sessions: hotkeys, OBS, screenshots, storage / recording limits. Stored at <code>userData/user-config.json</code> and merged over any per-session YAML.</li>
+  <li><strong>Profile</strong> (tray → <em>Profile…</em>) — worker identity (id, display name, role, team). Stamped onto every recording's manifest.</li>
+  <li><strong>Session setup</strong> (tray → <em>Session setup…</em>) — per-engagement: project code/name and task shortcuts. Stored at <code>userData/quick-config.yaml</code>.</li>
+  <li><strong>Manual YAML</strong> (advanced) — set <code>PDT_CONFIG=path\to\config.yaml</code> before launch for the full schema (process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, engagement metadata). See <code>capture/sample-config.yaml</code> in the repo. Settings / Profile still layer on top.</li>
 </ul>
 
 <h2>OBS recording: first-time setup (5 minutes)</h2>
@@ -174,8 +165,8 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li><code>obs/sync.json</code> — clock-sync data (if OBS was connected)</li>
 </ul>
 
-<h2>Operator panel and sync markers</h2>
-<p>The <em>Show operator panel</em> tray item opens a larger always-on-top window for the analyst during a walkthrough. Type a marker label, hit Enter — implicitly starts the session and fires the Start marker in one step. Also exposes the sync-marker button.</p>
+<h2>Sync markers</h2>
+<p>The <em>Show Live Session window</em> tray item opens a larger always-on-top window for the analyst during a walkthrough. Type a marker label, hit Enter — implicitly starts the session and fires the Start marker in one step. Also exposes the sync-marker button.</p>
 <p>The <strong>sync marker</strong> (default <span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">Y</span>) emits a system event with a shared <code>sync_id</code>. Use it at agreed moments during multi-machine shift reviews so the analyst can correlate timelines across workers later. Without a custom ID, one is auto-generated; pass a known ID when you want two machines to share it (the operator panel prompts for one).</p>
 
 <h2>Citrix and remote desktop notes</h2>

@@ -23,9 +23,16 @@ The tray icon appears; right-click for the menu.
 - `Ctrl+Shift+P` — take a manual screenshot.
 - `Ctrl+Shift+Y` — fire a cross-machine sync marker.
 
-Set `PDT_CONFIG=path\to\config.yaml` before launch for a per-session config, or
-use the tray's "Set up a recording session" window (it writes `quick-config.yaml`
-for the next launch). See `sample-config.yaml` for the schema.
+Configuration is split by lifetime:
+
+- **Settings…** (top-level tray entry) — persistent across sessions:
+  Hotkeys / Video-OBS / Screenshots / Storage limits. Stored at
+  `userData/user-config.json`.
+- **Profile…** (top-level tray entry) — worker identity (id, name, role, team).
+- **Session setup…** (tray, idle only) — per-engagement project code + task
+  shortcuts. Stored at `userData/quick-config.yaml`.
+- Or set `PDT_CONFIG=path\to\config.yaml` before launch for the full schema
+  (see `sample-config.yaml`); Settings + Profile still layer on top.
 
 ## Output
 
@@ -60,12 +67,13 @@ cross-cutting modules and the window HTML out of it.
 | `session.js` | Session-folder creation, `manifest.json` I/O, orphan recovery. |
 | `events.js` | Event-envelope factories. |
 | `config.js` | Loads + deep-merges per-session YAML over `DEFAULTS` (the single source of defaults). |
-| `recorder.js` | Spawns / supervises the C# `recorder.exe` sidecar; liveness watchdog. |
+| `user-config.js` | Persistent per-user overlay at `userData/user-config.json` (Profile + Settings); merged on top of the YAML at launch. |
+| `recorder.js` | Spawns / supervises the C# `recorder.exe` sidecar; liveness watchdog; first-run async zip extractor. |
 | `obs.js` | OBS WebSocket integration. |
 | `screenshots.js` | Desktop capture via `desktopCapturer`. |
 | `log.js` | Per-session `capture.log` writer. |
-| `*-window.js`, `operator-panel.js` | The tray windows; each loads its markup from `ui/<name>.html`. |
-| `ui/` | The seven window HTML files. |
+| `settings-window.js` / `profile-window.js` / `session-config-window.js` / `welcome-window.js` / `help-window.js` / `operator-panel.js` / `hotkey-overlay.js` | The tray windows; each loads its markup from `ui/<name>.html`. |
+| `ui/` | The window HTML files. |
 | `test/` | `node:test` unit suite (config, events, session, tracker, window-manager). |
 | `recorder/` | The C# UI-Automation recorder sidecar — see [`docs/interaction-recorder.md`](../docs/interaction-recorder.md). |
 
