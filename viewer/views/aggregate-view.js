@@ -36,265 +36,38 @@ let onDrillToSession = async () => {};
 
 /* ============ Map sub-tabs ======================================== */
 
-function setMapZoomVisible(visible) {
-  const wrap = document.getElementById("map-zoom");
-  if (wrap) wrap.style.display = visible ? "" : "none";
-}
-function setMapZoomPct(z) {
-  const el = document.getElementById("map-zoom-pct");
-  if (el) el.textContent = Math.round((z || 1) * 100) + "%";
-}
+/* The interactive process map (notation × level × drill scope × rare-path
+   cutoff) lives in map-controller.js so the Session view's "Map" level can
+   mount the same UI over its single-session data source. aggregate-view's job
+   here is to be the DATA SOURCE -- pulling DFG / BPMN-path / variants /
+   conformance from the cached multi-session aggregate state (_lastActivityDfg,
+   _lastFilteredForMap, _lastVariantsForMap, _lastConformance, _dfgConformance
+   / _lastConfActive set up in renderAggregate). */
 
-/* The active map viewer, derived from which host is visible -- both the
-   BPMN and DFG viewers expose the same zoomIn/zoomOut/fit/getZoom API. */
-function activeMapViewer() {
-  const bpmnHost = $("#bpmn-host");
-  const bpmnVisible = bpmnHost && bpmnHost.style.display !== "none";
-  return bpmnVisible ? PdtBpmn : PdtDfg;
-}
+const { createMapController } = require("../map-controller.js");
+
+let _mapCtrl = null;   // lazily created in initAggregateView
 
 /* P0.2: notation (Process diagram = BPMN, Flow diagram = DFG) and level
-   (Activity / Step / Phase) are fully ORTHOGONAL. Each cell of the matrix has
-   its own artifact:
+   (Activity / Step / Phase) are fully orthogonal. The matrix:
      BPMN × activity   -> process_map.bpmn (PM4Py inductive miner)
      BPMN × step/phase -> process_map_step|phase.bpmn (observed flow mined from
                           the annotations -- normalization/bpmn_observed.py)
-     DFG  × activity   -> the merged taxonomy DFG
-     DFG  × step/phase -> buildAnnotationDfg (the annotation DFG)
-   The level selector changes level and re-renders the CURRENT notation; the
-   notation tabs change notation and re-render the CURRENT level. Neither resets
-   the other. renderMap() draws the active cell -- the single entry point. */
-function showMapNotation(which) {
-  $$(".panel-tab").forEach((t) => t.classList.toggle("active", t.dataset.map === which));
-  $("#bpmn-host").style.display = which === "bpmn" ? "" : "none";
-  $("#dfg-host").style.display = which === "dfg" ? "" : "none";
-  setMapZoomVisible(true);
-  // The rare-path toggle only applies to the live DFG; applyMapLevel re-shows
-  // it for the Flow diagram.
-  if (which === "bpmn") {
-    const rareWrap = document.getElementById("hide-rare-wrap");
-    if (rareWrap) rareWrap.style.display = "none";
-  }
-}
+     DFG  × activity   -> the merged taxonomy DFG (_lastActivityDfg)
+     DFG  × step/phase -> buildAnnotationDfg (live from the annotations) */
 
-/* Keep the level dropdown's shown value in step with _mapLevel. */
-function syncMapLevelControl() {
-  const lvl = document.getElementById("map-level");
-  if (lvl) lvl.value = _mapLevel;
-}
-
-/* Session-folder BPMN filename for a level, and the first loaded session that
-   has it (the BPMN pane shows one representative session, as the activity map
-   always has). */
-function mapBpmnFile(level) {
+/* Session-folder BPMN filename for a level. */
+function _bpmnFileForLevel(level) {
   return level === "step" ? "process_map_step.bpmn"
        : level === "phase" ? "process_map_phase.bpmn"
        : "process_map.bpmn";
 }
-function firstSessionWithMap(level) {
-  const fname = mapBpmnFile(level);
+/* First loaded session that has a BPMN at the given level -- the BPMN pane
+   shows one representative session, as the activity map always has. */
+function _firstSessionWithBpmn(level) {
+  const fname = _bpmnFileForLevel(level);
   return (_lastFilteredForMap || []).find((s) =>
     s && s.sessionFolder && fs.existsSync(path.join(s.sessionFolder, fname))) || null;
-}
-
-/* Render the Process diagram (BPMN) at the current level. */
-/* Drill-down navigation: clicking a node on the phase or step map descends one
-   level (phase -> step -> activity), so the hierarchy is navigable by clicking,
-   not only via the level dropdown. Activity is the bottom -- there a click
-   drills to the source session (drillToActivity) instead.
-
-   Scoping: on the live Flow diagram (DFG) the descent is FILTERED to the
-   clicked node's children -- a phase drills to just its steps, a step to just
-   the activity labels seen inside it. The Process diagram (BPMN) is a pre-mined
-   static file that cannot be re-filtered live, so there a click descends
-   UNFILTERED (consistent with the BPMN only collapsing on a re-analyze). */
-function drillDownLevel(label) {
-  const next = _mapLevel === "phase" ? "step" : _mapLevel === "step" ? "activity" : null;
-  if (!next) return;
-  const canScope = _mapNotation === "dfg" && !!label;
-  if (canScope && _mapLevel === "phase") {
-    _mapDrillFilter = { level: "step", parent: label, phaseName: label };
-  } else if (canScope && _mapLevel === "step") {
-    _mapDrillFilter = { level: "activity", parent: label, labels: _activityLabelsForStep(label) };
-  } else {
-    _mapDrillFilter = null;
-  }
-  _mapLevel = next;
-  syncMapLevelControl();
-  renderMap();
-  setTimeout(() => {
-    const v = activeMapViewer();
-    if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
-  }, 50);
-}
-
-function renderBpmnAtLevel() {
-  const host = $("#bpmn-host");
-  if (!host || !PdtBpmn) return;
-  const sess = firstSessionWithMap(_mapLevel);
-  if (!sess) {
-    host.innerHTML = '<div class="map-empty-inline">' +
-      (_mapLevel === "activity"
-        ? 'No process map yet — click "Analyze all sessions".'
-        : 'No ' + _mapLevel + '-level Process diagram yet — Analyze a session that has ' +
-          (_mapLevel === "phase" ? "phases" : "steps") +
-          ' (it is mined from your annotations).') + '</div>';
-    return;
-  }
-  // Drill-down maps node labels to activity stats, so it applies at the
-  // activity level only (step/phase nodes are step/phase names).
-  const opts = {};
-  if (_mapLevel === "activity") opts.onNodeClick = (label) => drillToActivity(label);
-  else opts.onNodeClick = (label) => drillDownLevel(label);   // descend a level (BPMN: unfiltered)
-  PdtBpmn.render(host, path.join(sess.sessionFolder, mapBpmnFile(_mapLevel)), opts)
-    .then(() => setMapZoomPct(PdtBpmn.getZoom())).catch(() => {});
-  setMapZoomVisible(true);
-}
-
-/* Draw the active (notation × level) cell -- the single entry point. */
-function renderMap() {
-  showMapNotation(_mapNotation);
-  renderMapScopeChip();
-  if (_mapNotation === "bpmn") renderBpmnAtLevel();
-  else applyMapLevel();
-}
-
-function wireMapTabs() {
-  $$(".panel-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      // Notation changes IN PLACE -- the level is preserved.
-      _mapNotation = tab.dataset.map === "dfg" ? "dfg" : "bpmn";
-      // The BPMN is a static mined file and cannot honour a live drill scope,
-      // so switching to it clears any Flow-diagram scope.
-      if (_mapNotation === "bpmn") _mapDrillFilter = null;
-      renderMap();
-      setTimeout(() => {
-        const v = activeMapViewer();
-        if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
-      }, 50);
-    });
-  });
-
-  // The zoom/fit controls (named btn-dfg-* historically) serve whichever
-  // map tab is active, routed through activeMapViewer().
-  const btnZoomIn = document.getElementById("btn-dfg-zoom-in");
-  const btnZoomOut = document.getElementById("btn-dfg-zoom-out");
-  const btnZoomFit = document.getElementById("btn-dfg-zoom-fit");
-  if (btnZoomIn) btnZoomIn.addEventListener("click", () => {
-    const v = activeMapViewer();
-    if (v) { v.zoomIn(); setMapZoomPct(v.getZoom()); }
-  });
-  if (btnZoomOut) btnZoomOut.addEventListener("click", () => {
-    const v = activeMapViewer();
-    if (v) { v.zoomOut(); setMapZoomPct(v.getZoom()); }
-  });
-  if (btnZoomFit) btnZoomFit.addEventListener("click", () => {
-    const v = activeMapViewer();
-    if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
-  });
-
-  // C1b / P0.2: the level selector changes level IN PLACE on the current
-  // notation -- it never swaps notation. Every (notation × level) cell renders
-  // (the step/phase Process diagram is the observed-flow BPMN).
-  const lvl = document.getElementById("map-level");
-  if (lvl) {
-    lvl.addEventListener("change", () => {
-      _mapLevel = lvl.value || "activity";
-      _mapDrillFilter = null;   // an explicit level pick shows the whole level
-      renderMap();
-      setTimeout(() => {
-        const v = activeMapViewer();
-        if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
-      }, 50);
-    });
-  }
-
-  // ADR-0013 #5: rare-path frequency slider (Flow diagram only). Drag to raise
-  // the minimum edge frequency shown; 1 = every path. Re-renders live as it
-  // drags, without an auto-fit so the user's pan/zoom is preserved.
-  const rareRange = document.getElementById("rng-rare");
-  if (rareRange) {
-    rareRange.addEventListener("input", (e) => {
-      _rarePathCutoff = Math.max(1, parseInt(e.target.value, 10) || 1);
-      applyMapLevel();
-    });
-  }
-}
-
-/* C1b: render the process map (Flow diagram) at the selected depth without a
-   full aggregate re-run. Activity uses the taxonomy-classified DFG; step and
-   phase build one from the analyst's annotations, so the map is meaningful
-   even when the taxonomy is empty. */
-function applyMapLevel() {
-  if (!PdtDfg) return;
-  const host = $("#dfg-host");
-  if (!host) return;
-  let dfg;
-  const opts = { onZoomChange: (z) => setMapZoomPct(z) };
-  if (_mapLevel === "activity") {
-    dfg = _lastActivityDfg;
-    // Drill scope: a step node was clicked, so show only the activity labels
-    // produced inside that step.
-    if (_mapDrillFilter && _mapDrillFilter.level === "activity") {
-      dfg = _filterDfgToLabels(_lastActivityDfg, _mapDrillFilter.labels);
-    }
-    opts.onNodeClick = (label, ev) => drillToActivity(label, ev);
-    opts.variants = _lastVariantsForMap;
-    // H3: re-apply the conformance overlay across re-renders (set up in
-    // renderAggregate when a template-matched DFG is available).
-    if (_lastConfActive && _lastConformance) opts.conformance = _lastConformance.status;
-  } else {
-    // Drill scope: a phase node was clicked, so build the step map from only
-    // that phase's steps.
-    const phaseFilter = (_mapDrillFilter && _mapDrillFilter.level === "step")
-      ? { phaseName: _mapDrillFilter.phaseName } : null;
-    dfg = buildAnnotationDfg(_lastFilteredForMap || [], _mapLevel, phaseFilter);
-    opts.onNodeClick = (label) => drillDownLevel(label);   // descend a level, scoped
-  }
-  // ADR-0013 #5: rare-path frequency slider (Flow diagram only). The slider's
-  // range tracks this map's busiest edge; a cutoff of 1 shows every path, higher
-  // hides paths seen fewer times. dropRareEdges clamps the cutoff to maxFreq, so
-  // the map is never blanked. The slider hides on the BPMN (showMapNotation) and
-  // when the map has no edges; it disables when there is no spread to thin.
-  const rareWrap = document.getElementById("hide-rare-wrap");
-  const rareLbl = document.getElementById("hide-rare-lbl");
-  const rareRange = document.getElementById("rng-rare");
-  const baseHasEdges = !!(dfg && dfg.edges && dfg.edges.length);
-  const maxFreq = baseHasEdges ? Math.max(...dfg.edges.map((e) => e.frequency || 1)) : 1;
-  const canThin = baseHasEdges && maxFreq > 1 && dfg.edges.length >= 3;
-  let hiddenRare = 0;
-  let appliedCutoff = 1;
-  if (canThin && _rarePathCutoff > 1) {
-    const r = dropRareEdges(dfg, _rarePathCutoff);
-    dfg = r.dfg;
-    hiddenRare = r.hidden;
-    appliedCutoff = r.cutoff;
-  }
-  if (rareWrap) rareWrap.style.display = baseHasEdges ? "" : "none";
-  if (rareRange) {
-    rareRange.max = String(Math.max(1, maxFreq));
-    rareRange.value = String(Math.min(_rarePathCutoff, Math.max(1, maxFreq)));
-    rareRange.disabled = !canThin;
-  }
-  if (rareLbl) {
-    rareLbl.textContent = appliedCutoff > 1
-      ? ("≥ " + appliedCutoff + "×  (" + hiddenRare + " hidden)")
-      : "All paths";
-  }
-  if (dfg && dfg.edges && dfg.edges.length) {
-    PdtDfg.render(host, dfg, opts);
-    setMapZoomVisible(true);
-  } else if (_mapDrillFilter) {
-    host.innerHTML = '<div class="map-empty-inline">No sub-flow inside “' +
-      escapeHtml(_mapDrillFilter.parent) + '” — it has a single ' +
-      (_mapLevel === "activity" ? "activity" : "step") +
-      '. Use “show all” to see the whole level.</div>';
-  } else {
-    host.innerHTML = '<div class="map-empty-inline">No ' + _mapLevel + '-level flow yet'
-      + (_mapLevel === "activity"
-          ? ' — classify your apps in the taxonomy'
-          : ' — add steps or phases to this session') + '</div>';
-  }
 }
 
 /* Activity labels produced inside every step whose value-free label matches
@@ -325,45 +98,72 @@ function _activityLabelsForStep(stepLabel) {
   return labels;
 }
 
-/* Restrict a DFG to a set of node labels -- keep an edge only when BOTH
-   endpoints survive, with the matching start/end markers. */
-function _filterDfgToLabels(dfg, labels) {
-  if (!dfg || !labels) return dfg;
-  const keep = (n) => labels.has(n);
-  const filtObj = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => keep(k)));
+/* Data source the controller calls on every render: returns the
+   { dfg, variants, conformance, bpmnPath, emptyMessage } for the requested
+   (notation × level × scope) cell. Pulls from the cached aggregate state set
+   up by renderAggregate. */
+function _aggregateMapDataSource({ notation, level, scope }) {
+  if (notation === "bpmn") {
+    const sess = _firstSessionWithBpmn(level);
+    if (!sess) {
+      return {
+        emptyMessage: (level === "activity"
+          ? 'No process map yet — click "Analyze all sessions".'
+          : 'No ' + level + '-level Process diagram yet — Analyze a session that has ' +
+            (level === "phase" ? "phases" : "steps") +
+            ' (it is mined from your annotations).'),
+      };
+    }
+    return { bpmnPath: path.join(sess.sessionFolder, _bpmnFileForLevel(level)) };
+  }
+  // notation === "dfg"
+  if (level === "activity") {
+    return {
+      dfg: _lastActivityDfg,
+      variants: _lastVariantsForMap,
+      conformance: (_lastConfActive && _lastConformance) ? _lastConformance.status : null,
+      emptyMessage: 'No activity-level flow yet — classify your apps in the taxonomy',
+    };
+  }
+  // step / phase: drill scope is the parent phase (when descending phase->step).
+  const phaseFilter = (scope && scope.level === "step")
+    ? { phaseName: scope.phaseName } : null;
   return {
-    edges: (dfg.edges || []).filter((e) => keep(e.source) && keep(e.target)),
-    start_activities: filtObj(dfg.start_activities),
-    end_activities: filtObj(dfg.end_activities),
+    dfg: buildAnnotationDfg(_lastFilteredForMap || [], level, phaseFilter),
+    emptyMessage: 'No ' + level + '-level flow yet — add steps or phases to this session',
   };
 }
 
-/* Show/hide the drill-down scope chip in the map header. It names the parent
-   the Flow diagram is scoped to and offers a one-click "show all" -- the
-   inverse of drilling in. Only the live DFG can be scoped, so the chip is
-   hidden on the BPMN. */
-function renderMapScopeChip() {
-  const chip = document.getElementById("map-scope");
-  if (!chip) return;
-  if (!_mapDrillFilter || _mapNotation !== "dfg") {
-    chip.style.display = "none";
-    chip.innerHTML = "";
-    return;
-  }
-  chip.style.display = "";
-  chip.innerHTML =
-    '<span class="map-scope-lbl" title="The Flow diagram is scoped to this parent\'s children">scoped: ' +
-    escapeHtml(_mapDrillFilter.parent) + '</span>' +
-    '<button type="button" class="map-scope-clear" title="Show the whole level">show all ✕</button>';
-  const btn = chip.querySelector(".map-scope-clear");
-  if (btn) btn.addEventListener("click", () => {
-    _mapDrillFilter = null;
-    renderMap();
-    setTimeout(() => {
-      const v = activeMapViewer();
-      if (v) { v.fit(); setMapZoomPct(v.getZoom()); }
-    }, 50);
+/* Lazily create the controller once the aggregate DOM exists (called from
+   initAggregateView). Held at module scope so renderAggregate and the
+   conformance toggle can call .render() / .setState() on it. */
+function _initMapController() {
+  if (_mapCtrl) return _mapCtrl;
+  _mapCtrl = createMapController({
+    hostBpmn: document.getElementById("bpmn-host"),
+    hostDfg: document.getElementById("dfg-host"),
+    notationTabs: Array.from(document.querySelectorAll(".aggregate-grid .panel-tab[data-map]")),
+    levelSelect: document.getElementById("map-level"),
+    scopeChip: document.getElementById("map-scope"),
+    zoomControls: {
+      in: document.getElementById("btn-dfg-zoom-in"),
+      out: document.getElementById("btn-dfg-zoom-out"),
+      fit: document.getElementById("btn-dfg-zoom-fit"),
+      wrap: document.getElementById("map-zoom"),
+      pct: document.getElementById("map-zoom-pct"),
+    },
+    rareSlider: {
+      wrap: document.getElementById("hide-rare-wrap"),
+      range: document.getElementById("rng-rare"),
+      label: document.getElementById("hide-rare-lbl"),
+    },
+    dataSource: _aggregateMapDataSource,
+    activityLabelsForStep: _activityLabelsForStep,
+    onActivityNodeClick: (label, ev) => drillToActivity(label, ev),
+    initialNotation: "bpmn",
+    initialLevel: "activity",
   });
+  return _mapCtrl;
 }
 
 /* ============ Multi-session loading =============================== */
@@ -399,26 +199,15 @@ let _groupByWorker = false;        // H1
 let _variantMode = "activity";     // H10: "activity" | "step"
 let _sxsAlign = "time";            // H2: "time" | "case"
 let _dfgConformance = false;       // H3
-/* C1b/P0.2: process-map axes + cached render inputs. _mapNotation (bpmn|dfg) ×
-   _mapLevel (activity|step|phase) select the matrix cell; the cached inputs let
-   the selectors re-render any cell without a full aggregate re-run. */
-let _mapNotation = "bpmn";
-let _mapLevel = "activity";
+/* Cached map data: set by renderAggregate; read by the controller's
+   dataSource (_aggregateMapDataSource) on every render. The map's own view
+   state (notation × level × drill-scope × rare-path cutoff) lives inside the
+   controller -- see map-controller.js. */
 let _lastFilteredForMap = [];
 let _lastVariantsForMap = null;
 let _lastActivityDfg = null;
 let _lastConformance = null;
 let _lastConfActive = false;
-/* Drill-down scope: when set, the Flow diagram is restricted to one parent
-   node's children -- { level, parent, phaseName? | labels? }. Null = whole
-   level. Cleared by an explicit level pick, a notation switch to BPMN, and a
-   data refresh. */
-let _mapDrillFilter = null;
-/* Flow-diagram readability: a frequency CUTOFF (ADR-0013 #5) -- keep only edges
-   seen >= _rarePathCutoff times, so a long, dense recording shows its dominant
-   flow. 1 = show every path. A view setting, DFG-only; the slider's range tracks
-   the current map's busiest edge. */
-let _rarePathCutoff = 1;
 
 function wireAggregateControls() {
   $("#btn-open-multi-hero").addEventListener("click", openMultiFlow);
@@ -902,7 +691,6 @@ function renderAggregate() {
   _lastActivityDfg = null;
   _lastConformance = null;
   _lastConfActive = false;
-  _mapDrillFilter = null;   // a data refresh resets any drill-down scope
 
   // H3: hide the conformance toggle + legend by default; re-enabled below when
   // a template-matched activity DFG is available.
@@ -919,7 +707,8 @@ function renderAggregate() {
       end_activities: Object.fromEntries(ends),
     };
     // H3: conformance overlay -- offered when any session matched a Process
-    // Template. Stored so applyMapLevel re-applies it across re-renders.
+    // Template. Stored so the controller's dataSource re-applies it across
+    // re-renders.
     _lastConformance = computeConformance(filtered, _lastActivityDfg);
     _lastConfActive = !!(_lastConformance && _dfgConformance);
     if (_confWrap) _confWrap.style.display = _lastConformance ? "" : "none";
@@ -931,14 +720,17 @@ function renderAggregate() {
   // Default cell: if the activity Flow diagram is empty (e.g. no taxonomy) but
   // the analyst has steps/phases, fall back to that level on the Flow diagram
   // so the map is not blank. Only overrides an untouched (activity) selection.
-  if (_mapLevel === "activity" && !(_lastActivityDfg && _lastActivityDfg.edges.length)) {
+  // Always clears any drill-down scope (a data refresh invalidates it).
+  const ctrl = _initMapController();
+  const ctrlState = ctrl.getState();
+  const updates = { scope: null };
+  if (ctrlState.level === "activity" && !(_lastActivityDfg && _lastActivityDfg.edges.length)) {
     const anyPhases = filtered.some((s) => ((s.annotations || {}).phases || []).length);
     const anySteps = filtered.some((s) => ((s.annotations || {}).steps || []).some((st) => st.state !== "hidden"));
-    if (anyPhases) { _mapLevel = "phase"; _mapNotation = "dfg"; }
-    else if (anySteps) { _mapLevel = "step"; _mapNotation = "dfg"; }
+    if (anyPhases) { updates.level = "phase"; updates.notation = "dfg"; }
+    else if (anySteps) { updates.level = "step"; updates.notation = "dfg"; }
   }
-  syncMapLevelControl();
-  renderMap();
+  ctrl.setState(updates);   // re-renders the (notation × level × scope) cell
 
   // Export buttons
   const firstWithBpmn = filtered.find((s) =>
@@ -1599,10 +1391,10 @@ function findFirstActivityByLabel(session, activityLabel) {
    injected by renderer.js. Call once at boot. */
 function initAggregateView(opts) {
   onDrillToSession = (opts && opts.onDrillToSession) || (async () => {});
-  wireMapTabs();
   wireAggregateControls();
-  // P0.2: BPMN is the default tab, so the level dropdown starts at Activity.
-  syncMapLevelControl();
+  // Build the map controller now that the aggregate DOM is in the document
+  // (so its querySelector lookups resolve). Defaults: BPMN tab, Activity level.
+  _initMapController();
 }
 
 module.exports = { initAggregateView, renderAggregate, openMultiFlow, loadAggregateFolders, filteredAggregateSessions };
