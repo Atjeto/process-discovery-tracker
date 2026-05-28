@@ -8,8 +8,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.18.1] - 2026-05-28
 
-Same-day follow-up to v0.18.0 — three real-user issues that surfaced
+Same-day follow-up to v0.18.0 — four real-user issues that surfaced
 immediately after the in-view Map level shipped.
+
+### Fixed
+
+- **Session-view Map level no longer renders into a 0-dimension canvas
+  on first activation.** The Map level's BPMN host became visible
+  synchronously inside `applyLevel("map")`, then `renderMapLevel` called
+  the controller's render immediately — but bpmn-js measures the host's
+  `clientWidth` / `clientHeight` during its render pass, and the browser
+  may not yet have applied the `display:""` change, so it captured 0×0
+  and produced an invisible diagram. `renderMapLevel` now defers the
+  controller render to the next `requestAnimationFrame` so the layout
+  pass completes first. The BPMN render also re-fits after a short
+  delay, so a Map level switched to from a previously-hidden state still
+  lands the diagram in the visible canvas. The controller no longer
+  swallows BPMN render exceptions silently — a failure now shows a
+  diagnostic fallback in the host (file path + error message + a hint to
+  re-run Analyze with "Build process map" checked) instead of an empty
+  area that looked like "the map is broken".
 
 ### Added
 

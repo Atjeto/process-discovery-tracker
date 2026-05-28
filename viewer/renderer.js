@@ -316,7 +316,14 @@ function renderMapLevel() {
   // hosts are hidden anyway. We early-return mainly to skip BPMN's async render
   // when nothing's on screen.
   if (State.getLevel() !== "map") return;
-  _ensureSessionMapCtrl().render();
+  // v0.18.1: defer to next animation frame so the browser has applied the
+  // display:"" change from applyLevel BEFORE bpmn-js / cytoscape measure the
+  // host's clientWidth / clientHeight. Without this, the render-on-first-
+  // activation path can hand bpmn-js a 0-dimension canvas, producing the
+  // "Map opens but is empty space" failure mode the v0.18.0 user hit.
+  requestAnimationFrame(() => {
+    _ensureSessionMapCtrl().render();
+  });
 }
 
 const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };
