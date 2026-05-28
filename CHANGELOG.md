@@ -6,6 +6,48 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-05-28
+
+Same-day follow-up to v0.18.0 — three real-user issues that surfaced
+immediately after the in-view Map level shipped.
+
+### Added
+
+- **PDD export from the Session view.** v0.18.0 added the in-view Map level
+  but left the **PDD (`.docx`) export Compare-Sessions-only** — to generate
+  a PDD for a single session the analyst had to switch tabs, re-pick the
+  folder, and re-load it as a one-element aggregate. The Session view's
+  Export menu now has a `PDD (.docx)` entry that pre-renders the Map
+  level's Flow diagram (so the PDD's As-Is process map section embeds
+  *this* session's diagram, not whatever was last on Compare-Sessions),
+  then runs the shared export path with a new `{singleSession:true}`
+  option that forces the target to `State.getSession()` instead of
+  defaulting to aggregate sessions when those are also loaded.
+- **Clickable waste-type chips on the Analysis view's Waste-by-step list.**
+  The `motion` / `rework` / etc. chips on each row were `<span>`s that
+  looked like buttons but only bubbled the click up to the row's "adjust
+  business-required time" handler — surprising and unhelpful. They are now
+  `<button class="waste-tag-btn">` with their own click handler that
+  **filters the Waste-by-step list to step types tagged with that waste
+  type** (click `motion` → list narrows to motion-tagged rows; click the
+  same chip again, or the new "show all ✕" indicator chip, to clear).
+  `stopPropagation` keeps the adjust modal from opening on a chip click.
+
+### Changed
+
+- **Session-view Map empty-state messages mention the "Build process map"
+  checkbox** (`#cb-mine` in the ⋯ More menu). v0.18.0's messages told the
+  analyst to "click Analyze session" without explaining that the Map files
+  are only produced when the checkbox is on — so an analyst who'd
+  unchecked it once would re-run Analyze repeatedly and see no map. The
+  activity-DFG empty message also now explains the taxonomy dependency
+  (the activity DFG comes from taxonomy-classified events; Step / Phase
+  Flow uses the analyst's annotations and needs no taxonomy).
+- **`exportArtifact(kind, callOpts)`** in `viewer/renderer.js` takes an
+  optional `callOpts.singleSession` to force a single-session target.
+  Without the flag, behaviour is unchanged (Compare-Sessions filtered
+  sessions take priority over the current session).
+
 ## [0.18.0] - 2026-05-28
 
 The in-view single-session Map level. The interactive process map (notation ×

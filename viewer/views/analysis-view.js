@@ -28,6 +28,13 @@ function _fmt(ms) {
   return formatDuration(ms || 0);
 }
 
+/* Waste-type filter (v0.18.1). Clicking a chip on a waste row filters the list
+   to rows tagged with that type; the click also runs stopPropagation so it
+   doesn't bubble to the row's "adjust" handler. Module-level so it persists
+   across re-renders within the same session; reset on session change is
+   handled implicitly because the visible list shape changes anyway. */
+let _wasteTypeFilter = null;
+
 /* ============ Override merge (display side) ======================= */
 
 function _overridesByStep(overrides) {
@@ -196,7 +203,10 @@ function _buildWasteRow(g) {
     '<span class="waste-seg ' + cls + '" style="width:' +
     ((ms / total) * 100).toFixed(1) + '%"></span>';
   const tags = (g.waste_types || [])
-    .map((t) => '<span class="waste-tag">' + escapeHtml(t) + "</span>")
+    .map((t) => '<button type="button" class="waste-tag waste-tag-btn" ' +
+      'data-waste-type="' + escapeAttr(t) + '" ' +
+      'title="Click to filter the list to step types tagged \'' + escapeAttr(t) + '\' (click again to clear).">' +
+      escapeHtml(t) + "</button>")
     .join("");
   const badge = g.instances > 1
     ? '<span class="waste-instances" title="' + g.instances +
@@ -222,8 +232,14 @@ function _buildWasteRow(g) {
 
 function _wasteSection(waste) {
   if (!waste.length) return "";
-  const groups = _groupWasteRows(waste);
-  if (!groups.length) return "";
+  const allGroups = _groupWasteRows(waste);
+  if (!allGroups.length) return "";
+  // Apply the waste-type filter (v0.18.1). When set, only rows whose
+  // waste_types include the filter survive; the rest are hidden until the
+  // user clears the filter via the indicator chip.
+  const groups = _wasteTypeFilter
+    ? allGroups.filter((g) => (g.waste_types || []).includes(_wasteTypeFilter))
+    : allGroups;
   const dur = (g) => (g.va_ms || 0) + (g.bnva_ms || 0) + (g.nva_ms || 0);
   const hasSignal = (g) => dur(g) > 0 || (g.waste_types && g.waste_types.length);
   // Surface the wasteful + time-heavy step types; tuck instant (0-duration) ones
@@ -238,6 +254,12 @@ function _wasteSection(waste) {
     '<span><span class="swatch seg-bnva"></span>business-required</span>' +
     '<span><span class="swatch seg-nva"></span>waste</span>' +
   "</div>";
+  const filterChip = _wasteTypeFilter
+    ? '<div class="waste-filter-chip">Filtered to <span class="waste-tag waste-tag-active">' +
+      escapeHtml(_wasteTypeFilter) + '</span> — ' +
+      groups.length + ' of ' + allGroups.length + ' step types ' +
+      '<button type="button" class="waste-filter-clear" title="Show all step types">show all ✕</button></div>'
+    : "";
   let body = main.length ? '<div class="waste-rows">' + main.map(_buildWasteRow).join("") + "</div>" : "";
   if (instant.length) {
     body += '<details class="waste-instant"><summary>' + instant.length +
@@ -245,8 +267,12 @@ function _wasteSection(waste) {
       " (no measured duration)</summary>" +
       '<div class="waste-rows">' + instant.map(_buildWasteRow).join("") + "</div></details>";
   }
+  if (_wasteTypeFilter && !groups.length) {
+    body = '<div class="waste-empty">No step types tagged "' +
+      escapeHtml(_wasteTypeFilter) + '" in this session.</div>';
+  }
   return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Waste by step</div>' + legend + body + "</div>";
+    '<div class="analysis-section-title">Waste by step</div>' + legend + filterChip + body + "</div>";
 }
 
 function _timeStudySection(ts) {
@@ -459,6 +485,27 @@ function _wireControls(host, analysis) {
       if (g) _editBnva(g);
     });
   });
+
+  /* v0.18.1: chip-driven waste-type filter. Click a chip on a row to scope the
+     list to step types tagged with that waste type; stopPropagation keeps the
+     click from also opening the row's adjust modal. Click the chip of the
+     currently-filtered type (or the "show all ✕" indicator) to clear. */
+  host.querySelectorAll(".waste-tag-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const t = btn.dataset.wasteType;
+      _wasteTypeFilter = _wasteTypeFilter === t ? null : t;
+      renderAnalysisLevel();
+    });
+  });
+  const clearBtn = host.querySelector(".waste-filter-clear");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _wasteTypeFilter = null;
+      renderAnalysisLevel();
+    });
+  }
 
   const autoBySig = {};
   for (const a of (analysis.automation_candidates || [])) {

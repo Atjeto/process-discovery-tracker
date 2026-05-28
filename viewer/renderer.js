@@ -226,33 +226,44 @@ function _sessionActivityLabelsForStep(stepLabel) {
 function _sessionMapDataSource({ notation, level, scope }) {
   const sess = State.getSession();
   if (!sess) return { emptyMessage: "Open a session to see its process map." };
+  // Generic post-analyze hint we attach to most empty messages so a user who
+  // ran Analyze with "Build process map" unchecked understands why nothing
+  // shows -- the checkbox lives in the "⋯ More" menu under the actions bar.
+  const mineHint = ' (Map files are produced by Analyze with "Build process map" checked — under ⋯ More.)';
   if (notation === "bpmn") {
     const file = _sessionBpmnFile(level);
     const bpmnPath = sess.sessionFolder ? path.join(sess.sessionFolder, file) : null;
     if (!bpmnPath || !fs.existsSync(bpmnPath)) {
       return {
         emptyMessage: level === "activity"
-          ? 'No process map yet — click "Analyze session".'
+          ? 'No process map BPMN yet — click "Analyze session".' + mineHint
           : 'No ' + level + '-level Process diagram yet — Analyze a session that has ' +
-            (level === "phase" ? "phases" : "steps") + ' (it is mined from your annotations).',
+            (level === "phase" ? "phases" : "steps") +
+            ' (mined from your annotations).' + mineHint,
       };
     }
     return { bpmnPath };
   }
   // notation === "dfg"
   if (level === "activity") {
-    return {
-      dfg: sess.dfg,
-      emptyMessage: 'No activity-level flow yet — Analyze the session and classify your apps in the taxonomy.',
-    };
+    const dfg = sess.dfg;
+    if (!dfg || !dfg.edges || !dfg.edges.length) {
+      return {
+        dfg,
+        emptyMessage: 'No activity-level Flow diagram yet — Analyze the session, then classify your apps in the taxonomy (the activity DFG comes from taxonomy-classified events). Step / Phase levels build their flow from your annotations and need no taxonomy.',
+      };
+    }
+    return { dfg };
   }
   // step / phase
   const phaseFilter = (scope && scope.level === "step")
     ? { phaseName: scope.phaseName } : null;
   return {
     dfg: buildAnnotationDfg([sess], level, phaseFilter),
-    emptyMessage: 'No ' + level + '-level flow yet — add ' +
-      (level === "phase" ? "phases" : "steps") + ' to this session.',
+    emptyMessage: 'No ' + level + '-level Flow diagram yet — add ' +
+      (level === "phase" ? "phases" : "steps") +
+      ' to this session in the ' +
+      (level === "phase" ? "Phases" : "Steps") + ' view.',
   };
 }
 
@@ -567,9 +578,17 @@ if (btnPrepBootstrap) {
 
 /* ============ Step / phase / PDD exports ========================= */
 
-async function exportArtifact(kind) {
+async function exportArtifact(kind, callOpts) {
   if (!State.getSession() && !State.getAggregateSessions().length) return;
-  const filtered = State.getAggregateSessions().length ? filteredAggregateSessions() : [State.getSession()];
+  // v0.18.1: callers from the Session view (Export → PDD) can pass
+  // { singleSession: true } to force the export to use the current session
+  // rather than whatever aggregate sessions are loaded in Compare-Sessions.
+  // Without this, opening a session in Session view AFTER having loaded a
+  // different set in Compare-Sessions would silently export the wrong target.
+  const forceSingle = callOpts && callOpts.singleSession === true;
+  const filtered = (!forceSingle && State.getAggregateSessions().length)
+    ? filteredAggregateSessions()
+    : [State.getSession()].filter(Boolean);
   if (!filtered.length) return;
   const target = filtered[0];
 
@@ -730,6 +749,29 @@ $("#btn-session-md").addEventListener("click", async () => {
   const name = "session-" + (State.getSession().sessionFolder.split(/[\\/]/).slice(-1)[0] || "report") + ".md";
   await saveMarkdownReport(md, name);
 });
+
+/* PDD export from Session view -- new in v0.18.1. The PDD's As-Is process
+   map (section 3.3) is rasterised from the currently-rendered Flow diagram;
+   to embed THIS session's map (not whatever was last shown on the
+   Compare-Sessions tab, or nothing at all), pre-render the Session-view
+   Map controller's Flow tab and let cytoscape settle before invoking the
+   shared exportArtifact("pdd", { singleSession: true }) path. Leaves the
+   user on Map level + Flow tab after the export -- reasonable context for
+   "you just exported this." */
+if ($("#btn-session-pdd")) {
+  $("#btn-session-pdd").addEventListener("click", async () => {
+    if (!State.getSession()) { toast("Open a session first.", "error"); return; }
+    toast("Preparing PDD — rendering process map…", "info");
+    applyLevel("map");
+    const ctrl = _ensureSessionMapCtrl();
+    ctrl.setState({ notation: "dfg" });
+    // Let cytoscape paint + layout settle so PdtDfg.exportPng() captures the
+    // rendered diagram and not a blank canvas. 900ms matches the post-tab-
+    // switch timing used elsewhere in the controller.
+    await new Promise((r) => setTimeout(r, 900));
+    await exportArtifact("pdd", { singleSession: true });
+  });
+}
 
 async function saveMarkdownReport(md, suggestedName) {
   /* Write into a temp file, then ask main.js to copy it via the

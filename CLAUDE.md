@@ -4,13 +4,20 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** Last release **v0.18.0** — adds
-the **in-view Session-view Map level** as a 5th entry in the level switcher
-(Flow / Steps / Phases / Map / Analysis), retiring the v0.17.0 "View map"
-one-click into Compare-Sessions. The interactive process map UI lives in a
-new `viewer/map-controller.js` and is shared by both surfaces. The goal is
-**productization toward a small internal rollout, analyst-deliverable
-first.**
+**Active direction (2026-05) — START HERE:** Last release **v0.18.1** —
+restores the single-session **PDD export** path that v0.18.0 had stranded
+behind Compare-Sessions (new `PDD (.docx)` entry in the Session view's
+Export menu pre-renders the Map level's Flow diagram, then runs the shared
+export with `{singleSession:true}`), makes the **waste-type chips** on the
+Analysis view's Waste-by-step list **clickable filters** (click `motion` or
+`rework` to scope the list to that waste type), and sharpens the **Map
+empty-state messages** to mention the "Build process map" checkbox under
+the ⋯ More menu. v0.18.0 added the in-view Session-view Map level as a 5th
+entry in the level switcher (Flow / Steps / Phases / Map / Analysis),
+retiring the v0.17.0 "View map" one-click; the interactive process-map UI
+lives in `viewer/map-controller.js` and is shared by the Session and
+Compare-Sessions surfaces. The goal is **productization toward a small
+internal rollout, analyst-deliverable first.**
 What landed this cycle: the **PDD export now follows a real Process Definition
 Document structure** (document control, As-Is process with an embedded process
 map, automation assessment, exceptions) instead of piling up pipeline data; a
@@ -50,7 +57,7 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **0.18.0** (SemVer 0.x).
+Current released version **0.18.1** (SemVer 0.x).
 
 ## Layout
 

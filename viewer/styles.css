@@ -926,6 +926,35 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   font-size: 10px; color: var(--fg-2); background: var(--bg-3);
   border: 1px solid var(--rule); border-radius: 2px; padding: 1px 5px;
 }
+/* v0.18.1: chips on waste rows are real buttons now -- click to filter the
+   list by waste type. cursor + hover signal interactivity; active state
+   highlights the chip whose type is currently filtered. */
+button.waste-tag-btn {
+  font: inherit; font-size: 10px; line-height: normal; cursor: pointer;
+}
+button.waste-tag-btn:hover {
+  border-color: var(--accent); color: var(--fg);
+}
+.waste-tag-active {
+  background: var(--accent-muted); border-color: var(--accent); color: var(--fg);
+}
+.waste-filter-chip {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--fg-3);
+  padding: 4px 6px; margin: 4px 0;
+  background: var(--bg-2); border: 1px solid var(--rule-soft);
+  border-radius: var(--radius-sm);
+}
+.waste-filter-clear {
+  font-size: 10px; color: var(--fg-3); background: transparent;
+  border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  padding: 1px 6px; cursor: pointer; margin-left: auto;
+}
+.waste-filter-clear:hover { color: var(--accent); border-color: var(--accent); }
+.waste-empty {
+  color: var(--fg-3); font-size: 12px; font-style: italic;
+  padding: 12px 4px;
+}
 .seg-va { background: var(--va); }
 .seg-bnva { background: var(--bnva); }
 .seg-nva { background: var(--nva); }
