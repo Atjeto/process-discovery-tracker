@@ -1039,12 +1039,6 @@ function _aggDur(ms) {
   return escapeHtml(PdtCharts.fmtDurationS((ms || 0) / 1000));
 }
 
-function _aggScore(v) {
-  return (v === null || v === undefined)
-    ? '<span class="score-na" title="needs the step in 2+ sessions">—</span>'
-    : Math.round(v * 100) + "%";
-}
-
 function _aggTimeStudySection(agg) {
   if (!agg.time_study.length) return "";
   const title = '<div class="analysis-section-title">Cross-session time study</div>';
@@ -1113,33 +1107,51 @@ function _aggWorkerSection(agg) {
     rows.join("") + "</tbody></table></div>";
 }
 
+/* Compare-Sessions automation panel at the segment grain (ADR-0016).
+   Rows are coherent segments pooled across the loaded sessions; the
+   strongest signal is "how many instances across how many sessions",
+   not a per-click repetitiveness score. Single-instance segments fold
+   into a tail note rather than fattening the table with empty rows. */
 function _aggAutomationSection(agg) {
   if (!agg.automation.length) return "";
   const title = '<div class="analysis-section-title">Automation candidates (pooled)</div>';
-  const has = (v) => v !== null && v !== undefined;
-  // A candidate is only meaningful once it can be scored; single-instance data
-  // yields a full table of "—", which is pure noise -- collapse it to a note.
-  const scored = agg.automation.filter((a) => has(a.repetitiveness) || has(a.rule_based));
+  const intro = '<div class="analysis-caption">Candidacy is reported at the level ' +
+    "of a coherent segment — a contiguous run of work in one app within one " +
+    "case. Atomic clicks and keystrokes are not surfaced.</div>";
+  const scored = agg.automation.filter((a) =>
+    a.data_sufficiency === "multi_instance");
   if (!scored.length) {
-    return '<div class="analysis-section">' + title +
-      '<div class="analysis-note">Scoring a candidate needs the step seen in 2+ ' +
-      "sessions. Load more sessions of this process to rank automation candidates." +
-      "</div></div>";
+    return '<div class="analysis-section">' + title + intro +
+      '<div class="analysis-note">No segment was seen 2+ times across the ' +
+      "loaded sessions. Load more recordings of the same process to surface " +
+      "automation candidates.</div></div>";
   }
-  scored.sort((a, b) => (b.repetitiveness || 0) - (a.repetitiveness || 0));
+  const lonely = agg.automation.length - scored.length;
   const multiSession = scored.some((a) => a.sessions > 1);
   const anyDecision = scored.some((a) => a.confirmed || a.dismissed);
-  const head = ["<th>Step</th>"];
+  const head = ["<th>Segment</th>", "<th>App</th>"];
   if (multiSession) head.push("<th>Sessions</th>");
-  head.push("<th>Instances</th>", "<th>Repetitive</th>", "<th>Rule-based</th>", "<th>Volume</th>");
+  head.push("<th>Instances</th>", "<th>Total time</th>", "<th>Mean per instance</th>");
   if (anyDecision) head.push("<th>Analyst decision</th>");
   const rows = scored.map((a) => {
-    const tds = ["<td>" + escapeHtml(a.name) + "</td>"];
+    const steps = (a.step_labels || []).slice(0, 5);
+    const moreSteps = (a.step_labels || []).length - steps.length;
+    const sequence = steps.length
+      ? steps.map(escapeHtml).join('<span class="auto-arrow"> → </span>')
+        + (moreSteps > 0 ? ' <span class="auto-more">+' + moreSteps + " more</span>" : "")
+      : '<span class="score-na">no labelled steps</span>';
+    const app = String(a.app || "").replace(/\.exe$/i, "") || "—";
+    const tds = [
+      '<td><div class="auto-label">' + escapeHtml(a.label || "(segment)") + "</div>" +
+      '<div class="auto-sequence">' + sequence + "</div></td>",
+      "<td>" + escapeHtml(app) + "</td>",
+    ];
     if (multiSession) tds.push('<td class="num">' + a.sessions + "</td>");
-    tds.push('<td class="num">' + a.instances + "</td>",
-             '<td class="num">' + _aggScore(a.repetitiveness) + "</td>",
-             '<td class="num">' + _aggScore(a.rule_based) + "</td>",
-             '<td class="num">' + _aggDur(a.volume) + "</td>");
+    tds.push(
+      '<td class="num">' + (a.instance_count || 0) + "</td>",
+      '<td class="num">' + _aggDur(a.total_elapsed_ms) + "</td>",
+      '<td class="num">' + _aggDur(a.mean_elapsed_ms) + "</td>"
+    );
     if (anyDecision) {
       const parts = [];
       if (a.confirmed) parts.push(a.confirmed + " confirmed");
@@ -1148,9 +1160,14 @@ function _aggAutomationSection(agg) {
     }
     return "<tr>" + tds.join("") + "</tr>";
   }).join("");
-  return '<div class="analysis-section">' + title +
+  const tail = lonely
+    ? '<div class="analysis-note">' + lonely + " more segment" +
+      (lonely === 1 ? "" : "s") + " occurred only once and aren't pooled here." +
+      "</div>"
+    : "";
+  return '<div class="analysis-section">' + title + intro +
     '<table class="analysis-table"><thead><tr>' + head.join("") +
-    "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+    "</tr></thead><tbody>" + rows + "</tbody></table>" + tail + "</div>";
 }
 
 function _aggEfficiencySection(agg) {

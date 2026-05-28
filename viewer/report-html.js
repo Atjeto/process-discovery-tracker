@@ -141,19 +141,24 @@ function analysisSection(session, options) {
         "</td></tr>").join("") +
       "</tbody></table>";
   }
-  const auto = analysis.automation_candidates || [];
+  // ADR-0016: automation candidacy at the SEGMENT grain. Each entry is
+  // a coherent stretch of work (one app, one case, an ordered set of
+  // step types); the score is how often it repeats across cases /
+  // sessions, not a per-click repetitiveness.
+  const auto = (analysis.automation_candidates || [])
+    .filter((a) => a.data_sufficiency === "multi_instance");
   if (auto.length) {
-    const score = (v) => (v == null) ? "—" : Math.round(v * 100) + "%";
-    out += "<table><thead><tr><th>Automation candidate</th>" +
-      "<th class=\"num\">Repetitive</th><th class=\"num\">Rule-based</th>" +
-      "<th>Data</th></tr></thead><tbody>" +
+    out += "<h3>Automation segments</h3>" +
+      "<table><thead><tr><th>Segment</th><th>App</th>" +
+      "<th class=\"num\">Instances</th><th class=\"num\">Total time</th>" +
+      "<th class=\"num\">Mean per instance</th></tr></thead><tbody>" +
       auto.map((a) => {
-        const sc = a.scores || {};
-        return "<tr><td>" + esc(a.name || "(step)") + "</td><td class=\"num\">" +
-          score(sc.repetitiveness) + "</td><td class=\"num\">" +
-          score(sc.rule_based) + "</td><td>" +
-          esc(a.data_sufficiency === "single_instance"
-            ? "1 instance — insufficient" : "multi-instance") + "</td></tr>";
+        const app = String(a.app || "").replace(/\.exe$/i, "") || "—";
+        return "<tr><td>" + esc(a.label || "(segment)") + "</td><td>" +
+          esc(app) + "</td><td class=\"num\">" +
+          (a.instance_count || 0) + "</td><td class=\"num\">" +
+          esc(fmtDuration(a.total_elapsed_ms)) + "</td><td class=\"num\">" +
+          esc(fmtDuration(a.mean_elapsed_ms)) + "</td></tr>";
       }).join("") +
       "</tbody></table>";
   }

@@ -9,14 +9,17 @@
  * data, so views/aggregate-view.js and the node:test suite share the
  * logic. Mirrors session-summary.js. See ANALYSIS-LAYER-FOLLOWUPS.md.
  *
- * Per-session automation scoring is weak -- a step seen once cannot be
- * judged for repetitiveness. Pooled across many recordings of the same
- * process it gains real signal: instances add up, and each session's
- * `sequence_signature` (how the step was performed) can be compared.
+ * Automation candidacy is reported at the SEGMENT grain (ADR-0016) --
+ * a coherent run of work in one app within one case, not an atomic
+ * click. Across many recordings of the same process, segments with
+ * the same `segment_signature` (same app, same ordered step labels)
+ * are pooled to surface "the CRM lookup → copy → paste sequence ran
+ * 14 times across these four sessions".
  *
- * Steps are matched across sessions by `canonical_step_id`, falling back
- * to the step name when a session was not matched to a Process Template
- * -- the same cross-session key the side-by-side comparison relies on.
+ * Time-study rows are still matched by `canonical_step_id`, falling
+ * back to the step name when a session was not matched to a Process
+ * Template -- the same cross-session key the side-by-side comparison
+ * relies on.
  */
 
 function _round(x, dp) {
@@ -131,56 +134,61 @@ function aggregateAnalysis(sessions) {
     })).sort((a, b) => b.mean_cycle_ms - a.mean_cycle_ms),
   })).sort((a, b) => a.worker.localeCompare(b.worker));
 
-  // ---- Aggregated automation candidates ---------------------------
-  // Each session contributes one signature per step (its modal way of
-  // performing it). Across sessions, how many share the modal signature
-  // is the cross-session repetitiveness; the distinct-signature count
-  // drives rule-basedness -- the same formulas analysis_automation.py
-  // uses per session, lifted to session granularity.
+  // ---- Aggregated automation candidates (segment grain, ADR-0016) -
+  // Each session's analysis.json carries one entry per detected
+  // segment pattern. Across sessions, entries with the same
+  // `segment_signature` are the same coherent stretch of work --
+  // pooling them gives the cross-recording instance count and total
+  // elapsed, which is what an analyst actually wants ("we saw the CRM
+  // lookup pattern 14 times across these four sessions").
   const autoGroups = new Map();
   for (const s of loaded) {
     for (const a of (s.analysis.automation_candidates || [])) {
-      const key = _stepKey(a);
+      const key = a.segment_signature;
       if (!key) continue;
       let g = autoGroups.get(key);
       if (!g) {
-        g = { key, name: a.name || key, sessions: 0, instances: 0,
-              volume: 0, signatures: [], confirmed: 0, dismissed: 0 };
+        g = {
+          signature: key,
+          label: a.label || key,
+          app: a.app || "",
+          step_labels: Array.isArray(a.step_labels) ? a.step_labels.slice() : [],
+          sessions: 0,
+          instances: 0,
+          total_elapsed_ms: 0,
+          confirmed: 0,
+          dismissed: 0,
+        };
         autoGroups.set(key, g);
       }
       g.sessions += 1;
-      g.instances += a.instances || 0;
-      g.volume += (a.scores && a.scores.volume) || 0;
-      if (a.sequence_signature) g.signatures.push(a.sequence_signature);
+      g.instances += a.instance_count || 0;
+      g.total_elapsed_ms += a.total_elapsed_ms || 0;
       if (a.automation_confirmed === true) g.confirmed += 1;
       else if (a.automation_confirmed === false) g.dismissed += 1;
-      if (a.name) g.name = a.name;
+      if (a.label) g.label = a.label;
+      if (a.app) g.app = a.app;
+      if (Array.isArray(a.step_labels) && a.step_labels.length) {
+        g.step_labels = a.step_labels.slice();
+      }
     }
   }
-  result.automation = [...autoGroups.values()].map((g) => {
-    let repetitiveness = null;
-    let rule_based = null;
-    if (g.signatures.length >= 2) {
-      const counts = {};
-      for (const sig of g.signatures) counts[sig] = (counts[sig] || 0) + 1;
-      const modal = Math.max(...Object.values(counts));
-      repetitiveness = _round(modal / g.signatures.length, 3);
-      rule_based = _round(1 / Object.keys(counts).length, 3);
-    }
-    return {
-      key: g.key,
-      name: g.name,
-      sessions: g.sessions,
-      instances: g.instances,
-      volume: Math.round(g.volume),
-      repetitiveness,
-      rule_based,
-      confirmed: g.confirmed,
-      dismissed: g.dismissed,
-      data_sufficiency: g.instances >= 2 ? "multi_instance" : "single_instance",
-    };
-  }).sort((a, b) =>
-    (b.repetitiveness || 0) - (a.repetitiveness || 0) || b.volume - a.volume);
+  result.automation = [...autoGroups.values()].map((g) => ({
+    signature: g.signature,
+    label: g.label,
+    app: g.app,
+    step_labels: g.step_labels,
+    sessions: g.sessions,
+    instance_count: g.instances,
+    total_elapsed_ms: Math.round(g.total_elapsed_ms),
+    mean_elapsed_ms: g.instances
+      ? Math.round(g.total_elapsed_ms / g.instances) : 0,
+    confirmed: g.confirmed,
+    dismissed: g.dismissed,
+    data_sufficiency: g.instances >= 2 ? "multi_instance" : "single_instance",
+  })).sort((a, b) =>
+    b.instance_count - a.instance_count ||
+    b.total_elapsed_ms - a.total_elapsed_ms);
 
   // ---- Process-efficiency trend -----------------------------------
   result.efficiency_trend = loaded

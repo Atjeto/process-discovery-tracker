@@ -2,6 +2,10 @@
  * Unit tests for analysis-aggregate.js -- the pure cross-session rollup
  * behind the Compare-Sessions Analysis panel.
  *
+ * Automation candidacy is reported at the SEGMENT grain (ADR-0016): a
+ * coherent run of work in one app within one case, identified by
+ * `segment_signature`. Cross-session pooling groups by signature.
+ *
  * Run with `npm test` (Node's built-in `node:test` runner).
  */
 
@@ -41,17 +45,22 @@ function tsEntry(mean, instances, canonical, name) {
   };
 }
 
-function autoEntry(signature, opts) {
+/* Segment-shaped automation candidate (ADR-0016). */
+function segEntry(signature, opts) {
   opts = opts || {};
   return {
-    canonical_step_id: "c1",
-    name: "Lookup customer",
-    instances: opts.instances || 1,
-    scores: { repetitiveness: null, rule_based: null, volume: opts.volume || 1000 },
-    sequence_signature: signature,
-    estimated_savings_ms: null,
+    segment_signature: signature,
+    label: opts.label || "CRM — Search → Copy → Paste",
+    app: opts.app || "salesforce.exe",
+    step_labels: opts.step_labels || ["Search", "Copy", "Paste"],
+    instance_count: opts.instance_count == null ? 1 : opts.instance_count,
+    total_elapsed_ms: opts.total_elapsed_ms == null ? 5000 : opts.total_elapsed_ms,
+    mean_elapsed_ms: opts.mean_elapsed_ms == null ? 5000 : opts.mean_elapsed_ms,
+    case_ids: opts.case_ids || [],
+    scores: opts.scores || { confidence: null, volume: 5000 },
     automation_confirmed: opts.confirmed === undefined ? null : opts.confirmed,
-    data_sufficiency: "single_instance",
+    data_sufficiency: (opts.instance_count == null ? 1 : opts.instance_count) >= 2
+      ? "multi_instance" : "single_instance",
   };
 }
 
@@ -111,45 +120,73 @@ test("per-worker comparison groups time study by worker", () => {
   assert.equal(bob.steps[0].mean_cycle_ms, 300);
 });
 
-/* ---- aggregated automation ---------------------------------------- */
+/* ---- aggregated automation (segment grain, ADR-0016) -------------- */
 
-test("identical signatures across sessions score full repetitiveness", () => {
+test("identical signatures across sessions pool to one segment row", () => {
   const r = aggregateAnalysis([
-    session({ automation: [autoEntry("abc")] }),
-    session({ automation: [autoEntry("abc")] }),
-    session({ automation: [autoEntry("abc")] }),
+    session({ automation: [segEntry("sig-abc", { instance_count: 2, total_elapsed_ms: 6000 })] }),
+    session({ automation: [segEntry("sig-abc", { instance_count: 3, total_elapsed_ms: 9000 })] }),
+    session({ automation: [segEntry("sig-abc", { instance_count: 1, total_elapsed_ms: 3000 })] }),
   ]);
   assert.equal(r.automation.length, 1);
   const a = r.automation[0];
   assert.equal(a.sessions, 3);
-  assert.equal(a.instances, 3);
-  assert.equal(a.repetitiveness, 1);
+  assert.equal(a.instance_count, 6);            // 2+3+1
+  assert.equal(a.total_elapsed_ms, 18000);      // 6000+9000+3000
+  assert.equal(a.mean_elapsed_ms, 3000);        // 18000 / 6
   assert.equal(a.data_sufficiency, "multi_instance");
 });
 
-test("varied signatures lower the aggregated rule-based score", () => {
+test("distinct segment signatures stay as separate rows", () => {
   const r = aggregateAnalysis([
-    session({ automation: [autoEntry("abc")] }),
-    session({ automation: [autoEntry("xyz")] }),
+    session({ automation: [segEntry("sig-A", { instance_count: 2 })] }),
+    session({ automation: [segEntry("sig-B", { instance_count: 2 })] }),
   ]);
-  // Two distinct signatures across two sessions -> rule_based = 1/2.
-  assert.equal(r.automation[0].rule_based, 0.5);
+  assert.equal(r.automation.length, 2);
 });
 
-test("a single session leaves automation scores null", () => {
-  const r = aggregateAnalysis([session({ automation: [autoEntry("abc")] })]);
-  assert.equal(r.automation[0].repetitiveness, null);
-  assert.equal(r.automation[0].rule_based, null);
+test("a single instance is reported as single_instance", () => {
+  const r = aggregateAnalysis([
+    session({ automation: [segEntry("sig-once", { instance_count: 1 })] }),
+  ]);
+  assert.equal(r.automation[0].data_sufficiency, "single_instance");
 });
 
 test("confirmed and dismissed decisions roll up as counts", () => {
   const r = aggregateAnalysis([
-    session({ automation: [autoEntry("s", { confirmed: true })] }),
-    session({ automation: [autoEntry("s", { confirmed: true })] }),
-    session({ automation: [autoEntry("s", { confirmed: false })] }),
+    session({ automation: [segEntry("sig-s", { instance_count: 2, confirmed: true })] }),
+    session({ automation: [segEntry("sig-s", { instance_count: 2, confirmed: true })] }),
+    session({ automation: [segEntry("sig-s", { instance_count: 2, confirmed: false })] }),
   ]);
   assert.equal(r.automation[0].confirmed, 2);
   assert.equal(r.automation[0].dismissed, 1);
+});
+
+test("automation rows preserve the segment label and step sequence", () => {
+  const r = aggregateAnalysis([
+    session({
+      automation: [segEntry("sig-1", {
+        instance_count: 2,
+        label: "salesforce — Search → Copy → Paste",
+        app: "salesforce.exe",
+        step_labels: ["Search", "Copy", "Paste"],
+      })],
+    }),
+  ]);
+  assert.equal(r.automation[0].label, "salesforce — Search → Copy → Paste");
+  assert.equal(r.automation[0].app, "salesforce.exe");
+  assert.deepEqual(r.automation[0].step_labels, ["Search", "Copy", "Paste"]);
+});
+
+test("automation rows are ranked by instance count then total time", () => {
+  const r = aggregateAnalysis([
+    session({ automation: [
+      segEntry("sig-small", { instance_count: 2, total_elapsed_ms: 1000 }),
+      segEntry("sig-big", { instance_count: 5, total_elapsed_ms: 50000 }),
+    ]}),
+  ]);
+  assert.equal(r.automation[0].signature, "sig-big");
+  assert.equal(r.automation[1].signature, "sig-small");
 });
 
 /* ---- efficiency trend --------------------------------------------- */

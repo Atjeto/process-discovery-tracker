@@ -31,12 +31,17 @@ logger = logging.getLogger(__name__)
 _FLAG_LABELS = {
     "waste": "Waste",
     "rework": "Rework",
-    "automation_candidate": "Automation candidate",
     "conditional": "Conditional",
     "exception_path": "Exception path",
     "value_add": "Value-add",
     "bottleneck": "Bottleneck",
 }
+# `automation_candidate` is deliberately absent here. ADR-0016 moved
+# automation candidacy from the atomic-step grain to coherent segments;
+# §4.3 now lists segments, and rendering a per-step "Automation candidate"
+# flag in §3.5 contradicts that framing (you don't automate one click).
+# The flag itself may still be set on a step by the app vocab, but the
+# PDD output does not surface it.
 
 
 def write_pdd(
@@ -299,9 +304,7 @@ def _analysis_maps(analysis):
     analysis = analysis or {}
     waste = {w["step_id"]: w for w in (analysis.get("waste_classification") or [])
              if w.get("step_id")}
-    auto = {a["step_id"]: a for a in (analysis.get("automation_candidates") or [])
-            if a.get("step_id")}
-    return waste, auto
+    return waste
 
 
 def _write_steps(doc, annotations, session_folder, analysis):
@@ -309,7 +312,7 @@ def _write_steps(doc, annotations, session_folder, analysis):
     phases = annotations.get("phases") or []
     steps = annotations.get("steps") or []
     step_by_id = {s["step_id"]: s for s in steps}
-    waste_by_step, auto_by_step = _analysis_maps(analysis)
+    waste_by_step = _analysis_maps(analysis)
     if phases:
         for phase in phases:
             doc.add_heading(phase.get("name", "(phase)"), level=3)
@@ -318,15 +321,15 @@ def _write_steps(doc, annotations, session_folder, analysis):
             for sid in (phase.get("step_ids") or []):
                 step = step_by_id.get(sid)
                 if step:
-                    _write_step(doc, step, session_folder, waste_by_step, auto_by_step, level=4)
+                    _write_step(doc, step, session_folder, waste_by_step, level=4)
     elif steps:
         for step in steps:
-            _write_step(doc, step, session_folder, waste_by_step, auto_by_step, level=3)
+            _write_step(doc, step, session_folder, waste_by_step, level=3)
     else:
         doc.add_paragraph("No steps have been annotated for this session yet.")
 
 
-def _write_step(doc, step, session_folder, waste_by_step=None, auto_by_step=None, level=3):
+def _write_step(doc, step, session_folder, waste_by_step=None, level=3):
     doc.add_heading(step.get("name", "(step)"), level=level)
     if step.get("description"):
         doc.add_paragraph(step["description"])
@@ -338,7 +341,10 @@ def _write_step(doc, step, session_folder, waste_by_step=None, auto_by_step=None
             except (FileNotFoundError, OSError, ValueError) as exc:
                 logger.warning("pdd_export: skipping screenshot %s for step %s: %s",
                                ref, step.get("step_id", "?"), exc)
-    flags = [k for k, v in (step.get("flags") or {}).items() if v is True]
+    # `automation_candidate` is filtered out -- candidacy lives at the
+    # segment grain (§4.3), not on individual steps. See ADR-0016.
+    flags = [k for k, v in (step.get("flags") or {}).items()
+             if v is True and k != "automation_candidate"]
     if flags:
         labels = [_FLAG_LABELS.get(f, f.replace("_", " ").capitalize()) for f in flags]
         p = doc.add_paragraph(f"Flags: {', '.join(labels)}")
@@ -355,13 +361,6 @@ def _write_step(doc, step, session_folder, waste_by_step=None, auto_by_step=None
             bits.append("waste types: " + ", ".join(waste["waste_types"]))
         if bits:
             p = doc.add_paragraph("Waste: " + "; ".join(bits))
-            for run in p.runs:
-                run.italic = True
-    auto = (auto_by_step or {}).get(sid)
-    if auto and auto.get("data_sufficiency") == "multi_instance":
-        rep = (auto.get("scores") or {}).get("repetitiveness")
-        if rep is not None:
-            p = doc.add_paragraph(f"Automation potential: repetitiveness {round(rep * 100)}%")
             for run in p.runs:
                 run.italic = True
 
@@ -381,34 +380,75 @@ def _write_input_data(doc):
 # ---- 4. Automation assessment -----------------------------------------------
 
 def _write_automation(doc, analysis):
+    """Render §4 with the segment grain (ADR-0016): "a coherent stretch of
+    work, ideally end-to-end" rather than a per-click table. A row says
+    "the CRM lookup → copy → paste sequence ran 4× across cases, total
+    2m 14s" -- a unit you can actually scope to a robot, not a single
+    button-click."""
     doc.add_heading("4. Automation assessment", level=1)
     doc.add_heading("4.1 In scope for automation", level=2)
-    _placeholder(doc, "which steps / sub-processes are in scope for automation")
+    _placeholder(doc, "which segments / sub-processes are in scope for automation")
     doc.add_heading("4.2 Out of scope", level=2)
-    _placeholder(doc, "which steps / sub-processes are explicitly out of scope")
+    _placeholder(doc, "which segments / sub-processes are explicitly out of scope")
 
     doc.add_heading("4.3 Automation candidates", level=2)
+    doc.add_paragraph(
+        "Candidacy is evaluated at the level of a coherent segment -- a "
+        "contiguous run of work in one application within one case, such "
+        "as a lookup followed by a copy-paste sequence. An individual "
+        "click or keystroke is not a meaningful automation unit on its "
+        "own (you cannot have a human fill a form, a robot click Search, "
+        "then a human continue); segments capture the smallest stretch a "
+        "robot can realistically take end-to-end."
+    )
     cands = [a for a in ((analysis or {}).get("automation_candidates") or [])
              if a.get("data_sufficiency") == "multi_instance"]
     if not cands:
-        _placeholder(doc, "steps with automation potential (this capture lacks the "
-                          "repeat data needed to score candidates automatically)")
+        _placeholder(doc, "coherent segments with automation potential (this "
+                          "capture lacks the repetition needed to identify "
+                          "candidates automatically -- consider loading more "
+                          "sessions of this process)")
         return
-    t = doc.add_table(rows=1, cols=4)
+
+    t = doc.add_table(rows=1, cols=5)
     h = t.rows[0].cells
-    h[0].text, h[1].text, h[2].text, h[3].text = "Step", "Repetitiveness", "Rule-based", "Data"
-
-    def pct(v):
-        return "—" if v is None else f"{round(v * 100)}%"
-
+    h[0].text = "Segment"
+    h[1].text = "Application"
+    h[2].text = "Instances"
+    h[3].text = "Total time"
+    h[4].text = "Mean per instance"
     for a in cands:
-        sc = a.get("scores") or {}
         r = t.add_row().cells
-        r[0].text = str(a.get("name", "(step)"))
-        r[1].text = pct(sc.get("repetitiveness"))
-        r[2].text = pct(sc.get("rule_based"))
-        r[3].text = "multi-instance"
-    _note(doc, "Scores are heuristic estimates -- review before relying on them.")
+        r[0].text = str(a.get("label", "(segment)"))
+        r[1].text = str(a.get("app", "—")).replace(".exe", "") or "—"
+        r[2].text = str(a.get("instance_count", 0))
+        r[3].text = _fmt_ms(a.get("total_elapsed_ms", 0))
+        r[4].text = _fmt_ms(a.get("mean_elapsed_ms", 0))
+
+    _note(doc, "An instance is one execution of the segment within one case; "
+               "segments grouped here share the same application and the same "
+               "ordered list of step types.")
+
+    # Narrative summary for the analyst: the top 3 segments, expressed as
+    # prose so §4.3 reads like a recommendation, not just a grid.
+    top = cands[:3]
+    if top:
+        doc.add_heading("Suggested focus", level=3)
+        for a in top:
+            steps = a.get("step_labels") or []
+            seq = " → ".join(steps[:4]) if steps else "an interaction sequence"
+            tail = "" if len(steps) <= 4 else f" → … (+{len(steps) - 4} more)"
+            p = doc.add_paragraph(
+                f'The "{seq}{tail}" sequence in '
+                f'{str(a.get("app", "")).replace(".exe", "")} ran '
+                f'{a.get("instance_count", 0)}× across the captured cases '
+                f'(total elapsed {_fmt_ms(a.get("total_elapsed_ms", 0))}, '
+                f'mean {_fmt_ms(a.get("mean_elapsed_ms", 0))} per instance). '
+                "Suggested automation: scope this segment as a single, "
+                "end-to-end automation unit."
+            )
+            for run in p.runs:
+                run.italic = True
 
 
 # ---- 5. Exceptions & variations ---------------------------------------------

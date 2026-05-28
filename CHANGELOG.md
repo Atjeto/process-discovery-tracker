@@ -51,6 +51,34 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Automation candidacy is reported at the coherent-segment grain, not per
+  atomic step ([ADR-0016](docs/adr/0016-segment-level-automation-candidacy.md)).** The previous design ranked individual logical
+  steps as automation candidates — a per-click table that read as "automate
+  this Search button, this Submit, this Open record" in isolation. That framing
+  is misleading: a human–robot–human pipeline (worker fills the form, robot
+  clicks Search, worker copies the result) is worse than fully manual. The unit
+  of automation an analyst can actually scope is a *coherent stretch of work*
+  the robot could take end-to-end. The analysis layer now detects **segments**
+  — contiguous runs of interactions inside one case that share the same app,
+  bounded by app/case switches or a 30 s idle gap — and scores candidacy by
+  pooling segments with the same `(app, ordered step labels)` signature. A row
+  is "salesforce — Search → Copy → Paste, 4 instances across cases, total
+  2 m 14 s, mean 33.5 s"; sub-5 s single-step segments are dropped because they
+  cannot be automation units on their own. PDD §4 renders the segment table
+  plus a short narrative summary instead of the 60-row per-click grid; §3.5
+  no longer surfaces the per-step "Automation candidate" flag. The Analysis
+  view and the Compare-Sessions automation panel render the same segment
+  shape, and confirm/dismiss is now keyed by `segment_signature` in
+  `analysis_overrides[]` rather than `step_id`. `analysis.json.meta.heuristic_version`
+  is bumped to **2**; a new `analysis.json.segments` array exposes the raw
+  segments for the viewer. The change does not retire the App-Vocab
+  `flags.automation_candidate` per step — it is still a valid signal — but
+  the analysis/PDD/findings-report rendering paths no longer surface it
+  (`normalization/analysis_segments.py`, `normalization/analysis_automation.py`,
+  `normalization/analysis.py`, `normalization/pdd_export.py`,
+  `viewer/views/analysis-view.js`, `viewer/views/aggregate-view.js`,
+  `viewer/analysis-aggregate.js`, `viewer/report-html.js`, `viewer/report-md.js`,
+  `shared/SCHEMA.md`).
 - **The Compare-Sessions Analysis panel is far less cluttered.** The cross-session
   time study rendered every step in a fixed 9-column table — including the ~26
   instant (0 ms) micro-steps and columns that were all-zero or always "1" — and the

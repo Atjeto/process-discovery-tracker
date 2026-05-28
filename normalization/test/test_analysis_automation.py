@@ -1,4 +1,10 @@
-"""Tests for analysis_automation -- automation candidate scoring.
+"""Tests for analysis_automation -- segment-grain candidacy (ADR-0016).
+
+Candidacy is reported at the level of a coherent segment -- a
+contiguous run of work in one app within one case -- not a single
+click. `score_automation` consumes the same events + steps the rest of
+the analysis layer sees and emits one row per detected segment pattern
+(grouped across cases by signature).
 
 Run with pytest:
     pytest normalization/test/test_analysis_automation.py
@@ -22,115 +28,154 @@ def _ts(sec):
     return (_BASE + timedelta(seconds=sec)).isoformat().replace("+00:00", "Z")
 
 
-def _step(sid, start_s, end_s, canonical=None, interaction_ids=None):
+def _step(sid, label, eids, canonical=None):
     return {
         "step_id": sid,
-        "name": "Step " + sid,
-        "time_range": {"start": _ts(start_s), "end": _ts(end_s)},
-        "evidence": {"interaction_event_ids": interaction_ids or []},
+        "name": label,
+        "process_label": label,
         "canonical_step_id": canonical,
+        "time_range": {"start": _ts(0), "end": _ts(0)},
+        "evidence": {"interaction_event_ids": list(eids)},
         "state": "auto_suggested",
     }
 
 
-def _interaction(eid, sec, automation_id):
+def _interaction(eid, sec, app, case_id):
     return {"type": "interaction", "event_id": eid, "timestamp": _ts(sec),
-            "data": {"process_name": "app.exe", "value": "", "automation_id": automation_id}}
+            "data": {"process_name": app, "window_title": app,
+                     "value": "", "automation_id": "x",
+                     "case_ids": [case_id] if case_id else []}}
 
 
-def test_single_instance_reports_insufficient_data():
-    steps = [_step("s1", 0, 300, interaction_ids=["i1"])]
-    events = [_interaction("i1", 10, "field")]
-    out = score_automation(steps, events)
-    assert out[0]["data_sufficiency"] == "single_instance"
-    assert out[0]["scores"]["repetitiveness"] is None
-    assert out[0]["scores"]["rule_based"] is None
-    assert out[0]["estimated_savings_ms"] is None
-
-
-def test_multi_instance_identical_sequences_score_high():
-    steps = [
-        _step("s1", 0, 300, canonical="c1", interaction_ids=["i1", "i2"]),
-        _step("s2", 400, 700, canonical="c1", interaction_ids=["i3", "i4"]),
-    ]
+def test_single_segment_reports_single_instance():
+    # One case, one app, three steps -- one segment, one instance.
     events = [
-        _interaction("i1", 10, "name"), _interaction("i2", 20, "submit"),
-        _interaction("i3", 410, "name"), _interaction("i4", 420, "submit"),
+        _interaction("i1", 0, "crm.exe", "c1"),
+        _interaction("i2", 1, "crm.exe", "c1"),
+        _interaction("i3", 2, "crm.exe", "c1"),
     ]
-    out = score_automation(steps, events)
-    assert out[0]["data_sufficiency"] == "multi_instance"
-    assert out[0]["scores"]["repetitiveness"] == 1.0
-    assert out[0]["scores"]["rule_based"] == 1.0
-
-
-def test_multi_instance_varied_sequences_score_lower():
     steps = [
-        _step("s1", 0, 300, canonical="c1", interaction_ids=["i1"]),
-        _step("s2", 400, 700, canonical="c1", interaction_ids=["i2"]),
+        _step("s1", "Search", ["i1"]),
+        _step("s2", "Copy", ["i2"]),
+        _step("s3", "Paste", ["i3"]),
     ]
-    events = [_interaction("i1", 10, "name"), _interaction("i2", 410, "other")]
-    out = score_automation(steps, events)
-    assert out[0]["scores"]["rule_based"] < 1.0
-
-
-def test_automation_confirmed_from_override():
-    steps = [_step("s1", 0, 300, interaction_ids=["i1"])]
-    events = [_interaction("i1", 10, "field")]
-    # No override -> automation_confirmed is None.
-    assert score_automation(steps, events)[0]["automation_confirmed"] is None
-    # Override confirms the candidate.
-    anno = {"analysis_overrides": [{"step_id": "s1", "automation_confirmed": True}]}
-    assert score_automation(steps, events, annotations=anno)[0][
-        "automation_confirmed"] is True
-    # Override dismisses it.
-    anno2 = {"analysis_overrides": [{"step_id": "s1", "automation_confirmed": False}]}
-    assert score_automation(steps, events, annotations=anno2)[0][
-        "automation_confirmed"] is False
-
-
-def test_candidate_carries_instances_and_signature():
-    steps = [
-        _step("s1", 0, 300, canonical="c1", interaction_ids=["i1"]),
-        _step("s2", 400, 700, canonical="c1", interaction_ids=["i2"]),
-    ]
-    events = [_interaction("i1", 10, "name"), _interaction("i2", 410, "name")]
-    out = score_automation(steps, events)
-    assert out[0]["instances"] == 2
-    assert isinstance(out[0]["sequence_signature"], str)
-
-
-def test_same_sequence_yields_same_signature():
-    # Two steps performed identically share a signature -- the basis for
-    # cross-session pooling in the Compare-Sessions analysis panel.
-    a = score_automation([_step("s1", 0, 300, interaction_ids=["i1"])],
-                         [_interaction("i1", 10, "field")])
-    b = score_automation([_step("s2", 0, 300, interaction_ids=["i2"])],
-                         [_interaction("i2", 10, "field")])
-    assert a[0]["sequence_signature"] is not None
-    assert a[0]["sequence_signature"] == b[0]["sequence_signature"]
-
-
-def test_groups_auto_steps_by_process_label():
-    # No canonical id, value-laden names, shared process_label -> one pooled
-    # candidate with instances=2 (was one-per-instance before the fix).
-    steps = [
-        {"step_id": "s1", "name": "Search — CUST-1", "process_label": "Search",
-         "time_range": {"start": _ts(0), "end": _ts(300)},
-         "evidence": {"interaction_event_ids": ["i1"]}, "canonical_step_id": None},
-        {"step_id": "s2", "name": "Search — CUST-2", "process_label": "Search",
-         "time_range": {"start": _ts(400), "end": _ts(700)},
-         "evidence": {"interaction_event_ids": ["i2"]}, "canonical_step_id": None},
-    ]
-    events = [_interaction("i1", 10, "field"), _interaction("i2", 410, "field")]
     out = score_automation(steps, events)
     assert len(out) == 1
-    assert out[0]["instances"] == 2
-    assert out[0]["name"] == "Search"
+    row = out[0]
+    assert row["data_sufficiency"] == "single_instance"
+    assert row["instance_count"] == 1
+    assert row["scores"]["confidence"] is None
+    assert row["estimated_savings_ms"] is None
 
 
-def test_no_interactions_signature_is_none():
-    out = score_automation([_step("s1", 0, 300)], [])
-    assert out[0]["sequence_signature"] is None
+def test_two_matching_segments_score_as_multi_instance():
+    # Same app + same step sequence across two cases -> one row,
+    # 2 instances, multi_instance sufficiency.
+    events = [
+        _interaction("i1", 0, "crm.exe", "c1"),
+        _interaction("i2", 1, "crm.exe", "c1"),
+        _interaction("i3", 2, "crm.exe", "c1"),
+        _interaction("i4", 100, "crm.exe", "c2"),
+        _interaction("i5", 101, "crm.exe", "c2"),
+        _interaction("i6", 102, "crm.exe", "c2"),
+    ]
+    steps = [
+        _step("s1", "Search", ["i1"]),
+        _step("s2", "Copy", ["i2"]),
+        _step("s3", "Paste", ["i3"]),
+        _step("s4", "Search", ["i4"]),
+        _step("s5", "Copy", ["i5"]),
+        _step("s6", "Paste", ["i6"]),
+    ]
+    out = score_automation(steps, events)
+    assert len(out) == 1
+    row = out[0]
+    assert row["data_sufficiency"] == "multi_instance"
+    assert row["instance_count"] == 2
+    assert sorted(row["case_ids"]) == ["c1", "c2"]
+    assert row["scores"]["confidence"] is not None
+
+
+def test_automation_confirmed_from_override_keyed_by_signature():
+    # The new override identity field is segment_signature, not step_id.
+    events = [
+        _interaction("i1", 0, "crm.exe", "c1"),
+        _interaction("i2", 1, "crm.exe", "c1"),
+        _interaction("i3", 2, "crm.exe", "c1"),
+        _interaction("i4", 100, "crm.exe", "c2"),
+        _interaction("i5", 101, "crm.exe", "c2"),
+        _interaction("i6", 102, "crm.exe", "c2"),
+    ]
+    steps = [
+        _step("s1", "Search", ["i1"]),
+        _step("s2", "Copy", ["i2"]),
+        _step("s3", "Paste", ["i3"]),
+        _step("s4", "Search", ["i4"]),
+        _step("s5", "Copy", ["i5"]),
+        _step("s6", "Paste", ["i6"]),
+    ]
+    # No override -> automation_confirmed is None.
+    out = score_automation(steps, events)
+    sig = out[0]["segment_signature"]
+    assert out[0]["automation_confirmed"] is None
+
+    anno = {"analysis_overrides": [
+        {"segment_signature": sig, "automation_confirmed": True},
+    ]}
+    out2 = score_automation(steps, events, annotations=anno)
+    assert out2[0]["automation_confirmed"] is True
+
+    anno2 = {"analysis_overrides": [
+        {"segment_signature": sig, "automation_confirmed": False},
+    ]}
+    out3 = score_automation(steps, events, annotations=anno2)
+    assert out3[0]["automation_confirmed"] is False
+
+
+def test_total_and_mean_elapsed_are_summed_across_instances():
+    # Two segments, 3s and 5s elapsed -- pooled total 8s, mean 4s.
+    events = [
+        _interaction("i1", 0, "crm.exe", "c1"),
+        _interaction("i2", 1, "crm.exe", "c1"),
+        _interaction("i3", 3, "crm.exe", "c1"),
+        _interaction("i4", 100, "crm.exe", "c2"),
+        _interaction("i5", 101, "crm.exe", "c2"),
+        _interaction("i6", 105, "crm.exe", "c2"),
+    ]
+    steps = [
+        _step("s1", "Search", ["i1"]),
+        _step("s2", "Copy", ["i2"]),
+        _step("s3", "Paste", ["i3"]),
+        _step("s4", "Search", ["i4"]),
+        _step("s5", "Copy", ["i5"]),
+        _step("s6", "Paste", ["i6"]),
+    ]
+    out = score_automation(steps, events)
+    row = out[0]
+    assert row["total_elapsed_ms"] == 8000
+    assert row["mean_elapsed_ms"] == 4000
+
+
+def test_atomic_step_signal_does_not_appear():
+    # The old per-step output keys are gone -- no step_id, no
+    # sequence_signature, no per-step repetitiveness/rule_based scores.
+    events = [
+        _interaction("i1", 0, "crm.exe", "c1"),
+        _interaction("i2", 1, "crm.exe", "c1"),
+        _interaction("i3", 2, "crm.exe", "c1"),
+    ]
+    steps = [
+        _step("s1", "Search", ["i1"]),
+        _step("s2", "Copy", ["i2"]),
+        _step("s3", "Paste", ["i3"]),
+    ]
+    row = score_automation(steps, events)[0]
+    assert "step_id" not in row
+    assert "sequence_signature" not in row
+    assert "repetitiveness" not in (row.get("scores") or {})
+    assert "rule_based" not in (row.get("scores") or {})
+    assert "segment_signature" in row
+    assert "label" in row
 
 
 if __name__ == "__main__":

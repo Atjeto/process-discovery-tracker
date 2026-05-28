@@ -1,19 +1,19 @@
 /*
  * analysis-view.js -- the Analysis level of the Session view.
  *
- * Renders the heuristic IE/CI findings from analysis.json: the process
- * efficiency ratio, per-step waste classification, the time study, and
- * automation candidates.
+ * Renders the heuristic findings from analysis.json: the process
+ * efficiency ratio, per-step-type waste classification, the time
+ * study, and automation candidates (segment-grain, ADR-0016).
  *
  * The heuristics ship provisional (ADR-0008): the value-add vs.
- * business-required split and whether an automation candidate is real
- * both need a human. This view lets the analyst correct them -- a click
- * on a waste row sets the step's business-required time; a confirm /
- * dismiss toggle marks an automation candidate. Corrections are written
- * to annotations.json (`analysis_overrides[]`), NOT analysis.json (which
- * `normalize` regenerates every run). `applyAnalysisOverrides` folds them
- * back in so the view updates immediately; the next Analyze run bakes
- * them into analysis.json proper. See ANALYSIS-LAYER-FOLLOWUPS.md.
+ * business-required split needs a human, and confirming a segment
+ * really is automation-worthy is an analyst call. Corrections live in
+ * annotations.json `analysis_overrides[]`, keyed by `process_label`
+ * for waste and by `segment_signature` for automation; not in
+ * analysis.json (which `normalize` regenerates every run).
+ * `applyAnalysisOverrides` folds them back in so the view updates
+ * immediately; the next Analyze run bakes them into analysis.json
+ * proper. See ANALYSIS-LAYER-FOLLOWUPS.md and ADR-0016.
  */
 
 "use strict";
@@ -90,7 +90,8 @@ function applyAnalysisOverrides(analysis, overrides) {
   });
 
   const automation = (analysis.automation_candidates || []).map((a) => {
-    const ov = byStep[a.step_id];
+    const ov = (overrides || []).find((o) =>
+      o && o.segment_signature && o.segment_signature === a.segment_signature);
     if (!ov || ov.automation_confirmed === undefined) return a;
     return Object.assign({}, a, { automation_confirmed: !!ov.automation_confirmed });
   });
@@ -277,60 +278,93 @@ function _decisionCell(a) {
   const btn = (val, label) =>
     '<button type="button" class="auto-btn' + (c === val ? " active" : "") +
     '" data-confirm="' + val + '">' + label + "</button>";
-  return '<div class="auto-decision" data-step-id="' +
-    escapeAttr(a.step_id || "") + '">' +
+  return '<div class="auto-decision" data-segment-signature="' +
+    escapeAttr(a.segment_signature || "") + '">' +
     btn(true, "Confirm") + btn(false, "Dismiss") + "</div>";
 }
 
+/* Render the Automation candidates list at the segment grain
+   (ADR-0016). A row is a coherent stretch of work the segment detector
+   found repeating: same app, same case, same ordered step sequence.
+   That is the smallest unit a robot can actually take end-to-end --
+   we deliberately do NOT render single clicks or keystrokes here. */
 function _automationSection(auto) {
   if (!auto.length) return "";
-  const score = (v) => (v === null || v === undefined)
-    ? '<span class="score-na" title="needs 2+ instances of the step">—</span>'
-    : Math.round(v * 100) + "%";
-  const rows = auto.map((a) => {
-    const sc = a.scores || {};
-    const inst = a.instances || 0;
-    const dataLabel = inst + " instance" + (inst === 1 ? "" : "s") +
-      (a.data_sufficiency === "single_instance" ? " — insufficient" : "");
+  const scored = auto.filter((a) => a.data_sufficiency === "multi_instance");
+  const lonely = auto.length - scored.length;
+  const lead = '<div class="analysis-section-title">Automation candidates</div>' +
+    '<div class="analysis-caption">' +
+    "A candidate is a contiguous run of work in one application within one " +
+    "case — e.g. a CRM lookup → copy → paste sequence. Single clicks or " +
+    "keystrokes are not surfaced (a hybrid where a robot clicks one button " +
+    "inside a manual flow is worse than fully manual)." +
+    "</div>";
+  if (!scored.length) {
+    const note = lonely
+      ? "All detected segments occurred only once in this capture — "
+        + "automation candidacy needs the same segment seen across 2+ cases. "
+        + "Load more sessions or analyze a longer recording."
+      : "No multi-instance segments detected.";
+    return '<div class="analysis-section">' + lead +
+      '<div class="analysis-note">' + escapeHtml(note) + "</div></div>";
+  }
+  const rows = scored.map((a) => {
+    const steps = (a.step_labels || []).slice(0, 6);
+    const moreSteps = (a.step_labels || []).length - steps.length;
+    const sequence = steps.length
+      ? steps.map(escapeHtml).join('<span class="auto-arrow"> → </span>')
+        + (moreSteps > 0 ? ' <span class="auto-more">+' + moreSteps + " more</span>" : "")
+      : '<span class="score-na">no labelled steps</span>';
+    const app = String(a.app || "").replace(/\.exe$/i, "") || "—";
     return "<tr>" +
-      "<td>" + escapeHtml(a.name || "(step)") + "</td>" +
-      '<td class="num">' + score(sc.repetitiveness) + "</td>" +
-      '<td class="num">' + score(sc.rule_based) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(sc.volume)) + "</td>" +
-      "<td>" + escapeHtml(dataLabel) + "</td>" +
+      '<td><div class="auto-label">' + escapeHtml(a.label || "(segment)") + "</div>" +
+        '<div class="auto-sequence">' + sequence + "</div></td>" +
+      "<td>" + escapeHtml(app) + "</td>" +
+      '<td class="num">' + (a.instance_count || 0) + "</td>" +
+      '<td class="num">' + escapeHtml(_fmt(a.total_elapsed_ms)) + "</td>" +
+      '<td class="num">' + escapeHtml(_fmt(a.mean_elapsed_ms)) + "</td>" +
       "<td>" + _decisionCell(a) + "</td>" +
     "</tr>";
   }).join("");
-  return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Automation candidates</div>' +
+  const tail = lonely
+    ? '<div class="analysis-note">' + lonely + " more segment" +
+      (lonely === 1 ? "" : "s") + " occurred only once and " +
+      "aren't ranked (single instances can't be judged for repeatability)." +
+      "</div>"
+    : "";
+  return '<div class="analysis-section">' + lead +
     '<table class="analysis-table">' +
-      "<thead><tr><th>Step</th><th>Repetitive</th><th>Rule-based</th>" +
-      "<th>Volume</th><th>Data</th><th>Decision</th></tr></thead>" +
-      "<tbody>" + rows + "</tbody></table></div>";
+      "<thead><tr><th>Segment</th><th>App</th>" +
+      "<th>Instances</th><th>Total time</th><th>Mean per instance</th>" +
+      "<th>Decision</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table>" + tail + "</div>";
 }
 
 /* ============ Correction handlers ================================= */
 
-/* Upsert a per-step entry in annotations.json `analysis_overrides[]`.
-   A patch field set to undefined clears that correction; an entry left
-   with only `step_id` is pruned. Persists with undo, then emits
-   "analysis" so this view (and undo/redo) repaint. */
-async function _writeOverride(stepId, patch) {
+/* Upsert a segment-signature entry in annotations.json
+   `analysis_overrides[]` -- the new shape used for confirming or
+   dismissing an automation segment (ADR-0016). A patch field set to
+   undefined clears that correction; an entry left with only the
+   identity field is pruned. Persists with undo, then emits "analysis"
+   so this view (and undo/redo) repaint. */
+async function _writeSegmentOverride(signature, patch) {
   const session = State.getSession();
-  if (!session || !stepId) return;
+  if (!session || !signature) return;
   let anno;
   try { anno = JSON.parse(JSON.stringify(session.annotations || {})); }
   catch (_) { anno = {}; }
   const list = Array.isArray(anno.analysis_overrides) ? anno.analysis_overrides : [];
-  let entry = list.find((o) => o && o.step_id === stepId);
-  if (!entry) { entry = { step_id: stepId }; list.push(entry); }
+  let entry = list.find((o) => o && o.segment_signature === signature);
+  if (!entry) { entry = { segment_signature: signature }; list.push(entry); }
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) delete entry[k];
     else entry[k] = v;
   }
   anno.analysis_overrides = list.filter((o) =>
-    o && (o.step_id != null || o.process_label) &&
-    Object.keys(o).some((k) => k !== "step_id" && k !== "process_label"));
+    o && (o.step_id != null || o.process_label || o.segment_signature) &&
+    Object.keys(o).some((k) =>
+      k !== "step_id" && k !== "process_label" && k !== "segment_signature"));
   await Session.saveAnnotationsWithUndo(anno, "Adjust analysis classification");
   session.annotations = anno;
   State.emit("analysis");
@@ -426,19 +460,20 @@ function _wireControls(host, analysis) {
     });
   });
 
-  const autoByStep = {};
+  const autoBySig = {};
   for (const a of (analysis.automation_candidates || [])) {
-    autoByStep[a.step_id] = a;
+    if (a.segment_signature) autoBySig[a.segment_signature] = a;
   }
   host.querySelectorAll(".auto-decision .auto-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const wrap = btn.closest(".auto-decision");
       if (!wrap) return;
-      const stepId = wrap.dataset.stepId;
+      const sig = wrap.dataset.segmentSignature;
+      if (!sig) return;
       const want = btn.dataset.confirm === "true";
-      const cur = autoByStep[stepId];
+      const cur = autoBySig[sig];
       const isActive = cur && cur.automation_confirmed === want;
-      _writeOverride(stepId, { automation_confirmed: isActive ? undefined : want });
+      _writeSegmentOverride(sig, { automation_confirmed: isActive ? undefined : want });
     });
   });
 }

@@ -146,11 +146,13 @@ def test_fuzz_analysis_wellformed():
 
             auto = score_automation(steps, [], segments=segs, annotations=anns)
             for a in auto:
-                assert a["instances"] >= 1
+                # ADR-0016: segment-grain candidacy. A row is a coherent
+                # segment pattern; per-step scores are gone.
+                assert a["instance_count"] >= 1
                 assert a["data_sufficiency"] in ("single_instance", "multi_instance")
                 sc = a["scores"]
-                for k in ("repetitiveness", "rule_based"):
-                    assert sc[k] is None or 0.0 <= sc[k] <= 1.0, f"{k} out of [0,1]: {sc}"
+                conf = sc.get("confidence")
+                assert conf is None or 0.0 <= conf <= 1.0, f"confidence out of [0,1]: {sc}"
                 assert sc["volume"] >= 0
         except AssertionError as e:
             raise AssertionError(f"[iter {i}, seed {hex(seed)}] {e}") from e

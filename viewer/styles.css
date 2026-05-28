@@ -943,6 +943,17 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background: var(--accent-muted); border-color: var(--accent);
   color: var(--fg); font-weight: 600;
 }
+/* Segment-grain automation candidates (ADR-0016): a row's primary text
+   is the segment label; below it, a small chain of step labels carries
+   the "what does the segment actually do" detail. */
+.auto-label { font-size: 12px; color: var(--fg); font-weight: 500; }
+.auto-sequence {
+  font-size: 11px; color: var(--fg-3); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 480px;
+}
+.auto-arrow { color: var(--fg-4); padding: 0 2px; }
+.auto-more { color: var(--fg-4); font-style: italic; }
 /* Compare-Sessions analysis panel -- process-efficiency trend bars. */
 .agg-eff-list { display: flex; flex-direction: column; gap: 6px; }
 .agg-eff-row { display: flex; align-items: center; gap: 10px; }

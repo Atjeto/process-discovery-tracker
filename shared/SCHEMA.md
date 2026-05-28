@@ -215,13 +215,38 @@ Analyst corrections to the heuristic analysis layer ([ADR-0008](../docs/adr/0008
   "analysis_overrides": [
     { "step_id": "uuid",
       "bnva_ms": 0,
-      "waste_types": ["waiting", "rework"],
+      "waste_types": ["waiting", "rework"] },
+    { "process_label": "Search",
+      "bnva_ms": 60000 },
+    { "segment_signature": "12-hex-chars",
       "automation_confirmed": true }
   ]
 }
 ```
 
-One entry per step, keyed by `step_id`. Every field is optional — only the ones the analyst touched are present; the rest stay heuristic. `bnva_ms` reclassifies value-add time as business-required non-value-add: the waste classifier clamps it to the step's available active time and recomputes `va_ms` so `va_ms + bnva_ms + nva_ms` still equals `elapsed_ms`. `waste_types` replaces the detected waste-type set for that step. `automation_confirmed` (`true` confirm / `false` dismiss) records the analyst's verdict on an automation candidate. Raw `events.jsonl` and `analysis.json` are never edited by hand; the next `normalize` run bakes the overrides into a fresh `analysis.json`.
+Entries are typed by which identity field they carry. Every field is optional —
+only the ones the analyst touched are present; the rest stay heuristic.
+
+- **`step_id`-scoped** corrections target one step instance. `bnva_ms`
+  reclassifies value-add time as business-required non-value-add (clamped to
+  available active time so `va_ms + bnva_ms + nva_ms` still equals
+  `elapsed_ms`); `waste_types` replaces the detected waste-type set for that
+  step.
+- **`process_label`-scoped** corrections (no `step_id`) propagate to every
+  instance of that step type — written when the analyst edits the grouped
+  "Waste by step" row in the Analysis view.
+- **`segment_signature`-scoped** corrections target a coherent-segment
+  automation candidate ([ADR-0016](../docs/adr/0016-segment-level-automation-candidacy.md)). `automation_confirmed`
+  (`true` confirm / `false` dismiss) records the analyst's verdict; the
+  signature is the stable hash of the segment's app + ordered step labels,
+  so the verdict survives the next re-analyze as long as the segment pattern
+  is still detected. A pre-ADR-0016 entry using `step_id` + `automation_confirmed`
+  is read-tolerated but ignored on save — the analyst's next click rewrites
+  it to the segment-keyed shape.
+
+A per-`step_id` override (the most specific) wins over a `process_label` one
+for waste. Raw `events.jsonl` and `analysis.json` are never edited by hand;
+the next `normalize` run bakes the overrides into a fresh `analysis.json`.
 
 ### Excluded range (`excluded_ranges[]`)
 
@@ -389,7 +414,7 @@ identifies the classifier generation.
 
 ```json
 {
-  "meta": { "heuristic_version": 1, "generated_at": "ISO 8601",
+  "meta": { "heuristic_version": 2, "generated_at": "ISO 8601",
             "session_id": "uuid", "step_count": 0, "provisional": true },
   "waste_classification": [
     { "step_id": "uuid", "name": "string", "elapsed_ms": 0,
@@ -404,11 +429,34 @@ identifies the classifier generation.
                     "p25": 0, "p50": 0, "p75": 0, "p95": 0 },
       "active_ms": 0, "waiting_ms": 0, "switching_ms": 0 }
   ],
+  "segments": [
+    { "segment_id": "stable hash plus case + start",
+      "signature": "12-hex-chars",
+      "app": "salesforce.exe",
+      "case_id": "uuid or null",
+      "start": "ISO 8601", "end": "ISO 8601",
+      "elapsed_ms": 0,
+      "interaction_count": 0,
+      "step_ids": ["uuid"],
+      "step_labels": ["Search", "Copy", "Paste"],
+      "label": "salesforce — Search → Copy → Paste" }
+  ],
   "automation_candidates": [
-    { "step_id": "uuid", "canonical_step_id": "uuid or null", "name": "string",
-      "instances": 1,
-      "scores": { "repetitiveness": 0.0, "rule_based": 0.0, "volume": 0 },
-      "sequence_signature": "hash or null",
+    { "segment_signature": "12-hex-chars",
+      "label": "salesforce — Search → Copy → Paste",
+      "app": "salesforce.exe",
+      "apps": ["salesforce.exe"],
+      "step_labels": ["Search", "Copy", "Paste"],
+      "case_ids": ["uuid", "uuid"],
+      "instance_count": 4,
+      "total_elapsed_ms": 134000,
+      "mean_elapsed_ms": 33500,
+      "instances": [
+        { "segment_id": "...", "case_id": "uuid",
+          "start": "ISO 8601", "end": "ISO 8601",
+          "elapsed_ms": 0, "interaction_count": 0, "step_ids": ["uuid"] }
+      ],
+      "scores": { "confidence": 1.0, "volume": 134000 },
       "estimated_savings_ms": null,
       "automation_confirmed": null,
       "data_sufficiency": "single_instance | multi_instance" }
@@ -422,20 +470,26 @@ identifies the classifier generation.
 }
 ```
 
-`waste_classification` has one entry per step; `time_study` and
-`automation_candidates` have one entry per *logical* step — instances are grouped
-by `step_group_key` = `canonical_step_id → process_label → step_id`, so with **no
-Process Template** repeated work still collapses to one entry with `instances = N`
-(it used to fall back to one group per raw step, fragmenting the list —
-[ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)). `bnva_ms` is `0` by heuristic — the value-add vs.
+`waste_classification` has one entry per step; `time_study` has one entry per
+*logical* step — instances are grouped by `step_group_key` =
+`canonical_step_id → process_label → step_id`, so with **no Process Template**
+repeated work still collapses to one entry with `instances = N`
+([ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)). `bnva_ms` is `0` by heuristic — the value-add vs.
 business-required split needs analyst judgement — until the analyst sets it via
-`analysis_overrides[]` in `annotations.json`. `automation_candidates` scores are
-`null` with `data_sufficiency: "single_instance"` for a step observed only once
-— repetitiveness cannot be judged from a single instance. `instances` is the
-step count behind the entry; `sequence_signature` is a stable hash of how the
-step was performed, letting the Compare-Sessions view pool the same step across
-recordings; `automation_confirmed` carries the analyst's verdict (`true` /
-`false`, or `null` when undecided).
+`analysis_overrides[]` in `annotations.json`.
+
+`segments` and `automation_candidates` are **segment-grain** ([ADR-0016](../docs/adr/0016-segment-level-automation-candidacy.md)): the
+unit is a coherent stretch of work — a contiguous run of same-app, same-case
+interactions bounded by an app or case switch — not a single click. `segments`
+lists every detected segment; `automation_candidates` pools them by
+`segment_signature` (a stable hash of app + ordered `step_labels`), so the
+same pattern repeated four times in one session is one row with
+`instance_count: 4`. A pattern with one instance is reported with
+`data_sufficiency: "single_instance"` — one observation cannot judge
+repeatability. `automation_confirmed` carries the analyst's verdict, written
+to `analysis_overrides[]` keyed by `segment_signature`. The previous per-step
+shape (`step_id`, `scores.repetitiveness`, `scores.rule_based`,
+`sequence_signature`) was retired in `meta.heuristic_version: 2`.
 
 ## Invariants
 
