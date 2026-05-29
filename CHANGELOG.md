@@ -63,6 +63,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `build` block) from both apps — distribution is via `@electron/packager`
   (`build-package.js`), not electron-builder. This clears every `npm audit`
   advisory (11 → 0; they were all in electron-builder's transitive tree).
+- **Replaced the unmaintained `dagre` 0.8.5 with the maintained `@dagrejs/dagre`**
+  fork, via `cytoscape-dagre` 2.5 → 3.0 (which bundles the fork). Dropped the now-
+  redundant standalone `dagre` `<script>` tag from `index.html`. DFG layout
+  verified unchanged in the harness (nodes positioned, 0 page errors).
 
 ## [0.19.0] - 2026-05-29
 
