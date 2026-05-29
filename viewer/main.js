@@ -11,10 +11,24 @@
 
 "use strict";
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require("electron");
+const _electron = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
-const { runNormalize } = require("./python-runner.js");
+
+/* Under a plain `node` process (e.g. the node:test runner pulling this
+   module in to unit-test the pure helpers) require("electron") returns a
+   path string, not the API object. Shim app/ipcMain/etc. to no-ops so
+   the top-level handler registration below doesn't throw -- the real
+   Electron runtime always provides the genuine objects. */
+const _underElectron = _electron && typeof _electron === "object" && _electron.ipcMain;
+const _noopIpc = { handle() {}, on() {} };
+// whenReady() returns a never-resolving promise under the shim so the
+// .then(createMainWindow) lifecycle hook never fires outside Electron.
+const _noopApp = { whenReady() { return new Promise(() => {}); }, on() {}, quit() {} };
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
+  ? _electron
+  : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
+const { runNormalize } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}) };
 
 let mainWindow = null;
 
@@ -40,6 +54,47 @@ const initialSessionArg = parseInitialSessionArg();
 // process. All four runNormalize() callers register here via onProc
 // so viewer:cancelNormalize can kill whichever is in flight.
 let _normalizeHandle = null;
+
+/* Set of session-folder roots the main process has loaded (resolved,
+   absolute). The session folder is UNTRUSTED input, so renderer-supplied
+   paths to open are validated against these known roots -- the renderer
+   cannot be trusted to confine a path itself (nodeIntegration = full RCE
+   on a renderer compromise). Populated by loadSessionData(). */
+const _knownSessionRoots = new Set();
+
+/* Image extensions the screenshot-open flow is allowed to launch. A
+   captured `events.jsonl` could name `Invoice.png.exe` to ride the
+   "open screenshot" click into arbitrary-program execution via Windows
+   file association; only these resolve through shell.openPath(). */
+const _ALLOWED_IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
+
+/* Validate a renderer-supplied path before it reaches shell.openPath().
+   Returns { ok: true, path } with the resolved absolute path when SAFE,
+   or { ok: false, error } otherwise. Safe means: a non-empty string, no
+   `..` traversal segment, resolves under one of the known session roots'
+   `screenshots/` directory, and carries an allowed image extension.
+   `roots` defaults to the live set; tests pass an explicit set. */
+function validateScreenshotOpen(p, roots = _knownSessionRoots) {
+  if (typeof p !== "string" || !p) return { ok: false, error: "Path must be a non-empty string." };
+  // Reject explicit traversal segments outright (belt-and-braces; the
+  // containment check below also catches escapes, but this is clearer
+  // and rejects before any path math).
+  const segments = p.split(/[\\/]+/);
+  if (segments.some((s) => s === "..")) return { ok: false, error: "Path traversal is not allowed." };
+  const resolved = path.resolve(p);
+  const ext = path.extname(resolved).toLowerCase();
+  if (!_ALLOWED_IMAGE_EXTS.has(ext)) return { ok: false, error: `Not an allowed image type: ${ext || "(none)"}` };
+  for (const root of roots) {
+    const shotsDir = path.resolve(root, "screenshots");
+    const rel = path.relative(shotsDir, resolved);
+    // rel must stay inside shotsDir: not empty, not starting with ".."
+    // (escape), and not itself absolute (different drive on Windows).
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
+      return { ok: true, path: resolved };
+    }
+  }
+  return { ok: false, error: "Path is outside the active session's screenshots folder." };
+}
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -193,7 +248,20 @@ ipcMain.handle("viewer:saveHtmlFile", async (_e, { content, suggestedName }) => 
 });
 
 ipcMain.handle("viewer:revealFile", (_e, p) => shell.showItemInFolder(p));
-ipcMain.handle("viewer:openExternal", (_e, p) => shell.openPath(p));
+ipcMain.handle("viewer:openExternal", (_e, p) => {
+  // SECURITY: `p` originates from untrusted session data (a screenshot
+  // path in events.jsonl). Confine it to the active session's
+  // screenshots/ dir and require an image extension before handing it to
+  // the OS shell -- otherwise a planted `Invoice.png.exe` would launch
+  // on a screenshot click. Defense lives here at the sink because the
+  // renderer cannot be trusted (nodeIntegration).
+  const v = validateScreenshotOpen(p);
+  if (!v.ok) {
+    console.warn("[viewer:openExternal] refused to open path:", v.error, JSON.stringify(p));
+    return { ok: false, error: v.error };
+  }
+  return shell.openPath(v.path);
+});
 
 /* --- Session loading ---------------------------------------------- */
 
@@ -205,6 +273,9 @@ function loadSessionData(sessionFolder) {
     throw new Error(`Session folder not found: ${root}`);
   }
   sessionFolder = root;
+  // Track this resolved root so viewer:openExternal can confine
+  // renderer-supplied screenshot paths to a session we actually loaded.
+  _knownSessionRoots.add(root);
   const manifestPath = path.join(sessionFolder, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Not a session folder (no manifest.json): ${sessionFolder}`);
@@ -876,3 +947,8 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
 });
+
+/* Exported for unit tests (the security helper is pure and validated in
+   isolation). Importing this module under plain node is made safe by the
+   Electron shim near the top. */
+module.exports = { validateScreenshotOpen, _knownSessionRoots };

@@ -60,6 +60,88 @@ function decorateDrift(steps) {
   return (steps || []).map(s => byStep[s.step_id] ? { ...s, drift: byStep[s.step_id] } : s);
 }
 
+/* ===== Phase-membership coherence (CR M-1..M-3) =====
+   Phase membership is stored TWICE -- on phase.step_ids AND on
+   step.phase_id. The two readings MUST stay consistent: the phase
+   list/count reads step_ids, the step map reads phase_id. These pure
+   helpers are the single point that keeps the pair in sync, reused
+   across every step-set mutation (delete / split / merge) so no path
+   can leave one representation stale. No DOM / no State -- testable. */
+
+/* Detach a set of step ids from every phase: drop them from each
+   phase.step_ids and clear step.phase_id on the matching steps. Used
+   when steps are removed from the set (delete, and the consumed halves
+   of a merge). Mutates `anno` in place; returns it. */
+function detachStepsFromPhases(anno, idSet) {
+  if (!anno || !idSet || (idSet.size === 0)) return anno;
+  for (const p of anno.phases || []) {
+    if (Array.isArray(p.step_ids) && p.step_ids.some(id => idSet.has(id))) {
+      p.step_ids = p.step_ids.filter(id => !idSet.has(id));
+    }
+  }
+  for (const s of anno.steps || []) {
+    if (s.phase_id != null && idSet.has(s.step_id)) s.phase_id = null;
+  }
+  return anno;
+}
+
+/* Ensure a step that carries a phase_id is also listed in that phase's
+   step_ids (the forward direction the bare assignment forgets). A no-op
+   when the step has no phase_id or the phase is gone. Used when a new
+   half (split) or a survivor (merge) inherits a phase_id. Mutates
+   `anno` in place; returns it. */
+function ensureStepInPhase(anno, step) {
+  if (!anno || !step || step.phase_id == null) return anno;
+  const phase = (anno.phases || []).find(p => p.phase_id === step.phase_id);
+  if (!phase) { step.phase_id = null; return anno; }
+  if (!Array.isArray(phase.step_ids)) phase.step_ids = [];
+  if (!phase.step_ids.includes(step.step_id)) phase.step_ids.push(step.step_id);
+  return anno;
+}
+
+/* Merge-time substitution: the consumed step ids collapse into one
+   survivor. Any phase that contained ANY consumed id keeps its slot but
+   now points at the survivor (substituted in the first consumed id's
+   position, deduped), and every other consumed id is dropped. The
+   survivor's phase_id is set to the first such phase so the two
+   readings agree. A merge that spans steps in different phases lands the
+   survivor in the earliest-listed phase (the survivor keeps `first`'s
+   identity, mirroring mergeStepObjects). Mutates `anno`; returns it. */
+function substituteSurvivorInPhases(anno, consumedIds, survivorId) {
+  if (!anno) return anno;
+  const consumed = new Set(consumedIds);
+  let survivorPhaseId = null;
+  for (const p of anno.phases || []) {
+    if (!Array.isArray(p.step_ids)) continue;
+    const hit = p.step_ids.findIndex(id => consumed.has(id));
+    if (hit < 0) continue;
+    // The survivor belongs to exactly one phase (the earliest that held a
+    // consumed half -- it keeps `first`'s identity). That phase
+    // substitutes the survivor in the first consumed slot; every other
+    // phase merely drops its consumed ids.
+    const claim = survivorPhaseId == null;
+    const next = [];
+    for (let i = 0; i < p.step_ids.length; i++) {
+      const id = p.step_ids[i];
+      if (claim && i === hit) next.push(survivorId);
+      else if (!consumed.has(id)) next.push(id);
+      // consumed ids in non-claiming phases (and the extra consumed ids
+      // in the claiming phase): dropped
+    }
+    p.step_ids = next;
+    if (claim) survivorPhaseId = p.phase_id;
+  }
+  // Clear phase_id on any leftover consumed steps still in the set, then
+  // stamp the survivor with the phase it now belongs to.
+  for (const s of anno.steps || []) {
+    if (s.step_id === survivorId) continue;
+    if (consumed.has(s.step_id) && s.phase_id != null) s.phase_id = null;
+  }
+  const survivor = (anno.steps || []).find(s => s.step_id === survivorId);
+  if (survivor) survivor.phase_id = survivorPhaseId;
+  return anno;
+}
+
 /* Decision 1: tag each step with how many cases (tickets) it recurs in, so
    the detail can offer "apply to all". `_repeat` is the case span and drives
    the propagate action. P0.3: the LIST badge is shown only when the repetition
@@ -433,6 +515,9 @@ async function deleteStep(stepId) {
   });
   if (!ok) return;
   anno.steps = anno.steps.filter(s => s.step_id !== stepId);
+  // M-1: keep phase membership coherent -- the deleted id must not
+  // linger in any phase.step_ids (inflated count, stale persisted).
+  detachStepsFromPhases(anno, new Set([stepId]));
   if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
   await persistAnnotations(anno, 'delete step');
   toast("Step deleted", "success");
@@ -494,6 +579,10 @@ async function splitStep(stepId) {
     evidence: { ...s.evidence, interaction_event_ids: firstIds },
     state: "edited" };
   anno.steps.splice(idx, 1, first, second);
+  // M-2: the new half clones s.phase_id but is absent from that phase's
+  // step_ids -- add it so it shows in the phase list/count, not just the
+  // phase map. (first keeps s.step_id, already listed.)
+  ensureStepInPhase(anno, second);
   _splitAfter = { stepId: null, index: null };
   await persistAnnotations(anno, 'split step');
   toast("Step split", "success");
@@ -550,6 +639,9 @@ async function addStepAtTimestamp(tsISO) {
       evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) >= t) },
       state: "edited" };
     anno.steps.splice(idx, 1, first, second);
+    // M-2: the new half inherits s.phase_id; list it in that phase's
+    // step_ids too (first keeps s.step_id, already listed).
+    ensureStepInPhase(anno, second);
     await persistAnnotations(anno, "Add step at playhead");
     toast('Added "' + newName + '"', "success");
     return;
@@ -625,6 +717,11 @@ async function commitMerge(anno, toMerge, undoLabel) {
   const mergedIds = new Set(toMerge.map(s => s.step_id));
   anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
   anno.steps.push(merged);
+  // M-3: the consumed ids must not dangle in phase.step_ids, and a step
+  // that lived in a phase must not silently drop out of it. Substitute
+  // the survivor for the consumed ids in every phase that held one, and
+  // stamp the survivor's phase_id to match.
+  substituteSurvivorInPhases(anno, mergedIds, merged.step_id);
   State.setSelectedStepId(merged.step_id);
   await persistAnnotations(anno, undoLabel);
   return merged;
@@ -765,6 +862,8 @@ async function deleteSelectedSteps() {
   const anno = ensureAnnoShape(State.getSession().annotations);
   const idSet = new Set(ids);
   anno.steps = anno.steps.filter(s => !idSet.has(s.step_id));
+  // M-1: detach the deleted ids from every phase.step_ids too.
+  detachStepsFromPhases(anno, idSet);
   if (idSet.has(State.getSelectedStepId())) State.setSelectedStepId(null);
   State.getMultiSelectedStepIds().clear();
   await persistAnnotations(anno, "delete " + ids.length + " steps");
@@ -1108,4 +1207,7 @@ module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
   deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp,
+  // Pure phase-membership coherence helpers (CR M-1..M-3) -- exported
+  // for unit testing; production callers above reuse them directly.
+  detachStepsFromPhases, ensureStepInPhase, substituteSurvivorInPhases,
 };

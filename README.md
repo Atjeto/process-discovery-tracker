@@ -2,12 +2,29 @@
 
 Internal tool for capturing and analyzing process discovery sessions. Full design in [../process_discovery_tracker_design.md](../process_discovery_tracker_design.md).
 
-## What's new in v0.17.0
+## What's new in v0.19.0
 
-The current version is **0.17.1** (SemVer 0.x). v0.16.x – v0.17.0 landed the
+The current version is **0.19.0** (SemVer 0.x). v0.18.x – v0.19.0 closed **Phase 0
+of the ML-integration recommendation** (two non-ML detectors for the "worker forgot
+to fire markers, no Process Template configured" failure mode) and finished the
 **productization cycle** — analyst deliverable polished to a small-internal-rollout
 bar:
 
+- **Suggested markers** ([ADR-0017](docs/adr/0017-suggested-markers.md)). A
+  hand-rolled change-point detector (`normalization/marker_suggest.py`) scans an
+  unbracketed recording and surfaces candidate Start/End boundaries as dashed bars
+  on the Flow timeline with Accept/Dismiss rows; Accept brackets a real case on the
+  next Analyze. No new dependencies; dismissals and accepts survive re-normalize.
+- **Anchor candidates** ([ADR-0018](docs/adr/0018-anchor-candidates.md)). A
+  pattern-mining detector (`normalization/anchor_suggest.py`) ranks the field whose
+  typing would naturally segment the session into cases (a customer-ID search box, a
+  serial-number entry); Accept writes a session-level `case_anchor_override` that
+  case assignment consults before the marker-mode fallback — turning a "0 cases"
+  discovery session into real cases without hand-writing a Process Template.
+- **In-view Session map.** A **Map** level (plus a one-click **"View map"** from a
+  single Session) renders a single session's full interactive process map inline —
+  the same notation × level matrix (Activity/Step/Phase × Flow/BPMN, zoom/pan) that
+  used to be Compare-Sessions only — backed by a shared `map-controller.js`.
 - **Segment-level automation candidacy** ([ADR-0016](docs/adr/0016-segment-level-automation-candidacy.md)).
   Automation is scored at the coherent-segment grain — a contiguous, same-app run
   the robot could take end-to-end — not per atomic step. Sub-5 s single-step
@@ -20,8 +37,6 @@ bar:
   a where-the-time-went breakdown, detailed steps, input data), automation
   assessment, exceptions & variations. Pipeline-filled where the data exists,
   explicit `[To be completed]` for the analyst-judgement parts.
-- **One-click "View map"** from a single Session — the interactive map
-  (zoom/pan, Activity/Step/Phase × Flow/BPMN) used to be Compare-Sessions only.
 - **Decluttered Analysis.** The Compare-Sessions Analysis panel (adaptive
   columns, signal-only rows, automation table collapses to a note when nothing's
   scoreable) and the single-session Waste-by-step (rolled up by `process_label`,
@@ -229,7 +244,7 @@ Documented here so they're easy to revisit:
 
 Items the design explicitly punts to v1.5+ or beyond:
 
-- **ML capabilities** (§10). Activity equivalence / variant merging via sentence-transformer embeddings + HDBSCAN, case-boundary inference for unbracketed sessions via change-point detection, transaction ID auto-extraction via pattern mining, screen understanding via vision-language models. All v1.5 to v3+.
+- **ML capabilities** (§10). Activity equivalence / variant merging via sentence-transformer embeddings + HDBSCAN, case-boundary inference for unbracketed sessions via change-point detection, transaction ID auto-extraction via pattern mining, screen understanding via vision-language models. All v1.5 to v3+. *(The **non-ML Phase 0** of the middle two has since shipped — hand-rolled change-point and pattern-mining detectors, [ADR-0017](docs/adr/0017-suggested-markers.md) / [ADR-0018](docs/adr/0018-anchor-candidates.md); the ML-backed versions remain deferred.)*
 - **Multi-analyst concurrent editing** of the same session (§13). Single-analyst editing only.
 - **Marker split via UI**. Rename, adjust-timestamp, delete, and insert are all wired through `annotations.json.marker_edits`. The viewer's timeline now exposes insert via right-click on an activity band → "Insert Start marker here…" / "Insert End marker here". The edit is queued; re-run normalization to apply.
 

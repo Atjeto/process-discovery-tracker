@@ -648,7 +648,14 @@ async function exportArtifact(kind, callOpts) {
         fs.writeFileSync(mapImgPath, Buffer.from(dataUrl.slice(comma + 7), "base64"));
         opts.pddMapImage = mapImgPath;
       }
-    } catch (_) { mapImgPath = null; }
+    } catch (e) {
+      // TD#1c: don't drop the map embed silently -- a caught error here
+      // leaves the PDD showing its placeholder map with no explanation.
+      // Log so the failure is diagnosable (cf. map-controller.js, which
+      // logs + shows a fallback rather than swallowing).
+      console.error("[renderer] PDD map embed failed; exporting without process map:", e);
+      mapImgPath = null;
+    }
   }
   if (kind === "step-csv") opts.stepCsvOut = tmpPath;
   const r = await Ipc.runNormalizeExtended(opts);

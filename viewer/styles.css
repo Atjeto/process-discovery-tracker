@@ -918,11 +918,18 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
    height so the map fills the level area on tall monitors. */
 .session-layout-map {
   display: flex; flex-direction: column;
-  flex: 1; min-height: 0; margin-top: 12px;
+  flex: 1; margin-top: 12px;
+  /* NO min-height:0 here -- same trap documented on .session-layout-stepsphases
+     above (commit 1833fb5). min-height:0 lets this flex child shrink below its
+     content, so the 360px .map-host paints DOWN over the Raw Events / Analysis
+     <details> that follow it in the Session view (the process-map overlay bug).
+     A content-height floor + the view's own overflow:auto makes the details
+     flow below the map and the session view scroll instead. flex:1 still lets
+     the map grow to fill the area on tall monitors. */
 }
 .session-layout-map .panel.map-panel {
   display: flex; flex-direction: column;
-  flex: 1; min-height: 0;
+  flex: 1;
 }
 .session-layout-map .map-host {
   flex: 1; min-height: 360px; height: auto;

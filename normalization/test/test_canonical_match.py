@@ -300,6 +300,78 @@ def test_boundary_until_field_change():
     assert len(steps) == 2
 
 
+def test_until_app_change_absorbs_interior_non_matching_events():
+    """H-1: a span-boundary mode (here until_app_change) must keep interior
+    interactions that do NOT re-match its trigger -- and even one that matches
+    a DIFFERENT step's trigger -- inside the span until the real boundary (the
+    app change). Pre-fix, only until_next_step absorbed interleaved events, so
+    these interior events leaked to `unmatched` (truncating the span) or
+    prematurely closed it.
+
+    Trigger is the 'open-detail' button; interior events are a stray non-
+    matching click and a click that matches a second step ('aux'). All happen
+    in AppA, so the span should hold all four until the AppB event."""
+    canon = {
+        "id": "p1", "version": 1, "phases": [],
+        "steps": [
+            {
+                "step_id": "detail",
+                "name": "Detail span",
+                "match": [{"interaction": {"name": "open-detail"}}],
+                "boundary": "until_app_change",
+            },
+            {
+                "step_id": "aux",
+                "name": "Aux action",
+                "match": [{"interaction": {"name": "aux-btn"}}],
+            },
+        ],
+    }
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _inter(base, window="AppA - Home", name="open-detail"),       # trigger
+        _inter(base + timedelta(seconds=1), window="AppA - Home",
+               name="stray-click"),                                   # non-matching interior
+        _inter(base + timedelta(seconds=2), window="AppA - Home",
+               name="aux-btn"),                                       # different-step interior
+        _inter(base + timedelta(seconds=3), window="AppB - Other",
+               name="open-detail"),                                   # app change -> boundary
+    ]
+    steps, unmatched = match_canonical(events, canon, session_id="s1")
+    # First span absorbs the three AppA events (trigger + 2 interior); the
+    # AppB event opens a new span. Nothing leaks to unmatched.
+    assert len(steps) == 2
+    assert steps[0]["canonical_step_id"] == "detail"
+    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
+    assert len(steps[1]["evidence"]["interaction_event_ids"]) == 1
+    assert unmatched == []
+
+
+def test_until_pause_absorbs_interior_non_matching_events():
+    """H-1 companion: until_pause holds interior non-matching events until the
+    pause, instead of dropping them to `unmatched`."""
+    canon = {
+        "id": "p1", "version": 1, "phases": [],
+        "steps": [{
+            "step_id": "s1", "name": "Pause span",
+            "match": [{"interaction": {"name": "trigger"}}],
+            "boundary": "until_pause",
+            "pause_ms": 3000,
+        }],
+    }
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [
+        _inter(base, window="App", name="trigger"),
+        _inter(base + timedelta(seconds=1), window="App", name="other-1"),
+        _inter(base + timedelta(seconds=2), window="App", name="other-2"),
+        _inter(base + timedelta(seconds=12), window="App", name="trigger"),
+    ]
+    steps, unmatched = match_canonical(events, canon, session_id="s1")
+    assert len(steps) == 2
+    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
+    assert unmatched == []
+
+
 def test_boundary_until_next_step():
     canon = {
         "id": "p1", "version": 1, "phases": [],

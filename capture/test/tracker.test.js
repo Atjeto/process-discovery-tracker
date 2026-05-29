@@ -195,6 +195,63 @@ test("isUncapturedApp: a null pid is never flagged", () => {
   assert.strictEqual(isUncapturedApp({ ...UNCAPTURED_BASE, pid: null }), false);
 });
 
+// --- H-6: durability-critical write failures are re-queued, never lost ---
+
+test("flushEvents re-queues a failed durability-critical batch and retries", () => {
+  const { dir, file } = tmpEvents();
+  let failNext = true;
+  const writes = [];
+  // Injected writer: throw once on the first (critical) flush, then let
+  // every subsequent flush succeed by writing to the real file.
+  const appendFile = (f, data) => {
+    if (failNext) { failNext = false; throw new Error("EACCES (simulated)"); }
+    writes.push(data);
+    fs.appendFileSync(f, data);
+  };
+  const notices = [];
+  const t = startTracker({
+    sessionId: "s",
+    eventsFile: file,
+    appendFile,
+    onNotice: (kind, payload) => notices.push({ kind, payload }),
+  });
+  // session_start fired on construction -> first flush throws, re-queues.
+  assert.strictEqual(t.getStatus().writeErrorCount, 1);
+  assert.ok(notices.some((n) => n.kind === "write_error"));
+  // A second critical event triggers a flush that now succeeds, draining
+  // BOTH the re-queued session_start and the new marker.
+  t.fireMarker({ markerType: "start", label: "A" });
+  t.stop();
+  const evs = readEvents(file);
+  const kinds = evs.map((e) => (e.type === "system" ? e.data.kind : e.type));
+  assert.ok(kinds.includes("session_start"), "re-queued session_start survived");
+  assert.ok(kinds.includes("marker"), "later marker written");
+  assert.ok(kinds.includes("session_end"), "session_end written");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a write error on a non-critical-only batch is dropped, not counted", (tc) => {
+  const { dir, file } = tmpEvents();
+  tc.mock.timers.enable({ apis: ["setTimeout"] });
+  // Fail every write that carries an interaction line; let the initial
+  // synchronous session_start flush (which runs before timers are faked
+  // is fine since we enabled after construction) succeed.
+  const appendFile = (f, data) => {
+    if (data.includes('"interaction"')) throw new Error("EACCES (simulated)");
+    fs.appendFileSync(f, data);
+  };
+  const t = startTracker({ sessionId: "s", eventsFile: file, appendFile });
+  t.fireInteraction({ kind: "click", name: "OK" });
+  // The interaction rides the 500ms deferred timer ONLY -- no critical
+  // event shares its batch. Advance the timer so the (failing) flush runs.
+  tc.mock.timers.tick(500);
+  // Non-critical batch failed -> dropped silently, no error flag raised.
+  assert.strictEqual(t.getStatus().writeErrorCount, 0);
+  tc.mock.timers.reset();
+  t.stop();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("startTracker accepts the E5 options without disturbing the marker flow", () => {
   const { dir, file } = tmpEvents();
   const notices = [];

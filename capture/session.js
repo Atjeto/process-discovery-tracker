@@ -84,10 +84,29 @@ function markSessionRecovered({ sessionFolder }) {
 function findOrphanedSessions(baseDir) {
   if (!fs.existsSync(baseDir)) return [];
   const orphans = [];
-  for (const ent of fs.readdirSync(baseDir, { withFileTypes: true })) {
+  /* M-20: this runs on the launch path, before the tray exists. An
+     unreadable engagement folder (locked, permission-denied, vanished)
+     used to throw out of readdir and the app would start with NO tray
+     UI. Guard each readdir so one bad folder is skipped (logged), not
+     fatal -- mirroring listRecentSessions. */
+  let engEntries;
+  try { engEntries = fs.readdirSync(baseDir, { withFileTypes: true }); }
+  catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(`findOrphanedSessions: could not read baseDir ${baseDir}: ${e && e.message}`);
+    return orphans;
+  }
+  for (const ent of engEntries) {
     if (!ent.isDirectory()) continue;
     const engDir = path.join(baseDir, ent.name);
-    for (const s of fs.readdirSync(engDir, { withFileTypes: true })) {
+    let subs;
+    try { subs = fs.readdirSync(engDir, { withFileTypes: true }); }
+    catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(`findOrphanedSessions: skipping unreadable engagement folder ${engDir}: ${e && e.message}`);
+      continue;
+    }
+    for (const s of subs) {
       if (!s.isDirectory()) continue;
       const sFolder = path.join(engDir, s.name);
       const manifestFile = path.join(sFolder, "manifest.json");

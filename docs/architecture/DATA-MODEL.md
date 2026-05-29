@@ -54,6 +54,17 @@ Every line is one JSON object with a fixed envelope; only `data` varies by `type
   anchor value and is **stable per label** (`case_id = uuid5(label)`), so
   re-searching the same serial *resumes* that case rather than opening a new one;
   the active case is stamped onto every following interaction by disjoint segment.
+  The anchor field comes from a Process Template's `case_anchor` **or** — when there
+  is none — the session-level `case_anchor_override` the analyst Accepted from an
+  anchor candidate ([ADR-0018](../adr/0018-anchor-candidates.md)). Precedence is
+  **`template > override > markers`.**
+
+When a long capture has *neither* markers nor an anchor, normalization surfaces
+recovery suggestions rather than collapsing silently into one default case:
+**suggested markers** propose Start/End boundaries ([ADR-0017](../adr/0017-suggested-markers.md))
+and **anchor candidates** rank the field whose typing would segment the session
+([ADR-0018](../adr/0018-anchor-candidates.md)). Both are detected in Python, stored
+in `annotations.json`, and applied only when the analyst Accepts.
 
 See SCHEMA.md → "Marker events — nesting".
 
@@ -70,6 +81,10 @@ re-normalization reads this file *before* case assignment so edits survive.
 | `notes[]` | Free-text notes pinned to a timestamp / video offset |
 | `drift_markers[]` | Auto-recorded `canonical_drift` signals |
 | `step_filters` | `{ ignored_processes: [...] }` — the step-noise denylist |
+| `excluded_ranges[]` | Time ranges the analyst excluded from step suggestion / stats |
+| `marker_suggestions[]` / `marker_suggestions_dismissed[]` | Suggested-marker candidates + the analyst's signature-keyed dismiss-set ([ADR-0017](../adr/0017-suggested-markers.md)); regenerated each normalize, dismissals persist |
+| `anchor_candidates[]` / `anchor_candidates_dismissed[]` | Anchor-candidate ranking + its dismiss-set ([ADR-0018](../adr/0018-anchor-candidates.md)) |
+| `case_anchor_override` | `null`, or the `case_anchor` config the analyst Accepted from an anchor candidate; consulted by case assignment (after a Process Template, before markers) |
 | `version`, `session_id`, `matched_against`, `last_modified*` | Bookkeeping |
 
 A missing `annotations.json` is treated as empty (see `emptyAnnotationsShape()`

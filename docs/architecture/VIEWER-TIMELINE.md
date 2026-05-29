@@ -58,7 +58,8 @@ migration — ADR-0003 items 4-5).
 ```
 tick labels        wall-clock HH:MM:SS axis, via chooseTicks
 case header        labelled lane of concurrent-case bands (packLanes-packed)
-activity bands     per-app coloured runs; idle bands and marker bars overlay here
+activity bands     per-app coloured runs; idle bands, real marker bars, and
+                   dashed suggested-marker bars overlay here
 screenshot rail    dedicated rail of screenshot marks
 density histogram  optional — ~120-bucket event-count strip
 window-title runs  optional — one band per (app,title) run
@@ -72,6 +73,14 @@ Lanes menu (`getLaneToggles()`, persisted to `pdt.timelineLanes`) — they are
 simply omitted from the lane array when off. `layoutCaseLanes()` walks the marker
 stream into closed/dangling cases and delegates row assignment to
 `TimelineCore.packLanes`.
+
+**Suggested markers** ([ADR-0017](../adr/0017-suggested-markers.md)) ride the same
+marker overlay: when the markers lane is on, `annotations.marker_suggestions[]`
+render as dashed `.tl-marker.tl-suggested` bars (a higher-confidence
+`.tl-suggested-hi` variant for `score ≥ 0.75`), filtered to drop any suggestion the
+analyst has already Accepted. They are not a separate toggle — they share the
+real markers' visibility — and the side-panel markers list carries the matching
+Accept/Dismiss rows.
 
 The case header *above* the activity bands and the dedicated screenshot rail
 *below* them are the Warm Editorial lane re-order — see

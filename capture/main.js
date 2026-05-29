@@ -105,6 +105,11 @@ let recorderPermanentlyDead = false;
 let idleMonitorHandle = null;
 let isIdle = false;
 let idleStartMs = null;
+/* H-7: the auto-end-on-idle branch fires from a 5s interval. Without a
+   latch it re-fires every tick for the whole idle stretch -- hundreds of
+   duplicate boundary system events. This flag gates it to once per idle
+   stretch; it is reset on idle_end so the next idle stretch can fire. */
+let autoEndedThisIdle = false;
 
 // App-switch screenshot tracking
 let lastTrackedApp = null;
@@ -270,6 +275,7 @@ function startIdleMonitor() {
       bootLog(`idle_start at ${idleSecs}s (at_desk=${atDesk})`);
     } else if (isIdle && idleSecs < threshold) {
       isIdle = false;
+      autoEndedThisIdle = false;   // H-7: re-arm for the next idle stretch
       const durationSecs = Math.round((Date.now() - idleStartMs) / 1000);
       tracker.fireSystem("idle_end", { duration_seconds: durationSecs });
       idleStartMs = null;
@@ -277,12 +283,22 @@ function startIdleMonitor() {
       const minResume =
         config.screenshots.on_idle_resume_minutes * 60;
       if (durationSecs >= minResume) fireScreenshot("screenshot");
-    } else if (isIdle && idleSecs >= autoEndSecs && config.auto_end_on_idle) {
-      /* Auto-close any open markers and log the cause (§3.3). */
-      while (lastStatus && lastStatus.markerDepth > 0) {
+    } else if (isIdle && idleSecs >= autoEndSecs && config.auto_end_on_idle && !autoEndedThisIdle) {
+      /* H-7: fire at most once per idle stretch. Without the
+         autoEndedThisIdle latch this branch re-ran every 5s tick for the
+         whole idle stretch, emitting hundreds of duplicate auto_end_idle
+         boundaries. (Not actually ending the session here is by design;
+         only the re-fire was the bug.) */
+      autoEndedThisIdle = true;
+      /* Auto-close any open markers and log the cause (§3.3). Bounded by
+         the known marker depth so a future change to fireMarker can't
+         spin this into an infinite loop on mutated tracker state. */
+      const openDepth = (lastStatus && lastStatus.markerDepth) || 0;
+      for (let i = 0; i < openDepth; i += 1) {
+        if (tracker.getStatus().markerDepth <= 0) break;
         tracker.fireMarker({ markerType: "end", reason: "auto_end_idle" });
-        lastStatus = tracker.getStatus();
       }
+      lastStatus = tracker.getStatus();
       tracker.fireSystem("auto_end_idle", { idle_seconds: idleSecs });
       refreshTray();
     }
@@ -294,6 +310,7 @@ function stopIdleMonitor() {
   idleMonitorHandle = null;
   isIdle = false;
   idleStartMs = null;
+  autoEndedThisIdle = false;
 }
 
 function resolveViewerExe() {
@@ -886,6 +903,17 @@ function handleRecorderExit(info) {
    uncaptured_app: a foreground app the recorder produced no interaction
    events for -- commonly an elevated process, or one with no UIA surface. */
 function handleTrackerNotice(kind, payload) {
+  if (kind === "write_error") {
+    // H-6: a durability-critical batch (markers/system events) failed to
+    // write and was re-queued for retry. Surface it loudly -- the durable
+    // record is at risk and the worker should know before they walk away.
+    bootLog(`tracker write_error notice: ${JSON.stringify(payload)}`);
+    notifyUser(
+      "Process Discovery Tracker",
+      "Couldn't write to the session log -- retrying. If this keeps happening, check the session folder's disk/permissions before relying on this recording."
+    );
+    return;
+  }
   if (kind !== "uncaptured_app") return;
   // Stay quiet when there is no live recorder -- its own failure toast
   // (or the required-recorder dialog) already told the user.
@@ -996,8 +1024,12 @@ async function fireStartMarker(label, opts) {
   if (!opts.nest && stat.markerDepth > 0) {
     /* Close any currently-open markers (innermost first) before
        starting the new one. Mirrors what the worker probably meant
-       when they pressed Start the second time. */
-    while (tracker.getStatus().markerDepth > 0) {
+       when they pressed Start the second time. Bounded by the known
+       open-marker depth so a future fireMarker change can't infinite-
+       loop on mutated tracker state. */
+    const openDepth = stat.markerDepth;
+    for (let i = 0; i < openDepth; i += 1) {
+      if (tracker.getStatus().markerDepth <= 0) break;
       tracker.fireMarker({ markerType: "end", reason: "auto_close_for_sibling" });
     }
   }

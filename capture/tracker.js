@@ -18,6 +18,7 @@
 
 const fs = require("node:fs");
 const { activityEvent, markerEvent, systemEvent, interactionEvent } = require("./events.js");
+const { bootLog } = require("./boot-log.js");
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -87,7 +88,7 @@ function isUncapturedApp({
   return foregroundElapsedMs >= thresholdMs;
 }
 
-function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = false, onNotice = null }) {
+function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = false, onNotice = null, appendFile = null }) {
   if (!sessionId || !eventsFile) {
     throw new Error("startTracker requires { sessionId, eventsFile }");
   }
@@ -106,6 +107,11 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   let markerCount = 0;
   let screenshotCount = 0;
   let interactionCount = 0;
+  /* H-6: count of failed durability-critical flushes this session. A
+     non-zero value means a marker or system event hit a write error and
+     was re-queued for retry; surfaced via getStatus().writeErrorCount so
+     the tray/status can show the durable record is at risk. */
+  let writeErrorCount = 0;
   /* I23: wall-clock of the most recent interaction forwarded by the
      recorder. The idle monitor reads it to tell "idle but still at the
      desk" (recent mouse/keyboard) from "idle and away". */
@@ -124,18 +130,46 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
 
   /* I47: deferred-write queue. flushEvents() drains it; markers and
      system events flush synchronously, activity/interaction events ride
-     a 500ms timer. */
+     a 500ms timer. Each entry is { line, critical }: `critical` is true
+     for markers and system events, which must never be silently lost. */
   let writeQueue = [];
   let flushTimer = null;
+  const writeFn = appendFile || fs.appendFileSync;
   function flushEvents() {
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
     if (!writeQueue.length) return;
     const batch = writeQueue.splice(0);
     try {
-      fs.appendFileSync(eventsFile, batch.join(""));
-    } catch (_e) {
-      /* A failed flush loses at most this batch -- the durable record
-         is best-effort, not transactional. */
+      writeFn(eventsFile, batch.map((e) => e.line).join(""));
+    } catch (e) {
+      /* H-6: a failed flush used to be swallowed while counters/UI
+         reported success -- silently losing markers/system events. If
+         the batch held any durability-critical event, log loudly,
+         notify best-effort, and RE-QUEUE the whole batch (at the front,
+         preserving order) so the next flush retries it. */
+      const hadCritical = batch.some((e) => e.critical);
+      if (hadCritical) {
+        writeErrorCount += 1;
+        const msg = `events.jsonl flush FAILED for a durability-critical batch ` +
+          `(${batch.length} events, attempt ${writeErrorCount}); re-queued for retry: ${e && e.message}`;
+        bootLog(msg);
+        // eslint-disable-next-line no-console
+        console.error(`[tracker] ${msg}`);
+        if (onNotice) {
+          try { onNotice("write_error", { events: batch.length, attempt: writeErrorCount }); }
+          catch (_e) { /* notice is best-effort */ }
+        }
+        writeQueue = batch.concat(writeQueue);
+        // Re-arm the timer so the retry happens even with no further
+        // events arriving; a synchronous critical flush re-attempts now
+        // via the caller's next flushEvents() but the timer is the
+        // backstop for the idle case.
+        if (!flushTimer) flushTimer = setTimeout(flushEvents, 500);
+      } else {
+        /* No critical event in this batch -- activity/interaction polls
+           are best-effort, low-stakes (<500ms of data); drop as before. */
+        bootLog(`events.jsonl flush failed for a non-critical batch (${batch.length} events), dropped: ${e && e.message}`);
+      }
     }
   }
 
@@ -153,11 +187,12 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
     }
     recentEvents.push(ev);
     if (recentEvents.length > RECENT_BUFFER_SIZE) recentEvents.shift();
-    writeQueue.push(JSON.stringify(ev) + "\n");
+    const critical = ev.type === "marker" || ev.type === "system";
+    writeQueue.push({ line: JSON.stringify(ev) + "\n", critical });
     // Markers and system events (session start/end, idle, screenshots)
     // are durability-critical -- flush the whole queue now, which also
     // preserves ordering of any activity/interaction events ahead of it.
-    if (ev.type === "marker" || ev.type === "system") {
+    if (critical) {
       flushEvents();
     } else if (!flushTimer) {
       flushTimer = setTimeout(flushEvents, 500);
@@ -318,6 +353,7 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
       markerCount,
       screenshotCount,
       interactionCount,
+      writeErrorCount,
       sessionStartMs,
       elapsedMs: Date.now() - sessionStartMs,
       lastInteractionMs,

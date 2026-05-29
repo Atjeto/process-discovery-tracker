@@ -31,8 +31,10 @@ current **architecture reference** (what the code is now), current **operational
 
 ## Current — architecture reference
 
-Originally written in the refactor-review pass (2026-05-16); refreshed 2026-05-23
-for v0.15.0 plus the analysis & recognition layers. Describes the code as it is today.
+Originally written in the refactor-review pass (2026-05-16); last full refresh
+2026-05-29 for v0.19.0 (the in-view Session map, suggested markers, and anchor
+candidates), building on the v0.15.0 analysis & recognition layers. Describes the
+code as it is today.
 
 | Doc | Covers |
 |---|---|
@@ -81,6 +83,9 @@ for v0.15.0 plus the analysis & recognition layers. Describes the code as it is 
 | [adr/0013-value-free-grouping-and-map-readability.md](adr/0013-value-free-grouping-and-map-readability.md) | ADR — `process_label` value-free grouping + map readability |
 | [adr/0014-distribution-model.md](adr/0014-distribution-model.md) | ADR — distribution model: GitHub Releases + electron-packager |
 | [adr/0015-intra-session-repetition-alignment.md](adr/0015-intra-session-repetition-alignment.md) | ADR — intra-session repetition alignment (curate one, propagate to all) |
+| [adr/0016-segment-level-automation-candidacy.md](adr/0016-segment-level-automation-candidacy.md) | ADR — segment-level (not atomic-step) automation candidacy |
+| [adr/0017-suggested-markers.md](adr/0017-suggested-markers.md) | ADR — suggested markers: change-point detection for unbracketed sessions |
+| [adr/0018-anchor-candidates.md](adr/0018-anchor-candidates.md) | ADR — anchor candidates: auto-rank the field that segments a session into cases |
 | [../capture/README.md](../capture/README.md) | Capture component quick-start |
 | [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |
 | [../normalization/README.md](../normalization/README.md) | Normalization component quick-start |

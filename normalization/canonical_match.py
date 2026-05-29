@@ -213,35 +213,56 @@ def match_canonical(
             if result:
                 close_open()
 
-        # For until_next_step: absorb unmatched interactions
-        if open_step is not None and open_step["boundary"] == "until_next_step":
-            # Check if a DIFFERENT step's trigger fires
-            matched_step_id = None
-            end_when = None
-            for sid in order:
-                for rule in cstep_defs[sid].get("match", []):
-                    if _interaction_matches(rule, ev):
-                        matched_step_id = sid
-                        end_when = rule.get("end_when")
+        # Span-boundary modes absorb interleaved interior events. The real
+        # boundary was already evaluated by `_should_close` above (app change,
+        # pause, field change, max span); if it returned False the open step
+        # must keep collecting events -- including interior interactions that
+        # do NOT re-match its trigger and interactions that match a DIFFERENT
+        # step but have not yet hit the boundary. Without this, a non-matching
+        # interior event leaks to `unmatched` (truncating the span) and a
+        # different-step interior event prematurely closes it. Originally only
+        # `until_next_step` did this; the other three span modes share the
+        # same need.
+        if open_step is not None and open_step["boundary"] in (
+                "until_next_step", "until_app_change",
+                "until_pause", "until_field_change"):
+            # For `until_next_step` the boundary IS a different step's trigger,
+            # so a different-step match closes-and-reopens here. For the other
+            # three span modes the boundary is app-change / pause / field-change
+            # (already checked by `_should_close`), so a different-step trigger
+            # fired mid-span is just an interior event and must be absorbed too.
+            if open_step["boundary"] == "until_next_step":
+                matched_step_id = None
+                end_when = None
+                for sid in order:
+                    for rule in cstep_defs[sid].get("match", []):
+                        if _interaction_matches(rule, ev):
+                            matched_step_id = sid
+                            end_when = rule.get("end_when")
+                            break
+                    if matched_step_id:
                         break
-                if matched_step_id:
-                    break
-            if matched_step_id and matched_step_id != open_step["canonical_step_id"]:
-                close_open()
-                cdef = cstep_defs[matched_step_id]
-                open_step = {
-                    "step_id": str(uuid.uuid4()),
-                    "canonical_step_id": matched_step_id,
-                    "events": [ev],
-                    "end_when_rule": end_when,
-                    "boundary": cdef.get("boundary", "group_contiguous"),
-                    "open_case": _event_case(ev),
-                    "open_app": _short_app(ev.get("data", {})),
-                    "pause_ms": cdef.get("pause_ms", 5000),
-                    "max_span_ms": cdef.get("max_span_ms", 1800000),
-                }
+                if matched_step_id and matched_step_id != open_step["canonical_step_id"]:
+                    close_open()
+                    cdef = cstep_defs[matched_step_id]
+                    open_step = {
+                        "step_id": str(uuid.uuid4()),
+                        "canonical_step_id": matched_step_id,
+                        "events": [ev],
+                        "end_when_rule": end_when,
+                        "boundary": cdef.get("boundary", "group_contiguous"),
+                        "open_case": _event_case(ev),
+                        "open_app": _short_app(ev.get("data", {})),
+                        "pause_ms": cdef.get("pause_ms", 5000),
+                        "max_span_ms": cdef.get("max_span_ms", 1800000),
+                    }
+                else:
+                    # Same step re-trigger or unmatched — absorb
+                    open_step["events"].append(ev)
             else:
-                # Same step re-trigger or unmatched — absorb
+                # until_app_change / until_pause / until_field_change:
+                # `_should_close` said this event is interior, so absorb it
+                # regardless of whether it re-matches the trigger.
                 open_step["events"].append(ev)
             continue
 

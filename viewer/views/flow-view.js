@@ -3532,9 +3532,26 @@ function _galleryKey(e) {
   if (btn) btn.addEventListener("click", openScreenshotGallery);
 })();
 
+/* Open a captured screenshot in the OS image viewer. `relPath` comes
+   from untrusted session data (an event's data.path), so this is a
+   first line of defense -- the authoritative check is in the main
+   process (viewer:openExternal). We require a session-relative image
+   path with no absolute root and no `..` traversal, resolve it under the
+   session's screenshots/ dir, and confirm the file exists before asking
+   main to open it. */
+const _IMG_EXT_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 function openScreenshot(relPath) {
-  if (!relPath || !State.getSession()) return;
-  const full = path.join(State.getSession().sessionFolder, relPath);
+  const sess = State.getSession();
+  if (!relPath || typeof relPath !== "string" || !sess) return;
+  if (path.isAbsolute(relPath)) return;
+  if (relPath.split(/[\\/]+/).some((s) => s === "..")) return;
+  if (!_IMG_EXT_RE.test(relPath)) return;
+  const shotsDir = path.resolve(sess.sessionFolder, "screenshots");
+  // Screenshot data.path is recorded relative to the session folder
+  // (e.g. "screenshots/shot-001.png"); resolve from the session root.
+  const full = path.resolve(sess.sessionFolder, relPath);
+  const rel = path.relative(shotsDir, full);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return;
   if (fs.existsSync(full)) Ipc.openExternal(full);
 }
 
@@ -3763,13 +3780,13 @@ async function renameMarker(markerEvent, newLabel) {
     previous: markerEvent.data.label,
     ts: new Date().toISOString(),
   });
-  await Ipc.saveAnnotations({
-    sessionFolder: State.getSession().sessionFolder,
-    annotations: anno,
-  });
-  State.getSession().annotations = anno;
-  renderMarkersList();
-  renderTimeline(); // marker labels on the timeline pick up the edit
+  // Route through persistAnnotations like the other marker edits so the
+  // rename lands on the undo stack (Ctrl+Z reverts it) and refreshes the
+  // _baseline -- a raw saveAnnotations bypassed undo and left a stale
+  // baseline that made the NEXT edit's undo also revert this rename (H-5).
+  // The "markers"/"timeline" topics re-render the side panel and the
+  // marker labels on the timeline.
+  await persistAnnotations(anno, 'rename marker', ["markers", "timeline"]);
   toast("Marker renamed (re-run normalization to apply downstream)", "success");
 }
 

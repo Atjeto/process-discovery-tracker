@@ -93,6 +93,43 @@ test("findOrphanedSessions skips malformed manifests", () => {
   fs.rmSync(base, { recursive: true, force: true });
 });
 
+test("findOrphanedSessions skips an unreadable engagement folder and keeps going (M-20)", (tc) => {
+  const base = tmpBase();
+  // One good engagement with an active (orphaned) session.
+  const good = createSession({ baseDir: base, engagementId: "good" });
+  // One engagement whose readdir will throw (simulating a locked /
+  // permission-denied folder discovered on the launch path).
+  const badEngDir = path.join(base, "bad");
+  fs.mkdirSync(badEngDir, { recursive: true });
+
+  const realReaddir = fs.readdirSync;
+  tc.mock.method(fs, "readdirSync", (dir, opts) => {
+    if (dir === badEngDir) throw new Error("EACCES (simulated)");
+    return realReaddir(dir, opts);
+  });
+
+  let orphans;
+  assert.doesNotThrow(() => { orphans = findOrphanedSessions(base); });
+  // The good orphan is still found; the bad folder was skipped, not fatal.
+  assert.strictEqual(orphans.length, 1);
+  assert.strictEqual(orphans[0].sessionFolder, good.sessionFolder);
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test("findOrphanedSessions returns empty when baseDir readdir throws (M-20)", (tc) => {
+  const base = tmpBase();
+  createSession({ baseDir: base, engagementId: "e" });
+  const realReaddir = fs.readdirSync;
+  tc.mock.method(fs, "readdirSync", (dir, opts) => {
+    if (dir === base) throw new Error("EACCES (simulated)");
+    return realReaddir(dir, opts);
+  });
+  let out;
+  assert.doesNotThrow(() => { out = findOrphanedSessions(base); });
+  assert.deepStrictEqual(out, []);
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
 test("findOrphanedSessions returns empty for a missing baseDir", () => {
   assert.deepStrictEqual(findOrphanedSessions(path.join(os.tmpdir(), `nope-${Date.now()}`)), []);
 });

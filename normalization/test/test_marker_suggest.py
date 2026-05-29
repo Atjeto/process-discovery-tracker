@@ -184,6 +184,53 @@ def test_emits_on_transaction_id():
     assert txn_start["label"] == "ABC-12345", txn_start
 
 
+def test_lone_long_idle_gap_fires_start():
+    """H-4: a single sufficiently long idle gap, with no other signal
+    (single app, no txn-id, no cluster/home boundary), MUST be able to
+    surface an idle_gap Start. The pre-fix score `0.5*tanh(x)` was always
+    < 0.5 while the gate was `< 0.5`, so an idle-only boundary was
+    mathematically unreachable. The fix raises the idle weight above the
+    threshold so a long-enough gap saturates over the gate."""
+    events = []
+    t = 0.0
+    # Run of work in one app.
+    for _ in range(8):
+        events.append(_interaction(t, "salesforce.exe"))
+        t += 2.0
+    # One long idle gap (well above the default idle_gap_ms=60s firing point
+    # of ~63s), then a fresh run -- this is the only boundary signal present.
+    t += 120.0
+    for _ in range(8):
+        events.append(_interaction(t, "salesforce.exe"))
+        t += 2.0
+
+    sugs = suggest_markers(events, {})
+    starts = [s for s in sugs if s["marker_type"] == "start"]
+    assert any(s["reason"] == "idle_gap" for s in starts), \
+        f"expected an idle_gap Start, got reasons={[s['reason'] for s in starts]}"
+
+
+def test_short_idle_gap_stays_quiet():
+    """Companion to H-4: a short idle gap alone must NOT fire -- the fix
+    must not make ordinary pauses noisy. A 15s gap (0.25 * idle_gap_ms) is
+    well below the firing point."""
+    events = []
+    t = 0.0
+    for _ in range(8):
+        events.append(_interaction(t, "salesforce.exe"))
+        t += 2.0
+    t += 15.0  # short pause, no other signal
+    for _ in range(8):
+        events.append(_interaction(t, "salesforce.exe"))
+        t += 2.0
+
+    sugs = suggest_markers(events, {})
+    idle_starts = [s for s in sugs
+                   if s["marker_type"] == "start" and s["reason"] == "idle_gap"]
+    assert idle_starts == [], \
+        f"short idle gap must not fire an idle_gap Start, got {idle_starts}"
+
+
 def test_emits_at_home_app_return():
     """Repeated salesforce.exe stretches with outlook.exe in between
     surface Start suggestions when the worker returns to salesforce

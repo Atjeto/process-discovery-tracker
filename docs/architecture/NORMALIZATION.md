@@ -39,7 +39,11 @@ a bundled Python 3.12 embeddable distribution.
    `case_anchor` field is named either by a **recognised** category (`recognized`,
    [ADR-0011](../adr/0011-platform-recognition-layer.md) — portable across
    engagements) or by an explicit `automation_id` / value rule (the per-engagement
-   fallback; ADR-0012 #7).
+   fallback; ADR-0012 #7). **Anchor precedence is `template > override > markers`:**
+   the engagement-level Process Template's `case_anchor` wins; absent that, the
+   session-level `annotations.json.case_anchor_override` (the analyst's accepted
+   anchor candidate, [ADR-0018](../adr/0018-anchor-candidates.md)) is consulted via
+   `coerce_anchor_override`; absent both, the pipeline falls back to marker mode.
 4. **Collapse** — merge adjacent identical activity events (same app/title/label/case).
 5. **Interaction enrichment** — apply App Vocabularies to add `meaningful_name`,
    `screen_id`, and `vocab_flags`.
@@ -50,23 +54,45 @@ a bundled Python 3.12 embeddable distribution.
    with a value-free **`process_label`** — its name with case values stripped
    (`Search — CUST-10900` → `Search`) — so repeated work collapses to one
    node/row downstream ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)).
-7. **Canonical matching** — with `--canonical`, match interactions against a
+7. **Boundary suggestion (unbracketed-session recovery)** — best-effort, runs
+   right after case assignment. Two hand-rolled detectors close the "worker forgot
+   to fire markers, no Process Template" failure mode where everything collapses
+   into one default case (Phase 0 of the ML integration recommendation):
+   - **Suggested markers** (`marker_suggest.suggest_markers` /
+     `merge_marker_suggestions`, [ADR-0017](../adr/0017-suggested-markers.md)) — a
+     change-point detector scores four signals (idle gap, return to a "home" app,
+     transaction-ID-like value typed, app-cluster boundary) over the **uncased**
+     stretches and emits paired Start/End candidates into
+     `annotations.json.marker_suggestions[]`. Signature-keyed; the merge drops any
+     boundary in `marker_suggestions_dismissed[]` or already accepted as a
+     `marker_edits[]` op:insert, so dismissals/accepts survive re-normalize.
+   - **Anchor candidates** (`anchor_suggest.suggest_anchors` /
+     `merge_anchor_candidates`, [ADR-0018](../adr/0018-anchor-candidates.md)) —
+     pattern-mines `value_changed` / `text_changed` fields, *simulates*
+     `detect_cases_from_anchors` for each, scores the resulting case structure
+     (coverage / balance / diversity / focus), and writes the top candidates into
+     `anchor_candidates[]`. The analyst's Accept writes a `case_anchor_override`
+     that stage 3 consults on the next run.
+   Both honour the suggest-don't-mutate invariant: detection lives in
+   `annotations.json`, raw `events.jsonl` is untouched, and a detector edge case is
+   caught and never blocks the pipeline.
+8. **Canonical matching** — with `--canonical`, match interactions against a
    canonical step set, producing `auto_matched` steps.
-8. **Step merge** — `_merge_steps()` (in `step_suggest.py`) keeps
+9. **Step merge** — `_merge_steps()` (in `step_suggest.py`) keeps
    `manually_authored + edited` steps and replaces only the `auto_*` set. A fresh
    auto step **inherits** the prior step's `step_id` and curated `phase_id` /
    `canonical_step_id` when it re-covers the same interactions
    (`_inherit_step_identity`), so a grouping or curation applied to a regenerated
    step is not silently lost on re-analyze (see [DATA-MODEL.md](./DATA-MODEL.md)).
-9. **Drift detection** — flag steps whose canonical assignment would now resolve
+10. **Drift detection** — flag steps whose canonical assignment would now resolve
    differently; record `drift_markers`.
-10. **Statistics** — compute activity, case, variant, outlier, and rework stats.
-11. **Export** — write `events.xes`, `events.csv`, `stats.json`, and the updated
+11. **Statistics** — compute activity, case, variant, outlier, and rework stats.
+12. **Export** — write `events.xes`, `events.csv`, `stats.json`, and the updated
     `annotations.json`.
-12. **Analysis layer** — when the session has steps, compute the heuristic
+13. **Analysis layer** — when the session has steps, compute the heuristic
     waste / time-study / automation / efficiency findings and write
     `analysis.json` ([ADR-0008](../adr/0008-build-the-analysis-layer.md)).
-13. **Mining** — with `--mine`, run PM4Py to produce the activity-level
+14. **Mining** — with `--mine`, run PM4Py to produce the activity-level
     `process_map.bpmn` and `dfg.json`, **and** the observed-flow
     `process_map_step.bpmn` / `process_map_phase.bpmn` (mined from the
     annotations via `bpmn_observed.py`) plus per-case BPMNs under `process_maps/`.
@@ -81,6 +107,8 @@ a bundled Python 3.12 embeddable distribution.
 | `classification.py` | Rule-based activity classification against the taxonomy; an unmatched activity falls back to a **semantic** label from the dominant recognised interaction category (`Form entry -- chrome.exe`) rather than `Unclassified -- app`. |
 | `classification_overrides.py` | Applies the analyst's reclassification corrections (`annotations.json.classification_overrides`) during normalization — instance + rule scope, after taxonomy classification (design §6.1 / §7.2). |
 | `step_suggest.py` | Heuristic `auto_suggested` step grouping; stamps the value-free `process_label`; owns `_merge_steps()` and `_inherit_step_identity()` (step-identity inheritance across re-analyze). |
+| `marker_suggest.py` | Change-point detector for unbracketed sessions — scores idle-gap / home-app-return / transaction-ID-typed / app-cluster signals over the uncased stretches and emits paired Start/End suggestions; `suggest_markers` + signature-keyed `merge_marker_suggestions`. Hand-rolled, pandas + stdlib only ([ADR-0017](../adr/0017-suggested-markers.md)). |
+| `anchor_suggest.py` | Pattern-mines `value_changed`/`text_changed` fields, simulates `detect_cases_from_anchors` per candidate, and ranks the fields that best segment the session into cases; `suggest_anchors` + `merge_anchor_candidates` + `coerce_anchor_override` (validates/strips the analyst's accepted override before it reaches case assignment). Stdlib only ([ADR-0018](../adr/0018-anchor-candidates.md)). |
 | `canonical_match.py` | Matches interactions to a canonical step set (`auto_matched`). |
 | `app_vocab.py` | Loads and applies App Vocabularies to enrich interactions. |
 | `coalesce.py` | Folds a burst of per-keystroke `value_changed` events on one control into a single final-value event (`coalesce_typing_bursts`, v0.13 §1) — runs early (stage 1) so later stages never see partial typed values. |

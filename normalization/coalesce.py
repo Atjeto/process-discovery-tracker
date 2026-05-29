@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from _dt import parse_ts as _parse_ts  # public re-export
+from _dt import parse_ts_or_epoch as _parse_ts  # lenient: bad ts -> epoch
 
 
 def _coalesce_key(data: dict) -> str:
@@ -92,11 +92,19 @@ def coalesce_typing_bursts(
 
     i = 0
     n = len(events)
+    # Cache the previous event's parsed timestamp so a run computes each gap
+    # from a single parse instead of re-parsing events[i-1] every iteration
+    # (L-6). Bad/empty timestamps degrade to epoch via the lenient parser, so
+    # one corrupt row can never crash the whole pipeline (M-7) -- it just
+    # yields a large gap that conservatively breaks the run at that boundary.
+    prev_ts = None  # parsed ts of events[i-1]
     while i < n:
         ev = events[i]
+        cur_ts = _parse_ts(ev.get("timestamp"))
         if ev.get("type") != "interaction":
             _flush_run(i)
             out.append(ev)
+            prev_ts = cur_ts
             i += 1
             continue
 
@@ -110,6 +118,7 @@ def coalesce_typing_bursts(
         else:
             _flush_run(i)
             out.append(ev)
+            prev_ts = cur_ts
             i += 1
             continue
 
@@ -118,9 +127,7 @@ def coalesce_typing_bursts(
         if run_type is not None:
             same_run = (this_run == run_type and key == run_key)
             if same_run:
-                gap_ms = (_parse_ts(ev["timestamp"])
-                          - _parse_ts(events[i - 1]["timestamp"])
-                          ).total_seconds() * 1000
+                gap_ms = (cur_ts - prev_ts).total_seconds() * 1000
                 if gap_ms > idle_ms:
                     same_run = False
                 elif this_run == "typing":
@@ -143,6 +150,7 @@ def coalesce_typing_bursts(
         else:
             run_count += 1
 
+        prev_ts = cur_ts
         i += 1
 
     _flush_run(n)

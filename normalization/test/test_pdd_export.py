@@ -201,6 +201,141 @@ def test_pdd_embeds_process_map_when_provided():
         assert not any("not yet embedded" in p.text for p in doc.paragraphs)
 
 
+def test_unphased_manually_authored_step_appears_in_output():
+    """H-2: once phases exist, steps in no phase -- including analyst
+    manually-authored steps -- must still be rendered, under an
+    'Unphased steps' subsection, not silently dropped."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _annotations, stats, analysis = _sample()
+    annotations = {
+        "steps": [
+            {"step_id": "st1", "name": "Phased step",
+             "description": "", "flags": {}, "state": "auto_matched"},
+            {"step_id": "st2", "name": "Analyst-authored unphased step",
+             "description": "", "flags": {}, "state": "manually_authored"},
+        ],
+        "phases": [
+            {"phase_id": "ph1", "name": "Phase one", "step_ids": ["st1"]},
+        ],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "pdd.docx"
+        pdd_export.write_pdd(
+            out, session_folder=Path(tmp), canonical=None,
+            annotations=annotations, stats=stats, manifest=manifest,
+            analysis=analysis,
+        )
+        from docx import Document
+        doc = Document(str(out))
+        texts = [p.text for p in doc.paragraphs]
+        assert any("Unphased steps" in t for t in texts)
+        assert any("Analyst-authored unphased step" in t for t in texts)
+        assert any("Phased step" in t for t in texts)
+
+
+def test_hidden_step_is_not_rendered():
+    """M-5: noise-suppressed (state == 'hidden') steps are filtered out of
+    §3.5 and §5, consistent with the rest of the pipeline."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _annotations, stats, analysis = _sample()
+    annotations = {
+        "steps": [
+            {"step_id": "st1", "name": "Visible step",
+             "description": "", "flags": {}, "state": "auto_matched"},
+            {"step_id": "st2", "name": "Hidden noise step",
+             "description": "", "flags": {"exception_path": True},
+             "state": "hidden"},
+        ],
+        "phases": [],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "pdd.docx"
+        pdd_export.write_pdd(
+            out, session_folder=Path(tmp), canonical=None,
+            annotations=annotations, stats=stats, manifest=manifest,
+            analysis=analysis,
+        )
+        from docx import Document
+        doc = Document(str(out))
+        texts = [p.text for p in doc.paragraphs]
+        cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
+        assert any("Visible step" in t for t in texts)
+        # The hidden step appears in neither §3.5 nor the §5 exceptions table.
+        assert not any("Hidden noise step" in t for t in texts)
+        assert not any("Hidden noise step" in c for c in cells)
+
+
+def test_screenshot_ref_path_traversal_is_skipped():
+    """SEC Vuln 2: a screenshot_ref with '..' or an absolute path must not
+    cause an off-folder image read / embed."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _annotations, stats, analysis = _sample()
+    with tempfile.TemporaryDirectory() as outer:
+        outer_p = Path(outer)
+        # An image that lives OUTSIDE the session folder -- the target of the
+        # traversal attack.
+        secret = outer_p / "secret.png"
+        secret.write_bytes(_make_png())
+
+        session = outer_p / "session"
+        session.mkdir()
+
+        annotations = {
+            "steps": [
+                {"step_id": "st1", "name": "Step with hostile refs",
+                 "description": "", "flags": {}, "state": "auto_matched",
+                 "evidence": {"screenshot_refs": [
+                     "../secret.png",                # traversal
+                     str(secret),                    # absolute path
+                 ]}},
+            ],
+            "phases": [],
+        }
+        out = session / "pdd.docx"
+        pdd_export.write_pdd(
+            out, session_folder=session, canonical=None,
+            annotations=annotations, stats=stats, manifest=manifest,
+            analysis=analysis,
+        )
+        from docx import Document
+        doc = Document(str(out))
+        # No off-folder image was embedded.
+        assert len(doc.inline_shapes) == 0
+
+
+def test_screenshot_ref_within_folder_is_embedded():
+    """Containment guard must not break the legitimate case: an in-folder
+    screenshot_ref is still embedded."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _annotations, stats, analysis = _sample()
+    with tempfile.TemporaryDirectory() as tmp:
+        session = Path(tmp)
+        shots = session / "shots"
+        shots.mkdir()
+        (shots / "s1.png").write_bytes(_make_png())
+        annotations = {
+            "steps": [
+                {"step_id": "st1", "name": "Step with valid ref",
+                 "description": "", "flags": {}, "state": "auto_matched",
+                 "evidence": {"screenshot_refs": ["shots/s1.png"]}},
+            ],
+            "phases": [],
+        }
+        out = session / "pdd.docx"
+        pdd_export.write_pdd(
+            out, session_folder=session, canonical=None,
+            annotations=annotations, stats=stats, manifest=manifest,
+            analysis=analysis,
+        )
+        from docx import Document
+        doc = Document(str(out))
+        assert len(doc.inline_shapes) >= 1
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

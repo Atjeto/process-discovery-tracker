@@ -310,18 +310,31 @@ def _analysis_maps(analysis):
 def _write_steps(doc, annotations, session_folder, analysis):
     doc.add_heading("3.5 Detailed process steps", level=2)
     phases = annotations.get("phases") or []
-    steps = annotations.get("steps") or []
+    # Noise-suppressed steps are hidden everywhere else in the pipeline; the
+    # PDD honours that convention too (M-5).
+    steps = [s for s in (annotations.get("steps") or [])
+             if s.get("state") != "hidden"]
     step_by_id = {s["step_id"]: s for s in steps}
     waste_by_step = _analysis_maps(analysis)
     if phases:
+        phased_ids = set()
         for phase in phases:
             doc.add_heading(phase.get("name", "(phase)"), level=3)
             if phase.get("description"):
                 doc.add_paragraph(phase["description"])
             for sid in (phase.get("step_ids") or []):
+                phased_ids.add(sid)
                 step = step_by_id.get(sid)
                 if step:
                     _write_step(doc, step, session_folder, waste_by_step, level=4)
+        # Steps belonging to no phase -- unmatched steps and analyst-authored
+        # steps -- would otherwise silently vanish (H-2). Render them under
+        # their own subsection, preserving the original step ordering.
+        unphased = [s for s in steps if s["step_id"] not in phased_ids]
+        if unphased:
+            doc.add_heading("Unphased steps", level=3)
+            for step in unphased:
+                _write_step(doc, step, session_folder, waste_by_step, level=4)
     elif steps:
         for step in steps:
             _write_step(doc, step, session_folder, waste_by_step, level=3)
@@ -334,7 +347,19 @@ def _write_step(doc, step, session_folder, waste_by_step=None, level=3):
     if step.get("description"):
         doc.add_paragraph(step["description"])
     for ref in (step.get("evidence", {}).get("screenshot_refs") or []):
-        full = session_folder / ref
+        # `ref` is untrusted (it comes from annotations.json). pathlib honours
+        # absolute paths and `..`, so a malicious ref could embed an off-folder
+        # image into the export. Resolve and require containment (SEC Vuln 2).
+        if Path(ref).is_absolute():
+            logger.warning("pdd_export: skipping absolute screenshot ref %s for step %s",
+                           ref, step.get("step_id", "?"))
+            continue
+        full = (session_folder / ref).resolve()
+        base = session_folder.resolve()
+        if base != full and base not in full.parents:
+            logger.warning("pdd_export: skipping out-of-folder screenshot ref %s for step %s",
+                           ref, step.get("step_id", "?"))
+            continue
         if full.exists() and Inches is not None:
             try:
                 doc.add_picture(str(full), width=Inches(4.5))
@@ -455,7 +480,10 @@ def _write_automation(doc, analysis):
 
 def _write_exceptions(doc, annotations):
     doc.add_heading("5. Exceptions & variations", level=1)
-    steps = annotations.get("steps") or []
+    # Skip noise-suppressed steps, consistent with §3.5 and the rest of the
+    # pipeline (M-5).
+    steps = [s for s in (annotations.get("steps") or [])
+             if s.get("state") != "hidden"]
     flagged = [s for s in steps
                if (s.get("flags") or {}).get("exception_path")
                or (s.get("flags") or {}).get("conditional")]

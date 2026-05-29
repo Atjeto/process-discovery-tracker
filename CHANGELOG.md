@@ -6,6 +6,52 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Click-to-RCE hardening on the screenshot-open path.** The `viewer:openExternal`
+  IPC handler (the `shell.openPath` sink) now rejects absolute paths, `..`
+  traversal, and non-image extensions, and confirms the resolved path stays under
+  the active session's `screenshots/` directory before opening — closing a path
+  where an attacker-planted file in a moved session folder could launch via Windows
+  file association. The renderer's `openScreenshot()` adds matching defense-in-depth.
+- **PDD export screenshot containment.** `screenshot_refs` from `annotations.json`
+  are now resolved and skipped unless they stay within the session folder; absolute
+  refs are rejected — closing an off-folder image-read / information-disclosure path.
+
+### Fixed
+
+- **Process map no longer overlays the Raw Events / Analysis sections** on the
+  Session view's Map level. `.session-layout-map` carried the `min-height:0`
+  flex-shrink trap already removed from the Steps/Phases layouts, so the map host
+  painted down over the collapsible panels that follow it; the details now flow
+  below the map and the view scrolls.
+- **Captured marker/system events are no longer silently lost** on a failed
+  `events.jsonl` write — the batch is logged, surfaced, and re-queued for retry.
+- **Idle auto-end fires once per idle stretch** instead of re-firing every 5 s and
+  emitting hundreds of duplicate boundary events; marker-close loops are now bounded.
+- **OBS status failures are logged** and a missing recording path is surfaced
+  (previously a failed `GetRecordStatus`/`StopRecord` was swallowed, leaving video
+  the viewer could not locate).
+- **One unreadable engagement folder no longer prevents the tray from launching**
+  (`findOrphanedSessions` reads are guarded).
+- **Canonical step spans absorb interleaved interior events** for the
+  `until_app_change` / `until_pause` / `until_field_change` boundary modes instead
+  of truncating the span on a non-matching interior interaction.
+- **A long idle gap alone can now surface a suggested marker** (the idle-gap signal
+  was mathematically below its own suggestion gate).
+- **A malformed timestamp no longer crashes the pipeline** —
+  `coalesce_typing_bursts` uses the lenient parser like the rest of the pipeline.
+- **Phase membership stays consistent** (`phase.step_ids` ↔ `step.phase_id`) across
+  step delete / split / merge, plus a Python reconcile pass after re-merge.
+- **PDD renders steps that are not in any phase** (under "Unphased steps") and no
+  longer renders hidden, noise-suppressed steps.
+- **Saving an App-Library vocab preserves `seen_count`** and other unmodeled fields
+  (they were being stripped on every save, losing the bootstrapped frequency rank).
+- **Renaming a marker now goes through the undo stack** (it bypassed undo and made
+  the next Ctrl+Z revert the rename).
+- **PDD process-map embed failures are logged** instead of silently producing a
+  placeholder map.
+
 ## [0.19.0] - 2026-05-29
 
 **Phase 0 of the ML integration recommendation — non-ML, classical-statistics

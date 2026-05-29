@@ -207,6 +207,51 @@ def _merge_phases(existing: list, fresh: list) -> list:
     return by_state["manually_authored"] + by_state["edited"] + (fresh or [])
 
 
+def reconcile_phase_membership(steps: list, phases: list) -> None:
+    """Bidirectional reconcile of the dual phase-membership representation
+    (CR M-4). Membership is stored twice -- on ``phase.step_ids`` AND on
+    ``step.phase_id`` -- and ``_merge_phases`` preserves edited phases'
+    ``step_ids`` verbatim with no check against the regenerated step set.
+    A re-merge that deletes or renames a step id therefore leaves it
+    dangling in ``step_ids`` (inflated count) and can drop a step that
+    carries a ``phase_id`` from its phase's list.
+
+    This pass makes the two readings agree, in place:
+      * drop ids from every ``phase.step_ids`` that no longer name a step
+        in ``steps`` (deleted / renamed away);
+      * for every step that carries a ``phase_id`` naming a live phase,
+        ensure it is listed in that phase's ``step_ids`` (forward stamp);
+      * clear a step's ``phase_id`` when it points at a phase that no
+        longer exists (reverse cleanup).
+
+    Pure apart from the in-place mutation of the passed lists; no I/O.
+    """
+    phase_by_id = {p.get("phase_id"): p for p in (phases or []) if p.get("phase_id")}
+    live_step_ids = {s.get("step_id") for s in (steps or []) if s.get("step_id")}
+
+    # 1. Prune dangling ids from each phase's step_ids.
+    for ph in phases or []:
+        sids = ph.get("step_ids")
+        if isinstance(sids, list):
+            ph["step_ids"] = [sid for sid in sids if sid in live_step_ids]
+
+    # 2. Reverse cleanup + forward stamp from step.phase_id.
+    for s in steps or []:
+        pid = s.get("phase_id")
+        if pid is None:
+            continue
+        ph = phase_by_id.get(pid)
+        if ph is None:
+            # phase_id points at a phase that no longer exists.
+            s["phase_id"] = None
+            continue
+        sids = ph.setdefault("step_ids", [])
+        if not isinstance(sids, list):
+            ph["step_ids"] = sids = []
+        if s.get("step_id") not in sids:
+            sids.append(s.get("step_id"))
+
+
 def _compute_drift_markers(existing: list, fresh: list) -> list[dict]:
     """Compare existing (edited / manually_authored) steps against the
     fresh canonical match. Whenever an existing step that already had a
@@ -530,6 +575,10 @@ def normalize(
             for sid in ph.get("step_ids", []):
                 if sid in step_by_id:
                     step_by_id[sid]["phase_id"] = ph["phase_id"]
+        # M-4: reconcile the dual representation -- drop step_ids that no
+        # longer name a regenerated step, and forward-stamp any step whose
+        # phase_id is missing from its phase's step_ids.
+        reconcile_phase_membership(existing_anno["steps"], existing_anno["phases"])
         write_annotations(session_folder, existing_anno)
         print(f"[normalize] canonical match: {len(matched_steps)} steps "
               f"({matched_interactions}/{total_interactions} interactions matched)")
@@ -542,6 +591,12 @@ def normalize(
         merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps)
         existing_anno["steps"] = merged_steps
         existing_anno.setdefault("matched_against", None)
+        # M-4: no fresh phases are mined on the non-canonical path, but any
+        # preserved (edited / manually_authored) phases must still be
+        # reconciled against the regenerated step set so deleted ids don't
+        # linger in step_ids.
+        if existing_anno.get("phases"):
+            reconcile_phase_membership(existing_anno["steps"], existing_anno["phases"])
         write_annotations(session_folder, existing_anno)
         print(f"[normalize] auto-suggested {len(auto_steps)} step(s) "
               f"({len(merged_steps)} total after merge)")

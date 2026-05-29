@@ -14,6 +14,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { bootLog } = require("./boot-log.js");
 
 let OBSWebSocketPromise = null;
 function getOBSWebSocket() {
@@ -109,7 +110,15 @@ async function startRecording(obs) {
   try {
     const status = await obs.call("GetRecordStatus");
     recording_path = status.outputPath || status.recordingPath || null;
-  } catch (_e) { /* ignore */ }
+  } catch (e) {
+    /* TD#1b: GetRecordStatus failing used to be swallowed silently, so
+       recording_path stayed null and the manifest recorded a video the
+       viewer can't locate. Log it loudly. */
+    bootLog(`OBS GetRecordStatus failed in startRecording: ${e && e.message}`);
+  }
+  if (!recording_path) {
+    bootLog("OBS startRecording: recording_path could not be determined -- the manifest will reference a recording with no path; the viewer may be unable to locate the video.");
+  }
   const offset_ms =
     new Date(obs_recording_start_ts).getTime() -
     new Date(tracker_session_start_ts).getTime();
@@ -126,13 +135,26 @@ async function stopRecording(obs) {
   try {
     const status = await obs.call("GetRecordStatus");
     outputPath = status.outputPath || status.recordingPath || null;
-  } catch (_e) {}
+  } catch (e) {
+    /* TD#1b: don't swallow silently -- this is the last chance to learn
+       the recording's path before StopRecord. */
+    bootLog(`OBS GetRecordStatus failed in stopRecording: ${e && e.message}`);
+  }
+  let stopFailed = false;
   try {
     const r = await obs.call("StopRecord");
     if (r && (r.outputPath || r.recordingPath)) {
       outputPath = r.outputPath || r.recordingPath;
     }
-  } catch (_e) {}
+  } catch (e) {
+    /* TD#1b: a swallowed StopRecord failure can leave OBS recording
+       indefinitely with nothing logged. Surface it loudly. */
+    stopFailed = true;
+    bootLog(`OBS StopRecord FAILED -- OBS may still be recording: ${e && e.message}`);
+  }
+  if (stopFailed || !outputPath) {
+    bootLog(`OBS stopRecording: recording_path could not be determined (stopFailed=${stopFailed}); the viewer may be unable to locate the video.`);
+  }
   return { outputPath };
 }
 

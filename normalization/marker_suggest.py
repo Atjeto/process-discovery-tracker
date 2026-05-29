@@ -61,7 +61,14 @@ _HEURISTIC_VERSION = 1
 # click. False negatives, conversely, leave the analyst doing manual
 # segmentation. The cluster signal is a bonus that nudges close calls
 # over the line.
-_IDLE_SIG_WEIGHT = 0.5
+# The idle term is `weight * tanh(gap / idle_gap_ms)`. `tanh` is strictly < 1,
+# so the weight must sit ABOVE `_SCORE_THRESHOLD` for a lone long idle gap to
+# ever cross it (a weight of exactly 0.5 made the idle-only suggestion
+# mathematically unreachable). At a gap == `idle_gap_ms` the ratio is 1.0 and
+# tanh(1) ~= 0.762, so 0.7 * 0.762 ~= 0.53 clears the 0.5 gate; a gap of about
+# 1.05 * idle_gap_ms is the firing point. Short gaps stay quiet: at 0.25 *
+# idle_gap_ms the term is 0.7 * tanh(0.25) ~= 0.17, well under threshold.
+_IDLE_SIG_WEIGHT = 0.7
 _HOME_APP_WEIGHT = 0.5
 _TXNID_WEIGHT = 0.6
 _CLUSTER_WEIGHT = 0.2

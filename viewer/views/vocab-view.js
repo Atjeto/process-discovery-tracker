@@ -210,6 +210,22 @@ function renderVocabInteractions() {
   }
 }
 
+/* Merge edited fields onto a prior vocab interaction entry. Clones the
+   prior entry so unmodeled fields survive a save -- most importantly the
+   bootstrapped `seen_count` frequency ranking, which used to be dropped
+   (H-3) because save rewrote each entry from scratch. Overwrites ONLY
+   `signature` and `name`; sets `flags` when any flag is checked and
+   removes it otherwise (an entry with no flags carries no `flags` key).
+   Pure -- exported for unit testing. */
+function mergeVocabEntry(priorEntry, { signature, name, flags }) {
+  const ent = { ...(priorEntry || {}) };
+  ent.signature = signature || {};
+  ent.name = name || "";
+  if (flags && Object.keys(flags).length) ent.flags = flags;
+  else delete ent.flags;
+  return ent;
+}
+
 function collectAndMark() {
   const v = State.getVocabState().current;
   if (!v) return;
@@ -222,7 +238,12 @@ function collectAndMark() {
   if (proc) v.scope.process_name = proc; else delete v.scope.process_name;
   if (titleR) v.scope.window_title_regex = titleR; else delete v.scope.window_title_regex;
   const rows = document.querySelectorAll("#vocab-interactions .vocab-int");
-  v.interactions = [];
+  // Capture the prior entries before we rebuild: each row's data-idx
+  // points back into this array, and we clone its entry so unmodeled
+  // fields (notably the bootstrapped `seen_count` frequency ranking)
+  // survive a save instead of being silently dropped.
+  const prior = v.interactions || [];
+  const next = [];
   rows.forEach(row => {
     const sig = {};
     row.querySelectorAll("[data-sig]").forEach(el => {
@@ -230,17 +251,16 @@ function collectAndMark() {
       const val = el.value.trim();
       if (val) sig[k] = val;
     });
-    const ent = {
-      signature: sig,
-      name: row.querySelector('[data-field="name"]').value.trim() || "",
-    };
+    const idx = parseInt(row.dataset.idx, 10);
+    const base = (Number.isInteger(idx) && prior[idx]) ? prior[idx] : {};
     const flags = {};
     row.querySelectorAll("[data-flag]").forEach(el => {
       if (el.checked) flags[el.dataset.flag] = true;
     });
-    if (Object.keys(flags).length) ent.flags = flags;
-    v.interactions.push(ent);
+    const name = row.querySelector('[data-field="name"]').value.trim() || "";
+    next.push(mergeVocabEntry(base, { signature: sig, name, flags }));
   });
+  v.interactions = next;
   markDirty();
 }
 
@@ -321,4 +341,4 @@ function initVocabView() {
   }
 }
 
-module.exports = { initVocabView, reloadVocabList };
+module.exports = { initVocabView, reloadVocabList, mergeVocabEntry };

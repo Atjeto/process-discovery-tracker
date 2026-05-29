@@ -48,7 +48,7 @@ CommonJS, so real modules need no build step).
 
 | File | Role |
 |---|---|
-| `renderer.js` | **Thin wiring entry** — tab routing, the session-view level switcher (Flow / Steps / Phases / **Analysis**), the state-bus subscriptions, global keyboard shortcuts, the project menu, export buttons, boot. Wires modules together; holds no view logic. |
+| `renderer.js` | **Thin wiring entry** — tab routing, the session-view level switcher (Flow / Steps / Phases / **Map** / **Analysis**), the state-bus subscriptions, global keyboard shortcuts, the project menu, export buttons, boot. Owns the lazily-created Session-view map controller (`_sessionMapCtrl`). Wires modules together; holds no view logic. |
 | `state.js` | Central state store + topic pub/sub bus + undo/redo stacks (Phase 2). |
 | `session.js` | Annotations persistence + the undo/redo round-trip (Phase 3). |
 | `ipc.js` | Typed wrappers over every `viewer:*` IPC channel (Phase 3). |
@@ -62,7 +62,7 @@ CommonJS, so real modules need no build step).
 
 | File | Surface |
 |---|---|
-| `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, video sync, event table, the annotations/screenshots/markers panel, case scope, command-palette provider. |
+| `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, video sync, event table, the annotations/screenshots/markers panel, case scope, command-palette provider. Also owns the unbracketed-session recovery surfaces: **suggested markers** (dashed `.tl-suggested` bars + Accept/Dismiss rows, [ADR-0017](../adr/0017-suggested-markers.md)) and the **anchor-candidates** panel above the markers list ([ADR-0018](../adr/0018-anchor-candidates.md)). |
 | `views/steps-view.js` | Steps level — step list/detail, step CRUD, the **Flat / Aligned** reading toggle (consensus backbone, curate-one→propagate, exceptions — [ADR-0015](../adr/0015-intra-session-repetition-alignment.md)), the ignored-apps dialog. |
 | `views/phases-view.js` | Phases level — phase list/detail, phase CRUD, grouping suggestions. |
 | `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)). |
@@ -80,6 +80,7 @@ former `window.Pdt*` globals were converted; the globals are gone):
 | `dfg-viewer.js` | `render`, `fit`, `zoomIn/Out`, `getZoom`, `exportSvg` | Directly-Follows Graph (cytoscape + dagre); persists dragged layout per node set. `exportSvg` is a **hand-written cytoscape→SVG serializer** (cytoscape has no native SVG export) — emits nodes/edges/labels as SVG primitives, driving the "Process map SVG" export |
 | `bpmn-viewer.js` | `render`, `fit`, `exportSvg` | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`) |
 | `process-map-levels.js` | `buildAnnotationDfg`, `processLabel`, `dropRareEdges` | Pure step/phase DFG from annotations, value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)) |
+| `map-controller.js` | `createMapController` | The shared process-map UI controller (notation × level matrix, drill-down scoping, rare-path slider, BPMN/DFG render + zoom). Extracted from the Aggregate view so the **same** controller mounts in both Compare Sessions and the Session view's in-view **Map** level — each caller passes its own host elements + a session-set provider |
 | `recognition.js` | `recognize`, `isChrome`, … | Semantic interaction category from documented platform/framework signatures (`shared/recognition-patterns.json`); twin of the Python `recognition.py` ([ADR-0011](../adr/0011-platform-recognition-layer.md)) |
 | `step-alignment.js` | `alignCases`, `alignSteps`, `groupForStep`, `representativeCuration`, … | Intra-session repetition alignment ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md)). `alignCases` builds the consensus **backbone** across detected cases (Needleman–Wunsch over value-free `process_label` tokens) with per-position frequency + exceptions — behind the Steps view's Aligned reading; `alignSteps`/`groupForStep` are the older signature-based repeat grouping (per-row badges + "Apply to N repeats"). Pure, fuzz-tested |
 | `analysis-aggregate.js` | `aggregateAnalysis` | Pure cross-session rollup of per-session `analysis.json` (time study / per-worker / automation / efficiency) for the Compare-Sessions Analysis panel |
@@ -167,7 +168,7 @@ The renderer has **four top-level surfaces** (containers in `index.html`):
 | `#view-canonical` | Process Template editor | `views/template-view.js` |
 | `#view-vocabularies` | App Library (App Vocabulary editor) | `views/vocab-view.js` |
 
-Inside `#view-session` there are **four levels**, switched by the `.view-mode-btn`
+Inside `#view-session` there are **five levels**, switched by the `.view-mode-btn`
 buttons → `applyLevel(name)` in `renderer.js`:
 
 | Level | Layout container | Render entry |
@@ -175,10 +176,18 @@ buttons → `applyLevel(name)` in `renderer.js`:
 | `flow` | `#session-layout-flow` | `renderTimeline()` — `flow-view.js` |
 | `steps` | `#session-layout-steps` | `renderStepsLevel()` — `steps-view.js` |
 | `phases` | `#session-layout-phases` | `renderPhasesLevel()` — `phases-view.js` |
+| `map` | `#session-layout-map` | `renderMapLevel()` — `renderer.js` (drives a lazily-created `map-controller.js` over the single focused session) |
 | `analysis` | `#session-layout-analysis` | `renderAnalysisLevel()` — `analysis-view.js` |
 
+The **Map** level (v0.18.0) puts the full interactive process map — the same
+notation × level matrix as Compare Sessions — inline for one session, so an analyst
+reaches a single session's map without entering the Aggregate view (the Aggregate
+view also offers a one-click **"View map"** that opens this level for the focused
+session). It is backed by the shared `map-controller.js` (above). Clicking an
+activity node seeks the Flow timeline rather than opening a drill-to-session picker.
+
 `applyLevel()` keeps the level in `state.js` (`State.getLevel`/`setLevel`),
-toggles `display` on the three `#session-layout-*` containers, and snapshots /
+toggles `display` on the `#session-layout-*` containers, and snapshots /
 restores the outgoing and incoming levels' viewport (zoom + scroll fraction) via
 `_viewportSnapshotForMode` / `_viewportApplyToMode`. The `MODE_VIEWPORT` table and
 `LEVEL_RENDERERS` map in `renderer.js` replace what used to be a hand-written
@@ -193,7 +202,7 @@ getters/setters and a topic pub/sub bus (no framework, no reactivity):
 |---|---|
 | `session` | the loaded session object (§4) |
 | `aggregateSessions` | array of sessions for the Compare view |
-| `level` | `"flow"` \| `"steps"` \| `"phases"` |
+| `level` | `"flow"` \| `"steps"` \| `"phases"` \| `"map"` \| `"analysis"` |
 | `zoomFactor` / `stepZoom` / `phaseZoom` | per-timeline zoom |
 | `caseScope` | case-id filter, or `""` for all |
 | `selectedStepId`, `selectedPhaseId`, `multiSelectedStepIds` | editor selection |
@@ -272,8 +281,11 @@ map.
   (**DFG**, `dfg-viewer.js`), as panel tabs.
 - **Level** — Activity / Step / Phase, via the `#map-level` dropdown.
 
-The axes are independent — changing level never swaps notation and vice versa;
-`renderMap()` is the single entry point. The activity DFG is the merged taxonomy
+The axes are independent — changing level never swaps notation and vice versa. As
+of v0.18.0 the matrix, drill-down scoping, rare-path slider, and BPMN/DFG render
+all live in the shared **`map-controller.js`** (`createMapController`), which the
+Aggregate view and the Session-view Map level both instantiate against their own
+host elements — so there is one process-map implementation, not two. The activity DFG is the merged taxonomy
 graph; the step/phase DFG is built **live** from annotations
 (`process-map-levels.buildAnnotationDfg`), collapsing value-laden step names via
 `processLabel` so repeated work is one node

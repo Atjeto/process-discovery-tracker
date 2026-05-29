@@ -52,7 +52,15 @@ Analyst-side Python pipeline; see
 - **Case assignment** — builds a case tree from Start/End markers and stamps every
   event with its case stack; can also detect cases from a recurring **anchor**
   field (e.g. the serial-search box), so re-searching the same value resumes one
-  case instead of fragmenting (ADR-0012).
+  case instead of fragmenting (ADR-0012). Precedence: Process Template anchor →
+  session-level anchor override → markers.
+- **Unbracketed-session recovery** — when a long capture has no markers and no
+  Process Template (everything would collapse into one case), two hand-rolled
+  detectors offer a one-click fix: **suggested markers** propose Start/End
+  boundaries from a change-point scan of the event stream (ADR-0017), and **anchor
+  candidates** rank the field whose typing best segments the session into cases
+  (ADR-0018). Both write only to `annotations.json` and apply only when the analyst
+  Accepts; dismissals and accepts survive re-normalization.
 - **Platform recognition** — classifies interactions into semantic types from
   documented platform/framework signatures (UIA ControlTypes + Chromium /
   Bootstrap / AG-Grid / SharePoint / Office), shared between the viewer and the
@@ -102,6 +110,14 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   surfaced as editable exceptions (ADR-0015).
 - **Annotations** — notes, a screenshot gallery, and a marker list, with full
   undo / redo; edits save to `annotations.json` and never touch the raw events.
+- **Suggested markers & anchor candidates** — for a session captured without
+  markers, the Flow timeline shows dashed suggested-marker bars (Accept to bracket
+  a case, Dismiss to suppress) and the markers panel surfaces ranked anchor
+  candidates ("Looks like a case anchor — `<field>` …"); Accept writes a
+  session-level anchor and the next Analyze stamps real cases (ADR-0017 / ADR-0018).
+- **In-view process map** — a **Map** level renders this single session's full
+  interactive process map (the same Process diagram / Flow diagram × Activity /
+  Step / Phase matrix as Compare Sessions) without leaving the Session view.
 - **Run normalization in-app** — spawn the bundled Python pipeline with progress
   streaming and a cancel control.
 - **Analysis findings** — a per-session Analysis level surfaces the heuristic
@@ -111,6 +127,10 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   summary, the process map inline, the steps table, the waste/automation/efficiency
   findings, notes, and starred screenshots, plus an editable recommendations block)
   that opens in any browser with no external assets.
+- **Process Definition Document (PDD)** — export a single session as a structured
+  `.docx` PDD (document control, the As-Is process with an embedded process map,
+  automation assessment, exceptions) — not a dump of pipeline data, but a real
+  process-definition deliverable.
 
 ### Compare Sessions (Aggregate) view
 
@@ -148,4 +168,6 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 
 Capabilities intentionally out of scope are tracked in
 [SPEC-DEFERRED.md](SPEC-DEFERRED.md) — notably the local ML stack (variant
-merging, case-boundary inference) and multi-analyst concurrent editing.
+merging, learned case-boundary inference) and multi-analyst concurrent editing.
+The **non-ML** Phase 0 of the case-boundary work has shipped (suggested markers +
+anchor candidates, ADR-0017 / ADR-0018); the ML-backed Phase 1+ stays deferred.

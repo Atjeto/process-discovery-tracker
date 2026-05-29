@@ -134,6 +134,31 @@ def test_non_interaction_events_pass_through():
     assert result[1]["type"] == "system"
 
 
+def test_malformed_timestamp_does_not_crash():
+    """M-7: a non-ISO / empty timestamp in the raw stream (stage 1a runs the
+    full event stream before case assignment) must NOT raise and kill the
+    whole normalization run. The lenient parser degrades a bad ts to epoch,
+    which yields a large gap that conservatively breaks the run."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    bad = _make_vc(base + timedelta(milliseconds=100), "AB")
+    bad["timestamp"] = "not-a-timestamp"
+    empty = _make_vc(base + timedelta(milliseconds=200), "ABC")
+    empty["timestamp"] = ""
+    events = [
+        _make_vc(base, "A"),
+        bad,
+        empty,
+        _make_vc(base + timedelta(milliseconds=300), "ABCD"),
+    ]
+    # The pre-fix code raised ValueError here on the strict parser.
+    result = coalesce_typing_bursts(events)
+    # No crash, every event accounted for (collapsed or passed through).
+    assert isinstance(result, list)
+    assert len(result) >= 1
+    total = sum(r["data"].get("_coalesced_count", 1) for r in result)
+    assert total == len(events)
+
+
 def test_selection_changed_refire_collapses():
     """Identical selection_changed re-fires collapse to the first."""
     base = datetime(2026, 5, 18, 9, 0, 0)
