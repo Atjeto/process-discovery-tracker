@@ -37,9 +37,21 @@ REPO_ROOT = os.path.dirname(HERE)
 GOLDEN_DIR = os.path.join(HERE, "golden")
 
 # Reference sessions under sessions/example-aggregate/ that the gate pins.
-# Start with the canonical demo session the harness uses; add more as the corpus grows.
+# The full committed demo corpus (10 sessions of the order-to-cash process at
+# varying volumes) -- re-normalized on pre-recorded events.jsonl, so the gate
+# needs NO recorder and NO Electron in CI (PDT-ROADMAP-CODEBASE-FIT.md §11a,
+# narrow tier). See corpus/README.md for the tier roadmap.
 REFERENCE_SESSIONS = [
+    "sess-2026-0511-0905",
+    "sess-2026-0511-1320",
+    "sess-2026-0512-0850",
+    "sess-2026-0512-1410",
+    "sess-2026-0513-0915",
+    "sess-2026-0513-1130",
     "sess-2026-0514-0900",
+    "sess-2026-0514-1505",
+    "sess-2026-0515-0840",
+    "sess-2026-0515-1255",
 ]
 
 # Inputs copied into the temp normalize dir. We copy the analyst sidecar too so any

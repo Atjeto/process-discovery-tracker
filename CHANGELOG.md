@@ -132,6 +132,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   redundant standalone `dagre` `<script>` tag from `index.html`. DFG layout
   verified unchanged in the harness (nodes positioned, 0 page errors).
 
+### Tests
+
+- **Golden corpus widened from 1 to all 10 `example-aggregate` sessions**
+  (partial §11a). `golden_check.py` `REFERENCE_SESSIONS` now pins the whole
+  committed demo set (order-to-cash at varying case volumes); each is
+  re-normalized on its pre-recorded `events.jsonl` and diffed against a
+  committed projection golden — **no recorder and no Electron in CI**. A new
+  `corpus/README.md` sketches the narrow/bounded/wide tier roadmap and records
+  that the demo set is the de-facto narrow tier and that live-recorder-in-CI is
+  out of scope (needs a self-hosted desktop runner).
+
 ## [0.19.0] - 2026-05-29
 
 **Phase 0 of the ML integration recommendation — non-ML, classical-statistics
