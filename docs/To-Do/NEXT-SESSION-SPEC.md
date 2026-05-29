@@ -1,6 +1,10 @@
 # Next-Session Spec — plan of record
 
-**Updated:** 2026-05-28 · **Branch:** `master` · **Status:** plan of record.
+**Updated:** 2026-05-29 · **Branch:** `master` · **Status:** plan of record (operational).
+**Source-of-truth chain:** [PDT-MASTER-ASSESSMENT.md](PDT-MASTER-ASSESSMENT.md) (strategy) →
+[PDT-ROADMAP-CODEBASE-FIT.md](PDT-ROADMAP-CODEBASE-FIT.md) (engineering fit) → **this doc**
+(what we're doing next). When this doc and the Fit Analysis disagree on sequencing, the Fit
+Analysis wins; this doc is its operational projection.
 
 Self-contained hand-off — read top to bottom; assumes no memory of the prior
 session. Earlier specs live in git history and [Archive/](Archive/).
@@ -74,41 +78,60 @@ pin the normalization pipeline. v0.17.1 was the same-day doc catch-up.
 Direction: **productization toward a small internal rollout, analyst-deliverable
 first**; bar = "as polished as it can be." Internal-rollout phase begins now.
 
+**Update (2026-05-29):** now at **v0.19.0**. This session landed the fix-first review queue
+(security + correctness + capture-durability fixes), the **Electron 33→42** bump + the
+`dagre`→`@dagrejs/dagre` fork swap (0 npm-audit advisories), and the Session-view process-map
+**overlay fix** — all verified in the harness. It also produced the consolidated review register
+([CONSOLIDATED-REVIEW-2026-05.md](CONSOLIDATED-REVIEW-2026-05.md)) and the strategic→engineering
+roadmap reconciliation (the Master Assessment + Fit Analysis). **The engineering roadmap is now
+the Wave 0 plan in §2.**
+
 ---
 
-## 2. Queued backlog (next work)
+## 2. Plan of record — Wave 0 (the foundation)
 
-All five feature-sized items from the v0.16.x – v0.18.0 cycle have landed —
-segment-level automation, group-Waste-by-step, parse_ts consolidation, the
-doc-coverage audit, and the in-view Map level. What's left in the
-codebase-side backlog is small follow-ups noticed during the recent release
-prep:
+The Fit Analysis establishes that the strategic roadmap (§11 workstreams) is mostly *additive*
+and fits the architecture — but funnels through a shared **Wave 0 foundation** that must land
+first. Wave 0 is the next work. Aggregate ≈ **12–22 focused days** (Fit §9). Items are roughly
+parallel; the only hard ordering is **F2 before F4** (the golden must exist to verify the
+`normalize()` refactor is non-destructive).
 
-1. **CHANGELOG header-integrity pre-commit hook.** v0.18.0's
-   `scripts/preflight.ps1` already gates this at build time (and
-   `build-distribution.ps1` runs preflight as step 0). A `core.hooksPath`
-   pre-commit hook would catch the regression at commit time instead of
-   build time — better feedback loop, but the current build-time gate is
-   sufficient. Cheap, low priority.
+1. **F2 — session-level golden gate.** Re-normalize the committed `example-aggregate` sessions →
+   diff a lightweight *projection* (`stats.json.meta` scalars + per-case step labels / markers /
+   anchor) against a committed golden. Runs on pre-recorded `events.jsonl` — **no recorder or
+   Electron in CI**. The keystone that protects every later change. *(In progress — being built
+   this session.)*
+2. **F1 — in-repo e2e gate.** Move the assertable subset of `_pdt_verify/` into a top-level
+   `e2e/`, convert eyeball drivers to `assert` + exit codes, drop `ELECTRON_SKIP_BINARY_DOWNLOAD`
+   for that job, wire into CI. **Supersedes §0's out-of-repo harness note** once it lands.
+3. **F4 + F3 — decompose `normalize()` + calibration config surface.** Split the ~509-line
+   orchestrator into named stages; thread a `calibration` block through the two
+   `auto_suggest_steps` call sites (`normalize.py:553`, `:586`) + `coalesce`. F3 unblocks §11b
+   (the segmentation knobs are currently unreachable). Do **F2 first** so the golden verifies the
+   refactor. F4 is debt-paydown, not strictly blocking — but don't defer it past Wave 1.
+4. **§11c — €-ROI layer.** New `analysis_roi.py` (slots into `analysis.run_analysis`) +
+   session-level `roi_inputs` annotation key + `_write_roi()` PDD section + viewer panel. The
+   commercial closer (the Discovery-Sprint deliverable); **no §11a dependency — can run in
+   parallel now** on existing analysis output (`estimated_savings_ms` is currently `None`).
+5. **6b — Node-side egress guard.** `no-restricted-imports` on `http`/`https`/`net` in the
+   Electron main processes + a single allowlist seam (today: localhost OBS only). Half a day;
+   makes the air-gap moat provable on the Node side too (the renderer is already CSP-locked).
+6. **Self-sign binaries.** Wire the internal self-sign cert into `build-distribution.ps1`
+   (`-CertThumbprint` + `signtool sign` after each `.exe`). Hours, not days. **Distinct from EV
+   code-signing** for unknown customers (procurement-blocked, later).
+7. **`Recorder.Tests.csproj`.** xUnit on .NET 8; 3 seed tests (`BuildEvent` field set,
+   keystroke-coalescing boundary, marker/system-event flush bypass). **Hard prerequisite for
+   §11e**; the bus-factor mitigation for the zero-test crown jewel. (dotnet 10 SDK confirmed on
+   the dev box.)
 
-2. **MAX_PATH brittleness on Shell-extract.** The viewer zip's deepest path is
-   ~175 chars (PM4Py inductive-variant filenames). Reasonable extract
-   destinations are fine; deeply-nested ones silently fail. v0.17.1's
-   [DEPLOY.md](../DEPLOY.md) carries the "extract to a short path" note as
-   user-facing mitigation; a follow-up could permanently shave the longest
-   unused PM4Py paths from `viewer/python/`. Bigger refactor than it sounds —
-   the slim script needs to know which PM4Py modules our pipeline actually
-   uses.
+After Wave 0: **Wave 1** (§11a real-data harness, §11b calibration, §11d bootstrap vocabs), then
+**Wave 2** (§11e coverage hardening, §11f borrows, §13/6a pluggable backend). Full sequencing +
+effort in [Fit Analysis §7/§9](PDT-ROADMAP-CODEBASE-FIT.md).
 
-3. **Code-signing scaffolding.** The company has an internal self-sign
-   certificate. The codebase needs ~30 lines in `build-distribution.ps1`:
-   a `-CertThumbprint` parameter + `signtool sign` invocations after each
-   `.exe` is produced (`recorder.exe`,
-   `Process Discovery Tracker.exe`, `Process Discovery Viewer.exe`). Worth
-   doing before the internal-rollout phase widens — eliminates the "Windows
-   protected your PC" SmartScreen prompt on fresh laptops (assuming IT has
-   distributed the internal root cert in the Trust Store, which corp-managed
-   environments usually do).
+**Still-minor follow-ups** (pre-existing, low priority, not Wave 0):
+- CHANGELOG header-integrity pre-commit hook (build-time gate via `preflight.ps1` already
+  suffices).
+- MAX_PATH PM4Py path-shaving in `viewer/python/` (DEPLOY.md carries the user-facing mitigation).
 
 ---
 
