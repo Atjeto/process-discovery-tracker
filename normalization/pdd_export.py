@@ -436,24 +436,28 @@ def _write_automation(doc, analysis):
                           "sessions of this process)")
         return
 
-    t = doc.add_table(rows=1, cols=5)
+    t = doc.add_table(rows=1, cols=6)
     h = t.rows[0].cells
-    h[0].text = "Segment"
-    h[1].text = "Application"
-    h[2].text = "Instances"
-    h[3].text = "Total time"
-    h[4].text = "Mean per instance"
-    for a in cands:
+    h[0].text = "Rank"
+    h[1].text = "Segment"
+    h[2].text = "Application"
+    h[3].text = "Instances"
+    h[4].text = "Total time"
+    h[5].text = "Mean per instance"
+    for i, a in enumerate(cands, start=1):
         r = t.add_row().cells
-        r[0].text = str(a.get("label", "(segment)"))
-        r[1].text = str(a.get("app", "—")).replace(".exe", "") or "—"
-        r[2].text = str(a.get("instance_count", 0))
-        r[3].text = _fmt_ms(a.get("total_elapsed_ms", 0))
-        r[4].text = _fmt_ms(a.get("mean_elapsed_ms", 0))
+        r[0].text = str(a.get("rank") or i)
+        r[1].text = str(a.get("label", "(segment)"))
+        r[2].text = str(a.get("app", "—")).replace(".exe", "") or "—"
+        r[3].text = str(a.get("instance_count", 0))
+        r[4].text = _fmt_ms(a.get("total_elapsed_ms", 0))
+        r[5].text = _fmt_ms(a.get("mean_elapsed_ms", 0))
 
     _note(doc, "An instance is one execution of the segment within one case; "
                "segments grouped here share the same application and the same "
-               "ordered list of step types.")
+               "ordered list of step types. Rank orders the candidates by "
+               "automation priority — frequency × mean time per instance × the "
+               "automatable fraction — so the highest-leverage segment is first.")
 
     # Narrative summary for the analyst: the top 3 segments, expressed as
     # prose so §4.3 reads like a recommendation, not just a grid.

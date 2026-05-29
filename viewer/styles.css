@@ -1077,6 +1077,7 @@ button.waste-tag-btn:hover {
 }
 .auto-arrow { color: var(--fg-4); padding: 0 2px; }
 .auto-more { color: var(--fg-4); font-style: italic; }
+.auto-rank { color: var(--fg-3); font-weight: 600; width: 1%; white-space: nowrap; }
 /* €-ROI section (§11c): the commercial closer -- a savings band per candidate
    plus session totals. Reuses .analysis-section / .analysis-table chrome. */
 .roi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

@@ -8,6 +8,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Automation-candidate ranking (§11f).** `analysis_automation.score_automation`
+  now scores each candidate by automation priority — `instance_count × mean
+  elapsed time × automatable fraction` (the same fraction the €-ROI layer resolves
+  from `roi_inputs`, per-segment override aware) — and stamps a 1-based `rank` on
+  the multi-instance candidates (single-instance rows get `rank: null`,
+  `rank_score: 0`). The order feeds both the `roi` band and the PDD focus list, and
+  surfaces as a `#` column in the viewer's Automation-candidates table and a Rank
+  column in PDD §4.3. The previous instance-count-first ordering buried a
+  rare-but-long segment beneath a frequent-but-trivial one.
 - **€-ROI panel in the Session-view Analysis level (§11c — the commercial closer).**
   The Python ROI core (`analysis_roi.py`) already projected each multi-instance
   automation candidate into a conservative/expected/optimistic savings band; the

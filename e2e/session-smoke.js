@@ -155,16 +155,20 @@ const OVERLAP_PROBE = () => {
       legend: !!host.querySelector(".roi-legend"),
       editBtn: !!host.querySelector(".roi-edit-btn"),
       tune: host.querySelectorAll(".roi-tune-btn").length,
+      // §11f automation ranking: the candidates table carries a rank column.
+      autoRank: host.querySelectorAll(".auto-rank").length,
     };
   }).catch((e) => ({ err: e.message }));
   if (roiProbe && roiProbe.err) {
     record("€-ROI panel renders on Analysis level", false, "probe error: " + roiProbe.err);
     await shot(page, "fail-roi-probe.png");
   } else {
-    const ok = !!(roiProbe.host && roiProbe.title && roiProbe.legend && roiProbe.editBtn);
+    const ok = !!(roiProbe.host && roiProbe.title && roiProbe.legend &&
+      roiProbe.editBtn && roiProbe.autoRank > 0);
     record("€-ROI panel renders on Analysis level", ok,
       "title=" + roiProbe.title + " legend=" + roiProbe.legend +
-      " editBtn=" + roiProbe.editBtn + " tuneRows=" + roiProbe.tune);
+      " editBtn=" + roiProbe.editBtn + " tuneRows=" + roiProbe.tune +
+      " autoRankCells=" + roiProbe.autoRank);
     if (!ok) await shot(page, "fail-roi-panel.png");
   }
 

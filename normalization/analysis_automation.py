@@ -29,6 +29,11 @@ from __future__ import annotations
 from typing import Any
 
 from analysis_segments import detect_segments, group_segments
+# Ranking reuses the SAME automatable-fraction resolution the €-ROI layer uses
+# (per-segment override → flat default → 0.7), so a candidate's rank and its ROI
+# band agree on how automatable it is. analysis_roi imports nothing from this
+# module, so the dependency is one-way (no cycle).
+from analysis_roi import _resolve_inputs, _fraction_for
 
 
 def _override_for(annotations: dict | None, signature: str) -> dict | None:
@@ -73,6 +78,10 @@ def score_automation(
     segs = detect_segments(events, steps or [])
     groups = group_segments(segs)
 
+    # Resolve the ROI inputs once so each candidate's rank uses the same
+    # automatable fraction its €-ROI band will (per-segment override aware).
+    roi_cfg = _resolve_inputs((annotations or {}).get("roi_inputs"))
+
     out: list[dict[str, Any]] = []
     for sig, g in groups.items():
         instances = g["instances"]
@@ -97,6 +106,13 @@ def score_automation(
         case_ids = sorted({
             i.get("case_id") for i in instances if i.get("case_id")
         })
+        # Automation priority (§11f): frequency × observed mean time ×
+        # automatable fraction. This is the "how much manual time would a robot
+        # actually remove per year of this pattern" proxy that feeds both the
+        # ROI band and the PDD focus order. Single-instance patterns have no
+        # repeatability signal, so they get no rank_score (ranked last).
+        fraction = _fraction_for(sig, roi_cfg)
+        rank_score = (n * mean_elapsed * fraction) if n >= 2 else 0.0
         out.append({
             "segment_signature": sig,
             "label": g["label"],
@@ -112,19 +128,31 @@ def score_automation(
                 "confidence": confidence,
                 "volume": total_elapsed,
             },
+            "automatable_fraction": round(fraction, 4),
+            "rank_score": round(rank_score, 2),
+            "rank": None,  # 1-based, assigned after the sort below
             "estimated_savings_ms": None,
             "automation_confirmed": confirmed,
             "data_sufficiency": sufficiency,
         })
 
-    # Rank multi-instance, high-volume, longer-mean segments first --
-    # those are the ones most worth scoping for a real automation.
+    # Rank by automation priority: multi-instance first, then by rank_score
+    # (frequency × mean × automatable fraction), with total elapsed as a
+    # stable tiebreak. The previous instance-count-first ordering buried a
+    # rarely-but-very-long segment beneath a frequent-but-trivial one.
     out.sort(
         key=lambda r: (
             r["data_sufficiency"] == "multi_instance",
-            r["instance_count"],
+            r["rank_score"],
             r["total_elapsed_ms"],
         ),
         reverse=True,
     )
+    # Stamp the 1-based rank onto the multi-instance candidates (the ones with
+    # a real repeatability signal); single-instance rows keep rank=None.
+    next_rank = 1
+    for r in out:
+        if r["data_sufficiency"] == "multi_instance":
+            r["rank"] = next_rank
+            next_rank += 1
     return out

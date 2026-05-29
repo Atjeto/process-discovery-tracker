@@ -341,7 +341,8 @@ function _automationSection(auto) {
     "A candidate is a contiguous run of work in one application within one " +
     "case — e.g. a CRM lookup → copy → paste sequence. Single clicks or " +
     "keystrokes are not surfaced (a hybrid where a robot clicks one button " +
-    "inside a manual flow is worse than fully manual)." +
+    "inside a manual flow is worse than fully manual). Ranked by automation " +
+    "priority — frequency × mean time × automatable share." +
     "</div>";
   if (!scored.length) {
     const note = lonely
@@ -352,7 +353,7 @@ function _automationSection(auto) {
     return '<div class="analysis-section">' + lead +
       '<div class="analysis-note">' + escapeHtml(note) + "</div></div>";
   }
-  const rows = scored.map((a) => {
+  const rows = scored.map((a, i) => {
     const steps = (a.step_labels || []).slice(0, 6);
     const moreSteps = (a.step_labels || []).length - steps.length;
     const sequence = steps.length
@@ -360,7 +361,9 @@ function _automationSection(auto) {
         + (moreSteps > 0 ? ' <span class="auto-more">+' + moreSteps + " more</span>" : "")
       : '<span class="score-na">no labelled steps</span>';
     const app = String(a.app || "").replace(/\.exe$/i, "") || "—";
+    const rank = (a.rank === null || a.rank === undefined) ? (i + 1) : a.rank;
     return "<tr>" +
+      '<td class="num auto-rank">' + escapeHtml(String(rank)) + "</td>" +
       '<td><div class="auto-label">' + escapeHtml(a.label || "(segment)") + "</div>" +
         '<div class="auto-sequence">' + sequence + "</div></td>" +
       "<td>" + escapeHtml(app) + "</td>" +
@@ -378,7 +381,8 @@ function _automationSection(auto) {
     : "";
   return '<div class="analysis-section">' + lead +
     '<table class="analysis-table">' +
-      "<thead><tr><th>Segment</th><th>App</th>" +
+      '<thead><tr><th title="Automation priority rank">#</th>' +
+      "<th>Segment</th><th>App</th>" +
       "<th>Instances</th><th>Total time</th><th>Mean per instance</th>" +
       "<th>Decision</th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table>" + tail + "</div>";

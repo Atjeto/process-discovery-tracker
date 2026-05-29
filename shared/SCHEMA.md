@@ -651,6 +651,9 @@ identifies the classifier generation.
           "elapsed_ms": 0, "interaction_count": 0, "step_ids": ["uuid"] }
       ],
       "scores": { "confidence": 1.0, "volume": 134000 },
+      "automatable_fraction": 0.7,
+      "rank_score": 93800.0,
+      "rank": 1,
       "estimated_savings_ms": null,
       "automation_confirmed": null,
       "data_sufficiency": "single_instance | multi_instance" }
@@ -706,7 +709,13 @@ lists every detected segment; `automation_candidates` pools them by
 same pattern repeated four times in one session is one row with
 `instance_count: 4`. A pattern with one instance is reported with
 `data_sufficiency: "single_instance"` — one observation cannot judge
-repeatability. `automation_confirmed` carries the analyst's verdict, written
+repeatability. Candidates are ordered by **automation priority**:
+`rank_score = instance_count × mean_elapsed_ms × automatable_fraction`
+(the same `automatable_fraction` the €-ROI layer resolves from `roi_inputs`,
+per-segment override aware). `rank` is the 1-based position among
+multi-instance candidates (single-instance rows get `rank: null`); the order
+feeds both the `roi` band and the PDD §4.3 focus list. `rank_score` is `0`
+for single-instance patterns (no repeatability signal). `automation_confirmed` carries the analyst's verdict, written
 to `analysis_overrides[]` keyed by `segment_signature`. The previous per-step
 shape (`step_id`, `scores.repetitiveness`, `scores.rule_based`,
 `sequence_signature`) was retired in `meta.heuristic_version: 2`.
