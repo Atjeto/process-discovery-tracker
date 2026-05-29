@@ -166,11 +166,14 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "starred_screenshots": [],
   "matched_against": null,
   "last_modified": null,
-  "last_modified_by": null
+  "last_modified_by": null,
+  "calibration": null
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty.
+
+**`calibration`** *(optional object; absent = pipeline defaults)* — the segmentation-tuning surface a Process Template or analyst can set per session to control how the auto-suggester splits steps (the over-segmentation / "308-step" knobs). Read by `normalize.py` (`_calibration`); missing keys fall back to the prior hardcoded defaults, so an absent or empty block reproduces the default pipeline output exactly. Recognised keys: `coalesce_idle_ms` (1500), `step_split_idle_ms` (10000), `step_max_interactions` (60), `step_min_interactions` (2), `step_max_idle_ms` (5000), `step_split_on_element` (true), `filter_browser_chrome` (true). Unknown keys are ignored. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
 
 The viewer keeps up to four rotating backups of this file — `annotations.json.2` (most recent) through `annotations.json.5` (oldest); each save shifts the previous versions down one slot. It is a safety net against a regretted bulk edit or a corrupt write; recovery is a manual file copy of a `.N` file back over `annotations.json`.
 

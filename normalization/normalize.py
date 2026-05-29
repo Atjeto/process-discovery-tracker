@@ -168,6 +168,48 @@ def _excluded_ranges(annotations: dict) -> list[dict]:
     return [r for r in ranges if isinstance(r, dict) and r.get("start") and r.get("end")]
 
 
+# Wave 0 / F3: the segmentation calibration surface. These knobs were previously
+# locked as `coalesce_typing_bursts` / `auto_suggest_steps` keyword defaults and
+# UNREACHABLE from a session (the two call sites passed none of them), so the
+# over-segmentation ("308-step") class could not be tuned without editing code.
+# They are now read from an optional `calibration` block in annotations.json (a
+# Process Template or analyst can set it per session). Defaults match the prior
+# hardcoded values EXACTLY, so absent an override the pipeline output is unchanged.
+_DEFAULT_CALIBRATION = {
+    "coalesce_idle_ms": 1500,
+    "step_split_idle_ms": 10000,
+    "step_max_interactions": 60,
+    "step_min_interactions": 2,
+    "step_max_idle_ms": 5000,
+    "step_split_on_element": True,
+    "filter_browser_chrome": True,
+}
+
+
+def _calibration(annotations: dict) -> dict:
+    """Merge an optional `annotations['calibration']` override over the defaults.
+    Missing keys fall back to the prior hardcoded value; unknown keys are ignored."""
+    cal = dict(_DEFAULT_CALIBRATION)
+    override = (annotations or {}).get("calibration")
+    if isinstance(override, dict):
+        for k in _DEFAULT_CALIBRATION:
+            if k in override:
+                cal[k] = override[k]
+    return cal
+
+
+def _step_calibration_kwargs(cal: dict) -> dict:
+    """The subset of the calibration surface that `auto_suggest_steps` accepts."""
+    return {
+        "step_split_idle_ms": cal["step_split_idle_ms"],
+        "step_max_interactions": cal["step_max_interactions"],
+        "step_min_interactions": cal["step_min_interactions"],
+        "step_max_idle_ms": cal["step_max_idle_ms"],
+        "step_split_on_element": cal["step_split_on_element"],
+        "filter_browser_chrome": cal["filter_browser_chrome"],
+    }
+
+
 def compute_screenshot_hashes(session_folder: Path) -> list[dict[str, str]]:
     """Average-hash (aHash) every screenshot so the viewer's gallery can
     collapse runs of near-identical frames. Pillow is optional -- when it
@@ -403,12 +445,14 @@ def normalize(
     if dropped_lines:
         print(f"[normalize] WARNING: dropped {dropped_lines} malformed JSONL line(s); see warnings above")
 
+    annotations = load_annotations(session_folder)
+    cal = _calibration(annotations)
+
     # Stage 1a: coalesce typing bursts
-    coalesced = coalesce_typing_bursts(raw)
+    coalesced = coalesce_typing_bursts(raw, idle_ms=cal["coalesce_idle_ms"])
     if len(coalesced) < len(raw):
         print(f"[normalize] coalesced: {len(raw)} -> {len(coalesced)} events")
 
-    annotations = load_annotations(session_folder)
     edited, edits_applied = apply_marker_edits(coalesced, annotations)
     if edits_applied:
         print(f"[normalize] applied {edits_applied} annotation edit(s) from annotations.json")
@@ -554,6 +598,7 @@ def normalize(
                 unmatched, session_id=session_id_str,
                 ignored_processes=_step_ignored_processes(existing_anno),
                 excluded_ranges=_excluded_ranges(existing_anno),
+                **_step_calibration_kwargs(cal),
             )
             fresh_steps = matched_steps + fallback
         else:
@@ -587,6 +632,7 @@ def normalize(
             with_cases, session_id=session_id_str,
             ignored_processes=_step_ignored_processes(existing_anno),
             excluded_ranges=_excluded_ranges(existing_anno),
+            **_step_calibration_kwargs(cal),
         )
         merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps)
         existing_anno["steps"] = merged_steps
