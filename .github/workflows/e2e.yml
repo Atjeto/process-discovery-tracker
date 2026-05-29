@@ -1,0 +1,36 @@
+name: e2e (Session-view smoke)
+
+# Wave 0 / F1: the in-repo Playwright merge gate. Successor to the out-of-repo
+# _pdt_verify harness. It launches the REAL viewer Electron app pre-loaded with
+# the committed demo session and ASSERTS (zero page errors, all 5 Session-view
+# levels render, the map/raw-events no-overlap regression stays fixed), exiting
+# non-zero on any regression. Unlike js.yml this job must NOT set
+# ELECTRON_SKIP_BINARY_DOWNLOAD — it needs the real Electron binary to launch.
+# Once stable, this job is allowed to be marked a required status check.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Install the viewer with the real Electron binary (no SKIP flag) — the
+      # e2e driver reuses viewer/node_modules/electron to launch the app.
+      - name: Install viewer (with Electron binary)
+        working-directory: viewer
+        run: npm ci
+
+      - name: Install e2e deps
+        working-directory: e2e
+        run: npm ci
+
+      - name: Run Session-view smoke
+        working-directory: e2e
+        run: npm test
