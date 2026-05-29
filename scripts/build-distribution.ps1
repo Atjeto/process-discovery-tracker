@@ -55,7 +55,16 @@ param(
   [switch]$SkipPython,
   [switch]$Clean,
   [switch]$SkipRelease,
-  [string]$Version
+  [string]$Version,
+  # SHA-1 thumbprint of a code-signing cert in the build user's store. When set,
+  # every .exe in the assembled dist/ is Authenticode-signed (the internal
+  # self-sign cert is sufficient for the originating-org rollout: it clears the
+  # SmartScreen/"unknown publisher" prompt on fresh laptops once IT has pushed
+  # the internal root into the Trusted Root store). Absent (default) => unsigned,
+  # build unchanged. Distinct from EV signing for unknown external customers,
+  # which is a separate procurement step. See NEXT-SESSION-SPEC §2.
+  [string]$CertThumbprint,
+  [string]$TimestampUrl = "http://timestamp.digicert.com"
 )
 
 $ErrorActionPreference = "Stop"
@@ -262,8 +271,52 @@ function Copy-WithRobocopy([string]$src, [string]$dst) {
   }
 }
 
+function Resolve-SignTool {
+  $cmd = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+  if ($cmd) { return $cmd }
+  # Fall back to the newest x64 signtool under the Windows 10/11 SDK.
+  $sdkBin = "C:\Program Files (x86)\Windows Kits\10\bin"
+  if (Test-Path $sdkBin) {
+    $found = Get-ChildItem $sdkBin -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -match "\\x64\\" } | Sort-Object FullName -Descending | Select-Object -First 1
+    if ($found) { return $found.FullName }
+  }
+  return $null
+}
+
+function Invoke-SignBinaries([string]$rootFolder, [string]$thumbprint, [string]$timestampUrl) {
+  if ([string]::IsNullOrWhiteSpace($thumbprint)) {
+    Write-Host "  Code-signing skipped (no -CertThumbprint) for $rootFolder" -ForegroundColor DarkGray
+    return
+  }
+  $signtool = Resolve-SignTool
+  if (-not $signtool) {
+    throw "signtool.exe not found (install the Windows SDK signing tools) -- required when -CertThumbprint is set."
+  }
+  $exes = @(Get-ChildItem $rootFolder -Recurse -Filter *.exe -ErrorAction SilentlyContinue)
+  if (-not $exes.Count) { Write-Host "  No .exe found under $rootFolder" -ForegroundColor Yellow; return }
+  Write-Host "  Signing $($exes.Count) .exe under $rootFolder (cert $thumbprint)" -ForegroundColor Yellow
+  foreach ($exe in $exes) {
+    & $signtool sign /sha1 $thumbprint /fd SHA256 /tr $timestampUrl /td SHA256 $exe.FullName | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "signtool failed on $($exe.FullName) (exit $LASTEXITCODE)" }
+  }
+  # Sanity: verify the top-level app exe signed + chains.
+  $top = Get-ChildItem $rootFolder -Filter *.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($top) {
+    & $signtool verify /pa /q $top.FullName
+    if ($LASTEXITCODE -ne 0) { throw "signtool verify failed on $($top.FullName) (exit $LASTEXITCODE)" }
+  }
+}
+
 Copy-WithRobocopy $captureBuild.FullName (Join-Path $distDir "capture")
 Copy-WithRobocopy $viewerBuild.FullName (Join-Path $distDir "viewer")
+
+# Code-sign the assembled binaries (no-op without -CertThumbprint). Signs in
+# the final dist/ location so the release zips carry signed exes -- the app
+# exes (Process Discovery Tracker.exe / Viewer.exe), the bundled recorder.exe,
+# and the Electron helper exes all get signed.
+Invoke-SignBinaries (Join-Path $distDir "capture") $CertThumbprint $TimestampUrl
+Invoke-SignBinaries (Join-Path $distDir "viewer") $CertThumbprint $TimestampUrl
 
 # Generate SBOM into dist/
 Write-Host ""
