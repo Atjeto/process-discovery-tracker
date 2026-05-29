@@ -24,6 +24,7 @@ from typing import Any
 from analysis_automation import score_automation
 from analysis_common import segment_steps
 from analysis_efficiency import compute_efficiency
+from analysis_roi import apply_estimated_savings, compute_roi
 from analysis_segments import detect_segments
 from analysis_time_study import compute_time_study
 from analysis_waste import classify_waste
@@ -60,6 +61,7 @@ def run_analysis(
         "segments": [],
         "automation_candidates": [],
         "efficiency": {},
+        "roi": {},
     }
     if not steps:
         return result
@@ -89,5 +91,13 @@ def run_analysis(
             result["waste_classification"])
     except Exception as e:  # noqa: BLE001
         logger.warning("analysis: efficiency failed: %s", e)
+    try:
+        # €-ROI band over the automation candidates, plus backfill of each
+        # candidate's long-null `estimated_savings_ms` from the expected band
+        # (only when the analyst supplied monetary/volume inputs).
+        result["roi"] = compute_roi(result["automation_candidates"], annotations)
+        apply_estimated_savings(result["automation_candidates"], result["roi"])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("analysis: roi failed: %s", e)
 
     return result

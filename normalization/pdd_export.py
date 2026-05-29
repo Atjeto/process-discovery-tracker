@@ -77,6 +77,7 @@ def write_pdd(
     _write_input_data(doc)                            # 3.6 Input data
 
     _write_automation(doc, analysis)                  # 4. Automation assessment
+    _write_roi(doc, analysis)                         # 4.4 Estimated ROI
     _write_exceptions(doc, annotations)               # 5. Exceptions & variations
     _write_footer(doc)
 
@@ -474,6 +475,86 @@ def _write_automation(doc, analysis):
             )
             for run in p.runs:
                 run.italic = True
+
+
+# ---- 4.4 Estimated ROI ------------------------------------------------------
+
+_CCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
+
+
+def _fmt_money(amount, currency):
+    if amount is None:
+        return "—"
+    sym = _CCY_SYMBOLS.get(currency, "")
+    s = f"{round(amount):,}"
+    return f"{sym}{s}" if sym else f"{s} {currency}"
+
+
+def _write_roi(doc, analysis):
+    """Render §4.4 -- the €-ROI band over the automation candidates (§10).
+
+    A row per candidate segment carries the time saved per year and, when the
+    analyst has supplied a loaded labour rate and an annual volume, the net
+    annual saving and payback as a conservative / expected / optimistic band.
+    When monetary inputs are absent the section still reports the hours-saved
+    band and explicitly flags that the € figures need analyst inputs -- it
+    never fabricates a labour rate."""
+    roi = (analysis or {}).get("roi") or {}
+    cands = roi.get("candidates") or []
+    doc.add_heading("4.4 Estimated ROI", level=2)
+    if not cands:
+        _placeholder(doc, "the annual time and cost savings of automating the "
+                          "candidate segments (no multi-instance candidates "
+                          "were detected, so no ROI band could be computed)")
+        return
+
+    currency = roi.get("currency") or "EUR"
+    needs_input = roi.get("needs_input")
+    doc.add_paragraph(
+        "Each candidate segment is projected to an annual saving using the "
+        "observed mean instance duration, an automatable fraction, an annual "
+        "volume, and a loaded labour cost. The figures are reported as a "
+        "conservative / expected / optimistic band rather than a single number."
+    )
+    if needs_input:
+        _note(doc, "Monetary figures require a loaded cost per hour (and an "
+                   "annual volume) in the session's ROI inputs; only the "
+                   "hours-saved band is shown below until those are supplied.")
+
+    t = doc.add_table(rows=1, cols=5)
+    h = t.rows[0].cells
+    h[0].text = "Segment"
+    h[1].text = "Hours/yr (cons.–opt.)"
+    h[2].text = "Net/yr (expected)"
+    h[3].text = "Payback (expected)"
+    h[4].text = "Volume basis"
+    for r in cands:
+        bands = r.get("bands") or {}
+        cons = (bands.get("conservative") or {}).get("saved_hours_per_year")
+        opt = (bands.get("optimistic") or {}).get("saved_hours_per_year")
+        exp = bands.get("expected") or {}
+        row = t.add_row().cells
+        row[0].text = str(r.get("label", "(segment)"))
+        row[1].text = (f"{cons:g}–{opt:g} h"
+                       if cons is not None and opt is not None else "—")
+        row[2].text = _fmt_money(exp.get("net_annual"), currency)
+        pm = exp.get("payback_months")
+        row[3].text = f"{pm:g} mo" if pm is not None else "—"
+        row[4].text = ("annual" if r.get("volume_basis") in ("annotated", "default")
+                       else "observed (floor)")
+
+    totals = roi.get("totals") or {}
+    th = totals.get("saved_hours_per_year")
+    tnet = totals.get("net_annual")
+    if th is not None:
+        bits = [f"{th:g} hours/yr saved (expected)"]
+        if tnet is not None:
+            bits.append(f"{_fmt_money(tnet, currency)} net annual (expected)")
+        doc.add_paragraph("Estimated total across candidate segments: "
+                          + "; ".join(bits) + ".")
+    _note(doc, "ROI is a planning estimate, not a guarantee: it assumes the "
+               "supplied annual volume and labour rate hold and that the "
+               "automation captures the stated automatable fraction.")
 
 
 # ---- 5. Exceptions & variations ---------------------------------------------

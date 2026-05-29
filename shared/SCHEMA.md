@@ -160,6 +160,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "case_anchor_override": null,
   "classification_overrides": [],
   "analysis_overrides": [],
+  "roi_inputs": null,
   "excluded_ranges": [],
   "notes": [],
   "drift_markers": [],
@@ -171,7 +172,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty.
 
 **`calibration`** *(optional object; absent = pipeline defaults)* — the segmentation-tuning surface a Process Template or analyst can set per session to control how the auto-suggester splits steps (the over-segmentation / "308-step" knobs). Read by `normalize.py` (`_calibration`); missing keys fall back to the prior hardcoded defaults, so an absent or empty block reproduces the default pipeline output exactly. Recognised keys: `coalesce_idle_ms` (1500), `step_split_idle_ms` (10000), `step_max_interactions` (60), `step_min_interactions` (2), `step_max_idle_ms` (5000), `step_split_on_element` (true), `filter_browser_chrome` (true). Unknown keys are ignored. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
 
@@ -255,6 +256,54 @@ only the ones the analyst touched are present; the rest stay heuristic.
 A per-`step_id` override (the most specific) wins over a `process_label` one
 for waste. Raw `events.jsonl` and `analysis.json` are never edited by hand;
 the next `normalize` run bakes the overrides into a fresh `analysis.json`.
+
+### ROI inputs (`roi_inputs`)
+
+*(Optional object; absent = time-savings only, monetary `needs_input`.)* The
+analyst-supplied commercial assumptions that turn the detected automation
+candidates into a €-ROI band (consumed by `analysis_roi.compute_roi`, surfaced
+in `analysis.json` `roi` and the PDD §4.4). Every field is optional and has a
+sensible default, so an absent or empty block still yields the hours-saved band
+with monetary figures left null and `needs_input: true` — the methodology is
+explicit that a labour rate is **never fabricated**.
+
+```json
+{
+  "roi_inputs": {
+    "currency": "EUR",
+    "loaded_cost_per_hour": 36.0,
+    "realism_factors": { "conservative": 0.5, "expected": 0.7, "optimistic": 0.9 },
+    "automatable_fraction": 0.7,
+    "annual_volume": 1000,
+    "automation_cost": 15000,
+    "amortization_years": 3.0,
+    "annual_volume_overrides":       { "<segment_signature>": 2000 },
+    "automation_cost_overrides":     { "<segment_signature>": 20000 },
+    "automatable_fraction_overrides":{ "<segment_signature>": 0.9 }
+  }
+}
+```
+
+- **`currency`** — display currency code (default `"EUR"`).
+- **`loaded_cost_per_hour`** — fully-loaded operator cost per hour. **Absent →
+  monetary figures are null and `needs_input: true`.** Cost per ms =
+  `loaded_cost_per_hour / 3_600_000`.
+- **`realism_factors`** — the three band multipliers (defaults `0.5 / 0.7 /
+  0.9`); a partial override keeps the other bands at default.
+- **`automatable_fraction`** — share of a segment's manual time a robot
+  realistically removes (default `0.7`).
+- **`annual_volume`** — how many times the process runs per year, applied to
+  every candidate. **Absent → each candidate falls back to its observed
+  `instance_count` as a conservative floor**, flagged `volume_basis:
+  "observed"` (one session is not a year).
+- **`automation_cost`** — one-off build cost; amortized over
+  **`amortization_years`** (default `3.0`) for `net_annual` and `payback_months`.
+- **`*_overrides`** — per-segment maps keyed by `segment_signature` that win
+  over the flat defaults for that one candidate.
+
+Unknown keys are ignored; a malformed value falls back to its default rather
+than failing the run. `roi_inputs` is read on every `normalize` run; raw
+`events.jsonl` and `analysis.json` are never edited by hand.
 
 ### Excluded range (`excluded_ranges[]`)
 
@@ -611,6 +660,32 @@ identifies the classifier generation.
     "total_va_ms": 0, "total_bnva_ms": 0, "total_nva_ms": 0,
     "total_elapsed_ms": 0,
     "per_step": [ { "step_id": "uuid", "ratio": 0.0 } ]
+  },
+  "roi": {
+    "currency": "EUR",
+    "needs_input": false,
+    "inputs_used": { "loaded_cost_per_hour": 36.0, "realism_factors": {...},
+                     "automatable_fraction": 0.7, "annual_volume": 1000,
+                     "automation_cost": null, "amortization_years": 3.0 },
+    "candidates": [
+      { "segment_signature": "12-hex-chars", "label": "string",
+        "instance_count": 4, "mean_elapsed_ms": 33500,
+        "automatable_fraction": 0.7, "annual_volume": 1000,
+        "volume_basis": "annotated | default | observed",
+        "automation_cost": null, "amortization_years": 3.0,
+        "bands": {
+          "conservative": { "realism_factor": 0.5, "saved_ms_per_instance": 0,
+            "saved_hours_per_year": 0.0, "gross_annual": 0.0,
+            "net_annual": 0.0, "payback_months": null },
+          "expected":     { "...": "..." },
+          "optimistic":   { "...": "..." }
+        },
+        "expected_saved_hours_per_year": 0.0,
+        "expected_net_annual": 0.0,
+        "expected_payback_months": null,
+        "needs_input": false }
+    ],
+    "totals": { "saved_hours_per_year": 0.0, "net_annual": 0.0, "gross_annual": 0.0 }
   }
 }
 ```
@@ -635,6 +710,24 @@ repeatability. `automation_confirmed` carries the analyst's verdict, written
 to `analysis_overrides[]` keyed by `segment_signature`. The previous per-step
 shape (`step_id`, `scores.repetitiveness`, `scores.rule_based`,
 `sequence_signature`) was retired in `meta.heuristic_version: 2`.
+
+`roi` is the **€-ROI band** over the automation candidates
+(`analysis_roi.compute_roi`). Per **multi-instance** candidate it projects the
+observed `mean_elapsed_ms` to an annual saving: `T_saved = mean_elapsed_ms ×
+automatable_fraction × realism`, `gross_annual = annual_volume × T_saved ×
+(loaded_cost_per_hour / 3_600_000)`, `net_annual = gross_annual −
+automation_cost / amortization_years`, `payback_months = automation_cost /
+(net_annual / 12)` (null when `net_annual ≤ 0` or no automation cost). The
+estimate is a **conservative / expected / optimistic** band driven by three
+realism factors. The **hours-saved** band is always emitted; **monetary** fields
+are null with `needs_input: true` when no `loaded_cost_per_hour` is supplied — a
+labour rate is never fabricated. When no annual volume is given, `annual_volume`
+falls back to the observed `instance_count` as a conservative floor with
+`volume_basis: "observed"`. Single-instance candidates are skipped (no
+repeatability). `roi` reads the optional `roi_inputs` annotations block (below)
+and is regenerated on every `normalize` run; it also backfills each candidate's
+`estimated_savings_ms` (long null) from the expected band, but only when a real
+annual volume basis exists (not the observed floor).
 
 ## Invariants
 
