@@ -61,6 +61,7 @@ from anchor_suggest import (
 )
 import app_vocab
 import stats_compute as stats
+from pii_masking import mask_events
 
 
 def _coerce_event_shape(obj: dict[str, Any], line_no: int) -> dict[str, Any]:
@@ -1056,12 +1057,24 @@ def normalize(
     # Stage 1a: coalesce typing bursts + apply annotation marker edits.
     coalesced, edited, edits_applied = _run_coalesce(raw, annotations, cal)
 
+    # Stage 1b: structural PII masking (§11f). Redact sensitive UIA field
+    # VALUES in the DERIVED stream only -- raw events.jsonl is never rewritten,
+    # so this masks the copy that feeds csv/xes/stats/steps/analysis/maps.
+    edited, pii_report = mask_events(edited, annotations, session_id=session_id_str)
+    if pii_report.get("masked_value_count"):
+        print(f"[normalize] PII masking: redacted "
+              f"{pii_report['masked_value_count']} field value(s) "
+              f"({pii_report['rules_fired']})")
+
     # Stage 2a/3: case assignment (anchor / marker mode) + app-vocab enrichment.
     # A stale Process Template path is downgraded to "no template" inside.
     with_cases, cases, canonical, canonical_path, vocab_summary = _run_case_assignment(
         edited, annotations, canonical_path)
 
     existing_anno = _init_existing_anno(annotations, session_id_str)
+    # Record which rule-set ran (Python owns this additive key; the analyst-owned
+    # pii_masking_config controls it). Persisted by the step-segmentation write.
+    existing_anno["pii_masking"] = pii_report
 
     # Suggested markers (ADR-0017) + anchor candidates (ADR-0018), best-effort.
     _run_suggestions(existing_anno, with_cases, cases)

@@ -141,6 +141,22 @@ When an App Vocabulary (ADR-0002) matches an interaction, normalize.py adds:
 
 These fields are additive; the raw `name`, `control_type`, etc. always remain.
 
+#### Masking fields (added during normalization — §11f)
+
+When structural PII masking (`normalization/pii_masking.py`) redacts an
+interaction's value, normalize.py replaces the value **in the derived stream
+only** (events.csv / events.xes / stats / steps / analysis / maps) and marks it:
+
+| Field | Type | Notes |
+|---|---|---|
+| `value` / `selected_value` | string | Redacted to a one-way join-preserving token `«<category>#<8-hex>»` (`sha256(session_id + ":" + value)[:8]`) — same value+session ⇒ same token, original not recoverable. |
+| `value_masked` | bool | `true` when this interaction's value was redacted. |
+| `value_masked_rule` | string | Which rule category fired (`password`, `ssn`, `card`, `cvv`, `pin`, `secret`, `iban`, `routing`, `account`, or a custom id). |
+
+The **raw `events.jsonl` is never rewritten** — masking applies only to the
+in-memory copy that produces the derived artifacts. Which rule-set ran is
+recorded in the `pii_masking` annotations key (below).
+
 ## Annotation file (annotations.json)
 
 Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are never mutated. Re-normalization consumes this file (§9.3 option b) before case assignment.
@@ -304,6 +320,55 @@ explicit that a labour rate is **never fabricated**.
 Unknown keys are ignored; a malformed value falls back to its default rather
 than failing the run. `roi_inputs` is read on every `normalize` run; raw
 `events.jsonl` and `analysis.json` are never edited by hand.
+
+### PII masking (`pii_masking` — auto, Python-owned)
+
+*(Auto-regenerated every `normalize` run; do not hand-edit.)* The record of which
+structural-PII-masking rule-set ran (`normalization/pii_masking.py`, §11f). Masking
+redacts sensitive UIA field **values** (password, SSN, card, CVV, PIN, secret/token,
+IBAN, routing/account number) in the **derived** stream only — raw `events.jsonl` is
+never rewritten. This block is the audit trail, not a control.
+
+```json
+{
+  "pii_masking": {
+    "ruleset_id": "default",
+    "ruleset_version": 1,
+    "enabled": true,
+    "applied": true,
+    "scanned_interactions": 118,
+    "masked_value_count": 3,
+    "rules_fired": { "password": 2, "ssn": 1 },
+    "custom_rule_count": 0
+  }
+}
+```
+
+`ruleset_version` bumps when the default rules change (same contract as
+`marker_suggest.heuristic_version`). `scanned_interactions` is how many
+interaction events had a `data` dict to inspect; `masked_value_count` is how many
+had a value redacted; `rules_fired` is the per-category count.
+
+### PII masking config (`pii_masking_config` — optional, analyst-owned)
+
+*(Optional object; absent = mask with the default rule-set.)* The analyst's control
+over masking — distinct from the auto `pii_masking` report so single-writer
+ownership stays clean (Python owns the report; the analyst owns the config).
+
+```json
+{
+  "pii_masking_config": {
+    "enabled": true,
+    "custom_rules": [ { "id": "badge", "pattern": "\\bbadge\\b" } ]
+  }
+}
+```
+
+- **`enabled`** — set `false` to turn masking off entirely (the report then carries
+  `enabled: false`, `applied: false`). Default `true` (privacy by default).
+- **`custom_rules`** — extra `{ id, pattern }` rules appended to the defaults; the
+  `pattern` is a case-insensitive regex matched against the field's tokenized
+  name / automation_id / control_type. A malformed regex is skipped, not fatal.
 
 ### Excluded range (`excluded_ranges[]`)
 

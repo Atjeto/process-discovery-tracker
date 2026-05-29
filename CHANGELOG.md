@@ -8,6 +8,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Structural PII masking (§11f).** A new normalization stage
+  (`normalization/pii_masking.py`) redacts sensitive UIA field **values** —
+  password, SSN, card, CVV, PIN, secret/token, IBAN, routing/account number,
+  matched by the field's tokenized name · automation_id · control_type — in the
+  **derived** event stream only. Raw `events.jsonl` is never rewritten; masking
+  applies to the in-memory copy that feeds events.csv / events.xes / stats /
+  steps / analysis / maps. Each value is replaced by a one-way, join-preserving
+  token `«category#hash»` (`sha256(session_id + ":" + value)[:8]`), so process
+  mining still distinguishes distinct secrets while the original is
+  unrecoverable. Privacy by default; the analyst-owned `pii_masking_config`
+  can disable it or add custom rules, and the rule-set that ran is recorded in
+  the additive `pii_masking` annotations key. Pinned by deterministic unit tests
+  and a seeded property-based fuzzer (immutability + no-leak + join-preservation
+  invariants).
 - **Automation-candidate ranking (§11f).** `analysis_automation.score_automation`
   now scores each candidate by automation priority — `instance_count × mean
   elapsed time × automatable fraction` (the same fraction the €-ROI layer resolves

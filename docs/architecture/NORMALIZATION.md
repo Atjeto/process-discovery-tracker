@@ -26,6 +26,15 @@ a bundled Python 3.12 embeddable distribution.
    control into a single final-value event before later stages see them (v0.13 §1).
 2. **Apply marker edits** — replay `annotations.json.marker_edits`
    (rename / re-time / delete / insert) onto the marker stream.
+2b. **Structural PII masking** ([§11f](../To-Do/PDT-ROADMAP-CODEBASE-FIT.md), `pii_masking.py`) —
+   redact sensitive UIA field **values** (password / SSN / card / CVV / PIN /
+   secret / IBAN / routing / account, matched by field name·automation_id·control_type)
+   in the **derived** stream only, replacing each with a one-way, join-preserving
+   `«category#hash»` token. Raw `events.jsonl` is never rewritten; the rule-set that
+   ran is recorded in the `pii_masking` annotations key, and the analyst-owned
+   `pii_masking_config` can disable it or add rules. Runs right after coalesce so
+   every later stage (case assignment, steps, stats, analysis, maps) sees only the
+   masked values.
 3. **Case assignment** — two mechanisms. **Marker-based:** walk the Start/End
    marker stream, build the case tree, stamp every activity/interaction with its
    `case_ids` stack. **Anchor-based** ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)):
@@ -112,6 +121,7 @@ a bundled Python 3.12 embeddable distribution.
 | `canonical_match.py` | Matches interactions to a canonical step set (`auto_matched`). |
 | `app_vocab.py` | Loads and applies App Vocabularies to enrich interactions. |
 | `coalesce.py` | Folds a burst of per-keystroke `value_changed` events on one control into a single final-value event (`coalesce_typing_bursts`, v0.13 §1) — runs early (stage 1) so later stages never see partial typed values. |
+| `pii_masking.py` | Structural PII masking (§11f) — `mask_events` redacts sensitive field **values** in the derived stream (raw `events.jsonl` untouched) with a one-way, join-preserving `«category#hash»` token; default rule-set + analyst `pii_masking_config`. Runs right after coalesce. stdlib-only. |
 | `stats_compute.py` | Builds `stats.json` (activity / case / **step** / variant / outlier / rework / meta); `step_stats` + `step_variants` group by `process_label` so they don't fragment per instance. |
 | `analysis*.py` | Analysis layer — `analysis.py` orchestrates `analysis_waste` / `_time_study` / `_automation` / `_efficiency` over the `analysis_common` per-step segmentation. Time-study + automation group steps by `step_group_key` (`canonical_step_id → process_label → step_id`) so repeated work collapses to one row ([ADR-0008](../adr/0008-build-the-analysis-layer.md), [ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)); writes `analysis.json`. |
 | `xes_export.py` | Emits `events.xes` (IEEE 1849-2016), one trace per top-level case. |
