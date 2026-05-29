@@ -21,11 +21,26 @@
 const { $, escapeHtml, escapeAttr, formatDuration, toast } = require("../dom.js");
 const State = require("../state.js");
 const Session = require("../session.js");
+const Ipc = require("../ipc.js");
 const { formModal } = require("../modals.js");
 const { processLabel } = require("../process-map-levels.js");
 
 function _fmt(ms) {
   return formatDuration(ms || 0);
+}
+
+/* Format a monetary amount in the ROI block's currency. Returns "—" for a
+   null/absent figure (we never fabricate a number). Common currency codes get
+   a symbol; anything else is rendered as "<amount> <CODE>". */
+const _CURRENCY_SYMBOL = { EUR: "€", USD: "$", GBP: "£", CHF: "CHF " };
+function _money(val, currency) {
+  if (val === null || val === undefined || !isFinite(Number(val))) return "—";
+  const code = String(currency || "EUR").toUpperCase();
+  const sym = _CURRENCY_SYMBOL[code];
+  let n;
+  try { n = Math.round(Number(val)).toLocaleString("en-US"); }
+  catch (_) { n = String(Math.round(Number(val))); }
+  return sym ? sym + n : n + " " + code;
 }
 
 /* Waste-type filter (v0.18.1). Clicking a chip on a waste row filters the list
@@ -120,6 +135,9 @@ function applyAnalysisOverrides(analysis, overrides) {
     time_study: analysis.time_study || [],
     automation_candidates: automation,
     efficiency,
+    // roi is computed by Python from roi_inputs; analyst waste/automation
+    // overrides don't touch it, so carry it through unchanged.
+    roi: analysis.roi,
   };
 }
 
@@ -366,6 +384,137 @@ function _automationSection(auto) {
       "<tbody>" + rows + "</tbody></table>" + tail + "</div>";
 }
 
+/* ============ €-ROI section (§11c) ================================ */
+
+/* The band value cell. While no loaded labour rate is supplied the whole
+   block runs in time-savings mode -- the honest output of arithmetic that
+   refuses to invent a wage -- so each band shows annualised hours saved.
+   Once a rate is present we switch to € net/yr, which is the figure that
+   actually closes the business case. */
+function _bandCell(band, roi) {
+  if (!band) return '<span class="score-na">—</span>';
+  if (roi.needs_input || band.net_annual === null || band.net_annual === undefined) {
+    const h = band.saved_hours_per_year;
+    return (h === null || h === undefined)
+      ? '<span class="score-na">—</span>'
+      : escapeHtml(String(h)) + ' <span class="roi-unit">h/yr</span>';
+  }
+  return _money(band.net_annual, roi.currency) +
+    ' <span class="roi-unit">net/yr</span>';
+}
+
+/* The band-encoding legend (COHERENCE-AUDIT: a new encoding needs a legend).
+   Maps the three columns to their realism multipliers so the analyst can see
+   conservative=×0.5 .. optimistic=×0.9 rather than guessing. */
+function _roiLegend(roi) {
+  const f = (roi.inputs_used && roi.inputs_used.realism_factors) || {};
+  const cell = (label, key) => {
+    const v = f[key];
+    return '<span><span class="roi-swatch roi-swatch-' + key + '"></span>' +
+      escapeHtml(label) +
+      (v !== undefined ? ' <span class="roi-factor">×' + escapeHtml(String(v)) + "</span>" : "") +
+      "</span>";
+  };
+  return '<div class="roi-legend">' +
+    cell("conservative", "conservative") +
+    cell("expected", "expected") +
+    cell("optimistic", "optimistic") +
+    "</div>";
+}
+
+function _roiTotals(roi) {
+  const t = roi.totals || {};
+  const hours = (t.saved_hours_per_year === null || t.saved_hours_per_year === undefined)
+    ? "—" : t.saved_hours_per_year + " h";
+  const parts = [
+    '<div class="roi-total"><div class="roi-total-big">' + escapeHtml(String(hours)) +
+      '</div><div class="roi-total-label">saved per year (expected)</div></div>',
+  ];
+  if (!roi.needs_input) {
+    parts.push('<div class="roi-total"><div class="roi-total-big">' +
+      _money(t.net_annual, roi.currency) +
+      '</div><div class="roi-total-label">net €/yr (expected)</div></div>');
+    parts.push('<div class="roi-total"><div class="roi-total-big">' +
+      _money(t.gross_annual, roi.currency) +
+      '</div><div class="roi-total-label">gross €/yr (expected)</div></div>');
+  }
+  return '<div class="roi-totals">' + parts.join("") + "</div>";
+}
+
+function _roiRow(r, roi) {
+  const bands = r.bands || {};
+  const basisNote = r.volume_basis === "observed"
+    ? ' <span class="roi-basis" title="No annual volume supplied — using the ' +
+      r.instance_count + ' observed instance(s) as a conservative floor. ' +
+      'Set an annual volume to project a real yearly saving.">observed floor</span>'
+    : (r.volume_basis === "annotated"
+        ? ' <span class="roi-basis roi-basis-set" title="Per-segment annual volume override">per-segment</span>'
+        : "");
+  const payback = (r.expected_payback_months === null || r.expected_payback_months === undefined)
+    ? '<span class="score-na">—</span>'
+    : escapeHtml(String(r.expected_payback_months)) + ' <span class="roi-unit">mo</span>';
+  return "<tr>" +
+    '<td><div class="auto-label">' + escapeHtml(r.label || "(segment)") + "</div></td>" +
+    '<td class="num">' + (r.instance_count || 0) + "</td>" +
+    '<td class="num">' + escapeHtml(_fmt(r.mean_elapsed_ms)) + "</td>" +
+    '<td class="num">' + Math.round((r.automatable_fraction || 0) * 100) + "%</td>" +
+    '<td class="num">' + escapeHtml(String(r.annual_volume)) + basisNote + "</td>" +
+    '<td class="num">' + _bandCell(bands.conservative, roi) + "</td>" +
+    '<td class="num roi-expected">' + _bandCell(bands.expected, roi) + "</td>" +
+    '<td class="num">' + _bandCell(bands.optimistic, roi) + "</td>" +
+    '<td class="num">' + payback + "</td>" +
+    '<td><button type="button" class="roi-tune-btn" data-segment-signature="' +
+      escapeAttr(r.segment_signature || "") +
+      '" title="Set this segment\'s annual volume, automatable share and build cost">tune</button></td>' +
+  "</tr>";
+}
+
+/* Render the €-ROI section: the analyst-assumption banner, the band legend,
+   the expected-band totals, and a per-candidate band table. Pure (no DOM
+   reads) so it is unit-testable; exported as `_roiSection`. */
+function _roiSection(roi) {
+  if (!roi || typeof roi !== "object") return "";
+  const cands = Array.isArray(roi.candidates) ? roi.candidates : [];
+  const title = '<div class="analysis-section-title">Return on automation (€-ROI)</div>';
+  const editBtn = '<button type="button" class="roi-edit-btn" ' +
+    'title="Set the loaded labour rate, annual volume, build cost and realism factors">' +
+    "Edit assumptions…</button>";
+  const head =
+    '<div class="roi-head">' + title + editBtn + "</div>";
+
+  if (!cands.length) {
+    return '<div class="analysis-section">' + head +
+      '<div class="analysis-note">No multi-instance automation candidates to cost yet — ' +
+      "the €-ROI projects a yearly saving from a segment seen across 2+ cases. " +
+      "Analyze a longer recording or load more sessions.</div></div>";
+  }
+
+  const caption = roi.needs_input
+    ? '<div class="analysis-caption">Time-savings only — no loaded labour rate supplied, ' +
+      "so monetary figures are withheld (a wage is never fabricated). " +
+      '<strong>Edit assumptions</strong> and add a € per hour to see the net/yr and payback. ' +
+      "Each band is observed mean time × automatable share × a realism factor, annualised by volume.</div>"
+    : '<div class="analysis-caption">Net €/yr = annual volume × (observed mean time × automatable share × ' +
+      "realism factor) × loaded €/hr, less the build cost amortised over " +
+      escapeHtml(String((roi.inputs_used && roi.inputs_used.amortization_years) || 3)) +
+      " years. Figures are a band, not a point estimate — read the range.</div>";
+
+  const rows = cands.map((r) => _roiRow(r, roi)).join("");
+  const unit = roi.needs_input ? "Hours/yr" : "Net €/yr";
+  const table =
+    '<table class="analysis-table roi-table">' +
+      "<thead><tr><th>Segment</th><th>Inst.</th><th>Mean</th><th>Auto%</th>" +
+      "<th>Volume/yr</th>" +
+      '<th title="conservative band">Cons.</th>' +
+      '<th class="roi-expected" title="expected band">' + escapeHtml(unit) + "</th>" +
+      '<th title="optimistic band">Opt.</th>' +
+      "<th>Payback</th><th></th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table>";
+
+  return '<div class="analysis-section">' + head + caption +
+    _roiLegend(roi) + _roiTotals(roi) + table + "</div>";
+}
+
 /* ============ Correction handlers ================================= */
 
 /* Upsert a segment-signature entry in annotations.json
@@ -418,6 +567,145 @@ async function _writeProcessLabelOverride(processLbl, patch) {
   await Session.saveAnnotationsWithUndo(anno, "Adjust analysis classification");
   session.annotations = anno;
   State.emit("analysis");
+}
+
+/* Merge a patch into annotations.roi_inputs, persist via the undo path, then
+   re-analyze so analysis.json's `roi` block (and this panel) recompute. The
+   re-analyze is a same-folder reload, which preserves the undo stack — so
+   Ctrl+Z still reverts the assumption edit. A patch value of `undefined`
+   deletes that key (reset to the computed default). */
+async function _writeRoiInputs(patch) {
+  const session = State.getSession();
+  if (!session || !session.sessionFolder) return;
+  let anno;
+  try { anno = JSON.parse(JSON.stringify(session.annotations || {})); }
+  catch (_) { anno = {}; }
+  const ri = (anno.roi_inputs && typeof anno.roi_inputs === "object") ? anno.roi_inputs : {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete ri[k];
+    else ri[k] = v;
+  }
+  // Drop empty override maps so we never persist noise; a fully-empty block
+  // collapses back to null (the "no inputs" shape Python and SCHEMA expect).
+  for (const mp of ["annual_volume_overrides", "automation_cost_overrides",
+                    "automatable_fraction_overrides"]) {
+    if (ri[mp] && typeof ri[mp] === "object" && !Object.keys(ri[mp]).length) delete ri[mp];
+  }
+  anno.roi_inputs = Object.keys(ri).length ? ri : null;
+  await Session.saveAnnotationsWithUndo(anno, "Edit ROI assumptions");
+  session.annotations = anno;
+  State.emit("analysis");
+  // Recompute. mine:false — `roi` lives in analysis.json; no map rebuild needed.
+  toast("Recomputing ROI…");
+  const r = await Ipc.runNormalizeExtended({ sessionFolder: session.sessionFolder, mine: false });
+  if (!r || !r.ok) {
+    toast("ROI recompute failed: " + ((r && r.error) || "unknown"), "error");
+    return;
+  }
+  // Reload in place (same folder ⇒ undo stack preserved) so the panel shows the
+  // recomputed band. Lazy require dodges the flow-view ⇄ analysis-view cycle.
+  const { loadSessionIntoView } = require("./flow-view.js");
+  await loadSessionIntoView(session.sessionFolder);
+  toast("ROI updated", "success");
+}
+
+/* A blank field resets to the default (undefined ⇒ delete key). */
+function _numOrUndef(raw) {
+  const t = String(raw == null ? "" : raw).trim();
+  if (t === "") return undefined;
+  const n = Number(t);
+  return isFinite(n) ? n : undefined;
+}
+
+/* Session-level ROI assumptions form. Pre-fills from the persisted
+   `roi_inputs` (falling back to the resolved `inputs_used` defaults shown in
+   analysis.json) so the analyst edits live numbers, not blanks. */
+async function _editRoiInputs() {
+  const session = State.getSession();
+  if (!session) return;
+  const ri = (session.annotations && session.annotations.roi_inputs) || {};
+  const used = ((session.analysis && session.analysis.roi) || {}).inputs_used || {};
+  const rf = used.realism_factors || {};
+  const cur = (k, fallback) => {
+    const v = ri[k];
+    if (v !== null && v !== undefined) return String(v);
+    return fallback === undefined ? "" : String(fallback);
+  };
+  const rfVal = (band, def) => {
+    const v = rf[band];
+    return String(v !== undefined && v !== null ? v : def);
+  };
+  const res = await formModal({
+    title: "ROI assumptions",
+    message: "Commercial inputs that turn the automation candidates into a €-ROI band. " +
+      "Leave a field blank to reset it to the default; with no labour rate the band stays in hours.",
+    okLabel: "Save & recompute",
+    fields: [
+      { key: "currency", label: "Currency code", value: cur("currency", used.currency || "EUR"), placeholder: "EUR" },
+      { key: "loaded_cost_per_hour", label: "Loaded labour cost (per hour)", value: cur("loaded_cost_per_hour"), placeholder: "e.g. 36", hint: "Fully-loaded operator cost. Blank → monetary figures stay hidden (no fabricated wage)." },
+      { key: "annual_volume", label: "Annual volume (runs per year)", value: cur("annual_volume"), placeholder: "e.g. 1000", hint: "Blank → each candidate falls back to its observed instance count (a floor)." },
+      { key: "automation_cost", label: "Automation build cost (one-off)", value: cur("automation_cost"), placeholder: "e.g. 15000", hint: "Amortised over the years below for net/yr + payback." },
+      { key: "amortization_years", label: "Amortization (years)", value: cur("amortization_years", 3), placeholder: "3" },
+      { key: "automatable_fraction", label: "Automatable share (0–1)", value: cur("automatable_fraction", 0.7), placeholder: "0.7", hint: "Share of manual time a robot realistically removes." },
+      { key: "rf_conservative", label: "Realism — conservative", value: rfVal("conservative", 0.5), placeholder: "0.5" },
+      { key: "rf_expected", label: "Realism — expected", value: rfVal("expected", 0.7), placeholder: "0.7" },
+      { key: "rf_optimistic", label: "Realism — optimistic", value: rfVal("optimistic", 0.9), placeholder: "0.9" },
+    ],
+  });
+  if (!res) return;
+  const patch = {};
+  const cText = String(res.currency || "").trim();
+  patch.currency = cText === "" ? undefined : cText.toUpperCase();
+  patch.loaded_cost_per_hour = _numOrUndef(res.loaded_cost_per_hour);
+  patch.annual_volume = _numOrUndef(res.annual_volume);
+  patch.automation_cost = _numOrUndef(res.automation_cost);
+  patch.amortization_years = _numOrUndef(res.amortization_years);
+  patch.automatable_fraction = _numOrUndef(res.automatable_fraction);
+  const rfPatch = {};
+  const addRf = (band, raw) => { const n = _numOrUndef(raw); if (n !== undefined) rfPatch[band] = n; };
+  addRf("conservative", res.rf_conservative);
+  addRf("expected", res.rf_expected);
+  addRf("optimistic", res.rf_optimistic);
+  if (Object.keys(rfPatch).length) {
+    patch.realism_factors = Object.assign({}, ri.realism_factors || {}, rfPatch);
+  }
+  await _writeRoiInputs(patch);
+}
+
+/* Per-segment ROI override form (the SCHEMA `*_overrides` maps keyed by
+   segment_signature). Lets the analyst give one candidate a different annual
+   volume / automatable share / build cost than the session-wide defaults. */
+async function _editSegmentRoi(sig) {
+  const session = State.getSession();
+  if (!session || !sig) return;
+  const ri = (session.annotations && session.annotations.roi_inputs) || {};
+  const vOv = (ri.annual_volume_overrides || {})[sig];
+  const fOv = (ri.automatable_fraction_overrides || {})[sig];
+  const cOv = (ri.automation_cost_overrides || {})[sig];
+  const roi = (session.analysis && session.analysis.roi) || {};
+  const cand = (roi.candidates || []).find((c) => c.segment_signature === sig);
+  const res = await formModal({
+    title: "Tune this segment",
+    message: cand ? (cand.label || sig) : sig,
+    okLabel: "Save & recompute",
+    fields: [
+      { key: "annual_volume", label: "Annual volume (this segment)", value: vOv == null ? "" : String(vOv), placeholder: "runs/yr", hint: "Overrides the session annual volume for this one candidate. Blank → use the session default." },
+      { key: "automatable_fraction", label: "Automatable share (0–1)", value: fOv == null ? "" : String(fOv), placeholder: "0.7" },
+      { key: "automation_cost", label: "Build cost (this segment)", value: cOv == null ? "" : String(cOv), placeholder: "one-off" },
+    ],
+  });
+  if (!res) return;
+  const setOv = (mapKey, val) => {
+    const map = Object.assign({}, ri[mapKey] || {});
+    if (val === undefined) delete map[sig];
+    else map[sig] = val;
+    return map;
+  };
+  await _writeRoiInputs({
+    annual_volume_overrides: setOv("annual_volume_overrides", _numOrUndef(res.annual_volume)),
+    automatable_fraction_overrides: setOv("automatable_fraction_overrides", _numOrUndef(res.automatable_fraction)),
+    automation_cost_overrides: setOv("automation_cost_overrides", _numOrUndef(res.automation_cost)),
+  });
 }
 
 async function _editBnva(group) {
@@ -523,6 +811,17 @@ function _wireControls(host, analysis) {
       _writeSegmentOverride(sig, { automation_confirmed: isActive ? undefined : want });
     });
   });
+
+  // €-ROI controls: the session-level "Edit assumptions…" and the per-row
+  // "tune" override forms (§11c).
+  const roiEdit = host.querySelector(".roi-edit-btn");
+  if (roiEdit) roiEdit.addEventListener("click", () => _editRoiInputs());
+  host.querySelectorAll(".roi-tune-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const sig = btn.dataset.segmentSignature;
+      if (sig) _editSegmentRoi(sig);
+    });
+  });
 }
 
 /* Render the Analysis level into #analysis-content. Reads the loaded
@@ -548,8 +847,9 @@ function renderAnalysisLevel() {
     _efficiencySection(analysis.efficiency || {}) +
     _wasteSection(analysis.waste_classification || []) +
     _timeStudySection(analysis.time_study || []) +
-    _automationSection(analysis.automation_candidates || []);
+    _automationSection(analysis.automation_candidates || []) +
+    _roiSection(analysis.roi);
   _wireControls(host, analysis);
 }
 
-module.exports = { renderAnalysisLevel };
+module.exports = { renderAnalysisLevel, _roiSection };

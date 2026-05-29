@@ -6,6 +6,22 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **€-ROI panel in the Session-view Analysis level (§11c — the commercial closer).**
+  The Python ROI core (`analysis_roi.py`) already projected each multi-instance
+  automation candidate into a conservative/expected/optimistic savings band; the
+  viewer now renders it. The new "Return on automation (€-ROI)" section shows the
+  band per candidate (hours/yr while no labour rate is set, € net/yr once one is),
+  the expected-band session totals, and a band-encoding legend mapping each column
+  to its realism multiplier. An **Edit assumptions…** form captures the session-level
+  `roi_inputs` (loaded €/hr, currency, annual volume, build cost, amortization,
+  automatable share, realism factors) and a per-row **tune** form captures per-segment
+  overrides; both persist through the existing annotations + undo path
+  (`saveAnnotationsWithUndo`) and trigger a re-analyze so the € recomputes in place.
+  Honours the no-fabricated-wage rule — monetary figures stay withheld until a rate
+  is supplied. No schema change (`roi_inputs` / `roi` were already in SCHEMA).
+
 ### Security
 
 - **Click-to-RCE hardening on the screenshot-open path.** The `viewer:openExternal`

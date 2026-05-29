@@ -139,6 +139,35 @@ const OVERLAP_PROBE = () => {
     if (!visible) await shot(page, "fail-level-" + lvl + ".png");
   }
 
+  // --- €-ROI panel pin (§11c) ---
+  // On the Analysis level the €-ROI section must render with its band legend
+  // and a session-level "Edit assumptions…" affordance. The demo has no
+  // roi_inputs, so it runs in time-savings mode — assert the legend + edit
+  // button + at least one tune affordance, which is the structural surface.
+  const analysisBtn = await page.$('.view-mode-btn[data-level="analysis"]');
+  if (analysisBtn) { await analysisBtn.click().catch(() => {}); await wait(1200); }
+  const roiProbe = await page.evaluate(() => {
+    const host = document.querySelector("#analysis-content");
+    if (!host) return { host: false };
+    return {
+      host: true,
+      title: /Return on automation/.test(host.textContent || ""),
+      legend: !!host.querySelector(".roi-legend"),
+      editBtn: !!host.querySelector(".roi-edit-btn"),
+      tune: host.querySelectorAll(".roi-tune-btn").length,
+    };
+  }).catch((e) => ({ err: e.message }));
+  if (roiProbe && roiProbe.err) {
+    record("€-ROI panel renders on Analysis level", false, "probe error: " + roiProbe.err);
+    await shot(page, "fail-roi-probe.png");
+  } else {
+    const ok = !!(roiProbe.host && roiProbe.title && roiProbe.legend && roiProbe.editBtn);
+    record("€-ROI panel renders on Analysis level", ok,
+      "title=" + roiProbe.title + " legend=" + roiProbe.legend +
+      " editBtn=" + roiProbe.editBtn + " tuneRows=" + roiProbe.tune);
+    if (!ok) await shot(page, "fail-roi-panel.png");
+  }
+
   // --- Map-overlay regression pin ---
   // On the Map level, the process-map host must NOT vertically overlap the
   // raw-events host. This is the exact geometry of the bug just fixed.

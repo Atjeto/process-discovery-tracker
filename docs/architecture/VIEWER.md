@@ -65,7 +65,7 @@ CommonJS, so real modules need no build step).
 | `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, video sync, event table, the annotations/screenshots/markers panel, case scope, command-palette provider. Also owns the unbracketed-session recovery surfaces: **suggested markers** (dashed `.tl-suggested` bars + Accept/Dismiss rows, [ADR-0017](../adr/0017-suggested-markers.md)) and the **anchor-candidates** panel above the markers list ([ADR-0018](../adr/0018-anchor-candidates.md)). |
 | `views/steps-view.js` | Steps level — step list/detail, step CRUD, the **Flat / Aligned** reading toggle (consensus backbone, curate-one→propagate, exceptions — [ADR-0015](../adr/0015-intra-session-repetition-alignment.md)), the ignored-apps dialog. |
 | `views/phases-view.js` | Phases level — phase list/detail, phase CRUD, grouping suggestions. |
-| `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)). |
+| `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)), plus the €-ROI panel (§11c) rendering `analysis.json`'s `roi` band with the `roi_inputs` analyst-assumption + per-segment "tune" forms (persisted via the undo path; re-analyze recomputes the €). |
 | `views/aggregate-view.js` | Compare Sessions — the notation × level process-map matrix, drill-down scoping, cross-session statistics + analysis, exports. |
 | `views/template-view.js` | Process Template tab — version compare, exemplar match. |
 | `views/vocab-view.js` | App Library (Vocabulary editor) tab. |
