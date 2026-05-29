@@ -128,6 +128,53 @@ After Wave 0: **Wave 1** (§11a real-data harness, §11b calibration, §11d boot
 **Wave 2** (§11e coverage hardening, §11f borrows, §13/6a pluggable backend). Full sequencing +
 effort in [Fit Analysis §7/§9](PDT-ROADMAP-CODEBASE-FIT.md).
 
+### Wave 1 — landed (2026-05-30, branch `wave1-overnight`)
+
+An autonomous overnight pass shipped the verifiable Wave-1 surface as six
+per-phase commits (all gates green: pytest 314 / golden 10·OK / viewer 231 /
+capture 78 / dotnet 12 / e2e 9·9; each UI/behaviour change real-run verified):
+
+1. **§11c €-ROI viewer panel** — `analysis-view.js` renders `analysis.json`'s
+   `roi` band (hours/yr → € net/yr once a rate is set), expected-band totals, and
+   a band-encoding legend; an **Edit assumptions…** form + per-row **tune** form
+   write `roi_inputs` through the undo path and trigger a re-analyze. Real-run:
+   edit → persist → re-analyze → € updates; Ctrl+Z reverts.
+2. **§11f automation-candidate ranking** — `score_automation` scores by
+   `instance_count × mean × automatable_fraction` (roi_inputs-aware), stamps
+   `rank`/`rank_score`; surfaced in the viewer table + PDD §4.3.
+3. **§11f structural PII masking** — new `pii_masking.py` stage redacts sensitive
+   field values in the **derived** stream only (raw `events.jsonl` untouched) with
+   a join-preserving `«category#hash»` token; `pii_masking` report + analyst
+   `pii_masking_config`. Pinned by a seeded fuzzer; end-to-end no-leak proven.
+4. **§11f capture consent gate** — `consent-window.js` + `consent.js` +
+   `manifest.consent`; `config.consent.mode` = off (default) / per_session / once;
+   declining aborts the start. Real-run verified the window + IPC decision.
+5. **§11d pre-built App Vocabularies** — curated `salesforce/sap-gui/excel/outlook/
+   chrome` vocabs (+README) bootstrapped from the demo; the predicted-vs-actual
+   diff drove a **case-insensitive `scope.process_name`** fix; demo now enriches
+   at 100% per app. Golden regenerated (intentional).
+6. **§11a golden corpus** — widened to all 10 `example-aggregate` sessions +
+   `corpus/README.md` tier roadmap. Still no recorder/Electron in CI.
+
+**Wave-1 remaining (next):** §11b segmentation/alignment calibration (gated on
+real captures — owner), §11f cross-recording trace-merge (depends on §11b),
+§11d LLM-augmented labeling (owner hosting decision). See §3.
+
+**Handoffs / owner decisions surfaced this pass:**
+- **Consent default policy** — the gate ships `mode: "off"` (no behaviour change).
+  Whether the internal rollout wants `per_session` or `once` by default is an
+  owner/compliance decision; flip `config.consent.mode` to enable.
+- **PII rule-set calibration** — the default categories (password/SSN/card/cvv/
+  pin/secret/iban/routing/account) and the redaction-vs-hash choice ship sane,
+  but the *right* set for the rollout's apps is owner-side; tune via
+  `pii_masking_config.custom_rules`. Bump `ruleset_version` on a breaking change.
+- **App-vocab tenant tuning** — the shipped vocabs are demo-derived starters; real
+  Salesforce/SAP automation_ids differ. Retune against the first real captures
+  (this is the §11d/§11a real-data step, owner-gated).
+- **§11b not attempted** — fuzzing ≠ calibration; needs representative real
+  captures. The demo `calibration` default was left as-is (golden + step counts
+  give no justification to change it provisionally).
+
 **Still-minor follow-ups** (pre-existing, low priority, not Wave 0):
 - CHANGELOG header-integrity pre-commit hook (build-time gate via `preflight.ps1` already
   suffices).
