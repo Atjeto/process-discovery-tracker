@@ -1,0 +1,51 @@
+{
+  "dfg": {
+    "edges": 5,
+    "end_activities": 2,
+    "nodes": 5,
+    "start_activities": 1
+  },
+  "meta": {
+    "app_vocabulary_matches": 3,
+    "case_count": 4,
+    "collapsed_activity_count": 21,
+    "drift_count": 0,
+    "dropped_jsonl_lines": 0,
+    "interaction_count": 117,
+    "marker_edits_applied": 0,
+    "match_rate": 0.0,
+    "matched_interactions": 0,
+    "phase_count": 0,
+    "raw_event_count": 155,
+    "step_count": 64,
+    "step_state_breakdown": {
+      "auto_matched": 0,
+      "auto_suggested": 64,
+      "edited": 0,
+      "manually_authored": 0
+    }
+  },
+  "session": "sess-2026-0514-0900",
+  "steps": {
+    "count": 64,
+    "process_labels": [
+      "Excel: Create sales order",
+      "Excel: Enter Date cell",
+      "Excel: Enter Status cell",
+      "Excel: Save workbook",
+      "Outlook: Enter Subject",
+      "Outlook: Enter To",
+      "Outlook: Send email",
+      "SAP: Create sales order",
+      "SAP: Enter Material number",
+      "SAP: Enter OR",
+      "SAP: Enter Sales organisation",
+      "Salesforce: Enter Quantity",
+      "Salesforce: Enter Shipping address",
+      "Salesforce: Enter Unit price",
+      "Salesforce: Open customer record",
+      "Salesforce: Save order",
+      "Salesforce: Search"
+    ]
+  }
+}
