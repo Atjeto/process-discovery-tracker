@@ -55,6 +55,12 @@ const { showOperatorPanel } = require("./operator-panel.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
 const { showSettingsWindow } = require("./settings-window.js");
 const { showProfileWindow } = require("./profile-window.js");
+const { needsPrompt, consentRecord } = require("./consent.js");
+const {
+  showConsentWindow,
+  hasAcknowledged,
+  rememberAcknowledgement,
+} = require("./consent-window.js");
 const welcomeWin = require("./welcome-window.js");
 const hotkeyOverlay = require("./hotkey-overlay.js");
 const { createWindowManager } = require("./window-manager.js");
@@ -723,12 +729,42 @@ async function startSession(opts) {
      they don't pollute the engagement's process captures. The prep_app
      name is recorded on the manifest for downstream auto-naming. */
   const isPrep = !!(opts && opts.purpose === "app_prep");
+
+  /* Worker consent gate (§11f). Off by default; when configured, the worker
+     must consent before any recording starts -- declining aborts the start.
+     The decision is recorded on the manifest. App-prep (vocab curation) is the
+     operator's own desktop, so it is exempt. */
+  const cmode = (config.consent && config.consent.mode) || "off";
+  const cversion = (config.consent && config.consent.version) || 1;
+  const cworker = (config.worker && config.worker.id) || "unknown";
+  let consent = consentRecord({ mode: "off" });
+  if (!isPrep && cmode !== "off") {
+    let granted = false;
+    if (cmode === "once" && hasAcknowledged(cworker, cversion)) {
+      granted = true;
+    } else {
+      const res = await showConsentWindow({
+        text: (config.consent && config.consent.text) || "",
+        version: cversion,
+      });
+      granted = !!(res && res.granted);
+      if (granted && cmode === "once") rememberAcknowledgement(cworker, cversion);
+    }
+    consent = consentRecord({ mode: cmode, version: cversion, workerId: cworker, granted });
+    if (!granted) {
+      notifyUser("Recording not started", "Consent was declined.", { urgency: "normal" });
+      bootLog("session start aborted: consent declined");
+      return null;
+    }
+  }
+
   session = createSession({
     baseDir,
     engagementId: isPrep ? "vocab-prep" : config.engagement_id,
     config,
     purpose: opts && opts.purpose,
     prepApp: opts && opts.prepApp,
+    consent,
   });
   writeConfigSnapshot(session.sessionFolder, config);
 

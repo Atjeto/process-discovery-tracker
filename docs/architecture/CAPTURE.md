@@ -81,6 +81,7 @@ v0.5.0 (C8):
 | `obs-settings-window.js` | `obs-settings.html` | OBS WebSocket URL + password dialog. |
 | `welcome-window.js` | `welcome.html` | First-run onboarding. |
 | `help-window.js` | `help-window.html` | Reopenable help. |
+| `consent-window.js` | `consent.html` | Worker-consent gate (§11f) shown at session start when `config.consent.mode` is `"per_session"`/`"once"`; returns the decision over IPC and remembers a `"once"` acknowledgement in user-config. Pure record/decision logic is in the electron-free `consent.js`. Declining aborts the start; the decision is written to `manifest.consent`. The C# recorder is unchanged. |
 
 `window-manager.js` keeps each of these to a single live instance.
 

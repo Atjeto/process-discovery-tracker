@@ -1,0 +1,67 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Recording consent</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #807E78;
+    --accent:   #6E8A66;
+    --bad:      #885A42;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.55;
+  }
+  body { padding: 22px 26px 18px; display: flex; flex-direction: column; gap: 16px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--fg-3); font-size: 12px; margin-top: 3px; }
+  .consent-text {
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: 5px;
+    padding: 14px 16px; color: var(--fg-2); font-size: 13px; flex: 1;
+    overflow-y: auto;
+  }
+  footer { display: flex; justify-content: flex-end; gap: 10px; }
+  button {
+    font-family: inherit; font-size: 13px; padding: 9px 18px;
+    border-radius: 4px; cursor: pointer; border: 1px solid var(--border);
+  }
+  button.decline { background: var(--bg-2); color: var(--fg-2); }
+  button.decline:hover { border-color: var(--bad); color: var(--fg); }
+  button.consent { background: var(--accent); color: #11140F; border-color: var(--accent); font-weight: 600; }
+  button.consent:hover { filter: brightness(1.08); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Before we start recording</h1>
+    <div class="sub">Please read and confirm. Recording will not begin until you choose.</div>
+  </header>
+  <div class="consent-text" id="consent-text">{{CONSENT_TEXT}}</div>
+  <footer>
+    <button class="decline" id="btn-decline" type="button">Decline</button>
+    <button class="consent" id="btn-consent" type="button">I consent</button>
+  </footer>
+  <script>
+    "use strict";
+    const { ipcRenderer } = require("electron");
+    let sent = false;
+    function decide(granted) {
+      if (sent) return;
+      sent = true;
+      ipcRenderer.send("pdt:consentDecision", { granted: granted });
+    }
+    document.getElementById("btn-consent").addEventListener("click", () => decide(true));
+    document.getElementById("btn-decline").addEventListener("click", () => decide(false));
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") decide(false); });
+    document.getElementById("btn-consent").focus();
+  </script>
+</body></html>

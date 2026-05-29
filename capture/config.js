@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const yaml = require("js-yaml");
+const { DEFAULT_CONSENT_TEXT } = require("./consent.js");
 
 const DEFAULTS = {
   engagement_id: "default",
@@ -68,6 +69,16 @@ const DEFAULTS = {
        the final value, not one per keystroke. Passed to the recorder
        in the hello message. */
     debounce_ms: 750,
+  },
+  /* Worker consent gate (§11f). Default "off" -> no prompt and the manifest
+     records consent.required:false, preserving the pre-feature start flow.
+     Set "per_session" (prompt every start) or "once" (prompt once per worker
+     + version, remembered in user-config) to gate recording on consent;
+     declining aborts the start. `version` bumps invalidate a "once" ack. */
+  consent: {
+    mode: "off",
+    version: 1,
+    text: DEFAULT_CONSENT_TEXT,
   },
 };
 

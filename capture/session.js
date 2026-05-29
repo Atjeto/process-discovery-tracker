@@ -14,7 +14,7 @@ function sessionTimestampFolder() {
   );
 }
 
-function createSession({ baseDir, engagementId, config, purpose, prepApp }) {
+function createSession({ baseDir, engagementId, config, purpose, prepApp, consent }) {
   const sessionId = crypto.randomUUID();
   const engagement = engagementId || "default";
   const sessionFolder = path.join(baseDir, engagement, sessionTimestampFolder());
@@ -47,6 +47,10 @@ function createSession({ baseDir, engagementId, config, purpose, prepApp }) {
     purpose: purpose || "process",
     prep_app: prepApp || null,
     config: config || {},
+    /* Worker consent record (§11f). Always present so the analyst can see the
+       consent posture of every capture; defaults to the not-required shape
+       when no consent gate is configured. */
+    consent: consent || { required: false, granted: null, mode: "off" },
     obs: { recording_path: null, recording_start_ts: null, offset_ms: null },
     recovered: false,
   };

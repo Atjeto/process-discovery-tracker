@@ -8,6 +8,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Capture-side worker consent gate (§11f).** A consent window
+  (`capture/consent-window.js` + `ui/consent.html`, mirroring the existing
+  `*-window.js` modules) can be shown at session start, and every
+  `manifest.json` now carries a `consent` record. Configurable via
+  `config.consent.mode`: `"off"` (default — no prompt, records
+  `required: false`, preserving the prior start flow), `"per_session"` (prompt
+  every start), or `"once"` (prompt once per worker + `version`, remembered in
+  user-config). Declining **aborts the session start** — no folder is created.
+  The C# recorder is unchanged. Pure record/decision logic lives in the
+  electron-free `capture/consent.js` (unit-tested); the window's IPC round-trip
+  and HTML escaping were verified in a real-run harness check.
 - **Structural PII masking (§11f).** A new normalization stage
   (`normalization/pii_masking.py`) redacts sensitive UIA field **values** —
   password, SSN, card, CVV, PIN, secret/token, IBAN, routing/account number,

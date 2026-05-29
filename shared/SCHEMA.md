@@ -612,9 +612,28 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
   "displays": [
     { "id": 0, "bounds": { "x": 0, "y": 0, "width": 1920, "height": 1080 } }
   ],
+  "consent": {
+    "required": false,
+    "granted": null,
+    "mode": "off" | "per_session" | "once",
+    "version": 1,
+    "worker_id": "alice",
+    "acknowledged_at": "ISO 8601 or null"
+  },
   "recovered": false
 }
 ```
+
+`consent` is the worker-consent record (§11f), always present. With no consent
+gate configured (`config.consent.mode: "off"`, the default) it is the
+not-required shape `{ required: false, granted: null, mode: "off" }` and the
+recording starts unconditionally. When `mode` is `"per_session"` (prompt every
+start) or `"once"` (prompt once per worker + `version`, remembered in
+user-config), the worker is shown a consent window at session start; declining
+**aborts the start** (no session folder is created), so a session that exists on
+disk with `mode != "off"` always has `granted: true`. `version`, `worker_id`,
+and `acknowledged_at` are present only for a gated session. The C# recorder is
+unchanged — consent is purely a capture-app gate.
 
 `displays` is the monitor geometry captured at session start (`Electron screen.getAllDisplays()`). The viewer uses it with each `activity` event's `bounds` to badge which monitor a window was on; it is absent on sessions captured before this field existed and on single-display machines it is simply a one-element list.
 
