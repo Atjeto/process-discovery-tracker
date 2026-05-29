@@ -420,35 +420,23 @@ def apply_marker_edits(
     return out, applied
 
 
-def normalize(
-    session_folder: Path,
-    taxonomy_path: str | None = None,
-    mine: bool = False,
-    canonical_path: str | None = None,
-    pdd_out: str | None = None,
-    pdd_map_image: str | None = None,
-    step_bpmn_out: str | None = None,
-    phase_bpmn_out: str | None = None,
-    step_csv_out: str | None = None,
-) -> dict[str, Any]:
-    events_file = session_folder / "events.jsonl"
-    if not events_file.exists():
-        raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
+# --------------------------------------------------------------------------
+# Wave 0 / F4: the pipeline orchestrator decomposed into named stage helpers.
+# Each helper is the verbatim body of one stage of the former normalize()
+# god-function -- a pure structural extraction (zero behavior change). Shared
+# state (events, annotations/existing_anno, the `cal` calibration dict,
+# session_id, flags) is threaded explicitly rather than via a closure, and each
+# stage keeps its original best-effort try/except exactly where it was.
+# --------------------------------------------------------------------------
 
-    setup_logging(session_folder=session_folder)
 
-    manifest = load_manifest(session_folder)
-    worker_id = (manifest.get("config", {}).get("worker") or {}).get("id", "unknown")
-
-    raw, dropped_lines = load_events(events_file)
-    print(f"[normalize] loaded {len(raw)} raw events")
-    if dropped_lines:
-        print(f"[normalize] WARNING: dropped {dropped_lines} malformed JSONL line(s); see warnings above")
-
-    annotations = load_annotations(session_folder)
-    cal = _calibration(annotations)
-
-    # Stage 1a: coalesce typing bursts
+def _run_coalesce(
+    raw: list[dict[str, Any]],
+    annotations: dict[str, Any],
+    cal: dict,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Stage 1a: coalesce typing bursts, then apply annotation marker edits.
+    Returns (coalesced, edited, edits_applied)."""
     coalesced = coalesce_typing_bursts(raw, idle_ms=cal["coalesce_idle_ms"])
     if len(coalesced) < len(raw):
         print(f"[normalize] coalesced: {len(raw)} -> {len(coalesced)} events")
@@ -456,7 +444,19 @@ def normalize(
     edited, edits_applied = apply_marker_edits(coalesced, annotations)
     if edits_applied:
         print(f"[normalize] applied {edits_applied} annotation edit(s) from annotations.json")
+    return coalesced, edited, edits_applied
 
+
+def _run_case_assignment(
+    edited: list[dict[str, Any]],
+    annotations: dict[str, Any],
+    canonical_path: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], Any, str | None, dict]:
+    """Stage 2a/3: case assignment (anchor mode or marker mode) + app-vocab
+    enrichment. Returns (with_cases, cases, canonical, canonical_path,
+    vocab_summary). `canonical_path` is returned as None when a remembered
+    Process Template path is stale (missing on this machine), and `canonical`
+    is the loaded template dict (or None)."""
     # A remembered Process Template path can go stale: the file may be absent on
     # this machine (a session matched elsewhere, then handed off). Treat a missing
     # template as "no template" and analyze without it, rather than crashing the
@@ -510,9 +510,13 @@ def normalize(
     else:
         vocab_summary = {"matched": 0, "total": 0, "vocabs_loaded": [],
                          "vocabs_hit": {}, "coverage": {}}
+    return with_cases, cases, canonical, canonical_path, vocab_summary
 
-    # Step matching / suggestion (Phase B + C)
-    session_id_str = manifest.get("session_id", "")
+
+def _init_existing_anno(annotations: dict, session_id_str: str) -> dict[str, Any]:
+    """Build the working annotations dict the step/suggestion/analysis stages
+    mutate, preserving the analyst's existing blocks and seeding the lists the
+    pipeline appends to."""
     existing_anno = dict(annotations) if isinstance(annotations, dict) else {}
     existing_anno.setdefault("phases", [])
     existing_anno.setdefault("annotations", [])
@@ -521,7 +525,17 @@ def normalize(
     existing_anno.setdefault("drift_markers", existing_anno.get("drift_markers") or [])
     existing_anno["version"] = 1
     existing_anno["session_id"] = session_id_str
+    return existing_anno
 
+
+def _run_suggestions(
+    existing_anno: dict,
+    with_cases: list[dict[str, Any]],
+    cases: list[dict[str, Any]],
+) -> None:
+    """Suggested markers (ADR-0017) + anchor candidates (ADR-0018). Both are
+    best-effort detectors that mutate `existing_anno` in place; a detector edge
+    case never blocks the pipeline."""
     # Suggested markers (ADR-0017). Hand-rolled change-point detector
     # surfaces candidate Start/End pairs for any stretch of work outside
     # an open marker case. Suggestions live in annotations.json as a
@@ -576,6 +590,20 @@ def normalize(
     except Exception as e:
         print(f"[normalize] WARNING: anchor_suggest failed: {e}")
 
+
+def _run_step_segmentation(
+    with_cases: list[dict[str, Any]],
+    cases: list[dict[str, Any]],
+    canonical_path: str | None,
+    canonical: Any,
+    existing_anno: dict,
+    session_id_str: str,
+    cal: dict,
+    session_folder: Path,
+) -> tuple[list[dict[str, Any]], int, list[dict[str, Any]], int]:
+    """Step segmentation (canonical match + auto-suggest fallback, or
+    auto-suggest only) and phase rollup, then persist annotations. Returns
+    (merged_steps, matched_interactions, unmatched_evs, total_interactions)."""
     matched_interactions = 0
     unmatched_evs: list[dict[str, Any]] = []
     total_interactions = sum(1 for e in with_cases if e.get("type") == "interaction")
@@ -646,7 +674,16 @@ def normalize(
         write_annotations(session_folder, existing_anno)
         print(f"[normalize] auto-suggested {len(auto_steps)} step(s) "
               f"({len(merged_steps)} total after merge)")
+    return merged_steps, matched_interactions, unmatched_evs, total_interactions
 
+
+def _run_classification(
+    with_cases: list[dict[str, Any]],
+    annotations: dict,
+    taxonomy_path: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict, list]:
+    """Taxonomy classification + analyst overrides + the two collapses. Returns
+    (classified, collapsed, log_events, taxonomy, taxonomy_report)."""
     taxonomy = load_taxonomy(taxonomy_path) if taxonomy_path else {"rules": []}
     print(f"[normalize] taxonomy: {len(taxonomy.get('rules', []))} rules")
 
@@ -673,7 +710,18 @@ def normalize(
     log_events = collapse_activity_occurrences(classified)
     print(f"[normalize] event-log occurrences: "
           f"{sum(1 for e in log_events if e.get('type') == 'activity')} activity events")
+    return classified, collapsed, log_events, taxonomy, taxonomy_report
 
+
+def _run_event_log_export(
+    log_events: list[dict[str, Any]],
+    collapsed: list[dict[str, Any]],
+    cases: list[dict[str, Any]],
+    worker_id: str,
+    session_folder: Path,
+) -> tuple[Any, Path, Path]:
+    """Build the PM4Py event log and write events.xes / events.csv. Returns
+    (log, xes_path, csv_path)."""
     log = build_event_log(log_events, cases, worker_id=worker_id)
     print(f"[normalize] event log: {len(log)} traces")
 
@@ -686,7 +734,33 @@ def normalize(
         print(f"[normalize] WARNING: XES export failed: {e}")
     export_csv(collapsed, cases, str(csv_path))
     print(f"[normalize] wrote {csv_path}")
+    return log, xes_path, csv_path
 
+
+def _run_stats(
+    session_folder: Path,
+    log_events: list[dict[str, Any]],
+    cases: list[dict[str, Any]],
+    existing_anno: dict,
+    taxonomy: dict,
+    taxonomy_path: str | None,
+    taxonomy_report: list,
+    worker_id: str,
+    raw: list[dict[str, Any]],
+    dropped_lines: int,
+    collapsed: list[dict[str, Any]],
+    total_interactions: int,
+    matched_interactions: int,
+    edits_applied: int,
+    merged_steps: list[dict[str, Any]],
+    canonical: Any,
+    canonical_path: str | None,
+    coalesced: list[dict[str, Any]],
+    vocab_summary: dict,
+    unmatched_evs: list[dict[str, Any]],
+) -> tuple[dict[str, Any], Path]:
+    """Compute the statistics summary and write stats.json. Returns
+    (summary, stats_path)."""
     # C5/§I38: capture the prior run's canonical match rate before we
     # overwrite stats.json, so a sharp drop can be flagged as drift.
     prev_match_rate = None
@@ -768,12 +842,21 @@ def normalize(
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
     print(f"[normalize] wrote {stats_path}")
+    return summary, stats_path
 
-    # Analysis layer (ADR-0008 / IMPROVEMENTS.md Cluster N). Heuristic
-    # IE/CI findings -- waste classification, time study, automation
-    # candidates, the process-efficiency ratio -- written to
-    # analysis.json. Runs whenever the session has steps; best-effort,
-    # never blocks the pipeline.
+
+def _run_analysis(
+    session_folder: Path,
+    classified: list[dict[str, Any]],
+    existing_anno: dict,
+    summary: dict,
+    manifest: dict,
+) -> Any:
+    """Analysis layer (ADR-0008 / IMPROVEMENTS.md Cluster N). Heuristic
+    IE/CI findings -- waste classification, time study, automation
+    candidates, the process-efficiency ratio -- written to
+    analysis.json. Runs whenever the session has steps; best-effort,
+    never blocks the pipeline. Returns the analysis result (or None)."""
     analysis_result = None
     if existing_anno.get("steps"):
         try:
@@ -792,7 +875,27 @@ def normalize(
             print(f"[normalize] wrote {analysis_path}")
         except Exception as e:
             print(f"[normalize] WARNING: analysis layer failed: {e}")
+    return analysis_result
 
+
+def _run_mining_exports(
+    session_folder: Path,
+    log: Any,
+    existing_anno: dict,
+    mine: bool,
+    canonical: Any,
+    summary: dict,
+    manifest: dict,
+    analysis_result: Any,
+    pdd_out: str | None,
+    pdd_map_image: str | None,
+    step_bpmn_out: str | None,
+    phase_bpmn_out: str | None,
+    step_csv_out: str | None,
+) -> None:
+    """Mining (DFG / aggregate BPMN / observed-flow BPMN / per-case BPMN) plus
+    the Phase E exports (PDD, step/phase BPMN, step CSV). Each sub-export keeps
+    its own best-effort try/except."""
     if mine:
         import mining as mining_mod
         from pm4py.objects.log.obj import EventLog
@@ -919,6 +1022,81 @@ def normalize(
             print(f"[normalize] wrote step CSV: {step_csv_out}")
         except Exception as e:
             print(f"[normalize] WARNING: step CSV export failed: {e}")
+
+
+def normalize(
+    session_folder: Path,
+    taxonomy_path: str | None = None,
+    mine: bool = False,
+    canonical_path: str | None = None,
+    pdd_out: str | None = None,
+    pdd_map_image: str | None = None,
+    step_bpmn_out: str | None = None,
+    phase_bpmn_out: str | None = None,
+    step_csv_out: str | None = None,
+) -> dict[str, Any]:
+    events_file = session_folder / "events.jsonl"
+    if not events_file.exists():
+        raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
+
+    setup_logging(session_folder=session_folder)
+
+    manifest = load_manifest(session_folder)
+    worker_id = (manifest.get("config", {}).get("worker") or {}).get("id", "unknown")
+
+    raw, dropped_lines = load_events(events_file)
+    print(f"[normalize] loaded {len(raw)} raw events")
+    if dropped_lines:
+        print(f"[normalize] WARNING: dropped {dropped_lines} malformed JSONL line(s); see warnings above")
+
+    annotations = load_annotations(session_folder)
+    cal = _calibration(annotations)
+    session_id_str = manifest.get("session_id", "")
+
+    # Stage 1a: coalesce typing bursts + apply annotation marker edits.
+    coalesced, edited, edits_applied = _run_coalesce(raw, annotations, cal)
+
+    # Stage 2a/3: case assignment (anchor / marker mode) + app-vocab enrichment.
+    # A stale Process Template path is downgraded to "no template" inside.
+    with_cases, cases, canonical, canonical_path, vocab_summary = _run_case_assignment(
+        edited, annotations, canonical_path)
+
+    existing_anno = _init_existing_anno(annotations, session_id_str)
+
+    # Suggested markers (ADR-0017) + anchor candidates (ADR-0018), best-effort.
+    _run_suggestions(existing_anno, with_cases, cases)
+
+    # Step segmentation (canonical match / auto-suggest) + phase rollup.
+    merged_steps, matched_interactions, unmatched_evs, total_interactions = (
+        _run_step_segmentation(
+            with_cases, cases, canonical_path, canonical, existing_anno,
+            session_id_str, cal, session_folder))
+
+    # Taxonomy classification + analyst overrides + the two collapses.
+    classified, collapsed, log_events, taxonomy, taxonomy_report = (
+        _run_classification(with_cases, annotations, taxonomy_path))
+
+    # Build the PM4Py event log + write events.xes / events.csv.
+    log, xes_path, csv_path = _run_event_log_export(
+        log_events, collapsed, cases, worker_id, session_folder)
+
+    # Statistics summary + stats.json.
+    summary, stats_path = _run_stats(
+        session_folder, log_events, cases, existing_anno, taxonomy,
+        taxonomy_path, taxonomy_report, worker_id, raw, dropped_lines,
+        collapsed, total_interactions, matched_interactions, edits_applied,
+        merged_steps, canonical, canonical_path, coalesced, vocab_summary,
+        unmatched_evs)
+
+    # Analysis layer (ADR-0008), best-effort -- never blocks the pipeline.
+    analysis_result = _run_analysis(
+        session_folder, classified, existing_anno, summary, manifest)
+
+    # Mining (DFG / BPMN variants) + Phase E exports (PDD, BPMN, step CSV).
+    _run_mining_exports(
+        session_folder, log, existing_anno, mine, canonical, summary,
+        manifest, analysis_result, pdd_out, pdd_map_image, step_bpmn_out,
+        phase_bpmn_out, step_csv_out)
 
     return {
         "session_folder": str(session_folder),
