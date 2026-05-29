@@ -8,6 +8,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Pre-built App Vocabularies (§11d, no-LLM bootstrap).** Ships a curated
+  starter set under `normalization/app_vocabularies/` — `salesforce.yaml`,
+  `sap-gui.yaml`, `excel.yaml`, `outlook.yaml`, and a browser-chrome
+  `chrome.yaml` — bootstrapped from the committed `example-aggregate` demo via
+  `normalize.py --bootstrap-vocab-out` and curated (meaningful names, screens,
+  flags). Signatures are on `control_type` + `automation_id` + `name` (never CSS
+  selectors). A new `app_vocabularies/README.md` documents the set and how to
+  author your own; the old `sample-salesforce` / `sample-outlook` worked
+  examples are replaced. Verified by re-normalizing the demo: the four desktop
+  apps enrich at 100% coverage (114 interactions named). As part of the
+  predicted-vs-actual diff this exposed that the recorder reports the exe name
+  with inconsistent casing (`chrome.exe` but `EXCEL.EXE` / `SAPGUI.exe`), so
+  **vocab `scope.process_name` matching is now case-insensitive** (a vocab no
+  longer silently misses the app it targets).
 - **Capture-side worker consent gate (§11f).** A consent window
   (`capture/consent-window.js` + `ui/consent.html`, mirroring the existing
   `*-window.js` modules) can be shown at session start, and every

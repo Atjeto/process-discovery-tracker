@@ -1,0 +1,30 @@
+# Google Chrome (browser chrome) App Vocabulary — ADR-0002.
+#
+# Pre-built starter vocabulary (§11d). Unlike the app-specific vocabs in this
+# folder, this names the BROWSER's own controls (address bar, tabs, navigation)
+# rather than any web app's content — so it complements, never competes with, a
+# site vocab like salesforce.yaml (which scopes to the Salesforce window title).
+# The control names below are Chrome's stable UIA accessibility names; signatures
+# use control_type + name (NEVER CSS selectors). It deliberately matches no
+# example-aggregate event (those are web-app content, not browser chrome).
+app_vocabulary:
+  id: "chrome"
+  name: "Google Chrome (browser)"
+  version: 1
+
+  scope:
+    process_name: "chrome.exe"
+
+  interactions:
+    - signature: { control_type: "Edit", name: "Address and search bar" }
+      name: "Address bar"
+    - signature: { control_type: "Button", name: "Reload this page" }
+      name: "Reload the page"
+    - signature: { control_type: "Button", name: "Back" }
+      name: "Navigate back"
+    - signature: { control_type: "Button", name: "Forward" }
+      name: "Navigate forward"
+    - signature: { control_type: "Button", name: "New Tab" }
+      name: "Open a new tab"
+    - signature: { control_type: "Button", name: "Bookmark this tab" }
+      name: "Bookmark the page"

@@ -1,0 +1,78 @@
+# Salesforce (web, Chrome) App Vocabulary — ADR-0002.
+#
+# Pre-built starter vocabulary (§11d). Bootstrapped from the committed
+# example-aggregate order-to-cash sessions with
+#   normalize.py <session> --bootstrap-vocab-out salesforce.yaml --vocab-id salesforce
+# then curated (meaningful names + screens + flags). The signatures use
+# control_type + automation_id + name (NEVER CSS selectors); retune the
+# automation_id values to your tenant's DOM before a real engagement.
+app_vocabulary:
+  id: "salesforce"
+  name: "Salesforce (web)"
+  version: 1
+
+  scope:
+    process_name: "chrome.exe"
+    window_title_regex: ".*Salesforce -.*"
+
+  screens:
+    - id: "account-lookup"
+      name: "Account lookup"
+      window_title_regex: ".*Salesforce - Account lookup.*"
+    - id: "credit-check"
+      name: "Credit check"
+      window_title_regex: ".*Salesforce - Credit check.*"
+    - id: "order"
+      name: "Order entry"
+      window_title_regex: ".*Salesforce - Order #.*"
+
+  interactions:
+    # --- Account lookup ---------------------------------------------
+    # Field names are nouns: the step namer supplies the verb ("Enter <value>
+    # in <field>"), so "Customer ID" reads as "Enter … in Customer ID" rather
+    # than doubling to "Enter Enter customer ID".
+    - signature: { control_type: "Edit", automation_id: "customer-id-field" }
+      name: "Customer ID"
+      screen: "account-lookup"
+    - signature: { control_type: "Button", automation_id: "search" }
+      name: "Run customer search"
+      screen: "account-lookup"
+    - signature: { control_type: "DataItem", automation_id: "customer-result-row" }
+      name: "Select customer from results"
+      screen: "account-lookup"
+    - signature: { control_type: "Button", automation_id: "open-customer-record" }
+      name: "Open customer record"
+      screen: "account-lookup"
+
+    # --- Credit check -----------------------------------------------
+    - signature: { control_type: "Button", automation_id: "run-credit-check" }
+      name: "Run credit check"
+      screen: "credit-check"
+    - signature: { control_type: "DataItem", automation_id: "credit-rating" }
+      name: "Credit rating"
+      screen: "credit-check"
+    - signature: { control_type: "Button", automation_id: "approve-credit" }
+      name: "Approve credit"
+      screen: "credit-check"
+
+    # --- Order entry ------------------------------------------------
+    - signature: { control_type: "Edit", automation_id: "product-code" }
+      name: "Product code"
+      screen: "order"
+    - signature: { control_type: "Edit", automation_id: "quantity" }
+      name: "Quantity"
+      screen: "order"
+    - signature: { control_type: "Edit", automation_id: "unit-price" }
+      name: "Unit price"
+      screen: "order"
+    - signature: { control_type: "Edit", automation_id: "shipping-address" }
+      name: "Shipping address"
+      screen: "order"
+    - signature: { control_type: "ComboBox", automation_id: "delivery-method" }
+      name: "Delivery method"
+      screen: "order"
+    - signature: { control_type: "Button", automation_id: "save-order" }
+      name: "Save order"
+      screen: "order"
+      flags:
+        automation_candidate: true

@@ -98,8 +98,14 @@ def _scope_matches(vocab: dict, ev_data: dict) -> bool:
     vocab is legal but probably a mistake)."""
     scope = vocab.get("scope") or {}
     pn = scope.get("process_name")
-    if pn and ev_data.get("process_name") != pn:
-        return False
+    if pn:
+        # process_name is matched case-insensitively: the OS / recorder reports
+        # the executable name with inconsistent casing (e.g. "chrome.exe" but
+        # "EXCEL.EXE" / "SAPGUI.exe"), so a case-sensitive compare would make a
+        # vocab silently miss the very app it targets.
+        ev_pn = ev_data.get("process_name")
+        if not isinstance(ev_pn, str) or ev_pn.lower() != str(pn).lower():
+            return False
     wtr = scope.get("window_title_regex")
     if wtr:
         r = _compile_regex(wtr)

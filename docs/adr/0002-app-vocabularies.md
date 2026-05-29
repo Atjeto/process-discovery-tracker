@@ -260,7 +260,7 @@ Override: `PDT_APP_VOCABULARIES` env var pointing at one or more directories (se
 1. [x] `normalization/app_vocab.py`: schema, loader, signature-match engine, event-enrichment pass.
 2. [x] `normalize.py` integration: loads vocabularies from the default dir + `PDT_APP_VOCABULARIES`, enriches before step suggestion.
 3. [x] Step auto-suggestion uses `meaningful_name` when present.
-4. [x] Worked examples shipped: `app_vocabularies/sample-salesforce.yaml` + `sample-outlook.yaml`.
+4. [x] Pre-built starter set shipped (§11d): `app_vocabularies/{salesforce,sap-gui,excel,outlook,chrome}.yaml` + a `README.md`, bootstrapped from the `example-aggregate` demo and curated (replaces the earlier `sample-salesforce` / `sample-outlook` worked examples). Scope `process_name` matching is case-insensitive so a vocab matches regardless of the OS-reported exe casing.
 5. [x] Viewer "Save to App Library…" button (`#btn-save-vocab` → `viewer:saveAppVocab`) bootstraps a starter vocab from the session.
 6. [x] Viewer surfaces `meaningful_name` in the raw events table and step detail.
 7. [x] `shared/SCHEMA.md` documents `meaningful_name` / `screen_id` / `vocab_flags` / `vocab_source`.

@@ -6,7 +6,7 @@
     "start_activities": 1
   },
   "meta": {
-    "app_vocabulary_matches": 3,
+    "app_vocabulary_matches": 114,
     "case_count": 4,
     "collapsed_activity_count": 21,
     "drift_count": 0,
@@ -30,11 +30,11 @@
     "count": 64,
     "process_labels": [
       "Excel: Create sales order",
-      "Excel: Enter Date cell",
-      "Excel: Enter Status cell",
+      "Excel: Enter Date",
+      "Excel: Enter Status",
       "Excel: Save workbook",
+      "Outlook: Enter Recipient",
       "Outlook: Enter Subject",
-      "Outlook: Enter To",
       "Outlook: Send email",
       "SAP: Create sales order",
       "SAP: Enter Material number",
@@ -44,8 +44,8 @@
       "Salesforce: Enter Shipping address",
       "Salesforce: Enter Unit price",
       "Salesforce: Open customer record",
-      "Salesforce: Save order",
-      "Salesforce: Search"
+      "Salesforce: Run customer search",
+      "Salesforce: Save order"
     ]
   }
 }

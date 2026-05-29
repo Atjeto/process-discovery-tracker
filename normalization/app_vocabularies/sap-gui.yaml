@@ -1,0 +1,43 @@
+# SAP GUI (SAP Logon / SAP GUI for Windows) App Vocabulary — ADR-0002.
+#
+# Pre-built starter vocabulary (§11d). Bootstrapped from the committed
+# example-aggregate sessions (the VA01 "Create Sales Order" transaction) and
+# curated. Signatures use control_type + automation_id + name (NEVER CSS).
+# SAP GUI exposes control IDs through UIA; retune the automation_id values and
+# the transaction window_title to your system before a real engagement.
+app_vocabulary:
+  id: "sap-gui"
+  name: "SAP GUI"
+  version: 1
+
+  scope:
+    process_name: "sapgui.exe"
+    window_title_regex: ".*SAP -.*"
+
+  screens:
+    - id: "va01"
+      name: "Create Sales Order (VA01)"
+      window_title_regex: ".*Create Sales Order \\(VA01\\).*"
+
+  interactions:
+    # Field names are nouns; the step namer supplies the "Enter …" verb.
+    - signature: { control_type: "Edit", automation_id: "order-type" }
+      name: "Order type"
+      screen: "va01"
+    - signature: { control_type: "Edit", automation_id: "sales-organisation" }
+      name: "Sales organisation"
+      screen: "va01"
+    - signature: { control_type: "Edit", automation_id: "material-number" }
+      name: "Material number"
+      screen: "va01"
+    - signature: { control_type: "Edit", automation_id: "order-quantity" }
+      name: "Order quantity"
+      screen: "va01"
+    - signature: { control_type: "MenuItem", automation_id: "check-document" }
+      name: "Check document"
+      screen: "va01"
+    - signature: { control_type: "Button", automation_id: "create-sales-order" }
+      name: "Create sales order"
+      screen: "va01"
+      flags:
+        automation_candidate: true

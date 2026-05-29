@@ -1,0 +1,35 @@
+# Microsoft Outlook (desktop) App Vocabulary — ADR-0002.
+#
+# Pre-built starter vocabulary (§11d). Bootstrapped from the committed
+# example-aggregate sessions (sending an order-confirmation email) and curated.
+# Signatures use control_type + automation_id + name (NEVER CSS). The compose
+# window's To/Subject/Body/Send controls are stable across Outlook versions.
+app_vocabulary:
+  id: "outlook"
+  name: "Microsoft Outlook"
+  version: 1
+
+  scope:
+    process_name: "outlook.exe"
+
+  screens:
+    - id: "compose"
+      name: "Compose message"
+      window_title_regex: ".*Outlook - .*"
+
+  interactions:
+    # Field names are nouns; the step namer supplies the "Enter …" verb.
+    - signature: { control_type: "Edit", automation_id: "to" }
+      name: "Recipient"
+      screen: "compose"
+    - signature: { control_type: "Edit", automation_id: "subject" }
+      name: "Subject"
+      screen: "compose"
+    - signature: { control_type: "Document", automation_id: "message-body" }
+      name: "Message body"
+      screen: "compose"
+    - signature: { control_type: "Button", automation_id: "send" }
+      name: "Send email"
+      screen: "compose"
+      flags:
+        automation_candidate: true

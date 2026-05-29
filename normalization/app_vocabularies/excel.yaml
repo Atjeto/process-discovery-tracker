@@ -1,0 +1,33 @@
+# Microsoft Excel (desktop) App Vocabulary — ADR-0002.
+#
+# Pre-built starter vocabulary (§11d). Bootstrapped from the committed
+# example-aggregate sessions (an order-tracking workbook) and curated.
+# Signatures use control_type + automation_id + name (NEVER CSS).
+#
+# Note: real Excel cell edits surface as control_type "Edit"/"DataItem" whose
+# name is the cell's content/header, which varies per workbook. The named-cell
+# automation_ids below model a structured tracker; for a free-form sheet you
+# will lean more on window_title scoping + generic Edit signatures.
+app_vocabulary:
+  id: "excel"
+  name: "Microsoft Excel"
+  version: 1
+
+  scope:
+    process_name: "excel.exe"
+    window_title_regex: ".*Excel -.*"
+
+  interactions:
+    # Field names are nouns; the step namer supplies the "Enter …" verb.
+    - signature: { control_type: "Edit", automation_id: "order-number-cell" }
+      name: "Order number"
+    - signature: { control_type: "Edit", automation_id: "status-cell" }
+      name: "Status"
+    - signature: { control_type: "Edit", automation_id: "date-cell" }
+      name: "Date"
+    - signature: { control_type: "Edit", automation_id: "owner-cell" }
+      name: "Owner"
+    - signature: { control_type: "Button", automation_id: "save-workbook" }
+      name: "Save workbook"
+      flags:
+        automation_candidate: true

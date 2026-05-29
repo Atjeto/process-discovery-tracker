@@ -70,6 +70,19 @@ def test_scope_filter_drops_other_apps():
     assert out is None
 
 
+def test_scope_process_name_is_case_insensitive():
+    """The OS / recorder reports the exe name with inconsistent casing
+    ('chrome.exe' but 'EXCEL.EXE' / 'SAPGUI.exe'); a vocab scoped lowercase
+    must still match an uppercase-reported process and vice versa (§11d)."""
+    # Vocab scoped lowercase, event reports uppercase.
+    ev_up = _ev({"process_name": "OUTLOOK.EXE", "control_type": "Button", "name": "Send"})
+    lower_scope = dict(OUTLOOK_VOCAB, scope={"process_name": "outlook.exe"})
+    assert app_vocab.lookup([lower_scope], ev_up["data"])["meaningful_name"] == "Send email"
+    # Vocab scoped uppercase, event reports lowercase.
+    ev_low = _ev({"process_name": "outlook.exe", "control_type": "Button", "name": "Send"})
+    assert app_vocab.lookup([OUTLOOK_VOCAB], ev_low["data"])["meaningful_name"] == "Send email"
+
+
 def test_match_via_automation_id():
     ev = _ev({"process_name": "chrome.exe", "window_title": "Salesforce | Search",
               "control_type": "Button", "automation_id": "searchBtn"})
