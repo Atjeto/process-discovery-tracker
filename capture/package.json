@@ -10,7 +10,6 @@
     "build:recorder": "dotnet publish recorder/Recorder.csproj -c Release -o recorder/publish",
     "prepackage": "npm run build:recorder",
     "package": "node build-package.js",
-    "dist": "electron-builder --win --x64 --publish=never",
     "test": "node --test"
   },
   "engines": {
@@ -31,79 +30,6 @@
   },
   "devDependencies": {
     "@electron/packager": "^20.0.0",
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
-  },
-  "build": {
-    "appId": "com.processdiscovery.tracker",
-    "productName": "Process Discovery Tracker",
-    "npmRebuild": false,
-    "buildDependenciesFromSource": false,
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "main.js",
-      "tracker.js",
-      "session.js",
-      "events.js",
-      "config.js",
-      "user-config.js",
-      "obs.js",
-      "screenshots.js",
-      "help-window.js",
-      "operator-panel.js",
-      "settings-window.js",
-      "profile-window.js",
-      "session-config-window.js",
-      "welcome-window.js",
-      "hotkey-overlay.js",
-      "window-manager.js",
-      "session-storage.js",
-      "log.js",
-      "boot-log.js",
-      "notify.js",
-      "recorder.js",
-      "recorder/publish/**/*",
-      "ui/**/*",
-      "sample-config.yaml",
-      "tray-icon.png",
-      "package.json",
-      "node_modules/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "tray-icon.png",
-        "to": "tray-icon.png"
-      },
-      {
-        "from": "recorder/publish",
-        "to": "recorder"
-      }
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "dir",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Process Discovery Tracker"
-    }
+    "electron": "^42.3.0"
   }
 }

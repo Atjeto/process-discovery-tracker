@@ -52,6 +52,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **PDD process-map embed failures are logged** instead of silently producing a
   placeholder map.
 
+### Changed
+
+- **Electron 33 → 42** in both the capture and viewer apps, returning to the
+  supported-release window (Electron 33 no longer receives Chromium/V8 security
+  backports). Unit suites stay green and the viewer boots/renders (BPMN, DFG,
+  charts) under 42 with zero page errors; the packaged build still needs a
+  real-run validation pass on the locked-down laptop before release.
+- **Removed the unused `electron-builder` dev-dependency** (plus its `dist` script
+  and `build` block) from both apps — distribution is via `@electron/packager`
+  (`build-package.js`), not electron-builder. This clears every `npm audit`
+  advisory (11 → 0; they were all in electron-builder's transitive tree).
+
 ## [0.19.0] - 2026-05-29
 
 **Phase 0 of the ML integration recommendation — non-ML, classical-statistics
