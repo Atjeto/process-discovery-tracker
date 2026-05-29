@@ -209,8 +209,7 @@ public sealed class UiaSubscriber {
             var raw = e.NewValue?.ToString() ?? "";
             // Length-clamp text values; range values are short numerics.
             // Flag the clamp so the analyst knows the stored value is partial.
-            var truncated = raw.Length > 256;
-            var v = truncated ? raw.Substring(0, 256) : raw;
+            var (v, truncated) = ClampValue(raw);
             EmitValueChanged(el, v, truncated);
         }
     }
@@ -312,21 +311,33 @@ public sealed class UiaSubscriber {
         try {
             var pid = el.Current.ProcessId;
             var id = el.Current.AutomationId;
-            if (!string.IsNullOrEmpty(id)) return $"{pid}|aid|{id}";
             var name = el.Current.Name;
             var cls = el.Current.ClassName;
-            if (!string.IsNullOrEmpty(name)) return $"{pid}|n|{name}|{cls}";
-            // Web content (Chrome) exposes an empty AutomationId *and* an
-            // empty Name on input fields, so both keys above miss. The UIA
-            // RuntimeId is stable for the element's lifetime -- which spans
-            // a typing burst -- so it keys the debouncer well enough to
-            // coalesce keystrokes into one final-value event.
             var rid = el.GetRuntimeId();
-            if (rid != null && rid.Length > 0) return $"{pid}|rid|{string.Join("-", rid)}";
-            return null;
+            return CoalesceKeyFromProps(pid, id, name, cls, rid);
         } catch {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Pure debounce-key derivation: prefer the AutomationId, then
+    /// Name+ClassName, then the UIA RuntimeId, else null (no stable
+    /// identity -> caller emits immediately, uncoalesced). Mirrors the
+    /// property reads in CoalesceKey exactly.
+    /// </summary>
+    internal static string? CoalesceKeyFromProps(int pid, string? automationId,
+                                                 string? name, string? className,
+                                                 int[]? runtimeId) {
+        if (!string.IsNullOrEmpty(automationId)) return $"{pid}|aid|{automationId}";
+        if (!string.IsNullOrEmpty(name)) return $"{pid}|n|{name}|{className}";
+        // Web content (Chrome) exposes an empty AutomationId *and* an
+        // empty Name on input fields, so both keys above miss. The UIA
+        // RuntimeId is stable for the element's lifetime -- which spans
+        // a typing burst -- so it keys the debouncer well enough to
+        // coalesce keystrokes into one final-value event.
+        if (runtimeId != null && runtimeId.Length > 0) return $"{pid}|rid|{string.Join("-", runtimeId)}";
+        return null;
     }
 
     private object? ExtractSelectionPayload(AutomationElement el) {
@@ -347,28 +358,50 @@ public sealed class UiaSubscriber {
     private static bool IsLowSignal(AutomationElement el) {
         try {
             var fwk = el.Current.FrameworkId;
-            // Win32 desktop shell chrome (taskbar, window manager) fires
-            // Pane/Group/Window/Custom notifications continuously. WPF /
-            // WinForms / WinUI use the same control types but for real
-            // application UI, so we only drop the Win32 case.
-            if (string.Equals(fwk, "Win32", StringComparison.Ordinal)) {
-                var ctl = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
-                if (ctl != null && LowSignalControlTypes.Contains(ctl)) return true;
-            }
-            // Chromium render-tree scaffolding. Every browser -- and every
-            // Electron app -- fires Pane/Group/Document/Custom events for
-            // its own internal DOM. Real web-app controls carry a page-set
-            // AutomationId, so an empty AutomationId keeps those while
-            // dropping the noise.
-            if (string.Equals(fwk, "Chrome", StringComparison.Ordinal) &&
-                string.IsNullOrEmpty(el.Current.AutomationId)) {
-                var ctl = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
-                if (ctl != null && BrowserChromeControlTypes.Contains(ctl)) return true;
-            }
-            return false;
+            var ctl = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
+            var aid = el.Current.AutomationId;
+            return IsLowSignalProps(fwk, ctl, aid, null);
         } catch {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Pure low-signal / browser-chrome decision over the property values
+    /// IsLowSignal reads off the live element. <paramref name="controlType"/>
+    /// is the ProgrammaticName with the "ControlType." prefix already
+    /// stripped (e.g. "Pane"). <paramref name="name"/> is unused by the
+    /// current rules; it is accepted to keep the seam stable.
+    /// </summary>
+    internal static bool IsLowSignalProps(string? frameworkId, string? controlType,
+                                          string? automationId, string? name) {
+        // Win32 desktop shell chrome (taskbar, window manager) fires
+        // Pane/Group/Window/Custom notifications continuously. WPF /
+        // WinForms / WinUI use the same control types but for real
+        // application UI, so we only drop the Win32 case.
+        if (string.Equals(frameworkId, "Win32", StringComparison.Ordinal)) {
+            if (controlType != null && LowSignalControlTypes.Contains(controlType)) return true;
+        }
+        // Chromium render-tree scaffolding. Every browser -- and every
+        // Electron app -- fires Pane/Group/Document/Custom events for
+        // its own internal DOM. Real web-app controls carry a page-set
+        // AutomationId, so an empty AutomationId keeps those while
+        // dropping the noise.
+        if (string.Equals(frameworkId, "Chrome", StringComparison.Ordinal) &&
+            string.IsNullOrEmpty(automationId)) {
+            if (controlType != null && BrowserChromeControlTypes.Contains(controlType)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Pure value-length clamp used for value_changed / range_value_changed
+    /// payloads. Returns the (possibly truncated) value and whether the
+    /// clamp fired. Mirrors the inline logic in OnPropertyChanged.
+    /// </summary>
+    internal static (string value, bool truncated) ClampValue(string raw, int max = 256) {
+        if (raw.Length > max) return (raw.Substring(0, max), true);
+        return (raw, false);
     }
 
     private object? BuildEvent(string kind, AutomationElement el, object? extra) {

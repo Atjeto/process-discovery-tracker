@@ -20,4 +20,9 @@
     <RootNamespace>Pdt.Recorder</RootNamespace>
     <AssemblyName>recorder</AssemblyName>
   </PropertyGroup>
+  <!-- The xUnit test project lives in the Recorder.Tests subfolder; keep
+       its sources out of the production recorder's default-glob compile set. -->
+  <ItemGroup>
+    <Compile Remove="Recorder.Tests\**\*.cs" />
+  </ItemGroup>
 </Project>
