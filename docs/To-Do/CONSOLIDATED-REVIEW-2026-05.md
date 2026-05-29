@@ -188,6 +188,14 @@ consolidation — every entry below carries its **original ID(s)** so it can be 
 
 These are maintainability items, not point-bugs. Scored by TD as `(Impact+Risk)×(6−Effort)`.
 
+> **Status (cycle 2026-05, branch `fix/fix-first-queue-2026-05`):** the **dependency
+> block is closed** — **#3** (electron-builder removed), **#15** (Electron 33→42),
+> **#19** (dagre → @dagrejs/dagre) are **DONE & verified**; **#17** (bundled Python)
+> is **deferred to the build box** (see [BUILD-BOX-VALIDATION.md](./BUILD-BOX-VALIDATION.md))
+> because 3.11 has no embeddable past 3.11.9 and the bundle can't be built/validated
+> on a dev box. #15's packaged-build validation is also queued there. All other TD
+> items below remain open.
+
 | ID | Score | Item | Location |
 |---|---|---|---|
 | **[TD #3]** | 10 | Remove dead/contradictory `electron-builder` devDep (build uses `@electron/packager`). *(Quick win.)* | `capture/package.json`, `viewer/package.json` |
