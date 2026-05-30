@@ -1,0 +1,99 @@
+{
+  "scenario": "excel",
+  "tier": "bounded",
+  "bug_class": "over-segmentation (roadmap §11b; the element-split / '308-step' class)",
+  "app": "Microsoft Excel — data-prep ribbon flow",
+  "captured_with": "real C# recorder, non-verbose (production) stream; COM workbook; per case: Filter (Toggle) -> Sort A-Z (Invoke) -> PivotTable dropdown (ExpandCollapse) -> Copy -> Save, via UIA. The Sort rewrites the cells, raising the value_changed events.",
+  "expected_grain": "~1 step per case (one data-prep pass per dataset); 3 cases -> ~3 steps.",
+  "knob": "step_split_on_element (normalization/pipeline_config.py _DEFAULT_CALIBRATION)",
+  "default_calibration": {
+    "step_split_on_element": true,
+    "projection": {
+      "meta": {
+        "raw_event_count": 29,
+        "dropped_jsonl_lines": 0,
+        "collapsed_activity_count": 0,
+        "interaction_count": 19,
+        "matched_interactions": 0,
+        "match_rate": 0,
+        "case_count": 3,
+        "marker_edits_applied": 0,
+        "step_count": 8,
+        "step_state_breakdown": {
+          "auto_suggested": 8,
+          "auto_matched": 0,
+          "manually_authored": 0,
+          "edited": 0
+        },
+        "drift_count": 0,
+        "phase_count": 0,
+        "app_vocabulary_matches": 2
+      },
+      "steps": {
+        "count": 8,
+        "process_labels": [
+          "_excel_corpus.xlsx: Enter A2",
+          "_excel_corpus.xlsx: Enter A3",
+          "_excel_corpus.xlsx: Enter A4",
+          "_excel_corpus.xlsx: Enter A5",
+          "_excel_corpus.xlsx: Enter Alice",
+          "_excel_corpus.xlsx: Save",
+          "_excel_corpus.xlsx: Select Data, Insert"
+        ]
+      },
+      "dfg": {
+        "nodes": 0,
+        "edges": 0,
+        "start_activities": 0,
+        "end_activities": 0
+      }
+    }
+  },
+  "candidate_calibration": {
+    "step_split_on_element": false,
+    "projection": {
+      "meta": {
+        "raw_event_count": 29,
+        "dropped_jsonl_lines": 0,
+        "collapsed_activity_count": 0,
+        "interaction_count": 19,
+        "matched_interactions": 0,
+        "match_rate": 0,
+        "case_count": 3,
+        "marker_edits_applied": 0,
+        "step_count": 3,
+        "step_state_breakdown": {
+          "auto_suggested": 3,
+          "auto_matched": 0,
+          "manually_authored": 0,
+          "edited": 0
+        },
+        "drift_count": 0,
+        "phase_count": 0,
+        "app_vocabulary_matches": 2
+      },
+      "steps": {
+        "count": 3,
+        "process_labels": [
+          "_excel_corpus.xlsx: Save",
+          "_excel_corpus.xlsx: Select Data, Insert"
+        ]
+      },
+      "dfg": {
+        "nodes": 0,
+        "edges": 0,
+        "start_activities": 0,
+        "end_activities": 0
+      }
+    }
+  },
+  "delta": {
+    "step_count": {
+      "default": 8,
+      "candidate": 3,
+      "fewer_with_split_off": 5
+    },
+    "case_count": 3,
+    "app_vocabulary_matches": 2
+  }
+}

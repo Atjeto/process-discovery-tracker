@@ -1,0 +1,96 @@
+{
+  "scenario": "word",
+  "tier": "bounded",
+  "bug_class": "over-segmentation (roadmap §11b; the element-split / '308-step' class)",
+  "app": "Microsoft Word — Mailings ribbon + Save",
+  "captured_with": "real C# recorder, non-verbose (production) stream; COM document; per case: Mailings tab, mail-merge menu opens (NOT captured -- see README), document text typed (text_changed, verbose-gated -> NOT captured), Save (Invoke). Only FileSave + incidental 'Row up/Down' position-indicator value_changed reach the production stream.",
+  "expected_grain": "Coverage-limited: the business mail-merge steps are invisible to the non-verbose recorder; see README. The captured over-seg is driven by incidental status value_changed.",
+  "knob": "step_split_on_element (normalization/pipeline_config.py _DEFAULT_CALIBRATION)",
+  "default_calibration": {
+    "step_split_on_element": true,
+    "projection": {
+      "meta": {
+        "raw_event_count": 20,
+        "dropped_jsonl_lines": 0,
+        "collapsed_activity_count": 0,
+        "interaction_count": 14,
+        "matched_interactions": 0,
+        "match_rate": 0,
+        "case_count": 2,
+        "marker_edits_applied": 0,
+        "step_count": 8,
+        "step_state_breakdown": {
+          "auto_suggested": 8,
+          "auto_matched": 0,
+          "manually_authored": 0,
+          "edited": 0
+        },
+        "drift_count": 0,
+        "phase_count": 0,
+        "app_vocabulary_matches": 2
+      },
+      "steps": {
+        "count": 8,
+        "process_labels": [
+          "_word_corpus.docx: Enter Row 1 of 1",
+          "_word_corpus.docx: Fill Row Down",
+          "_word_corpus.docx: Fill Row up",
+          "_word_corpus.docx: Save"
+        ]
+      },
+      "dfg": {
+        "nodes": 0,
+        "edges": 0,
+        "start_activities": 0,
+        "end_activities": 0
+      }
+    }
+  },
+  "candidate_calibration": {
+    "step_split_on_element": false,
+    "projection": {
+      "meta": {
+        "raw_event_count": 20,
+        "dropped_jsonl_lines": 0,
+        "collapsed_activity_count": 0,
+        "interaction_count": 14,
+        "matched_interactions": 0,
+        "match_rate": 0,
+        "case_count": 2,
+        "marker_edits_applied": 0,
+        "step_count": 4,
+        "step_state_breakdown": {
+          "auto_suggested": 4,
+          "auto_matched": 0,
+          "manually_authored": 0,
+          "edited": 0
+        },
+        "drift_count": 0,
+        "phase_count": 0,
+        "app_vocabulary_matches": 2
+      },
+      "steps": {
+        "count": 4,
+        "process_labels": [
+          "_word_corpus.docx: Fill Row up, Row Down",
+          "_word_corpus.docx: Save"
+        ]
+      },
+      "dfg": {
+        "nodes": 0,
+        "edges": 0,
+        "start_activities": 0,
+        "end_activities": 0
+      }
+    }
+  },
+  "delta": {
+    "step_count": {
+      "default": 8,
+      "candidate": 4,
+      "fewer_with_split_off": 4
+    },
+    "case_count": 2,
+    "app_vocabulary_matches": 2
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "scenario": "outlook",
+  "tier": "narrow",
+  "bug_class": "over-segmentation (roadmap §11b; the element-split / '308-step' class)",
+  "app": "Microsoft Outlook (classic) — compose window",
+  "captured_with": "real C# recorder, non-verbose (production) stream; COM CreateItem(0).Display() per draft; To (4117) / Cc (4126) / Subject (4101) entered via UIA ValuePattern.SetValue, discarded (no send/save).",
+  "expected_grain": "1 step per draft ('fill the recipient/subject fields, then compose'); 3 drafts -> ~3 steps.",
+  "knob": "step_split_on_element (normalization/pipeline_config.py _DEFAULT_CALIBRATION)",
+  "default_calibration": {
+    "step_split_on_element": true,
+    "projection": {
+      "meta": {
+        "raw_event_count": 25,
+        "dropped_jsonl_lines": 0,
+        "collapsed_activity_count": 0,
+        "interaction_count": 11,
+        "matched_interactions": 0,
+        "match_rate": 0,
+        "case_count": 3,
+        "marker_edits_applied": 0,
+        "step_count": 9,
+        "step_state_breakdown": {
+          "auto_suggested": 9,
+          "auto_matched": 0,
+          "manually_authored": 0,
+          "edited": 0
+        },
+        "drift_count": 0,
+        "phase_count": 0,
+        "app_vocabulary_matches": 9
+      },
+      "steps": {
+        "count": 9,
+        "process_labels": [
+          "Untitled: Enter Cc",
+          "Untitled: Enter Subject",
+          "Untitled: Enter To (recipients)",
+          "Untitled: Enter cust-2202@example.com",
+          "Untitled: Enter cust-2203@example.com"
+        ]
+      },
+      "dfg": {
+        "nodes": 0,
+        "edges": 0,
+        "start_activities": 0,
+        "end_activities": 0
+      }
+    }
+  },
+  "candidate_calibration": {
+    "step_split_on_element": false,
+    "projection": {
+      "meta": {
+        "raw_event_count": 25,
+        "dropped_jsonl_lines": 0,
+        "collapsed_activity_count": 0,
+        "interaction_count": 11,
+        "matched_interactions": 0,
+        "match_rate": 0,
+        "case_count": 3,
+        "marker_edits_applied": 0,
+        "step_count": 3,
+        "step_state_breakdown": {
+          "auto_suggested": 3,
+          "auto_matched": 0,
+          "manually_authored": 0,
+          "edited": 0
+        },
+        "drift_count": 0,
+        "phase_count": 0,
+        "app_vocabulary_matches": 9
+      },
+      "steps": {
+        "count": 3,
+        "process_labels": [
+          "Untitled: Enter Order CUST-2202 follow-up",
+          "Untitled: Enter Order CUST-2203 follow-up",
+          "Untitled: Fill To (recipients), Cc, Subject"
+        ]
+      },
+      "dfg": {
+        "nodes": 0,
+        "edges": 0,
+        "start_activities": 0,
+        "end_activities": 0
+      }
+    }
+  },
+  "delta": {
+    "step_count": {
+      "default": 9,
+      "candidate": 3,
+      "fewer_with_split_off": 6
+    },
+    "case_count": 3,
+    "app_vocabulary_matches": 9
+  }
+}

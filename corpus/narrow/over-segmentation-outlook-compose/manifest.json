@@ -1,0 +1,14 @@
+{
+  "session_id": "real-outlook",
+  "schema_version": 1,
+  "scenario": "outlook",
+  "scenario_label": "Outlook compose drafts (To/Cc/Subject/Body) x3 cases",
+  "captured_at": "2026-05-30T19:10:28.749Z",
+  "capture_host": "Nebula",
+  "config": {
+    "worker": {
+      "id": "real-corpus-harness"
+    }
+  },
+  "note": "Real C# recorder capture (non-verbose). Interactions filtered to outlook.exe within marker-bracketed cases."
+}

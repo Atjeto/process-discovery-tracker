@@ -1,0 +1,21 @@
+# Corpus scenarios are re-normalized to verify the calibration, but the
+# generated artifacts are NOT committed -- the fixtures are events.jsonl +
+# manifest.json (inputs) and expected.json + README.md + script.ps1 + uia-lib.ps1
+# (the ground truth + driver). Mirrors the example-aggregate "don't commit the
+# regenerated files" rule. Verify on a COPY, or let these patterns drop the
+# in-place outputs.
+*/*/annotations.json
+*/*/stats.json
+*/*/analysis.json
+*/*/events.csv
+*/*/events.xes
+*/*/dfg.json
+*/*/*.bpmn
+*/*/process_map*.json
+*/*/*.docx
+*/*/*.log
+*/*/logs/
+*/*/screenshots/
+# Scratch from the out-of-repo harness, should it ever land here.
+*/*/_raw-events.jsonl
+*/*/_drive.log

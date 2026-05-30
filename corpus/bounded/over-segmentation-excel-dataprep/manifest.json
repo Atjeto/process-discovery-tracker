@@ -1,0 +1,14 @@
+{
+  "session_id": "real-excel",
+  "schema_version": 1,
+  "scenario": "excel",
+  "scenario_label": "Excel data-prep (Filter/Sort/Pivot/Copy/Save) x3 cases",
+  "captured_at": "2026-05-30T19:05:49.525Z",
+  "capture_host": "Nebula",
+  "config": {
+    "worker": {
+      "id": "real-corpus-harness"
+    }
+  },
+  "note": "Real C# recorder capture (non-verbose). Interactions filtered to excel.exe within marker-bracketed cases."
+}
