@@ -59,7 +59,7 @@ viewer/analysis validation; cover **SAP / Jira / Zendesk** (need driving) per
 
 ---
 
-## 0.6 §11e recorder desktop-coverage hardening — 2026-05-30 (latest)
+## 0.6 §11e recorder desktop-coverage hardening — 2026-05-30
 
 The autonomous, in-repo-gated surface of roadmap **§11e** landed on `master`
 (branch `session-11e-recorder-hardening`, fast-forwarded; 5 commits). The C#
@@ -97,7 +97,50 @@ Java/Qt/Citrix/terminal apps — does detection fire, does the OCR label help (t
 confidence class names only); broaden against a live Citrix/RDP session. The
 confidence rung scores + the 0.30 cap ship intuition-calibrated; tune against a
 real corpus (§11b). **Remaining autonomous tech-debt:** the god-file splits
-(`viewer/views/flow-view.js` ~3,800 L; further `normalize.py` decomposition).
+(`viewer/views/flow-view.js` ~3,800 L; further `normalize.py` decomposition) —
+**done in §0.7**.
+
+---
+
+## 0.7 God-file splits — 2026-05-30 (latest)
+
+The remaining autonomous tech-debt from §0.6 landed on `master` (branch
+`session-godfile-splits`, fast-forwarded; 8 commits). Pure, **behaviour-
+preserving** refactors — no feature or output change — done behind the
+session-golden + the Flow-view Playwright harness so the recurring "shipped
+un-eyeballed UI" failure could not recur.
+
+- **`flow-view.js` 3,811 → 2,745 L**, decomposed into four cohesive CommonJS
+  sibling modules (no bundler; each a plain `module.exports`): **`flow-view-apps.js`**
+  (per-app colour/label/legend, pure), **`flow-view-video.js`** (the video↔timeline
+  bridge — playhead, seek, watch-step, re-sync), **`flow-view-screenshots.js`**
+  (grid + gallery + star + openScreenshot), **`flow-view-markers.js`** (marker-edit
+  resolution, the markers list, suggested markers + anchor candidates, per-marker
+  edits). flow-view stays the hub: it re-exports the helpers' entry points so its
+  public surface is unchanged for `renderer.js`/`steps-view.js`/`analysis-view.js`,
+  and injects `loadSessionIntoView`/`renderTimeline` into the helpers
+  (`initVideo`/`initMarkers`) so the graph stays acyclic (helpers `require()` only
+  one-way: screenshots→video, markers→video). The marker-INSERT surfaces and the
+  `renderTimeline` hub (its ~570-line lane builder) stay in flow-view — the
+  timeline-hub extraction is a larger, higher-risk move left for a dedicated pass.
+- **`normalize.py` 1,192 → 870 L**, continuing F4 into four focused modules:
+  **`session_io.py`** (load/write + screenshot aHash), **`marker_edits.py`**
+  (`apply_marker_edits` replay), **`phase_reconcile.py`** (`_merge_phases` /
+  `reconcile_phase_membership` / `_compute_drift_markers`), **`pipeline_config.py`**
+  (the step denylist / excluded ranges / F3 calibration surface). normalize.py
+  **re-imports every moved name**, so `normalize.X` / `from normalize import X` and
+  the four tests that import these resolve unchanged.
+- **Gates green at every commit:** viewer npm test 231/231, capture 78, pytest
+  314·passed/10·skipped (incl. the seeded fuzzers), golden **10/10 OK — sess-0514
+  still 64 steps** (this was a refactor, **NOT** the §11b flip), and the Flow-view
+  harness probe **byte-identical** across every extraction (timeline lanes/legend/
+  minimap, screenshot grid + gallery open→step→close, seek→playhead, the injected
+  suggested-marker bar/row + anchor panel) with **0 page errors**.
+
+**Remaining (next):** the Flow `renderTimeline` timeline-hub extraction (the
+biggest single chunk left, but the most entangled — needs its own careful pass);
+the `normalize._run_*` stage helpers could move to a `pipeline_stages.py` but are
+tightly coupled to the orchestrator. Both deferred, not blocking.
 
 ---
 

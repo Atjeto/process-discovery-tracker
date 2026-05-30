@@ -62,7 +62,11 @@ CommonJS, so real modules need no build step).
 
 | File | Surface |
 |---|---|
-| `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, video sync, event table, the annotations/screenshots/markers panel, case scope, command-palette provider. Also owns the unbracketed-session recovery surfaces: **suggested markers** (dashed `.tl-suggested` bars + Accept/Dismiss rows, [ADR-0017](../adr/0017-suggested-markers.md)) and the **anchor-candidates** panel above the markers list ([ADR-0018](../adr/0018-anchor-candidates.md)). |
+| `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, event table, case scope, command-palette provider, the marker-insert menu + queue actions. The hub; it `require()`s the four `flow-view-*` helper modules below and re-exports their public entry points so its surface (`renderTimeline`, `seekToTimestamp`, `renderMarkersList`, …) is unchanged for `renderer.js`/`steps-view.js`/`analysis-view.js`. |
+| `views/flow-view-apps.js` | Pure per-app colour (`appColor`), display label (`appLabel`), and the timeline legend (`renderLegend`). No DOM/state coupling back into the Flow view. |
+| `views/flow-view-video.js` | The video↔timeline bridge — video-start derivation, video↔session-time conversion, the playhead, seeking (+ the no-video playhead fallback), watch-a-step playback, and the interactive video re-sync. Self-wires `#video` timeupdate + `#btn-sync-video`; `loadSessionIntoView` injected via `initVideo()`. Required by flow-view + the screenshots/markers modules (`seekToTimestamp`). |
+| `views/flow-view-screenshots.js` | The screenshot surfaces — side-panel thumbnail grid, full-pane gallery (arrow-key stepping, auto-advance, aHash near-duplicate folding), star-for-report, the lazy hover thumb, and the guarded open-in-OS-viewer path. Owns its own state; self-wires `#btn-open-gallery`; `require()`s `flow-view-video.js`. |
+| `views/flow-view-markers.js` | The markers side-panel + unbracketed-session recovery — marker-edit resolution (effective label/timestamp/deleted), the markers list, **suggested markers** (dashed `.tl-suggested` bars + Accept/Dismiss rows, [ADR-0017](../adr/0017-suggested-markers.md)), the **anchor-candidates** panel ([ADR-0018](../adr/0018-anchor-candidates.md)), and per-marker adjust/delete/rename. flow-view consumes `effectiveLabel`/`visibleMarkerSuggestions` (the timeline overlay); `renderTimeline` injected via `initMarkers()`. |
 | `views/steps-view.js` | Steps level — step list/detail, step CRUD, the **Flat / Aligned** reading toggle (consensus backbone, curate-one→propagate, exceptions — [ADR-0015](../adr/0015-intra-session-repetition-alignment.md)), the ignored-apps dialog. |
 | `views/phases-view.js` | Phases level — phase list/detail, phase CRUD, grouping suggestions. |
 | `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)), plus the €-ROI panel (§11c) rendering `analysis.json`'s `roi` band with the `roi_inputs` analyst-assumption + per-segment "tune" forms (persisted via the undo path; re-analyze recomputes the €). |
@@ -126,6 +130,18 @@ already parsed when `renderer.js` pulls it in (`flow-view.js`, `template-view.js
 and destructured by `renderer.js` so call sites stay unchanged (e.g.
 `renderTimeline` / `renderMarkersList` from `flow-view.js` are wired into the
 level switcher and the state bus).
+
+The **same injection pattern is used one level down**, inside the Flow view:
+`flow-view.js` `require()`s its four `flow-view-*` helpers and, where a helper
+needs a function that lives back in the hub, injects it at boot rather than
+`require()`ing the hub (which would cycle) — `initVideo({ loadSessionIntoView })`
+and `initMarkers({ renderTimeline })`. The helpers in turn `require()` each other
+only one-way (`screenshots`→`video`, `markers`→`video`), so the graph stays
+acyclic. `flow-view.js` re-exports the helpers' public entry points
+(`seekToTimestamp`, `renderMarkersList`, `renderAnchorCandidates`,
+`videoTimeToSessionTs`, `watchStep`, …) on its own surface, so `renderer.js` /
+`steps-view.js` / `analysis-view.js` import them from `flow-view.js` exactly as
+before.
 
 `ipc.js` centralises the `viewer:*` channel strings: a typo'd channel is a
 missing export, caught at the call site instead of failing silently at runtime.
