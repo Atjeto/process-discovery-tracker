@@ -67,6 +67,7 @@ code as it is today.
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Error messages and diagnostics |
 | [Security-QA.md](Security-QA.md) | One-page Q&A for a corporate security review |
 | [SPEC-DEFERRED.md](SPEC-DEFERRED.md) | Features intentionally deferred past v1.0 |
+| [REAL-VALUE-TESTING.md](REAL-VALUE-TESTING.md) | The method for getting *real* UIA values into vocab/template authoring (§11d) and calibration (§11b) — probe live apps + drive the real recorder |
 | [interaction-recorder.md](interaction-recorder.md) | Design of the C# UI Automation recorder |
 | [adr/0001-click-recorder-sidecar-language.md](adr/0001-click-recorder-sidecar-language.md) | ADR — why the recorder is C#, not Python |
 | [adr/0002-app-vocabularies.md](adr/0002-app-vocabularies.md) | ADR — why the App Vocabulary layer exists |
