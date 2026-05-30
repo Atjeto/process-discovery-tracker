@@ -1,0 +1,85 @@
+# Salesforce — Create Account (Process Template, §11d).
+#
+# Canonical process keyed to REAL signatures probed live from a Salesforce
+# Developer Edition "New Account" Lightning form on 2026-05-30
+# (docs/REAL-VALUE-TESTING.md). Pass to normalize with
+#   --canonical normalization/process_templates/salesforce-create-account.yaml
+# Pairs with the salesforce.yaml App Vocabulary.
+#
+# Lightning auto-generates volatile automation_ids, so steps match on the stable
+# field-label NAME. Scoped by window_title_regex so Chrome/Edge both work; each
+# account created is one case, anchored on the Account Name typed.
+canonical_process:
+  id: "salesforce-create-account"
+  name: "Salesforce — Create Account"
+  version: 1
+  owners: ["pdt"]
+
+  case_anchor:
+    field: "name"
+    equals: "Account Name"
+    case_label_from: "value"
+    min_case_interactions: 2
+    min_case_duration_ms: 1000
+
+  phases:
+    - phase_id: "identify"
+      name: "Identify account"
+      step_ids: ["enter-name", "enter-phone", "enter-website"]
+    - phase_id: "classify"
+      name: "Classify"
+      step_ids: ["set-type", "set-industry"]
+    - phase_id: "address"
+      name: "Billing address"
+      step_ids: ["billing-street", "billing-city", "billing-country"]
+    - phase_id: "save"
+      name: "Save"
+      step_ids: ["save"]
+
+  steps:
+    - step_id: "enter-name"
+      name: "Enter account name"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "Edit", name: "Account Name" }
+    - step_id: "enter-phone"
+      name: "Enter phone"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "Edit", name: "Phone" }
+    - step_id: "enter-website"
+      name: "Enter website"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "Edit", name: "Website" }
+    - step_id: "set-type"
+      name: "Set type"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "ComboBox", name: "Type" }
+    - step_id: "set-industry"
+      name: "Set industry"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "ComboBox", name: "Industry" }
+    - step_id: "billing-street"
+      name: "Enter billing street"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "Edit", name: "Billing Street" }
+    - step_id: "billing-city"
+      name: "Enter billing city"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "Edit", name: "Billing City" }
+    - step_id: "billing-country"
+      name: "Set billing country"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "ComboBox", name: "Billing Country" }
+    - step_id: "save"
+      name: "Save account"
+      boundary: "single"
+      match:
+        - window_title_regex: ".*Salesforce.*"
+          interaction: { control_type: "Button", name: "Save" }

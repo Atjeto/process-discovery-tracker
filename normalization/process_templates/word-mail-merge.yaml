@@ -1,0 +1,48 @@
+# Word — Mail Merge (Process Template, §11d).
+#
+# Canonical process keyed to REAL signatures probed live from the Word Mailings
+# ribbon on 2026-05-30 (docs/REAL-VALUE-TESTING.md). Pass to normalize with
+#   --canonical normalization/process_templates/word-mail-merge.yaml
+# Pairs with the word.yaml App Vocabulary.
+#
+# Matches on Word-unique MailMerge* idMso automation_ids, so no process_name scope
+# is needed.
+canonical_process:
+  id: "word-mail-merge"
+  name: "Word — Mail Merge"
+  version: 1
+  owners: ["pdt"]
+
+  phases:
+    - phase_id: "setup"
+      name: "Set up merge"
+      step_ids: ["start-merge", "select-recipients"]
+    - phase_id: "compose"
+      name: "Insert fields"
+      step_ids: ["insert-merge-field", "preview"]
+    - phase_id: "finish"
+      name: "Finish"
+      step_ids: ["finish-merge"]
+
+  steps:
+    - step_id: "start-merge"
+      name: "Start mail merge"
+      match:
+        - interaction: { control_type: "MenuItem", automation_id: "MailMergeStartMailMergeMenu" }
+    - step_id: "select-recipients"
+      name: "Select recipients"
+      match:
+        - interaction: { control_type: "MenuItem", automation_id: "MailMergeSelectRecipients" }
+    - step_id: "insert-merge-field"
+      name: "Insert merge field"
+      match:
+        - interaction: { control_type: "Button", automation_id: "MailMergeMergeFieldInsert" }
+    - step_id: "preview"
+      name: "Preview results"
+      match:
+        - interaction: { control_type: "Button", automation_id: "MailMergeResultsPreview" }
+    - step_id: "finish-merge"
+      name: "Finish & merge"
+      boundary: "single"
+      match:
+        - interaction: { control_type: "MenuItem", automation_id: "MailMergeFinishAndMergeMenu" }

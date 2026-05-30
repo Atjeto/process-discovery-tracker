@@ -1,0 +1,44 @@
+# Outlook — Send Email (Process Template, §11d).
+#
+# Canonical process keyed to REAL signatures probed live from the classic Outlook
+# compose inspector on 2026-05-30 (docs/REAL-VALUE-TESTING.md). Pass to normalize
+# with --canonical normalization/process_templates/outlook-send-email.yaml
+# Pairs with the outlook.yaml App Vocabulary.
+#
+# Matches on Outlook's command-ID controls (To=4117, Subject=4101, Send=Pane 4256)
+# and the _WwG body editor — all classic-Outlook-unique, so no process_name scope
+# is needed (and process_name match is case-sensitive, which the recorder's
+# "OUTLOOK.EXE" casing would otherwise fight).
+canonical_process:
+  id: "outlook-send-email"
+  name: "Outlook — Send Email"
+  version: 1
+  owners: ["pdt"]
+
+  phases:
+    - phase_id: "compose"
+      name: "Compose"
+      step_ids: ["enter-recipient", "enter-subject", "enter-body"]
+    - phase_id: "send"
+      name: "Send"
+      step_ids: ["send"]
+
+  steps:
+    - step_id: "enter-recipient"
+      name: "Enter recipient"
+      match:
+        - interaction: { control_type: "Edit", automation_id: "4117" }
+    - step_id: "enter-subject"
+      name: "Enter subject"
+      match:
+        - interaction: { control_type: "Edit", automation_id: "4101" }
+    - step_id: "enter-body"
+      name: "Write message body"
+      match:
+        - interaction: { control_type: "Document", class_name: "_WwG" }
+        - interaction: { control_type: "Edit", automation_id: "Body" }
+    - step_id: "send"
+      name: "Send email"
+      boundary: "single"
+      match:
+        - interaction: { control_type: "Pane", automation_id: "4256" }
