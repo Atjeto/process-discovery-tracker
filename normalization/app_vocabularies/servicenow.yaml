@@ -1,0 +1,101 @@
+# ServiceNow (Incident) App Vocabulary — ADR-0002.
+#
+# REAL-VALUE mapping (§11d). Probed live from a ServiceNow Personal Developer
+# Instance — the classic Incident form (/incident.do) — running in Chrome on
+# 2026-05-30 (see docs/REAL-VALUE-TESTING.md). ServiceNow exposes its stable
+# element ids as the UIA automation_id (incident.<field>, sys_display.incident.*
+# for reference fields, sysverb_insert / resolve_incident for UI actions);
+# framework_id is "Chrome" (web content) and class is "form-control".
+#
+# Browser-agnostic: scoped on window_title only (no process_name), so it matches
+# ServiceNow in Chrome OR Edge and complements the browser-chrome vocabs. These
+# OOB incident ids are stable across ServiceNow instances; re-probe if a customer
+# has heavily personalised the form.
+app_vocabulary:
+  id: "servicenow"
+  name: "ServiceNow (Incident)"
+  version: 1
+
+  scope:
+    window_title_regex: ".*ServiceNow.*"
+
+  screens:
+    - id: "incident"
+      name: "Incident form"
+      window_title_regex: ".*Incident.*ServiceNow.*"
+
+  interactions:
+    # --- Incident fields (nouns; the step namer supplies the verb) ----
+    - signature: { control_type: "Edit", automation_id: "incident.short_description" }
+      name: "Short description"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "sys_display.incident.caller_id" }
+      name: "Caller"
+      screen: "incident"
+    - signature: { control_type: "ComboBox", automation_id: "incident.category" }
+      name: "Category"
+      screen: "incident"
+    - signature: { control_type: "ComboBox", automation_id: "incident.subcategory" }
+      name: "Subcategory"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "incident.description" }
+      name: "Description"
+      screen: "incident"
+    - signature: { control_type: "ComboBox", automation_id: "incident.contact_type" }
+      name: "Channel"
+      screen: "incident"
+    - signature: { control_type: "ComboBox", automation_id: "incident.state" }
+      name: "State"
+      screen: "incident"
+    - signature: { control_type: "ComboBox", automation_id: "incident.impact" }
+      name: "Impact"
+      screen: "incident"
+    - signature: { control_type: "ComboBox", automation_id: "incident.urgency" }
+      name: "Urgency"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "sys_display.incident.assignment_group" }
+      name: "Assignment group"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "sys_display.incident.assigned_to" }
+      name: "Assigned to"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "sys_display.incident.cmdb_ci" }
+      name: "Configuration item"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "incident.comments" }
+      name: "Additional comments"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "incident.work_notes" }
+      name: "Work notes"
+      screen: "incident"
+
+    # --- UI actions --------------------------------------------------
+    - signature: { control_type: "Button", automation_id: "sysverb_insert" }
+      name: "Submit incident"
+      screen: "incident"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "sysverb_insert_bottom" }
+      name: "Submit incident"
+      screen: "incident"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "resolve_incident" }
+      name: "Resolve incident"
+      screen: "incident"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "resolve_incident_bottom" }
+      name: "Resolve incident"
+      screen: "incident"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "header_add_attachment" }
+      name: "Manage attachments"
+      screen: "incident"
+    - signature: { control_type: "Button", automation_id: "lookup.incident.caller_id" }
+      name: "Look up caller"
+      screen: "incident"
+    - signature: { control_type: "Button", automation_id: "lookup.incident.assignment_group" }
+      name: "Look up assignment group"
+      screen: "incident"

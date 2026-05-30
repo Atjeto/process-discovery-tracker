@@ -6,7 +6,7 @@
     "start_activities": 1
   },
   "meta": {
-    "app_vocabulary_matches": 56,
+    "app_vocabulary_matches": 21,
     "case_count": 3,
     "collapsed_activity_count": 15,
     "drift_count": 0,
@@ -43,8 +43,8 @@
       "Salesforce: Enter Shipping address",
       "Salesforce: Enter Unit price",
       "Salesforce: Open customer record",
-      "Salesforce: Run customer search",
-      "Salesforce: Save order"
+      "Salesforce: Save order",
+      "Salesforce: Search"
     ]
   }
 }

@@ -1,78 +1,85 @@
-# Salesforce (web, Chrome) App Vocabulary — ADR-0002.
+# Salesforce (Lightning) App Vocabulary — ADR-0002.
 #
-# Pre-built starter vocabulary (§11d). Bootstrapped from the committed
-# example-aggregate order-to-cash sessions with
-#   normalize.py <session> --bootstrap-vocab-out salesforce.yaml --vocab-id salesforce
-# then curated (meaningful names + screens + flags). The signatures use
-# control_type + automation_id + name (NEVER CSS selectors); retune the
-# automation_id values to your tenant's DOM before a real engagement.
+# REAL-VALUE mapping (§11d). Probed live from a Salesforce Developer Edition org —
+# the Lightning "New Account" create form — in Chrome on 2026-05-30 (see
+# docs/REAL-VALUE-TESTING.md).
+#
+# KEY DIFFERENCE from Office/ServiceNow: Salesforce Lightning AUTO-GENERATES its
+# automation_ids per render (input-378, combobox-button-411, ...) — they are
+# VOLATILE and must NOT appear in signatures. Signatures key on control_type +
+# the accessible NAME (the field label, which is stable), the same way chrome.yaml
+# does. framework_id "Chrome"; class "slds-input" / "slds-combobox__input…".
+# Browser-agnostic (window_title scope only).
+#
+# Covers the New Account form; New Case / New Contact follow the same label-based
+# pattern — probe and add per object as the rollout needs them.
 app_vocabulary:
   id: "salesforce"
-  name: "Salesforce (web)"
-  version: 1
+  name: "Salesforce (Lightning)"
+  version: 2
 
   scope:
-    process_name: "chrome.exe"
-    window_title_regex: ".*Salesforce -.*"
+    window_title_regex: ".*Salesforce.*"
 
   screens:
-    - id: "account-lookup"
-      name: "Account lookup"
-      window_title_regex: ".*Salesforce - Account lookup.*"
-    - id: "credit-check"
-      name: "Credit check"
-      window_title_regex: ".*Salesforce - Credit check.*"
-    - id: "order"
-      name: "Order entry"
-      window_title_regex: ".*Salesforce - Order #.*"
+    - id: "account-new"
+      name: "New Account"
+      window_title_regex: ".*New Account.*Salesforce.*"
 
   interactions:
-    # --- Account lookup ---------------------------------------------
-    # Field names are nouns: the step namer supplies the verb ("Enter <value>
-    # in <field>"), so "Customer ID" reads as "Enter … in Customer ID" rather
-    # than doubling to "Enter Enter customer ID".
-    - signature: { control_type: "Edit", automation_id: "customer-id-field" }
-      name: "Customer ID"
-      screen: "account-lookup"
-    - signature: { control_type: "Button", automation_id: "search" }
-      name: "Run customer search"
-      screen: "account-lookup"
-    - signature: { control_type: "DataItem", automation_id: "customer-result-row" }
-      name: "Select customer from results"
-      screen: "account-lookup"
-    - signature: { control_type: "Button", automation_id: "open-customer-record" }
-      name: "Open customer record"
-      screen: "account-lookup"
+    # --- New Account fields (label-keyed; auto-generated aids are volatile) ---
+    - signature: { control_type: "Edit", name: "Account Name" }
+      name: "Account name"
+      screen: "account-new"
+    - signature: { control_type: "Edit", name: "Phone" }
+      name: "Phone"
+      screen: "account-new"
+    - signature: { control_type: "Edit", name: "Website" }
+      name: "Website"
+      screen: "account-new"
+    - signature: { control_type: "Edit", name: "Account Number" }
+      name: "Account number"
+      screen: "account-new"
+    - signature: { control_type: "ComboBox", name: "Type" }
+      name: "Type"
+      screen: "account-new"
+    - signature: { control_type: "ComboBox", name: "Industry" }
+      name: "Industry"
+      screen: "account-new"
+    - signature: { control_type: "ComboBox", name: "Rating" }
+      name: "Rating"
+      screen: "account-new"
+    - signature: { control_type: "ComboBox", name: "Parent Account" }
+      name: "Parent account"
+      screen: "account-new"
+    - signature: { control_type: "ComboBox", name: "Billing Country" }
+      name: "Billing country"
+      screen: "account-new"
+    - signature: { control_type: "Edit", name: "Billing Street" }
+      name: "Billing street"
+      screen: "account-new"
+    - signature: { control_type: "Edit", name: "Billing City" }
+      name: "Billing city"
+      screen: "account-new"
+    - signature: { control_type: "ComboBox", name: "Billing State/Province" }
+      name: "Billing state/province"
+      screen: "account-new"
+    - signature: { control_type: "Edit", name: "Billing Zip/Postal Code" }
+      name: "Billing ZIP/postal code"
+      screen: "account-new"
+    - signature: { control_type: "Edit", name: "Description" }
+      name: "Description"
+      screen: "account-new"
 
-    # --- Credit check -----------------------------------------------
-    - signature: { control_type: "Button", automation_id: "run-credit-check" }
-      name: "Run credit check"
-      screen: "credit-check"
-    - signature: { control_type: "DataItem", automation_id: "credit-rating" }
-      name: "Credit rating"
-      screen: "credit-check"
-    - signature: { control_type: "Button", automation_id: "approve-credit" }
-      name: "Approve credit"
-      screen: "credit-check"
-
-    # --- Order entry ------------------------------------------------
-    - signature: { control_type: "Edit", automation_id: "product-code" }
-      name: "Product code"
-      screen: "order"
-    - signature: { control_type: "Edit", automation_id: "quantity" }
-      name: "Quantity"
-      screen: "order"
-    - signature: { control_type: "Edit", automation_id: "unit-price" }
-      name: "Unit price"
-      screen: "order"
-    - signature: { control_type: "Edit", automation_id: "shipping-address" }
-      name: "Shipping address"
-      screen: "order"
-    - signature: { control_type: "ComboBox", automation_id: "delivery-method" }
-      name: "Delivery method"
-      screen: "order"
-    - signature: { control_type: "Button", automation_id: "save-order" }
-      name: "Save order"
-      screen: "order"
+    # --- Actions -----------------------------------------------------
+    - signature: { control_type: "Button", name: "Save" }
+      name: "Save record"
+      screen: "account-new"
       flags:
         automation_candidate: true
+    - signature: { control_type: "Button", name: "Save & New" }
+      name: "Save and new"
+      screen: "account-new"
+    - signature: { control_type: "Button", name: "Cancel" }
+      name: "Cancel"
+      screen: "account-new"
