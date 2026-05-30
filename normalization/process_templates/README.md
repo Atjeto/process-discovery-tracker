@@ -25,6 +25,16 @@ step whose `match` rule fires; `case_anchor` (where present) makes each repetiti
 | `salesforce-create-account.yaml` | Create Account | Lightning field labels (aids are volatile) |
 | `outlook-send-email.yaml` | Send Email | Outlook command ids (`4117`/`4101`/`4256`) + `_WwG` body |
 | `word-mail-merge.yaml` | Mail Merge | Word `MailMerge*` idMso |
+| `jira-create-issue.yaml` **(DRAFT)** | Create Issue | Jira field labels — **doc-derived, NOT probed** (see below) |
+| `zendesk-create-ticket.yaml` **(DRAFT)** | Create Ticket | Zendesk field labels — **doc-derived, NOT probed** (see below) |
+
+> **DRAFT doc-derived templates (§11d).** `jira-create-issue` and
+> `zendesk-create-ticket` were authored from Atlassian/Zendesk docs, **not** a live
+> UIA probe; their `match` blocks key on provisional **label-based** signatures
+> (paired with the DRAFT `jira.yaml` / `zendesk.yaml` vocabs). Confirm/replace with
+> the ~2-minute probe in
+> [`docs/To-Do/JIRA-ZENDESK-PROBE-CHEATSHEET.md`](../../docs/To-Do/JIRA-ZENDESK-PROBE-CHEATSHEET.md),
+> then drop the draft flag.
 
 ## Schema (per [canonical_match.py](../canonical_match.py))
 

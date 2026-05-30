@@ -1,0 +1,94 @@
+# Zendesk (Support / Agent Workspace) App Vocabulary — ADR-0002.
+#
+# ⚠️ DRAFT — DOC-DERIVED SKELETON, NOT LIVE-PROBED (§11d fallback).
+# ---------------------------------------------------------------------------
+# Unlike servicenow.yaml / salesforce.yaml (probed live this cycle), the Zendesk
+# new-ticket form was NOT reachable for a live UIA probe when this was authored
+# (no logged-in Zendesk tab open on the dev box). The field set + labels below are
+# DERIVED FROM ZENDESK DOCS ("About ticket fields" — the standard agent ticket
+# fields), not from a UIA walk. Every `signature.name` is the *visible field
+# label*, used here as the ASSUMED accessible UIA `name` — the same label-keyed
+# approach salesforce.yaml proved works for a React app. THE LIVE PROBE MUST
+# CONFIRM THESE before this loses its draft flag. Run the 2-minute probe per
+# docs/To-Do/JIRA-ZENDESK-PROBE-CHEATSHEET.md (foreground-watcher
+# _pdt_verify/probe_web_uia.ps1), then replace the PROVISIONAL signatures with the
+# harvested control_type/name (Zendesk is Ember — expect auto-generated volatile
+# ids that must NOT go in a signature, exactly like Salesforce).
+#
+# WHY THIS IS SAFE TO SHIP AS A DRAFT: signatures match on exact equality, so a
+# wrong label guess simply fails to match (under-coverage) — it can never MIS-name
+# a control. That is the opposite of the invented-automation_id fiction §11d
+# removed. Worst case here is "named nothing," never "named wrong."
+#
+# PROBE-UNCERTAIN items are tagged `# PROBE:` inline:
+#   - control_type for the dropdowns (Status / Type / Priority) and the
+#     Requester / Assignee search pickers: Garden Select widgets usually surface
+#     as ComboBox, but a button-trigger picker would be Button.
+#   - Description (the comment composer) is rich text — may surface as Edit,
+#     Document, or Group rather than Edit.
+#   - the window_title scope: confirm the Agent Workspace tab-title pattern. It is
+#     ASSUMED to contain "Zendesk"; some accounts brand the title with the help-
+#     desk/account name and may NOT include the literal word — re-scope if so.
+#   - the submit button label is status-dependent ("Submit as New" / "Submit as
+#     Open" …); both a status-specific and a bare "Submit" entry are included.
+#
+# Browser-agnostic: window_title scope only (no process_name), so it matches
+# Zendesk in Chrome OR Edge and complements the browser-chrome vocabs.
+app_vocabulary:
+  id: "zendesk"
+  name: "Zendesk (Support) — DRAFT doc-derived"
+  version: 1
+
+  scope:
+    window_title_regex: ".*Zendesk.*"   # PROBE: confirm tab-title pattern (may be account-branded)
+
+  screens:
+    - id: "ticket-new"
+      name: "New ticket"
+      # PROBE: confirm the new-ticket tab title (e.g. ".*New ticket.*Zendesk.*").
+      window_title_regex: ".*[Tt]icket.*Zendesk.*"
+
+  interactions:
+    # --- New-ticket fields (PROVISIONAL label-keyed; confirm via probe) ------
+    - signature: { control_type: "ComboBox", name: "Requester" }   # PROBE: search picker control_type
+      name: "Requester"
+      screen: "ticket-new"
+    - signature: { control_type: "ComboBox", name: "Assignee" }   # PROBE: search picker control_type
+      name: "Assignee"
+      screen: "ticket-new"
+    - signature: { control_type: "Edit", name: "Subject" }
+      name: "Subject"
+      screen: "ticket-new"
+    - signature: { control_type: "Edit", name: "Description" }   # PROBE: rich composer — may be Document/Group
+      name: "Description"
+      screen: "ticket-new"
+    - signature: { control_type: "ComboBox", name: "Type" }
+      name: "Type"
+      screen: "ticket-new"
+    - signature: { control_type: "ComboBox", name: "Priority" }
+      name: "Priority"
+      screen: "ticket-new"
+    - signature: { control_type: "ComboBox", name: "Status" }
+      name: "Status"
+      screen: "ticket-new"
+    - signature: { control_type: "ComboBox", name: "Tags" }   # PROBE: token input — ComboBox or Edit?
+      name: "Tags"
+      screen: "ticket-new"
+    - signature: { control_type: "ComboBox", name: "Group" }
+      name: "Group"
+      screen: "ticket-new"
+
+    # --- Actions (PROVISIONAL) ---------------------------------------------
+    # PROBE: the primary submit reads "Submit as <Status>" (the split-button
+    # default). Both the New-status form and a bare "Submit" are listed; keep
+    # whichever the probe confirms.
+    - signature: { control_type: "Button", name: "Submit as New" }
+      name: "Submit ticket"
+      screen: "ticket-new"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", name: "Submit" }
+      name: "Submit ticket"
+      screen: "ticket-new"
+      flags:
+        automation_candidate: true

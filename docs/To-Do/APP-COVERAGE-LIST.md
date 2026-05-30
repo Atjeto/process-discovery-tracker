@@ -23,8 +23,20 @@ Nothing here is probed or written into a vocab until this list is approved.
 - **Process templates** — create/resolve incident, create account, send email, mail-merge (`../../normalization/process_templates/`).
 - **§11b** — over-segmentation root-caused ([SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md)); flip gated on real-corpus + UI validation.
 
+**Jira + Zendesk — DRAFT doc-derived skeletons committed; live probe pending (2026-05-30):**
+- The live UIA probe was **not** available this pass (0 logged-in browser windows on the dev box;
+  a headless agent can't reach the owner's bot-protected SaaS logins), so the §11d **fallback**
+  ran: `app_vocabularies/{jira,zendesk}.yaml` + `process_templates/{jira-create-issue,
+  zendesk-create-ticket}.yaml` authored from Atlassian/Zendesk docs, **flagged `⚠️ DRAFT —
+  DOC-DERIVED, NOT LIVE-PROBED`**, all signatures label-keyed and `# PROBE:`-tagged where uncertain.
+- Safe to ship because label signatures match on **exact equality** → a wrong guess under-matches,
+  never mis-names (unlike the invented-`aid` fiction §11d removed). Inert on the golden demo corpus.
+- Reusable foreground-watcher `_pdt_verify/probe_web_uia.ps1` + cheat-sheet
+  [JIRA-ZENDESK-PROBE-CHEATSHEET.md](JIRA-ZENDESK-PROBE-CHEATSHEET.md). **Remaining = a ~2-min
+  owner live probe per app** to confirm/replace the provisional signatures and drop the draft flag.
+
 **Queued for the apps session (need driving / a reachable instance):**
-- **Tier B** — SAP (Fiori trial), Jira, Zendesk.
+- **Tier B** — SAP (Fiori trial). *(Jira/Zendesk: skeletons done; awaiting the live probe above.)*
 - **Tier C** — Workday, Oracle, SAP-GUI, Concur — **deliberately NOT doc-derived**: without an instance the UIA ids would be guesses (the fiction we just removed).
 
 ---
