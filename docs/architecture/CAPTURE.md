@@ -122,8 +122,10 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   `wfica32`, `ConsoleWindowClass`) is the reliable tell, so class signatures win
   over `framework_id`. This is *desktop-coverage hardening*: a `java`/`qt` tally
   tells the analyst to enable the Java Access Bridge / Qt a11y plugin, and a
-  `remote`/`terminal` tally says structured UIA will be thin there so the local
-  video backstop carries it. It is distinct from the recognition layer's *web-app*
+  `remote`/`terminal` tally says structured UIA will be thin there so the
+  run-inside-the-session rule + the local video backstop carry it (operational
+  rules in [DEPLOY.md](../DEPLOY.md#remote--virtualized-apps-citrix--rdp--vmware--11e)).
+  It is distinct from the recognition layer's *web-app*
   `framework` axis (`chromium` / `ag-grid` / `office365`), which is mined from
   class-name signatures downstream in `recognition.py` / `recognition.js`.
 - **Identity ladder + per-element confidence (§11e).** Each interaction also

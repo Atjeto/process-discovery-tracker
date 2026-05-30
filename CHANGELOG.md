@@ -8,6 +8,39 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
+  The C# recorder now reports per-element capture quality so the moat degrades
+  *honestly* instead of silently producing thin captures on hard frameworks.
+  Every interaction gains four additive signal fields (following the
+  `coverage_hint` precedent — emitted, allowlisted, schema'd, surfaced in the
+  structure-only `scripts/inspect-events.js`, consumed by the analyst not the
+  pipeline):
+  - `framework` — a **normalized UI-toolkit** detection
+    (`win32`/`winforms`/`wpf`/`winui`/`chromium`/`java`/`javafx`/`qt`/`remote`/
+    `terminal`/`unknown`) re-derived from `framework_id` **+** the window class,
+    so toolkits that misreport their `framework_id` (Java/Qt report `Win32`;
+    Citrix/RDP wrap a foreign session) are recognised by their platform-stable
+    window class. Distinct from the recognition layer's web-app `framework` axis.
+  - `identity_source` — the **identity-ladder rung**
+    (`automation_id` → `name` → `class_name` → `ocr` → `none`).
+  - `confidence` — **per-element capture confidence** in `[0,1]`, blending the
+    rung with the toolkit (capped at `0.30` on `remote`/`terminal` surfaces).
+  - `value_source` — flags a value **recovered** off the primary ValuePattern
+    path via `TextPattern` (`text_pattern`), generalizing the AG-Grid fix.
+  - **OCR last resort** (`ocr_text`, default-off via `interactions.ocr`): an
+    identityless element's on-screen region is captured and labelled via
+    `Windows.Media.Ocr` — a Win10+ **system API** (on-device, no bundle
+    inflation; not Tesseract). A genuine last resort, gated to
+    `identity_source == "none"`.
+  - **Deployment rules** ([DEPLOY.md](docs/DEPLOY.md)): run the recorder
+    *inside* a Citrix/RDP session (a `framework: "remote"` capture means you're
+    on the wrong side of the glass), and lean on the **local video backstop**
+    where structured capture can't reach.
+  - The recorder's decision logic is pinned by the new `Recorder.Tests`
+    (framework detection, identity ladder, confidence, value recovery, OCR
+    gating, and a headless OCR-engine round-trip). The single-file build moved to
+    TFM `net8.0-windows10.0.19041.0` for the WinRT surface (publish + startup
+    verified). Live validation against real Java/Qt/Citrix apps is deferred.
 - **Pre-built App Vocabularies (§11d, no-LLM bootstrap).** Ships a curated
   starter set under `normalization/app_vocabularies/` — `salesforce.yaml`,
   `sap-gui.yaml`, `excel.yaml`, `outlook.yaml`, and a browser-chrome

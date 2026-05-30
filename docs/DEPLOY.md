@@ -45,6 +45,46 @@ fallbacks exist:
 
 The wake-up is also documented in [docs/architecture/CAPTURE.md](architecture/CAPTURE.md#chromium-accessibility-wake-up) for the engineering side.
 
+### Remote / virtualized apps (Citrix / RDP / VMware) — §11e
+
+A process running inside a **Citrix** published app, an **RDP** session, or a
+**VMware Horizon** desktop is, from the local machine's point of view, just a
+**video stream**. UIA on the client sees only the remoting host window — the
+real controls (buttons, fields, grids) are pixels inside it, with no structured
+identity. The recorder flags this: interactions from such a window carry
+`framework: "remote"` and a low `confidence` (see [CAPTURE.md](architecture/CAPTURE.md)).
+A capture that is mostly `framework: "remote"` is the signal you are **on the
+wrong side of the glass**.
+
+**The rule: run the recorder INSIDE the remote session, not on the local client.**
+Install the worker app on the Citrix server / RDP host / virtual desktop where
+the application actually runs, and capture there. Inside the session the
+application's UIA tree is local and rich again, exactly as if it ran on a
+physical machine. (Same posture as the browser case above: capture where the
+accessibility tree lives.)
+
+Where running inside the session isn't possible, fall back to the **local video
+backstop** below — you lose structured interactions for those spans but keep a
+reviewable recording.
+
+### Video backstop — when structured capture can't reach (§11e)
+
+PDT's target is **graceful, honest degradation**, not 100% structured capture.
+Some surfaces expose little or nothing to UIA even when captured correctly:
+remote sessions captured from the client side, terminal/console windows
+(`framework: "terminal"`), and legacy custom controls that implement no UIA
+provider. The recorder reports these honestly (low `framework` coverage / low
+`confidence`; an identityless element can be OCR-labelled only with
+`interactions.ocr` opted in, and even then weakly).
+
+For those spans the **local OBS video recording is the backstop**: enable OBS
+for the session (the team standard; tray → `Set up OBS recording…`), and the
+analyst reviews the video over the low-confidence regions the structured stream
+couldn't resolve. The video stays **on the device** — it is a local sidecar,
+never transmitted — preserving the air-gapped moat. Use the per-process
+`framework`/`confidence` tally (`scripts/inspect-events.js`) to find which spans
+need the video.
+
 ## Viewer (analyst machine)
 
 No prereqs. Python is bundled in the zip via Python embeddable — no host Python install required, no `pip install`.
