@@ -202,53 +202,18 @@ sess-0514 at **64 steps** (nothing flipped); `master` is local-only (not pushed)
 
 ---
 
-## 0.9 §11d Jira + Zendesk — doc-derived skeletons + probe harness — 2026-05-30 (latest)
+## 0.9 §11d Jira + Zendesk — BLOCKED, not started — 2026-05-30
 
-The two remaining easy Tier-B web apps (per [APP-COVERAGE-LIST.md](APP-COVERAGE-LIST.md))
-were taken as far as a headless agent honestly can. The **live UIA probe was not
-available** — a clean check found **0 Chrome/Edge browser windows** on the dev box
-(the 5 `chrome.exe` procs were background-only; no logged-in Jira/Zendesk tab to
-probe), and a headless agent can't reach the owner's bot-protected SaaS logins. So
-the **GUARANTEED FALLBACK** (the full autonomous PREP) ran instead of a live probe.
-Landed on `master` (branch `apps-jira-zendesk-prep`, fast-forwarded):
-
-- **DRAFT doc-derived vocab + template skeletons, clearly flagged NOT-probed** —
-  `app_vocabularies/{jira,zendesk}.yaml` +
-  `process_templates/{jira-create-issue,zendesk-create-ticket}.yaml`. Field set +
-  labels come from Atlassian/Zendesk docs (Jira Global Issue Create; Zendesk "About
-  ticket fields"), **not** a UIA walk. Every signature is **label-keyed**
-  (`control_type` + visible field label, the Salesforce-Lightning pattern for a
-  React/Ember app) and tagged `# PROBE:` where the control_type/scope is uncertain.
-  Headers carry a `⚠️ DRAFT — DOC-DERIVED, NOT LIVE-PROBED` banner and the
-  `app_vocabulary.name` / `canonical_process.name` carry a "DRAFT doc-derived" suffix.
-- **Why shipping doc-derived *label* skeletons is honest (vs. the invented-`aid`
-  fiction §11d removed):** signatures match on **exact equality**, so a wrong label
-  guess **under-matches** (names nothing) — it can never **mis-name**. The prior
-  fiction's invented `automation_id`s could assert a false identity; a wrong label
-  cannot. So these are safe to load by default (and are inert on the demo corpus).
-- **Reusable foreground-watcher probe** — `_pdt_verify/probe_web_uia.ps1`
-  generalises `probe_office_uia.ps1` to a **foreground browser window**: the owner
-  brings the create form forward, the script wakes the a11y tree (active FindAll
-  walk — can't pass `--force-renderer-accessibility` to a running Chrome) and prints
-  each control's real `Name/AutomationId/ControlType/FrameworkId/ClassName` + patterns,
-  then copy-paste-ready `- signature: {…}` lines (flagging volatile vs. stable aids).
-  Parses clean + smoke-tested under PS 5.1 (ASCII-only code strings — 5.1 treats
-  Unicode smart-quotes as string delimiters).
-- **Per-app cheat-sheet** — [JIRA-ZENDESK-PROBE-CHEATSHEET.md](JIRA-ZENDESK-PROBE-CHEATSHEET.md):
-  signup recap, where each create form is, the expected field set (provisional-signature
-  tables), the one-command probe, the fold-back recipe, and a durable copy of the
-  watcher source (it's out-of-repo, so won't be committed otherwise).
-- **Gates green:** lookup + `load_vocabularies` (10 vocabs, jira+zendesk present) +
-  `load_canonical` (both templates) all pass; scope isolation verified (no cross-app
-  bleed; inert on Salesforce/SAP demo titles); **golden 10/10 OK byte-for-byte**
-  (sess-0514 still 64 steps — nothing flipped); full pytest **314 passed / 10 skipped**.
-
-**Remaining = a ~2-minute owner step per app** (not headless-doable): open the create
-form in your logged-in Chrome, run `probe_web_uia.ps1 -TitleMatch "Jira"` /
-`"Zendesk"`, paste the harvested signatures over the PROVISIONAL ones, confirm the
-window-title scope (esp. Zendesk, which may be account-branded), drop the draft flag,
-re-validate, and move Jira/Zendesk to "probed live" in APP-COVERAGE-LIST. **SAP is a
-separate effort.** `master` stays local-only (not pushed).
+**Not done; nothing real was produced.** The precondition — free Jira + Zendesk
+accounts created and logged into Chrome on this box — was **never met**: a clean
+check found **0 logged-in browser sessions**, so there was nothing to probe. A first
+pass that committed **doc-guessed** vocab/template skeletons (commit `d8ddd3c`) was
+**reverted** — guessed UIA signatures are not a deliverable and don't belong on
+`master`. To do this for real: (1) create the two free accounts and log into the
+default Chrome, (2) run the ~2-minute live probe per app (the reusable
+foreground-watcher `_pdt_verify/probe_web_uia.ps1` is out-of-repo and works), then
+(3) author the vocabs against the **harvested** signatures. Until then Jira/Zendesk
+stay **"queued"** in [APP-COVERAGE-LIST.md](APP-COVERAGE-LIST.md).
 
 ---
 

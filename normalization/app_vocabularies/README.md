@@ -43,21 +43,3 @@ tenant/system before a real engagement:
    `app_vocabulary_matches` and per-app `vocab_coverage`.
 
 Or edit any of these as a form in the viewer's **App Library** tab.
-
-## DRAFT — doc-derived, awaiting a live probe (§11d)
-
-`jira.yaml` and `zendesk.yaml` are **draft skeletons authored from Atlassian /
-Zendesk docs, not from a live UIA probe** (no logged-in tab was reachable when they
-were written). Every signature is **label-keyed** (`control_type` + the visible
-field label — the Salesforce-Lightning pattern for a React/Ember app) and tagged
-`# PROBE:` where uncertain; the file headers carry a `⚠️ DRAFT` banner. They are safe
-to ship because a signature matches on **exact equality**, so a wrong label guess
-*under-matches* (names nothing) — it can never *mis-name* a control. Confirm/replace
-the provisional signatures with the ~2-minute live probe in
-[`docs/To-Do/JIRA-ZENDESK-PROBE-CHEATSHEET.md`](../../docs/To-Do/JIRA-ZENDESK-PROBE-CHEATSHEET.md)
-(`_pdt_verify/probe_web_uia.ps1`), then drop the draft flag.
-
-| File | App | Scope |
-|------|-----|-------|
-| `jira.yaml` *(DRAFT)* | Jira Cloud — Create-issue form (web) | `.*Jira.*` |
-| `zendesk.yaml` *(DRAFT)* | Zendesk Support — new-ticket form (web) | `.*Zendesk.*` |
