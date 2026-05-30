@@ -102,7 +102,7 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
 
 - `Program.cs` — entry point; an **NDJSON control loop** over stdin/stdout.
   Electron sends `hello` / `pause` / `resume` / `shutdown` (the `hello` carries
-  `verbose` and `debounce_ms`); the recorder emits `ready`, `interaction`,
+  `verbose`, `debounce_ms`, and `ocr`); the recorder emits `ready`, `interaction`,
   `stats`, and `warning` lines. The `stats` line carries throughput counters
   plus an `errors` count and a `last_error` snapshot.
 - `UiaSubscriber.cs` — subscribes to UI Automation events (invoke, selection,
@@ -150,6 +150,20 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   *clipboard* recovery are deliberately **not** done — descent would walk the tree
   on the interaction hot path, and clipboard scraping is a privacy hazard at odds
   with the air-gapped, structured-only moat.
+- **OCR last rung (§11e, default-off).** The bottom of the identity ladder: when an
+  element exposes **no** structured identity (`identity_source == "none"`) on a
+  session that opted in (`interactions.ocr: true`), the recorder captures the
+  element's on-screen region and recovers a text label via `Windows.Media.Ocr` — a
+  Win10+ **system API** (on-device, free, no bundle inflation, *not* Tesseract; see
+  [ADR-0023](../adr/0023-recorder-capture-confidence.md)). The label rides as
+  `ocr_text` and lifts the rung to `ocr` (confidence ≈ 0.25). `OcrBridge` exposes a
+  testable core (`RecognizePng`, pinned headlessly by rendering known text) and the
+  production `RecognizeScreenRegion` (GDI+ capture → core; its live end-to-end is
+  validated against real low-UIA apps later). It is **off by default** — the
+  screen-capture + OCR cost never touches an ordinary capture, and is only worth
+  enabling for a known low-UIA app (legacy custom controls, un-bridged Java/Qt).
+  `ocr_text` is captured content, so the structure-only `inspect-events.js` never
+  prints it.
 - **Chromium accessibility wake-up.** Chrome / Edge / Electron-based apps build
   their UIA accessibility tree **lazily** — without an external query, web
   content fires no UIA events and the recorder sees only the omnibox / native
@@ -238,3 +252,4 @@ variant at registration.
 | `interactions.exclude_processes` | `[]` | Process names the recorder skips. |
 | `interactions.verbose` | `false` | Forensic firehose — emit `focus_changed` / `text_changed` / per-keystroke `value_changed` (~3–5× events). |
 | `interactions.debounce_ms` | `750` | The recorder's `value_changed` coalescing window, passed to the sidecar in `hello`. |
+| `interactions.ocr` | `false` | §11e OCR last resort. When `true`, an identityless element's on-screen region is captured and OCR'd (`Windows.Media.Ocr`) for a `ocr_text` label. Off by default; enable only for a known low-UIA app. Passed to the sidecar in `hello`. |

@@ -57,9 +57,11 @@ function interactionEvent(sessionId, data) {
     // (automation_id/name/class_name/none) and `confidence` is the
     // per-element capture-confidence score in [0,1]. `value_source` flags a
     // value recovered off the primary ValuePattern path (text_pattern).
+    // `ocr_text` is a label recovered by the OCR last rung for an
+    // otherwise-identityless element (lifts identity_source to "ocr").
     // Without these allowlist entries the recorder's fields are silently
     // dropped before they reach events.jsonl.
-    "framework", "identity_source", "confidence", "value_source",
+    "framework", "identity_source", "confidence", "value_source", "ocr_text",
   ]);
   const shaped = {};
   for (const [k, v] of Object.entries(data)) {

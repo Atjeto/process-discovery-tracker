@@ -854,6 +854,7 @@ async function startRecorderForSession() {
       sessionId: session.sessionId,
       verbose: !!(config.interactions && config.interactions.verbose),
       debounceMs: config.interactions && config.interactions.debounce_ms,
+      ocr: !!(config.interactions && config.interactions.ocr),
       onEvent: (data) => {
         if (!tracker) return;
         try { tracker.fireInteraction(data); }

@@ -123,3 +123,18 @@ test("interactionEvent passes through value_source (recovered value flag)", () =
   assertEnvelope(ev, "interaction");
   assert.strictEqual(ev.data.value_source, "text_pattern");
 });
+
+test("interactionEvent passes through ocr_text (recovered label)", () => {
+  // ocr_text (§11e OCR last rung) is recorder-emitted for an identityless
+  // element; the allowlist must keep it or the recovered label is lost.
+  const ev = interactionEvent(SID, {
+    kind: "invoked",
+    control_type: "Custom",
+    identity_source: "ocr",
+    confidence: 0.25,
+    ocr_text: "Submit Claim",
+  });
+  assertEnvelope(ev, "interaction");
+  assert.strictEqual(ev.data.identity_source, "ocr");
+  assert.strictEqual(ev.data.ocr_text, "Submit Claim");
+});

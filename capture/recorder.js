@@ -99,7 +99,7 @@ function ensureRecorderExtracted({ bootLog, onStart } = {}) {
   });
 }
 
-function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, onEvent, onWarning, onStats, onExit, bootLog }) {
+function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, bootLog }) {
   const exe = recorderPath || resolveRecorderPath(bootLog);
   const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
@@ -160,13 +160,16 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, onEvent, 
   // Send hello. `verbose: true` opts into the raw firehose (focus_changed,
   // text_changed, per-keystroke value_changed) for forensic debugging.
   // `debounce_ms` tunes the value_changed coalescing window; the recorder
-  // falls back to its own default when the field is absent.
+  // falls back to its own default when the field is absent. `ocr: true`
+  // enables the §11e OCR last-resort rung for known low-UIA apps (default
+  // off -- trades latency on identityless elements for a recovered label).
   safeWrite({
     cmd: "hello",
     session_id: sessionId,
     schema_version: 1,
     verbose: !!verbose,
     debounce_ms: debounceMs,
+    ocr: !!ocr,
   });
 
   return {

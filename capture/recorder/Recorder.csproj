@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- The Windows-SDK version moniker (…10.0.19041.0) projects the WinRT
+         surface the §11e OCR last-resort bridge needs (Windows.Media.Ocr,
+         a Win10+ system API). It does NOT change the runtime floor for the
+         non-OCR path and adds no bundle (the OCR engine is a system
+         component). See ADR-0023. -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>false</UseWindowsForms>
@@ -24,5 +29,10 @@
        its sources out of the production recorder's default-glob compile set. -->
   <ItemGroup>
     <Compile Remove="Recorder.Tests\**\*.cs" />
+  </ItemGroup>
+  <!-- GDI+ screen-region capture for the §11e OCR last rung (default-off).
+       First-party Microsoft package over system GDI+; no native bundle. -->
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
   </ItemGroup>
 </Project>

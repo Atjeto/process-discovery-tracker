@@ -101,13 +101,19 @@ public static class Program {
                             dEl.TryGetInt32(out var dVal) && dVal > 0) {
                             debounceMs = dVal;
                         }
+                        // ocr enables the §11e last-resort OCR rung for this
+                        // session (default off). Only worth it on known
+                        // low-UIA apps; trades latency on identityless
+                        // elements for a recovered text label.
+                        var ocr = doc.RootElement.TryGetProperty("ocr", out var oEl) &&
+                                  oEl.ValueKind == JsonValueKind.True;
                         // A repeated hello must be idempotent: stop the prior
                         // subscriber first. Otherwise its UIA event handlers leak
                         // (they are never removed) and every interaction is
                         // captured TWICE -- a silent data-integrity bug found by
                         // the stress harness (4 invokes -> 8 events).
                         subscriber?.Stop();
-                        subscriber = new UiaSubscriber(options, onEvent, verbose, debounceMs);
+                        subscriber = new UiaSubscriber(options, onEvent, verbose, debounceMs, ocr);
                         subscriber.Start();
                         break;
                     }

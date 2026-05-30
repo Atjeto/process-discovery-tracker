@@ -145,6 +145,7 @@ public class UiaSubscriberTests {
     [InlineData("automation_id", "wpf", 0.95)]
     [InlineData("name", "chromium", 0.70)]
     [InlineData("class_name", "win32", 0.40)]
+    [InlineData("ocr", "win32", 0.25)]   // a recovered label
     [InlineData("none", "win32", 0.10)]
     // Remote/terminal cap: a strong rung is still capped at 0.30 because the
     // captured field is an unreliable proxy for the real (pixel) control.
@@ -152,9 +153,24 @@ public class UiaSubscriberTests {
     [InlineData("name", "terminal", 0.30)]
     // ...but the cap never RAISES a rung already below it.
     [InlineData("none", "terminal", 0.10)]
+    [InlineData("ocr", "terminal", 0.25)]
     public void ComputeConfidence_blends_rung_with_toolkit(
             string identitySource, string framework, double expected) {
         Assert.Equal(expected, UiaSubscriber.ComputeConfidence(identitySource, framework));
+    }
+
+    // Pins ShouldOcr: the last rung fires ONLY when OCR is enabled, the
+    // element has no structured identity, and there is a box to capture.
+    [Theory]
+    [InlineData("none", true, true, true)]      // the one firing case
+    [InlineData("none", true, false, false)]    // OCR disabled -> never
+    [InlineData("none", false, true, false)]    // no bounding box -> nothing to capture
+    [InlineData("name", true, true, false)]     // already has identity -> skip
+    [InlineData("class_name", true, true, false)]
+    [InlineData("automation_id", true, true, false)]
+    public void ShouldOcr_is_the_genuine_last_resort(
+            string identitySource, bool hasBounds, bool ocrEnabled, bool expected) {
+        Assert.Equal(expected, UiaSubscriber.ShouldOcr(identitySource, hasBounds, ocrEnabled));
     }
 
     // Pins CoalesceKeyFromProps: AutomationId wins, then Name+ClassName,

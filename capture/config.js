@@ -69,6 +69,13 @@ const DEFAULTS = {
        the final value, not one per keystroke. Passed to the recorder
        in the hello message. */
     debounce_ms: 750,
+    /* §11e OCR last resort. When true, an identityless element (no
+       AutomationId / Name / ClassName) has its on-screen region captured
+       and OCR'd (Windows.Media.Ocr) for a text label. Default OFF -- only
+       worth enabling for a known low-UIA app (legacy custom controls,
+       some Java/Qt), where it trades latency on those elements for a
+       recovered label. Passed to the recorder in the hello message. */
+    ocr: false,
   },
   /* Worker consent gate (§11f). Default "off" -> no prompt and the manifest
      records consent.required:false, preserving the pre-feature start flow.

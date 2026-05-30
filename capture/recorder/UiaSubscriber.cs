@@ -40,6 +40,10 @@ public sealed class UiaSubscriber {
     private readonly JsonSerializerOptions _opts;
     private readonly Action<object> _onEvent;
     private readonly bool _verbose;
+    // §11e OCR last rung. Non-null only when the session opted in (hello
+    // ocr:true); null keeps the screen-capture + OCR path completely out of
+    // an ordinary capture. See OcrBridge / ADR-0023.
+    private readonly OcrBridge? _ocr;
     private bool _started;
 
     // value_changed coalescer: per-element debouncer.
@@ -102,11 +106,14 @@ public sealed class UiaSubscriber {
         new PropertyCondition(AutomationElement.FrameworkIdProperty, "Chrome"));
 
     public UiaSubscriber(JsonSerializerOptions opts, Action<object> onEvent,
-                         bool verbose = false, int debounceMs = 750) {
+                         bool verbose = false, int debounceMs = 750, bool ocr = false) {
         _opts = opts;
         _onEvent = onEvent;
         _verbose = verbose;
         _valueCoalesceWindow = TimeSpan.FromMilliseconds(debounceMs > 0 ? debounceMs : 750);
+        // Bind the OCR engine once per session when opted in; an unavailable
+        // language pack leaves the bridge present-but-inert (Available=false).
+        _ocr = ocr ? new OcrBridge() : null;
     }
 
     /// <summary>Total BuildEvent failures since start (recorder stats line).</summary>
@@ -579,15 +586,29 @@ public sealed class UiaSubscriber {
             "automation_id" => 0.95,
             "name"          => 0.70,
             "class_name"    => 0.40,
+            "ocr"           => 0.25,   // a recovered label -- weak, but better than none
             _               => 0.10,   // "none"
         };
         // Remoted / terminal surfaces: the structured fields are unreliable
         // proxies for the real (pixel) control, so cap confidence low even
-        // when a field is present.
+        // when a field is present. (A no-op for the ocr/none rungs, which
+        // already sit below the cap.)
         if (framework == "remote" || framework == "terminal") {
             conf = Math.Min(conf, 0.30);
         }
         return Math.Round(conf, 2);
+    }
+
+    /// <summary>
+    /// Whether the OCR last rung should fire for this element (§11e). The
+    /// genuine last resort: only when OCR is enabled for the session, the
+    /// element has NO structured identity (identity_source == "none"), and
+    /// it has a usable on-screen bounding box to capture. This keeps the
+    /// expensive screen-capture + OCR path off every element that already
+    /// carries any identity at all. Pure.
+    /// </summary>
+    internal static bool ShouldOcr(string identitySource, bool hasBounds, bool ocrEnabled) {
+        return ocrEnabled && identitySource == "none" && hasBounds;
     }
 
     private object? BuildEvent(string kind, AutomationElement el, object? extra) {
@@ -633,6 +654,26 @@ public sealed class UiaSubscriber {
                 data.TryGetValue("automation_id", out var aidV) ? aidV as string : null,
                 data.TryGetValue("name", out var nmV) ? nmV as string : null,
                 data.TryGetValue("class_name", out var clsV) ? clsV as string : null);
+
+            // OCR last rung (§11e): an identityless element (no aid/name/
+            // class) on an OCR-enabled session -- capture its on-screen
+            // region and recover a text label. Default-off, so this whole
+            // block is skipped unless the analyst opted in for a known
+            // low-UIA app; bounded to identity_source=="none" so it never
+            // touches an element that already has any identity. The
+            // recovered text rides as `ocr_text` and lifts the rung to "ocr".
+            var ocrReady = _ocr != null && _ocr.Available;
+            var bounds = ocrReady ? TryGetBounds(el) : null;
+            if (ShouldOcr(identitySource, bounds.HasValue, ocrReady)) {
+                var b = bounds!.Value;
+                var label = _ocr!.RecognizeScreenRegion(b.x, b.y, b.w, b.h);
+                if (!string.IsNullOrEmpty(label)) {
+                    var (clamped, _) = ClampValue(label);
+                    data["ocr_text"] = clamped;
+                    identitySource = "ocr";
+                }
+            }
+
             data["identity_source"] = identitySource;
             data["confidence"] = ComputeConfidence(identitySource, data["framework"] as string);
 
@@ -707,6 +748,22 @@ public sealed class UiaSubscriber {
             using var p = System.Diagnostics.Process.GetProcessById(pid);
             return p.ProcessName + ".exe";
         } catch { return null; }
+    }
+
+    // Best-effort read of an element's on-screen bounding box for the OCR
+    // last rung. Null when UIA reports no / empty / off-screen (infinite)
+    // rectangle -- there is nothing to capture. RecognizeScreenRegion
+    // additionally bounds the size, so a bad box can't drive a huge grab.
+    private static (int x, int y, int w, int h)? TryGetBounds(AutomationElement el) {
+        try {
+            var r = el.Current.BoundingRectangle;
+            if (r.IsEmpty || r.Width < 1 || r.Height < 1) return null;
+            if (double.IsInfinity(r.X) || double.IsInfinity(r.Y) ||
+                double.IsInfinity(r.Width) || double.IsInfinity(r.Height)) return null;
+            return ((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height);
+        } catch {
+            return null;
+        }
     }
 
     private sealed class PendingValue {
