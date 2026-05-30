@@ -535,6 +535,11 @@ The non-`_`-prefixed keys are the standard `case_anchor` shape (see `normalizati
   "case_id": "uuid or null",
   "name": "string",
   "process_label": "string -- name with case values stripped, the value-free grouping key (ADR-0013)",
+  "grain_keys": {
+    "element": "string -- the field/control the step acted on (automation_id|name)",
+    "screen":  "string -- vocab screen_id, else window_title (the form/page)",
+    "app":     "string -- process_name (.exe stripped)"
+  },
   "description": "string",
   "time_range": { "start": "iso", "end": "iso" },
   "evidence": {
@@ -556,6 +561,19 @@ The non-`_`-prefixed keys are the standard `case_anchor` shape (see `normalizati
   "phase_id": "uuid or null"
 }
 ```
+
+`grain_keys` are the **UI-containment keys** the view-time grain roll-up groups
+on ([ADR-0024](../docs/adr/0024-step-grain-as-view-time-rollup.md)): a node/step
+at a chosen notch is a run of consecutive steps within a case that share the
+notch's key. The ladder is `element ⊂ screen ⊂ app ⊂ phase ⊂ case`; the
+`phase`/`case` notches read the step's existing `phase_id` / `case_id`, so only
+`element` / `screen` / `app` are stamped here. Recomputed every analyze (like
+`process_label`) so they track the current evidence; a step with no interactions
+(a hand-authored step) carries `(element)` / `(screen)` / `(app)` placeholders,
+which the viewer's view-time resolver refines from the step's evidence. Raw
+`events.jsonl` is untouched — segmentation stays at the finest grain and the
+roll-up is a *view*, never a re-normalization. Absent on sessions analyzed before
+this field existed; the viewer resolves them at view time.
 
 ### Phase entity (`phases[]`)
 

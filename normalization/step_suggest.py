@@ -84,6 +84,71 @@ def _element_key(data: dict[str, Any]) -> tuple:
     )
 
 
+def _most_common(values: list[str]) -> str:
+    """Most frequent non-empty string, ties broken by first appearance.
+    A small stdlib-only mode so step_grain_keys imports nothing heavy."""
+    counts: dict[str, int] = {}
+    order: list[str] = []
+    for v in values:
+        v = (v or "").strip()
+        if not v:
+            continue
+        if v not in counts:
+            counts[v] = 0
+            order.append(v)
+        counts[v] += 1
+    if not counts:
+        return ""
+    return max(order, key=lambda v: counts[v])
+
+
+def step_grain_keys(interactions: list[dict[str, Any]]) -> dict[str, str]:
+    """Resolve the UI-containment keys for one step from its constituent
+    interaction events, for the view-time grain roll-up (ADR-0024). A step is
+    tagged with the keys that a node/step at each notch groups on:
+
+      element -- the field/control the step acted on (automation_id, else the
+                 visible name): the finest notch, one node per field.
+      screen  -- the vocab `screen_id` an App Vocabulary named for the form,
+                 else the `window_title` (a decent screen proxy), else
+                 "(screen)": the DEFAULT resting notch ("one step per screen").
+      app     -- the `process_name` (.exe stripped), else the window-title app
+                 prefix: one node per application.
+
+    The phase and case notches read the step's existing `phase_id` / `case_id`,
+    so they are not duplicated here. Raw `events.jsonl` is untouched -- these
+    keys live on the step (the annotation sidecar), recomputed every analyze so
+    they track analyst renames the way `process_label` does. `interactions` are
+    the step's interaction EVENTS (each carrying a `data` dict). A step with no
+    interactions (a hand-authored step) falls back to the "(element/screen/app)"
+    placeholders, which the viewer's view-time resolver can still refine."""
+    datas = [(ev.get("data") or {}) for ev in (interactions or [])]
+    # element: prefer the field the step TYPED into (value/text gestures) over
+    # incidental navigation (a tab click, a focus) so "fill the To field" keys
+    # on the To field, not the Message tab it passed through; fall back to every
+    # interaction when the step typed nothing (a pure click step).
+    _eid = lambda d: (d.get("automation_id") or d.get("name") or "")
+    typed = [_eid(d) for d in datas
+             if d.get("kind") in ("value_changed", "text_changed")]
+    element = (_most_common(typed)
+               or _most_common([_eid(d) for d in datas])
+               or "(element)")
+    screen = (
+        _most_common([(d.get("screen_id") or "") for d in datas])
+        or _most_common([(d.get("window_title") or "") for d in datas])
+        or "(screen)"
+    )
+    procs = []
+    for d in datas:
+        p = (d.get("process_name") or "").strip()
+        if p.lower().endswith(".exe"):
+            p = p[:-4]
+        if p:
+            procs.append(p)
+    app = _most_common(procs) or (_short_app(datas[-1]) if datas else "") or "(app)"
+    return {"element": element, "screen": screen, "app": app}
+
+
 def auto_suggest_steps(
     events: list[dict[str, Any]],
     *,
@@ -173,6 +238,10 @@ def auto_suggest_steps(
                 "canonical_step_id": None,
                 "flags": _aggregate_vocab_flags(candidate),
                 "phase_id": None,
+                # ADR-0024: the UI-containment keys the view-time grain roll-up
+                # groups on (element ⊂ screen ⊂ app). Phase/case read the
+                # step's phase_id/case_id, so they are not duplicated here.
+                "grain_keys": step_grain_keys(candidate),
             })
             candidate.clear()
 
@@ -611,7 +680,8 @@ def _inherit_step_identity(fresh: list, existing: list, preserved: list) -> list
     return fresh
 
 
-def _merge_steps(existing: list, fresh: list) -> list:
+def _merge_steps(existing: list, fresh: list,
+                 interactions_by_id: dict | None = None) -> list:
     """Preserve manually_authored, edited, and hidden steps. Replace auto_*
     steps with the latest fresh suggestions. A `hidden` step is one the analyst
     manually suppressed -- preserving it means a re-analyze won't resurrect it
@@ -622,7 +692,14 @@ def _merge_steps(existing: list, fresh: list) -> list:
     auto step is a duplicate they would otherwise have to find and delete by
     hand (§I37). The remaining fresh steps inherit the identity (and curated
     phase/template links) of the prior step they re-cover, so a re-analyze
-    keeps curated relationships, not just rows."""
+    keeps curated relationships, not just rows.
+
+    `interactions_by_id` (event_id -> interaction event) lets every step --
+    auto, canonical-matched, and preserved -- get its ADR-0024 `grain_keys`
+    recomputed from its evidence, so the view-time grain roll-up has the
+    containment keys even on canonical/manual steps. Optional: absent it, only
+    steps that already carry `grain_keys` (the auto ones, stamped in flush())
+    keep them, and the viewer resolves the rest at view time."""
     by_state = {"manually_authored": [], "edited": [], "hidden": []}
     for s in existing or []:
         st = s.get("state")
@@ -640,6 +717,16 @@ def _merge_steps(existing: list, fresh: list) -> list:
     # every analyze, so it tracks analyst renames).
     for s in result:
         s["process_label"] = process_label(s.get("name") or "")
+        # ADR-0024: (re)resolve the grain-roll-up containment keys. Auto steps
+        # already carry them (flush()); canonical-matched / preserved steps get
+        # them here when the interaction map is supplied. Recomputed every
+        # analyze so they track the current evidence.
+        if interactions_by_id is not None:
+            evs = [interactions_by_id.get(eid)
+                   for eid in ((s.get("evidence") or {}).get("interaction_event_ids") or [])]
+            evs = [e for e in evs if e]
+            if evs or not s.get("grain_keys"):
+                s["grain_keys"] = step_grain_keys(evs)
     return result
 
 

@@ -235,6 +235,12 @@ def _run_step_segmentation(
     matched_interactions = 0
     unmatched_evs: list[dict[str, Any]] = []
     total_interactions = sum(1 for e in with_cases if e.get("type") == "interaction")
+    # ADR-0024: event_id -> interaction, so _merge_steps can resolve each step's
+    # grain_keys (the view-time roll-up containment keys) from its evidence.
+    interactions_by_id = {
+        e["event_id"]: e for e in with_cases
+        if e.get("type") == "interaction" and e.get("event_id")
+    }
     if canonical_path:
         from canonical_match import match_canonical, rollup_phases
         if canonical is None:
@@ -264,7 +270,8 @@ def _run_step_segmentation(
         if new_drift:
             existing_anno["drift_markers"] = (existing_anno.get("drift_markers") or []) + new_drift
             print(f"[normalize] {len(new_drift)} drift marker(s) recorded")
-        merged_steps = _merge_steps(existing_anno.get("steps") or [], fresh_steps)
+        merged_steps = _merge_steps(existing_anno.get("steps") or [], fresh_steps,
+                                    interactions_by_id)
         existing_anno["steps"] = merged_steps
         # Phase rollup (Phase D)
         auto_phases = rollup_phases(canonical, [s for s in merged_steps if s.get("state") == "auto_matched"],
@@ -290,7 +297,8 @@ def _run_step_segmentation(
             excluded_ranges=_excluded_ranges(existing_anno),
             **_step_calibration_kwargs(cal),
         )
-        merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps)
+        merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps,
+                                    interactions_by_id)
         existing_anno["steps"] = merged_steps
         existing_anno.setdefault("matched_against", None)
         # M-4: no fresh phases are mined on the non-canonical path, but any

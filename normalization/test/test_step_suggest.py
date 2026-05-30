@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from coalesce import coalesce_typing_bursts
 from step_suggest import (
     auto_suggest_steps, drop_overlapping_auto_steps, steps_overlap_seconds,
-    process_label, parse_ts,
+    process_label, parse_ts, step_grain_keys, _merge_steps,
 )
 
 
@@ -48,6 +48,83 @@ def _make_inter(ts: datetime, kind: str = "invoked", window: str = "App", proc: 
             "case_ids": ["case-1"],
         },
     }
+
+
+# --- ADR-0024: grain-roll-up containment keys --------------------------
+
+def _inter_full(ts, *, kind, automation_id="", name="", value="",
+                window="App", proc="app.exe", screen_id=None):
+    """A richer interaction for grain-key tests (carries the fields the
+    containment keys resolve from)."""
+    data = {
+        "kind": kind, "window_title": window, "process_name": proc,
+        "automation_id": automation_id, "name": name, "value": value,
+        "case_ids": ["case-1"],
+    }
+    if screen_id is not None:
+        data["screen_id"] = screen_id
+    return {"event_id": str(uuid.uuid4()), "type": "interaction",
+            "timestamp": _iso(ts), "session_id": "s1", "data": data}
+
+
+def test_step_grain_keys_resolves_element_screen_app():
+    """element = the field TYPED into; screen = vocab screen_id when present;
+    app = process_name with .exe stripped."""
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    evs = [
+        _inter_full(base, kind="selection_changed", name="Message", proc="OUTLOOK.exe"),
+        _inter_full(base + timedelta(seconds=1), kind="value_changed",
+                    automation_id="4117", name="To", value="a@x.com",
+                    proc="OUTLOOK.exe", screen_id="compose"),
+        _inter_full(base + timedelta(seconds=2), kind="value_changed",
+                    automation_id="4117", name="To", value="a@x.com",
+                    proc="OUTLOOK.exe", screen_id="compose"),
+    ]
+    gk = step_grain_keys(evs)
+    # prefers the typed field (4117) over the incidental Message tab
+    assert gk["element"] == "4117"
+    assert gk["screen"] == "compose"
+    assert gk["app"] == "OUTLOOK"
+
+
+def test_step_grain_keys_falls_back_to_window_title_then_placeholder():
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    # No vocab screen_id, no process_name -> screen falls back to window_title.
+    ev = _inter_full(base, kind="invoked", name="Save", window="Booking — Acme", proc="")
+    gk = step_grain_keys([ev])
+    assert gk["screen"] == "Booking — Acme"
+    assert gk["element"] == "Save"
+    # No interactions at all -> placeholders, never blank.
+    assert step_grain_keys([]) == {"element": "(element)", "screen": "(screen)", "app": "(app)"}
+
+
+def test_auto_suggest_stamps_grain_keys_on_every_step():
+    base = datetime(2026, 5, 14, 9, 0, 0)
+    events = [_inter_full(base + timedelta(milliseconds=i * 300),
+                          kind="value_changed", automation_id="F" + str(i),
+                          name="Field" + str(i), value="v" + str(i))
+              for i in range(3)]
+    steps = auto_suggest_steps(events, session_id="s1")
+    assert steps, "expected at least one step"
+    for s in steps:
+        assert "grain_keys" in s
+        assert set(s["grain_keys"]) == {"element", "screen", "app"}
+
+
+def test_merge_steps_resolves_grain_keys_from_interaction_map():
+    """A canonical/manual step lacking grain_keys gets them resolved from its
+    evidence when _merge_steps is given the interaction map."""
+    ev = _inter_full(datetime(2026, 5, 14, 9, 0, 0), kind="value_changed",
+                     automation_id="9001", name="Serial", value="SN-1",
+                     proc="crm.exe", screen_id="lookup")
+    manual = {
+        "step_id": "m1", "name": "Search serial", "state": "manually_authored",
+        "case_id": "case-1", "evidence": {"interaction_event_ids": [ev["event_id"]]},
+        "time_range": {"start": ev["timestamp"], "end": ev["timestamp"]},
+    }
+    merged = _merge_steps([manual], [], {ev["event_id"]: ev})
+    assert len(merged) == 1
+    assert merged[0]["grain_keys"] == {"element": "9001", "screen": "lookup", "app": "crm"}
 
 
 def test_groups_contiguous_interactions_into_one_step():

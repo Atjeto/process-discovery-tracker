@@ -8,6 +8,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Step grain is a view-time roll-up — one grain slider across Flow / Steps / Map ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md)).**
+  Segmentation stays at the finest grain; how far steps consolidate is now a
+  reversible **view** control, not a destructive normalize-time flip. A node/step
+  at the chosen notch is a run of consecutive steps within a case sharing that
+  notch's key, over the UI-containment ladder `element ⊂ screen ⊂ app ⊂ phase ⊂
+  case`. Default resting notch = **screen** ("one step per screen"). Sliding back
+  undoes it with zero data mutation; raw `events.jsonl` is untouched.
+  - **P1 — containment keys on steps.** Every step now carries `grain_keys`
+    (`{element, screen, app}`) resolved from its interactions at analyze time
+    (`step_suggest.step_grain_keys`): `element` = the field typed into, `screen`
+    = the vocab `screen_id` else `window_title`, `app` = `process_name`. The
+    `phase` / `case` notches read the step's existing `phase_id` / `case_id`.
+    Stamped on auto, canonical-matched, and preserved steps alike; a
+    hand-authored step gets `(element/screen/app)` placeholders the viewer
+    refines at view time. Additive — the golden projection is unchanged. See
+    [SCHEMA](shared/SCHEMA.md).
+
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades
   *honestly* instead of silently producing thin captures on hard frameworks.
