@@ -10,6 +10,15 @@ is the owner eyeballing the 15-step grain in the viewer/analysis. This doc recor
 the decisive root-cause evidence so the next session applies it with confidence
 rather than re-discovering it.
 
+> **Reframed (2026-05-30) — see [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md).**
+> Owner review rejected the "flip the global default" framing below: it is
+> destructive (it deletes the fine grain from `anno.steps`) and one-grain-fits-all.
+> The evidence in this doc still stands as the justification, but the **decision**
+> is now to make grain a **view-time roll-up over the UI-containment hierarchy**
+> driven by the level slider (`step_split_on_element` becomes the slider's default
+> notch, not a value to hard-code). Read the "flip the default" recommendation
+> below as the *old* framing; ADR-0024 is the live one.
+
 ## The problem (roadmap §11b)
 
 The committed `example-aggregate` demo **over-segments**: `sess-2026-0514-0900`

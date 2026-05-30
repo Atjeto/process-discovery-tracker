@@ -187,13 +187,18 @@ captures committed under [`corpus/`](../../corpus/README.md).
   and document text is `text_changed` (verbose-gated) → the business mail-merge
   steps are invisible to the production stream (logged in that scenario's README).
 
-**Still owner-gated — the flip was NOT applied.** Gate (1) real captures: met.
-Gate (2): the owner eyeballs the ~15-step grain in the viewer/analysis, then
-flips `pipeline_config.py` `_DEFAULT_CALIBRATION["step_split_on_element"]=False`,
-regenerates the golden (intentional), re-runs fuzzers. Golden deliberately still
-pins sess-0514 at **64 steps**; not regenerated this cycle. `master` is local-only
-(not pushed). **Deferred:** web/SaaS drives (ServiceNow/Salesforce — need the owner
-foregrounding browser tabs); closing the Word §11e capture gap.
+**Reframed by owner review → [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md) (Proposed).**
+The corpus evidence stands, but the decision is no longer "flip the global
+default." Owner review established that flipping is destructive (it deletes the
+fine grain from `anno.steps`; the map's Step level reads them) and one-grain-fits-
+all, and that **ROI is grain-invariant** (`analysis_roi.py` is time-based — total
+hours/yr is unchanged whether a process is 2 steps or 75). So grain becomes a
+**view-time roll-up over the UI-containment hierarchy** (element ⊂ screen ⊂ app ⊂
+phase ⊂ case), driven by the level slider; `step_split_on_element` is demoted to
+the slider's default notch (default = screen). ADR-0024 is drafted Proposed for
+the owner to build out in a later session. Golden deliberately still pins
+sess-0514 at **64 steps** (nothing flipped); `master` is local-only (not pushed).
+**Deferred:** build out ADR-0024; web/SaaS drives; the Word §11e capture gap.
 
 ---
 
