@@ -92,17 +92,22 @@ test("interactionEvent passes through the E6/E7 signal-quality fields", () => {
 });
 
 test("interactionEvent passes through the E8 desktop-coverage fields", () => {
-  // framework (§11e) is the recorder's normalized UI-toolkit detection; the
-  // allowlist must keep it or the analyst never sees toolkit coverage.
+  // framework / identity_source / confidence (§11e) are recorder-emitted;
+  // the allowlist must keep them or the analyst never sees toolkit coverage
+  // or per-element capture confidence.
   const ev = interactionEvent(SID, {
     kind: "invoked",
     control_type: "Button",
     framework_id: "Win32",
     class_name: "SunAwtFrame",
     framework: "java",
+    identity_source: "name",
+    confidence: 0.7,
   });
   assertEnvelope(ev, "interaction");
   assert.strictEqual(ev.data.framework, "java");
+  assert.strictEqual(ev.data.identity_source, "name");
+  assert.strictEqual(ev.data.confidence, 0.7);
   // The raw framework_id and the normalized framework coexist.
   assert.strictEqual(ev.data.framework_id, "Win32");
 });

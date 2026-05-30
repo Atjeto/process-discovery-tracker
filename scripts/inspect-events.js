@@ -57,6 +57,12 @@ for (const ev of interactions) {
 
 const report = {};
 for (const [proc, b] of Object.entries(byProc)) {
+  // §11e per-element confidence: mean over the events that carry it (older
+  // captures predate the field, so average only where present).
+  const withConf = b.datas.filter((d) => typeof d.confidence === "number");
+  const meanConfidence = withConf.length
+    ? Math.round(100 * withConf.reduce((s, d) => s + d.confidence, 0) / withConf.length) / 100
+    : null;
   report[proc] = {
     interactions: b.count,
     kinds: tally(b.datas, "kind"),
@@ -66,6 +72,8 @@ for (const [proc, b] of Object.entries(byProc)) {
     class_names: tally(b.datas, "class_name"),          // the AG-Grid discriminator candidate
     automation_ids: tally(b.datas, "automation_id"),    // e.g. the serial field id
     coverage_hint: tally(b.datas, "coverage_hint"),
+    identity_sources: tally(b.datas, "identity_source"), // §11e identity-ladder rung
+    mean_confidence: meanConfidence,                     // §11e mean capture confidence [0,1]
     pct_with_automation_id: Math.round(100 * b.datas.filter((d) => d.automation_id).length / b.count),
     pct_with_name: Math.round(100 * b.datas.filter((d) => d.name).length / b.count),
     pct_with_value: Math.round(100 * b.datas.filter((d) => d.value != null).length / b.count),
@@ -80,7 +88,7 @@ console.log(JSON.stringify(report, null, 2));
 const busiest = Object.entries(byProc).sort((a, b) => b[1].count - a[1].count)[0];
 if (busiest) {
   console.log("\n=== SEQUENCE SAMPLE for " + busiest[0] + " (first 50, structural only) ===");
-  console.log("kind | control_type | automation_id | class_name | framework_id | framework | name? | value?");
+  console.log("kind | control_type | automation_id | class_name | framework_id | framework | identity_source | conf | name? | value?");
   for (const d of busiest[1].datas.slice(0, 50)) {
     console.log([
       d.kind || "-",
@@ -89,6 +97,8 @@ if (busiest) {
       d.class_name || "-",
       d.framework_id || "-",
       d.framework || "-",
+      d.identity_source || "-",
+      typeof d.confidence === "number" ? d.confidence.toFixed(2) : "-",
       d.name ? "Y" : "-",
       d.value != null ? "Y" : "-",
     ].join(" | "));

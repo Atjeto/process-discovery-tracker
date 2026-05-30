@@ -53,9 +53,12 @@ function interactionEvent(sessionId, data) {
     // E8 (§11e) -- desktop-coverage-hardening signal fields. `framework`
     // is the normalized UI-toolkit detection (win32/wpf/winforms/winui/
     // chromium/java/javafx/qt/remote/terminal/unknown), distinct from the
-    // raw `framework_id`. Without this allowlist entry the recorder's
-    // field is silently dropped before it reaches events.jsonl.
-    "framework",
+    // raw `framework_id`. `identity_source` is the identity-ladder rung
+    // (automation_id/name/class_name/none) and `confidence` is the
+    // per-element capture-confidence score in [0,1]. Without these
+    // allowlist entries the recorder's fields are silently dropped before
+    // they reach events.jsonl.
+    "framework", "identity_source", "confidence",
   ]);
   const shaped = {};
   for (const [k, v] of Object.entries(data)) {

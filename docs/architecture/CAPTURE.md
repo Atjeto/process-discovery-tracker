@@ -126,6 +126,18 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   video backstop carries it. It is distinct from the recognition layer's *web-app*
   `framework` axis (`chromium` / `ag-grid` / `office365`), which is mined from
   class-name signatures downstream in `recognition.py` / `recognition.js`.
+- **Identity ladder + per-element confidence (§11e).** Each interaction also
+  carries `identity_source` — the rung of the identity ladder that gave the
+  element a stable identity (`automation_id` → `name` → `class_name` → `none`,
+  descending reliability) — and a `confidence` score in `[0,1]`
+  (`UiaSubscriber.ResolveIdentitySource` / `ComputeConfidence`). Confidence blends
+  the rung with the detected `framework`: a strong rung is still capped at `0.30`
+  on a `remote`/`terminal` surface, where the captured field is an unreliable
+  proxy for the real (pixel) control. This is the *honest-degradation* signal — it
+  lets the analyst flag low-trust captures rather than silently trusting a thin
+  one, and a `none` rung at low confidence is precisely the element the OCR
+  last-resort bridge ([ADR-0023](../adr/0023-recorder-capture-confidence.md))
+  targets.
 - **Chromium accessibility wake-up.** Chrome / Edge / Electron-based apps build
   their UIA accessibility tree **lazily** — without an external query, web
   content fires no UIA events and the recorder sees only the omnibox / native

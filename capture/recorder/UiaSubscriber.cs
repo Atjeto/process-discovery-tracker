@@ -497,6 +497,48 @@ public sealed class UiaSubscriber {
         return false;
     }
 
+    /// <summary>
+    /// The identity-ladder rung for this element (§11e). UIA exposes
+    /// several identifying properties of decreasing reliability; this
+    /// reports which one actually gave the element a stable identity:
+    ///   automation_id  developer-assigned, stable across runs/locale -- best
+    ///   name           the visible label; meaningful but locale/content-dependent
+    ///   class_name     shared across many controls; a weak identity at best
+    ///   none           no structured identity -- the local-region OCR last
+    ///                  resort applies (see ADR-0023 / the OCR bridge)
+    /// Pure mirror of the corresponding field reads in BuildEvent.
+    /// </summary>
+    internal static string ResolveIdentitySource(string? automationId, string? name, string? className) {
+        if (!string.IsNullOrEmpty(automationId)) return "automation_id";
+        if (!string.IsNullOrEmpty(name)) return "name";
+        if (!string.IsNullOrEmpty(className)) return "class_name";
+        return "none";
+    }
+
+    /// <summary>
+    /// Per-element capture confidence in [0,1] (§11e) -- how much the
+    /// analyst should trust the captured identity. It blends the
+    /// identity-ladder rung with the detected toolkit: a strong rung still
+    /// earns low confidence on a `remote`/`terminal` surface, where even a
+    /// present Name is usually the host window's, not the real control's.
+    /// Pure; rounded to two decimals so tallies/means stay stable.
+    /// </summary>
+    internal static double ComputeConfidence(string identitySource, string? framework) {
+        double conf = identitySource switch {
+            "automation_id" => 0.95,
+            "name"          => 0.70,
+            "class_name"    => 0.40,
+            _               => 0.10,   // "none"
+        };
+        // Remoted / terminal surfaces: the structured fields are unreliable
+        // proxies for the real (pixel) control, so cap confidence low even
+        // when a field is present.
+        if (framework == "remote" || framework == "terminal") {
+            conf = Math.Min(conf, 0.30);
+        }
+        return Math.Round(conf, 2);
+    }
+
     private object? BuildEvent(string kind, AutomationElement el, object? extra) {
         try {
             var data = new Dictionary<string, object?> { ["kind"] = kind };
@@ -529,6 +571,19 @@ public sealed class UiaSubscriber {
             data["framework"] = DetectFramework(
                 data.TryGetValue("framework_id", out var fwv) ? fwv as string : null,
                 data.TryGetValue("class_name", out var clv) ? clv as string : null);
+
+            // E8 (§11e): the identity-ladder rung + a per-element capture-
+            // confidence score. identity_source says which property gave the
+            // element a stable identity (automation_id -> name -> class_name
+            // -> none); confidence blends that rung with the toolkit so the
+            // analyst can flag low-trust captures. A "none" rung at low
+            // confidence is the OCR last-resort candidate.
+            var identitySource = ResolveIdentitySource(
+                data.TryGetValue("automation_id", out var aidV) ? aidV as string : null,
+                data.TryGetValue("name", out var nmV) ? nmV as string : null,
+                data.TryGetValue("class_name", out var clsV) ? clsV as string : null);
+            data["identity_source"] = identitySource;
+            data["confidence"] = ComputeConfidence(identitySource, data["framework"] as string);
 
             // E6: the first event emitted for a pid carries a coverage
             // hint -- how richly UIA exposes that app. rich = a stable

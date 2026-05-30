@@ -93,6 +93,39 @@ public class UiaSubscriberTests {
         Assert.Equal(expected, UiaSubscriber.DetectFramework(frameworkId, className));
     }
 
+    // Pins ResolveIdentitySource: the identity-ladder rung. AutomationId
+    // wins, then Name, then ClassName, else "none" (the OCR candidate).
+    [Theory]
+    [InlineData("customerId", "Customer", "Edit", "automation_id")]
+    [InlineData("", "Customer", "Edit", "name")]
+    [InlineData(null, null, "Edit", "class_name")]
+    [InlineData("", "", "", "none")]
+    [InlineData(null, null, null, "none")]
+    public void ResolveIdentitySource_walks_the_ladder(
+            string? automationId, string? name, string? className, string expected) {
+        Assert.Equal(expected,
+            UiaSubscriber.ResolveIdentitySource(automationId, name, className));
+    }
+
+    // Pins ComputeConfidence: each rung's base score, and the remote/
+    // terminal cap that lowers confidence even when a field is present.
+    [Theory]
+    // Rung base scores on an ordinary toolkit.
+    [InlineData("automation_id", "wpf", 0.95)]
+    [InlineData("name", "chromium", 0.70)]
+    [InlineData("class_name", "win32", 0.40)]
+    [InlineData("none", "win32", 0.10)]
+    // Remote/terminal cap: a strong rung is still capped at 0.30 because the
+    // captured field is an unreliable proxy for the real (pixel) control.
+    [InlineData("automation_id", "remote", 0.30)]
+    [InlineData("name", "terminal", 0.30)]
+    // ...but the cap never RAISES a rung already below it.
+    [InlineData("none", "terminal", 0.10)]
+    public void ComputeConfidence_blends_rung_with_toolkit(
+            string identitySource, string framework, double expected) {
+        Assert.Equal(expected, UiaSubscriber.ComputeConfidence(identitySource, framework));
+    }
+
     // Pins CoalesceKeyFromProps: AutomationId wins, then Name+ClassName,
     // then RuntimeId, else null (no stable identity).
     [Fact]
