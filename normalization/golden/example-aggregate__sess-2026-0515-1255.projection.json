@@ -6,7 +6,7 @@
     "start_activities": 1
   },
   "meta": {
-    "app_vocabulary_matches": 84,
+    "app_vocabulary_matches": 57,
     "case_count": 3,
     "collapsed_activity_count": 16,
     "drift_count": 0,
@@ -30,12 +30,12 @@
     "count": 48,
     "process_labels": [
       "Excel: Create sales order",
-      "Excel: Enter Date",
-      "Excel: Enter Status",
+      "Excel: Enter Date cell",
+      "Excel: Enter Status cell",
       "Excel: Save workbook",
-      "Outlook: Enter Recipient",
       "Outlook: Enter Subject",
-      "Outlook: Send email",
+      "Outlook: Enter To",
+      "Outlook: Send",
       "SAP: Enter Material number",
       "SAP: Enter OR",
       "SAP: Enter Sales organisation",

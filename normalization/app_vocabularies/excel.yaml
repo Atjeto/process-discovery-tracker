@@ -1,33 +1,112 @@
 # Microsoft Excel (desktop) App Vocabulary — ADR-0002.
 #
-# Pre-built starter vocabulary (§11d). Bootstrapped from the committed
-# example-aggregate sessions (an order-tracking workbook) and curated.
-# Signatures use control_type + automation_id + name (NEVER CSS).
+# REAL-VALUE mapping (§11d). Signatures probed live from the running app's UI
+# Automation tree on 2026-05-30 (see docs/REAL-VALUE-TESTING.md), NOT bootstrapped
+# from demo data. Excel ribbon controls expose a stable, language-independent
+# automation_id (the Office "idMso", e.g. FileSave / Filter / SortDialog) with
+# control_type Button/SplitButton, class NetUIRibbon*, framework_id Win32 — so the
+# signature keys on control_type + automation_id and is robust across locales and
+# Excel versions. The localized label lives in `name`, never in the signature.
 #
-# Note: real Excel cell edits surface as control_type "Edit"/"DataItem" whose
-# name is the cell's content/header, which varies per workbook. The named-cell
-# automation_ids below model a structured tracker; for a free-form sheet you
-# will lean more on window_title scoping + generic Edit signatures.
+# Cell edits surface as control_type Edit/DataItem whose name is the cell content
+# (varies per workbook) — those are intentionally not signed here; the Formula Bar
+# (a stable Edit, aid FormulaBar) is the value-entry surface we do name.
 app_vocabulary:
   id: "excel"
   name: "Microsoft Excel"
-  version: 1
+  version: 2
 
   scope:
     process_name: "excel.exe"
-    window_title_regex: ".*Excel -.*"
+    # Real Excel window titles read "<workbook> - Excel" (e.g. "Book1 - Excel").
+    window_title_regex: ".* - Excel$"
+
+  screens:
+    - id: "workbook"
+      name: "Workbook"
+      window_title_regex: ".* - Excel$"
 
   interactions:
-    # Field names are nouns; the step namer supplies the "Enter …" verb.
-    - signature: { control_type: "Edit", automation_id: "order-number-cell" }
-      name: "Order number"
-    - signature: { control_type: "Edit", automation_id: "status-cell" }
-      name: "Status"
-    - signature: { control_type: "Edit", automation_id: "date-cell" }
-      name: "Date"
-    - signature: { control_type: "Edit", automation_id: "owner-cell" }
-      name: "Owner"
-    - signature: { control_type: "Button", automation_id: "save-workbook" }
-      name: "Save workbook"
+    # --- Value entry --------------------------------------------------
+    - signature: { control_type: "Edit", automation_id: "FormulaBar" }
+      name: "Formula bar"
+      screen: "workbook"
+    - signature: { control_type: "Edit", automation_id: "TellMeTextBoxAutomationId" }
+      name: "Microsoft Search"
+      screen: "workbook"
+
+    # --- File ---------------------------------------------------------
+    - signature: { control_type: "Button", automation_id: "FileSave" }
+      name: "Save"
+      screen: "workbook"
       flags:
         automation_candidate: true
+
+    # --- Clipboard ----------------------------------------------------
+    - signature: { control_type: "Button", automation_id: "Paste" }
+      name: "Paste"
+      screen: "workbook"
+    - signature: { control_type: "Button", automation_id: "Copy" }
+      name: "Copy"
+      screen: "workbook"
+    - signature: { control_type: "Button", automation_id: "Cut" }
+      name: "Cut"
+      screen: "workbook"
+
+    # --- Data prep (the repetitive, automatable core) -----------------
+    - signature: { control_type: "Button", automation_id: "Filter" }
+      name: "Apply / remove filter"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "SortAscendingExcel" }
+      name: "Sort A to Z"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "SortDescendingExcel" }
+      name: "Sort Z to A"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "SortDialog" }
+      name: "Custom sort"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "RemoveDuplicates" }
+      name: "Remove duplicates"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "OutlineSubtotals" }
+      name: "Subtotal"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "RefreshAll" }
+      name: "Refresh all data"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "AdvancedFilterDialog" }
+      name: "Advanced filter"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+
+    # --- Analysis -----------------------------------------------------
+    - signature: { control_type: "SplitButton", automation_id: "InsertPivotTableDropdown" }
+      name: "Insert PivotTable"
+      screen: "workbook"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "PivotTableSuggestion" }
+      name: "Insert recommended PivotTable"
+      screen: "workbook"
+    - signature: { control_type: "Button", automation_id: "TableInsertExcel" }
+      name: "Insert table"
+      screen: "workbook"
+    - signature: { control_type: "Button", automation_id: "AutoSum" }
+      name: "AutoSum"
+      screen: "workbook"

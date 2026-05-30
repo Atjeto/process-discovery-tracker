@@ -1,22 +1,23 @@
 # Google Chrome (browser chrome) App Vocabulary — ADR-0002.
 #
-# Pre-built starter vocabulary (§11d). Unlike the app-specific vocabs in this
-# folder, this names the BROWSER's own controls (address bar, tabs, navigation)
-# rather than any web app's content — so it complements, never competes with, a
-# site vocab like salesforce.yaml (which scopes to the Salesforce window title).
-# The control names below are Chrome's stable UIA accessibility names; signatures
-# use control_type + name (NEVER CSS selectors). It deliberately matches no
-# example-aggregate event (those are web-app content, not browser chrome).
+# Names the BROWSER's own controls (address bar, tabs, navigation), not any web
+# app's content — so it complements, never competes with, a site vocab like
+# salesforce.yaml. The address bar's name "Address and search bar" and class
+# OmniboxViewViews are confirmed against the live recorder (scripts/real-capture-
+# report.md); the nav-button names are Chrome's real UIA accessibility names.
+# Signatures use control_type + name/class_name, NEVER CSS. Chromium automation_ids
+# are volatile "view_NNNN" view IDs, so the omnibox keys on its stable class_name.
+# Microsoft Edge has its own vocab (edge.yaml); both share the OmniboxViewViews omnibox.
 app_vocabulary:
   id: "chrome"
   name: "Google Chrome (browser)"
-  version: 1
+  version: 2
 
   scope:
     process_name: "chrome.exe"
 
   interactions:
-    - signature: { control_type: "Edit", name: "Address and search bar" }
+    - signature: { control_type: "Edit", class_name: "OmniboxViewViews" }
       name: "Address bar"
     - signature: { control_type: "Button", name: "Reload this page" }
       name: "Reload the page"

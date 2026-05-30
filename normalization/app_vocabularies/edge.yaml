@@ -1,0 +1,36 @@
+# Microsoft Edge (browser chrome) App Vocabulary — ADR-0002.
+#
+# REAL-VALUE mapping (§11d). Probed live from the running Edge UI Automation tree
+# on 2026-05-30 (see docs/REAL-VALUE-TESTING.md). Names the BROWSER's own controls
+# (address bar, navigation, tabs), not any web app's content — complements, never
+# competes with, a site vocab. Edge is Chromium: framework_id "Chrome", and the
+# omnibox is class OmniboxViewViews (shared with Chrome). Chromium automation_ids
+# are volatile "view_NNNN" view IDs, so signatures key on the stable class_name +
+# control_type (+ name to split Back/Forward, which share class BackForwardButton).
+app_vocabulary:
+  id: "edge"
+  name: "Microsoft Edge (browser)"
+  version: 1
+
+  scope:
+    process_name: "msedge.exe"
+
+  interactions:
+    - signature: { control_type: "Edit", class_name: "OmniboxViewViews" }
+      name: "Address bar"
+    - signature: { control_type: "Button", class_name: "BackForwardButton", name: "Back" }
+      name: "Navigate back"
+    - signature: { control_type: "Button", class_name: "BackForwardButton", name: "Forward" }
+      name: "Navigate forward"
+    - signature: { control_type: "Button", class_name: "ReloadButton" }
+      name: "Reload the page"
+    - signature: { control_type: "Button", class_name: "EdgeNewTabButton" }
+      name: "Open a new tab"
+    - signature: { control_type: "Button", class_name: "StarView" }
+      name: "Add to favorites"
+    - signature: { control_type: "Button", class_name: "HubToggleToolbarButton" }
+      name: "Open favorites"
+    - signature: { control_type: "Button", class_name: "BrowserAppMenuButton" }
+      name: "Settings and more"
+    - signature: { control_type: "Button", class_name: "EdgeTabActionsMenuButton" }
+      name: "Search tabs"

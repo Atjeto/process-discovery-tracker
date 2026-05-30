@@ -1,13 +1,26 @@
-# Microsoft Outlook (desktop) App Vocabulary — ADR-0002.
+# Microsoft Outlook (classic desktop) App Vocabulary — ADR-0002.
 #
-# Pre-built starter vocabulary (§11d). Bootstrapped from the committed
-# example-aggregate sessions (sending an order-confirmation email) and curated.
-# Signatures use control_type + automation_id + name (NEVER CSS). The compose
-# window's To/Subject/Body/Send controls are stable across Outlook versions.
+# REAL-VALUE mapping (§11d). Compose-window signatures probed live from the
+# running classic Outlook (Office16 OUTLOOK.EXE) UI Automation tree on 2026-05-30
+# (see docs/REAL-VALUE-TESTING.md), NOT bootstrapped from demo data. The recipient
+# and subject fields are classic Outlook command-ID controls (To=4117, Cc=4126,
+# Subject=4101) of class RichEdit20WPT; Send is a Pane (class "Button") with
+# command id 4256; the body is the Word editor canvas (class _WwG). Compose-ribbon
+# buttons use stable Office idMso automation_ids (FileSave, AddressBook, CheckNames,
+# AttachFileSplit, ...). framework_id is Win32 throughout.
+#
+# This is CLASSIC Outlook. New Outlook for Windows (Microsoft.OutlookForWindows) is
+# a WebView2 web app with a different (web a11y) tree — a separate vocab (Tier C /
+# doc-derived) per APP-COVERAGE-LIST.md.
+#
+# Explorer (main-window) actions below are marked idMso-derived: the idMso<->
+# automation_id mapping was *proven* against this app's compose ribbon, so these
+# are validated identifiers (not guesses), to be re-confirmed when the recorder is
+# driven against the reading pane (Tier A verify step).
 app_vocabulary:
   id: "outlook"
-  name: "Microsoft Outlook"
-  version: 1
+  name: "Microsoft Outlook (classic)"
+  version: 2
 
   scope:
     process_name: "outlook.exe"
@@ -15,21 +28,75 @@ app_vocabulary:
   screens:
     - id: "compose"
       name: "Compose message"
-      window_title_regex: ".*Outlook - .*"
+      # Real compose inspector title: "<subject> - Message (HTML)".
+      window_title_regex: ".* - Message"
+    - id: "explorer"
+      name: "Mail (explorer)"
+      window_title_regex: ".* - Outlook$"
 
   interactions:
+    # --- Compose: recipients & subject (probed live) ------------------
     # Field names are nouns; the step namer supplies the "Enter …" verb.
-    - signature: { control_type: "Edit", automation_id: "to" }
-      name: "Recipient"
+    - signature: { control_type: "Edit", automation_id: "4117" }
+      name: "To (recipients)"
       screen: "compose"
-    - signature: { control_type: "Edit", automation_id: "subject" }
+    - signature: { control_type: "Edit", automation_id: "4126" }
+      name: "Cc"
+      screen: "compose"
+    - signature: { control_type: "Edit", automation_id: "4101" }
       name: "Subject"
       screen: "compose"
-    - signature: { control_type: "Document", automation_id: "message-body" }
+    # Body editor — the Word canvas; recorder may attribute either the
+    # _WwG Document or the inner "Body" Edit, so both map to one name.
+    - signature: { control_type: "Document", class_name: "_WwG" }
       name: "Message body"
       screen: "compose"
-    - signature: { control_type: "Button", automation_id: "send" }
+    - signature: { control_type: "Edit", automation_id: "Body" }
+      name: "Message body"
+      screen: "compose"
+
+    # --- Compose: actions (probed live) -------------------------------
+    - signature: { control_type: "Pane", automation_id: "4256" }
       name: "Send email"
       screen: "compose"
       flags:
         automation_candidate: true
+    - signature: { control_type: "MenuItem", automation_id: "AttachFileSplit" }
+      name: "Attach file"
+      screen: "compose"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "MenuItem", automation_id: "SignatureInsertMenu" }
+      name: "Insert signature"
+      screen: "compose"
+    - signature: { control_type: "Button", automation_id: "FileSave" }
+      name: "Save draft"
+      screen: "compose"
+    - signature: { control_type: "Button", automation_id: "AddressBook" }
+      name: "Open address book"
+      screen: "compose"
+    - signature: { control_type: "Button", automation_id: "CheckNames" }
+      name: "Check names"
+      screen: "compose"
+    - signature: { control_type: "Button", automation_id: "HighImportance" }
+      name: "Mark high importance"
+      screen: "compose"
+
+    # --- Explorer actions (idMso-derived; live-confirm in verify step) -
+    - signature: { control_type: "Button", automation_id: "NewMailMessage" }
+      name: "New email"
+      screen: "explorer"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "Reply" }
+      name: "Reply"
+      screen: "explorer"
+    - signature: { control_type: "Button", automation_id: "ReplyAll" }
+      name: "Reply all"
+      screen: "explorer"
+    - signature: { control_type: "Button", automation_id: "Forward" }
+      name: "Forward"
+      screen: "explorer"
+    - signature: { control_type: "Button", automation_id: "Delete" }
+      name: "Delete message"
+      screen: "explorer"

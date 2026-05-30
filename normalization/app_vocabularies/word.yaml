@@ -1,0 +1,83 @@
+# Microsoft Word (desktop) App Vocabulary — ADR-0002.
+#
+# REAL-VALUE mapping (§11d). Signatures probed live from the running app's UI
+# Automation tree on 2026-05-30 (see docs/REAL-VALUE-TESTING.md). Word ribbon
+# controls expose stable Office idMso automation_ids (FileSave, ReplaceDialog,
+# the MailMerge* family) with control_type Button/MenuItem, class NetUIRibbon*/
+# NetUIAnchor, framework_id Win32 — signatures key on control_type + automation_id.
+#
+# Mail merge is the flagship Word automation target: Start Mail Merge → Select
+# Recipients → Insert Merge Field → Preview → Finish & Merge.
+app_vocabulary:
+  id: "word"
+  name: "Microsoft Word"
+  version: 1
+
+  scope:
+    process_name: "winword.exe"
+    window_title_regex: ".* - Word$"
+
+  screens:
+    - id: "document"
+      name: "Document"
+      window_title_regex: ".* - Word$"
+
+  interactions:
+    # --- File ---------------------------------------------------------
+    - signature: { control_type: "Button", automation_id: "FileSave" }
+      name: "Save"
+      screen: "document"
+      flags:
+        automation_candidate: true
+
+    # --- Find & replace -----------------------------------------------
+    - signature: { control_type: "Button", automation_id: "NavigationPaneFind" }
+      name: "Find"
+      screen: "document"
+    - signature: { control_type: "Button", automation_id: "ReplaceDialog" }
+      name: "Find and replace"
+      screen: "document"
+      flags:
+        automation_candidate: true
+
+    # --- Mail merge (the repetitive, automatable core) ----------------
+    - signature: { control_type: "MenuItem", automation_id: "MailMergeStartMailMergeMenu" }
+      name: "Start mail merge"
+      screen: "document"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "MenuItem", automation_id: "MailMergeSelectRecipients" }
+      name: "Select recipients"
+      screen: "document"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "MailMergeRecipientsEditList" }
+      name: "Edit recipient list"
+      screen: "document"
+    - signature: { control_type: "Button", automation_id: "MailMergeMergeFieldInsert" }
+      name: "Insert merge field"
+      screen: "document"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "MailMergeAddressBlockInsert" }
+      name: "Insert address block"
+      screen: "document"
+    - signature: { control_type: "Button", automation_id: "MailMergeGreetingLineInsert" }
+      name: "Insert greeting line"
+      screen: "document"
+    - signature: { control_type: "Button", automation_id: "MailMergeResultsPreview" }
+      name: "Preview merge results"
+      screen: "document"
+    - signature: { control_type: "MenuItem", automation_id: "MailMergeFinishAndMergeMenu" }
+      name: "Finish & merge"
+      screen: "document"
+      flags:
+        automation_candidate: true
+
+    # --- Envelopes & labels -------------------------------------------
+    - signature: { control_type: "Button", automation_id: "EnvelopesAndLabelsDialog" }
+      name: "Envelopes"
+      screen: "document"
+    - signature: { control_type: "Button", automation_id: "LabelsDialog" }
+      name: "Labels"
+      screen: "document"
