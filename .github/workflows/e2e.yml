@@ -20,6 +20,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The smoke re-normalizes the demo to current pipeline output (so the
+      # §11c roi panel renders); that needs the pipeline deps on PATH `python`.
+      - name: Install pipeline deps
+        run: pip install -r normalization/requirements.txt
 
       # Install the viewer with the real Electron binary (no SKIP flag) — the
       # e2e driver reuses viewer/node_modules/electron to launch the app.
