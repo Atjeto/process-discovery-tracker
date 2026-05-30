@@ -52,7 +52,7 @@ signatures. Landed on `master`:
   steps when off); flip gated on real-corpus + UI validation
   ([SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md)).
 
-**Next (owner-gated):** apply the §11b flip against a real recorder-driven corpus +
+**Next (owner-gated):** **[SUPERSEDED → [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)]** — the §11b "flip" is replaced by a view-time grain roll-up (see §0.8/§0.10); build that out against a real recorder-driven corpus +
 viewer/analysis validation; cover **SAP / Jira / Zendesk** (need driving) per
 [APP-COVERAGE-LIST.md](APP-COVERAGE-LIST.md); decide whether to make the demo real
 (regenerate `example-aggregate` with probed ids so it re-enriches under the real vocabs).
@@ -249,6 +249,38 @@ form in your logged-in Chrome, run `probe_web_uia.ps1 -TitleMatch "Jira"` /
 window-title scope (esp. Zendesk, which may be account-branded), drop the draft flag,
 re-validate, and move Jira/Zendesk to "probed live" in APP-COVERAGE-LIST. **SAP is a
 separate effort.** `master` stays local-only (not pushed).
+
+---
+
+## 0.10 Cross-chip sanity sweep — 2026-05-30
+
+Reconciliation after ~5 concurrent chips + 2 new design ADRs (the sweep ADR-0025 asked for).
+**`master` re-verified green end-to-end** (independently run, not self-reported): pytest **314
+pass / 10 skip** · golden **10/10** sessions OK · viewer **231** · capture **81** · recorder
+**56** · e2e smoke **9/9**. All 27 commits since the Wave-1 merge (`73cc021`) are sound; the
+`events.jsonl` immutability invariant and every golden held.
+
+**Reconciled (concurrent chips couldn't see each other):**
+- **§11b "flip the default" is SUPERSEDED by [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)**
+  (grain becomes a *view-time roll-up*, not a destructive global flip). §0.8 already captured it;
+  §0.5 and `SEGMENTATION-CALIBRATION-FINDINGS.md` (both predate the ADR) now carry the supersession
+  pointer. Corpus evidence stands as roll-up fixtures; the flip is off the table. **ADR-0024 is
+  Proposed, not built.**
+- **ADR numbering 0019–0022 are intentionally unused** — they were the Wave-0 architecture-review
+  proposals (e2e gate, Node egress guard, pluggable backend, calibration config) that shipped as
+  direct commits + the Fit Analysis, never formalized as standalone ADRs. The sequence legitimately
+  jumps 0018 → 0023; 0023/0024/0025 are confirmed unique (ADR-0025's "provisional number" caveat is
+  resolved).
+
+**In flight — NOT committed by this sweep:** the live Jira/Zendesk vocab cycle (§0.9) has untracked
+working-tree files (`app_vocabularies/{jira,zendesk}.yaml`, `process_templates/{jira-create-issue,
+zendesk-create-ticket}.yaml`, `docs/To-Do/JIRA-ZENDESK-PROBE-CHEATSHEET.md`) — they belong to the
+running session and were left untouched.
+
+**The two new ADRs are the next big build chunks — specs, not builds, both owner-gated on one
+decision before coding:** ADR-0024 (lock the default grain notch + whether analysis itemisation
+follows the slider) and ADR-0025 / [SELF-SERVICE-VOCAB-DISCOVERY-SPEC](SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md)
+(trigger placement: viewer App Library vs capture tray).
 
 ---
 

@@ -1,6 +1,6 @@
 # ADR-0025: In-app vocabulary discovery — "point-and-learn" window snapshot
 
-**Status:** Proposed — spec'd 2026-05-30, not yet built. *(ADR number provisional: several chips ran concurrently this day; reconcile in the cross-chip sanity sweep.)*
+**Status:** Proposed — spec'd 2026-05-30, not yet built. *(ADR number 0025 confirmed in the 2026-05-30 cross-chip sanity sweep; the 0019–0022 gap is intentional — those were Wave-0 proposals shipped as commits, never formalized. See NEXT-SESSION-SPEC §0.10.)*
 **Date:** 2026-05-30
 **Deciders:** Project owner, analyst (process-discovery lead)
 **Related:** [ADR-0002](0002-app-vocabularies.md) (the App Vocabulary layer this populates), [ADR-0001](0001-click-recorder-sidecar-language.md) (the C# UIA recorder this extends), [ADR-0023](0023-recorder-capture-confidence.md) (the per-element `framework`/`identity_source`/`confidence` fields the snapshot reuses), [REAL-VALUE-TESTING.md](../REAL-VALUE-TESTING.md) (the manual probing this productizes), Master Assessment §11d ("new web/UIA walkers"). **Build spec:** [SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md](../To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md).

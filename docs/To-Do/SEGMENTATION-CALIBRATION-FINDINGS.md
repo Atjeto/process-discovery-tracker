@@ -1,7 +1,14 @@
 # §11b Segmentation calibration — findings
 
-**Date:** 2026-05-30 · **Status:** *finding + recommendation, now CORPUS-BACKED,
-still NOT applied.* The flip below ripples through every session's
+> **⚠️ SUPERSEDED (2026-05-30) by [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md).**
+> The "flip `step_split_on_element` to `False`" *recommendation* below is no longer the plan.
+> Owner review reframed the fix as a **view-time grain roll-up** (a slider over the UI-containment
+> hierarchy element⊂screen⊂app⊂phase⊂case), not a destructive global flip — flipping deletes the
+> fine grain from `anno.steps`, and ROI is grain-invariant. The **corpus evidence in this doc
+> stands** and becomes the regression fixtures for the roll-up; the recommendation does not.
+
+**Date:** 2026-05-30 · **Status:** *corpus-backed evidence record — recommendation SUPERSEDED by
+ADR-0024 (banner above); kept as evidence + roll-up fixtures.* The flip below ripples through every session's
 analysis/segments/maps/viewer and must be validated against **real captures + the
 UI** (owner validates last) before it lands. As of 2026-05-30 the real-capture
 half is done: the over-segmentation is reproduced on **real C# recorder captures**
