@@ -93,6 +93,37 @@ public class UiaSubscriberTests {
         Assert.Equal(expected, UiaSubscriber.DetectFramework(frameworkId, className));
     }
 
+    // Pins RecoverValue: the value-recovery selection (§11e). A present
+    // primary value passes through with no source flag; an empty primary
+    // recovers from the fallback candidate (flagged with the passed-in
+    // source); both empty -> nothing.
+    [Fact]
+    public void RecoverValue_recovers_from_candidate_only_when_primary_is_empty() {
+        // Primary present -> pass through, no flag (and never overridden).
+        var (v1, s1) = UiaSubscriber.RecoverValue("typed text", "fallback text", "text_pattern");
+        Assert.Equal("typed text", v1);
+        Assert.Null(s1);
+
+        // Primary empty, candidate present -> recover + flag with the source.
+        var (v2, s2) = UiaSubscriber.RecoverValue("", "Acme Corp", "text_pattern");
+        Assert.Equal("Acme Corp", v2);
+        Assert.Equal("text_pattern", s2);
+
+        // Primary null, candidate present -> recover + flag.
+        var (v3, s3) = UiaSubscriber.RecoverValue(null, "12345", "text_pattern");
+        Assert.Equal("12345", v3);
+        Assert.Equal("text_pattern", s3);
+
+        // The source label is whatever the caller passes (future rungs reuse it).
+        var (_, s4) = UiaSubscriber.RecoverValue("", "scanned", "ocr");
+        Assert.Equal("ocr", s4);
+
+        // Both empty -> no value, no source.
+        var (v5, s5) = UiaSubscriber.RecoverValue("", "", "text_pattern");
+        Assert.Null(v5);
+        Assert.Null(s5);
+    }
+
     // Pins ResolveIdentitySource: the identity-ladder rung. AutomationId
     // wins, then Name, then ClassName, else "none" (the OCR candidate).
     [Theory]

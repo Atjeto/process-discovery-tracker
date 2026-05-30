@@ -74,6 +74,7 @@ for (const [proc, b] of Object.entries(byProc)) {
     coverage_hint: tally(b.datas, "coverage_hint"),
     identity_sources: tally(b.datas, "identity_source"), // §11e identity-ladder rung
     mean_confidence: meanConfidence,                     // §11e mean capture confidence [0,1]
+    value_sources: tally(b.datas, "value_source"),       // §11e recovered-value source (label only, not the value)
     pct_with_automation_id: Math.round(100 * b.datas.filter((d) => d.automation_id).length / b.count),
     pct_with_name: Math.round(100 * b.datas.filter((d) => d.name).length / b.count),
     pct_with_value: Math.round(100 * b.datas.filter((d) => d.value != null).length / b.count),

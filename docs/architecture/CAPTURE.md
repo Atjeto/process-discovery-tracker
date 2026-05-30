@@ -138,6 +138,18 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   one, and a `none` rung at low confidence is precisely the element the OCR
   last-resort bridge ([ADR-0023](../adr/0023-recorder-capture-confidence.md))
   targets.
+- **Value recovery (§11e).** A `value_changed` whose primary UIA ValuePattern
+  value comes through empty — a rich-text or document control that signals the
+  change but exposes its text through `TextPattern`, not `ValuePattern` — is
+  recovered via `TextPattern.DocumentRange.GetText` (`UiaSubscriber.RecoverValue` /
+  `TryReadTextValue`), generalizing the AG-Grid typed-value fix. The recovery is
+  flagged with `value_source: "text_pattern"` so it's transparent, never overrides
+  a real primary value, is length-bounded, and adds no UIA reads on the common
+  (non-empty) path. `RecoverValue` takes the source label as a parameter so the OCR
+  last rung reuses it unchanged (`value_source: "ocr"`). *Edit-element descent* and
+  *clipboard* recovery are deliberately **not** done — descent would walk the tree
+  on the interaction hot path, and clipboard scraping is a privacy hazard at odds
+  with the air-gapped, structured-only moat.
 - **Chromium accessibility wake-up.** Chrome / Edge / Electron-based apps build
   their UIA accessibility tree **lazily** — without an external query, web
   content fires no UIA events and the recorder sees only the omnibox / native

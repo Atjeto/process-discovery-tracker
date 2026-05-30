@@ -207,16 +207,30 @@ public sealed class UiaSubscriber {
         } else if (e.Property == ValuePattern.ValueProperty ||
                    e.Property == RangeValuePattern.ValueProperty) {
             var raw = e.NewValue?.ToString() ?? "";
-            // Length-clamp text values; range values are short numerics.
-            // Flag the clamp so the analyst knows the stored value is partial.
+            // Value-recovery (§11e): when the change signal carries an empty
+            // value -- a rich-text / document control that fires the change
+            // but exposes its text through TextPattern, not ValuePattern --
+            // recover it via TextPattern. Generalizes the AG-Grid fix;
+            // value_source flags that the text didn't come from ValuePattern.
+            // Skipped entirely when raw is non-empty, so the common path adds
+            // no UIA reads.
+            string? valueSource = null;
+            if (string.IsNullOrEmpty(raw)) {
+                var (recovered, src) = RecoverValue(raw, TryReadTextValue(el), "text_pattern");
+                if (recovered != null) { raw = recovered; valueSource = src; }
+            }
+            // Length-clamp text values (incl. a recovered one); range values
+            // are short numerics. Flag the clamp so the analyst knows the
+            // stored value is partial.
             var (v, truncated) = ClampValue(raw);
-            EmitValueChanged(el, v, truncated);
+            EmitValueChanged(el, v, truncated, valueSource);
         }
     }
 
-    private void EmitValueChanged(AutomationElement el, string value, bool truncated) {
-        // value_truncated stays null (and is omitted) unless the clamp fired.
-        var extra = new { value, value_truncated = truncated ? (bool?)true : null };
+    private void EmitValueChanged(AutomationElement el, string value, bool truncated, string? valueSource = null) {
+        // value_truncated stays null (and is omitted) unless the clamp fired;
+        // value_source stays null (omitted) unless recovery fired (§11e).
+        var extra = new { value, value_truncated = truncated ? (bool?)true : null, value_source = valueSource };
         if (_verbose) {
             EmitFiltered("value_changed", el, extra);
             return;
@@ -402,6 +416,43 @@ public sealed class UiaSubscriber {
     internal static (string value, bool truncated) ClampValue(string raw, int max = 256) {
         if (raw.Length > max) return (raw.Substring(0, max), true);
         return (raw, false);
+    }
+
+    /// <summary>
+    /// Value-recovery selection (§11e) -- pure half of generalizing the
+    /// AG-Grid fix. When a value-bearing control signals a change but its
+    /// primary UIA ValuePattern value comes through empty (rich-text /
+    /// document controls that expose their content through TextPattern, not
+    /// ValuePattern), recover from a fallback candidate. Returns the value to
+    /// emit plus a `value_source` tag, which is null on the normal path
+    /// (primary value present) so the flag is only emitted when recovery
+    /// actually fired -- mirroring the value_truncated convention. Never
+    /// overrides a real primary value. The source label is passed in so new
+    /// recovery rungs (e.g. "ocr") reuse this selection unchanged.
+    /// </summary>
+    internal static (string? value, string? source) RecoverValue(
+            string? primaryValue, string? candidateValue, string candidateSource) {
+        if (!string.IsNullOrEmpty(primaryValue)) return (primaryValue, null);
+        if (!string.IsNullOrEmpty(candidateValue)) return (candidateValue, candidateSource);
+        return (null, null);
+    }
+
+    // Safe read of an element's text content via TextPattern -- the managed
+    // UIA recovery source for controls (Document, rich edit, some custom
+    // grids) that expose their text through TextPattern but report an empty
+    // ValuePattern value. Bounded by maxLen (the caller clamps to 256
+    // anyway) so a whole-document read can't blow up. Guarded: an
+    // unsupported pattern or a throwing range yields null, never an
+    // exception on the interaction hot path.
+    private static string? TryReadTextValue(AutomationElement el, int maxLen = 257) {
+        try {
+            if (el.TryGetCurrentPattern(TextPattern.Pattern, out var p) &&
+                p is TextPattern tp) {
+                var v = tp.DocumentRange.GetText(maxLen);
+                return string.IsNullOrEmpty(v) ? null : v;
+            }
+        } catch { }
+        return null;
     }
 
     // Citrix / RDP / VMware remoting hosts present the remote session as a

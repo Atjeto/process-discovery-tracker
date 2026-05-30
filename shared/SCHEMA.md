@@ -121,6 +121,7 @@ Sourced from Windows UI Automation via the C# sidecar recorder. See `docs/intera
 | `toggle_state` | string | `toggle_changed` only - `on` \| `off` \| `indeterminate` |
 | `value` | string | `value_changed` only, length-clamped to 256 chars |
 | `value_truncated` | bool | `value_changed` only; present (`true`) when the 256-char clamp fired, so the analyst knows the stored value is partial |
+| `value_source` | string | `value_changed` only; present **only when the value was recovered** off the primary UIA ValuePattern path (§11e) — currently `text_pattern` (content read via `TextPattern` from a rich-text/document control that reported an empty ValuePattern value, generalizing the AG-Grid fix). Omitted on the normal path. A future OCR recovery would surface here as `ocr`. |
 | `coverage_hint` | string | First interaction per process only — `rich` (stable `automation_id`) \| `basic` (control type, no id) \| `minimal` (class name only). Signals how richly UIA exposes that app. |
 
 Fields are omitted (not nulled) when the underlying UIA property throws on access.

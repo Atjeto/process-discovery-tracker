@@ -111,3 +111,15 @@ test("interactionEvent passes through the E8 desktop-coverage fields", () => {
   // The raw framework_id and the normalized framework coexist.
   assert.strictEqual(ev.data.framework_id, "Win32");
 });
+
+test("interactionEvent passes through value_source (recovered value flag)", () => {
+  // value_source (§11e) flags a value recovered off the primary ValuePattern
+  // path; the allowlist must keep it for transparency about recovery.
+  const ev = interactionEvent(SID, {
+    kind: "value_changed",
+    value: "Acme Corp",
+    value_source: "text_pattern",
+  });
+  assertEnvelope(ev, "interaction");
+  assert.strictEqual(ev.data.value_source, "text_pattern");
+});

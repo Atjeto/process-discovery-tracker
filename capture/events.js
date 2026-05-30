@@ -55,10 +55,11 @@ function interactionEvent(sessionId, data) {
     // chromium/java/javafx/qt/remote/terminal/unknown), distinct from the
     // raw `framework_id`. `identity_source` is the identity-ladder rung
     // (automation_id/name/class_name/none) and `confidence` is the
-    // per-element capture-confidence score in [0,1]. Without these
-    // allowlist entries the recorder's fields are silently dropped before
-    // they reach events.jsonl.
-    "framework", "identity_source", "confidence",
+    // per-element capture-confidence score in [0,1]. `value_source` flags a
+    // value recovered off the primary ValuePattern path (text_pattern).
+    // Without these allowlist entries the recorder's fields are silently
+    // dropped before they reach events.jsonl.
+    "framework", "identity_source", "confidence", "value_source",
   ]);
   const shaped = {};
   for (const [k, v] of Object.entries(data)) {
