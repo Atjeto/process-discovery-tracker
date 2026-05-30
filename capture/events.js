@@ -50,6 +50,12 @@ function interactionEvent(sessionId, data) {
     "selected_value", "toggle_state", "value",
     // E6 / E7 -- recorder-emitted signal-quality fields.
     "coverage_hint", "value_truncated",
+    // E8 (§11e) -- desktop-coverage-hardening signal fields. `framework`
+    // is the normalized UI-toolkit detection (win32/wpf/winforms/winui/
+    // chromium/java/javafx/qt/remote/terminal/unknown), distinct from the
+    // raw `framework_id`. Without this allowlist entry the recorder's
+    // field is silently dropped before it reaches events.jsonl.
+    "framework",
   ]);
   const shaped = {};
   for (const [k, v] of Object.entries(data)) {

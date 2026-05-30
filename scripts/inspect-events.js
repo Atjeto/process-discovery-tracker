@@ -62,6 +62,7 @@ for (const [proc, b] of Object.entries(byProc)) {
     kinds: tally(b.datas, "kind"),
     control_types: tally(b.datas, "control_type"),
     framework_ids: tally(b.datas, "framework_id"),
+    frameworks: tally(b.datas, "framework"),            // §11e normalized UI-toolkit detection
     class_names: tally(b.datas, "class_name"),          // the AG-Grid discriminator candidate
     automation_ids: tally(b.datas, "automation_id"),    // e.g. the serial field id
     coverage_hint: tally(b.datas, "coverage_hint"),
@@ -79,7 +80,7 @@ console.log(JSON.stringify(report, null, 2));
 const busiest = Object.entries(byProc).sort((a, b) => b[1].count - a[1].count)[0];
 if (busiest) {
   console.log("\n=== SEQUENCE SAMPLE for " + busiest[0] + " (first 50, structural only) ===");
-  console.log("kind | control_type | automation_id | class_name | framework_id | name? | value?");
+  console.log("kind | control_type | automation_id | class_name | framework_id | framework | name? | value?");
   for (const d of busiest[1].datas.slice(0, 50)) {
     console.log([
       d.kind || "-",
@@ -87,6 +88,7 @@ if (busiest) {
       d.automation_id || "-",
       d.class_name || "-",
       d.framework_id || "-",
+      d.framework || "-",
       d.name ? "Y" : "-",
       d.value != null ? "Y" : "-",
     ].join(" | "));

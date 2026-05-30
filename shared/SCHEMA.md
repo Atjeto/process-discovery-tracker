@@ -110,7 +110,8 @@ Sourced from Windows UI Automation via the C# sidecar recorder. See `docs/intera
 | `automation_id` | string | Developer-assigned ID |
 | `name` | string | Visible label |
 | `class_name` | string | Win32 class name |
-| `framework_id` | string | `Win32`, `WinForm`, `WPF`, `XAML`, `Chrome`, others |
+| `framework_id` | string | Raw UIA FrameworkId — `Win32`, `WinForm`, `WPF`, `XAML`, `Chrome`, others. Java/Qt/remoting hosts misreport this (often `Win32`); prefer `framework` below. |
+| `framework` | string | **Normalized UI-toolkit detection** (§11e) — `win32` \| `winforms` \| `wpf` \| `winui` \| `chromium` \| `java` \| `javafx` \| `qt` \| `remote` \| `terminal` \| `unknown`. Re-derived in the recorder from `framework_id` + `class_name` so toolkits that lie about their `framework_id` are recognised. Distinct from the recognition layer's *web-app* `framework` axis (chromium/ag-grid/office365). Lets the analyst tally toolkit coverage and explain thin capture (`java` needs the Java Access Bridge; `remote`/`terminal` expose little to UIA → the video backstop applies). Always present (worst case `unknown`). |
 | `window_title` | string | Top-level window title |
 | `process_name` | string | Owning process .exe name |
 | `pid` | int | Owning process PID |

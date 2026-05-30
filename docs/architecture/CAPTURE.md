@@ -112,6 +112,20 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   (a property that throws is omitted, not nulled). The first interaction per
   process carries a `coverage_hint` (`rich` / `basic` / `minimal`); a clamped
   256-char value is flagged `value_truncated`.
+- **Framework detection (§11e).** Every interaction also carries a normalized
+  `framework` — `win32` / `winforms` / `wpf` / `winui` / `chromium` / `java` /
+  `javafx` / `qt` / `remote` / `terminal` / `unknown` — re-derived in
+  `UiaSubscriber.DetectFramework` from the raw `framework_id` **and** the window
+  `class_name`. The point is the toolkits that *misreport* their UIA
+  `framework_id`: Java (Swing/AWT) and Qt windows report `Win32`, and a Citrix/RDP
+  host wraps a foreign session — the window class (`SunAwtFrame`, `Qt…QWindowIcon`,
+  `wfica32`, `ConsoleWindowClass`) is the reliable tell, so class signatures win
+  over `framework_id`. This is *desktop-coverage hardening*: a `java`/`qt` tally
+  tells the analyst to enable the Java Access Bridge / Qt a11y plugin, and a
+  `remote`/`terminal` tally says structured UIA will be thin there so the local
+  video backstop carries it. It is distinct from the recognition layer's *web-app*
+  `framework` axis (`chromium` / `ag-grid` / `office365`), which is mined from
+  class-name signatures downstream in `recognition.py` / `recognition.js`.
 - **Chromium accessibility wake-up.** Chrome / Edge / Electron-based apps build
   their UIA accessibility tree **lazily** — without an external query, web
   content fires no UIA events and the recorder sees only the omnibox / native

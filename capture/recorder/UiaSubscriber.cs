@@ -404,6 +404,99 @@ public sealed class UiaSubscriber {
         return (raw, false);
     }
 
+    // Citrix / RDP / VMware remoting hosts present the remote session as a
+    // single host window on the local desktop; UIA sees only that host (the
+    // real controls are pixels inside it). Detecting the host class is the
+    // signal behind the §11e deployment rule: run the recorder INSIDE the
+    // session, and lean on the video backstop. Kept deliberately small and
+    // grounded in documented class names -- live-remoting validation is
+    // deferred (needs a Citrix/RDP session), so we do not guess broader.
+    private static readonly string[] RemoteHostMarkers = {
+        "wfica",                  // Citrix ICA client (wfica32.exe) windows
+        "TscShellContainerClass", // mstsc.exe (RDP) top-level window
+        "RAIL_",                  // RDP RemoteApp seamless windows
+    };
+
+    // Console / terminal hosts expose only a character grid to UIA -- no
+    // structured controls. Flagging them tells the analyst structured
+    // capture won't work here (the value/identity ladders will bottom out).
+    private static readonly string[] TerminalClassMarkers = {
+        "ConsoleWindowClass",            // classic conhost.exe
+        "CASCADIA_HOSTING_WINDOW_CLASS", // Windows Terminal
+        "VirtualConsoleClass",           // ConEmu
+        "PuTTY",                         // PuTTY
+        "mintty",                        // Git Bash / Cygwin
+    };
+
+    /// <summary>
+    /// Normalized UI-toolkit taxonomy emitted as the interaction's
+    /// <c>framework</c> field (§11e desktop-coverage hardening). This is
+    /// distinct from two other things it is easy to confuse it with:
+    ///   * the raw UIA <c>framework_id</c> -- which Java, Qt and remoting
+    ///     hosts routinely misreport as "Win32"/empty, the exact gap this
+    ///     closes; and
+    ///   * the recognition layer's *web-app* <c>framework</c> axis
+    ///     (chromium/ag-grid/office365), derived from class-name signatures
+    ///     downstream.
+    /// Knowing the real toolkit is how the analyst explains thin coverage:
+    /// a Java Swing window needs the Java Access Bridge enabled; a Citrix
+    /// host window is pixels (video backstop); a terminal is a text grid.
+    /// Class-name signatures are checked before the FrameworkId because the
+    /// toolkits that lie about their FrameworkId are exactly the ones whose
+    /// window class is the reliable tell. The class names matched here are
+    /// platform-stable constants (SunAwt*, Glass*, Qt*QWindow*,
+    /// WindowsForms10.*, ConsoleWindowClass) -- the same category as the
+    /// recorder's existing Chrome_WidgetWin_* match -- not app-specific ids.
+    /// </summary>
+    internal static string DetectFramework(string? frameworkId, string? className) {
+        var fwk = frameworkId ?? "";
+        var cls = className ?? "";
+
+        // 1. Class-name signatures first (toolkits that misreport FrameworkId).
+        if (cls.StartsWith("SunAwt", StringComparison.Ordinal)) return "java";    // AWT/Swing
+        if (cls.StartsWith("GlassWnd", StringComparison.Ordinal) ||
+            cls.StartsWith("Glass_", StringComparison.Ordinal)) return "javafx";
+        if (IsQtClass(cls)) return "qt";
+        if (ContainsAny(cls, RemoteHostMarkers)) return "remote";                 // Citrix/RDP/VMware
+        if (ContainsAny(cls, TerminalClassMarkers)) return "terminal";
+        if (cls.StartsWith("WindowsForms10.", StringComparison.Ordinal)) return "winforms";
+
+        // 2. Trust the FrameworkId for toolkits that report it honestly.
+        switch (fwk) {
+            case "Chrome":   return "chromium";  // browsers AND Electron (chromium-hosted)
+            case "WPF":      return "wpf";
+            case "WinForm":
+            case "WinForms": return "winforms";
+            case "XAML":     return "winui";     // UWP / WinUI / XAML islands
+            case "Win32":
+            case "DirectUI": return "win32";
+        }
+
+        // 3. An unmapped-but-present FrameworkId is passed through lowercased
+        //    so a future toolkit (e.g. "MAUI") stays visible; no signal at
+        //    all -> "unknown".
+        if (!string.IsNullOrEmpty(fwk)) return fwk.ToLowerInvariant();
+        return "unknown";
+    }
+
+    // Qt top-level windows use a class like "Qt5152QWindowIcon" /
+    // "Qt672QWindowIcon" (Qt<version>QWindowIcon), or the bare
+    // "QWidget"/"QWindow" classes on older/embedded builds.
+    private static bool IsQtClass(string cls) {
+        if (cls.Length == 0) return false;
+        if (cls == "QWidget" || cls == "QWindow") return true;
+        return cls.StartsWith("Qt", StringComparison.Ordinal) &&
+               cls.Contains("QWindow", StringComparison.Ordinal);
+    }
+
+    private static bool ContainsAny(string cls, string[] markers) {
+        if (cls.Length == 0) return false;
+        foreach (var m in markers) {
+            if (cls.Contains(m, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
     private object? BuildEvent(string kind, AutomationElement el, object? extra) {
         try {
             var data = new Dictionary<string, object?> { ["kind"] = kind };
@@ -428,6 +521,15 @@ public sealed class UiaSubscriber {
                     };
                 }
             }
+            // E8 (§11e): normalized UI-toolkit detection from the raw
+            // framework_id + class_name we just captured. Always present
+            // (worst case "unknown") so the analyst can tally toolkit
+            // coverage per app and explain thin capture (java/qt/remote/
+            // terminal expose little to UIA). See DetectFramework.
+            data["framework"] = DetectFramework(
+                data.TryGetValue("framework_id", out var fwv) ? fwv as string : null,
+                data.TryGetValue("class_name", out var clv) ? clv as string : null);
+
             // E6: the first event emitted for a pid carries a coverage
             // hint -- how richly UIA exposes that app. rich = a stable
             // AutomationId, basic = a control type only, minimal = just a

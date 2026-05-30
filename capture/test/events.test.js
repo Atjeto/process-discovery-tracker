@@ -90,3 +90,19 @@ test("interactionEvent passes through the E6/E7 signal-quality fields", () => {
   assert.strictEqual(ev.data.coverage_hint, "rich");
   assert.strictEqual(ev.data.value_truncated, true);
 });
+
+test("interactionEvent passes through the E8 desktop-coverage fields", () => {
+  // framework (§11e) is the recorder's normalized UI-toolkit detection; the
+  // allowlist must keep it or the analyst never sees toolkit coverage.
+  const ev = interactionEvent(SID, {
+    kind: "invoked",
+    control_type: "Button",
+    framework_id: "Win32",
+    class_name: "SunAwtFrame",
+    framework: "java",
+  });
+  assertEnvelope(ev, "interaction");
+  assert.strictEqual(ev.data.framework, "java");
+  // The raw framework_id and the normalized framework coexist.
+  assert.strictEqual(ev.data.framework_id, "Win32");
+});

@@ -55,6 +55,44 @@ public class UiaSubscriberTests {
         Assert.True(longTrunc);
     }
 
+    // Pins DetectFramework: the normalized toolkit taxonomy emitted as the
+    // `framework` field (§11e). The value-add is the rows where the UIA
+    // FrameworkId LIES -- Java/Qt/remoting hosts report "Win32" (or empty)
+    // but the window class is the true tell, so the class-name signatures
+    // must win over the FrameworkId.
+    [Theory]
+    // Honest FrameworkId -> direct mapping.
+    [InlineData("Chrome", "Chrome_WidgetWin_1", "chromium")]
+    [InlineData("WPF", "HwndWrapper[app;;guid]", "wpf")]
+    [InlineData("WinForm", "WindowsForms10.Window.8.app.0", "winforms")]
+    [InlineData("XAML", "Windows.UI.Core.CoreWindow", "winui")]
+    [InlineData("Win32", "Notepad", "win32")]
+    [InlineData("Win32", "DirectUIHWND", "win32")]
+    // FrameworkId LIES: Java/Qt report Win32 (or empty) -> class wins.
+    [InlineData("Win32", "SunAwtFrame", "java")]
+    [InlineData("", "SunAwtDialog", "java")]
+    [InlineData("Win32", "GlassWndClass-GlassWindowClass-3", "javafx")]
+    [InlineData("Win32", "Qt5152QWindowIcon", "qt")]
+    [InlineData("Win32", "Qt672QWindowIcon", "qt")]
+    [InlineData("Win32", "QWidget", "qt")]
+    // WinForms sometimes reports Win32; the WindowsForms10 class recovers it.
+    [InlineData("Win32", "WindowsForms10.EDIT.app.0.141b42a_r6_ad1", "winforms")]
+    // Remoting hosts (Citrix/RDP) -> "remote" (the wrong-side-of-the-glass signal).
+    [InlineData("Win32", "TscShellContainerClass", "remote")]
+    [InlineData("Win32", "wfica32", "remote")]
+    [InlineData("Win32", "RAIL_window", "remote")]
+    // Terminals -> "terminal" (text grid, no structured controls).
+    [InlineData("Win32", "ConsoleWindowClass", "terminal")]
+    [InlineData("Win32", "CASCADIA_HOSTING_WINDOW_CLASS", "terminal")]
+    // Unmapped-but-present FrameworkId passes through lowercased; nothing -> unknown.
+    [InlineData("Maui", "SomeClass", "maui")]
+    [InlineData("", "", "unknown")]
+    [InlineData(null, null, "unknown")]
+    public void DetectFramework_normalizes_toolkit_and_beats_a_lying_framework_id(
+            string? frameworkId, string? className, string expected) {
+        Assert.Equal(expected, UiaSubscriber.DetectFramework(frameworkId, className));
+    }
+
     // Pins CoalesceKeyFromProps: AutomationId wins, then Name+ClassName,
     // then RuntimeId, else null (no stable identity).
     [Fact]
