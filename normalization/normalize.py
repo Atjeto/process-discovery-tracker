@@ -62,93 +62,19 @@ from anchor_suggest import (
 import app_vocab
 import stats_compute as stats
 from pii_masking import mask_events
+# Session-folder I/O + marker-edit replay live in focused sibling modules
+# (god-file decomposition, continues F4). Re-imported here so normalize.X and
+# `from normalize import X` keep resolving and every internal call site is
+# unchanged.
+from session_io import (
+    _coerce_event_shape, load_events, load_manifest, load_annotations,
+    write_annotations, compute_screenshot_hashes,
+)
+from marker_edits import apply_marker_edits
 
 
-def _coerce_event_shape(obj: dict[str, Any], line_no: int) -> dict[str, Any]:
-    """Guarantee the structural invariants the rest of the pipeline relies on, so
-    a corrupt or hand-edited events.jsonl line degrades instead of crashing a
-    downstream consumer (coalesce / case_assignment / step_suggest all assume
-    these): `data` is a dict, `event_id` is a non-empty string, and `timestamp`
-    is a string. Field VALUES inside `data` are validated where they're
-    interpreted -- e.g. parse_ts tolerates a non-ISO timestamp string."""
-    if not isinstance(obj.get("data"), dict):
-        obj["data"] = {}
-    eid = obj.get("event_id")
-    if not isinstance(eid, str) or not eid:
-        obj["event_id"] = f"_gen{line_no}"
-    ts = obj.get("timestamp")
-    if not isinstance(ts, str):
-        obj["timestamp"] = "" if ts is None else str(ts)
-    return obj
-
-
-def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
-    events = []
-    dropped = 0
-    with open(events_file, encoding="utf-8") as f:
-        for line_no, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as exc:
-                dropped += 1
-                snippet = line[:120] + ("..." if len(line) > 120 else "")
-                logger.warning(
-                    "load_events: dropping malformed line %d in %s: %s | %s",
-                    line_no, events_file, exc, snippet,
-                )
-                continue
-            # A line can be valid JSON yet not an event object (a bare number,
-            # string, array, null/true) -- e.g. a truncated or corrupt log.
-            # Drop it like a malformed line instead of crashing downstream on
-            # `.get`.
-            if not isinstance(obj, dict):
-                dropped += 1
-                logger.warning(
-                    "load_events: dropping non-object line %d in %s: %s",
-                    line_no, events_file, type(obj).__name__,
-                )
-                continue
-            events.append(_coerce_event_shape(obj, line_no))
-    # Defensive ordering: timestamps are normally ISO strings (which sort
-    # chronologically as strings), but a corrupt log may carry a numeric or
-    # null timestamp -- coerce so heterogeneous types never crash the sort.
-    def _order(e: dict[str, Any]) -> tuple[str, float]:
-        ts = e.get("timestamp")
-        ts = ts if isinstance(ts, str) else ("" if ts is None else str(ts))
-        seq = e.get("_seq", 0)
-        if isinstance(seq, bool) or not isinstance(seq, (int, float)):
-            seq = 0
-        return (ts, seq)
-    events.sort(key=_order)
-    return events, dropped
-
-
-def load_manifest(session_folder: Path) -> dict[str, Any]:
-    manifest_file = session_folder / "manifest.json"
-    if not manifest_file.exists():
-        return {}
-    with open(manifest_file, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def load_annotations(session_folder: Path) -> dict[str, Any]:
-    annotations_file = session_folder / "annotations.json"
-    if not annotations_file.exists():
-        return {}
-    try:
-        with open(annotations_file, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def write_annotations(session_folder: Path, anno: dict) -> None:
-    anno["last_modified"] = datetime.now(timezone.utc).isoformat()
-    with open(session_folder / "annotations.json", "w", encoding="utf-8") as f:
-        json.dump(anno, f, indent=2)
+# load_events / _coerce_event_shape / load_manifest / load_annotations /
+# write_annotations live in session_io.py (re-imported above).
 
 
 def _step_ignored_processes(annotations: dict) -> list[str]:
@@ -211,32 +137,7 @@ def _step_calibration_kwargs(cal: dict) -> dict:
     }
 
 
-def compute_screenshot_hashes(session_folder: Path) -> list[dict[str, str]]:
-    """Average-hash (aHash) every screenshot so the viewer's gallery can
-    collapse runs of near-identical frames. Pillow is optional -- when it
-    cannot be imported the feature degrades cleanly to no grouping."""
-    shots_dir = session_folder / "screenshots"
-    if not shots_dir.is_dir():
-        return []
-    try:
-        from PIL import Image
-    except ImportError:
-        return []
-    out: list[dict[str, str]] = []
-    for f in sorted(shots_dir.glob("*.jpg")):
-        try:
-            with Image.open(f) as im:
-                px = list(im.convert("L").resize((8, 8)).getdata())
-        except (OSError, ValueError):
-            continue
-        if not px:
-            continue
-        avg = sum(px) / len(px)
-        bits = 0
-        for p in px:
-            bits = (bits << 1) | (1 if p >= avg else 0)
-        out.append({"filename": f.name, "hash": f"{bits:016x}"})
-    return out
+# compute_screenshot_hashes lives in session_io.py (re-imported above).
 
 
 def _merge_phases(existing: list, fresh: list) -> list:
@@ -331,94 +232,7 @@ def _compute_drift_markers(existing: list, fresh: list) -> list[dict]:
     return drift
 
 
-def apply_marker_edits(
-    events: list[dict[str, Any]],
-    annotations: dict[str, Any],
-) -> tuple[list[dict[str, Any]], int]:
-    """§9.3 option b: apply annotation overrides during normalization.
-
-    Supported edit shapes (last-write-wins per event_id+field/op):
-      { event_id, field: "label", value }       - rename
-      { event_id, field: "timestamp", value }   - adjust marker timestamp
-      { event_id, op: "delete" }                - drop the marker entirely
-      { op: "insert", marker_type, label,
-        timestamp, id }                          - insert synthetic marker
-
-    Insert edits create a derived marker with event_id "insert-<id>" so
-    downstream consumers can distinguish synthetic from captured markers.
-
-    Returns (edited_events, applied_count). Raw events.jsonl never
-    modified; this builds a derived stream that downstream stages walk.
-    """
-    edits = (annotations or {}).get("marker_edits") or []
-    if not edits:
-        return events, 0
-    label_over: dict[str, Any] = {}
-    ts_over: dict[str, Any] = {}
-    deleted: set[str] = set()
-    inserts: list[dict[str, Any]] = []
-    session_id_hint = next((e.get("session_id") for e in events if e.get("session_id")), None)
-    for e in edits:
-        if e.get("op") == "insert":
-            ts = e.get("timestamp")
-            if not ts:
-                continue
-            edit_id = e.get("id") or str(_uuid.uuid4())
-            inserts.append({
-                "event_id": f"insert-{edit_id}",
-                "type": "marker",
-                "timestamp": ts,
-                "session_id": session_id_hint or "",
-                "data": {
-                    "marker_type": e.get("marker_type", "start"),
-                    "label": e.get("label"),
-                    "synthetic": True,
-                    "edit_id": edit_id,
-                },
-            })
-            continue
-        evid = e.get("event_id")
-        if not evid:
-            continue
-        if e.get("op") == "delete":
-            deleted.add(evid)
-            continue
-        field = e.get("field")
-        if field == "label":
-            label_over[evid] = e.get("value")
-        elif field == "timestamp":
-            ts_over[evid] = e.get("value")
-    applied = 0
-    out: list[dict[str, Any]] = []
-    for ev in events:
-        if ev.get("type") != "marker":
-            out.append(ev)
-            continue
-        evid = ev.get("event_id")
-        if evid in deleted:
-            applied += 1
-            continue
-        new_label = label_over.get(evid)
-        new_ts = ts_over.get(evid)
-        if new_label is None and new_ts is None:
-            out.append(ev)
-            continue
-        new_ev = dict(ev)
-        new_data = dict(ev["data"])
-        if new_label is not None:
-            new_data["label"] = new_label
-        new_ev["data"] = new_data
-        if new_ts is not None:
-            new_ev["timestamp"] = new_ts
-        out.append(new_ev)
-        applied += 1
-    if inserts:
-        out.extend(inserts)
-        applied += len(inserts)
-    # If we changed any timestamps OR inserted markers, sort again so downstream sees order
-    if ts_over or inserts:
-        out.sort(key=lambda e: (e.get("timestamp", ""), e.get("_seq", 0)))
-    return out, applied
+# apply_marker_edits lives in marker_edits.py (re-imported above).
 
 
 # --------------------------------------------------------------------------
