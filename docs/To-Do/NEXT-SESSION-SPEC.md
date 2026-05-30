@@ -150,6 +150,53 @@ for little gain. No further god-file remains.
 
 ---
 
+## 0.8 §11b real ground-truth corpus — 2026-05-30 (latest)
+
+The §11b calibration's real-data half landed on `master` (branch
+`session-11b-real-corpus`, fast-forwarded). The over-segmentation finding —
+previously **synthetic-only** (the demo's 64→15) — is now **corpus-backed**:
+the real C# recorder was driven against three installed desktop apps and the
+captures committed under [`corpus/`](../../corpus/README.md).
+
+- **Real captures + measurement.** Out-of-repo harness `_pdt_verify/real-corpus/`
+  (`build-corpus.js` + `uia-lib.ps1` + `drive-{excel,outlook,word}.ps1` +
+  `measure.js`) spawns the real recorder (non-verbose), drives the apps via COM
+  (launch) + UIA (`InvokePattern`/`ValuePattern`), brackets cases with **real
+  markers** synced off stdout sentinels, filters to in-case target-app
+  interactions, and re-normalizes under both calibrations via the F3
+  `annotations['calibration']` override.
+- **Result — over-seg reproduces on real data; candidate fixes it:** Outlook
+  compose **9→3** (1 step/field → 1 step/draft), Excel data-prep **8→3**, Word
+  Mailings **8→4**. Same direction/magnitude as the synthetic 64→15. Committed as
+  `corpus/narrow/over-segmentation-outlook-compose` +
+  `corpus/bounded/over-segmentation-{excel-dataprep,word-ribbon}` (each with
+  `events.jsonl`, a calibration-aware `expected.json`, a bug-class README, and the
+  `script.ps1` driver). Evidence table + mechanism:
+  [SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md).
+- **Mechanism confirmed:** in the production (non-verbose) stream
+  `focus_changed`/`text_changed` are verbose-gated (`UiaSubscriber.cs:147`), so
+  multi-field/cell entry arrives as bare consecutive `value_changed` and the
+  element-split fires on every boundary — *not* a synthetic artifact.
+- **§11d deferred Outlook e2e proof: DONE.** The recorder emits the probed
+  compose ids (To `4117` / Cc `4126` / Subject `4101`); `outlook.yaml` enriched
+  them (9 vocab matches, and the step names are the vocab's). Excel `FileSave` too.
+- **Recorder fix:** the 187 MB single-file recorder self-extracts ~180 MB to
+  `%TEMP%`; on the dev box's space-constrained C: it captured **0 events**. Fixed
+  by pointing `DOTNET_BUNDLE_EXTRACT_BASE_DIR` (+ `TEMP`/`TMP`) at D:.
+- **§11e coverage finding (Word):** mail-merge ribbon items reject `InvokePattern`
+  and document text is `text_changed` (verbose-gated) → the business mail-merge
+  steps are invisible to the production stream (logged in that scenario's README).
+
+**Still owner-gated — the flip was NOT applied.** Gate (1) real captures: met.
+Gate (2): the owner eyeballs the ~15-step grain in the viewer/analysis, then
+flips `pipeline_config.py` `_DEFAULT_CALIBRATION["step_split_on_element"]=False`,
+regenerates the golden (intentional), re-runs fuzzers. Golden deliberately still
+pins sess-0514 at **64 steps**; not regenerated this cycle. `master` is local-only
+(not pushed). **Deferred:** web/SaaS drives (ServiceNow/Salesforce — need the owner
+foregrounding browser tabs); closing the Word §11e capture gap.
+
+---
+
 ## 1. Where we are
 
 Last release **v0.18.0** (2026-05-28) — adds the in-view Session-view Map level
