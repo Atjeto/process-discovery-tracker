@@ -21,16 +21,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
-import re
-import os
 import sys
-import uuid as _uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 # Python embeddable distributions do not auto-add the script's directory
 # to sys.path (the ._pth file overrides default behavior). Add it ourselves
@@ -38,29 +31,12 @@ logger = logging.getLogger(__name__)
 # whether we run under regular Python or the bundled embeddable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from case_assignment import (
-    assign_case_ids, collect_cases,
-    detect_cases_from_anchors, stamp_anchor_cases,
-)
-from coalesce import coalesce_typing_bursts
-from classification import (
-    classify_events,
-    collapse_adjacent,
-    collapse_activity_occurrences,
-    load_taxonomy,
-)
-from classification_overrides import apply_classification_overrides
+# The pipeline stages (pipeline_stages.py) own the case-assignment /
+# classification / step / suggestion / stats / mining imports now; normalize()
+# only orchestrates. It keeps the few it still touches directly: logging setup,
+# the App-Vocab bootstrap path (main), and the PII-masking stage it runs inline.
 from log_setup import setup_logging
-from xes_export import build_event_log, export_xes, export_csv
-from step_suggest import (
-    auto_suggest_steps, drop_overlapping_auto_steps, _merge_steps,
-)
-from marker_suggest import suggest_markers, merge_marker_suggestions
-from anchor_suggest import (
-    suggest_anchors, merge_anchor_candidates, coerce_anchor_override,
-)
 import app_vocab
-import stats_compute as stats
 from pii_masking import mask_events
 # Session-folder I/O + marker-edit replay live in focused sibling modules
 # (god-file decomposition, continues F4). Re-imported here so normalize.X and
