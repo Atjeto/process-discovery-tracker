@@ -312,6 +312,12 @@ Grounded in the dependency graph (§4) and the foundation (§5). Three waves.
 10. **§11e** — desktop-coverage hardening (identity ladder, value recovery, framework
     detection, Windows.Media.Ocr last-resort per §6c, video backstop). Safe now: the recorder
     has the `Recorder.Tests.csproj` from Wave 0 item 6 plus the §11a real-data coverage.
+    **Recorder-side landed 2026-05-30** ([ADR-0023](../adr/0023-recorder-capture-confidence.md)):
+    framework detection, identity ladder, per-element confidence, TextPattern value recovery, and
+    the default-off Windows.Media.Ocr bridge — all additive, analyst-facing, pinned by
+    `Recorder.Tests`, pipeline-neutral. **Still deferred:** live validation against real
+    Java/Qt/Citrix/terminal apps (the §11a real-data step) and calibration of the confidence/cap
+    constants (§11b).
 11. **§11f** — trace-merge (now that §11b alignment is proven), automation-candidate ranking
     (feeds §11c), structural PII masking + consent UX.
 12. **6a** — pluggable storage: Python + capture seams (the `SessionRepository` viewer shell

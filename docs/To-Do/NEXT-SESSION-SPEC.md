@@ -32,7 +32,7 @@ agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
 ---
 
-## 0.5 Real-value vocab cycle — 2026-05-30 (latest)
+## 0.5 Real-value vocab cycle — 2026-05-30
 
 The §11d App-Vocabulary work was reframed and executed: **Claude probes the real
 apps** (not the owner; there is no LLM in the product) and maps **real** UIA
@@ -56,6 +56,48 @@ signatures. Landed on `master`:
 viewer/analysis validation; cover **SAP / Jira / Zendesk** (need driving) per
 [APP-COVERAGE-LIST.md](APP-COVERAGE-LIST.md); decide whether to make the demo real
 (regenerate `example-aggregate` with probed ids so it re-enriches under the real vocabs).
+
+---
+
+## 0.6 §11e recorder desktop-coverage hardening — 2026-05-30 (latest)
+
+The autonomous, in-repo-gated surface of roadmap **§11e** landed on `master`
+(branch `session-11e-recorder-hardening`, fast-forwarded; 5 commits). The C#
+recorder now reports **per-element capture quality** so the moat degrades
+*honestly* instead of silently thinning on hard frameworks
+([ADR-0023](../adr/0023-recorder-capture-confidence.md)). Every interaction gains
+additive, analyst-facing signal fields (the `coverage_hint` precedent: emit →
+`events.js` allowlist → SCHEMA → `inspect-events.js`, **not** consumed by the
+pipeline):
+
+- **Framework detection** (`framework`) — normalized toolkit
+  (win32/winforms/wpf/winui/chromium/java/javafx/qt/remote/terminal/unknown),
+  re-derived from `framework_id` **+** window class so toolkits that misreport
+  their `framework_id` (Java/Qt → `Win32`; Citrix/RDP wrap a session) are caught
+  by their platform-stable window class. Distinct from recognition's web-app axis.
+- **Identity ladder** (`identity_source`: automation_id→name→class_name→ocr→none)
+  + **per-element confidence** (`confidence` ∈ [0,1], capped at 0.30 on
+  remote/terminal).
+- **Value recovery** (`value_source: "text_pattern"`) — generalizes the AG-Grid
+  fix via `TextPattern` (the managed UIA API has no `LegacyIAccessiblePattern`).
+- **OCR last resort** (`ocr_text`, default-off `interactions.ocr`) via
+  **Windows.Media.Ocr** (Win10+ system API, not Tesseract). Recorder TFM bumped to
+  `net8.0-windows10.0.19041.0`; single-file publish + `ready` startup verified.
+- **Deployment rules** ([DEPLOY.md](../DEPLOY.md)) — run the recorder *inside* a
+  Citrix/RDP session; lean on the local video backstop where structured capture
+  can't reach.
+
+All fields additive → **pipeline/golden unaffected** (golden 8/8 OK; sess-0514
+still 64 steps — **§11b NOT flipped**, still owner-gated). Pinned by
+`Recorder.Tests` (56, incl. a headless OCR-engine round-trip) + `events.test.js`.
+
+**Deferred (owner / needs apps):** live validation against real
+Java/Qt/Citrix/terminal apps — does detection fire, does the OCR label help (the
+§11a real-data step). The `remote` signature set is deliberately small (high-
+confidence class names only); broaden against a live Citrix/RDP session. The
+confidence rung scores + the 0.30 cap ship intuition-calibrated; tune against a
+real corpus (§11b). **Remaining autonomous tech-debt:** the god-file splits
+(`viewer/views/flow-view.js` ~3,800 L; further `normalize.py` decomposition).
 
 ---
 
