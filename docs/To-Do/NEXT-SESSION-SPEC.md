@@ -104,43 +104,49 @@ real corpus (§11b). **Remaining autonomous tech-debt:** the god-file splits
 
 ## 0.7 God-file splits — 2026-05-30 (latest)
 
-The remaining autonomous tech-debt from §0.6 landed on `master` (branch
-`session-godfile-splits`, fast-forwarded; 8 commits). Pure, **behaviour-
-preserving** refactors — no feature or output change — done behind the
-session-golden + the Flow-view Playwright harness so the recurring "shipped
-un-eyeballed UI" failure could not recur.
+The remaining autonomous tech-debt from §0.6 landed on `master` in two passes
+(branches `session-godfile-splits` then `session-godfile-splits-2`, both
+fast-forwarded). Pure, **behaviour-preserving** refactors — no feature or output
+change — done behind the session-golden + the Flow-view Playwright harness so the
+recurring "shipped un-eyeballed UI" failure could not recur.
 
-- **`flow-view.js` 3,811 → 2,745 L**, decomposed into four cohesive CommonJS
+- **`flow-view.js` 3,811 → 1,854 L**, decomposed into five cohesive CommonJS
   sibling modules (no bundler; each a plain `module.exports`): **`flow-view-apps.js`**
   (per-app colour/label/legend, pure), **`flow-view-video.js`** (the video↔timeline
   bridge — playhead, seek, watch-step, re-sync), **`flow-view-screenshots.js`**
   (grid + gallery + star + openScreenshot), **`flow-view-markers.js`** (marker-edit
   resolution, the markers list, suggested markers + anchor candidates, per-marker
-  edits). flow-view stays the hub: it re-exports the helpers' entry points so its
-  public surface is unchanged for `renderer.js`/`steps-view.js`/`analysis-view.js`,
-  and injects `loadSessionIntoView`/`renderTimeline` into the helpers
-  (`initVideo`/`initMarkers`) so the graph stays acyclic (helpers `require()` only
-  one-way: screenshots→video, markers→video). The marker-INSERT surfaces and the
-  `renderTimeline` hub (its ~570-line lane builder) stay in flow-view — the
-  timeline-hub extraction is a larger, higher-risk move left for a dedicated pass.
-- **`normalize.py` 1,192 → 870 L**, continuing F4 into four focused modules:
-  **`session_io.py`** (load/write + screenshot aHash), **`marker_edits.py`**
-  (`apply_marker_edits` replay), **`phase_reconcile.py`** (`_merge_phases` /
-  `reconcile_phase_membership` / `_compute_drift_markers`), **`pipeline_config.py`**
-  (the step denylist / excluded ranges / F3 calibration surface). normalize.py
-  **re-imports every moved name**, so `normalize.X` / `from normalize import X` and
-  the four tests that import these resolve unchanged.
-- **Gates green at every commit:** viewer npm test 231/231, capture 78, pytest
-  314·passed/10·skipped (incl. the seeded fuzzers), golden **10/10 OK — sess-0514
-  still 64 steps** (this was a refactor, **NOT** the §11b flip), and the Flow-view
-  harness probe **byte-identical** across every extraction (timeline lanes/legend/
-  minimap, screenshot grid + gallery open→step→close, seek→playhead, the injected
-  suggested-marker bar/row + anchor panel) with **0 page errors**.
+  edits), and **`flow-view-timeline.js`** (the `renderTimeline` lane stack + its
+  lane helpers + the minimap + lane toggles + zoom/scroll persistence + the
+  timeline summary). flow-view stays the hub: it re-exports the helpers' entry
+  points so its public surface is unchanged for `renderer.js`/`steps-view.js`/
+  `analysis-view.js`, and injects the glue each helper needs back from the hub
+  (`initVideo`/`initMarkers`/`initTimeline`) so the graph stays acyclic (helpers
+  `require()` only one-way: screenshots→video, markers→video,
+  timeline→apps/video/markers/screenshots). What stays in flow-view: session
+  load/analyze, range selection + the marker-INSERT/queue actions, the event
+  table, case scope, session pills/summary, the command-palette provider.
+- **`normalize.py` 1,192 → 253 L** (a thin orchestrator), continuing F4 into five
+  focused modules: **`session_io.py`** (load/write + screenshot aHash),
+  **`marker_edits.py`** (`apply_marker_edits` replay), **`phase_reconcile.py`**
+  (`_merge_phases` / `reconcile_phase_membership` / `_compute_drift_markers`),
+  **`pipeline_config.py`** (the step denylist / excluded ranges / F3 calibration
+  surface), and **`pipeline_stages.py`** (the ten `_run_*` stage helpers +
+  `_init_existing_anno`). normalize.py **re-imports the names** that `normalize.X`
+  / `from normalize import X` and the tests still reference, so they resolve
+  unchanged; the now-orphaned pipeline imports were trimmed so the orchestrator is
+  clean.
+- **Gates green at every commit (11 total):** viewer npm test 231/231, capture 81,
+  pytest 314·passed/10·skipped (incl. the seeded fuzzers), golden **10/10 OK —
+  sess-0514 still 64 steps** (this was a refactor, **NOT** the §11b flip), and the
+  Flow-view harness probe **byte-identical** across every extraction (timeline
+  lanes/legend/minimap, screenshot grid + gallery open→step→close, seek→playhead,
+  the injected suggested-marker bar/row + anchor panel) with **0 page errors**.
 
-**Remaining (next):** the Flow `renderTimeline` timeline-hub extraction (the
-biggest single chunk left, but the most entangled — needs its own careful pass);
-the `normalize._run_*` stage helpers could move to a `pipeline_stages.py` but are
-tightly coupled to the orchestrator. Both deferred, not blocking.
+**Remaining (next, both deferred — not blocking):** the `flow-view.js`
+session-load + session-summary clusters could split further, but the file is now
+a reasonable orchestrator; and a per-session-summary module would add injection
+for little gain. No further god-file remains.
 
 ---
 

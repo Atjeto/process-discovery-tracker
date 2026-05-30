@@ -35,7 +35,7 @@ broken there" regressions is gone.
 | | Flow timeline | Steps mini-timeline | Phases mini-timeline |
 |---|---|---|---|
 | Entry point | `renderTimeline()` | `renderStepTimeline()` | `renderPhaseTimeline()` |
-| File | [`views/flow-view.js`](../../viewer/views/flow-view.js) | [`step-editor.js`](../../viewer/step-editor.js) | [`phase-editor.js`](../../viewer/phase-editor.js) |
+| File | [`views/flow-view-timeline.js`](../../viewer/views/flow-view-timeline.js) | [`step-editor.js`](../../viewer/step-editor.js) | [`phase-editor.js`](../../viewer/phase-editor.js) |
 | Core use | `TimelineCore.renderLaneStack` with lane plugins | `TimelineCore.renderMiniTimeline` | `TimelineCore.renderMiniTimeline` |
 | Host element | `#timeline` inside `#timeline-scroll` | `#timeline-steps` inside `.mini-timeline-scroll` | `#timeline-phases` inside `.mini-timeline-scroll` |
 | Zoom state | `State.zoomFactor` | `State.stepZoom` | `State.phaseZoom` |
@@ -48,7 +48,7 @@ below — but is also a caller of the core: it builds an array of lane plugins a
 hands them to `TimelineCore.renderLaneStack` (commit `faed9f6` completed this
 migration — ADR-0003 items 4-5).
 
-## The Flow timeline — `renderTimeline()` (`flow-view.js`)
+## The Flow timeline — `renderTimeline()` (`flow-view-timeline.js`)
 
 `renderTimeline()` builds an ordered array of **lane plugins** — each an object
 `{ key, height, gapBefore, render(host, ctx) }` — and hands it to
@@ -95,25 +95,30 @@ The case header *above* the activity bands and the dedicated screenshot rail
   `bindMiniTimelineZoom()` in `renderer.js` to the per-view zoom buttons; same
   1.5× contract.
 - **Persistence** — `persistTimelineForCurrent()` / `restoreTimelineForCurrent()`
-  (`flow-view.js`) store `{ zoomFactor, scrollLeft, ts }` per `sessionFolder` in
-  the single `localStorage` key `pdt.timelineState`. Scroll writes are throttled
-  250 ms (`_wireTimelineScrollPersist`). The mini-timelines do **not** persist
-  zoom.
+  (`flow-view-timeline.js`) store `{ zoomFactor, scrollLeft, ts }` per
+  `sessionFolder` in the single `localStorage` key `pdt.timelineState`. Scroll
+  writes are throttled 250 ms (`_wireTimelineScrollPersist`). The mini-timelines
+  do **not** persist zoom.
 
 ## Minimap, playhead, range selection (Flow only)
 
-All three live in `flow-view.js`:
+The minimap lives in `flow-view-timeline.js` with `renderTimeline`; the playhead
+is created by `renderTimeline` but positioned from `flow-view-video.js`; range
+selection stays in `flow-view.js` (it pairs with the queue-from-selection /
+exclude-range marker actions):
 
-- **Minimap** — `renderMinimap()` builds `#timeline-minimap`: compressed activity
-  bands plus a `.tl-mm-viewport` rectangle. `syncMinimapViewport()` keeps the
-  rectangle aligned to `#timeline-scroll`; a `wireMinimap()` IIFE handles
-  click-to-jump and viewport-drag.
-- **Playhead** — created inside `renderTimeline()` as `#tl-playhead`, positioned
-  by `positionPlayhead()` on every `<video>` `timeupdate`, using the OBS / video
+- **Minimap** (`flow-view-timeline.js`) — `renderMinimap()` builds
+  `#timeline-minimap`: compressed activity bands plus a `.tl-mm-viewport`
+  rectangle. `syncMinimapViewport()` keeps the rectangle aligned to
+  `#timeline-scroll`; a `wireMinimap()` IIFE handles click-to-jump and
+  viewport-drag.
+- **Playhead** — created inside `renderTimeline()` as `#tl-playhead`
+  (`flow-view-timeline.js`), positioned by `positionPlayhead()`
+  (`flow-view-video.js`) on every `<video>` `timeupdate`, using the OBS / video
   start timestamp (`videoStartTs()`).
-- **Range selection** — `installRangeSelection()`: Shift-drag on the `#timeline`
-  background sets `State.selectionRange`; `renderSelectionStats()` draws a stats
-  card. Wired once via a `host._pdtSelWired` flag.
+- **Range selection** (`flow-view.js`) — `installRangeSelection()`: Shift-drag on
+  the `#timeline` background sets `State.selectionRange`; `renderSelectionStats()`
+  draws a stats card. Wired once via a `host._pdtSelWired` flag.
 
 ## Resize handles
 

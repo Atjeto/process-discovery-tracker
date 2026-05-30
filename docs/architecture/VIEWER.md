@@ -62,8 +62,9 @@ CommonJS, so real modules need no build step).
 
 | File | Surface |
 |---|---|
-| `views/flow-view.js` | Flow level — session load + analyze, the Flow timeline and every lane, minimap, range selection, event table, case scope, command-palette provider, the marker-insert menu + queue actions. The hub; it `require()`s the four `flow-view-*` helper modules below and re-exports their public entry points so its surface (`renderTimeline`, `seekToTimestamp`, `renderMarkersList`, …) is unchanged for `renderer.js`/`steps-view.js`/`analysis-view.js`. |
+| `views/flow-view.js` | Flow level — session load + analyze, range selection, event table, case scope, command-palette provider, session pills/summary, the marker-insert menu + queue actions. The hub; it `require()`s the five `flow-view-*` helper modules below and re-exports their public entry points so its surface (`renderTimeline`, `seekToTimestamp`, `renderMarkersList`, …) is unchanged for `renderer.js`/`steps-view.js`/`analysis-view.js`. |
 | `views/flow-view-apps.js` | Pure per-app colour (`appColor`), display label (`appLabel`), and the timeline legend (`renderLegend`). No DOM/state coupling back into the Flow view. |
+| `views/flow-view-timeline.js` | The Flow timeline subsystem — `renderTimeline` (the lane stack: ticks / cases / activity+idle+markers+suggested / screenshots / density / titles / steps / notes via `TimelineCore.renderLaneStack`), its lane helpers (`layoutCaseLanes` / `isUserActivityEvent` / `monitorBadgeFor`), the minimap + middle-drag-pan, the lane-visibility toggles, per-session zoom/scroll persistence, and the timeline summary. `require()`s apps/video/markers/screenshots one-way; the flow-view glue its lanes call (`currentScopeRange`, `showMarkerInsertMenu`, `showCaseContextMenu`, `activateAnnoTab`) is injected via `initTimeline()`. flow-view re-exports `renderTimeline` and feeds it to `initMarkers()`. |
 | `views/flow-view-video.js` | The video↔timeline bridge — video-start derivation, video↔session-time conversion, the playhead, seeking (+ the no-video playhead fallback), watch-a-step playback, and the interactive video re-sync. Self-wires `#video` timeupdate + `#btn-sync-video`; `loadSessionIntoView` injected via `initVideo()`. Required by flow-view + the screenshots/markers modules (`seekToTimestamp`). |
 | `views/flow-view-screenshots.js` | The screenshot surfaces — side-panel thumbnail grid, full-pane gallery (arrow-key stepping, auto-advance, aHash near-duplicate folding), star-for-report, the lazy hover thumb, and the guarded open-in-OS-viewer path. Owns its own state; self-wires `#btn-open-gallery`; `require()`s `flow-view-video.js`. |
 | `views/flow-view-markers.js` | The markers side-panel + unbracketed-session recovery — marker-edit resolution (effective label/timestamp/deleted), the markers list, **suggested markers** (dashed `.tl-suggested` bars + Accept/Dismiss rows, [ADR-0017](../adr/0017-suggested-markers.md)), the **anchor-candidates** panel ([ADR-0018](../adr/0018-anchor-candidates.md)), and per-marker adjust/delete/rename. flow-view consumes `effectiveLabel`/`visibleMarkerSuggestions` (the timeline overlay); `renderTimeline` injected via `initMarkers()`. |
@@ -132,12 +133,14 @@ and destructured by `renderer.js` so call sites stay unchanged (e.g.
 level switcher and the state bus).
 
 The **same injection pattern is used one level down**, inside the Flow view:
-`flow-view.js` `require()`s its four `flow-view-*` helpers and, where a helper
+`flow-view.js` `require()`s its five `flow-view-*` helpers and, where a helper
 needs a function that lives back in the hub, injects it at boot rather than
-`require()`ing the hub (which would cycle) — `initVideo({ loadSessionIntoView })`
-and `initMarkers({ renderTimeline })`. The helpers in turn `require()` each other
-only one-way (`screenshots`→`video`, `markers`→`video`), so the graph stays
-acyclic. `flow-view.js` re-exports the helpers' public entry points
+`require()`ing the hub (which would cycle) — `initVideo({ loadSessionIntoView })`,
+`initMarkers({ renderTimeline })`, and `initTimeline({ currentScopeRange,
+showMarkerInsertMenu, showCaseContextMenu, activateAnnoTab })`. The helpers in
+turn `require()` each other only one-way (`screenshots`→`video`,
+`markers`→`video`, `timeline`→`apps`/`video`/`markers`/`screenshots`), so the
+graph stays acyclic. `flow-view.js` re-exports the helpers' public entry points
 (`seekToTimestamp`, `renderMarkersList`, `renderAnchorCandidates`,
 `videoTimeToSessionTs`, `watchStep`, …) on its own surface, so `renderer.js` /
 `steps-view.js` / `analysis-view.js` import them from `flow-view.js` exactly as
