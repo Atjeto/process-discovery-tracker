@@ -25,6 +25,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     to `events.jsonl`. The pure traversal (`SnapshotWalker` over an
     `ISnapshotElement` seam) is pinned by new `Recorder.Tests`; the production
     single-file recorder build stays green.
+  - **P2 — the volatility-diff signature picker (the clever core).** New
+    `normalization/signature_pick.py` joins the two-pass snapshot's controls by
+    a *stability-independent* key (role + label + ancestry + bounds bucket —
+    never the candidate id), marks an `automation_id` **volatile** when it
+    changed across passes *or* matches a per-render pattern (`^input-\d+$`,
+    `^combobox-(input|button)-\d+$`, bare GUID, …), then picks the most-stable
+    identity down the ADR-0023 ladder, **skipping volatile fields** — turning the
+    analyst's "which id is real?" guess into a measured fact.
+    `app_vocab.bootstrap_from_snapshot` builds a named-able skeleton over the
+    full control set (name pre-filled from the label, screens grouped by window
+    title, each entry carrying the picked `identity_source` / `confidence` /
+    `volatile_aids`). The **ground-truth test** (`test_signature_pick.py`)
+    validates the picker against the committed hand-probed vocabs: it KEEPS the
+    stable ids (Office `FileSave`, ServiceNow `incident.short_description`,
+    Outlook `4117`, Jira `summary-field`) and **DEMOTES** Salesforce `input-378`
+    / Zendesk auto-ids to the accessible label. Pure-Python; the session-golden
+    is unchanged (discovery is purely additive).
 
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades
