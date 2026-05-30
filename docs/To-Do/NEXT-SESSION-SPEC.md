@@ -202,18 +202,39 @@ sess-0514 at **64 steps** (nothing flipped); `master` is local-only (not pushed)
 
 ---
 
-## 0.9 §11d Jira + Zendesk — BLOCKED, not started — 2026-05-30
+## 0.9 §11d Jira + Zendesk live-probed + ServiceNow refresh — 2026-05-31
 
-**Not done; nothing real was produced.** The precondition — free Jira + Zendesk
-accounts created and logged into Chrome on this box — was **never met**: a clean
-check found **0 logged-in browser sessions**, so there was nothing to probe. A first
-pass that committed **doc-guessed** vocab/template skeletons (commit `d8ddd3c`) was
-**reverted** — guessed UIA signatures are not a deliverable and don't belong on
-`master`. To do this for real: (1) create the two free accounts and log into the
-default Chrome, (2) run the ~2-minute live probe per app (the reusable
-foreground-watcher `_pdt_verify/probe_web_uia.ps1` is out-of-repo and works), then
-(3) author the vocabs against the **harvested** signatures. Until then Jira/Zendesk
-stay **"queued"** in [APP-COVERAGE-LIST.md](APP-COVERAGE-LIST.md).
+Real vocabs, **live-probed then doc-grounded** — the right order this time
+(structure from the probe, *function* from the docs), not the doc-guessing the
+reverted `d8ddd3c` did. Drove the owner's authenticated Chrome via a
+held-connection UIA harvester (`_pdt_verify/probe_web_window.ps1`, out-of-repo)
+that wakes Chrome's renderer a11y by polling, then cross-checked every control
+against the vendor docs. Landed on `master`:
+
+- **Jira** (`app_vocabularies/jira.yaml`, ServiceNow-like stable aids) — create-issue
+  GIC, issue detail (stable `issue.fields.status-view.status-button` transition),
+  list, global nav; + `jira-create-issue` template. The probe corrected real guess
+  errors (Priority's accessible name is the useless "Select Field" → key on aid;
+  project/type picker aids carry volatile React suffixes → key on name).
+- **Zendesk** (`zendesk.yaml`, Salesforce-like — every aid volatile, *proven* by
+  re-probe renumbering → name-keyed) — ticket (new + open), views, search,
+  customers, organizations, add-user/add-org modals, profile/voice menus; +
+  `zendesk-create-ticket`. Doc-grounded: no Status field (status = the Submit-as-X
+  action); Public reply = to requester; macro = prepared action.
+- **ServiceNow `servicenow.yaml` → v2** — incident preserved + refreshed (priority
+  [read-only/derived], number, lookups, watch-list) + **Change Request**
+  (`change_request.*`) + **Catalog** item order (`oi_order_now_button`/`quantity`)
+  & **REQ** record (`sc_request.*`) + a **generic platform layer** (record verbs,
+  list/nav actions); + `servicenow-change-request` and `servicenow-catalog-request`
+  templates. Doc-grounded (Impact×Urgency = Priority read-only; change
+  Standard/Normal/Emergency; Order Now → REQ/RITM). Scope caveat documented: the
+  catalog browse page titles itself "Catalog", outside `.*ServiceNow.*`.
+
+Gates: lookups + `load_vocabularies` + `load_canonical` + canonical-match on
+synthetic streams green; scope-isolated (inert on the order-to-cash demo); **golden
+10/10 byte-for-byte**. Probe harness + per-app harvests live out-of-repo in
+`_pdt_verify/`. **Remaining gaps:** SAP (Tier B, not driven this cycle); catalog
+item *variables* (per-item dynamic, intentionally not vocab'd).
 
 ---
 

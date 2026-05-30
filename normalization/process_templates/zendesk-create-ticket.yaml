@@ -1,0 +1,80 @@
+# Zendesk — Create Ticket (Process Template, §11d).
+#
+# Canonical process keyed to REAL signatures probed live from the Zendesk Agent
+# Workspace new-ticket form (NCR Atleos trial) on 2026-05-30/31
+# (docs/REAL-VALUE-TESTING.md). Pairs with the zendesk.yaml App Vocabulary. Pass
+# to normalize with
+#   --canonical normalization/process_templates/zendesk-create-ticket.yaml
+#
+# Zendesk auto-generates volatile aids, so every match keys on the stable NAME.
+# Two robustness points (match the stable identity, not the label decoration):
+#   - the Assignee field's name carries a required-marker asterisk ("Assignee*"),
+#     so it is matched with `starts_with: "Assignee"`.
+#   - status is set by submitting; the button reads "Submit as <status>", so the
+#     submit step matches `starts_with: "Submit"`.
+# Scope is by window_title_regex (".*Zendesk.*"); each ticket is one case, anchored
+# on the Subject typed.
+canonical_process:
+  id: "zendesk-create-ticket"
+  name: "Zendesk — Create Ticket"
+  version: 1
+  owners: ["pdt"]
+
+  case_anchor:
+    field: "name"
+    equals: "Subject"
+    case_label_from: "value"
+    min_case_interactions: 2
+    min_case_duration_ms: 1000
+
+  phases:
+    - phase_id: "intake"
+      name: "Intake"
+      step_ids: ["set-requester", "enter-subject"]
+    - phase_id: "describe"
+      name: "Describe"
+      step_ids: ["enter-description"]
+    - phase_id: "classify"
+      name: "Classify & route"
+      step_ids: ["set-type", "set-priority", "set-assignee"]
+    - phase_id: "submit"
+      name: "Submit"
+      step_ids: ["submit"]
+
+  steps:
+    - step_id: "set-requester"
+      name: "Set requester"
+      match:
+        - window_title_regex: ".*Zendesk.*"
+          interaction: { control_type: "ComboBox", name: "Requester" }
+    - step_id: "enter-subject"
+      name: "Enter subject"
+      match:
+        - window_title_regex: ".*Zendesk.*"
+          interaction: { control_type: "Edit", name: "Subject" }
+    - step_id: "enter-description"
+      name: "Enter description (public reply)"
+      match:
+        - window_title_regex: ".*Zendesk.*"
+          interaction: { control_type: "Edit", name: "Public reply composer" }
+    - step_id: "set-type"
+      name: "Set type"
+      match:
+        - window_title_regex: ".*Zendesk.*"
+          interaction: { control_type: "ComboBox", name: "Type" }
+    - step_id: "set-priority"
+      name: "Set priority"
+      match:
+        - window_title_regex: ".*Zendesk.*"
+          interaction: { control_type: "ComboBox", name: "Priority" }
+    - step_id: "set-assignee"
+      name: "Set assignee"
+      match:
+        - window_title_regex: ".*Zendesk.*"
+          interaction: { control_type: "ComboBox", name: { starts_with: "Assignee" } }
+    - step_id: "submit"
+      name: "Submit ticket"
+      boundary: "single"
+      match:
+        - window_title_regex: ".*Zendesk.*"
+          interaction: { control_type: "Button", name: { starts_with: "Submit" } }

@@ -1,0 +1,83 @@
+# Jira — Create Issue (Process Template, §11d).
+#
+# Canonical process keyed to REAL signatures probed live from the Jira Cloud
+# Global Issue Create (GIC) dialog on a free site (petrovic90.atlassian.net) on
+# 2026-05-30 (docs/REAL-VALUE-TESTING.md). Pairs with the jira.yaml App Vocabulary
+# (which names the same controls). Pass to normalize with
+#   --canonical normalization/process_templates/jira-create-issue.yaml
+#
+# Scope is by window_title_regex (".*Jira.*") not process_name so it works in
+# Chrome or Edge. Each issue created is one case, anchored on the Summary typed
+# (Edit automation_id "summary-field"). Unlike the vocab (exact-match only), the
+# template CAN use operators, so the Project / Issue-type pickers — whose
+# automation_ids carry volatile React suffixes (project-_rl3_, type-picker-_ru8_)
+# — match on `automation_id: { starts_with: ... }`.
+canonical_process:
+  id: "jira-create-issue"
+  name: "Jira — Create Issue"
+  version: 1
+  owners: ["pdt"]
+
+  case_anchor:
+    field: "automation_id"
+    equals: "summary-field"
+    case_label_from: "value"
+    min_case_interactions: 2
+    min_case_duration_ms: 1000
+
+  phases:
+    - phase_id: "select"
+      name: "Select project & type"
+      step_ids: ["select-project", "set-issue-type"]
+    - phase_id: "describe"
+      name: "Describe"
+      step_ids: ["enter-summary", "enter-description"]
+    - phase_id: "classify"
+      name: "Classify & assign"
+      step_ids: ["set-priority", "set-assignee", "set-labels"]
+    - phase_id: "create"
+      name: "Create"
+      step_ids: ["create"]
+
+  steps:
+    - step_id: "select-project"
+      name: "Select project"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "ComboBox", automation_id: { starts_with: "project-" } }
+    - step_id: "set-issue-type"
+      name: "Set issue type"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "ComboBox", automation_id: { starts_with: "type-picker-" } }
+    - step_id: "enter-summary"
+      name: "Enter summary"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "Edit", automation_id: "summary-field" }
+    - step_id: "enter-description"
+      name: "Enter description"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "Edit", automation_id: "ak-editor-textarea" }
+    - step_id: "set-priority"
+      name: "Set priority"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "ComboBox", automation_id: "priority-field" }
+    - step_id: "set-assignee"
+      name: "Set assignee"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "ComboBox", automation_id: "assignee-field" }
+    - step_id: "set-labels"
+      name: "Set labels"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "ComboBox", automation_id: "labels-field" }
+    - step_id: "create"
+      name: "Create issue"
+      boundary: "single"
+      match:
+        - window_title_regex: ".*Jira.*"
+          interaction: { control_type: "Button", name: "Create" }

@@ -19,13 +19,19 @@ Nothing here is probed or written into a vocab until this list is approved.
 
 **Done (probed live, validated, committed to `master`):**
 - **Tier A** — Outlook, Excel, Word, Chrome, Edge vocabs (real UIA); Excel proven end-to-end through the recorder.
-- **Tier B** — ServiceNow (incident form) + Salesforce (New Account) vocabs, probed from the owner's live instances.
-- **Process templates** — create/resolve incident, create account, send email, mail-merge (`../../normalization/process_templates/`).
-- **§11b** — over-segmentation root-caused ([SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md)); flip gated on real-corpus + UI validation.
+- **Tier B** — ServiceNow + Salesforce + **Jira** + **Zendesk** vocabs, probed from live instances.
+  **Jira** (create-issue/issue-view/list/nav) and **Zendesk** (ticket + 8 more screens) probed
+  2026-05-31 and doc-grounded; **ServiceNow expanded to v2** — incident + **change request** +
+  **catalog/REQ** + a **generic platform layer** (record verbs, list/nav actions).
+- **Process templates** — create/resolve incident, create account, send email, mail-merge,
+  **create issue** (Jira), **create ticket** (Zendesk), **create change request** + **submit
+  catalog request** (ServiceNow).
+- **§11b** — over-segmentation root-caused ([SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md)); superseded by [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md) (view-time grain roll-up).
 
 **Queued for the apps session (need driving / a reachable instance):**
-- **Tier B** — SAP (Fiori trial), Jira, Zendesk.
+- **Tier B** — **SAP** (Fiori trial) — the one remaining easy-ish web app not yet driven.
 - **Tier C** — Workday, Oracle, SAP-GUI, Concur — **deliberately NOT doc-derived**: without an instance the UIA ids would be guesses (the fiction we just removed).
+- **Backlog within done apps** — Jira/Zendesk/ServiceNow each have deeper surfaces still uncaptured (Jira boards, Zendesk admin, ServiceNow catalog-item variables [per-item dynamic]).
 
 ---
 

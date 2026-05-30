@@ -1,0 +1,108 @@
+# ServiceNow — Create Change Request (Process Template, §11d).
+#
+# Canonical process keyed to REAL signatures probed live from a ServiceNow PDI
+# Change Request form (change_request table) on 2026-05-31
+# (docs/REAL-VALUE-TESTING.md), doc-grounded against ServiceNow change management
+# (Standard/Normal/Emergency; the Planning fields below map to the documented
+# Planning tab). Pairs with the change-request screen in servicenow.yaml. Pass to
+# normalize with
+#   --canonical normalization/process_templates/servicenow-change-request.yaml
+#
+# Scope is by window_title_regex (".*Change Request.*ServiceNow.*"). Each change
+# is one case, anchored on the Short description typed. The Planning fields are
+# read-only until Type/Model is set, so the worker fills them in the Assess/Plan
+# phases — matched on their stable change_request.* aids.
+canonical_process:
+  id: "servicenow-change-request"
+  name: "ServiceNow — Create Change Request"
+  version: 1
+  owners: ["pdt"]
+
+  case_anchor:
+    field: "automation_id"
+    equals: "change_request.short_description"
+    case_label_from: "value"
+    min_case_interactions: 2
+    min_case_duration_ms: 1000
+
+  phases:
+    - phase_id: "capture"
+      name: "Capture change"
+      step_ids: ["enter-short-description", "set-type", "set-category", "enter-description"]
+    - phase_id: "assess"
+      name: "Assess risk"
+      step_ids: ["set-risk", "set-impact", "enter-justification", "enter-risk-impact"]
+    - phase_id: "plan"
+      name: "Plan"
+      step_ids: ["enter-implementation-plan", "enter-backout-plan", "enter-test-plan"]
+    - phase_id: "submit"
+      name: "Assign / Submit"
+      step_ids: ["assign", "submit"]
+
+  steps:
+    - step_id: "enter-short-description"
+      name: "Enter short description"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "change_request.short_description" }
+    - step_id: "set-type"
+      name: "Set type"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "ComboBox", automation_id: "change_request.type" }
+    - step_id: "set-category"
+      name: "Set category"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "ComboBox", automation_id: "change_request.category" }
+    - step_id: "enter-description"
+      name: "Enter description"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "change_request.description" }
+    - step_id: "set-risk"
+      name: "Set risk"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "ComboBox", automation_id: "change_request.risk" }
+    - step_id: "set-impact"
+      name: "Set impact"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "ComboBox", automation_id: "change_request.impact" }
+    - step_id: "enter-justification"
+      name: "Enter justification"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "change_request.justification" }
+    - step_id: "enter-risk-impact"
+      name: "Enter risk & impact analysis"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "change_request.risk_impact_analysis" }
+    - step_id: "enter-implementation-plan"
+      name: "Enter implementation plan"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "change_request.implementation_plan" }
+    - step_id: "enter-backout-plan"
+      name: "Enter backout plan"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "change_request.backout_plan" }
+    - step_id: "enter-test-plan"
+      name: "Enter test plan"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "change_request.test_plan" }
+    - step_id: "assign"
+      name: "Assign"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Edit", automation_id: "sys_display.change_request.assignment_group" }
+    - step_id: "submit"
+      name: "Submit change"
+      boundary: "single"
+      match:
+        - window_title_regex: ".*Change Request.*ServiceNow.*"
+          interaction: { control_type: "Button", automation_id: { starts_with: "sysverb_insert" } }

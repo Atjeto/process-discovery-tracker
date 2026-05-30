@@ -1,0 +1,176 @@
+# Jira (Cloud) App Vocabulary — ADR-0002.
+#
+# REAL-VALUE mapping (§11d). Probed LIVE from a free Jira Cloud site
+# (petrovic90.atlassian.net) in Chrome on 2026-05-30 (see docs/REAL-VALUE-TESTING.md).
+# Harvested by walking the live UIA tree after waking Chrome's renderer
+# accessibility (a held FindAll poll; a single walk sees only browser chrome).
+# Screens probed: Global Issue Create (GIC) dialog, the issue detail view
+# (KAN-1/KAN-2 Task + KAN-3 Subtask), and the List view.
+#
+# SIGNATURE STRATEGY — Jira is ServiceNow-like: most controls expose a STABLE
+# semantic automation_id, so those are keyed on automation_id (exact match):
+#   * create form:  <field>-field  (summary-field, priority-field, assignee-field…)
+#   * issue view:   issue.fields.status-view.status-button  (the transition action)
+#   * actions:      po-spotlight-share-button  (Share)
+# Where probing showed the NAME is unreliable, the aid wins — e.g. Priority's
+# accessible name on the create form is the useless "Select Field"; the status
+# transition button's name embeds the current status ("To Do - Change status"),
+# so it is matched on its stable aid, not its name.
+# Controls WITHOUT a stable aid are keyed on their stable accessible NAME (Project
+# "Space", Issue type "Work type", "Add a comment…", "Edit Priority", …).
+# DELIBERATELY OMITTED: value-dependent names that can't be matched exactly
+# (e.g. "Unassigned- edit Assignee", "Atje- edit Reporter" — the current value is
+# in the name) and per-instance custom fields (customfield_NNNNN).
+#
+# FUNCTIONAL NOTES grounded in Atlassian docs (cross-checked after probing):
+#   - "Work type" is the current label for issue TYPE; hierarchy is Epic (big
+#     initiative) > standard Story/Task/Bug > Subtask. An Epic exposes CHILD work
+#     items where a standard item exposes SUBTASKS (observed across KAN-1/2 Task,
+#     KAN-3 Subtask, KAN-4 Epic).
+#     support.atlassian.com/jira-cloud-administration/docs/what-are-issue-types/
+#   - The status button performs a WORKFLOW TRANSITION (To Do -> In Progress ->
+#     Done) — it moves the work item to its next status, so it is the key
+#     process-progression action (flagged automation_candidate). Its name embeds
+#     the current status, which is exactly why it is keyed on the aid, not the name.
+#     support.atlassian.com/jira-software-cloud/docs/transition-an-issue/
+#   - Create (from the GIC) and Change status are the outcome actions ->
+#     automation_candidate; the field controls are inputs to those outcomes.
+#
+# Browser-agnostic: window_title scope only (matches Jira in Chrome OR Edge).
+app_vocabulary:
+  id: "jira"
+  name: "Jira (Cloud)"
+  version: 1
+
+  scope:
+    window_title_regex: ".*Jira.*"
+
+  screens:
+    # The GIC is a modal OVERLAY — it does not change the tab title — so entries
+    # carry an explicit `screen`. The issue/list screens have detectable titles.
+    - id: "create-issue"
+      name: "Create issue (Global Issue Create)"
+    - id: "issue-view"
+      name: "Issue detail"
+      window_title_regex: '.*\[[A-Z][A-Z0-9]+-[0-9]+\].*Jira.*'
+    - id: "list"
+      name: "List / backlog"
+      window_title_regex: '.*List.*Jira.*'
+
+  interactions:
+    # === Create issue (GIC) ================================================
+    # Pickers with volatile React id suffixes -> keyed on stable accessible name.
+    - signature: { control_type: "ComboBox", name: "Space" }
+      name: "Project"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", name: "Work type" }
+      name: "Issue type"   # "Work type" = issue type; Epic > Story/Task/Bug > Subtask
+      screen: "create-issue"
+    # Stable semantic automation_ids.
+    - signature: { control_type: "Edit", automation_id: "summary-field" }
+      name: "Summary"
+      screen: "create-issue"
+    - signature: { control_type: "Edit", automation_id: "ak-editor-textarea" }
+      name: "Description"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "gic-status-field" }
+      name: "Status"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "assignee-field" }
+      name: "Assignee"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "priority-field" }
+      name: "Priority"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "reporter-field" }
+      name: "Reporter"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "labels-field" }
+      name: "Labels"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "duedate-field" }
+      name: "Due date"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "parent-field" }
+      name: "Parent"
+      screen: "create-issue"
+    - signature: { control_type: "ComboBox", automation_id: "issuelinks-field" }
+      name: "Linked work items"
+      screen: "create-issue"
+    - signature: { control_type: "Button", name: "Create" }
+      name: "Create issue"
+      screen: "create-issue"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "CheckBox", name: "Create another" }
+      name: "Create another"
+      screen: "create-issue"
+    - signature: { control_type: "Button", name: "Assign to me" }
+      name: "Assign to me"
+      screen: "create-issue"
+
+    # === Issue detail view =================================================
+    # Status transition — name embeds the current status, so key on the aid.
+    # Doc: this is a workflow TRANSITION (To Do -> In Progress -> Done), the key
+    # process-progression action.
+    - signature: { control_type: "Button", automation_id: "issue.fields.status-view.status-button" }
+      name: "Change status"
+      screen: "issue-view"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", name: "Add a comment…" }
+      name: "Add comment"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Add Description, edit" }
+      name: "Edit description"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Edit Priority" }
+      name: "Edit priority"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Edit Labels" }
+      name: "Edit labels"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Edit Due date" }
+      name: "Edit due date"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Edit Parent" }
+      name: "Edit parent"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Edit Start date" }
+      name: "Edit start date"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Add subtask" }
+      name: "Add subtask"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Add linked work item" }
+      name: "Link work item"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Epic - Add epic" }
+      name: "Add epic"
+      screen: "issue-view"
+    - signature: { control_type: "Button", name: "Copy link" }
+      name: "Copy issue link"
+      screen: "issue-view"
+
+    # === List view =========================================================
+    - signature: { control_type: "Button", name: "Edit Summary" }
+      name: "Edit summary (inline)"
+      screen: "list"
+    - signature: { control_type: "Button", name: "Configure columns" }
+      name: "Configure columns"
+      screen: "list"
+    - signature: { control_type: "Button", name: "Refresh" }
+      name: "Refresh list"
+      screen: "list"
+
+    # === Global navigation (every screen) ==================================
+    - signature: { control_type: "Button", automation_id: "po-spotlight-share-button" }
+      name: "Share"
+    - signature: { control_type: "Button", name: "Filters" }
+      name: "Filters"
+    - signature: { control_type: "Button", name: "Dashboards" }
+      name: "Dashboards"
+    - signature: { control_type: "Button", name: "Add people" }
+      name: "Add people"
+    - signature: { control_type: "Button", name: "Automation" }
+      name: "Automation"

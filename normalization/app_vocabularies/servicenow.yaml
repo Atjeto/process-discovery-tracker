@@ -1,20 +1,46 @@
-# ServiceNow (Incident) App Vocabulary — ADR-0002.
+# ServiceNow (ITSM) App Vocabulary — ADR-0002.
 #
-# REAL-VALUE mapping (§11d). Probed live from a ServiceNow Personal Developer
-# Instance — the classic Incident form (/incident.do) — running in Chrome on
-# 2026-05-30 (see docs/REAL-VALUE-TESTING.md). ServiceNow exposes its stable
-# element ids as the UIA automation_id (incident.<field>, sys_display.incident.*
-# for reference fields, sysverb_insert / resolve_incident for UI actions);
-# framework_id is "Chrome" (web content) and class is "form-control".
+# REAL-VALUE mapping (§11d). Incident form probed live from a ServiceNow PDI on
+# 2026-05-30; Change Request, Service-Catalog item order form, the Request (REQ)
+# record, and the generic platform layer probed live on 2026-05-31 (see
+# docs/REAL-VALUE-TESTING.md), each cross-checked against ServiceNow docs for the
+# FUNCTION of every control.
 #
-# Browser-agnostic: scoped on window_title only (no process_name), so it matches
-# ServiceNow in Chrome OR Edge and complements the browser-chrome vocabs. These
-# OOB incident ids are stable across ServiceNow instances; re-probe if a customer
-# has heavily personalised the form.
+# SIGNATURE STRATEGY — ServiceNow classic forms expose STABLE element ids as the
+# automation_id (<table>.<field>; sys_display.<table>.<ref> for reference fields;
+# sysverb_* for the generic record verbs), so those are keyed on automation_id.
+# Where probing showed a NAME is state-dependent (e.g. a change field reads
+# "Read only - cannot be modified <Label>" until the change Type is set), the aid
+# wins. Per-instance / per-item ids are VOLATILE and are skipped or keyed on the
+# generic accessible NAME instead: list-action aids embed the table
+# (`<table>_control_button`, `_filter_toggle_image`), catalog-item variables use
+# `IO:<sys_id>`, item links use `item_link_<sys_id>`, and the top-nav menu aids are
+# sys_id hashes — so list/nav controls key on their generic NAME.
+#
+# FUNCTIONAL NOTES grounded in ServiceNow docs:
+#   - Incident: Impact x Urgency = Priority, and Priority is READ-ONLY / auto-
+#     calculated — the analyst sets Impact + Urgency (inputs), not Priority. Work
+#     notes are internal; Additional comments are customer-visible. States
+#     New -> In Progress -> On Hold -> Resolved -> Closed.
+#   - Change: Type is Standard (pre-authorized / low-risk), Normal (CAB review), or
+#     Emergency (bypass -> Authorize / CAB). The Planning fields (Justification,
+#     Implementation / Backout / Test plan, Risk & impact analysis) are read-only
+#     until Type / Model is set. Lifecycle New->Assess->Authorize->Scheduled->
+#     Implement->Review.
+#   - Catalog / Request: an Order Now or Add to Cart on a catalog item creates a
+#     REQ (sc_request) holding one or more RITM (sc_req_item); fulfilment work runs
+#     at the Catalog Task level. request_state / approval track the lifecycle.
+#
+# SCOPE NOTE: the standalone catalog BROWSE page titles itself just "Catalog" (no
+# "ServiceNow") so it is OUTSIDE this vocab's .*ServiceNow.* scope; the catalog
+# ITEM order form is "<item> | ServiceNow" and IS in scope. `Search catalog` is
+# kept for completeness but only enriches when it appears on a ServiceNow-titled page.
+#
+# Browser-agnostic: window_title scope only (matches ServiceNow in Chrome OR Edge).
 app_vocabulary:
   id: "servicenow"
-  name: "ServiceNow (Incident)"
-  version: 1
+  name: "ServiceNow (ITSM)"
+  version: 2
 
   scope:
     window_title_regex: ".*ServiceNow.*"
@@ -23,11 +49,26 @@ app_vocabulary:
     - id: "incident"
       name: "Incident form"
       window_title_regex: ".*Incident.*ServiceNow.*"
+    - id: "change"
+      name: "Change Request form"
+      window_title_regex: ".*Change Request.*ServiceNow.*"
+    - id: "request"
+      name: "Request (REQ) record"
+      window_title_regex: ".*\\| Request \\|.*ServiceNow.*"
+    - id: "catalog-item"
+      name: "Catalog item order form"
+    - id: "list"
+      name: "List view"
+    - id: "platform"
+      name: "Platform (nav / generic form chrome)"
 
   interactions:
-    # --- Incident fields (nouns; the step namer supplies the verb) ----
+    # === Incident form (probed 2026-05-30; fields refreshed 2026-05-31) =======
     - signature: { control_type: "Edit", automation_id: "incident.short_description" }
       name: "Short description"
+      screen: "incident"
+    - signature: { control_type: "Edit", automation_id: "incident.number" }
+      name: "Number"
       screen: "incident"
     - signature: { control_type: "Edit", automation_id: "sys_display.incident.caller_id" }
       name: "Caller"
@@ -48,10 +89,13 @@ app_vocabulary:
       name: "State"
       screen: "incident"
     - signature: { control_type: "ComboBox", automation_id: "incident.impact" }
-      name: "Impact"
+      name: "Impact"   # input to Priority
       screen: "incident"
     - signature: { control_type: "ComboBox", automation_id: "incident.urgency" }
-      name: "Urgency"
+      name: "Urgency"   # input to Priority
+      screen: "incident"
+    - signature: { control_type: "ComboBox", automation_id: "incident.priority" }
+      name: "Priority"   # READ-ONLY / auto-calculated (Impact x Urgency) — not analyst-set
       screen: "incident"
     - signature: { control_type: "Edit", automation_id: "sys_display.incident.assignment_group" }
       name: "Assignment group"
@@ -63,13 +107,12 @@ app_vocabulary:
       name: "Configuration item"
       screen: "incident"
     - signature: { control_type: "Edit", automation_id: "incident.comments" }
-      name: "Additional comments"
+      name: "Additional comments"   # customer-visible
       screen: "incident"
     - signature: { control_type: "Edit", automation_id: "incident.work_notes" }
-      name: "Work notes"
+      name: "Work notes"   # internal
       screen: "incident"
-
-    # --- UI actions --------------------------------------------------
+    # --- Incident actions / lookups ---
     - signature: { control_type: "Button", automation_id: "sysverb_insert" }
       name: "Submit incident"
       screen: "incident"
@@ -99,3 +142,181 @@ app_vocabulary:
     - signature: { control_type: "Button", automation_id: "lookup.incident.assignment_group" }
       name: "Look up assignment group"
       screen: "incident"
+    - signature: { control_type: "Button", automation_id: "lookup.incident.assigned_to" }
+      name: "Look up assigned to"
+      screen: "incident"
+    - signature: { control_type: "Button", automation_id: "lookup.incident.business_service" }
+      name: "Look up service"
+      screen: "incident"
+    - signature: { control_type: "Button", automation_id: "add_me_locked.incident.watch_list" }
+      name: "Watch list: add me"
+      screen: "incident"
+
+    # === Change Request form (change_request.*) ==============================
+    - signature: { control_type: "Edit", automation_id: "change_request.short_description" }
+      name: "Short description"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "change_request.number" }
+      name: "Number"
+      screen: "change"
+    - signature: { control_type: "ComboBox", automation_id: "change_request.type" }
+      name: "Type"   # Standard / Normal / Emergency
+      screen: "change"
+    - signature: { control_type: "ComboBox", automation_id: "change_request.category" }
+      name: "Category"
+      screen: "change"
+    - signature: { control_type: "ComboBox", automation_id: "change_request.state" }
+      name: "State"
+      screen: "change"
+    - signature: { control_type: "ComboBox", automation_id: "change_request.risk" }
+      name: "Risk"
+      screen: "change"
+    - signature: { control_type: "ComboBox", automation_id: "change_request.impact" }
+      name: "Impact"
+      screen: "change"
+    - signature: { control_type: "ComboBox", automation_id: "change_request.priority" }
+      name: "Priority"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "sys_display.change_request.requested_by" }
+      name: "Requested by"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "sys_display.change_request.assignment_group" }
+      name: "Assignment group"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "sys_display.change_request.assigned_to" }
+      name: "Assigned to"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "sys_display.change_request.cmdb_ci" }
+      name: "Configuration item"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "sys_display.change_request.business_service" }
+      name: "Service"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "sys_display.change_request.service_offering" }
+      name: "Service offering"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "sys_display.change_request.chg_model" }
+      name: "Change model"
+      screen: "change"
+    # Planning tab (read-only until Type/Model set -> keyed on aid, not name).
+    - signature: { control_type: "Edit", automation_id: "change_request.justification" }
+      name: "Justification"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "change_request.risk_impact_analysis" }
+      name: "Risk and impact analysis"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "change_request.description" }
+      name: "Description"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "change_request.implementation_plan" }
+      name: "Implementation plan"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "change_request.backout_plan" }
+      name: "Backout plan"
+      screen: "change"
+    - signature: { control_type: "Edit", automation_id: "change_request.test_plan" }
+      name: "Test plan"
+      screen: "change"
+
+    # === Request (REQ) record — sc_request.* =================================
+    - signature: { control_type: "Edit", automation_id: "sc_request.number" }
+      name: "Number"
+      screen: "request"
+    - signature: { control_type: "Edit", automation_id: "sc_request.short_description" }
+      name: "Short description"
+      screen: "request"
+    - signature: { control_type: "Edit", automation_id: "sc_request.description" }
+      name: "Description"
+      screen: "request"
+    - signature: { control_type: "ComboBox", automation_id: "sc_request.request_state" }
+      name: "Request state"
+      screen: "request"
+    - signature: { control_type: "ComboBox", automation_id: "sc_request.approval" }
+      name: "Approval"
+      screen: "request"
+    - signature: { control_type: "Edit", automation_id: "sys_display.sc_request.requested_for" }
+      name: "Requested for"
+      screen: "request"
+    - signature: { control_type: "Edit", automation_id: "sys_display.sc_request.opened_by" }
+      name: "Opened by"
+      screen: "request"
+    - signature: { control_type: "Edit", automation_id: "sys_display.sc_request.location" }
+      name: "Location"
+      screen: "request"
+    - signature: { control_type: "Edit", automation_id: "sc_request.special_instructions" }
+      name: "Special instructions"
+      screen: "request"
+
+    # === Service Catalog — item order form ==================================
+    # Generic across every catalog item (the item's variables are per-item
+    # content with volatile IO:<sys_id> aids -> not vocab'd).
+    - signature: { control_type: "Button", automation_id: "oi_order_now_button" }
+      name: "Order now"   # creates the REQ/RITM
+      screen: "catalog-item"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "oi_add_to_cart_button" }
+      name: "Add to cart"
+      screen: "catalog-item"
+    - signature: { control_type: "ComboBox", automation_id: "quantity" }
+      name: "Quantity"
+      screen: "catalog-item"
+    - signature: { control_type: "ComboBox", automation_id: "sysparm_catalog_search" }
+      name: "Search catalog"   # SCOPE NOTE: the browse page is titled "Catalog" (out of scope)
+      screen: "catalog-item"
+
+    # === Generic platform layer (every form / list / page) ==================
+    # Record verbs (sysverb_* are stable across all tables).
+    - signature: { control_type: "Button", automation_id: "sysverb_update" }
+      name: "Update record"
+      screen: "platform"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "sysverb_update_bottom" }
+      name: "Update record"
+      screen: "platform"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "sysverb_delete" }
+      name: "Delete record"
+      screen: "platform"
+    - signature: { control_type: "Button", automation_id: "sysverb_new" }
+      name: "New record"
+      screen: "platform"
+      flags:
+        automation_candidate: true
+    - signature: { control_type: "Button", automation_id: "toggleMoreOptions" }
+      name: "More options"
+      screen: "platform"
+    - signature: { control_type: "Button", automation_id: "togglePersonalizeForm" }
+      name: "Personalize form"
+      screen: "platform"
+    # List actions — aids embed the table, so key on the generic NAME.
+    - signature: { control_type: "Button", name: "Personalize List" }
+      name: "Personalize list"
+      screen: "list"
+    - signature: { control_type: "Button", name: " Show / hide filter" }
+      name: "Toggle filter"
+      screen: "list"
+    - signature: { control_type: "Button", name: " Show column search row" }
+      name: "Show column search"
+      screen: "list"
+    - signature: { control_type: "Button", name: "Edit table data inline" }
+      name: "Edit list inline"
+      screen: "list"
+    # Top-nav menus — aids are sys_id hashes, so key on the NAME.
+    - signature: { control_type: "MenuItem", name: "All" }
+      name: "All (app navigator)"
+      screen: "platform"
+    - signature: { control_type: "MenuItem", name: "Favorites" }
+      name: "Favorites"
+      screen: "platform"
+    - signature: { control_type: "MenuItem", name: "History" }
+      name: "History"
+      screen: "platform"
+    - signature: { control_type: "MenuItem", name: "Workspaces" }
+      name: "Workspaces"
+      screen: "platform"
+    - signature: { control_type: "MenuItem", name: "Admin" }
+      name: "Admin"
+      screen: "platform"

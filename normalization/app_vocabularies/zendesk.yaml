@@ -1,0 +1,218 @@
+# Zendesk (Support / Agent Workspace) App Vocabulary — ADR-0002.
+#
+# REAL-VALUE mapping (§11d). Probed LIVE from a Zendesk trial (NCR Atleos agent
+# workspace) in Chrome on 2026-05-30/31 (see docs/REAL-VALUE-TESTING.md), then
+# cross-checked against Zendesk docs for the FUNCTION of each control:
+#   - agent interface: support.zendesk.com/hc/en-us/articles/4408883355546
+#   - messaging (public reply vs internal note): .../articles/4408843683226
+#   - macros: .../articles/4408844187034
+#
+# SIGNATURE STRATEGY — Zendesk is Salesforce-like: every aid is AUTO-GENERATED and
+# per-load VOLATILE (downshift-3-input vs downshift-12-input for the same field
+# across two loads; :r1d: / :r3p: React useId), so signatures key on the stable
+# accessible NAME, never the aid. Proven by re-probing: the same field renumbered
+# between the existing-ticket and new-ticket loads.
+#
+# FUNCTIONAL NOTES grounded in the docs:
+#   - There is NO standalone "Status" field. Status (New/Open/Pending/On-hold/
+#     Solved/Closed) is set by the SUBMIT action — the button reads "Submit as
+#     <status>", so the status variants are enumerated as submit entries.
+#   - "Public reply" is sent to the requester; an internal note is agent-only.
+#   - A "macro" is a prepared response/action an agent applies (an efficiency move).
+#   - Requester = who reported; Assignee = who handles; Followers = internal
+#     watchers; CC = external people copied on replies.
+# Browser-agnostic: window_title scope only (Chrome or Edge).
+app_vocabulary:
+  id: "zendesk"
+  name: "Zendesk (Support)"
+  version: 1
+
+  scope:
+    window_title_regex: ".*Zendesk.*"
+
+  screens:
+    - id: "ticket"
+      name: "Ticket (new / open)"
+      window_title_regex: ".*[Tt]icket.*Zendesk.*"
+    - id: "views"
+      name: "Views (ticket queue)"
+      window_title_regex: ".*View:.*Zendesk.*"
+    - id: "search"
+      name: "Search"
+      window_title_regex: ".*Search.*Zendesk.*"
+    - id: "customers"
+      name: "Customers (users)"
+      window_title_regex: ".*Customer.*Zendesk.*"
+    - id: "organizations"
+      name: "Organizations"
+      window_title_regex: ".*Organization.*Zendesk.*"
+    # Modals / menus are overlays with no distinct title -> entries carry `screen`.
+    - id: "add-user"
+      name: "Add user modal"
+    - id: "add-org"
+      name: "Add organization modal"
+    - id: "profile-menu"
+      name: "Profile menu"
+    - id: "voice-menu"
+      name: "Voice / Talk menu"
+
+  interactions:
+    # === Ticket — the create / work surface (fields key on NAME) =============
+    - signature: { control_type: "ComboBox", name: "Requester" }
+      name: "Requester"
+      screen: "ticket"
+    - signature: { control_type: "ComboBox", name: "Assignee*" }   # asterisk = required (label decoration)
+      name: "Assignee"
+      screen: "ticket"
+    - signature: { control_type: "ComboBox", name: "Followers" }
+      name: "Followers"
+      screen: "ticket"
+    - signature: { control_type: "Button", name: "CC" }
+      name: "Add CC"
+      screen: "ticket"
+    - signature: { control_type: "Edit", name: "Subject" }
+      name: "Subject"
+      screen: "ticket"
+    - signature: { control_type: "Edit", name: "Public reply composer" }
+      name: "Public reply"   # sent to the requester (the ticket's first comment on a new ticket)
+      screen: "ticket"
+    - signature: { control_type: "Button", name: "Public reply" }
+      name: "Reply channel (public/internal)"
+      screen: "ticket"
+    - signature: { control_type: "Edit", name: "Add user notes" }
+      name: "User notes"
+      screen: "ticket"
+    - signature: { control_type: "ComboBox", name: "Type" }
+      name: "Type"   # Question / Incident / Problem / Task
+      screen: "ticket"
+    - signature: { control_type: "ComboBox", name: "Priority" }
+      name: "Priority"   # Low / Normal / High / Urgent
+      screen: "ticket"
+    - signature: { control_type: "ComboBox", name: "Tags" }
+      name: "Tags"
+      screen: "ticket"
+    - signature: { control_type: "ComboBox", name: "Apply macro" }
+      name: "Apply macro"
+      screen: "ticket"
+    - signature: { control_type: "Button", name: "take it" }
+      name: "Assign to me"
+      screen: "ticket"
+    - signature: { control_type: "Button", name: "follow" }
+      name: "Follow ticket"
+      screen: "ticket"
+    - signature: { control_type: "Button", name: "Add attachment" }
+      name: "Add attachment"
+      screen: "ticket"
+    - signature: { control_type: "Button", name: "Side conversation" }
+      name: "Start side conversation"
+      screen: "ticket"
+    # Submit sets the status -> enumerate the status variants (doc: 6 statuses).
+    - signature: { control_type: "Button", name: "Submit as New" }
+      name: "Submit ticket"
+      screen: "ticket"
+      flags: { automation_candidate: true }
+    - signature: { control_type: "Button", name: "Submit as Open" }
+      name: "Submit ticket"
+      screen: "ticket"
+      flags: { automation_candidate: true }
+    - signature: { control_type: "Button", name: "Submit as Pending" }
+      name: "Submit ticket"
+      screen: "ticket"
+      flags: { automation_candidate: true }
+    - signature: { control_type: "Button", name: "Submit as On-hold" }
+      name: "Submit ticket"
+      screen: "ticket"
+      flags: { automation_candidate: true }
+    - signature: { control_type: "Button", name: "Submit as Solved" }
+      name: "Submit ticket"
+      screen: "ticket"
+      flags: { automation_candidate: true }
+    - signature: { control_type: "Button", name: "Submit as Closed" }
+      name: "Submit ticket"
+      screen: "ticket"
+      flags: { automation_candidate: true }
+
+    # === Views (ticket queue) ==============================================
+    - signature: { control_type: "Button", name: "Create a view" }
+      name: "Create a view"
+      screen: "views"
+    - signature: { control_type: "Button", name: "Refresh views pane" }
+      name: "Refresh views"
+      screen: "views"
+    - signature: { control_type: "CheckBox", name: "Select all tickets" }
+      name: "Select all tickets"
+      screen: "views"
+
+    # === Search ============================================================
+    - signature: { control_type: "Edit", name: "Search:" }
+      name: "Search query"
+      screen: "search"
+    - signature: { control_type: "Button", name: "Saved searches" }
+      name: "Saved searches"
+      screen: "search"
+    - signature: { control_type: "Button", name: "Customize columns" }
+      name: "Customize columns"
+      screen: "search"
+
+    # === Customers (users) =================================================
+    - signature: { control_type: "Edit", name: "Search customers" }
+      name: "Search customers"
+      screen: "customers"
+    - signature: { control_type: "Button", name: "Add customer" }
+      name: "Add customer"
+      screen: "customers"
+    - signature: { control_type: "Button", name: "Bulk import" }
+      name: "Bulk import"
+      screen: "customers"
+
+    # === Organizations =====================================================
+    - signature: { control_type: "Edit", name: "Search organizations" }
+      name: "Search organizations"
+      screen: "organizations"
+    - signature: { control_type: "Button", name: "Add organization" }
+      name: "Add organization"
+      screen: "organizations"
+
+    # === Add-user modal ====================================================
+    - signature: { control_type: "Edit", name: "Email" }
+      name: "New user email"
+      screen: "add-user"
+    - signature: { control_type: "RadioButton", name: "End user" }
+      name: "User type: End user"
+      screen: "add-user"
+    - signature: { control_type: "RadioButton", name: "Staff member" }
+      name: "User type: Staff member"
+      screen: "add-user"
+    # NB: the Edit "Name" appears in BOTH the add-user and add-org modals with an
+    # identical signature (no stable aid to tell them apart) -> one generic entry.
+    - signature: { control_type: "Edit", name: "Name" }
+      name: "Name (new user / organization)"
+    - signature: { control_type: "Button", name: "Close modal" }
+      name: "Close modal"
+
+    # === Add-organization modal ============================================
+    - signature: { control_type: "Button", name: "Organizations" }
+      name: "Organizations"
+      screen: "add-org"
+
+    # === Profile menu ======================================================
+    - signature: { control_type: "MenuItem", name: "Manage profile" }
+      name: "Manage profile"
+      screen: "profile-menu"
+    - signature: { control_type: "MenuItem", name: "Appearance" }
+      name: "Appearance"
+      screen: "profile-menu"
+    - signature: { control_type: "MenuItem", name: "Keyboard shortcuts" }
+      name: "Keyboard shortcuts"
+      screen: "profile-menu"
+    - signature: { control_type: "MenuItem", name: "Sign out" }
+      name: "Sign out"
+      screen: "profile-menu"
+
+    # === Voice / Talk menu =================================================
+    - signature: { control_type: "Button", name: "Voice online" }
+      name: "Voice status"
+      screen: "voice-menu"
+    - signature: { control_type: "ComboBox", name: "Outbound phone number selector" }
+      name: "Outbound number"
+      screen: "voice-menu"
