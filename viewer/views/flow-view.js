@@ -18,7 +18,6 @@ const path = require("node:path");
 const fs = require("node:fs");
 const TimelineCore = require("../timeline/timeline-core.js");
 const State = require("../state.js");
-const PdtTheme = require("../theme.js");
 const Ipc = require("../ipc.js");
 const PdtPalette = require("../command-palette.js");
 const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
@@ -30,6 +29,7 @@ const { renderPhasesLevel } = require("./phases-view.js");
 const { renderAnalysisLevel } = require("./analysis-view.js");
 const SessionSummary = require("../session-summary.js");
 const PdtProject = require("../project.js");
+const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -1066,47 +1066,8 @@ function setVideoOverlay(text) {
 
 /* ============ Timeline ============================================ */
 
-/* Per-app colour. Known apps get fixed assignments so the same colour
-   is stable across sessions; unknown apps get a deterministic slot via
-   a small hash so they stay stable too. The palettes -- and the
-   light/dark split -- live in theme.js; bands are solid fills carrying
-   white labels, so every colour is deep enough to clear white text. */
-function appColor(app) {
-  const { map, palette, fallback } = PdtTheme.appColors();
-  if (!app) return fallback;
-  if (map[app]) return map[app];
-  let h = 0;
-  const s = app.toLowerCase();
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return palette[h % palette.length];
-}
-
-/* Friendly display name for known executables; falls back to the raw
-   process name so unmapped apps remain identifiable in the legend. */
-const APP_LABELS = {
-  "chrome.exe": "Chrome", "msedge.exe": "Edge", "firefox.exe": "Firefox",
-  "SAPGUI.exe": "SAP", "saplogon.exe": "SAP",
-  "EXCEL.EXE": "Excel", "OUTLOOK.EXE": "Outlook",
-  "winword.exe": "Word", "powerpnt.exe": "PowerPoint", "Teams.exe": "Teams",
-};
-function appLabel(app) { return APP_LABELS[app] || (app || "unknown").replace(/\.exe$/i, ""); }
-
-function renderLegend(observedApps) {
-  const host = document.getElementById("legend-apps");
-  if (!host) return;
-  host.innerHTML = "";
-  const apps = Array.from(observedApps || []).sort();
-  for (const app of apps) {
-    const span = document.createElement("span");
-    span.className = "legend-app";
-    const sw = document.createElement("span");
-    sw.className = "legend-swatch";
-    sw.style.background = appColor(app);
-    span.appendChild(sw);
-    span.appendChild(document.createTextNode(appLabel(app)));
-    host.appendChild(span);
-  }
-}
+/* appColor / appLabel / renderLegend live in flow-view-apps.js (god-file
+   split) and are destructured at the top of this module. */
 
 /* P1.10: persistent timeline zoom + scroll per session. Keyed by
    sessionFolder so each session reopens to where the analyst left it.
