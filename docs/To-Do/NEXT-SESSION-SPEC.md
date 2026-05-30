@@ -32,6 +32,33 @@ agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
 ---
 
+## 0.5 Real-value vocab cycle — 2026-05-30 (latest)
+
+The §11d App-Vocabulary work was reframed and executed: **Claude probes the real
+apps** (not the owner; there is no LLM in the product) and maps **real** UIA
+signatures. Landed on `master`:
+
+- **7 real App Vocabularies** replacing the demo-fiction placeholders — Excel,
+  Word, Outlook, Chrome, Edge (live UIA probe) + **ServiceNow** & **Salesforce**
+  (probed from the owner's live PDI / Developer-Edition). Three signature
+  strategies emerged: **idMso** (Office), **stable DOM ids** (ServiceNow),
+  **label-based** (Salesforce Lightning — aids are volatile). Method:
+  [../REAL-VALUE-TESTING.md](../REAL-VALUE-TESTING.md).
+- **4 process templates** (`normalization/process_templates/`) — create/resolve
+  incident, create account, send email, mail-merge — validated through `canonical_match`.
+- **Excel proven end-to-end** through the real C# recorder (it emits the probed
+  ids; the vocab enriches them). Lookups + golden + fuzzers all green.
+- **§11b root-caused** — the over-segmentation is `step_split_on_element` (64→15
+  steps when off); flip gated on real-corpus + UI validation
+  ([SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md)).
+
+**Next (owner-gated):** apply the §11b flip against a real recorder-driven corpus +
+viewer/analysis validation; cover **SAP / Jira / Zendesk** (need driving) per
+[APP-COVERAGE-LIST.md](APP-COVERAGE-LIST.md); decide whether to make the demo real
+(regenerate `example-aggregate` with probed ids so it re-enriches under the real vocabs).
+
+---
+
 ## 1. Where we are
 
 Last release **v0.18.0** (2026-05-28) — adds the in-view Session-view Map level

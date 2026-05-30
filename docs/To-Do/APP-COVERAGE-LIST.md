@@ -15,6 +15,20 @@ Nothing here is probed or written into a vocab until this list is approved.
 - **B — free instance the owner provisions once**, then Claude drives it from the dev box over the public internet. *(Owner can't run Claude on the locked-down work laptop, so this is how gated SaaS becomes reachable — a free public/dev instance, not the laptop.)*
 - **C — documentation-derived only** (no reachable free instance) — derive identities from public docs, ship the vocab **flagged doc-derived**, refine when an instance opens up.
 
+## Progress — 2026-05-30 real-value cycle
+
+**Done (probed live, validated, committed to `master`):**
+- **Tier A** — Outlook, Excel, Word, Chrome, Edge vocabs (real UIA); Excel proven end-to-end through the recorder.
+- **Tier B** — ServiceNow (incident form) + Salesforce (New Account) vocabs, probed from the owner's live instances.
+- **Process templates** — create/resolve incident, create account, send email, mail-merge (`../../normalization/process_templates/`).
+- **§11b** — over-segmentation root-caused ([SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md)); flip gated on real-corpus + UI validation.
+
+**Queued for the apps session (need driving / a reachable instance):**
+- **Tier B** — SAP (Fiori trial), Jira, Zendesk.
+- **Tier C** — Workday, Oracle, SAP-GUI, Concur — **deliberately NOT doc-derived**: without an instance the UIA ids would be guesses (the fiction we just removed).
+
+---
+
 ## Ranked worklist
 
 | # | Application | Surface | Domain | Tier | Real-value route |
