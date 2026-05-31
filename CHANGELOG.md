@@ -6,6 +6,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed (design-critique pass)
+
+- **Capture dialogs pin their action footer.** Profile and Session-setup now
+  scroll their content inside a `.scroll` region with the hint + **Save/Cancel**
+  footer pinned (consistent with Settings, which already did this) — the action
+  buttons are always visible without scrolling, even on a short window.
+- **Muted-label contrast now clears WCAG AA**, per the design system's own
+  ≥4.5:1 intent. The viewer light-theme `--fg-3` (muted labels) was **3.03:1** on
+  `--bg` — below AA for small text; darkened `#9a8e7e → #786c5a` (≈4.84:1, still a
+  warm taupe). The capture windows' `--fg-3` was a no-margin **4.5:1**; nudged
+  `#807E78 → #8E8C82` (≈5.4:1). Dark themes already passed and are unchanged.
+
 ## [0.20.0] - 2026-05-31
 
 The big push toward a small internal rollout — a deliverable-first cycle that

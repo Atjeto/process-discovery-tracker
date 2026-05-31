@@ -12,7 +12,7 @@
     --border:   #424250;
     --fg:       #D8D6CE;
     --fg-2:     #A8A69E;
-    --fg-3:     #807E78;
+    --fg-3:     #8E8C82;
     --accent:   #6E8A66;
     --good:     #6E8A66;
     --bad:      #885A42;
@@ -25,6 +25,9 @@
     font-size: 13px; line-height: 1.5;
   }
   body { padding: 20px 24px 18px; display: flex; flex-direction: column; gap: 14px; }
+  /* Scrollable content region so the hint + action footer stay pinned and the
+     Save/Cancel buttons are always visible (consistent with settings.html). */
+  .scroll { flex: 1; overflow-y: auto; padding-right: 4px; margin-right: -4px; }
   header h1 { font-size: 15px; margin: 0; font-weight: 600; }
   header .sub { color: var(--fg-3); font-size: 12px; margin-top: 2px; }
   .nav-hint { font-size: 11px; color: var(--fg-3); }
@@ -73,6 +76,7 @@
   <div class="sub">Per-session inputs. Stamps every recording so you can find it later.</div>
 </header>
 
+<div class="scroll">
 <div class="nav-hint">
   Looking for hotkeys, OBS or screenshot options? Those are persistent and live in <strong>Settings</strong> (tray menu).
   Worker identity is in <strong>Profile</strong>.
@@ -99,6 +103,7 @@
   <textarea id="labels" placeholder="Order entry&#10;Refund flow&#10;Identity check"></textarea>
   <div class="help-hint">One task name per line. Surface as quick-pick buttons in the live session window and tray menu, so the worker labels what they're doing without typing.</div>
 </fieldset>
+</div>
 
 <div class="status" id="status">Edit fields, then click Save. Takes effect at the next app launch.</div>
 

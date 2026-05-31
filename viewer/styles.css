@@ -39,7 +39,7 @@
   /* Warm neutral foreground -- near-black down to muted taupe */
   --fg: #2c2418;
   --fg-2: #635848;
-  --fg-3: #9a8e7e;
+  --fg-3: #786c5a;   /* darkened from #9a8e7e so muted labels clear AA (≥4.5:1) on --bg/--bg-1, per the design system's own ≥4.5 intent (was 3.03:1) */
   --fg-4: #c0b5a5;
 
   /* Functional color -- amber accent, slate-blue secondary */

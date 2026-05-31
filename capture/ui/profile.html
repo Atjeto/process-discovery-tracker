@@ -12,7 +12,7 @@
     --border:   #424250;
     --fg:       #D8D6CE;
     --fg-2:     #A8A69E;
-    --fg-3:     #807E78;
+    --fg-3:     #8E8C82;
     --accent:   #6E8A66;
     --good:     #6E8A66;
     --bad:      #885A42;
@@ -25,6 +25,9 @@
     font-size: 13px; line-height: 1.5;
   }
   body { padding: 20px 24px 18px; display: flex; flex-direction: column; gap: 14px; }
+  /* Scrollable content region so the hint + action footer stay pinned and the
+     Save/Cancel buttons are always visible (consistent with settings.html). */
+  .scroll { flex: 1; overflow-y: auto; padding-right: 4px; margin-right: -4px; }
   header h1 { font-size: 15px; margin: 0; font-weight: 600; }
   header .sub { color: var(--fg-3); font-size: 12px; margin-top: 2px; }
 
@@ -69,6 +72,7 @@
   <div class="sub">Who's being recorded. Stamped onto every session you capture, so the analyst can tell whose recording is whose. You can edit this any time.</div>
 </header>
 
+<div class="scroll">
 <fieldset>
   <legend>Identity</legend>
   <label class="fld" for="id">User ID</label>
@@ -89,6 +93,7 @@
   </div>
   <div class="help-hint">Optional. Helps the analyst read across sessions when several people record the same process.</div>
 </fieldset>
+</div>
 
 <div class="status" id="status">Fill in what applies; blank fields are fine.</div>
 

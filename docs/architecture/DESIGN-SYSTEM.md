@@ -72,8 +72,8 @@ is defined. The hex tables below are the **light** values.
 |---|---|---|
 | `--fg` | `#2c2418` | primary text |
 | `--fg-2` | `#635848` | secondary text |
-| `--fg-3` | `#9a8e7e` | tertiary / muted labels |
-| `--fg-4` | `#c0b5a5` | faintest text, disabled |
+| `--fg-3` | `#786c5a` | tertiary / muted labels (≥4.5:1 on `--bg`/`--bg-1`; darkened from `#9a8e7e`, which was 3.03:1) |
+| `--fg-4` | `#c0b5a5` | faintest text, disabled — decorative only (below AA; never load-bearing text) |
 
 **Accents & functional:**
 
