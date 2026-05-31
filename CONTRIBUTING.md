@@ -69,8 +69,18 @@ procedure — version bump, CHANGELOG, build, verify, publish — is documented 
 - **Tests** use Node's built-in `node:test` (no Jest/Mocha). Keep pure-logic
   modules under test; GUI behaviour is verified by launching the app.
 - **Architecture decisions** that are non-obvious or contested get an ADR in
-  [`docs/adr/`](docs/adr/) — copy the format of an existing one and number it
-  next in sequence.
+  [`docs/adr/`](docs/adr/) — copy the format of an existing one. **The ADR number
+  is `max(existing) + 1`: never reuse a number, never fill a gap.** Add your row to
+  the registry [`docs/adr/README.md`](docs/adr/README.md) in the same commit — it is
+  the single source of truth and is **CI-enforced** (`normalization/test/test_adr_registry.py`
+  fails the build on a duplicate, an unregistered ADR, or a reused gap).
+- **Concurrent agents / chips.** When more than one agent runs at once (a known
+  hazard — they share the working dir and have collided before): each works on a
+  **distinct, explicitly-named branch off `master`** (never commit to `master`
+  directly), in its own git worktree, and each takes a **distinct next ADR number**
+  per the rule above. If two tasks touch the same layer, prefer running them
+  **sequentially**. Reconcile divergent branches in a verify-and-merge sweep, not by
+  letting them race.
 - **Raw capture data is immutable.** `events.jsonl` is append-only; every analyst
   correction is an `annotations.json` sidecar entry. Re-normalization must stay
   non-destructive — it preserves manually-authored and edited steps.
