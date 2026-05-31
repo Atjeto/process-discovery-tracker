@@ -2968,6 +2968,19 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 .refmap-drift-chip, .refmap-missing-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .refmap-bar-lbl { font-size: 11px; color: var(--fg-3); display: inline-flex; align-items: center; gap: 4px; }
 .icon-btn.danger { color: var(--bad); }
+/* These refmap buttons carry multi-word TEXT labels (Edit / Duplicate / Delete /
+   Re-fork / Remove entry in the rows; ⑂ Fork map / Reference maps in the toolbar),
+   not single glyphs — but they reuse the shared .icon-btn.xs, which is a fixed
+   22px icon SQUARE (width:height:22px; padding:0). The labels overflow that box
+   and adjacent buttons collide (the red "Delete" text smears over "Duplicate").
+   Restore auto sizing while keeping the compact 11px font. Scoped by selector so
+   the genuine single-glyph .xs buttons (e.g. map zoom +/-) are unaffected. */
+.refmap-row-actions .icon-btn.xs,
+#btn-fork-refmap.icon-btn.xs,
+#btn-toggle-refmaps.icon-btn.xs {
+  width: auto; height: auto; min-width: 0;
+  padding: 3px 8px; line-height: 1.4;
+}
 
 /* Editor overlay — full-screen, decoupled editable BPMN. */
 .refmap-editor-overlay { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,0.45); display: flex; padding: 24px; }

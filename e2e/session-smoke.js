@@ -467,6 +467,23 @@ const OVERLAP_PROBE = () => {
       (edited.why ? " (" + edited.why + ")" : ""));
     if (!rtOk) await shot(page, "fail-refmap-roundtrip.png");
 
+    // Label legibility: the row/toolbar buttons carry multi-word TEXT (Edit /
+    // Duplicate / Delete; ⑂ Fork map; Reference maps) and once reused the shared
+    // .icon-btn.xs 22px icon-SQUARE, which clipped the labels and made the red
+    // Delete overlap Duplicate. A button is clipped when its content overflows
+    // its box (scrollWidth > clientWidth). Pin zero-clipped so it can't regress.
+    const clipped = await page.evaluate(() => {
+      const sels = [".refmap-row-actions .icon-btn", "#btn-fork-refmap", "#btn-toggle-refmaps"];
+      const bad = [];
+      sels.forEach((sel) => document.querySelectorAll(sel).forEach((b) => {
+        if (b.scrollWidth > b.clientWidth + 1) bad.push((b.textContent || "").trim() + " (" + b.clientWidth + "<" + b.scrollWidth + ")");
+      }));
+      return bad;
+    }).catch((e) => ["probe error: " + e.message]);
+    record("reference map: action/toolbar button labels are not clipped", clipped.length === 0,
+      clipped.length ? "clipped: " + clipped.join(", ") : "all labels fit their buttons");
+    if (clipped.length) await shot(page, "fail-refmap-labels.png");
+
     // Inverse: Delete drops the row but keeps the blob, so one Ctrl+Z restores a
     // WORKING entry that still carries the edit (the COHERENCE-AUDIT requirement).
     const delUndo = await page.evaluate(async (probe) => {
