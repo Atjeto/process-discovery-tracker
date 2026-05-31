@@ -54,6 +54,27 @@ python normalize.py <session_folder> --taxonomy sample-taxonomy.yaml --mine
 
 See [docs/architecture/NORMALIZATION.md](docs/architecture/NORMALIZATION.md).
 
+### Test gates (run before every commit)
+
+The unit `npm test` suites are necessary but not sufficient — the project is
+gated by a wider set that CI (and chips) must keep green. See
+[docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md) for the full contract; the
+commands are:
+
+```
+python -m pytest normalization/test/          # pipeline + golden + ADR-registry + signature guards
+viewer/python/python.exe normalization/golden_check.py   # session golden — pipeline output is pinned
+cd viewer && npm test ; cd ../capture && npm test
+dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj
+cd e2e && node session-smoke.js               # the REAL viewer — incl. the map-connectivity pin
+```
+
+Use a **system Python with pytest** for the test suite; the bundled
+`viewer/python/` can run `golden_check.py` / `normalize.py` but not pytest
+(missing deps). UI bugs are invisible to the unit suites — drive the in-repo
+`e2e/session-smoke.js` gate (and the out-of-repo `_pdt_verify/` harness) for any
+UI change.
+
 ## Building & releasing
 
 `scripts/build-distribution.ps1` produces ship-ready folders + release zips for

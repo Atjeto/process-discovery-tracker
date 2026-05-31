@@ -1,9 +1,10 @@
 # Architecture Overview
 
 > Part of the [architecture reference](./). Describes the current working tree
-> (refreshed 2026-05-23 for v0.15.0 plus the analysis & recognition layers). For
-> *why* decisions were made, see the ADRs and historical design docs linked from
-> [`docs/README.md`](../README.md).
+> (refreshed 2026-05-31 for v0.20.0; the three-layer architecture is stable, with
+> the €-ROI, view-time grain, Reference Maps, recorder-confidence, and PII layers
+> added on top). For *why* decisions were made, see the ADRs and historical design
+> docs linked from [`docs/README.md`](../README.md).
 
 ## What this is
 
