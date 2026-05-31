@@ -11,7 +11,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   buildAnnotationDfg, dropRareEdges, processLabel,
-  rollUpSteps, resolveStepGrainKeys, GRAIN_NOTCHES, DEFAULT_GRAIN,
+  rollUpSteps, resolveStepGrainKeys, screenType, GRAIN_NOTCHES, DEFAULT_GRAIN,
 } = require("./process-map-levels.js");
 
 const GOLDEN = JSON.parse(fs.readFileSync(
@@ -280,6 +280,56 @@ test("buildAnnotationDfg: 'step' and 'element' notches are equivalent (back-comp
 test("GRAIN_NOTCHES ladder + default are exported", () => {
   assert.deepEqual(GRAIN_NOTCHES, ["element", "screen", "app", "phase", "case"]);
   assert.equal(DEFAULT_GRAIN, "screen");
+});
+
+/* ADR-0024 regression: a window-title screen key embeds the case value
+ * ("Salesforce - Order #10900"), so grouping on the raw title made the same
+ * logical screen a distinct node PER CASE -- the default screen-grain map fanned
+ * out into a per-case hairball. screenType strips the embedded record values so
+ * the screen axis collapses value-free, like process_label. */
+test("screenType strips embedded record values but keeps the screen name", () => {
+  assert.equal(screenType("Salesforce - Order #10900"), "Salesforce - Order");
+  assert.equal(screenType("Salesforce - Order #11412"), "Salesforce - Order");
+  assert.equal(screenType("Outlook - Order #10852 confirmation"), "Outlook - Order confirmation");
+  // Genuinely different screens stay apart.
+  assert.equal(screenType("Salesforce - Account lookup"), "Salesforce - Account lookup");
+  assert.equal(screenType("Salesforce - Credit check"), "Salesforce - Credit check");
+  // Short transaction codes survive (digit-run threshold is 3+).
+  assert.equal(screenType("va01"), "va01");
+  // Id-like tokens (CUST-10852) are stripped.
+  assert.equal(screenType("Search — CUST-10852"), "Search");
+  // A blank / all-value title never collapses to "".
+  assert.equal(screenType(""), "");
+  assert.ok(screenType("#10900").length > 0);
+});
+
+test("screen notch collapses per-case window titles to ONE value-free node (no fan-out)", () => {
+  // Two cases on the SAME 3 logical screens, each title carrying its order #.
+  const mk = (id, scr, cid, t) => ({
+    step_id: id, case_id: cid, state: "auto_suggested",
+    grain_keys: { element: "f", screen: scr, app: "chrome" },
+    time_range: { start: new Date(t).toISOString(), end: new Date(t + 100).toISOString() },
+  });
+  const steps = [
+    mk("a1", "Salesforce - Account lookup", "c1", 1000),
+    mk("a2", "Salesforce - Order #10900", "c1", 2000),
+    mk("a3", "Outlook - Order #10900 confirmation", "c1", 3000),
+    mk("b1", "Salesforce - Account lookup", "c2", 4000),
+    mk("b2", "Salesforce - Order #10901", "c2", 5000),
+    mk("b3", "Outlook - Order #10901 confirmation", "c2", 6000),
+  ];
+  const dfg = buildAnnotationDfg([{ annotations: { steps } }], "screen");
+  const nodes = new Set();
+  for (const e of dfg.edges) { nodes.add(e.source); nodes.add(e.target); }
+  // 3 logical screens, not 5 (the two #-suffixed titles per case would otherwise
+  // each be their own node). One linear chain, one start, one end.
+  assert.equal(nodes.size, 3);
+  assert.deepEqual(Object.keys(dfg.start_activities), ["Salesforce - Account lookup"]);
+  assert.deepEqual(Object.keys(dfg.end_activities), ["Outlook - Order confirmation"]);
+  // The shared transition is frequency 2 (both cases follow the same path).
+  const e = dfg.edges.find((x) => x.source === "Salesforce - Account lookup");
+  assert.equal(e.target, "Salesforce - Order");
+  assert.equal(e.frequency, 2);
 });
 
 test("dropRareEdges hides one-off paths but keeps the dominant flow", () => {

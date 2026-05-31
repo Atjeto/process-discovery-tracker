@@ -52,6 +52,36 @@ function _stepStart(st) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/* Value-free SCREEN type (ADR-0024 + ADR-0013 invariant). The screen grain key
+ * resolves to the vocab `screen_id` (value-free by construction) or, failing
+ * that, the raw `window_title` -- and a window title routinely embeds the case
+ * value ("Salesforce - Order #10900", "Outlook - Order #10852 confirmation").
+ * Grouping on the raw title makes the SAME logical screen a DISTINCT node per
+ * case, so the default screen-grain map fans out into a per-case hairball
+ * instead of a clean chain (the ADR-0024 map regression). Strip the embedded
+ * record values -- conservatively, the same spirit as processLabel -- so the one
+ * "Salesforce - Order" screen collapses to one node across every case while
+ * genuinely-different screens ("Account lookup" vs "Credit check") stay apart.
+ * Pure presentation: applied at view time only, raw `grain_keys` are untouched
+ * (detail is never destroyed -- ADR-0024). Short codes like "va01" survive (the
+ * digit-run threshold is 3+). */
+function screenType(name) {
+  let s = (name == null ? "" : String(name)).trim();
+  if (!s) return s;
+  // 1. Id-like tokens FIRST (before the bare-number strip eats their digits):
+  //    CUST-10852, SO-12, INC0012345 (a short alpha prefix then 2+ digits,
+  //    optional hyphen). Removed wholesale so no orphaned prefix is left behind.
+  s = s.replace(/\b[A-Za-z]{2,12}-?\d{2,}\b/g, "");
+  // 2. Record numbers: a run of 3+ digits, with an optional leading '#'
+  //    ("#10900", "10900"). 3+ keeps short transaction codes like "va01" intact.
+  s = s.replace(/#?\b\d{3,}\b/g, "");
+  // 3. Tidy: drop an orphaned '#', collapse runs of whitespace, and strip any
+  //    separator left dangling at either end ("Order #" -> "Order").
+  s = s.replace(/#(?=\s|$)/g, " ").replace(/\s{2,}/g, " ").trim();
+  s = s.replace(/[\s#:\-–—]+$/, "").replace(/^[\s#:\-–—]+/, "").trim();
+  return s || String(name).trim();   // never blank a screen that was all-value
+}
+
 /* ===== ADR-0024: view-time grain roll-up ============================== */
 
 // The grain ladder, finest → coarsest. The map's level selector (ADR-0012's
@@ -121,7 +151,7 @@ function grainKey(step, notch, ctx) {
   const k = _containmentKeys(step, ctx);
   switch (notch) {
     case "element": return "id:" + (step.step_id || Math.random());
-    case "screen":  return "scr:" + (k.screen || "(screen)");
+    case "screen":  return "scr:" + (screenType(k.screen) || "(screen)");
     case "app":     return "app:" + (k.app || "(app)");
     case "phase":   return "ph:" + (step.phase_id || "(unphased)");
     case "case":    return "cs:" + (step.case_id || "(case)");
@@ -138,7 +168,7 @@ function grainLabel(step, notch, ctx) {
   const stepType = step.process_label || processLabel(step.name) || "(unnamed)";
   switch (notch) {
     case "element": return stepType;
-    case "screen":  return k.screen || "(screen)";
+    case "screen":  return screenType(k.screen) || "(screen)";
     case "app":     return k.app || "(app)";
     case "phase":   return step.phase_id
       ? ((ctx && ctx.phaseName && ctx.phaseName[step.phase_id]) || "(phase)")
@@ -320,6 +350,6 @@ function dropRareEdges(dfg, minFreq = 2) {
 module.exports = {
   buildAnnotationDfg, processLabel, dropRareEdges,
   // ADR-0024 view-time grain roll-up
-  rollUpSteps, grainKey, grainLabel, resolveStepGrainKeys,
+  rollUpSteps, grainKey, grainLabel, resolveStepGrainKeys, screenType,
   GRAIN_NOTCHES, DEFAULT_GRAIN,
 };

@@ -311,6 +311,51 @@ const OVERLAP_PROBE = () => {
     if (!ok) await shot(page, "fail-map-overlap.png");
   }
 
+  // --- ADR-0024 map-connectivity regression pin ---
+  // The headline regression: at the default SCREEN grain the Flow diagram (DFG)
+  // fanned out into a per-case hairball because the screen key was the raw
+  // window title (which embeds the case value -- "Salesforce - Order #10900").
+  // The screen axis must group VALUE-FREE so the map is a clean connected chain:
+  // ONE weakly-connected component, ONE start, ONE reachable end. (Pre-fix this
+  // demo screen-grain DFG had 3+ distinct end nodes; the 10-session aggregate had
+  // 35.) We drive the live cytoscape graph (dfg-viewer exposes host.__cy).
+  if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(800); }
+  await setGrainNotch(1);   // screen notch (the default + the regressing one)
+  await page.click('#session-layout-map .panel-tab[data-map="dfg"]').catch((e) => console.log("dfg tab", e.message));
+  await wait(1400);
+  const connProbe = await page.evaluate(() => {
+    const host = document.getElementById("session-map-dfg-host");
+    const cy = host && host.__cy;
+    if (!cy) return { rendered: false };
+    const nodes = cy.nodes().map((n) => n.id());
+    const edges = cy.edges().map((e) => ({ s: e.data("source"), t: e.data("target") }));
+    const parent = {}; nodes.forEach((n) => (parent[n] = n));
+    const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    edges.forEach((e) => { if (parent[e.s] != null && parent[e.t] != null) parent[find(e.s)] = find(e.t); });
+    const components = new Set(nodes.map(find)).size;
+    const indeg = {}, outdeg = {};
+    nodes.forEach((n) => { indeg[n] = 0; outdeg[n] = 0; });
+    edges.forEach((e) => { outdeg[e.s]++; indeg[e.t]++; });
+    return {
+      rendered: true, nodes: nodes.length, edges: edges.length, components,
+      sources: nodes.filter((n) => indeg[n] === 0).length,
+      sinks: nodes.filter((n) => outdeg[n] === 0).length,
+    };
+  }).catch((e) => ({ err: e.message }));
+  if (connProbe && connProbe.err) {
+    record("screen-grain Flow diagram is a connected chain", false, "probe error: " + connProbe.err);
+  } else if (!connProbe.rendered) {
+    record("screen-grain Flow diagram is a connected chain", true,
+      "skipped (no DFG rendered — empty session/state)");
+  } else {
+    const ok = connProbe.components === 1 && connProbe.sources === 1 && connProbe.sinks === 1;
+    record("screen-grain Flow diagram is a connected chain (1 component, 1 start, 1 end)", ok,
+      "nodes=" + connProbe.nodes + " edges=" + connProbe.edges +
+      " components=" + connProbe.components + " sources=" + connProbe.sources +
+      " sinks=" + connProbe.sinks + " (the per-case fan-out would push sinks/components up)");
+    if (!ok) await shot(page, "fail-map-connectivity.png");
+  }
+
   // Page errors gate (checked last so we capture errors from every interaction).
   record("zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.length + " error(s): " + pageErrors.slice(0, 5).join(" | ") : "");

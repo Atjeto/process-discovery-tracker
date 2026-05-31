@@ -66,6 +66,29 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     invariant), and the **Flow** timeline's step lane rolls up to the notch — so
     the single grain control drives Flow / Steps / Map / Analysis and Compare.
 
+### Fixed
+
+- **The default (screen-grain) Flow diagram no longer fans out into a per-case
+  hairball ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md) regression).**
+  The screen grain key resolved to the raw `window_title`, which routinely embeds
+  the case value ("Salesforce - Order #10900", "Outlook - Order #10852
+  confirmation"). Grouping on the raw title made the *same* logical screen a
+  *distinct* node per case, so the default Flow diagram (DFG) and Step/Screen maps
+  rendered as a tangle of orphaned per-order nodes instead of a clean linear chain
+  — the 10-session demo aggregate at the screen notch had **76 nodes / 35 distinct
+  end-nodes**. The screen axis now groups **value-free** (`process-map-levels.screenType`),
+  stripping embedded record numbers / id tokens the same way `process_label`
+  strips step values — so one "Salesforce - Order" screen collapses to one node
+  across every case while genuinely-different screens ("Account lookup" vs "Credit
+  check") stay apart. Demo aggregate screen-grain map: **76 → 6 nodes, 35 → 1 end
+  node**, a single connected chain. Pure presentation — applied at view time, raw
+  `grain_keys` untouched (detail is never destroyed), no re-normalization, no
+  golden change. The fix lands inside `grainKey`/`grainLabel`, so the Map, the
+  Steps list, and the Analysis "Waste by screen" itemisation all inherit it.
+  `e2e/session-smoke.js` gains a **map-connectivity pin** (the screen-grain DFG
+  must be one component with one start and one end); short transaction codes like
+  `va01` are preserved (the digit-run threshold is 3+).
+
 - **In-app vocabulary discovery — "point-and-learn" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md), [build spec](docs/To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md)).**
   Turns the manual real-value UIA probing ([REAL-VALUE-TESTING.md](docs/REAL-VALUE-TESTING.md))
   into a shipped, on-device, self-service feature: the analyst points at a

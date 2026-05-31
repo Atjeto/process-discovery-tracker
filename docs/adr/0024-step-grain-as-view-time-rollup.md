@@ -120,6 +120,21 @@ harness). The open questions from the *Costs* list above resolved as:
   documented principled source but remains best-validated once a live browser
   capture exists (deferred, below).
 
+- **Value-free screen axis (2026-05-31 follow-up).** The `window_title` fallback
+  routinely embeds the case value (a SaaS title like "Salesforce - Order #10900",
+  "Outlook - Order #10852 confirmation"), so grouping the screen notch on the raw
+  title made the *same* logical screen a *distinct* node per case — the default
+  screen-grain Flow diagram fanned out into a per-case hairball (the demo
+  aggregate: 76 nodes / 35 end-nodes) instead of a clean chain. Fix: the screen
+  key/label now passes through `process-map-levels.screenType`, a conservative
+  value-strip (record numbers, `[A-Za-z]+-?\d{2,}` id tokens) in the same spirit
+  as ADR-0013's `process_label` — applied **at view time** (raw `grain_keys`
+  untouched, detail never destroyed). One "Salesforce - Order" screen now
+  collapses to one node across every case (aggregate 76 → 6 nodes, one connected
+  start→end chain); genuinely-distinct screens stay apart; short codes ("va01")
+  survive (digit-run threshold 3+). Pinned by a map-connectivity assertion in
+  `e2e/session-smoke.js` (screen-grain DFG = one component, one start, one end).
+
 - **Fallbacks / no dead controls.** A degenerate notch never blanks: `screen`
   falls back to `window_title` then `(screen)`; the BPMN (mined only at the
   Element/Phase grains) falls back to the Flow diagram for screen/app/case rather
