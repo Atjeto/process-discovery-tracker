@@ -176,6 +176,17 @@ function discoverFromWindow(payload) {
   return ipcRenderer.invoke("viewer:discoverFromWindow", payload);
 }
 
+/** ADR-0025: point-and-click window pick. Enters standby; resolves the window
+ *  the operator clicks. @returns {Promise<any>} { hwnd, window_title, process_id } | { cancelled, reason } | { error } */
+function pickWindow(payload) {
+  return ipcRenderer.invoke("viewer:pickWindow", payload || {});
+}
+
+/** Delete an App Library vocabulary file by path. @returns {Promise<any>} { deleted } | { error } */
+function deleteVocab(p) {
+  return ipcRenderer.invoke("viewer:deleteVocab", p);
+}
+
 /* ---- External video ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -230,7 +241,7 @@ module.exports = {
   exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal,
   openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
-  discoverFromWindow,
+  discoverFromWindow, pickWindow, deleteVocab,
   attachExternalVideo, saveExternalVideoSync,
   saveProjectAs, saveProject, openProject, loadProjectFile,
   onNormalizeLog, onOpenInitialSession,

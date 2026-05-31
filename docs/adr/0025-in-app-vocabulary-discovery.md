@@ -50,3 +50,17 @@ Four pieces. Only **one** is net-new capture code; **one** is the genuinely clev
 - **Web a11y waking** — browser windows are UIA-dark until woken (`--force-renderer-accessibility` / an active FindAll); the snapshot must wake the page tree, as the manual ServiceNow probe did.
 - **Coverage edges** — the §11e gaps apply (Java/Qt without their a11y bridges, Citrix); the snapshot inherits the confidence model and degrades honestly.
 - **Template auto-mining from a captured run** — beyond v1 (the vocabulary is the v1 target).
+
+## Refinement (2026-06-01) — point-and-click instead of foreground snapshot
+
+The first build snapshotted the **foreground** window, but the act of clicking the
+viewer's "Snapshot" button made the *viewer* the foreground — so it grabbed the
+wrong window (a misclick/misread trap). The discovery trigger now matches this
+ADR's own wording ("points the capture app at the window"): a new recorder `pick`
+command (`WindowPicker.cs`) enters a brief **standby**, the analyst **clicks the
+target window**, the recorder resolves the top-level window under the cursor
+(`WindowFromPoint` → `GA_ROOT`) and reports its handle + title, the viewer shows a
+**confirmation** ("you clicked X — capture it?"), and only then snapshots that
+**specific HWND** (the `snapshot` command already accepted an HWND target). Esc or
+a 35 s timeout cancels. Also: App Library entries are now **deletable** (the
+missing inverse of New/Discover; `viewer:deleteVocab`, dir-guarded).

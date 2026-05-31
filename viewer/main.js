@@ -29,7 +29,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
   ? _electron
   : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
 const { runNormalize, runDiscoverVocab } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}), runDiscoverVocab: async () => ({}) };
-const { snapshotWindow } = _underElectron ? require("./recorder-snapshot.js") : { snapshotWindow: async () => ({ controls: [] }) };
+const { snapshotWindow, pickWindow } = _underElectron ? require("./recorder-snapshot.js") : { snapshotWindow: async () => ({ controls: [] }), pickWindow: async () => ({ cancelled: true }) };
 
 let mainWindow = null;
 
@@ -668,6 +668,41 @@ ipcMain.handle("viewer:listAppVocabs", () => {
 });
 
 ipcMain.handle("viewer:openVocabFile", (_e, p) => shell.openPath(p));
+
+/* ADR-0025: point-and-click window pick. Enter the recorder's standby; resolve
+   the window the operator clicks (handle + title) so the caller can confirm and
+   then snapshot THAT handle — no foreground-stealing. */
+ipcMain.handle("viewer:pickWindow", async (_e, { timeoutMs } = {}) => {
+  try {
+    return await pickWindow({ timeoutMs: timeoutMs || 35000 });
+  } catch (e) {
+    return { error: String((e && e.message) || e) };
+  }
+});
+
+/* Delete an App Library vocabulary file. Guarded: the path must be a .yaml/.yml
+   inside one of the known vocab dirs (no arbitrary deletes). Sessions already
+   analyzed keep their results; only future analyses stop using it. */
+ipcMain.handle("viewer:deleteVocab", (_e, p) => {
+  try {
+    if (!p || !/\.ya?ml$/i.test(p)) return { error: "not a vocabulary file" };
+    const resolved = path.resolve(p);
+    const allowed = [];
+    const def = appVocabDefaultDir();
+    if (def) allowed.push(path.resolve(def));
+    for (const raw of (process.env.PDT_APP_VOCABULARIES || "").split(/[;:]/)) {
+      const t = raw.trim();
+      if (t) allowed.push(path.resolve(t));
+    }
+    const inAllowed = allowed.some((d) => resolved.startsWith(d + path.sep));
+    if (!inAllowed) return { error: "refusing to delete a file outside the App Library dirs" };
+    if (!fs.existsSync(resolved)) return { error: "file not found" };
+    fs.unlinkSync(resolved);
+    return { deleted: true, path: resolved };
+  } catch (e) {
+    return { error: String((e && e.message) || e) };
+  }
+});
 
 /* ADR-0025: in-app vocabulary discovery -- "Discover from window". Spawn
    the recorder for a two-pass UIA snapshot of the target window, then run

@@ -102,4 +102,62 @@ function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 30000, 
   });
 }
 
-module.exports = { snapshotWindow, resolveRecorderExe };
+/* ADR-0025 point-and-click window pick. Spawns the recorder, enters its `pick`
+   standby, and resolves with { hwnd, window_title, process_id } once the operator
+   clicks a window — or { cancelled, reason } on Esc/timeout. The viewer shows a
+   confirmation and then calls snapshotWindow({ target: hwnd }). This replaces the
+   foreground snapshot, whose own button click stole the foreground. */
+function pickWindow({ timeoutMs = 35000, onLog } = {}) {
+  return new Promise((resolve, reject) => {
+    const exe = resolveRecorderExe();
+    if (!exe) {
+      reject(new Error("recorder.exe not found (build it with `npm run build:recorder` in capture/, or set PDT_RECORDER_PATH)"));
+      return;
+    }
+    const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { if (child.stdin.writable) child.stdin.write(JSON.stringify({ cmd: "shutdown" }) + "\n"); } catch (_) {}
+      setTimeout(() => { try { child.kill(); } catch (_) {} }, 300);
+      if (err) reject(err); else resolve(value);
+    };
+    const timer = setTimeout(
+      () => finish(new Error(`window pick timed out after ${timeoutMs}ms`)), timeoutMs);
+
+    const rl = readline.createInterface({ input: child.stdout });
+    rl.on("line", (line) => {
+      if (!line) return;
+      let msg;
+      try { msg = JSON.parse(line); } catch (_) { return; }
+      if (msg.v !== 1) return;
+      if (msg.type === "ready") {
+        // Ask the recorder to wait for the click; give it slightly less than our
+        // own timer so it self-cancels first and we get a clean pick_cancelled.
+        try {
+          child.stdin.write(JSON.stringify({ cmd: "pick", timeout_ms: Math.max(1000, timeoutMs - 3000) }) + "\n");
+        } catch (e) { finish(new Error("failed to send pick command: " + e.message)); }
+      } else if (msg.type === "picked" && msg.data) {
+        finish(null, {
+          hwnd: String(msg.data.hwnd),
+          window_title: msg.data.window_title || "",
+          process_id: msg.data.process_id,
+        });
+      } else if (msg.type === "pick_cancelled") {
+        finish(null, { cancelled: true, reason: (msg.data && msg.data.reason) || "cancelled" });
+      }
+    });
+    const rlErr = readline.createInterface({ input: child.stderr });
+    rlErr.on("line", (l) => { if (onLog) onLog(`[recorder.stderr] ${l}`); });
+
+    child.on("error", (e) => finish(new Error("failed to spawn recorder: " + e.message)));
+    child.on("exit", (code) => {
+      if (!settled) finish(new Error(`recorder exited (code ${code}) before a window was picked`));
+    });
+    child.stdin.on("error", () => { /* swallow EPIPE if the recorder died */ });
+  });
+}
+
+module.exports = { snapshotWindow, pickWindow, resolveRecorderExe };

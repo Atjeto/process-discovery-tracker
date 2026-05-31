@@ -6,7 +6,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Delete an App Library vocabulary.** Each entry in the App Library list now has
+  a delete (✕) affordance (reveals on row hover / when selected) with a confirm —
+  the inverse of "+ New" / "Discover", which was missing. Analyzed sessions keep
+  their results; only future analyses stop using the deleted vocab. Guarded
+  (`viewer:deleteVocab`): refuses anything that isn't a `.yaml/.yml` inside a known
+  App Library dir.
+
 ### Changed
+
+- **"Discover from window" is now point-and-click ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md)).**
+  The old flow snapshotted the *foreground* window — but clicking the "Snapshot"
+  button made the viewer itself the foreground, so it grabbed the wrong window (a
+  misclick/misread trap). Now: **"Point to a window…" → the recorder enters standby
+  → you click the target window → a confirmation shows which window you picked →
+  only then is it snapshotted.** New recorder `pick` command (`WindowPicker.cs`,
+  polls for the next click, resolves the top-level window under the cursor) +
+  `pickWindow()` / `viewer:pickWindow`; discovery then snapshots that specific HWND
+  (the recorder already accepted an HWND target). Esc or a 35s timeout cancels.
 
 - **Compare-Sessions panels are now drill-downs, not just bars.** The Activity-
   frequency and Case-duration bars highlighted on hover but did nothing on click

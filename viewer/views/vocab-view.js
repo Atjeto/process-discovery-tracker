@@ -66,11 +66,31 @@ function renderVocabList() {
       '<div class="vocab-row-head">' +
       '<span class="vocab-row-name">' + escapeHtml(v.name || v.id) + '</span>' +
       '<span class="vocab-row-count">' + v.interaction_count + '</span>' +
+      '<button type="button" class="vocab-row-del" title="Delete this vocabulary">✕</button>' +
       '</div>' +
       '<div class="vocab-row-meta">' + escapeHtml(v.id) + ' · v' + v.version + ' · ' + escapeHtml(v.file) + '</div>';
     row.addEventListener("click", () => selectVocab(v.path));
+    const del = row.querySelector(".vocab-row-del");
+    if (del) del.addEventListener("click", (ev) => { ev.stopPropagation(); deleteVocabEntry(v); });
     host.appendChild(row);
   }
+}
+
+/* Delete an App Library vocabulary (the inverse of + New / Discover). Confirms
+   first; analyzed sessions keep their results, only future analyses stop using
+   it. reloadVocabList clears the editor if the deleted entry was open. */
+async function deleteVocabEntry(v) {
+  const ok = await confirmModal({
+    title: "Delete vocabulary?",
+    message: "Delete the “" + (v.name || v.id) + "” App Library entry (" + v.file + ")? " +
+      "Sessions you've already analyzed keep their results; future analyses just won't use it. This can't be undone.",
+    okLabel: "Delete",
+  });
+  if (!ok) return;
+  const r = await Ipc.deleteVocab(v.path);
+  if (!r || r.error) { toast("Couldn't delete: " + ((r && r.error) || "unknown"), "error"); return; }
+  await reloadVocabList();
+  toast("Deleted “" + (v.name || v.id) + "”.", "success");
 }
 
 async function selectVocab(p) {
@@ -414,15 +434,33 @@ async function discoverFromWindow() {
     v.name = name;
   }
   const proceed = await confirmModal({
-    title: "Discover from window",
-    message: "Bring the app's window to the FOREGROUND now. For a web app, let the page finish loading. The recorder snapshots its live UI twice (~2s) to find stable element signatures. On-device — nothing is saved or sent until you press Save.",
-    okLabel: "Snapshot foreground window",
+    title: "Discover from a window",
+    message: "Next, CLICK the window you want to learn — the app or web page whose controls you want to capture (for a web app, let the page finish loading first). You will confirm your pick before anything is captured; press Esc while picking to cancel. On-device — nothing is saved or sent until you press Save.",
+    okLabel: "Point to a window…",
   });
   if (!proceed) return;
   const btn = $("#btn-vocab-discover");
-  if (btn) { btn.disabled = true; btn.textContent = "Discovering…"; }
+  if (btn) { btn.disabled = true; btn.textContent = "Click a window…"; }
   try {
-    const r = await Ipc.discoverFromWindow({ vocabId: v.id, vocabName: v.name });
+    // Point-and-click: enter standby, the operator clicks the target window,
+    // then confirm before snapshotting THAT window (not the foreground — whose
+    // own button click would steal it). ADR-0025.
+    const picked = await Ipc.pickWindow({ timeoutMs: 35000 });
+    if (!picked || picked.error) {
+      toast("Window pick failed: " + ((picked && picked.error) || "unknown"), "error");
+      return;
+    }
+    if (picked.cancelled) { toast("Window pick cancelled.", "info"); return; }
+    const pickedTitle = picked.window_title || "(untitled window)";
+    const confirmCapture = await confirmModal({
+      title: "Capture this window?",
+      message: "You clicked “" + pickedTitle + "”. Capture this window's controls? " +
+        "The recorder snapshots its live UI twice (~2s) to find stable element signatures.",
+      okLabel: "Capture it",
+    });
+    if (!confirmCapture) return;
+    if (btn) btn.textContent = "Discovering…";
+    const r = await Ipc.discoverFromWindow({ target: picked.hwnd, vocabId: v.id, vocabName: v.name });
     if (!r || r.error) {
       toast("Discovery failed: " + ((r && r.error) || "unknown"), "error");
       return;

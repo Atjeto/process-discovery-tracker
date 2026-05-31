@@ -140,6 +140,23 @@ public static class Program {
                             l => { try { Console.Out.WriteLine(l); } catch { } });
                         break;
                     }
+                    case "pick": {
+                        // ADR-0025: point-and-click window pick. Standby for the
+                        // operator's next click, then report the top-level window
+                        // under the cursor so the viewer can confirm + snapshot it
+                        // (instead of grabbing the foreground, which the button
+                        // click steals). Blocks this short-lived instance, like
+                        // snapshot. timeout_ms default 30s.
+                        var pickTimeout = 30000;
+                        if (doc.RootElement.TryGetProperty("timeout_ms", out var ptEl) &&
+                            ptEl.ValueKind == JsonValueKind.Number &&
+                            ptEl.TryGetInt32(out var ptVal) && ptVal > 0) {
+                            pickTimeout = ptVal;
+                        }
+                        await WindowPicker.RunAsync(pickTimeout,
+                            l => { try { Console.Out.WriteLine(l); } catch { } });
+                        break;
+                    }
                     case "shutdown": goto done;
                 }
             } catch (Exception e) {
