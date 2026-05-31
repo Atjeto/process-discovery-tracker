@@ -9,7 +9,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { buildAnnotationDfg, dropRareEdges, processLabel } = require("./process-map-levels.js");
+const {
+  buildAnnotationDfg, dropRareEdges, processLabel,
+  rollUpSteps, resolveStepGrainKeys, GRAIN_NOTCHES, DEFAULT_GRAIN,
+} = require("./process-map-levels.js");
 
 const GOLDEN = JSON.parse(fs.readFileSync(
   path.join(__dirname, "..", "shared", "process-label-golden.json"), "utf8"));
@@ -161,6 +164,122 @@ test("processLabel matches the cross-language golden (Python twin must agree)", 
   for (const [name, expected] of GOLDEN.cases) {
     assert.equal(processLabel(name), expected, JSON.stringify(name));
   }
+});
+
+/* ===== ADR-0024: view-time grain roll-up ============================== */
+
+// A step carrying grain_keys (the stamped containment keys).
+function gstep(id, name, caseId, startMs, grainKeys, phaseId) {
+  return {
+    step_id: id, name, case_id: caseId, phase_id: phaseId || null,
+    state: "auto_suggested", grain_keys: grainKeys,
+    process_label: processLabel(name),
+    time_range: { start: new Date(startMs).toISOString(), end: new Date(startMs + 1000).toISOString() },
+  };
+}
+
+// The committed Outlook corpus shape: 3 drafts (cases), 3 fields each, all on
+// the vocab "compose" screen in OUTLOOK. The acceptance: element=9, screen=3.
+function outlookCorpusSteps() {
+  const steps = [];
+  let t = 1000;
+  ["c1", "c2", "c3"].forEach((cid) => {
+    steps.push(gstep(cid + "-to", "Untitled: Enter " + cid + "@x in To (recipients)", cid, t += 1000, { element: "4117", screen: "compose", app: "OUTLOOK" }));
+    steps.push(gstep(cid + "-cc", "Untitled: Enter records in Cc", cid, t += 1000, { element: "4126", screen: "compose", app: "OUTLOOK" }));
+    steps.push(gstep(cid + "-su", "Untitled: Enter Order " + cid + " in Subject", cid, t += 1000, { element: "4101", screen: "compose", app: "OUTLOOK" }));
+  });
+  return steps;
+}
+
+test("rollUpSteps: element notch reproduces the fine count (detail never destroyed)", () => {
+  const steps = outlookCorpusSteps();
+  assert.equal(rollUpSteps(steps, "element").length, 9);   // every step shown
+});
+
+test("rollUpSteps: screen notch lands the sensible 'one step per screen' count", () => {
+  const steps = outlookCorpusSteps();
+  // 3 drafts, each To/Cc/Subject all on the 'compose' screen -> 1 per case -> 3.
+  const groups = rollUpSteps(steps, "screen");
+  assert.equal(groups.length, 3);
+  for (const g of groups) {
+    assert.equal(g.label, "compose");
+    assert.equal(g.count, 3);                              // 3 fine steps folded
+    assert.deepEqual(g.step_ids.length, 3);
+  }
+});
+
+test("rollUpSteps: app and case notches both collapse the corpus to 3", () => {
+  const steps = outlookCorpusSteps();
+  assert.equal(rollUpSteps(steps, "app").length, 3);
+  assert.equal(rollUpSteps(steps, "case").length, 3);
+});
+
+test("rollUpSteps: phase notch folds unphased runs per case", () => {
+  const steps = outlookCorpusSteps();             // all unphased
+  const g = rollUpSteps(steps, "phase");
+  assert.equal(g.length, 3);                      // one '(unphased)' run per case
+  assert.equal(g[0].label, "(unphased)");
+});
+
+test("rollUpSteps: collapse is run-based — a screen revisited after another screen is two groups", () => {
+  // Same screen S1, then S2, then S1 again, all one case: 3 runs, not 2.
+  const steps = [
+    gstep("a", "x", "c1", 1000, { element: "e1", screen: "S1", app: "A" }),
+    gstep("b", "y", "c1", 2000, { element: "e2", screen: "S2", app: "A" }),
+    gstep("c", "z", "c1", 3000, { element: "e3", screen: "S1", app: "A" }),
+  ];
+  assert.equal(rollUpSteps(steps, "screen").length, 3);
+});
+
+test("rollUpSteps: hidden steps are excluded", () => {
+  const steps = outlookCorpusSteps();
+  steps[0].state = "hidden";
+  assert.equal(rollUpSteps(steps, "element").length, 8);
+});
+
+test("rollUpSteps: falls back to resolving grain_keys from events when absent", () => {
+  // No grain_keys on the steps -> resolve from the interaction map (old session).
+  const evs = {
+    "i1": { event_id: "i1", data: { kind: "value_changed", automation_id: "4117", screen_id: "compose", process_name: "OUTLOOK.exe" } },
+    "i2": { event_id: "i2", data: { kind: "value_changed", automation_id: "4126", screen_id: "compose", process_name: "OUTLOOK.exe" } },
+  };
+  const steps = [
+    { step_id: "a", case_id: "c1", state: "auto_suggested", name: "To", time_range: { start: new Date(1000).toISOString(), end: new Date(2000).toISOString() }, evidence: { interaction_event_ids: ["i1"] } },
+    { step_id: "b", case_id: "c1", state: "auto_suggested", name: "Cc", time_range: { start: new Date(2000).toISOString(), end: new Date(3000).toISOString() }, evidence: { interaction_event_ids: ["i2"] } },
+  ];
+  const ctx = { interactionsById: evs };
+  assert.equal(rollUpSteps(steps, "screen", ctx).length, 1);   // both 'compose'
+  assert.equal(rollUpSteps(steps, "element", ctx).length, 2);  // distinct fields
+});
+
+test("resolveStepGrainKeys mirrors the Python rules (typed field wins over nav)", () => {
+  const evs = {
+    "tab": { event_id: "tab", data: { kind: "selection_changed", name: "Message", process_name: "OUTLOOK.exe" } },
+    "to": { event_id: "to", data: { kind: "value_changed", automation_id: "4117", name: "To", screen_id: "compose", process_name: "OUTLOOK.exe" } },
+  };
+  const step = { evidence: { interaction_event_ids: ["tab", "to"] } };
+  const k = resolveStepGrainKeys(step, evs);
+  assert.equal(k.element, "4117");      // typed field beats the Message tab
+  assert.equal(k.screen, "compose");
+  assert.equal(k.app, "OUTLOOK");
+});
+
+test("buildAnnotationDfg: screen notch collapses the corpus to a single screen node", () => {
+  const dfg = buildAnnotationDfg([{ annotations: { steps: outlookCorpusSteps() } }], "screen");
+  // All steps on 'compose' -> one node, no edges; start/end count the 3 cases.
+  assert.equal(dfg.edges.length, 0);
+  assert.deepEqual(dfg.start_activities, { compose: 3 });
+  assert.deepEqual(dfg.end_activities, { compose: 3 });
+});
+
+test("buildAnnotationDfg: 'step' and 'element' notches are equivalent (back-compat)", () => {
+  const s = [{ annotations: { steps: outlookCorpusSteps() } }];
+  assert.deepEqual(buildAnnotationDfg(s, "step"), buildAnnotationDfg(s, "element"));
+});
+
+test("GRAIN_NOTCHES ladder + default are exported", () => {
+  assert.deepEqual(GRAIN_NOTCHES, ["element", "screen", "app", "phase", "case"]);
+  assert.equal(DEFAULT_GRAIN, "screen");
 });
 
 test("dropRareEdges hides one-off paths but keeps the dominant flow", () => {

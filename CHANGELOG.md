@@ -24,6 +24,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     hand-authored step gets `(element/screen/app)` placeholders the viewer
     refines at view time. Additive — the golden projection is unchanged. See
     [SCHEMA](shared/SCHEMA.md).
+  - **P2 — view-time roll-up engine.** `process-map-levels.rollUpSteps(steps,
+    notch)` folds a session's steps into one group per run of consecutive
+    (per-case) steps sharing the notch's key; `element` is identity (every step
+    shown — the fine count is reproduced exactly), `screen`/`app`/`phase`/`case`
+    consolidate. `buildAnnotationDfg` is generalised from "same `process_label`"
+    to "same key at the chosen notch" (back-compatible: `step`/`phase` unchanged).
+    A view-time `resolveStepGrainKeys` fallback derives the keys from events for
+    sessions analyzed before `grain_keys` existed. No re-normalization on a notch
+    change. Verified on real captures — the `element` notch reproduces the fine
+    counts exactly (Outlook 9, Excel 8, demo 64) and `screen` consolidates
+    sensibly (3, 4, 19); the demo's coarse end is ~15 at the `app` notch.
 
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades

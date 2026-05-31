@@ -52,14 +52,174 @@ function _stepStart(st) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/* ===== ADR-0024: view-time grain roll-up ============================== */
+
+// The grain ladder, finest → coarsest. The map's level selector (ADR-0012's
+// Activity/Step/Phase) folds into these notches: "element" is the finest "show
+// every step" grain, "screen" is the default resting notch ("one step per
+// screen"), and "phase"/"case" are the coarse ends. A node/step at a notch is a
+// run of CONSECUTIVE steps within a case sharing that notch's key.
+const GRAIN_NOTCHES = ["element", "screen", "app", "phase", "case"];
+const DEFAULT_GRAIN = "screen";
+
+// Most frequent non-empty string, ties broken by first appearance -- the JS
+// twin of step_suggest._most_common (keep them in sync).
+function _mostCommon(values) {
+  const counts = new Map();
+  const order = [];
+  for (let v of values) {
+    v = (v == null ? "" : String(v)).trim();
+    if (!v) continue;
+    if (!counts.has(v)) { counts.set(v, 0); order.push(v); }
+    counts.set(v, counts.get(v) + 1);
+  }
+  if (!counts.size) return "";
+  let best = order[0];
+  for (const v of order) if (counts.get(v) > counts.get(best)) best = v;
+  return best;
+}
+
+/* The view-time FALLBACK twin of step_suggest.step_grain_keys (Python). Used
+ * only when a step lacks persisted `grain_keys` (a session analyzed before the
+ * field existed, or a hand-authored step): resolve element/screen/app from the
+ * step's interaction events. `interactionsById` maps event_id -> interaction.
+ * Mirrors the Python rules so the live roll-up agrees with the stamped keys. */
+function resolveStepGrainKeys(step, interactionsById) {
+  const ids = ((step && step.evidence && step.evidence.interaction_event_ids) || []);
+  const datas = ids
+    .map((id) => interactionsById && interactionsById[id])
+    .filter(Boolean)
+    .map((ev) => ev.data || {});
+  const eid = (d) => (d.automation_id || d.name || "");
+  const typed = datas.filter((d) => d.kind === "value_changed" || d.kind === "text_changed").map(eid);
+  const element = _mostCommon(typed) || _mostCommon(datas.map(eid)) || "(element)";
+  const screen = _mostCommon(datas.map((d) => d.screen_id || ""))
+    || _mostCommon(datas.map((d) => d.window_title || "")) || "(screen)";
+  const procs = [];
+  for (const d of datas) {
+    let p = (d.process_name || "").trim();
+    if (p.toLowerCase().endsWith(".exe")) p = p.slice(0, -4);
+    if (p) procs.push(p);
+  }
+  const app = _mostCommon(procs) || "(app)";
+  return { element, screen, app };
+}
+
+/* The element/screen/app keys for a step: prefer the persisted `grain_keys`
+ * (stamped by the pipeline), else resolve live from `ctx.interactionsById`. */
+function _containmentKeys(step, ctx) {
+  if (step && step.grain_keys && typeof step.grain_keys === "object") return step.grain_keys;
+  if (ctx && ctx.interactionsById) return resolveStepGrainKeys(step, ctx.interactionsById);
+  return {};
+}
+
+/* The COLLAPSE key for a step at a notch -- consecutive steps sharing it fold
+ * into one node/step. `element` is identity (the step's own id), so the element
+ * notch shows EVERY step (the finest grain -- detail is never destroyed). The
+ * coarser notches share a key so a run consolidates. */
+function grainKey(step, notch, ctx) {
+  const k = _containmentKeys(step, ctx);
+  switch (notch) {
+    case "element": return "id:" + (step.step_id || Math.random());
+    case "screen":  return "scr:" + (k.screen || "(screen)");
+    case "app":     return "app:" + (k.app || "(app)");
+    case "phase":   return "ph:" + (step.phase_id || "(unphased)");
+    case "case":    return "cs:" + (step.case_id || "(case)");
+    default:        return "id:" + (step.step_id || Math.random());
+  }
+}
+
+/* The readable DISPLAY label for a step at a notch (the node caption / the
+ * rolled-up step name). For element/screen the label is the value-free step
+ * type so the map reads as process steps, not raw ids; the coarse notches read
+ * their container's name. `ctx.phaseName` / `ctx.caseLabel` resolve ids. */
+function grainLabel(step, notch, ctx) {
+  const k = _containmentKeys(step, ctx);
+  const stepType = step.process_label || processLabel(step.name) || "(unnamed)";
+  switch (notch) {
+    case "element": return stepType;
+    case "screen":  return k.screen || "(screen)";
+    case "app":     return k.app || "(app)";
+    case "phase":   return step.phase_id
+      ? ((ctx && ctx.phaseName && ctx.phaseName[step.phase_id]) || "(phase)")
+      : "(unphased)";
+    case "case":    return (ctx && ctx.caseLabel && ctx.caseLabel(step.case_id))
+      || step.case_id || "(case)";
+    default:        return stepType;
+  }
+}
+
+/* Roll a session's steps up to the chosen notch: a group is a run of
+ * consecutive (time-ordered, per case) steps sharing the notch's grainKey. This
+ * is the engine behind the Steps list and the acceptance counts -- at the
+ * `element` notch every step is its own group (the fine count is reproduced
+ * exactly: detail is never destroyed); coarser notches consolidate runs.
+ *
+ * Returns one entry per group: { key, label, case_id, step_ids, steps, count,
+ * time_range:{start,end}, _repeatNotch } -- enough to render a list row, seek
+ * the timeline, and re-expand. Hidden steps are excluded (as in buildAnnotationDfg).
+ */
+function rollUpSteps(steps, notch, ctx) {
+  const n = GRAIN_NOTCHES.includes(notch) ? notch : DEFAULT_GRAIN;
+  const valid = (steps || []).filter((st) => st && st.state !== "hidden");
+  const byCase = new Map();
+  for (const st of valid) {
+    const cid = st.case_id || "__nocase__";
+    if (!byCase.has(cid)) byCase.set(cid, []);
+    byCase.get(cid).push(st);
+  }
+  const groups = [];
+  for (const caseSteps of byCase.values()) {
+    caseSteps.sort((a, b) => _stepStart(a) - _stepStart(b));
+    let run = null;
+    for (const st of caseSteps) {
+      const key = grainKey(st, n, ctx || {});
+      if (run && run.key === key) {
+        run.steps.push(st);
+      } else {
+        if (run) groups.push(run);
+        run = { key, label: grainLabel(st, n, ctx || {}), case_id: st.case_id || null, steps: [st] };
+      }
+    }
+    if (run) groups.push(run);
+  }
+  // Order groups by their first step's start time (stable cross-case ordering).
+  groups.sort((a, b) => _stepStart(a.steps[0]) - _stepStart(b.steps[0]));
+  return groups.map((g) => {
+    const first = g.steps[0];
+    const last = g.steps[g.steps.length - 1];
+    return {
+      key: g.key,
+      label: g.label,
+      notch: n,
+      case_id: g.case_id,
+      step_ids: g.steps.map((s) => s.step_id),
+      steps: g.steps,
+      count: g.steps.length,
+      time_range: {
+        start: (first.time_range && first.time_range.start) || null,
+        end: (last.time_range && last.time_range.end) || null,
+      },
+    };
+  });
+}
+
 /**
  * @param {Array} sessions  loaded sessions, each with `.annotations`
- * @param {"step"|"phase"} level
+ * @param {"step"|"phase"|"element"|"screen"|"app"|"case"} level  the grain notch
+ *   (ADR-0024). "step" and "element" both collapse by the value-free step type
+ *   (the readable map grain); "screen"/"app"/"case" collapse by the containment
+ *   key; "phase" by phase. Back-compatible: "step"/"phase" behave as before.
  * @param {{phaseName?: string}} [filter]  drill-down scope: when descending
  *   from a phase node, restrict the step map to that phase's steps.
+ * @param {{caseLabel?: Function, interactionsById?: Object}} [ctx]  optional
+ *   resolvers for the case-notch label and the view-time grain-key fallback.
  * @returns {{edges: Array, start_activities: Object, end_activities: Object}}
  */
-function buildAnnotationDfg(sessions, level, filter) {
+function buildAnnotationDfg(sessions, level, filter, ctx) {
+  // "step" is the value-free step-type collapse (ADR-0013); on the grain ladder
+  // that IS the "element"/finest map grain, so treat them alike here.
+  const notch = level === "step" ? "element" : level;
   const edgeMap = new Map();
   const startAct = {};
   const endAct = {};
@@ -92,14 +252,17 @@ function buildAnnotationDfg(sessions, level, filter) {
       byCase.get(cid).push(st);
     }
 
+    // Resolver context for the notch labels (phase names + optional case label
+    // and view-time grain-key fallback). phaseName is built above per session.
+    const labelCtx = Object.assign({ phaseName }, ctx || {});
     for (const caseSteps of byCase.values()) {
       caseSteps.sort((a, b) => _stepStart(a) - _stepStart(b));
-      let seq = caseSteps.map((st) => level === "phase"
-        ? (st.phase_id ? (phaseName[st.phase_id] || "(phase)") : "(unphased)")
-        // Value-free label, computed live so the flow collapses without a
-        // re-analyze; prefer the persisted process_label when present.
-        : (st.process_label || processLabel(st.name) || "(unnamed)"));
-      // Collapse consecutive duplicates (a run of steps in one phase = one node).
+      // The node caption at the chosen grain notch. "element"/"step" use the
+      // value-free step type (computed live so the flow collapses without a
+      // re-analyze, persisted process_label preferred); "screen"/"app"/"case"
+      // read the containment key; "phase" the phase name.
+      let seq = caseSteps.map((st) => grainLabel(st, notch, labelCtx));
+      // Collapse consecutive duplicates (a run of same-grain steps = one node).
       seq = seq.filter((v, i) => i === 0 || v !== seq[i - 1]);
       if (!seq.length) continue;
 
@@ -154,4 +317,9 @@ function dropRareEdges(dfg, minFreq = 2) {
   };
 }
 
-module.exports = { buildAnnotationDfg, processLabel, dropRareEdges };
+module.exports = {
+  buildAnnotationDfg, processLabel, dropRareEdges,
+  // ADR-0024 view-time grain roll-up
+  rollUpSteps, grainKey, grainLabel, resolveStepGrainKeys,
+  GRAIN_NOTCHES, DEFAULT_GRAIN,
+};
