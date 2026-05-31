@@ -252,11 +252,11 @@ pass / 10 skip** · golden **10/10** sessions OK · viewer **231** · capture **
   §0.5 and `SEGMENTATION-CALIBRATION-FINDINGS.md` (both predate the ADR) now carry the supersession
   pointer. Corpus evidence stands as roll-up fixtures; the flip is off the table. **ADR-0024 is
   Proposed, not built.**
-- **ADR numbering 0019–0022 are intentionally unused** — they were the Wave-0 architecture-review
-  proposals (e2e gate, Node egress guard, pluggable backend, calibration config) that shipped as
-  direct commits + the Fit Analysis, never formalized as standalone ADRs. The sequence legitimately
-  jumps 0018 → 0023; 0023/0024/0025 are confirmed unique (ADR-0025's "provisional number" caveat is
-  resolved).
+- **ADR numbering (updated 2026-05-31):** the Wave-0 architecture-review proposals (e2e gate, Node
+  egress guard, pluggable backend, calibration config) shipped as direct commits + the Fit Analysis,
+  never as standalone ADRs — so 0018 jumped to 0023. **0019 was since reused** for
+  [ADR-0019 Reference Maps](../adr/0019-reference-maps.md) (the editable-BPMN / To-Be feature,
+  Accepted 2026-05-31); **0020–0022 remain unused.** 0023/0024/0025 are unique.
 
 **In flight — NOT committed by this sweep:** the live Jira/Zendesk vocab cycle (§0.9) has untracked
 working-tree files (`app_vocabularies/{jira,zendesk}.yaml`, `process_templates/{jira-create-issue,
