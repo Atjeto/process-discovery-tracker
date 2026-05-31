@@ -32,9 +32,11 @@ current **architecture reference** (what the code is now), current **operational
 ## Current — architecture reference
 
 Originally written in the refactor-review pass (2026-05-16); last full refresh
-2026-05-29 for v0.19.0 (the in-view Session map, suggested markers, and anchor
-candidates), building on the v0.15.0 analysis & recognition layers. Describes the
-code as it is today.
+2026-05-31 for v0.20.0 (€-ROI, the view-time grain slider, Reference Maps, real
+App Vocabularies + point-and-learn discovery, recorder capture-confidence, PII
+masking + consent, the map-readability fixes, and the in-repo e2e/golden/ADR
+guards), building on the v0.19.0 detectors and the v0.15.0 analysis & recognition
+layers. Describes the code as it is today.
 
 | Doc | Covers |
 |---|---|
@@ -58,6 +60,7 @@ code as it is today.
 | [../README.md](../README.md) | Repo quick-start and per-release feature notes |
 | [../CLAUDE.md](../CLAUDE.md) | Project context for Claude Code — layout, commands, conventions |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Developer setup, build, test, and conventions |
+| [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | **Agents/chips read first** — the hard invariants, each paired with the CI guard that fails on regression |
 | [FEATURES.md](FEATURES.md) | What the product does — capability catalogue by component |
 | [../CHANGELOG.md](../CHANGELOG.md) | Per-release history |
 | [../SECURITY.md](../SECURITY.md) | Threat model and security posture |
@@ -87,6 +90,12 @@ code as it is today.
 | [adr/0016-segment-level-automation-candidacy.md](adr/0016-segment-level-automation-candidacy.md) | ADR — segment-level (not atomic-step) automation candidacy |
 | [adr/0017-suggested-markers.md](adr/0017-suggested-markers.md) | ADR — suggested markers: change-point detection for unbracketed sessions |
 | [adr/0018-anchor-candidates.md](adr/0018-anchor-candidates.md) | ADR — anchor candidates: auto-rank the field that segments a session into cases |
+| [adr/0019-reference-maps.md](adr/0019-reference-maps.md) | ADR — Reference Maps: decoupled, editable BPMN copies (As-Is → To-Be) |
+| [adr/0023-recorder-capture-confidence.md](adr/0023-recorder-capture-confidence.md) | ADR — recorder capture-confidence model + OCR last resort (§11e) |
+| [adr/0024-step-grain-as-view-time-rollup.md](adr/0024-step-grain-as-view-time-rollup.md) | ADR — step grain as a view-time roll-up (§11b, reframed) |
+| [adr/0025-in-app-vocabulary-discovery.md](adr/0025-in-app-vocabulary-discovery.md) | ADR — in-app vocabulary discovery ("point-and-learn") |
+| [adr/0026-distribution-unsigned-and-services-boutique-scope.md](adr/0026-distribution-unsigned-and-services-boutique-scope.md) | ADR — ship unsigned by design; services-boutique scope |
+| [adr/README.md](adr/README.md) | ADR index & registry (CI-enforced numbering) |
 | [../capture/README.md](../capture/README.md) | Capture component quick-start |
 | [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |
 | [../normalization/README.md](../normalization/README.md) | Normalization component quick-start |

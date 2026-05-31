@@ -1,5 +1,20 @@
 # Documentation Coverage & Consistency Audit
 
+> **Update — 2026-05-31 (v0.20.0 release prep).** A full doc-reconciliation pass
+> ran the whole doc set against the code for the v0.20.0 release (this session,
+> branch `docs-and-release-v0.20.0`). Closed the v0.20.0 coverage gaps:
+> CLAUDE.md "Active direction" + README "What's new" rewritten to the v0.20.0
+> story; FEATURES.md gained €-ROI / grain slider / Reference Maps / PII+consent /
+> recorder-confidence / point-and-learn / map-readability; the architecture set
+> (VIEWER, VIEWER-TIMELINE, NORMALIZATION, CAPTURE, DATA-MODEL) brought current
+> (incl. the stale CAPTURE window table — `status-window` / `obs-settings-window`
+> were already removed in code — and the dropped standalone `dagre` script tag);
+> hardcoded line/test counts removed where found; the docs index + ADR listing
+> updated; ADR-0025 flipped Proposed→Accepted; **ADR-0026** recorded the
+> ship-unsigned + services-boutique-scope decisions. `shared/SCHEMA.md` was
+> re-audited and found already complete. The 2026-05-23 findings below remain the
+> historical record of the prior pass.
+
 **Date:** 2026-05-23 · **Status:** RESOLVED (worked through 2026-05-23; the branch this was performed on, `viewer-refactor`, was merged into `master` at v0.17.0) · **Method:** a full pass across
 everything delivered — the capture component, the CHANGELOG/git delivery record vs.
 the ADRs + architecture reference, and ADRs 0001–0009 plus the architecture docs not
