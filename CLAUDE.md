@@ -76,7 +76,7 @@ Current released version **0.19.0** (SemVer 0.x).
 | `capture/` | Worker-side Electron tray app + the C# .NET 8 recorder sidecar (`capture/recorder/`). |
 | `normalization/` | Analyst-side Python pipeline (`normalize.py` + its modules). |
 | `viewer/` | Analyst-side Electron app; bundles a Python embeddable to run normalization. |
-| `shared/` | Cross-layer contracts — `SCHEMA.md` (authoritative session-data format) + `recognition-patterns.json` (platform/framework signatures used by both viewer and Python). |
+| `shared/` | Cross-layer contracts — `SCHEMA.md` (authoritative session-data format); `recognition-patterns.json` (platform/framework signatures); and the value-free grouping rule sets shared Python↔JS: `process-label-patterns.json` (step-type label, ADR-0013) + `screen-label-patterns.json` (value-free screen/window string, ADR-0024 §6a/§6b). |
 | `docs/` | Documentation set, ADRs, design specs — index at `docs/README.md`. |
 | `scripts/` | PowerShell / Node build, release, and admin scripts (incl. structure-only data peeks). |
 | `sessions/`, `dist/` | Gitignored — captured sessions and build output. |
@@ -124,7 +124,16 @@ A few facts that recur and trip people up:
   the value-free `process_label` ("Search") is the grouping key for the step map **and**
   the analysis/stats, so repeated work across cases collapses to one node/row. It is
   computed in both Python (`step_suggest.process_label`) and JS
-  (`process-map-levels.processLabel`) — **keep the two in sync.**
+  (`process-map-levels.processLabel`) — **keep the two in sync** (the rules live in the
+  shared `shared/process-label-patterns.json`, so there's nothing to hand-sync).
+- **Value-free *screen* string** — the screen axis has the same problem: a window
+  title embeds the case value ("Create INC0010010 | Incident | ServiceNow"). A sibling
+  rule set (`shared/screen-label-patterns.json`, ADR-0024 §6a/§6b) strips embedded
+  record numbers / id tokens so one logical screen is one node — applied by JS
+  `process-map-levels.screenType` (screen-grain key/label) and Python
+  `step_suggest.screen_label` (the window-title-derived step-name prefix). A vocab
+  `screen_id` (via `window_title_regex`, tagged even on un-named controls) is preferred
+  when present, so a matched form needs no stripping at all.
 - **Recognition layer** — interactions are classified by documented platform/framework
   signatures (`shared/recognition-patterns.json`), not per-session opaque selectors;
   loaded by both the viewer (`recognition.js`) and Python (`recognition.py`).

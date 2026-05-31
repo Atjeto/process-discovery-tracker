@@ -140,7 +140,7 @@ When an App Vocabulary (ADR-0002) matches an interaction, normalize.py adds:
 | Field | Type | Notes |
 |---|---|---|
 | `meaningful_name` | string | Analyst-curated name for this interaction (e.g. "Run customer search") |
-| `screen_id` | string | Named screen the interaction belongs to, if the vocab defines screens |
+| `screen_id` | string | Named screen the interaction belongs to, if the vocab defines screens. Set when the interaction's control matches a vocab signature carrying a `screen`, **or** (ADR-0024 §6b) when its `window_title` matches a vocab screen's `window_title_regex` — so every interaction on one form shares one value-free screen even if its specific control isn't in the vocab (a screen tag only; not counted as a vocab name match). |
 | `vocab_flags` | object | Default flags rolled up onto the containing step (`waste`, `automation_candidate`, ...) |
 | `vocab_source` | object | `{ vocab_id, vocab_version }` for traceability |
 
@@ -572,7 +572,7 @@ The non-`_`-prefixed keys are the standard `case_anchor` shape (see `normalizati
   "process_label": "string -- name with case values stripped, the value-free grouping key (ADR-0013)",
   "grain_keys": {
     "element": "string -- the field/control the step acted on (automation_id|name)",
-    "screen":  "string -- vocab screen_id, else window_title (the form/page)",
+    "screen":  "string -- vocab screen_id, else window_title (the form/page). At view time the screen grain value-frees this (shared/screen-label-patterns.json -> screenType / screen_label) so one logical screen is one node across cases (ADR-0024 §6a/§6b)",
     "app":     "string -- process_name (.exe stripped)"
   },
   "description": "string",

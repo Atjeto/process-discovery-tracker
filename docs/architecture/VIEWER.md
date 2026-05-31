@@ -326,7 +326,10 @@ folds a session's steps into one group per run of consecutive (per-case) steps
 sharing the notch's key — `element` is identity (every step shown, the fine
 count preserved), `screen`/`app` read the step's `grain_keys` (stamped by
 `step_suggest.step_grain_keys`, with a JS `resolveStepGrainKeys` fallback for
-older sessions), and `phase`/`case` read `phase_id`/`case_id`. It is a **view**:
+older sessions), and `phase`/`case` read `phase_id`/`case_id`. The `screen` key/label
+is passed through `screenType` (shared rules `shared/screen-label-patterns.json`) so a
+window title that embeds a record value (`Create INC0010010 | Incident`) collapses to
+one value-free node instead of fanning out per case (ADR-0024 §6a/§6b). It is a **view**:
 no re-normalization, raw `events.jsonl` untouched, sliding back restores the
 detail. The €-ROI total is computed once in Python from event-stream segments
 and so is **invariant** across notches — the slider re-itemises the Steps/Map
