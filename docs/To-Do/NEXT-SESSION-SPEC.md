@@ -45,7 +45,10 @@ Ctrl+Z restores a working entry; `entry.file` is containment-checked. Reuses the
 vendored bpmn-js modeler (palette un-hidden off `.map-host`), `saveXML`-to-path
 persistence, and the existing PDD image bridge (`exportSvg` → off-screen PNG raster
 → `--pdd-tobe-image`). Tests: `reference-maps.test.js` + two `pdd_export` To-Be
-tests; real-run verified (light + dark) via `_pdt_verify/refmap-verify.js`. Next
+tests; the full **create→edit→save→reload→undo** round-trip (incl. the inverse and
+the one-way-leaf invariant) is pinned in the gated real-viewer harness
+`e2e/session-smoke.js`; real-run verified (light + dark, incl. a persisted-edit
+reload) via `_pdt_verify/refmap-verify.js`. Next
 (deferred): cross-session reference-map library; singleton→factory for side-by-side
 live+editor; orphan-blob GC.
 
