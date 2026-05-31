@@ -44,8 +44,12 @@ This project's recurring failure is shipping UI that was never eyeballed. A
 Playwright harness drives the **real** viewer and screenshots it, so a headless
 agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
-- **Where:** `_pdt_verify/` (a dir *outside* the repo; `playwright-core` installed
-  there, not a repo dependency) — `driver.js` plus per-task scratch drivers.
+- **Where (start here):** **in-repo `e2e/`** — it bundles `playwright-core` and drives the
+  viewer's own electron, so you need nothing external. `e2e/session-smoke.js` is the worked
+  launch example (+ the merge-gate asserts). The full **launch recipe + DOM-handle map** is
+  in [docs/CHIP-GUARDRAILS.md](../CHIP-GUARDRAILS.md) → "How to drive the viewer". `_pdt_verify/`
+  is an *optional* out-of-repo harness with extra scratch drivers — it may be **absent**, so
+  don't depend on it.
 - **How:** `_electron.launch` runs the viewer's own Electron with
   `--session=<analyzed folder>` (see `main.js parseInitialSessionArg`), drives the
   page, writes `*.png` to read back. It logs `PAGE ERROR:` on any console error.

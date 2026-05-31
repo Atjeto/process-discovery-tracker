@@ -197,9 +197,14 @@ Detail: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [CONTRIBUTING.md](CONT
 > ADR-number regressions both recurred until they became guards; do not regress them.
 
 UI bugs are invisible to the unit suites — **validate behaviour, don't just write code.**
-- Real-run the app (`npm start` in `viewer/`), or drive the headless harness
-  `_pdt_verify/driver.js` (Playwright `_electron` launches the real viewer, drives it,
-  and screenshots — read the PNGs back). Use it for **any** UI change.
+- **How to launch + drive the viewer is in [docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md)
+  → "How to drive the viewer for UI validation"** — a copy-pasteable launch recipe + the
+  DOM-handle map for every surface. It is **entirely in-repo**: `e2e/` bundles
+  `playwright-core` and drives the viewer's own electron, so a fresh chip needs nothing
+  external. `e2e/session-smoke.js` is the worked example (launches the REAL viewer + asserts).
+- A human can instead `npm start` in `viewer/` (Ctrl+R reloads). `../_pdt_verify/` is an
+  **optional, out-of-repo** scratch harness with extra drivers — it may be **absent**, so
+  don't depend on it; the in-repo `e2e/` is the portable entry point.
 - For released-build claims, validate the **packaged app** (it bundles its own Python),
   not dev-box pip.
 
