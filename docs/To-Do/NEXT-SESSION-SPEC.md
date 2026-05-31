@@ -270,6 +270,45 @@ follows the slider) and ADR-0025 / [SELF-SERVICE-VOCAB-DISCOVERY-SPEC](SELF-SERV
 
 ---
 
+## 0.11 ADR-0024 grain roll-up built — 2026-05-31 (latest)
+
+[ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md) is **built and
+accepted** (P1–P4), on a branch off master. Step grain is now a **view-time**
+roll-up over the containment ladder `element ⊂ screen ⊂ app ⊂ phase ⊂ case`,
+driven by a single **Grain** slider in the Session view-mode bar (default
+notch = **screen**). Segmentation still happens once at the finest grain; the
+slider only changes the *view*, with zero data mutation (raw `events.jsonl`
+untouched, sliding back restores the detail). What landed:
+
+- **P1** `step.grain_keys = {element, screen, app}` stamped at analyze time
+  (`step_suggest.step_grain_keys`); additive, goldens unchanged. SCHEMA updated.
+- **P2** `process-map-levels.rollUpSteps` + `buildAnnotationDfg` generalised to
+  the notch ladder; `resolveStepGrainKeys` view-time fallback. 11 unit tests.
+- **P3** the shared Grain slider (`State.grain`), Steps-list roll-up rows, Map
+  DFG/level synced to the notch, BPMN→Flow fallback for screen/app/case.
+- **P4** €-ROI total proven notch-invariant (it's a view control; ROI is
+  Python-computed from event-stream segments). e2e + `analysis_roi` tests.
+
+Acceptance reproduced in the real viewer: `element` notch = fine counts (Outlook
+9, Excel 8, demo 64); `screen` = 3 / 4 / 19; demo coarse end ~15 at `app`; €-ROI
+total unchanged across notches; `e2e/session-smoke.js` 12/12 green.
+
+**Deferred follow-ups** (next session):
+- **Compare-Sessions grain.** The Aggregate/Compare map still uses its own
+  Activity/Step/Phase level select; promote it to the same Grain slider.
+- **Analysis time-study / waste-by-step following the notch.** These stay at
+  their Python `process_label` grain this cycle; the headline €-ROI total is the
+  load-bearing invariant and is done. Re-bucketing the time-study by notch at
+  view time is a nice-to-have.
+- **Flow timeline step-lane roll-up.** The Grain slider drives the Steps list
+  and the Map; the Flow timeline still shows the finest step lane (it is the raw
+  event timeline by nature). Rolling the step lane up by notch is optional polish.
+- **Web/SaaS `screen` validation.** The recognition-layer web `screen` axis is
+  wired but best validated once a live browser capture exists (the deferred §11a
+  web drive).
+
+---
+
 ## 1. Where we are
 
 Last release **v0.18.0** (2026-05-28) — adds the in-view Session-view Map level

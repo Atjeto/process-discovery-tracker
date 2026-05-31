@@ -84,7 +84,7 @@ former `window.Pdt*` globals were converted; the globals are gone):
 | `charts.js` | `renderBarChart`, `fmtDurationS` | Inline-SVG bar charts |
 | `dfg-viewer.js` | `render`, `fit`, `zoomIn/Out`, `getZoom`, `exportSvg` | Directly-Follows Graph (cytoscape + dagre); persists dragged layout per node set. `exportSvg` is a **hand-written cytoscape→SVG serializer** (cytoscape has no native SVG export) — emits nodes/edges/labels as SVG primitives, driving the "Process map SVG" export |
 | `bpmn-viewer.js` | `render`, `fit`, `exportSvg` | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`) |
-| `process-map-levels.js` | `buildAnnotationDfg`, `processLabel`, `dropRareEdges` | Pure step/phase DFG from annotations, value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)) |
+| `process-map-levels.js` | `buildAnnotationDfg`, `rollUpSteps`, `grainKey`/`grainLabel`, `resolveStepGrainKeys`, `processLabel`, `dropRareEdges` | Pure DFG + view-time grain roll-up from annotations (the `element ⊂ screen ⊂ app ⊂ phase ⊂ case` ladder), value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md), [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)) |
 | `map-controller.js` | `createMapController` | The shared process-map UI controller (notation × level matrix, drill-down scoping, rare-path slider, BPMN/DFG render + zoom). Extracted from the Aggregate view so the **same** controller mounts in both Compare Sessions and the Session view's in-view **Map** level — each caller passes its own host elements + a session-set provider |
 | `recognition.js` | `recognize`, `isChrome`, … | Semantic interaction category from documented platform/framework signatures (`shared/recognition-patterns.json`); twin of the Python `recognition.py` ([ADR-0011](../adr/0011-platform-recognition-layer.md)) |
 | `step-alignment.js` | `alignCases`, `alignSteps`, `groupForStep`, `representativeCuration`, … | Intra-session repetition alignment ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md)). `alignCases` builds the consensus **backbone** across detected cases (Needleman–Wunsch over value-free `process_label` tokens) with per-position frequency + exceptions — behind the Steps view's Aligned reading; `alignSteps`/`groupForStep` are the older signature-based repeat grouping (per-row badges + "Apply to N repeats"). Pure, fuzz-tested |
@@ -298,7 +298,13 @@ map.
 
 - **Notation** — *Process diagram* (**BPMN**, `bpmn-viewer.js`) or *Flow diagram*
   (**DFG**, `dfg-viewer.js`), as panel tabs.
-- **Level** — Activity / Step / Phase, via the `#map-level` dropdown.
+- **Level / Grain** — the **Grain** ladder `element ⊂ screen ⊂ app ⊂ phase ⊂ case`
+  ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)), plus the **Activity**
+  taxonomy level, via the `#session-map-level` dropdown — synced with the shared
+  **Grain** slider in the view-mode bar (`State.getGrain()`, default `screen`).
+  The old fixed Activity/Step/Phase levels fold into this ladder (`step` == the
+  `element` notch's map collapse). BPMN is mined only at the Element/Phase grains;
+  for screen/app/case the map falls back to the Flow diagram (no dead host).
 
 The axes are independent — changing level never swaps notation and vice versa. As
 of v0.18.0 the matrix, drill-down scoping, rare-path slider, and BPMN/DFG render
@@ -310,6 +316,20 @@ graph; the step/phase DFG is built **live** from annotations
 `processLabel` so repeated work is one node
 ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)). The step/phase
 *Process diagram* is the observed-flow file mined by `bpmn_observed.py`.
+
+**Grain is a view-time roll-up** ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)).
+A single **Grain** slider in the view-mode bar (`State.getGrain()`, notches
+`element/screen/app/phase/case`, default `screen`) sets a shared notch that the
+Steps list, the Flow timeline, and the Map all read. `rollUpSteps(steps, notch)`
+folds a session's steps into one group per run of consecutive (per-case) steps
+sharing the notch's key — `element` is identity (every step shown, the fine
+count preserved), `screen`/`app` read the step's `grain_keys` (stamped by
+`step_suggest.step_grain_keys`, with a JS `resolveStepGrainKeys` fallback for
+older sessions), and `phase`/`case` read `phase_id`/`case_id`. It is a **view**:
+no re-normalization, raw `events.jsonl` untouched, sliding back restores the
+detail. The €-ROI total is computed once in Python from event-stream segments
+and so is **invariant** across notches — the slider re-itemises the Steps/Map
+but never moves the headline figure.
 
 **Map interaction (Flow diagram):**
 

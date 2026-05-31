@@ -154,9 +154,9 @@ function _applyGrain(notch, opts = {}) {
 
 const VIEW_MODE_HELP = {
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
-  steps:  "Steps view: rename, split, merge, or flag the logical actions captured in this session.",
+  steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Grain slider to roll them up by screen / app / phase / case.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
-  map:    "Map view: the process diagram (BPMN) or Flow diagram (DFG) for this session, at Activity / Step / Phase level.",
+  map:    "Map view: the process diagram (BPMN) or Flow diagram (DFG) for this session, at the chosen Grain notch (element … case) or the Activity taxonomy level.",
   analysis: "Analysis view: heuristic waste, time-study and automation findings — review before relying on them.",
 };
 

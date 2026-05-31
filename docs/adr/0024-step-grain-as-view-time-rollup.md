@@ -1,6 +1,6 @@
 # ADR-0024: Step grain is a view-time roll-up over the UI-containment hierarchy (§11b, reframed)
 
-**Status:** Proposed — drafted 2026-05-30 for owner review; to be built out in a later session. **No code changed by this ADR.** It supersedes the standing §11b recommendation to *flip a global default* ([SEGMENTATION-CALIBRATION-FINDINGS.md](../To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)).
+**Status:** Accepted — built out 2026-05-31 (P1–P4, see *Build-out* below); shipped behind the in-app **Grain** slider (default notch = screen). Supersedes the standing §11b recommendation to *flip a global default* ([SEGMENTATION-CALIBRATION-FINDINGS.md](../To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)).
 **Date:** 2026-05-30
 **Deciders:** Project owner (steered the reframing), analyst (process-discovery lead)
 **Related:** [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (the notation × level matrix this generalises), [ADR-0013](0013-value-free-grouping-and-map-readability.md) (the `process_label` grouping key + the consecutive-duplicate collapse this reuses), [ADR-0007](0007-activity-event-granularity.md) (activity granularity), [ADR-0011](0011-platform-recognition-layer.md) (the recognition `screen` axis a web grain leans on), [ADR-0002](0002-app-vocabularies.md) (the vocab `screen` field used as the natural step boundary). Evidence: the §11b real corpus ([corpus/README.md](../../corpus/README.md)). Knob: `step_split_on_element` (`normalization/pipeline_config.py`).
@@ -70,6 +70,68 @@ Totals (hours/yr, €) are computed from summed interaction durations and are un
 - **Comprehension.** The notch names map to concepts the analyst already sees (field, screen, app, phase, case); the default ("one step per screen") is explainable in one line.
 - **Real run.** Must be validated in the viewer against the committed corpus (Outlook/Excel) — the slider at the element notch reproduces the fine counts (9/8), at the screen notch the sensible counts (3/3) — and against the demo (64 ↔ ~15), with the €-ROI total shown to be **unchanged** across notches.
 - **No dead controls.** If a notch produces an empty/degenerate level for a given session (e.g. no vocab `screen`), it falls back (window_title) rather than rendering blank.
+
+## Build-out (2026-05-31) — how the open questions resolved
+
+Built in four verified phases on a branch off master; each phase ran the full
+gate set (pytest, `golden_check`, viewer + capture `node:test`, the `e2e`
+harness). The open questions from the *Costs* list above resolved as:
+
+- **Containment keys (P1).** Stamped on every step at analyze time as
+  `step.grain_keys = {element, screen, app}` (`step_suggest.step_grain_keys`):
+  `element` = the field typed into (value/text gestures preferred over incidental
+  nav), `screen` = the vocab `screen_id` → `window_title`, `app` = `process_name`.
+  The `phase`/`case` notches read the step's existing `phase_id`/`case_id`.
+  Stamped on auto / canonical-matched / preserved steps alike; raw `events.jsonl`
+  is untouched (the keys live on the annotation step). **Additive** — the golden
+  projection reads `process_label`/counts/DFG shape, not `grain_keys`, so all 10
+  demo goldens are **unchanged** (no intentional regen was needed after all).
+  Verified on the §11b corpus: Outlook `element` 4117/4126/4101, `screen` =
+  `compose` (vocab), `app` = OUTLOOK.
+
+- **Where the roll-up runs (P2–P4).** View-time, in the viewer JS
+  (`process-map-levels.rollUpSteps` + the generalised `buildAnnotationDfg`), with
+  a `resolveStepGrainKeys` fallback that derives the keys from events for sessions
+  analyzed before `grain_keys` existed. No derived per-notch projection layer was
+  needed. The **step-grained** surfaces (Steps list, Map/Flow DFG) follow the
+  notch live; the **segment-grained** ROI/automation list (ADR-0016) sits *above*
+  the step grain and stays at its Python-computed grain. Totals are invariant
+  either way.
+
+- **The slider surface (P3).** Promoted to a single **Grain** slider in the
+  Session view-mode bar (notches element/screen/app/phase/case, default screen),
+  backed by a shared `State.grain`. The map's old Activity/Step/Phase selector
+  folded into the same ladder (Activity kept as a taxonomy escape hatch) and is
+  synced with the slider. The Compare-Sessions surface was left on its existing
+  level selector this cycle (deferred, below).
+
+- **Phases vs the auto ladder.** `phase` is simply a notch on the ladder; an
+  authored phase grouping is read from `phase_id`, so a manual phase coexists
+  with the automatic screen/app roll-up by being *one notch coarser* — selecting
+  the phase notch shows the authored grouping, the finer notches ignore it.
+
+- **`screen` for web/SaaS.** The desktop path (vocab `screen_id` → `window_title`)
+  is built and validated; the recognition-layer web `screen` axis is wired as the
+  documented principled source but remains best-validated once a live browser
+  capture exists (deferred, below).
+
+- **Fallbacks / no dead controls.** A degenerate notch never blanks: `screen`
+  falls back to `window_title` then `(screen)`; the BPMN (mined only at the
+  Element/Phase grains) falls back to the Flow diagram for screen/app/case rather
+  than rendering an empty host.
+
+- **Totals invariant (the load-bearing guarantee).** Because the notch is a
+  *view* control it never re-runs the pipeline, so the €-ROI total cannot move
+  with the slider — proven end-to-end in `e2e/session-smoke.js` (0.01 h/yr at
+  every notch) and by `analysis_roi` unit tests (the total is a pure,
+  order-insensitive sum over candidates). Measured confirmation of *why* this
+  matters: re-segmenting at normalize time (the rejected §11b flip) **does** move
+  the total (demo 0.01 → 0.02 h/yr), so grain must not re-segment.
+
+**Acceptance reproduced** (real-run, viewer): the `element` notch reproduces the
+fine counts exactly (Outlook 9, Excel 8, demo `sess-2026-0514-0900` 64); the
+`screen` notch consolidates to 3 / 4 / 19; the demo's coarse end is ~15 at the
+`app` notch — all with the €-ROI total shown unchanged across notches.
 
 ## Deferred / owner-gated
 
