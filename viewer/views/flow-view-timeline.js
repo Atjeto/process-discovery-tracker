@@ -27,6 +27,7 @@ const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
 const { effectiveLabel, visibleMarkerSuggestions } = require("./flow-view-markers.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
+const { rollUpSteps } = require("../process-map-levels.js");
 
 /* Injected by flow-view.js via initTimeline() -- kept out of a require() to
    avoid a flow-view <-> timeline cycle. */
@@ -359,7 +360,33 @@ function renderTimeline() {
     if (runStart != null) flushRun(runStart + runEndDur);
   }
 
-  const _stepsForLane = (State.getSession().annotations && State.getSession().annotations.steps) || [];
+  // ADR-0024: the steps lane follows the shared grain notch. At "element" it
+  // shows every step with its raw (value-laden) name — the finest timeline; at
+  // a coarser notch it shows the view-time roll-up (one band per consecutive
+  // run, labelled by the notch), so the single Grain control reaches Flow too.
+  const _anno = (State.getSession().annotations) || {};
+  const _grain = State.getGrain();
+  const _rawSteps = (_anno.steps || []).filter((s) => s && s.state !== "hidden");
+  let _stepsForLane;
+  if (_grain === "element") {
+    _stepsForLane = _rawSteps.map((s) => ({
+      label: s.name || s.step_id || "", step_id: s.step_id,
+      time_range: s.time_range, count: 1,
+    }));
+  } else {
+    const _phaseName = {};
+    for (const ph of (_anno.phases || [])) _phaseName[ph.phase_id] = ph.name || "(phase)";
+    const _interById = {};
+    for (const ev of (State.getSession().events || [])) {
+      if (ev.type === "interaction" && ev.event_id) _interById[ev.event_id] = ev;
+    }
+    _stepsForLane = rollUpSteps(_rawSteps, _grain,
+      { phaseName: _phaseName, interactionsById: _interById, caseLabel: (id) => id })
+      .map((g) => ({
+        label: g.label, step_id: (g.step_ids && g.step_ids[0]) || null,
+        time_range: g.time_range, count: g.count,
+      }));
+  }
   const _notesForLane = (State.getSession().annotations && State.getSession().annotations.notes) || [];
 
   // Case bands render as a labelled header ABOVE the activity lane;
@@ -775,11 +802,14 @@ function renderTimeline() {
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = stepsLaneTop + "px";
-        band.textContent = s.name || s.step_id || "";
-        band.title = (s.name || s.step_id) + " — " + formatDuration(sEnd - sStart);
+        const lbl = s.label || s.step_id || "";
+        // At a coarse grain a band folds several steps — show the count.
+        const foldNote = (s.count > 1) ? " (" + s.count + " steps)" : "";
+        band.textContent = lbl;
+        band.title = lbl + foldNote + " — " + formatDuration(sEnd - sStart);
         band.addEventListener("click", (e) => {
           e.stopPropagation();
-          State.setSelectedStepId(s.step_id);
+          if (s.step_id) State.setSelectedStepId(s.step_id);
           const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
           if (stepsBtn) stepsBtn.click();
         });

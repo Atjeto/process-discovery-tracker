@@ -98,12 +98,17 @@ harness). The open questions from the *Costs* list above resolved as:
   the step grain and stays at its Python-computed grain. Totals are invariant
   either way.
 
-- **The slider surface (P3).** Promoted to a single **Grain** slider in the
+- **The slider surface (P3 + P6).** Promoted to a single **Grain** slider in the
   Session view-mode bar (notches element/screen/app/phase/case, default screen),
   backed by a shared `State.grain`. The map's old Activity/Step/Phase selector
   folded into the same ladder (Activity kept as a taxonomy escape hatch) and is
-  synced with the slider. The Compare-Sessions surface was left on its existing
-  level selector this cycle (deferred, below).
+  synced with the slider. **P6** extended the shared notch to every surface: the
+  **Compare-Sessions** map (same ladder, synced to `State.grain`), the
+  **Analysis** Time study + Waste-by-step (re-itemise by the notch at view time;
+  coarse notches read-only because the business-required override is
+  `process_label`-scoped; the €-ROI total stays invariant), and the **Flow**
+  timeline step lane (rolls up to the notch). The single Grain control now drives
+  Flow / Steps / Map / Analysis and Compare.
 
 - **Phases vs the auto ladder.** `phase` is simply a notch on the ladder; an
   authored phase grouping is read from `phase_id`, so a manual phase coexists

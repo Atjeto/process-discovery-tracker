@@ -23,7 +23,43 @@ const State = require("../state.js");
 const Session = require("../session.js");
 const Ipc = require("../ipc.js");
 const { formModal } = require("../modals.js");
-const { processLabel } = require("../process-map-levels.js");
+const { processLabel, grainLabel } = require("../process-map-levels.js");
+
+/* ADR-0024: resolve, for the CURRENT grain notch, how to re-bucket the
+   step-grained analysis (Waste by step, Time study). Returns two maps built
+   from the session's steps: stepId -> grain label (exact) and process_label ->
+   grain label (majority, for the pre-aggregated time-study rows that carry no
+   step_id). At the element notch the analysis stays at the process_label grain
+   (the existing, editable behaviour), so callers skip regrouping there. */
+function _grainMaps(notch) {
+  const sess = State.getSession();
+  const anno = (sess && sess.annotations) || {};
+  const phaseName = {};
+  for (const ph of (anno.phases || [])) phaseName[ph.phase_id] = ph.name || "(phase)";
+  const interactionsById = {};
+  for (const ev of ((sess && sess.events) || [])) {
+    if (ev.type === "interaction" && ev.event_id) interactionsById[ev.event_id] = ev;
+  }
+  const ctx = { phaseName, interactionsById, caseLabel: (id) => id };
+  const byStepId = new Map();
+  const plCounts = new Map();   // process_label -> Map(grainLabel -> count)
+  for (const st of (anno.steps || [])) {
+    if (!st || st.state === "hidden") continue;
+    const label = grainLabel(st, notch, ctx);
+    if (st.step_id) byStepId.set(st.step_id, label);
+    const pl = st.process_label || processLabel(st.name || "") || "(step)";
+    if (!plCounts.has(pl)) plCounts.set(pl, new Map());
+    const m = plCounts.get(pl);
+    m.set(label, (m.get(label) || 0) + 1);
+  }
+  const byProcessLabel = new Map();
+  for (const [pl, m] of plCounts) {
+    let best = null, bn = -1;
+    for (const [l, n] of m) if (n > bn) { best = l; bn = n; }
+    byProcessLabel.set(pl, best);
+  }
+  return { byStepId, byProcessLabel };
+}
 
 function _fmt(ms) {
   return formatDuration(ms || 0);
@@ -181,10 +217,13 @@ function _efficiencySection(eff) {
 
    `waste_types` for a group is the union across instances (any signal
    from any instance still surfaces). */
-function _groupWasteRows(waste) {
+function _groupWasteRows(waste, labelOf) {
   const groups = new Map();
   for (const w of (waste || [])) {
-    const pl = _wasteRowProcessLabel(w) || w.name || "(step)";
+    // ADR-0024: at a coarse grain notch `labelOf` re-buckets per-step waste rows
+    // by the notch's grain label (screen/app/phase/case); at the element notch
+    // it is absent and rows group by process_label (the editable default).
+    const pl = (labelOf && labelOf(w)) || _wasteRowProcessLabel(w) || w.name || "(step)";
     if (!groups.has(pl)) {
       groups.set(pl, {
         process_label: pl,
@@ -215,7 +254,7 @@ function _groupWasteRows(waste) {
   return out;
 }
 
-function _buildWasteRow(g) {
+function _buildWasteRow(g, editable = true) {
   const total = (g.va_ms || 0) + (g.bnva_ms || 0) + (g.nva_ms || 0);
   const seg = (ms, cls) => (!ms || total <= 0) ? "" :
     '<span class="waste-seg ' + cls + '" style="width:' +
@@ -228,13 +267,19 @@ function _buildWasteRow(g) {
     .join("");
   const badge = g.instances > 1
     ? '<span class="waste-instances" title="' + g.instances +
-        ' instances of this step type">' + g.instances + "&times;</span>"
+        ' instances">' + g.instances + "&times;</span>"
     : "";
-  const title = g.instances > 1
-    ? "Click to set the business-required share across all " + g.instances +
-      " instances of this step type"
-    : "Click to set the business-required share of this step";
-  return '<div class="waste-row waste-row-editable" data-process-label="' +
+  // ADR-0024: at a coarse grain the rows are READ-ONLY (the business-required
+  // override is process_label-scoped and a coarse group spans many labels) --
+  // edit at the element notch. The waste totals are unchanged, so the
+  // efficiency figure is grain-invariant either way.
+  const cls = editable ? "waste-row waste-row-editable" : "waste-row";
+  const title = editable
+    ? (g.instances > 1
+        ? "Click to set the business-required share across all " + g.instances + " instances"
+        : "Click to set the business-required share of this step")
+    : "Read-only at this grain — set Grain to element to adjust business-required time";
+  return '<div class="' + cls + '" data-process-label="' +
       escapeAttr(g.process_label || "") +
       '" title="' + escapeAttr(title) + '">' +
     '<span class="waste-name" title="' + escapeAttr(g.process_label || "") + '">' +
@@ -244,13 +289,19 @@ function _buildWasteRow(g) {
       seg(g.nva_ms, "seg-nva") +
     "</span>" +
     '<span class="waste-tags">' + tags + "</span>" +
-    '<span class="waste-edit">adjust</span>' +
+    (editable ? '<span class="waste-edit">adjust</span>' : "") +
   "</div>";
 }
 
-function _wasteSection(waste) {
+function _wasteSection(waste, notch, maps) {
   if (!waste.length) return "";
-  const allGroups = _groupWasteRows(waste);
+  const regroup = (notch && notch !== "element" && maps);
+  const labelOf = regroup
+    ? (w) => (w.step_id && maps.byStepId.get(w.step_id))
+        || maps.byProcessLabel.get(_wasteRowProcessLabel(w)) || null
+    : null;
+  const editable = !regroup;
+  const allGroups = _groupWasteRows(waste, labelOf);
   if (!allGroups.length) return "";
   // Apply the waste-type filter (v0.18.1). When set, only rows whose
   // waste_types include the filter survive; the rest are hidden until the
@@ -278,24 +329,72 @@ function _wasteSection(waste) {
       groups.length + ' of ' + allGroups.length + ' step types ' +
       '<button type="button" class="waste-filter-clear" title="Show all step types">show all ✕</button></div>'
     : "";
-  let body = main.length ? '<div class="waste-rows">' + main.map(_buildWasteRow).join("") + "</div>" : "";
+  const rowHtml = (g) => _buildWasteRow(g, editable);
+  let body = main.length ? '<div class="waste-rows">' + main.map(rowHtml).join("") + "</div>" : "";
   if (instant.length) {
     body += '<details class="waste-instant"><summary>' + instant.length +
-      " instant step type" + (instant.length === 1 ? "" : "s") +
+      " instant " + (regroup ? notch : "step type") + (instant.length === 1 ? "" : "s") +
       " (no measured duration)</summary>" +
-      '<div class="waste-rows">' + instant.map(_buildWasteRow).join("") + "</div></details>";
+      '<div class="waste-rows">' + instant.map(rowHtml).join("") + "</div></details>";
   }
   if (_wasteTypeFilter && !groups.length) {
     body = '<div class="waste-empty">No step types tagged "' +
       escapeHtml(_wasteTypeFilter) + '" in this session.</div>';
   }
+  const title = regroup ? ("Waste by " + escapeHtml(notch)) : "Waste by step";
+  const grainHint = regroup
+    ? '<div class="analysis-caption">Rolled up to the <strong>' + escapeHtml(notch) +
+      "</strong> grain (read-only — set Grain to <strong>element</strong> to adjust " +
+      "business-required time). The waste totals, and so the efficiency figure, are unchanged.</div>"
+    : "";
   return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Waste by step</div>' + legend + filterChip + body + "</div>";
+    '<div class="analysis-section-title">' + title + "</div>" + grainHint + legend + filterChip + body + "</div>";
 }
 
-function _timeStudySection(ts) {
+/* ADR-0024: merge the per-step-type time-study rows up to the grain notch.
+   `byProcessLabel` maps each step type to its (majority) grain label; rows
+   sharing a label fold into one — instances and active/waiting/switching sum,
+   mean is the instance-weighted mean, min/max are the extremes. The TOTAL time
+   summed across rows is unchanged (every row is still counted once), so the
+   study just re-itemises. Returns the original rows at the element notch. */
+function _regroupTimeStudy(ts, notch, maps) {
+  if (!notch || notch === "element" || !maps) return ts;
+  const groups = new Map();
+  for (const t of ts) {
+    const label = maps.byProcessLabel.get(t.name) || t.name || "(step)";
+    const c = t.cycle_ms || {};
+    const inst = t.instances || 0;
+    let g = groups.get(label);
+    if (!g) {
+      g = { name: label, instances: 0, _meanSum: 0,
+            _min: Infinity, _max: -Infinity, active_ms: 0, waiting_ms: 0, switching_ms: 0 };
+      groups.set(label, g);
+    }
+    g.instances += inst;
+    g._meanSum += (c.mean || 0) * inst;          // instance-weighted mean
+    if (c.min != null) g._min = Math.min(g._min, c.min);
+    if (c.max != null) g._max = Math.max(g._max, c.max);
+    g.active_ms += t.active_ms || 0;
+    g.waiting_ms += t.waiting_ms || 0;
+    g.switching_ms += t.switching_ms || 0;
+  }
+  return [...groups.values()].map((g) => ({
+    name: g.name,
+    instances: g.instances,
+    cycle_ms: {
+      mean: g.instances ? g._meanSum / g.instances : 0,
+      min: g._min === Infinity ? 0 : g._min,
+      max: g._max === -Infinity ? 0 : g._max,
+    },
+    active_ms: g.active_ms, waiting_ms: g.waiting_ms, switching_ms: g.switching_ms,
+  })).sort((a, b) => (b.active_ms + b.waiting_ms) - (a.active_ms + a.waiting_ms));
+}
+
+function _timeStudySection(ts, notch, maps) {
   if (!ts.length) return "";
-  const rows = ts.map((t) => {
+  const regroup = (notch && notch !== "element" && maps);
+  const study = _regroupTimeStudy(ts, notch, maps);
+  const rows = study.map((t) => {
     const c = t.cycle_ms || {};
     return "<tr>" +
       "<td>" + escapeHtml(t.name || "(step)") + "</td>" +
@@ -308,10 +407,12 @@ function _timeStudySection(ts) {
       '<td class="num">' + escapeHtml(_fmt(t.switching_ms)) + "</td>" +
     "</tr>";
   }).join("");
+  const head = regroup ? escapeHtml(notch.charAt(0).toUpperCase() + notch.slice(1)) : "Step";
   return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Time study</div>' +
+    '<div class="analysis-section-title">Time study' +
+      (regroup ? ' <span class="meta">(by ' + escapeHtml(notch) + ")</span>" : "") + "</div>" +
     '<table class="analysis-table">' +
-      "<thead><tr><th>Step</th><th>Instances</th><th>Mean</th>" +
+      "<thead><tr><th>" + head + "</th><th>Instances</th><th>Mean</th>" +
       "<th>Min</th><th>Max</th><th>Active</th><th>Waiting</th>" +
       "<th>Switching</th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table></div>";
@@ -853,11 +954,16 @@ function renderAnalysisLevel() {
   const overrides = (session.annotations &&
     session.annotations.analysis_overrides) || [];
   const analysis = applyAnalysisOverrides(raw, overrides);
+  // ADR-0024: the step-grained itemisation (Waste by step, Time study) follows
+  // the current grain notch; the €-ROI total stays invariant. Build the regroup
+  // maps once (skipped at the element notch, which keeps the editable default).
+  const notch = State.getGrain();
+  const maps = (notch && notch !== "element") ? _grainMaps(notch) : null;
   host.innerHTML =
     _caption(overrides.length) +
     _efficiencySection(analysis.efficiency || {}) +
-    _wasteSection(analysis.waste_classification || []) +
-    _timeStudySection(analysis.time_study || []) +
+    _wasteSection(analysis.waste_classification || [], notch, maps) +
+    _timeStudySection(analysis.time_study || [], notch, maps) +
     _automationSection(analysis.automation_candidates || []) +
     _roiSection(analysis.roi);
   _wireControls(host, analysis);

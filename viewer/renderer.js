@@ -424,6 +424,7 @@ State.subscribe("phases",   renderMapLevel);
 // here to avoid a double render).
 State.subscribe("grain",    renderStepsLevel);
 State.subscribe("grain",    renderTimeline);
+State.subscribe("grain",    renderAnalysisLevel);
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces

@@ -293,19 +293,23 @@ Acceptance reproduced in the real viewer: `element` notch = fine counts (Outlook
 9, Excel 8, demo 64); `screen` = 3 / 4 / 19; demo coarse end ~15 at `app`; €-ROI
 total unchanged across notches; `e2e/session-smoke.js` 12/12 green.
 
-**Deferred follow-ups** (next session):
-- **Compare-Sessions grain.** The Aggregate/Compare map still uses its own
-  Activity/Step/Phase level select; promote it to the same Grain slider.
-- **Analysis time-study / waste-by-step following the notch.** These stay at
-  their Python `process_label` grain this cycle; the headline €-ROI total is the
-  load-bearing invariant and is done. Re-bucketing the time-study by notch at
-  view time is a nice-to-have.
-- **Flow timeline step-lane roll-up.** The Grain slider drives the Steps list
-  and the Map; the Flow timeline still shows the finest step lane (it is the raw
-  event timeline by nature). Rolling the step lane up by notch is optional polish.
+**Follow-ups — DONE 2026-05-31 (P6, same branch):**
+- ✅ **Compare-Sessions grain.** The Aggregate/Compare map's level select is the
+  Grain ladder (element/screen/app/phase/case + Activity), synced to `State.grain`,
+  BPMN→Flow fallback for screen/app/case.
+- ✅ **Analysis time-study / waste-by-step follow the notch.** Both re-itemise by
+  the current notch at view time (coarse notches read-only, since the
+  business-required override is `process_label`-scoped); the €-ROI headline total
+  stays invariant. e2e pins a "Waste by screen" section at the screen notch.
+- ✅ **Flow timeline step-lane roll-up.** The step lane shows the roll-up at the
+  notch (one band per consecutive run, with a fold count); `element` keeps every
+  raw step band. So the single Grain control now drives Flow / Steps / Map /
+  Analysis and Compare alike.
+
+**Still deferred (needs a live capture, not fakeable):**
 - **Web/SaaS `screen` validation.** The recognition-layer web `screen` axis is
-  wired but best validated once a live browser capture exists (the deferred §11a
-  web drive).
+  wired but best validated once a live browser/SaaS capture exists (the deferred
+  §11a web drive) — no live browser session here, so left honestly unverified.
 
 ---
 

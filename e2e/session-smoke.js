@@ -229,8 +229,22 @@ const OVERLAP_PROBE = () => {
       "screen='" + roiAtScreen + "' app='" + roiAtApp + "' (must match)");
     if (!invariant) await shot(page, "fail-roi-invariance.png");
   }
-  // Restore the default notch for the remaining checks.
-  await setGrainNotch(1);
+  // The step-grained Analysis itemisation follows the notch: at "screen" the
+  // Waste/Time-study sections re-bucket by screen (a "Waste by screen" heading).
+  await setGrainNotch(1);   // screen notch
+  const analysisFollowsNotch = await (async () => {
+    const ab = await page.$('.view-mode-btn[data-level="analysis"]');
+    if (ab) { await ab.click().catch(() => {}); await wait(900); }
+    return page.evaluate(() => {
+      const h = document.querySelector("#analysis-content");
+      return h ? /Waste by screen/i.test(h.textContent || "") : false;
+    }).catch(() => false);
+  })();
+  if (grainSliderExists) {
+    record("Analysis itemisation follows the grain notch (Waste by screen)", analysisFollowsNotch,
+      analysisFollowsNotch ? "" : "expected a 'Waste by screen' section at the screen notch");
+    if (!analysisFollowsNotch) await shot(page, "fail-analysis-grain.png");
+  }
 
   // --- €-ROI panel pin (§11c) ---
   // On the Analysis level the €-ROI section must render with its band legend

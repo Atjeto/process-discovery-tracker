@@ -58,6 +58,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     stays put, with the total invariant either way. New `analysis_roi` tests pin
     that the total is a pure, order-insensitive sum over candidates (re-itemising
     or re-ranking can't move it); the Analysis panel states the invariance.
+  - **P6 — grain reaches every view (deferred follow-ups).** The
+    **Compare-Sessions** map gains the same grain ladder (its level select →
+    element/screen/app/phase/case + Activity, synced to `State.grain`, BPMN→Flow
+    fallback for screen/app/case). The **Analysis** Time study + Waste-by-step
+    re-itemise by the current notch at view time (the €-ROI headline total stays
+    invariant), and the **Flow** timeline's step lane rolls up to the notch — so
+    the single grain control drives Flow / Steps / Map / Analysis and Compare.
 
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades

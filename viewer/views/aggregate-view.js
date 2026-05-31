@@ -56,11 +56,14 @@ let _mapCtrl = null;   // lazily created in initAggregateView
      DFG  × activity   -> the merged taxonomy DFG (_lastActivityDfg)
      DFG  × step/phase -> buildAnnotationDfg (live from the annotations) */
 
-/* Session-folder BPMN filename for a level. */
+/* Session-folder BPMN filename for a grain notch (ADR-0024). The observed-flow
+   BPMN is mined only at the element (=step) and phase grains; screen/app/case
+   have no Process diagram and fall back to the Flow diagram. */
 function _bpmnFileForLevel(level) {
-  return level === "step" ? "process_map_step.bpmn"
+  return (level === "step" || level === "element") ? "process_map_step.bpmn"
        : level === "phase" ? "process_map_phase.bpmn"
-       : "process_map.bpmn";
+       : level === "activity" ? "process_map.bpmn"
+       : null;   // screen / app / case -> no Process diagram
 }
 /* First loaded session that has a BPMN at the given level -- the BPMN pane
    shows one representative session, as the activity map always has. */
@@ -104,6 +107,14 @@ function _activityLabelsForStep(stepLabel) {
    up by renderAggregate. */
 function _aggregateMapDataSource({ notation, level, scope }) {
   if (notation === "bpmn") {
+    // ADR-0024: screen/app/case have no pre-mined Process diagram — guide to the
+    // Flow diagram rather than render a dead BPMN host.
+    if (!_bpmnFileForLevel(level)) {
+      return {
+        emptyMessage: 'The Process diagram (BPMN) is mined at the Element and Phase grains. ' +
+          'For the ' + level + ' grain, switch to the Flow diagram tab — it rolls up live.',
+      };
+    }
     const sess = _firstSessionWithBpmn(level);
     if (!sess) {
       return {
@@ -125,12 +136,15 @@ function _aggregateMapDataSource({ notation, level, scope }) {
       emptyMessage: 'No activity-level flow yet — classify your apps in the taxonomy',
     };
   }
-  // step / phase: drill scope is the parent phase (when descending phase->step).
+  // element / screen / app / phase / case — the grain ladder (ADR-0024), rolled
+  // up live across the loaded sessions. Drill scope is the parent phase (when
+  // descending phase->step on the element notch).
   const phaseFilter = (scope && scope.level === "step")
     ? { phaseName: scope.phaseName } : null;
   return {
-    dfg: buildAnnotationDfg(_lastFilteredForMap || [], level, phaseFilter),
-    emptyMessage: 'No ' + level + '-level flow yet — add steps or phases to this session',
+    dfg: buildAnnotationDfg(_lastFilteredForMap || [], level, phaseFilter,
+                            { caseLabel: (id) => id }),
+    emptyMessage: 'No ' + level + '-grain flow yet — add steps to the loaded sessions',
   };
 }
 
@@ -160,9 +174,21 @@ function _initMapController() {
     dataSource: _aggregateMapDataSource,
     activityLabelsForStep: _activityLabelsForStep,
     onActivityNodeClick: (label, ev) => drillToActivity(label, ev),
-    initialNotation: "bpmn",
-    initialLevel: "activity",
+    // ADR-0024: open at the shared grain notch (default "screen"), which has no
+    // pre-mined BPMN, so default to the Flow diagram (it rolls up live).
+    initialNotation: "dfg",
+    initialLevel: State.getGrain(),
   });
+  // Keep the shared grain in sync: choosing a grain notch in the map-level
+  // select updates State.grain so the notion of grain is consistent across the
+  // Session and Compare surfaces. "activity" is a Compare-only taxonomy view.
+  const levelSel = document.getElementById("map-level");
+  if (levelSel) {
+    levelSel.value = State.getGrain();
+    levelSel.addEventListener("change", () => {
+      if (levelSel.value !== "activity") State.setGrain(levelSel.value);
+    });
+  }
   return _mapCtrl;
 }
 
