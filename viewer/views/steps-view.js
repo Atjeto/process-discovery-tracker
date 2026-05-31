@@ -20,6 +20,7 @@ const PdtAlign = require("../step-alignment.js");
 const PdtPalette = require("../command-palette.js");
 const { stepsToTemplateSteps, canonicalSkeleton, slugify } = require("../canonical-author.js");
 const { loadVocabs } = require("./identity-picker.js");
+const { rollUpSteps } = require("../process-map-levels.js");
 
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
@@ -240,6 +241,20 @@ function renderStepsLevel() {
     if (fc.exception_path) parts.push(fc.exception_path + " exception");
     sumEl.textContent = parts.length ? ("Flagged: " + parts.join(" · ")) : "";
   }
+
+  // ADR-0024: at a coarser grain than "element", the Steps list shows the
+  // view-time ROLL-UP -- one row per run of consecutive steps sharing the
+  // notch key (screen / app / phase / case). "element" keeps the full,
+  // editable per-step list below (detail is never destroyed). The roll-up is
+  // read-oriented: clicking a group selects its first member so the per-step
+  // editor still works; the legend points back to the element notch to edit.
+  const grain = State.getGrain();
+  if (grain !== "element") {
+    renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById);
+    _renderStepsMiniTimeline(allSteps, filteredIds);
+    return;
+  }
+
   // ADR-0015: the aligned reading needs 2+ detected cases. Gate the toggle on
   // that and fall back to flat for a single-case session. The per-step filter
   // (text + state chips) doesn't act on a consensus, so hide it in aligned mode
@@ -290,32 +305,105 @@ function renderStepsLevel() {
     // ---- Aligned reading: the consensus backbone across detected cases ----
     renderAlignedReading(interactionsById);
   }
-  const span = getSpan();
-  if (span) {
-    // Mini-timeline keeps the full set as context; non-matching blocks
-    // are dimmed via the dimmedIds option so the filter still localises.
-    const dimmedIds = new Set();
-    for (const s of allSteps) if (!filteredIds.has(s.step_id)) dimmedIds.add(s.step_id);
-    PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
-      State.getSession().events.filter(e => e.type === "interaction"), span, {
-        zoom: State.getStepZoom(),
-        selectedId: State.getSelectedStepId(),
-        dimmedIds,
-        onSelect: (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
-        onContextMenu: (sid, x, y) => showStepContextMenu(sid, x, y),
-      });
-    const range = $("#steps-timeline-range");
-    if (range) {
-      const fmt = (ms) => new Date(ms).toLocaleTimeString();
-      range.textContent = `${fmt(span.startMs)} → ${fmt(span.endMs)} · ${formatDuration(span.endMs - span.startMs)}`;
-    }
-  }
+  _renderStepsMiniTimeline(allSteps, filteredIds);
   if (pendingTs && State.getSelectedStepId()) {
     setTimeout(() => {
       const row = document.querySelector('.step-row[data-step-id="' + State.getSelectedStepId() + '"]');
       if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 0);
   }
+}
+
+/* The Steps mini-timeline (full set as context; non-matching blocks dimmed so
+   the filter still localises). Factored so the flat reading and the ADR-0024
+   grain roll-up reading both render the same timeline beneath their list. */
+function _renderStepsMiniTimeline(allSteps, filteredIds) {
+  const span = getSpan();
+  if (!span) return;
+  const dimmedIds = new Set();
+  for (const s of allSteps) if (!filteredIds.has(s.step_id)) dimmedIds.add(s.step_id);
+  PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
+    State.getSession().events.filter(e => e.type === "interaction"), span, {
+      zoom: State.getStepZoom(),
+      selectedId: State.getSelectedStepId(),
+      dimmedIds,
+      onSelect: (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
+      onContextMenu: (sid, x, y) => showStepContextMenu(sid, x, y),
+    });
+  const range = $("#steps-timeline-range");
+  if (range) {
+    const fmt = (ms) => new Date(ms).toLocaleTimeString();
+    range.textContent = `${fmt(span.startMs)} → ${fmt(span.endMs)} · ${formatDuration(span.endMs - span.startMs)}`;
+  }
+}
+
+/* ADR-0024: render the Steps list as the view-time grain ROLL-UP. Each row is a
+   run of consecutive steps sharing the notch key (rollUpSteps); it shows the
+   group label, the count of folded steps, and the group's duration. The roll-up
+   is read-oriented -- clicking a group selects its first member so the per-step
+   detail editor (rename / flag / split) still works; the legend points back to
+   the element notch to edit individual steps. The fine steps are never
+   destroyed: slide back to "element" to see them all. */
+function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
+  const anno = (State.getSession() && State.getSession().annotations) || {};
+  const phaseName = {};
+  for (const ph of (anno.phases || [])) phaseName[ph.phase_id] = ph.name || "(phase)";
+  const ctx = { phaseName, interactionsById, caseLabel: caseLabeler() };
+  const groups = rollUpSteps(filtered, grain, ctx);
+
+  const meta = $("#step-filter-meta");
+  if (meta) {
+    meta.textContent = `${groups.length} ${grain} group${groups.length === 1 ? "" : "s"} · ${filtered.length} steps`;
+  }
+  // Legend: name the notch and the inverse (slide to element to edit). Reuse
+  // the steps-legend slot the flat/aligned readings use.
+  const legendEl = $("#steps-legend");
+  if (legendEl) {
+    legendEl.innerHTML = 'Grouped by <strong>' + escapeHtml(grain) +
+      '</strong> — each row folds a run of consecutive steps on the same ' +
+      escapeHtml(grain) + '. <span class="grain-legend-hint">Set Grain to ' +
+      '<strong>element</strong> to edit individual steps.</span>';
+    legendEl.style.display = "";
+  }
+  // Hide the per-step filter controls that don't act on a roll-up (mirrors the
+  // aligned reading's discipline -- no control that does nothing).
+  const listFilterEl = $("#step-list-filter");
+  if (listFilterEl) listFilterEl.style.display = "none";
+  const alignToggle = $("#step-align-toggle");
+  if (alignToggle) alignToggle.style.display = "none";
+
+  const selId = State.getSelectedStepId();
+  const rows = groups.map((g) => {
+    const startMs = g.time_range.start ? new Date(g.time_range.start).getTime() : 0;
+    const endMs = g.time_range.end ? new Date(g.time_range.end).getTime() : startMs;
+    const dur = formatDuration(Math.max(0, endMs - startMs));
+    const sel = g.step_ids.includes(selId) ? " selected" : "";
+    const countBadge = g.count > 1
+      ? '<span class="grain-group-count" title="' + g.count + ' steps folded at the ' +
+        escapeHtml(grain) + ' grain">' + g.count + "&times;</span>"
+      : "";
+    return '<div class="step-row grain-group-row' + sel + '" data-step-id="' +
+        escapeHtml(g.step_ids[0] || "") + '" data-count="' + g.count + '">' +
+      '<span class="grain-group-label" title="' + escapeHtml(g.label) + '">' +
+        escapeHtml(g.label) + countBadge + "</span>" +
+      '<span class="grain-group-dur meta">' + escapeHtml(dur) + "</span>" +
+    "</div>";
+  }).join("");
+  const list = $("#step-list");
+  if (list) {
+    list.innerHTML = rows ||
+      '<div class="empty-hint">No steps at this grain.</div>';
+    list.querySelectorAll(".grain-group-row").forEach((row) => {
+      row.addEventListener("click", () => {
+        State.setSelectedStepId(row.dataset.stepId || null);
+        renderStepsLevel();
+      });
+    });
+  }
+  // Detail: show the selected member's editor so a group is still inspectable.
+  const selected = allSteps.find((s) => s.step_id === selId) || null;
+  PdtSteps.renderStepDetail($("#step-detail"), selected,
+    stepDetailCallbacks(selected, interactionsById));
 }
 
 /* The callbacks the per-step detail editor needs. Factored so both the flat

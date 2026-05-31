@@ -174,6 +174,64 @@ const OVERLAP_PROBE = () => {
     if (!visible) await shot(page, "fail-level-" + lvl + ".png");
   }
 
+  // --- ADR-0024 grain control: the single view-time roll-up slider ---
+  // The slider exists; the Steps list reproduces the FINE count at the element
+  // notch (detail never destroyed) and CONSOLIDATES at the screen notch; and
+  // the €-ROI total is INVARIANT across notches (the load-bearing guarantee).
+  async function setGrainNotch(idx) {
+    // Move the shared grain slider and fire its input handler (renderer wiring).
+    await page.evaluate((i) => {
+      const s = document.getElementById("grain-slider");
+      if (!s) return;
+      s.value = String(i);
+      s.dispatchEvent(new Event("input", { bubbles: true }));
+    }, idx);
+    await wait(800);
+  }
+  const grainSliderExists = await page.$eval("#grain-slider", () => true).catch(() => false);
+  record("grain slider (#grain-slider) present", grainSliderExists,
+    grainSliderExists ? "" : "no #grain-slider in the view-mode bar");
+
+  // Read the €-ROI expected total on the Analysis level (for the invariance check).
+  async function roiTotalText() {
+    const ab = await page.$('.view-mode-btn[data-level="analysis"]');
+    if (ab) { await ab.click().catch(() => {}); await wait(900); }
+    return page.evaluate(() => {
+      const el = document.querySelector("#analysis-content .roi-total-big");
+      return el ? (el.textContent || "").trim() : null;
+    }).catch(() => null);
+  }
+  const roiAtScreen = await roiTotalText();   // default notch = screen
+
+  // Count the Steps-list rows at the element vs screen notch.
+  async function stepRowCountAt(idx) {
+    const sb = await page.$('.view-mode-btn[data-level="steps"]');
+    if (sb) { await sb.click().catch(() => {}); await wait(700); }
+    await setGrainNotch(idx);
+    return page.evaluate(() => document.querySelectorAll("#step-list .step-row").length).catch(() => 0);
+  }
+  const elementCount = await stepRowCountAt(0);   // element notch
+  const screenCount = await stepRowCountAt(1);    // screen notch (default)
+  if (grainSliderExists) {
+    const consolidates = elementCount > 0 && screenCount > 0 && screenCount < elementCount;
+    record("grain roll-up: element shows the fine count, screen consolidates", consolidates,
+      "element=" + elementCount + " rows, screen=" + screenCount + " rows (screen must be fewer, both > 0)");
+    if (!consolidates) await shot(page, "fail-grain-rollup.png");
+  }
+
+  // €-ROI total must be identical at another notch (it is time-based and reads
+  // event-stream segments, not step grain — invariant by construction).
+  await setGrainNotch(2);   // app notch
+  const roiAtApp = await roiTotalText();
+  if (grainSliderExists) {
+    const invariant = roiAtScreen != null && roiAtScreen === roiAtApp;
+    record("€-ROI total is invariant across grain notches", invariant,
+      "screen='" + roiAtScreen + "' app='" + roiAtApp + "' (must match)");
+    if (!invariant) await shot(page, "fail-roi-invariance.png");
+  }
+  // Restore the default notch for the remaining checks.
+  await setGrainNotch(1);
+
   // --- €-ROI panel pin (§11c) ---
   // On the Analysis level the €-ROI section must render with its band legend
   // and a session-level "Edit assumptions…" affordance. The demo has no

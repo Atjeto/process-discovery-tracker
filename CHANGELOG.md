@@ -35,6 +35,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     change. Verified on real captures — the `element` notch reproduces the fine
     counts exactly (Outlook 9, Excel 8, demo 64) and `screen` consolidates
     sensibly (3, 4, 19); the demo's coarse end is ~15 at the `app` notch.
+  - **P3 — one grain slider across Flow / Steps / Map.** A single **Grain**
+    slider in the Session view-mode bar (notches element/screen/app/phase/case,
+    default **screen**) sets a shared `State.grain`. The Steps list rolls up to
+    the notch — one row per consecutive run, with a fold count, read-oriented
+    (click a group to edit its first member; slide to `element` to edit every
+    step). The Map's level selector is folded into the same ladder and synced
+    with the slider (the old Activity level stays as a taxonomy escape hatch);
+    the Flow diagram (DFG) rolls up live, and the Process diagram (BPMN) — mined
+    only at the Element/Phase grains — falls back to the Flow diagram for
+    screen/app/case rather than rendering a dead host. No re-normalization on a
+    notch change; sliding back restores the detail. e2e (`session-smoke.js`)
+    pins the slider, the element↔screen consolidation (demo 64↔19), and the
+    €-ROI total holding invariant across notches.
 
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades

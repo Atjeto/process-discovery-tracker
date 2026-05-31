@@ -206,6 +206,16 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <select id="case-scope-select"><option value="">All cases</option></select>
             <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">Scope to playhead</button>
           </label>
+          <!-- ADR-0024: the single grain control. A view-time roll-up notch
+               shared across Flow / Steps / Map — slide left for every field
+               (element), right for screen / app / phase / case. Default: one
+               step per screen. Sliding back undoes it with zero data mutation;
+               raw events are never re-segmented. -->
+          <label class="grain-control" id="grain-control" title="Grain — how far steps consolidate as you zoom out. element = every field · screen = one step per screen (default) · app · phase · case. A view-only control: it never re-analyzes; sliding back restores the detail.">
+            <span class="grain-label">Grain:</span>
+            <input type="range" id="grain-slider" class="grain-range" min="0" max="4" step="1" value="1" aria-label="Step grain notch" />
+            <span class="grain-notch" id="grain-notch-lbl">screen</span>
+          </label>
           <span class="view-mode-help" id="view-mode-help"></span>
         </div>
 
@@ -424,10 +434,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="panel-tabs">
                 <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
                 <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
-                <select id="session-map-level" class="map-status-select" title="Level of the map: Activity (application-level, needs taxonomy rules), Step or Phase (built from your annotations, works with no taxonomy).">
-                  <option value="activity">Activity level</option>
-                  <option value="step">Step level</option>
-                  <option value="phase">Phase level</option>
+                <select id="session-map-level" class="map-status-select" title="Map grain (ADR-0024): Activity (taxonomy, needs rules) or the grain ladder element ⊂ screen ⊂ app ⊂ phase ⊂ case (built from your annotations, no taxonomy needed). Synced with the Grain slider above.">
+                  <option value="activity">Activity (taxonomy)</option>
+                  <option value="element">Element — every field</option>
+                  <option value="screen">Screen — one per screen</option>
+                  <option value="app">App</option>
+                  <option value="phase">Phase</option>
+                  <option value="case">Case</option>
                 </select>
               </div>
               <span id="session-map-scope" class="map-scope" style="display:none"></span>

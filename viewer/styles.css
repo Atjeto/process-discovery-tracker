@@ -1317,6 +1317,34 @@ button.waste-tag-btn:hover {
 .case-scope select:hover { border-color: var(--fg-4); }
 .case-scope.scoped select { border-color: var(--accent); color: var(--fg); }
 
+/* ADR-0024: the single grain control in the view-mode bar (slider + notch
+   label). A view-time roll-up — element ⊂ screen ⊂ app ⊂ phase ⊂ case. */
+.grain-control {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--fg-3);
+}
+.grain-label {
+  font-family: var(--font-mono); letter-spacing: 0.5px;
+  text-transform: uppercase; font-size: 10px; color: var(--fg-4);
+}
+.grain-range { width: 92px; accent-color: var(--accent); cursor: pointer; }
+.grain-notch {
+  font-family: var(--font-mono); font-size: 10px; color: var(--fg-2);
+  min-width: 46px; text-align: left;
+}
+
+/* ADR-0024: the Steps list rolled up at a coarse grain — one row per run of
+   consecutive same-notch steps. Reuses .step-row spacing; adds a fold count. */
+.grain-group-row { display: flex; align-items: center; gap: 8px; }
+.grain-group-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grain-group-count {
+  display: inline-block; margin-left: 6px; padding: 0 5px;
+  font-family: var(--font-mono); font-size: 10px;
+  background: var(--bg-4); color: var(--fg-3); border-radius: 8px;
+}
+.grain-group-dur { font-size: 10px; }
+.grain-legend-hint { color: var(--fg-4); }
+
 /* Flow timeline activity bands dimmed when out of the scoped case. */
 .tl-activity.out-of-scope { opacity: 0.15; filter: grayscale(0.4); }
 

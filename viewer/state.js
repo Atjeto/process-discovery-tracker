@@ -86,6 +86,10 @@ const _s = {
   currentSession: null,
   aggregateSessions: [],
   currentLevel: "flow",
+  // ADR-0024: the view-time grain notch shared across Flow / Steps / Map.
+  // One of element|screen|app|phase|case; default "screen" ("one step per
+  // screen"). A view-only control -- changing it never re-normalizes.
+  currentGrain: "screen",
   selectedStepId: null,
   multiSelectedStepIds: new Set(),
   selectedPhaseId: null,
@@ -247,6 +251,13 @@ function getLevel() { return _s.currentLevel; }
 /** @param {Level} v */
 function setLevel(v) { _s.currentLevel = v; }
 
+/* Grain (ADR-0024): the view-time roll-up notch, shared across views. */
+const _GRAIN_NOTCHES = ["element", "screen", "app", "phase", "case"];
+/** @returns {string} */
+function getGrain() { return _s.currentGrain; }
+/** @param {string} v */
+function setGrain(v) { if (_GRAIN_NOTCHES.includes(v)) _s.currentGrain = v; }
+
 /* Selection */
 function getSelectedStepId() { return _s.selectedStepId; }
 /** @param {string|null} v */
@@ -321,6 +332,8 @@ module.exports = {
   getSession, setSession, getAggregateSessions, setAggregateSessions,
   // level
   getLevel, setLevel,
+  // grain (ADR-0024)
+  getGrain, setGrain,
   // selection
   getSelectedStepId, setSelectedStepId, getSelectedPhaseId, setSelectedPhaseId,
   getMultiSelectedStepIds, setMultiSelectedStepIds,

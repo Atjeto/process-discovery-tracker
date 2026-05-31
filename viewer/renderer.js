@@ -111,6 +111,47 @@ $$(".view-mode-btn").forEach((btn) => {
   });
 });
 
+/* ADR-0024: the single grain control. The slider notch (and the synced map
+   level select) set the shared view-time grain; Steps / Flow / Map all roll up
+   to it with no re-normalization. "activity" on the map select is a map-only
+   taxonomy escape hatch and does not move the grain. */
+const _GRAIN_NOTCHES = ["element", "screen", "app", "phase", "case"];
+function _applyGrain(notch, opts = {}) {
+  if (!_GRAIN_NOTCHES.includes(notch)) return;
+  State.setGrain(notch);
+  const slider = document.getElementById("grain-slider");
+  if (slider) slider.value = String(_GRAIN_NOTCHES.indexOf(notch));
+  const lbl = document.getElementById("grain-notch-lbl");
+  if (lbl) lbl.textContent = notch;
+  const sel = document.getElementById("session-map-level");
+  if (sel && sel.value !== notch) sel.value = notch;
+  // The map's grain is the controller's level. The controller's own select
+  // listener already moved it when the change came FROM the select.
+  if (!opts.fromMapCtrl && _sessionMapCtrl) _sessionMapCtrl.setLevel(notch);
+  State.emit("grain");           // Steps + Flow re-render to the new grain
+  scheduleAutoSave();
+}
+(() => {
+  const slider = document.getElementById("grain-slider");
+  if (slider) {
+    // Reflect the persisted default on boot.
+    slider.value = String(Math.max(0, _GRAIN_NOTCHES.indexOf(State.getGrain())));
+    slider.addEventListener("input", (e) => {
+      const i = parseInt(e.target.value, 10) || 0;
+      _applyGrain(_GRAIN_NOTCHES[Math.max(0, Math.min(4, i))]);
+    });
+  }
+  const sel = document.getElementById("session-map-level");
+  if (sel) {
+    sel.value = State.getGrain();   // default the map select to the grain
+    sel.addEventListener("change", () => {
+      // "activity" is map-only; a grain notch syncs the shared grain. The map
+      // controller's own listener already re-rendered the map, so skip its setLevel.
+      if (sel.value !== "activity") _applyGrain(sel.value, { fromMapCtrl: true });
+    });
+  }
+})();
+
 const VIEW_MODE_HELP = {
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured in this session.",
@@ -198,9 +239,13 @@ function _viewportApplyToMode(mode, snap) {
 let _sessionMapCtrl = null;
 
 function _sessionBpmnFile(level) {
-  return level === "step" ? "process_map_step.bpmn"
+  // The observed-flow BPMN is pre-mined only at the step (=element) and phase
+  // grains (ADR-0012); the screen/app/case notches have no Process-diagram file
+  // and fall back to the Flow diagram. "activity" uses the taxonomy BPMN.
+  return (level === "step" || level === "element") ? "process_map_step.bpmn"
        : level === "phase" ? "process_map_phase.bpmn"
-       : "process_map.bpmn";
+       : level === "activity" ? "process_map.bpmn"
+       : null;   // screen / app / case -> no Process diagram (use Flow diagram)
 }
 
 /* Activity labels emitted inside every step whose value-free label matches
@@ -243,6 +288,14 @@ function _sessionMapDataSource({ notation, level, scope }) {
   const mineHint = ' (Map files are produced by Analyze with "Build process map" checked — under ⋯ More.)';
   if (notation === "bpmn") {
     const file = _sessionBpmnFile(level);
+    // ADR-0024: the screen/app/case notches have no pre-mined Process diagram —
+    // guide to the Flow diagram rather than render a dead/empty BPMN host.
+    if (!file) {
+      return {
+        emptyMessage: 'The Process diagram (BPMN) is mined at the Element and Phase grains. ' +
+          'For the ' + level + ' grain, switch to the Flow diagram tab above — it rolls up live.',
+      };
+    }
     const bpmnPath = sess.sessionFolder ? path.join(sess.sessionFolder, file) : null;
     if (!bpmnPath || !fs.existsSync(bpmnPath)) {
       return {
@@ -261,21 +314,39 @@ function _sessionMapDataSource({ notation, level, scope }) {
     if (!dfg || !dfg.edges || !dfg.edges.length) {
       return {
         dfg,
-        emptyMessage: 'No activity-level Flow diagram yet — Analyze the session, then classify your apps in the taxonomy (the activity DFG comes from taxonomy-classified events). Step / Phase levels build their flow from your annotations and need no taxonomy.',
+        emptyMessage: 'No activity-level Flow diagram yet — Analyze the session, then classify your apps in the taxonomy (the activity DFG comes from taxonomy-classified events). The grain ladder (element … case) builds its flow from your annotations and needs no taxonomy.',
       };
     }
     return { dfg };
   }
-  // step / phase
+  // element / screen / app / phase / case — the grain ladder (ADR-0024), rolled
+  // up live from the annotations. Phase drill-scope still applies on the
+  // element notch (a phase node descends to its steps).
   const phaseFilter = (scope && scope.level === "step")
     ? { phaseName: scope.phaseName } : null;
   return {
-    dfg: buildAnnotationDfg([sess], level, phaseFilter),
-    emptyMessage: 'No ' + level + '-level Flow diagram yet — add ' +
-      (level === "phase" ? "phases" : "steps") +
-      ' to this session in the ' +
-      (level === "phase" ? "Phases" : "Steps") + ' view.',
+    dfg: buildAnnotationDfg([sess], level, phaseFilter, _sessionGrainCtx(sess)),
+    emptyMessage: 'No ' + level + '-grain Flow diagram yet — add steps to this ' +
+      'session in the Steps view (the map rolls them up at the chosen grain).',
   };
+}
+
+/* Resolver context for the grain roll-up: a stable case label and the
+   interaction map (the view-time fallback for sessions analyzed before
+   grain_keys were stamped). Lazy-require flow-view to dodge the load cycle. */
+function _sessionGrainCtx(sess) {
+  let caseLabel = (id) => id;
+  try {
+    const cases = require("./views/flow-view.js").deriveCases(sess) || [];
+    const m = {};
+    cases.forEach((c, i) => { m[c.id] = (c.label && c.label !== c.id) ? c.label : ("Case " + (i + 1)); });
+    caseLabel = (id) => m[id] || "Case ?";
+  } catch (_) { /* fall back to the raw id */ }
+  const interactionsById = {};
+  for (const ev of (sess.events || [])) {
+    if (ev.type === "interaction" && ev.event_id) interactionsById[ev.event_id] = ev;
+  }
+  return { caseLabel, interactionsById };
 }
 
 /* Activity-node click in the Session-view map: seek the Flow timeline to the
@@ -316,8 +387,11 @@ function _ensureSessionMapCtrl() {
     dataSource: _sessionMapDataSource,
     activityLabelsForStep: _sessionActivityLabelsForStep,
     onActivityNodeClick: _sessionOnActivityNodeClick,
-    initialNotation: "bpmn",
-    initialLevel: "activity",
+    // ADR-0024: the Map opens at the shared grain notch (default "screen"). That
+    // notch has no pre-mined BPMN, so default to the Flow diagram, which rolls
+    // up live — the Process diagram (Element/Phase) stays one tab away.
+    initialNotation: "dfg",
+    initialLevel: State.getGrain(),
   });
   return _sessionMapCtrl;
 }
@@ -345,6 +419,11 @@ State.subscribe("markers",  renderAnchorCandidates);
 State.subscribe("analysis", renderAnalysisLevel);
 State.subscribe("steps",    renderMapLevel);
 State.subscribe("phases",   renderMapLevel);
+// ADR-0024: a grain change re-renders the Steps list and the Flow timeline to
+// the new notch (the Map is moved by mapCtrl.setLevel, so it isn't subscribed
+// here to avoid a double render).
+State.subscribe("grain",    renderStepsLevel);
+State.subscribe("grain",    renderTimeline);
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
