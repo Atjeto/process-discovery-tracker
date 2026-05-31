@@ -93,13 +93,64 @@ def _shape_size(node_cls: str) -> tuple[int, int]:
     return _NODE_W, _NODE_H
 
 
+def _forward_edges(node_ids: list[str],
+                   edges: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Edges with cycle BACK-EDGES removed, so longest-path ranking is
+    well-defined.
+
+    The inductive miner emits block-structured loop/redo gateways: a single
+    back-edge (e.g. ``SAP: Create sales order -> <a gateway upstream>``) is enough
+    to make a longest-path rank inflate the rank of *everything* reachable past
+    the loop, smearing those nodes to the far right and scrambling the visual
+    step order (``Outlook: Send`` left of ``Outlook: Enter To``; ``end`` mid-flow).
+    Ranking on the acyclic forward set lays the diagram out in true topological
+    order; the back-edges themselves are still DRAWN (export_bpmn emits every
+    flow) -- only the column assignment ignores them.
+
+    Back-edges are found with an iterative DFS from the real roots (no incoming
+    edge) first: an edge to a node still GRAY (on the DFS stack) closes a cycle.
+    """
+    adj: dict[str, list[str]] = {n: [] for n in node_ids}
+    for s, t in edges:
+        if s in adj and t in adj:
+            adj[s].append(t)
+    targets = {t for _, t in edges if t in adj}
+    roots = [n for n in node_ids if n not in targets] or list(node_ids[:1])
+    order = roots + [n for n in node_ids if n not in roots]
+    WHITE, GRAY, BLACK = 0, 1, 2
+    state = {n: WHITE for n in node_ids}
+    back: set[tuple[str, str]] = set()
+    for root in order:
+        if state[root] != WHITE:
+            continue
+        stack = [(root, iter(adj[root]))]
+        state[root] = GRAY
+        while stack:
+            u, it = stack[-1]
+            pushed = False
+            for v in it:
+                if state[v] == GRAY:
+                    back.add((u, v))           # edge into an ancestor == cycle
+                elif state[v] == WHITE:
+                    state[v] = GRAY
+                    stack.append((v, iter(adj[v])))
+                    pushed = True
+                    break
+            if not pushed:
+                state[u] = BLACK
+                stack.pop()
+    return [(s, t) for (s, t) in edges if (s, t) not in back]
+
+
 def _layout(node_ids: list[str],
             edges: list[tuple[str, str]],
             sizes: dict[str, tuple[int, int]]) -> dict[str, tuple[int, int, int, int]]:
     """Hierarchical left-to-right Sugiyama-style layout.
 
     1. Topologically rank nodes by max-depth from a root (a node with
-       no incoming edge). Cycles fall back to rank 0.
+       no incoming edge), over the ACYCLIC forward edge set (back-edges from
+       loop/redo gateways are excluded from ranking so they don't smear the
+       columns -- see _forward_edges). Remaining rootless nodes fall back to 0.
     2. Group nodes by rank into columns.
     3. Within a column, distribute vertically. X is rank * (col_width).
        Column width tracks the widest node in that rank.
@@ -111,7 +162,7 @@ def _layout(node_ids: list[str],
     """
     in_edges: dict[str, list[str]] = {nid: [] for nid in node_ids}
     out_edges: dict[str, list[str]] = {nid: [] for nid in node_ids}
-    for src, tgt in edges:
+    for src, tgt in _forward_edges(node_ids, edges):
         if src in in_edges and tgt in in_edges:
             out_edges[src].append(tgt)
             in_edges[tgt].append(src)

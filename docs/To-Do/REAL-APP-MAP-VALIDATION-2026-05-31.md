@@ -134,6 +134,34 @@ builds edges correctly from the per-case sequence). The tangle was entirely the 
 identity** problem — non-value-free screen labels splitting one screen into many — not
 dropped/mis-joined edges.
 
+### 5b. Process diagram (BPMN) step ORDER — checked, was scrambled, FIXED
+
+Full notation × level × zoom pass driven (`full-map-pass.js`): Process diagram (BPMN) +
+Flow diagram (DFG) at Activity / element / phase / screen / app, single-session AND
+aggregate, fit + zoomed. BPMN is mined at element(=step) + activity (phase BPMN isn't
+mined — a minor gap, the level shows an empty-state; screen/app correctly fall back to
+the Flow diagram).
+
+**Found:** the step BPMN rendered with steps **out of execution order** —
+`Outlook: Send` left of `Outlook: Enter To`, and the `end` event stranded **mid-flow**
+(`fullmap-session-element-bpmn-ZOOM.png`, pre-fix). The *topology* (sequence flows) was
+correct; the *layout* was wrong. Root cause: `mining._layout` ranked nodes by longest-path
+over the **raw** edge set, and the inductive miner emits a loop/redo gateway with a
+back-edge (`SAP: Create sales order → <upstream gateway>`); that single back-edge inflated
+the rank of every node past the loop, smearing the columns. (The DFG was already correct —
+this was a Process-diagram-only layout bug, pre-existing, not the ADR-0024 regression.)
+
+**Fixed:** `mining._forward_edges` strips DFS back-edges before ranking, so columns are
+assigned over the acyclic forward set (back-edges still drawn). Post-fix the step BPMN is a
+clean left→right chain — single session and **10-session aggregate**: `start → Salesforce:
+Search → ⬦{Open record / Approve credit} → Quantity → Unit price → Shipping → Save order →
+SAP: Enter OR → Sales org → Material → Excel: Create → Status → Date → Save → Outlook: To →
+Subject → Send → end`. Golden-neutral (the projection never read BPMN DI); pinned by a new
+`test_bpmn_observed` cycle test. Evidence: `fullmap-{session,agg}-element-bpmn.png`,
+`fullmap-session-element-bpmn-ZOOM.png` (post-fix).
+
+**Verdict:** both notations now render a linear, connected, human-discernible step order.
+
 ---
 
 ## 6. Deeper issues the real web capture surfaced (HANDOFF — diagnosed, not yet fixed)

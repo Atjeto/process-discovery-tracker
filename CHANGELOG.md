@@ -68,6 +68,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Process diagram (BPMN) steps now lay out in execution order — a loop/redo
+  gateway no longer scrambles the diagram.** The pure-Python BPMNDI layout
+  (`mining._layout`) ranked nodes by longest-path over the *raw* edge set, so a
+  single back-edge from an inductive-miner loop/redo gateway (e.g. `SAP: Create
+  sales order → <upstream gateway>`) inflated the rank of everything past the
+  loop. The mined step/phase **and activity** Process diagrams rendered with steps
+  **out of execution order** (`Outlook: Send` left of `Outlook: Enter To`) and the
+  end event **stranded mid-flow**. Ranking now runs over the **acyclic forward
+  edge set** (`mining._forward_edges` strips DFS back-edges before ranking; the
+  back-edges are still *drawn*, only the column assignment ignores them), so the
+  linear spine stays ordered left→right with the start leftmost and end rightmost.
+  The Flow diagram (DFG) was already correctly ordered — this was a Process-diagram
+  layout bug only, pre-existing and independent of ADR-0024. Verified in the viewer
+  on the demo single-session and 10-session aggregate step BPMN; golden-neutral
+  (the golden projection never read BPMN DI); pinned by a new `test_bpmn_observed`
+  cycle test.
+
 - **The default (screen-grain) Flow diagram no longer fans out into a per-case
   hairball ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md) regression).**
   The screen grain key resolved to the raw `window_title`, which routinely embeds

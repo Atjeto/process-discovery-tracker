@@ -112,6 +112,28 @@ def test_write_returns_false_when_no_steps():
     assert write_observed_bpmn({"steps": []}, "step", "unused.bpmn") is False
 
 
+def test_layout_ranks_topologically_ignoring_loop_back_edges():
+    """A loop/redo back-edge from the inductive miner must NOT smear the columns.
+
+    Regression: ranking by longest-path over the RAW edge set let a single
+    back-edge (e.g. ``SAP: Create sales order -> <upstream gateway>``) inflate the
+    rank of everything past the loop, so the Process diagram rendered with steps
+    out of execution order (``Outlook: Send`` left of ``Outlook: Enter To``) and
+    ``end`` stranded mid-flow. _layout now ranks over the acyclic forward set, so
+    the linear spine stays ordered left->right and the sink is rightmost.
+    """
+    import mining
+    nodes = ["start", "a", "b", "c", "end"]
+    # A clean spine start->a->b->c->end PLUS a redo back-edge c->a (a loop).
+    edges = [("start", "a"), ("a", "b"), ("b", "c"), ("c", "end"), ("c", "a")]
+    sizes = {n: (100, 60) for n in nodes}
+    xs = {n: x for n, (x, *_rest) in mining._layout(nodes, edges, sizes).items()}
+    assert xs["start"] < xs["a"] < xs["b"] < xs["c"] < xs["end"], xs
+    # The back-edge alone must not be treated as a root either.
+    assert min(xs.values()) == xs["start"]
+    assert max(xs.values()) == xs["end"]
+
+
 def test_single_case_repeated_label_renders_without_gateways():
     # The live-session regression: one case is one observed path. A step label
     # that recurs (Open ... Open) must NOT be mined into optional/loop gateways
