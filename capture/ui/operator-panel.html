@@ -84,7 +84,9 @@
   .nest-toggle .hint { color: var(--warn); margin-left: 4px; }
 
   /* Saved labels */
-  .saved { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  /* Clutter pass: cap the quick-pick row at ~2 rows and scroll beyond, so a
+     long process_labels list can't push the live controls off the panel. */
+  .saved { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; max-height: 84px; overflow-y: auto; }
   .saved button {
     padding: 4px 10px; background: var(--bg-2); border: 1px solid var(--border);
     color: var(--fg-2); border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer;

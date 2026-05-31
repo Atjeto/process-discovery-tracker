@@ -1405,6 +1405,10 @@ function statusLine() {
   return `Tracking: ${appName} - ${depth} open${obsTag}${idleTag}${recTag}`;
 }
 
+// Quick-start nesting preference (clutter pass): instead of a parallel "Quick
+// start (nested)" submenu duplicating every label, one submenu carries a
+// "Nest under current" checkbox that flips this flag.
+let quickStartNest = false;
 function buildMenu() {
   const items = [
     { label: statusLine(), enabled: false },
@@ -1425,29 +1429,34 @@ function buildMenu() {
       accelerator: config.hotkeys.start_picker,
       click: () => showLabelPicker(),
     });
-    // When a marker is already open, surface explicit nest-vs-sibling
-    // semantics. Default press of Start (above) closes-and-opens; this
-    // submenu lets the user choose nesting per-fire.
+    // When a marker is already open the label picker itself still offers
+    // nesting (Shift+Enter / its stack hint), so we no longer carry a separate
+    // "Fire Start (nest under current)" item. Quick-start nesting folds into
+    // ONE submenu via a "Nest under current" checkbox (clutter pass: was two
+    // parallel submenus duplicating every label).
     const hasOpen = lastStatus && lastStatus.markerDepth > 0;
-    if (hasOpen) {
-      items.push({
-        label: "Fire Start (nest under current)...",
-        click: () => showLabelPicker({ nest: true }),
-      });
-    }
     if (config.process_labels && config.process_labels.length) {
-      const quickStart = config.process_labels.map((label) => ({
-        label,
-        click: () => fireStartMarker(label),
-      }));
-      items.push({ label: "Quick start", submenu: quickStart });
+      const quickStart = [];
       if (hasOpen) {
-        const quickNest = config.process_labels.map((label) => ({
-          label,
-          click: () => fireStartMarker(label, { nest: true }),
-        }));
-        items.push({ label: "Quick start (nested)", submenu: quickNest });
+        quickStart.push({
+          label: "Nest under current marker",
+          type: "checkbox",
+          checked: quickStartNest,
+          click: () => { quickStartNest = !quickStartNest; refreshTray(); },
+        });
+        quickStart.push({ type: "separator" });
+      } else if (quickStartNest) {
+        // No open marker -> nothing to nest under; reset so the next session
+        // starts un-nested.
+        quickStartNest = false;
       }
+      for (const label of config.process_labels) {
+        quickStart.push({
+          label,
+          click: () => fireStartMarker(label, { nest: hasOpen && quickStartNest }),
+        });
+      }
+      items.push({ label: "Quick start", submenu: quickStart });
     }
     const innermost =
       lastStatus && lastStatus.markerDepth > 0

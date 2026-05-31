@@ -25,7 +25,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
   <header class="topbar">
     <div class="brand">
       <div class="logo"></div>
-      <div><h1>Process Discovery</h1><div class="tagline">Capture · Mine · Synthesize</div></div>
+      <div><h1>Process Discovery</h1></div>
     </div>
     <nav class="tabs">
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
@@ -111,14 +111,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
             </div>
           </div>
-          <span class="map-status" id="process-map-status" style="display:none">
-            <span class="map-status-dot"></span>
-            <span class="map-status-label">Process map:</span>
-            <span class="map-status-detail" id="process-map-detail">—</span>
-            <select id="process-map-case-select" class="map-status-select" title="Aggregate model across all cases, or pick a single case" style="display:none"></select>
-            <button class="link-btn" id="btn-open-bpmn" title="Open the selected BPMN file in the system default app">Open</button>
-            <button class="link-btn" id="btn-reveal-bpmn" title="Show the BPMN file in File Explorer">Reveal in folder</button>
-          </span>
+          <!-- Session facts chips ride the actions bar now (clutter pass: they
+               were a separate band below). Process-map status moved to where it
+               belongs — the Map panel header. -->
+          <div class="session-pills" id="session-pills"></div>
           <span class="flex-spacer"></span>
           <div class="project-menu" id="session-export-menu">
             <button class="project-btn" id="btn-session-export-menu" title="Export this session">
@@ -130,13 +126,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <button class="project-menu-item" id="btn-session-md">Markdown report (this session)</button>
             </div>
           </div>
-        </div>
-
-        <!-- Facts line: the session chips, on one row of their own. The
-             process-map status rides the (now slim) actions bar above; the
-             chips are too wide to share that row, so they get this line. -->
-        <div class="session-facts" id="session-facts">
-          <div class="session-pills" id="session-pills"></div>
         </div>
 
         <!-- Prep-session CTA: visible when this session was captured to
@@ -251,7 +240,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </div>
             </div>
             <div class="timeline-minimap" id="timeline-minimap" title="Click to jump · drag the highlighted region to scroll" style="display:none"></div>
-            <div class="timeline-scroll" id="timeline-scroll">
+            <div class="timeline-scroll" id="timeline-scroll" title="Click a band to seek · right-click for menu · Shift-drag to select a range · Space play/pause">
               <div class="timeline" id="timeline"></div>
             </div>
             <div class="resize-v" id="resize-timeline" title="Drag to resize timeline height"></div>
@@ -261,7 +250,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span class="lg-marker">marker</span>
               <span class="lg-marker-suggested">suggested marker</span>
               <span class="lg-screenshot">screenshot</span>
-              <span class="legend-shortcuts">Click a band to seek · right-click for menu · Shift-drag to select a range · Space play/pause</span>
             </div>
           </div>
 
@@ -444,20 +432,29 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 </select>
               </div>
               <span id="session-map-scope" class="map-scope" style="display:none"></span>
+              <!-- Mined-BPMN-file status, relocated here from the actions bar
+                   (clutter pass): node count + per-case picker + open/reveal of
+                   the process_map.bpmn artifact. Contextual to the Map view. -->
+              <span class="map-status" id="process-map-status" style="display:none" title="The mined BPMN process-map file on disk">
+                <span class="map-status-dot"></span>
+                <span class="map-status-detail" id="process-map-detail">—</span>
+                <select id="process-map-case-select" class="map-status-select" title="Aggregate model across all cases, or pick a single case" style="display:none"></select>
+                <button class="link-btn" id="btn-open-bpmn" title="Open the selected BPMN file in the system default app">Open</button>
+                <button class="link-btn" id="btn-reveal-bpmn" title="Show the BPMN file in File Explorer">Reveal in folder</button>
+              </span>
               <div class="map-zoom" id="session-map-zoom" style="display:none">
                 <span class="map-zoom-pct" id="session-map-zoom-pct">100%</span>
                 <button class="icon-btn xs" id="btn-session-map-zoom-out" title="Zoom out">−</button>
                 <button class="icon-btn xs" id="btn-session-map-zoom-fit" title="Fit to view">fit</button>
                 <button class="icon-btn xs" id="btn-session-map-zoom-in" title="Zoom in">+</button>
                 <span class="map-rare" id="session-hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="session-hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="session-rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
-                <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
               </div>
               <div class="refmap-tools">
                 <button class="icon-btn xs" id="btn-fork-refmap" title="Fork the current Process diagram into a standalone, fully-editable reference map. Decoupled from analysis — re-analyze never changes it (ADR-0019).">⑂ Fork map</button>
                 <button class="icon-btn xs" id="btn-toggle-refmaps" title="Show this session's saved reference maps.">Reference maps <span class="refmap-count" id="refmap-count"></span></button>
               </div>
             </div>
-            <div class="map-host">
+            <div class="map-host" title="Scroll to zoom · drag to pan">
               <div class="map-pane active" id="session-map-bpmn-host"></div>
               <div class="map-pane" id="session-map-dfg-host" style="display:none"></div>
             </div>
@@ -531,15 +528,19 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span>Export</span><span class="project-menu-caret">▾</span>
             </button>
             <div class="project-menu-popup" id="agg-export-popup" style="display:none">
+              <!-- Clutter pass: a flat 10-item list, now grouped by output kind. -->
+              <div class="project-menu-group">Diagrams</div>
               <button class="project-menu-item" id="btn-export-map-svg" title="Export the process map currently shown above (Process diagram or Flow diagram) as an SVG image -- opens in Figma, Lucidchart, browsers, image editors.">Process map SVG</button>
               <button class="project-menu-item" id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
               <button class="project-menu-item" id="btn-export-bpmn-step" disabled>Step BPMN</button>
               <button class="project-menu-item" id="btn-export-bpmn-phase" disabled>Phase BPMN</button>
+              <div class="project-menu-group">Documents</div>
               <button class="project-menu-item" id="btn-export-pdd" disabled>PDD (.docx)</button>
+              <button class="project-menu-item" id="btn-export-md" disabled>Markdown report (all loaded sessions)</button>
+              <div class="project-menu-group">Data</div>
               <button class="project-menu-item" id="btn-export-step-csv" disabled>Step CSV</button>
               <button class="project-menu-item" id="btn-export-xes" disabled>XES</button>
               <button class="project-menu-item" id="btn-export-stats" disabled>stats.json</button>
-              <button class="project-menu-item" id="btn-export-md" disabled>Markdown report (all loaded sessions)</button>
               <button class="project-menu-item" id="btn-export-promotions" disabled>Taxonomy promotions</button>
             </div>
           </div>
@@ -575,10 +576,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <button class="icon-btn xs" id="btn-dfg-zoom-in" title="Zoom in">+</button>
                 <label class="cb" id="dfg-conformance-wrap" style="display:none" title="Colour Flow-diagram nodes by how they match the loaded Process Template: green matches a canonical step, amber is off-template."><input type="checkbox" id="cb-dfg-conformance" /> Conformance</label>
                 <span class="map-rare" id="hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
-                <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
               </div>
             </div>
-            <div class="map-host">
+            <div class="map-host" title="Scroll to zoom · drag to pan">
               <div class="map-pane active" id="bpmn-host"></div>
               <div class="map-pane" id="dfg-host" style="display:none"></div>
               <div class="map-empty" id="map-empty">

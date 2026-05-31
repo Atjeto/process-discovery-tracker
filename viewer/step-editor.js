@@ -230,8 +230,13 @@
         <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
         <button id="btn-step-merge" title="Merge this step with the one that follows it (the inverse of Split)">Merge with next</button>
         ${mergeSelectedBtn}
-        <button id="btn-step-hide" title="${step.state === "hidden" ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${step.state === "hidden" ? "Unhide" : "Hide as noise"}</button>
-        <button id="btn-step-delete" class="danger">Delete</button>
+        <span class="project-menu step-more-menu" id="step-more-menu">
+          <button class="project-btn step-more-btn" id="btn-step-more" title="More actions" aria-haspopup="true">⋯</button>
+          <div class="project-menu-popup" id="step-more-popup" style="display:none">
+            <button class="project-menu-item" id="btn-step-hide" title="${step.state === "hidden" ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${step.state === "hidden" ? "Unhide" : "Hide as noise"}</button>
+            <button class="project-menu-item danger" id="btn-step-delete">Delete</button>
+          </div>
+        </span>
       </div>`;
     document.getElementById("btn-step-save").addEventListener("click", () => {
       if (!callbacks.onSave) return;
@@ -281,6 +286,27 @@
     if (watchBtn) {
       watchBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       watchBtn.disabled = !(step.time_range && step.time_range.start);
+    }
+    // Overflow "⋯" menu holding the destructive Hide / Delete actions. Open on
+    // click; the outside-click closer removes itself so re-renders don't stack
+    // listeners.
+    const moreBtn = document.getElementById("btn-step-more");
+    const morePopup = document.getElementById("step-more-popup");
+    if (moreBtn && morePopup) {
+      moreBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const show = morePopup.style.display === "none";
+        morePopup.style.display = show ? "" : "none";
+        if (show) {
+          const onDoc = (ev) => {
+            if (!morePopup.contains(ev.target) && ev.target !== moreBtn) {
+              morePopup.style.display = "none";
+              document.removeEventListener("click", onDoc, true);
+            }
+          };
+          document.addEventListener("click", onDoc, true);
+        }
+      });
     }
   }
 

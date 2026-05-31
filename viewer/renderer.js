@@ -454,7 +454,30 @@ function applyLevel(name) {
     if (el) el.style.display = l === name ? "" : "none";
   }
   const help = document.getElementById("view-mode-help");
-  if (help) help.textContent = VIEW_MODE_HELP[name] || "";
+  if (help) {
+    // Clutter pass: the per-view hint is an onboarding aid, not permanent
+    // chrome. A dismiss "×" hides it for good (persisted); the same guidance
+    // stays in the Help (?) modal. Re-show by clearing pdt.viewModeHelpDismissed.
+    let dismissed = false;
+    try { dismissed = localStorage.getItem("pdt.viewModeHelpDismissed") === "1"; } catch (e) {}
+    const txt = VIEW_MODE_HELP[name] || "";
+    if (dismissed || !txt) {
+      help.innerHTML = "";
+      help.style.display = "none";
+    } else {
+      help.style.display = "";
+      help.innerHTML = '<span class="view-mode-help-text"></span>' +
+        '<button class="view-mode-help-x" id="btn-view-mode-help-x" title="Hide these per-view hints (still in Help)" aria-label="Dismiss view hint">×</button>';
+      help.querySelector(".view-mode-help-text").textContent = txt;
+      const x = help.querySelector("#btn-view-mode-help-x");
+      if (x) x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        try { localStorage.setItem("pdt.viewModeHelpDismissed", "1"); } catch (_) {}
+        help.innerHTML = "";
+        help.style.display = "none";
+      });
+    }
+  }
   if (incomingSnap) {
     _viewportApplyToMode(name, incomingSnap);
   } else {

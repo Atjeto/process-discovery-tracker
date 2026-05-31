@@ -292,7 +292,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .session-pills { display: flex; gap: 6px; flex-wrap: wrap; }
 /* Facts row: process-map status (left) + session chips (right) -- merged from
    what used to be three separate stacked metadata rows above the view bar. */
-.session-facts { display: flex; align-items: center; gap: 10px; padding: 0 0 6px; flex-wrap: wrap; min-height: 20px; }
 /* Demoted keyboard-shortcut hint: a quiet hover affordance, not a permanent
    wall of single-key shortcuts that analysts won't use (clutter pass). */
 .kbd-hint { cursor: help; border-bottom: 1px dotted var(--fg-4); color: var(--fg-3); }
@@ -879,10 +878,17 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .view-mode-btn .view-mode-desc { display: none; }
 .view-mode-btn .badge { position: static; margin-left: 4px; }
 .view-mode-help {
-  display: flex; align-items: center;
+  display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--fg-3);
-  max-width: 380px; text-align: right; font-style: italic;
+  max-width: 420px; text-align: right;
 }
+.view-mode-help-text { font-style: italic; }
+.view-mode-help-x {
+  flex-shrink: 0; background: transparent; border: 0; cursor: pointer;
+  color: var(--fg-4); font-size: 14px; line-height: 1; padding: 0 2px;
+  border-radius: 3px;
+}
+.view-mode-help-x:hover { color: var(--fg-2); background: var(--bg-3); }
 
 /* Aggregate level switcher (kept compact for the dense aggregate toolbar) */
 .agg-level-switcher {
@@ -2331,6 +2337,20 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 /* A setting (checkbox) living among the menu's action items. */
 .project-menu-item.cb { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .project-menu-item.cb input { margin: 0; }
+/* Section label inside a long menu (clutter pass: groups a flat export list). */
+.project-menu-group {
+  padding: 6px 10px 2px; font-size: 9px; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--fg-4); pointer-events: none;
+}
+.project-menu-group:first-child { padding-top: 2px; }
+/* Destructive item tucked in an overflow menu (e.g. step Delete). */
+.project-menu-item.danger { color: var(--rec); }
+.project-menu-item.danger:hover { background: var(--rec); color: #fff; }
+/* Compact "⋯" overflow trigger in the step action row. */
+.step-more-btn { padding: 4px 9px; }
+/* The step action row sits at the bottom of the detail pane, so open its
+   overflow UPWARD — opening downward would clip it below the fold. */
+#step-more-popup { top: auto; bottom: calc(100% + 4px); }
 
 /* Recent dropdown (top-bar) -- sessions + projects reachable any time */
 .recent-menu-section { max-height: 380px; overflow-y: auto; }
@@ -2939,7 +2959,7 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 /* ===== ADR-0019: Reference Maps (fork / gallery / editor) =================
    Colours come from design tokens (--accent-2 cool, --va value-add green,
    --warn amber, --bad red) via color-mix, so light + dark read in parity. */
-.refmap-tools { display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; }
+.refmap-tools { display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; padding-left: 10px; border-left: 1px solid var(--rule); }
 .refmap-count { color: var(--fg-4); font-size: 11px; }
 
 .refmap-panel {

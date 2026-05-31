@@ -761,9 +761,12 @@ function renderSessionPills() {
     const vocabs = meta.app_vocabularies || [];
     if (vocabs.length) {
       const hits = meta.app_vocabulary_matches || 0;
+      // Clutter pass: show count + hits, not the full app-name list (which ran
+      // very wide on the facts row). The full list lives in the title tooltip.
       pills.push({
         label: vocabs.length === 1 ? "vocab" : "vocabs",
-        val: `${vocabs.map(v => v.id).join(", ")} · ${hits} hits`,
+        val: `${vocabs.length} · ${hits} hits`,
+        title: "App Library vocabularies applied: " + vocabs.map(v => v.id).join(", "),
         cls: hits > 0 ? "ok" : "",
       });
     }
@@ -773,7 +776,8 @@ function renderSessionPills() {
   const editCount = ((State.getSession().annotations || {}).marker_edits || []).length;
   if (editCount > 0) pills.push({ label: "edits", val: editCount, cls: "warn" });
   $("#session-pills").innerHTML = pills.map((p) =>
-    '<div class="pill' + (p.cls ? " " + p.cls : "") + '"><span class="dot"></span>' +
+    '<div class="pill' + (p.cls ? " " + p.cls : "") + '"' +
+    (p.title ? ' title="' + escapeHtml(p.title) + '"' : "") + '><span class="dot"></span>' +
     '<span class="lbl">' + escapeHtml(p.label) + '</span>' + escapeHtml(String(p.val)) + '</div>'
   ).join("");
 
