@@ -82,7 +82,7 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **0.20.0** (SemVer 0.x).
+Current released version **0.20.1** (SemVer 0.x).
 
 ## Layout
 

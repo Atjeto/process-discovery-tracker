@@ -6,17 +6,40 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed (design-critique pass)
+## [0.20.1] - 2026-05-31
+
+A UI-polish + accessibility patch on top of 0.20.0 — no new capability.
+
+### Changed
+
+- **UI density pass (viewer + capture).** Reduced always-on chrome without
+  removing any capability: the viewer merges the session facts into the actions
+  bar (one row, was two), relocates the mined-BPMN status into the Map panel
+  header, compacts the VOCABS pill (full app list → tooltip), tucks the
+  destructive Hide/Delete step actions behind a `⋯` overflow (Split/Merge stay
+  visible), groups the Compare export menu, and makes per-view help dismissible.
+  Capture consolidates the tray's parallel Quick-start submenus into one carrying
+  a "Nest under current" checkbox, and caps the operator-panel saved-label
+  quick-pick height (scrolls) so a long list can't push the live controls off.
+
+### Fixed
 
 - **Capture dialogs pin their action footer.** Profile and Session-setup now
   scroll their content inside a `.scroll` region with the hint + **Save/Cancel**
-  footer pinned (consistent with Settings, which already did this) — the action
-  buttons are always visible without scrolling, even on a short window.
+  footer pinned (consistent with Settings) — the action buttons are always visible
+  without scrolling, even on a short window.
 - **Muted-label contrast now clears WCAG AA**, per the design system's own
   ≥4.5:1 intent. The viewer light-theme `--fg-3` (muted labels) was **3.03:1** on
   `--bg` — below AA for small text; darkened `#9a8e7e → #786c5a` (≈4.84:1, still a
   warm taupe). The capture windows' `--fg-3` was a no-margin **4.5:1**; nudged
   `#807E78 → #8E8C82` (≈5.4:1). Dark themes already passed and are unchanged.
+
+### Docs
+
+- A concrete in-repo recipe for launching/driving the viewer for UI validation
+  (the `e2e/` harness, no out-of-repo deps) + the DOM-handle map, in
+  CHIP-GUARDRAILS.md — so a fresh chipped session can validate UI without
+  rediscovering how.
 
 ## [0.20.0] - 2026-05-31
 

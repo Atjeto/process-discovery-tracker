@@ -4,7 +4,7 @@ Internal tool for capturing and analyzing process discovery sessions. Full desig
 
 ## What's new in v0.20.0
 
-The current version is **0.20.0** (SemVer 0.x). v0.20.0 is the big push toward a
+The current version is **0.20.1** (SemVer 0.x). v0.20.0 is the big push toward a
 small internal rollout — a deliverable-first cycle that hardened the foundation,
 landed the commercial €-ROI closer, and made the recorder and vocabularies real
 against probed apps. Full detail in [CHANGELOG.md](CHANGELOG.md); the headlines:
