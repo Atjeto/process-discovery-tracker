@@ -103,15 +103,26 @@ test("duplicate copies the blob, carries kind, fresh id + file", () => {
   assert.equal(RM.list(anno).length, 2);
 });
 
-test("destroy removes both the blob and the manifest row", () => {
+test("destroy removes the manifest row but KEEPS the blob (undo-safe)", () => {
   const sf = tmpSession();
   const anno = {};
   const e = RM.fork({ sessionFolder: sf, anno, xml: "<a/>", source: { level: "activity" }, nowIso: "t" });
   const full = path.join(sf, e.file);
   assert.ok(fs.existsSync(full));
   RM.destroy({ sessionFolder: sf, anno, id: e.map_id });
-  assert.equal(fs.existsSync(full), false);
   assert.equal(RM.list(anno).length, 0);
+  // Blob retained so a one-step annotations undo restores a WORKING entry.
+  assert.ok(fs.existsSync(full), "blob must survive delete so Ctrl+Z restores a usable map");
+  RM.upsert(anno, e);                       // simulate undo restoring the row
+  assert.equal(RM.readBpmn(sf, e), "<a/>"); // and it still opens
+});
+
+test("absPath refuses a path that escapes the session folder", () => {
+  const sf = tmpSession();
+  assert.equal(RM.absPath(sf, { file: "../escape.bpmn" }), null);
+  assert.ok(RM.absPath(sf, { file: "derived_maps/ok.bpmn" }) !== null);
+  assert.equal(RM.readBpmn(sf, { file: "../../secret" }), null);
+  assert.throws(() => RM.writeBpmn(sf, { file: "../evil.bpmn" }, "<x/>"));
 });
 
 test("cellLabel / kindLabel are human-readable", () => {

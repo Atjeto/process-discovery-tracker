@@ -32,6 +32,25 @@ agent CAN see the UI. Use it to confirm every UI change before claiming it done.
 
 ---
 
+## Reference Maps (ADR-0019) — landed 2026-05-31 on `master`
+
+Decoupled, fully-editable BPMN copies of a mined map. From the Process diagram,
+**⑂ Fork map** snapshots the current cell into a standalone `.bpmn` the analyst
+edits with the full bpmn-js palette — a **one-way leaf** the pipeline never
+re-mines, merges, or regenerates. Copies live in a per-session gallery
+(`derived_maps/<map_id>.bpmn` + `annotations.json reference_maps[]`), are typed
+As-Is/To-Be/Reference, carry provenance + drift (+ Re-fork), and a selected To-Be
+map embeds in the PDD (§4.5, captioned analyst-authored). Delete keeps the blob so
+Ctrl+Z restores a working entry; `entry.file` is containment-checked. Reuses the
+vendored bpmn-js modeler (palette un-hidden off `.map-host`), `saveXML`-to-path
+persistence, and the existing PDD image bridge (`exportSvg` → off-screen PNG raster
+→ `--pdd-tobe-image`). Tests: `reference-maps.test.js` + two `pdd_export` To-Be
+tests; real-run verified (light + dark) via `_pdt_verify/refmap-verify.js`. Next
+(deferred): cross-session reference-map library; singleton→factory for side-by-side
+live+editor; orphan-blob GC.
+
+---
+
 ## 0.5 Real-value vocab cycle — 2026-05-30
 
 The §11d App-Vocabulary work was reframed and executed: **Claude probes the real

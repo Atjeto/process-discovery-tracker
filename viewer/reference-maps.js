@@ -141,19 +141,37 @@ function isStale(entry, currentSourceHash) {
 /* ---- fs-backed ops -------------------------------------------------------- */
 
 function derivedDir(sessionFolder) { return path.join(sessionFolder, DERIVED_DIR); }
-function absPath(sessionFolder, entry) { return path.join(sessionFolder, entry.file); }
+/* Resolve entry.file under the session folder, REFUSING any path that escapes it
+   (a hand-edited annotations.json could carry "../.." traversal — defence in
+   depth, matching pdd_export's screenshot_ref guard). Returns null on violation. */
+function absPath(sessionFolder, entry) {
+  const rel = entry && entry.file;
+  if (!rel) return null;
+  const base = path.resolve(sessionFolder);
+  const abs = path.resolve(base, rel);
+  const within = path.relative(base, abs);
+  if (!within || within.startsWith("..") || path.isAbsolute(within)) return null;
+  return abs;
+}
 function fileExists(sessionFolder, entry) {
-  try { return fs.existsSync(absPath(sessionFolder, entry)); } catch (_) { return false; }
+  const p = absPath(sessionFolder, entry);
+  try { return !!p && fs.existsSync(p); } catch (_) { return false; }
 }
 function writeBpmn(sessionFolder, entry, xml) {
+  const p = absPath(sessionFolder, entry);
+  if (!p) throw new Error("reference map path escapes the session folder: " + (entry && entry.file));
   fs.mkdirSync(derivedDir(sessionFolder), { recursive: true });
-  fs.writeFileSync(absPath(sessionFolder, entry), xml || "", "utf-8");
+  fs.writeFileSync(p, xml || "", "utf-8");
 }
 function readBpmn(sessionFolder, entry) {
-  try { return fs.readFileSync(absPath(sessionFolder, entry), "utf-8"); } catch (_) { return null; }
+  const p = absPath(sessionFolder, entry);
+  if (!p) return null;
+  try { return fs.readFileSync(p, "utf-8"); } catch (_) { return null; }
 }
 function deleteBpmn(sessionFolder, entry) {
-  try { fs.unlinkSync(absPath(sessionFolder, entry)); } catch (_) { /* already gone */ }
+  const p = absPath(sessionFolder, entry);
+  if (!p) return;
+  try { fs.unlinkSync(p); } catch (_) { /* already gone */ }
 }
 
 /* Compose a fork: snapshot `xml` (the live view, WYSIWYF) into a new copy,
@@ -184,11 +202,13 @@ function duplicate({ sessionFolder, anno, srcEntry, nowIso }) {
   return entry;
 }
 
-/* Delete a copy: drop the blob and the row. */
+/* "Delete" removes the manifest ROW only; the .bpmn blob is RETAINED on disk so
+   the annotations-undo layer can restore a working entry with one Ctrl+Z (the
+   undo stack snapshots annotations, not files — unlinking here would resurrect a
+   row pointing at a deleted file). A retained blob with no row is a harmless,
+   invisible orphan. `sessionFolder` is kept for signature parity with fork. */
 function destroy({ sessionFolder, anno, id }) {
-  const e = find(anno, id);
-  if (!e) return null;
-  deleteBpmn(sessionFolder, e);
+  void sessionFolder;
   return remove(anno, id);
 }
 

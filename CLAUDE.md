@@ -43,7 +43,13 @@ modals on the start path replaced with toasts; recorder-zip extraction moved off
 the start path to app launch); and the normalization pipeline is hardened against
 corrupt/hand-edited logs with committed **seeded property-based fuzzers**
 (`case_assignment`, `stats_compute`, the analysis layer, `step_suggest`), a
-`parse_ts` timezone-consistency sweep, and a `process_label` Python↔JS golden. Bar: **"as polished as it can be."** Hold
+`parse_ts` timezone-consistency sweep, and a `process_label` Python↔JS golden.
+**Also on `master` (unreleased): Reference Maps ([ADR-0019](docs/adr/0019-reference-maps.md))** —
+**⑂ Fork map** snapshots the mined Process diagram into a standalone, fully-editable
+bpmn-js copy (a one-way leaf the pipeline never re-mines/merges/regenerates; metadata
+in `annotations.json reference_maps[]`, blob in `derived_maps/<id>.bpmn`), typed
+As-Is/To-Be/Reference with provenance + drift + Re-fork, a selected To-Be map embedding
+into the PDD's §4.5. Bar: **"as polished as it can be."** Hold
 every feature to the coherence discipline in
 [COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — a new "verb" needs its
 inverse, a legend, a control-interaction check, and a real-run check (UI bugs are

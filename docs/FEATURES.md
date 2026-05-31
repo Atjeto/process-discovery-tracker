@@ -118,6 +118,16 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 - **In-view process map** — a **Map** level renders this single session's full
   interactive process map (the same Process diagram / Flow diagram × Activity /
   Step / Phase matrix as Compare Sessions) without leaving the Session view.
+- **Reference maps — decoupled, editable BPMN copies** — **⑂ Fork map** snapshots
+  the current Process diagram into a standalone, fully-editable bpmn-js copy (a
+  *one-way leaf* the pipeline never re-mines, merges, or regenerates). Copies live
+  in a per-session **Reference maps** gallery, are typed **As-Is / To-Be /
+  Reference**, carry visible provenance ("hand-edited, not updated by analysis")
+  with a **drift** chip + **Re-fork** when the source map later changes, and a
+  selected **To-Be** map embeds in the PDD's *Proposed to-be process* section
+  (captioned analyst-authored, not mined). Every verb (fork / rename / kind /
+  PDD-role / delete) is Ctrl+Z-able; copies survive re-analyze untouched
+  ([ADR-0019](adr/0019-reference-maps.md)).
 - **Run normalization in-app** — spawn the bundled Python pipeline with progress
   streaming and a cancel control.
 - **Analysis findings** — a per-session Analysis level surfaces the heuristic

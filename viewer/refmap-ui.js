@@ -66,7 +66,7 @@ function refresh() {
     return;
   }
   if (emptyEl) emptyEl.style.display = "none";
-  listEl.innerHTML = maps.map(rowHtml).join("");
+  listEl.innerHTML = maps.map((m) => rowHtml(m, s)).join("");
   listEl.querySelectorAll("[data-rm-act]").forEach((btn) => {
     btn.addEventListener("click", () =>
       onRowAction(btn.getAttribute("data-rm-act"), btn.getAttribute("data-rm-id")));
@@ -76,33 +76,38 @@ function refresh() {
   });
 }
 
-function rowHtml(m) {
-  const stale = driftFor(m);
+function rowHtml(m, s) {
+  const missing = !RefStore.fileExists(s.sessionFolder, m);
+  const stale = !missing && driftFor(m);
   const date = fmtDate(m.forked_at);
   const cell = RefStore.cellLabel(m.source);
   const pddOpt = (val, lbl) =>
     '<option value="' + val + '"' + (((m.pdd_role || "") === val) ? " selected" : "") + ">" + lbl + "</option>";
+  const actions = missing
+    ? '<button class="icon-btn xs danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Remove entry</button>'
+    : (
+      '<label class="refmap-bar-lbl">PDD ' +
+        '<select class="map-status-select" data-rm-pdd="' + esc(m.map_id) + '">' +
+          pddOpt("", "No") + pddOpt("as_is", "As-Is map") + pddOpt("to_be", "To-Be map") +
+        "</select></label>" +
+      '<button class="icon-btn xs" data-rm-act="edit" data-rm-id="' + esc(m.map_id) + '">Edit</button>' +
+      (stale ? '<button class="icon-btn xs" data-rm-act="refork" data-rm-id="' + esc(m.map_id) +
+        '" title="Make a NEW copy from the current mined map; this copy is left untouched.">Re-fork</button>' : "") +
+      '<button class="icon-btn xs" data-rm-act="dup" data-rm-id="' + esc(m.map_id) + '">Duplicate</button>' +
+      '<button class="icon-btn xs danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Delete</button>'
+    );
   return (
-    '<li class="refmap-row">' +
+    '<li class="refmap-row' + (missing ? " missing" : "") + '">' +
       '<div class="refmap-row-main">' +
         '<span class="refmap-kind-chip kind-' + esc(m.kind) + '">' + esc(RefStore.kindLabel(m.kind)) + "</span>" +
         '<span class="refmap-row-name">' + esc(m.name) + "</span>" +
-        (m.pdd_role ? '<span class="refmap-pdd-chip">in PDD · ' + (m.pdd_role === "as_is" ? "As-Is" : "To-Be") + "</span>" : "") +
+        (m.pdd_role && !missing ? '<span class="refmap-pdd-chip">in PDD · ' + (m.pdd_role === "as_is" ? "As-Is" : "To-Be") + "</span>" : "") +
         (stale ? '<span class="refmap-drift-chip" title="The mined map this was forked from has since changed. This copy is unchanged.">source changed</span>' : "") +
+        (missing ? '<span class="refmap-missing-chip" title="The .bpmn file for this entry is gone — remove the stale entry or re-fork.">⚠ file missing</span>' : "") +
       "</div>" +
       '<div class="refmap-row-meta">forked from ' + esc(cell) + (date ? " · " + esc(date) : "") +
         " · hand-edited, not updated by analysis</div>" +
-      '<div class="refmap-row-actions">' +
-        '<label class="refmap-bar-lbl">PDD ' +
-          '<select class="map-status-select" data-rm-pdd="' + esc(m.map_id) + '">' +
-            pddOpt("", "No") + pddOpt("as_is", "As-Is map") + pddOpt("to_be", "To-Be map") +
-          "</select></label>" +
-        '<button class="icon-btn xs" data-rm-act="edit" data-rm-id="' + esc(m.map_id) + '">Edit</button>' +
-        (stale ? '<button class="icon-btn xs" data-rm-act="refork" data-rm-id="' + esc(m.map_id) +
-          '" title="Make a NEW copy from the current mined map; this copy is left untouched.">Re-fork</button>' : "") +
-        '<button class="icon-btn xs" data-rm-act="dup" data-rm-id="' + esc(m.map_id) + '">Duplicate</button>' +
-        '<button class="icon-btn xs danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Delete</button>' +
-      "</div>" +
+      '<div class="refmap-row-actions">' + actions + "</div>" +
     "</li>"
   );
 }
@@ -122,7 +127,7 @@ async function onRowAction(act, id) {
   if (act === "del") {
     const e = RefStore.find(s.annotations, id);
     if (!e) return;
-    if (!window.confirm('Delete reference map "' + (e.name || "") + '"? This cannot be undone from the file system, but Ctrl+Z restores the entry.')) return;
+    if (!window.confirm('Remove reference map "' + (e.name || "") + '" from this session? Ctrl+Z restores it.')) return;
     RefStore.destroy({ sessionFolder: s.sessionFolder, anno: s.annotations, id });
     await persist("Delete reference map");
     if (_editingId === id) closeEditor();
@@ -191,6 +196,10 @@ async function openEditor(id) {
   if (!s) return;
   const e = RefStore.find(s.annotations, id);
   if (!e) return;
+  if (!RefStore.fileExists(s.sessionFolder, e)) {
+    toast("This reference map's .bpmn file is missing — remove the entry or re-fork.", "error");
+    return;
+  }
   _editingId = id;
   const full = RefStore.absPath(s.sessionFolder, e);
   const nameInput = $("refmap-editor-name");
