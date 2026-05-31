@@ -2628,6 +2628,32 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
   font-size: 10px; font-family: var(--font-mono); color: var(--warn, #b83);
   margin: 2px 0 6px; opacity: 0.9;
 }
+/* ADR-0025 annotator context: WHAT a discovered control is + WHERE it lives,
+   so a row is never a contextless signature. Chips wrap (never clip). */
+.vocab-int-context {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin: 0 0 8px;
+}
+.vocab-int-chip {
+  font-size: 10px; font-family: var(--font-mono);
+  padding: 1px 6px; border-radius: 3px;
+  background: var(--bg-3); border: 1px solid var(--rule); color: var(--fg-2);
+}
+.vocab-int-anc {
+  font-size: 10px; font-family: var(--font-mono); color: var(--fg-3);
+}
+.vocab-int-weak-note {
+  font-size: 11px; color: var(--warn, #b83);
+  margin: 2px 0 8px; line-height: 1.4; opacity: 0.95;
+}
+.vocab-int-members { margin: 2px 0 8px; }
+.vocab-int-members > summary {
+  cursor: pointer; font-size: 11px; color: var(--warn, #b83);
+}
+.vocab-int-members ul {
+  margin: 6px 0 0; padding-left: 18px; color: var(--fg-2);
+  font-family: var(--font-mono); font-size: 10px; line-height: 1.5;
+}
 .vocab-uncommon { margin-top: 6px; }
 .vocab-uncommon > summary {
   cursor: pointer; font-size: 11px; color: var(--fg-2); padding: 4px 0;

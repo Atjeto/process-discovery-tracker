@@ -133,21 +133,46 @@ test("mergeScreens is additive and de-duplicates by id", () => {
   assert.equal(out[0].name, "A", "existing screen kept on id collision");
 });
 
-test("stripDiscoveryMeta drops provenance fields but keeps signature/name/seen_count", () => {
+test("stripDiscoveryMeta drops provenance + context fields but keeps signature/name/seen_count", () => {
   const v = {
     id: "x", interactions: [
-      { signature: { automation_id: "a" }, name: "N", seen_count: 3,
-        identity_source: "automation_id", confidence: 0.95, volatile_aids: ["q"], _hint: "h" },
+      { signature: { class_name: "x-btn" }, name: "N", seen_count: 3,
+        identity_source: "class_name", confidence: 0.4, volatile_aids: ["q"], _hint: "h",
+        role: "button", framework: "chromium", region: "top-left",
+        ancestry: ["Window", "Pane"], _members: [{ role: "button", region: "top-left" }] },
     ],
   };
   const clean = stripDiscoveryMeta(v);
   const e = clean.interactions[0];
-  assert.deepEqual(e.signature, { automation_id: "a" });
+  // The signature (incl. class_name) and the analyst-facing fields survive.
+  assert.deepEqual(e.signature, { class_name: "x-btn" });
   assert.equal(e.name, "N");
   assert.equal(e.seen_count, 3);
-  for (const k of ["identity_source", "confidence", "volatile_aids", "_hint"]) {
+  for (const k of ["identity_source", "confidence", "volatile_aids", "_hint",
+    "role", "framework", "region", "ancestry", "_members"]) {
     assert.equal(k in e, false, `${k} should be stripped`);
   }
   // The original is untouched (clone, not in-place).
-  assert.equal(v.interactions[0].confidence, 0.95);
+  assert.equal(v.interactions[0].confidence, 0.4);
+});
+
+test("mergeDiscoveredSkeleton dedups a class_name-only signature on re-discovery (cn key)", () => {
+  // Before the cn-branch fix, vocabSignatureKey returned null for a class_name-
+  // only signature, so each re-discovery re-added it as a duplicate. It must now
+  // dedup against the existing entry exactly as Python's _snapshot_sig_key does.
+  const existing = {
+    id: "spotify", name: "Spotify", scope: {},
+    interactions: [{ signature: { class_name: "x-btn" }, name: "Play" }],
+  };
+  const skeleton = {
+    scope: {}, screens: [],
+    interactions: [
+      { signature: { class_name: "x-btn" }, name: "", identity_source: "class_name", confidence: 0.4 },
+    ],
+  };
+  const { vocab, added, skipped } = mergeDiscoveredSkeleton(existing, skeleton);
+  assert.equal(added, 0, "same class_name-only signature must dedup, not duplicate");
+  assert.equal(skipped, 1);
+  assert.equal(vocab.interactions.length, 1, "no duplicate row added");
+  assert.equal(vocab.interactions[0].name, "Play", "the analyst-named entry is kept");
 });

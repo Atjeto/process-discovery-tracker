@@ -117,11 +117,12 @@ def _join_key(c: dict, ancestry: tuple) -> tuple:
     )
 
 
-def join_passes(controls: list[dict]) -> list[list[dict]]:
-    """Group all snapshot controls (across every pass) into joined groups by the
-    stability-independent key. Each group is the same logical control seen once
-    per pass (size 1 when a control appeared in only one pass). First-seen order
-    is preserved so the resulting skeleton mirrors document order."""
+def _join_groups(controls: list[dict]) -> list[tuple[tuple, list[dict]]]:
+    """Group all snapshot controls (across every pass) by the stability-
+    independent key, returning ``(key, group)`` pairs in first-seen order. The
+    key's ancestry component (``key[4]``) is the only place the join's
+    reconstructed tree context survives, so callers that want it (``pick_all``,
+    for the annotator legend) read it from here rather than recomputing."""
     by_pass: dict[int, list[dict]] = {}
     for c in controls:
         by_pass.setdefault(int(c.get("pass", 1) or 1), []).append(c)
@@ -135,7 +136,15 @@ def join_passes(controls: list[dict]) -> list[list[dict]]:
                 groups[k] = []
                 order.append(k)
             groups[k].append(c)
-    return [groups[k] for k in order]
+    return [(k, groups[k]) for k in order]
+
+
+def join_passes(controls: list[dict]) -> list[list[dict]]:
+    """Group all snapshot controls (across every pass) into joined groups by the
+    stability-independent key. Each group is the same logical control seen once
+    per pass (size 1 when a control appeared in only one pass). First-seen order
+    is preserved so the resulting skeleton mirrors document order."""
+    return [group for _key, group in _join_groups(controls)]
 
 
 # --- Confidence (mirrors UiaSubscriber.ComputeConfidence) -------------
@@ -218,10 +227,15 @@ def pick_signature(group: list[dict]) -> dict[str, Any]:
 
 def pick_all(controls: list[dict]) -> list[dict[str, Any]]:
     """Join the snapshot's controls across passes and pick each one's signature.
-    Returns one ``{group, ...pick}`` per joined control, in document order."""
+    Returns one ``{group, ancestry, ...pick}`` per joined control, in document
+    order. ``ancestry`` is the reconstructed parent control_type chain (outermost
+    first) -- value-free tree context for the annotator, never part of the
+    signature."""
     out: list[dict[str, Any]] = []
-    for group in join_passes(controls):
+    for key, group in _join_groups(controls):
         pick = pick_signature(group)
         pick["group"] = group
+        ancestry = key[4] if isinstance(key, tuple) and len(key) > 4 else ()
+        pick["ancestry"] = [a for a in ancestry if a]
         out.append(pick)
     return out

@@ -461,6 +461,96 @@ def _snapshot_sig_key(sig: dict) -> tuple | None:
     return None
 
 
+# --- Annotator context (ADR-0025 enrichment) --------------------------
+#
+# Discovery captures more per control than the signature keys on -- the UIA
+# role, the framework, the on-screen position, the tree ancestry. The picker
+# already computes most of it; bootstrap threads it onto each entry as
+# discovery-meta (stripped on save, like identity_source/confidence) so the
+# annotator sees WHAT a row is and WHERE it lives before naming it -- closing the
+# gap that made a class_name-only row read as a blank "(unset signature)".
+
+_REGION = [
+    ["top-left", "top", "top-right"],
+    ["left", "center", "right"],
+    ["bottom-left", "bottom", "bottom-right"],
+]
+
+
+def _window_frame(controls: list[dict]) -> tuple | None:
+    """Bounding box ``(x0, y0, x1, y1)`` over every control that reports bounds --
+    the window's on-screen extent, used as the frame for a coarse region. None
+    when nothing has bounds."""
+    x0 = y0 = x1 = y1 = None
+    for c in controls:
+        b = c.get("bounds")
+        if not isinstance(b, dict):
+            continue
+        try:
+            bx, by, bw, bh = (
+                float(b["x"]), float(b["y"]), float(b["w"]), float(b["h"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        x0 = bx if x0 is None else min(x0, bx)
+        y0 = by if y0 is None else min(y0, by)
+        x1 = (bx + bw) if x1 is None else max(x1, bx + bw)
+        y1 = (by + bh) if y1 is None else max(y1, by + bh)
+    return None if x0 is None else (x0, y0, x1, y1)
+
+
+def _region(bounds: Any, frame: tuple | None) -> str | None:
+    """A coarse 3x3 on-screen region ("top-left", "center", "bottom-right") for a
+    control's centre relative to the window frame -- a value-free "where" for the
+    annotator. None when the control or the frame lacks usable bounds."""
+    if not isinstance(bounds, dict) or not frame:
+        return None
+    try:
+        cx = float(bounds["x"]) + float(bounds["w"]) / 2.0
+        cy = float(bounds["y"]) + float(bounds["h"]) / 2.0
+    except (KeyError, TypeError, ValueError):
+        return None
+    fx0, fy0, fx1, fy1 = frame
+    fw, fh = (fx1 - fx0), (fy1 - fy0)
+    if fw <= 0 or fh <= 0:
+        return None
+    col = min(2, max(0, int((cx - fx0) / fw * 3)))
+    row = min(2, max(0, int((cy - fy0) / fh * 3)))
+    return _REGION[row][col]
+
+
+def _member(rep: dict, ancestry: list, frame: tuple | None) -> dict:
+    """A compact descriptor of one control collapsed into a merged entry -- its
+    distinguishing context (role / region / nearest ancestors / label) so the
+    annotator can see what a weak-signature bucket actually contains."""
+    m: dict[str, Any] = {}
+    if rep.get("role"):
+        m["role"] = rep["role"]
+    reg = _region(rep.get("bounds"), frame)
+    if reg:
+        m["region"] = reg
+    if ancestry:
+        m["under"] = list(ancestry[-3:])
+    if rep.get("name"):
+        m["name"] = rep["name"]
+    return m
+
+
+def _member_from_item(item: dict) -> dict:
+    """Reconstruct the first member's descriptor from a stored entry (it already
+    carries role / region / ancestry / name) so the merged-members list can lead
+    with the control that seeded the bucket."""
+    m: dict[str, Any] = {}
+    if item.get("role"):
+        m["role"] = item["role"]
+    if item.get("region"):
+        m["region"] = item["region"]
+    if item.get("ancestry"):
+        m["under"] = list(item["ancestry"][-3:])
+    if item.get("name"):
+        m["name"] = item["name"]
+    return m
+
+
 def bootstrap_from_snapshot(
     controls: list[dict[str, Any]],
     *,
@@ -494,17 +584,29 @@ def bootstrap_from_snapshot(
         screens = [{"id": screen_id, "name": window_title}]
         scope = {"window_title_regex": f".*{re.escape(window_title.strip())}.*"}
 
+    frame = _window_frame(controls)
     seen: dict[tuple, dict] = {}
     interactions: list[dict[str, Any]] = []
     for pick in signature_pick.pick_all(controls):
         sig = pick.get("signature")
         if not sig:
             continue
+        rep = pick["group"][0]
+        ancestry = pick.get("ancestry") or []
         key = _snapshot_sig_key(sig)
         if key is not None and key in seen:
-            seen[key]["seen_count"] += 1
+            prior = seen[key]
+            prior["seen_count"] += 1
+            # Over-merge transparency: a weak signature (a generic class_name with
+            # no label) collapses genuinely DISTINCT controls -- keep each merged
+            # member's context (a capped sample) so the annotator can tell, and
+            # split a wrong bucket. Only when there's no label to disambiguate by;
+            # a shared label is a legitimate single interaction.
+            if not prior.get("name"):
+                members = prior.setdefault("_members", [_member_from_item(prior)])
+                if len(members) < 12:
+                    members.append(_member(rep, ancestry, frame))
             continue
-        rep = pick["group"][0]
         label = rep.get("name") or ""
         item: dict[str, Any] = {
             "signature": sig,
@@ -513,6 +615,17 @@ def bootstrap_from_snapshot(
             "confidence": pick["confidence"],
             "seen_count": 1,
         }
+        # ADR-0025 annotator context (discovery-meta; stripped on save): WHAT the
+        # control is + WHERE it lives, so a row is never a contextless signature.
+        if rep.get("role"):
+            item["role"] = rep["role"]
+        if rep.get("framework"):
+            item["framework"] = rep["framework"]
+        region = _region(rep.get("bounds"), frame)
+        if region:
+            item["region"] = region
+        if ancestry:
+            item["ancestry"] = ancestry
         if screen_id:
             item["screen"] = screen_id
         if pick.get("volatile_aids"):

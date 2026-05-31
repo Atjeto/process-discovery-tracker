@@ -6,6 +6,51 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-06-01
+
+App Library "Discover from window" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md))
+becomes legible and lossless. A real-run discovery of a browser-hosted web app
+(Spotify in Chrome) surfaced that the editor was silently *erasing* the one kind
+of signature such apps produce, and that a discovered row carried no context to
+name it by. Both fixed; discovery now enriches each row with the context the UIA
+walk already captured.
+
+### Fixed
+
+- **`class_name`-keyed signatures are no longer dropped on Save (data loss).** A
+  control with no stable id and no accessible name is keyed by the picker on its
+  `class_name` (ADR-0023 confidence 0.4). The App Library editor modelled only
+  `control_type` / `automation_id` / `name` / `window_title_regex`, so a
+  `{class_name: …}` signature rendered as a blank **"(unset signature)"** *and was
+  rewritten to `{}` the moment you saved* — captured, shown blank, erased.
+  `class_name` is now a first-class, editable signature field that survives the
+  round-trip (`vocab-view.js`); `canonical-author.js::vocabSignatureKey` gained the
+  `cn` branch Python's `_snapshot_sig_key` already had, so re-discovery dedups it
+  instead of re-adding duplicates.
+- **`PDT_APP_VOCABULARIES` was broken on Windows.** The viewer split the extra-dirs
+  list on `/[;:]/`, shredding drive-letter paths (`D:\…`) at the colon. It now
+  splits on `path.delimiter`, matching Python's `os.pathsep`.
+
+### Added
+
+- **Annotator context on every discovered row ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md)).**
+  Discovery captures far more than the signature keys on; the surplus used to be
+  discarded at `bootstrap_from_snapshot`. Each entry now carries — as discovery-meta
+  (shown in the editor, stripped on save, like `confidence` / `identity_source`) —
+  the UIA **role**, the **framework**, a value-free on-screen **region** (a 3×3
+  bucket from the control's bounds), the tree **ancestry**, and an honest
+  **weak-signature note**. A row reads "button · bottom-left · chromium · under
+  Window › Pane — weak, keyed on class_name" instead of a contextless blank.
+- **Over-merge transparency.** A generic `class_name` with no label collapses
+  genuinely *distinct* controls under one `seen_count` — a "×5" that hides five
+  different buttons. The merged members are now kept and listed per row
+  (`bootstrap_from_snapshot` `_members`), so the analyst can see what a weak bucket
+  actually contains and split a wrong merge.
+- **`e2e/vocab-smoke.js`** — a new in-repo gate that drives the REAL viewer App
+  Library: asserts the enriched row renders legibly (no clipped labels) and that
+  the `class_name` signature survives Save. Wired into the e2e `test` script
+  alongside `session-smoke.js`.
+
 ## [0.21.0] - 2026-06-01
 
 A coherence + capability cycle on top of 0.20.1: the process maps and Compare

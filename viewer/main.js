@@ -630,7 +630,10 @@ ipcMain.handle("viewer:listAppVocabs", () => {
   if (def) dirs.push(def);
   const extra = process.env.PDT_APP_VOCABULARIES || "";
   if (extra) {
-    for (const raw of extra.split(/[;:]/)) {
+    // Split on the OS path-list separator (path.delimiter: ";" on Windows,
+    // ":" on POSIX) — matching Python's os.pathsep. A bare /[;:]/ shredded
+    // Windows drive-letter paths ("D:\\...") at the colon.
+    for (const raw of extra.split(path.delimiter)) {
       const t = raw.trim();
       if (t && fs.existsSync(t) && !dirs.includes(t)) dirs.push(t);
     }
@@ -690,7 +693,7 @@ ipcMain.handle("viewer:deleteVocab", (_e, p) => {
     const allowed = [];
     const def = appVocabDefaultDir();
     if (def) allowed.push(path.resolve(def));
-    for (const raw of (process.env.PDT_APP_VOCABULARIES || "").split(/[;:]/)) {
+    for (const raw of (process.env.PDT_APP_VOCABULARIES || "").split(path.delimiter)) {
       const t = raw.trim();
       if (t) allowed.push(path.resolve(t));
     }

@@ -5,7 +5,7 @@
   "description": "In-repo Playwright e2e merge gate for the Process Discovery viewer (Wave 0 / F1). Successor to the out-of-repo _pdt_verify harness.",
   "type": "commonjs",
   "scripts": {
-    "test": "node session-smoke.js"
+    "test": "node session-smoke.js && node vocab-smoke.js"
   },
   "dependencies": {
     "playwright-core": "^1.60.0"

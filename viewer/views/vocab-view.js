@@ -16,9 +16,13 @@ const Ipc = require("../ipc.js");
 const CA = require("../canonical-author.js");
 
 // Discovery-provenance fields the picker stamps on each entry (ADR-0025).
-// They drive the editor's "why this signature" legend but are stripped
-// before save so the persisted vocab stays signature-focused.
-const DISCOVERY_META_KEYS = ["identity_source", "confidence", "volatile_aids", "_hint"];
+// They drive the editor's "why this signature" legend + annotator context
+// (role / framework / on-screen region / tree ancestry / merged members) but
+// are stripped before save so the persisted vocab stays signature-focused.
+const DISCOVERY_META_KEYS = [
+  "identity_source", "confidence", "volatile_aids", "_hint",
+  "role", "framework", "region", "ancestry", "_members",
+];
 
 async function reloadVocabList() {
   const r = await Ipc.listAppVocabs();
@@ -164,7 +168,12 @@ function renderVocabEditor() {
 
 function _buildVocabIntRow(ent, i) {
   const sig = ent.signature || {};
-  const sigParts = [sig.control_type, sig.automation_id, sig.name].filter(Boolean);
+  // class_name is a real (if weak) signature dimension — include it so a
+  // class_name-only entry reads as itself, not a blank "(unset signature)".
+  const sigParts = [
+    sig.control_type, sig.automation_id, sig.name,
+    sig.class_name ? "class:" + sig.class_name : null,
+  ].filter(Boolean);
   const sigSummary = sigParts.length ? sigParts.join(" · ") : "(unset signature)";
   // I57: a bootstrapped entry carries how many times the control was
   // observed -- show it (only when >1, so a single static snapshot control
@@ -182,6 +191,20 @@ function _buildVocabIntRow(ent, i) {
       escapeAttr(ent.identity_source || "?") + ' (ADR-0023 confidence ' + ent.confidence + ')">' +
       escapeHtml(ent.identity_source || "?") + ' ' + ent.confidence + '</span>';
   }
+  // ADR-0025 annotator context: WHAT the control is + WHERE it lives, captured
+  // by discovery so a row carries meaning before it's named. Chips +
+  // ancestry are discovery-meta (stripped on save).
+  const chips = [];
+  if (ent.role) chips.push('<span class="vocab-int-chip" title="UIA control role">' + escapeHtml(ent.role) + '</span>');
+  if (ent.region) chips.push('<span class="vocab-int-chip" title="Where in the window the control sits">' + escapeHtml(ent.region) + '</span>');
+  if (ent.framework) chips.push('<span class="vocab-int-chip" title="UI framework — sets how reliable the signature is">' + escapeHtml(ent.framework) + '</span>');
+  const anc = Array.isArray(ent.ancestry) ? ent.ancestry.filter(Boolean) : [];
+  const ancHtml = anc.length
+    ? '<span class="vocab-int-anc" title="UIA ancestry (outermost → parent)">under ' + escapeHtml(anc.slice(-4).join(" › ")) + '</span>'
+    : "";
+  const context = (chips.length || ancHtml)
+    ? '<div class="vocab-int-context">' + chips.join("") + ancHtml + '</div>'
+    : "";
   // The volatility note: the per-render automation_id(s) the picker REJECTED
   // (changed across the two snapshot passes, or matched a volatility pattern),
   // which is why this entry is keyed on the label instead of the id.
@@ -189,6 +212,33 @@ function _buildVocabIntRow(ent, i) {
     ? '<div class="vocab-int-volatile" title="These automation_ids changed across snapshot passes or match a per-render pattern, so discovery keyed on the label instead.">⚠ volatile id rejected: ' +
       escapeHtml(ent.volatile_aids.join(", ")) + ' → keyed on label</div>'
     : "";
+  // Honest weak-signature note (ADR-0023): a generic class_name with no stable id
+  // or accessible name may not match reliably — say so and suggest the action,
+  // rather than presenting an unreliable row as a confirmed control.
+  const weak = (typeof ent.confidence === "number" && ent.confidence < 0.6)
+    ? '<div class="vocab-int-weak-note">Weak signature — keyed on ' +
+      escapeHtml(ent.identity_source || "a generic attribute") +
+      ', with no stable id or accessible name. It may not match reliably; consider deleting it, or name it only if you recognise it.</div>'
+    : "";
+  // Over-merge transparency: when a weak signature collapsed several DISTINCT
+  // controls (no label to tell them apart), list each one's context so the
+  // analyst can name the right thing or split the bucket.
+  const mem = Array.isArray(ent._members) ? ent._members : [];
+  let members = "";
+  if (mem.length > 1) {
+    const total = (typeof ent.seen_count === "number" && ent.seen_count > mem.length) ? ent.seen_count : mem.length;
+    const lis = mem.map((m) => {
+      const bits = [
+        m.role, m.region,
+        (Array.isArray(m.under) && m.under.length) ? "under " + m.under.join(" › ") : null,
+        m.name,
+      ].filter(Boolean).map(escapeHtml).join(" · ");
+      return '<li>' + (bits || "(no distinguishing context)") + '</li>';
+    }).join("");
+    members =
+      '<details class="vocab-int-members"><summary>⚠ ' + total +
+      ' distinct controls were merged here — review before naming</summary><ul>' + lis + '</ul></details>';
+  }
   const row = document.createElement("div");
   row.className = "vocab-int";
   row.dataset.idx = String(i);
@@ -201,10 +251,14 @@ function _buildVocabIntRow(ent, i) {
     '<button class="icon-btn vocab-int-remove" title="Remove">✕</button>' +
     '</div>' +
     '<div class="vocab-int-body">' +
+    context +
     vol +
+    weak +
+    members +
     '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
     '<div class="vocab-int-sig-fields">' +
     '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
+    '<label>class_name<input type="text" data-sig="class_name" value="' + escapeAttr(sig.class_name || "") + '"></label>' +
     '<label>automation_id<input type="text" data-sig="automation_id" value="' + escapeAttr(sig.automation_id || "") + '"></label>' +
     '<label>name (raw)<input type="text" data-sig="name" value="' + escapeAttr(sig.name || "") + '"></label>' +
     '<label>window_title_regex<input type="text" data-sig="window_title_regex" value="' + escapeAttr(sig.window_title_regex || "") + '"></label>' +

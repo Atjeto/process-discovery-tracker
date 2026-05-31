@@ -290,3 +290,81 @@ def test_bootstrap_from_snapshot_dedups_repeated_controls():
     assert len(two) == 1
     assert two[0]["signature"] == {"control_type": "Button", "name": "Submit"}
     assert two[0]["seen_count"] == 2
+
+
+# === ADR-0025 annotator-context enrichment =============================
+
+def test_pick_all_attaches_ancestry():
+    """pick_all surfaces each control's ancestry (parent control_types, outermost
+    first) so the annotator sees where a control lives in the tree."""
+    controls = [
+        ctrl(1, control_type="Window", name="App", depth=0),
+        ctrl(1, control_type="Pane", depth=1),
+        ctrl(1, control_type="Toolbar", depth=2),
+        ctrl(1, control_type="Button", automation_id="Save", name="Save", depth=3,
+             bounds={"x": 5, "y": 5, "w": 30, "h": 20}),
+    ]
+    picks = signature_pick.pick_all(controls)
+    save = next(p for p in picks if p["group"][0].get("name") == "Save")
+    assert save["ancestry"] == ["Window", "Pane", "Toolbar"]
+
+
+def test_bootstrap_enriches_annotator_context():
+    """Each entry carries role / framework / on-screen region for the editor
+    legend -- the context that makes a bare signature legible."""
+    controls = [
+        ctrl(1, control_type="Edit", automation_id="incident.short_description",
+             name="Short description", framework="uia",
+             bounds={"x": 100, "y": 50, "w": 200, "h": 24}),
+        ctrl(2, control_type="Edit", automation_id="incident.short_description",
+             name="Short description", framework="uia",
+             bounds={"x": 100, "y": 50, "w": 200, "h": 24}),
+    ]
+    e = app_vocab.bootstrap_from_snapshot(
+        controls, window_title="X")["app_vocabulary"]["interactions"][0]
+    assert e["role"] == "edit"          # ctrl() derives role from control_type
+    assert e["framework"] == "uia"
+    assert isinstance(e.get("region"), str) and e["region"]
+
+
+def test_bootstrap_flags_overmerged_classname_controls():
+    """A generic class_name with no label collapses genuinely DISTINCT controls;
+    the skeleton keeps each merged member's context (role/region) so the annotator
+    can tell them apart and split a wrong bucket -- the Spotify-in-Chrome failure
+    that made one '×5' row hide five different controls."""
+    controls = [
+        # Two DIFFERENT controls (top-left vs bottom-right), same generic class,
+        # neither with a name -> both key on {class_name} and collapse to one row.
+        ctrl(1, control_type="Button", class_name="x-btn",
+             bounds={"x": 0, "y": 0, "w": 40, "h": 20}),
+        ctrl(2, control_type="Button", class_name="x-btn",
+             bounds={"x": 0, "y": 0, "w": 40, "h": 20}),
+        ctrl(1, control_type="Button", class_name="x-btn",
+             bounds={"x": 900, "y": 700, "w": 40, "h": 20}),
+        ctrl(2, control_type="Button", class_name="x-btn",
+             bounds={"x": 900, "y": 700, "w": 40, "h": 20}),
+    ]
+    v = app_vocab.bootstrap_from_snapshot(
+        controls, window_title="App")["app_vocabulary"]
+    assert len(v["interactions"]) == 1
+    e = v["interactions"][0]
+    assert e["signature"] == {"class_name": "x-btn"}
+    assert e["identity_source"] == "class_name"
+    assert e["seen_count"] == 2
+    assert len(e.get("_members", [])) == 2
+    # The two merged controls are at distinct on-screen regions -> visibly NOT
+    # the same thing.
+    assert len({m.get("region") for m in e["_members"]}) == 2
+
+
+def test_bootstrap_named_dedup_has_no_overmerge_noise():
+    """A shared LABEL is a legitimate single interaction (two 'Submit' buttons are
+    one vocab entry) -- no over-merge member list in that case."""
+    v = app_vocab.bootstrap_from_snapshot([
+        ctrl(1, control_type="Button", automation_id="input-12", name="Submit",
+             bounds={"x": 0, "y": 0, "w": 50, "h": 20}),
+        ctrl(1, control_type="Button", automation_id="input-34", name="Submit",
+             bounds={"x": 0, "y": 500, "w": 50, "h": 20}),
+    ], window_title="Acme - Salesforce")["app_vocabulary"]["interactions"]
+    assert len(v) == 1 and v[0]["seen_count"] == 2
+    assert "_members" not in v[0]

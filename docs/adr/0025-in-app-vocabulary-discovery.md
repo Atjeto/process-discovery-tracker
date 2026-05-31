@@ -64,3 +64,41 @@ target window**, the recorder resolves the top-level window under the cursor
 **specific HWND** (the `snapshot` command already accepted an HWND target). Esc or
 a 35 s timeout cancels. Also: App Library entries are now **deletable** (the
 missing inverse of New/Discover; `viewer:deleteVocab`, dir-guarded).
+
+## Refinement (2026-06-01) — annotator-context enrichment + the `class_name` round-trip fix
+
+Real-run discovery against a browser-hosted web app (Spotify in Chrome) exposed
+two coupled defects in the **naming** half (the UIA walk itself was fine):
+
+1. **The editor silently dropped `class_name`-keyed signatures.** The picker
+   correctly keys a control with no stable id and no accessible name on its
+   `class_name` (ADR-0023 confidence 0.4). But `vocab-view.js` modelled only
+   `control_type` / `automation_id` / `name` / `window_title_regex`, so a
+   `{class_name: …}` signature rendered as a blank **"(unset signature)"** *and
+   was rewritten to `{}` on Save* (`collectAndMark` rebuilds the signature from
+   the visible inputs, and there was no `class_name` input). Captured → shown
+   blank → erased: a COHERENCE-AUDIT round-trip failure. **Fix:** `class_name` is
+   now a first-class signature field (summary + editable input), and
+   `canonical-author.js::vocabSignatureKey` gained the `cn` branch Python's
+   `_snapshot_sig_key` already had, so re-discovery dedups it instead of
+   re-adding duplicates.
+
+2. **A row carried no context to name it by.** Discovery captures far more than
+   the signature keys on; the surplus was discarded at `bootstrap_from_snapshot`.
+   It now threads **annotator context** onto each entry as discovery-meta
+   (stripped on save, like `confidence` / `identity_source`): the UIA **`role`**,
+   the **`framework`**, a value-free on-screen **`region`** (a 3×3 bucket from the
+   control's bounds), the tree **`ancestry`** (the picker already reconstructs it
+   for the volatility join — it was being thrown away), an honest
+   **weak-signature note**, and — the load-bearing one — **over-merge
+   transparency**: a generic `class_name` with no label collapses genuinely
+   *distinct* controls under one `seen_count`, so each merged member's context is
+   kept and listed (`_members`) for the analyst to split a wrong bucket. The "×5"
+   that hid five different controls is now legible.
+
+Fixed in passing: the viewer split `PDT_APP_VOCABULARIES` on `/[;:]/`, which
+shredded Windows drive-letter paths (`D:\…`) at the colon — the documented
+extra-dirs extension point was broken on Windows. It now splits on
+`path.delimiter`, matching Python's `os.pathsep`. Pinned by a new
+`e2e/vocab-smoke.js` gate (real viewer: the enriched row renders legibly + the
+`class_name` signature survives Save).

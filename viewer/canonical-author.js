@@ -212,6 +212,9 @@ function vocabSignatureKey(signature) {
   if (s.control_type && s.name) return "ctn|" + s.control_type + "|" + s.name;
   if (s.class_name && s.name) return "cnn|" + s.class_name + "|" + s.name;
   if (s.name) return "n|" + s.name;
+  // A class_name-only signature is weak but real (ADR-0025): mirror Python's
+  // _snapshot_sig_key so re-discovery dedups it instead of re-adding duplicates.
+  if (s.class_name) return "cn|" + s.class_name;
   return null;
 }
 
