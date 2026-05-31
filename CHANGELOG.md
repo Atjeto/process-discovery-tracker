@@ -6,6 +6,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-01
+
+A coherence + capability cycle on top of 0.20.1: the process maps and Compare
+panels became real drill-downs, the per-step flag model was corrected, and the App
+Library gained delete + a point-and-click "Discover from window".
+
 ### Added
 
 - **Delete an App Library vocabulary.** Each entry in the App Library list now has
