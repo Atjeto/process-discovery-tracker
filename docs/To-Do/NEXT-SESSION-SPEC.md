@@ -306,10 +306,39 @@ total unchanged across notches; `e2e/session-smoke.js` 12/12 green.
   raw step band. So the single Grain control now drives Flow / Steps / Map /
   Analysis and Compare alike.
 
-**Still deferred (needs a live capture, not fakeable):**
-- **Web/SaaS `screen` validation.** The recognition-layer web `screen` axis is
-  wired but best validated once a live browser/SaaS capture exists (the deferred
-  §11a web drive) — no live browser session here, so left honestly unverified.
+**Real-app validation + map regression FIX — DONE 2026-05-31** (branch
+`real-app-map-validation`; full report:
+[REAL-APP-MAP-VALIDATION-2026-05-31.md](REAL-APP-MAP-VALIDATION-2026-05-31.md)):
+- ✅ **Headline map regression confirmed + fixed.** The default (screen) grain
+  fanned out into a per-case hairball because the screen key fell back to the raw
+  `window_title`, which embeds the case value (`Salesforce - Order #10900`,
+  `Create INC0010010 | Incident`). New `process-map-levels.screenType` makes the
+  screen axis **value-free** (strips record numbers / id-tokens) at view time —
+  demo aggregate screen map **76 → 6 nodes, 35 → 1 end-node**. Committed `a64d0d4`;
+  new `e2e` map-connectivity pin (screen-grain DFG = one component, one start, one
+  end). Gates all green.
+- ✅ **Web/SaaS `screen` validated on a LIVE capture.** Drove a real ServiceNow
+  dev instance (`drive-servicenow.ps1`, 3 real incidents) — vocab matched the live
+  form exactly (53 % coverage); the screen-axis fix collapsed the per-case
+  `Create INC001001x | Incident` titles to one node. Excel (good) + Word (partial,
+  §11e gap) desktop captures too; Outlook skipped (no mail profile on the box).
+
+**Deeper issues the real capture surfaced — HANDOFF (diagnosed, NOT fixed; see
+report §6):** both pre-existing, both rooted in `window_title` leaking where the
+vocab didn't fully attach to a step.
+- **6a — element-grain window-title-PREFIX fan-out.** Step names are
+  `"{screen}: {action}"`; when screen falls back to a numbered window title the
+  prefix carries the value, and `process_label` only strips *tails* → element grain
+  fans out (real ServiceNow: 44 nodes / 3 disconnected combs). Fix in
+  `step_suggest.py` naming + `process-label-patterns.json`; **touches goldens** —
+  regen intentionally, don't rush.
+- **6b — vocab-vs-window_title screen duplication (recommended next).** One logical
+  screen splits into the vocab `screen_id` *and* the window-title fallback when only
+  some of its interactions matched the vocab (`incident` ⇄ `Create | Incident`;
+  `workbook` + `*.xlsx - Excel`). Make `grain_keys.screen` consistent per step (if
+  any interaction resolved a vocab screen, use it for the whole step) —
+  `step_suggest.step_grain_keys` + the JS `resolveStepGrainKeys` twin; additive,
+  likely golden-neutral. Feeds 6a.
 
 ---
 
