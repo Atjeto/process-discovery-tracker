@@ -18,6 +18,13 @@
   let viewer = null;
   let saveTimer = null;  // debounce for persisting a dragged layout
   const fs = require("node:fs");
+  // dagre was assumed to be a global "loaded in index.html" but never actually
+  // was, so applyDagreLayout silently returned false and the live Process diagram
+  // fell back to the mined file's weak coordinates (end stranded mid-flow, edges
+  // crossing). Require it directly so the layered, crossing-minimised layout the
+  // comments promise actually runs. @dagrejs/dagre is the maintained drop-in.
+  let dagre;
+  try { dagre = require("@dagrejs/dagre"); } catch (_) { dagre = undefined; }
 
   /* Re-position every node with dagre (layered, crossing-minimised) and re-route
      the sequence flows, replacing the mined file's weak coordinates. dagre is a

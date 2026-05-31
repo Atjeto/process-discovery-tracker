@@ -85,6 +85,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Process maps now lay out left-to-right instead of as a radial hub / scrambled
+  diagram — `dagre` was never actually wired up.** Both renderers were written to
+  re-lay-out with `dagre` (the comments say "dagre is a global loaded in
+  index.html"), but it never was: `index.html` loaded `cytoscape-dagre` but not a
+  `dagre` global, and nothing assigned `window.dagre`. So the **Flow diagram (DFG)**
+  silently fell back to cytoscape's `breadthfirst` — a **radial hub** that turns
+  any flow with a busy node (SAP) into an unreadable star — and the **Process
+  diagram (BPMN)** `applyDagreLayout` returned early and rendered the mined file's
+  weak coordinates (`end` stranded mid-flow, edges crossing). This affected *every*
+  session, not the demo I'd been spot-checking. Fix: `dfg-viewer.js` requests the
+  `dagre` layout whenever the (already-bundled) `cytoscape-dagre` extension is
+  registered, and `bpmn-viewer.js` `require("@dagrejs/dagre")` directly. Result —
+  Flow + Process diagrams render as clean left-to-right layered flows at every
+  grain (screen/app DFG: radial star → LR chain; activity BPMN: `end` now rightmost).
+  `e2e/session-smoke.js` gains a **layout-readability pin** (the screen-grain DFG
+  must read left-to-right — source leftmost, sink rightmost, wider-than-tall —
+  catching a silent fall back to the radial layout). NOTE: validated on the demo;
+  the layout engine is topology-agnostic so it carries to taxonomy/real captures,
+  but those should still be eyeballed.
+
 - **Element-grain step maps no longer fan out per record because of a numbered
   window-title prefix ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md) §6a).**
   A step's auto-name is `"{window-title app prefix}: {action}"`; for browser apps

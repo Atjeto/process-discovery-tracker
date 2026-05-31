@@ -8,10 +8,18 @@
 
 (function () {
   if (typeof cytoscape === "undefined") return;
+  // Register the dagre layout extension (it bundles its own dagre engine). The
+  // layout-name guard below used to test a global `dagre` that was never wired
+  // into index.html, so it silently fell back to `breadthfirst` -- a RADIAL hub
+  // layout that turns any flow with a busy node (e.g. SAP) into an unreadable
+  // star. Track whether the extension registered and request "dagre" off THAT.
+  let dagreRegistered = false;
   if (typeof cytoscapeDagre !== "undefined") {
     cytoscape.use(cytoscapeDagre);
+    dagreRegistered = true;
   } else if (typeof window.cytoscapeDagre !== "undefined") {
     cytoscape.use(window.cytoscapeDagre);
+    dagreRegistered = true;
   }
 
   let cy = null;
@@ -180,15 +188,15 @@
           style: { "line-color": tok.accent3, "target-arrow-color": tok.accent3 },
         },
       ],
-      layout: {
-        name: typeof dagre !== "undefined" || typeof window.dagre !== "undefined"
-          ? "dagre"
-          : "breadthfirst",
-        rankDir: "LR",
-        nodeSep: 30,
-        rankSep: 80,
-        edgeSep: 10,
-      },
+      layout: dagreRegistered
+        ? {
+            name: "dagre",
+            rankDir: "LR",       // left-to-right layered flow, not a radial hub
+            nodeSep: 30,
+            rankSep: 80,
+            edgeSep: 10,
+          }
+        : { name: "breadthfirst", directed: true, spacingFactor: 1.1 },
     });
     // Debug/test handle: expose the cytoscape instance on the container so the
     // verification harness can drive node taps (the canvas has no clickable DOM).

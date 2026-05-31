@@ -336,10 +336,23 @@ const OVERLAP_PROBE = () => {
     const indeg = {}, outdeg = {};
     nodes.forEach((n) => { indeg[n] = 0; outdeg[n] = 0; });
     edges.forEach((e) => { outdeg[e.s]++; indeg[e.t]++; });
+    const sourceIds = nodes.filter((n) => indeg[n] === 0);
+    const sinkIds = nodes.filter((n) => outdeg[n] === 0);
+    // Readability: the layout must read LEFT-TO-RIGHT (dagre rankDir LR), not as a
+    // radial hub (the breadthfirst fallback when dagre wasn't wired). In an LR flow
+    // the source sits leftmost and the sink rightmost, and the graph is wider than
+    // tall. A radial star fails both. Read live node positions off cytoscape.
+    const bb = cy.nodes().boundingBox();
+    const xOf = (id) => cy.getElementById(id).position("x");
+    const xs = nodes.map(xOf);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const srcLeftmost = sourceIds.length === 1 && Math.abs(xOf(sourceIds[0]) - minX) < 1;
+    const sinkRightmost = sinkIds.length === 1 && Math.abs(xOf(sinkIds[0]) - maxX) < 1;
     return {
       rendered: true, nodes: nodes.length, edges: edges.length, components,
-      sources: nodes.filter((n) => indeg[n] === 0).length,
-      sinks: nodes.filter((n) => outdeg[n] === 0).length,
+      sources: sourceIds.length, sinks: sinkIds.length,
+      leftToRight: srcLeftmost && sinkRightmost && bb.w >= bb.h,
+      aspect: Math.round((bb.w / Math.max(1, bb.h)) * 10) / 10,
     };
   }).catch((e) => ({ err: e.message }));
   if (connProbe && connProbe.err) {
@@ -354,6 +367,14 @@ const OVERLAP_PROBE = () => {
       " components=" + connProbe.components + " sources=" + connProbe.sources +
       " sinks=" + connProbe.sinks + " (the per-case fan-out would push sinks/components up)");
     if (!ok) await shot(page, "fail-map-connectivity.png");
+
+    // Layout readability: dagre LR (source leftmost, sink rightmost, wider-than-tall),
+    // NOT the radial breadthfirst hub that appears when dagre isn't wired up.
+    record("screen-grain Flow diagram reads left-to-right (dagre LR, not a radial hub)",
+      connProbe.leftToRight,
+      "leftToRight=" + connProbe.leftToRight + " aspect(w/h)=" + connProbe.aspect +
+      " (radial fallback would put aspect ~1 and break source-leftmost/sink-rightmost)");
+    if (!connProbe.leftToRight) await shot(page, "fail-map-radial.png");
   }
 
   // Page errors gate (checked last so we capture errors from every interaction).

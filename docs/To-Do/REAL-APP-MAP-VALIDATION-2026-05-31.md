@@ -177,6 +177,33 @@ Subject → Send → end`. Golden-neutral (the projection never read BPMN DI); p
 
 **Verdict:** both notations now render a linear, connected, human-discernible step order.
 
+### 5c. CORRECTION — the maps were still radial/scrambled; `dagre` was never wired up
+The §5/§5b verdict above was **over-claimed**: it was based on the demo *element/aggregate*
+BPMN, which happened to look fine. The owner pointed out (rightly) that the **screen DFG
+and app DFG render as a radial hub-and-spoke star**, and the **activity BPMN strands `end`
+mid-flow with crossing edges** — i.e. not linear or readable at all on real/taxonomy data.
+
+**Root cause (pre-existing, not a regression):** both renderers were written to re-lay-out
+with `dagre` ("dagre is a global loaded in index.html", per the code comments), but it was
+**never actually wired in** — `index.html` loads `cytoscape-dagre` but no `dagre` global,
+and nothing assigns `window.dagre`. So the live render always used the poor fallbacks:
+- **DFG** → cytoscape `breadthfirst` (radial hub). `dfg-viewer.js:184` gated on a missing
+  global `dagre`.
+- **BPMN** → `applyDagreLayout` returned early (`bpmn-viewer.js:27` `typeof dagre`), leaving
+  the mined file's weak coordinates (so my `mining._layout` fix is what the live BPMN
+  actually used — which is why the demo *looked* OK and real data didn't).
+
+**Fixed:** `dfg-viewer` requests the `dagre` layout off the already-registered
+`cytoscape-dagre` extension (it bundles its own dagre engine); `bpmn-viewer`
+`require("@dagrejs/dagre")` directly. Both diagrams now render clean **left-to-right**
+layered flows at every grain — screen/app DFG: radial star → LR chain
+(`chrome ⇄ SAPGUI → EXCEL → OUTLOOK`); activity BPMN: `end` now rightmost. A new
+`e2e/session-smoke.js` **layout-readability pin** asserts the screen-grain DFG reads
+left-to-right (source leftmost, sink rightmost, aspect w/h ≈ 18 vs ~1 for a radial hub) so
+this can't silently regress. **Caveat:** validated on the demo (no taxonomy); the layout
+engine is topology-agnostic so it carries to taxonomy/real captures, but those should still
+be eyeballed by the analyst.
+
 ---
 
 ## 6. Deeper issues the real web capture surfaced (HANDOFF — diagnosed, not yet fixed)
