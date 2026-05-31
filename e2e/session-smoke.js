@@ -377,6 +377,128 @@ const OVERLAP_PROBE = () => {
     if (!connProbe.leftToRight) await shot(page, "fail-map-radial.png");
   }
 
+  // --- ADR-0019 Reference Maps round-trip pin ---------------------------------
+  // A reference map is a decoupled, editable BPMN copy forked from the mined map.
+  // The honest-leaf contract has a full lifecycle: Fork (one-way leaf; the mined
+  // map is untouched) -> Edit (full bpmn-js palette) -> Save (debounced saveXML to
+  // derived_maps/<id>.bpmn) -> reload (reopen re-reads the blob) -> Delete+Undo
+  // (the blob is retained so Ctrl+Z restores a WORKING, still-edited entry).
+  // Validated end-to-end in _pdt_verify/refmap-verify.js; pinned here so the
+  // round-trip + inverse can't silently regress.
+  //
+  // Guarded on FRESH: forking writes into <session>/derived_maps/, so it must run
+  // ONLY against the re-normalized TEMP copy, never the committed demo folder
+  // (CLAUDE.md: example-aggregate is committed data — never mutate it in place).
+  if (!FRESH) {
+    record("reference-map round-trip (skipped — session not re-normalized)", true,
+      "no deps-Python for a temp copy; not forking into the committed demo folder");
+  } else {
+    const PROBE = "RT_PIN_EDIT"; // a label no mined node carries
+    const minedBpmn = path.join(SESSION, "process_map.bpmn");
+    const minedBefore = fs.existsSync(minedBpmn)
+      ? fs.statSync(minedBpmn).size + ":" + fs.readFileSync(minedBpmn, "utf-8").length : null;
+
+    // Fork from the Process diagram (BPMN) at the Activity level.
+    if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(700); }
+    await page.click('#session-layout-map .panel-tab[data-map="bpmn"]').catch((e) => console.log("bpmn tab", e.message));
+    await page.selectOption("#session-map-level", "activity").catch(() => {});
+    await wait(1400);
+    await page.click("#btn-fork-refmap").catch((e) => console.log("fork", e.message));
+    await wait(1600);
+    const forked = await page.evaluate(() => {
+      const State = require("./state.js"), RM = require("./reference-maps.js");
+      const s = State.getSession(), e = RM.list(s.annotations)[0] || null;
+      const host = document.getElementById("refmap-editor-host");
+      const palette = host && host.querySelector(".djs-palette");
+      return {
+        count: RM.list(s.annotations).length,
+        fileOnDisk: e ? RM.fileExists(s.sessionFolder, e) : false,
+        hasHash: !!(e && e.forked_from_hash),
+        editorSvg: !!(host && host.querySelector("svg")),
+        paletteVisible: palette ? getComputedStyle(palette).display !== "none" : false,
+      };
+    }).catch((e) => ({ err: e.message }));
+    const forkOk = forked && !forked.err && forked.count === 1 &&
+      forked.fileOnDisk && forked.hasHash && forked.editorSvg && forked.paletteVisible;
+    record("reference map: Fork makes a decoupled editable copy", forkOk,
+      JSON.stringify(forked));
+    if (!forkOk) await shot(page, "fail-refmap-fork.png");
+
+    // Edit: a real, undoable bpmn-js label change fires the debounced disk save.
+    const edited = await page.evaluate((probe) => {
+      const host = document.getElementById("refmap-editor-host");
+      const v = host && host.__bpmnViewer;
+      if (!v) return { ok: false, why: "no editor viewer handle" };
+      let reg, modeling;
+      try { reg = v.get("elementRegistry"); modeling = v.get("modeling"); }
+      catch (e) { return { ok: false, why: e.message }; }
+      const task = reg.filter((el) => /Task|Activity/.test((el && el.type) || ""))[0];
+      if (!task) return { ok: false, why: "no task element" };
+      modeling.updateLabel(task, probe);
+      return { ok: true };
+    }, PROBE).catch((e) => ({ ok: false, why: e.message }));
+    await wait(1400); // > the 600 ms save debounce in bpmn-viewer.js
+
+    // Save: the on-disk blob now carries the edit.
+    const savedToDisk = await page.evaluate((probe) => {
+      const State = require("./state.js"), RM = require("./reference-maps.js");
+      const s = State.getSession(), e = RM.list(s.annotations)[0];
+      const xml = e ? RM.readBpmn(s.sessionFolder, e) : null;
+      return !!(xml && xml.indexOf(probe) !== -1);
+    }, PROBE).catch(() => false);
+
+    // Reload: close + reopen the editor (re-reads the blob) -> the edit survives.
+    await page.click("#btn-refmap-editor-close", { timeout: 2500 }).catch(() => {});
+    await wait(700);
+    await page.click("#btn-toggle-refmaps").catch(() => {});
+    await wait(300);
+    await page.click('#refmap-list [data-rm-act="edit"]').catch((e) => console.log("reopen", e.message));
+    await wait(1400);
+    const reloadedHasEdit = await page.evaluate(async (probe) => {
+      let xml = null;
+      try { xml = await require("./bpmn-viewer.js").exportXml(); } catch (_) {}
+      return !!(xml && xml.indexOf(probe) !== -1);
+    }, PROBE).catch(() => false);
+    await page.click("#btn-refmap-editor-close", { timeout: 2500 }).catch(() => {});
+    await wait(500);
+    const rtOk = edited.ok && savedToDisk && reloadedHasEdit;
+    record("reference map: Edit -> Save -> reload round-trips the edit", rtOk,
+      "edit=" + edited.ok + " savedToDisk=" + savedToDisk + " reloadedHasEdit=" + reloadedHasEdit +
+      (edited.why ? " (" + edited.why + ")" : ""));
+    if (!rtOk) await shot(page, "fail-refmap-roundtrip.png");
+
+    // Inverse: Delete drops the row but keeps the blob, so one Ctrl+Z restores a
+    // WORKING entry that still carries the edit (the COHERENCE-AUDIT requirement).
+    const delUndo = await page.evaluate(async (probe) => {
+      const State = require("./state.js"), RM = require("./reference-maps.js"), Session = require("./session.js");
+      const s = State.getSession();
+      const m = RM.list(s.annotations)[0];
+      if (!m) return { err: "no map to delete" };
+      RM.destroy({ sessionFolder: s.sessionFolder, anno: s.annotations, id: m.map_id });
+      await Session.saveAnnotationsWithUndo(s.annotations, "Delete reference map");
+      const afterDel = RM.list(s.annotations).length;
+      await Session.performUndo();
+      const restored = RM.list(s.annotations)[0] || null;
+      const xml = restored ? RM.readBpmn(s.sessionFolder, restored) : null;
+      return {
+        afterDel, afterUndo: RM.list(s.annotations).length,
+        restoredHasEdit: !!(xml && xml.indexOf(probe) !== -1),
+      };
+    }, PROBE).catch((e) => ({ err: e.message }));
+    const invOk = delUndo && !delUndo.err && delUndo.afterDel === 0 &&
+      delUndo.afterUndo === 1 && delUndo.restoredHasEdit;
+    record("reference map: Delete -> Ctrl+Z restores the edited copy (inverse)", invOk,
+      JSON.stringify(delUndo));
+    if (!invOk) await shot(page, "fail-refmap-undo.png");
+
+    // Decoupled leaf: the mined map on disk was never touched by any of the above.
+    const minedAfter = fs.existsSync(minedBpmn)
+      ? fs.statSync(minedBpmn).size + ":" + fs.readFileSync(minedBpmn, "utf-8").length : null;
+    record("reference map: the mined map is untouched (one-way leaf)",
+      minedBefore != null && minedBefore === minedAfter,
+      "before=" + minedBefore + " after=" + minedAfter);
+  }
+
   // Page errors gate (checked last so we capture errors from every interaction).
   record("zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.length + " error(s): " + pageErrors.slice(0, 5).join(" | ") : "");
