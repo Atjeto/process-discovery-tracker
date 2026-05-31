@@ -181,6 +181,12 @@ Detail: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [CONTRIBUTING.md](CONT
 
 ## Verification
 
+> **Agents/chips: read [docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md) before any task.**
+> It pairs each hard invariant (map connectivity, the session golden, ADR numbering, immutable
+> raw data, suggest-don't-mutate) with the **CI guard that fails if you break it** — so a
+> context-blind change is caught even if you don't know the codebase. The map connectivity and
+> ADR-number regressions both recurred until they became guards; do not regress them.
+
 UI bugs are invisible to the unit suites — **validate behaviour, don't just write code.**
 - Real-run the app (`npm start` in `viewer/`), or drive the headless harness
   `_pdt_verify/driver.js` (Playwright `_electron` launches the real viewer, drives it,
