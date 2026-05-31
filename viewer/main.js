@@ -28,7 +28,8 @@ const _noopApp = { whenReady() { return new Promise(() => {}); }, on() {}, quit(
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
   ? _electron
   : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
-const { runNormalize } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}) };
+const { runNormalize, runDiscoverVocab } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}), runDiscoverVocab: async () => ({}) };
+const { snapshotWindow } = _underElectron ? require("./recorder-snapshot.js") : { snapshotWindow: async () => ({ controls: [] }) };
 
 let mainWindow = null;
 
@@ -666,6 +667,35 @@ ipcMain.handle("viewer:listAppVocabs", () => {
 });
 
 ipcMain.handle("viewer:openVocabFile", (_e, p) => shell.openPath(p));
+
+/* ADR-0025: in-app vocabulary discovery -- "Discover from window". Spawn
+   the recorder for a two-pass UIA snapshot of the target window, then run
+   the volatility-diff picker + bootstrap_from_snapshot to return a
+   stable-signature App-Vocabulary skeleton for the editor. Entirely
+   on-device; nothing is written to disk and nothing leaves the box. */
+ipcMain.handle("viewer:discoverFromWindow", async (_e, { target, passes, vocabId, vocabName } = {}) => {
+  try {
+    const snap = await snapshotWindow({ target: target || "foreground", passes: passes || 2 });
+    const controls = (snap && snap.controls) || [];
+    if (!controls.length) {
+      return { error: "No identifiable controls found. Put the app's window in the foreground before discovering (for a web app, let the page finish loading)." };
+    }
+    const skeleton = await runDiscoverVocab({
+      controls,
+      window_title: snap.window_title,
+      vocab_id: vocabId,
+      vocab_name: vocabName,
+    });
+    return {
+      ok: true,
+      skeleton,
+      window_title: snap.window_title,
+      control_count: controls.length,
+    };
+  } catch (e) {
+    return { error: (e && e.message) || String(e) };
+  }
+});
 
 ipcMain.handle("viewer:readVocab", (_e, p) => {
   /* Parse a vocab YAML into a structured object for the editor.

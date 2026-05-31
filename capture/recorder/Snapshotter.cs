@@ -52,6 +52,10 @@ public static class SnapshotWalker {
     // Independent guard on total VISITED nodes so a huge decoration-only
     // subtree (which emits nothing) can't make the walk run unbounded.
     private const int MaxVisitedMultiplier = 20;
+    // Hard depth cap. A real app window is a few dozen levels deep; beyond
+    // this is a pathological (or cyclic) tree -- stop descending. The walk is
+    // iterative (an explicit stack), so this also can't blow the call stack.
+    private const int MaxDepth = 200;
 
     /// <summary>
     /// Build the emitted control record for one element. Pure: reuses the
@@ -103,19 +107,29 @@ public static class SnapshotWalker {
         var maxVisited = maxControls * MaxVisitedMultiplier;
         var visited = 0;
 
-        void Visit(ISnapshotElement el, int depth) {
-            if (outList.Count >= maxControls || visited >= maxVisited) return;
+        // Iterative pre-order DFS (an explicit stack, never recursion) so a
+        // deep or cyclic UIA tree can't overflow the call stack. Children are
+        // pushed in reverse so they pop back into document order.
+        var stack = new Stack<(ISnapshotElement el, int depth)>();
+        stack.Push((root, 0));
+        while (stack.Count > 0) {
+            if (outList.Count >= maxControls || visited >= maxVisited) break;
+            var (el, depth) = stack.Pop();
             visited++;
             var rec = BuildControl(
                 el.ControlType, el.AutomationId, el.Name, el.ClassName,
                 el.FrameworkId, el.Role, SafeBounds(el), depth, pass);
             if (rec != null) outList.Add(rec);
-            foreach (var child in SafeChildren(el)) {
-                if (outList.Count >= maxControls || visited >= maxVisited) break;
-                Visit(child, depth + 1);
+            if (depth >= MaxDepth) continue;
+            var kids = new List<ISnapshotElement>();
+            foreach (var c in SafeChildren(el)) {
+                kids.Add(c);
+                if (kids.Count >= maxVisited) break;   // bound a pathological fan-out
+            }
+            for (var i = kids.Count - 1; i >= 0; i--) {
+                stack.Push((kids[i], depth + 1));
             }
         }
-        Visit(root, 0);
         return outList;
     }
 

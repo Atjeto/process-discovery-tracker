@@ -42,6 +42,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     Outlook `4117`, Jira `summary-field`) and **DEMOTES** Salesforce `input-378`
     / Zendesk auto-ids to the accessible label. Pure-Python; the session-golden
     is unchanged (discovery is purely additive).
+  - **P3 — App Library "Discover from window".** A new button on the App Library
+    tab: point at a prepared app window and the viewer spawns the recorder for a
+    two-pass snapshot (`recorder-snapshot.js`), runs the picker +
+    `bootstrap_from_snapshot` via the bundled Python
+    (`normalization/discover_vocab.py`), and loads a stable-signature skeleton
+    into the editor. Each discovered interaction shows **why** its signature was
+    picked — the `identity_source` rung + ADR-0023 confidence, and the rejected
+    volatile id(s) (the legend). **Re-discovery merges** into the selected vocab:
+    new controls are added, analyst-named ones preserved (never overwritten),
+    screens merged additively, a tuned scope left intact. Entirely on-device —
+    the recorder snapshots locally, nothing is written until Save, and
+    discovery-provenance fields are stripped from the persisted YAML. End-to-end
+    verified against a live window (snapshot → discover → skeleton).
 
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades

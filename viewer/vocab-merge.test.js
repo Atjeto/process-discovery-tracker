@@ -10,7 +10,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { mergeVocabEntry } = require("./views/vocab-view.js");
+const {
+  mergeVocabEntry, mergeDiscoveredSkeleton, mergeScreens, stripDiscoveryMeta,
+} = require("./views/vocab-view.js");
 
 test("preserves seen_count and unmodeled fields from the prior entry", () => {
   const prior = {
@@ -69,4 +71,83 @@ test("normalizes missing signature / name to empty", () => {
   assert.deepEqual(out.signature, {});
   assert.equal(out.name, "");
   assert.equal(out.seen_count, 2);
+});
+
+/* ADR-0025: merge-aware re-discovery (the inverse of "Discover from window")
+   diffs a discovered skeleton INTO an existing vocab without overwriting names. */
+
+test("mergeDiscoveredSkeleton preserves an analyst-named entry on a signature collision", () => {
+  const existing = {
+    id: "excel", name: "Microsoft Excel",
+    scope: { process_name: "excel.exe", window_title_regex: ".* - Excel$" },
+    screens: [{ id: "workbook", name: "Workbook" }],
+    interactions: [
+      { signature: { automation_id: "FileSave" }, name: "Save the workbook" },
+    ],
+  };
+  const skeleton = {
+    scope: { window_title_regex: ".*Book1.*" },
+    screens: [{ id: "book1-excel", name: "Book1 - Excel" }],
+    interactions: [
+      // Same control (aid wins in the key) -> existing name must survive.
+      { signature: { control_type: "Button", automation_id: "FileSave" }, name: "Save",
+        identity_source: "automation_id", confidence: 0.95 },
+      // A genuinely new control -> added.
+      { signature: { control_type: "Button", automation_id: "Filter" }, name: "Apply / remove filter",
+        identity_source: "automation_id", confidence: 0.95 },
+    ],
+  };
+  const { vocab, added, skipped } = mergeDiscoveredSkeleton(existing, skeleton);
+  assert.equal(added, 1);
+  assert.equal(skipped, 1);
+  const save = vocab.interactions.find((e) => e.signature.automation_id === "FileSave");
+  assert.equal(save.name, "Save the workbook", "analyst name must NOT be overwritten");
+  assert.ok(vocab.interactions.some((e) => e.signature.automation_id === "Filter"));
+  // A populated vocab keeps its tuned scope; screens merge additively.
+  assert.deepEqual(vocab.scope, existing.scope, "tuned scope is not clobbered");
+  assert.equal(vocab.screens.length, 2);
+});
+
+test("mergeDiscoveredSkeleton adopts the discovered scope into an empty vocab", () => {
+  const empty = { id: "sf", name: "Salesforce", scope: {}, interactions: [] };
+  const skeleton = {
+    scope: { window_title_regex: ".*Salesforce.*" },
+    screens: [{ id: "acme-salesforce", name: "Acme - Salesforce" }],
+    interactions: [
+      { signature: { control_type: "Edit", name: "Account Name" }, name: "Account Name",
+        identity_source: "name", confidence: 0.7, volatile_aids: ["input-378", "input-411"] },
+    ],
+  };
+  const { vocab, added } = mergeDiscoveredSkeleton(empty, skeleton);
+  assert.equal(added, 1);
+  assert.equal(vocab.scope.window_title_regex, ".*Salesforce.*");
+  assert.equal(vocab.screens.length, 1);
+});
+
+test("mergeScreens is additive and de-duplicates by id", () => {
+  const out = mergeScreens(
+    [{ id: "a", name: "A" }],
+    [{ id: "a", name: "A again" }, { id: "b", name: "B" }],
+  );
+  assert.deepEqual(out.map((s) => s.id), ["a", "b"]);
+  assert.equal(out[0].name, "A", "existing screen kept on id collision");
+});
+
+test("stripDiscoveryMeta drops provenance fields but keeps signature/name/seen_count", () => {
+  const v = {
+    id: "x", interactions: [
+      { signature: { automation_id: "a" }, name: "N", seen_count: 3,
+        identity_source: "automation_id", confidence: 0.95, volatile_aids: ["q"], _hint: "h" },
+    ],
+  };
+  const clean = stripDiscoveryMeta(v);
+  const e = clean.interactions[0];
+  assert.deepEqual(e.signature, { automation_id: "a" });
+  assert.equal(e.name, "N");
+  assert.equal(e.seen_count, 3);
+  for (const k of ["identity_source", "confidence", "volatile_aids", "_hint"]) {
+    assert.equal(k in e, false, `${k} should be stripped`);
+  }
+  // The original is untouched (clone, not in-place).
+  assert.equal(v.interactions[0].confidence, 0.95);
 });

@@ -169,6 +169,13 @@ function openVocabFile(filePath) {
   return ipcRenderer.invoke("viewer:openVocabFile", filePath);
 }
 
+/** ADR-0025: discover a stable-signature vocab skeleton from a live window.
+ *  @param {object} payload { target?, passes?, vocabId?, vocabName? }
+ *  @returns {Promise<any>} { ok, skeleton, window_title, control_count } | { error } */
+function discoverFromWindow(payload) {
+  return ipcRenderer.invoke("viewer:discoverFromWindow", payload);
+}
+
 /* ---- External video ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -223,6 +230,7 @@ module.exports = {
   exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal,
   openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
+  discoverFromWindow,
   attachExternalVideo, saveExternalVideoSync,
   saveProjectAs, saveProject, openProject, loadProjectFile,
   onNormalizeLog, onOpenInitialSession,

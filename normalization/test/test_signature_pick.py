@@ -251,6 +251,23 @@ def test_bootstrap_from_snapshot_builds_named_skeleton():
     assert all("screen" in i and "confidence" in i for i in v["interactions"])
 
 
+def test_discover_vocab_entry_wraps_bootstrap():
+    """The discover_vocab CLI entry point produces the same skeleton doc."""
+    import discover_vocab
+    doc = discover_vocab.discover({
+        "controls": [
+            ctrl(1, control_type="Button", automation_id="FileSave", name="Save"),
+            ctrl(2, control_type="Button", automation_id="FileSave", name="Save"),
+        ],
+        "window_title": "Book1 - Excel",
+        "vocab_id": "excel", "vocab_name": "Microsoft Excel",
+    })
+    v = doc["app_vocabulary"]
+    assert v["id"] == "excel"
+    assert v["interactions"][0]["signature"] == {"control_type": "Button",
+                                                 "automation_id": "FileSave"}
+
+
 def test_bootstrap_from_snapshot_dedups_repeated_controls():
     """One control across two passes joins to a single entry; two DISTINCT
     controls that pick the same signature collapse with seen_count incremented."""

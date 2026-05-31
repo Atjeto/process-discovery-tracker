@@ -164,4 +164,56 @@ function runNormalize(opts) {
   });
 }
 
-module.exports = { runNormalize, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy };
+/* ADR-0025: run the discover-from-window bootstrap. Feeds a window
+   snapshot (controls + title) to normalization/discover_vocab.py via
+   stdin and resolves with the parsed App-Vocabulary skeleton. Pure,
+   pandas-free Python, so it runs on the bundled embeddable. */
+function resolveDiscoverScript() {
+  const candidates = [
+    path.resolve(__dirname, "..", "normalization", "discover_vocab.py"),
+    path.join(process.resourcesPath || "", "normalization", "discover_vocab.py"),
+    path.join(__dirname, "normalization", "discover_vocab.py"),
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  throw new Error("discover_vocab.py not found in any expected location");
+}
+
+function runDiscoverVocab(payload) {
+  return new Promise((resolve, reject) => {
+    const python = resolvePython();
+    const script = resolveDiscoverScript();
+    const proc = spawn(python, [script], {
+      cwd: path.dirname(script),
+      env: process.env,
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (b) => { stdout += b.toString(); });
+    proc.stderr.on("data", (b) => { stderr += b.toString(); });
+    proc.on("error", (e) => reject(new Error(`failed to spawn python: ${e.message}`)));
+    proc.on("close", (code) => {
+      if (code !== 0) { reject(new Error(`discover_vocab.py exited ${code}: ${stderr}`)); return; }
+      // discover_vocab.py prints the skeleton as one JSON object on the final
+      // line. Parse the last non-empty line (NOT lastIndexOf("{"), which would
+      // grab a nested brace and truncate the doc).
+      const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const last = lines[lines.length - 1];
+      if (!last) { reject(new Error("discover_vocab.py produced no JSON")); return; }
+      try {
+        const doc = JSON.parse(last);
+        if (doc && doc.error) { reject(new Error(doc.error)); return; }
+        resolve(doc);
+      } catch (e) { reject(new Error("could not parse discover_vocab.py output: " + e.message)); }
+    });
+    try { proc.stdin.write(JSON.stringify(payload || {})); proc.stdin.end(); }
+    catch (e) { reject(new Error("failed to send snapshot to python: " + e.message)); }
+  });
+}
+
+module.exports = {
+  runNormalize, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
+  runDiscoverVocab, resolveDiscoverScript,
+};
