@@ -19,6 +19,12 @@ Prebuilt binaries live on **GitHub Releases**, not in git. The repo only carries
 
 Local `capture/dist/` and `viewer/dist/` folders are gitignored. They're produced by the build script for local testing and as the inputs to `dist/release/*.zip`.
 
+### Code signing — unsigned by design
+
+Releases ship **unsigned** ([ADR-0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md)). Signing under the *company* code-signing certificate is declined — PDT is the owner's IP. The Windows "unknown publisher" / SmartScreen prompt on first launch is accepted for an internal unzip-and-run tool (see [DEPLOY.md](DEPLOY.md#smartscreen--unsigned-binaries)).
+
+`build-distribution.ps1` keeps a `-CertThumbprint` parameter (signs every `.exe` via `signtool` when set) ready for a *future owner-held* certificate, but **do not pass it** for current releases — omitting it (the default) ships unsigned, build unchanged.
+
 ## The C# recorder sidecar
 
 The capture app spawns a self-contained .NET 8 single-file executable (`recorder.exe`, ~160 MB) that owns the UIA event subscription. It travels with the capture app inside `resources/publish/`.
@@ -96,7 +102,8 @@ When bumping the version for a release:
    HEREDOC body for multi-line messages).
 6. Run `scripts\build-distribution.ps1 -SkipPython` (omit `-SkipPython` only if
    `normalization/requirements.txt` changed — the bundled Python rebuild costs
-   3-5 minutes).
+   3-5 minutes). **Do not pass `-CertThumbprint`** — releases ship unsigned
+   ([ADR-0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md)).
 7. Push the branch.
 8. Run `scripts\publish-release.ps1 -Version X.Y.Z -NotesFromChangelog` — this
    creates the `vX.Y.Z` tag on `gh`'s default-branch HEAD and uploads the two

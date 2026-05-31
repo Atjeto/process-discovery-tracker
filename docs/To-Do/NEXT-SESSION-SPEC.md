@@ -1,13 +1,40 @@
 # Next-Session Spec — plan of record
 
-**Updated:** 2026-05-29 · **Branch:** `master` · **Status:** plan of record (operational).
+**Updated:** 2026-05-31 · **Branch:** `master` · **Status:** plan of record (operational).
 **Source-of-truth chain:** [PDT-MASTER-ASSESSMENT.md](PDT-MASTER-ASSESSMENT.md) (strategy) →
 [PDT-ROADMAP-CODEBASE-FIT.md](PDT-ROADMAP-CODEBASE-FIT.md) (engineering fit) → **this doc**
 (what we're doing next). When this doc and the Fit Analysis disagree on sequencing, the Fit
-Analysis wins; this doc is its operational projection.
+Analysis wins; this doc is its operational projection. **Scope is bounded by
+[ADR-0026](../adr/0026-distribution-unsigned-and-services-boutique-scope.md)** — read the
+"Out of scope" block below before treating any roadmap item as remaining work.
 
 Self-contained hand-off — read top to bottom; assumes no memory of the prior
 session. Earlier specs live in git history and [Archive/](Archive/).
+
+---
+
+## Out of scope — services-boutique, not enterprise-product ([ADR-0026](../adr/0026-distribution-unsigned-and-services-boutique-scope.md))
+
+PDT is the engine behind an **owner-run process-discovery service**, not a self-serve
+enterprise product. The items below are **out-of-scope / deferred — NOT backlog and NOT
+remaining work.** An autonomous pass must **not** pick them up; reversal is an explicit
+owner call, item-by-item.
+
+- **BYOC / web viewer / multi-user** — the two-machine, air-gapped, single-analyst model is the product.
+- **LLM-augmented vocab labeling** — there is no LLM in the product; vocab authoring is point-and-learn ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)) + hand curation.
+- **§11f cross-recording trace-merge** — stitching cases across separate recordings.
+- **The "living-projection" deliverable** — never concretely defined; dropped.
+- **MDM / Intune packaging** — unzip-and-run is the install story (ADR-0014).
+- **Third-party penetration test; SIG-Lite / CAIQ security questionnaires; AV/EDR fleet validation.**
+- **Recorder-in-CI** — CI stays recorder-free / Electron-free; the recorder is validated by `Recorder.Tests` + owner-run real captures.
+
+The calibration/validation those items assumed (real Salesforce / ServiceNow / SAP / Office
+captures, threshold tuning, coverage hardening on hard frameworks) is covered by **real
+engagements** — owner-run, ~10 apps prepped — not by enterprise infrastructure to simulate them.
+
+**Distribution:** releases ship **unsigned by design** (ADR-0026 decision 1). The Wave-0
+"self-sign binaries with the internal cert" item (§2.6) is **retired** — signing under the
+company cert is declined; the `-CertThumbprint` scaffolding stays for a future owner-held cert.
 
 ---
 
@@ -452,9 +479,10 @@ parallel; the only hard ordering is **F2 before F4** (the golden must exist to v
 5. **6b — Node-side egress guard.** `no-restricted-imports` on `http`/`https`/`net` in the
    Electron main processes + a single allowlist seam (today: localhost OBS only). Half a day;
    makes the air-gap moat provable on the Node side too (the renderer is already CSP-locked).
-6. **Self-sign binaries.** Wire the internal self-sign cert into `build-distribution.ps1`
-   (`-CertThumbprint` + `signtool sign` after each `.exe`). Hours, not days. **Distinct from EV
-   code-signing** for unknown customers (procurement-blocked, later).
+6. **Self-sign binaries. — ✅ SCAFFOLDED, then RETIRED by [ADR-0026](../adr/0026-distribution-unsigned-and-services-boutique-scope.md).**
+   The `-CertThumbprint` + `signtool sign` scaffolding landed in `build-distribution.ps1`, but
+   signing under the *company* cert is **declined** (PDT is owner IP). Releases ship **unsigned by
+   design**; the scaffolding stays ready for a future owner-held cert. Not remaining work.
 7. **`Recorder.Tests.csproj`.** xUnit on .NET 8; 3 seed tests (`BuildEvent` field set,
    keystroke-coalescing boundary, marker/system-event flush bypass). **Hard prerequisite for
    §11e**; the bus-factor mitigation for the zero-test crown jewel. (dotnet 10 SDK confirmed on
@@ -541,7 +569,7 @@ real captures — owner), §11f cross-recording trace-merge (depends on §11b),
   ADR-0017.
 - **Released-`.exe` smoke** on the locked-down work laptop: the packaged app's
   recognition-JSON load + the recorder's single-monitor screenshot occlusion.
-- **PDD "living projection"** — still undefined; needs a concrete owner definition.
+- **PDD "living projection"** — **out of scope ([ADR-0026](../adr/0026-distribution-unsigned-and-services-boutique-scope.md))**; never concretely defined, dropped (not "needs a definition").
 
 ---
 

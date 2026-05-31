@@ -1,6 +1,6 @@
 # ADR-0025: In-app vocabulary discovery — "point-and-learn" window snapshot
 
-**Status:** Proposed — spec'd 2026-05-30, not yet built. *(ADR number 0025 confirmed in the cross-chip sanity sweep; 0019 was later used for [ADR-0019 Reference Maps](0019-reference-maps.md), 0020–0022 remain unused — see NEXT-SESSION-SPEC §0.10.)*
+**Status:** Accepted — spec'd 2026-05-30, built 2026-05-31 (P1 recorder `snapshot` command + `Recorder.Tests`; P2 `normalization/signature_pick.py` volatility-diff picker + `app_vocab.bootstrap_from_snapshot`; P3 App Library "Discover from window" → `viewer/recorder-snapshot.js` + `normalization/discover_vocab.py`). End-to-end verified against a live window (snapshot → discover → skeleton). *(ADR number 0025 confirmed in the cross-chip sanity sweep; 0019 was later used for [ADR-0019 Reference Maps](0019-reference-maps.md), 0020–0022 remain unused — see NEXT-SESSION-SPEC §0.10.)*
 **Date:** 2026-05-30
 **Deciders:** Project owner, analyst (process-discovery lead)
 **Related:** [ADR-0002](0002-app-vocabularies.md) (the App Vocabulary layer this populates), [ADR-0001](0001-click-recorder-sidecar-language.md) (the C# UIA recorder this extends), [ADR-0023](0023-recorder-capture-confidence.md) (the per-element `framework`/`identity_source`/`confidence` fields the snapshot reuses), [REAL-VALUE-TESTING.md](../REAL-VALUE-TESTING.md) (the manual probing this productizes), Master Assessment §11d ("new web/UIA walkers"). **Build spec:** [SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md](../To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md).

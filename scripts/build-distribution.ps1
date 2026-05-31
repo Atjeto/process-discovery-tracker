@@ -57,12 +57,13 @@ param(
   [switch]$SkipRelease,
   [string]$Version,
   # SHA-1 thumbprint of a code-signing cert in the build user's store. When set,
-  # every .exe in the assembled dist/ is Authenticode-signed (the internal
-  # self-sign cert is sufficient for the originating-org rollout: it clears the
-  # SmartScreen/"unknown publisher" prompt on fresh laptops once IT has pushed
-  # the internal root into the Trusted Root store). Absent (default) => unsigned,
-  # build unchanged. Distinct from EV signing for unknown external customers,
-  # which is a separate procurement step. See NEXT-SESSION-SPEC §2.
+  # every .exe in the assembled dist/ is Authenticode-signed. Absent (default,
+  # and the deliberate norm) => unsigned, build unchanged.
+  # NOTE (ADR-0026): releases ship UNSIGNED by design. Signing under the
+  # *company* certificate is declined — PDT is the owner's IP, not to be signed
+  # under the employer's license; the SmartScreen/"unknown publisher" prompt is
+  # accepted. This scaffolding stays ready for a *future owner-held* cert, but is
+  # NOT passed for current releases. See docs/adr/0026-*.md.
   [string]$CertThumbprint,
   [string]$TimestampUrl = "http://timestamp.digicert.com"
 )
@@ -390,9 +391,10 @@ Both apps are portable (no installer). To deploy:
 
 ## SmartScreen note
 
-These binaries are not code-signed. First launch on a fresh machine may
-show "Windows protected your PC". Click **More info > Run anyway**.
-Production deployment should add EV code signing.
+These binaries are **unsigned by design** (ADR-0026 — PDT is the owner's IP and
+is not signed under the employer's certificate). First launch on a fresh machine
+may show "Windows protected your PC"; click **More info > Run anyway**. This is
+expected for an internal, unzip-and-run tool.
 
 ## See also
 

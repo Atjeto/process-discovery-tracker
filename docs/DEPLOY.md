@@ -2,6 +2,10 @@
 
 How to get Process Discovery Tracker onto a fresh worker or analyst machine, and how upgrades and rollbacks work in practice. For build mechanics (how zips are produced), see [BUILD-AND-DIST.md](BUILD-AND-DIST.md).
 
+## SmartScreen / unsigned binaries
+
+The release `.exe`s are **unsigned by design** ([ADR-0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md) — PDT is the owner's IP and is not signed under the employer's certificate). On first launch from a fresh machine, Windows SmartScreen may show **"Windows protected your PC"**: click **More info → Run anyway**. This is expected for an internal, unzip-and-run tool; there is no installer to "trust" and nothing is fetched at runtime. The prompt does not reappear once Windows has seen the file run.
+
 ## Capture (worker machine)
 
 Prereqs: OBS Studio 28+ with WebSocket enabled (the team standard). No admin rights, no installer, no PATH changes.

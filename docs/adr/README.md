@@ -42,7 +42,8 @@ distinct branch — see [CONTRIBUTING](../../CONTRIBUTING.md)).
 | 0022 | — | **Gap (never reuse)** |
 | 0023 | Recorder capture-confidence model + OCR last resort (§11e) | Accepted |
 | 0024 | Step grain as a view-time roll-up (§11b, reframed) | Accepted |
-| 0025 | In-app vocabulary discovery — "point-and-learn" | Proposed |
+| 0025 | In-app vocabulary discovery — "point-and-learn" | Accepted |
+| 0026 | Ship unsigned by design; services-boutique scope | Accepted |
 
 ## Why 0020–0022 are dead gaps
 
@@ -51,4 +52,4 @@ pluggable storage backend, calibration config), but that work shipped as direct 
 + the Fit Analysis, never as standalone ADRs. 0019 was later (re)used for Reference Maps;
 the numbering drifted **once** because "reserved" lived only in prose. 0020–0022 are now
 permanent dead gaps under the `max+1` rule, and this registry + its CI guard exist so the
-drift can't recur. **The next ADR is 0026.**
+drift can't recur. **The next ADR is 0027.**
