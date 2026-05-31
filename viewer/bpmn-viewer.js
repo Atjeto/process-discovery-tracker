@@ -151,8 +151,15 @@
       // baseline (clear undo) so neither the import nor the auto-layout counts as
       // an edit -- only the analyst's own drags do.
       try {
-        collapseTerminalJoins(viewer);
-        applyDagreLayout(viewer);
+        // ADR-0019 editor mode: a forked reference map already carries the
+        // analyst's baked layout (the fork snapshots the laid-out live view),
+        // so re-running dagre would fight their hand-positioning. Skip it and
+        // honour the saved coordinates. The live (read-only) map still
+        // re-lays-out because the mined file's own coordinates are poor.
+        if (!opts.editable) {
+          collapseTerminalJoins(viewer);
+          applyDagreLayout(viewer);
+        }
         viewer.get("commandStack").clear();
       } catch (e) {
         console.warn("[bpmn] dagre layout failed; using the file's layout:", e && e.message);
@@ -236,5 +243,17 @@
     } catch (_) { return null; }
   }
 
-  module.exports = { render, fit, zoomIn, zoomOut, getZoom, exportSvg };
+  /* ADR-0019: serialise the CURRENT diagram (post-layout, including any drags)
+     as BPMN 2.0 XML. The fork action snapshots this so a reference copy opens
+     identical to the live view the analyst was looking at ("what you see is
+     what you fork"). */
+  async function exportXml() {
+    if (!viewer) return null;
+    try {
+      const { xml } = await viewer.saveXML({ format: true });
+      return xml || null;
+    } catch (_) { return null; }
+  }
+
+  module.exports = { render, fit, zoomIn, zoomOut, getZoom, exportSvg, exportXml };
 })();

@@ -201,6 +201,46 @@ def test_pdd_embeds_process_map_when_provided():
         assert not any("not yet embedded" in p.text for p in doc.paragraphs)
 
 
+def test_pdd_embeds_tobe_map_when_selected():
+    """ADR-0019: a selected To-Be reference map is embedded under a labelled
+    'Proposed to-be process' section, captioned as analyst-authored (not mined)."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, _stats, analysis = _sample()
+    with tempfile.TemporaryDirectory() as tmp:
+        png = Path(tmp) / "tobe.png"
+        png.write_bytes(_make_png())
+        out = Path(tmp) / "pdd.docx"
+        pdd_export.write_pdd(
+            out, session_folder=Path(tmp), canonical=None,
+            annotations=annotations, stats={"activity_stats": []},
+            manifest=manifest, analysis=analysis, tobe_map_image=str(png),
+        )
+        from docx import Document
+        doc = Document(str(out))
+        texts = [p.text for p in doc.paragraphs]
+        assert any("4.5 Proposed to-be process" in t for t in texts)
+        assert any("NOT mined" in t for t in texts)          # provenance caption
+        assert len(doc.inline_shapes) >= 1
+
+
+def test_pdd_omits_tobe_section_when_not_selected():
+    """No To-Be map selected -> the 4.5 section is omitted entirely (no empty
+    placeholder), so the document never implies a future-state that isn't there."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis = _sample()
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "pdd.docx"
+        pdd_export.write_pdd(
+            out, session_folder=Path(tmp), canonical=None,
+            annotations=annotations, stats=stats, manifest=manifest, analysis=analysis,
+        )
+        from docx import Document
+        doc = Document(str(out))
+        assert not any("Proposed to-be process" in p.text for p in doc.paragraphs)
+
+
 def test_unphased_manually_authored_step_appears_in_output():
     """H-2: once phases exist, steps in no phase -- including analyst
     manually-authored steps -- must still be rendered, under an

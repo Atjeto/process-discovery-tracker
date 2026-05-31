@@ -523,6 +523,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       canonical: opts.canonical || null,
       pddOut: opts.pddOut || null,
       pddMapImage: opts.pddMapImage || null,
+      pddTobeImage: opts.pddTobeImage || null,
       stepBpmnOut: opts.stepBpmnOut || null,
       phaseBpmnOut: opts.phaseBpmnOut || null,
       stepCsvOut: opts.stepCsvOut || null,

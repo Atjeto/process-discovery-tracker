@@ -42,6 +42,7 @@ const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, re
 const { renderAnalysisLevel } = require("./views/analysis-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
+const RefmapUI = require("./refmap-ui.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
 
@@ -402,6 +403,7 @@ function renderMapLevel() {
   // when nothing's on screen.
   if (State.getLevel() !== "map") return;
   _ensureSessionMapCtrl().render();
+  try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
 }
 
 const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };
@@ -714,7 +716,7 @@ async function exportArtifact(kind, callOpts) {
   const ext = kind === "pdd" ? "docx" : "csv";
   const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + "." + ext);
   const opts = { sessionFolder: target.sessionFolder, mine: false };
-  let mapImgPath = null;
+  let mapImgPath = null, tobeImgPath = null;
   if (kind === "pdd") {
     opts.pddOut = tmpPath;
     // Embed the currently-rendered Flow (DFG) as the PDD's As-Is process map.
@@ -736,10 +738,36 @@ async function exportArtifact(kind, callOpts) {
       console.error("[renderer] PDD map embed failed; exporting without process map:", e);
       mapImgPath = null;
     }
+    // ADR-0019: an analyst-selected reference map can override the mined As-Is
+    // image and/or supply a proposed To-Be map. Rendered off-screen to PNG.
+    try {
+      const refImgs = await RefmapUI.renderPddMaps();
+      const writePng = (dataUrl, tag) => {
+        const comma = dataUrl ? dataUrl.indexOf("base64,") : -1;
+        if (comma === -1) return null;
+        const p = path.join(os.tmpdir(), "pdt-pdd" + tag + "-" + Date.now() + ".png");
+        fs.writeFileSync(p, Buffer.from(dataUrl.slice(comma + 7), "base64"));
+        return p;
+      };
+      if (refImgs && refImgs.asis) {
+        const p = writePng(refImgs.asis, "asis");
+        if (p) {
+          if (mapImgPath && mapImgPath !== p) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
+          mapImgPath = p; opts.pddMapImage = p;   // analyst As-Is wins over the mined DFG
+        }
+      }
+      if (refImgs && refImgs.tobe) {
+        const p = writePng(refImgs.tobe, "tobe");
+        if (p) { tobeImgPath = p; opts.pddTobeImage = p; }
+      }
+    } catch (e) {
+      console.error("[renderer] reference-map PDD embed failed; continuing:", e);
+    }
   }
   if (kind === "step-csv") opts.stepCsvOut = tmpPath;
   const r = await Ipc.runNormalizeExtended(opts);
   if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
+  if (tobeImgPath) { try { fs.unlinkSync(tobeImgPath); } catch (_) {} }
   if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
   const suggested = "process." + kind + "." + ext;
   const out = await Ipc.exportFile({ sourcePath: tmpPath, suggestedName: suggested });
@@ -770,6 +798,19 @@ initAggregateView({
 document.addEventListener("pdt:mapresized", () => {
   if (PdtBpmn && PdtBpmn.fit) PdtBpmn.fit();
   if (PdtDfg && PdtDfg.fit) PdtDfg.fit();
+});
+
+/* ADR-0019: Reference Maps surface — fork / gallery / editor + the PDD image
+   bridge. Wired once at boot; reads the live session map via the controller. */
+RefmapUI.initRefmapUI({
+  getMapState: () => _ensureSessionMapCtrl().getState(),
+  renderLiveMap: () => _ensureSessionMapCtrl().render(),
+  setMapCell: (level) => _ensureSessionMapCtrl().setState({ notation: "bpmn", level }),
+  sourceBpmnPath: (state) => {
+    const f = _sessionBpmnFile(state && state.level);
+    const sf = State.getSession() && State.getSession().sessionFolder;
+    return (f && sf) ? path.join(sf, f) : null;
+  },
 });
 
 /* ============ Exports ============================================= */

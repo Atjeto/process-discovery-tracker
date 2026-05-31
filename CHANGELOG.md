@@ -8,6 +8,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Reference Maps — decoupled, fully-editable BPMN copies of a mined map ([ADR-0019](docs/adr/0019-reference-maps.md)).**
+  From the Process diagram, **⑂ Fork map** snapshots the current cell into a
+  standalone `.bpmn` the analyst edits with the full bpmn-js palette — a **one-way
+  leaf** the pipeline never re-mines, merges, or regenerates. Copies live in a
+  per-session **Reference maps** gallery (`derived_maps/<map_id>.bpmn` + an
+  `annotations.json reference_maps[]` row), are typed **As-Is / To-Be / Reference**,
+  and carry visible provenance (forked-from cell + date, "hand-edited, not updated
+  by analysis") with a **drift** chip + **Re-fork** when the source map later changes.
+  A selected **To-Be** map embeds in the PDD's new **§4.5 Proposed to-be process**
+  (captioned as analyst-authored, not mined); a selected **As-Is** copy can override
+  the mined As-Is image. "What you see is what you fork" (the laid-out live view is
+  snapshotted, not the raw mined file); the editor skips auto-layout to honour the
+  hand-positioning. Every verb (fork / rename / kind / PDD-role / delete) is
+  Ctrl+Z-able, and the copies survive re-analyze untouched. Reuses the vendored
+  bpmn-js modeler (palette un-hidden off `.map-host`), the existing `saveXML`-to-path
+  persistence, and the existing PDD image bridge (`exportSvg` → off-screen PNG raster
+  → `--pdd-tobe-image`). See [SCHEMA](shared/SCHEMA.md) §`reference_maps`.
 - **Step grain is a view-time roll-up — one grain slider across Flow / Steps / Map ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md)).**
   Segmentation stays at the finest grain; how far steps consolidate is now a
   reversible **view** control, not a destructive normalize-time flip. A node/step

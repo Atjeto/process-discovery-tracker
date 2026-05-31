@@ -93,6 +93,7 @@ def normalize(
     canonical_path: str | None = None,
     pdd_out: str | None = None,
     pdd_map_image: str | None = None,
+    pdd_tobe_image: str | None = None,
     step_bpmn_out: str | None = None,
     phase_bpmn_out: str | None = None,
     step_csv_out: str | None = None,
@@ -170,7 +171,7 @@ def normalize(
     _run_mining_exports(
         session_folder, log, existing_anno, mine, canonical, summary,
         manifest, analysis_result, pdd_out, pdd_map_image, step_bpmn_out,
-        phase_bpmn_out, step_csv_out)
+        phase_bpmn_out, step_csv_out, pdd_tobe_image)
 
     return {
         "session_folder": str(session_folder),
@@ -201,6 +202,9 @@ def main():
                         help="Write PDD .docx to this path.")
     parser.add_argument("--pdd-map-image", type=str, default=None,
                         help="PNG of the process map to embed in the PDD's As-Is map section.")
+    parser.add_argument("--pdd-tobe-image", type=str, default=None,
+                        help="PNG of an analyst-authored To-Be reference map to embed in the "
+                             "PDD's proposed-to-be section (ADR-0019). Hand-drawn, not mined.")
     parser.add_argument("--step-bpmn-out", type=str, default=None,
                         help="Write step-level BPMN to this path.")
     parser.add_argument("--phase-bpmn-out", type=str, default=None,
@@ -242,6 +246,7 @@ def main():
         canonical_path=args.canonical,
         pdd_out=getattr(args, "pdd_out"),
         pdd_map_image=getattr(args, "pdd_map_image", None),
+        pdd_tobe_image=getattr(args, "pdd_tobe_image", None),
         step_bpmn_out=getattr(args, "step_bpmn_out"),
         phase_bpmn_out=getattr(args, "phase_bpmn_out"),
         step_csv_out=getattr(args, "step_csv_out"),

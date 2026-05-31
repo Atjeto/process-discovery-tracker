@@ -1,0 +1,122 @@
+"use strict";
+
+/* ADR-0019: Reference Maps store. Pure manifest logic + fs-backed fork/dup/
+   destroy, exercised against a temp session folder. No Electron needed. */
+
+const test = require("node:test");
+const assert = require("node:assert");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const RM = require("./reference-maps.js");
+
+function tmpSession() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "pdt-rm-"));
+}
+
+test("buildEntry fills defaults and clamps an unknown kind to reference", () => {
+  const e = RM.buildEntry({ file: "derived_maps/x.bpmn", kind: "bogus" });
+  assert.equal(e.kind, "reference");
+  assert.ok(e.map_id.startsWith("rm_"));
+  assert.equal(e.pdd_role, null);
+  assert.equal(RM.buildEntry({ file: "f", kind: "to_be" }).kind, "to_be");
+});
+
+test("upsert replaces by id (does not append); find / remove work", () => {
+  const anno = {};
+  RM.upsert(anno, RM.buildEntry({ map_id: "rm_1", file: "f" }));
+  assert.equal(RM.list(anno).length, 1);
+  RM.upsert(anno, RM.buildEntry({ map_id: "rm_1", file: "g", name: "renamed" }));
+  assert.equal(RM.list(anno).length, 1);
+  assert.equal(RM.find(anno, "rm_1").name, "renamed");
+  assert.equal(RM.remove(anno, "rm_1").map_id, "rm_1");
+  assert.equal(RM.list(anno).length, 0);
+});
+
+test("setPddRole is exclusive per slot; unknown role clears", () => {
+  const anno = {};
+  RM.upsert(anno, RM.buildEntry({ map_id: "a", file: "a" }));
+  RM.upsert(anno, RM.buildEntry({ map_id: "b", file: "b" }));
+  RM.setPddRole(anno, "a", "to_be");
+  RM.setPddRole(anno, "b", "to_be"); // steals the slot from a
+  assert.equal(RM.find(anno, "a").pdd_role, null);
+  assert.equal(RM.find(anno, "b").pdd_role, "to_be");
+  assert.equal(RM.pddPick(anno, "to_be").map_id, "b");
+  RM.setPddRole(anno, "b", "garbage");
+  assert.equal(RM.find(anno, "b").pdd_role, null);
+});
+
+test("isStale compares forked-from hash vs current source hash", () => {
+  const e = RM.buildEntry({ file: "f", forked_from_hash: "abc" });
+  assert.equal(RM.isStale(e, "abc"), false);
+  assert.equal(RM.isStale(e, "def"), true);
+  assert.equal(RM.isStale(e, null), false); // unknown current => not stale
+});
+
+test("hashContent is deterministic and 16 chars", () => {
+  const h1 = RM.hashContent(Buffer.from("<bpmn/>"));
+  assert.equal(h1, RM.hashContent(Buffer.from("<bpmn/>")));
+  assert.notEqual(h1, RM.hashContent(Buffer.from("<bpmn x/>")));
+  assert.equal(h1.length, 16);
+});
+
+test("fork writes blob under derived_maps/, stamps provenance, upserts row", () => {
+  const sf = tmpSession();
+  const anno = {};
+  const entry = RM.fork({
+    sessionFolder: sf, anno, xml: "<definitions/>",
+    source: { notation: "bpmn", level: "step" }, name: "My map", kind: "to_be",
+    nowIso: "2026-05-31T00:00:00.000Z",
+  });
+  assert.ok(fs.existsSync(path.join(sf, entry.file)));
+  assert.match(entry.file, /^derived_maps\//);
+  assert.equal(RM.readBpmn(sf, entry), "<definitions/>");
+  assert.equal(RM.list(anno).length, 1);
+  assert.equal(entry.kind, "to_be");
+  assert.equal(entry.forked_at, "2026-05-31T00:00:00.000Z");
+  assert.ok(entry.forked_from_hash); // hashed from xml when no source path
+});
+
+test("fork prefers the on-disk source hash; drift fires when the source changes", () => {
+  const sf = tmpSession();
+  const srcFile = path.join(sf, "process_map_step.bpmn");
+  fs.writeFileSync(srcFile, "<source/>");
+  const anno = {};
+  const e = RM.fork({
+    sessionFolder: sf, anno, xml: "<laidout/>", source: { level: "step" },
+    sourceBpmnPath: srcFile, nowIso: "t",
+  });
+  assert.equal(e.forked_from_hash, RM.fileHash(srcFile));
+  fs.writeFileSync(srcFile, "<source-changed/>");
+  assert.equal(RM.isStale(e, RM.fileHash(srcFile)), true);
+});
+
+test("duplicate copies the blob, carries kind, fresh id + file", () => {
+  const sf = tmpSession();
+  const anno = {};
+  const src = RM.fork({ sessionFolder: sf, anno, xml: "<a/>", source: { level: "step" }, kind: "as_is", nowIso: "t" });
+  const dup = RM.duplicate({ sessionFolder: sf, anno, srcEntry: src, nowIso: "t2" });
+  assert.notEqual(dup.map_id, src.map_id);
+  assert.notEqual(dup.file, src.file);
+  assert.equal(dup.kind, "as_is");
+  assert.equal(RM.readBpmn(sf, dup), "<a/>");
+  assert.equal(RM.list(anno).length, 2);
+});
+
+test("destroy removes both the blob and the manifest row", () => {
+  const sf = tmpSession();
+  const anno = {};
+  const e = RM.fork({ sessionFolder: sf, anno, xml: "<a/>", source: { level: "activity" }, nowIso: "t" });
+  const full = path.join(sf, e.file);
+  assert.ok(fs.existsSync(full));
+  RM.destroy({ sessionFolder: sf, anno, id: e.map_id });
+  assert.equal(fs.existsSync(full), false);
+  assert.equal(RM.list(anno).length, 0);
+});
+
+test("cellLabel / kindLabel are human-readable", () => {
+  assert.equal(RM.cellLabel({ level: "step" }), "Step Process diagram");
+  assert.equal(RM.cellLabel(null), "Activity Process diagram");
+  assert.equal(RM.kindLabel("to_be"), "To-Be");
+  assert.equal(RM.kindLabel("reference"), "Reference");
+});

@@ -11,6 +11,7 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   annotations.json   # analyst sidecar (created/updated by the viewer)
   screenshots/       # event-triggered screenshots
   obs/               # OBS recording reference and sync data
+  derived_maps/      # analyst-authored reference maps — standalone editable .bpmn copies (ADR-0019)
   session-integrity.json  # file manifest (name + size) written at session end
   # + normalization outputs (events.xes/csv, stats.json, analysis.json,
   #   process_map*.bpmn, dfg.json) — see "Post-normalization artifacts" below
@@ -560,6 +561,37 @@ The session-level anchor the analyst Accepted. When set AND no Process Template 
 The non-`_`-prefixed keys are the standard `case_anchor` shape (see `normalization/canonical/sample-anchor-based.yaml` for the full vocab — `field` + one of `equals`/`contains`/`starts_with`/`matches`, OR a `recognized` category). The `_accepted_*` audit fields are stripped by `anchor_suggest.coerce_anchor_override` before the config reaches `detect_cases_from_anchors`. `_accepted_signature` ties the override back to the candidate it came from so `merge_anchor_candidates` can drop the now-accepted candidate from the live list.
 
 `null` (the default) means "no override set" — the pipeline falls back to marker mode.
+
+### Reference maps (`reference_maps[]`)
+
+Analyst-authored, **decoupled** editable BPMN copies forked from a mined map cell (ADR-0019). A reference map is a **one-way leaf**: the analyst forks the live (laid-out) Process diagram into a standalone `.bpmn`, edits it freely with the full bpmn-js palette, and the pipeline **never** re-mines, merges, or regenerates it. The metadata row lives here; the diagram blob lives at `derived_maps/<map_id>.bpmn`.
+
+```json
+{
+  "reference_maps": [
+    {
+      "map_id": "rm_<uuid>",
+      "name": "To-Be — straight-through order entry",
+      "kind": "to_be",
+      "file": "derived_maps/rm_<uuid>.bpmn",
+      "source": { "notation": "bpmn", "level": "step", "scope": null },
+      "forked_from_hash": "9f3c…",
+      "forked_at": "<ISO>",
+      "edited_at": "<ISO>",
+      "pdd_role": "to_be",
+      "notes": ""
+    }
+  ]
+}
+```
+
+- **`kind`** — `as_is` | `to_be` | `reference`. What the map *is* (drives the gallery chip + labelling).
+- **`file`** — path (relative to the session folder, forward-slashed) to the standalone `.bpmn`. Written/read by `viewer/reference-maps.js`.
+- **`source`** — the `(notation, level, scope)` map cell the fork snapshotted, for provenance and drift.
+- **`forked_from_hash`** — a short hash (blake2b, sha256 fallback) of the **source** `.bpmn` at fork time. Drift = the current source file hashes differently → the gallery shows "source changed" and offers **Re-fork from current** (a new copy; never a merge).
+- **`pdd_role`** — `null` | `as_is` | `to_be`. Which PDD slot this map is selected for (exclusive per slot). When set, the viewer renders the copy to PNG (`exportSvg` → raster) and passes it as `--pdd-map-image` (As-Is, overriding the mined DFG) or `--pdd-tobe-image` (the proposed To-Be section, §4.5).
+
+**Re-normalize contract:** `pipeline_stages._init_existing_anno` only `setdefault`s this key — no stage writes it — so `reference_maps[]` and the `derived_maps/*.bpmn` blobs are preserved verbatim across every `normalize --mine`. Created post-capture, they are not part of `session-integrity.json`. The viewer persists every change through the annotations undo layer, so Ctrl+Z reverts each fork / rename / kind / PDD-role / delete.
 
 ### Step entity (`steps[]`)
 

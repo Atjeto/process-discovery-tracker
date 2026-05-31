@@ -54,6 +54,7 @@ def write_pdd(
     manifest: dict,
     analysis: dict | None = None,
     process_map_image: str | Path | None = None,
+    tobe_map_image: str | Path | None = None,
 ) -> None:
     if Document is None:
         raise RuntimeError(
@@ -78,6 +79,7 @@ def write_pdd(
 
     _write_automation(doc, analysis)                  # 4. Automation assessment
     _write_roi(doc, analysis)                         # 4.4 Estimated ROI
+    _write_tobe_map(doc, tobe_map_image)              # 4.5 Proposed to-be process (ADR-0019)
     _write_exceptions(doc, annotations)               # 5. Exceptions & variations
     _write_footer(doc)
 
@@ -233,6 +235,27 @@ def _write_process_map(doc, process_map_image):
         "The process map (Flow / Process diagram) is available in the viewer; the "
         "rendered diagram is not yet embedded in this document."
     )
+
+
+# ---- 4.5 Proposed to-be process map (analyst-authored, ADR-0019) ------------
+
+def _write_tobe_map(doc, tobe_map_image):
+    """Embed an analyst-authored To-Be reference map, when one was selected for
+    the PDD. Unlike the As-Is map (mined from the event log), this is a
+    hand-drawn proposal — captioned as such so it can never be mistaken for
+    observed evidence. The section is omitted entirely when no To-Be map is
+    selected (no empty placeholder)."""
+    if not (tobe_map_image and Path(tobe_map_image).exists() and Inches is not None):
+        return
+    doc.add_heading("4.5 Proposed to-be process", level=2)
+    try:
+        doc.add_picture(str(tobe_map_image), width=Inches(6.0))
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        logger.warning("pdd_export: could not embed to-be map %s: %s",
+                       tobe_map_image, exc)
+        return
+    _note(doc, "Analyst-authored proposed future-state process — hand-edited, "
+               "NOT mined from the captured events.")
 
 
 # ---- 3.4 Process statistics -------------------------------------------------

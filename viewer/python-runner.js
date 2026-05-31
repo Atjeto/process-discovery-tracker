@@ -69,7 +69,7 @@ function resolveDefaultTaxonomy() {
 function runNormalize(opts) {
   const {
     sessionFolder, taxonomyPath, mine, onLog, onProc,
-    canonical, pddOut, pddMapImage, stepBpmnOut, phaseBpmnOut, stepCsvOut,
+    canonical, pddOut, pddMapImage, pddTobeImage, stepBpmnOut, phaseBpmnOut, stepCsvOut,
     bootstrapVocabOut, vocabId, vocabName,
   } = opts || {};
   /* onProc(child) fires once with the spawned process handle so the
@@ -101,6 +101,7 @@ function runNormalize(opts) {
       }
       if (pddOut) args.push("--pdd-out", pddOut);
       if (pddMapImage) args.push("--pdd-map-image", pddMapImage);
+      if (pddTobeImage) args.push("--pdd-tobe-image", pddTobeImage);
       if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
       if (phaseBpmnOut) args.push("--phase-bpmn-out", phaseBpmnOut);
       if (stepCsvOut) args.push("--step-csv-out", stepCsvOut);

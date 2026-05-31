@@ -2935,3 +2935,59 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
   font-family: var(--font-mono); font-size: 9px;
   color: var(--fg-4); letter-spacing: 0.3px;
 }
+
+/* ===== ADR-0019: Reference Maps (fork / gallery / editor) ================= */
+.refmap-tools { display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; }
+.refmap-count { color: var(--fg-4); font-size: 11px; }
+
+.refmap-panel {
+  border-top: 1px solid var(--border, rgba(127,127,127,0.25));
+  padding: 10px 12px; max-height: 40%; overflow: auto; background: var(--bg-2);
+}
+.refmap-panel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.refmap-panel-head h4 { margin: 0; font-size: 13px; }
+.refmap-hint { color: var(--fg-4); font-size: 11px; }
+.refmap-empty { color: var(--fg-4); font-size: 12px; padding: 6px 0; }
+.refmap-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.refmap-row {
+  border: 1px solid var(--border, rgba(127,127,127,0.25)); border-radius: 6px;
+  padding: 8px 10px; background: var(--bg-1);
+}
+.refmap-row-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.refmap-row-name { font-weight: 600; font-size: 13px; }
+.refmap-row-meta { color: var(--fg-4); font-size: 11px; margin: 3px 0 6px; }
+.refmap-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.refmap-kind-chip {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 2px 6px; border-radius: 4px; background: var(--bg-3); color: var(--fg-3);
+}
+.refmap-kind-chip.kind-as_is { background: rgba(80,140,255,0.18); color: var(--accent); }
+.refmap-kind-chip.kind-to_be { background: rgba(80,200,120,0.18); color: #2e9e57; }
+.refmap-pdd-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(80,140,255,0.15); color: var(--accent); }
+.refmap-drift-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(230,160,30,0.18); color: var(--warn); }
+.refmap-bar-lbl { font-size: 11px; color: var(--fg-3); display: inline-flex; align-items: center; gap: 4px; }
+.icon-btn.danger { color: #c0392b; }
+
+/* Editor overlay — full-screen, decoupled editable BPMN. */
+.refmap-editor-overlay { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,0.45); display: flex; padding: 24px; }
+.refmap-editor-frame {
+  flex: 1; display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg-1); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow);
+}
+.refmap-editor-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; border-bottom: 1px solid var(--border, rgba(127,127,127,0.25)); background: var(--bg-2);
+}
+.refmap-badge {
+  font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 4px;
+  background: rgba(230,160,30,0.18); color: var(--warn); border: 1px solid rgba(230,160,30,0.4);
+}
+.refmap-name-input {
+  font-size: 13px; font-weight: 600; padding: 4px 8px; min-width: 220px;
+  border: 1px solid var(--border, rgba(127,127,127,0.3)); border-radius: 4px; background: var(--bg-1); color: var(--fg);
+}
+.refmap-prov { color: var(--fg-4); font-size: 11px; }
+.refmap-editor-spacer { flex: 1; }
+/* The editor host is intentionally NOT .map-host, so the bpmn-js palette +
+   context-pad (hidden on the read-only live map) ARE visible here. */
+.refmap-editor-host { position: relative; flex: 1; min-height: 0; background: var(--bg-1); }

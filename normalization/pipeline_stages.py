@@ -151,6 +151,10 @@ def _init_existing_anno(annotations: dict, session_id_str: str) -> dict[str, Any
     existing_anno.setdefault("notes", existing_anno.get("notes") or [])
     existing_anno.setdefault("marker_edits", existing_anno.get("marker_edits") or [])
     existing_anno.setdefault("drift_markers", existing_anno.get("drift_markers") or [])
+    # ADR-0019: analyst-authored reference maps. A decoupled one-way leaf —
+    # no stage ever writes this key, so it (and the derived_maps/*.bpmn it
+    # points at) round-trips every re-normalize untouched. Just ensure it exists.
+    existing_anno.setdefault("reference_maps", existing_anno.get("reference_maps") or [])
     existing_anno["version"] = 1
     existing_anno["session_id"] = session_id_str
     return existing_anno
@@ -528,6 +532,7 @@ def _run_mining_exports(
     step_bpmn_out: str | None,
     phase_bpmn_out: str | None,
     step_csv_out: str | None,
+    pdd_tobe_image: str | None = None,
 ) -> None:
     """Mining (DFG / aggregate BPMN / observed-flow BPMN / per-case BPMN) plus
     the Phase E exports (PDD, step/phase BPMN, step CSV). Each sub-export keeps
@@ -615,6 +620,7 @@ def _run_mining_exports(
                 manifest=manifest,
                 analysis=analysis_result,
                 process_map_image=pdd_map_image,
+                tobe_map_image=pdd_tobe_image,
             )
             print(f"[normalize] wrote PDD: {pdd_out}")
         except Exception as e:

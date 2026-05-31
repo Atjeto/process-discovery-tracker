@@ -33,7 +33,7 @@ function canRedo() {
   return !!s && State.canRedo(s.sessionFolder);
 }
 function emptyAnnotationsShape() {
-  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [], excluded_ranges: [], starred_screenshots: [] };
+  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [], excluded_ranges: [], starred_screenshots: [], reference_maps: [] };
 }
 function snapshotAnnotations(a) {
   // Never push null/undefined onto the stack -- a later undo/redo
@@ -149,6 +149,8 @@ function ensureAnnoShape(anno) {
   if (a.case_anchor_override === undefined) a.case_anchor_override = null;
   a.drift_markers = a.drift_markers || [];
   a.excluded_ranges = a.excluded_ranges || [];
+  // ADR-0019: analyst-authored reference maps (decoupled editable BPMN copies).
+  a.reference_maps = a.reference_maps || [];
   a.step_filters = a.step_filters || { ignored_processes: [], ignored_window_titles: [] };
   if (!Array.isArray(a.step_filters.ignored_processes)) a.step_filters.ignored_processes = [];
   if (State.getSession()) a.session_id = (State.getSession().manifest && State.getSession().manifest.session_id) || a.session_id || "";

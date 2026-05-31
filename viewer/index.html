@@ -452,10 +452,22 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <span class="map-rare" id="session-hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="session-hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="session-rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
                 <span class="map-zoom-hint">scroll to zoom · drag to pan</span>
               </div>
+              <div class="refmap-tools">
+                <button class="icon-btn xs" id="btn-fork-refmap" title="Fork the current Process diagram into a standalone, fully-editable reference map. Decoupled from analysis — re-analyze never changes it (ADR-0019).">⑂ Fork map</button>
+                <button class="icon-btn xs" id="btn-toggle-refmaps" title="Show this session's saved reference maps.">Reference maps <span class="refmap-count" id="refmap-count"></span></button>
+              </div>
             </div>
             <div class="map-host">
               <div class="map-pane active" id="session-map-bpmn-host"></div>
               <div class="map-pane" id="session-map-dfg-host" style="display:none"></div>
+            </div>
+            <div class="refmap-panel" id="refmap-panel" style="display:none">
+              <div class="refmap-panel-head">
+                <h4>Reference maps</h4>
+                <span class="refmap-hint">Hand-edited, standalone copies — decoupled from analysis. Re-analyze never changes them.</span>
+              </div>
+              <ul class="refmap-list" id="refmap-list"></ul>
+              <div class="refmap-empty" id="refmap-empty">No reference maps yet. Open the <strong>Process diagram</strong> tab and click <strong>⑂ Fork map</strong>.</div>
             </div>
           </div>
         </div>
@@ -1035,6 +1047,33 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
   </div>
 </div>
 
+<!-- ADR-0019: Reference Maps editor overlay (full-screen, decoupled editable BPMN copy) -->
+<div class="refmap-editor-overlay" id="refmap-editor-overlay" style="display:none" role="dialog" aria-label="Reference map editor">
+  <div class="refmap-editor-frame">
+    <div class="refmap-editor-bar">
+      <span class="refmap-badge" id="refmap-editor-badge" title="This is a standalone copy. Edits stay in this map and never change the mined map or the analysis.">⑂ Reference copy — decoupled from analysis</span>
+      <input class="refmap-name-input" id="refmap-editor-name" placeholder="Reference map name" />
+      <label class="refmap-bar-lbl">Type
+        <select class="map-status-select" id="refmap-editor-kind">
+          <option value="as_is">As-Is</option>
+          <option value="to_be">To-Be</option>
+          <option value="reference">Reference</option>
+        </select>
+      </label>
+      <label class="refmap-bar-lbl">Use in PDD
+        <select class="map-status-select" id="refmap-editor-pdd" title="Embed this map in the PDD .docx export.">
+          <option value="">No</option>
+          <option value="as_is">As-Is map</option>
+          <option value="to_be">To-Be map</option>
+        </select>
+      </label>
+      <span class="refmap-prov" id="refmap-editor-prov"></span>
+      <span class="refmap-editor-spacer"></span>
+      <button class="icon-btn" id="btn-refmap-editor-close" title="Close the editor (edits auto-save).">Close ✕</button>
+    </div>
+    <div class="refmap-editor-host" id="refmap-editor-host"></div>
+  </div>
+</div>
 <script src="renderer.js"></script>
 </body>
 </html>
