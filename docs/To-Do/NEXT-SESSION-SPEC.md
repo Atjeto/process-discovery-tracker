@@ -323,15 +323,17 @@ total unchanged across notches; `e2e/session-smoke.js` 12/12 green.
   `Create INC001001x | Incident` titles to one node. Excel (good) + Word (partial,
   §11e gap) desktop captures too; Outlook skipped (no mail profile on the box).
 
-**Deeper issues the real capture surfaced — HANDOFF (diagnosed, NOT fixed; see
-report §6):** both pre-existing, both rooted in `window_title` leaking where the
-vocab didn't fully attach to a step.
-- **6a — element-grain window-title-PREFIX fan-out.** Step names are
-  `"{screen}: {action}"`; when screen falls back to a numbered window title the
-  prefix carries the value, and `process_label` only strips *tails* → element grain
-  fans out (real ServiceNow: 44 nodes / 3 disconnected combs). Fix in
-  `step_suggest.py` naming + `process-label-patterns.json`; **touches goldens** —
-  regen intentionally, don't rush.
+**Deeper issues the real capture surfaced — now resolved (see report §6):**
+- **6a — element-grain window-title-PREFIX fan-out — ✅ DONE (`61ccce3`).**
+  `step_suggest._short_app` strips embedded record tokens from the window-title
+  prefix via a value-free `screen_label`, sharing rules with the viewer's
+  `screenType` through the new `shared/screen-label-patterns.json` (single source).
+  Real ServiceNow element grain 44 → 18 nodes, 3 → 1 sink. Golden-neutral.
+- **Phase-level BPMN — ✅ validated working (no code fix).** Mines correctly when
+  phases exist (validated on a throwaway phased copy → clean linear chain in the
+  viewer); the demo's empty-state is correct because no committed session has
+  phases. Upstream item is acquiring phases (analyst authoring / future
+  auto-phase), not the miner.
 - **6b — vocab-vs-window_title screen duplication — ✅ DONE (`1e9b843`).**
   `app_vocab.enrich_events` now tags every in-scope interaction with the screen whose
   `window_title_regex` matches (`_screen_by_window`), independent of a control match
