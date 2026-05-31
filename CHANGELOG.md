@@ -6,6 +6,31 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-05-31
+
+The big push toward a small internal rollout — a deliverable-first cycle that
+hardened the foundation, landed the commercial closer, and made the recorder and
+vocabularies real against probed apps. **Foundation (Wave 0):** an in-repo e2e
+merge gate (the real viewer, asserts + exit codes), a session golden over all 10
+demo sessions, a calibration config surface, the `normalize()` and `flow-view.js`
+god-file splits, a Node-side egress guard, the first `Recorder.Tests` C# suite,
+and an ADR-registry CI guard ([CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md)).
+**Commercial closer:** the €-ROI layer (`analysis_roi.py` → Session Analysis panel
++ PDD §4.4) projects each automation candidate into a conservative/expected/
+optimistic savings band, with candidates ranked by priority. **Real capture &
+vocab:** recorder capture-confidence ([ADR-0023](docs/adr/0023-recorder-capture-confidence.md)
+— honest degradation on hard frameworks), probed App Vocabularies (Office /
+ServiceNow / Salesforce / Jira / Zendesk) and point-and-learn discovery
+([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md)). **Analyst surface:**
+the view-time grain slider ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md)),
+Reference Maps ([ADR-0019](docs/adr/0019-reference-maps.md)), and the
+map-readability fixes (value-free screen axis + dagre left-to-right, pinned by the
+e2e connectivity check). **Privacy & platform:** structural PII masking + a capture
+consent gate (§11f); Electron 33 → 42 and `dagre → @dagrejs/dagre` (0 npm-audit
+advisories); click-to-RCE hardening on the screenshot-open path. Distribution stays
+**unsigned by design**, and scope is fixed as a services boutique
+([ADR-0026](docs/adr/0026-distribution-unsigned-and-services-boutique-scope.md)).
+
 ### Added
 
 - **Reference Maps — decoupled, fully-editable BPMN copies of a mined map ([ADR-0019](docs/adr/0019-reference-maps.md)).**
