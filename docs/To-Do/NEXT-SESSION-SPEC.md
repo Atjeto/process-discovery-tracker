@@ -332,13 +332,15 @@ vocab didn't fully attach to a step.
   fans out (real ServiceNow: 44 nodes / 3 disconnected combs). Fix in
   `step_suggest.py` naming + `process-label-patterns.json`; **touches goldens** —
   regen intentionally, don't rush.
-- **6b — vocab-vs-window_title screen duplication (recommended next).** One logical
-  screen splits into the vocab `screen_id` *and* the window-title fallback when only
-  some of its interactions matched the vocab (`incident` ⇄ `Create | Incident`;
-  `workbook` + `*.xlsx - Excel`). Make `grain_keys.screen` consistent per step (if
-  any interaction resolved a vocab screen, use it for the whole step) —
-  `step_suggest.step_grain_keys` + the JS `resolveStepGrainKeys` twin; additive,
-  likely golden-neutral. Feeds 6a.
+- **6b — vocab-vs-window_title screen duplication — ✅ DONE (`1e9b843`).**
+  `app_vocab.enrich_events` now tags every in-scope interaction with the screen whose
+  `window_title_regex` matches (`_screen_by_window`), independent of a control match
+  (a screen tag only — does not inflate match-rate). Real ServiceNow: 7 window-title
+  screen variants → 1 `incident` node. Golden-neutral; new `test_app_vocab` test.
+- **Outlook capture — ✅ FIXED** (`drive-outlook.ps1`, out-of-repo): the earlier
+  "no mail profile" call was wrong — a cold COM launch needs `Namespace.Logon()`
+  before `CreateItem`, and the per-case inspector churn was reused into one
+  inspector. Now 100 % vocab coverage, value-free `compose` screen.
 
 ---
 
