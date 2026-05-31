@@ -63,8 +63,20 @@ forced to D: per the C:-space constraint).
 |---------|------|-------|--------------|--------|
 | **Excel** | desktop | 3 | 40 | ✅ good — Filter/Sort/Copy/Save + cell entry |
 | **Word** | desktop | 2 | 24 | ⚠️ partial — mail-merge menus reject `InvokePattern` (the known §11e gap); only `FileSave` + body edits landed |
-| **Outlook** | desktop | 3 | (degenerate) | ⛔ **skipped** — the box's Outlook is first-run ("Welcome to Microsoft Outlook 2016", no mail profile), so COM `CreateItem` failed every case; no real compose was captured. Honest stop — not fabricated. |
+| **Outlook** | desktop | 3 | 15 | ✅ good *(after a driver fix — see below)* — To/Cc/Subject + body across 3 cases |
 | **ServiceNow** | web/SaaS | 3 | 75 | ✅ rich — created 3 real incidents (INC0010009-…) on the `dev295949` dev instance: Caller/Short-desc/Description/Category/Submit |
+
+**Outlook driver fix (correcting an earlier wrong call).** I first reported Outlook as
+"skipped — no mail profile (Welcome to Outlook wizard)." That diagnosis was **wrong**: the
+classic profile `Outlook` (→ `rashapet@hotmail.com`, 672 inbox items) is configured and the
+COM ProgID resolves to the current classic Outlook. Two real driver bugs caused the
+failure: (1) `drive-outlook.ps1` *fetched* the MAPI namespace but never called
+`Namespace.Logon()`, so a **cold** COM launch (Outlook not already running) hadn't loaded
+the default profile and `CreateItem` hit the first-run wizard — it only worked yesterday
+because Outlook happened to be already running; (2) the per-case create→display→discard→
+create churn left Outlook rejecting subsequent `CreateItem` (cases 2..N). Fixed by logging
+on to the default profile and reusing a single compose inspector (refilling To/Cc/Subject
+per case). Outlook now captures cleanly.
 
 **Mixed:** the 10-session committed demo aggregate already *is* the cross-app mixed
 structure (Salesforce → SAP `va01` → Excel → Outlook); it carries the multi-app map used
@@ -86,13 +98,16 @@ COVERAGE"):
 
 | app | vocab hits / interactions | coverage | notes |
 |-----|---------------------------|----------|-------|
+| Outlook | 9 / 9 | **100 %** | every To/Cc/Subject entry matched `outlook.yaml`; screen resolved to the value-free vocab `compose` → screen grain is ONE clean node (no fan-out). The happy-path contrast to ServiceNow. |
 | ServiceNow | 38 / 72 | **53 %** | strong — `incident.short_description`, `incident.description`, `incident.category`, `sys_display.incident.caller_id`, `sysverb_insert` all matched the live form by stable `automation_id`; live aids matched the committed `servicenow.yaml` exactly. |
 | Excel | 12 / 40 | **30 %** | ribbon Invokes (`Filter`, `SortAscendingExcel`, `Copy`, `FileSave`) enrich; raw cell entries (`A1`…`A6`) do not — expected (cells aren't vocab controls). |
 | Word | 2 / 24 | **8 %** | coverage gap — the §11e mail-merge `InvokePattern` rejection + verbose-gated document text leave little for the vocab to key on. Flagged. |
 
 Enrichment confirmed qualitatively: matched steps take their names/`process_label` from the
-vocab, not raw control text. Coverage gap to flag: **Word** (8 %) is bounded by the recorder
-seeing little (the §11e capture gap), not by a vocab defect.
+vocab, not raw control text. **Outlook (100 %)** is the clean case — full vocab match gives
+a value-free `compose` screen with no fan-out, validating that the screen-axis problem only
+bites where the vocab *doesn't* attach (§6). Coverage gap to flag: **Word** (8 %) is bounded
+by the recorder seeing little (the §11e capture gap), not by a vocab defect.
 
 ---
 
@@ -222,8 +237,10 @@ feeds 6a.
 
 - ✅ Headline map regression: confirmed, root-caused, fixed, gated, screenshotted (real +
   demo), with a new e2e connectivity assertion.
-- ✅ Real captures: Excel (good), Word (partial, §11e gap), ServiceNow (rich, real
-  incidents). Outlook honestly skipped (no mail profile).
+- ✅ Real captures: Excel (good), Outlook (good — 100 % vocab, after a `drive-outlook.ps1`
+  MAPI-logon + single-inspector fix), Word (partial, §11e gap), ServiceNow (rich, real
+  incidents). *(Earlier "Outlook skipped — no profile" call was wrong and is corrected
+  above.)*
 - ✅ Vocab rates per app; coverage gap (Word) flagged.
 - ✅ Grain consolidation + €-ROI invariance on real data.
 - ⏭️ §6a / §6b deeper window-title issues — diagnosed with evidence, handed off (Python +
