@@ -200,21 +200,31 @@ per-case combs; `real-snow-element.png`).
   screen / a value-free screen (the §6b consistency fix would feed this). Touches Python +
   goldens → **regenerate goldens as an intentional change**; do not rush.
 
-### 6b. Vocab-vs-window_title screen duplication
-Within one logical screen, interactions that match the vocab get the value-free vocab
-`screen_id` (`incident`, `workbook`, `document`) while interactions that don't match fall
-back to the window title — so one screen becomes **two screen nodes** and a small loop:
+### 6b. Vocab-vs-window_title screen duplication — FIXED
+Within one logical screen, interactions that matched a vocab *control* got the value-free
+vocab `screen_id` (`incident`, `workbook`, `document`) while interactions whose control
+*wasn't* in the vocab got no `screen_id` and fell back to the window title — so one screen
+became **two nodes** and a small loop:
 - ServiceNow: `incident` ⇄ `Create | Incident | ServiceNow` (`real-snow-screen.png`)
 - Excel: `workbook` + `_excel_corpus.xlsx - Excel`
 - Word: `document` + `(screen)` + `_word_corpus.docx - Word`
 
-On these small captures it's a 2-3-node loop, not a hairball — but on a long session it
-would re-introduce clutter. **Fix direction:** make a step's `grain_keys.screen` consistent
-— if *any* interaction in the step resolved a vocab `screen_id`, use it for the whole step
-(the step is on one screen by construction). Lives in `step_suggest.step_grain_keys`
-(Python) + the `resolveStepGrainKeys` view-time twin (JS); additive to `grain_keys`, so
-likely golden-neutral. **Recommended next** — it is the higher-leverage of the two and
-feeds 6a.
+**Root cause:** `app_vocab.lookup` returned no `screen_id` at all when no control signature
+matched — even though the vocab's screen `window_title_regex` *did* match the window.
+**Fixed:** `enrich_events` now tags every in-scope interaction with the screen whose
+`window_title_regex` matches (`_screen_by_window`), independent of a control match — a
+*screen tag only* (no name), so it does not inflate the match-rate/coverage. Verified by
+re-normalizing the real ServiceNow capture: the **7 window-title screen variants collapse
+to ONE `incident` node** (`grain_keys.screen` is uniformly `incident`). Golden-neutral
+(step naming uses the window-title app prefix, not `screen_id`); pinned by a new
+`test_app_vocab` test; pytest 337 + e2e 14/14 still green.
+
+### 6a. Element-grain window-title-PREFIX fan-out — STILL OPEN (handoff)
+*(Unchanged — see above.)* Note §6b helps but does **not** resolve 6a: the element grain
+fans out because the step **name/`process_label`** embeds the window-title prefix, and
+naming reads the window-title app prefix (`_short_app`), not `screen_id`. The fix is in
+`step_suggest` naming / `process-label-patterns.json` and **touches goldens** — left as the
+deliberate, golden-affecting handoff.
 
 ---
 

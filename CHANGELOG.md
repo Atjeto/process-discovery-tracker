@@ -68,6 +68,22 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **One logical screen is now one screen-grain node, even when the vocab only
+  partially matches a form ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md) §6b).**
+  An App Vocabulary assigns a value-free `screen_id` (e.g. `incident`, `compose`)
+  only to interactions whose *control* matched a vocab signature; an interaction
+  on the same form whose control isn't in the vocab got no `screen_id` and fell
+  back to the raw `window_title`. So a step with no vocab-matched control split off
+  as a distinct per-case screen node (`incident` *and* `Create INC0010010 |
+  Incident | ServiceNow`), and the screen-grain map showed a duplicate-screen
+  loop. `app_vocab.enrich_events` now tags every in-scope interaction with the
+  screen whose `window_title_regex` matches (`_screen_by_window`), independent of a
+  control match — so one form is one screen. It is a *screen tag only*, not a name
+  match, so it does **not** inflate the vocab match-rate / coverage. Verified on
+  the real ServiceNow capture: 7 window-title screen variants → **1 `incident`
+  node**. Golden-neutral (step naming uses the window-title app prefix, not
+  `screen_id`); new `test_app_vocab` test.
+
 - **Process diagram (BPMN) steps now lay out in execution order — a loop/redo
   gateway no longer scrambles the diagram.** The pure-Python BPMNDI layout
   (`mining._layout`) ranked nodes by longest-path over the *raw* edge set, so a

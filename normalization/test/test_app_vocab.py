@@ -153,6 +153,29 @@ def test_enrich_events_marks_only_matches():
     assert summary["vocabs_hit"] == {"salesforce": 1, "outlook": 1}
 
 
+def test_screen_by_window_tags_unmatched_controls_without_counting_as_match():
+    """ADR-0024 §6b: an interaction whose CONTROL isn't in the vocab but whose
+    WINDOW is a known vocab screen (window_title_regex) is tagged with that
+    screen_id, so one logical screen stays one node at the screen grain -- but it
+    is NOT counted as a vocab name match (no meaningful_name, no coverage credit)."""
+    events = [
+        # control matches a signature -> named + screen via window regex
+        _ev({"process_name": "chrome.exe", "window_title": "Customer Search | Salesforce",
+             "control_type": "Button", "automation_id": "searchBtn"}),
+        # SAME screen window, but an UNKNOWN control -> screen tagged, not named
+        _ev({"process_name": "chrome.exe", "window_title": "Customer Search | Salesforce",
+             "control_type": "Edit", "automation_id": "someUnmappedField"}),
+    ]
+    enriched, summary = app_vocab.enrich_events(events, vocabs=[SALESFORCE_VOCAB])
+    # Both interactions carry the SAME value-free screen (no per-window split).
+    assert enriched[0]["data"]["screen_id"] == "search"
+    assert enriched[1]["data"]["screen_id"] == "search"
+    # The unmatched control is screen-tagged but NOT a named match.
+    assert "meaningful_name" not in enriched[1]["data"]
+    assert summary["matched"] == 1            # only the searchBtn is a real match
+    assert summary["coverage"]["chrome.exe"]["enriched"] == 1
+
+
 def test_bootstrap_from_session_produces_signatures():
     """The bootstrap must deduplicate identical signatures and prefer
     automation_id when present."""

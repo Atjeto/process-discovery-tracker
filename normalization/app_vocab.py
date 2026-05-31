@@ -158,6 +158,28 @@ def _resolve_screen(vocab: dict, screen_id: str | None, ev_data: dict) -> str | 
     return None
 
 
+def _screen_by_window(vocabs: list[dict], ev_data: dict) -> str | None:
+    """The vocab `screen_id` whose `window_title_regex` matches this event's
+    window, independent of any control-signature match (ADR-0024 §6b).
+
+    Used to tag a CONSISTENT screen on interactions whose specific control isn't
+    in the vocab: otherwise a step with no vocab-matched control falls back to the
+    raw `window_title` in step_grain_keys, so one logical screen splits into a
+    distinct per-case node (e.g. an Incident form is `incident` for the matched
+    fields but `Create INC0010010 | Incident | ServiceNow` for the unmatched
+    ones) and the screen-grain map fans out. Honouring the screen's
+    window_title_regex for every in-scope interaction keeps one screen one node.
+    Returns the first matching scoped vocab's screen id, else None.
+    """
+    for v in vocabs:
+        if not _scope_matches(v, ev_data):
+            continue
+        sid = _resolve_screen(v, None, ev_data)
+        if sid:
+            return sid
+    return None
+
+
 def _best_entry(vocab: dict, ev_data: dict) -> tuple[dict | None, int]:
     """Return (best_entry, specificity) for one vocab. Most-specific wins;
     ties broken by first-defined."""
@@ -233,6 +255,14 @@ def enrich_events(
         counts[0] += 1
         enrich = lookup(vocabs, data)
         if not enrich:
+            # ADR-0024 §6b: no NAMED control match, but the window may still BE a
+            # known vocab screen (its window_title_regex). Tag the screen so every
+            # interaction on one logical screen shares a value-free screen_id and
+            # the screen grain doesn't split into per-window-title nodes. This is
+            # NOT a vocab name match, so it does NOT count toward matched/coverage.
+            sid = _screen_by_window(vocabs, data)
+            if sid and not data.get("screen_id"):
+                ev["data"]["screen_id"] = sid
             continue
         ev["data"].update({k: v for k, v in enrich.items() if v is not None and v != {}})
         matched += 1
