@@ -2,59 +2,63 @@
 
 Internal tool for capturing and analyzing process discovery sessions. Full design in [../process_discovery_tracker_design.md](../process_discovery_tracker_design.md).
 
-## What's new in v0.19.0
+## What's new in v0.20.0
 
-The current version is **0.19.0** (SemVer 0.x). v0.18.x – v0.19.0 closed **Phase 0
-of the ML-integration recommendation** (two non-ML detectors for the "worker forgot
-to fire markers, no Process Template configured" failure mode) and finished the
-**productization cycle** — analyst deliverable polished to a small-internal-rollout
-bar:
+The current version is **0.20.0** (SemVer 0.x). v0.20.0 is the big push toward a
+small internal rollout — a deliverable-first cycle that hardened the foundation,
+landed the commercial €-ROI closer, and made the recorder and vocabularies real
+against probed apps. Full detail in [CHANGELOG.md](CHANGELOG.md); the headlines:
 
-- **Suggested markers** ([ADR-0017](docs/adr/0017-suggested-markers.md)). A
-  hand-rolled change-point detector (`normalization/marker_suggest.py`) scans an
-  unbracketed recording and surfaces candidate Start/End boundaries as dashed bars
-  on the Flow timeline with Accept/Dismiss rows; Accept brackets a real case on the
-  next Analyze. No new dependencies; dismissals and accepts survive re-normalize.
-- **Anchor candidates** ([ADR-0018](docs/adr/0018-anchor-candidates.md)). A
-  pattern-mining detector (`normalization/anchor_suggest.py`) ranks the field whose
-  typing would naturally segment the session into cases (a customer-ID search box, a
-  serial-number entry); Accept writes a session-level `case_anchor_override` that
-  case assignment consults before the marker-mode fallback — turning a "0 cases"
-  discovery session into real cases without hand-writing a Process Template.
-- **In-view Session map.** A **Map** level (plus a one-click **"View map"** from a
-  single Session) renders a single session's full interactive process map inline —
-  the same notation × level matrix (Activity/Step/Phase × Flow/BPMN, zoom/pan) that
-  used to be Compare-Sessions only — backed by a shared `map-controller.js`.
-- **Segment-level automation candidacy** ([ADR-0016](docs/adr/0016-segment-level-automation-candidacy.md)).
-  Automation is scored at the coherent-segment grain — a contiguous, same-app run
-  the robot could take end-to-end — not per atomic step. Sub-5 s single-step
-  segments are dropped because they can't be automation units on their own. PDD §4
-  renders the segment table; the Analysis view and Compare-Sessions automation
-  panel use the same shape.
-- **PDD = a standard RPA Process Definition Document.** Document control,
-  introduction (purpose / objectives / contacts), As-Is process description
-  (overview, applications-used table, embedded process-map image, statistics with
-  a where-the-time-went breakdown, detailed steps, input data), automation
-  assessment, exceptions & variations. Pipeline-filled where the data exists,
-  explicit `[To be completed]` for the analyst-judgement parts.
-- **Decluttered Analysis.** The Compare-Sessions Analysis panel (adaptive
-  columns, signal-only rows, automation table collapses to a note when nothing's
-  scoreable) and the single-session Waste-by-step (rolled up by `process_label`,
-  instant micro-steps behind an expander, edits propagate across instances).
-- **Capture polish for the field laptop.** Settings / Profile / Session-setup
-  tray IA split by lifetime, backed by a `userData/user-config.json` overlay
-  deep-merged on top of the YAML config. The ~5 s session-start freeze is gone
-  (best-effort OBS connect moved off the critical path). Chromium web-content
-  reaches the recorder out of the box.
-- **Intra-session repetition alignment** ([ADR-0015](docs/adr/0015-intra-session-repetition-alignment.md)).
-  Steps view's Flat / Aligned toggle shows a consensus backbone across detected
-  cases; edit a backbone step and "Apply to all N instances" propagates the
-  curation in one annotations write, reversible with one Ctrl+Z.
-- **Pipeline hardening.** Committed seeded fuzzers
-  (`case_assignment` / `stats_compute` / analysis layer / `step_suggest`) pin
-  invariants and the corrupt-log robustness regime. The eight `parse_ts` copies
-  consolidate to one shared helper. A `process_label` Python↔JS golden keeps the
-  two engines in lock-step.
+- **Return on automation (€-ROI).** `normalization/analysis_roi.py` projects each
+  multi-instance automation candidate into a conservative / expected / optimistic
+  savings band (hours/yr, or € net/yr once a labour rate is set), rendered in the
+  Session **Analysis** panel with an **Edit assumptions…** form, automation
+  candidates **ranked** by priority, and embedded in **PDD §4.4**. The total is
+  proven **grain-invariant**.
+- **View-time grain slider** ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md)).
+  Step grain is a reversible **view** roll-up over `element ⊂ screen ⊂ app ⊂ phase
+  ⊂ case` (default notch = screen), one **Grain** slider driving Flow / Steps / Map
+  / Analysis / Compare — never a destructive normalize-time flip, raw events
+  untouched, sliding back restores the detail.
+- **Reference Maps** ([ADR-0019](docs/adr/0019-reference-maps.md)). **⑂ Fork map**
+  snapshots the mined Process diagram into a standalone, fully-editable bpmn-js copy
+  — a one-way leaf the pipeline never re-mines — typed As-Is / To-Be / Reference
+  with provenance, drift, and Re-fork; a selected To-Be map embeds into PDD §4.5.
+- **Real-value App Vocabularies + point-and-learn discovery**
+  ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md)). Probed (not guessed)
+  vocabularies for Office / ServiceNow / Salesforce / Jira / Zendesk, and an App
+  Library **"Discover from window"** that snapshots a prepared window and lets the
+  volatility-diff picker (`signature_pick.py`) choose stable signatures, skipping
+  per-render volatile ids — on-device, nothing leaves the machine.
+- **Recorder capture-confidence** ([ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).
+  Every interaction gains additive `framework` / `identity_source` / `confidence`
+  / `value_source` / `ocr_text` signals so the capture moat degrades *honestly* on
+  hard frameworks (remote/terminal/legacy) instead of silently thinning.
+- **Privacy by default (§11f).** A structural **PII masking** stage redacts
+  sensitive field values in the *derived* stream only (raw `events.jsonl`
+  untouched) with join-preserving tokens; an optional capture **consent** gate
+  records worker consent into the manifest.
+- **Map readability fixed.** A **value-free screen axis** stops the per-record map
+  fan-out, **dagre** now actually lays maps out **left-to-right** (the engine was
+  never wired up), and an e2e connectivity pin guards the screen-grain Flow diagram
+  as one connected chain.
+- **Foundation + guardrails.** An in-repo **e2e merge gate** (`e2e/session-smoke.js`,
+  the real viewer), a **session golden** over all 10 demo sessions, the
+  **`normalize()` / `flow-view.js` god-file splits**, a **Node egress guard**, the
+  first **`Recorder.Tests`** suite, an **ADR-registry CI guard**, and
+  [CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md). **Electron 33 → 42** and
+  `dagre → @dagrejs/dagre` (0 npm-audit advisories). Security: click-to-RCE
+  hardening on the screenshot-open path; PDD screenshot containment.
+- **Unsigned by design + bounded scope**
+  ([ADR-0026](docs/adr/0026-distribution-unsigned-and-services-boutique-scope.md)).
+  Releases ship unsigned (the SmartScreen prompt is accepted); PDT is scoped as an
+  owner-run services boutique, not a self-serve enterprise product.
+
+Prior cycle (**v0.19.0**) closed Phase 0 of the ML recommendation — **suggested
+markers** ([ADR-0017](docs/adr/0017-suggested-markers.md)) and **anchor candidates**
+([ADR-0018](docs/adr/0018-anchor-candidates.md)), two non-ML detectors for the
+"worker forgot to fire markers, no Process Template configured" failure mode, both
+suggest-don't-mutate.
 
 Headline capabilities added since v0.5.0:
 

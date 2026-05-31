@@ -4,56 +4,65 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** Last release **v0.19.0** —
-ships **Phase 0** of the ML integration recommendation, two non-ML
-detectors that close the "worker forgot to fire markers, no Process
-Template configured" failure mode. **Suggested markers**
-([ADR-0017](docs/adr/0017-suggested-markers.md),
-`normalization/marker_suggest.py`) — a hand-rolled change-point detector
-surfaces candidate Start/End boundaries on the (idle gap / home-app
-return / transaction-ID typed / app-cluster) signals; they render as
-dashed `.tl-marker.tl-suggested` bars on the Flow timeline plus
-Accept/Dismiss rows in the markers side-panel. **Anchor candidates**
-([ADR-0018](docs/adr/0018-anchor-candidates.md),
-`normalization/anchor_suggest.py`) — a pattern-mining detector ranks
-fields whose typing would naturally segment the session into cases (a
-customer-ID search box, a serial-number entry); the analyst Accepts the
-top candidate to write a session-level `case_anchor_override` that
-`normalize.py` consults before the marker-mode fallback. Both detectors
-honour the suggest-don't-mutate invariant: detection lives in
-`annotations.json`; raw `events.jsonl` is untouched; ~19k randomized
-fuzzer inputs pin the invariants; Ctrl+Z reverts each Accept/Dismiss.
-Phase 0 closes the non-ML surface — Phase 1 (LLM rationale on the PDD
-side) stays deferred. The goal remains **productization toward a small
-internal rollout, analyst-deliverable first.** Prior cycle (v0.18.x):
-in-view Session-view Map level, PDD export from the Session view,
-clickable waste-type chips, sharper Map empty-state messages.
-What landed this cycle: the **PDD export now follows a real Process Definition
-Document structure** (document control, As-Is process with an embedded process
-map, automation assessment, exceptions) instead of piling up pipeline data; a
-single session reaches the interactive map in one click (**"View map"** in the
-Session view's process-map bar); the Compare-Sessions **Analysis panel** and the
-single-session **"Waste by step"** list are decluttered (signal-only, adaptive);
-the **capture tray IA was split by lifetime** — top-level **Settings…** (Hotkeys
-/ Video-OBS / Screenshots / Storage), top-level **Profile…** (worker identity),
-and a slim **Session setup…** (engagement + labels only), backed by a
-`userData/user-config.json` overlay merged on top of the YAML; the **~5s session-
-start freeze is gone** (best-effort OBS connect now in the background; blocking
-modals on the start path replaced with toasts; recorder-zip extraction moved off
-the start path to app launch); and the normalization pipeline is hardened against
-corrupt/hand-edited logs with committed **seeded property-based fuzzers**
-(`case_assignment`, `stats_compute`, the analysis layer, `step_suggest`), a
-`parse_ts` timezone-consistency sweep, and a `process_label` Python↔JS golden.
-**Also on `master` (unreleased): Reference Maps ([ADR-0019](docs/adr/0019-reference-maps.md))** —
-**⑂ Fork map** snapshots the mined Process diagram into a standalone, fully-editable
-bpmn-js copy (a one-way leaf the pipeline never re-mines/merges/regenerates; metadata
-in `annotations.json reference_maps[]`, blob in `derived_maps/<id>.bpmn`), typed
-As-Is/To-Be/Reference with provenance + drift + Re-fork, a selected To-Be map embedding
-into the PDD's §4.5. Bar: **"as polished as it can be."** Hold
+**Active direction (2026-05) — START HERE:** Last release **v0.19.0**; a large
+cycle has since landed on `master` and ships as **v0.20.0** (cut from this
+branch). v0.19.0 itself shipped **Phase 0** of the ML recommendation — two non-ML
+detectors (**suggested markers** [ADR-0017](docs/adr/0017-suggested-markers.md)
+and **anchor candidates** [ADR-0018](docs/adr/0018-anchor-candidates.md)) that
+close the "worker forgot to fire markers" failure mode, suggest-don't-mutate. The
+**v0.20.0** cycle is the push toward a small internal rollout; what landed (detail
+in [CHANGELOG.md](CHANGELOG.md)):
+- **Foundation (Wave 0).** An in-repo **e2e merge gate** (`e2e/session-smoke.js`,
+  the real viewer, asserts + exit codes — incl. the map-connectivity pin), a
+  **session golden** over all 10 demo sessions (`normalization/golden_check.py`),
+  a **calibration config surface** threaded through `normalize()`, the
+  **`normalize()` + `flow-view.js` god-file splits** (`pipeline_stages.py`,
+  `session_io.py`, … / `flow-view-*.js`), a **Node-side egress guard**, the first
+  **`Recorder.Tests`** C# suite, and **self-sign scaffolding** (now ship-unsigned,
+  [ADR-0026](docs/adr/0026-distribution-unsigned-and-services-boutique-scope.md)).
+- **Fix-first.** Security (click-to-RCE hardening on the screenshot-open path; PDD
+  screenshot containment), correctness, and capture-durability fixes; **Electron
+  33 → 42**; **`dagre` → `@dagrejs/dagre`** (0 npm-audit advisories).
+- **§11c €-ROI** ([ADR-0016](docs/adr/0016-segment-level-automation-candidacy.md) lineage)
+  — `analysis_roi.py` projects a conservative/expected/optimistic savings band,
+  rendered in the Session **Analysis** panel, automation candidates **ranked** by
+  priority, and embedded in **PDD §4.4**.
+- **§11f** structural **PII masking** (`pii_masking.py`, derived stream only,
+  join-preserving tokens) + capture **consent** UX (`consent-window.js`).
+- **§11d real-value App Vocabularies** (Office / ServiceNow / Salesforce / Jira /
+  Zendesk, probed not guessed) + **point-and-learn discovery
+  ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md))** — snapshot a window,
+  the volatility-diff picker (`signature_pick.py`) skips volatile ids.
+- **§11e recorder capture-confidence** ([ADR-0023](docs/adr/0023-recorder-capture-confidence.md))
+  — additive `framework` / `identity_source` / `confidence` / `value_source` /
+  `ocr_text` per interaction, so the moat degrades *honestly*.
+- **ADR-0024 view-time grain slider** — step grain is a reversible **view** roll-up
+  over `element ⊂ screen ⊂ app ⊂ phase ⊂ case` (default notch = screen), driving
+  Flow / Steps / Map / Analysis / Compare; never a destructive normalize-time flip.
+- **Map-connectivity fixes** — a **value-free screen axis** (no per-record fan-out),
+  **dagre left-to-right** layout (the previously-unwired engine), and the e2e
+  connectivity pin (screen-grain DFG = 1 component, 1 start, 1 end).
+- **Reference Maps ([ADR-0019](docs/adr/0019-reference-maps.md))** — **⑂ Fork map**
+  snapshots the mined Process diagram into a standalone, fully-editable bpmn-js
+  copy (a one-way leaf the pipeline never re-mines/merges/regenerates; metadata in
+  `annotations.json reference_maps[]`, blob in `derived_maps/<id>.bpmn`), typed
+  As-Is/To-Be/Reference with provenance + drift + Re-fork, a selected To-Be map
+  embedding into the PDD's §4.5.
+- **CI guardrails** — the **ADR-registry guard** (`test_adr_registry.py`) and
+  [CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md) (each invariant paired with the
+  guard that fails on regression).
+- **[ADR-0026](docs/adr/0026-distribution-unsigned-and-services-boutique-scope.md)**
+  records the **ship-unsigned** + **services-boutique-scope** owner decisions (the
+  out-of-scope list is no longer "remaining work").
+
+The goal remains **productization toward a small internal rollout,
+analyst-deliverable first.** Bar: **"as polished as it can be."** Hold
 every feature to the coherence discipline in
 [COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) — a new "verb" needs its
 inverse, a legend, a control-interaction check, and a real-run check (UI bugs are
-invisible to green tests); verify UI changes in the `_pdt_verify` harness. Plan of
+invisible to green tests); verify UI changes in the in-repo `e2e/session-smoke.js`
+gate (the real viewer, asserts + exit codes — see [docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md))
+and the deeper-eyeball `_pdt_verify` harness. Plan of
 record + queued backlog: [docs/To-Do/NEXT-SESSION-SPEC.md](docs/To-Do/NEXT-SESSION-SPEC.md).
 Strategic frame: [VALUE-CHAIN-REVIEW.md](docs/architecture/VALUE-CHAIN-REVIEW.md);
 ADRs in `docs/adr/`. Validate by running the **packaged app** (it bundles its own
@@ -73,7 +82,7 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **0.19.0** (SemVer 0.x).
+Current released version **0.20.0** (SemVer 0.x).
 
 ## Layout
 
