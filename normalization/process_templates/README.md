@@ -22,7 +22,11 @@ step whose `match` rule fires; `case_anchor` (where present) makes each repetiti
 | Template | Process | Keyed on |
 |----------|---------|----------|
 | `servicenow-incident.yaml` | Create & Resolve Incident | ServiceNow element ids (`incident.*`, `sysverb_insert`, `resolve_incident`) |
+| `servicenow-change-request.yaml` | Create Change Request (capture → assess → plan → submit) | ServiceNow `change_request.*` ids (incl. the read-only-until-typed Planning fields) + `sysverb_insert*` |
+| `servicenow-catalog-request.yaml` | Submit Catalog Request | Generic catalog ids (`quantity`, `oi_add_to_cart_button`, `oi_order_now_button`) — no `case_anchor` (per-item variables are volatile) |
 | `salesforce-create-account.yaml` | Create Account | Lightning field labels (aids are volatile) |
+| `jira-create-issue.yaml` | Create Issue (Global Issue Create dialog) | Stable `<field>-field` aids (`summary-field`, `priority-field`); Project / Issue-type pickers via `starts_with` (volatile React suffix) |
+| `zendesk-create-ticket.yaml` | Create Ticket | Accessible **names** (aids volatile); Assignee / Submit matched with `starts_with` (`Assignee*`, `Submit as <status>`) |
 | `outlook-send-email.yaml` | Send Email | Outlook command ids (`4117`/`4101`/`4256`) + `_WwG` body |
 | `word-mail-merge.yaml` | Mail Merge | Word `MailMerge*` idMso |
 

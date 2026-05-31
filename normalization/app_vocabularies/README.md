@@ -11,20 +11,32 @@ regex) and then by the most-specific **signature** (`control_type` +
 `meaningful_name`, `screen_id`, and `vocab_flags` to the event — they are
 **signatures on UIA properties, never CSS selectors**.
 
-## Shipped starters (§11d)
+## Shipped vocabularies (§11d)
 
-These were bootstrapped from the committed `sessions/example-aggregate/`
-order-to-cash demo and then curated. They are **starters** — the
-`automation_id` values model the demo's controls and should be retuned to your
-tenant/system before a real engagement:
+Most of these are **real-value mappings** — their signatures were probed live from
+the running app's UI-Automation tree and cross-checked against vendor docs (see
+[REAL-VALUE-TESTING.md](../../docs/REAL-VALUE-TESTING.md)), so they enrich as
+shipped. Each app family keys its signatures on whatever is **stable** in that app's
+UIA tree (the *Keyed on* column): desktop Office exposes language-independent Office
+`idMso` automation_ids; ServiceNow and Jira expose stable semantic element ids;
+Salesforce and Zendesk auto-generate volatile ids, so those key on the accessible
+**name** (the field label); the Chromium browser-chrome vocabs key on the control's
+`class_name`. The one exception is `sap-gui.yaml` — still a demo-bootstrapped
+**starter** whose `automation_id` values model the `sessions/example-aggregate/`
+order-to-cash demo and should be retuned to your system before a real engagement.
 
-| File | App | Scope |
-|------|-----|-------|
-| `salesforce.yaml` | Salesforce (web, in Chrome) | `chrome.exe` + `Salesforce -` |
-| `sap-gui.yaml`    | SAP GUI (VA01 Create Sales Order) | `sapgui.exe` + `SAP -` |
-| `excel.yaml`      | Microsoft Excel (desktop) | `excel.exe` + `Excel -` |
-| `outlook.yaml`    | Microsoft Outlook (desktop) | `outlook.exe` |
-| `chrome.yaml`     | Google Chrome **browser chrome** (address bar, tabs, nav) — complements site vocabs, names no web-app content | `chrome.exe` |
+| File | App / coverage | Scope | Keyed on |
+|------|----------------|-------|----------|
+| `excel.yaml`      | Microsoft Excel (desktop) | `excel.exe`, title `… - Excel` | Office `idMso` aids (`FileSave`, `Filter`, `SortDialog`) |
+| `outlook.yaml`    | Microsoft Outlook (classic desktop) — compose + explorer | `outlook.exe` | Classic command-ids (`To`=4117, `Subject`=4101, `Send`=4256) + compose-ribbon `idMso` aids |
+| `word.yaml`       | Microsoft Word (desktop) — Save, Find & Replace, Mail Merge, Envelopes/Labels | `winword.exe`, title `… - Word` | Office `idMso` aids (the `MailMerge*` family) |
+| `sap-gui.yaml`    | SAP GUI (VA01 Create Sales Order) — **demo starter, retune first** | `sapgui.exe`, title `SAP -…` | `control_type` + `automation_id` + `name` (demo controls) |
+| `chrome.yaml`     | Google Chrome **browser chrome** (address bar, tabs, nav) — names no web-app content | `chrome.exe` | Stable `class_name` + `control_type` (`OmniboxViewViews`); Chromium aids are volatile view-ids |
+| `edge.yaml`       | Microsoft Edge **browser chrome** (address bar, tabs, nav) | `msedge.exe` | Stable `class_name` + `control_type` (+ `name` to split Back/Forward) |
+| `salesforce.yaml` | Salesforce (Lightning) — New Account form | title `Salesforce` (any browser) | Accessible **name** / field label (Lightning aids are volatile) |
+| `servicenow.yaml` | ServiceNow (ITSM) v2 — Incident, Change Request, Catalog item / REQ, + generic platform layer | title `ServiceNow` (any browser) | Stable element ids as `automation_id` (`incident.*`, `change_request.*`, `sc_request.*`, `sysverb_*`); list/nav controls fall back to `name` |
+| `jira.yaml`       | Jira (Cloud) — Create-issue (GIC), issue detail, list | title `Jira` (any browser) | Stable `<field>-field` aids; controls without a stable aid key on `name` |
+| `zendesk.yaml`    | Zendesk (Support / Agent Workspace) — ticket, views, search, customers/orgs | title `Zendesk` (any browser) | Accessible **name** (every aid is auto-generated and per-load volatile) |
 
 ## Author your own
 
