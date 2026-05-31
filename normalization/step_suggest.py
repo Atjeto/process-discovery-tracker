@@ -560,9 +560,13 @@ def _short_app(data: dict) -> str:
                 if head.startswith("*"):
                     head = head.lstrip("*").strip()
                 if head:
-                    return head
+                    # ADR-0024 §6a: strip embedded record values so the prefix is
+                    # value-free and the SAME step type collapses across cases at
+                    # the element grain (browser titles put the record id in the
+                    # head: 'Create INC0010010 | Incident | ServiceNow').
+                    return screen_label(head)
         # No separator: use the title up to ~40 chars
-        return title[:40]
+        return screen_label(title[:40])
     proc = (data.get("process_name") or "").strip()
     if proc.lower().endswith(".exe"):
         proc = proc[:-4]
@@ -756,6 +760,41 @@ def _load_label_rules() -> list[tuple[Any, str]]:
 
 
 _LABEL_RULES = _load_label_rules()
+
+
+# Value-free SCREEN/window strip (ADR-0024 §6a/§6b), shared with the viewer's
+# process-map-levels.js `screenType` via shared/screen-label-patterns.json -- so
+# the screen-grain key and the window-title-derived step prefix strip embedded
+# record tokens identically, no hand-synced regex to drift. Applied IN ORDER,
+# each a GLOBAL replace (unlike process_label's first-rule-wins), then end-trim.
+_SCREEN_PATTERNS_PATH = (
+    Path(__file__).resolve().parent.parent / "shared" / "screen-label-patterns.json"
+)
+
+
+def _load_screen_rules() -> list[tuple[Any, str]]:
+    with open(_SCREEN_PATTERNS_PATH, encoding="utf-8") as fh:
+        raw = json.load(fh)["rules"]
+    return [(re.compile(r["pattern"]), r["replacement"]) for r in raw]
+
+
+_SCREEN_RULES = _load_screen_rules()
+_SCREEN_END_TRIM = re.compile(r"^[\s#:\-–—|]+|[\s#:\-–—|]+$")
+
+
+def screen_label(name: str) -> str:
+    """Value-free window/screen string: strip embedded record numbers / id tokens
+    (the JS `screenType` twin). Used for the window-title-derived step-name prefix
+    so the SAME step type collapses across cases at the element grain instead of
+    fanning out per record ('Create INC0010010 | Incident | ServiceNow' ->
+    'Create | Incident | ServiceNow'). Never blanks an all-value string."""
+    s = (name or "").strip()
+    if not s:
+        return s
+    for rx, repl in _SCREEN_RULES:
+        s = rx.sub(repl, s)
+    s = _SCREEN_END_TRIM.sub("", s).strip()
+    return s or (name or "").strip()
 
 
 def process_label(name: str) -> str:

@@ -65,20 +65,20 @@ function _stepStart(st) {
  * Pure presentation: applied at view time only, raw `grain_keys` are untouched
  * (detail is never destroyed -- ADR-0024). Short codes like "va01" survive (the
  * digit-run threshold is 3+). */
+// The value-free screen/window strip rules are the SINGLE SOURCE in
+// shared/screen-label-patterns.json, loaded here AND by Python (step_suggest's
+// window-title-derived step prefix) so the screen-grain key and the step-name
+// prefix strip identically -- no two hand-synced regexes to drift (same pattern
+// as process-label-patterns.json). Applied IN ORDER, each a global replace.
+const _screenPath = require("node:path").join(__dirname, "..", "shared", "screen-label-patterns.json");
+const _SCREEN_RULES = require(_screenPath).rules.map(
+  (r) => ({ re: new RegExp(r.pattern, "g"), replacement: r.replacement }));
 function screenType(name) {
   let s = (name == null ? "" : String(name)).trim();
   if (!s) return s;
-  // 1. Id-like tokens FIRST (before the bare-number strip eats their digits):
-  //    CUST-10852, SO-12, INC0012345 (a short alpha prefix then 2+ digits,
-  //    optional hyphen). Removed wholesale so no orphaned prefix is left behind.
-  s = s.replace(/\b[A-Za-z]{2,12}-?\d{2,}\b/g, "");
-  // 2. Record numbers: a run of 3+ digits, with an optional leading '#'
-  //    ("#10900", "10900"). 3+ keeps short transaction codes like "va01" intact.
-  s = s.replace(/#?\b\d{3,}\b/g, "");
-  // 3. Tidy: drop an orphaned '#', collapse runs of whitespace, and strip any
-  //    separator left dangling at either end ("Order #" -> "Order").
-  s = s.replace(/#(?=\s|$)/g, " ").replace(/\s{2,}/g, " ").trim();
-  s = s.replace(/[\s#:\-–—]+$/, "").replace(/^[\s#:\-–—]+/, "").trim();
+  for (const rule of _SCREEN_RULES) s = s.replace(rule.re, rule.replacement);
+  // Trim separators left dangling at either end ("Order #" -> "Order").
+  s = s.replace(/[\s#:\-–—|]+$/, "").replace(/^[\s#:\-–—|]+/, "").trim();
   return s || String(name).trim();   // never blank a screen that was all-value
 }
 

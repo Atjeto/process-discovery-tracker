@@ -68,6 +68,21 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Element-grain step maps no longer fan out per record because of a numbered
+  window-title prefix ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md) §6a).**
+  A step's auto-name is `"{window-title app prefix}: {action}"`; for browser apps
+  the window title carries the record id in the prefix (`Create INC0010010 |
+  Incident | ServiceNow`), so the value-free `process_label` still differed per
+  case and the element-grain map split into per-record combs. The window-title
+  prefix (`step_suggest._short_app`) now passes through a value-free strip
+  (`screen_label`) that removes embedded record numbers / id tokens — sharing the
+  rules with the viewer's `screenType` via the new
+  **`shared/screen-label-patterns.json`** (single source, no hand-synced regex;
+  the id rule is uppercase-led so codes that ARE the name, e.g. SAP `va01`,
+  survive). Real ServiceNow element grain: **44 → 18 nodes, 3 → 1 sink**. Golden-
+  neutral (the demo window titles carry the app name before the first separator,
+  so the strip is a no-op there — verified).
+
 - **One logical screen is now one screen-grain node, even when the vocab only
   partially matches a form ([ADR-0024](docs/adr/0024-step-grain-as-view-time-rollup.md) §6b).**
   An App Vocabulary assigns a value-free `screen_id` (e.g. `incident`, `compose`)

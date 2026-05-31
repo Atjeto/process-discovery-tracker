@@ -219,12 +219,33 @@ to ONE `incident` node** (`grain_keys.screen` is uniformly `incident`). Golden-n
 (step naming uses the window-title app prefix, not `screen_id`); pinned by a new
 `test_app_vocab` test; pytest 337 + e2e 14/14 still green.
 
-### 6a. Element-grain window-title-PREFIX fan-out — STILL OPEN (handoff)
-*(Unchanged — see above.)* Note §6b helps but does **not** resolve 6a: the element grain
-fans out because the step **name/`process_label`** embeds the window-title prefix, and
-naming reads the window-title app prefix (`_short_app`), not `screen_id`. The fix is in
-`step_suggest` naming / `process-label-patterns.json` and **touches goldens** — left as the
-deliberate, golden-affecting handoff.
+### 6a. Element-grain window-title-PREFIX fan-out — FIXED
+The step name `"{app prefix}: {action}"` took its prefix from the window title
+(`_short_app`); for browser apps that prefix carries the record id (`Create INC0010010 |
+Incident | ServiceNow`), so the value-free `process_label` still differed per case and the
+element grain split into per-record combs (real ServiceNow: **44 nodes, 3 sources, 3
+sinks**). **Fixed:** `_short_app` now passes its result through a value-free strip
+(`step_suggest.screen_label`) that removes embedded record numbers / id tokens, sharing the
+rules with the viewer's `screenType` via the new **`shared/screen-label-patterns.json`**
+(single source; the id rule is uppercase-led so codes that ARE the name — SAP `va01` —
+survive). Real ServiceNow element grain: **44 → 18 nodes, 3 → 1 sink** (the per-record
+prefix fan-out is gone; the residual 2 sources are a value in the field *body* — `Enter
+INC0010010` on the number field — and a brief `Untitled` first-frame title, i.e. real
+capture noise, not the prefix). **Golden-neutral** — the demo window titles carry the app
+name before the first separator (`Salesforce - Order #10900` → `Salesforce`), so the strip
+is a no-op there (`golden_check` unchanged). Pinned by the existing screenType tests.
+
+### 6c. Phase-level Process diagram (BPMN) — validated working (no fix needed)
+The phase × Process-diagram cell shows an empty-state on the committed demo only because
+**no committed session has phases** (`phases: []`, all `phase_id: null`) — that empty-state
+is correct, not a bug. `pipeline_stages.py` mines `process_map_phase.bpmn` whenever a
+session has authored phases. Validated by authoring 4 phases on a throwaway copy of
+`sess-2026-0514-0900` (Intake/Order/Tracking/Notify, by app), re-mining, and rendering in
+the viewer: the phase Process diagram is a clean linear chain `start → Intake (Salesforce)
+→ Order entry (SAP) → Tracking (Excel) → ⬦ → Notify (Outlook) → end`
+(`phase-bpmn-render.png`) — and it benefits from the §5b cycle-layout fix. No code change;
+the open item is upstream (sessions acquire phases via analyst authoring / a future
+auto-phase suggester), not the BPMN miner.
 
 ---
 
