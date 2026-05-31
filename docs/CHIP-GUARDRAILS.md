@@ -43,6 +43,51 @@ guard to make it pass.
    project's #1 recurring failure. Drive the real viewer (`e2e/session-smoke.js` or
    `../_pdt_verify/`), screenshot, read the PNGs back.
 
+## How to drive the viewer for UI validation (entirely in-repo — no external deps)
+
+Invariant #7 says verify UI in the harness. Here is **HOW** — a fresh chip (even in a
+clean worktree) needs nothing outside the repo: `e2e/` already bundles `playwright-core`,
+and it drives the viewer's own `electron`.
+
+1. **Get a loadable, analyzed session** (the committed demo). Re-analyze so the viewer sees
+   current pipeline output, then **REVERT it** — never commit regenerated `example-aggregate`:
+   ```
+   viewer/python/python.exe normalization/normalize.py sessions/example-aggregate/sess-2026-0514-0900 --mine
+   # … drive + screenshot …
+   git checkout -- sessions/example-aggregate/ && git clean -fdq sessions/example-aggregate/
+   ```
+2. **The merge gate is itself a worked launch example** that opens the REAL viewer and asserts
+   (writes failure PNGs into `e2e/`): `cd e2e && node session-smoke.js`.
+3. **To screenshot / drive freely**, copy that launch (deps already in `e2e/node_modules`):
+   ```js
+   const { _electron } = require("playwright-core");
+   const app = await _electron.launch({
+     executablePath: require("<repo>/viewer/node_modules/electron"),
+     args: [".", "--session=" + ANALYZED_SESSION_FOLDER], cwd: "<repo>/viewer" });
+   const page = await app.firstWindow();
+   page.on("console", (m) => { if (m.type() === "error") /* a PAGE ERROR — fail */ });
+   ```
+   `--session=<folder>` is parsed by `viewer/main.js` (`parseInitialSessionArg`). A human can
+   instead just run `npm start` in `viewer/` (Ctrl+R reloads). *(`../_pdt_verify/` is an
+   OPTIONAL out-of-repo scratch harness with extra drivers — it may be **absent**; do not
+   depend on it. The in-repo `e2e/` is the portable entry point.)*
+
+### The DOM handles to reach every surface (so a context-blind chip can navigate)
+- **Top-nav views:** `.tab[data-view="session"|"aggregate"|"template"|"library"]`
+- **Session-view levels:** `.view-mode-btn[data-level="flow"|"steps"|"phases"|"map"|"analysis"]`
+  → each shows its container `#session-layout-<level>`.
+- **Compare-Sessions:** stub the OS open-dialog, then click `#btn-open-multi-hero` to load:
+  `app.evaluate(({dialog}, p) => { dialog.showOpenDialog = async () => ({canceled:false, filePaths:[p]}); }, AGG_FOLDER)`
+- **Map controls:** notation `.panel-tab[data-map="bpmn"|"dfg"]`; grain select `#session-map-level`
+  (session) / `#map-level` (aggregate).
+- **Live map graph:** the DFG host exposes `host.__cy` (a cytoscape instance); the BPMN host
+  has `.djs-element[data-element-id]` shapes. Hosts: `#session-map-{bpmn,dfg}-host` (session) ·
+  `#{bpmn,dfg}-host` (aggregate).
+- **Theme:** `page.evaluate(() => require("./theme.js").setTheme("light"|"dark"))`.
+- **Window size:** `app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setContentSize(1500, 950))`.
+- **Clipping check** (labels have drifted before — see e1f5680): a visible element with
+  `scrollWidth - clientWidth > 2` and non-empty text is clipped/overflowing.
+
 ## Concurrency (we've collided before)
 
 - **One distinct, explicitly-named branch off `master` per chip.** Never commit to `master`
