@@ -502,6 +502,13 @@ function _roiSection(roi) {
       "realism factor) × loaded €/hr, less the build cost amortised over " +
       escapeHtml(String((roi.inputs_used && roi.inputs_used.amortization_years) || 3)) +
       " years. Figures are a band, not a point estimate — read the range.</div>";
+  // ADR-0024: make the grain↔ROI relationship explicit. The candidates are at
+  // the coherent-segment grain (ADR-0016) and the total is time-based, so the
+  // Grain slider re-itemises the Steps and Map views but never moves this total.
+  const grainNote = '<div class="analysis-caption roi-grain-note">The headline ' +
+    "total is grain-invariant: the Grain slider re-itemises the Steps and Map " +
+    "views, but a robot saves the same hours however the work is grouped, so " +
+    "this figure never moves.</div>";
 
   const rows = cands.map((r) => _roiRow(r, roi)).join("");
   const unit = roi.needs_input ? "Hours/yr" : "Net €/yr";
@@ -515,7 +522,7 @@ function _roiSection(roi) {
       "<th>Payback</th><th></th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table>";
 
-  return '<div class="analysis-section">' + head + caption +
+  return '<div class="analysis-section">' + head + caption + grainNote +
     _roiLegend(roi) + _roiTotals(roi) + table + "</div>";
 }
 

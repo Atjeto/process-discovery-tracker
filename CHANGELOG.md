@@ -48,6 +48,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     notch change; sliding back restores the detail. e2e (`session-smoke.js`)
     pins the slider, the element↔screen consolidation (demo 64↔19), and the
     €-ROI total holding invariant across notches.
+  - **P4 — €-ROI total is provably notch-invariant.** The grain is a *view*
+    control, so it never re-runs the pipeline: the €-ROI is computed once from
+    event-stream segments (ADR-0016) and the slider can't move it. This is the
+    load-bearing reason the roll-up is view-time rather than a normalize-time
+    flip — re-segmenting *would* move the total (demo 0.01→0.02 h/yr), so grain
+    must not re-segment. The step-grained itemisation (Steps, Map) follows the
+    notch; the segment-grained ROI/automation list sits above the step grain and
+    stays put, with the total invariant either way. New `analysis_roi` tests pin
+    that the total is a pure, order-insensitive sum over candidates (re-itemising
+    or re-ranking can't move it); the Analysis panel states the invariance.
 
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades

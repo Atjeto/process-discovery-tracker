@@ -58,6 +58,42 @@ def test_known_money_and_hours():
     assert exp["payback_months"] is None
 
 
+def test_total_invariant_under_itemisation_and_ranking():
+    """ADR-0024 load-bearing guarantee: the headline hours/yr & € totals are a
+    TIME-based sum over the candidates and do not depend on how the candidates
+    are itemised or ranked. Re-ordering the candidate list (what the grain notch
+    changes in the view) must NOT move the totals -- only the per-row breakdown
+    and its order do. A robot saves the same hours whether you list them as one
+    row or three.
+
+    Here the SAME total observed time (1_200_000 ms over 4 instances) is
+    itemised two ways: as one coarse candidate, and as three finer candidates
+    whose means sum to the whole. The expected-band hours total is identical.
+    """
+    inputs = {"roi_inputs": {"loaded_cost_per_hour": 36, "annual_volume": 1000,
+                             "automatable_fraction": 0.7}}
+    coarse = compute_roi([_cand("whole", 1_200_000, n=4)], inputs)
+    # Same work split three ways: 500k + 400k + 300k = 1_200_000, same 4 instances.
+    fine = compute_roi([
+        _cand("a", 500_000, n=4), _cand("b", 400_000, n=4), _cand("c", 300_000, n=4),
+    ], inputs)
+    assert coarse["totals"]["saved_hours_per_year"] == fine["totals"]["saved_hours_per_year"]
+    assert coarse["totals"]["gross_annual"] == fine["totals"]["gross_annual"]
+    assert coarse["totals"]["net_annual"] == fine["totals"]["net_annual"]
+    # ...but the itemisation differs (1 row vs 3) -- that is the part the notch moves.
+    assert len(coarse["candidates"]) == 1 and len(fine["candidates"]) == 3
+
+
+def test_total_is_pure_in_candidate_order():
+    """compute_roi is order-insensitive: shuffling the input candidates (a
+    re-ranking) leaves every total untouched -- the notch can re-rank freely."""
+    cands = [_cand("a", 500_000), _cand("b", 800_000), _cand("c", 300_000)]
+    inputs = {"roi_inputs": {"loaded_cost_per_hour": 50, "annual_volume": 200}}
+    t1 = compute_roi(cands, inputs)["totals"]
+    t2 = compute_roi(list(reversed(cands)), inputs)["totals"]
+    assert t1 == t2
+
+
 def test_band_ordering():
     """conservative <= expected <= optimistic on both hours and money."""
     roi = compute_roi([_cand("bbb", 1_000_000)], {"roi_inputs": {
