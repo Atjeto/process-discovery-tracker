@@ -119,6 +119,27 @@ public static class Program {
                     }
                     case "pause":    Interlocked.Exchange(ref paused, 1); break;
                     case "resume":   Interlocked.Exchange(ref paused, 0); break;
+                    case "snapshot": {
+                        // ADR-0025: one-shot UIA window snapshot for in-app
+                        // vocabulary discovery. target = "foreground" (default)
+                        // or a decimal HWND; passes = 2 (default) walks twice
+                        // ≥1s apart so the picker can diff for volatile ids.
+                        // Emitted lines are written straight to stdout (not
+                        // through the interaction queue) so they're unaffected
+                        // by pause and ordered relative to snapshot_done.
+                        var target = doc.RootElement.TryGetProperty("target", out var tEl) &&
+                                     tEl.ValueKind == JsonValueKind.String
+                            ? tEl.GetString() : "foreground";
+                        var passes = 2;
+                        if (doc.RootElement.TryGetProperty("passes", out var pEl) &&
+                            pEl.ValueKind == JsonValueKind.Number &&
+                            pEl.TryGetInt32(out var pVal) && pVal > 0) {
+                            passes = pVal;
+                        }
+                        await Snapshotter.RunAsync(target, passes, options,
+                            l => { try { Console.Out.WriteLine(l); } catch { } });
+                        break;
+                    }
                     case "shutdown": goto done;
                 }
             } catch (Exception e) {

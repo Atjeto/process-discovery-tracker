@@ -66,6 +66,54 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     invariant), and the **Flow** timeline's step lane rolls up to the notch — so
     the single grain control drives Flow / Steps / Map / Analysis and Compare.
 
+- **In-app vocabulary discovery — "point-and-learn" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md), [build spec](docs/To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md)).**
+  Turns the manual real-value UIA probing ([REAL-VALUE-TESTING.md](docs/REAL-VALUE-TESTING.md))
+  into a shipped, on-device, self-service feature: the analyst points at a
+  prepared window and gets a named-able, stable-signature App Vocabulary
+  skeleton — no dev box, no off-box agent, nothing leaves the machine.
+  - **P1 — recorder `snapshot` command.** A new stdio command alongside
+    `hello`/`pause`/`resume`/`shutdown`: `{cmd:"snapshot", target:"foreground"|<hwnd>, passes:2}`
+    walks the target window's UIA subtree once per pass and streams every
+    identifiable control as a `snapshot_control` line (`control_type` /
+    `automation_id` / `name` / `class_name` / `framework_id` plus ADR-0023's
+    `framework` / `identity_source` / `confidence` / `bounds`, with `depth` /
+    `role` / `pass`), then a `snapshot_done` per pass. Two passes ≥1s apart let
+    the picker diff for volatile ids; capped at ~2000 controls; wakes a
+    Chromium renderer's lazily-built a11y tree first. Transient — never written
+    to `events.jsonl`. The pure traversal (`SnapshotWalker` over an
+    `ISnapshotElement` seam) is pinned by new `Recorder.Tests`; the production
+    single-file recorder build stays green.
+  - **P2 — the volatility-diff signature picker (the clever core).** New
+    `normalization/signature_pick.py` joins the two-pass snapshot's controls by
+    a *stability-independent* key (role + label + ancestry + bounds bucket —
+    never the candidate id), marks an `automation_id` **volatile** when it
+    changed across passes *or* matches a per-render pattern (`^input-\d+$`,
+    `^combobox-(input|button)-\d+$`, bare GUID, …), then picks the most-stable
+    identity down the ADR-0023 ladder, **skipping volatile fields** — turning the
+    analyst's "which id is real?" guess into a measured fact.
+    `app_vocab.bootstrap_from_snapshot` builds a named-able skeleton over the
+    full control set (name pre-filled from the label, screens grouped by window
+    title, each entry carrying the picked `identity_source` / `confidence` /
+    `volatile_aids`). The **ground-truth test** (`test_signature_pick.py`)
+    validates the picker against the committed hand-probed vocabs: it KEEPS the
+    stable ids (Office `FileSave`, ServiceNow `incident.short_description`,
+    Outlook `4117`, Jira `summary-field`) and **DEMOTES** Salesforce `input-378`
+    / Zendesk auto-ids to the accessible label. Pure-Python; the session-golden
+    is unchanged (discovery is purely additive).
+  - **P3 — App Library "Discover from window".** A new button on the App Library
+    tab: point at a prepared app window and the viewer spawns the recorder for a
+    two-pass snapshot (`recorder-snapshot.js`), runs the picker +
+    `bootstrap_from_snapshot` via the bundled Python
+    (`normalization/discover_vocab.py`), and loads a stable-signature skeleton
+    into the editor. Each discovered interaction shows **why** its signature was
+    picked — the `identity_source` rung + ADR-0023 confidence, and the rejected
+    volatile id(s) (the legend). **Re-discovery merges** into the selected vocab:
+    new controls are added, analyst-named ones preserved (never overwritten),
+    screens merged additively, a tuned scope left intact. Entirely on-device —
+    the recorder snapshots locally, nothing is written until Save, and
+    discovery-provenance fields are stripped from the persisted YAML. End-to-end
+    verified against a live window (snapshot → discover → skeleton).
+
 - **Recorder desktop-coverage hardening (§11e, [ADR-0023](docs/adr/0023-recorder-capture-confidence.md)).**
   The C# recorder now reports per-element capture quality so the moat degrades
   *honestly* instead of silently producing thin captures on hard frameworks.

@@ -99,7 +99,7 @@ function ensureRecorderExtracted({ bootLog, onStart } = {}) {
   });
 }
 
-function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, bootLog }) {
+function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, onSnapshotControl, onSnapshotDone, bootLog }) {
   const exe = recorderPath || resolveRecorderPath(bootLog);
   const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
@@ -120,6 +120,11 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     if (msg.type === "interaction" && onEvent) onEvent(msg.data);
     else if (msg.type === "warning" && onWarning) onWarning(msg);
     else if (msg.type === "stats" && onStats) onStats(msg.data);
+    // ADR-0025 in-app vocabulary discovery: a one-shot `snapshot` command
+    // streams snapshot_control lines (one per identifiable control) then a
+    // snapshot_done per pass. Transient -- never written to events.jsonl.
+    else if (msg.type === "snapshot_control" && onSnapshotControl) onSnapshotControl(msg.data);
+    else if (msg.type === "snapshot_done" && onSnapshotDone) onSnapshotDone(msg.data);
     else if (msg.type === "ready" && bootLog) bootLog("[recorder] ready");
   });
 
@@ -176,6 +181,13 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     child,
     pause: () => safeWrite({ cmd: "pause" }),
     resume: () => safeWrite({ cmd: "resume" }),
+    // ADR-0025: ask the recorder to walk the target window's UIA subtree and
+    // stream every control (per pass). `target` is "foreground" or a decimal
+    // HWND; `passes` (default 2) walks twice ≥1s apart so the picker can diff
+    // for volatile automation_ids. Results arrive via the onSnapshotControl /
+    // onSnapshotDone callbacks above.
+    snapshot: ({ target = "foreground", passes = 2 } = {}) =>
+      safeWrite({ cmd: "snapshot", target, passes }),
     stop: (opts) => new Promise((resolve) => {
       const drainMs = (opts && opts.drainTimeoutMs) || 1500;
       let done = false;

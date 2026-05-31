@@ -73,7 +73,7 @@ CommonJS, so real modules need no build step).
 | `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)), plus the €-ROI panel (§11c) rendering `analysis.json`'s `roi` band with the `roi_inputs` analyst-assumption + per-segment "tune" forms (persisted via the undo path; re-analyze recomputes the €). |
 | `views/aggregate-view.js` | Compare Sessions — the notation × level process-map matrix, drill-down scoping, cross-session statistics + analysis, exports. |
 | `views/template-view.js` | Process Template tab — version compare, exemplar match. |
-| `views/vocab-view.js` | App Library (Vocabulary editor) tab. |
+| `views/vocab-view.js` | App Library (Vocabulary editor) tab. Hosts **"Discover from window"** ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)): point at a prepared app window → the recorder snapshots its live UI → the volatility picker + `bootstrap_from_snapshot` return a stable-signature skeleton merged into the editor. Each discovered entry shows *why* its signature was picked (`identity_source` + ADR-0023 confidence, and any rejected volatile id); re-discovery **merges** (analyst-named entries are preserved, never overwritten); discovery-provenance fields are stripped on save. |
 | `views/identity-picker.js` | The per-step **Match rules** picker modal (Process Template tab) — composes a step's match rules from the App Library, a coarse app/window rule, or an interaction lifted from a captured session. |
 
 **Feature modules** — all CommonJS `module.exports` since Phase 3 Stage A (the
@@ -98,7 +98,8 @@ former `window.Pdt*` globals were converted; the globals are gone):
 | `phase-editor.js` | `renderPhaseList`, `renderPhaseDetail`, `renderPhaseTimeline` | Phases list/detail + Phases mini-timeline |
 | `layout-controls.js` | (side-effect import) | Drag-resize handles + video modes; self-inits at `require()` time |
 | `command-palette.js` | `open`, `close`, `toggle`, `setProvider` | Ctrl+K command palette |
-| `python-runner.js` | `runNormalize`, `resolvePython`, … | Spawns the bundled Python pipeline (`require`d by `main.js`) |
+| `python-runner.js` | `runNormalize`, `runDiscoverVocab`, `resolvePython`, … | Spawns the bundled Python pipeline (`require`d by `main.js`); `runDiscoverVocab` feeds a window snapshot to `normalization/discover_vocab.py` (ADR-0025) |
+| `recorder-snapshot.js` | `snapshotWindow`, `resolveRecorderExe` | Drives the C# recorder's one-shot `snapshot` command for App-Library discovery (ADR-0025) — spawns the recorder, runs a two-pass UIA snapshot of the target window, resolves with the controls + window title. Transient; nothing written to disk |
 | `main.js` | — | Electron main process (see §4) |
 
 `step-editor.js` / `phase-editor.js` are the list/detail + mini-timeline

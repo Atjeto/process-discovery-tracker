@@ -13,6 +13,12 @@ const { $, escapeHtml, escapeAttr, toast } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
+const CA = require("../canonical-author.js");
+
+// Discovery-provenance fields the picker stamps on each entry (ADR-0025).
+// They drive the editor's "why this signature" legend but are stripped
+// before save so the persisted vocab stays signature-focused.
+const DISCOVERY_META_KEYS = ["identity_source", "confidence", "volatile_aids", "_hint"];
 
 async function reloadVocabList() {
   const r = await Ipc.listAppVocabs();
@@ -141,9 +147,27 @@ function _buildVocabIntRow(ent, i) {
   const sigParts = [sig.control_type, sig.automation_id, sig.name].filter(Boolean);
   const sigSummary = sigParts.length ? sigParts.join(" · ") : "(unset signature)";
   // I57: a bootstrapped entry carries how many times the control was
-  // observed -- show it so the analyst can prioritise.
-  const seen = (typeof ent.seen_count === "number")
-    ? '<span class="vocab-int-seen" title="Times this control was used in the prep session">seen ' + ent.seen_count + '×</span>'
+  // observed -- show it (only when >1, so a single static snapshot control
+  // doesn't read as a misleading "seen 1×").
+  const seen = (typeof ent.seen_count === "number" && ent.seen_count > 1)
+    ? '<span class="vocab-int-seen" title="Distinct controls that share this signature">×' + ent.seen_count + '</span>'
+    : "";
+  // ADR-0025 legend: when a signature was AUTO-DISCOVERED, show WHY -- the
+  // identity_source rung it was keyed on + the confidence (ADR-0023), so the
+  // analyst sees the picker's reasoning before confirming/overriding.
+  let conf = "";
+  if (typeof ent.confidence === "number") {
+    const tier = ent.confidence >= 0.9 ? "strong" : (ent.confidence >= 0.6 ? "ok" : "weak");
+    conf = '<span class="vocab-int-conf ' + tier + '" title="Auto-discovered: keyed on ' +
+      escapeAttr(ent.identity_source || "?") + ' (ADR-0023 confidence ' + ent.confidence + ')">' +
+      escapeHtml(ent.identity_source || "?") + ' ' + ent.confidence + '</span>';
+  }
+  // The volatility note: the per-render automation_id(s) the picker REJECTED
+  // (changed across the two snapshot passes, or matched a volatility pattern),
+  // which is why this entry is keyed on the label instead of the id.
+  const vol = (Array.isArray(ent.volatile_aids) && ent.volatile_aids.length)
+    ? '<div class="vocab-int-volatile" title="These automation_ids changed across snapshot passes or match a per-render pattern, so discovery keyed on the label instead.">⚠ volatile id rejected: ' +
+      escapeHtml(ent.volatile_aids.join(", ")) + ' → keyed on label</div>'
     : "";
   const row = document.createElement("div");
   row.className = "vocab-int";
@@ -152,10 +176,12 @@ function _buildVocabIntRow(ent, i) {
     '<div class="vocab-int-head">' +
     '<span class="vocab-int-num">' + (i + 1) + '</span>' +
     '<div class="vocab-int-sig">' + escapeHtml(sigSummary) + '</div>' +
+    conf +
     seen +
     '<button class="icon-btn vocab-int-remove" title="Remove">✕</button>' +
     '</div>' +
     '<div class="vocab-int-body">' +
+    vol +
     '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
     '<div class="vocab-int-sig-fields">' +
     '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
@@ -192,7 +218,10 @@ function renderVocabInteractions() {
   while (foldFrom > 0 && isUncommon(interactions[foldFrom - 1])) foldFrom--;
   const cleanTail = foldFrom < interactions.length &&
     interactions.slice(0, foldFrom).every((e) => !isUncommon(e));
-  if (!cleanTail) foldFrom = interactions.length;
+  // Don't fold when there's no common head to keep (foldFrom === 0) -- e.g. a
+  // freshly DISCOVERED vocab where every control was seen once: folding would
+  // hide the entire list behind a disclosure. Show everything in that case.
+  if (!cleanTail || foldFrom === 0) foldFrom = interactions.length;
 
   for (let i = 0; i < foldFrom; i++) {
     host.appendChild(_buildVocabIntRow(interactions[i], i));
@@ -299,12 +328,24 @@ function removeInteraction(idx) {
   markDirty();
 }
 
+/* Strip ADR-0025 discovery-provenance fields from a vocab before persisting,
+   so the saved file stays signature-focused (the matcher ignores them, and
+   the committed hand-authored vocabs don't carry them). Returns a clone --
+   the in-memory copy keeps the legend fields for continued display. */
+function stripDiscoveryMeta(vocab) {
+  const clone = JSON.parse(JSON.stringify(vocab || {}));
+  for (const it of (clone.interactions || [])) {
+    for (const k of DISCOVERY_META_KEYS) delete it[k];
+  }
+  return clone;
+}
+
 async function saveVocab() {
   if (!State.getVocabState().selectedPath || !State.getVocabState().current) return;
   collectAndMark();
   const r = await Ipc.writeVocab({
     path: State.getVocabState().selectedPath,
-    vocab: State.getVocabState().current,
+    vocab: stripDiscoveryMeta(State.getVocabState().current),
   });
   if (!r || !r.ok) {
     toast("Save failed: " + ((r && r.error) || "unknown"), "error");
@@ -315,6 +356,92 @@ async function saveVocab() {
   if (btn) btn.textContent = "Save vocabulary";
   toast("App Library entry saved — re-analyze any session to apply", "success");
   reloadVocabList();
+}
+
+/* Merge named screens additively (new ids appended; existing kept). */
+function mergeScreens(existing, incoming) {
+  const out = Array.isArray(existing) ? existing.slice() : [];
+  const ids = new Set(out.map((s) => s && s.id).filter(Boolean));
+  for (const s of (incoming || [])) {
+    if (s && s.id && !ids.has(s.id)) { out.push(s); ids.add(s.id); }
+  }
+  return out;
+}
+
+/* Merge-aware re-discovery (ADR-0025 inverse): diff a discovered skeleton
+   INTO an existing vocab. New controls are added; analyst-named ones are
+   PRESERVED (CA.mergeInteractionsIntoVocab keeps the existing entry on a
+   signature collision). Screens merge additively; the discovered scope is
+   adopted only when the target has none yet (never clobbers a tuned scope).
+   Pure -- exported for unit testing. */
+function mergeDiscoveredSkeleton(currentVocab, skeleton) {
+  const v = currentVocab || {};
+  const incoming = (skeleton && skeleton.interactions) || [];
+  const wasEmpty = !((v.interactions || []).length);
+  const merged = CA.mergeInteractionsIntoVocab(v, incoming);
+  const out = merged.vocab;   // { ...v, interactions }
+  out.screens = mergeScreens(v.screens, skeleton && skeleton.screens);
+  const curScope = v.scope || {};
+  if (wasEmpty && skeleton && skeleton.scope &&
+      !curScope.process_name && !curScope.window_title_regex) {
+    out.scope = Object.assign({}, skeleton.scope);
+  }
+  return { vocab: out, added: merged.added, skipped: merged.skipped };
+}
+
+/* "Discover from window" -- point at a prepared app window and auto-build a
+   stable-signature skeleton from its live UI (ADR-0025). Targets the SELECTED
+   vocab (merge-aware re-discovery); when none is selected, creates a new one
+   first. On-device: the recorder snapshots locally and nothing is saved until
+   the analyst presses Save. */
+async function discoverFromWindow() {
+  let v = State.getVocabState().current;
+  let p = State.getVocabState().selectedPath;
+  if (!v || !p) {
+    const name = await promptModal({
+      title: "Discover from window",
+      message: "Which app is this for? (Tip: pick an existing entry on the left first to MERGE discovery into it.)",
+      placeholder: "e.g., Salesforce", okLabel: "Continue",
+    });
+    if (!name) return;
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    p = await Ipc.newVocabFile({ suggestedId: id });
+    if (!p) return;
+    await reloadVocabList();
+    await selectVocab(p);
+    v = State.getVocabState().current;
+    if (!v) { toast("Couldn't open the new App Library file", "error"); return; }
+    v.name = name;
+  }
+  const proceed = await confirmModal({
+    title: "Discover from window",
+    message: "Bring the app's window to the FOREGROUND now. For a web app, let the page finish loading. The recorder snapshots its live UI twice (~2s) to find stable element signatures. On-device — nothing is saved or sent until you press Save.",
+    okLabel: "Snapshot foreground window",
+  });
+  if (!proceed) return;
+  const btn = $("#btn-vocab-discover");
+  if (btn) { btn.disabled = true; btn.textContent = "Discovering…"; }
+  try {
+    const r = await Ipc.discoverFromWindow({ vocabId: v.id, vocabName: v.name });
+    if (!r || r.error) {
+      toast("Discovery failed: " + ((r && r.error) || "unknown"), "error");
+      return;
+    }
+    const skeleton = (r.skeleton && r.skeleton.app_vocabulary) || null;
+    if (!skeleton || !((skeleton.interactions || []).length)) {
+      toast("No controls discovered in that window.", "error");
+      return;
+    }
+    const merged = mergeDiscoveredSkeleton(v, skeleton);
+    State.getVocabState().current = merged.vocab;
+    renderVocabEditor();
+    markDirty();
+    toast("Discovered " + r.control_count + " controls from “" + (r.window_title || "window") +
+      "” — " + merged.added + " new, " + merged.skipped + " already present. Review names and Save.",
+      "success");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Discover from window…"; }
+  }
 }
 
 /* Wire the App Library tab controls. Call once at boot. */
@@ -331,6 +458,9 @@ function initVocabView() {
       toast("New App Library entry created — fill in interactions in plain English and save", "success");
     });
   }
+  if ($("#btn-vocab-discover")) {
+    $("#btn-vocab-discover").addEventListener("click", discoverFromWindow);
+  }
   if ($("#btn-vocab-reload")) {
     $("#btn-vocab-reload").addEventListener("click", reloadVocabList);
   }
@@ -341,4 +471,7 @@ function initVocabView() {
   }
 }
 
-module.exports = { initVocabView, reloadVocabList, mergeVocabEntry };
+module.exports = {
+  initVocabView, reloadVocabList, mergeVocabEntry,
+  mergeDiscoveredSkeleton, mergeScreens, stripDiscoveryMeta,
+};

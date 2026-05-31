@@ -23,6 +23,8 @@ from typing import Any
 
 import yaml
 
+import signature_pick
+
 
 DEFAULT_DIR = Path(__file__).resolve().parent / "app_vocabularies"
 
@@ -400,6 +402,118 @@ def _common_prefix(strings: list[str]) -> str:
         if i >= len(s2) or c != s2[i]:
             return s1[:i]
     return s1
+
+
+# --- Bootstrap-from-snapshot authoring (ADR-0025) -----------------------
+
+def _slug(name: str) -> str:
+    """Lowercase + hyphenate -- mirrors the App Library id rule
+    (canonical-author.js::slugify / vocab-view.js)."""
+    s = re.sub(r"[^a-z0-9]+", "-", str(name or "").lower())
+    return s.strip("-")
+
+
+def _snapshot_sig_key(sig: dict) -> tuple | None:
+    """Dedup key for a *picked* signature (no process_name -- a vocab is already
+    process/window-scoped). Mirrors canonical-author.js::vocabSignatureKey."""
+    aid = sig.get("automation_id")
+    if aid:
+        return ("aid", aid)
+    ct, name, cn = sig.get("control_type"), sig.get("name"), sig.get("class_name")
+    if ct and name:
+        return ("ctn", ct, name)
+    if cn and name:
+        return ("cnn", cn, name)
+    if name:
+        return ("n", name)
+    if cn:
+        return ("cn", cn)
+    return None
+
+
+def bootstrap_from_snapshot(
+    controls: list[dict[str, Any]],
+    *,
+    window_title: str | None = None,
+    vocab_id: str = "untitled",
+    vocab_name: str = "Untitled",
+) -> dict[str, Any]:
+    """Build a starter vocabulary from a live window snapshot (ADR-0025).
+
+    Where ``bootstrap_from_session`` works off the interacted-only subset of a
+    captured session, this works off the **full** control set of a one-shot
+    ``snapshot`` (every identifiable control in the window) and uses the
+    volatility-diff picker (``signature_pick``) to choose each control's *stable*
+    signature -- demoting a per-render automation_id (Salesforce ``input-378``)
+    to the accessible label, exactly as the analyst did by hand.
+
+    Differences from the session bootstrap:
+      - ``name`` is **pre-filled** from the accessible label (the snapshot has the
+        label for every control, not just interacted ones) -- the analyst refines.
+      - ``screens`` is grouped by the snapshot's window title (one window -> one
+        screen for v1; re-discovery of other windows merges in more).
+      - each entry carries the picked ``identity_source`` / ``confidence`` /
+        ``volatile_aids`` (so the identity-picker can show *why* a signature was
+        chosen) plus the legacy ``_hint`` comment line.
+    """
+    screen_id: str | None = None
+    screens: list[dict[str, Any]] = []
+    scope: dict[str, Any] = {}
+    if window_title:
+        screen_id = _slug(window_title) or "screen"
+        screens = [{"id": screen_id, "name": window_title}]
+        scope = {"window_title_regex": f".*{re.escape(window_title.strip())}.*"}
+
+    seen: dict[tuple, dict] = {}
+    interactions: list[dict[str, Any]] = []
+    for pick in signature_pick.pick_all(controls):
+        sig = pick.get("signature")
+        if not sig:
+            continue
+        key = _snapshot_sig_key(sig)
+        if key is not None and key in seen:
+            seen[key]["seen_count"] += 1
+            continue
+        rep = pick["group"][0]
+        label = rep.get("name") or ""
+        item: dict[str, Any] = {
+            "signature": sig,
+            "name": label,                       # pre-filled from the label
+            "identity_source": pick["identity_source"],
+            "confidence": pick["confidence"],
+            "seen_count": 1,
+        }
+        if screen_id:
+            item["screen"] = screen_id
+        if pick.get("volatile_aids"):
+            item["volatile_aids"] = pick["volatile_aids"]
+        # Legacy hint comment: raw label + why this signature (identity_source +
+        # confidence) + the volatile aids that were rejected, if any.
+        hint = []
+        if label:
+            hint.append(f"label: {label!r}")
+        hint.append(f"{pick['identity_source']} (conf {pick['confidence']})")
+        if pick.get("volatile_aids"):
+            hint.append("rejected volatile aid(s): " + ", ".join(pick["volatile_aids"]))
+        item["_hint"] = "; ".join(hint)
+        if key is not None:
+            seen[key] = item
+        interactions.append(item)
+
+    # Most-frequently-seen controls first (matches bootstrap_from_session's I57
+    # ranking) so the analyst names the densest controls first.
+    interactions.sort(key=lambda x: -x.get("seen_count", 1))
+
+    return {
+        "app_vocabulary": {
+            "id": vocab_id,
+            "name": vocab_name,
+            "version": 1,
+            "scope": scope,
+            "screens": screens,
+            "interactions": interactions,
+        }
+    }
 
 
 # --- YAML emission -----------------------------------------------------

@@ -162,6 +162,41 @@ The **raw `events.jsonl` is never rewritten** — masking applies only to the
 in-memory copy that produces the derived artifacts. Which rule-set ran is
 recorded in the `pii_masking` annotations key (below).
 
+### Recorder snapshot messages (transient — ADR-0025)
+
+The recorder's `snapshot` stdio command (in-app vocabulary discovery) streams two
+message types that are **never persisted to `events.jsonl`** — they are consumed
+live by the viewer's App Library "Discover from window" flow and discarded. They
+share the `{ v: 1, type, ts, data }` envelope of the other recorder stdio lines
+(`ready` / `stats` / `warning`).
+
+**`snapshot_control`** — one per identifiable control in the target window's UIA
+subtree, per pass. Controls with no `automation_id`/`name`/`class_name` (pure
+decoration) are skipped; the walk is capped at ~2000 controls.
+
+| Field | Type | Notes |
+|---|---|---|
+| `control_type` | string | e.g. `Button`, `Edit`, `ComboBox` |
+| `automation_id` | string | Developer-assigned ID (may be volatile — the two-pass diff decides) |
+| `name` | string | Accessible label |
+| `class_name` | string | UIA class name |
+| `framework_id` | string | Raw UIA FrameworkId |
+| `framework` | string | Normalized toolkit (§11e), same domain as the `interaction` field |
+| `identity_source` | string | Identity-ladder rung (§11e): `automation_id` \| `name` \| `class_name` (never `none` — those are skipped) |
+| `confidence` | number | Per-element capture confidence `[0,1]` (§11e) |
+| `bounds` | object | `{ x, y, w, h }` on-screen rectangle; omitted when UIA reports none |
+| `depth` | int | Tree depth below the target window (the window itself is `0`) |
+| `role` | string | UIA LocalizedControlType — the human role word ("button") |
+| `pass` | int | 1-based snapshot pass (≥2 passes ≥1s apart so the picker can diff for volatility) |
+
+**`snapshot_done`** — one per pass, after that pass's controls.
+
+| Field | Type | Notes |
+|---|---|---|
+| `window_title` | string | Target window title (the screen-grouping key for the skeleton); `null` if no target resolved |
+| `count` | int | Controls emitted in this pass |
+| `pass` | int | 1-based pass number |
+
 ## Annotation file (annotations.json)
 
 Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are never mutated. Re-normalization consumes this file (§9.3 option b) before case assignment.

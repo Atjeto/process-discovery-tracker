@@ -101,10 +101,27 @@ process (not Node) because UI Automation is a first-party Windows API best consu
 from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
 
 - `Program.cs` — entry point; an **NDJSON control loop** over stdin/stdout.
-  Electron sends `hello` / `pause` / `resume` / `shutdown` (the `hello` carries
-  `verbose`, `debounce_ms`, and `ocr`); the recorder emits `ready`, `interaction`,
-  `stats`, and `warning` lines. The `stats` line carries throughput counters
-  plus an `errors` count and a `last_error` snapshot.
+  Electron sends `hello` / `pause` / `resume` / `snapshot` / `shutdown` (the
+  `hello` carries `verbose`, `debounce_ms`, and `ocr`); the recorder emits
+  `ready`, `interaction`, `stats`, and `warning` lines. The `stats` line carries
+  throughput counters plus an `errors` count and a `last_error` snapshot.
+- **In-app vocabulary discovery — the `snapshot` command (§11e / [ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)).**
+  `{cmd:"snapshot", target:"foreground"|<hwnd>, passes:2}` walks the target
+  window's UIA subtree **once per pass** (reusing the same `ControlView` walk
+  and the ADR-0023 identity/framework/confidence ladder) and streams **every
+  identifiable control** as a `snapshot_control` line, then a `snapshot_done`
+  per pass — instead of waiting for interaction events. Two passes ≥1s apart let
+  the analyst-side picker (`normalization/signature_pick.py`) diff the controls
+  and demote a *volatile* `automation_id` (Salesforce Lightning regenerates
+  `input-378` → `input-411` per render) in favour of the stable accessible
+  label. The walk is bounded (~2000 controls), skips pure decoration (no
+  `automation_id`/`name`/`class_name`), and wakes a Chromium renderer's lazily-
+  built accessibility tree first (a browser window is UIA-dark until queried).
+  These lines are **transient** — consumed by the viewer's App Library "Discover
+  from window" flow, never written to `events.jsonl`. The pure traversal
+  (`SnapshotWalker` over the `ISnapshotElement` seam) is unit-tested with a
+  synthetic tree in `Recorder.Tests`; the live `AutomationElement` adapter is
+  the thin UIA seam. See `Snapshotter.cs`.
 - `UiaSubscriber.cs` — subscribes to UI Automation events (invoke, selection,
   toggle, value), filters noise (drops `focus_changed` / `text_changed`, coalesces
   rapid `value_changed` within a configurable debounce window, drops low-signal
