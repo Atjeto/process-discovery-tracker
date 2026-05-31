@@ -43,6 +43,14 @@ Worker-side Electron tray app; see [architecture/CAPTURE.md](architecture/CAPTUR
 - **App-vocabulary prep sessions** — a dedicated capture mode (tray → *Start app
   vocabulary prep session…*) records a focused walkthrough of one app, filed
   separately under `vocab-prep`, purely to bootstrap that app's vocabulary (ADR-0002).
+- **Worker consent gate** — an optional consent prompt at session start
+  (`config.consent.mode`: off / per_session / once); declining aborts the session
+  before any folder is created, and the decision is recorded in the manifest (§11f).
+- **Honest capture-quality signals** — every interaction carries a detected UI
+  `framework`, an `identity_source` ladder rung, and a per-element `confidence`,
+  plus value-recovery and an opt-in OCR last resort, so thin captures on hard
+  frameworks (Citrix/RDP, terminal, legacy controls) are *flagged* rather than
+  silently lost ([ADR-0023](adr/0023-recorder-capture-confidence.md)).
 
 ## Normalization — transforming the recording
 
@@ -70,7 +78,18 @@ Analyst-side Python pipeline; see
   interaction category ("Form entry — chrome.exe") rather than "Unclassified".
 - **Step suggestion** — groups consecutive interactions into suggested steps, with
   a per-session noise denylist; each step is stamped with a value-free
-  `process_label` so repeated work collapses downstream (ADR-0013).
+  `process_label` so repeated work collapses downstream (ADR-0013), plus
+  `grain_keys` (element / screen / app) — the substrate for the viewer's view-time
+  grain roll-up (ADR-0024).
+- **Value-free screen labels** — window titles that embed a record id ("Create
+  INC0010010 | Incident | ServiceNow") are stripped to one logical screen
+  (`shared/screen-label-patterns.json`), so the map, steps, and stats don't fan out
+  per case (ADR-0024 §6a/§6b).
+- **Structural PII masking** — sensitive field values (password, SSN, card, CVV,
+  PIN, secret/token, IBAN, routing/account number) are redacted in the *derived*
+  event stream only — raw `events.jsonl` is never rewritten — with a one-way,
+  join-preserving token so mining still distinguishes distinct secrets. Privacy by
+  default; analyst-tunable via `pii_masking_config` (§11f).
 - **Canonical matching** — matches interactions against a reference "canonical"
   step set, with a match rate and drift detection when the canonical set shifts.
   Re-analyze inherits a step's identity + curated grouping so corrections survive.
@@ -81,6 +100,9 @@ Analyst-side Python pipeline; see
   fragment per instance (ADR-0013).
 - **Analysis layer** — heuristic waste / time-study / automation-candidate /
   process-efficiency findings, per session and pooled across sessions (ADR-0008).
+  Automation candidates are **ranked by priority** (instance count × mean duration
+  × automatable share) and projected into a conservative / expected / optimistic
+  **€-ROI** savings band that feeds the viewer panel and the PDD (ADR-0016).
 - **Process mining** — PM4Py miners produce the activity BPMN map and a DFG, plus
   **observed-flow** Step/Phase BPMNs mined from the analyst's annotations (no
   Process Template required — ADR-0012).
@@ -118,6 +140,11 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 - **In-view process map** — a **Map** level renders this single session's full
   interactive process map (the same Process diagram / Flow diagram × Activity /
   Step / Phase matrix as Compare Sessions) without leaving the Session view.
+- **Grain slider — view-time step consolidation** — a single **Grain** control
+  (element / screen / app / phase / case, default screen) rolls up the Steps list,
+  the Flow diagram, the Map, and the Analysis itemisation live, with zero data
+  mutation; sliding back restores the full detail (raw events are never touched —
+  [ADR-0024](adr/0024-step-grain-as-view-time-rollup.md)).
 - **Reference maps — decoupled, editable BPMN copies** — **⑂ Fork map** snapshots
   the current Process diagram into a standalone, fully-editable bpmn-js copy (a
   *one-way leaf* the pipeline never re-mines, merges, or regenerates). Copies live
@@ -133,6 +160,10 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 - **Analysis findings** — a per-session Analysis level surfaces the heuristic
   waste / time-study / automation / efficiency findings for review and correction
   (ADR-0008).
+- **Return on automation (€-ROI)** — the Analysis level shows each automation
+  candidate's conservative / expected / optimistic savings band (hours/yr, or €
+  net/yr once a labour rate is set) with an **Edit assumptions…** form and per-row
+  tuning; the headline total is provably grain-invariant (§11c).
 - **Findings report (HTML)** — a one-click self-contained HTML report (process
   summary, the process map inline, the steps table, the waste/automation/efficiency
   findings, notes, and starred screenshots, plus an editable recommendations block)
@@ -145,9 +176,10 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 ### Compare Sessions (Aggregate) view
 
 - **Process maps — notation × level matrix** — Process diagram (BPMN, via bpmn-js)
-  or Flow diagram (DFG, via cytoscape + dagre), each at Activity / Step / Phase
-  level; the two axes are independent (ADR-0012). Zoom/pan and dragged layout
-  persist.
+  or Flow diagram (DFG, via cytoscape + `@dagrejs/dagre`), each at Activity / Step
+  / Phase level; the two axes are independent (ADR-0012). Both lay out
+  **left-to-right** and group the screen axis **value-free** (one logical screen is
+  one node across cases, no per-record fan-out); zoom/pan and dragged layout persist.
 - **Map navigation** — drill-down *scopes* to a clicked node's children
   (phase → its steps → that step's activities) on the Flow diagram, with a
   "show all" chip; a rare-path frequency **slider** thins low-frequency branches
@@ -164,7 +196,11 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 
 - **Process Template editor** — define and version a canonical step set and match
   sessions against it.
-- **App Library** — edit the App Vocabularies that enrich interactions.
+- **App Library** — edit the App Vocabularies that enrich interactions, and
+  **Discover from window** — point-and-learn discovery snapshots a prepared app
+  window (two passes) and loads a stable-signature skeleton, the picker skipping
+  volatile per-render ids; re-discovery merges into the selected vocab, entirely
+  on-device ([ADR-0025](adr/0025-in-app-vocabulary-discovery.md)).
 - **Team taxonomy** — promote analyst classification corrections into a shared
   `taxonomy.yaml`, so they classify every future session, not just this one.
 - **Project layer** — save the working set (loaded sessions, focus session,
@@ -181,3 +217,6 @@ Capabilities intentionally out of scope are tracked in
 merging, learned case-boundary inference) and multi-analyst concurrent editing.
 The **non-ML** Phase 0 of the case-boundary work has shipped (suggested markers +
 anchor candidates, ADR-0017 / ADR-0018); the ML-backed Phase 1+ stays deferred.
+The broader product boundary — services-boutique, not self-serve enterprise
+product (no BYOC / web-viewer / multi-user, no LLM-in-product, no MDM packaging) —
+is fixed by [ADR-0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md).

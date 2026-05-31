@@ -38,11 +38,14 @@ and one **renderer** ([`index.html`](../../viewer/index.html) + a graph of
 
 ## 2. Module map
 
-`index.html` loads exactly **five `<script>` tags**: the four vendored libraries
-(cytoscape, dagre, cytoscape-dagre, bpmn-js — consumed as globals) and the single
-`renderer.js` entry. Everything else is reached through `renderer.js`'s
-`require()` graph — there is no bundler (ADR-0003: the renderer already used
-CommonJS, so real modules need no build step).
+`index.html` loads three vendored-library `<script src>` tags
+(cytoscape, cytoscape-dagre, bpmn-js — consumed as globals) plus the single
+`renderer.js` entry. The maintained **`@dagrejs/dagre`** layout engine now ships
+*inside* `cytoscape-dagre` 3.0 (the standalone `dagre` 0.8.5 `<script>` tag was
+dropped) and is `require()`d directly where the BPMN layout needs it
+(`bpmn-viewer.js`). Everything else is reached through `renderer.js`'s `require()`
+graph — there is no bundler (ADR-0003: the renderer already used CommonJS, so real
+modules need no build step). The apps run on **Electron 42**.
 
 **Entry + cross-cutting infrastructure** (flat in `viewer/`):
 
@@ -83,7 +86,9 @@ former `window.Pdt*` globals were converted; the globals are gone):
 |---|---|---|
 | `charts.js` | `renderBarChart`, `fmtDurationS` | Inline-SVG bar charts |
 | `dfg-viewer.js` | `render`, `fit`, `zoomIn/Out`, `getZoom`, `exportSvg` | Directly-Follows Graph (cytoscape + dagre); persists dragged layout per node set. `exportSvg` is a **hand-written cytoscape→SVG serializer** (cytoscape has no native SVG export) — emits nodes/edges/labels as SVG primitives, driving the "Process map SVG" export |
-| `bpmn-viewer.js` | `render`, `fit`, `exportSvg` | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`) |
+| `bpmn-viewer.js` | `render`, `fit`, `exportSvg`, `exportXml`, `editable` mode | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`; re-lays out via `require("@dagrejs/dagre")`). An `editable` mode un-hides the full palette off a non-`.map-host` host for **Reference Maps** ([ADR-0019](../adr/0019-reference-maps.md)) |
+| `reference-maps.js` | (pure store) | **Reference Maps** store ([ADR-0019](../adr/0019-reference-maps.md)) — the `annotations.json reference_maps[]` model: fork (snapshot the live laid-out XML), kind (As-Is/To-Be/Reference), PDD-role (exclusive per slot), drift (blake2b hash of the source cell vs. now), Re-fork; every verb persists through `session.saveAnnotationsWithUndo` so app-level Ctrl+Z reverts it. Pure (no DOM) |
+| `refmap-ui.js` | (DOM/state) | Reference Maps UI — the **⑂ Fork map** action, the per-session gallery (kind / PDD-role / drift chips), the full-screen editor overlay (bpmn-js `editable`, dagre-on-open skipped to honour the hand-layout), and the To-Be→PDD image bridge (`exportSvg` → off-screen PNG → `--pdd-tobe-image`) |
 | `process-map-levels.js` | `buildAnnotationDfg`, `rollUpSteps`, `grainKey`/`grainLabel`, `resolveStepGrainKeys`, `processLabel`, `dropRareEdges` | Pure DFG + view-time grain roll-up from annotations (the `element ⊂ screen ⊂ app ⊂ phase ⊂ case` ladder), value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md), [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)) |
 | `map-controller.js` | `createMapController` | The shared process-map UI controller (notation × level matrix, drill-down scoping, rare-path slider, BPMN/DFG render + zoom). Extracted from the Aggregate view so the **same** controller mounts in both Compare Sessions and the Session view's in-view **Map** level — each caller passes its own host elements + a session-set provider |
 | `recognition.js` | `recognize`, `isChrome`, … | Semantic interaction category from documented platform/framework signatures (`shared/recognition-patterns.json`); twin of the Python `recognition.py` ([ADR-0011](../adr/0011-platform-recognition-layer.md)) |

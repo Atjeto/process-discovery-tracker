@@ -85,6 +85,10 @@ re-normalization reads this file *before* case assignment so edits survive.
 | `marker_suggestions[]` / `marker_suggestions_dismissed[]` | Suggested-marker candidates + the analyst's signature-keyed dismiss-set ([ADR-0017](../adr/0017-suggested-markers.md)); regenerated each normalize, dismissals persist |
 | `anchor_candidates[]` / `anchor_candidates_dismissed[]` | Anchor-candidate ranking + its dismiss-set ([ADR-0018](../adr/0018-anchor-candidates.md)) |
 | `case_anchor_override` | `null`, or the `case_anchor` config the analyst Accepted from an anchor candidate; consulted by case assignment (after a Process Template, before markers) |
+| `reference_maps[]` | Forked, fully-editable BPMN copies of a mined map ([ADR-0019](../adr/0019-reference-maps.md)) — metadata only (kind / PDD-role / provenance / drift hash); the `.bpmn` blobs live under `derived_maps/`. Preserved verbatim by re-normalize |
+| `roi_inputs` | Session-level €-ROI assumptions (loaded €/hr, currency, annual volume, build cost, amortization, automatable share, realism factors) + per-segment overrides (§11c) |
+| `calibration` | Optional per-session segmentation tuning (coalesce / step-split / step-max knobs) threaded through `normalize()` (F3); absent = pipeline defaults |
+| `pii_masking_config` / `pii_masking` | Analyst PII rule control + the additive record of which rule-set ran (§11f); raw `events.jsonl` is never rewritten |
 | `version`, `session_id`, `matched_against`, `last_modified*` | Bookkeeping |
 
 A missing `annotations.json` is treated as empty (see `emptyAnnotationsShape()`
@@ -109,7 +113,11 @@ regenerated auto step also **inherits** the prior step's `step_id` and curated
 (`_inherit_step_identity`), so a grouping or template link is not silently lost.
 Every step also carries a value-free **`process_label`** (its name with case
 values stripped) used to group repeated work in the maps, stats, and analysis
-([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)).
+([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)), and
+**`grain_keys`** (`element` / `screen` / `app`) — the containment keys the viewer's
+view-time grain slider rolls up over (`element ⊂ screen ⊂ app ⊂ phase ⊂ case`),
+stamped additively at analyze time so a notch change never re-normalizes
+([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)).
 
 ## In-memory model (Viewer)
 

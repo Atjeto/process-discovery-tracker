@@ -44,11 +44,9 @@ suppressed.
 
 `main.js` is the Electron main process and the app's orchestration core. The
 v0.5.0 remediation ([ADR-0005](../adr/0005-capture-architecture-remediation.md))
-extracted four cross-cutting modules out of it (down from ~1,580 to ~1,210 lines);
-features added since have grown it back to ~1,532, still the largest file — it holds
-the tray menu, global hotkeys, the
-session lifecycle, the idle monitor, the screenshot triggers, the label picker,
-and the `pdt:*` IPC handlers.
+extracted four cross-cutting modules out of it; it remains the largest file — it
+holds the tray menu, global hotkeys, the session lifecycle, the idle monitor, the
+screenshot triggers, the label picker, and the `pdt:*` IPC handlers.
 
 **Core / cross-cutting:**
 
@@ -75,11 +73,11 @@ v0.5.0 (C8):
 | Module | `ui/` file | Window |
 |---|---|---|
 | `operator-panel.js` | `operator-panel.html` | The **Live Session** window — recording indicator, timer, open-marker stack, counters, recent-events feed, inline marker firing, quick actions, and the post-session summary. |
-| `status-window.js` | `status-window.html` | Legacy status window — superseded by the Live Session window; kept in the tray as a fallback. |
 | `hotkey-overlay.js` | `hotkey-overlay.html` | Always-on-top click-through corner widget showing the primary hotkeys. |
-| `session-config-window.js` | `session-config.html` | Form to edit engagement / worker / idle / labels / OBS; writes `quick-config.yaml`. |
-| `obs-settings-window.js` | `obs-settings.html` | OBS WebSocket URL + password dialog. |
-| `welcome-window.js` | `welcome.html` | First-run onboarding. |
+| `settings-window.js` | `settings.html` | Top-level **Settings…** — persistent settings split by concern (Hotkeys / Video-OBS / Screenshots / Storage). Subsumes the former standalone OBS-settings dialog (v0.17.0). Writes the `userData/user-config.json` overlay. |
+| `profile-window.js` | `profile.html` | Top-level **Profile…** — worker identity (id, display name, role, team), stamped onto every recording's manifest. Persists to the user-config overlay. |
+| `session-config-window.js` | `session-config.html` | The slim **Session setup…** — per-engagement code/name and process labels only (shown when idle); identity and persistent settings moved to Profile/Settings in v0.17.0. |
+| `welcome-window.js` | `welcome.html` | First-run onboarding (with a "Set up your profile" CTA). |
 | `help-window.js` | `help-window.html` | Reopenable help. |
 | `consent-window.js` | `consent.html` | Worker-consent gate (§11f) shown at session start when `config.consent.mode` is `"per_session"`/`"once"`; returns the decision over IPC and remembers a `"once"` acknowledgement in user-config. Pure record/decision logic is in the electron-free `consent.js`. Declining aborts the start; the decision is written to `manifest.consent`. The C# recorder is unchanged. |
 
@@ -90,8 +88,8 @@ v0.5.0 (C8):
 | File | Role |
 |---|---|
 | `build-package.js` | Custom `electron-packager` wrapper for distribution builds. |
-| `test/` | `node:test` suite — 65 tests over `config`, `events`, `session`, `tracker`, and `window-manager`; run with `npm test`. |
-| `ui/` | The seven extracted window HTML files (see the Windows table above). |
+| `test/` | `node:test` suite over `config`, `events`, `session`, `tracker`, `consent`, and `window-manager`; run with `npm test`. |
+| `ui/` | The extracted window HTML files (see the Windows table above). |
 | `recorder/` | The C# recorder sidecar — see below. |
 
 ## The C# recorder sidecar (`capture/recorder/`)

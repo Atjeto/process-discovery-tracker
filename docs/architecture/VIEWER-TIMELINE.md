@@ -62,8 +62,9 @@ activity bands     per-app coloured runs; idle bands, real marker bars, and
                    dashed suggested-marker bars overlay here
 screenshot rail    dedicated rail of screenshot marks
 density histogram  optional — ~120-bucket event-count strip
-window-title runs  optional — one band per (app,title) run
-per-step lane      optional — step bands, click → Steps view
+window-title runs  optional — one band per (app, value-free title) run
+per-step lane      optional — step bands rolled up to the current Grain
+                   notch, click → Steps view
 note lane          optional — numbered note dots
 playhead           overlay — 1px line synced to the <video>
 ```
@@ -81,6 +82,17 @@ render as dashed `.tl-marker.tl-suggested` bars (a higher-confidence
 analyst has already Accepted. They are not a separate toggle — they share the
 real markers' visibility — and the side-panel markers list carries the matching
 Accept/Dismiss rows.
+
+**Grain and the step lane** ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)).
+The per-step lane rolls up to the shared **Grain** notch (`State.grain`: element /
+screen / app / phase / case, default screen) — one band per consecutive run of
+steps sharing that notch's key, with a fold count; the `element` notch reproduces
+every raw step band. The single Grain slider in the view-mode bar drives this lane
+in lock-step with the Steps list and the Map; it is a *view-time* control, so a
+notch change re-renders the lane without re-normalizing — raw `events.jsonl` is
+untouched. The `window-title` lane's grouping key is **value-free** (record ids
+stripped via `screenType` / `shared/screen-label-patterns.json`), so one logical
+screen is one band across cases.
 
 The case header *above* the activity bands and the dedicated screenshot rail
 *below* them are the Warm Editorial lane re-order — see
