@@ -31,8 +31,6 @@ logger = logging.getLogger(__name__)
 _FLAG_LABELS = {
     "waste": "Waste",
     "rework": "Rework",
-    "conditional": "Conditional",
-    "exception_path": "Exception path",
     "value_add": "Value-add",
     "bottleneck": "Bottleneck",
 }
@@ -80,7 +78,7 @@ def write_pdd(
     _write_automation(doc, analysis)                  # 4. Automation assessment
     _write_roi(doc, analysis)                         # 4.4 Estimated ROI
     _write_tobe_map(doc, tobe_map_image)              # 4.5 Proposed to-be process (ADR-0019)
-    _write_exceptions(doc, annotations)               # 5. Exceptions & variations
+    _write_exceptions(doc, annotations, stats)        # 5. Exceptions & variations
     _write_footer(doc)
 
     doc.save(str(out_path))
@@ -390,10 +388,9 @@ def _write_step(doc, step, session_folder, waste_by_step=None, level=3):
             except (FileNotFoundError, OSError, ValueError) as exc:
                 logger.warning("pdd_export: skipping screenshot %s for step %s: %s",
                                ref, step.get("step_id", "?"), exc)
-    # `automation_candidate` is filtered out -- candidacy lives at the
-    # segment grain (§4.3), not on individual steps. See ADR-0016.
-    flags = [k for k, v in (step.get("flags") or {}).items()
-             if v is True and k != "automation_candidate"]
+    # ADR-0027: `waste` is the only per-step flag. Path/segment concerns
+    # (exceptions, automation candidacy — §4.3/§5) are not per-step.
+    flags = [k for k, v in (step.get("flags") or {}).items() if v is True]
     if flags:
         labels = [_FLAG_LABELS.get(f, f.replace("_", " ").capitalize()) for f in flags]
         p = doc.add_paragraph(f"Flags: {', '.join(labels)}")
@@ -586,38 +583,51 @@ def _write_roi(doc, analysis):
 
 # ---- 5. Exceptions & variations ---------------------------------------------
 
-def _write_exceptions(doc, annotations):
+def _write_exceptions(doc, annotations, stats):
     doc.add_heading("5. Exceptions & variations", level=1)
-    # Skip noise-suppressed steps, consistent with §3.5 and the rest of the
-    # pipeline (M-5).
-    steps = [s for s in (annotations.get("steps") or [])
-             if s.get("state") != "hidden"]
-    flagged = [s for s in steps
-               if (s.get("flags") or {}).get("exception_path")
-               or (s.get("flags") or {}).get("conditional")]
+    # ADR-0027: an exception/variation is a property of a PATH, not a single
+    # step, so this section is DERIVED from the observed trace variants (the most
+    # frequent path is the norm; every other distinct sequence is a variation) —
+    # not from the retired per-step exception_path/conditional flags. Rework
+    # loops (a repeated activity within a case) are listed as process rework.
+    variants = sorted((stats.get("trace_variants") or []),
+                      key=lambda v: v.get("frequency", 0), reverse=True)
+    rework = stats.get("rework_loops") or []
 
-    doc.add_heading("5.1 Business exceptions", level=2)
-    if flagged:
+    doc.add_heading("5.1 Process variations", level=2)
+    if len(variants) > 1:
+        norm_freq = variants[0].get("frequency", 0)
         t = doc.add_table(rows=1, cols=3)
         h = t.rows[0].cells
-        h[0].text, h[1].text, h[2].text = "Step", "Observed variation", "Expected handling"
-        for s in flagged:
-            fl = s.get("flags") or {}
-            kinds = []
-            if fl.get("conditional"):
-                kinds.append("conditional (branches)")
-            if fl.get("exception_path"):
-                kinds.append("exception path")
+        h[0].text, h[1].text, h[2].text = "Variation", "Times seen", "Observed path"
+        for i, v in enumerate(variants[1:], start=1):
             r = t.add_row().cells
-            r[0].text = str(s.get("name", "(step)"))
-            r[1].text = ", ".join(kinds) or "-"
-            r[2].text = "—"
-        _note(doc, "The expected handling for each exception is to be completed by the analyst.")
+            r[0].text = f"Variation {i}"
+            r[1].text = str(v.get("frequency", 0))
+            seq = v.get("variant") or []
+            r[2].text = " → ".join(str(x) for x in seq) if seq else "-"
+        _note(doc, f"The dominant path (seen {norm_freq}×) is the norm; each "
+                   "row above is an observed deviation. The expected handling for "
+                   "each is to be completed by the analyst.")
+    elif variants:
+        doc.add_paragraph(
+            "No process variations observed — every case followed the same path.")
     else:
-        _placeholder(doc, "known business exceptions and how the operator handles each "
-                          "(none were flagged in this capture)")
+        _placeholder(doc, "known business exceptions and how the operator handles each")
 
-    doc.add_heading("5.2 Application errors", level=2)
+    doc.add_heading("5.2 Rework", level=2)
+    if rework:
+        t = doc.add_table(rows=1, cols=2)
+        h = t.rows[0].cells
+        h[0].text, h[1].text = "Activity", "Times repeated"
+        for rl in rework:
+            r = t.add_row().cells
+            r[0].text = str(rl.get("activity_label", "-"))
+            r[1].text = str(rl.get("rework_count", 0))
+    else:
+        _placeholder(doc, "repeated work within a case (none observed in this capture)")
+
+    doc.add_heading("5.3 Application errors", level=2)
     _placeholder(doc, "system / application errors that can interrupt the process and "
                       "the recovery steps for each")
 

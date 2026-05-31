@@ -66,11 +66,13 @@
       const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
       // A3: analyst flag badges -- marking a step now visibly shows in the list.
       const _f = s.flags || {};
+      // Only the value-add judgment is a genuine PER-STEP property. Exception
+      // path / automation candidate / conditional were retired (ADR-0027): they
+      // describe a PATH or a multi-step SEGMENT, not a single step — exceptions
+      // come from the observed variants, automation candidacy from coherent
+      // segments (ADR-0016), conditionality from the map's branch frequency.
       const flagBadges =
-        (_f.waste ? '<span class="step-flag flag-waste" title="Waste — should not be needed">W</span>' : "") +
-        (_f.automation_candidate ? '<span class="step-flag flag-auto" title="Automation candidate">A</span>' : "") +
-        (_f.conditional ? '<span class="step-flag flag-cond" title="Conditional — only sometimes happens">?</span>' : "") +
-        (_f.exception_path ? '<span class="step-flag flag-exc" title="Exception path — error or workaround">!</span>' : "");
+        (_f.waste ? '<span class="step-flag flag-waste" title="Waste — should not be needed">W</span>' : "");
       // P0.3: repeat badge -- shown only when the repetition discriminates
       // (the step recurs in some, not all, cases). A legible "N×" label; a
       // step in every case is the uniform backbone and carries no badge.
@@ -159,13 +161,8 @@
       host.innerHTML = `
         <div class="empty-pane">
           <p>Pick a step on the left to see its details, rename it, or flag it.</p>
-          <p class="meta">Each step has a name, an optional description, a list of UI interactions that made it up, and four flags you can toggle:</p>
-          <ul class="meta">
-            <li><strong>Conditional</strong>: this step only happens sometimes (branching path)</li>
-            <li><strong>Exception path</strong>: this step represents an error or workaround</li>
-            <li><strong>Waste</strong>: this step shouldn't be needed (rework, duplicate effort)</li>
-            <li><strong>Automation candidate</strong>: this step could be replaced by a bot</li>
-          </ul>
+          <p class="meta">Each step has a name, an optional description, a list of UI interactions that made it up, and a <strong>Waste</strong> flag — mark a step as waste when it shouldn't be needed (rework, duplicate effort, copy-paste between systems); it feeds the value-add / efficiency analysis.</p>
+          <p class="meta">Process variations / exception paths come from the observed <em>variants</em>, automation candidacy from coherent <em>segments</em> (Analysis), and conditionality from the map's branch frequency — none are per-step toggles.</p>
         </div>`;
       return;
     }
@@ -211,10 +208,7 @@
       ${step.suggestion_reason ? `<p class="step-suggestion-reason" title="Why the tool grouped these interactions into a step">Auto-detected: ${escapeHtml(step.suggestion_reason)}</p>` : ""}
       <label>Description <textarea id="step-desc">${escapeHtml(step.description || "")}</textarea></label>
       <div class="flags">
-        <label title="This step only happens in some cases (branching path). Marks the step as conditional in exports."><input type="checkbox" id="flag-conditional" ${flags.conditional ? "checked" : ""}> Conditional</label>
-        <label title="This step represents an error, workaround, or recovery action -- not the happy path."><input type="checkbox" id="flag-exception" ${flags.exception_path ? "checked" : ""}> Exception path</label>
-        <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Surfaces in the aggregate as 'waste hotspots'."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
-        <label title="Mark this individual step as a candidate to include in a future automation project (RPA / integration / script). Aggregated across the session into the PDD export and the stats report so you can see total automatable share at a glance."><input type="checkbox" id="flag-auto" ${flags.automation_candidate ? "checked" : ""}> Automation candidate</label>
+        <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Feeds the value-add / waste analysis and surfaces in the aggregate as 'waste hotspots'."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
       <div class="evidence">
         ${interListHtml}
@@ -246,10 +240,7 @@
         description: document.getElementById("step-desc").value.trim(),
         flags: {
           ...flags,
-          conditional: document.getElementById("flag-conditional").checked,
-          exception_path: document.getElementById("flag-exception").checked,
           waste: document.getElementById("flag-waste").checked,
-          automation_candidate: document.getElementById("flag-auto").checked,
         },
         state: step.state === "manually_authored" ? "manually_authored" : "edited",
       });

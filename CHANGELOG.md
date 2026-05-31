@@ -6,6 +6,33 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Compare-Sessions panels are now drill-downs, not just bars.** The Activity-
+  frequency and Case-duration bars highlighted on hover but did nothing on click
+  (a dead affordance). Now: clicking an **activity** filters the whole Compare
+  surface to it (`#agg-filter`; inverse = clear the box); clicking a **case** opens
+  its source session in the Session view and seeks the Flow timeline to where the
+  case begins. The hover/cursor affordance is shown **only** on bars that are
+  actually clickable (`renderBarChart` `onBarClick`), so non-interactive charts no
+  longer advertise a click they can't honour.
+- **Per-step flags reduced to `waste` ([ADR-0027](docs/adr/0027-retire-per-step-path-flags.md)).**
+  The step detail dropped the `Conditional`, `Exception path`, and `Automation
+  candidate` checkboxes — a single step is not a path or a segment, so those never
+  had a coherent per-step meaning. The concepts are sourced where they belong:
+  automation candidacy from coherent segments (ADR-0016), exceptions/variations
+  from the observed trace variants, conditionality from the map's branch
+  frequency. **`waste` stays** (a genuine per-step value-add judgment that feeds
+  the efficiency analysis). PDD **§5 "Exceptions & variations" is re-sourced from
+  `stats.trace_variants` + rework loops** instead of the retired flags. Legacy
+  `annotations.json` keys are ignored, not migrated; golden-neutral.
+
+### Removed
+
+- **Activity/Case panel sparklines.** The tiny 10-bucket time-distribution
+  histograms next to each bar carried no actionable insight (just decoration) and
+  had no legend — removed.
+
 ## [0.20.1] - 2026-05-31
 
 A UI-polish + accessibility patch on top of 0.20.0 — no new capability.

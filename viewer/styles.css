@@ -727,7 +727,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .bar-label { fill: var(--fg-2); font-size: 11px; font-family: var(--font-ui); }
 .bar-value { fill: var(--fg-3); font-size: 10px; font-family: var(--font-mono); }
 .bar-rect { transition: opacity 0.12s; }
-.bar-rect:hover { opacity: 0.75; }
+/* Hover/cursor affordance only when the bar is actually clickable (a drill
+   target wired via renderBarChart's onBarClick) — a non-interactive chart must
+   not advertise a click it can't honour. */
+.bar-rect.clickable, .bar-label.clickable { cursor: pointer; }
+.bar-rect.clickable:hover { opacity: 0.75; }
+.bar-label.clickable:hover { fill: var(--accent); }
 .chart-more { fill: var(--fg-4); font-size: 10px; font-family: var(--font-mono); }
 
 .stats-table-host { flex: 1; max-height: 340px; overflow: auto;

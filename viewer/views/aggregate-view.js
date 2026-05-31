@@ -502,40 +502,18 @@ function renderAggregate() {
   }
   $("#map-empty").style.display = "none";
 
-  // P1.7: compute the wall-clock span across loaded sessions so we can
-  // bucket sparkline data into 10 equal slices for each chart row.
-  const sessionTimes = filtered
-    .map((s) => (s.manifest && s.manifest.started_at) ? new Date(s.manifest.started_at).getTime() : null)
-    .filter((t) => t != null && isFinite(t));
-  const sparkSpan = sessionTimes.length
-    ? { startMs: Math.min(...sessionTimes), endMs: Math.max(...sessionTimes) }
-    : null;
-  const SPARK_BUCKETS = 10;
-  function bucketIdx(ms) {
-    if (!sparkSpan || !isFinite(ms)) return -1;
-    const sp = Math.max(1, sparkSpan.endMs - sparkSpan.startMs);
-    return Math.min(SPARK_BUCKETS - 1, Math.max(0, Math.floor(((ms - sparkSpan.startMs) / sp) * SPARK_BUCKETS)));
-  }
-
   // Merge activity stats
   const actMap = new Map();
   for (const st of allStats) {
     for (const r of (st.activity_stats || [])) {
       const e = actMap.get(r.activity_label) || {
         activity_label: r.activity_label, frequency: 0, total_duration_ms: 0,
-        median_samples: [], p90_samples: [], sparkline: new Array(SPARK_BUCKETS).fill(0),
+        median_samples: [], p90_samples: [],
       };
       e.frequency += r.frequency;
       e.total_duration_ms += r.total_duration_ms;
       e.median_samples.push(r.median_ms);
       e.p90_samples.push(r.p90_ms);
-      // Bucket this session's contribution by its started_at.
-      const sessTs = ((st.meta || {}).session_started_at) ||
-                     (filtered.find((s) => s.stats === st) && filtered.find((s) => s.stats === st).manifest && filtered.find((s) => s.stats === st).manifest.started_at);
-      if (sessTs) {
-        const idx = bucketIdx(new Date(sessTs).getTime());
-        if (idx >= 0) e.sparkline[idx] += r.frequency;
-      }
       actMap.set(r.activity_label, e);
     }
   }
@@ -557,9 +535,14 @@ function renderAggregate() {
         label: r.activity_label,
         value: r.frequency,
         valueLabel: r.frequency + " · " + PdtCharts.fmtDurationS(r.total_duration_ms / 1000),
-        sparkline: sparkSpan ? r.sparkline : null,
+        title: "Filter the comparison to “" + r.activity_label + "”",
       })),
-      { unit: "" });
+      { unit: "", onBarClick: (row) => {
+        // Drill: filter the whole Compare surface (charts + variants) to this
+        // activity. Inverse = clear the filter box. Reuses #agg-filter.
+        const f = $("#agg-filter");
+        if (f) { f.value = row.label; f.dispatchEvent(new Event("input", { bubbles: true })); }
+      } });
   }
   renderWorkerLegend(showGrouping ? wColors : null);
 
@@ -573,23 +556,16 @@ function renderAggregate() {
     for (const r of (s.stats.case_stats || [])) {
       if (r.parent_case_id) continue; // top-level only
       if (!matchesFilter(r.label || r.case_id)) continue;
-      // Per-case sparkline: a single bin (the bucket containing this
-      // case's start_time). Aggregated across the row gives a "when did
-      // these cases happen" feel without needing per-event scan.
-      let caseSpark = null;
-      if (sparkSpan && r.start_time) {
-        caseSpark = new Array(SPARK_BUCKETS).fill(0);
-        const idx = bucketIdx(new Date(r.start_time).getTime());
-        if (idx >= 0) caseSpark[idx] = 1;
-      }
       caseRows.push({
         label: (r.label || r.case_id.slice(0, 8)),
         value: (r.active_ms || 0) / 1000,
         secondary: (r.wall_clock_ms || 0) / 1000,
         valueLabel: PdtCharts.fmtDurationS((r.active_ms || 0) / 1000),
-        sparkline: caseSpark,
         color: showGrouping ? wColors.get(caseWorker) : undefined,
         meta: r,
+        title: "Open this case in the Session view",
+        caseSessionFolder: s.sessionFolder,
+        caseId: r.case_id,
       });
     }
   }
@@ -597,6 +573,13 @@ function renderAggregate() {
   PdtCharts.renderBarChart($("#case-chart"), caseRows, {
     color: "var(--accent-2)",
     secondaryColor: "var(--warn)",
+    // Drill: open this case's source session in the Session view and seek the
+    // Flow timeline to where the case begins. Reuses the activity-drill hook.
+    onBarClick: (row) => {
+      if (row.caseSessionFolder) {
+        onDrillToSession(row.caseSessionFolder, (row.meta || {}).start_time || null);
+      }
+    },
   });
 
   // Variants table -- with P2.2 frequency-heat bar inline. Each variant

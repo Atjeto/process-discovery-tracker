@@ -72,13 +72,11 @@ function buildSessionReport(session) {
     lines.push(`|---|---|---:|---|`);
     reportSteps.forEach((s, i) => {
       const fl = s.flags || {};
-      // `automation_candidate` is intentionally omitted -- ADR-0016
-      // moved candidacy to the coherent-segment grain (see analysis.json
-      // `automation_candidates`); a per-step flag misrepresents that.
+      // Only `waste` is a per-step flag (ADR-0027). Automation candidacy lives at
+      // the coherent-segment grain (ADR-0016, analysis.json `automation_candidates`);
+      // exception/variation comes from the observed variants — neither is per-step.
       const flags = [
         fl.waste ? "waste" : null,
-        fl.conditional ? "conditional" : null,
-        fl.exception_path ? "exception" : null,
       ].filter(Boolean).join(", ");
       const tr = s.time_range || {};
       const durMs = (tr.start && tr.end) ? (new Date(tr.end) - new Date(tr.start)) : 0;

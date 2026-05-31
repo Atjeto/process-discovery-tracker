@@ -142,7 +142,7 @@ When an App Vocabulary (ADR-0002) matches an interaction, normalize.py adds:
 |---|---|---|
 | `meaningful_name` | string | Analyst-curated name for this interaction (e.g. "Run customer search") |
 | `screen_id` | string | Named screen the interaction belongs to, if the vocab defines screens. Set when the interaction's control matches a vocab signature carrying a `screen`, **or** (ADR-0024 §6b) when its `window_title` matches a vocab screen's `window_title_regex` — so every interaction on one form shares one value-free screen even if its specific control isn't in the vocab (a screen tag only; not counted as a vocab name match). |
-| `vocab_flags` | object | Default flags rolled up onto the containing step (`waste`, `automation_candidate`, ...) |
+| `vocab_flags` | object | Default flags from the vocab; only `waste` rolls up onto the containing step (ADR-0027 — other keys are ignored) |
 | `vocab_source` | object | `{ vocab_id, vocab_version }` for traceability |
 
 These fields are additive; the raw `name`, `control_type`, etc. always remain.
@@ -619,15 +619,19 @@ Analyst-authored, **decoupled** editable BPMN copies forked from a mined map cel
   "suggestion_reason": "string -- auto_suggested steps only",
   "canonical_step_id": "uuid or null",
   "flags": {
-    "conditional": false,
-    "condition_text": null,
-    "exception_path": false,
-    "waste": false,
-    "automation_candidate": false
+    "waste": false
   },
   "phase_id": "uuid or null"
 }
 ```
+
+`flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)).
+The former `conditional` / `exception_path` / `automation_candidate` / `condition_text`
+flags were retired: a single step is not a path or a segment, so exceptions/variations are
+derived from the observed trace variants, automation candidacy from coherent segments
+([ADR-0016](../docs/adr/0016-segment-level-automation-candidacy.md)), and conditionality
+from the map's branch frequency. Older `annotations.json` may still carry the legacy keys;
+they are ignored.
 
 `grain_keys` are the **UI-containment keys** the view-time grain roll-up groups
 on ([ADR-0024](../docs/adr/0024-step-grain-as-view-time-rollup.md)): a node/step

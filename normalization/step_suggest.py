@@ -504,20 +504,19 @@ def _suggestion_reason(interactions: list[dict[str, Any]], threshold_ms: int) ->
 # --- Helpers -----------------------------------------------------------
 
 def _aggregate_vocab_flags(interactions: list[dict[str, Any]]) -> dict[str, Any]:
-    """Roll up vocab_flags from constituent interactions into a step flag
-    set. Any interaction flagged as automation_candidate or waste lifts
-    the whole step (it's the conservative interpretation; analyst can
-    override per-step)."""
-    out = {
-        "conditional": False, "condition_text": None,
-        "exception_path": False, "waste": False,
-        "automation_candidate": False,
-    }
+    """Roll up the per-step `waste` vocab flag from constituent interactions.
+
+    ADR-0027 retired the per-step `conditional` / `exception_path` /
+    `automation_candidate` flags as mis-scoped (a single step is not an exception
+    path or an automation candidate — those are properties of a PATH or a
+    coherent multi-step SEGMENT). Only `waste` is a genuine per-step judgment, so
+    it is the only flag rolled up here; any interaction flagged waste lifts the
+    step (conservative; the analyst can override per-step)."""
+    out = {"waste": False}
     for ev in interactions:
         vf = (ev.get("data") or {}).get("vocab_flags") or {}
-        for k in ("exception_path", "waste", "automation_candidate", "conditional"):
-            if vf.get(k):
-                out[k] = True
+        if vf.get("waste"):
+            out["waste"] = True
     return out
 
 

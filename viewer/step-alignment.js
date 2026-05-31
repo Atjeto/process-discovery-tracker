@@ -235,7 +235,9 @@ function representativeCuration(memberSteps) {
   const steps = (memberSteps || []).filter(Boolean);
   let description = "";
   for (const s of steps) { if (s.description && String(s.description).trim()) { description = s.description; break; } }
-  const FLAGS = ["conditional", "exception_path", "waste", "automation_candidate"];
+  // Only `waste` is a per-step flag now (ADR-0027 retired conditional /
+  // exception_path / automation_candidate as mis-scoped per-step toggles).
+  const FLAGS = ["waste"];
   const flags = {};
   const n = steps.length;
   for (const k of FLAGS) {

@@ -45,7 +45,6 @@ function renderBarChart(host, data, opts) {
   const barH = 18;
   const gap = 6;
   const valueW = 84;
-  const sparkW = 60;
   const width = host.clientWidth || 360;
   const height = rows.length * (barH + gap) + 12;
   const svg = svgEl("svg", {
@@ -56,11 +55,7 @@ function renderBarChart(host, data, opts) {
   });
   host.appendChild(svg);
   const barAreaX = labelW + 10;
-  // Reserve room on the right for the value label and -- when any row
-  // carries a sparkline -- the sparkline strip too, so the longest
-  // bar's value text never runs underneath the sparkline.
-  const hasSpark = rows.some((r) => Array.isArray(r.sparkline) && r.sparkline.length);
-  const barAreaW = Math.max(60, width - barAreaX - valueW - (hasSpark ? sparkW + 14 : 10));
+  const barAreaW = Math.max(60, width - barAreaX - valueW - 10);
   rows.forEach((row, i) => {
     const y = i * (barH + gap) + 4;
     const w = Math.max(2, (row.value / max) * barAreaW);
@@ -76,7 +71,7 @@ function renderBarChart(host, data, opts) {
     lbl.lastChild.textContent = row.label;
     // Bar -- a per-row `color` (used by the H1 group-by-worker view)
     // overrides the chart-wide colour.
-    svgEl("rect", {
+    const rect = svgEl("rect", {
       x: barAreaX,
       y,
       width: w,
@@ -104,38 +99,22 @@ function renderBarChart(host, data, opts) {
       class: "bar-value",
     }, svg);
     valTxt.textContent = row.valueLabel || `${row.value}${opts.unit || ""}`;
-    // P1.7: tiny sparkline (10-bucket histogram of timestamps) at the
-    // bar's right edge, when caller passed `sparkline` data. Adds
-    // temporal context to a frequency or duration chart -- "this
-    // activity clustered early" vs "spread evenly".
-    if (Array.isArray(row.sparkline) && row.sparkline.length) {
-      const sparkH = barH - 4;
-      const sparkX = width - sparkW - 4;
-      const sparkY = y + 2;
-      const buckets = row.sparkline;
-      const maxB = Math.max(1, ...buckets);
-      const bw = sparkW / buckets.length;
-      // Background strip so sparse rows still register.
-      svgEl("rect", {
-        x: sparkX, y: sparkY, width: sparkW, height: sparkH,
-        fill: "var(--bg-3)", opacity: 0.5, rx: 1,
-      }, svg);
-      buckets.forEach((b, bi) => {
-        if (!b) return;
-        const h = Math.max(1, Math.round(sparkH * (b / maxB)));
-        svgEl("rect", {
-          x: sparkX + bi * bw,
-          y: sparkY + sparkH - h,
-          width: Math.max(1, bw - 0.5),
-          height: h,
-          fill: "var(--accent-2)",
-          opacity: 0.85,
-        }, svg);
-      });
-      // Title for hover-discoverability.
-      const t = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      t.textContent = "Time distribution across the session";
-      svg.lastChild.appendChild(t);
+    // A per-row `onBarClick` makes the bar + its label a drill target. The
+    // cursor + hover affordance is added ONLY when the row is actually
+    // clickable (via the `.clickable` class), so a non-interactive chart never
+    // advertises a click it can't honour (the old `.bar-rect:hover` dim implied
+    // clickability everywhere — a dead affordance).
+    if (typeof opts.onBarClick === "function") {
+      const fire = (ev) => { ev.stopPropagation(); opts.onBarClick(row, i); };
+      rect.classList.add("clickable");
+      rect.addEventListener("click", fire);
+      lbl.classList.add("clickable");
+      lbl.addEventListener("click", fire);
+      if (row.title || row.label) {
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        t.textContent = row.title || ("Open " + row.label);
+        rect.appendChild(t);
+      }
     }
   });
   if (data.length > maxBars) {

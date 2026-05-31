@@ -124,8 +124,10 @@ test("fuzz: backbone never longer than the longest case, freq never exceeds case
   }
 });
 
-test("fuzz: representativeCuration never throws and returns the four boolean flags", () => {
+test("fuzz: representativeCuration never throws and returns a boolean waste flag", () => {
   const rng = mulberry32(0xC0FFEE);
+  // Feed the RETIRED flag keys too (ADR-0027) to prove the impl ignores them
+  // gracefully and only ever emits `waste`.
   const FLAGS = ["conditional", "exception_path", "waste", "automation_candidate"];
   for (let i = 0; i < 2000; i++) {
     const n = Math.floor(rng() * 6);
@@ -137,7 +139,7 @@ test("fuzz: representativeCuration never throws and returns the four boolean fla
     });
     let out;
     assert.doesNotThrow(() => { out = representativeCuration(members); });
-    for (const k of FLAGS) assert.equal(typeof out.flags[k], "boolean", "flag " + k + " not boolean");
+    assert.equal(typeof out.flags.waste, "boolean", "waste flag not boolean");
     assert.equal(typeof out.description, "string");
   }
 });

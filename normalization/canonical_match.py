@@ -133,11 +133,7 @@ def match_canonical(
             },
             "state": "auto_matched",
             "canonical_step_id": open_step["canonical_step_id"],
-            "flags": {
-                "conditional": False, "condition_text": None,
-                "exception_path": False, "waste": False,
-                "automation_candidate": False,
-            },
+            "flags": {"waste": False},   # ADR-0027: waste is the only per-step flag
             "phase_id": None,
         }
         if open_step["boundary"] == "until_next_step":

@@ -200,21 +200,22 @@ test("alignCaseSequences: empty input is empty", () => {
 
 // --- representativeCuration (ADR-0015 phase 3 seed) ------------------------
 
-test("representativeCuration: empty members -> no description, all flags false", () => {
+// ADR-0027: `waste` is the only per-step flag now (conditional / exception_path /
+// automation_candidate were retired as mis-scoped per-step toggles).
+test("representativeCuration: empty members -> no description, waste flag false", () => {
   const r = representativeCuration([]);
   assert.equal(r.description, "");
-  assert.deepEqual(r.flags, { conditional: false, exception_path: false, waste: false, automation_candidate: false });
+  assert.deepEqual(r.flags, { waste: false });
 });
 
-test("representativeCuration: a flag set on a strict majority is seeded on", () => {
+test("representativeCuration: waste set on a strict majority is seeded on", () => {
   const members = [
     { description: "", flags: { waste: true } },
     { description: "look up the serial", flags: { waste: true } },
-    { description: "", flags: { waste: false, automation_candidate: true } },
+    { description: "", flags: { waste: false } },
   ];
   const r = representativeCuration(members);
   assert.equal(r.flags.waste, true);                 // 2 of 3 -> majority
-  assert.equal(r.flags.automation_candidate, false); // 1 of 3 -> not majority
   assert.equal(r.description, "look up the serial");  // first non-empty
 });
 
@@ -224,6 +225,6 @@ test("representativeCuration: an exactly-half flag is NOT seeded (strict majorit
 });
 
 test("representativeCuration: ignores null members", () => {
-  const r = representativeCuration([null, { flags: { conditional: true } }, undefined]);
-  assert.equal(r.flags.conditional, true);   // 1 of 1 real member
+  const r = representativeCuration([null, { flags: { waste: true } }, undefined]);
+  assert.equal(r.flags.waste, true);   // 1 of 1 real member
 });
