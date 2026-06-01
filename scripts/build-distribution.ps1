@@ -365,6 +365,9 @@ Process Discovery Viewer (analyst-side). Ships with Python 3.11 embeddable
 and the normalization pipeline already installed in ``resources\``.
 - Run ``Process Discovery Viewer.exe`` from this folder.
 - No Python install required - the bundled interpreter is auto-discovered.
+- App Library "Discover from window" borrows the recorder from a co-located
+  capture app: extract the ``capture/`` folder alongside ``viewer/`` (same parent)
+  for that one feature. Every other viewer feature is standalone.
 - Size on disk: $([math]::Round($viewerSize / 1MB, 1)) MB.
 
 ### User-Guide.docx

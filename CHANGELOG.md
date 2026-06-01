@@ -6,6 +6,34 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-06-01
+
+A fix-only patch. "Discover from window" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md))
+worked from a dev tree but failed on a deployed/packaged viewer with **"recorder.exe
+not found"** — the viewer doesn't bundle the recorder (it's a capture-app binary),
+and the resolver had no path to a deployed capture install. Caught by running the
+packaged viewer as it would run on a destination PC.
+
+### Fixed
+
+- **"Discover from window" now finds the recorder on a destination PC.** The
+  packaged viewer ships without `recorder.exe` by design (it lives in the capture
+  app), so a viewer-only machine hit "recorder.exe not found." The resolver
+  (`recorder-snapshot.js`) now probes a **sibling capture app folder**: with the
+  `viewer/` and `capture/` release folders extracted side by side, the viewer finds
+  `…/capture/resources/publish/recorder.exe` (it also scans other sibling app
+  folders, so a renamed pair still pairs up). `PDT_RECORDER_PATH` still overrides,
+  and the dev tree still resolves via the repo's `capture/`. The error message now
+  names the deploy fix. Pinned by `recorder-snapshot.test.js` (dev / sibling /
+  renamed-sibling / dedup / readdir-failure layouts).
+
+### Deploy note
+
+- **Discovery needs the capture app deployed alongside the viewer.** Extract both
+  `viewer/` and `capture/` from their release zips into the same parent folder.
+  Everything else in the viewer (analysis, normalization, PDD export) is standalone;
+  *only* "Discover from window" reaches into the sibling capture for its recorder.
+
 ## [0.22.0] - 2026-06-01
 
 App Library "Discover from window" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md))

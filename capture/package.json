@@ -1,6 +1,6 @@
 {
   "name": "process-discovery-tracker-capture",
-  "version": "0.22.0",
+  "version": "0.22.1",
   "private": true,
   "description": "Worker-side capture tracker for process discovery. Polls active window, fires marker events, writes per-session JSONL.",
   "main": "main.js",

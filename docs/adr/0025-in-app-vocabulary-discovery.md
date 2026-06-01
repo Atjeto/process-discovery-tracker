@@ -102,3 +102,18 @@ extra-dirs extension point was broken on Windows. It now splits on
 `path.delimiter`, matching Python's `os.pathsep`. Pinned by a new
 `e2e/vocab-smoke.js` gate (real viewer: the enriched row renders legibly + the
 `class_name` signature survives Save).
+
+## Refinement (2026-06-01, v0.22.1) — recorder discovery on a deployed viewer
+
+Running the **packaged** viewer as it would run on a destination PC exposed that
+"Discover from window" only ever worked from a dev tree: the viewer ships **without**
+`recorder.exe` (it's a capture-app binary), so a deployed viewer-only machine failed
+with "recorder.exe not found." The resolver (`recorder-snapshot.js`) anticipated a
+bundled recorder (`resources/recorder/…`) but the build never copied one, and there
+was no path to a *deployed* capture. Per the owner decision, the recorder is **not**
+duplicated into the viewer (that would add ~187 MB — the self-contained .NET single
+file); instead the resolver now probes a **sibling capture app folder**. The deploy
+contract: extract `viewer/` and `capture/` side by side, and the viewer finds
+`…/capture/resources/publish/recorder.exe`. This keeps the viewer slim and the air-gap
+moat intact (still on-device, nothing bundled twice). `PDT_RECORDER_PATH` overrides;
+the dev tree still resolves via the repo's `capture/`. Pinned by `recorder-snapshot.test.js`.

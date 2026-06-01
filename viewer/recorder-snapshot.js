@@ -20,17 +20,54 @@ const path = require("node:path");
 const fs = require("node:fs");
 const readline = require("node:readline");
 
-/* Where the recorder.exe lives. The viewer and capture are separate apps,
-   so we probe the dev-tree capture build and the packaged resource layouts,
-   plus an explicit PDT_RECORDER_PATH override (matches capture/recorder.js). */
+/* The ordered recorder.exe paths to probe. Pure (no fs/process reads of its
+   own) so it can be unit-tested against a synthetic layout. The viewer and
+   capture are SEPARATE packaged apps, so a deployed viewer finds the recorder in
+   a SIBLING capture folder (the recommended deploy: extract viewer/ and capture/
+   side by side); the dev tree finds it via the repo's capture/ sibling; and
+   PDT_RECORDER_PATH overrides everything. Order = precedence. */
+function recorderExeCandidates({ env = {}, dirname, resourcesPath = null, readdir } = {}) {
+  const out = [
+    env.PDT_RECORDER_PATH,
+    // Dev tree: viewer/ and capture/ are siblings in the repo.
+    path.resolve(dirname, "..", "capture", "recorder", "publish", "recorder.exe"),
+    // Recorder bundled into the viewer's own resources (not the default build).
+    resourcesPath ? path.join(resourcesPath, "recorder", "recorder.exe") : null,
+    resourcesPath ? path.join(resourcesPath, "publish", "recorder.exe") : null,
+    path.join(dirname, "recorder", "recorder.exe"),
+  ];
+  // Packaged viewer + a SIBLING packaged capture app. The capture dist bundles
+  // the recorder at <capture>/resources/publish/recorder.exe; with viewer/ and
+  // capture/ deployed side by side, <viewer>/../capture/... resolves to it.
+  if (resourcesPath) {
+    const appRoot = path.dirname(resourcesPath);   // <deploy>/viewer
+    const parent = path.dirname(appRoot);          // <deploy>
+    // The conventional dist/ folder name first.
+    out.push(path.join(parent, "capture", "resources", "publish", "recorder.exe"));
+    // Then any OTHER sibling app folder carrying a bundled recorder, so the two
+    // dist folders still pair up even if renamed on the destination PC.
+    let names = [];
+    try { if (typeof readdir === "function") names = readdir(parent) || []; } catch (_) { names = []; }
+    for (const name of names) {
+      const dir = path.join(parent, name);
+      if (path.resolve(dir) === path.resolve(appRoot)) continue;   // skip self
+      out.push(path.join(dir, "resources", "publish", "recorder.exe"));
+      out.push(path.join(dir, "resources", "recorder", "recorder.exe"));
+    }
+  }
+  // De-dup, preserving order: the explicit capture/ path and the sibling scan
+  // overlap, and a bundled-in-viewer path can repeat the scan's self entry.
+  return [...new Set(out.filter(Boolean))];
+}
+
+/* First existing recorder.exe among the candidate paths, or null. */
 function resolveRecorderExe() {
-  const candidates = [
-    process.env.PDT_RECORDER_PATH,
-    path.resolve(__dirname, "..", "capture", "recorder", "publish", "recorder.exe"),
-    path.join(process.resourcesPath || "", "recorder", "recorder.exe"),
-    path.join(process.resourcesPath || "", "publish", "recorder.exe"),
-    path.join(__dirname, "recorder", "recorder.exe"),
-  ].filter(Boolean);
+  const candidates = recorderExeCandidates({
+    env: process.env,
+    dirname: __dirname,
+    resourcesPath: process.resourcesPath || null,
+    readdir: (d) => fs.readdirSync(d),
+  });
   for (const c of candidates) {
     try { if (fs.existsSync(c)) return c; } catch (_) { /* ignore */ }
   }
@@ -45,7 +82,7 @@ function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 30000, 
   return new Promise((resolve, reject) => {
     const exe = resolveRecorderExe();
     if (!exe) {
-      reject(new Error("recorder.exe not found (build it with `npm run build:recorder` in capture/, or set PDT_RECORDER_PATH)"));
+      reject(new Error("recorder.exe not found. On a deployed machine, place the capture app folder beside the viewer (extract capture/ next to viewer/), or set PDT_RECORDER_PATH. In a dev tree, build it with `npm run build:recorder` in capture/."));
       return;
     }
     const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
@@ -111,7 +148,7 @@ function pickWindow({ timeoutMs = 35000, onLog } = {}) {
   return new Promise((resolve, reject) => {
     const exe = resolveRecorderExe();
     if (!exe) {
-      reject(new Error("recorder.exe not found (build it with `npm run build:recorder` in capture/, or set PDT_RECORDER_PATH)"));
+      reject(new Error("recorder.exe not found. On a deployed machine, place the capture app folder beside the viewer (extract capture/ next to viewer/), or set PDT_RECORDER_PATH. In a dev tree, build it with `npm run build:recorder` in capture/."));
       return;
     }
     const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
@@ -160,4 +197,4 @@ function pickWindow({ timeoutMs = 35000, onLog } = {}) {
   });
 }
 
-module.exports = { snapshotWindow, pickWindow, resolveRecorderExe };
+module.exports = { snapshotWindow, pickWindow, resolveRecorderExe, recorderExeCandidates };
