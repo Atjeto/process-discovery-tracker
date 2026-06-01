@@ -6,6 +6,39 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-06-01
+
+A fix-only patch from stress-testing "Discover from window" against the two
+hardest Chromium targets (live Spotify desktop + Discord). The C# recorder
+captures both well (Discord 99.8% named, emoji intact) — the gaps were downstream
+in the discovery pipeline.
+
+### Fixed
+
+- **Non-ASCII control names are no longer corrupted (mojibake).** The viewer pipes
+  the snapshot to `discover_vocab.py` over stdin as UTF-8, but Python defaults
+  stdin to the Windows ANSI codepage (cp1252), so emoji channel names and the "•"
+  separator arrived as mojibake ("â€¢"). `discover_vocab.py` now decodes stdin as
+  UTF-8 explicitly (raw-buffer decode), and the spawn sets `PYTHONUTF8=1` as
+  defense-in-depth. Verified end-to-end on live Discord: 19 emoji names preserved,
+  0 mojibake. Pinned by a cp1252-stdin regression test.
+- **"Discover from window" no longer fails on a slow/large window.** A big Chromium
+  a11y tree (Discord) walks at ~35 ms/node, so two passes exceeded the 30 s budget
+  and discovery failed outright ("snapshot timed out … 1/2 passes"), discarding a
+  *completed* first pass. The budget is now 60 s (room for two passes — Discord's
+  finish in ~40 s), and on timeout a completed pass is **used** rather than thrown
+  away (honest degrade to single-pass / pattern-based volatility). The capture
+  confirm dialog drops the misleading "~2s" estimate.
+
+### Notes
+
+- **Discovery quality on rich web/Electron apps is actually good — the editor's
+  ranking hides it.** Live probes: Spotify desktop 96% usable signatures (876
+  name-keyed of 1,169), Discord 99.8% named. But the frequency-first ordering
+  floats over-merged hashed-class buckets and repeated decorative text to the top,
+  burying the useful named controls. A discovery ranking + noise-filter pass is the
+  recommended next step (deliberately **not** in this patch).
+
 ## [0.22.1] - 2026-06-01
 
 A fix-only patch. "Discover from window" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md))

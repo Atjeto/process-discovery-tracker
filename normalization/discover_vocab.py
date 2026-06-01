@@ -46,8 +46,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="JSON input file; reads stdin when omitted")
     args = ap.parse_args(argv)
 
-    raw = (Path(args.infile).read_text(encoding="utf-8")
-           if args.infile else sys.stdin.read())
+    if args.infile:
+        raw = Path(args.infile).read_text(encoding="utf-8")
+    else:
+        # Read stdin as UTF-8 EXPLICITLY. Python defaults stdin to the locale/ANSI
+        # codepage on Windows (cp1252), which mangles the non-ASCII control names
+        # the viewer pipes in as UTF-8 (emoji channel names, the "•" separator) into
+        # mojibake like "â€¢". Decode the raw bytes ourselves so it's locale-proof.
+        raw = sys.stdin.buffer.read().decode("utf-8")
     try:
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError as e:

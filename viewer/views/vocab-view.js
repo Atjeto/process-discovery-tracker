@@ -509,7 +509,7 @@ async function discoverFromWindow() {
     const confirmCapture = await confirmModal({
       title: "Capture this window?",
       message: "You clicked “" + pickedTitle + "”. Capture this window's controls? " +
-        "The recorder snapshots its live UI twice (~2s) to find stable element signatures.",
+        "The recorder snapshots its live UI twice (a few seconds — up to ~a minute for a large app like a chat client) to find stable element signatures.",
       okLabel: "Capture it",
     });
     if (!confirmCapture) return;

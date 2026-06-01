@@ -187,12 +187,16 @@ function runDiscoverVocab(payload) {
     const script = resolveDiscoverScript();
     const proc = spawn(python, [script], {
       cwd: path.dirname(script),
-      env: process.env,
+      // PYTHONUTF8=1: force UTF-8 for the child's stdin/stdout regardless of the
+      // Windows locale codepage, so non-ASCII control names (emoji, "•") survive
+      // the round-trip instead of mojibaking. (discover_vocab also decodes stdin
+      // as UTF-8 explicitly; this covers stdout + belt-and-suspenders.)
+      env: Object.assign({}, process.env, { PYTHONUTF8: "1" }),
       windowsHide: true,
     });
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (b) => { stdout += b.toString(); });
+    proc.stdout.on("data", (b) => { stdout += b.toString("utf8"); });
     proc.stderr.on("data", (b) => { stderr += b.toString(); });
     proc.on("error", (e) => reject(new Error(`failed to spawn python: ${e.message}`)));
     proc.on("close", (code) => {

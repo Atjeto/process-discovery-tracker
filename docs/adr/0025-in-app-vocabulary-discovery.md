@@ -117,3 +117,25 @@ contract: extract `viewer/` and `capture/` side by side, and the viewer finds
 `…/capture/resources/publish/recorder.exe`. This keeps the viewer slim and the air-gap
 moat intact (still on-device, nothing bundled twice). `PDT_RECORDER_PATH` overrides;
 the dev tree still resolves via the repo's `capture/`. Pinned by `recorder-snapshot.test.js`.
+
+## Refinement (2026-06-01, v0.22.2) — stress-test against Spotify + Discord
+
+Driving the discovery against live Spotify desktop and Discord (the hardest
+Chromium targets) established that the **C# recorder captures correctly and
+completely** — Discord 99.8% named, Spotify desktop 74% named, emoji intact as
+`\u`-escapes — but two pipeline gaps surfaced:
+
+- **UTF-8 mojibake.** The viewer pipes the snapshot to `discover_vocab.py` over
+  stdin as UTF-8, but Python defaults stdin to the Windows ANSI codepage (cp1252),
+  mangling emoji / `•` names into `â€¢`. Fixed: `discover_vocab` decodes the raw
+  stdin buffer as UTF-8, plus `PYTHONUTF8=1` on the spawn.
+- **Two-pass timeout on slow trees.** Discord's a11y walk is ~35 ms/node, so two
+  passes exceeded the old 30 s budget and failed, discarding a completed pass 1.
+  Fixed: 60 s budget + salvage the completed pass(es) on timeout (degrade to
+  single-pass, pattern-based volatility) instead of failing.
+
+Open finding (not yet addressed): discovery output is **frequency-ranked**, which
+floats over-merged hashed-class buckets and repeated decorative `Text` above the
+genuinely useful named controls — so a rich app *looks* like junk in the editor
+when 96% of its signatures are usable. A ranking + noise-filter pass is the
+recommended next step.

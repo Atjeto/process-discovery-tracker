@@ -78,7 +78,7 @@ function resolveRecorderExe() {
    { controls: [...], window_title, passes } or rejects on a hard failure.
    `target` is "foreground" or a decimal HWND string; `passes` defaults to 2
    (two passes >=1s apart so the picker can diff for volatile ids). */
-function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 30000, onLog } = {}) {
+function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 60000, onLog } = {}) {
   return new Promise((resolve, reject) => {
     const exe = resolveRecorderExe();
     if (!exe) {
@@ -101,9 +101,20 @@ function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 30000, 
       if (err) reject(err); else resolve(value);
     };
 
-    const timer = setTimeout(
-      () => finish(new Error(`snapshot timed out after ${timeoutMs}ms (${donePasses}/${passes} passes)`)),
-      timeoutMs);
+    const timer = setTimeout(() => {
+      // Degrade honestly: a slow window (a big Chromium a11y tree -- Discord, a
+      // busy web app) may not finish all passes in the budget. If at least one
+      // pass COMPLETED, use it (the completed-pass controls are whole; we just
+      // lose the cross-pass volatility-diff and fall back to pattern-based
+      // volatility). Only fail when not even pass 1 finished.
+      if (donePasses > 0) {
+        if (onLog) onLog(`[snapshot] timed out after ${timeoutMs}ms with ${donePasses}/${passes} pass(es) done — using the completed pass(es)`);
+        const whole = controls.filter((c) => (typeof c.pass === "number" ? c.pass : 1) <= donePasses);
+        finish(null, { controls: whole, window_title: windowTitle, passes: donePasses, partial: true });
+      } else {
+        finish(new Error(`snapshot timed out after ${timeoutMs}ms before any pass completed (${donePasses}/${passes})`));
+      }
+    }, timeoutMs);
 
     const rl = readline.createInterface({ input: child.stdout });
     rl.on("line", (line) => {

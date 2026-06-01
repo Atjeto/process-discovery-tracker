@@ -368,3 +368,32 @@ def test_bootstrap_named_dedup_has_no_overmerge_noise():
     ], window_title="Acme - Salesforce")["app_vocabulary"]["interactions"]
     assert len(v) == 1 and v[0]["seen_count"] == 2
     assert "_members" not in v[0]
+
+
+def test_discover_vocab_decodes_stdin_as_utf8(monkeypatch, capsys):
+    """The viewer pipes controls to stdin as UTF-8. discover_vocab must decode
+    UTF-8 explicitly -- Python defaults stdin to the locale codepage on Windows
+    (cp1252), which mangled emoji / '•' control names into mojibake ('â€¢').
+    Simulate that hostile locale by wrapping stdin as cp1252: the fix reads the
+    raw byte buffer, so the emoji must survive."""
+    import io
+    import sys as _sys
+    import json as _json
+    import discover_vocab
+    payload = {
+        "controls": [
+            {"pass": 1, "control_type": "Text", "name": "🏰 Mythic+", "framework": "chromium"},
+            {"pass": 2, "control_type": "Text", "name": "🏰 Mythic+", "framework": "chromium"},
+        ],
+        "window_title": "Discord", "vocab_id": "d", "vocab_name": "Discord",
+    }
+    raw = _json.dumps(payload).encode("utf-8")     # exactly what the viewer writes
+    # cp1252-wrapped stream whose .buffer still yields the raw UTF-8 bytes.
+    monkeypatch.setattr(_sys, "stdin", io.TextIOWrapper(io.BytesIO(raw), encoding="cp1252"))
+    rc = discover_vocab.main([])
+    assert rc == 0
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    doc = _json.loads(out)
+    names = [i.get("name") for i in doc["app_vocabulary"]["interactions"]]
+    assert "🏰 Mythic+" in names, names
+    assert not any("â€¢" in (n or "") or "Ã" in (n or "") for n in names), names
