@@ -516,9 +516,9 @@ async function loadSessionIntoView(folder) {
     noVid.style.display = "";
     overlay.style.display = "none";
   }
-  video.addEventListener("timeupdate", positionPlayhead);
-  video.addEventListener("loadedmetadata", () =>
-    setVideoOverlay(`${formatDuration(video.duration * 1000)} loaded`));
+  // The #video timeupdate/loadedmetadata listeners are wired ONCE at module
+  // init (see wireVideoListeners below) -- adding them here ran on every
+  // session load and leaked a fresh loadedmetadata arrow each time.
   setVideoOverlay(State.getSession().recordingAvailable ? "loading…" : "no video");
 
   renderTimeline();
@@ -722,6 +722,18 @@ function updateProcessMapStatus() {
   };
 }
 
+/* Wire the video element's listeners ONCE. loadSessionIntoView runs on every
+   session load; adding these there re-bound a new loadedmetadata arrow each
+   time (timeupdate dedups by reference, loadedmetadata did not) -> a listener
+   leak across sessions. #video is a stable element in index.html. */
+(function wireVideoListeners() {
+  const video = document.getElementById("video");
+  if (!video) return;
+  video.addEventListener("timeupdate", positionPlayhead);
+  video.addEventListener("loadedmetadata", () =>
+    setVideoOverlay(`${formatDuration(video.duration * 1000)} loaded`));
+})();
+
 (function wireProcessMapButtons() {
   const open = document.getElementById("btn-open-bpmn");
   const reveal = document.getElementById("btn-reveal-bpmn");
@@ -732,7 +744,10 @@ function updateProcessMapStatus() {
   if (open) open.addEventListener("click", async () => {
     const p = currentBpmnPath();
     if (!p) return;
-    const err = await Ipc.openExternal(p);
+    // Use the dedicated diagram sink (not the screenshot image sink, which
+    // always refused .bpmn and returned an object that rendered as
+    // "[object Object]"). openDiagram resolves to a string error or null.
+    const err = await Ipc.openDiagram(p);
     if (err) toast("Could not open: " + err, "error");
   });
   if (reveal) reveal.addEventListener("click", () => {

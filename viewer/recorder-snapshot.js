@@ -20,6 +20,14 @@ const path = require("node:path");
 const fs = require("node:fs");
 const readline = require("node:readline");
 
+// Bound the snapshot's in-memory control set. A pathological window (a huge
+// Chromium a11y tree) could otherwise stream unbounded `snapshot_control`
+// lines into the `controls` array and OOM the viewer. A real window has far
+// fewer controls than this; past the cap we degrade honestly (use what we
+// have, flag `capped`) rather than grow without limit.
+const MAX_SNAPSHOT_CONTROLS = 20000;
+const MAX_SNAPSHOT_CHARS = 16 * 1024 * 1024; // ~16M chars of control JSON
+
 /* The ordered recorder.exe paths to probe. Pure (no fs/process reads of its
    own) so it can be unit-tested against a synthetic layout. The viewer and
    capture are SEPARATE packaged apps, so a deployed viewer finds the recorder in
@@ -90,6 +98,8 @@ function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 60000, 
     let windowTitle = null;
     let donePasses = 0;
     let settled = false;
+    let controlChars = 0;
+    let capped = false;
 
     const finish = (err, value) => {
       if (settled) return;
@@ -110,7 +120,7 @@ function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 60000, 
       if (donePasses > 0) {
         if (onLog) onLog(`[snapshot] timed out after ${timeoutMs}ms with ${donePasses}/${passes} pass(es) done — using the completed pass(es)`);
         const whole = controls.filter((c) => (typeof c.pass === "number" ? c.pass : 1) <= donePasses);
-        finish(null, { controls: whole, window_title: windowTitle, passes: donePasses, partial: true });
+        finish(null, { controls: whole, window_title: windowTitle, passes: donePasses, partial: true, capped });
       } else {
         finish(new Error(`snapshot timed out after ${timeoutMs}ms before any pass completed (${donePasses}/${passes})`));
       }
@@ -123,11 +133,20 @@ function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 60000, 
       try { msg = JSON.parse(line); } catch (_) { return; }
       if (msg.v !== 1) return;
       if (msg.type === "snapshot_control" && msg.data) {
+        if (controls.length >= MAX_SNAPSHOT_CONTROLS || controlChars >= MAX_SNAPSHOT_CHARS) {
+          if (!capped) {
+            capped = true;
+            if (onLog) onLog(`[snapshot] control cap reached (${controls.length} controls / ` +
+              `${Math.round(controlChars / 1048576)}M chars) — ignoring further controls to bound memory`);
+          }
+          return;
+        }
         controls.push(msg.data);
+        controlChars += line.length;
       } else if (msg.type === "snapshot_done") {
         donePasses++;
         if (msg.data && msg.data.window_title) windowTitle = msg.data.window_title;
-        if (donePasses >= passes) finish(null, { controls, window_title: windowTitle, passes });
+        if (donePasses >= passes) finish(null, { controls, window_title: windowTitle, passes, capped });
       } else if (msg.type === "ready") {
         // Recorder is up; ask for the snapshot now.
         try {
@@ -143,7 +162,7 @@ function snapshotWindow({ target = "foreground", passes = 2, timeoutMs = 60000, 
     child.on("exit", (code) => {
       if (settled) return;
       // Exited before completing the passes -> report what we have.
-      if (donePasses > 0) finish(null, { controls, window_title: windowTitle, passes: donePasses });
+      if (donePasses > 0) finish(null, { controls, window_title: windowTitle, passes: donePasses, capped });
       else finish(new Error(`recorder exited (code ${code}) before any snapshot pass`));
     });
     child.stdin.on("error", () => { /* swallow EPIPE if the recorder died */ });

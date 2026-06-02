@@ -16,7 +16,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const { validateScreenshotOpen } = require("./main.js");
+const { validateScreenshotOpen, validateDiagramOpen } = require("./main.js");
 
 // A resolved, absolute session root the way loadSessionData tracks it.
 const SESS = path.resolve("C:/work/sessions/atm-001");
@@ -95,4 +95,32 @@ test("confines to the correct root when multiple sessions are loaded", () => {
   assert.equal(validateScreenshotOpen(path.join(SESS, "screenshots/a.png"), multi).ok, true);
   // A path under neither session's screenshots dir is still rejected.
   assert.equal(validateScreenshotOpen("E:/elsewhere/a.png", multi).ok, false);
+});
+
+/* --- validateDiagramOpen: the dedicated .bpmn sink (review HIGH #11) --- */
+
+test("diagram: accepts process_map.bpmn at the session root", () => {
+  const r = validateDiagramOpen(shot("process_map.bpmn"), roots);
+  assert.equal(r.ok, true);
+  assert.equal(r.path, path.resolve(SESS, "process_map.bpmn"));
+});
+
+test("diagram: accepts a per-case map under process_maps/", () => {
+  assert.equal(validateDiagramOpen(shot("process_maps/case-CUST-1.bpmn"), roots).ok, true);
+});
+
+test("diagram: rejects non-.bpmn (.exe/.png/none) so the button can't launch a program", () => {
+  for (const rel of ["process_map.exe", "process_map.png", "process_map", "a.bpmn.exe"]) {
+    const r = validateDiagramOpen(shot(rel), roots);
+    assert.equal(r.ok, false, rel + " should be rejected");
+  }
+});
+
+test("diagram: rejects traversal and out-of-session paths", () => {
+  assert.match(validateDiagramOpen(SESS + "/../../evil.bpmn", roots).error, /traversal/i);
+  assert.match(validateDiagramOpen("C:/Windows/Temp/x.bpmn", roots).error, /outside the active session/i);
+  assert.equal(validateDiagramOpen(shot("process_map.bpmn"), new Set()).ok, false);
+  for (const bad of [null, undefined, 42, "", {}]) {
+    assert.equal(validateDiagramOpen(bad, roots).ok, false);
+  }
 });

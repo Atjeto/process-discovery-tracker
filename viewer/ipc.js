@@ -105,6 +105,12 @@ function openExternal(filePath) {
   return ipcRenderer.invoke("viewer:openExternal", filePath);
 }
 
+/** Open a mined diagram (.bpmn) via its guarded sink. Resolves to a string
+ *  error or null on success. @param {string} filePath @returns {Promise<?string>} */
+function openDiagram(filePath) {
+  return ipcRenderer.invoke("viewer:openDiagram", filePath);
+}
+
 /* ---- Canonical (Process Template) files ---- */
 
 /** @returns {Promise<any>} */
@@ -238,7 +244,7 @@ module.exports = {
   runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
   cancelNormalize,
   saveAnnotations, addClassificationOverride, promoteTaxonomyRules,
-  exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal,
+  exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal, openDiagram,
   openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
   discoverFromWindow, pickWindow, deleteVocab,
