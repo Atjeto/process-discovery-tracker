@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from csv_safe import sanitize_rows
+
 
 def export_step_csv(out_path: str | Path, annotations: dict, sessions: list[dict] | None = None) -> None:
     steps = annotations.get("steps", []) or []
@@ -23,6 +25,10 @@ def export_step_csv(out_path: str | Path, annotations: dict, sessions: list[dict
             "waste": (s.get("flags") or {}).get("waste", False),
             "automation_candidate": (s.get("flags") or {}).get("automation_candidate", False),
         })
+
+    # Neutralize spreadsheet formula injection in untrusted string cells (step
+    # names embed window titles / control names / case values). See csv_safe.
+    rows = sanitize_rows(rows)
 
     try:
         import pandas as pd  # type: ignore

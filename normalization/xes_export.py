@@ -24,6 +24,7 @@ from pm4py.objects.log.obj import Event, EventLog, Trace
 from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 
 from _dt import parse_ts as _parse_ts  # public re-export
+from csv_safe import sanitize_rows
 
 
 def build_event_log(
@@ -131,5 +132,8 @@ def export_csv(events: list[dict[str, Any]], cases: dict[str, dict[str, Any]], o
             "case_stack": ",".join(cids),
             "top_case_label": (cases.get(top, {}) or {}).get("label", ""),
         })
+    # Neutralize spreadsheet formula injection: activity_label / app / title /
+    # case labels are untrusted third-party strings (see csv_safe).
+    rows = sanitize_rows(rows)
     df = pd.DataFrame(rows)
     df.to_csv(out_path, index=False)
