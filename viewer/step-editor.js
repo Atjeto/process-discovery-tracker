@@ -5,11 +5,7 @@
   const PdtTheme = require("./theme.js");
   const PdtRecognize = require("./recognition.js");
   const { stepStateLabel } = require("./session-summary.js");
-
-  function escapeHtml(s) {
-    return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-  }
-  function escapeAttr(s) { return escapeHtml(s); }
+  const { escapeHtml, escapeAttr } = require("./dom.js");   // shared escapers (deduped)
 
   /* Local "HH:MM:SS" from an ISO timestamp. The mini-timeline axis
      already uses toLocaleTimeString, so step times must use the same

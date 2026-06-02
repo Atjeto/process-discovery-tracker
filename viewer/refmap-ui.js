@@ -19,17 +19,13 @@ const State = require("./state.js");
 const Session = require("./session.js");
 const RefStore = require("./reference-maps.js");
 const PdtBpmn = require("./bpmn-viewer.js");
-const { toast } = require("./dom.js");
+const { toast, escapeHtml } = require("./dom.js");
 
 let _deps = {};
 let _editingId = null;
 const $ = (id) => document.getElementById(id);
 
-function esc(s) {
-  return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
+const esc = escapeHtml;   // shared escaper (deduped from dom.js)
 function fmtDate(iso) {
   if (!iso) return "";
   try { return new Date(iso).toLocaleString(); } catch (_) { return String(iso); }

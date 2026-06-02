@@ -12,7 +12,9 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
+  // String(s ?? "") so null/undefined render as "" (not the literal "null") --
+  // matches escapeAttr and the per-view copies this is the source of truth for.
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 

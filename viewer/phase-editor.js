@@ -3,11 +3,7 @@
 (function () {
   const TimelineCore = require("./timeline/timeline-core.js");
   const PdtTheme = require("./theme.js");
-
-  function escapeHtml(s) {
-    return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-  }
-  function escapeAttr(s) { return escapeHtml(s); }
+  const { escapeHtml, escapeAttr } = require("./dom.js");   // shared escapers (deduped)
 
   function renderPhaseList(host, phases, selectedId, onSelect) {
     host.innerHTML = "";
