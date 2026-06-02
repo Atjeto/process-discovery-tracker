@@ -17,6 +17,36 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* Sanitize an externally-supplied SVG before embedding it in the exported,
+ * browser-opened report. The map SVG is built by the viewer's renderer from
+ * already-escaped node labels, but this is the trust boundary for the
+ * deliverable (the report is opened in a browser and may be emailed on), so we
+ * defend it directly: a future caller -- or a label-escaping regression in the
+ * renderer -- must not be able to turn the report into stored XSS. We strip the
+ * vectors that execute or fetch inside an inline SVG: <script>, <foreignObject>
+ * (can host arbitrary HTML), on* event-handler attributes, and any
+ * href/xlink:href that is not a local "#..." fragment (javascript:/data:/
+ * external). Deliberately aggressive and regex-based -- it strips rather than
+ * trying to fully parse SVG. */
+function sanitizeSvg(svg) {
+  if (typeof svg !== "string") return "";
+  return svg
+    // <script>...</script>, plus an unterminated trailing <script ...
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
+    .replace(/<script\b[\s\S]*$/gi, "")
+    // <foreignObject>...</foreignObject> can embed arbitrary HTML/JS
+    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject\s*>/gi, "")
+    .replace(/<foreignObject\b[\s\S]*$/gi, "")
+    // on*="..." / on*='...' / on*=bare event-handler attributes
+    .replace(/\son[a-z0-9_-]+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son[a-z0-9_-]+\s*=\s*'[^']*'/gi, "")
+    .replace(/\son[a-z0-9_-]+\s*=\s*[^\s>]+/gi, "")
+    // href / xlink:href that is not a local "#..." fragment
+    .replace(/\s(?:xlink:)?href\s*=\s*"(?!#)[^"]*"/gi, "")
+    .replace(/\s(?:xlink:)?href\s*=\s*'(?!#)[^']*'/gi, "")
+    .replace(/\s(?:xlink:)?href\s*=\s*(?!["']?#)[^\s>]+/gi, "");
+}
+
 function fmtDuration(ms) {
   if (ms == null || !isFinite(ms)) return "-";
   const s = ms / 1000;
@@ -113,7 +143,9 @@ function summarySection(session, summary) {
 
 function processMapSection(options) {
   if (!options.includeProcessMap || !options.processMapSvg) return "";
-  return "<h2>Process map</h2><figure>" + options.processMapSvg +
+  const svg = sanitizeSvg(options.processMapSvg);
+  if (!svg) return "";
+  return "<h2>Process map</h2><figure>" + svg +
     "<figcaption>Directly-follows flow of the captured activities.</figcaption></figure>";
 }
 
@@ -250,4 +282,4 @@ function generateFindingsReport(session, options) {
   ].join("\n");
 }
 
-module.exports = { generateFindingsReport };
+module.exports = { generateFindingsReport, sanitizeSvg };

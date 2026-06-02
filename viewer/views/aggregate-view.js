@@ -773,10 +773,12 @@ function renderAggregate() {
     if (versions.size > 1) {
       const latest = Math.max(...[...versions].filter(v => typeof v === "number"));
       banner.style.display = "";
+      // canonical_version comes from analyst-authored template YAML, so escape
+      // it before it reaches innerHTML (XSS). `latest` is a numeric Math.max.
       banner.innerHTML =
         `Loaded sessions span ${versions.size} canonical versions ` +
-        `(${[...versions].join(", ")}). Statistics may be inconsistent. ` +
-        `<button id="btn-renormalize-to-latest">Re-normalize all to v${latest}</button>`;
+        `(${escapeHtml([...versions].join(", "))}). Statistics may be inconsistent. ` +
+        `<button id="btn-renormalize-to-latest">Re-normalize all to v${escapeHtml(String(latest))}</button>`;
       const reBtn = $("#btn-renormalize-to-latest");
       if (reBtn) reBtn.addEventListener("click", () => $("#btn-renormalize-canonical").click());
     } else {

