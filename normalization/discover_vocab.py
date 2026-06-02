@@ -47,13 +47,19 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.infile:
-        raw = Path(args.infile).read_text(encoding="utf-8")
+        # errors="replace": a genuinely non-UTF-8 byte degrades to U+FFFD rather
+        # than raising an uncaught UnicodeDecodeError outside the try below.
+        # Mirrors the load_events read-hardening on the file path.
+        raw = Path(args.infile).read_text(encoding="utf-8", errors="replace")
     else:
         # Read stdin as UTF-8 EXPLICITLY. Python defaults stdin to the locale/ANSI
         # codepage on Windows (cp1252), which mangles the non-ASCII control names
         # the viewer pipes in as UTF-8 (emoji channel names, the "•" separator) into
         # mojibake like "â€¢". Decode the raw bytes ourselves so it's locale-proof.
-        raw = sys.stdin.buffer.read().decode("utf-8")
+        # errors="replace" so a stray non-UTF-8 byte degrades instead of raising
+        # an uncaught UnicodeDecodeError (the JSON parse below still reports a
+        # bad payload via the {"error":...}/rc=2 contract).
+        raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     try:
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError as e:
