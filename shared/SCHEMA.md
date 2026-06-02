@@ -121,7 +121,8 @@ Sourced from Windows UI Automation via the C# sidecar recorder. See `docs/intera
 | `pid` | int | Owning process PID |
 | `selected_value` | string | `selection_changed` only |
 | `toggle_state` | string | `toggle_changed` only - `on` \| `off` \| `indeterminate` |
-| `value` | string | `value_changed` only, length-clamped to 256 chars |
+| `value` | string | `value_changed` only, length-clamped to 256 chars. **Omitted entirely when `value_redacted` is set.** |
+| `value_redacted` | bool | `value_changed` only; present (`true`) when the recorder **redacted a secret at capture** — the control was UIA-flagged `IsPassword` (a password / masked-secret field), so the `value` is omitted and the `TextPattern` / OCR recovery is skipped. The raw `events.jsonl` never holds the secret. This is capture-time redaction (the recorder), distinct from the analyst-side `value_masked` masking of the *derived* stream below. |
 | `value_truncated` | bool | `value_changed` only; present (`true`) when the 256-char clamp fired, so the analyst knows the stored value is partial |
 | `value_source` | string | `value_changed` only; present **only when the value was recovered** off the primary UIA ValuePattern path (§11e) — currently `text_pattern` (content read via `TextPattern` from a rich-text/document control that reported an empty ValuePattern value, generalizing the AG-Grid fix). Omitted on the normal path. A future OCR recovery would surface here as `ocr`. |
 | `coverage_hint` | string | First interaction per process only — `rich` (stable `automation_id`) \| `basic` (control type, no id) \| `minimal` (class name only). Signals how richly UIA exposes that app. |

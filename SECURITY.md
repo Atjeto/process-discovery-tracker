@@ -210,7 +210,7 @@ UI Automation exposes the *same* surface that the active-window polling already 
 | `selected_value` | `SelectionItemPattern.IsSelected` / parent `SelectionPattern.GetSelection`. |
 | `toggle_state` | `TogglePattern.ToggleState`. |
 
-UIA does not expose process memory, file contents, network traffic, or keystrokes. The `value_changed` event fires once per coalesced typing burst (per the recorder's 750ms debounce) carrying the *value* as the application sees it — same data the user typed into the focused field, no more. Sensitive inputs (password fields) are masked by Windows itself in UIA; the recorder never sees plaintext password content.
+UIA does not expose process memory, file contents, network traffic, or keystrokes. The `value_changed` event fires once per coalesced typing burst (per the recorder's 750ms debounce) carrying the *value* as the application sees it — same data the user typed into the focused field, no more. Sensitive inputs are redacted **at capture**: when a control is UIA-flagged `IsPassword` (a password / masked-secret field), the recorder omits its `value` entirely, sets `value_redacted: true`, and skips the §11e `TextPattern` / OCR recovery rungs (which could otherwise reconstruct a value Windows had blanked). The plaintext secret therefore never reaches the immutable `events.jsonl`. The analyst-side `pii_masking` layer is a second, field-name-based net over the *derived* stream.
 
 ### Lifecycle and observability
 

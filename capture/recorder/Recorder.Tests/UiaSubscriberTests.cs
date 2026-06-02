@@ -173,6 +173,25 @@ public class UiaSubscriberTests {
         Assert.Equal(expected, UiaSubscriber.ShouldOcr(identitySource, hasBounds, ocrEnabled));
     }
 
+    // SECURITY (CRITICAL): a password / masked-secret control's value must
+    // never reach the immutable events.jsonl. Pins both redaction gates:
+    // ShouldRedactValue (the value path redacts a password text value but
+    // exempts numeric range values) and ShouldOcr's isSecret suppression
+    // (a secret element is never OCR'd, even as the identityless last resort).
+    [Fact]
+    public void Secret_controls_are_redacted_and_never_ocrd() {
+        // A password text value redacts; a non-password does not; a range
+        // value (slider/spinner) is numeric, never secret -> exempt.
+        Assert.True(UiaSubscriber.ShouldRedactValue(isPassword: true, isRangeValue: false));
+        Assert.False(UiaSubscriber.ShouldRedactValue(isPassword: false, isRangeValue: false));
+        Assert.False(UiaSubscriber.ShouldRedactValue(isPassword: true, isRangeValue: true));
+
+        // The would-fire OCR case (none + bounds + enabled) is suppressed when
+        // the element is secret, but still fires for a non-secret element.
+        Assert.True(UiaSubscriber.ShouldOcr("none", hasBounds: true, ocrEnabled: true, isSecret: false));
+        Assert.False(UiaSubscriber.ShouldOcr("none", hasBounds: true, ocrEnabled: true, isSecret: true));
+    }
+
     // Pins CoalesceKeyFromProps: AutomationId wins, then Name+ClassName,
     // then RuntimeId, else null (no stable identity).
     [Fact]

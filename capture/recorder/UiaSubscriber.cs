@@ -213,6 +213,19 @@ public sealed class UiaSubscriber {
             EmitFiltered("toggle_changed", el, new { toggle_state = e.NewValue?.ToString()?.ToLowerInvariant() });
         } else if (e.Property == ValuePattern.ValueProperty ||
                    e.Property == RangeValuePattern.ValueProperty) {
+            // SECURITY (CRITICAL): a password / masked-secret control's value
+            // must NEVER reach the immutable events.jsonl. Gate BEFORE reading
+            // the value or running any recovery -- Windows already blanks a
+            // password field's ValuePattern value, and the §11e TextPattern
+            // recovery below would actively defeat that blanking. We emit the
+            // interaction (the analyst still sees the secret field was filled)
+            // with the value omitted and value_redacted:true. Range values are
+            // numeric (slider/spinner), never secret, so they are exempt.
+            bool isRange = e.Property == RangeValuePattern.ValueProperty;
+            if (ShouldRedactValue(IsSecretValueElement(el), isRange)) {
+                EmitValueChanged(el, value: null, truncated: false, valueSource: null, redacted: true);
+                return;
+            }
             var raw = e.NewValue?.ToString() ?? "";
             // Value-recovery (§11e): when the change signal carries an empty
             // value -- a rich-text / document control that fires the change
@@ -234,10 +247,16 @@ public sealed class UiaSubscriber {
         }
     }
 
-    private void EmitValueChanged(AutomationElement el, string value, bool truncated, string? valueSource = null) {
+    private void EmitValueChanged(AutomationElement el, string? value, bool truncated,
+                                  string? valueSource = null, bool redacted = false) {
         // value_truncated stays null (and is omitted) unless the clamp fired;
-        // value_source stays null (omitted) unless recovery fired (§11e).
-        var extra = new { value, value_truncated = truncated ? (bool?)true : null, value_source = valueSource };
+        // value_source stays null (omitted) unless recovery fired (§11e). A
+        // redacted secret carries ONLY value_redacted:true -- never the value,
+        // its length (value_truncated), or its recovery source -- so no
+        // metadata about the password leaks into events.jsonl.
+        object extra = redacted
+            ? new { value_redacted = true }
+            : new { value, value_truncated = truncated ? (bool?)true : null, value_source = valueSource };
         if (_verbose) {
             EmitFiltered("value_changed", el, extra);
             return;
@@ -607,8 +626,40 @@ public sealed class UiaSubscriber {
     /// expensive screen-capture + OCR path off every element that already
     /// carries any identity at all. Pure.
     /// </summary>
-    internal static bool ShouldOcr(string identitySource, bool hasBounds, bool ocrEnabled) {
-        return ocrEnabled && identitySource == "none" && hasBounds;
+    internal static bool ShouldOcr(string identitySource, bool hasBounds, bool ocrEnabled,
+                                   bool isSecret = false) {
+        // SECURITY (CRITICAL): never OCR a secret/password control's region --
+        // defense in depth with the value-redaction gate, so even an
+        // identityless password input (web <input type=password> with no
+        // aid/name) never has its on-screen region captured.
+        return ocrEnabled && !isSecret && identitySource == "none" && hasBounds;
+    }
+
+    /// <summary>
+    /// SECURITY (CRITICAL): the value-redaction policy. A control's typed value
+    /// must be redacted at capture -- never written to the immutable
+    /// events.jsonl -- when UIA flags it <c>IsPassword</c>. Range values
+    /// (slider / spinner) are numeric and never a secret, so they are exempt
+    /// even if a control oddly reports IsPassword. Pure mirror of the gate in
+    /// OnPropertyChanged so the policy is unit-pinned without a live UIA tree.
+    /// </summary>
+    internal static bool ShouldRedactValue(bool isPassword, bool isRangeValue) =>
+        isPassword && !isRangeValue;
+
+    /// <summary>
+    /// SECURITY (CRITICAL): true when an element's value must never be
+    /// persisted to the immutable events.jsonl -- a password / masked-secret
+    /// control, as flagged by the UIA <c>IsPassword</c> property (set by every
+    /// well-behaved password Edit on Win32/WinForms/WPF/WinUI and by
+    /// <c>&lt;input type="password"&gt;</c> in Chromium). A throwing or absent
+    /// property is treated as NOT secret: we cannot prove it is a password, and
+    /// the normal value path is the safe-by-default pre-existing behaviour.
+    /// IsPassword is the documented UIA contract for password fields, so it --
+    /// not a brittle class-name heuristic -- is the gate.
+    /// </summary>
+    private static bool IsSecretValueElement(AutomationElement el) {
+        try { return el.Current.IsPassword; }
+        catch { return false; }
     }
 
     private object? BuildEvent(string kind, AutomationElement el, object? extra) {
@@ -664,7 +715,11 @@ public sealed class UiaSubscriber {
             // recovered text rides as `ocr_text` and lifts the rung to "ocr".
             var ocrReady = _ocr != null && _ocr.Available;
             var bounds = ocrReady ? TryGetBounds(el) : null;
-            if (ShouldOcr(identitySource, bounds.HasValue, ocrReady)) {
+            // SECURITY (CRITICAL): suppress the OCR rung on a secret/password
+            // control. Evaluated only on an OCR-enabled session (the common
+            // path reads no extra UIA property).
+            var isSecret = ocrReady && IsSecretValueElement(el);
+            if (ShouldOcr(identitySource, bounds.HasValue, ocrReady, isSecret)) {
                 var b = bounds!.Value;
                 var label = _ocr!.RecognizeScreenRegion(b.x, b.y, b.w, b.h);
                 if (!string.IsNullOrEmpty(label)) {

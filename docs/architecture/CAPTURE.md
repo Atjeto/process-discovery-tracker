@@ -167,6 +167,15 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   *clipboard* recovery are deliberately **not** done — descent would walk the tree
   on the interaction hot path, and clipboard scraping is a privacy hazard at odds
   with the air-gapped, structured-only moat.
+- **Secret redaction at capture (security).** Before any of the above runs, a
+  `value_changed` on a control UIA-flagged `IsPassword` (`UiaSubscriber.IsSecretValueElement`
+  / `ShouldRedactValue`) is redacted: the recorder omits the `value`, sets
+  `value_redacted: true`, and **skips** the `TextPattern` recovery and the OCR rung
+  for that element (`ShouldOcr`'s `isSecret` gate). Windows already blanks a password
+  field's `ValuePattern` value; without this gate the recovery rungs would actively
+  reconstruct it. The plaintext secret therefore never reaches the immutable
+  `events.jsonl` — the analyst-side `pii_masking` layer is only a second net over the
+  derived stream. See [SECURITY.md](../../SECURITY.md).
 - **OCR last rung (§11e, default-off).** The bottom of the identity ladder: when an
   element exposes **no** structured identity (`identity_source == "none"`) on a
   session that opted in (`interactions.ocr: true`), the recorder captures the

@@ -170,7 +170,11 @@ def mask_events(
             out.append(ev)
             continue
         new_data: dict | None = None
-        for key in ("value", "selected_value"):
+        # `ocr_text` is the §11e recovered-label rung (ADR-0023). The recorder
+        # already suppresses OCR on a password control, but a sensitive field
+        # that DID OCR (e.g. a labelled card-number region) must still have its
+        # recovered text redacted here -- OCR text otherwise bypasses masking.
+        for key in ("value", "selected_value", "ocr_text"):
             v = data.get(key)
             if isinstance(v, str) and v != "":
                 if new_data is None:

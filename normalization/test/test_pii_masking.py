@@ -90,6 +90,22 @@ def test_selected_value_is_redacted_too():
     assert report["rules_fired"] == {"card": 1}
 
 
+def test_ocr_text_is_redacted_on_a_sensitive_field():
+    # The §11e OCR-recovered label of a sensitive field must be redacted too --
+    # not just value/selected_value -- otherwise OCR text bypasses masking.
+    ev = {"event_id": "i1", "type": "interaction",
+          "data": {"name": "Card number", "control_type": "Edit",
+                   "automation_id": "", "value": "",
+                   "ocr_text": "4111 1111 1111 1111"}}
+    out, report = mask_events([ev], session_id="S1")
+    d = out[0]["data"]
+    assert d["ocr_text"].startswith("«card#") and d["ocr_text"].endswith("»")
+    assert d["value_masked"] is True
+    assert d["value_masked_rule"] == "card"
+    assert report["masked_value_count"] == 1
+    assert report["rules_fired"] == {"card": 1}
+
+
 def test_sensitive_field_with_no_value_is_not_counted():
     evs = [_interaction("i1", name="Password", value="")]
     out, report = mask_events(evs, session_id="S1")
