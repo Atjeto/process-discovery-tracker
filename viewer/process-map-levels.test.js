@@ -16,6 +16,8 @@ const {
 
 const GOLDEN = JSON.parse(fs.readFileSync(
   path.join(__dirname, "..", "shared", "process-label-golden.json"), "utf8"));
+const SCREEN_GOLDEN = JSON.parse(fs.readFileSync(
+  path.join(__dirname, "..", "shared", "screen-label-golden.json"), "utf8"));
 
 function step(id, name, caseId, startMs, phaseId) {
   return {
@@ -163,6 +165,15 @@ test("processLabel matches the cross-language golden (Python twin must agree)", 
   // if these diverge, the live DFG and the mined BPMN/stats collapse differently.
   for (const [name, expected] of GOLDEN.cases) {
     assert.equal(processLabel(name), expected, JSON.stringify(name));
+  }
+});
+
+test("screenType matches the cross-language screen-label golden (Python twin must agree)", () => {
+  // The same golden is asserted in normalization/test/test_screen_label.py; if
+  // these diverge, one logical screen splits per record and the screen-grain
+  // map fans out into a per-case hairball.
+  for (const [name, expected] of SCREEN_GOLDEN.cases) {
+    assert.equal(screenType(name), expected, JSON.stringify(name));
   }
 });
 

@@ -1,0 +1,20 @@
+{
+  "_README": "Cross-language golden for the value-free SCREEN label (ADR-0024 §6a/§6b). Each [input, expected] pair must hold for BOTH normalization/step_suggest.screen_label (Python) and viewer/process-map-levels.screenType (JS), which share screen-label-patterns.json. The two engines can silently diverge (Python re.sub replaces ALL matches, JS String.replace replaces only the FIRST without a /g flag; regex dialects and the end-trim differ), so this fixture pins their agreement -- if they drift, one logical screen splits into a per-record node and the screen-grain map fans out. Tested by normalization/test/test_screen_label.py and viewer/process-map-levels.test.js. The sibling of process-label-golden.json.",
+  "cases": [
+    ["Salesforce - Order #10900", "Salesforce - Order"],
+    ["Salesforce - Order #11412", "Salesforce - Order"],
+    ["Outlook - Order #10852 confirmation", "Outlook - Order confirmation"],
+    ["Salesforce - Account lookup", "Salesforce - Account lookup"],
+    ["Salesforce - Credit check", "Salesforce - Credit check"],
+    ["va01", "va01"],
+    ["Search — CUST-10852", "Search"],
+    ["", ""],
+    ["   ", ""],
+    ["Create INC0010010 | Incident | ServiceNow", "Create | Incident | ServiceNow"],
+    ["Book1 - Excel", "Book1 - Excel"],
+    ["Invoice 2026 - Acme", "Invoice - Acme"],
+    ["#10900", "#10900"],
+    ["ServiceNow - INC0012345", "ServiceNow"],
+    ["Order #10900 - line 42", "Order - line 42"]
+  ]
+}
