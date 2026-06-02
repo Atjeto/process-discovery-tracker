@@ -223,11 +223,15 @@ def main():
     REPORT.write_text("\n".join(out) + "\n", encoding="utf-8")
 
     n_pass = sum(1 for r in rows if r[2] == "PASS")
+    failed = len(rows) - n_pass
     print(f"{n_pass}/{len(rows)} PASS")
     for r in rows:
         print(f"  {r[0]:8s} {r[2]:6s}  {r[1][:60]}")
     print("report:", REPORT)
+    return failed
 
 
 if __name__ == "__main__":
-    main()
+    # Exit non-zero when any row is not PASS (FAIL / MISSING) so this is a real
+    # CI gate, not a green-on-failure no-op.
+    sys.exit(1 if main() else 0)

@@ -49,7 +49,8 @@ param(
   [switch]$NotesFromChangelog,
   [string]$Title,
   [switch]$Draft,
-  [switch]$Prerelease
+  [switch]$Prerelease,
+  [switch]$SkipProvenanceCheck
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,6 +59,29 @@ $releaseDir = Join-Path $repoRoot "dist\release"
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
   throw "gh CLI not found on PATH. Install from https://cli.github.com/ and run 'gh auth login'."
+}
+
+# Release provenance. `gh release create` tags the HEAD of the default branch on
+# the REMOTE (origin/master), but the asset zips were built from the LOCAL tree.
+# Refuse to publish unless the tree is clean AND local HEAD == origin/master, so
+# the published tag actually corresponds to the artifacts being uploaded.
+# (-SkipProvenanceCheck is the deliberate escape hatch for an out-of-band release.)
+if (-not $SkipProvenanceCheck) {
+  $status = & git -C $repoRoot status --porcelain
+  if ($LASTEXITCODE -ne 0) { throw "git status failed -- is $repoRoot a git repo?" }
+  if ($status) {
+    throw "Working tree is not clean -- commit or stash before releasing so the tag matches the built assets:`n$status"
+  }
+  & git -C $repoRoot fetch origin master --quiet
+  if ($LASTEXITCODE -ne 0) { throw "git fetch origin master failed; cannot verify release provenance (network/auth?)." }
+  $localHead  = (& git -C $repoRoot rev-parse HEAD).Trim()
+  $remoteHead = (& git -C $repoRoot rev-parse origin/master).Trim()
+  if ($localHead -ne $remoteHead) {
+    throw ("Local HEAD ($($localHead.Substring(0,8))) != origin/master ($($remoteHead.Substring(0,8))). " +
+           "gh tags origin/master HEAD, so the release would NOT match your built assets. " +
+           "Fast-forward/push master first, or pass -SkipProvenanceCheck for a deliberate out-of-band release.")
+  }
+  Write-Host "Provenance OK: clean tree, HEAD == origin/master ($($localHead.Substring(0,8)))." -ForegroundColor DarkGray
 }
 
 $captureAsset = Join-Path $releaseDir "capture-v$Version.zip"

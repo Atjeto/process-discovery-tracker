@@ -11,7 +11,7 @@
     sessions/_testsuite    (synthetic test suite)
 
   Run from the repo root:
-    powershell -ExecutionPolicy Bypass -File scripts\cleanup-test-sessions.ps1
+    powershell -ExecutionPolicy RemoteSigned -File scripts\cleanup-test-sessions.ps1
 
   Use -WhatIf to preview, -Force to skip the confirmation.
 #>

@@ -310,11 +310,15 @@ def main():
     out.append("")
     REPORT.write_text("\n".join(out), encoding="utf-8")
     passed = sum(1 for r in rows if r[2] == "PASS")
+    failed = len(rows) - passed
     print(f"{passed}/{len(rows)} PASS")
     for r in rows:
         print(f"  {r[0]:6s} {r[2]:4s}  {r[1][:60]}")
     print("report:", REPORT)
+    return failed
 
 
 if __name__ == "__main__":
-    main()
+    # Exit non-zero when any row is not PASS so this is a real CI gate, not a
+    # green-on-failure no-op.
+    sys.exit(1 if main() else 0)

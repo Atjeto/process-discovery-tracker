@@ -165,14 +165,14 @@ if ($Clean) {
 # bitten this project (corrupt CHANGELOG, drifted lockfile, fresh-advisory
 # regression).
 Write-Host "[0/5] Preflight sanity checks" -ForegroundColor Yellow
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "preflight.ps1")
+& powershell -NoProfile -ExecutionPolicy RemoteSigned -File (Join-Path $PSScriptRoot "preflight.ps1")
 if ($LASTEXITCODE -ne 0) { throw "preflight failed -- see messages above. Fix before building." }
 Write-Host ""
 
 # Step 1: Python embeddable
 if (-not $SkipPython) {
   Write-Host "[1/5] Building Python embeddable bundle (3-5 min)" -ForegroundColor Yellow
-  & powershell -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\build-python-embeddable.ps1") -Force
+  & powershell -NoProfile -ExecutionPolicy RemoteSigned -File (Join-Path $repoRoot "scripts\build-python-embeddable.ps1") -Force
   if ($LASTEXITCODE -ne 0) { throw "Python embeddable build failed" }
 } else {
   Write-Host "[1/5] Skipping Python embeddable build (-SkipPython)" -ForegroundColor Yellow
@@ -218,8 +218,16 @@ Invoke-NpmPackage $viewerDir
 # accumulated from any dev usage between rebuilds. Slimming the
 # packaged copy (not the source) keeps the source warm for `npm
 # start` while the shipped tree stays lean.
-$viewerBuildOut = Get-ChildItem (Join-Path $viewerDir "dist") -Directory | Select-Object -First 1
-$packagedPython = if ($viewerBuildOut) { Join-Path $viewerBuildOut.FullName "resources\python" } else { $null }
+# Assert EXACTLY one build folder: a stale prior build (different platform/arch
+# left behind without -Clean) would make `Select-Object -First 1` slim an
+# arbitrary one and ship the other un-slimmed. Fail loudly instead.
+$viewerBuildDirs = @(Get-ChildItem (Join-Path $viewerDir "dist") -Directory)
+if ($viewerBuildDirs.Count -ne 1) {
+  throw "Expected exactly one viewer build folder under viewer\dist, found $($viewerBuildDirs.Count): " +
+        "$($viewerBuildDirs.Name -join ', '). Re-run with -Clean to rebuild from a clean dist."
+}
+$viewerBuildOut = $viewerBuildDirs[0]
+$packagedPython = Join-Path $viewerBuildOut.FullName "resources\python"
 if ($packagedPython -and (Test-Path $packagedPython)) {
   Write-Host ""
   Write-Host "Slimming packaged Python tree at $packagedPython" -ForegroundColor Yellow
