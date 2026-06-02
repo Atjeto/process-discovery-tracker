@@ -70,7 +70,9 @@
     const conformance = opts.conformance || null;
     const nodes = new Set();
     for (const e of dfg.edges) { nodes.add(e.source); nodes.add(e.target); }
-    const maxFreq = Math.max(...dfg.edges.map((e) => e.frequency || 1));
+    // reduce, not Math.max(...spread): a large DFG (thousands of edges) would
+    // overflow the JS argument-count limit and throw.
+    const maxFreq = dfg.edges.reduce((m, e) => Math.max(m, e.frequency || 1), 1);
     const elements = [];
     for (const n of nodes) {
       const isStart = dfg.start_activities && dfg.start_activities[n];

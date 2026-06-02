@@ -21,7 +21,18 @@ function fmtTs(iso) {
 }
 
 function mdEscape(s) {
-  return String(s || "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+  // Free-text cells (notes, labels, window titles) are untrusted. Neutralize:
+  //  - raw HTML (< > &): most Markdown renderers, incl. Confluence, pass HTML
+  //    through to the page, so a note like <img src=x onerror=...> would inject
+  //    markup/script when the report is viewed;
+  //  - the Markdown table-cell separator (|) and newlines, which would break
+  //    the row structure.
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, " ");
 }
 
 function buildSessionReport(session) {

@@ -259,7 +259,10 @@ function createMapController(config) {
        (_syncNotationTabs) and when the map has no edges; it disables when there
        is no spread to thin. */
     const baseHasEdges = !!(dfg && dfg.edges && dfg.edges.length);
-    const maxFreq = baseHasEdges ? Math.max(...dfg.edges.map((e) => e.frequency || 1)) : 1;
+    // reduce, not Math.max(...spread): a large DFG would overflow the JS
+    // argument-count limit and throw.
+    const maxFreq = baseHasEdges
+      ? dfg.edges.reduce((m, e) => Math.max(m, e.frequency || 1), 1) : 1;
     const canThin = baseHasEdges && maxFreq > 1 && dfg.edges.length >= 3;
     let hiddenRare = 0;
     let appliedCutoff = 1;

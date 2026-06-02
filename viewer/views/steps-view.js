@@ -640,7 +640,7 @@ async function splitStep(stepId) {
   const idx = anno.steps.findIndex(s => s.step_id === stepId);
   if (idx < 0) return;
   const s = anno.steps[idx];
-  const ids = s.evidence.interaction_event_ids || [];
+  const ids = (s.evidence || {}).interaction_event_ids || [];   // a step may lack evidence
   if (ids.length < 2) { toast("Need ≥2 interactions to split", "error"); return; }
   // A2: split at the analyst-picked boundary (split AFTER index i -> first
   // chunk is [0..i]) when one is set for THIS step; else the midpoint.
@@ -898,7 +898,7 @@ async function addManualStep() {
   if (!name) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const video = $("#video");
-  let tsNow = videoTimeToSessionTs(video.currentTime);
+  let tsNow = video ? videoTimeToSessionTs(video.currentTime) : null;   // #video may be absent
   if (!tsNow) {
     // No video to anchor to: drop the step at the end of the session's
     // recorded span (after any existing step) rather than wall-clock

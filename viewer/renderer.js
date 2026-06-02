@@ -936,11 +936,20 @@ if ($("#btn-session-pdd")) {
   });
 }
 
+/* Reduce a suggested filename to a safe basename for a temp-file write: take
+   the last path segment and drop leading dots, so a crafted name like
+   "..\\..\\evil" cannot escape the temp dir via path.join. */
+function safeBasename(name, fallback) {
+  const segs = String(name || "").split(/[\\/]+/);
+  const base = segs[segs.length - 1].replace(/^\.+/, "");
+  return base || (fallback || "export");
+}
+
 async function saveMarkdownReport(md, suggestedName) {
   /* Write into a temp file, then ask main.js to copy it via the
      export-file dialog so the user picks the destination. */
   const tmpDir = require("os").tmpdir();
-  const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-" + suggestedName);
+  const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-" + safeBasename(suggestedName, "report.md"));
   fs.writeFileSync(tmpPath, md, "utf-8");
   const out = await Ipc.exportFile({
     sourcePath: tmpPath,

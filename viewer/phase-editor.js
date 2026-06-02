@@ -179,8 +179,11 @@
         .map(sid => (steps || []).find(s => s.step_id === sid))
         .filter(Boolean);
       if (!contained.length) continue;
-      const startMs = Math.min(...contained.map(s => new Date(s.time_range.start).getTime()));
-      const endMs = Math.max(...contained.map(s => new Date(s.time_range.end).getTime()));
+      // (s.time_range || {}): a step may carry no time_range; reading .start off
+      // undefined would throw. A missing bound -> Date(undefined) -> NaN, which
+      // the isFinite guard below drops.
+      const startMs = Math.min(...contained.map(s => new Date((s.time_range || {}).start).getTime()));
+      const endMs = Math.max(...contained.map(s => new Date((s.time_range || {}).end).getTime()));
       if (!isFinite(startMs) || !isFinite(endMs)) continue;
       ranges.push({ p, startMs, endMs });
     }
