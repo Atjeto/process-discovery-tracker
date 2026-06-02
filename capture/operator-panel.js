@@ -28,12 +28,15 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
+const { jsonForScript } = require("./json-for-script.js");
 
 /* Markup lives in ui/operator-panel.html, loaded via a data: URL.
    {{LABELS}} is the one runtime-dynamic slot -- the JSON-encoded
-   saved-label list. */
+   saved-label list. jsonForScript (not bare JSON.stringify): the slot lands
+   inside an inline <script>, so a label containing "</script>..." would break
+   out and -- with nodeIntegration:true -- execute. See json-for-script.js. */
 function buildOperatorHtml(config) {
-  const labels = JSON.stringify((config && config.process_labels) || []);
+  const labels = jsonForScript((config && config.process_labels) || []);
   return fs
     .readFileSync(path.join(__dirname, "ui", "operator-panel.html"), "utf-8")
     .split("{{LABELS}}")

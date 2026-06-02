@@ -66,6 +66,7 @@ const hotkeyOverlay = require("./hotkey-overlay.js");
 const { createWindowManager } = require("./window-manager.js");
 const { createSessionStorage } = require("./session-storage.js");
 const { appLogger } = require("./log.js");
+const { jsonForScript } = require("./json-for-script.js");
 const crypto = require("node:crypto");
 
 const { bootLog } = require("./boot-log.js");
@@ -1149,11 +1150,14 @@ function showLabelPicker(opts) {
 }
 
 function buildPickerHtml() {
-  const labels = JSON.stringify(config.process_labels || []);
+  // jsonForScript (not bare JSON.stringify): these strings are interpolated
+  // into an inline <script>, so a label containing "</script>..." would break
+  // out and -- with nodeIntegration:true -- execute. See json-for-script.js.
+  const labels = jsonForScript(config.process_labels || []);
   // Pass current marker stack so we can show "Will close: <innermost>"
   // hint, and the initial nest mode requested by the caller.
   const stack = lastStatus && lastStatus.openMarkers ? lastStatus.openMarkers : [];
-  const stackJson = JSON.stringify(stack);
+  const stackJson = jsonForScript(stack);
   const initialNest = _pickerNest ? "true" : "false";
   return `<!doctype html>
 <html><head><meta charset="utf-8">
