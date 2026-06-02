@@ -23,36 +23,10 @@ const { saveAnnotationsWithUndo } = require("../session.js");
 const Ipc = require("../ipc.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
 
-/* P1.2: hover thumbnail for timeline screenshot dots. Single shared
-   element — created lazily, repositioned on each show. */
-let _screenshotThumbEl = null;
 /* P2.7 gallery state. _allScreenshots is stashed by renderScreenshots so
    the gallery can step through the same set the grid shows. */
 let _allScreenshots = [];
 let _galleryState = null;  // { idx, filterReason, playing, playTimer, expanded }
-
-function showScreenshotThumb(dot, imgPath) {
-  if (!_screenshotThumbEl) {
-    _screenshotThumbEl = document.createElement("img");
-    _screenshotThumbEl.className = "tl-screenshot-thumb";
-    document.body.appendChild(_screenshotThumbEl);
-  }
-  _screenshotThumbEl.src = "file:///" + imgPath.replace(/\\/g, "/");
-  const rect = dot.getBoundingClientRect();
-  // Place above the dot, biased to keep within viewport.
-  const thumbW = 220, thumbH = 140;
-  let left = rect.left + rect.width / 2 - thumbW / 2;
-  if (left < 8) left = 8;
-  if (left + thumbW > window.innerWidth - 8) left = window.innerWidth - thumbW - 8;
-  let top = rect.top - thumbH - 8;
-  if (top < 8) top = rect.bottom + 8;
-  _screenshotThumbEl.style.left = left + "px";
-  _screenshotThumbEl.style.top  = top  + "px";
-  _screenshotThumbEl.style.display = "block";
-}
-function hideScreenshotThumb() {
-  if (_screenshotThumbEl) _screenshotThumbEl.style.display = "none";
-}
 
 function renderScreenshots() {
   const host = $("#screenshots-grid");
@@ -337,5 +311,4 @@ function openScreenshot(relPath) {
 
 module.exports = {
   renderScreenshots, openScreenshot,
-  showScreenshotThumb, hideScreenshotThumb,
 };

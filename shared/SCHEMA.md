@@ -1059,6 +1059,8 @@ UIA fields (`automation_id`, `name`, `class_name`, etc.) come from the recorder.
 
 When both UIA `name` and App Vocab `meaningful_name` are present, the viewer prefers `meaningful_name` for display but exposes both. Downstream consumers should fall back to `name` when `meaningful_name` is absent.
 
+The **recognition layer** ([ADR-0011](../docs/adr/0011-platform-recognition-layer.md)) classifies an interaction by documented platform/framework signatures in [`shared/recognition-patterns.json`](recognition-patterns.json) — shared verbatim by `viewer/recognition.js` and `normalization/recognition.py` so both engines classify identically. Each signature carries a `category` / `typeLabel` / `framework`; the optional **`richTextIf`** field refines a match — when the element's `class_name` *also* contains that substring, the interaction is reclassified `category: "rich_text"` (typeLabel "rich-text field") instead of the signature's default, i.e. the same control family captured as its rich-text variant.
+
 ## `stats.json` sub-objects
 
 | Top-level key | Shape | What it's for |

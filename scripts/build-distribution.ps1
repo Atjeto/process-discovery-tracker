@@ -387,7 +387,7 @@ annotations, keyboard shortcuts, install topology, and troubleshooting.
 - ``SECURITY.md`` - threat model, data flows, network behavior, Electron hardening, input validation, dependency audit status, vulnerability reporting.
 - ``Security-QA.md`` - one-page Q&A for fast-track security review.
 - ``LICENSE`` - internal-use license.
-- ``SBOM.json`` - CycloneDX 1.5 software bill of materials, ~400 components covering both apps and the bundled Python.
+- ``SBOM.json`` - CycloneDX 1.5 software bill of materials covering both apps (production npm deps) and the bundled Python.
 
 ## Installation
 
@@ -414,7 +414,9 @@ expected for an internal, unzip-and-run tool.
 - In-app help: tray menu -> Help (capture), ? button in topbar (viewer).
 "@
 
-Set-Content -Path $distMd -Value $distMdContent -Encoding UTF8
+# UTF-8 WITHOUT a BOM. PS 5.1's `Set-Content -Encoding UTF8` prepends a BOM,
+# which renders as a stray "ï»¿" at the top of the shipped doc in many viewers.
+[System.IO.File]::WriteAllText($distMd, $distMdContent, (New-Object System.Text.UTF8Encoding $false))
 
 # Zip the unzipped dist trees into release assets unless skipped.
 $releaseAssets = @()

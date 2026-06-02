@@ -2407,15 +2407,6 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 }
 .lanes-popup label.cb:hover { background: var(--bg-3); color: var(--fg); }
 
-/* ===== Timeline screenshot hover thumb (P1.2) ===================== */
-.tl-screenshot-thumb {
-  position: fixed; display: none; z-index: 999;
-  width: 220px; max-height: 140px; object-fit: cover;
-  background: var(--bg-3); border: 1px solid var(--accent-2);
-  border-radius: 4px; box-shadow: var(--shadow);
-  pointer-events: none;
-}
-
 /* ===== Timeline minimap (P1.3) ==================================== */
 .timeline-minimap {
   position: relative; height: 30px;

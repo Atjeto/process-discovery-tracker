@@ -26,6 +26,10 @@ const FORBIDDEN = [
   /\bnew\s+WebSocket\b/,
   /\bXMLHttpRequest\b/,
   /require\(\s*['"]obs-websocket-js['"]\s*\)/,
+  // Electron's own HTTP client (electron.net) bypasses the renderer CSP, so it
+  // is an egress vector too -- forbid both the property access and the destructure.
+  /require\(\s*['"]electron['"]\s*\)\s*\.\s*net\b/,
+  /\{[^}]*\bnet\b[^}]*\}\s*=\s*require\(\s*['"]electron['"]\s*\)/,
 ];
 
 const SKIP_DIRS = new Set(["node_modules", "test", "python", "fonts", "recorder"]);

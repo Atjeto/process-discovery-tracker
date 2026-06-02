@@ -150,13 +150,25 @@ function _containmentKeys(step, ctx) {
 function grainKey(step, notch, ctx) {
   const k = _containmentKeys(step, ctx);
   switch (notch) {
-    case "element": return "id:" + (step.step_id || Math.random());
+    case "element": return "id:" + _elementIdentity(step);
     case "screen":  return "scr:" + (screenType(k.screen) || "(screen)");
     case "app":     return "app:" + (k.app || "(app)");
     case "phase":   return "ph:" + (step.phase_id || "(unphased)");
     case "case":    return "cs:" + (step.case_id || "(case)");
-    default:        return "id:" + (step.step_id || Math.random());
+    default:        return "id:" + _elementIdentity(step);
   }
+}
+
+/* A stable per-step identity for the element (finest) grain. A real step always
+ * has a step_id; the fallback for an id-less (hand-authored / malformed) step is
+ * derived from its content -- NOT Math.random(), which gave a different key on
+ * every render, so such a step's node identity flickered and the roll-up /
+ * golden could differ run to run. */
+function _elementIdentity(step) {
+  if (step && step.step_id) return step.step_id;
+  const name = (step && step.name) || "";
+  const start = (step && step.time_range && step.time_range.start) || "";
+  return "noid:" + name + "|" + start;
 }
 
 /* The readable DISPLAY label for a step at a notch (the node caption / the
