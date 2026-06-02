@@ -24,8 +24,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
     from normalize import load_events
-except Exception as exc:  # pragma: no cover - optional heavy deps absent
-    pytest.skip(f"normalize.py unavailable ({exc})", allow_module_level=True)
+except Exception:
+    # normalize.py drags in the pm4py / pandas pipeline at import time. load_events
+    # itself is dependency-free and lives in session_io (normalize re-exports it
+    # unchanged), so fall back to that module where the heavy deps are absent --
+    # otherwise these pure-I/O tests skip on any box without pandas installed.
+    try:
+        from session_io import load_events
+    except Exception as exc:  # pragma: no cover - load_events genuinely unavailable
+        pytest.skip(f"load_events unavailable ({exc})", allow_module_level=True)
 
 
 def _write(tmp_path: Path, events: list[dict]) -> Path:
@@ -37,6 +44,13 @@ def _write(tmp_path: Path, events: list[dict]) -> Path:
 def _write_raw(tmp_path: Path, text: str) -> Path:
     f = tmp_path / "events.jsonl"
     f.write_text(text, encoding="utf-8")
+    return f
+
+
+def _write_bytes(tmp_path: Path, raw: bytes) -> Path:
+    # write_text would re-encode as valid UTF-8; raw non-UTF-8 bytes need write_bytes.
+    f = tmp_path / "events.jsonl"
+    f.write_bytes(raw)
     return f
 
 
@@ -125,3 +139,45 @@ def test_event_shape_is_coerced_so_downstream_can_trust_it(tmp_path):
         assert isinstance(e["data"], dict)
         assert isinstance(e["event_id"], str) and e["event_id"]
         assert isinstance(e["timestamp"], str)
+
+
+def test_non_utf8_bytes_do_not_crash_the_load_and_are_dropped(tmp_path):
+    # events.jsonl carries attacker-influenceable third-party strings (window
+    # titles, OCR text). A genuinely non-UTF-8 byte sequence used to raise
+    # UnicodeDecodeError at line iteration -- BEFORE the per-line JSON guard runs
+    # -- aborting the whole load with an unhandled exception. With errors="replace"
+    # the read substitutes U+FFFD, so bad bytes that break a line's JSON structure
+    # are caught like any other malformed line and counted in `dropped`, and the
+    # loop survives to the next event. (Analogue of the ADR-0025 recorder-stdin
+    # mojibake fix, on the file-read path.)
+    f = _write_bytes(
+        tmp_path,
+        b'{"_seq":0,"timestamp":"2026-05-17T10:00:00.000Z","type":"system"}\n'
+        b'{"_seq":1,"timestamp":"2026-05-17T10:00:01.000Z","type":"x","data":\xff\xfe}\n'
+        b'{"_seq":2,"timestamp":"2026-05-17T10:00:02.000Z","type":"system"}\n',
+    )
+    events, dropped = load_events(f)               # must NOT raise UnicodeDecodeError
+    assert [e["_seq"] for e in events] == [0, 2]   # the two well-formed events survive
+    assert dropped == 1                            # the non-UTF-8 line is reported
+
+
+def test_non_utf8_inside_a_string_value_degrades_to_replacement_char(tmp_path):
+    # When the bad bytes fall INSIDE a JSON string value, the event is too valuable
+    # to discard over a garbled title: "replace" keeps the record and swaps the
+    # undecodable bytes for U+FFFD. We assert U+FFFD specifically -- NOT a lone
+    # surrogate: surrogateescape would also keep the record, but as a lone surrogate
+    # that json.loads silently accepts here and then crashes downstream at a
+    # *.encode("utf-8") boundary (analysis_segments / anchor_suggest / marker_suggest).
+    # U+FFFD re-serializes and encodes safely everywhere.
+    f = _write_bytes(
+        tmp_path,
+        b'{"_seq":0,"timestamp":"2026-05-17T10:00:00.000Z","type":"interaction",'
+        b'"data":{"title":"Create \xff\xfe INC0010010"}}\n',
+    )
+    events, dropped = load_events(f)               # must NOT raise
+    assert dropped == 0                            # record survives, not dropped
+    assert len(events) == 1
+    title = events[0]["data"]["title"]
+    assert chr(0xFFFD) in title                    # bad bytes became the replacement char
+    assert not any(0xDC80 <= ord(c) <= 0xDCFF for c in title)  # no lone surrogate leaked
+    title.encode("utf-8")                          # and the value is safe to re-encode

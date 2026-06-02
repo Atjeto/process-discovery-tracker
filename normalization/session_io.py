@@ -42,7 +42,17 @@ def _coerce_event_shape(obj: dict[str, Any], line_no: int) -> dict[str, Any]:
 def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
     events = []
     dropped = 0
-    with open(events_file, encoding="utf-8") as f:
+    # events.jsonl carries attacker-influenceable third-party strings (window
+    # titles, control names, OCR text); without errors=, a genuinely non-UTF-8
+    # byte raises UnicodeDecodeError at line iteration -- before the per-line
+    # guard below -- aborting the whole load. "replace" degrades instead: bad
+    # bytes that break a line's JSON are caught as a JSONDecodeError and counted
+    # in `dropped`, while bytes inside a string value become U+FFFD (safe to
+    # re-serialize/hash downstream). NOT "surrogateescape" -- json.loads accepts
+    # a lone surrogate here, only to crash later at a .encode("utf-8") boundary
+    # (analysis_segments / anchor_suggest / marker_suggest). Mirrors the ADR-0025
+    # recorder-stdin mojibake fix, on the file-read path.
+    with open(events_file, encoding="utf-8", errors="replace") as f:
         for line_no, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
