@@ -346,8 +346,11 @@ const OVERLAP_PROBE = () => {
     const xOf = (id) => cy.getElementById(id).position("x");
     const xs = nodes.map(xOf);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const srcLeftmost = sourceIds.length === 1 && Math.abs(xOf(sourceIds[0]) - minX) < 1;
-    const sinkRightmost = sinkIds.length === 1 && Math.abs(xOf(sinkIds[0]) - maxX) < 1;
+    // Tolerance 5px (not 1): dagre can inset the source/sink node a hair from
+    // the exact bounding-box edge without changing that the layout reads L->R.
+    // A radial fallback would miss by far more than 5px, so this still catches it.
+    const srcLeftmost = sourceIds.length === 1 && Math.abs(xOf(sourceIds[0]) - minX) < 5;
+    const sinkRightmost = sinkIds.length === 1 && Math.abs(xOf(sinkIds[0]) - maxX) < 5;
     return {
       rendered: true, nodes: nodes.length, edges: edges.length, components,
       sources: sourceIds.length, sinks: sinkIds.length,

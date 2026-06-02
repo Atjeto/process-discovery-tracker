@@ -18,8 +18,68 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { execSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
+
+/* The project version, read from a real package.json (capture and viewer are
+   versioned together) rather than hardcoded. */
+function readRootVersion() {
+  for (const rel of ["capture/package.json", "viewer/package.json"]) {
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(repoRoot, rel), "utf-8")).version;
+      if (v) return v;
+    } catch (_e) { /* try the next */ }
+  }
+  return "0.0.0";
+}
+
+/* The set of "<name>@<version>" npm considers a PRODUCTION dependency of an app
+   (`npm ls --omit=dev`), so the SBOM lists what actually ships rather than every
+   folder on disk (which includes devDependencies). Returns null when npm is
+   unavailable, so the caller can fall back to the on-disk walk. */
+function prodRefs(appDir) {
+  let out;
+  try {
+    // execSync with a literal command (no interpolated input) -- a plain
+    // execFile("npm") can't be run directly on Windows (npm is a .cmd shim),
+    // and the args here are fixed, so a shell command is safe and portable.
+    out = execSync("npm ls --omit=dev --all --json", {
+      cwd: appDir, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch (e) {
+    // `npm ls` exits non-zero on peer-dep warnings etc. but still prints the
+    // JSON tree to stdout -- recover it from the error.
+    out = e && e.stdout ? e.stdout.toString() : null;
+  }
+  if (!out) return null;
+  let tree;
+  try { tree = JSON.parse(out); } catch (_e) { return null; }
+  const refs = new Set();
+  (function walk(deps) {
+    for (const [name, info] of Object.entries(deps || {})) {
+      if (info && info.version) refs.add(`${name}@${info.version}`);
+      if (info && info.dependencies) walk(info.dependencies);
+    }
+  })(tree.dependencies);
+  return refs;
+}
+
+/* Components for one app: read license/description from each on-disk
+   package.json (readPkg), but INCLUDE only the packages npm reports as
+   production deps. Falls back to the full on-disk walk if npm is unavailable. */
+function appComponents(appDir, group) {
+  const all = walkNpm(path.join(appDir, "node_modules"));
+  const refs = prodRefs(appDir);
+  if (!refs) {
+    process.stderr.write(`[sbom] WARN: \`npm ls\` failed for ${group}; SBOM may include dev deps\n`);
+    return all.map((c) => ({ ...c, group }));
+  }
+  return all
+    .filter((c) => refs.has(`${c.name}@${c.version}`))
+    .map((c) => ({ ...c, group }));
+}
 
 function bom_ref(name, version) {
   return `pkg:${name}@${version || "unknown"}`;
@@ -115,14 +175,10 @@ function dedupe(components) {
   return out;
 }
 
-const captureNm = path.join(repoRoot, "capture", "node_modules");
-const viewerNm = path.join(repoRoot, "viewer", "node_modules");
 const pySite = path.join(repoRoot, "viewer", "python", "Lib", "site-packages");
 
-const captureComponents = walkNpm(captureNm).map((c) =>
-  ({ ...c, group: "capture" }));
-const viewerComponents = walkNpm(viewerNm).map((c) =>
-  ({ ...c, group: "viewer" }));
+const captureComponents = appComponents(path.join(repoRoot, "capture"), "capture");
+const viewerComponents = appComponents(path.join(repoRoot, "viewer"), "viewer");
 const pythonComponents = walkPythonSitePackages(pySite).map((c) =>
   ({ ...c, group: "viewer-python" }));
 
@@ -145,7 +201,7 @@ const bom = {
       type: "application",
       "bom-ref": "pkg:internal/process-discovery-tracker",
       name: "Process Discovery Tracker",
-      version: "0.1.0",
+      version: readRootVersion(),
       description:
         "Internal tool for capturing and analyzing process discovery sessions.",
     },

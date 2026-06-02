@@ -33,8 +33,11 @@ DEFAULT_PY_DIR = REPO_ROOT / "viewer" / "python"
 REMOVABLE_PACKAGES = [
     # Visualization stack (pm4py imports these for its own viz; we
     # render diagrams in JS, never call pm4py's viz APIs).
+    # NOTE: PIL/Pillow is deliberately KEPT -- session_io.compute_screenshot_hashes
+    # imports `PIL.Image` for the screenshot aHash de-dup. Removing it made that
+    # feature silently dead in the shipped (slimmed) app while still working in
+    # dev. It is a direct runtime dep (declared in normalization/requirements.txt).
     "matplotlib", "matplotlib.libs",
-    "PIL", "Pillow.libs",
     "fontTools",
     "contourpy", "cycler", "kiwisolver", "pyparsing",
     "pygments",

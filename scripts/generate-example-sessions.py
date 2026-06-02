@@ -77,14 +77,20 @@ class Builder:
         self.folder = folder
         self.events: list[dict] = []
         self.shot_n = 0
+        self._seq = 0
         self.system("session_start")
 
     def _ts(self) -> str:
         return self.t.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     def _push(self, ev_type: str, data: dict) -> None:
+        # Stamp a monotonic _seq like capture/tracker.js appendEvent does, so the
+        # generated stream matches the real one (the viewer and pipeline rely on
+        # _seq for stable append-order ties).
+        self._seq += 1
         self.events.append({
             "event_id": uuid.uuid4().hex,
+            "_seq": self._seq,
             "type": ev_type,
             "timestamp": self._ts(),
             "session_id": self.session_id,
@@ -371,14 +377,24 @@ def build_session(session_id: str, start: datetime, cases: list) -> Path:
 
     start_ts = start.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     end_ts = b.t.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # Match the SCHEMA-documented manifest shape (consent / displays / obs /
+    # recovered), with the default not-required/no-OBS values, so re-normalizing
+    # demo data exercises the same manifest the real capture app writes.
     manifest = {
         "session_id": session_id,
         "engagement_id": "demo-order-processing",
+        "engagement_name": "Demo: order processing",
         "started_at": start_ts,
         "ended_at": end_ts,
         "status": "closed",
         "purpose": "process",
         "config": {"worker": {"id": "demo-worker", "role": "Order processor"}},
+        "obs": {"recording_path": None, "recording_start_ts": None, "offset_ms": None},
+        "displays": [
+            {"id": 0, "bounds": {"x": 0, "y": 0, "width": 1920, "height": 1080}}
+        ],
+        "consent": {"required": False, "granted": None, "mode": "off"},
+        "recovered": False,
     }
     (folder / "manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8")

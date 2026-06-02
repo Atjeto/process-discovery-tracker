@@ -46,7 +46,14 @@ function Audit-App([string]$appDir) {
   Push-Location $appDir
   try {
     $json = npm audit --omit=dev --json 2>$null | Out-String
-    $data = $json | ConvertFrom-Json
+    $data = $null
+    try { $data = $json | ConvertFrom-Json } catch { $data = $null }
+    # An unparseable / unexpected audit payload must FAIL, not silently report a
+    # clean (all-zero) row -- otherwise a broken `npm audit` reads as "no vulns".
+    if ($null -eq $data -or $null -eq $data.metadata -or $null -eq $data.metadata.vulnerabilities) {
+      $head = if ($json) { $json.Substring(0, [Math]::Min(200, $json.Length)) } else { "(empty)" }
+      throw "npm audit for $name produced unparseable or unexpected JSON; refusing to report a clean audit. Raw head: $head"
+    }
     $v = $data.metadata.vulnerabilities
     $row = [PSCustomObject]@{
       App      = $name
