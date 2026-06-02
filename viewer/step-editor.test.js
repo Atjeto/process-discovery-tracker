@@ -10,7 +10,24 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { describeInteraction, renderInteractionList, siKindClass } = require("./step-editor.js");
+
+/* ---- ADR-0027 regression guard ------------------------------------- */
+// renderBackboneDetail's "apply to all" curate form once re-introduced the
+// retired per-step flags (conditional / exception_path / automation_candidate)
+// and wrote them onto every aligned instance. waste is the only per-step flag
+// now. renderBackboneDetail needs a DOM, so we scan the source (the curate form
+// only EVER references these control ids) to pin the invariant DOM-free.
+test("ADR-0027: the backbone curate form exposes only the waste flag", () => {
+  const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
+  for (const id of ["bb-flag-conditional", "bb-flag-exception", "bb-flag-auto"]) {
+    assert.ok(!src.includes(id),
+      `retired per-step flag control ${id} must not return to the backbone form`);
+  }
+  assert.ok(src.includes("bb-flag-waste"), "the waste flag control must remain");
+});
 
 function inter(data) {
   return {

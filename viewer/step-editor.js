@@ -583,11 +583,9 @@
       <label>Name <input type="text" id="bb-name" value="${escapeAttr(seed.name || entry.token)}"></label>
       <label>Description <textarea id="bb-desc">${escapeHtml(seed.description || "")}</textarea></label>
       <div class="flags">
-        <label title="This step only happens in some cases (branching path)."><input type="checkbox" id="bb-flag-conditional" ${flags.conditional ? "checked" : ""}> Conditional</label>
-        <label title="This step represents an error, workaround, or recovery action."><input type="checkbox" id="bb-flag-exception" ${flags.exception_path ? "checked" : ""}> Exception path</label>
-        <label title="This step shouldn't be necessary (rework, duplicate effort)."><input type="checkbox" id="bb-flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
-        <label title="This step could be replaced by automation (RPA / integration / script)."><input type="checkbox" id="bb-flag-auto" ${flags.automation_candidate ? "checked" : ""}> Automation candidate</label>
+        <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Feeds the value-add / waste analysis."><input type="checkbox" id="bb-flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
+      <p class="meta">Exception paths come from the observed variants, automation candidacy from coherent segments (Analysis), and conditionality from the map's branch frequency — none are per-step toggles (ADR-0027).</p>
       <div class="actions">
         <button id="btn-bb-apply" class="primary" title="Apply this name, description and flags to all ${instances.length} aligned instance(s) across cases — one edit, one Ctrl+Z.">Apply to all ${instances.length} instances</button>
       </div>` : "";
@@ -614,11 +612,12 @@
       opts.onApply({
         name: document.getElementById("bb-name").value.trim(),
         description: document.getElementById("bb-desc").value.trim(),
+        // ADR-0027: waste is the only per-step flag. Spread any existing seed
+        // flags so legacy keys are preserved-but-untouched (ignored downstream),
+        // and only the waste toggle is authored here -- mirrors renderStepDetail.
         flags: {
-          conditional: document.getElementById("bb-flag-conditional").checked,
-          exception_path: document.getElementById("bb-flag-exception").checked,
+          ...flags,
           waste: document.getElementById("bb-flag-waste").checked,
-          automation_candidate: document.getElementById("bb-flag-auto").checked,
         },
       });
     });
