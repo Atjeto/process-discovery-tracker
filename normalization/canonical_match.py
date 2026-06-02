@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Any
 import yaml
 
+import regex_guard
+
 
 def load_canonical(path: str) -> dict[str, Any]:
     """Load the ``canonical_process`` block from a Process Template YAML.
@@ -45,7 +47,12 @@ def _op_match(spec: dict, actual) -> bool:
     if "equals"      in spec: return actual == spec["equals"]
     if "contains"    in spec: return spec["contains"] in actual
     if "starts_with" in spec: return actual.startswith(spec["starts_with"])
-    if "matches"     in spec: return re.search(spec["matches"], actual) is not None
+    if "matches" in spec:
+        # Guard the authored `matches` regex: it runs against an untrusted
+        # captured field value. A ReDoS-prone / invalid pattern compiles to
+        # None -> the rule does not fire (safe default).
+        r = regex_guard.compile_guarded(spec["matches"])
+        return r is not None and r.search(actual) is not None
     return False
 
 
@@ -56,8 +63,11 @@ def _interaction_matches(rule: dict, ev: dict) -> bool:
     if pn and data.get("process_name") != pn:
         return False
     wtr = rule.get("window_title_regex")
-    if wtr and not re.search(wtr, data.get("window_title") or ""):
-        return False
+    if wtr:
+        # Guard the authored window_title_regex (untrusted window title input).
+        r = regex_guard.compile_guarded(wtr)
+        if r is None or not r.search(data.get("window_title") or ""):
+            return False
     irule = rule.get("interaction")
     if irule:
         for k in INTERACTION_FIELDS:
@@ -94,14 +104,18 @@ def match_canonical(
     """
     from step_suggest import _short_app
 
-    cstep_defs = {s["step_id"]: s for s in canonical.get("steps", [])}
-    order = [s["step_id"] for s in canonical.get("steps", [])]
+    # Tolerate a hand-authored / partial template: a step lacking a step_id is
+    # skipped rather than crashing the whole run with a KeyError.
+    cstep_defs = {s["step_id"]: s for s in canonical.get("steps", []) if s.get("step_id")}
+    order = [sid for sid in (s.get("step_id") for s in canonical.get("steps", [])) if sid]
 
     interactions = [
         e for e in events
         if e.get("type") == "interaction"
     ]
-    interactions.sort(key=lambda e: e["timestamp"])
+    # A corrupt/hand-edited event may lack a timestamp; sort it first rather
+    # than KeyError (load_events already coerces timestamp to a string).
+    interactions.sort(key=lambda e: e.get("timestamp") or "")
 
     steps: list[dict[str, Any]] = []
     unmatched: list[dict[str, Any]] = []
@@ -126,7 +140,7 @@ def match_canonical(
                 "end": evs[-1]["timestamp"],
             },
             "evidence": {
-                "interaction_event_ids": [e["event_id"] for e in evs],
+                "interaction_event_ids": [e.get("event_id") for e in evs],
                 "screenshot_refs": [],
                 "video_timecode_range": None,
                 "manual_notes": "",

@@ -18,15 +18,42 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+import regex_guard
 import signature_pick
 
 
 DEFAULT_DIR = Path(__file__).resolve().parent / "app_vocabularies"
+
+
+def _warn(msg: str) -> None:
+    """Mirror load_canonical's stderr warning style so a bad vocab is visible
+    (not silently swallowed) without breaking the normalization run."""
+    print(f"[normalize] WARNING: {msg}", file=sys.stderr)
+
+
+def _lint_vocab_regexes(v: dict, source: str) -> None:
+    """Warn once per ReDoS-prone authored regex in a loaded vocab (scope /
+    screens / interaction signatures). The runtime guard in _compile_regex
+    already makes such a pattern inert (it won't match), but the analyst should
+    know their pattern was rejected."""
+    def check(pat, where):
+        if isinstance(pat, str) and pat and regex_guard.is_redos_prone(pat):
+            _warn(f"app vocabulary {source}: ignoring ReDoS-prone regex at "
+                  f"{where}: {pat!r}")
+    check((v.get("scope") or {}).get("window_title_regex"), "scope")
+    for s in (v.get("screens") or []):
+        if isinstance(s, dict):
+            check(s.get("window_title_regex"), f"screen {s.get('id')!r}")
+    for e in (v.get("interactions") or []):
+        if isinstance(e, dict):
+            check((e.get("signature") or {}).get("window_title_regex"),
+                  "interaction signature")
 
 
 # --- Loading -----------------------------------------------------------
@@ -77,8 +104,10 @@ def load_vocabularies(extra_dirs: list[str] | None = None) -> list[dict[str, Any
                 if not isinstance(v, dict):
                     continue
                 v["_source_path"] = rp
+                _lint_vocab_regexes(v, f.name)
                 vocabs.append(v)
-            except (OSError, yaml.YAMLError):
+            except (OSError, yaml.YAMLError) as e:
+                _warn(f"skipping malformed app vocabulary {rp}: {e}")
                 continue
     return vocabs
 
@@ -86,12 +115,11 @@ def load_vocabularies(extra_dirs: list[str] | None = None) -> list[dict[str, Any
 # --- Matching engine ---------------------------------------------------
 
 def _compile_regex(pattern: str | None):
-    if not pattern:
-        return None
-    try:
-        return re.compile(pattern)
-    except re.error:
-        return None
+    # Route through the ReDoS guard: an authored window_title_regex is matched
+    # against untrusted window titles, so a nested unbounded quantifier is
+    # rejected (returns None -> treated as non-matching) rather than risking
+    # catastrophic backtracking. Invalid patterns also return None, as before.
+    return regex_guard.compile_guarded(pattern)
 
 
 def _scope_matches(vocab: dict, ev_data: dict) -> bool:
