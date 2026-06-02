@@ -75,6 +75,14 @@ def _resolve_inputs(roi_inputs: dict | None) -> dict[str, Any]:
                 rf[band] = float(val)
             except (TypeError, ValueError):
                 pass
+    # A realism factor is a fraction of the gross saving: clamp to [0,1], then
+    # enforce conservative <= expected <= optimistic. Without this a hand-edited
+    # roi_inputs block (e.g. optimistic=0.3, conservative=0.9) makes the PDD
+    # print an inverted or out-of-range savings band.
+    for band in ("conservative", "expected", "optimistic"):
+        rf[band] = min(1.0, max(0.0, rf.get(band, DEFAULTS["realism_factors"][band])))
+    rf["expected"] = max(rf["conservative"], rf["expected"])
+    rf["optimistic"] = max(rf["expected"], rf["optimistic"])
     merged["realism_factors"] = rf
     for mp in ("annual_volume_overrides", "automation_cost_overrides",
                "automatable_fraction_overrides"):
@@ -249,10 +257,16 @@ def compute_roi(
         r["bands"]["expected"]["saved_hours_per_year"] or 0.0 for r in rows), 2)
     total_net = None
     total_gross = None
+    negative_net_count = 0
     if has_money:
-        total_net = round(sum(
-            (r["bands"]["expected"]["net_annual"] or 0.0)
-            for r in rows if r["bands"]["expected"]["net_annual"] is not None), 2)
+        nets = [r["bands"]["expected"]["net_annual"] for r in rows
+                if r["bands"]["expected"]["net_annual"] is not None]
+        # A net-negative candidate (automation costs more than it saves) is NOT
+        # worth automating; netting it into the headline would silently cancel a
+        # genuinely worthwhile candidate. Sum only the positive nets and surface
+        # the rejected ones via a count instead.
+        total_net = round(sum(n for n in nets if n > 0), 2)
+        negative_net_count = sum(1 for n in nets if n < 0)
         total_gross = round(sum(
             (r["bands"]["expected"]["gross_annual"] or 0.0)
             for r in rows if r["bands"]["expected"]["gross_annual"] is not None), 2)
@@ -275,6 +289,8 @@ def compute_roi(
             "saved_hours_per_year": total_hours,
             "net_annual": total_net,
             "gross_annual": total_gross,
+            # Candidates considered but not cost-effective (expected net < 0);
+            "negative_net_count": negative_net_count,
         },
     }
 

@@ -26,6 +26,13 @@ from pm4py.objects.log.exporter.xes import exporter as xes_exporter
 from _dt import parse_ts as _parse_ts  # public re-export
 from csv_safe import sanitize_rows
 
+# Delimiter for the encoded nested-case stack (case:stack / case_stack). NOT a
+# comma: a case_id is an anchor VALUE (ticket number, free-text), which can
+# itself contain a comma -- joining on "," would make the stack ambiguous. The
+# " > " path separator reads naturally (innermost > ... > top) and does not
+# occur in an id token.
+_CASE_STACK_SEP = " > "
+
 
 def build_event_log(
     events: list[dict[str, Any]],
@@ -77,7 +84,7 @@ def build_event_log(
             e["raw:duration_ms"] = data.get("duration_ms")
             if data.get("transaction_id"):
                 e["raw:transaction_id"] = data["transaction_id"]
-            e["case:stack"] = ",".join(data.get("case_ids") or [])
+            e["case:stack"] = _CASE_STACK_SEP.join(data.get("case_ids") or [])
             trace.append(e)
         if len(trace) > 0:
             log.append(trace)
@@ -129,7 +136,7 @@ def export_csv(events: list[dict[str, Any]], cases: dict[str, dict[str, Any]], o
             "transaction_id": data.get("transaction_id"),
             "top_case_id": top,
             "innermost_case_id": innermost,
-            "case_stack": ",".join(cids),
+            "case_stack": _CASE_STACK_SEP.join(cids),
             "top_case_label": (cases.get(top, {}) or {}).get("label", ""),
         })
     # Neutralize spreadsheet formula injection: activity_label / app / title /

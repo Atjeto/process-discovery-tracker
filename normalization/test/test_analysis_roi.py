@@ -162,6 +162,39 @@ def test_per_segment_overrides():
     assert s1["bands"]["expected"]["payback_months"] is not None
 
 
+def test_realism_factors_clamped_and_ordered():
+    """A hand-edited roi_inputs with out-of-range / inverted bands must not
+    produce an inverted savings band: clamp to [0,1] and force
+    conservative <= expected <= optimistic."""
+    roi = compute_roi([_cand("aaa", 3_600_000)], {"roi_inputs": {
+        "loaded_cost_per_hour": 36, "annual_volume": 1000,
+        "realism_factors": {"conservative": 0.9, "expected": 1.7, "optimistic": -0.2},
+    }})
+    rf = roi["inputs_used"]["realism_factors"]
+    assert 0.0 <= rf["conservative"] <= rf["expected"] <= rf["optimistic"] <= 1.0
+    b = roi["candidates"][0]["bands"]
+    assert (b["conservative"]["saved_hours_per_year"]
+            <= b["expected"]["saved_hours_per_year"]
+            <= b["optimistic"]["saved_hours_per_year"])
+
+
+def test_negative_net_candidate_is_surfaced_not_netted_into_total():
+    """A net-negative candidate must NOT cancel a worthwhile one in the headline
+    net total; it is surfaced via negative_net_count instead."""
+    good = _cand("good", 3_600_000, n=4)           # 1h mean -> big yearly saving
+    bad = _cand("bad", 60_000, n=4)                 # tiny saving, costlier to automate
+    roi = compute_roi([good, bad], {"roi_inputs": {
+        "loaded_cost_per_hour": 50, "annual_volume": 1000,
+        "automation_cost": 30_000, "amortization_years": 3,
+    }})
+    nets = {r["segment_signature"]: r["bands"]["expected"]["net_annual"]
+            for r in roi["candidates"]}
+    assert nets["good"] > 0 and nets["bad"] < 0
+    # The total reflects only the worthwhile candidate; the loser is surfaced.
+    assert roi["totals"]["net_annual"] == round(nets["good"], 2)
+    assert roi["totals"]["negative_net_count"] == 1
+
+
 def test_payback_null_when_net_not_positive():
     """A huge automation cost drives net <= 0 -> payback is null."""
     roi = compute_roi([_cand("eee", 600_000)], {"roi_inputs": {

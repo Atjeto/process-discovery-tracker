@@ -63,6 +63,14 @@ def test_build_event_log_groups_nested_under_top_level_case():
     assert log[0].attributes["concept:name"] == "Top"
 
 
+def test_case_stack_uses_a_non_comma_delimiter():
+    # An anchor value can itself contain a comma; the stack join must stay
+    # unambiguous, so it uses " > " (innermost > ... > top), not ",".
+    events = [_activity("e1", "2026-05-18T09:00:00Z", "X", ["SUB,9", "TOP,1"])]
+    log = build_event_log(events, {"TOP,1": {"label": "Top"}})
+    assert log[0][0]["case:stack"] == "SUB,9 > TOP,1"
+
+
 def test_build_event_log_no_case_events_go_to_a_synthetic_trace():
     events = [_activity("e1", "2026-05-18T09:00:00Z", "Orphan", [])]
     log = build_event_log(events, {})
