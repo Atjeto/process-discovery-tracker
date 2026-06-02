@@ -136,8 +136,14 @@ public static class Program {
                             pEl.TryGetInt32(out var pVal) && pVal > 0) {
                             passes = pVal;
                         }
-                        await Snapshotter.RunAsync(target, passes, options,
-                            l => { try { Console.Out.WriteLine(l); } catch { } });
+                        // Fire-and-forget: do NOT await inside the stdin control
+                        // loop. Awaiting blocks the loop for the whole snapshot,
+                        // so a pause / resume / shutdown sent meanwhile is ignored
+                        // until it returns. The snapshot writes straight to
+                        // Console.Out (a synchronized writer), so it is safe to run
+                        // alongside the loop.
+                        FireAndForget(Snapshotter.RunAsync(target, passes, options,
+                            l => { try { Console.Out.WriteLine(l); } catch { } }));
                         break;
                     }
                     case "pick": {
@@ -153,8 +159,11 @@ public static class Program {
                             ptEl.TryGetInt32(out var ptVal) && ptVal > 0) {
                             pickTimeout = ptVal;
                         }
-                        await WindowPicker.RunAsync(pickTimeout,
-                            l => { try { Console.Out.WriteLine(l); } catch { } });
+                        // Fire-and-forget for the same reason as snapshot: a 30s
+                        // pick must not freeze the control loop (so a shutdown can
+                        // still cancel it promptly).
+                        FireAndForget(WindowPicker.RunAsync(pickTimeout,
+                            l => { try { Console.Out.WriteLine(l); } catch { } }));
                         break;
                     }
                     case "shutdown": goto done;
@@ -170,5 +179,14 @@ public static class Program {
         queue.CompleteAdding();
         try { writer.Wait(TimeSpan.FromMilliseconds(1500)); } catch { }
         return 0;
+    }
+
+    // Run a task without awaiting it (keeps the stdin control loop responsive)
+    // while still OBSERVING faults -- an unobserved Task exception would
+    // otherwise be swallowed silently. Errors land on stderr like the rest.
+    private static void FireAndForget(Task t) {
+        t.ContinueWith(
+            x => Console.Error.WriteLine($"background task failed: {x.Exception?.GetBaseException().Message}"),
+            TaskContinuationOptions.OnlyOnFaulted);
     }
 }

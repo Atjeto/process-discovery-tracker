@@ -269,24 +269,36 @@ public sealed class UiaSubscriber {
         }
         var built = BuildEvent("value_changed", el, extra);
         if (built == null) return;
-        _pending.AddOrUpdate(key,
-            // First entry for this key: schedule a flush.
-            _ => new PendingValue { Event = built, Timer = NewTimer(key) },
-            // Existing entry: replace the event, reset the timer.
-            (_, existing) => {
-                existing.Event = built;
-                existing.Timer.Change(_valueCoalesceWindow, Timeout.InfiniteTimeSpan);
-                return existing;
-            });
+        // Arm the timer OUTSIDE the AddOrUpdate factory. ConcurrentDictionary
+        // may invoke an add/update factory more than once under contention, so
+        // creating a Timer inside it leaks the losing factory runs' timers --
+        // and a leaked armed timer still fires and races TryRemove. Instead:
+        // build a DISARMED timer, let AddOrUpdate pick the winner, then arm the
+        // winner exactly once and dispose ours if an existing entry won.
+        var fresh = new PendingValue { Event = built, Timer = NewDisarmedTimer(key) };
+        var winner = _pending.AddOrUpdate(key,
+            fresh,
+            // Existing entry: replace the event (its timer is re-armed below).
+            (_, existing) => { existing.Event = built; return existing; });
+        // (Re-)arm the winner's timer once, after the entry is settled.
+        winner.Timer.Change(_valueCoalesceWindow, Timeout.InfiniteTimeSpan);
+        if (!ReferenceEquals(winner, fresh)) {
+            // An existing entry won the race -- our disarmed timer is a
+            // duplicate that was never inserted; dispose it so it can't leak.
+            fresh.Timer.Dispose();
+        }
     }
 
-    private Timer NewTimer(string key) {
+    // A flush timer that is created DISARMED (Infinite due time); the caller
+    // arms it via Change once it has won the AddOrUpdate race. On fire it
+    // removes its pending entry and emits the coalesced event.
+    private Timer NewDisarmedTimer(string key) {
         return new Timer(_ => {
             if (_pending.TryRemove(key, out var pending)) {
                 pending.Timer.Dispose();
                 _onEvent(pending.Event);
             }
-        }, null, _valueCoalesceWindow, Timeout.InfiniteTimeSpan);
+        }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>
