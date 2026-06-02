@@ -4,14 +4,15 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-05) — START HERE:** Last release **v0.19.0**; a large
-cycle has since landed on `master` and ships as **v0.20.0** (cut from this
-branch). v0.19.0 itself shipped **Phase 0** of the ML recommendation — two non-ML
-detectors (**suggested markers** [ADR-0017](docs/adr/0017-suggested-markers.md)
-and **anchor candidates** [ADR-0018](docs/adr/0018-anchor-candidates.md)) that
-close the "worker forgot to fire markers" failure mode, suggest-don't-mutate. The
-**v0.20.0** cycle is the push toward a small internal rollout; what landed (detail
-in [CHANGELOG.md](CHANGELOG.md)):
+**Active direction (2026-06) — START HERE:** Released **v0.22.2**. The big feature
+cycle was **v0.20.0** — the push toward a small internal rollout, cut from this
+branch; **v0.20.1 → v0.22.2** are coherence + fix-first increments on top of it
+(see *Since v0.20.0* below). The v0.19.0 lineage still ships — **Phase 0** of the
+ML recommendation, two non-ML detectors (**suggested markers**
+[ADR-0017](docs/adr/0017-suggested-markers.md) and **anchor candidates**
+[ADR-0018](docs/adr/0018-anchor-candidates.md)) that close the "worker forgot to
+fire markers" failure mode, suggest-don't-mutate. The **v0.20.0** cycle landed
+(detail in [CHANGELOG.md](CHANGELOG.md)):
 - **Foundation (Wave 0).** An in-repo **e2e merge gate** (`e2e/session-smoke.js`,
   the real viewer, asserts + exit codes — incl. the map-connectivity pin), a
   **session golden** over all 10 demo sessions (`normalization/golden_check.py`),
@@ -54,6 +55,24 @@ in [CHANGELOG.md](CHANGELOG.md)):
 - **[ADR-0026](docs/adr/0026-distribution-unsigned-and-services-boutique-scope.md)**
   records the **ship-unsigned** + **services-boutique-scope** owner decisions (the
   out-of-scope list is no longer "remaining work").
+
+**Since v0.20.0 (v0.20.1 → v0.22.2)** — coherence + fix-first increments:
+- **Compare-panel drill-downs + retire the per-step path flags
+  ([ADR-0027](docs/adr/0027-retire-per-step-path-flags.md)).** The process maps and
+  Compare panels became real drill-downs (sparklines removed); **`waste` is now the
+  only per-step flag** — `conditional` / `exception_path` / `automation_candidate`
+  are sourced from where they actually live (the map's branch frequency, the
+  observed trace variants, and segment-grain candidacy
+  [ADR-0016](docs/adr/0016-segment-level-automation-candidacy.md)), not a dead
+  checkbox. Legacy keys in old `annotations.json` are ignored, not migrated.
+- **App Library hardening** ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md))
+  — **delete a vocab**; "Discover from window" now keeps `class_name` signatures,
+  **enriches each discovered row** with annotator context (role / framework /
+  region / ancestry / weak-signature note), finds the recorder in a **sibling
+  capture install** on a viewer-only PC, and survives non-ASCII control names
+  (UTF-8 stdin) + slow/large windows (60 s budget, completed pass used on timeout).
+- **UI density pass** — consolidated bands + demoted resident chrome across viewer
+  and capture; capture dialog footers and muted-label contrast pinned to AA.
 
 The goal remains **productization toward a small internal rollout,
 analyst-deliverable first.** Bar: **"as polished as it can be."** Hold

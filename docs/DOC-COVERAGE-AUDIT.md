@@ -1,5 +1,27 @@
 # Documentation Coverage & Consistency Audit
 
+> **Update — 2026-06-02 (reconcile to v0.22.2).** A pass over the whole doc set
+> against the code landed since v0.20.0 (now **v0.22.2**: v0.20.1 polish, v0.21.0
+> Compare drill-downs + [ADR-0027](adr/0027-retire-per-step-path-flags.md), and the
+> v0.22.0–0.22.2 App Library discovery hardening). **Fixed:** the stale "Active
+> direction" / "What's new" framing in `CLAUDE.md` + `README.md` (now v0.22.2 with
+> a *Since v0.20.0* increment group); the docs index gained the **ADR-0027** row +
+> a refresh marker; `architecture/OVERVIEW.md` marker bumped; the **vocab README**
+> "Author your own" flag guidance corrected to `waste`-only (ADR-0027 — it still
+> told authors to set the retired `automation_candidate` / `exception_path`);
+> `FEATURES.md` App Library bullet gained the **delete** verb + the enriched
+> discovered-row context; `architecture/VALUE-CHAIN-REVIEW.md` SEAM 4 got an
+> ADR-0027 resolution note (the four-flag "write-only" leak is closed); and
+> `DEPLOY.md` now documents that "Discover from window" needs the capture app in a
+> **sibling folder** (previously only in the CHANGELOG). **Found already current:**
+> `shared/SCHEMA.md` (already reconciled to ADR-0027 — `flags.waste` is the only
+> per-step flag) and `adr/README.md` (already registers 0027). **Flagged, not a doc
+> edit:** two stray empty vocab files (`app_vocabularies/discord.yaml` is an empty
+> stub, `spotify.yaml` is whitespace-only) left over from 0.22.2 stress-testing —
+> untracked, not catalogue-worthy, candidates for cleanup; and a release-tag drift
+> (`package.json` is 0.22.2 but the latest git tag is `v0.21.0` — the CHANGELOG
+> already records 0.22.0–0.22.2, but no `Release v0.22.x` commit/tag was cut).
+>
 > **Update — 2026-05-31 (v0.20.0 release prep).** A full doc-reconciliation pass
 > ran the whole doc set against the code for the v0.20.0 release (this session,
 > branch `docs-and-release-v0.20.0`). Closed the v0.20.0 coverage gaps:

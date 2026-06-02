@@ -36,7 +36,10 @@ Originally written in the refactor-review pass (2026-05-16); last full refresh
 App Vocabularies + point-and-learn discovery, recorder capture-confidence, PII
 masking + consent, the map-readability fixes, and the in-repo e2e/golden/ADR
 guards), building on the v0.19.0 detectors and the v0.15.0 analysis & recognition
-layers. Describes the code as it is today.
+layers; reconciled to v0.22.2 (2026-06-02) for the post-v0.20.0 increments —
+Compare drill-downs + the retired per-step path flags
+([ADR-0027](adr/0027-retire-per-step-path-flags.md)), App Library delete +
+discovery hardening, and the UI density pass. Describes the code as it is today.
 
 | Doc | Covers |
 |---|---|
@@ -95,6 +98,7 @@ layers. Describes the code as it is today.
 | [adr/0024-step-grain-as-view-time-rollup.md](adr/0024-step-grain-as-view-time-rollup.md) | ADR — step grain as a view-time roll-up (§11b, reframed) |
 | [adr/0025-in-app-vocabulary-discovery.md](adr/0025-in-app-vocabulary-discovery.md) | ADR — in-app vocabulary discovery ("point-and-learn") |
 | [adr/0026-distribution-unsigned-and-services-boutique-scope.md](adr/0026-distribution-unsigned-and-services-boutique-scope.md) | ADR — ship unsigned by design; services-boutique scope |
+| [adr/0027-retire-per-step-path-flags.md](adr/0027-retire-per-step-path-flags.md) | ADR — retire the per-step path/segment flags; keep only `waste` |
 | [adr/README.md](adr/README.md) | ADR index & registry (CI-enforced numbering) |
 | [../capture/README.md](../capture/README.md) | Capture component quick-start |
 | [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |

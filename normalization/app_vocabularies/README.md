@@ -49,8 +49,10 @@ order-to-cash demo and should be retuned to your system before a real engagement
    ```
 
 3. Fill in each `name:` with a plain-English action, group controls into
-   `screens`, drop the `seen_count` comments, and set `flags` (`waste`,
-   `automation_candidate`, `exception_path`) where useful.
+   `screens`, drop the `seen_count` comments, and set `flags: { waste: true }`
+   where useful (`waste` is the only flag that rolls up onto a step —
+   [ADR-0027](../../docs/adr/0027-retire-per-step-path-flags.md); any other flag
+   keys are ignored).
 4. Drop the file here and re-normalize — `stats.json.meta` reports
    `app_vocabulary_matches` and per-app `vocab_coverage`.
 

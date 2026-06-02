@@ -196,11 +196,14 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 
 - **Process Template editor** — define and version a canonical step set and match
   sessions against it.
-- **App Library** — edit the App Vocabularies that enrich interactions, and
-  **Discover from window** — point-and-learn discovery snapshots a prepared app
-  window (two passes) and loads a stable-signature skeleton, the picker skipping
-  volatile per-render ids; re-discovery merges into the selected vocab, entirely
-  on-device ([ADR-0025](adr/0025-in-app-vocabulary-discovery.md)).
+- **App Library** — create, edit, and **delete** the App Vocabularies that enrich
+  interactions, and **Discover from window** — point-and-learn discovery snapshots a
+  prepared app window (two passes) and loads a stable-signature skeleton, the picker
+  skipping volatile per-render ids. Each discovered control is annotated with the
+  context the UIA walk captured (role / framework / on-screen region / ancestry +
+  an honest weak-signature note), `class_name`-keyed signatures survive the save
+  round-trip, and re-discovery merges into the selected vocab — entirely on-device
+  ([ADR-0025](adr/0025-in-app-vocabulary-discovery.md)).
 - **Team taxonomy** — promote analyst classification corrections into a shared
   `taxonomy.yaml`, so they classify every future session, not just this one.
 - **Project layer** — save the working set (loaded sessions, focus session,

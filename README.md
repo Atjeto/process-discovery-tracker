@@ -2,12 +2,14 @@
 
 Internal tool for capturing and analyzing process discovery sessions. Full design in [../process_discovery_tracker_design.md](../process_discovery_tracker_design.md).
 
-## What's new in v0.20.0
+## What's new
 
-The current version is **0.21.0** (SemVer 0.x). v0.20.0 is the big push toward a
-small internal rollout — a deliverable-first cycle that hardened the foundation,
-landed the commercial €-ROI closer, and made the recorder and vocabularies real
-against probed apps. Full detail in [CHANGELOG.md](CHANGELOG.md); the headlines:
+The current version is **0.22.2** (SemVer 0.x). The big feature cycle was
+**v0.20.0** — a deliverable-first push toward a small internal rollout that
+hardened the foundation, landed the commercial €-ROI closer, and made the recorder
+and vocabularies real against probed apps. **v0.20.1 → v0.22.2** are coherence +
+fix-first increments on top (see *Since v0.20.0* below). Full detail in
+[CHANGELOG.md](CHANGELOG.md); the v0.20.0 headlines:
 
 - **Return on automation (€-ROI).** `normalization/analysis_roi.py` projects each
   multi-instance automation candidate into a conservative / expected / optimistic
@@ -53,6 +55,23 @@ against probed apps. Full detail in [CHANGELOG.md](CHANGELOG.md); the headlines:
   ([ADR-0026](docs/adr/0026-distribution-unsigned-and-services-boutique-scope.md)).
   Releases ship unsigned (the SmartScreen prompt is accepted); PDT is scoped as an
   owner-run services boutique, not a self-serve enterprise product.
+
+**Since v0.20.0** (v0.20.1 → v0.22.2), coherence + fix-first increments:
+
+- **Compare drill-downs + a corrected per-step flag model**
+  ([ADR-0027](docs/adr/0027-retire-per-step-path-flags.md)). The process maps and
+  Compare panels became real drill-downs (sparklines removed), and **`waste` is now
+  the only per-step flag** — `conditional`, `exception_path`, and
+  `automation_candidate` were retired because a single step is not a path or a
+  segment; those concepts are read from the map's branch frequency, the observed
+  trace variants, and segment-grain automation candidacy instead.
+- **App Library, made real** ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md)).
+  Delete a vocabulary; **"Discover from window"** now keeps `class_name` signatures,
+  annotates each discovered control with context (role / framework / on-screen
+  region / ancestry), finds the recorder in a sibling capture install on a
+  viewer-only machine, and handles non-ASCII control names and large windows.
+- **UI density pass.** Consolidated bands and demoted resident chrome across the
+  viewer and capture apps; dialog footers and muted labels pinned to AA contrast.
 
 Prior cycle (**v0.19.0**) closed Phase 0 of the ML recommendation — **suggested
 markers** ([ADR-0017](docs/adr/0017-suggested-markers.md)) and **anchor candidates**

@@ -106,6 +106,8 @@ No prereqs. Python is bundled in the zip via Python embeddable — no host Pytho
 
 The viewer never modifies the session folder it opens — normalization writes new files (`events.xes`, `events.csv`, `stats.json`, `process_map.bpmn`, etc.) alongside `events.jsonl`, but `events.jsonl` itself is immutable. Re-running normalization is always safe.
 
+> **App Library "Discover from window" needs the capture app alongside.** The viewer ships without `recorder.exe` by design (it lives in the capture app), so the **only** viewer feature that reaches outside its own folder is the App Library's point-and-learn discovery — it drives the C# recorder to snapshot a window. Extract the `viewer/` and `capture/` release zips into the **same parent folder** (e.g. `C:\Tools\pdt\viewer\` and `C:\Tools\pdt\capture\`) and the viewer finds the recorder in its sibling. `PDT_RECORDER_PATH` overrides the lookup. Everything else in the viewer — analysis, normalization, HTML report, PDD export — is fully standalone and needs no capture install.
+
 ## Upgrades
 
 The install is a folder. Upgrading is replacing that folder.

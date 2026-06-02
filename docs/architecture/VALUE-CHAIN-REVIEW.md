@@ -167,6 +167,17 @@ that produces no visible result feels like producing logs.
 can't reflect it, which means the analyst's expertise — the entire reason a
 human is in the loop — never reaches the client artifact.
 
+> **Update (v0.21.0 — [ADR-0027](../adr/0027-retire-per-step-path-flags.md)):**
+> failure 2 is closed. The three flags that "did nothing" had no coherent
+> single-step meaning, so they were **retired**: `automation_candidate` moved to
+> segment-grain candidacy ([ADR-0016](../adr/0016-segment-level-automation-candidacy.md)),
+> `exception_path` to the observed trace variants, and `conditional` to the map's
+> branch frequency ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)). The
+> one genuine per-step judgement, **`waste`**, now propagates for real — it feeds
+> the efficiency figure and the €-ROI band (§11c) and reaches the HTML report and
+> PDD. Annotation is no longer write-only; the surviving flag has a visible
+> consumer, and the retired concepts are sourced from where they actually live.
+
 ---
 
 ### SEAM 5 — Model → output: the wrong map at the wrong level

@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Date:** 2026-05-14
 **Deciders:** Automation team lead, tracker maintainer
+**Note ([ADR-0027](0027-retire-per-step-path-flags.md)):** the vocab layer stands as
+decided; only the per-step `flags` a vocab entry can carry were narrowed — `waste`
+now rolls up onto a step, while `automation_candidate` / `exception_path` /
+`conditional` are ignored (the example below predates that change).
 
 ## Context
 
@@ -199,7 +203,7 @@ Library scope (`process_name` + optional `window_title_regex`) is matched first.
 
 - `data.meaningful_name`: from the matching entry's `name` field
 - `data.screen_id`: from the entry's `screen` field if set
-- `data.vocab_flags`: from the entry's `flags` block (carried forward to step flags during auto-suggestion)
+- `data.vocab_flags`: from the entry's `flags` block (only `waste` carries forward onto a step during auto-suggestion — [ADR-0027](0027-retire-per-step-path-flags.md); other flag keys are ignored)
 - `data.vocab_source`: `{vocab_id, vocab_version}` for traceability
 
 ## Pipeline integration

@@ -1,10 +1,11 @@
 # Architecture Overview
 
 > Part of the [architecture reference](./). Describes the current working tree
-> (refreshed 2026-05-31 for v0.20.0; the three-layer architecture is stable, with
-> the €-ROI, view-time grain, Reference Maps, recorder-confidence, and PII layers
-> added on top). For *why* decisions were made, see the ADRs and historical design
-> docs linked from [`docs/README.md`](../README.md).
+> (refreshed 2026-05-31 for v0.20.0, reconciled to v0.22.2 on 2026-06-02; the
+> three-layer architecture is stable, with the €-ROI, view-time grain, Reference
+> Maps, recorder-confidence, and PII layers added on top). For *why* decisions were
+> made, see the ADRs and historical design docs linked from
+> [`docs/README.md`](../README.md).
 
 ## What this is
 
