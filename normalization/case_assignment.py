@@ -307,18 +307,37 @@ def detect_cases_from_anchors(
             c["interaction_count"] += 1
 
     # Degenerate-case guard: drop slivers (an accidental anchor fire produces a
-    # one-interaction / sub-second "case" that is noise, not a ticket).
+    # one-interaction / sub-second "case" that is noise, not a ticket). Measure
+    # the case's ACTIVE duration -- the sum of its segments -- not the scalar
+    # end_ts - start_ts, which for an INTERLEAVED case spans the gaps when other
+    # cases were active and so wildly overstates the time. A case briefly worked
+    # twice 50s apart is a ~2s case, not a 50s one, and must be judged as such.
     kept: list[dict[str, Any]] = []
     for cid in order:
         c = cases[cid]
-        dur_ms = 0.0
-        if c["start_ts"] and c["end_ts"]:
-            dur_ms = (_parse_ts(c["end_ts"]) - _parse_ts(c["start_ts"])
-                      ).total_seconds() * 1000
+        dur_ms = _active_segments_ms(c)
         if c["interaction_count"] < min_interactions or dur_ms < min_duration_ms:
             continue
         kept.append(c)
     return kept
+
+
+def _active_segments_ms(case: dict[str, Any]) -> float:
+    """Total wall-clock the case was the ACTIVE case: the sum of its
+    `segments` durations. An open final segment (end None, the last-active
+    case) is closed at the case's end_ts -- its last active event. Excludes the
+    interleaving gaps that the scalar end_ts - start_ts would wrongly include."""
+    total = 0.0
+    for seg in case.get("segments") or []:
+        start = seg[0]
+        end = seg[1] if seg[1] is not None else case.get("end_ts")
+        if not start or not end:
+            continue
+        try:
+            total += (_parse_ts(end) - _parse_ts(start)).total_seconds() * 1000
+        except (ValueError, TypeError):
+            continue
+    return total
 
 
 def stamp_anchor_cases(

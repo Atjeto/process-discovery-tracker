@@ -438,3 +438,34 @@ def test_null_or_nondict_data_marker_path_degrades_not_crashes():
     assert len(out[1]["data"]["case_ids"]) == 1
     cases = collect_cases(out)                                  # must not raise
     assert len(cases) == 1
+
+
+def test_interleaved_case_duration_uses_active_segments_not_scalar_span():
+    """An interleaved case's duration is its ACTIVE time (sum of segments), not
+    the scalar end_ts - start_ts. Case A is touched briefly, B is worked for a
+    minute, then A is touched again: A's wall-clock span is ~61s but its real
+    active time is 0.8s -- under the 1s sliver threshold -- so A is dropped while
+    B (genuinely worked) is kept. Before the fix the inflated scalar span kept A
+    as a phantom minute-long case."""
+    t0 = datetime(2026, 5, 18, 9, 0, 0)
+    def at(ms):
+        return t0 + timedelta(milliseconds=ms)
+    events = [
+        _inter(at(0),   automation_id="txtsr", value="A"),   # A anchor
+        _inter(at(300), name="field"),                        # A active work
+        _inter(at(500), automation_id="txtsr", value="B"),   # B anchor (A segment closes @500)
+    ]
+    for k in range(1, 12):                                    # B worked 5.5s..55.5s
+        events.append(_inter(at(500 + k * 5000), name="b-work"))
+    events += [
+        _inter(at(60500), automation_id="txtsr", value="A"),  # A anchor again
+        _inter(at(60800), name="field"),                       # A active work
+    ]
+    cfg = {"field": "automation_id", "equals": "txtsr", "case_label_from": "value",
+           "min_case_interactions": 2, "min_case_duration_ms": 1000}
+    cases = detect_cases_from_anchors(events, cfg)
+    labels = {c["label"] for c in cases}
+    assert "B" in labels, "the genuinely-worked case B must be kept"
+    # A: active = (500-0) + (60800-60500) = 800ms < 1000, though its scalar span
+    # is ~60.8s. The scalar-span guard would have wrongly kept it.
+    assert "A" not in labels, f"interleaved sliver A kept via inflated wall-clock span: {labels}"

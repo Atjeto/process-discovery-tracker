@@ -220,9 +220,17 @@ def _check_detect_stamp(events: list[dict], cfg: dict, *, strict: bool) -> None:
     assert len({c["label"] for c in cases}) == len(cases), "label collision among kept cases"
 
     if strict:
-        # Each kept case cleared BOTH guard thresholds.
+        # Each kept case cleared BOTH guard thresholds. Duration is the ACTIVE
+        # time -- the sum of the case's segments (an open final segment closes
+        # at end_ts) -- NOT the scalar end_ts - start_ts, which for an
+        # interleaved case spans the gaps when other cases were active. This
+        # mirrors the production sliver guard (_active_segments_ms).
         for c in cases:
-            dur = (_parse_ts(c["end_ts"]) - _parse_ts(c["start_ts"])).total_seconds() * 1000
+            dur = 0.0
+            for s, e in c["segments"]:
+                e = e if e else c["end_ts"]
+                if s and e:
+                    dur += (_parse_ts(e) - _parse_ts(s)).total_seconds() * 1000
             assert dur >= min_dur, f"kept case {c['label']} below min_case_duration_ms ({dur} < {min_dur})"
         # Active segments tile the timeline without overlap (the property
         # stamp_anchor_cases relies on for single-attribution).
