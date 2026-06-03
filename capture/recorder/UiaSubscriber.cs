@@ -44,6 +44,10 @@ public sealed class UiaSubscriber {
     // ocr:true); null keeps the screen-capture + OCR path completely out of
     // an ordinary capture. See OcrBridge / ADR-0023.
     private readonly OcrBridge? _ocr;
+    // The capture app's own exe (from hello's host_process). Interactions from
+    // this process are PDT's OWN windows (operator panel / label picker /
+    // dialogs) and are never emitted -- keeps the raw log free of self-capture.
+    private readonly string? _hostProcess;
     private bool _started;
 
     // value_changed coalescer: per-element debouncer.
@@ -106,7 +110,8 @@ public sealed class UiaSubscriber {
         new PropertyCondition(AutomationElement.FrameworkIdProperty, "Chrome"));
 
     public UiaSubscriber(JsonSerializerOptions opts, Action<object> onEvent,
-                         bool verbose = false, int debounceMs = 750, bool ocr = false) {
+                         bool verbose = false, int debounceMs = 750, bool ocr = false,
+                         string? hostProcess = null) {
         _opts = opts;
         _onEvent = onEvent;
         _verbose = verbose;
@@ -114,6 +119,23 @@ public sealed class UiaSubscriber {
         // Bind the OCR engine once per session when opted in; an unavailable
         // language pack leaves the bridge present-but-inert (Available=false).
         _ocr = ocr ? new OcrBridge() : null;
+        _hostProcess = string.IsNullOrWhiteSpace(hostProcess) ? null : hostProcess;
+    }
+
+    /// <summary>
+    /// Whether an interaction's process is PDT's OWN app (the host) and so must
+    /// not be recorded. Compared case-insensitively, ignoring a trailing ".exe"
+    /// (all of PDT's Electron processes share the host exe). Empty/absent on
+    /// either side -> not the host. Pure mirror of the drop in BuildEvent.
+    /// </summary>
+    internal static bool IsHostProcess(string? processName, string? hostProcess) {
+        if (string.IsNullOrEmpty(processName) || string.IsNullOrEmpty(hostProcess)) return false;
+        return StripExe(processName).Equals(StripExe(hostProcess), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string StripExe(string s) {
+        s = s.Trim();
+        return s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? s[..^4] : s;
     }
 
     /// <summary>Total BuildEvent failures since start (recorder stats line).</summary>
@@ -685,6 +707,13 @@ public sealed class UiaSubscriber {
             TrySet(data, "window_title", () => GetTopWindowTitle(el));
             TrySet(data, "process_name", () => GetProcessName(el));
             TrySet(data, "pid", () => el.Current.ProcessId);
+            // Never record PDT's OWN windows (operator panel / label picker /
+            // dialogs) as interactions. Short-circuit before the OCR/coverage
+            // work below.
+            if (IsHostProcess(data.TryGetValue("process_name", out var pnv) ? pnv as string : null,
+                              _hostProcess)) {
+                return null;
+            }
             if (extra is not null) {
                 var json = JsonSerializer.SerializeToElement(extra, _opts);
                 foreach (var prop in json.EnumerateObject()) {

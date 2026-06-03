@@ -175,6 +175,11 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     verbose: !!verbose,
     debounce_ms: debounceMs,
     ocr: !!ocr,
+    // The capture app's own exe so the recorder never records PDT's OWN windows
+    // (operator panel / label picker / dialogs) as interactions. All of PDT's
+    // Electron processes share this exe name. Normalization is the analyst-side
+    // safety net (process_filter) for sessions captured before this existed.
+    host_process: require("node:path").basename(process.execPath),
   });
 
   return {

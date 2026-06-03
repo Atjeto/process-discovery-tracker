@@ -100,7 +100,9 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
 
 - `Program.cs` — entry point; an **NDJSON control loop** over stdin/stdout.
   Electron sends `hello` / `pause` / `resume` / `snapshot` / `shutdown` (the
-  `hello` carries `verbose`, `debounce_ms`, and `ocr`); the recorder emits
+  `hello` carries `verbose`, `debounce_ms`, `ocr`, and `host_process` — the
+  capture app's own exe, so the recorder never records PDT's own windows as
+  interactions); the recorder emits
   `ready`, `interaction`, `stats`, and `warning` lines. The `stats` line carries
   throughput counters plus an `errors` count and a `last_error` snapshot.
 - **In-app vocabulary discovery — the `snapshot` command (§11e / [ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)).**
@@ -275,7 +277,7 @@ variant at registration.
 | `obs` / `hotkeys` | … | OBS WebSocket config + the four global-hotkey bindings. |
 | `screenshots.enabled` / `.quality` / `.on_app_switch` / `.on_marker_fire` / `.on_idle_resume_minutes` / `.display` | `true` / `60` / `true` / `true` / `5` / `"active"` | Screenshot triggers, JPEG quality, and multi-monitor selection (`active` / `primary` / `all`). |
 | `interactions.enabled` / `.required` / `.auto_restart` / `.max_restarts_per_session` | `true` / `false` / `true` / `3` | Recorder-sidecar lifecycle. |
-| `interactions.exclude_processes` | `[]` | Process names the recorder skips. |
+| `interactions.exclude_processes` | `[]` | Extra process names (exe, `.exe`-insensitive) to drop from the analysis. Applied by normalization (`process_filter`) on the derived stream — unioned with PDT's own self-exclusion and the analyst's `step_filters.ignored_processes` / `ignored_window_titles`. (PDT's own windows are excluded automatically; this is for additional apps.) |
 | `interactions.verbose` | `false` | Forensic firehose — emit `focus_changed` / `text_changed` / per-keystroke `value_changed` (~3–5× events). |
 | `interactions.debounce_ms` | `750` | The recorder's `value_changed` coalescing window, passed to the sidecar in `hello`. |
 | `interactions.ocr` | `false` | §11e OCR last resort. When `true`, an identityless element's on-screen region is captured and OCR'd (`Windows.Media.Ocr`) for a `ocr_text` label. Off by default; enable only for a known low-UIA app. Passed to the sidecar in `hello`. |

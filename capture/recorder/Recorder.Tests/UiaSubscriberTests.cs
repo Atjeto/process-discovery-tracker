@@ -192,6 +192,23 @@ public class UiaSubscriberTests {
         Assert.False(UiaSubscriber.ShouldOcr("none", hasBounds: true, ocrEnabled: true, isSecret: true));
     }
 
+    // Pins IsHostProcess: an interaction from PDT's OWN app (operator panel /
+    // label picker) must not be recorded. Match is case-insensitive and ignores
+    // a trailing ".exe"; empty/absent on either side is never the host.
+    [Theory]
+    [InlineData("Process Discovery Tracker.exe", "Process Discovery Tracker.exe", true)]
+    [InlineData("Process Discovery Tracker", "Process Discovery Tracker.exe", true)]   // .exe-insensitive
+    [InlineData("PROCESS DISCOVERY TRACKER.EXE", "Process Discovery Tracker.exe", true)] // case-insensitive
+    [InlineData("chrome.exe", "Process Discovery Tracker.exe", false)]                  // the work app stays
+    [InlineData("electron.exe", "electron.exe", true)]                                 // dev host
+    [InlineData("chrome.exe", "", false)]
+    [InlineData("", "Process Discovery Tracker.exe", false)]
+    [InlineData(null, "Process Discovery Tracker.exe", false)]
+    public void IsHostProcess_drops_only_the_capture_app(
+            string? processName, string? hostProcess, bool expected) {
+        Assert.Equal(expected, UiaSubscriber.IsHostProcess(processName, hostProcess));
+    }
+
     // Pins CoalesceKeyFromProps: AutomationId wins, then Name+ClassName,
     // then RuntimeId, else null (no stable identity).
     [Fact]

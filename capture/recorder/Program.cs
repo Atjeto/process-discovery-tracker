@@ -107,13 +107,20 @@ public static class Program {
                         // elements for a recovered text label.
                         var ocr = doc.RootElement.TryGetProperty("ocr", out var oEl) &&
                                   oEl.ValueKind == JsonValueKind.True;
+                        // host_process: the capture app's own exe. Interactions
+                        // from it are PDT's own windows and are never emitted.
+                        string? hostProcess = null;
+                        if (doc.RootElement.TryGetProperty("host_process", out var hpEl) &&
+                            hpEl.ValueKind == JsonValueKind.String) {
+                            hostProcess = hpEl.GetString();
+                        }
                         // A repeated hello must be idempotent: stop the prior
                         // subscriber first. Otherwise its UIA event handlers leak
                         // (they are never removed) and every interaction is
                         // captured TWICE -- a silent data-integrity bug found by
                         // the stress harness (4 invokes -> 8 events).
                         subscriber?.Stop();
-                        subscriber = new UiaSubscriber(options, onEvent, verbose, debounceMs, ocr);
+                        subscriber = new UiaSubscriber(options, onEvent, verbose, debounceMs, ocr, hostProcess);
                         subscriber.Start();
                         break;
                     }
