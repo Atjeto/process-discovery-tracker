@@ -34,6 +34,47 @@ def _start_key(step: dict[str, Any]) -> float:
         return 0.0
 
 
+_NOCASE = "__nocase__"
+
+
+def _phase_names(anno: dict[str, Any]) -> dict[Any, str]:
+    out: dict[Any, str] = {}
+    for ph in (anno.get("phases") or []):
+        out[ph.get("phase_id")] = ph.get("name") or "(phase)"
+    return out
+
+
+def _step_label(s: dict[str, Any], level: str, phase_name: dict[Any, str]) -> str:
+    """The node label for a step. Value-FREE for the step level (so repeated work
+    collapses to one node, not one per case) -- falls back to name for steps from
+    a pre-process_label analyze."""
+    if level == "phase":
+        pid = s.get("phase_id")
+        return phase_name.get(pid, "(phase)") if pid else "(unphased)"
+    return s.get("process_label") or s.get("name") or "(unnamed)"
+
+
+def _visible_steps(anno: dict[str, Any]) -> list[dict[str, Any]]:
+    return [s for s in (anno.get("steps") or []) if s and s.get("state") != "hidden"]
+
+
+def real_case_count(anno: dict[str, Any]) -> int:
+    """How many ANCHORED cases the visible steps belong to. The synthetic
+    `__nocase__` bucket (orphan steps with no case_id -- out-of-window work, or
+    the now-excluded self-capture noise) is NOT a real case and must not inflate
+    this, or a single-case session is wrongly mined into a flower model."""
+    return len({s.get("case_id") for s in _visible_steps(anno) if s.get("case_id")})
+
+
+def _collapse(labels):
+    """Drop consecutive duplicate labels (the DFG's rule)."""
+    out: list[str] = []
+    for lab in labels:
+        if not out or out[-1] != lab:
+            out.append(lab)
+    return out
+
+
 def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
     """One trace per case, events labelled by step name (level="step") or phase
     name (level="phase"), time-ordered, consecutive duplicates collapsed.
@@ -41,16 +82,10 @@ def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
     Mirrors `buildAnnotationDfg` so the observed-flow BPMN and the Flow-diagram
     DFG describe the same flow.
     """
-    steps = [s for s in (anno.get("steps") or [])
-             if s and s.get("state") != "hidden"]
-    phase_name: dict[Any, str] = {}
-    for ph in (anno.get("phases") or []):
-        phase_name[ph.get("phase_id")] = ph.get("name") or "(phase)"
-
+    phase_name = _phase_names(anno)
     by_case: dict[str, list[dict[str, Any]]] = {}
-    for s in steps:
-        cid = s.get("case_id") or "__nocase__"
-        by_case.setdefault(cid, []).append(s)
+    for s in _visible_steps(anno):
+        by_case.setdefault(s.get("case_id") or _NOCASE, []).append(s)
 
     log = EventLog()
     for cid, case_steps in by_case.items():
@@ -60,14 +95,7 @@ def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
         trace.attributes["case:id"] = cid
         prev_label: str | None = None
         for s in case_steps:
-            if level == "phase":
-                pid = s.get("phase_id")
-                label = (phase_name.get(pid, "(phase)") if pid else "(unphased)")
-            else:
-                # Value-free label so repeated work across cases collapses to
-                # one node (not one per case). Falls back to name for steps
-                # from a pre-process_label analyze.
-                label = s.get("process_label") or s.get("name") or "(unnamed)"
+            label = _step_label(s, level, phase_name)
             if label == prev_label:
                 continue  # collapse consecutive duplicates (== the DFG's rule)
             prev_label = label
@@ -83,6 +111,17 @@ def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
         if len(trace) > 0:
             log.append(trace)
     return log
+
+
+def session_sequence(anno: dict[str, Any], level: str) -> list[str]:
+    """The WHOLE session as one observed path: every visible step's label,
+    time-ordered across all cases, consecutive duplicates collapsed. Used when
+    there is at most one real case, so a handful of un-cased orphan steps render
+    as part of the single chain instead of a second trace that tips the model
+    into the inductive miner. Pure."""
+    phase_name = _phase_names(anno)
+    steps = sorted(_visible_steps(anno), key=_start_key)
+    return _collapse(_step_label(s, level, phase_name) for s in steps)
 
 
 def _linear_bpmn(labels: list[str]):
@@ -121,20 +160,26 @@ def write_observed_bpmn(
     Returns True if a model was written, False when there is nothing to mine
     (no non-hidden steps / no traces).
 
-    A SINGLE case is rendered as a literal sequence rather than mined: with one
-    observed path there is nothing to generalise, and the inductive miner would
-    otherwise turn a repeated step label into spurious optional/loop gateways
-    (see _linear_bpmn). The miner is used only when there are 2+ cases, where
-    cross-case variation is a real basis for branches.
+    A session with at most ONE real (anchored) case is rendered as a literal
+    sequence rather than mined: with one observed path there is nothing to
+    generalise, and the inductive miner would otherwise turn repeated/uncollapsed
+    labels into spurious branch/loop gateways and smear them across the diagram
+    -- the "flower model". Critically, the case count is REAL cases only: orphan
+    steps with no case_id (out-of-window work, or self-capture noise) pool into a
+    synthetic __nocase__ trace, and counting that as a case used to tip a
+    single-case session into the miner and explode the map into branches. The
+    miner runs only with 2+ real cases, where cross-case variation is a genuine
+    basis for branches.
     """
     import mining  # local import: PM4Py is only needed when --mine is on
 
     log = build_annotation_log(anno, level)
     if len(log) == 0:
         return False
-    if len(log) == 1:
-        labels = [ev["concept:name"] for ev in log[0]]
-        bpmn = _linear_bpmn(labels)
+    if real_case_count(anno) <= 1:
+        # <=1 real case: one observed path. Linearise ALL visible steps in time
+        # order (orphans fold into the single chain) instead of mining.
+        bpmn = _linear_bpmn(session_sequence(anno, level))
     else:
         bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
     mining.export_bpmn(bpmn, out_path)

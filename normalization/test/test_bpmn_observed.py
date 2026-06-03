@@ -19,7 +19,9 @@ pytest.importorskip("pm4py")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bpmn_observed import build_annotation_log, write_observed_bpmn
+from bpmn_observed import (
+    build_annotation_log, write_observed_bpmn, real_case_count, session_sequence,
+)
 
 
 def _step(case_id, name, start, *, phase_id=None, state="edited"):
@@ -165,3 +167,36 @@ def test_single_case_linear_renders_without_gateways():
         write_observed_bpmn(anno, "step", out)
         xml = Path(out).read_text(encoding="utf-8")
     assert "Gateway" not in xml
+
+
+def test_real_case_count_ignores_the_nocase_orphan_bucket():
+    anno = {"steps": [
+        _step("A", "Search",  "2026-05-18T09:00:00Z"),
+        _step(None, "Orphan", "2026-05-18T09:00:10Z"),   # no case_id -> __nocase__
+        _step("", "Blank",    "2026-05-18T09:00:20Z"),   # empty case_id -> orphan too
+    ]}
+    assert real_case_count(anno) == 1                    # only "A" is a real case
+    # session_sequence folds every visible step into one time-ordered chain.
+    assert session_sequence(anno, "step") == ["Search", "Orphan", "Blank"]
+
+
+def test_single_real_case_with_orphans_renders_linear_not_a_flower():
+    """The live-session regression: a '1 case' session whose orphan steps (no
+    case_id -- out-of-window work / self-capture noise) pooled into a synthetic
+    __nocase__ trace, making len(log)==2 so the inductive miner ran and smeared a
+    gateway 'flower model' across the map. With one REAL case it must render as a
+    single linear chain, orphans folded in by time order."""
+    anno = {"steps": [
+        _step("A", "Search",  "2026-05-18T09:00:00Z"),
+        _step("A", "Open",    "2026-05-18T09:00:10Z"),
+        _step("A", "Resolve", "2026-05-18T09:00:20Z"),
+        _step(None, "Stray 1", "2026-05-18T09:00:30Z"),  # orphans (the old flower trigger)
+        _step(None, "Stray 2", "2026-05-18T09:00:40Z"),
+    ]}
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "step.bpmn")
+        assert write_observed_bpmn(anno, "step", out) is True
+        xml = Path(out).read_text(encoding="utf-8")
+    assert "Gateway" not in xml                          # no flower model
+    for name in ("Search", "Open", "Resolve", "Stray 1", "Stray 2"):
+        assert name in xml                               # orphans fold into the chain
