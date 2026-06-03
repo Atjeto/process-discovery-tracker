@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from log_setup import setup_logging
 import app_vocab
 from pii_masking import mask_events
+from process_filter import filter_excluded
 # Session-folder I/O + marker-edit replay live in focused sibling modules
 # (god-file decomposition, continues F4). Re-imported here so normalize.X and
 # `from normalize import X` keep resolving and every internal call site is
@@ -116,6 +117,17 @@ def normalize(
     cal = _calibration(annotations)
     session_id_str = manifest.get("session_id", "")
 
+    # Stage 1.0: drop PDT's own interactions (operator panel / label picker /
+    # dialogs) + any analyst-excluded process/window from the DERIVED stream.
+    # Raw events.jsonl is immutable, so re-analyzing cleans an existing session.
+    # Done BEFORE coalesce/case-assignment so the self-capture noise never mines
+    # into phantom steps or pools into the __nocase__ bucket (which exploded the
+    # single-case map into a gateway flower).
+    raw, exclude_report = filter_excluded(raw, manifest, annotations)
+    if exclude_report.get("excluded_count"):
+        print(f"[normalize] excluded {exclude_report['excluded_count']} self/"
+              f"ignored-process event(s) ({exclude_report['by_process']})")
+
     # Stage 1a: coalesce typing bursts + apply annotation marker edits.
     coalesced, edited, edits_applied = _run_coalesce(raw, annotations, cal)
 
@@ -137,6 +149,8 @@ def normalize(
     # Record which rule-set ran (Python owns this additive key; the analyst-owned
     # pii_masking_config controls it). Persisted by the step-segmentation write.
     existing_anno["pii_masking"] = pii_report
+    # Additive, regenerated each run: what the self/ignored-process filter dropped.
+    existing_anno["process_exclusions"] = exclude_report
 
     # Suggested markers (ADR-0017) + anchor candidates (ADR-0018), best-effort.
     _run_suggestions(existing_anno, with_cases, cases)
