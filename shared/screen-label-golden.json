@@ -15,6 +15,12 @@
     ["Invoice 2026 - Acme", "Invoice - Acme"],
     ["#10900", "#10900"],
     ["ServiceNow - INC0012345", "ServiceNow"],
-    ["Order #10900 - line 42", "Order - line 42"]
+    ["Order #10900 - line 42", "Order - line 42"],
+    ["TAMBA - Resolution: ATM down on arrival, found unit rebooted", "TAMBA - Resolution"],
+    ["TAMBA - Resolution: The safe door was binding", "TAMBA - Resolution"],
+    ["SNFI - Enter Serial 57-58227542", "SNFI - Enter Serial"],
+    ["Account 12/345/678 review", "Account review"],
+    ["Settings: Privacy", "Settings: Privacy"],
+    ["Inbox: 5 unread", "Inbox: 5 unread"]
   ]
 }
