@@ -539,7 +539,10 @@ async function loadSessionIntoView(folder) {
   // same-folder re-analyze wrote analysis.json yet the Analysis view kept showing
   // "No analysis available" until the session was reopened.
   renderAnalysisLevel();
-  updateProcessMapStatus();
+  // The map's "N nodes / Open / Reveal" status line is now driven by the map
+  // controller's onRender (renderer._syncMapStatus), so it always reflects the
+  // file actually displayed at the current grain -- no stale process_map.bpmn
+  // count set here on load.
   // Refresh case-scope dropdown -- clear scope if the new session no
   // longer contains the previously-selected case.
   populateCaseScope();
@@ -653,74 +656,13 @@ async function maybeApplyStepTemplate() {
   toast("Applied " + anno.steps.length + " template step(s)", "success");
 }
 
-/* Count BPMN flow nodes (task/event/gateway). Ignore namespace prefix. */
-function countBpmnNodes(xml) {
-  const nodeRe = /<(?:[\w-]+:)?(task|userTask|serviceTask|manualTask|scriptTask|sendTask|receiveTask|businessRuleTask|callActivity|subProcess|startEvent|endEvent|intermediateThrowEvent|intermediateCatchEvent|exclusiveGateway|parallelGateway|inclusiveGateway|eventBasedGateway|complexGateway)\b/g;
-  return (xml.match(nodeRe) || []).length;
-}
-
-/* Surface the per-session BPMN output produced by `normalize.py --mine`.
-   Reads process_map.bpmn from the loaded session folder, counts flow
-   nodes, and exposes Open / Reveal affordances in the actions bar.
-   Also detects per-case BPMNs under process_maps/ and exposes them
-   via a dropdown so multi-case sessions are first-class. */
-function updateProcessMapStatus() {
-  const wrap = document.getElementById("process-map-status");
-  if (!wrap) return;
-  if (!State.getSession() || !State.getSession().sessionFolder) {
-    wrap.style.display = "none";
-    return;
-  }
-  const bpmnPath = path.join(State.getSession().sessionFolder, "process_map.bpmn");
-  let xml = "";
-  try {
-    if (!fs.existsSync(bpmnPath)) {
-      wrap.style.display = "none";
-      return;
-    }
-    xml = fs.readFileSync(bpmnPath, "utf8");
-  } catch (_) {
-    wrap.style.display = "none";
-    return;
-  }
-  const nodeCount = countBpmnNodes(xml);
-  const detail = document.getElementById("process-map-detail");
-  if (detail) detail.textContent = nodeCount + (nodeCount === 1 ? " node" : " nodes");
-  wrap.style.display = "";
-  wrap.dataset.bpmnPath = bpmnPath;
-
-  // Per-case BPMNs (if normalize.py --mine wrote any)
-  const perCaseDir = path.join(State.getSession().sessionFolder, "process_maps");
-  const sel = document.getElementById("process-map-case-select");
-  if (!sel) return;
-  let perCaseFiles = [];
-  try {
-    if (fs.existsSync(perCaseDir)) {
-      perCaseFiles = fs.readdirSync(perCaseDir)
-        .filter(f => f.toLowerCase().endsWith(".bpmn"))
-        .sort();
-    }
-  } catch (_) {}
-  if (!perCaseFiles.length) {
-    sel.style.display = "none";
-    return;
-  }
-  sel.style.display = "";
-  const opts = ['<option value="">Aggregate (all cases)</option>']
-    .concat(perCaseFiles.map(f => `<option value="${f}">${f.replace(/\.bpmn$/i, "")}</option>`));
-  sel.innerHTML = opts.join("");
-  sel.onchange = () => {
-    const v = sel.value;
-    wrap.dataset.bpmnPath = v
-      ? path.join(perCaseDir, v)
-      : bpmnPath;
-    try {
-      const x = fs.readFileSync(wrap.dataset.bpmnPath, "utf8");
-      const n = countBpmnNodes(x);
-      if (detail) detail.textContent = n + (n === 1 ? " node" : " nodes");
-    } catch (_) {}
-  };
-}
+/* The "N nodes / Open / Reveal" status line + per-case picker used to live here
+   (updateProcessMapStatus, pinned to the activity-level process_map.bpmn). It is
+   now driven by the map controller's onRender (renderer._syncMapStatus), which
+   reports the file ACTUALLY rendered at the current grain, so the count can
+   never drift from the displayed map and the line hides on the live Flow
+   diagram. The Open / Reveal handlers below read the dataset.bpmnPath that
+   _syncMapStatus sets. */
 
 /* Wire the video element's listeners ONCE. loadSessionIntoView runs on every
    session load; adding these there re-bound a new loadedmetadata arrow each

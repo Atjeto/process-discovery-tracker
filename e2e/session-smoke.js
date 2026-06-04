@@ -380,6 +380,32 @@ const OVERLAP_PROBE = () => {
     if (!connProbe.leftToRight) await shot(page, "fail-map-radial.png");
   }
 
+  // --- ADR-0024 grain on the Process diagram (BPMN) tab -----------------------
+  // The Process diagram is mined only at Element/Phase. Picking a COARSE grain
+  // (screen/app/case) on that tab must NOT dead-end on an empty message: the
+  // grain control auto-falls back to the live Flow diagram (which rolls up), so
+  // a grain change always yields a usable map. And the "N nodes / Open / Reveal"
+  // status line must reflect the file actually shown -- hidden on the Flow
+  // diagram, not a stale process_map.bpmn count.
+  await page.click('#session-layout-map .panel-tab[data-map="bpmn"]').catch(() => {});
+  await page.selectOption("#session-map-level", "element").catch(() => {});
+  await wait(700);
+  await page.selectOption("#session-map-level", "screen").catch(() => {});  // coarse -> fall back
+  await wait(900);
+  const fb = await page.evaluate(() => {
+    const dfg = document.getElementById("session-map-dfg-host");
+    const dfgVisible = dfg && getComputedStyle(dfg).display !== "none";
+    const dfgHasMap = dfg && !!(dfg.querySelector("svg") || dfg.querySelector("canvas"));
+    const dfgTab = document.querySelector('#session-layout-map .panel-tab[data-map="dfg"]');
+    const status = document.getElementById("process-map-status");
+    const statusHidden = !status || getComputedStyle(status).display === "none";
+    return { dfgVisible: !!dfgVisible, dfgHasMap, tabFlipped: !!(dfgTab && dfgTab.classList.contains("active")), statusHidden };
+  }).catch((e) => ({ err: e.message }));
+  record("grain on the Process diagram falls back to a usable Flow diagram (no dead end)",
+    !!(fb && !fb.err && fb.dfgVisible && fb.dfgHasMap && fb.tabFlipped), JSON.stringify(fb));
+  record("the 'N nodes' status line hides on the live Flow diagram (no stale file count)",
+    !!(fb && !fb.err && fb.statusHidden), JSON.stringify(fb));
+
   // --- ADR-0019 Reference Maps round-trip pin ---------------------------------
   // A reference map is a decoupled, editable BPMN copy forked from the mined map.
   // The honest-leaf contract has a full lifecycle: Fork (one-way leaf; the mined

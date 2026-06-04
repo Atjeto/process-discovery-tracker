@@ -365,6 +365,34 @@ function _sessionOnActivityNodeClick(label /*, ev */) {
   }
 }
 
+// BPMN node-count (mirror of flow-view.countBpmnNodes; inlined to avoid the
+// renderer<->flow-view load cycle).
+const _BPMN_NODE_RE = /<(?:[\w-]+:)?(task|userTask|serviceTask|manualTask|scriptTask|sendTask|receiveTask|businessRuleTask|callActivity|subProcess|startEvent|endEvent|intermediateThrowEvent|intermediateCatchEvent|exclusiveGateway|parallelGateway|inclusiveGateway|eventBasedGateway|complexGateway)\b/g;
+
+/* Keep the "N nodes · Open · Reveal" status line honest: it describes the file
+   ACTUALLY on screen (the controller's currently rendered BPMN), not always the
+   activity-level process_map.bpmn. Hidden on the Flow diagram and on the coarse
+   grains (screen/app/case), which have no file on disk. Driven by the map
+   controller's onRender so it can never drift from what's displayed. */
+function _syncMapStatus({ notation, level, bpmnPath } = {}) {
+  const wrap = document.getElementById("process-map-status");
+  if (!wrap) return;
+  const detail = document.getElementById("process-map-detail");
+  // The per-case picker is retired: it only re-pointed Open/Reveal, never
+  // re-rendered the map, and confused the status line. Keep it hidden.
+  const caseSel = document.getElementById("process-map-case-select");
+  if (caseSel) caseSel.style.display = "none";
+  if (notation !== "bpmn" || !bpmnPath) {
+    wrap.style.display = "none";    // a live DFG / coarse grain has no file
+    return;
+  }
+  let n = 0;
+  try { n = (fs.readFileSync(bpmnPath, "utf8").match(_BPMN_NODE_RE) || []).length; } catch (_) {}
+  if (detail) detail.textContent = n + (n === 1 ? " node" : " nodes");
+  wrap.dataset.bpmnPath = bpmnPath;   // Open/Reveal now target the displayed file
+  wrap.style.display = "";
+}
+
 function _ensureSessionMapCtrl() {
   if (_sessionMapCtrl) return _sessionMapCtrl;
   _sessionMapCtrl = createMapController({
@@ -388,6 +416,7 @@ function _ensureSessionMapCtrl() {
     dataSource: _sessionMapDataSource,
     activityLabelsForStep: _sessionActivityLabelsForStep,
     onActivityNodeClick: _sessionOnActivityNodeClick,
+    onRender: _syncMapStatus,   // keep the "N nodes / Open / Reveal" line tied to the displayed file
     // ADR-0024: the Map opens at the shared grain notch (default "screen"). That
     // notch has no pre-mined BPMN, so default to the Flow diagram, which rolls
     // up live — the Process diagram (Element/Phase) stays one tab away.

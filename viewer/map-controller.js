@@ -98,6 +98,7 @@ function createMapController(config) {
     activityLabelsForStep = null,
     onActivityNodeClick = null,
     onChange = null,
+    onRender = null,
   } = config;
 
   let notation = config.initialNotation || "bpmn";
@@ -301,17 +302,46 @@ function createMapController(config) {
     }
   }
 
-  /* Draw the active (notation × level) cell -- the single entry point. */
-  async function render() {
+  function _notifyRender(bpmnPath) {
+    if (typeof onRender === "function") onRender({ notation, level, bpmnPath: bpmnPath || null });
+  }
+
+  /* Draw the active (notation × level) cell -- the single entry point.
+     `opts.suppressFallback` is set when the user EXPLICITLY chose the Process
+     diagram (clicked the tab): then a coarse grain with no BPMN shows the honest
+     "mined at Element/Phase" message rather than silently flipping to the Flow
+     diagram. A GRAIN change (the common case) leaves it off, so changing the
+     grain to screen/app/case rolls up live on the Flow diagram -- the grain
+     control always produces a usable map. */
+  async function render(opts = {}) {
     _syncNotationTabs();
     _syncLevelSelect();
     _renderScopeChip();
-    const data = await Promise.resolve(
-      dataSource({ notation, level, scope: drillFilter }));
+    const data = (await Promise.resolve(
+      dataSource({ notation, level, scope: drillFilter }))) || {};
+    // ADR-0024: the Process diagram (BPMN) is mined only at the activity /
+    // element / phase grains. For a coarser grain (screen / app / case) there is
+    // NO BPMN file, but the Flow diagram rolls it up live -- so fall back to it
+    // (unless the user explicitly clicked the Process diagram tab).
+    if (notation === "bpmn" && !data.bpmnPath && !opts.suppressFallback) {
+      const dfgData = (await Promise.resolve(
+        dataSource({ notation: "dfg", level, scope: drillFilter }))) || {};
+      if (dfgData.dfg) {
+        notation = "dfg";
+        _syncNotationTabs();
+        _renderScopeChip();
+        _renderDfg(dfgData);
+        _notifyRender(null);
+        _notifyChange();
+        return;
+      }
+    }
     if (notation === "bpmn") {
-      await _renderBpmn(data || {});
+      await _renderBpmn(data);
+      _notifyRender(data.bpmnPath);
     } else {
-      _renderDfg(data || {});
+      _renderDfg(data);
+      _notifyRender(null);
     }
   }
 
@@ -323,7 +353,10 @@ function createMapController(config) {
       // clears any Flow-diagram scope (BPMN can't honour a live drill scope).
       notation = tab.dataset.map === "dfg" ? "dfg" : "bpmn";
       if (notation === "bpmn") drillFilter = null;
-      render().then(() => setTimeout(_refit, 50));
+      // Explicit Process-diagram choice: don't silently fall back to the Flow
+      // diagram -- show the honest "mined at Element/Phase" message at a coarse
+      // grain so the tab the user clicked is the tab they see.
+      render({ suppressFallback: notation === "bpmn" }).then(() => setTimeout(_refit, 50));
       _notifyChange();
     });
   });
@@ -380,7 +413,7 @@ function createMapController(config) {
       if (!newNotation || newNotation === notation) return;
       notation = newNotation === "dfg" ? "dfg" : "bpmn";
       if (notation === "bpmn") drillFilter = null;
-      render().then(() => setTimeout(_refit, 50));
+      render({ suppressFallback: notation === "bpmn" }).then(() => setTimeout(_refit, 50));
       _notifyChange();
     },
     setScope: (newScope) => {
