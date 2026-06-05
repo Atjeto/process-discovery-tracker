@@ -52,6 +52,8 @@ const {
 const { captureScreenshot } = require("./screenshots.js");
 const { showHelpWindow } = require("./help-window.js");
 const { showOperatorPanel } = require("./operator-panel.js");
+// PDT-1.0-SPEC §3.3 / ADR-0032: heuristic-templated self-annotation wizard.
+const SelfAnnotationWizard = require("./self-annotation/wizard.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
 const { showSettingsWindow } = require("./settings-window.js");
 const { showProfileWindow } = require("./profile-window.js");
@@ -1036,6 +1038,17 @@ async function endSession() {
       hadVideo,
     });
   }
+
+  /* PDT-1.0-SPEC §3.3 / ADR-0032: open the Self-Annotation Wizard with
+     5 heuristic-templated questions about the session. Best-effort: a
+     missing annotations.json or zero questions skips silently. Answers
+     are appended to annotations.self_annotations[] (manually_authored:
+     true) so re-normalize preserves them. */
+  try {
+    openSelfAnnotationWizard(session.sessionFolder);
+  } catch (e) {
+    bootLog(`self-annotation wizard failed to open: ${e && e.message}`);
+  }
   bootLog(`session ended: ${session.sessionFolder}`);
   const oldFolder = session.sessionFolder;
   tracker = null;
@@ -1821,4 +1834,78 @@ app.on("before-quit", async (e) => {
     try { await endSession(); } catch (err) { bootLog(`stop error: ${err}`); }
     app.quit();
   }
+});
+
+/* -------- PDT-1.0-SPEC §3.3 / ADR-0032: Self-Annotation Wizard --------
+   Opens a small 540x540 BrowserWindow with up to 5 heuristic-templated
+   questions about the captured session. Answers are appended to
+   annotations.json's self_annotations[] with manually_authored: true so
+   re-normalize preserves them. Skipping closes the window without harm. */
+
+let _wizardPayload = null;
+
+function openSelfAnnotationWizard(sessionFolder) {
+  const annPath = path.join(sessionFolder, "annotations.json");
+  let ann = {};
+  if (fs.existsSync(annPath)) {
+    try { ann = JSON.parse(fs.readFileSync(annPath, "utf-8")) || {}; } catch (_) {}
+  }
+  const stats = (() => {
+    const sp = path.join(sessionFolder, "stats.json");
+    if (!fs.existsSync(sp)) return {};
+    try { return JSON.parse(fs.readFileSync(sp, "utf-8")) || {}; } catch (_) { return {}; }
+  })();
+  const patterns = (() => {
+    const pp = path.join(sessionFolder, "patterns.json");
+    if (!fs.existsSync(pp)) return {};
+    try { return JSON.parse(fs.readFileSync(pp, "utf-8")) || {}; } catch (_) { return {}; }
+  })();
+  const session = { stats, annotations: ann, patterns };
+  const variantIndex = Math.floor(Math.random() * 3);
+  const questions = SelfAnnotationWizard.generateQuestions(session, { variantIndex });
+
+  _wizardPayload = { sessionFolder, questions };
+
+  const win = new BrowserWindow({
+    width: 540,
+    height: 540,
+    title: "Wrap up your session",
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      sandbox: false,
+    },
+  });
+  win.setMenu(null);
+  win.loadFile(path.join(__dirname, "self-annotation", "wizard-window.html"));
+}
+
+ipcMain.handle("pdt-wizard:load", () => {
+  return _wizardPayload || { questions: [] };
+});
+
+ipcMain.handle("pdt-wizard:submit", (_e, answers) => {
+  if (!_wizardPayload || !_wizardPayload.sessionFolder) return { ok: false };
+  const annPath = path.join(_wizardPayload.sessionFolder, "annotations.json");
+  let ann = {};
+  if (fs.existsSync(annPath)) {
+    try { ann = JSON.parse(fs.readFileSync(annPath, "utf-8")) || {}; } catch (_) {}
+  }
+  if (!Array.isArray(ann.self_annotations)) ann.self_annotations = [];
+  for (const a of (answers || [])) {
+    if (!a || !a.question) continue;
+    ann.self_annotations.push(
+      SelfAnnotationWizard.buildSelfAnnotation(a.question, a.answer || "", !!a.is_exception)
+    );
+  }
+  ann.last_modified = new Date().toISOString();
+  try {
+    fs.writeFileSync(annPath, JSON.stringify(ann, null, 2), "utf-8");
+  } catch (e) {
+    bootLog(`self-annotation save failed: ${e && e.message}`);
+    return { ok: false, error: e.message };
+  }
+  _wizardPayload = null;
+  return { ok: true, count: (answers || []).length };
 });

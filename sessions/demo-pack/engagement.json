@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "engagement_id": "demo-pack-servicenow-it-service",
+  "name": "Demo Pack — IT Service (ServiceNow)",
+  "client": "Acme IT (anonymised demo data)",
+  "scope": "Incident handling — review, triage, reassignment, resolution.",
+  "owner": "PDT Demo",
+  "created_at": "2026-06-05T00:00:00Z",
+  "last_modified": "2026-06-05T00:00:00Z",
+  "sessions": [],
+  "promoted_processes": [],
+  "config": {
+    "confidence_floor": 0.5,
+    "variant_suppression_threshold": 3,
+    "currency": "EUR",
+    "loaded_cost_per_hour": 42.0,
+    "automatable_fraction": 0.7,
+    "annual_volume": 2400
+  },
+  "notes": "Demo Pack engagement. Populated from anonymised pilot ServiceNow captures. Rebuilt every release. See ADR-0033."
+}

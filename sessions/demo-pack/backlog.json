@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "session_count": 4,
+  "process_count": 4,
+  "confidence_floor": 0.5,
+  "variant_suppression_threshold": 3,
+  "suppressed_low_confidence": 0,
+  "rows": [
+    {
+      "signature": "e39f70684599",
+      "label": "chrome \u2014 Incident: Save record",
+      "fallback_label": "chrome \u2014 Incident: Save record",
+      "ai_named": false,
+      "apps": [
+        "chrome.exe"
+      ],
+      "instance_count": 12,
+      "case_count": 12,
+      "session_count": 4,
+      "mean_elapsed_ms": 6600,
+      "total_elapsed_ms": 79200,
+      "confidence": 1.0,
+      "variant_data_sufficient": true,
+      "rank_score": 79200.0,
+      "rank": 1
+    },
+    {
+      "signature": "ffe36b13baa5",
+      "label": "Save Record",
+      "fallback_label": "Incident: Save record",
+      "ai_named": true,
+      "apps": [
+        "chrome"
+      ],
+      "instance_count": 12,
+      "case_count": 12,
+      "session_count": 4,
+      "mean_elapsed_ms": 6600,
+      "total_elapsed_ms": 79200,
+      "confidence": 0.8,
+      "variant_data_sufficient": true,
+      "rank_score": 63360.0,
+      "rank": 2
+    },
+    {
+      "signature": "d751b4d40e5b",
+      "label": "Email Sending",
+      "fallback_label": "RE: Send",
+      "ai_named": true,
+      "apps": [
+        "OUTLOOK"
+      ],
+      "instance_count": 12,
+      "case_count": 12,
+      "session_count": 4,
+      "mean_elapsed_ms": 3600,
+      "total_elapsed_ms": 43200,
+      "confidence": 0.8,
+      "variant_data_sufficient": true,
+      "rank_score": 34560.0,
+      "rank": 3
+    },
+    {
+      "signature": "efb2aa5d506c",
+      "label": "Workbook Save",
+      "fallback_label": "Incident Tracker.xlsx: Save workbook",
+      "ai_named": true,
+      "apps": [
+        "EXCEL"
+      ],
+      "instance_count": 12,
+      "case_count": 12,
+      "session_count": 4,
+      "mean_elapsed_ms": 3300,
+      "total_elapsed_ms": 39600,
+      "confidence": 0.8,
+      "variant_data_sufficient": true,
+      "rank_score": 31680.0,
+      "rank": 4
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "session_id": "demo-alice-20260601-0900",
+  "engagement_id": "demo-pack-servicenow-it-service",
+  "started_at": "2026-06-01T09:00:00.000Z",
+  "ended_at": "2026-06-01T09:01:04.650Z",
+  "status": "closed",
+  "purpose": "process",
+  "config": {
+    "debounce_ms": 250
+  },
+  "consent": {
+    "required": false,
+    "granted": null,
+    "mode": "off"
+  },
+  "displays": [
+    {
+      "id": 0,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      }
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+{
+  "activity_stats": [
+    {
+      "activity_label": "Text entry -- chrome.exe",
+      "frequency": 3,
+      "frequency_pct": 33.33,
+      "total_duration_ms": 16500,
+      "mean_ms": 5500,
+      "median_ms": 5500,
+      "p90_ms": 5500,
+      "p99_ms": 5500
+    },
+    {
+      "activity_label": "Text entry -- EXCEL.EXE",
+      "frequency": 3,
+      "frequency_pct": 33.33,
+      "total_duration_ms": 10500,
+      "mean_ms": 3500,
+      "median_ms": 3500,
+      "p90_ms": 3500,
+      "p99_ms": 3500
+    },
+    {
+      "activity_label": "Text entry -- OUTLOOK.EXE",
+      "frequency": 3,
+      "frequency_pct": 33.33,
+      "total_duration_ms": 9600,
+      "mean_ms": 3200,
+      "median_ms": 3200,
+      "p90_ms": 3200,
+      "p99_ms": 3200
+    }
+  ],
+  "case_stats": [
+    {
+      "case_id": "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+      "label": "INC0010843",
+      "parent_case_id": null,
+      "start_ts": "2026-06-02T10:00:00.000Z",
+      "end_ts": "2026-06-02T10:00:18.550Z",
+      "wall_clock_ms": 18550,
+      "active_ms": 12200,
+      "end_reason": null
+    },
+    {
+      "case_id": "e475d231-070f-436c-9250-10d0ba5c7869",
+      "label": "INC0010844",
+      "parent_case_id": null,
+      "start_ts": "2026-06-02T10:00:21.550Z",
+      "end_ts": "2026-06-02T10:00:40.100Z",
+      "wall_clock_ms": 18550,
+      "active_ms": 12200,
+      "end_reason": null
+    },
+    {
+      "case_id": "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+      "label": "INC0010845",
+      "parent_case_id": null,
+      "start_ts": "2026-06-02T10:00:43.100Z",
+      "end_ts": "2026-06-02T10:01:01.650Z",
+      "wall_clock_ms": 18550,
+      "active_ms": 12200,
+      "end_reason": null
+    }
+  ],
+  "trace_variants": [
+    {
+      "variant": [
+        "Text entry -- chrome.exe",
+        "Text entry -- EXCEL.EXE",
+        "Text entry -- OUTLOOK.EXE"
+      ],
+      "frequency": 3,
+      "length": 3
+    }
+  ],
+  "step_variants": [
+    {
+      "variant": [
+        "Incident: Save record",
+        "Incident Tracker.xlsx: Save workbook",
+        "RE: Send"
+      ],
+      "frequency": 3,
+      "length": 3
+    }
+  ],
+  "step_stats": [
+    {
+      "step_name": "Incident: Save record",
+      "frequency": 3,
+      "frequency_pct": 33.33,
+      "total_duration_ms": 19800,
+      "mean_ms": 6600,
+      "median_ms": 6600,
+      "p90_ms": 6600,
+      "p99_ms": 6600
+    },
+    {
+      "step_name": "RE: Send",
+      "frequency": 3,
+      "frequency_pct": 33.33,
+      "total_duration_ms": 10800,
+      "mean_ms": 3600,
+      "median_ms": 3600,
+      "p90_ms": 3600,
+      "p99_ms": 3600
+    },
+    {
+      "step_name": "Incident Tracker.xlsx: Save workbook",
+      "frequency": 3,
+      "frequency_pct": 33.33,
+      "total_duration_ms": 9900,
+      "mean_ms": 3300,
+      "median_ms": 3300,
+      "p90_ms": 3300,
+      "p99_ms": 3300
+    }
+  ],
+  "app_outliers": [],
+  "rework_loops": [],
+  "screenshot_hashes": [],
+  "meta": {
+    "normalization_run_at": "2026-06-05T11:47:47.176357+00:00",
+    "taxonomy_version": null,
+    "taxonomy_path": null,
+    "taxonomy_report": [],
+    "session_folder": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\sessions\\demo-pack\\sessions\\demo-bob-20260602-1000",
+    "worker_id": "unknown",
+    "raw_event_count": 80,
+    "dropped_jsonl_lines": 0,
+    "collapsed_activity_count": 9,
+    "interaction_count": 63,
+    "matched_interactions": 0,
+    "match_rate": 0.0,
+    "case_count": 3,
+    "annotations_present": true,
+    "marker_edits_applied": 0,
+    "step_count": 9,
+    "step_state_breakdown": {
+      "auto_suggested": 9,
+      "auto_matched": 0,
+      "manually_authored": 0,
+      "edited": 0
+    },
+    "canonical_process_id": null,
+    "canonical_version": null,
+    "coalesced_event_count": 80,
+    "drift_count": 0,
+    "phase_count": 0,
+    "app_vocabularies": [
+      {
+        "id": "chrome",
+        "version": 2
+      },
+      {
+        "id": "edge",
+        "version": 1
+      },
+      {
+        "id": "excel",
+        "version": 2
+      },
+      {
+        "id": "jira",
+        "version": 1
+      },
+      {
+        "id": "outlook",
+        "version": 2
+      },
+      {
+        "id": "salesforce",
+        "version": 2
+      },
+      {
+        "id": "sap-gui",
+        "version": 1
+      },
+      {
+        "id": "servicenow",
+        "version": 2
+      },
+      {
+        "id": "word",
+        "version": 1
+      },
+      {
+        "id": "zendesk",
+        "version": 1
+      }
+    ],
+    "app_vocabulary_matches": 0,
+    "app_vocabulary_hits_by_id": {},
+    "vocab_coverage": {
+      "chrome.exe": {
+        "total_interactions": 33,
+        "enriched": 0,
+        "coverage_pct": 0.0
+      },
+      "EXCEL.EXE": {
+        "total_interactions": 15,
+        "enriched": 0,
+        "coverage_pct": 0.0
+      },
+      "OUTLOOK.EXE": {
+        "total_interactions": 15,
+        "enriched": 0,
+        "coverage_pct": 0.0
+      }
+    }
+  }
+}

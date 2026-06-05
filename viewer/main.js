@@ -30,6 +30,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
   : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
 const { runNormalize, runDiscoverVocab } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}), runDiscoverVocab: async () => ({}) };
 const { snapshotWindow, pickWindow } = _underElectron ? require("./recorder-snapshot.js") : { snapshotWindow: async () => ({ controls: [] }), pickWindow: async () => ({ cancelled: true }) };
+const OllamaLauncher = _underElectron ? require("./ollama-launcher.js") : { start: async () => null, stop: () => {}, isBundlePresent: () => false, getUrl: () => null };
 
 let mainWindow = null;
 
@@ -205,6 +206,228 @@ ipcMain.handle("viewer:loadSession", (_e, sessionFolder) => {
   return loadSessionData(sessionFolder);
 });
 
+// PDT-1.0-SPEC §5.3: open an engagement folder, build the aggregated
+// backlog from its sessions/, return the combined object the renderer
+// engagement-view consumes.
+ipcMain.handle("viewer:openEngagementFolder", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: "Open engagement folder",
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths[0]) return null;
+  return loadEngagementData(result.filePaths[0]);
+});
+ipcMain.handle("viewer:loadEngagement", (_e, folder) => {
+  return loadEngagementData(folder);
+});
+ipcMain.handle("viewer:exportBacklog", async (_e, { engagementFolder, kind }) => {
+  return exportBacklogAsync(engagementFolder, kind || "xlsx");
+});
+ipcMain.handle("viewer:exportPdd", async (_e, { engagementFolder, row }) => {
+  return exportPddAsync(engagementFolder, row);
+});
+ipcMain.handle("viewer:exportAllPdds", async (_e, engagementFolder) => {
+  return exportAllPddsAsync(engagementFolder);
+});
+ipcMain.handle("viewer:exportEngagementConfig", async (_e, engagementFolder) => {
+  return exportEngagementConfigAsync(engagementFolder);
+});
+
+function loadEngagementData(folder) {
+  if (!folder || !fs.existsSync(folder)) {
+    return { error: "engagement folder not found", folder };
+  }
+  const root = path.resolve(folder);
+  _knownSessionRoots.add(root);
+  const engagementJsonPath = path.join(root, "engagement.json");
+  let engagement = {};
+  if (fs.existsSync(engagementJsonPath)) {
+    try { engagement = JSON.parse(fs.readFileSync(engagementJsonPath, "utf-8")); }
+    catch (_) { engagement = {}; }
+  }
+  // Enumerate sessions/.
+  const sessionsDir = path.join(root, "sessions");
+  const sessions = [];
+  if (fs.existsSync(sessionsDir) && fs.statSync(sessionsDir).isDirectory()) {
+    for (const child of fs.readdirSync(sessionsDir, { withFileTypes: true })) {
+      if (!child.isDirectory()) continue;
+      const sp = path.join(sessionsDir, child.name);
+      if (fs.existsSync(path.join(sp, "manifest.json"))) sessions.push(sp);
+    }
+  }
+  for (const s of (engagement.sessions || [])) {
+    const abs = path.isAbsolute(s) ? s : path.join(root, s);
+    if (fs.existsSync(abs) && !sessions.includes(abs)) sessions.push(abs);
+  }
+  // Build the backlog via the Python helper (so it stays single-source-of-truth).
+  let backlog = { rows: [], process_count: 0, suppressed_low_confidence: 0 };
+  let summary = { session_count: sessions.length, total_capture_ms: 0, total_net_annual: null };
+  try {
+    const built = buildBacklogSync(sessions, root);
+    if (built && built.backlog) backlog = built.backlog;
+    if (built && built.summary) summary = Object.assign(summary, built.summary);
+  } catch (e) {
+    console.error("[engagement] backlog build failed:", e && e.message);
+  }
+  return { engagementFolder: root, engagement, backlog, summary, sessions };
+}
+
+function buildBacklogSync(sessions, engagementFolder) {
+  // Spawn the embedded Python to call build_backlog. Synchronous shell-out
+  // because the renderer's loadEngagement is awaited. Passes
+  // engagement_folder so engagement.config.confidence_floor flows through.
+  const { spawnSync } = require("node:child_process");
+  const py = require("./python-runner.js").resolvePythonForExternal
+    ? require("./python-runner.js").resolvePythonForExternal()
+    : "python";
+  const script = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(path.join(__dirname, "..", "normalization"))})
+sys.path.insert(0, ${JSON.stringify(path.join(process.resourcesPath || "", "normalization"))})
+from engagement import build_backlog
+sessions = ${JSON.stringify(sessions)}
+eng_folder = ${JSON.stringify(engagementFolder || "")} or None
+b = build_backlog(sessions, engagement_folder=eng_folder)
+# Summary stats.
+total_capture_ms = 0
+total_net_annual = 0.0
+has_money = False
+for s in sessions:
+    try:
+        stats = json.load(open(s + "/stats.json", encoding="utf-8"))
+        total_capture_ms += int(stats.get("session_duration_ms", 0) or 0)
+    except Exception:
+        pass
+    try:
+        analysis = json.load(open(s + "/analysis.json", encoding="utf-8"))
+        roi = analysis.get("roi") or {}
+        totals = roi.get("totals") or {}
+        net = totals.get("net_annual")
+        if isinstance(net, (int, float)):
+            has_money = True
+            total_net_annual += float(net)
+    except Exception:
+        pass
+print(json.dumps({
+    "backlog": b,
+    "summary": {
+        "session_count": len(sessions),
+        "total_capture_ms": total_capture_ms,
+        "total_net_annual": total_net_annual if has_money else None,
+    },
+}))
+`;
+  const r = spawnSync(py, ["-c", script], { encoding: "utf-8", maxBuffer: 32 * 1024 * 1024 });
+  if (r.status !== 0) {
+    console.error("[engagement] py exit", r.status, r.stderr);
+    return null;
+  }
+  try {
+    // Some sessions print info on stdout before the JSON; take only the last line.
+    const lines = r.stdout.trim().split(/\r?\n/);
+    return JSON.parse(lines[lines.length - 1]);
+  } catch (e) {
+    console.error("[engagement] failed to parse python output:", e.message);
+    return null;
+  }
+}
+
+async function exportBacklogAsync(engagementFolder, kind) {
+  if (!engagementFolder) return { error: "no engagement folder" };
+  const outName = kind === "csv" ? "backlog.csv" : "backlog.xlsx";
+  const outPath = path.join(engagementFolder, "deliverables", outName);
+  const script = `
+import sys
+sys.path.insert(0, ${JSON.stringify(path.join(__dirname, "..", "normalization"))})
+sys.path.insert(0, ${JSON.stringify(path.join(process.resourcesPath || "", "normalization"))})
+import os, json
+from engagement import build_backlog, export_backlog_csv, export_backlog_xlsx
+sessions = []
+sd = ${JSON.stringify(path.join(engagementFolder, "sessions"))}
+if os.path.isdir(sd):
+    for n in sorted(os.listdir(sd)):
+        sp = os.path.join(sd, n)
+        if os.path.isdir(sp) and os.path.exists(os.path.join(sp, "manifest.json")):
+            sessions.append(sp)
+b = build_backlog(sessions)
+os.makedirs(os.path.dirname(${JSON.stringify(outPath)}), exist_ok=True)
+${kind === "csv" ? "export_backlog_csv" : "export_backlog_xlsx"}(b, ${JSON.stringify(outPath)})
+print(json.dumps({"ok": True, "path": ${JSON.stringify(outPath)}}))
+`;
+  return _runPyScript(script);
+}
+
+async function exportPddAsync(engagementFolder, row) {
+  if (!engagementFolder || !row) return { error: "missing args" };
+  const outDir = path.join(engagementFolder, "deliverables", "pdds");
+  const script = `
+import sys, os, json
+sys.path.insert(0, ${JSON.stringify(path.join(__dirname, "..", "normalization"))})
+sys.path.insert(0, ${JSON.stringify(path.join(process.resourcesPath || "", "normalization"))})
+from engagement import write_pdd_markdown, load_engagement
+eng = load_engagement(${JSON.stringify(engagementFolder)})
+row = ${JSON.stringify(row)}
+os.makedirs(${JSON.stringify(outDir)}, exist_ok=True)
+slug = (row.get("signature") or "row")[:12]
+out = os.path.join(${JSON.stringify(outDir)}, f"pdd-{row.get('rank', 0):02d}-{slug}.md")
+write_pdd_markdown(row, eng, out)
+print(json.dumps({"ok": True, "path": out}))
+`;
+  return _runPyScript(script);
+}
+
+async function exportAllPddsAsync(engagementFolder) {
+  if (!engagementFolder) return { error: "no engagement folder" };
+  const outDir = path.join(engagementFolder, "deliverables", "pdds");
+  const script = `
+import sys, os, json
+sys.path.insert(0, ${JSON.stringify(path.join(__dirname, "..", "normalization"))})
+sys.path.insert(0, ${JSON.stringify(path.join(process.resourcesPath || "", "normalization"))})
+from engagement import build_backlog, export_pdd_bundle, load_engagement
+eng = load_engagement(${JSON.stringify(engagementFolder)})
+sessions = []
+sd = ${JSON.stringify(path.join(engagementFolder, "sessions"))}
+if os.path.isdir(sd):
+    for n in sorted(os.listdir(sd)):
+        sp = os.path.join(sd, n)
+        if os.path.isdir(sp) and os.path.exists(os.path.join(sp, "manifest.json")):
+            sessions.append(sp)
+backlog = build_backlog(sessions)
+os.makedirs(${JSON.stringify(outDir)}, exist_ok=True)
+files = export_pdd_bundle(backlog, eng, ${JSON.stringify(outDir)})
+print(json.dumps({"ok": True, "files": files}))
+`;
+  return _runPyScript(script);
+}
+
+async function exportEngagementConfigAsync(engagementFolder) {
+  if (!engagementFolder) return { error: "no engagement folder" };
+  const outPath = path.join(engagementFolder, "deliverables", "engagement-config.zip");
+  const script = `
+import sys, os, json
+sys.path.insert(0, ${JSON.stringify(path.join(__dirname, "..", "normalization"))})
+sys.path.insert(0, ${JSON.stringify(path.join(process.resourcesPath || "", "normalization"))})
+from engagement import export_engagement_config
+os.makedirs(os.path.dirname(${JSON.stringify(outPath)}), exist_ok=True)
+path = export_engagement_config(${JSON.stringify(engagementFolder)}, ${JSON.stringify(outPath)})
+print(json.dumps({"ok": True, "path": path}))
+`;
+  return _runPyScript(script);
+}
+
+function _runPyScript(script) {
+  const { spawnSync } = require("node:child_process");
+  const py = require("./python-runner.js").resolvePythonForExternal
+    ? require("./python-runner.js").resolvePythonForExternal()
+    : "python";
+  const r = spawnSync(py, ["-c", script], { encoding: "utf-8", maxBuffer: 32 * 1024 * 1024 });
+  if (r.status !== 0) return { error: r.stderr || "python exit " + r.status };
+  try {
+    const lines = r.stdout.trim().split(/\r?\n/);
+    return JSON.parse(lines[lines.length - 1]);
+  } catch (e) { return { error: "bad output: " + e.message }; }
+}
+
 ipcMain.handle("viewer:loadMultipleSessions", (_e, folders) => {
   return folders.map((f) => {
     try { return loadSessionData(f); } catch (e) { return { error: e.message, sessionFolder: f }; }
@@ -344,6 +567,9 @@ function loadSessionData(sessionFolder) {
   const annotations = loadOptionalJson(path.join(sessionFolder, "annotations.json"));
   const obsSync = loadOptionalJson(path.join(sessionFolder, "obs", "sync.json"));
   const analysis = loadOptionalJson(path.join(sessionFolder, "analysis.json"));
+  // PDT-1.0-SPEC §3.1: Pattern Layer output. Optional — absent on sessions
+  // normalized before the layer existed; the Cockpit falls back gracefully.
+  const patterns = loadOptionalJson(path.join(sessionFolder, "patterns.json"));
 
   /* Locate the recording. Priority: an analyst-attached external video
      (annotations.external_video, set via the Attach video flow for
@@ -382,6 +608,7 @@ function loadSessionData(sessionFolder) {
     dfg,
     analysis,
     annotations,
+    patterns,
     obsSync,
     recordingPath,
     recordingAvailable,
@@ -1049,14 +1276,35 @@ ipcMain.handle("viewer:promoteTaxonomyRules", async (_e, { rules }) => {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createMainWindow();
+  // PDT-1.0-SPEC §3.2 / ADR-0028: start the bundled local Ollama in the
+  // background so the Naming Layer is live the first time a session is
+  // normalised. Best-effort — if no bundle is present we fall through
+  // to whatever is on the host (or NullBackend → heuristic fallback).
+  OllamaLauncher.start().then((info) => {
+    if (info) {
+      console.log("[main] bundled Ollama ready at " + info.url +
+                  " (model=" + (info.model || "?") + ")");
+    } else {
+      console.log("[main] no bundled Ollama — falling back to host or NullBackend");
+    }
+  }).catch((e) => {
+    console.error("[main] bundled Ollama failed to start:", e && e.message);
+  });
 });
 
 app.on("window-all-closed", () => {
+  // Tear down the bundled LLM cleanly so a re-launch doesn't fight over the
+  // port and so we don't leave a stray ollama.exe holding ~1 GB of RAM.
+  try { OllamaLauncher.stop(); } catch (_) {}
   if (process.platform !== "darwin") app.quit();
 });
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+});
+
+app.on("before-quit", () => {
+  try { OllamaLauncher.stop(); } catch (_) {}
 });
 
 /* Exported for unit tests (the security helper is pure and validated in

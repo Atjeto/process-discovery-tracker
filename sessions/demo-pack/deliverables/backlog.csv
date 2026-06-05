@@ -1,0 +1,5 @@
+Rank,Process,Apps,Observations,Cases,Sessions,Avg duration,Confidence,Rank score,Low confidence?
+1,chrome — Incident: Save record,chrome.exe,12,12,4,7s,100%,79200,
+2,Save Record,chrome,12,12,4,7s,80%,63360,
+3,Email Sending,OUTLOOK,12,12,4,4s,80%,34560,
+4,Workbook Save,EXCEL,12,12,4,3s,80%,31680,

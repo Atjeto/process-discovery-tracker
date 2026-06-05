@@ -239,6 +239,14 @@ function onOpenInitialSession(fn) {
   ipcRenderer.on("viewer:openInitialSession", (_e, folder) => fn(folder));
 }
 
+/* PDT-1.0-SPEC §5.3: Engagement workspace. Generic invoke() escape hatch
+   for the engagement IPC channels (openEngagementFolder, exportBacklog,
+   exportPdd, exportAllPdds, exportEngagementConfig) so the engagement-view
+   doesn't need a typed wrapper per call. */
+function invoke(channel, payload) {
+  return ipcRenderer.invoke(channel, payload);
+}
+
 module.exports = {
   loadSession, openSessionFolder, openMultipleSessions, loadMultipleSessions,
   runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
@@ -251,4 +259,5 @@ module.exports = {
   attachExternalVideo, saveExternalVideoSync,
   saveProjectAs, saveProject, openProject, loadProjectFile,
   onNormalizeLog, onOpenInitialSession,
+  invoke,
 };

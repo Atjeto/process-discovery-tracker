@@ -85,6 +85,11 @@
 const _s = {
   currentSession: null,
   aggregateSessions: [],
+  // PDT-1.0-SPEC §4.1.1: session-level contextual mode. "cockpit" (default) is
+  // the summary-first review surface; "workshop" exposes the existing 5-tab
+  // depth (Flow / Steps / Phases / Map / Analysis). One click in the topbar
+  // overrides; persisted to localStorage by the renderer.
+  currentMode: "cockpit",
   currentLevel: "flow",
   // ADR-0024: the view-time grain notch shared across Flow / Steps / Map.
   // One of element|screen|app|phase|case; default "screen" ("one step per
@@ -245,6 +250,16 @@ function getAggregateSessions() { return _s.aggregateSessions; }
 /** @param {*[]} v */
 function setAggregateSessions(v) { _s.aggregateSessions = v; }
 
+/* Mode (PDT-1.0-SPEC §4.1.1): "cockpit" | "workshop" | "glance".
+   Session-level contextual default. Cockpit hides the existing view-mode-bar
+   and shows the Cockpit summary layout; Workshop restores the 5-tab depth;
+   Glance is the worker's timeline-as-story view. */
+const _MODES = ["cockpit", "workshop", "glance"];
+/** @returns {string} */
+function getMode() { return _s.currentMode; }
+/** @param {string} v */
+function setMode(v) { if (_MODES.includes(v)) _s.currentMode = v; }
+
 /* Level */
 /** @returns {Level} */
 function getLevel() { return _s.currentLevel; }
@@ -330,6 +345,8 @@ module.exports = {
   recordEdit, popUndo, popRedo, pushUndo, pushRedo, resetUndo, canUndo, canRedo, UNDO_MAX,
   // session
   getSession, setSession, getAggregateSessions, setAggregateSessions,
+  // mode (PDT-1.0-SPEC §4.1.1)
+  getMode, setMode,
   // level
   getLevel, setLevel,
   // grain (ADR-0024)

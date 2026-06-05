@@ -53,6 +53,7 @@
 [CmdletBinding()]
 param(
   [switch]$SkipPython,
+  [switch]$SkipOllama,
   [switch]$Clean,
   [switch]$SkipRelease,
   [string]$Version,
@@ -178,6 +179,29 @@ if (-not $SkipPython) {
   Write-Host "[1/5] Skipping Python embeddable build (-SkipPython)" -ForegroundColor Yellow
   if (-not (Test-Path (Join-Path $viewerDir "python\python.exe"))) {
     throw "viewer\python\python.exe not found. Run without -SkipPython at least once."
+  }
+}
+
+# Step 1b: Ollama bundle (PDT-1.0-SPEC §3.2, ADR-0028). Ships ollama.exe +
+# the configured instruct model under viewer/ollama/ so the AI Naming Layer
+# works on machines where Ollama isn't installed (analyst's locked-down
+# laptop). ~1 GB additional release size.
+if (-not $SkipOllama) {
+  Write-Host ""
+  Write-Host "[1b/5] Bundling Ollama (ollama.exe + qwen2.5:1.5b-instruct, ~1 GB)" -ForegroundColor Yellow
+  $ollamaBundleScript = Join-Path $repoRoot "scripts\bundle-ollama.ps1"
+  if (Test-Path $ollamaBundleScript) {
+    & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $ollamaBundleScript
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "  Ollama bundle failed; release will fall back to host Ollama or NullBackend." -ForegroundColor Yellow
+    }
+  } else {
+    Write-Host "  bundle-ollama.ps1 not found; skipping." -ForegroundColor Yellow
+  }
+} else {
+  Write-Host "[1b/5] Skipping Ollama bundle (-SkipOllama)" -ForegroundColor Yellow
+  if (-not (Test-Path (Join-Path $viewerDir "ollama\bin\ollama.exe"))) {
+    Write-Host "  viewer\ollama\bin\ollama.exe not found. Release will fall back to host Ollama." -ForegroundColor Yellow
   }
 }
 

@@ -150,6 +150,24 @@ const OVERLAP_PROBE = () => {
   }
   await wait(1500); // settle first render
 
+  // PDT-1.0-SPEC §4.1.1: the Cockpit/Workshop mode toggle becomes visible
+  // once a session loads, and the default landing is Cockpit (or the
+  // user's persisted mode). Verify the toggle is wired.
+  const cockpitToggleVisible = await page.$eval(
+    "#session-mode-toggle",
+    (el) => !el.hasAttribute("hidden"),
+  ).catch(() => false);
+  record("PDT 1.0 mode toggle visible after session load", cockpitToggleVisible,
+    cockpitToggleVisible ? "#session-mode-toggle revealed"
+                         : "#session-mode-toggle stayed hidden");
+
+  // Force Workshop mode so the existing 5-tab cycle below still passes.
+  await page.evaluate(() => {
+    const btn = document.querySelector('#session-mode-toggle .mode-btn[data-mode="workshop"]');
+    if (btn) btn.click();
+  });
+  await wait(800);
+
   // Cycle the 5 Session-view levels; each must show its layout container.
   for (const lvl of ["flow", "steps", "phases", "map", "analysis"]) {
     const btn = await page.$('.view-mode-btn[data-level="' + lvl + '"]');

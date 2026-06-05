@@ -13,9 +13,13 @@ const path = require("path");
 
 const ROOT = __dirname;
 
-// Empty by design: the viewer talks to nothing over the network. Adding here is a
-// deliberate act — confirm it can't break the air-gapped deployment tier.
-const ALLOW = {};
+// PDT-1.0-SPEC §3.2 / ADR-0028: the bundled-Ollama launcher binds a localhost
+// loopback port and is the SOLE sanctioned network module. It is loopback-only
+// (127.0.0.1, listener pinned) and never reaches off-box — the air-gap moat
+// holds. The `net` import is for picking a free local port; no outbound HTTP.
+const ALLOW = {
+  "ollama-launcher.js": "loopback-only bundled-LLM launcher (ADR-0028)",
+};
 
 const FORBIDDEN = [
   /require\(\s*['"](?:node:)?(?:http|https|net|tls|dgram|dns|http2|inspector)['"]\s*\)/,

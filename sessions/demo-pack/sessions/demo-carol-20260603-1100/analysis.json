@@ -1,0 +1,400 @@
+{
+  "meta": {
+    "heuristic_version": 2,
+    "generated_at": "2026-06-05T11:48:01.579534+00:00",
+    "session_id": "demo-carol-20260603-1100",
+    "step_count": 9,
+    "provisional": true
+  },
+  "waste_classification": [
+    {
+      "step_id": "d06d0561-6fc2-4145-b1d0-e09c400b4182",
+      "name": "Incident: Save record \u2014 Printer offline floor 3",
+      "process_label": "Incident: Save record",
+      "elapsed_ms": 6600,
+      "va_ms": 6600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "f8236ca6-82b0-4c87-a1e0-87b45e102989",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Printer offline floor 3",
+      "process_label": "Incident Tracker.xlsx: Save workbook",
+      "elapsed_ms": 3300,
+      "va_ms": 3300,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "a2f8f714-4e37-4d16-9d74-3dfe573c8999",
+      "name": "RE: Send \u2014 INC0010844 Printer offline floor 3",
+      "process_label": "RE: Send",
+      "elapsed_ms": 3600,
+      "va_ms": 3600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "3067304e-1d04-4cf2-8952-af21f4a87a19",
+      "name": "Incident: Save record \u2014 VPN dropping during meetings",
+      "process_label": "Incident: Save record",
+      "elapsed_ms": 6600,
+      "va_ms": 6600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "61b90d58-3d66-4a7f-abf9-a6d5cd29a629",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 VPN dropping during meetings",
+      "process_label": "Incident Tracker.xlsx: Save workbook",
+      "elapsed_ms": 3300,
+      "va_ms": 3300,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "6905e764-996f-4b34-bfe8-2c160b6a8a10",
+      "name": "RE: Send \u2014 INC0010845 VPN dropping during meetings",
+      "process_label": "RE: Send",
+      "elapsed_ms": 3600,
+      "va_ms": 3600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "9bf252aa-7240-43b2-abb5-58f6e7b2fde6",
+      "name": "Incident: Save record \u2014 Server down \u2014 DB host",
+      "process_label": "Incident: Save record",
+      "elapsed_ms": 6600,
+      "va_ms": 6600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "532b14bb-4abf-4a4f-babe-8502520a1bec",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Server down \u2014 DB host",
+      "process_label": "Incident Tracker.xlsx: Save workbook",
+      "elapsed_ms": 3300,
+      "va_ms": 3300,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "096db496-6988-444f-aa9b-0afc44964092",
+      "name": "RE: Send \u2014 INC0010842 Server down \u2014 DB host",
+      "process_label": "RE: Send",
+      "elapsed_ms": 3600,
+      "va_ms": 3600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    }
+  ],
+  "time_study": [
+    {
+      "step_id": "d06d0561-6fc2-4145-b1d0-e09c400b4182",
+      "canonical_step_id": null,
+      "name": "Incident: Save record",
+      "instances": 3,
+      "cycle_ms": {
+        "mean": 6600,
+        "min": 6600,
+        "max": 6600,
+        "stdev": 0,
+        "p25": 6600,
+        "p50": 6600,
+        "p75": 6600,
+        "p95": 6600
+      },
+      "active_ms": 19800,
+      "waiting_ms": 0,
+      "switching_ms": 0
+    },
+    {
+      "step_id": "a2f8f714-4e37-4d16-9d74-3dfe573c8999",
+      "canonical_step_id": null,
+      "name": "RE: Send",
+      "instances": 3,
+      "cycle_ms": {
+        "mean": 3600,
+        "min": 3600,
+        "max": 3600,
+        "stdev": 0,
+        "p25": 3600,
+        "p50": 3600,
+        "p75": 3600,
+        "p95": 3600
+      },
+      "active_ms": 10800,
+      "waiting_ms": 0,
+      "switching_ms": 0
+    },
+    {
+      "step_id": "f8236ca6-82b0-4c87-a1e0-87b45e102989",
+      "canonical_step_id": null,
+      "name": "Incident Tracker.xlsx: Save workbook",
+      "instances": 3,
+      "cycle_ms": {
+        "mean": 3300,
+        "min": 3300,
+        "max": 3300,
+        "stdev": 0,
+        "p25": 3300,
+        "p50": 3300,
+        "p75": 3300,
+        "p95": 3300
+      },
+      "active_ms": 9900,
+      "waiting_ms": 0,
+      "switching_ms": 0
+    }
+  ],
+  "segments": [
+    {
+      "segment_id": "e39f70684599:870d61ae-16d4-405e-bc54-df96178e02fd:2026-06-03T11:00:00.850000+00:00",
+      "signature": "e39f70684599",
+      "app": "chrome.exe",
+      "case_id": "870d61ae-16d4-405e-bc54-df96178e02fd",
+      "start": "2026-06-03T11:00:00.850000Z",
+      "end": "2026-06-03T11:00:07.450000Z",
+      "elapsed_ms": 6600,
+      "interaction_count": 11,
+      "step_ids": [
+        "d06d0561-6fc2-4145-b1d0-e09c400b4182"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "label": "chrome \u2014 Incident: Save record"
+    },
+    {
+      "segment_id": "e39f70684599:c90cbc8b-c45b-4c67-ac37-10d02c65627a:2026-06-03T11:00:22.400000+00:00",
+      "signature": "e39f70684599",
+      "app": "chrome.exe",
+      "case_id": "c90cbc8b-c45b-4c67-ac37-10d02c65627a",
+      "start": "2026-06-03T11:00:22.400000Z",
+      "end": "2026-06-03T11:00:29Z",
+      "elapsed_ms": 6600,
+      "interaction_count": 11,
+      "step_ids": [
+        "3067304e-1d04-4cf2-8952-af21f4a87a19"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "label": "chrome \u2014 Incident: Save record"
+    },
+    {
+      "segment_id": "e39f70684599:bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3:2026-06-03T11:00:43.950000+00:00",
+      "signature": "e39f70684599",
+      "app": "chrome.exe",
+      "case_id": "bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3",
+      "start": "2026-06-03T11:00:43.950000Z",
+      "end": "2026-06-03T11:00:50.550000Z",
+      "elapsed_ms": 6600,
+      "interaction_count": 11,
+      "step_ids": [
+        "9bf252aa-7240-43b2-abb5-58f6e7b2fde6"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "label": "chrome \u2014 Incident: Save record"
+    }
+  ],
+  "automation_candidates": [
+    {
+      "segment_signature": "e39f70684599",
+      "label": "chrome \u2014 Incident: Save record",
+      "app": "chrome.exe",
+      "apps": [
+        "chrome.exe"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "case_ids": [
+        "870d61ae-16d4-405e-bc54-df96178e02fd",
+        "bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3",
+        "c90cbc8b-c45b-4c67-ac37-10d02c65627a"
+      ],
+      "instance_count": 3,
+      "total_elapsed_ms": 19800,
+      "mean_elapsed_ms": 6600,
+      "instances": [
+        {
+          "segment_id": "e39f70684599:870d61ae-16d4-405e-bc54-df96178e02fd:2026-06-03T11:00:00.850000+00:00",
+          "case_id": "870d61ae-16d4-405e-bc54-df96178e02fd",
+          "start": "2026-06-03T11:00:00.850000Z",
+          "end": "2026-06-03T11:00:07.450000Z",
+          "elapsed_ms": 6600,
+          "interaction_count": 11,
+          "step_ids": [
+            "d06d0561-6fc2-4145-b1d0-e09c400b4182"
+          ]
+        },
+        {
+          "segment_id": "e39f70684599:c90cbc8b-c45b-4c67-ac37-10d02c65627a:2026-06-03T11:00:22.400000+00:00",
+          "case_id": "c90cbc8b-c45b-4c67-ac37-10d02c65627a",
+          "start": "2026-06-03T11:00:22.400000Z",
+          "end": "2026-06-03T11:00:29Z",
+          "elapsed_ms": 6600,
+          "interaction_count": 11,
+          "step_ids": [
+            "3067304e-1d04-4cf2-8952-af21f4a87a19"
+          ]
+        },
+        {
+          "segment_id": "e39f70684599:bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3:2026-06-03T11:00:43.950000+00:00",
+          "case_id": "bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3",
+          "start": "2026-06-03T11:00:43.950000Z",
+          "end": "2026-06-03T11:00:50.550000Z",
+          "elapsed_ms": 6600,
+          "interaction_count": 11,
+          "step_ids": [
+            "9bf252aa-7240-43b2-abb5-58f6e7b2fde6"
+          ]
+        }
+      ],
+      "scores": {
+        "confidence": 1.0,
+        "volume": 19800
+      },
+      "automatable_fraction": 0.7,
+      "rank_score": 13860.0,
+      "rank": 1,
+      "estimated_savings_ms": null,
+      "automation_confirmed": null,
+      "data_sufficiency": "multi_instance"
+    }
+  ],
+  "efficiency": {
+    "process_efficiency_ratio": 1.0,
+    "total_va_ms": 40500,
+    "total_bnva_ms": 0,
+    "total_nva_ms": 0,
+    "total_elapsed_ms": 40500,
+    "per_step": [
+      {
+        "step_id": "d06d0561-6fc2-4145-b1d0-e09c400b4182",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "f8236ca6-82b0-4c87-a1e0-87b45e102989",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "a2f8f714-4e37-4d16-9d74-3dfe573c8999",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "3067304e-1d04-4cf2-8952-af21f4a87a19",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "61b90d58-3d66-4a7f-abf9-a6d5cd29a629",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "6905e764-996f-4b34-bfe8-2c160b6a8a10",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "9bf252aa-7240-43b2-abb5-58f6e7b2fde6",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "532b14bb-4abf-4a4f-babe-8502520a1bec",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "096db496-6988-444f-aa9b-0afc44964092",
+        "ratio": 1.0
+      }
+    ]
+  },
+  "roi": {
+    "currency": "EUR",
+    "needs_input": true,
+    "inputs_used": {
+      "loaded_cost_per_hour": null,
+      "realism_factors": {
+        "conservative": 0.5,
+        "expected": 0.7,
+        "optimistic": 0.9
+      },
+      "automatable_fraction": 0.7,
+      "annual_volume": null,
+      "automation_cost": null,
+      "amortization_years": 3.0
+    },
+    "candidates": [
+      {
+        "segment_signature": "e39f70684599",
+        "label": "chrome \u2014 Incident: Save record",
+        "instance_count": 3,
+        "mean_elapsed_ms": 6600,
+        "automatable_fraction": 0.7,
+        "annual_volume": 3.0,
+        "volume_basis": "observed",
+        "automation_cost": null,
+        "amortization_years": 3.0,
+        "bands": {
+          "conservative": {
+            "realism_factor": 0.5,
+            "saved_ms_per_instance": 2310,
+            "saved_hours_per_year": 0.0,
+            "gross_annual": null,
+            "net_annual": null,
+            "payback_months": null
+          },
+          "expected": {
+            "realism_factor": 0.7,
+            "saved_ms_per_instance": 3234,
+            "saved_hours_per_year": 0.0,
+            "gross_annual": null,
+            "net_annual": null,
+            "payback_months": null
+          },
+          "optimistic": {
+            "realism_factor": 0.9,
+            "saved_ms_per_instance": 4158,
+            "saved_hours_per_year": 0.0,
+            "gross_annual": null,
+            "net_annual": null,
+            "payback_months": null
+          }
+        },
+        "expected_saved_hours_per_year": 0.0,
+        "expected_net_annual": null,
+        "expected_payback_months": null,
+        "needs_input": true
+      }
+    ],
+    "totals": {
+      "saved_hours_per_year": 0.0,
+      "net_annual": null,
+      "gross_annual": null,
+      "negative_net_count": 0,
+      "suppressed_low_confidence_count": 0,
+      "confidence_floor": 0.5
+    }
+  }
+}

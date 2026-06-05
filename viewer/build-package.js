@@ -38,6 +38,10 @@ const IGNORE = [
   /^[\\/]python[\\/]/,
   /^[\\/]normalization$/,
   /^[\\/]normalization[\\/]/,
+  // Ollama bundle is added as an extraResource (below), not bundled into
+  // the asar — keeps it on disk so ollama.exe can be spawned at runtime.
+  /^[\\/]ollama$/,
+  /^[\\/]ollama[\\/]/,
   /^[\\/]test-out([\\/]|$)/,
   /^[\\/]node_modules[\\/][^\\/]+[\\/]test([\\/]|$)/,
   /^[\\/]node_modules[\\/][^\\/]+[\\/]tests([\\/]|$)/,
@@ -128,6 +132,12 @@ function stripLocales(appDir) {
     icon: path.join(PROJECT_DIR, "..", "shared", "tracker-icon.ico"),
     extraResource: [
       path.join(PROJECT_DIR, "python"),
+      /* PDT-1.0-SPEC §3.2 / ADR-0028: bundled Ollama + model so the AI
+         Naming Layer works on machines where Ollama isn't installed. The
+         viewer/ollama-launcher.js spawns ollama.exe from
+         process.resourcesPath/ollama/bin/ at app start; the embedded
+         Python's PDT_OLLAMA_URL points at our localhost port. */
+      path.join(PROJECT_DIR, "ollama"),
       path.join(PROJECT_DIR, "..", "normalization"),
       /* Shared recognition table (ADR-0011): both recognition.js (in the
          asar) and normalization/recognition.py read shared/recognition-

@@ -489,6 +489,9 @@ async function loadSessionIntoView(folder) {
   $("#session-empty").style.display = "none";
   $("#session-loaded").style.display = "";
   $("#btn-normalize").disabled = false;
+  // PDT-1.0-SPEC §4.1.1: reveal the Cockpit/Workshop toggle now that a session is loaded.
+  const _modeToggle = document.getElementById("session-mode-toggle");
+  if (_modeToggle) _modeToggle.hidden = false;
   /* B1: a worker-given manifest label (set in the capture post-session
      summary) names the Recents entry; else fall back to engagement. */
   const _m = State.getSession().manifest || {};
@@ -563,6 +566,11 @@ async function loadSessionIntoView(folder) {
   // Phase F: apply project-level knowledge to the freshly-loaded session.
   applyProjectDenylist();
   maybeApplyStepTemplate();
+  // PDT-1.0-SPEC §4.1.1: restore the persisted session mode and render the
+  // Cockpit (default) or the Workshop level the user last looked at.
+  if (typeof window !== "undefined" && typeof window._pdtApplySessionMode === "function") {
+    try { window._pdtApplySessionMode(); } catch (_) {}
+  }
 }
 
 /* ===== Phase F: project knowledge applied on session load ===== */

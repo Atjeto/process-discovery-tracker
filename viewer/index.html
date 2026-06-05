@@ -12,6 +12,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
   document.documentElement.setAttribute("data-theme", "dark"); } catch (e) {}
 </script>
 <link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="cockpit.css" />
+<link rel="stylesheet" href="glance.css" />
 <link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/diagram-js.css" />
 <link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/bpmn-js.css" />
 <link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/bpmn-font/css/bpmn.css" />
@@ -29,10 +31,23 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     </div>
     <nav class="tabs">
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
-      <button class="tab" data-view="aggregate"><span class="kbd">2</span> Compare Sessions</button>
-      <button class="tab" data-view="canonical"><span class="kbd">3</span> Process Template</button>
-      <button class="tab" data-view="vocabularies"><span class="kbd">4</span> App Library</button>
+      <button class="tab" data-view="engagement"><span class="kbd">2</span> Engagement</button>
+      <button class="tab" data-view="aggregate"><span class="kbd">3</span> Compare Sessions</button>
+      <button class="tab" data-view="canonical"><span class="kbd">4</span> Process Template</button>
+      <button class="tab" data-view="vocabularies"><span class="kbd">5</span> App Library</button>
     </nav>
+    <!-- PDT-1.0-SPEC §4.1.1: session contextual mode toggle. Cockpit (default)
+         is the summary-first review surface; Workshop restores the existing
+         5-tab depth; Glance is the worker's timeline-as-story view (§4.1.2).
+         Hidden until a session is loaded. -->
+    <div class="session-mode-toggle" id="session-mode-toggle" hidden>
+      <button type="button" class="mode-btn" data-mode="glance"
+              title="Glance — worker's chronological story view">Glance</button>
+      <button type="button" class="mode-btn active" data-mode="cockpit"
+              title="Cockpit — summary-first review (default)">Cockpit</button>
+      <button type="button" class="mode-btn" data-mode="workshop"
+              title="Workshop — the existing 5-tab analyst depth">Workshop</button>
+    </div>
     <div class="topbar-meta">
       <div class="project-menu" id="recent-menu">
         <button class="project-btn" id="btn-recent-menu" title="Open a recent session or project">
@@ -211,6 +226,20 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- Session summary: post-analysis orientation panel (Phase A), promoted
              below the view-mode bar so the level switcher leads (clutter pass). -->
         <details class="session-summary" id="session-summary" style="display:none"></details>
+
+        <!-- ========= COCKPIT view (PDT-1.0-SPEC §4.2) =========
+             Default mode for a loaded session. Summary-first, single column,
+             read-like-a-memo. Renders the headline numbers, AI-detected process
+             candidates (filtered by ADR-0016 confidence floor), and "what stood
+             out" — at a glance. The 5-tab Workshop depth is one click away via
+             the topbar mode toggle. -->
+        <div class="session-layout-cockpit" id="session-layout-cockpit"></div>
+
+        <!-- ========= GLANCE view (PDT-1.0-SPEC §4.1.2) =========
+             Worker's timeline-as-story view. Chronological list of step bands
+             with AI labels overlaid and one-click corrections. Corrections feed
+             the disagreement-as-feedback loop (ADR-0029 §4.3). -->
+        <div class="session-layout-glance" id="session-layout-glance" style="display:none"></div>
 
         <!-- ========= FLOW view (full-width timeline on top, video+annotations below) ========= -->
         <div class="session-layout" id="session-layout-flow">
@@ -502,6 +531,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     </section>
 
     <!-- ========= Compare Sessions view ========= -->
+    <!-- ========= ENGAGEMENT view (PDT-1.0-SPEC §5.3) =========
+         Multi-session workspace: aggregated Process Backlog, headline
+         numbers across the engagement, per-row PDD export. -->
+    <section class="view" id="view-engagement"></section>
+
     <section class="view" id="view-aggregate">
 
       <div class="empty-state" id="aggregate-empty">

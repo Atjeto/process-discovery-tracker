@@ -1,0 +1,400 @@
+{
+  "meta": {
+    "heuristic_version": 2,
+    "generated_at": "2026-06-05T11:47:32.785257+00:00",
+    "session_id": "demo-alice-20260601-0900",
+    "step_count": 9,
+    "provisional": true
+  },
+  "waste_classification": [
+    {
+      "step_id": "1c74ce99-dbba-4a72-9fec-3890d2a167b7",
+      "name": "Incident: Save record \u2014 Server down \u2014 DB host",
+      "process_label": "Incident: Save record",
+      "elapsed_ms": 6600,
+      "va_ms": 6600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "9015ff69-9858-40f5-b422-efc988d13d65",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Server down \u2014 DB host",
+      "process_label": "Incident Tracker.xlsx: Save workbook",
+      "elapsed_ms": 3300,
+      "va_ms": 3300,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "4f2dbca8-c11c-470b-a351-763206d43f39",
+      "name": "RE: Send \u2014 INC0010842 Server down \u2014 DB host",
+      "process_label": "RE: Send",
+      "elapsed_ms": 3600,
+      "va_ms": 3600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "05217d17-efd8-4284-8a7c-fdd54a4c55f1",
+      "name": "Incident: Save record \u2014 Login failure on portal",
+      "process_label": "Incident: Save record",
+      "elapsed_ms": 6600,
+      "va_ms": 6600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "07f6f528-0d8a-406b-815b-4ea3ec31ad79",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Login failure on portal",
+      "process_label": "Incident Tracker.xlsx: Save workbook",
+      "elapsed_ms": 3300,
+      "va_ms": 3300,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "64044064-4f9c-4958-abe3-2ad2d5863fea",
+      "name": "RE: Send \u2014 INC0010843 Login failure on portal",
+      "process_label": "RE: Send",
+      "elapsed_ms": 3600,
+      "va_ms": 3600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "d389a0b8-1cb6-459f-9a0c-929c0d76ebd3",
+      "name": "Incident: Save record \u2014 Printer offline floor 3",
+      "process_label": "Incident: Save record",
+      "elapsed_ms": 6600,
+      "va_ms": 6600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "8b03111c-ec8c-4e47-8618-d49af55e8cdb",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Printer offline floor 3",
+      "process_label": "Incident Tracker.xlsx: Save workbook",
+      "elapsed_ms": 3300,
+      "va_ms": 3300,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    },
+    {
+      "step_id": "7834c4f2-2a82-4616-982e-b0f9453bbbd4",
+      "name": "RE: Send \u2014 INC0010844 Printer offline floor 3",
+      "process_label": "RE: Send",
+      "elapsed_ms": 3600,
+      "va_ms": 3600,
+      "bnva_ms": 0,
+      "nva_ms": 0,
+      "waste_types": [],
+      "cross_app_transfers": 0
+    }
+  ],
+  "time_study": [
+    {
+      "step_id": "1c74ce99-dbba-4a72-9fec-3890d2a167b7",
+      "canonical_step_id": null,
+      "name": "Incident: Save record",
+      "instances": 3,
+      "cycle_ms": {
+        "mean": 6600,
+        "min": 6600,
+        "max": 6600,
+        "stdev": 0,
+        "p25": 6600,
+        "p50": 6600,
+        "p75": 6600,
+        "p95": 6600
+      },
+      "active_ms": 19800,
+      "waiting_ms": 0,
+      "switching_ms": 0
+    },
+    {
+      "step_id": "4f2dbca8-c11c-470b-a351-763206d43f39",
+      "canonical_step_id": null,
+      "name": "RE: Send",
+      "instances": 3,
+      "cycle_ms": {
+        "mean": 3600,
+        "min": 3600,
+        "max": 3600,
+        "stdev": 0,
+        "p25": 3600,
+        "p50": 3600,
+        "p75": 3600,
+        "p95": 3600
+      },
+      "active_ms": 10800,
+      "waiting_ms": 0,
+      "switching_ms": 0
+    },
+    {
+      "step_id": "9015ff69-9858-40f5-b422-efc988d13d65",
+      "canonical_step_id": null,
+      "name": "Incident Tracker.xlsx: Save workbook",
+      "instances": 3,
+      "cycle_ms": {
+        "mean": 3300,
+        "min": 3300,
+        "max": 3300,
+        "stdev": 0,
+        "p25": 3300,
+        "p50": 3300,
+        "p75": 3300,
+        "p95": 3300
+      },
+      "active_ms": 9900,
+      "waiting_ms": 0,
+      "switching_ms": 0
+    }
+  ],
+  "segments": [
+    {
+      "segment_id": "e39f70684599:2ab8282c-2538-47ab-8d22-c36a327e05d6:2026-06-01T09:00:00.850000+00:00",
+      "signature": "e39f70684599",
+      "app": "chrome.exe",
+      "case_id": "2ab8282c-2538-47ab-8d22-c36a327e05d6",
+      "start": "2026-06-01T09:00:00.850000Z",
+      "end": "2026-06-01T09:00:07.450000Z",
+      "elapsed_ms": 6600,
+      "interaction_count": 11,
+      "step_ids": [
+        "1c74ce99-dbba-4a72-9fec-3890d2a167b7"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "label": "chrome \u2014 Incident: Save record"
+    },
+    {
+      "segment_id": "e39f70684599:45cccc1c-51d1-4edc-aada-6be47a34b182:2026-06-01T09:00:22.400000+00:00",
+      "signature": "e39f70684599",
+      "app": "chrome.exe",
+      "case_id": "45cccc1c-51d1-4edc-aada-6be47a34b182",
+      "start": "2026-06-01T09:00:22.400000Z",
+      "end": "2026-06-01T09:00:29Z",
+      "elapsed_ms": 6600,
+      "interaction_count": 11,
+      "step_ids": [
+        "05217d17-efd8-4284-8a7c-fdd54a4c55f1"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "label": "chrome \u2014 Incident: Save record"
+    },
+    {
+      "segment_id": "e39f70684599:bb14e752-a11f-4b78-bfc2-a1bfc842f392:2026-06-01T09:00:43.950000+00:00",
+      "signature": "e39f70684599",
+      "app": "chrome.exe",
+      "case_id": "bb14e752-a11f-4b78-bfc2-a1bfc842f392",
+      "start": "2026-06-01T09:00:43.950000Z",
+      "end": "2026-06-01T09:00:50.550000Z",
+      "elapsed_ms": 6600,
+      "interaction_count": 11,
+      "step_ids": [
+        "d389a0b8-1cb6-459f-9a0c-929c0d76ebd3"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "label": "chrome \u2014 Incident: Save record"
+    }
+  ],
+  "automation_candidates": [
+    {
+      "segment_signature": "e39f70684599",
+      "label": "chrome \u2014 Incident: Save record",
+      "app": "chrome.exe",
+      "apps": [
+        "chrome.exe"
+      ],
+      "step_labels": [
+        "Incident: Save record"
+      ],
+      "case_ids": [
+        "2ab8282c-2538-47ab-8d22-c36a327e05d6",
+        "45cccc1c-51d1-4edc-aada-6be47a34b182",
+        "bb14e752-a11f-4b78-bfc2-a1bfc842f392"
+      ],
+      "instance_count": 3,
+      "total_elapsed_ms": 19800,
+      "mean_elapsed_ms": 6600,
+      "instances": [
+        {
+          "segment_id": "e39f70684599:2ab8282c-2538-47ab-8d22-c36a327e05d6:2026-06-01T09:00:00.850000+00:00",
+          "case_id": "2ab8282c-2538-47ab-8d22-c36a327e05d6",
+          "start": "2026-06-01T09:00:00.850000Z",
+          "end": "2026-06-01T09:00:07.450000Z",
+          "elapsed_ms": 6600,
+          "interaction_count": 11,
+          "step_ids": [
+            "1c74ce99-dbba-4a72-9fec-3890d2a167b7"
+          ]
+        },
+        {
+          "segment_id": "e39f70684599:45cccc1c-51d1-4edc-aada-6be47a34b182:2026-06-01T09:00:22.400000+00:00",
+          "case_id": "45cccc1c-51d1-4edc-aada-6be47a34b182",
+          "start": "2026-06-01T09:00:22.400000Z",
+          "end": "2026-06-01T09:00:29Z",
+          "elapsed_ms": 6600,
+          "interaction_count": 11,
+          "step_ids": [
+            "05217d17-efd8-4284-8a7c-fdd54a4c55f1"
+          ]
+        },
+        {
+          "segment_id": "e39f70684599:bb14e752-a11f-4b78-bfc2-a1bfc842f392:2026-06-01T09:00:43.950000+00:00",
+          "case_id": "bb14e752-a11f-4b78-bfc2-a1bfc842f392",
+          "start": "2026-06-01T09:00:43.950000Z",
+          "end": "2026-06-01T09:00:50.550000Z",
+          "elapsed_ms": 6600,
+          "interaction_count": 11,
+          "step_ids": [
+            "d389a0b8-1cb6-459f-9a0c-929c0d76ebd3"
+          ]
+        }
+      ],
+      "scores": {
+        "confidence": 1.0,
+        "volume": 19800
+      },
+      "automatable_fraction": 0.7,
+      "rank_score": 13860.0,
+      "rank": 1,
+      "estimated_savings_ms": null,
+      "automation_confirmed": null,
+      "data_sufficiency": "multi_instance"
+    }
+  ],
+  "efficiency": {
+    "process_efficiency_ratio": 1.0,
+    "total_va_ms": 40500,
+    "total_bnva_ms": 0,
+    "total_nva_ms": 0,
+    "total_elapsed_ms": 40500,
+    "per_step": [
+      {
+        "step_id": "1c74ce99-dbba-4a72-9fec-3890d2a167b7",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "9015ff69-9858-40f5-b422-efc988d13d65",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "4f2dbca8-c11c-470b-a351-763206d43f39",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "05217d17-efd8-4284-8a7c-fdd54a4c55f1",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "07f6f528-0d8a-406b-815b-4ea3ec31ad79",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "64044064-4f9c-4958-abe3-2ad2d5863fea",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "d389a0b8-1cb6-459f-9a0c-929c0d76ebd3",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "8b03111c-ec8c-4e47-8618-d49af55e8cdb",
+        "ratio": 1.0
+      },
+      {
+        "step_id": "7834c4f2-2a82-4616-982e-b0f9453bbbd4",
+        "ratio": 1.0
+      }
+    ]
+  },
+  "roi": {
+    "currency": "EUR",
+    "needs_input": true,
+    "inputs_used": {
+      "loaded_cost_per_hour": null,
+      "realism_factors": {
+        "conservative": 0.5,
+        "expected": 0.7,
+        "optimistic": 0.9
+      },
+      "automatable_fraction": 0.7,
+      "annual_volume": null,
+      "automation_cost": null,
+      "amortization_years": 3.0
+    },
+    "candidates": [
+      {
+        "segment_signature": "e39f70684599",
+        "label": "chrome \u2014 Incident: Save record",
+        "instance_count": 3,
+        "mean_elapsed_ms": 6600,
+        "automatable_fraction": 0.7,
+        "annual_volume": 3.0,
+        "volume_basis": "observed",
+        "automation_cost": null,
+        "amortization_years": 3.0,
+        "bands": {
+          "conservative": {
+            "realism_factor": 0.5,
+            "saved_ms_per_instance": 2310,
+            "saved_hours_per_year": 0.0,
+            "gross_annual": null,
+            "net_annual": null,
+            "payback_months": null
+          },
+          "expected": {
+            "realism_factor": 0.7,
+            "saved_ms_per_instance": 3234,
+            "saved_hours_per_year": 0.0,
+            "gross_annual": null,
+            "net_annual": null,
+            "payback_months": null
+          },
+          "optimistic": {
+            "realism_factor": 0.9,
+            "saved_ms_per_instance": 4158,
+            "saved_hours_per_year": 0.0,
+            "gross_annual": null,
+            "net_annual": null,
+            "payback_months": null
+          }
+        },
+        "expected_saved_hours_per_year": 0.0,
+        "expected_net_annual": null,
+        "expected_payback_months": null,
+        "needs_input": true
+      }
+    ],
+    "totals": {
+      "saved_hours_per_year": 0.0,
+      "net_annual": null,
+      "gross_annual": null,
+      "negative_net_count": 0,
+      "suppressed_low_confidence_count": 0,
+      "confidence_floor": 0.5
+    }
+  }
+}

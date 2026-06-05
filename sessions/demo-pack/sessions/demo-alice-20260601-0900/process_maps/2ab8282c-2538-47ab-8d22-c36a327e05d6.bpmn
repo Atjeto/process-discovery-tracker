@@ -1,0 +1,62 @@
+<?xml version='1.0' encoding='utf-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://process-discovery-tracker/bpmn">
+  <bpmn:process id="Process_1" isExecutable="false">
+    <bpmn:task id="node_0_Text_entry_--_EXCEL_EXE" name="Text entry -- EXCEL.EXE">
+      <bpmn:incoming>flow_0</bpmn:incoming>
+      <bpmn:outgoing>flow_3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:startEvent id="node_1_start" name="start">
+      <bpmn:outgoing>flow_2</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="node_2_Text_entry_--_OUTLOOK_EXE" name="Text entry -- OUTLOOK.EXE">
+      <bpmn:incoming>flow_3</bpmn:incoming>
+      <bpmn:outgoing>flow_1</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="node_3_end" name="end">
+      <bpmn:incoming>flow_1</bpmn:incoming>
+    </bpmn:task>
+    <bpmn:task id="node_4_Text_entry_--_chrome_exe" name="Text entry -- chrome.exe">
+      <bpmn:incoming>flow_2</bpmn:incoming>
+      <bpmn:outgoing>flow_0</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="flow_0" sourceRef="node_4_Text_entry_--_chrome_exe" targetRef="node_0_Text_entry_--_EXCEL_EXE" />
+    <bpmn:sequenceFlow id="flow_1" sourceRef="node_2_Text_entry_--_OUTLOOK_EXE" targetRef="node_3_end" />
+    <bpmn:sequenceFlow id="flow_2" sourceRef="node_1_start" targetRef="node_4_Text_entry_--_chrome_exe" />
+    <bpmn:sequenceFlow id="flow_3" sourceRef="node_0_Text_entry_--_EXCEL_EXE" targetRef="node_2_Text_entry_--_OUTLOOK_EXE" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="Shape_node_0_Text_entry_--_EXCEL_EXE" bpmnElement="node_0_Text_entry_--_EXCEL_EXE">
+        <dc:Bounds x="356" y="165" width="110" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_1_start" bpmnElement="node_1_start">
+        <dc:Bounds x="50" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_2_Text_entry_--_OUTLOOK_EXE" bpmnElement="node_2_Text_entry_--_OUTLOOK_EXE">
+        <dc:Bounds x="546" y="165" width="110" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_3_end" bpmnElement="node_3_end">
+        <dc:Bounds x="736" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_4_Text_entry_--_chrome_exe" bpmnElement="node_4_Text_entry_--_chrome_exe">
+        <dc:Bounds x="166" y="165" width="110" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_flow_0" bpmnElement="flow_0">
+        <di:waypoint x="276" y="200" />
+        <di:waypoint x="356" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_1" bpmnElement="flow_1">
+        <di:waypoint x="656" y="200" />
+        <di:waypoint x="736" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_2" bpmnElement="flow_2">
+        <di:waypoint x="86" y="200" />
+        <di:waypoint x="166" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_3" bpmnElement="flow_3">
+        <di:waypoint x="466" y="200" />
+        <di:waypoint x="546" y="200" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

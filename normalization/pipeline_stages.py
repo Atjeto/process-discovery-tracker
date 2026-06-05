@@ -485,6 +485,75 @@ def _run_stats(
     return summary, stats_path
 
 
+def _run_pattern_layer(
+    session_folder: Path,
+    events: list[dict[str, Any]],
+    existing_anno: dict,
+) -> dict[str, Any]:
+    """Pattern Layer (ADR-0029 / PDT-1.0-SPEC §3.1). Classical sequence-mining
+    + clustering + anomaly + marker-free case-inference detectors over the
+    session's events + steps + annotations, written to a new
+    ``patterns.json`` derived blob. Then ADR-0028 Naming Layer is invoked
+    against the Pattern Layer's activity clusters; named clusters are
+    appended to patterns.json as ``named_clusters[]``. Both stages are
+    best-effort: a detector exception never blocks the pipeline."""
+    result: dict[str, Any] = {}
+    try:
+        from patterns import detect_patterns
+        result = detect_patterns(
+            events=events,
+            steps=existing_anno.get("steps") or [],
+            existing_anno=existing_anno,
+        )
+    except Exception as e:
+        print(f"[normalize] WARNING: pattern layer failed: {e}")
+        result = {}
+
+    # ADR-0028: Naming Layer — turn activity clusters into business-language
+    # names. Best-effort: Ollama unreachable → NullBackend → INSUFFICIENT_SIGNAL
+    # → the Cockpit falls back to the cluster's heuristic process_label.
+    # PDT-1.0-SPEC §4.3: feed annotations.disagreements[] so user-corrected
+    # names persist and previously-rejected names are forbidden.
+    try:
+        clusters = result.get("activity_clusters") or []
+        if clusters:
+            from naming import name_activity_clusters, get_default_backend
+            backend = get_default_backend()
+            disagreements = existing_anno.get("disagreements") or []
+            names = name_activity_clusters(
+                clusters,
+                backend=backend,
+                disagreements=disagreements,
+            )
+            result["named_clusters"] = [n.to_dict() for n in names]
+            named_count = sum(1 for n in names if not n.insufficient_signal)
+            user_overrides = sum(1 for n in names if "user_correction" in n.provenance)
+            print(
+                f"[normalize] naming: {named_count}/{len(names)} clusters "
+                f"named (backend={type(backend).__name__}, "
+                f"user_corrections={user_overrides})"
+            )
+    except Exception as e:
+        print(f"[normalize] WARNING: naming layer failed: {e}")
+        # Preserve patterns.json shape even on naming failure.
+        result.setdefault("named_clusters", [])
+
+    try:
+        patterns_path = session_folder / "patterns.json"
+        with open(patterns_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+        print(
+            f"[normalize] wrote {patterns_path} "
+            f"(motifs={len(result.get('motifs') or [])}, "
+            f"clusters={len(result.get('activity_clusters') or [])}, "
+            f"named={len(result.get('named_clusters') or [])}, "
+            f"anomalies={len(result.get('anomalies') or [])})"
+        )
+    except Exception as e:
+        print(f"[normalize] WARNING: patterns.json write failed: {e}")
+    return result
+
+
 def _run_analysis(
     session_folder: Path,
     classified: list[dict[str, Any]],

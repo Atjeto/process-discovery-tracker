@@ -35,6 +35,10 @@ function resolvePython() {
   return "python";
 }
 
+// PDT-1.0-SPEC §5.3: exposed for the engagement IPC handlers so they can
+// shell out the same way the main pipeline runner does.
+function resolvePythonForExternal() { return resolvePython(); }
+
 function resolveNormalizeScript() {
   /* In dev: ../normalization/normalize.py. In packaged build: shipped
      next to the executable under resources/. */
@@ -220,5 +224,5 @@ function runDiscoverVocab(payload) {
 
 module.exports = {
   runNormalize, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
-  runDiscoverVocab, resolveDiscoverScript,
+  runDiscoverVocab, resolveDiscoverScript, resolvePythonForExternal,
 };

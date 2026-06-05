@@ -1,0 +1,440 @@
+{
+  "phases": [],
+  "annotations": [],
+  "notes": [],
+  "marker_edits": [],
+  "drift_markers": [],
+  "reference_maps": [],
+  "version": 1,
+  "session_id": "demo-bob-20260602-1000",
+  "pii_masking": {
+    "ruleset_id": "default",
+    "ruleset_version": 1,
+    "enabled": true,
+    "applied": true,
+    "scanned_interactions": 63,
+    "masked_value_count": 0,
+    "rules_fired": {},
+    "custom_rule_count": 0
+  },
+  "process_exclusions": {
+    "excluded_count": 0,
+    "by_process": {},
+    "process_names": [
+      "process discovery tracker",
+      "process discovery viewer"
+    ],
+    "window_substrings": []
+  },
+  "marker_suggestions": [],
+  "marker_suggestions_dismissed": [],
+  "anchor_candidates": [
+    {
+      "candidate_id": "69dcf257-8978-4a8f-8f60-b8a30e31f6a5",
+      "signature": "6c6e725ce390",
+      "anchor_config": {
+        "field": "automation_id",
+        "equals": "cell_b2",
+        "case_label_from": "value"
+      },
+      "display": {
+        "field_property": "automation_id",
+        "field_value": "cell_b2",
+        "window_title_hint": "Incident Tracker.xlsx - Excel",
+        "sample_values": [
+          "INC0010843",
+          "INC0010844",
+          "INC0010845"
+        ]
+      },
+      "metrics": {
+        "fire_count": 3,
+        "distinct_labels": 3,
+        "case_count": 3,
+        "mean_case_interactions": 17.0,
+        "case_size_cv": 0.333,
+        "coverage": 0.81
+      },
+      "score": 0.774,
+      "created_at": "2026-06-05T11:47:35.752766Z",
+      "heuristic_version": 1
+    },
+    {
+      "candidate_id": "9eb2104c-4b33-4883-bbe6-36fdac0a637a",
+      "signature": "273f113ecaa8",
+      "anchor_config": {
+        "field": "automation_id",
+        "equals": "cell_c2",
+        "case_label_from": "value"
+      },
+      "display": {
+        "field_property": "automation_id",
+        "field_value": "cell_c2",
+        "window_title_hint": "Incident Tracker.xlsx - Excel",
+        "sample_values": [
+          "Login failure on portal",
+          "Printer offline floor 3",
+          "VPN dropping during meetings"
+        ]
+      },
+      "metrics": {
+        "fire_count": 3,
+        "distinct_labels": 3,
+        "case_count": 3,
+        "mean_case_interactions": 16.33,
+        "case_size_cv": 0.404,
+        "coverage": 0.778
+      },
+      "score": 0.74,
+      "created_at": "2026-06-05T11:47:35.752766Z",
+      "heuristic_version": 1
+    }
+  ],
+  "anchor_candidates_dismissed": [],
+  "steps": [
+    {
+      "step_id": "861371b3-1b42-4ff9-babf-b4eb93f4f9c3",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+      "name": "Incident: Save record \u2014 Login failure on portal",
+      "description": "Clicked Open record. Entered \"Login failure on portal\" into Short description. Selected \"Medium\" in Priority. Selected \"Access\" in Category. Selected \"Tier 1\" in Assignment group. Clicked Save record.",
+      "time_range": {
+        "start": "2026-06-02T10:00:00.850Z",
+        "end": "2026-06-02T10:00:07.450Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "3b53105088e3431e821d72f75bb87d46",
+          "4b6c023e71d54c5893d2e4e547025293",
+          "8b6b0ed84ff2443cbbe3e45b76626eba",
+          "532a15ab1c9843589d269fdd2b988f08",
+          "98e8b5bc78e342c2a64556bb941d959d",
+          "15c54e87210f4d9cb318c247ba9f5af4",
+          "4196541da3b44aae9262fa3ff42ae215",
+          "0608365ae86848c6bd4d78474f367da8",
+          "5f17cb0feb1845d09311c7370fbce8a0",
+          "6001c4b33feb41a5a82a7cd360e09476",
+          "aec4e47a07ee4993a001aceeca967072"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 11 interactions in Incident, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "short_desc",
+        "screen": "incident",
+        "app": "chrome"
+      },
+      "process_label": "Incident: Save record"
+    },
+    {
+      "step_id": "76092288-9c5f-4f7d-9e1d-9816bfd3d24a",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Login failure on portal",
+      "description": "Entered \"INC0010843\" into Cell B2. Entered \"Login failure on portal\" into Cell C2. Clicked Save workbook.",
+      "time_range": {
+        "start": "2026-06-02T10:00:09.250Z",
+        "end": "2026-06-02T10:00:12.550Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "0955118ee2024527ac2387532a866d39",
+          "227ae428a4b44bf7a91956353d656f26",
+          "1801d6216f45464e8e8603bbe1c68728",
+          "294396f52ec54615a87ac020520ca6b1",
+          "d6a307b573a64519b0dccb893b801840"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in Incident Tracker.xlsx, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cell_b2",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "process_label": "Incident Tracker.xlsx: Save workbook"
+    },
+    {
+      "step_id": "4d0162c9-df34-4dff-8fe9-b6577bce7d4e",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+      "name": "RE: Send \u2014 INC0010843 Login failure on portal",
+      "description": "Entered \"tier1@example.com\" into To. Entered \"INC0010843 Login failure on portal\" into Subject. Clicked Send.",
+      "time_range": {
+        "start": "2026-06-02T10:00:14.150Z",
+        "end": "2026-06-02T10:00:17.750Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "520ec17a1f804690a12b393fc86d3b20",
+          "80a43595ac82415b814b2342f0b9cdca",
+          "54964e057b1e4d589cfda1ca96dbd3dd",
+          "158a4c037baf4bccac0c18e1367dd4f9",
+          "6152cfb7c00b47f2bb5ca7307b46f107"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in RE, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "to_field",
+        "screen": "explorer",
+        "app": "OUTLOOK"
+      },
+      "process_label": "RE: Send"
+    },
+    {
+      "step_id": "78d06393-075f-4dbf-89d6-dad20c1461cb",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "e475d231-070f-436c-9250-10d0ba5c7869",
+      "name": "Incident: Save record \u2014 Printer offline floor 3",
+      "description": "Clicked Open record. Entered \"Printer offline floor 3\" into Short description. Selected \"Low\" in Priority. Selected \"Equipment\" in Category. Selected \"Facilities\" in Assignment group. Clicked Save record.",
+      "time_range": {
+        "start": "2026-06-02T10:00:22.400Z",
+        "end": "2026-06-02T10:00:29.000Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "90e95a2f626945fbb7874a909c2d14de",
+          "59ea52fbb95844f9b17b1279ed5b2824",
+          "adaaa4a7827a421088640d2ea18cc862",
+          "f24cc5b41267464c85696af57b79f272",
+          "5abc49639d3044d08fe9521f750098e9",
+          "28c64dcd14124e9eac59fe91f84a5d2a",
+          "a0f283bca01d4e7f8e257286df3b7b16",
+          "b209a100922642088db747fa7a68c734",
+          "4bfd63188e1f4bd389ac35bef20893cf",
+          "47aa1c8cbc4449fc829a9d89c5d24dc9",
+          "338e6f85af8a4a0a81f5330aa33f5f7f"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 11 interactions in Incident, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "short_desc",
+        "screen": "incident",
+        "app": "chrome"
+      },
+      "process_label": "Incident: Save record"
+    },
+    {
+      "step_id": "cfeed4df-7bc3-46e9-8e1a-bb8efacba5ef",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "e475d231-070f-436c-9250-10d0ba5c7869",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Printer offline floor 3",
+      "description": "Entered \"INC0010844\" into Cell B2. Entered \"Printer offline floor 3\" into Cell C2. Clicked Save workbook.",
+      "time_range": {
+        "start": "2026-06-02T10:00:30.800Z",
+        "end": "2026-06-02T10:00:34.100Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "d6de16dfa4404c3aad656ede9b0abf08",
+          "51639578416c457498cd874751ee0294",
+          "e1df03c032bc43ef8694beda5aa724a3",
+          "05059f89226e454b9ac3262e59b00214",
+          "49d2bf80959b4f9cb8cb46051cad50c2"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in Incident Tracker.xlsx, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cell_b2",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "process_label": "Incident Tracker.xlsx: Save workbook"
+    },
+    {
+      "step_id": "4bb9c08e-d925-40dc-af30-e844e63e0013",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "e475d231-070f-436c-9250-10d0ba5c7869",
+      "name": "RE: Send \u2014 INC0010844 Printer offline floor 3",
+      "description": "Entered \"facilities@example.com\" into To. Entered \"INC0010844 Printer offline floor 3\" into Subject. Clicked Send.",
+      "time_range": {
+        "start": "2026-06-02T10:00:35.700Z",
+        "end": "2026-06-02T10:00:39.300Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "7efbab8ae892419084acfbc0f6ff1678",
+          "8a3352dd21374bfe86a2410ffc65f3aa",
+          "4a3e416e5565404796384126261f57b5",
+          "2a5c91a2835b4f958270061a788d3e7e",
+          "4cf0ab6dd5224028b9227d8392586c55"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in RE, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "to_field",
+        "screen": "explorer",
+        "app": "OUTLOOK"
+      },
+      "process_label": "RE: Send"
+    },
+    {
+      "step_id": "318dd1bb-d6c7-4ca7-ba9e-73acee2cf11d",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+      "name": "Incident: Save record \u2014 VPN dropping during meetings",
+      "description": "Clicked Open record. Entered \"VPN dropping during meetings\" into Short description. Selected \"High\" in Priority. Selected \"Network\" in Category. Selected \"Tier 2\" in Assignment group. Clicked Save record.",
+      "time_range": {
+        "start": "2026-06-02T10:00:43.950Z",
+        "end": "2026-06-02T10:00:50.550Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "33c97ce3cc37493a8fe4b36171c89105",
+          "5959ba48ba81438b8dd8d9880a05eb68",
+          "14052ff3c2344d0f9e5be6e38ae7577b",
+          "6e3a277ecbf149dfa5bf87b65a639871",
+          "4b2824dbf2814c8ba10a2bd53a0adeb2",
+          "d8372894e9db4d9983357a975c171a1b",
+          "2d146515484e4257a67deb3b7d0c7afa",
+          "c82067b2ed7c476b95d15be0d5697ced",
+          "571ca73ec86c488382002b7f98379b33",
+          "d9e36849fe01465085b2c9373fd5d609",
+          "3ee3a5668a744103aea3d4a6cd782c0a"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 11 interactions in Incident, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "short_desc",
+        "screen": "incident",
+        "app": "chrome"
+      },
+      "process_label": "Incident: Save record"
+    },
+    {
+      "step_id": "fcbf96a0-a278-41dd-8fb3-2dd75d83ba65",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 VPN dropping during meetings",
+      "description": "Entered \"INC0010845\" into Cell B2. Entered \"VPN dropping during meetings\" into Cell C2. Clicked Save workbook.",
+      "time_range": {
+        "start": "2026-06-02T10:00:52.350Z",
+        "end": "2026-06-02T10:00:55.650Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "20db692cd8d04cf0be1b89b7500f44d7",
+          "f0d5b529d39c44918c97eaf775d08644",
+          "217e8585b05047639fc9427ae7ad082d",
+          "34d16057b70a4874a6b7130fa8699ece",
+          "b35a68c8f2204963bcf248f5fdea1268"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in Incident Tracker.xlsx, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cell_b2",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "process_label": "Incident Tracker.xlsx: Save workbook"
+    },
+    {
+      "step_id": "d85163f3-4f44-42cd-9cc3-2842c8338e0b",
+      "session_id": "demo-bob-20260602-1000",
+      "case_id": "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+      "name": "RE: Send \u2014 INC0010845 VPN dropping during meetings",
+      "description": "Entered \"tier2@example.com\" into To. Entered \"INC0010845 VPN dropping during meetings\" into Subject. Clicked Send.",
+      "time_range": {
+        "start": "2026-06-02T10:00:57.250Z",
+        "end": "2026-06-02T10:01:00.850Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "eed5395fce744f5ba53b50e12ae76c2f",
+          "567390b1ce4446d3b5f43b9efdaff6db",
+          "be4b10e5d1bb487d95663bb65cfeb29c",
+          "5e7b48a528e3478e81ec5ef1dcfba1db",
+          "56316fd2c5ea4f819e154f6e68aa585d"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in RE, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "to_field",
+        "screen": "explorer",
+        "app": "OUTLOOK"
+      },
+      "process_label": "RE: Send"
+    }
+  ],
+  "matched_against": null,
+  "last_modified": "2026-06-05T11:47:35.756766+00:00"
+}

@@ -1,0 +1,440 @@
+{
+  "phases": [],
+  "annotations": [],
+  "notes": [],
+  "marker_edits": [],
+  "drift_markers": [],
+  "reference_maps": [],
+  "version": 1,
+  "session_id": "demo-alice-20260601-0900",
+  "pii_masking": {
+    "ruleset_id": "default",
+    "ruleset_version": 1,
+    "enabled": true,
+    "applied": true,
+    "scanned_interactions": 63,
+    "masked_value_count": 0,
+    "rules_fired": {},
+    "custom_rule_count": 0
+  },
+  "process_exclusions": {
+    "excluded_count": 0,
+    "by_process": {},
+    "process_names": [
+      "process discovery tracker",
+      "process discovery viewer"
+    ],
+    "window_substrings": []
+  },
+  "marker_suggestions": [],
+  "marker_suggestions_dismissed": [],
+  "anchor_candidates": [
+    {
+      "candidate_id": "5bc8e0be-f3e9-4ba5-bdbb-b451fae58c32",
+      "signature": "6c6e725ce390",
+      "anchor_config": {
+        "field": "automation_id",
+        "equals": "cell_b2",
+        "case_label_from": "value"
+      },
+      "display": {
+        "field_property": "automation_id",
+        "field_value": "cell_b2",
+        "window_title_hint": "Incident Tracker.xlsx - Excel",
+        "sample_values": [
+          "INC0010842",
+          "INC0010843",
+          "INC0010844"
+        ]
+      },
+      "metrics": {
+        "fire_count": 3,
+        "distinct_labels": 3,
+        "case_count": 3,
+        "mean_case_interactions": 17.0,
+        "case_size_cv": 0.333,
+        "coverage": 0.81
+      },
+      "score": 0.774,
+      "created_at": "2026-06-05T11:47:21.347462Z",
+      "heuristic_version": 1
+    },
+    {
+      "candidate_id": "5bf129a8-574a-4450-b27e-1849c7d3bdec",
+      "signature": "273f113ecaa8",
+      "anchor_config": {
+        "field": "automation_id",
+        "equals": "cell_c2",
+        "case_label_from": "value"
+      },
+      "display": {
+        "field_property": "automation_id",
+        "field_value": "cell_c2",
+        "window_title_hint": "Incident Tracker.xlsx - Excel",
+        "sample_values": [
+          "Server down \u2014 DB host",
+          "Login failure on portal",
+          "Printer offline floor 3"
+        ]
+      },
+      "metrics": {
+        "fire_count": 3,
+        "distinct_labels": 3,
+        "case_count": 3,
+        "mean_case_interactions": 16.33,
+        "case_size_cv": 0.404,
+        "coverage": 0.778
+      },
+      "score": 0.74,
+      "created_at": "2026-06-05T11:47:21.347462Z",
+      "heuristic_version": 1
+    }
+  ],
+  "anchor_candidates_dismissed": [],
+  "steps": [
+    {
+      "step_id": "1c74ce99-dbba-4a72-9fec-3890d2a167b7",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "2ab8282c-2538-47ab-8d22-c36a327e05d6",
+      "name": "Incident: Save record \u2014 Server down \u2014 DB host",
+      "description": "Clicked Open record. Entered \"Server down \u2014 DB host\" into Short description. Selected \"High\" in Priority. Selected \"Hardware\" in Category. Selected \"Tier 2\" in Assignment group. Clicked Save record.",
+      "time_range": {
+        "start": "2026-06-01T09:00:00.850Z",
+        "end": "2026-06-01T09:00:07.450Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "c221153d5ff542f0a9ef607538b2c871",
+          "c4d1263bdb5742ab896a5cef2c1e7814",
+          "94d0433101594b97bebf64815737ecb1",
+          "2c2f7fe47cac4aedb79c78f89ddaa6e8",
+          "28d8bf7af9e34795810944922720865b",
+          "27d7025c603b4879b9577e8b5999a136",
+          "ea3cf1267a3744caa6619fe2b2c90665",
+          "c82c99bd12444706a7550503fcae6665",
+          "71d708e671b141f29bf1ca3c7ad82522",
+          "2d043bef0b524fb78201b370de6c8e28",
+          "7ca61103c35e4f1994c622eb218552b5"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 11 interactions in Incident, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "short_desc",
+        "screen": "incident",
+        "app": "chrome"
+      },
+      "process_label": "Incident: Save record"
+    },
+    {
+      "step_id": "9015ff69-9858-40f5-b422-efc988d13d65",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "2ab8282c-2538-47ab-8d22-c36a327e05d6",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Server down \u2014 DB host",
+      "description": "Entered \"INC0010842\" into Cell B2. Entered \"Server down \u2014 DB host\" into Cell C2. Clicked Save workbook.",
+      "time_range": {
+        "start": "2026-06-01T09:00:09.250Z",
+        "end": "2026-06-01T09:00:12.550Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "80bda20a62c042628a86384c626877a5",
+          "150943f1377642de800a9e2934cdb521",
+          "19c2b07103454ef5b94a01089b468908",
+          "4951fda72c7f41d7832659faf926b188",
+          "d8be2b43f538406cb40f97edaa20f2d8"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in Incident Tracker.xlsx, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cell_b2",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "process_label": "Incident Tracker.xlsx: Save workbook"
+    },
+    {
+      "step_id": "4f2dbca8-c11c-470b-a351-763206d43f39",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "2ab8282c-2538-47ab-8d22-c36a327e05d6",
+      "name": "RE: Send \u2014 INC0010842 Server down \u2014 DB host",
+      "description": "Entered \"tier2@example.com\" into To. Entered \"INC0010842 Server down \u2014 DB host\" into Subject. Clicked Send.",
+      "time_range": {
+        "start": "2026-06-01T09:00:14.150Z",
+        "end": "2026-06-01T09:00:17.750Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "2db71ae51b01482fb76c93b802d569d5",
+          "442ffdbba42f4acf83bb49d672f0f40f",
+          "06a208b15cf84e14a1770622cc2918ac",
+          "fec3e2d7d40a4fab92e1c44dca44506a",
+          "1479da9bfb4e4d53a8f60dbc5b1d515d"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in RE, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "to_field",
+        "screen": "explorer",
+        "app": "OUTLOOK"
+      },
+      "process_label": "RE: Send"
+    },
+    {
+      "step_id": "05217d17-efd8-4284-8a7c-fdd54a4c55f1",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "45cccc1c-51d1-4edc-aada-6be47a34b182",
+      "name": "Incident: Save record \u2014 Login failure on portal",
+      "description": "Clicked Open record. Entered \"Login failure on portal\" into Short description. Selected \"Medium\" in Priority. Selected \"Access\" in Category. Selected \"Tier 1\" in Assignment group. Clicked Save record.",
+      "time_range": {
+        "start": "2026-06-01T09:00:22.400Z",
+        "end": "2026-06-01T09:00:29.000Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "50d3e6fc09714f03bf9c4f9a94d36163",
+          "29b7b9a425254d9d9906f959822f279d",
+          "bb666f71bb384eae88b0040ccc693e7c",
+          "038149ecc434418891ab00be838b0ce5",
+          "48080cfb141b4205802570c60f28a02b",
+          "d83d2828abcc4ec28e2957de3f3f70fd",
+          "abf4e0c052fa49be81c0b563ed7c3949",
+          "1790ac59b1cb44779ede29b18769966b",
+          "937efe7d63ec4ebebb387e5e360a358f",
+          "025bbe1ce1634de5837bf090cc1b5180",
+          "867bd072bca843eba8206796fdfc5aa3"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 11 interactions in Incident, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "short_desc",
+        "screen": "incident",
+        "app": "chrome"
+      },
+      "process_label": "Incident: Save record"
+    },
+    {
+      "step_id": "07f6f528-0d8a-406b-815b-4ea3ec31ad79",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "45cccc1c-51d1-4edc-aada-6be47a34b182",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Login failure on portal",
+      "description": "Entered \"INC0010843\" into Cell B2. Entered \"Login failure on portal\" into Cell C2. Clicked Save workbook.",
+      "time_range": {
+        "start": "2026-06-01T09:00:30.800Z",
+        "end": "2026-06-01T09:00:34.100Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "ff3b45b5e2d44b29838f52ec7d4e4fc0",
+          "45b6a4c262b34691be651c808513ab38",
+          "66e7b252ea3340b99770c25daf6f3c68",
+          "0c5e1b86cae54f1da43aa0a0a13a635f",
+          "6d97b359c6b8494ca055b65c689cb70f"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in Incident Tracker.xlsx, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cell_b2",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "process_label": "Incident Tracker.xlsx: Save workbook"
+    },
+    {
+      "step_id": "64044064-4f9c-4958-abe3-2ad2d5863fea",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "45cccc1c-51d1-4edc-aada-6be47a34b182",
+      "name": "RE: Send \u2014 INC0010843 Login failure on portal",
+      "description": "Entered \"tier1@example.com\" into To. Entered \"INC0010843 Login failure on portal\" into Subject. Clicked Send.",
+      "time_range": {
+        "start": "2026-06-01T09:00:35.700Z",
+        "end": "2026-06-01T09:00:39.300Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "ab537fed2b8d451c9690824c00adfadd",
+          "b4d9cf5517ba4885832a236cd375b94c",
+          "9fedbc0635114ba5b4ed17c1e81b8cf8",
+          "a30e835781b246b6972c93074d8f6c75",
+          "c5856b0ed2d6400f92508284f64382d6"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in RE, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "to_field",
+        "screen": "explorer",
+        "app": "OUTLOOK"
+      },
+      "process_label": "RE: Send"
+    },
+    {
+      "step_id": "d389a0b8-1cb6-459f-9a0c-929c0d76ebd3",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "bb14e752-a11f-4b78-bfc2-a1bfc842f392",
+      "name": "Incident: Save record \u2014 Printer offline floor 3",
+      "description": "Clicked Open record. Entered \"Printer offline floor 3\" into Short description. Selected \"Low\" in Priority. Selected \"Equipment\" in Category. Selected \"Facilities\" in Assignment group. Clicked Save record.",
+      "time_range": {
+        "start": "2026-06-01T09:00:43.950Z",
+        "end": "2026-06-01T09:00:50.550Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "78a749dfec834bb59e1173ea1c7e1453",
+          "9f782a8594614029b08b6a7879136fac",
+          "9d59d6b844754875b1f67c379f8e8adb",
+          "1a51a7fc8d8f41d7ac94e5d477c6ca4b",
+          "f6ddc0e81d134ed18d6b8b3af157b558",
+          "bde5207d66fb452fb000512ffb99dd7a",
+          "2d73e9a3fc1a48c39cc3dab7b302501e",
+          "0540c88b68c74d888c964e1fb5d6163d",
+          "933cbda63003473182bd97ea51d1465e",
+          "a93b947ade2c413faa2a809155348c63",
+          "f3558d670282483eb73b7d3e89a756da"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 11 interactions in Incident, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "short_desc",
+        "screen": "incident",
+        "app": "chrome"
+      },
+      "process_label": "Incident: Save record"
+    },
+    {
+      "step_id": "8b03111c-ec8c-4e47-8618-d49af55e8cdb",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "bb14e752-a11f-4b78-bfc2-a1bfc842f392",
+      "name": "Incident Tracker.xlsx: Save workbook \u2014 Printer offline floor 3",
+      "description": "Entered \"INC0010844\" into Cell B2. Entered \"Printer offline floor 3\" into Cell C2. Clicked Save workbook.",
+      "time_range": {
+        "start": "2026-06-01T09:00:52.350Z",
+        "end": "2026-06-01T09:00:55.650Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "f62647d7ab994dcdbf4c1877c80fceaf",
+          "bcb795c239924fb3b86dcf1e24c68b96",
+          "c4406e244ac742be946dd38b581919f1",
+          "251bc9844b574394afc74f414e7ac974",
+          "9d4ab1301066416cbb937770fd737cf9"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in Incident Tracker.xlsx, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cell_b2",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "process_label": "Incident Tracker.xlsx: Save workbook"
+    },
+    {
+      "step_id": "7834c4f2-2a82-4616-982e-b0f9453bbbd4",
+      "session_id": "demo-alice-20260601-0900",
+      "case_id": "bb14e752-a11f-4b78-bfc2-a1bfc842f392",
+      "name": "RE: Send \u2014 INC0010844 Printer offline floor 3",
+      "description": "Entered \"facilities@example.com\" into To. Entered \"INC0010844 Printer offline floor 3\" into Subject. Clicked Send.",
+      "time_range": {
+        "start": "2026-06-01T09:00:57.250Z",
+        "end": "2026-06-01T09:01:00.850Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "32fea6f29f954786a5e01717e4932f9f",
+          "66dd66b6e43f412e99a1ad4fe1037111",
+          "15d5d06e049b4e93be660fbc32b8b517",
+          "454ba4fd8fa144568a0218eadd70ba9b",
+          "1819a7957c5c4081b09c978484057e1a"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "suggestion_reason": "Grouped 5 interactions in RE, max gap 2s (threshold 10s)",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "to_field",
+        "screen": "explorer",
+        "app": "OUTLOOK"
+      },
+      "process_label": "RE: Send"
+    }
+  ],
+  "matched_against": null,
+  "last_modified": "2026-06-05T11:47:21.350463+00:00"
+}

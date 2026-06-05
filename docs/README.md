@@ -99,6 +99,12 @@ discovery hardening, and the UI density pass. Describes the code as it is today.
 | [adr/0025-in-app-vocabulary-discovery.md](adr/0025-in-app-vocabulary-discovery.md) | ADR — in-app vocabulary discovery ("point-and-learn") |
 | [adr/0026-distribution-unsigned-and-services-boutique-scope.md](adr/0026-distribution-unsigned-and-services-boutique-scope.md) | ADR — ship unsigned by design; services-boutique scope |
 | [adr/0027-retire-per-step-path-flags.md](adr/0027-retire-per-step-path-flags.md) | ADR — retire the per-step path/segment flags; keep only `waste` |
+| [adr/0028-ai-naming-layer.md](adr/0028-ai-naming-layer.md) | ADR — AI Naming Layer: local LLM, structured-input-only, no-numbers-from-LLM |
+| [adr/0029-pattern-layer.md](adr/0029-pattern-layer.md) | ADR — Pattern Layer: classical ML + sequence mining as a normalisation stage |
+| [adr/0030-engagement-workspace.md](adr/0030-engagement-workspace.md) | ADR — Engagement workspace: a new top-level concept above the session |
+| [adr/0031-cockpit-and-workshop-modes.md](adr/0031-cockpit-and-workshop-modes.md) | ADR — three contextual defaults: Glance, Cockpit, Workshop |
+| [adr/0032-self-annotation-wizard.md](adr/0032-self-annotation-wizard.md) | ADR — Self-Annotation Wizard: heuristic-templated, post-capture, 5 questions |
+| [adr/0033-demo-pack.md](adr/0033-demo-pack.md) | ADR — Demo Pack: one polished Engagement shipped with the installer |
 | [adr/README.md](adr/README.md) | ADR index & registry (CI-enforced numbering) |
 | [../capture/README.md](../capture/README.md) | Capture component quick-start |
 | [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |

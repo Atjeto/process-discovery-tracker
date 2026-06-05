@@ -82,8 +82,8 @@ from pipeline_config import (
 # resolves unchanged.
 from pipeline_stages import (
     _run_coalesce, _run_case_assignment, _init_existing_anno, _run_suggestions,
-    _run_step_segmentation, _run_classification, _run_event_log_export,
-    _run_stats, _run_analysis, _run_mining_exports,
+    _run_step_segmentation, _run_pattern_layer, _run_classification,
+    _run_event_log_export, _run_stats, _run_analysis, _run_mining_exports,
 )
 
 
@@ -160,6 +160,12 @@ def normalize(
         _run_step_segmentation(
             with_cases, cases, canonical_path, canonical, existing_anno,
             session_id_str, cal, session_folder))
+
+    # Pattern Layer (ADR-0029): motifs / activity clusters / anomalies /
+    # marker-free case inference, written to patterns.json. Best-effort -- a
+    # detector exception never blocks the pipeline. Phase 2 work consumes this
+    # blob; downstream stages here are unchanged.
+    _run_pattern_layer(session_folder, with_cases, existing_anno)
 
     # Taxonomy classification + analyst overrides + the two collapses.
     classified, collapsed, log_events, taxonomy, taxonomy_report = (

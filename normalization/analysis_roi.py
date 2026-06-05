@@ -42,6 +42,13 @@ from typing import Any
 _MS_PER_HOUR = 3_600_000
 _MS_PER_YEAR_HOURS = 3_600_000  # cost_per_ms = loaded_cost_per_hour / this
 
+# PDT-1.0-SPEC §0 / §8 Phase 0 — €-ROI honesty pass. Candidates below this
+# confidence threshold are excluded from the visible deliverable band so
+# we do not give false precision around weak signals. The Cockpit surfaces
+# the suppressed count so the analyst knows they exist and can drop into
+# Workshop → Analysis to review them.
+CONFIDENCE_FLOOR = 0.5
+
 DEFAULTS = {
     "currency": "EUR",
     "loaded_cost_per_hour": None,
@@ -214,6 +221,8 @@ def _candidate_roi(cand: dict, cfg: dict) -> dict[str, Any]:
 def compute_roi(
     automation_candidates: list[dict[str, Any]] | None,
     annotations: dict[str, Any] | None = None,
+    *,
+    confidence_floor: float | None = None,
 ) -> dict[str, Any]:
     """Compute the €-ROI band for every automation candidate.
 
@@ -242,13 +251,28 @@ def compute_roi(
     cands = automation_candidates or []
     cfg = _resolve_inputs((annotations or {}).get("roi_inputs"))
 
+    # PDT-1.0-SPEC §6.5 — per-engagement confidence floor. Caller may pass
+    # a `confidence_floor` (typically engagement.config.confidence_floor)
+    # to override the module-level default. Clamped to [0, 1] for safety.
+    floor = CONFIDENCE_FLOOR
+    if isinstance(confidence_floor, (int, float)):
+        floor = max(0.0, min(1.0, float(confidence_floor)))
+
     rows: list[dict[str, Any]] = []
+    suppressed_low_confidence = 0
     for cand in cands:
         if not isinstance(cand, dict):
             continue
         # Single-instance candidates have no repeatability -> skip (their
         # mean is one observation; an annual projection would be noise).
         if cand.get("data_sufficiency") == "single_instance":
+            continue
+        # ADR-0016 €-ROI honesty pass. Candidates below `floor` do not
+        # contribute to deliverable numbers.
+        scores = cand.get("scores") or {}
+        confidence = scores.get("confidence")
+        if isinstance(confidence, (int, float)) and confidence < floor:
+            suppressed_low_confidence += 1
             continue
         rows.append(_candidate_roi(cand, cfg))
 
@@ -291,6 +315,11 @@ def compute_roi(
             "gross_annual": total_gross,
             # Candidates considered but not cost-effective (expected net < 0);
             "negative_net_count": negative_net_count,
+            # PDT-1.0-SPEC §0 — count of low-confidence candidates excluded
+            # by the honesty floor (Cockpit shows this so the analyst can drop
+            # into Workshop -> Analysis to review them if they want to).
+            "suppressed_low_confidence_count": suppressed_low_confidence,
+            "confidence_floor": floor,
         },
     }
 

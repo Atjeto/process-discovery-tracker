@@ -29,18 +29,29 @@ normalization/ml_models/
 # Bundled python embeddable (built by scripts/build-python-embeddable.ps1 -- ~450 MB)
 viewer/python/
 
+# Bundled Ollama runtime + model (built by scripts/bundle-ollama.ps1 -- ~1 GB).
+# Shipped in the release so the Naming Layer (ADR-0028) works on machines
+# where Ollama isn't installed. Recreated by the build pipeline.
+viewer/ollama/
+
 # Staged at distribution-build time, deleted after; never checked in
 viewer/normalization/
 
 # Captured sessions are local data, not source.
 # Exception: sessions/example-aggregate/ is the bundled reference set
 # that ships inside the viewer release for the empty-state Recents
-# seed. Everything else under sessions/ stays ignored. Using
-# `sessions/*` (not `sessions/`) so the negation re-include works --
-# git ignores directories matched by `dir/` recursively without
-# re-examining child paths.
+# seed. sessions/demo-pack/ is the PDT-1.0-SPEC §6.4 Demo Pack
+# engagement, also bundled. Everything else under sessions/ stays
+# ignored. Using `sessions/*` (not `sessions/`) so the negation
+# re-include works -- git ignores directories matched by `dir/`
+# recursively without re-examining child paths.
 sessions/*
 !sessions/example-aggregate/
+!sessions/demo-pack/
+
+# Engagements are real client data -- never checked in (PDT-1.0-SPEC §5).
+# The engagements/ folder structure is created by the viewer on first use.
+engagements/
 
 # Generated icons
 *.ico

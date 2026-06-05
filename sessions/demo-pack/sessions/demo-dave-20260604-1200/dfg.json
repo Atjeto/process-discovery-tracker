@@ -1,0 +1,20 @@
+{
+  "edges": [
+    {
+      "source": "Text entry -- chrome.exe",
+      "target": "Text entry -- EXCEL.EXE",
+      "frequency": 3
+    },
+    {
+      "source": "Text entry -- EXCEL.EXE",
+      "target": "Text entry -- OUTLOOK.EXE",
+      "frequency": 3
+    }
+  ],
+  "start_activities": {
+    "Text entry -- chrome.exe": 3
+  },
+  "end_activities": {
+    "Text entry -- OUTLOOK.EXE": 3
+  }
+}

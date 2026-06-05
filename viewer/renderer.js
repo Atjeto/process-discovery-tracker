@@ -40,6 +40,9 @@ const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = re
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnchorCandidates, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
 const { renderAnalysisLevel } = require("./views/analysis-view.js");
+const CockpitView = require("./views/cockpit-view.js");
+const GlanceView = require("./views/glance-view.js");
+const EngagementView = require("./views/engagement-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
 const RefmapUI = require("./refmap-ui.js");
@@ -76,6 +79,8 @@ $$(".tab").forEach((tab) => {
 function activateTab(name) {
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
+  // PDT-1.0-SPEC §5.3: render the engagement view when its tab activates.
+  if (name === "engagement") { try { EngagementView.render(); } catch (_) {} }
   // Trigger lazy re-fit of any active viz
   if (name === "aggregate") {
     setTimeout(() => {
@@ -109,6 +114,13 @@ $$(".view-mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
     applyLevel(btn.dataset.level);
+  });
+});
+
+/* PDT-1.0-SPEC §4.1.1: wire the Cockpit / Workshop mode toggle. */
+$$("#session-mode-toggle .mode-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    applySessionMode(btn.dataset.mode);
   });
 });
 
@@ -159,7 +171,68 @@ const VIEW_MODE_HELP = {
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
   map:    "Map view: the process diagram (BPMN) or Flow diagram (DFG) for this session, at the chosen Grain notch (element … case) or the Activity taxonomy level.",
   analysis: "Analysis view: heuristic waste, time-study and automation findings — review before relying on them.",
+  cockpit: "Cockpit view: summary-first session review. AI-detected process candidates, headline numbers, what stood out.",
 };
+
+/* PDT-1.0-SPEC §4.1.1: session mode toggle (Cockpit | Workshop).
+   Cockpit (default) hides the existing view-mode-bar and shows only the
+   Cockpit summary layout. Workshop restores the 5-tab depth.
+   Persisted across sessions via localStorage. */
+const SESSION_MODE_KEY = "pdt.sessionMode";
+
+function _loadSessionMode() {
+  try {
+    const v = localStorage.getItem(SESSION_MODE_KEY);
+    if (v === "cockpit" || v === "workshop") return v;
+  } catch (_) {}
+  return "cockpit";   // default
+}
+
+function _persistSessionMode(mode) {
+  try { localStorage.setItem(SESSION_MODE_KEY, mode); } catch (_) {}
+}
+
+function applySessionMode(mode) {
+  if (mode !== "cockpit" && mode !== "workshop" && mode !== "glance") mode = "cockpit";
+  State.setMode(mode);
+  _persistSessionMode(mode);
+
+  // Toggle the topbar button states.
+  const toggle = document.getElementById("session-mode-toggle");
+  if (toggle) {
+    toggle.querySelectorAll(".mode-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.mode === mode);
+    });
+  }
+
+  // Toggle the view-mode-bar visibility (the 5-tab switcher belongs to Workshop).
+  const viewModeBar = document.querySelector(".view-mode-bar");
+  if (viewModeBar) viewModeBar.style.display = mode === "workshop" ? "" : "none";
+
+  // Toggle Cockpit / Glance / Workshop layouts.
+  const cockpit = document.getElementById("session-layout-cockpit");
+  if (cockpit) cockpit.style.display = mode === "cockpit" ? "" : "none";
+  const glance = document.getElementById("session-layout-glance");
+  if (glance) glance.style.display = mode === "glance" ? "" : "none";
+
+  if (mode === "cockpit") {
+    ["flow", "steps", "phases", "map", "analysis"].forEach(l => {
+      const el = document.getElementById("session-layout-" + l);
+      if (el) el.style.display = "none";
+    });
+    CockpitView.render();
+  } else if (mode === "glance") {
+    ["flow", "steps", "phases", "map", "analysis"].forEach(l => {
+      const el = document.getElementById("session-layout-" + l);
+      if (el) el.style.display = "none";
+    });
+    GlanceView.render();
+  } else {
+    // Workshop: restore the active level (default to flow if none active).
+    const level = State.getLevel() || "flow";
+    applyLevel(level);
+  }
+}
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
    scroll container (the Flow timeline, the Steps mini-timeline, the
@@ -205,6 +278,12 @@ const MODE_VIEWPORT = {
     scrollSel: "#session-layout-map",
     getZoom: () => 1, setZoom: () => {},
     render: renderMapLevel,
+  },
+  // PDT-1.0-SPEC §4.2: Cockpit has no timeline / zoom — pure summary view.
+  cockpit: {
+    scrollSel: "#session-layout-cockpit",
+    getZoom: () => 1, setZoom: () => {},
+    render: () => CockpitView.render(),
   },
 };
 function _viewportSnapshotForMode(mode) {
@@ -435,7 +514,92 @@ function renderMapLevel() {
   try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
 }
 
-const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };
+const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel, cockpit: () => CockpitView.render() };
+
+/* PDT-1.0-SPEC §4.2: cockpit re-renders whenever its source data changes. */
+State.subscribe("steps",    () => { if (State.getMode() === "cockpit") CockpitView.render(); });
+State.subscribe("analysis", () => { if (State.getMode() === "cockpit") CockpitView.render(); });
+State.subscribe("markers",  () => { if (State.getMode() === "cockpit") CockpitView.render(); });
+
+/* PDT-1.0-SPEC §4.1.2: glance re-renders on any step edit. */
+State.subscribe("steps",    () => { if (State.getMode() === "glance") GlanceView.render(); });
+
+/* Glance edits persist via the existing annotations save path. */
+window._glancePersist = function _glancePersist() {
+  try { persistAnnotations({ topics: ["steps"] }); } catch (e) { console.error(e); }
+};
+
+/* PDT-1.0-SPEC §4.4: drill-through from a Cockpit candidate -> Workshop / Analysis. */
+window._cockpitDrill = function _cockpitDrill(segmentId) {
+  applySessionMode("workshop");
+  // Land on Analysis where the segment-grain automation candidates live.
+  applyLevel("analysis");
+  // Park the segment id so the analysis view can scroll / highlight it.
+  try { window._pdtCockpitFocusSegment = segmentId; } catch (_) {}
+};
+
+/* PDT-1.0-SPEC §4.1.1: hook called from loadSessionIntoView when a fresh
+   session has finished loading. Restores the persisted mode preference. */
+window._pdtApplySessionMode = function _pdtApplySessionMode() {
+  applySessionMode(_loadSessionMode());
+};
+
+/* PDT-1.0-SPEC §5.3: Engagement workspace wiring.
+   - _openEngagementFolder pops a folder picker.
+   - _engagementExport* run the corresponding deliverable export.
+   The engagement object is cached in EngagementView; the renderer just
+   trampolines events to the IPC layer. */
+window._openEngagementFolder = async function _openEngagementFolder() {
+  try {
+    const result = await Ipc.invoke("viewer:openEngagementFolder");
+    if (result && !result.error) {
+      EngagementView.loadEngagement(result);
+    } else if (result && result.error) {
+      toast("Failed to open engagement: " + result.error, "error");
+    }
+  } catch (e) {
+    toast("Failed to open engagement: " + (e.message || e), "error");
+  }
+};
+window._engagementExportBacklog = async function _engagementExportBacklog(kind) {
+  const eng = EngagementView.getCurrent();
+  if (!eng) return;
+  const res = await Ipc.invoke("viewer:exportBacklog", {
+    engagementFolder: eng.engagementFolder,
+    kind,
+  });
+  if (res && res.path) toast("Backlog exported: " + res.path, "info");
+  else toast("Export failed: " + (res && res.error || "unknown"), "error");
+};
+window._engagementExportPdd = async function _engagementExportPdd(row) {
+  const eng = EngagementView.getCurrent();
+  if (!eng) return;
+  const res = await Ipc.invoke("viewer:exportPdd", {
+    engagementFolder: eng.engagementFolder,
+    row,
+  });
+  if (res && res.path) toast("PDD exported: " + res.path, "info");
+  else toast("Export failed: " + (res && res.error || "unknown"), "error");
+};
+window._engagementExportAllPdds = async function _engagementExportAllPdds() {
+  const eng = EngagementView.getCurrent();
+  if (!eng) return;
+  const res = await Ipc.invoke("viewer:exportAllPdds", eng.engagementFolder);
+  if (res && res.files) {
+    const md = (res.files.markdown || []).length;
+    const pdf = (res.files.pdf || []).length;
+    toast(`PDD bundle exported: ${md} .md + ${pdf} .pdf`, "info");
+  } else {
+    toast("Export failed: " + (res && res.error || "unknown"), "error");
+  }
+};
+window._engagementExportConfig = async function _engagementExportConfig() {
+  const eng = EngagementView.getCurrent();
+  if (!eng) return;
+  const res = await Ipc.invoke("viewer:exportEngagementConfig", eng.engagementFolder);
+  if (res && res.path) toast("Engagement config bundle exported: " + res.path, "info");
+  else toast("Export failed: " + (res && res.error || "unknown"), "error");
+};
 
 /* Wire the state change-notification bus: an annotation edit emits the
    topics it touched (see persistAnnotations / performUndo / performRedo)
@@ -482,6 +646,9 @@ function applyLevel(name) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";
   }
+  // PDT-1.0-SPEC §4.1.1: cockpit layout is hidden when a workshop level is shown.
+  const cockpitEl = document.getElementById("session-layout-cockpit");
+  if (cockpitEl && State.getMode() !== "cockpit") cockpitEl.style.display = "none";
   const help = document.getElementById("view-mode-help");
   if (help) {
     // Clutter pass: the per-view hint is an onboarding aid, not permanent

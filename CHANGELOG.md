@@ -6,6 +6,99 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-05
+
+The productization release. Reframes PDT from an analyst's instrument into a
+**consulting augmentation tool with a self-contained AI stack** — the consultant
+leads the engagement, the bundled local AI does the work the missing analyst
+was supposed to do, the configured tool is a natural leave-behind when a client
+wants to retain it. Spec: [PDT-1.0-SPEC.md](docs/PDT-1.0-SPEC.md). Six new ADRs
+record the decisions: [0028](docs/adr/0028-ai-naming-layer.md),
+[0029](docs/adr/0029-pattern-layer.md),
+[0030](docs/adr/0030-engagement-workspace.md),
+[0031](docs/adr/0031-cockpit-and-workshop-modes.md),
+[0032](docs/adr/0032-self-annotation-wizard.md),
+[0033](docs/adr/0033-demo-pack.md).
+
+### Added
+
+- **Cockpit** — summary-first session view, the new default. Headline numbers,
+  AI-named process candidates, "what stood out" surfaced from existing
+  heuristic detectors. The existing 5-tab Workshop depth is one click away
+  via the topbar toggle.
+- **Glance** — worker's chronological story view; AI labels overlaid on the
+  timeline with one-click corrections. Corrections feed the
+  disagreement-as-feedback loop.
+- **Engagement workspace** (ADR-0030) — new top-level concept above the
+  session. Aggregates many sessions from many workers into one consulting
+  deliverable. Card-grid Process Backlog with per-process drill-in (PDD
+  preview + variants + evidence) and export bar (XLSX / CSV / PDDs /
+  engagement-config bundle).
+- **Pattern Layer** (ADR-0029) — classical sequence-mining + clustering +
+  anomaly + marker-free case inference. Writes `patterns.json`. Pure stdlib
+  Python, no sklearn dependency.
+- **Naming Layer** (ADR-0028) — scoped to two LLM uses: activity naming +
+  PDD §1 prose. Hard rules enforced: LLM never sees raw events; never
+  produces numbers; capture-confidence gates output; graceful degrade when
+  Ollama unreachable.
+- **Bundled Ollama + models** — release ships `viewer/ollama/` with
+  `ollama.exe`, CPU runtime DLLs, `qwen2.5:1.5b-instruct` (986 MB), and
+  `all-minilm` (45 MB). `viewer/ollama-launcher.js` spawns the server on a
+  free loopback port at boot and exports `PDT_OLLAMA_URL` so the embedded
+  Python sees it. Works on machines where Ollama is NOT installed.
+- **Semantic activity-cluster merge** — LLM-as-judge ("are these the same
+  activity?") with cosine fast-paths. "Submit form" / "Send form" /
+  "Triage incident" / "Review incident" merge into one cluster across
+  sessions; "Open record" / "Save record" stay distinct.
+- **Self-Annotation Wizard** (ADR-0032) — heuristic-templated post-capture
+  wizard with up to 5 observed-value-substituted questions. Answers persist
+  as `self_annotations[]` so re-normalize preserves them.
+- **Disagreement-as-feedback** — every AI-named activity is one-click
+  rejectable. Rejections written to `annotations.disagreements[]`; the
+  next normalize pass adopts user-proposed names verbatim, caps confidence
+  on the affected cluster, and forbids re-proposing the rejected name.
+- **Deliverable exporters** — `engagement/backlog_export.py` (XLSX + CSV,
+  stdlib-only minimal writer), `engagement/pdd_export.py` (Markdown +
+  minimal PDF per process, LLM-drafted §1 paragraph),
+  `engagement/config_bundle.py` (the leave-behind ZIP carrying
+  engagement.json + vocabularies + reference maps + help-context stubs).
+- **Demo Pack** (ADR-0033) — pre-canned ServiceNow IT Service engagement at
+  `sessions/demo-pack/`: 4 sessions × 3 cases each, 4 AI-named backlog
+  rows with full PDDs (markdown + PDF), XLSX. Rebuilt every release by
+  `scripts/build-demo-pack.py`. Opens in the Engagement workspace as the
+  prospect's 30-second-to-value path.
+- **helpContext slots** — 9 keyed slots wired beside every AI-rendered
+  artefact in the Cockpit. Built-in tooltips ship as defaults; Operate-mode
+  builds populate them from `engagement/help_context/<key>.md`.
+- **€-ROI honesty pass** — `analysis_roi.CONFIDENCE_FLOOR=0.5` excludes
+  low-confidence candidates from the visible band; per-engagement override
+  flows through `engagement.config.confidence_floor` →
+  `build_backlog(..., engagement_folder=...)` →
+  `compute_roi(..., confidence_floor=...)`.
+
+### Changed
+
+- **Default Session-view mode** is now Cockpit (was the Flow timeline).
+  The Workshop toggle restores the 5-tab depth in one click; the
+  preference persists via `localStorage["pdt.sessionMode"]`.
+- **Backlog aggregation** uses a fuzzy key (sorted step-label set + app)
+  instead of exact segment_signature equality, so equivalent processes
+  across workers collapse to one row even when their step sequences
+  vary slightly.
+
+### Notes
+
+- **Self-contained release.** The viewer ships its own Python (~450 MB),
+  its own Ollama runtime + models (~1 GB), and `example-aggregate` +
+  `demo-pack` sessions. Total install ~1.5 GB. The locked-down analyst
+  laptop needs nothing but the unzip.
+- **No-cloud preserved.** The bundled Ollama binds to 127.0.0.1 on a
+  high port. The egress guard now has one allow-list entry
+  (`viewer/ollama-launcher.js`) with the loopback-only justification.
+- **Heavy-lift LLM declined.** A 7B/14B model was considered for the PDD
+  prose; 1.5B was picked instead for the 5–9 GB release-size difference.
+  Owner can swap models via `PDT_OLLAMA_MODEL`.
+
 ## [0.22.2] - 2026-06-01
 
 A fix-only patch from stress-testing "Discover from window" against the two

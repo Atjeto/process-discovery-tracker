@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<log xes.version="1849-2016" xes.features="nested-attributes" xmlns="http://www.xes-standard.org/">
+	<trace>
+		<string key="concept:name" value="INC0010844" />
+		<string key="case:id" value="870d61ae-16d4-405e-bc54-df96178e02fd" />
+		<string key="case:start_ts" value="2026-06-03T11:00:00.000Z" />
+		<string key="case:end_ts" value="2026-06-03T11:00:18.550Z" />
+		<event>
+			<string key="concept:name" value="Text entry -- chrome.exe" />
+			<date key="time:timestamp" value="2026-06-03T11:00:00.050000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Incident INC0010844 | ServiceNow" />
+			<int key="raw:pid" value="5101" />
+			<int key="raw:duration_ms" value="5500" />
+			<string key="case:stack" value="870d61ae-16d4-405e-bc54-df96178e02fd" />
+		</event>
+		<event>
+			<string key="concept:name" value="Text entry -- EXCEL.EXE" />
+			<date key="time:timestamp" value="2026-06-03T11:00:08.650000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="EXCEL.EXE" />
+			<string key="raw:title" value="Incident Tracker.xlsx - Excel" />
+			<int key="raw:pid" value="5900" />
+			<int key="raw:duration_ms" value="3500" />
+			<string key="case:stack" value="870d61ae-16d4-405e-bc54-df96178e02fd" />
+		</event>
+		<event>
+			<string key="concept:name" value="Text entry -- OUTLOOK.EXE" />
+			<date key="time:timestamp" value="2026-06-03T11:00:13.650000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="OUTLOOK.EXE" />
+			<string key="raw:title" value="RE: INC0010844 - Printer offline floor 3 - Outlook" />
+			<int key="raw:pid" value="5800" />
+			<int key="raw:duration_ms" value="3200" />
+			<string key="case:stack" value="870d61ae-16d4-405e-bc54-df96178e02fd" />
+		</event>
+	</trace>
+	<trace>
+		<string key="concept:name" value="INC0010845" />
+		<string key="case:id" value="c90cbc8b-c45b-4c67-ac37-10d02c65627a" />
+		<string key="case:start_ts" value="2026-06-03T11:00:21.550Z" />
+		<string key="case:end_ts" value="2026-06-03T11:00:40.100Z" />
+		<event>
+			<string key="concept:name" value="Text entry -- chrome.exe" />
+			<date key="time:timestamp" value="2026-06-03T11:00:21.600000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Incident INC0010845 | ServiceNow" />
+			<int key="raw:pid" value="5101" />
+			<int key="raw:duration_ms" value="5500" />
+			<string key="case:stack" value="c90cbc8b-c45b-4c67-ac37-10d02c65627a" />
+		</event>
+		<event>
+			<string key="concept:name" value="Text entry -- EXCEL.EXE" />
+			<date key="time:timestamp" value="2026-06-03T11:00:30.200000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="EXCEL.EXE" />
+			<string key="raw:title" value="Incident Tracker.xlsx - Excel" />
+			<int key="raw:pid" value="5900" />
+			<int key="raw:duration_ms" value="3500" />
+			<string key="case:stack" value="c90cbc8b-c45b-4c67-ac37-10d02c65627a" />
+		</event>
+		<event>
+			<string key="concept:name" value="Text entry -- OUTLOOK.EXE" />
+			<date key="time:timestamp" value="2026-06-03T11:00:35.200000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="OUTLOOK.EXE" />
+			<string key="raw:title" value="RE: INC0010845 - VPN dropping during meetings - Outlook" />
+			<int key="raw:pid" value="5800" />
+			<int key="raw:duration_ms" value="3200" />
+			<string key="case:stack" value="c90cbc8b-c45b-4c67-ac37-10d02c65627a" />
+		</event>
+	</trace>
+	<trace>
+		<string key="concept:name" value="INC0010842" />
+		<string key="case:id" value="bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3" />
+		<string key="case:start_ts" value="2026-06-03T11:00:43.100Z" />
+		<string key="case:end_ts" value="2026-06-03T11:01:01.650Z" />
+		<event>
+			<string key="concept:name" value="Text entry -- chrome.exe" />
+			<date key="time:timestamp" value="2026-06-03T11:00:43.150000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="chrome.exe" />
+			<string key="raw:title" value="Incident INC0010842 | ServiceNow" />
+			<int key="raw:pid" value="5101" />
+			<int key="raw:duration_ms" value="5500" />
+			<string key="case:stack" value="bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3" />
+		</event>
+		<event>
+			<string key="concept:name" value="Text entry -- EXCEL.EXE" />
+			<date key="time:timestamp" value="2026-06-03T11:00:51.750000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="EXCEL.EXE" />
+			<string key="raw:title" value="Incident Tracker.xlsx - Excel" />
+			<int key="raw:pid" value="5900" />
+			<int key="raw:duration_ms" value="3500" />
+			<string key="case:stack" value="bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3" />
+		</event>
+		<event>
+			<string key="concept:name" value="Text entry -- OUTLOOK.EXE" />
+			<date key="time:timestamp" value="2026-06-03T11:00:56.750000+00:00" />
+			<string key="org:resource" value="unknown" />
+			<string key="raw:app" value="OUTLOOK.EXE" />
+			<string key="raw:title" value="RE: INC0010842 - Server down — DB host - Outlook" />
+			<int key="raw:pid" value="5800" />
+			<int key="raw:duration_ms" value="3200" />
+			<string key="case:stack" value="bed4b5f6-609f-4b91-b4ea-9f604d9cd0c3" />
+		</event>
+	</trace>
+</log>

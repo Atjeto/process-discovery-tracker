@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "generated_at": "2026-06-05T11:47:39.887154+00:00",
+  "motifs": [
+    {
+      "motif_id": "a73a991df5bf",
+      "labels": [
+        "Incident: Save record",
+        "Incident Tracker.xlsx: Save workbook",
+        "RE: Send"
+      ],
+      "occurrences": [
+        {
+          "case_id": "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+          "step_ids": [
+            "861371b3-1b42-4ff9-babf-b4eb93f4f9c3",
+            "76092288-9c5f-4f7d-9e1d-9816bfd3d24a",
+            "4d0162c9-df34-4dff-8fe9-b6577bce7d4e"
+          ],
+          "start_ts": "2026-06-02T10:00:00.850Z",
+          "end_ts": "2026-06-02T10:00:17.750Z"
+        },
+        {
+          "case_id": "e475d231-070f-436c-9250-10d0ba5c7869",
+          "step_ids": [
+            "78d06393-075f-4dbf-89d6-dad20c1461cb",
+            "cfeed4df-7bc3-46e9-8e1a-bb8efacba5ef",
+            "4bb9c08e-d925-40dc-af30-e844e63e0013"
+          ],
+          "start_ts": "2026-06-02T10:00:22.400Z",
+          "end_ts": "2026-06-02T10:00:39.300Z"
+        },
+        {
+          "case_id": "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+          "step_ids": [
+            "318dd1bb-d6c7-4ca7-ba9e-73acee2cf11d",
+            "fcbf96a0-a278-41dd-8fb3-2dd75d83ba65",
+            "d85163f3-4f44-42cd-9cc3-2842c8338e0b"
+          ],
+          "start_ts": "2026-06-02T10:00:43.950Z",
+          "end_ts": "2026-06-02T10:01:00.850Z"
+        }
+      ],
+      "frequency": 3
+    }
+  ],
+  "activity_clusters": [
+    {
+      "cluster_id": "d751b4d40e5b",
+      "process_label": "RE: Send",
+      "screen_label": "explorer",
+      "app": "OUTLOOK",
+      "step_ids": [
+        "4d0162c9-df34-4dff-8fe9-b6577bce7d4e",
+        "4bb9c08e-d925-40dc-af30-e844e63e0013",
+        "d85163f3-4f44-42cd-9cc3-2842c8338e0b"
+      ],
+      "case_ids": [
+        "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+        "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+        "e475d231-070f-436c-9250-10d0ba5c7869"
+      ],
+      "occurrence_count": 3,
+      "mean_duration_ms": 3600,
+      "confidence": 0.8,
+      "disagreement_count": 0
+    },
+    {
+      "cluster_id": "efb2aa5d506c",
+      "process_label": "Incident Tracker.xlsx: Save workbook",
+      "screen_label": "workbook",
+      "app": "EXCEL",
+      "step_ids": [
+        "76092288-9c5f-4f7d-9e1d-9816bfd3d24a",
+        "cfeed4df-7bc3-46e9-8e1a-bb8efacba5ef",
+        "fcbf96a0-a278-41dd-8fb3-2dd75d83ba65"
+      ],
+      "case_ids": [
+        "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+        "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+        "e475d231-070f-436c-9250-10d0ba5c7869"
+      ],
+      "occurrence_count": 3,
+      "mean_duration_ms": 3300,
+      "confidence": 0.8,
+      "disagreement_count": 0
+    },
+    {
+      "cluster_id": "ffe36b13baa5",
+      "process_label": "Incident: Save record",
+      "screen_label": "incident",
+      "app": "chrome",
+      "step_ids": [
+        "861371b3-1b42-4ff9-babf-b4eb93f4f9c3",
+        "78d06393-075f-4dbf-89d6-dad20c1461cb",
+        "318dd1bb-d6c7-4ca7-ba9e-73acee2cf11d"
+      ],
+      "case_ids": [
+        "3f7923cb-d8c9-43dc-9f05-5c580dcf3215",
+        "7ba4e5b4-d1ba-42ae-9aba-d8ca010517b2",
+        "e475d231-070f-436c-9250-10d0ba5c7869"
+      ],
+      "occurrence_count": 3,
+      "mean_duration_ms": 6600,
+      "confidence": 0.8,
+      "disagreement_count": 0
+    }
+  ],
+  "anomalies": [],
+  "case_inference": {
+    "inferred_cases": [],
+    "case_inference_used": false,
+    "confidence": 0.0
+  },
+  "heuristic_version": 1,
+  "named_clusters": [
+    {
+      "cluster_id": "d751b4d40e5b",
+      "name": "Send email",
+      "confidence": 0.8,
+      "provenance": [
+        "app",
+        "confidence",
+        "process_label",
+        "screen_label"
+      ],
+      "insufficient_signal": false,
+      "fallback_label": "RE: Send"
+    },
+    {
+      "cluster_id": "efb2aa5d506c",
+      "name": "Workbook Save",
+      "confidence": 0.8,
+      "provenance": [
+        "app",
+        "confidence",
+        "process_label",
+        "screen_label"
+      ],
+      "insufficient_signal": false,
+      "fallback_label": "Incident Tracker.xlsx: Save workbook"
+    },
+    {
+      "cluster_id": "ffe36b13baa5",
+      "name": "Save Record",
+      "confidence": 0.8,
+      "provenance": [
+        "app",
+        "confidence",
+        "process_label",
+        "screen_label"
+      ],
+      "insufficient_signal": false,
+      "fallback_label": "Incident: Save record"
+    }
+  ]
+}
