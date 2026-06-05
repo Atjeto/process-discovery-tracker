@@ -154,6 +154,12 @@ function stripLocales(appDir) {
          just the JSONL + XES + BPMN the demo aggregate was built
          against. */
       path.join(PROJECT_DIR, "..", "sessions", "example-aggregate"),
+      /* PDT-1.0-SPEC §6.4 Demo Pack — pre-canned ServiceNow IT Service
+         engagement (4 sessions, 4 AI-named backlog rows, PDDs + XLSX +
+         CSV). Opens in the Engagement workspace as the prospect's
+         30-second-to-value path. Rebuilt every release by
+         scripts/build-demo-pack.py. */
+      path.join(PROJECT_DIR, "..", "sessions", "demo-pack"),
     ],
   });
 

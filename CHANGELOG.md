@@ -6,6 +6,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-05
+
+Fix-only patch on top of v1.0.0.
+
+### Fixed
+
+- **Demo Pack shipped in release bundle.** v1.0.0 packaged
+  `sessions/example-aggregate/` but omitted `sessions/demo-pack/` — the
+  prospect's 30-second-to-value path was missing from the unzipped
+  release. The viewer's `build-package.js` now lists both under
+  `extraResource`, so the Demo Pack engagement opens directly from the
+  release bundle without cloning the repo.
+
 ## [1.0.0] - 2026-06-05
 
 The productization release. Reframes PDT from an analyst's instrument into a
