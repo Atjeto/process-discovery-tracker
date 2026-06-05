@@ -3,7 +3,7 @@
  *
  * See docs/PDT-1.0-SPEC.md §4.2 and §0 (TL;DR). The Cockpit is the new
  * default surface the consultant lands on when opening a session — a
- * single-column read-like-a-memo summary that surfaces the AI-detected
+ * two-column read-like-a-memo summary that surfaces the AI-detected
  * process candidates and "what stood out" items at a glance, with one
  * click into the existing Workshop depth (Flow / Steps / Phases / Map /
  * Analysis) when verification is needed.
@@ -49,6 +49,14 @@ const HELP_CONTEXT = {
     "Surfaced by an existing heuristic detector (anchors, marker suggestions, idle-gap detector). Not AI-generated.",
   "cockpit-suppressed":
     "Candidates whose pattern-layer confidence is below the engagement's configured floor (default 50%). Not included in deliverables; reviewable in Workshop.",
+  "cockpit-rail-map":
+    "Simplified preview of the directly-follows graph mined from this session. Open Workshop → Map for the interactive view.",
+  "cockpit-rail-apps":
+    "Foreground time per application, measured from the activity stream. The top-3 frame what kind of work this session captures.",
+  "cockpit-rail-cases":
+    "Cases detected in this session — one per anchor stamp. Open Workshop → Phases for the case-by-case breakdown.",
+  "cockpit-rail-engagement":
+    "This session is part of an engagement. Switch to the Engagement tab to see the aggregated backlog.",
 };
 
 function _helpAttr(key) {
@@ -89,6 +97,11 @@ function _confidenceClass(c) {
   return "low";
 }
 
+function _fmtPct(n) {
+  if (n == null || !isFinite(n)) return "0%";
+  return Math.round(n) + "%";
+}
+
 /* -------- Confidence floor (ADR-0016 €-ROI honesty) ---------------- */
 
 // Candidates below this confidence are excluded from the visible band
@@ -110,6 +123,8 @@ function derive(session) {
   const analysis = session.analysis || {};
   const events = Array.isArray(session.events) ? session.events : [];
   const ann = session.annotations || {};
+  const manifest = session.manifest || {};
+  const dfg = session.dfg || null;
 
   // ---- Headline numbers ----
   // Duration: prefer pipeline-computed stat, else derive from event timestamps.
@@ -209,9 +224,10 @@ function derive(session) {
     const top = anchorCandidates[0] || {};
     stood_out.push({
       kind: "anchor_candidate",
-      text: anchorCandidates.length + " possible case anchor" +
-        (anchorCandidates.length > 1 ? "s" : "") +
-        " found — review to split this session into cases.",
+      headline: anchorCandidates.length + " possible case anchor" +
+        (anchorCandidates.length > 1 ? "s" : ""),
+      hint: "Anchors split this recording into separate cases. Review them before metrics roll up correctly.",
+      action: { label: "Review anchors", level: "phases" },
       confidence: typeof top.score === "number" ? top.score : 0,
     });
   }
@@ -221,8 +237,10 @@ function derive(session) {
     const top = markerSuggestions[0] || {};
     stood_out.push({
       kind: "marker_suggestion",
-      text: markerSuggestions.length + " possible case boundar" +
-        (markerSuggestions.length > 1 ? "ies" : "y") + " detected.",
+      headline: markerSuggestions.length + " possible case boundar" +
+        (markerSuggestions.length > 1 ? "ies" : "y") + " detected",
+      hint: "The detector found points that look like case starts. Confirm them so step timings line up.",
+      action: { label: "Confirm markers", level: "phases" },
       confidence: typeof top.score === "number" ? top.score : 0,
     });
   }
@@ -233,8 +251,10 @@ function derive(session) {
   if (wasteSteps.length > 0) {
     stood_out.push({
       kind: "waste",
-      text: wasteSteps.length + " step" + (wasteSteps.length > 1 ? "s" : "") +
-        " flagged as waste.",
+      headline: wasteSteps.length + " step" + (wasteSteps.length > 1 ? "s" : "") +
+        " flagged as waste",
+      hint: "These steps add no value to the customer outcome. Likely first candidates for automation or removal.",
+      action: { label: "Inspect waste", level: "analysis" },
       confidence: 1.0,
     });
   }
@@ -244,7 +264,9 @@ function derive(session) {
   if (idle_ms > 60_000) {
     stood_out.push({
       kind: "idle_gap",
-      text: _fmtDuration(idle_ms) + " total idle / wait time.",
+      headline: _fmtDuration(idle_ms) + " idle / wait time",
+      hint: "Long pauses inside a case usually mean waiting on an external system or a person.",
+      action: null,
       confidence: 1.0,
     });
   }
@@ -253,10 +275,55 @@ function derive(session) {
   if (app_switches >= 30) {
     stood_out.push({
       kind: "app_switching",
-      text: _fmtCount(app_switches) + " app switches — possible context-switching cost.",
+      headline: _fmtCount(app_switches) + " app switches",
+      hint: "High context-switching often signals manual copy-paste between systems — a common automation target.",
+      action: { label: "Look at flow", level: "flow" },
       confidence: 1.0,
     });
   }
+
+  // ---- Right-rail: top apps by foreground time ----
+  // Stats.activity_stats labels look like "Text entry -- chrome.exe". Bucket
+  // those by the trailing app token to get per-app totals.
+  const appBuckets = new Map();
+  const activityStats = Array.isArray(stats.activity_stats) ? stats.activity_stats : [];
+  for (const a of activityStats) {
+    const lbl = String(a.activity_label || "");
+    // "Activity -- app.exe" — split on " -- " or " — " and take the trailer.
+    const parts = lbl.split(/ -- | — /);
+    const app = parts.length > 1 ? parts[parts.length - 1] : lbl;
+    if (!app) continue;
+    const dur = a.total_duration_ms || 0;
+    appBuckets.set(app, (appBuckets.get(app) || 0) + dur);
+  }
+  const totalAppMs = Array.from(appBuckets.values()).reduce((s, v) => s + v, 0);
+  const appList = Array.from(appBuckets.entries())
+    .map(([app, ms]) => ({ app, ms, pct: totalAppMs > 0 ? (ms / totalAppMs * 100) : 0 }))
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 5);
+
+  // ---- Right-rail: case + step breakdown ----
+  const caseStats = Array.isArray(stats.case_stats) ? stats.case_stats : [];
+  const caseCount = caseStats.length;
+  const stepCount = (stats.meta && stats.meta.step_count) ||
+                    (Array.isArray(ann.steps) ? ann.steps.length : 0);
+  // Mean wall-clock per case — straight average from case_stats.
+  let meanCaseMs = 0;
+  if (caseStats.length > 0) {
+    const sum = caseStats.reduce((s, c) => s + (c.wall_clock_ms || 0), 0);
+    meanCaseMs = Math.round(sum / caseStats.length);
+  }
+
+  // ---- Right-rail: DFG preview ----
+  // We don't render the full bpmn here — just a tiny chain of node labels
+  // that the user can scan. The Map view holds the real diagram.
+  const dfgNodes = _buildDfgChain(dfg);
+
+  // ---- Right-rail: engagement context ----
+  const engagement = manifest.engagement_id ? {
+    id: manifest.engagement_id,
+    name: _humanizeEngagementId(manifest.engagement_id),
+  } : null;
 
   return {
     headline: { duration_ms, app_switches, interactions },
@@ -264,7 +331,70 @@ function derive(session) {
     suppressed_low_confidence,
     stood_out,
     roi: roi_view,
+    rail: {
+      dfg: dfgNodes,
+      apps: appList,
+      cases: { count: caseCount, mean_ms: meanCaseMs, total: caseStats },
+      steps: { count: stepCount },
+      engagement,
+    },
   };
+}
+
+/**
+ * Build a small linear chain through the DFG for the rail preview.
+ * Picks one start activity, walks the highest-frequency outgoing edge
+ * each hop until it hits an end activity or runs out. The full graph
+ * lives in Workshop → Map; this is just an at-a-glance shape.
+ */
+function _buildDfgChain(dfg) {
+  if (!dfg || !Array.isArray(dfg.edges) || dfg.edges.length === 0) return [];
+  const starts = dfg.start_activities || {};
+  const ends = dfg.end_activities || {};
+  // Pick the most-frequent start.
+  let cur = null;
+  let bestStart = 0;
+  for (const [k, v] of Object.entries(starts)) {
+    if (v > bestStart) { bestStart = v; cur = k; }
+  }
+  if (!cur && dfg.edges.length > 0) cur = dfg.edges[0].source;
+  const visited = new Set();
+  const chain = [];
+  while (cur && !visited.has(cur) && chain.length < 6) {
+    visited.add(cur);
+    chain.push({ label: _shortenAppLabel(cur), is_end: !!ends[cur] });
+    if (ends[cur]) break;
+    // Find the highest-frequency outgoing edge from cur.
+    let next = null;
+    let bestFreq = 0;
+    for (const e of dfg.edges) {
+      if (e.source !== cur) continue;
+      if ((e.frequency || 0) > bestFreq) { bestFreq = e.frequency; next = e.target; }
+    }
+    cur = next;
+  }
+  return chain;
+}
+
+// "Text entry -- chrome.exe" -> "chrome.exe" -> "chrome"
+// "Save record -- ServiceNow" -> "ServiceNow"
+function _shortenAppLabel(label) {
+  if (!label) return "";
+  const parts = String(label).split(/ -- | — /);
+  let tail = parts[parts.length - 1] || parts[0];
+  // Strip .exe / .EXE.
+  tail = tail.replace(/\.(exe|EXE)$/, "");
+  if (tail.length > 24) tail = tail.slice(0, 21) + "…";
+  return tail;
+}
+
+function _humanizeEngagementId(id) {
+  if (!id) return "";
+  // "demo-pack-servicenow-it-service" -> "Demo Pack — ServiceNow It Service"
+  return String(id)
+    .split("-")
+    .map(w => w ? w[0].toUpperCase() + w.slice(1) : "")
+    .join(" ");
 }
 
 /* -------- DOM helpers ---------------------------------------------- */
@@ -286,7 +416,11 @@ function _h(tag, attrs, ...children) {
   }
   for (const c of children) {
     if (c == null || c === false) continue;
-    el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    if (typeof c === "string" || typeof c === "number") {
+      el.appendChild(document.createTextNode(String(c)));
+    } else {
+      el.appendChild(c);
+    }
   }
   return el;
 }
@@ -295,6 +429,32 @@ function _h(tag, attrs, ...children) {
 function _withHelp(attrs, key) {
   const h = _helpAttr(key);
   return h ? Object.assign({}, attrs, h) : attrs;
+}
+
+/* -------- Stood-out finding rendering ------------------------------ */
+
+// One small inline SVG glyph per finding kind. Keeps the visual
+// distinct from the bullet-soup the original "▌" rendering looked
+// like, without pulling in an icon font.
+const _STOOD_OUT_ICONS = {
+  anchor_candidate:
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="22"/><path d="M5 18a7 7 0 0 0 14 0"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
+  marker_suggestion:
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4a2 2 0 0 1 2-2h11l-2 4 2 4H6"/></svg>',
+  waste:
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m1 0v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6h10z"/></svg>',
+  idle_gap:
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  app_switching:
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+};
+
+function _stoodOutIcon(kind) {
+  const svg = _STOOD_OUT_ICONS[kind] || _STOOD_OUT_ICONS.waste;
+  const wrap = document.createElement("span");
+  wrap.className = "cockpit-stood-out-icon cockpit-stood-out-icon-" + kind;
+  wrap.innerHTML = svg;
+  return wrap;
 }
 
 /* -------- Render ---------------------------------------------------- */
@@ -318,6 +478,13 @@ function render() {
     ));
     return;
   }
+
+  // The cockpit now lays out in two columns:
+  //   - .cockpit-main: headline + candidates + stood-out
+  //   - .cockpit-rail: map preview + apps + cases + engagement
+  // Either column can scroll independently if content runs long.
+  const main = _h("section", { class: "cockpit-main" });
+  const rail = _h("aside", { class: "cockpit-rail" });
 
   // ---- Headline strip ----
   const headline = _h("section", { class: "cockpit-headline" });
@@ -351,14 +518,17 @@ function render() {
       _h("div", { class: "cockpit-headline-lbl" }, "potential time saved / yr"),
     ));
   }
-  host.appendChild(headline);
+  main.appendChild(headline);
 
   // ---- Process candidates section ----
   const candSec = _h("section", { class: "cockpit-section" });
   const candHeader = _h("div", { class: "cockpit-section-header" },
     _h("h3", { class: "cockpit-h3" }, "Process candidates"),
     data.suppressed_low_confidence > 0
-      ? _h("span", _withHelp({ class: "cockpit-suppressed" }, "cockpit-suppressed"),
+      ? _h("span", _withHelp({
+          class: "cockpit-suppressed",
+          "aria-label": data.suppressed_low_confidence + " candidates below the confidence floor, hidden from this view; open Workshop to review them.",
+        }, "cockpit-suppressed"),
           data.suppressed_low_confidence + " low-confidence hidden")
       : null,
   );
@@ -382,6 +552,9 @@ function render() {
           class: "cockpit-candidate-ai",
           title: "Named by the local AI Naming Layer (ADR-0028) from cues: " +
                  (c.llm_provenance || []).join(", "),
+          // a11y: SR reads "Email Sending, named by AI" instead of bare "AI"
+          "aria-label": "Named by AI",
+          role: "img",
         }, "cockpit-candidate-ai-badge"), "AI"));
       }
       if (c.semantic_merged && (c.merged_variants || []).length > 1) {
@@ -389,6 +562,8 @@ function render() {
           class: "cockpit-candidate-merged",
           title: "Semantic-merged from " + c.merged_variants.length +
                  " label variants: " + c.merged_variants.join(" · "),
+          "aria-label": "Merged from " + c.merged_variants.length + " similar labels",
+          role: "img",
         }, "↔ " + c.merged_variants.length));
       }
       const item = _h("li", _withHelp({ class: "cockpit-candidate", "data-segment": c.id }, "cockpit-candidate-row"),
@@ -397,25 +572,29 @@ function render() {
           _h("div", { class: "cockpit-candidate-meta" },
             _h("span", { class: "cockpit-candidate-count" },
               c.instance_count + "× · " + _fmtDuration(c.mean_elapsed_ms) + " avg"),
-            _h("span", _withHelp({ class: "cockpit-candidate-conf cockpit-conf-" + confCls,
+            _h("span", _withHelp({ class: "cockpit-candidate-conf confidence-pill conf-" + confCls + " cockpit-conf-" + confCls,
                           title: "Confidence " + conf + "%. " +
-                                 "Click to verify in Workshop → Analysis." }, "cockpit-candidate-confidence"),
+                                 "Click to verify in Workshop → Analysis.",
+                          // a11y: WCAG 1.4.1 — colour + glyph carry meaning,
+                          // and the screen reader gets the level in words.
+                          "aria-label": "confidence " + conf + "%, " + confCls,
+                          role: "img" }, "cockpit-candidate-confidence"),
               conf + "%"),
           ),
         ),
         _h("button", {
           class: "cockpit-candidate-drill",
-          title: "Verify this candidate in Workshop → Analysis",
-          onClick: () => _drillIntoCandidate(c.id),
+          title: "Drop into Workshop / Analysis with this candidate's segment scrolled into view, so you can confirm it's real before it lands in the backlog.",
+          onClick: () => _drillIntoCandidate(c.id, c.label),
         }, "Verify →"),
       );
       list.appendChild(item);
     });
     candSec.appendChild(list);
   }
-  host.appendChild(candSec);
+  main.appendChild(candSec);
 
-  // ---- What stood out ----
+  // ---- What stood out (real findings, not bullet stubs) ----
   const stoodOutSec = _h("section", { class: "cockpit-section" });
   stoodOutSec.appendChild(_h("h3", { class: "cockpit-h3" }, "What stood out"));
   if (data.stood_out.length === 0) {
@@ -424,31 +603,160 @@ function render() {
   } else {
     const list = _h("ul", { class: "cockpit-stood-out-list" });
     data.stood_out.forEach(s => {
-      list.appendChild(_h("li", _withHelp({ class: "cockpit-stood-out" }, "cockpit-stood-out-item"),
-        _h("span", { class: "cockpit-stood-out-bullet" }, "▌"),
-        _h("span", { class: "cockpit-stood-out-text" }, s.text),
+      const findingBody = _h("div", { class: "cockpit-stood-out-body" },
+        _h("div", { class: "cockpit-stood-out-headline" }, s.headline),
+        s.hint ? _h("div", { class: "cockpit-stood-out-hint" }, s.hint) : null,
+      );
+      const actionEl = s.action ? _h("button", {
+        class: "cockpit-stood-out-action",
+        title: "Open Workshop with this finding's surface focused.",
+        onClick: () => _drillIntoLevel(s.action.level),
+      }, s.action.label + " →") : null;
+      list.appendChild(_h("li", _withHelp({
+        class: "cockpit-stood-out cockpit-stood-out-" + s.kind,
+      }, "cockpit-stood-out-item"),
+        _stoodOutIcon(s.kind),
+        findingBody,
+        actionEl,
       ));
     });
     stoodOutSec.appendChild(list);
   }
-  host.appendChild(stoodOutSec);
+  main.appendChild(stoodOutSec);
 
   // ---- Footer hint ----
-  host.appendChild(_h("div", { class: "cockpit-footer" },
+  main.appendChild(_h("div", { class: "cockpit-footer" },
     _h("span", { class: "cockpit-footer-hint" },
       "Need depth? Switch to Workshop in the top bar for the full analyst surface."),
   ));
+
+  // ---- Right-rail: at-a-glance context ----
+  // Engagement card (only when this session is part of one).
+  if (data.rail.engagement) {
+    const eng = data.rail.engagement;
+    rail.appendChild(_h("section", _withHelp({
+      class: "cockpit-rail-card cockpit-rail-engagement",
+    }, "cockpit-rail-engagement"),
+      _h("div", { class: "cockpit-rail-card-label" }, "Engagement"),
+      _h("div", { class: "cockpit-rail-eng-name", title: eng.id }, eng.name),
+      _h("button", {
+        class: "cockpit-rail-eng-link",
+        title: "Switch to the Engagement tab for the aggregated backlog.",
+        onClick: () => {
+          if (typeof window !== "undefined" && typeof window._cockpitSwitchTab === "function") {
+            window._cockpitSwitchTab("engagement");
+          }
+        },
+      }, "Open engagement →"),
+    ));
+  }
+
+  // Process-map preview card — the linear DFG chain.
+  if (data.rail.dfg && data.rail.dfg.length > 0) {
+    const chain = _h("ol", { class: "cockpit-rail-dfg" });
+    data.rail.dfg.forEach((node, idx) => {
+      chain.appendChild(_h("li", {
+        class: "cockpit-rail-dfg-node" + (node.is_end ? " cockpit-rail-dfg-end" : "") +
+               (idx === 0 ? " cockpit-rail-dfg-start" : ""),
+      }, node.label));
+      if (idx < data.rail.dfg.length - 1) {
+        chain.appendChild(_h("li", { class: "cockpit-rail-dfg-arrow", "aria-hidden": "true" }, "↓"));
+      }
+    });
+    rail.appendChild(_h("section", _withHelp({
+      class: "cockpit-rail-card",
+    }, "cockpit-rail-map"),
+      _h("div", { class: "cockpit-rail-card-label" }, "Process shape"),
+      chain,
+      _h("button", {
+        class: "cockpit-rail-link",
+        title: "Open the full interactive process map in Workshop.",
+        onClick: () => _drillIntoLevel("map"),
+      }, "Open the full map →"),
+    ));
+  }
+
+  // Cases + steps breakdown.
+  if (data.rail.cases.count > 0 || data.rail.steps.count > 0) {
+    rail.appendChild(_h("section", _withHelp({
+      class: "cockpit-rail-card",
+    }, "cockpit-rail-cases"),
+      _h("div", { class: "cockpit-rail-card-label" }, "Breakdown"),
+      _h("div", { class: "cockpit-rail-breakdown" },
+        _h("div", { class: "cockpit-rail-breakdown-row" },
+          _h("span", { class: "cockpit-rail-breakdown-val" }, _fmtCount(data.rail.cases.count)),
+          _h("span", { class: "cockpit-rail-breakdown-lbl" },
+            data.rail.cases.count === 1 ? "case" : "cases"),
+        ),
+        _h("div", { class: "cockpit-rail-breakdown-row" },
+          _h("span", { class: "cockpit-rail-breakdown-val" }, _fmtCount(data.rail.steps.count)),
+          _h("span", { class: "cockpit-rail-breakdown-lbl" }, "steps"),
+        ),
+        data.rail.cases.mean_ms > 0
+          ? _h("div", { class: "cockpit-rail-breakdown-row" },
+              _h("span", { class: "cockpit-rail-breakdown-val" }, _fmtDuration(data.rail.cases.mean_ms)),
+              _h("span", { class: "cockpit-rail-breakdown-lbl" }, "avg / case"),
+            )
+          : null,
+      ),
+    ));
+  }
+
+  // Top apps by foreground time.
+  if (data.rail.apps && data.rail.apps.length > 0) {
+    const topApps = data.rail.apps.slice(0, 3);
+    const appsList = _h("ul", { class: "cockpit-rail-apps-list" });
+    topApps.forEach(a => {
+      appsList.appendChild(_h("li", { class: "cockpit-rail-app" },
+        _h("div", { class: "cockpit-rail-app-row" },
+          _h("span", { class: "cockpit-rail-app-name", title: a.app }, _shortenAppLabel(a.app)),
+          _h("span", { class: "cockpit-rail-app-pct" }, _fmtPct(a.pct)),
+        ),
+        _h("div", { class: "cockpit-rail-app-bar" },
+          _h("div", {
+            class: "cockpit-rail-app-bar-fill",
+            style: "width: " + Math.max(2, Math.min(100, a.pct)) + "%",
+          }),
+        ),
+      ));
+    });
+    rail.appendChild(_h("section", _withHelp({
+      class: "cockpit-rail-card",
+    }, "cockpit-rail-apps"),
+      _h("div", { class: "cockpit-rail-card-label" }, "Top apps · % time"),
+      appsList,
+    ));
+  }
+
+  host.appendChild(main);
+  host.appendChild(rail);
 }
 
 /* -------- Drill-through to Workshop -------------------------------- */
 
-// Park the selected segment id and switch the user to Workshop / Analysis,
-// where the existing analysis view can scroll to and highlight it.
-function _drillIntoCandidate(segmentId) {
-  // Defer to the renderer's exposed drill hook (wired in renderer.js).
+// Park the selected segment id + label and switch the user to Workshop /
+// Analysis, where the existing analysis view can scroll to and highlight
+// it. The label is passed through so the drill banner names the candidate.
+function _drillIntoCandidate(segmentId, candidateLabel) {
   if (typeof window !== "undefined" && typeof window._cockpitDrill === "function") {
-    window._cockpitDrill(segmentId);
+    window._cockpitDrill(segmentId, candidateLabel);
   }
+}
+
+// Switch to Workshop and land on a given level (flow/steps/phases/map/analysis).
+function _drillIntoLevel(level) {
+  if (typeof window === "undefined") return;
+  if (typeof window._cockpitDrillLevel === "function") {
+    window._cockpitDrillLevel(level);
+    return;
+  }
+  // Fallback: flip to Workshop mode and click the level button directly.
+  const modeBtn = document.querySelector('#session-mode-toggle .mode-btn[data-mode="workshop"]');
+  if (modeBtn) modeBtn.click();
+  setTimeout(() => {
+    const lvlBtn = document.querySelector('.view-mode-btn[data-level="' + level + '"]');
+    if (lvlBtn) lvlBtn.click();
+  }, 80);
 }
 
 module.exports = { render, derive, CONFIDENCE_FLOOR, HELP_CONTEXT };

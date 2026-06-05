@@ -233,6 +233,90 @@ ipcMain.handle("viewer:exportEngagementConfig", async (_e, engagementFolder) => 
   return exportEngagementConfigAsync(engagementFolder);
 });
 
+// ADR-0033 Demo Pack — resolve the bundled engagement folder so the
+// Engagement empty state can offer a one-click "Open Demo Pack" without
+// the user hunting for the path. Probes the dev-tree (sessions/demo-pack)
+// and the packaged resources location (electron-packager extraResource).
+// Returns { path, present } so the renderer can hide the shortcut when
+// the bundle was pruned (e.g., a stripped internal build).
+ipcMain.handle("viewer:resolveDemoPacks", () => {
+  const candidates = [
+    path.join(__dirname, "..", "sessions", "demo-pack"),
+    process.resourcesPath ? path.join(process.resourcesPath, "demo-pack") : null,
+  ].filter(Boolean);
+  const found = [];
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, "engagement.json"))) {
+      let name = path.basename(c);
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(c, "engagement.json"), "utf-8"));
+        if (j && j.name) name = j.name;
+      } catch (_) {}
+      found.push({ path: c, name });
+    }
+  }
+  return { engagements: found };
+});
+
+// PDT-1.0-SPEC §3.2 / ADR-0028: probe the local Ollama Naming Layer so the
+// topbar status pill can tell the analyst whether the LLM is reachable +
+// what model is loaded. Renderer is forbidden from raw network calls
+// (connect-src 'none' CSP), so the main process owns the probe.
+ipcMain.handle("viewer:probeOllama", async () => {
+  const url = (process.env.PDT_OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
+  const model = process.env.PDT_OLLAMA_MODEL || null;
+  const embedModel = process.env.PDT_OLLAMA_EMBED_MODEL || null;
+  return await new Promise((resolve) => {
+    try {
+      const u = new URL(url + "/api/tags");
+      const lib = u.protocol === "https:" ? require("node:https") : require("node:http");
+      const req = lib.get({
+        hostname: u.hostname, port: u.port, path: u.pathname,
+        timeout: 1500,
+      }, (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          resolve({ reachable: false, url, error: "status " + res.statusCode });
+          return;
+        }
+        let body = "";
+        res.on("data", (c) => { body += c; if (body.length > 64_000) body = body.slice(0, 64_000); });
+        res.on("end", () => {
+          let tags = [];
+          try {
+            const j = JSON.parse(body);
+            tags = (j.models || []).map(m => m.name);
+          } catch (_) {}
+          // Pick the model the Naming Layer will actually use, not just
+          // "the first tag" — Ollama lists embedding models (all-minilm,
+          // nomic-embed-text) and chat models indiscriminately, but only
+          // chat models do the activity naming. Prefer the configured
+          // PDT_OLLAMA_MODEL, then any chat-style tag, then fall back.
+          const isEmbedOnly = (t) => /minilm|embed|bge-/i.test(t);
+          const isChatModel = (t) =>
+            /instruct|chat|qwen|llama|mistral|phi|gemma|gpt/i.test(t)
+            && !isEmbedOnly(t);
+          let finalModel = null;
+          if (model && tags.includes(model)) {
+            finalModel = model;
+          } else {
+            finalModel = tags.find(isChatModel)
+                       || tags.find(t => !isEmbedOnly(t))
+                       || tags[0]
+                       || model
+                       || "(unknown)";
+          }
+          resolve({ reachable: true, url, model: finalModel, tags, embedModel });
+        });
+      });
+      req.on("error", (e) => resolve({ reachable: false, url, error: e.message }));
+      req.on("timeout", () => { try { req.destroy(); } catch (_) {} resolve({ reachable: false, url, error: "timeout" }); });
+    } catch (e) {
+      resolve({ reachable: false, url, error: e.message });
+    }
+  });
+});
+
 function loadEngagementData(folder) {
   if (!folder || !fs.existsSync(folder)) {
     return { error: "engagement folder not found", folder };
@@ -262,14 +346,19 @@ function loadEngagementData(folder) {
   // Build the backlog via the Python helper (so it stays single-source-of-truth).
   let backlog = { rows: [], process_count: 0, suppressed_low_confidence: 0 };
   let summary = { session_count: sessions.length, total_capture_ms: 0, total_net_annual: null };
+  // Per-session manifest + step_variants + signature->case_ids map, so the
+  // renderer can build the detail-page Variants + Evidence panels without a
+  // second IPC. Filled by buildBacklogSync.
+  let sessionSummaries = [];
   try {
     const built = buildBacklogSync(sessions, root);
     if (built && built.backlog) backlog = built.backlog;
     if (built && built.summary) summary = Object.assign(summary, built.summary);
+    if (built && Array.isArray(built.session_summaries)) sessionSummaries = built.session_summaries;
   } catch (e) {
     console.error("[engagement] backlog build failed:", e && e.message);
   }
-  return { engagementFolder: root, engagement, backlog, summary, sessions };
+  return { engagementFolder: root, engagement, backlog, summary, sessions, sessionSummaries };
 }
 
 function buildBacklogSync(sessions, engagementFolder) {
@@ -285,19 +374,89 @@ import json, sys
 sys.path.insert(0, ${JSON.stringify(path.join(__dirname, "..", "normalization"))})
 sys.path.insert(0, ${JSON.stringify(path.join(process.resourcesPath || "", "normalization"))})
 from engagement import build_backlog
+import os
 sessions = ${JSON.stringify(sessions)}
 eng_folder = ${JSON.stringify(engagementFolder || "")} or None
 b = build_backlog(sessions, engagement_folder=eng_folder)
-# Summary stats.
+# Summary stats + per-session summaries (PDD-style detail-page data: each
+# session's step_variants + manifest worker/date, and the case_ids each
+# session contributes to each backlog signature, so the renderer can
+# render real Variants + Evidence panels client-side without a second IPC).
 total_capture_ms = 0
 total_net_annual = 0.0
 has_money = False
+session_summaries = []
 for s in sessions:
+    sess_ms = 0
+    started_at = None
+    ended_at = None
+    worker_id = None
+    session_id = os.path.basename(s)
+    step_variants = []
+    case_count_in_session = 0
+    candidate_cases_by_sig = {}
     try:
-        stats = json.load(open(s + "/stats.json", encoding="utf-8"))
-        total_capture_ms += int(stats.get("session_duration_ms", 0) or 0)
+        manifest = json.load(open(s + "/manifest.json", encoding="utf-8"))
+        if isinstance(manifest, dict):
+            session_id = manifest.get("session_id") or session_id
+            worker_id = manifest.get("worker_id") or manifest.get("worker") or None
+            started_at = manifest.get("started_at") or manifest.get("start_ts")
+            ended_at = manifest.get("ended_at") or manifest.get("end_ts")
     except Exception:
         pass
+    try:
+        stats = json.load(open(s + "/stats.json", encoding="utf-8"))
+        sess_ms = int(stats.get("session_duration_ms", 0) or 0)
+        # Fall back to case_stats range when the top-level duration isn't set.
+        if not sess_ms:
+            cs = stats.get("case_stats") or []
+            ends = [c.get("end_ts") for c in cs if c.get("end_ts")]
+            starts = [c.get("start_ts") for c in cs if c.get("start_ts")]
+            if starts and ends:
+                from datetime import datetime
+                def _parse(t):
+                    return datetime.fromisoformat(t.replace("Z", "+00:00"))
+                sess_ms = int((max(_parse(e) for e in ends) - min(_parse(t) for t in starts)).total_seconds() * 1000)
+        # Cap step_variants at 8 paths per session — the renderer aggregates
+        # across sessions and only renders the top 5, so 8 is a safe ceiling.
+        sv = stats.get("step_variants") or []
+        for v in sv[:8]:
+            if isinstance(v, dict):
+                step_variants.append({
+                    "variant": list(v.get("variant") or []),
+                    "frequency": int(v.get("frequency") or 0),
+                    "length": int(v.get("length") or 0),
+                })
+        case_count_in_session = len(stats.get("case_stats") or [])
+        meta = stats.get("meta") or {}
+        if not worker_id:
+            worker_id = meta.get("worker_id")
+    except Exception:
+        pass
+    # Last resort: read first + last event timestamp from events.jsonl.
+    if not sess_ms:
+        try:
+            ep = s + "/events.jsonl"
+            if os.path.exists(ep):
+                first = last = None
+                with open(ep, encoding="utf-8") as fh:
+                    for ln in fh:
+                        try:
+                            ev = json.loads(ln)
+                            ts = ev.get("timestamp")
+                            if ts:
+                                if first is None: first = ts
+                                last = ts
+                        except Exception:
+                            continue
+                if first and last:
+                    from datetime import datetime
+                    a = datetime.fromisoformat(first.replace("Z", "+00:00"))
+                    b2 = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                    sess_ms = int((b2 - a).total_seconds() * 1000)
+        except Exception:
+            pass
+    total_capture_ms += sess_ms
     try:
         analysis = json.load(open(s + "/analysis.json", encoding="utf-8"))
         roi = analysis.get("roi") or {}
@@ -306,8 +465,38 @@ for s in sessions:
         if isinstance(net, (int, float)):
             has_money = True
             total_net_annual += float(net)
+        # Pull per-signature case_ids the session contributes to each row
+        # so Evidence rows show "this session contributed N cases" honestly.
+        for c in (analysis.get("automation_candidates") or []):
+            if not isinstance(c, dict):
+                continue
+            sig = c.get("segment_signature")
+            if not sig:
+                continue
+            cids = list(c.get("case_ids") or [])
+            if cids:
+                # In a session a candidate appears once per signature, but
+                # guard against accidental repeats by deduping.
+                prev = set(candidate_cases_by_sig.get(sig, []))
+                merged = sorted(prev.union(cids))
+                candidate_cases_by_sig[sig] = merged
     except Exception:
         pass
+    session_summaries.append({
+        "session_id": session_id,
+        "session_folder": s,
+        "worker_id": worker_id,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "duration_ms": sess_ms,
+        "case_count": case_count_in_session,
+        "step_variants": step_variants,
+        "candidate_cases_by_signature": candidate_cases_by_sig,
+    })
+# The backlog rows include the literal segment_signature of each candidate
+# (the same id present in each session's automation_candidates), so the
+# renderer can join row.signature -> session_summaries[i].candidate_cases_by_signature[sig]
+# to produce per-row evidence + variant aggregation without a second IPC.
 print(json.dumps({
     "backlog": b,
     "summary": {
@@ -315,6 +504,7 @@ print(json.dumps({
         "total_capture_ms": total_capture_ms,
         "total_net_annual": total_net_annual if has_money else None,
     },
+    "session_summaries": session_summaries,
 }))
 `;
   const r = spawnSync(py, ["-c", script], { encoding: "utf-8", maxBuffer: 32 * 1024 * 1024 });

@@ -1,6 +1,7 @@
 {
   "session_id": "demo-alice-20260601-0900",
   "engagement_id": "demo-pack-servicenow-it-service",
+  "worker_id": "alice.morgan",
   "started_at": "2026-06-01T09:00:00.000Z",
   "ended_at": "2026-06-01T09:01:04.650Z",
   "status": "closed",

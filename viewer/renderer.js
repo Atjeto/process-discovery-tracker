@@ -79,6 +79,14 @@ $$(".tab").forEach((tab) => {
 function activateTab(name) {
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
+  // PDT-1.0-SPEC §4.1.1: Glance/Cockpit/Workshop is a SESSION-VIEW concept.
+  // Hide it on every non-session tab. On the session tab leave the current
+  // visibility alone (flow-view.js reveals it once a session loads — don't
+  // race that here by re-hiding on every tab switch).
+  const toggle = document.getElementById("session-mode-toggle");
+  if (toggle && name !== "session") {
+    toggle.hidden = true;
+  }
   // PDT-1.0-SPEC §5.3: render the engagement view when its tab activates.
   if (name === "engagement") { try { EngagementView.render(); } catch (_) {} }
   // Trigger lazy re-fit of any active viz
@@ -197,13 +205,23 @@ function applySessionMode(mode) {
   State.setMode(mode);
   _persistSessionMode(mode);
 
-  // Toggle the topbar button states.
+  // Toggle the topbar button states. a11y: aria-selected mirrors .active so
+  // a screen reader announces "Cockpit, tab, selected" when focus lands.
   const toggle = document.getElementById("session-mode-toggle");
   if (toggle) {
     toggle.querySelectorAll(".mode-btn").forEach(b => {
-      b.classList.toggle("active", b.dataset.mode === mode);
+      const active = b.dataset.mode === mode;
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-selected", active ? "true" : "false");
     });
   }
+
+  // PDT-1.0-SPEC §4.1.1/§4.2: Cockpit/Glance suppress Workshop chrome
+  // (actions bar / pills / session summary / raw events). A body class
+  // drives the CSS so each chrome element can opt in/out cleanly.
+  document.body.classList.toggle("mode-cockpit", mode === "cockpit");
+  document.body.classList.toggle("mode-glance", mode === "glance");
+  document.body.classList.toggle("mode-workshop", mode === "workshop");
 
   // Toggle the view-mode-bar visibility (the 5-tab switcher belongs to Workshop).
   const viewModeBar = document.querySelector(".view-mode-bar");
@@ -232,6 +250,9 @@ function applySessionMode(mode) {
     const level = State.getLevel() || "flow";
     applyLevel(level);
   }
+  // FLOW SHORTCUTS overlay is level-specific; re-evaluate so it disappears
+  // when leaving Workshop (was leaking into Cockpit / Glance previously).
+  if (typeof renderShortcutsOverlay === "function") renderShortcutsOverlay();
 }
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
@@ -524,18 +545,88 @@ State.subscribe("markers",  () => { if (State.getMode() === "cockpit") CockpitVi
 /* PDT-1.0-SPEC §4.1.2: glance re-renders on any step edit. */
 State.subscribe("steps",    () => { if (State.getMode() === "glance") GlanceView.render(); });
 
-/* Glance edits persist via the existing annotations save path. */
+/* Glance edits persist via the existing annotations save path.
+   The previous call was wrong: persistAnnotations(annotations, undoLabel,
+   topics) — and we were passing { topics: [...] } as the annotations
+   object, which OVERWROTE annotations.json with a 1-key blob and wiped
+   every step. Pass the live annotations object and let the topics arg
+   drive the targeted re-render. */
 window._glancePersist = function _glancePersist() {
-  try { persistAnnotations({ topics: ["steps"] }); } catch (e) { console.error(e); }
+  try {
+    const s = State.getSession();
+    if (!s || !s.annotations) return;
+    persistAnnotations(s.annotations, "Glance edit", ["steps"]);
+  } catch (e) { console.error("[glance persist]", e); }
 };
 
-/* PDT-1.0-SPEC §4.4: drill-through from a Cockpit candidate -> Workshop / Analysis. */
-window._cockpitDrill = function _cockpitDrill(segmentId) {
+/* PDT-1.0-SPEC §4.4: drill-through from a Cockpit candidate -> Workshop / Analysis.
+   Lands on Workshop/Analysis, parks the segment id so the analysis view can
+   scroll to it, and emits a banner above the analysis content so the
+   consultant knows WHICH candidate they're verifying and how to get back. */
+window._cockpitDrill = function _cockpitDrill(segmentId, candidateLabel) {
   applySessionMode("workshop");
-  // Land on Analysis where the segment-grain automation candidates live.
   applyLevel("analysis");
-  // Park the segment id so the analysis view can scroll / highlight it.
   try { window._pdtCockpitFocusSegment = segmentId; } catch (_) {}
+  // Render an in-view banner that points the user at the segment and gives
+  // them a one-click "Back to Cockpit" — answering "what do I do here?".
+  setTimeout(() => {
+    const host = document.getElementById("analysis-content");
+    if (!host) return;
+    let banner = document.getElementById("cockpit-drill-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "cockpit-drill-banner";
+      banner.className = "cockpit-drill-banner";
+      host.insertBefore(banner, host.firstChild);
+    }
+    const safeLabel = (candidateLabel || segmentId || "").replace(/</g, "&lt;");
+    banner.innerHTML =
+      '<div class="cockpit-drill-banner-body">' +
+      '<strong>Verifying: ' + safeLabel + '</strong>' +
+      '<span>Confirm this candidate is real and worth automating. ' +
+      'Look at the segment timing, the steps inside it, and whether the ' +
+      'instances look similar enough across cases. Then either edit, flag, ' +
+      'or accept it back in the Process Backlog.</span>' +
+      '</div>' +
+      '<button id="cockpit-drill-banner-back" class="cockpit-drill-banner-back" ' +
+      'title="Return to Cockpit summary view">← Back to Cockpit</button>';
+    // UX-density pass: only one banner at a time. The Heuristic-estimate
+    // caption is generic — when the analyst arrived here via the drill, the
+    // drill banner already says what to do. Yank any stray caption.
+    const stray = host.querySelector(".analysis-caption");
+    if (stray) stray.remove();
+    const back = banner.querySelector("#cockpit-drill-banner-back");
+    if (back) back.addEventListener("click", () => {
+      banner.remove();
+      try { window._pdtCockpitFocusSegment = null; } catch (_) {}
+      applySessionMode("cockpit");
+    });
+    // Scroll the matching segment row into view, if the analysis view rendered one.
+    const target = host.querySelector('[data-segment-signature="' + segmentId + '"]')
+                || host.querySelector('[data-segment-id="' + segmentId + '"]');
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.add("cockpit-drill-highlight");
+      setTimeout(() => target.classList.remove("cockpit-drill-highlight"), 3000);
+    }
+  }, 400);
+};
+
+/* PDT-1.0-SPEC §4.4: drill from a stood-out finding -> a specific Workshop
+   level (flow / steps / phases / map / analysis). Lighter sibling of
+   _cockpitDrill -- no segment-id parking, no banner, just a level switch.
+   Used by the "What stood out" finding action buttons in the Cockpit. */
+window._cockpitDrillLevel = function _cockpitDrillLevel(level) {
+  applySessionMode("workshop");
+  if (level) applyLevel(level);
+};
+
+/* PDT-1.0-SPEC §5.3: Cockpit rail -> Engagement tab. The engagement card
+   in the right rail lets the user jump to the aggregated backlog without
+   re-picking the folder. */
+window._cockpitSwitchTab = function _cockpitSwitchTab(tabName) {
+  const tab = document.querySelector('.tab[data-view="' + tabName + '"]');
+  if (tab) tab.click();
 };
 
 /* PDT-1.0-SPEC §4.1.1: hook called from loadSessionIntoView when a fresh
@@ -549,6 +640,47 @@ window._pdtApplySessionMode = function _pdtApplySessionMode() {
    - _engagementExport* run the corresponding deliverable export.
    The engagement object is cached in EngagementView; the renderer just
    trampolines events to the IPC layer. */
+/* ADR-0033: render the bundled-Demo-Pack shortcut in the Engagement empty
+   state. Probes viewer:resolveDemoPacks and renders a small "Try the Demo
+   Pack" card per found engagement. If nothing is bundled (stripped build),
+   the card section stays empty — the main "Open engagement folder..." is
+   still there. */
+window._renderEngagementDemoShortcut = async function _renderEngagementDemoShortcut() {
+  const host = document.getElementById("engagement-empty-demo");
+  if (!host) return;
+  try {
+    const r = await Ipc.invoke("viewer:resolveDemoPacks");
+    const list = (r && r.engagements) || [];
+    if (list.length === 0) {
+      host.innerHTML = "";
+      return;
+    }
+    const heading = '<div class="engagement-demo-heading">Or try a bundled demo</div>';
+    const cards = list.map(eng => {
+      const safeName = String(eng.name || "Demo").replace(/</g, "&lt;");
+      const safePath = String(eng.path).replace(/</g, "&lt;");
+      return '<button class="engagement-demo-card" data-demo-path="' + safePath.replace(/"/g, "&quot;") + '">' +
+             '<span class="engagement-demo-card-name">' + safeName + '</span>' +
+             '<span class="engagement-demo-card-path">' + safePath + '</span>' +
+             '<span class="engagement-demo-card-cta">Open this engagement →</span>' +
+             '</button>';
+    }).join("");
+    host.innerHTML = heading + '<div class="engagement-demo-cards">' + cards + '</div>';
+    host.querySelectorAll(".engagement-demo-card").forEach(card => {
+      card.addEventListener("click", async () => {
+        const p = card.getAttribute("data-demo-path");
+        try {
+          const res = await Ipc.invoke("viewer:loadEngagement", p);
+          if (res && !res.error) EngagementView.loadEngagement(res);
+          else toast("Failed to load demo: " + (res && res.error), "error");
+        } catch (e) { toast("Failed to load demo: " + e.message, "error"); }
+      });
+    });
+  } catch (e) {
+    console.error("[demo shortcut]", e);
+  }
+};
+
 window._openEngagementFolder = async function _openEngagementFolder() {
   try {
     const result = await Ipc.invoke("viewer:openEngagementFolder");
@@ -601,6 +733,19 @@ window._engagementExportConfig = async function _engagementExportConfig() {
   else toast("Export failed: " + (res && res.error || "unknown"), "error");
 };
 
+/* Engagement Evidence-row drilldown: jump to the Session tab and load the
+   given session folder. Pattern mirrors the Aggregate->Session drilldown
+   wired below. */
+window._engagementOpenSession = async function _engagementOpenSession(folder) {
+  if (!folder) return;
+  try {
+    activateTab("session");
+    await loadSessionIntoView(folder);
+  } catch (e) {
+    toast("Failed to open session: " + (e.message || e), "error");
+  }
+};
+
 /* Wire the state change-notification bus: an annotation edit emits the
    topics it touched (see persistAnnotations / performUndo / performRedo)
    and the matching view re-renders itself -- no full-session reload.
@@ -641,6 +786,11 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
+  // Keep the view-mode-bar buttons in sync — both for user clicks
+  // (the bar click handler also flips them) and for programmatic
+  // callers (the cockpit drill, command palette, applySessionMode).
+  $$(".view-mode-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.level === name));
   const layouts = ["flow", "steps", "phases", "map", "analysis"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
@@ -681,8 +831,36 @@ function applyLevel(name) {
   }
   // P2.4: refresh the shortcuts overlay for the new view.
   renderShortcutsOverlay();
+  // UX-density pass: the primary CTA depends on analyze state. Pre-analysis
+  // the orange button is "Analyze session"; post-analysis the typical action
+  // is review or export, so Analyze demotes to secondary and Export promotes.
+  refreshActionsPrimary();
   scheduleAutoSave();   // F1: persist the project after a view-mode switch
 }
+
+/* UX-density pass: re-allocate the .btn-primary slot in the Workshop actions
+   bar based on analyze state. The session is "analyzed" once stats.json has
+   been written and loaded into State.getSession().stats. */
+function refreshActionsPrimary() {
+  const btnAnalyze = document.getElementById("btn-normalize");
+  const btnExport = document.getElementById("btn-session-export-menu");
+  if (!btnAnalyze || !btnExport) return;
+  const s = State.getSession();
+  const analyzed = !!(s && s.stats);
+  if (analyzed) {
+    // Post-analysis: Analyze drops to secondary; Export becomes the primary CTA.
+    btnAnalyze.classList.remove("primary", "btn-primary");
+    btnAnalyze.classList.add("btn-secondary");
+    btnExport.classList.add("btn-primary");
+  } else {
+    // Pre-analysis: Analyze is the one orange button, Export reverts.
+    btnAnalyze.classList.remove("btn-secondary");
+    btnAnalyze.classList.add("primary", "btn-primary");
+    btnExport.classList.remove("btn-primary");
+  }
+}
+// Expose for the flow-view loader (called from loadSessionIntoView after stats land).
+try { window._pdtRefreshActionsPrimary = refreshActionsPrimary; } catch (_) {}
 
 /* P2.4: small persistent corner widget listing 3-4 most-used
    shortcuts for the active view. Dismissable; state persisted to
@@ -718,9 +896,13 @@ function renderShortcutsOverlay() {
   if (!ov) return;
   const hidden = localStorage.getItem(SHORTCUTS_OVERLAY_KEY) === "1";
   // Only show on the Session view, when a session is loaded, and not dismissed.
+  // Also gate on Workshop mode — the shortcuts are level-specific (Flow/Steps/
+  // Phases/Map) and meaningless in Cockpit/Glance, where the bottom-right
+  // panel was leaking the previous Workshop level's shortcuts.
   const onSession = document.querySelector(".tab.active") &&
                     document.querySelector(".tab.active").dataset.view === "session";
-  if (hidden || !onSession || !State.getSession()) {
+  const inWorkshop = State.getMode && State.getMode() === "workshop";
+  if (hidden || !onSession || !inWorkshop || !State.getSession()) {
     ov.style.display = "none";
     return;
   }
@@ -1515,6 +1697,111 @@ $("#help-modal").addEventListener("click", (e) => {
 renderRecent();
 $("#topbar-meta").textContent = "v" + require("./package.json").version + " · " + new Date().toLocaleDateString();
 
+/* PDT-1.0-SPEC §3.2 / ADR-0028: Local AI Naming Layer status indicator.
+   Probes the bundled (or host) Ollama at PDT_OLLAMA_URL, surfaces a dot +
+   label in the topbar, and opens a popup listing what the LLM produced
+   for the currently-loaded session. Without this the LLM was invisible —
+   no signal that it was on, what model, or what it named. */
+(function wireOllamaStatus() {
+  const pill = document.getElementById("ollama-status");
+  const dot = document.getElementById("ollama-status-dot");
+  const label = document.getElementById("ollama-status-label");
+  const popup = document.getElementById("ollama-status-popup");
+  const popupSub = document.getElementById("ollama-popup-sub");
+  const popupBody = document.getElementById("ollama-popup-body");
+  if (!pill || !dot || !label || !popup) return;
+
+  let lastStatus = null;
+  function setStatus(kind, text, sub) {
+    pill.classList.remove("ai-on", "ai-off", "ai-err");
+    pill.classList.add("ai-" + kind);
+    label.textContent = text;
+    if (popupSub) popupSub.textContent = sub || "";
+    lastStatus = { kind, text, sub };
+  }
+
+  // Probe Ollama via the main process so we don't bypass egress controls.
+  // viewer:probeOllama returns { reachable, url, model, embedModel, error }.
+  async function probe() {
+    try {
+      const r = await Ipc.invoke("viewer:probeOllama");
+      if (!r || r.reachable === false) {
+        setStatus("off", "AI: off", r && r.url ? "no reply from " + r.url : "no endpoint configured");
+        return;
+      }
+      const modelTag = r.model || "(default model)";
+      setStatus("on", "AI: on · " + modelTag.split(":")[0], r.url + " · model " + modelTag);
+    } catch (e) {
+      setStatus("err", "AI: error", e && e.message);
+    }
+  }
+
+  function renderPopup() {
+    if (!popupBody) return;
+    const session = State.getSession && State.getSession();
+    const patterns = (session && session.patterns) || {};
+    const named = Array.isArray(patterns.named_clusters) ? patterns.named_clusters : [];
+    const llmNamed = named.filter(n => n && !n.insufficient_signal && n.name);
+
+    const sections = [];
+    sections.push('<h4>About the Naming Layer</h4>');
+    sections.push('<div>A small local LLM (default: qwen2.5:1.5b-instruct) ' +
+      'paraphrases recurring activity clusters into business-language names. ' +
+      'It never sees raw events, never produces numbers, and refuses with ' +
+      '<em>"insufficient signal"</em> when input is thin. ' +
+      'See <code>normalization/naming/</code>.</div>');
+    if (lastStatus && lastStatus.kind === "off") {
+      sections.push('<h4>Status</h4>');
+      sections.push('<div>The LLM is not reachable. Activity names will fall ' +
+        'back to the heuristic <code>process_label</code> derived from window ' +
+        'titles. To enable: launch <code>ollama serve</code> on ' +
+        '127.0.0.1:11434, or rely on the bundled server in a packaged release.</div>');
+    }
+    if (session) {
+      sections.push('<h4>What it produced for this session</h4>');
+      if (llmNamed.length === 0) {
+        sections.push('<div class="ollama-status-popup-empty">No LLM-named ' +
+          'activities. Either there are no Pattern-Layer activity clusters ' +
+          '(re-run Analyze with --mine) or the LLM refused on every cluster.</div>');
+      } else {
+        const items = llmNamed.slice(0, 20).map(n => {
+          const escName = String(n.name).replace(/</g, "&lt;");
+          const escFb = String(n.fallback_label || "").replace(/</g, "&lt;");
+          return '<li><span class="ai-named-name">' + escName + '</span>' +
+                 (escFb ? ' <span class="ai-named-from">← ' + escFb + '</span>' : '') +
+                 '</li>';
+        }).join("");
+        sections.push('<ul>' + items + '</ul>');
+      }
+    } else {
+      sections.push('<h4>What it produced for this session</h4>');
+      sections.push('<div class="ollama-status-popup-empty">Load a session ' +
+        'to see what the Naming Layer named.</div>');
+    }
+    popupBody.innerHTML = sections.join("");
+  }
+
+  pill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const showing = popup.style.display !== "none";
+    if (showing) { popup.style.display = "none"; return; }
+    renderPopup();
+    popup.style.display = "block";
+  });
+  document.addEventListener("click", (e) => {
+    if (!popup.contains(e.target) && !pill.contains(e.target)) {
+      popup.style.display = "none";
+    }
+  });
+
+  setStatus("off", "AI: checking…", "");
+  probe();
+  // Re-probe every 30 s in case ollama starts/stops mid-session.
+  setInterval(probe, 30_000);
+  // Re-render popup whenever a session loads (patterns may differ).
+  if (State.subscribe) State.subscribe("session", renderPopup);
+})();
+
 /* If launched with --session=<path>, the main process pushes the path
    via this channel. Open it without any further user click. */
 Ipc.onOpenInitialSession((folder) => {
@@ -1761,6 +2048,22 @@ function wireDropdownMenu(btnId, popupId) {
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");
 wireDropdownMenu("btn-session-more-menu", "session-more-popup");
 wireDropdownMenu("btn-agg-export-menu", "agg-export-popup");
+
+/* UX-density pass: the "▾ session info" chip toggles the session-info-group
+   (the pills + the ⋯ More menu). Hidden by default; the analyst opens it on
+   demand, keeping the resident actions bar to Open / Analyze / Export. */
+(function wireSessionInfoChip() {
+  const chip = document.getElementById("btn-session-info-toggle");
+  const group = document.getElementById("session-info-group");
+  if (!chip || !group) return;
+  function setOpen(open) {
+    group.classList.toggle("open", open);
+    chip.classList.toggle("open", open);
+    chip.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  chip.addEventListener("click", () => setOpen(!group.classList.contains("open")));
+  setOpen(false);
+})();
 
 async function projectSaveAs() {
   toggleProjectMenu(false);

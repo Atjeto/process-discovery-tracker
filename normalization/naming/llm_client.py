@@ -185,34 +185,73 @@ class OllamaBackend:
         purpose = request.purpose
         d = request.derived_input or {}
         if purpose == "activity_name":
+            pl = (d.get("process_label") or "").strip()
+            scr = (d.get("screen_label") or "").strip()
+            app = (d.get("app") or "").strip()
+            vocab = ", ".join(d.get("vocab_names") or [])
+            # The smallest prompt that still produces names on a 1.5B model.
+            # Heavier prompts trigger refusal cascades on these models — the
+            # less we say, the more reliably it paraphrases. INSUFFICIENT
+            # remains the escape hatch but we only invoke it when truly
+            # nothing was passed.
+            if not pl and not scr and not app:
+                return INSUFFICIENT_SIGNAL
+            head = f"Process label: {pl}" if pl else (
+                f"Screen / window: {scr}" if scr else f"Application: {app}")
+            extras = []
+            if pl and scr:
+                extras.append(f"Screen / window: {scr}")
+            if app:
+                extras.append(f"Application: {app}")
+            if vocab:
+                extras.append(f"Vocab cues: {vocab}")
+            block = "\n".join([head] + extras)
             return (
-                "You are naming an activity that a worker performed at their desk. "
-                "The structured cues from their captured session are:\n"
-                f"- Process label (auto-derived): {d.get('process_label', '(unknown)')}\n"
-                f"- Screen / window context:      {d.get('screen_label', '(unknown)')}\n"
-                f"- Application:                  {d.get('app', '(unknown)')}\n"
-                f"- Recognised interaction types: {', '.join(d.get('interaction_types') or []) or '(none)'}\n"
-                f"- Vocab-matched names (if any): {', '.join(d.get('vocab_names') or []) or '(none)'}\n"
-                "\nProduce a SHORT business-language activity name (2–4 words). "
-                "Do NOT include numbers, durations, counts, or quotation marks. "
-                "If the cues are too thin or ambiguous, respond with exactly: "
-                f"{INSUFFICIENT_SIGNAL}\n"
+                "Paraphrase the process label below into a 2-4 word business "
+                "activity name. Stay close to the literal label; do NOT invent "
+                "context. Examples: 'Incident: Save record' -> 'Save Incident'; "
+                "'RE: Send' -> 'Send Email'; 'Invoice.xlsx: Save workbook' -> "
+                "'Save Workbook'. No numbers, no quotation marks.\n"
+                f"{block}\n"
                 "Activity name:"
             )
         if purpose == "exec_summary":
+            cues = []
+            if d.get("activity_labels"):
+                cues.append("- Observed activity labels: "
+                            + ", ".join(d.get("activity_labels") or [])[:400])
+            if d.get("screen_labels"):
+                cues.append("- Observed window/screen contexts: "
+                            + ", ".join(d.get("screen_labels") or [])[:400])
+            if d.get("interaction_types"):
+                cues.append("- Recognised interaction types: "
+                            + ", ".join(d.get("interaction_types") or []))
+            cues_block = "\n".join(cues) if cues else "- (no further structural cues)"
             return (
-                "Write ONE paragraph (3–5 sentences) introducing a business "
-                "process for an executive reader. Do NOT include any numbers, "
-                "percentages, durations, or counts — those will be filled in "
-                "by template afterward. Describe what the process is, why it "
-                "matters, and what kind of work it represents. Keep it concrete "
-                "and business-grade.\n"
-                f"Process name: {d.get('label', '(unnamed process)')}\n"
-                f"Applications: {', '.join(d.get('apps') or []) or '(unknown)'}\n"
-                f"Worker context: This was observed in a captured desktop session.\n"
-                "\nIf the inputs are too thin, respond with exactly: "
-                f"{INSUFFICIENT_SIGNAL}\n"
-                "Paragraph:"
+                "You are summarising a recurring desktop work pattern for an "
+                "engagement deliverable. Write 2-3 short sentences that "
+                "describe ONLY what the captured cues directly support.\n"
+                "\nHARD RULES (violating any returns "
+                f"{INSUFFICIENT_SIGNAL}):\n"
+                "  1. Do NOT invent stakeholders, purposes, motivations, "
+                "consequences, beneficiaries, or downstream effects.\n"
+                "  2. Do NOT use words like 'executive', 'team', 'stakeholder', "
+                "'professional', 'crucial', 'essential', 'ensures', "
+                "'maintains', 'productivity', 'strategic', 'integrity'.\n"
+                "  3. Do NOT speculate about why a worker does this or what "
+                "would happen if it broke.\n"
+                "  4. Stick to what apps and labels say literally.\n"
+                "  5. No numbers, percentages, durations, or counts.\n"
+                "  6. If the cues do not contain enough literal evidence for a "
+                "concrete description, reply with exactly "
+                f"{INSUFFICIENT_SIGNAL} and nothing else.\n"
+                "\nCues you may use (and ONLY these):\n"
+                f"- Process label: {d.get('label', '(unnamed process)')}\n"
+                f"- Applications observed: "
+                f"{', '.join(d.get('apps') or []) or '(unknown)'}\n"
+                f"{cues_block}\n"
+                "\nWrite the 2-3 sentence description now, or "
+                f"{INSUFFICIENT_SIGNAL} if you cannot stay literal:"
             )
         # Unknown purpose — refuse
         return INSUFFICIENT_SIGNAL

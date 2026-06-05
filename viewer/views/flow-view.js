@@ -571,6 +571,10 @@ async function loadSessionIntoView(folder) {
   if (typeof window !== "undefined" && typeof window._pdtApplySessionMode === "function") {
     try { window._pdtApplySessionMode(); } catch (_) {}
   }
+  // UX-density pass: post-analysis the primary CTA shifts from Analyze to Export.
+  if (typeof window !== "undefined" && typeof window._pdtRefreshActionsPrimary === "function") {
+    try { window._pdtRefreshActionsPrimary(); } catch (_) {}
+  }
 }
 
 /* ===== Phase F: project knowledge applied on session load ===== */
@@ -985,8 +989,10 @@ function renderSessionSummary() {
     '</div>';
 
   // Collapsible: remember the analyst's open/closed choice across sessions.
-  try { panel.open = localStorage.getItem("pdt.summaryOpen") !== "0"; }
-  catch (_) { panel.open = true; }
+  // Default is CLOSED (the timeline/content should sit above the fold; the
+  // teaser line shows the headline numbers, click the summary to expand).
+  try { panel.open = localStorage.getItem("pdt.summaryOpen") === "1"; }
+  catch (_) { panel.open = false; }
   if (!panel._pdtToggleWired) {
     panel._pdtToggleWired = true;
     panel.addEventListener("toggle", () => {

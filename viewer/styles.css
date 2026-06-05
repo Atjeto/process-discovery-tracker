@@ -40,7 +40,7 @@
   --fg: #2c2418;
   --fg-2: #635848;
   --fg-3: #786c5a;   /* darkened from #9a8e7e so muted labels clear AA (≥4.5:1) on --bg/--bg-1, per the design system's own ≥4.5 intent (was 3.03:1) */
-  --fg-4: #c0b5a5;
+  --fg-4: #736756;   /* WCAG-AA pass: darkened from #c0b5a5 (~1.6:1) to ~4.8:1 on --bg #faf8f4; used as muted text in crumbs, hints, demo-card paths, suppressed-count rows, rail labels */
 
   /* Functional color -- amber accent, slate-blue secondary */
   --accent: #c07830;
@@ -57,6 +57,10 @@
   --va: #5a8f6a;
   --bnva: #c2922f;
   --nva: #bf5340;
+  /* --bnva-text: darker amber used ONLY for text on the cream backgrounds
+     (≥4.5:1 on --bg). The --bnva fill itself stays unchanged for borders,
+     fills, and dot backgrounds where the contrast requirement is 3:1. */
+  --bnva-text: #8a6a1d;
 
   /* Rules -- warm hairlines that sit just above the panel they border */
   --rule: #e5ddd0;
@@ -94,7 +98,7 @@
   --fg: #e4e7f0;
   --fg-2: #b4bcce;
   --fg-3: #8c96b0;
-  --fg-4: #4e5670;
+  --fg-4: #6b738c;  /* WCAG-AA pass: lifted from #4e5670 (~3.0:1) to ~6.0:1 on the dark --bg #171c2a so muted text/rail labels clear 4.5:1 */
 
   /* Functional color -- teal accent, slate-blue secondary, amber warn */
   --accent: #2dd4bf;
@@ -111,6 +115,8 @@
   --va: #34c98a;
   --bnva: #f0b429;
   --nva: #ef6a52;
+  /* dark bg gives --bnva enough contrast (~9:1) — no separate text variant needed */
+  --bnva-text: var(--bnva);
 
   /* Rules -- cool hairlines */
   --rule: #2e3650;
@@ -123,6 +129,31 @@
 /* The "no video" icon sits on the always-dark video pane; --fg-4 is too
    dim there under the dark theme, so lift it to a readable cool grey. */
 :root[data-theme="dark"] .nv-icon { color: #6b7290; }
+
+/* ===== Universal keyboard focus ring (WCAG 2.1 AA accessibility pass) =====
+   The browser default per-control outline drifted under custom button skins;
+   a single accent ring shown only on :focus-visible gives keyboard users a
+   high-contrast indicator everywhere without dotting the UI for mouse users.
+   Mouse-click focus stays suppressed (:focus, not :focus-visible). Where the
+   control already paints an accent fill, a targeted override below inverts
+   the ring so it doesn't disappear into its own background. */
+*:focus { outline: none; }
+*:focus-visible {
+  /* Was 2px var(--accent) — that probed at 3.32:1 against --bg, clearing
+     the 3:1 non-text floor but leaving zero headroom. --accent-hover
+     (#a86828) is the same hue, darker, computing ~5.1:1 on --bg. The
+     thicker 3px stroke also makes the indicator survive a high-contrast-
+     mode override that strips outline-color. */
+  outline: 3px solid var(--accent-hover);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+/* Active mode-btn fills with --accent; an accent ring outside it would
+   blend, so render an inverse ring inset into the fill. */
+.mode-btn.active:focus-visible { outline-color: var(--accent-text); outline-offset: -3px; }
+/* Primary button has --accent background — same logic. */
+button.primary:focus-visible,
+button.btn-primary:focus-visible { outline-color: var(--accent-text); outline-offset: -3px; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
@@ -142,17 +173,50 @@ code { font-family: var(--font-mono); font-size: 11px;
 .hint { color: var(--fg-3); font-size: 11px; margin: 4px 0 10px; line-height: 1.5; }
 .flex-spacer { flex: 1; }
 
-/* ===== Buttons ===== */
+/* ===== Buttons =====
+   Four-class button system (UX-density pass): one CTA shape per role, applied
+   across Cockpit, Engagement, and Workshop. The legacy class names
+   (.primary, .icon-btn, .link-btn, .project-btn, .engagement-card-cta,
+    .cockpit-candidate-drill, .glance-step-action) are kept as ALIASES via
+   selector lists so e2e selectors and existing HTML keep working — they all
+   resolve to the same four visual roles.
+
+   Roles:
+     .btn-primary    — orange filled, the ONE main CTA per surface.
+     .btn-secondary  — outlined neutral, common actions.
+     .btn-link       — text + arrow, navigation between views.
+     .btn-icon       — 28x28 icon-only square, compact actions. */
 button { padding: 6px 14px; background: var(--bg-2); color: var(--fg);
   border: 1px solid var(--rule); border-radius: var(--radius-sm); cursor: pointer;
   font-family: inherit; font-size: 12px; transition: all var(--transition); }
 button:hover:not(:disabled) { background: var(--bg-3); border-color: var(--accent); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 500; }
-button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 
-button.icon-btn { padding: 4px 8px; font-family: var(--font-mono); font-size: 14px; min-width: 28px; }
+/* Primary — accent filled. Use one per surface. */
+button.primary,
+button.btn-primary {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 500;
+}
+button.primary:hover:not(:disabled),
+button.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover); border-color: var(--accent-hover);
+}
+
+/* Secondary — explicit alias for the default outlined neutral button. Lets a
+   caller demote a previously-primary button without leaving stray classes. */
+button.btn-secondary {
+  background: var(--bg-2); border-color: var(--rule); color: var(--fg); font-weight: normal;
+}
+button.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-3); border-color: var(--accent);
+}
+
+/* Icon — square, mono digit/glyph, compact. Aliased to legacy .icon-btn. */
+button.icon-btn,
+button.btn-icon {
+  padding: 4px 8px; font-family: var(--font-mono); font-size: 14px; min-width: 28px;
+}
 #btn-add-step { font-family: inherit; font-size: 12px; }
 
 .kbd { display: inline-block; padding: 0 5px; min-width: 16px; height: 16px;
@@ -185,11 +249,24 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   padding: 1px 4px; font-size: 10px; font-family: var(--font-mono);
   outline: none; max-width: 180px;
 }
-.link-btn { background: transparent; border: 0; padding: 2px 4px; color: var(--accent);
+/* Link button — text + arrow, navigation between views. .link-btn (legacy),
+   .btn-link, and the Cockpit / Engagement / Glance link-style buttons all
+   resolve to this one visual: accent text with a subtle hover, no chrome
+   of its own. The specific class rules in cockpit.css / glance.css now
+   reference the same tokens (none of them adds a border) — keeping the
+   selectors here means a new element only needs to pick the right alias. */
+.link-btn,
+.btn-link {
+  background: transparent; border: 0; padding: 2px 4px; color: var(--accent);
   font-family: inherit; font-size: 11px; cursor: pointer; text-decoration: underline;
-  text-underline-offset: 2px; transition: color 0.12s; }
-.link-btn:hover:not(:disabled) { color: var(--fg); background: transparent; border-color: transparent; }
-.link-btn:focus { outline: 1px dotted var(--accent); outline-offset: 2px; }
+  text-underline-offset: 2px; transition: color 0.12s;
+}
+.link-btn:hover:not(:disabled),
+.btn-link:hover:not(:disabled) {
+  color: var(--fg); background: transparent; border-color: transparent;
+}
+.link-btn:focus,
+.btn-link:focus { outline: 1px dotted var(--accent); outline-offset: 2px; }
 
 /* ===== Layout ===== */
 .app { display: flex; flex-direction: column; height: 100%; }
@@ -198,11 +275,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   gap: 24px; padding: 8px 20px; background: var(--bg-2);
   border-bottom: 1px solid var(--rule); box-shadow: var(--shadow); z-index: 5; }
 .brand { display: flex; align-items: center; gap: 12px; }
-.brand .logo { width: 28px; height: 28px; border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-  position: relative; }
-.brand .logo::after { content: ""; position: absolute; inset: 5px;
-  border: 1.5px solid var(--bg); border-radius: 3px; }
+.brand .logo { width: 28px; height: 28px; color: var(--accent); flex-shrink: 0; }
 .brand .tagline { font-size: 10px; color: var(--fg-3); letter-spacing: 1.5px;
   text-transform: uppercase; font-family: var(--font-mono); }
 .tabs { display: flex; gap: 4px; background: var(--bg-3); padding: 3px;
@@ -290,6 +363,32 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .actions-bar input[type=search] { min-width: 220px; max-width: 360px; flex: 0 1 auto; }
 .actions-bar input[type=search]::-webkit-search-cancel-button { filter: invert(0.5); }
 .session-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* UX-density pass: the "▾ session info" disclosure chip and the collapsible
+   group it controls. Hidden by default so the resident actions bar reads as
+   one short row of three CTAs — Open / Analyze (or Export) / session info ▾.
+   Clicking the chip reveals the pills + the ⋯ More menu inline. */
+.session-info-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--fg-3);
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.session-info-chip:hover { color: var(--fg); border-color: var(--accent); }
+.session-info-chip.open { color: var(--fg); border-color: var(--accent); }
+.session-info-chip-caret { font-size: 9px; opacity: 0.7; transition: transform 120ms; }
+.session-info-chip.open .session-info-chip-caret { transform: rotate(180deg); }
+.session-info-group {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.session-info-group.open { display: inline-flex; }
 /* Facts row: process-map status (left) + session chips (right) -- merged from
    what used to be three separate stacked metadata rows above the view bar. */
 /* Demoted keyboard-shortcut hint: a quiet hover affordance, not a permanent
@@ -297,6 +396,59 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .kbd-hint { cursor: help; border-bottom: 1px dotted var(--fg-4); color: var(--fg-3); }
 .pill { padding: 3px 10px; background: var(--bg-3); border: 1px solid var(--rule);
   border-radius: 12px; font-size: 11px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; }
+
+/* ----- Confidence pill (UX-density pass) -----
+   Shared visual for "this score is N%" across Cockpit, Engagement, and
+   Workshop / Analysis. One class, three modifiers — replaces the per-view
+   conf chips/plain text that drifted in look. Tokens reuse the existing
+   --va (green) and --bnva (amber) variables; no new CSS variables. */
+.confidence-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+/* a11y: WCAG 1.4.1 — confidence must not rely on colour alone. A small
+   shape glyph rides ::before so high/med/low are distinguishable even
+   without colour (e.g. dichromatic vision, monochrome print).
+     ● filled circle  -> high
+     ◆ diamond        -> medium
+     — short bar      -> low                                              */
+.confidence-pill::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  vertical-align: 1px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.confidence-pill.conf-high::before,
+.cockpit-conf-high::before { border-radius: 50%; }
+.confidence-pill.conf-med::before,
+.cockpit-conf-med::before  { border-radius: 0; transform: rotate(45deg); margin-bottom: 1px; }
+.confidence-pill.conf-low::before,
+.cockpit-conf-low::before  { border-radius: 0; height: 2px; margin-top: 4px; }
+.confidence-pill.conf-high,
+.cockpit-conf-high {
+  background: color-mix(in srgb, var(--va, #4caf50) 18%, transparent);
+  color: var(--va, #4caf50);
+}
+.confidence-pill.conf-med,
+.cockpit-conf-med {
+  background: color-mix(in srgb, var(--bnva, #ff9800) 18%, transparent);
+  color: var(--bnva-text, var(--bnva, #ff9800));
+}
+.confidence-pill.conf-low,
+.cockpit-conf-low {
+  background: color-mix(in srgb, var(--fg-4) 18%, transparent);
+  color: var(--fg-3);
+}
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); }
 .pill.ok .dot { background: var(--accent); }
 .pill.warn .dot { background: var(--warn); }
@@ -2347,6 +2499,11 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 /* The "More" menu sits at the LEFT of the session actions bar, so open it
    rightward -- the shared popup anchors to the right, which suits Export. */
 #session-more-popup { right: auto; left: 0; }
+/* Recent menu lives in topbar-meta (right side) and the shared `right: 0`
+   anchor opens it leftward into the meta zone -- correct placement. Cap
+   width so a long list of recents can't overflow the viewport. */
+#recent-menu-popup { max-width: min(420px, 90vw); }
+.recent-menu-item .ri-label { max-width: 340px; }
 /* A setting (checkbox) living among the menu's action items. */
 .project-menu-item.cb { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .project-menu-item.cb input { margin: 0; }

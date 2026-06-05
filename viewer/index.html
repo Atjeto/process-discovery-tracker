@@ -26,7 +26,21 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <div class="logo"></div>
+      <!-- Inline logo: three nodes + arrows, the canonical "process map"
+           shape. Replaces the abstract gradient square that didn't read as
+           anything in particular. Uses currentColor so it tracks the accent. -->
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="6"  cy="16" r="3" fill="currentColor" />
+          <circle cx="16" cy="8"  r="3" />
+          <circle cx="16" cy="24" r="3" />
+          <circle cx="26" cy="16" r="3" fill="currentColor" />
+          <line x1="9"  y1="14" x2="14" y2="10" />
+          <line x1="9"  y1="18" x2="14" y2="22" />
+          <line x1="18" y1="10" x2="23" y2="14" />
+          <line x1="18" y1="22" x2="23" y2="18" />
+        </g>
+      </svg>
       <div><h1>Process Discovery</h1></div>
     </div>
     <nav class="tabs">
@@ -36,19 +50,37 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <button class="tab" data-view="canonical"><span class="kbd">4</span> Process Template</button>
       <button class="tab" data-view="vocabularies"><span class="kbd">5</span> App Library</button>
     </nav>
-    <!-- PDT-1.0-SPEC §4.1.1: session contextual mode toggle. Cockpit (default)
-         is the summary-first review surface; Workshop restores the existing
-         5-tab depth; Glance is the worker's timeline-as-story view (§4.1.2).
-         Hidden until a session is loaded. -->
-    <div class="session-mode-toggle" id="session-mode-toggle" hidden>
-      <button type="button" class="mode-btn" data-mode="glance"
-              title="Glance — worker's chronological story view">Glance</button>
-      <button type="button" class="mode-btn active" data-mode="cockpit"
-              title="Cockpit — summary-first review (default)">Cockpit</button>
-      <button type="button" class="mode-btn" data-mode="workshop"
-              title="Workshop — the existing 5-tab analyst depth">Workshop</button>
-    </div>
     <div class="topbar-meta">
+      <!-- PDT-1.0-SPEC §4.1.1: session contextual mode toggle. Cockpit (default)
+           is the summary-first review surface; Workshop restores the existing
+           5-tab depth; Glance is the worker's timeline-as-story view (§4.1.2).
+           Hidden until a session is loaded. Lives inside topbar-meta so the
+           three-column topbar grid stays balanced -- a fourth top-level child
+           wraps the meta zone to a second row. -->
+      <div class="session-mode-toggle" id="session-mode-toggle" role="tablist" aria-label="Session display mode" hidden>
+        <button type="button" class="mode-btn" data-mode="glance" role="tab" aria-selected="false"
+                title="Glance — worker's chronological story view">Glance</button>
+        <button type="button" class="mode-btn active" data-mode="cockpit" role="tab" aria-selected="true"
+                title="Cockpit — summary-first review (default)">Cockpit</button>
+        <button type="button" class="mode-btn" data-mode="workshop" role="tab" aria-selected="false"
+                title="Workshop — the existing 5-tab analyst depth">Workshop</button>
+      </div>
+      <!-- PDT-1.0-SPEC §3.2 / ADR-0028: local Naming Layer status. A dot +
+           short label so the analyst can see at a glance whether the LLM is
+           running, what model, and click through to a small panel listing
+           what it produced. The original v1.0 design had no such surface —
+           workers and consultants had no idea AI was involved or not. -->
+      <button type="button" class="ollama-status" id="ollama-status" aria-label="Local AI Naming Layer status — click for details" title="Local AI Naming Layer status (click for details)">
+        <span class="ollama-status-dot" id="ollama-status-dot"></span>
+        <span class="ollama-status-label" id="ollama-status-label">AI: checking…</span>
+      </button>
+      <div class="ollama-status-popup" id="ollama-status-popup" style="display:none">
+        <div class="ollama-status-popup-head">
+          <strong>Local AI Naming Layer</strong>
+          <span class="ollama-status-popup-sub" id="ollama-popup-sub"></span>
+        </div>
+        <div class="ollama-status-popup-body" id="ollama-popup-body"></div>
+      </div>
       <div class="project-menu" id="recent-menu">
         <button class="project-btn" id="btn-recent-menu" title="Open a recent session or project">
           <span>Recent</span>
@@ -108,28 +140,41 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
       <div class="loaded" id="session-loaded" style="display:none">
         <div class="actions-bar">
-          <button id="btn-open-session">Open another</button>
-          <button id="btn-normalize" class="primary" title="Build the timeline, classify activities, compute statistics, and discover a process map.">Analyze session</button>
+          <button id="btn-open-session" class="btn-secondary">Open another</button>
+          <button id="btn-normalize" class="btn-primary" title="Build the timeline, classify activities, compute statistics, and discover a process map.">Analyze session</button>
+          <!-- Session info disclosure: pills + the "More" menu collapse behind a
+               small chip so the resident actions bar stays one short row. Their
+               original ids and class names are kept (the cockpit/glance CSS
+               selectors and e2e smokes target them). -->
+          <button class="session-info-chip btn-secondary" id="btn-session-info-toggle"
+                  type="button" aria-expanded="false"
+                  title="Show the session info chips and the More actions menu (Match Template, Classify activities, App Library, video sync, …)">
+            <span>session info</span>
+            <span class="session-info-chip-caret">▾</span>
+          </button>
           <!-- Occasional session actions live behind one visible "More" menu so the
                bar stays a single short row at laptop width (clutter pass). The
-               buttons keep their ids, so their existing handlers are unchanged. -->
-          <div class="project-menu" id="session-more-menu">
-            <button class="project-btn" id="btn-session-more-menu" title="More actions for this session">
-              <span>⋯ More</span><span class="project-menu-caret">▾</span>
-            </button>
-            <div class="project-menu-popup" id="session-more-popup" style="display:none">
-              <button class="project-menu-item" id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
-              <button class="project-menu-item" id="btn-classify-activities" title="Give each application a meaningful activity label so the process map and timeline show real activities instead of 'Unclassified'. Adds rules for this session and re-analyzes.">Classify activities…</button>
-              <button class="project-menu-item" id="btn-save-vocab" title="Generate a starter App Library entry from this session's captured interactions. Edit names afterward; once saved, future sessions auto-use it to label what the user did inside this app.">Save to App Library...</button>
-              <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
-              <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
-              <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
+               buttons keep their ids, so their existing handlers are unchanged.
+               Hidden by default; the chip above toggles the .open class. -->
+          <div class="session-info-group" id="session-info-group">
+            <div class="project-menu" id="session-more-menu">
+              <button class="project-btn" id="btn-session-more-menu" title="More actions for this session">
+                <span>⋯ More</span><span class="project-menu-caret">▾</span>
+              </button>
+              <div class="project-menu-popup" id="session-more-popup" style="display:none">
+                <button class="project-menu-item" id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
+                <button class="project-menu-item" id="btn-classify-activities" title="Give each application a meaningful activity label so the process map and timeline show real activities instead of 'Unclassified'. Adds rules for this session and re-analyzes.">Classify activities…</button>
+                <button class="project-menu-item" id="btn-save-vocab" title="Generate a starter App Library entry from this session's captured interactions. Edit names afterward; once saved, future sessions auto-use it to label what the user did inside this app.">Save to App Library...</button>
+                <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
+                <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
+                <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
+              </div>
             </div>
+            <!-- Session facts chips ride the actions bar now (clutter pass: they
+                 were a separate band below). Process-map status moved to where it
+                 belongs — the Map panel header. -->
+            <div class="session-pills" id="session-pills"></div>
           </div>
-          <!-- Session facts chips ride the actions bar now (clutter pass: they
-               were a separate band below). Process-map status moved to where it
-               belongs — the Map panel header. -->
-          <div class="session-pills" id="session-pills"></div>
           <span class="flex-spacer"></span>
           <div class="project-menu" id="session-export-menu">
             <button class="project-btn" id="btn-session-export-menu" title="Export this session">

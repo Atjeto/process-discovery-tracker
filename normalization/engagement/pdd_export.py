@@ -33,13 +33,25 @@ def _fmt_duration(ms: int | float) -> str:
     return f"{s}s"
 
 
-def _pdd_markdown(process: dict[str, Any], engagement: dict[str, Any]) -> str:
+def _pdd_markdown(
+    process: dict[str, Any],
+    engagement: dict[str, Any],
+    *,
+    cached_prose: dict[str, Any] | None = None,
+) -> str:
     """Generate the Markdown PDD for one process row.
 
     PDT-1.0-SPEC §3.2: §1 executive-summary paragraph drafted by the LLM
     Naming Layer when reachable; deterministic template fallback otherwise.
     All numerical content is templated from measurements — the LLM never
     produces numbers (ADR-0028).
+
+    `cached_prose` is the dict returned by draft_exec_summary() — passed in
+    so the markdown + PDF writers for the SAME row use the SAME prose. The
+    LLM is non-deterministic at temperature 0.2; calling it twice can
+    produce different results (one passing the hallucination guard, one
+    falling back to template) and the MD/PDF would diverge. Cache once
+    in export_pdd_bundle, pass to both writers.
     """
     name = process.get("label") or "(unnamed process)"
     rank = process.get("rank", "—")
@@ -65,16 +77,22 @@ def _pdd_markdown(process: dict[str, Any], engagement: dict[str, Any]) -> str:
     # work; both failing means the naming subpackage is genuinely absent.
     exec_prose = None
     exec_source = "template"
-    try:
+    if cached_prose is not None:
+        # Use the cached prose result so MD and PDF agree, even when the
+        # LLM is on and producing different outputs across calls.
+        exec_prose = cached_prose.get("prose")
+        exec_source = cached_prose.get("source", "template")
+    else:
         try:
-            from normalization.naming import draft_exec_summary  # type: ignore
-        except ImportError:
-            from naming import draft_exec_summary  # type: ignore
-        prose_result = draft_exec_summary(process)
-        exec_prose = prose_result.get("prose")
-        exec_source = prose_result.get("source", "template")
-    except Exception as _e:
-        exec_prose = None
+            try:
+                from normalization.naming import draft_exec_summary  # type: ignore
+            except ImportError:
+                from naming import draft_exec_summary  # type: ignore
+            prose_result = draft_exec_summary(process)
+            exec_prose = prose_result.get("prose")
+            exec_source = prose_result.get("source", "template")
+        except Exception as _e:
+            exec_prose = None
 
     summary_sentence = (
         f"This process was observed **{instance_count}× across "
@@ -103,8 +121,11 @@ def _pdd_markdown(process: dict[str, Any], engagement: dict[str, Any]) -> str:
     ]
     # LLM-drafted prose (if available) goes first; the measured-numbers
     # sentence is templated and always follows. This separation enforces
-    # the no-numbers-from-LLM rule.
-    if exec_prose and exec_source == "llm":
+    # the no-numbers-from-LLM rule. When the LLM refused or hallucinated
+    # we fall back to the templated paragraph emitted by draft_exec_summary
+    # itself — still inserted, still labelled "templated" in the footer so
+    # the consultant sees provenance honestly.
+    if exec_prose:
         lines.append(exec_prose)
         lines.append("")
     lines.extend([
@@ -171,11 +192,13 @@ def write_pdd_markdown(
     process: dict[str, Any],
     engagement: dict[str, Any],
     out_path: str | os.PathLike,
+    *,
+    cached_prose: dict[str, Any] | None = None,
 ) -> str:
     """Write the PDD markdown for one process. Returns the path written."""
     p = Path(out_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    md = _pdd_markdown(process, engagement)
+    md = _pdd_markdown(process, engagement, cached_prose=cached_prose)
     with open(p, "w", encoding="utf-8") as fh:
         fh.write(md)
     return str(p)
@@ -196,11 +219,13 @@ def write_pdd_pdf(
     process: dict[str, Any],
     engagement: dict[str, Any],
     out_path: str | os.PathLike,
+    *,
+    cached_prose: dict[str, Any] | None = None,
 ) -> str:
     """Write a minimal single-page PDF rendering of the PDD."""
     p = Path(out_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    md = _pdd_markdown(process, engagement)
+    md = _pdd_markdown(process, engagement, cached_prose=cached_prose)
     # Strip markdown syntax for plain-text PDF.
     plain = re.sub(r"[*_`#-]", "", md)
     # Wrap to ~90 char lines.
@@ -263,11 +288,27 @@ def export_pdd_bundle(
     out.mkdir(parents=True, exist_ok=True)
     md_files: list[str] = []
     pdf_files: list[str] = []
+    # Lazy import so the bundle still exports when the naming subpackage
+    # isn't reachable (e.g., the embedded Python's sys.path quirks).
+    try:
+        try:
+            from normalization.naming import draft_exec_summary  # type: ignore
+        except ImportError:
+            from naming import draft_exec_summary  # type: ignore
+    except Exception:
+        draft_exec_summary = None
     for row in backlog.get("rows", []):
         sig = row.get("signature", "")[:12] or "unknown"
         label_slug = re.sub(r"[^a-z0-9]+", "-",
                             (row.get("label") or "process").lower()).strip("-") or "process"
         base = out / f"{row.get('rank', 0):02d}-{label_slug}-{sig}"
-        md_files.append(write_pdd_markdown(row, engagement, str(base) + ".md"))
-        pdf_files.append(write_pdd_pdf(row, engagement, str(base) + ".pdf"))
+        # Draft the prose ONCE per row so the .md and .pdf agree on text.
+        cached = None
+        if draft_exec_summary is not None:
+            try:
+                cached = draft_exec_summary(row)
+            except Exception:
+                cached = None
+        md_files.append(write_pdd_markdown(row, engagement, str(base) + ".md", cached_prose=cached))
+        pdf_files.append(write_pdd_pdf(row, engagement, str(base) + ".pdf", cached_prose=cached))
     return {"markdown": md_files, "pdf": pdf_files}

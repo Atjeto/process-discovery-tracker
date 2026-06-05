@@ -1,6 +1,7 @@
 {
   "session_id": "demo-carol-20260603-1100",
   "engagement_id": "demo-pack-servicenow-it-service",
+  "worker_id": "carol.kapoor",
   "started_at": "2026-06-03T11:00:00.000Z",
   "ended_at": "2026-06-03T11:01:04.650Z",
   "status": "closed",

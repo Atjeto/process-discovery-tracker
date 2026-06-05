@@ -1,6 +1,7 @@
 {
   "session_id": "demo-bob-20260602-1000",
   "engagement_id": "demo-pack-servicenow-it-service",
+  "worker_id": "bob.singh",
   "started_at": "2026-06-02T10:00:00.000Z",
   "ended_at": "2026-06-02T10:01:04.650Z",
   "status": "closed",

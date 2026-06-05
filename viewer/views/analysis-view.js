@@ -180,6 +180,24 @@ function applyAnalysisOverrides(analysis, overrides) {
 /* ============ Sections ============================================ */
 
 function _caption(overrideCount) {
+  // UX-density pass: when the analyst arrived here via the Cockpit "Verify"
+  // drill, the Cockpit drill banner already names the candidate and tells the
+  // analyst what to do. Stacking the generic "Heuristic estimate" banner on
+  // top is noise — suppress one when the other is present.
+  // (Two signals: the live banner DOM, and the focus flag the drill sets just
+  // before render. Either is enough to skip the caption.)
+  let drillBannerLive = false;
+  try {
+    drillBannerLive = !!(typeof document !== "undefined" &&
+      document.getElementById("cockpit-drill-banner"));
+  } catch (_) {}
+  let drillFocusFlag = false;
+  try {
+    drillFocusFlag = !!(typeof window !== "undefined" &&
+      window._pdtCockpitFocusSegment);
+  } catch (_) {}
+  if (drillBannerLive || drillFocusFlag) return "";
+
   let html = '<div class="analysis-caption">Heuristic estimate — these figures ' +
     "come from rule-of-thumb classifiers tuned ahead of real recording " +
     "data. Review them before relying on them.";
@@ -463,6 +481,25 @@ function _automationSection(auto) {
       : '<span class="score-na">no labelled steps</span>';
     const app = String(a.app || "").replace(/\.exe$/i, "") || "—";
     const rank = (a.rank === null || a.rank === undefined) ? (i + 1) : a.rank;
+    // UX-density pass: render confidence as the shared .confidence-pill, the
+    // same chip used in Cockpit / Engagement (Workshop showed plain text).
+    const confNum = (a.scores && typeof a.scores.confidence === "number")
+      ? a.scores.confidence : null;
+    const confHtml = (confNum === null)
+      ? '<span class="score-na">—</span>'
+      : (function () {
+          const pct = Math.round(confNum * 100);
+          const cls = confNum >= 0.7 ? "conf-high"
+            : (confNum >= 0.4 ? "conf-med" : "conf-low");
+          const level = cls.replace("conf-", "");
+          // a11y: WCAG 1.4.1 — the colour+shape carry meaning; aria-label
+          // gives a screen reader the level in words. role=img so the
+          // pseudo-element glyph isn't read as decoration.
+          return '<span class="confidence-pill ' + cls + '" role="img" ' +
+            'aria-label="confidence ' + pct + '%, ' + level + '" ' +
+            'title="Pattern Layer confidence: ' + pct + '%">' +
+            pct + "%</span>";
+        })();
     return "<tr>" +
       '<td class="num auto-rank">' + escapeHtml(String(rank)) + "</td>" +
       '<td><div class="auto-label">' + escapeHtml(a.label || "(segment)") + "</div>" +
@@ -471,6 +508,7 @@ function _automationSection(auto) {
       '<td class="num">' + (a.instance_count || 0) + "</td>" +
       '<td class="num">' + escapeHtml(_fmt(a.total_elapsed_ms)) + "</td>" +
       '<td class="num">' + escapeHtml(_fmt(a.mean_elapsed_ms)) + "</td>" +
+      '<td class="num">' + confHtml + "</td>" +
       "<td>" + _decisionCell(a) + "</td>" +
     "</tr>";
   }).join("");
@@ -485,6 +523,7 @@ function _automationSection(auto) {
       '<thead><tr><th title="Automation priority rank">#</th>' +
       "<th>Segment</th><th>App</th>" +
       "<th>Instances</th><th>Total time</th><th>Mean per instance</th>" +
+      "<th title=\"Pattern Layer confidence — same chip rendered in Cockpit and Engagement\">Confidence</th>" +
       "<th>Decision</th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table>" + tail + "</div>";
 }

@@ -10,7 +10,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
 endobj
 4 0 obj
-<< /Length 3705 >>
+<< /Length 2733 >>
 stream
 BT
 /F1 9 Tf
@@ -28,17 +28,7 @@ BT
 () Tj T*
 ( 1. Process at a glance) Tj T*
 () Tj T*
-(The "chrome" process is responsible for managing web browsing sessions within an) Tj T*
-(organization's network. When faced with an incident where a record fails to be saved) Tj T*
-(during a chrome.exe operation, the system administrator must first identify the specific) Tj T*
-(application and context of this issue. The incident likely occurs when attempting to save) Tj T*
-(changes made through the browser without properly closing or saving the current session.) Tj T*
-(This process involves verifying that all open tabs are closed before initiating the save) Tj T*
-(action. If the record fails to be saved due to insufficient signal, it indicates a lack) Tj T*
-(of sufficient input data for the system to recognize and execute the intended operation.) Tj T*
-(The worker context suggests this was observed in a captured desktop session, highlighting) Tj T*
-(the importance of monitoring and troubleshooting processes in realtime environments where) Tj T*
-(user actions can significantly impact system performance and functionality.) Tj T*
+(The cues indicate that a worker is saving records using Chrome.) Tj T*
 () Tj T*
 (This process was observed 12× across 12 cases in 4 sessions, with an average duration of) Tj T*
 (7s.) Tj T*
@@ -101,9 +91,9 @@ xref
 0000000064 00000 n 
 0000000121 00000 n 
 0000000247 00000 n 
-0000004004 00000 n 
+0000003032 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-4074
+3102
 %%EOF

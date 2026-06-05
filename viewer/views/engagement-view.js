@@ -4,8 +4,7 @@
  * PDT-1.0-SPEC §5.3. The Engagement view is the consulting-deliverable
  * workspace: headline numbers across an engagement, the Process Backlog
  * as cards (not a plain table), per-process drill-in (PDD preview +
- * variant tree placeholder + linked evidence), and the engagement-level
- * export bar.
+ * variant tree + linked evidence), and the engagement-level export bar.
  */
 
 "use strict";
@@ -36,6 +35,13 @@ function _fmtCount(n) {
   return Number(n).toLocaleString();
 }
 
+function _fmtDate(iso) {
+  if (!iso || typeof iso !== "string") return "—";
+  // ISO-8601 -> YYYY-MM-DD (no timezone wobble); good enough for "captured on" lines.
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : iso.slice(0, 10);
+}
+
 function _confidenceClass(c) {
   if (c == null || !isFinite(c)) return "low";
   if (c >= 0.7) return "high";
@@ -60,7 +66,11 @@ function _h(tag, attrs, ...children) {
   }
   for (const c of children) {
     if (c == null || c === false) continue;
-    el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    if (typeof c === "string" || typeof c === "number") {
+      el.appendChild(document.createTextNode(String(c)));
+    } else {
+      el.appendChild(c);
+    }
   }
   return el;
 }
@@ -88,6 +98,68 @@ function _backToList() {
   render();
 }
 
+// --- Variant + evidence aggregation helpers (client-side) ---
+
+/* Strip the leading "Screen: " prefix from step labels for compact paths
+   ("Incident: Save record" -> "Save record"). Keep the original if no colon. */
+function _shortStepLabel(s) {
+  if (typeof s !== "string") return String(s || "");
+  const i = s.indexOf(":");
+  if (i > 0 && i < s.length - 1) return s.slice(i + 1).trim();
+  return s.trim();
+}
+
+/* The IPC payload exposes a per-session `candidate_cases_by_signature` map
+   so we can identify which sessions are evidence for THIS backlog row.
+   Falls back to "any session whose stats mention any of the row's step
+   labels" so the panel never sits empty when the signature mapping is thin. */
+function _sessionsContributingToRow(row, sessionSummaries) {
+  const sig = row && row.signature;
+  const out = [];
+  for (const ss of (sessionSummaries || [])) {
+    const byS = ss && ss.candidate_cases_by_signature;
+    const cids = (byS && sig && byS[sig]) || [];
+    if (cids && cids.length > 0) {
+      out.push({ summary: ss, contributingCaseIds: cids });
+    }
+  }
+  return out;
+}
+
+/* Aggregate step_variants across the row's contributing sessions. The
+   backlog row was built from automation candidates, which are observed in
+   each session's annotations; each session's stats.json carries the
+   step_variant frequency table for THAT session. We fold the per-session
+   variants into one frequency-ranked list, keyed by the joined path. */
+function _aggregateVariantsForRow(row, sessionSummaries) {
+  const contribs = _sessionsContributingToRow(row, sessionSummaries);
+  const byPath = new Map();   // key -> { variant, frequency, sessions }
+  for (const c of contribs) {
+    const ss = c.summary;
+    for (const v of (ss.step_variants || [])) {
+      if (!v || !Array.isArray(v.variant) || v.variant.length === 0) continue;
+      const path = v.variant.map(s => String(s).trim()).filter(Boolean);
+      if (path.length === 0) continue;
+      const key = path.join(" → ");   // " -> " join, unicode arrow
+      const freq = Math.max(1, Number(v.frequency) || 0);
+      const prev = byPath.get(key);
+      if (prev) {
+        prev.frequency += freq;
+        prev.sessions.add(ss.session_id);
+      } else {
+        byPath.set(key, {
+          path,
+          variant: path,
+          frequency: freq,
+          sessions: new Set([ss.session_id]),
+        });
+      }
+    }
+  }
+  return Array.from(byPath.values())
+    .sort((a, b) => (b.frequency - a.frequency) || (b.sessions.size - a.sessions.size));
+}
+
 // --- Render ---
 
 function render() {
@@ -106,15 +178,30 @@ function render() {
 }
 
 function _renderEmpty() {
-  return _h("div", { class: "engagement-empty" },
+  const wrap = _h("div", { class: "engagement-empty" },
     _h("div", { class: "engagement-empty-icon" }, "⌬"),
     _h("h2", null, "No engagement loaded"),
-    _h("p", null, "Open an engagement folder to see the Process Backlog and aggregated candidates across all the sessions it contains."),
-    _h("button", {
-      class: "primary",
-      onClick: () => { if (window._openEngagementFolder) window._openEngagementFolder(); },
-    }, "Open engagement folder...")
+    _h("p", null,
+      "An engagement is a folder of related session captures (the consultant's " +
+      "deliverable workspace). Point at one to see the aggregated Process " +
+      "Backlog across its sessions."),
+    _h("p", { class: "engagement-empty-shape" },
+      "Expected layout: engagement.json + sessions/<one folder per session>."),
+    _h("div", { class: "engagement-empty-actions" },
+      _h("button", { class: "primary",
+        onClick: () => { if (window._openEngagementFolder) window._openEngagementFolder(); },
+      }, "Open engagement folder..."),
+    ),
+    // ADR-0033 Demo Pack shortcut — populated by the renderer at boot via
+    // the viewer:resolveDemoPacks IPC. Hidden until something is found.
+    _h("div", { class: "engagement-empty-demo", id: "engagement-empty-demo" }),
   );
+  // Defer the bundled-demo lookup to after the DOM mounts so the user
+  // sees the empty state immediately and the demo block fills in.
+  if (typeof window !== "undefined" && typeof window._renderEngagementDemoShortcut === "function") {
+    setTimeout(() => window._renderEngagementDemoShortcut(), 0);
+  }
+  return wrap;
 }
 
 function _renderOverview() {
@@ -122,16 +209,28 @@ function _renderOverview() {
   const backlog = _currentEngagement.backlog || { rows: [], process_count: 0 };
   const summary = _currentEngagement.summary || {};
   const ccy = (eng.config && eng.config.currency) || "EUR";
+  const engFolder = _currentEngagement.engagementFolder || "";
+  // A folder picked by the user that doesn't carry an engagement.json or
+  // sessions/ subfolder yields name="" + process_count=0 + sessions=0.
+  // That's the "wrong folder" case — surface it explicitly so the user
+  // doesn't sit in front of "(unnamed) · 0 · — · 0" wondering what to do.
+  const looksUnconfigured = !eng.name
+                          && (summary.session_count || 0) === 0
+                          && (backlog.process_count || 0) === 0;
 
   const wrap = _h("div", { class: "engagement-overview" });
 
-  // --- Title ---
+  // --- Title (with persistent "Switch engagement" action) ---
   wrap.appendChild(_h("div", { class: "engagement-title-row" },
     _h("div", { class: "engagement-title" },
       _h("h2", null, eng.name || "(unnamed engagement)"),
       eng.client ? _h("span", { class: "engagement-client" }, eng.client) : null,
     ),
     _h("div", { class: "engagement-export-bar" },
+      _h("button", { class: "engagement-switch-btn",
+        title: "Pick a different engagement folder",
+        onClick: () => { if (window._openEngagementFolder) window._openEngagementFolder(); } },
+        "Switch engagement..."),
       _h("button", { class: "primary", title: "Export the Process Backlog as XLSX",
         onClick: () => { if (window._engagementExportBacklog) window._engagementExportBacklog("xlsx"); } }, "Backlog (XLSX)"),
       _h("button", { title: "Export the Process Backlog as CSV",
@@ -142,6 +241,32 @@ function _renderOverview() {
         onClick: () => { if (window._engagementExportConfig) window._engagementExportConfig(); } }, "Config bundle"),
     ),
   ));
+
+  // Path crumb so the user always knows WHICH folder is loaded — critical
+  // when they suspect they opened the wrong one.
+  if (engFolder) {
+    wrap.appendChild(_h("div", { class: "engagement-folder-crumb",
+      title: engFolder,
+      "aria-label": "Engagement loaded from " + engFolder,
+    }, "Folder: " + engFolder));
+  }
+
+  // Loud "this folder is empty / wrong shape" banner instead of letting
+  // the empty headline numbers + empty backlog speak in silence.
+  if (looksUnconfigured) {
+    const banner = _h("div", { class: "engagement-misconfig-banner" },
+      _h("strong", null, "This folder doesn't look like an engagement."),
+      _h("p", null,
+        "We expected engagement.json + a sessions/ subfolder with one " +
+        "directory per captured session. Pick a different folder, or " +
+        "try sessions/demo-pack/ to see what a real engagement looks like."),
+      _h("button", { class: "primary",
+        onClick: () => { if (window._openEngagementFolder) window._openEngagementFolder(); } },
+        "Pick a different folder..."),
+    );
+    wrap.appendChild(banner);
+    return wrap;
+  }
 
   // --- Headline cards ---
   const headline = _h("section", { class: "engagement-headline" });
@@ -165,7 +290,8 @@ function _renderOverview() {
     _h("h3", null, "Process Backlog"),
     backlog.suppressed_low_confidence > 0
       ? _h("span", { class: "engagement-suppressed",
-                     title: "Hidden by the confidence floor — open in Workshop to review." },
+                     title: "Hidden by the confidence floor — open in Workshop to review.",
+                     "aria-label": backlog.suppressed_low_confidence + " candidates below the confidence floor, hidden from this backlog; open Workshop to review them." },
           backlog.suppressed_low_confidence + " low-confidence hidden")
       : null,
   ));
@@ -193,39 +319,63 @@ function _makeRowCard(row) {
   const conf = Math.round((row.confidence || 0) * 100);
   const confCls = _confidenceClass(row.confidence);
   const apps = row.apps || [];
-  const card = _h("div", {
+  const cases = row.case_count || 0;
+  const sessions = row.session_count || 0;
+  // a11y: rendered as a <button>, not a clickable <div>, so it's keyboard-
+  // reachable and screen-reader-announced. CSS resets in cockpit.css turn
+  // off the default button chrome (text-align, font, color inherit;
+  // appearance: none; width: 100%).
+  const card = _h("button", {
+    type: "button",
     class: "engagement-card" + (row.below_confidence_floor ? " engagement-card-low" : ""),
     onClick: () => _drillInto(row),
+    "aria-label": "Open process details: " + (row.label || "(unnamed)"),
   });
   card.appendChild(_h("div", { class: "engagement-card-rank" }, "#" + (row.rank || "—")));
+
+  // Title row.
   const titleRow = _h("div", { class: "engagement-card-title-row" },
     _h("div", { class: "engagement-card-title" }, row.label || "(unnamed)"),
   );
   if (row.ai_named) {
-    titleRow.appendChild(_h("span", { class: "engagement-card-ai", title: "Activity name from the local AI Naming Layer" }, "AI"));
+    titleRow.appendChild(_h("span", {
+      class: "engagement-card-ai",
+      title: "Activity name from the local AI Naming Layer",
+      "aria-label": "Activity named by AI",
+      role: "img",
+    }, "AI"));
   }
   card.appendChild(titleRow);
-  card.appendChild(_h("div", { class: "engagement-card-meta" },
-    apps.length > 0 ? _h("span", null, apps.join(" · ")) : null,
-  ));
-  const stats = _h("div", { class: "engagement-card-stats" });
-  stats.appendChild(_h("div", { class: "engagement-card-stat" },
-    _h("span", { class: "stat-val" }, row.case_count || 0),
-    _h("span", { class: "stat-lbl" }, "cases"),
-  ));
-  stats.appendChild(_h("div", { class: "engagement-card-stat" },
-    _h("span", { class: "stat-val" }, row.session_count || 0),
-    _h("span", { class: "stat-lbl" }, "sessions"),
-  ));
+
+  // Meta line — apps + observed-in count. Promotes the cases/sessions
+  // info from a stat box into one human-readable line so the card can
+  // breathe with only AVG + CONFIDENCE in the stats grid.
+  const metaBits = [];
+  if (apps.length > 0) metaBits.push(apps.join(" · "));
+  metaBits.push(cases + " case" + (cases === 1 ? "" : "s") + " in " +
+                sessions + " session" + (sessions === 1 ? "" : "s"));
+  card.appendChild(_h("div", { class: "engagement-card-meta" }, metaBits.join(" • ")));
+
+  // Stats — just two: avg duration + confidence. Two stat boxes fit at
+  // a card width that still leaves room for value > label.
+  const stats = _h("div", { class: "engagement-card-stats engagement-card-stats-2" });
   stats.appendChild(_h("div", { class: "engagement-card-stat" },
     _h("span", { class: "stat-val" }, _fmtDuration(row.mean_elapsed_ms || 0)),
-    _h("span", { class: "stat-lbl" }, "avg"),
+    _h("span", { class: "stat-lbl" }, "avg duration"),
   ));
   stats.appendChild(_h("div", { class: "engagement-card-stat" },
-    _h("span", { class: "stat-val cockpit-conf-" + confCls }, conf + "%"),
+    // UX-density pass: same .confidence-pill chip used in Cockpit /
+    // Workshop, instead of plain text or a plain coloured number.
+    _h("span", { class: "stat-val" },
+      _h("span", { class: "confidence-pill conf-" + confCls + " cockpit-conf-" + confCls,
+                   // a11y: WCAG 1.4.1 — the colour+shape carry meaning; the
+                   // aria-label gives a screen reader the level in words.
+                   "aria-label": "confidence " + conf + "%, " + confCls,
+                   role: "img" }, conf + "%")),
     _h("span", { class: "stat-lbl" }, "confidence"),
   ));
   card.appendChild(stats);
+
   if (!row.variant_data_sufficient) {
     card.appendChild(_h("div", { class: "engagement-card-warn",
       title: "Fewer than 3 cases observed — variant analysis is suppressed for this row." },
@@ -237,6 +387,7 @@ function _makeRowCard(row) {
 
 function _renderProcessDetail(row) {
   const eng = _currentEngagement.engagement || {};
+  const sessionSummaries = _currentEngagement.sessionSummaries || [];
   const wrap = _h("div", { class: "engagement-detail" });
   wrap.appendChild(_h("button", { class: "engagement-back-btn", onClick: _backToList }, "← Back to backlog"));
   wrap.appendChild(_h("h2", { class: "engagement-detail-title" }, row.label || "(unnamed)"));
@@ -254,8 +405,51 @@ function _renderProcessDetail(row) {
   headline.appendChild(_makeHeadlineCard(_fmtDuration(row.mean_elapsed_ms), "avg duration"));
   headline.appendChild(_makeHeadlineCard(_fmtDuration(row.total_elapsed_ms), "total observed"));
   const conf = Math.round((row.confidence || 0) * 100);
-  headline.appendChild(_makeHeadlineCard(conf + "%", "confidence", null, true));
+  // UX-density pass: render the confidence headline as the shared .confidence-pill,
+  // matching the chip used on the backlog card and in Cockpit / Workshop.
+  const confCardCls = _confidenceClass(row.confidence);
+  const confCard = _h("div", { class: "engagement-stat-card accent", title: "Process confidence" },
+    _h("div", { class: "engagement-stat-val" },
+      _h("span", { class: "confidence-pill conf-" + confCardCls + " cockpit-conf-" + confCardCls,
+                   // a11y: WCAG 1.4.1 — screen-reader equivalent of the colour+shape pill.
+                   "aria-label": "confidence " + conf + "%, " + confCardCls,
+                   role: "img" }, conf + "%")),
+    _h("div", { class: "engagement-stat-lbl" }, "confidence"),
+  );
+  headline.appendChild(confCard);
   wrap.appendChild(headline);
+
+  // Aggregate variants once — the preview strip + the Variants section
+  // both consume this. The strip uses the most-frequent path (the "modal
+  // path"); the Variants section ranks the top 5.
+  const aggregated = _aggregateVariantsForRow(row, sessionSummaries);
+  const contributingSessions = _sessionsContributingToRow(row, sessionSummaries);
+
+  // --- Process map preview (modal path) ---
+  // A small step-strip showing the most frequently observed sequence for
+  // this process; replaces the "BPMN snapshot" plan because the row's
+  // segment is essentially a single sequence — the strip captures it
+  // directly without re-spawning bpmn-js for a thumbnail.
+  const previewSec = _h("section", { class: "engagement-detail-section engagement-preview" });
+  previewSec.appendChild(_h("h3", null, "Process map preview"));
+  const modalPath = (aggregated[0] && aggregated[0].path) || (row.activity_labels || []);
+  if (modalPath && modalPath.length > 0) {
+    const strip = _h("div", { class: "engagement-path-strip", role: "img",
+      "aria-label": "Modal step sequence: " + modalPath.join(" then ") });
+    modalPath.forEach((stepLabel, i) => {
+      if (i > 0) strip.appendChild(_h("span", { class: "engagement-path-arrow", "aria-hidden": "true" }, "→"));
+      strip.appendChild(_h("span", { class: "engagement-path-node",
+        title: stepLabel }, _shortStepLabel(stepLabel)));
+    });
+    previewSec.appendChild(strip);
+    previewSec.appendChild(_h("p", { class: "engagement-detail-hint engagement-preview-cap" },
+      "Modal sequence observed across " + (row.case_count || 0) + " case" +
+      ((row.case_count === 1) ? "" : "s") + ". Variants below."));
+  } else {
+    previewSec.appendChild(_h("p", { class: "engagement-detail-hint" },
+      "Sequence cues unavailable — the contributing candidates didn't carry a step-label list."));
+  }
+  wrap.appendChild(previewSec);
 
   // --- Variants block ---
   const variantsSec = _h("section", { class: "engagement-detail-section" });
@@ -263,12 +457,110 @@ function _renderProcessDetail(row) {
   if (!row.variant_data_sufficient) {
     variantsSec.appendChild(_h("p", { class: "engagement-detail-hint" },
       "Variant analysis is suppressed because fewer than 3 cases were observed. " +
-      "Capture more sessions of this process to unlock variant breakdown."));
+      "Capture more sessions of this process to unlock the variant breakdown."));
+  } else if (aggregated.length === 0) {
+    variantsSec.appendChild(_h("p", { class: "engagement-detail-hint" },
+      "No step-variant data is available in the contributing sessions' stats.json. " +
+      "Re-run normalize for at least one contributing session to populate it."));
   } else {
     variantsSec.appendChild(_h("p", { class: "engagement-detail-hint" },
-      "Open in Workshop → Steps view (Aligned reading) to compare each case's path through the activity sequence."));
+      "Top step-sequence variants observed across the contributing sessions, " +
+      "ranked by frequency. The path matches the modal cell of the activity map."));
+    const list = _h("ol", { class: "engagement-variant-list" });
+    const totalFreq = aggregated.reduce((acc, v) => acc + v.frequency, 0);
+    const top = aggregated.slice(0, 5);
+    top.forEach((v, i) => {
+      const sessionCount = v.sessions.size;
+      const pct = totalFreq > 0 ? Math.round((v.frequency / totalFreq) * 100) : 0;
+      const li = _h("li", { class: "engagement-variant-row" + (i === 0 ? " modal" : "") });
+      const pathRow = _h("div", { class: "engagement-variant-path" });
+      v.path.forEach((stepLabel, idx) => {
+        if (idx > 0) pathRow.appendChild(_h("span", { class: "engagement-variant-arrow",
+          "aria-hidden": "true" }, "→"));
+        pathRow.appendChild(_h("span", { class: "engagement-variant-step",
+          title: stepLabel }, _shortStepLabel(stepLabel)));
+      });
+      const meta = _h("div", { class: "engagement-variant-meta" },
+        _h("span", { class: "engagement-variant-count",
+          title: "Observed " + v.frequency + " time(s) across " + sessionCount + " session(s)" },
+          "×" + v.frequency + " " + (v.frequency === 1 ? "case" : "cases")),
+        _h("span", { class: "engagement-variant-sep" }, "·"),
+        _h("span", { class: "engagement-variant-sessions" },
+          sessionCount + " session" + (sessionCount === 1 ? "" : "s")),
+        _h("span", { class: "engagement-variant-sep" }, "·"),
+        _h("span", { class: "engagement-variant-pct" }, pct + "%"),
+      );
+      li.appendChild(pathRow);
+      li.appendChild(meta);
+      list.appendChild(li);
+    });
+    variantsSec.appendChild(list);
+    if (aggregated.length > top.length) {
+      variantsSec.appendChild(_h("p", { class: "engagement-detail-hint engagement-variant-more" },
+        "+ " + (aggregated.length - top.length) + " more variant(s) below the top 5; " +
+        "open a contributing session in Workshop → Steps for the full breakdown."));
+    }
   }
   wrap.appendChild(variantsSec);
+
+  // --- Evidence block ---
+  const evidenceSec = _h("section", { class: "engagement-detail-section" });
+  evidenceSec.appendChild(_h("h3", null, "Evidence"));
+  if (contributingSessions.length === 0) {
+    evidenceSec.appendChild(_h("p", { class: "engagement-detail-hint" },
+      "Signature " + (row.signature || "—").slice(0, 12) +
+      " — observed in " + (row.session_count || 0) + " session(s), " +
+      (row.case_count || 0) + " case(s). " +
+      "Individual session attribution is unavailable for this row " +
+      "(the signature-to-session map was empty in the engagement payload)."));
+  } else {
+    evidenceSec.appendChild(_h("p", { class: "engagement-detail-hint" },
+      "Signature " + (row.signature || "—").slice(0, 12) + " · " +
+      contributingSessions.length + " contributing session" +
+      (contributingSessions.length === 1 ? "" : "s") +
+      ". Each row opens the session in Workshop."));
+    const table = _h("div", { class: "engagement-evidence-table", role: "table" });
+    const head = _h("div", { class: "engagement-evidence-head", role: "row" },
+      _h("div", { class: "engagement-evidence-cell ec-session", role: "columnheader" }, "Session"),
+      _h("div", { class: "engagement-evidence-cell ec-worker", role: "columnheader" }, "Worker"),
+      _h("div", { class: "engagement-evidence-cell ec-cases", role: "columnheader" }, "Cases here"),
+      _h("div", { class: "engagement-evidence-cell ec-date", role: "columnheader" }, "Captured"),
+      _h("div", { class: "engagement-evidence-cell ec-open", role: "columnheader" }, ""),
+    );
+    table.appendChild(head);
+    // Sort by capture date desc so the most recent evidence reads first.
+    contributingSessions
+      .slice()
+      .sort((a, b) => String(b.summary.started_at || "").localeCompare(String(a.summary.started_at || "")))
+      .forEach(c => {
+        const ss = c.summary;
+        const folder = ss.session_folder || "";
+        const open = (e) => {
+          if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+          if (typeof window !== "undefined" && typeof window._engagementOpenSession === "function") {
+            window._engagementOpenSession(folder);
+          }
+        };
+        const row = _h("div", { class: "engagement-evidence-row", role: "row",
+          onClick: open },
+          _h("div", { class: "engagement-evidence-cell ec-session", role: "cell",
+            title: folder }, ss.session_id || "—"),
+          _h("div", { class: "engagement-evidence-cell ec-worker", role: "cell" },
+            ss.worker_id || "unknown"),
+          _h("div", { class: "engagement-evidence-cell ec-cases", role: "cell" },
+            String(c.contributingCaseIds.length)),
+          _h("div", { class: "engagement-evidence-cell ec-date", role: "cell" },
+            _fmtDate(ss.started_at)),
+          _h("div", { class: "engagement-evidence-cell ec-open", role: "cell" },
+            _h("button", { class: "engagement-evidence-open",
+              onClick: open,
+              title: "Open this session in Workshop" }, "Open in Workshop →")),
+        );
+        table.appendChild(row);
+      });
+    evidenceSec.appendChild(table);
+  }
+  wrap.appendChild(evidenceSec);
 
   // --- PDD actions block ---
   const pddSec = _h("section", { class: "engagement-detail-section" });
@@ -282,15 +574,6 @@ function _renderProcessDetail(row) {
     } }, "Generate PDD for this process"),
   ));
   wrap.appendChild(pddSec);
-
-  // --- Evidence block ---
-  const evidenceSec = _h("section", { class: "engagement-detail-section" });
-  evidenceSec.appendChild(_h("h3", null, "Evidence"));
-  evidenceSec.appendChild(_h("p", { class: "engagement-detail-hint" },
-    "Signature " + (row.signature || "—").slice(0, 12) +
-    " — observed in " + (row.session_count || 0) + " session(s), " +
-    (row.case_count || 0) + " case(s)."));
-  wrap.appendChild(evidenceSec);
 
   return wrap;
 }

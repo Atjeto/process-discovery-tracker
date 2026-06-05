@@ -10,7 +10,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
 endobj
 4 0 obj
-<< /Length 3631 >>
+<< /Length 2813 >>
 stream
 BT
 /F1 9 Tf
@@ -28,17 +28,8 @@ BT
 () Tj T*
 ( 1. Process at a glance) Tj T*
 () Tj T*
-(Workbook Save is an essential process for executive readers who manage large datasets. It) Tj T*
-(involves saving Excel workbooks to ensure data integrity and accessibility across) Tj T*
-(different platforms. The process ensures that all changes made by the reader are saved) Tj T*
-(automatically, preventing loss of information in case of system crashes or power outages.) Tj T*
-(This practice matters because it enhances productivity by minimizing downtime and) Tj T*
-(maintaining a consistent workflow environment. Executives rely on this process to) Tj T*
-(maintain their reports and analyses uptodate, which is crucial for strategic) Tj T*
-(decisionmaking. The work involved includes selecting the workbook, entering credentials) Tj T*
-(\(if necessary\), choosing the save location, and confirming the action. This task requires) Tj T*
-(careful attention to detail and quick reflexes in a highpressure environment, making it) Tj T*
-(an important part of the executive reader's daily routine.) Tj T*
+(Workbook Save: The worker saves a workbook named "Incident Tracker.xlsx" in the EXCEL) Tj T*
+(application. This action is observed on their screen while working on various tasks.) Tj T*
 () Tj T*
 (This process was observed 12× across 12 cases in 4 sessions, with an average duration of) Tj T*
 (3s.) Tj T*
@@ -100,9 +91,9 @@ xref
 0000000064 00000 n 
 0000000121 00000 n 
 0000000247 00000 n 
-0000003930 00000 n 
+0000003112 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-4000
+3182
 %%EOF

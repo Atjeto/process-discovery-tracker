@@ -10,7 +10,7 @@
 
 ## 1. Process at a glance
 
-The chrome process is responsible for managing web browsing activities within an executive reader's environment. When an incident of saving a record occurs, it indicates that the user has manually saved their current webpage or document to a local storage area on their device. This action can be crucial in maintaining work progress or ensuring data integrity when transitioning between sessions. The process involves interacting with various components such as bookmarks, notes, and possibly cloud-based services depending on the organizational setup. Understanding these processes is essential for troubleshooting issues related to data loss or synchronization failures, ensuring that sensitive information remains secure and accessible across different devices.
+The cues indicate that a worker is saving records using Chrome.
 
 This process was observed **12× across 12 cases** in 4 sessions, with an average duration of **7s**.
 

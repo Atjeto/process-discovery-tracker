@@ -1,6 +1,7 @@
 {
   "session_id": "demo-dave-20260604-1200",
   "engagement_id": "demo-pack-servicenow-it-service",
+  "worker_id": "dave.nakamura",
   "started_at": "2026-06-04T12:00:00.000Z",
   "ended_at": "2026-06-04T12:01:04.650Z",
   "status": "closed",

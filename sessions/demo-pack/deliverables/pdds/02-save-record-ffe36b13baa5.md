@@ -10,7 +10,7 @@
 
 ## 1. Process at a glance
 
-The "Save Record" process is an essential tool for executive readers to efficiently capture and organize their insights and ideas. By using Chrome as the application, this process allows users to save screenshots of documents or web pages directly into a secure cloud repository. This method ensures that valuable information can be easily accessed anytime, anywhere, without having to manually copy and paste content from multiple sources. The importance of this process lies in its ability to streamline the workflow for busy executives who need quick access to key points from meetings or reports. It represents a shift towards digital documentation, making it easier to maintain compliance with company policies while enhancing productivity by reducing paper usage.
+The cues indicate that a worker is saving records in an incident context using Chrome. This suggests a recurring desktop work pattern involving document management and incident handling.
 
 This process was observed **12× across 12 cases** in 4 sessions, with an average duration of **7s**.
 

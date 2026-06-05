@@ -4,13 +4,222 @@
  * the existing design system carry through automatically.
  */
 
-/* The Cockpit layout container itself — read-like-a-memo, single column. */
+/* The Cockpit layout container — a two-column grid that uses the full
+   viewport on wide screens (the previous 960px center column left ~520px
+   of empty canvas at 1600 vw). Falls back to a single column under
+   1100px, so a narrow window still reads like a memo. */
 .session-layout-cockpit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 32px;
   padding: 24px 32px 48px;
-  max-width: 960px;
+  max-width: 1440px;
   margin: 0 auto;
   color: var(--fg);
   font-family: var(--font-ui, sans-serif);
+  box-sizing: border-box;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .session-layout-cockpit {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    max-width: 720px;
+  }
+}
+.cockpit-main { min-width: 0; }   /* prevent overflow inside grid track */
+.cockpit-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+}
+@media (max-width: 1100px) {
+  .cockpit-rail { position: static; }
+}
+/* Rail cards — quiet at rest, no heavy borders, matches the headline panel. */
+.cockpit-rail-card {
+  background: var(--bg-1);
+  border: 1px solid var(--rule-soft);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cockpit-rail-card-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+}
+.cockpit-rail-link,
+.cockpit-rail-eng-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 2px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  align-self: flex-start;
+  transition: color 120ms;
+}
+.cockpit-rail-link:hover,
+.cockpit-rail-eng-link:hover { color: var(--accent-hover, var(--accent)); }
+
+/* Engagement card — a single-name + link. */
+.cockpit-rail-engagement {
+  border-left: 3px solid var(--accent);
+}
+.cockpit-rail-eng-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Mini DFG chain — a vertical sequence of pill nodes. Stylized rather
+   than rendering the full bpmn (the real diagram lives in Workshop → Map). */
+.cockpit-rail-dfg {
+  list-style: none;
+  margin: 4px 0 4px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.cockpit-rail-dfg-node {
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--fg-2);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cockpit-rail-dfg-start {
+  border-color: var(--accent-muted, var(--accent));
+  color: var(--fg);
+  font-weight: 500;
+}
+.cockpit-rail-dfg-end {
+  border-color: color-mix(in srgb, var(--va, #5a8f6a) 40%, transparent);
+  color: var(--va, #5a8f6a);
+  font-weight: 500;
+}
+.cockpit-rail-dfg-arrow {
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-4);
+  line-height: 1;
+  padding: 1px 0;
+}
+
+/* Breakdown rows — small key-value pairs. */
+.cockpit-rail-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cockpit-rail-breakdown-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.cockpit-rail-breakdown-val {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.1;
+  min-width: 48px;
+}
+.cockpit-rail-breakdown-lbl {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+/* Top-apps card — name + percentage bar. */
+.cockpit-rail-apps-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cockpit-rail-app-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.cockpit-rail-app-name {
+  color: var(--fg-2);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.cockpit-rail-app-pct {
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.cockpit-rail-app-bar {
+  height: 4px;
+  background: var(--bg-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.cockpit-rail-app-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.85;
+  border-radius: 2px;
+}
+
+/* PDT-1.0-SPEC §4.2: Cockpit suppresses Workshop chrome — the actions bar
+   keeps only Open / Export, and the session-summary panel + onboarding card +
+   raw events stay hidden. The mode toggle in the topbar gets the user into
+   Workshop for the full surface. */
+body.mode-cockpit #view-session .session-summary,
+body.mode-cockpit #view-session #onboarding-card,
+body.mode-cockpit #view-session #prep-session-cta,
+body.mode-cockpit #view-session .event-table-host,
+body.mode-cockpit #view-session #log-host,
+body.mode-cockpit #view-session #session-pills,
+body.mode-cockpit #view-session #btn-normalize,
+body.mode-cockpit #view-session #session-more-menu,
+body.mode-cockpit #view-session #btn-session-info-toggle,
+body.mode-cockpit #view-session #session-info-group {
+  display: none !important;
+}
+
+/* PDT-1.0-SPEC §4.1.2: Glance is the worker's story view. Hide every
+   analyst-facing chrome — actions bar, summary, raw events, onboarding. The
+   worker only needs to skim and correct labels. */
+body.mode-glance #view-session .actions-bar,
+body.mode-glance #view-session .session-summary,
+body.mode-glance #view-session #onboarding-card,
+body.mode-glance #view-session #prep-session-cta,
+body.mode-glance #view-session .event-table-host,
+body.mode-glance #view-session #log-host {
+  display: none !important;
 }
 
 /* Empty state when no session is loaded. */
@@ -183,15 +392,117 @@
 }
 .cockpit-conf-med {
   background: color-mix(in srgb, var(--bnva, #ff9800) 18%, transparent);
-  color: var(--bnva, #ff9800);
+  color: var(--bnva-text, var(--bnva, #ff9800));
 }
 .cockpit-conf-low {
   background: color-mix(in srgb, var(--fg-4) 18%, transparent);
   color: var(--fg-3);
 }
+/* Verify → on a Cockpit candidate row: text-and-arrow link, matching the
+   .btn-link role defined in styles.css. Removes the bordered button look that
+   competed visually with the .btn-primary CTAs elsewhere on the page
+   (UX-density pass: ≤4 button styles in use). */
 .cockpit-candidate-drill {
   flex-shrink: 0;
-  padding: 6px 12px;
+  background: transparent;
+  color: var(--accent);
+  border: 0;
+  padding: 2px 6px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 120ms;
+}
+.cockpit-candidate-drill:hover {
+  background: transparent;
+  color: var(--fg);
+}
+
+/* "What stood out" — finding rows. Each row carries a kind-coded icon,
+   a one-line headline, a "why this matters" hint, and (optionally) an
+   action button that drops into the relevant Workshop level. The previous
+   render was a single line with a vertical bar — looked unfinished. */
+.cockpit-stood-out-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cockpit-stood-out {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--rule-soft);
+  border-left: 3px solid var(--accent-muted, var(--accent));
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+.cockpit-stood-out-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.cockpit-stood-out-icon svg { display: block; }
+/* Kind-coded tinting — anchor/marker use accent (orange), waste uses
+   bad/red, idle uses warn/amber, app-switching uses accent-2. Keeps the
+   visual signal tied to severity without inventing new tokens. */
+.cockpit-stood-out-waste .cockpit-stood-out-icon {
+  background: color-mix(in srgb, var(--bad, #a05a3a) 15%, transparent);
+  color: var(--bad, #a05a3a);
+}
+.cockpit-stood-out-waste {
+  border-left-color: var(--bad, #a05a3a);
+}
+.cockpit-stood-out-idle_gap .cockpit-stood-out-icon {
+  background: color-mix(in srgb, var(--bnva, #c2922f) 18%, transparent);
+  color: var(--bnva, #c2922f);
+}
+.cockpit-stood-out-idle_gap {
+  border-left-color: var(--bnva, #c2922f);
+}
+.cockpit-stood-out-app_switching .cockpit-stood-out-icon {
+  background: color-mix(in srgb, var(--accent-2, var(--accent)) 15%, transparent);
+  color: var(--accent-2, var(--accent));
+}
+.cockpit-stood-out-app_switching {
+  border-left-color: var(--accent-2, var(--accent));
+}
+.cockpit-stood-out-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cockpit-stood-out-headline {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.3;
+}
+.cockpit-stood-out-hint {
+  font-size: 12px;
+  color: var(--fg-3);
+  line-height: 1.45;
+}
+.cockpit-stood-out-action {
+  flex-shrink: 0;
+  padding: 5px 10px;
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--accent-muted, var(--accent));
@@ -199,41 +510,57 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 120ms;
+  white-space: nowrap;
+  transition: background 120ms, color 120ms;
+  align-self: center;
 }
-.cockpit-candidate-drill:hover {
+.cockpit-stood-out-action:hover {
   background: var(--accent-muted, var(--bg-2));
   color: var(--accent-hover, var(--accent));
 }
 
-/* "What stood out" bullet list. */
-.cockpit-stood-out-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+/* Drill-through banner shown in Workshop / Analysis after clicking Verify
+   in the Cockpit. Names the candidate, tells the analyst what to do, and
+   offers a one-click return. Without this the analyst lands on Analysis
+   with no context — exactly the "where am I, what do I do" gap. */
+.cockpit-drill-banner {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 20px;
+  padding: 14px 18px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-1));
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
 }
-.cockpit-stood-out {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--bg-1);
-  border-left: 3px solid var(--accent-muted, var(--accent));
-  border-radius: 0 6px 6px 0;
-  font-size: 13px;
+.cockpit-drill-banner-body { display: flex; flex-direction: column; gap: 4px; }
+.cockpit-drill-banner strong { font-size: 14px; color: var(--fg); }
+.cockpit-drill-banner span { font-size: 12px; color: var(--fg-2); line-height: 1.4; }
+.cockpit-drill-banner-back {
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
   color: var(--fg-2);
-  line-height: 1.4;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
 }
-.cockpit-stood-out-bullet {
-  color: var(--accent);
-  font-weight: 700;
-  line-height: 1;
-}
-.cockpit-stood-out-text {
-  flex: 1;
+.cockpit-drill-banner-back:hover { color: var(--fg); background: var(--bg-3); }
+/* a11y: WCAG 2.3.3 — only run the attention-pulling pulse if the user has
+   not asked to reduce motion. Users with vestibular sensitivity see the
+   class get added but nothing animates; the drill banner still names the
+   candidate, so the meaning isn't lost. */
+@media (prefers-reduced-motion: no-preference) {
+  .cockpit-drill-highlight {
+    animation: cockpit-drill-pulse 1.6s ease-out 1;
+  }
+  @keyframes cockpit-drill-pulse {
+    0%   { background: color-mix(in srgb, var(--accent) 0%,  transparent); }
+    30%  { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+    100% { background: color-mix(in srgb, var(--accent) 0%,  transparent); }
+  }
 }
 
 /* Footer hint. */
@@ -248,38 +575,47 @@
   color: var(--fg-4);
 }
 
-/* Mode toggle — Cockpit / Workshop — lives in the topbar. */
+/* Mode toggle — Glance / Cockpit / Workshop — lives inside topbar-meta so
+   the three-column topbar grid (brand | tabs | meta) stays balanced. Tight
+   pill so the segmented control reads as one unit, not three loose buttons. */
 .session-mode-toggle {
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;     /* buttons stretch to fill the pill, no whitespace gap */
+  flex-shrink: 0;            /* never shrink below content -- truncates "Workshop" to "Work" otherwise */
   gap: 0;
-  margin-left: 16px;
-  padding: 2px;
+  padding: 0;
   background: var(--bg-1);
-  border: 1px solid var(--rule-soft);
-  border-radius: 6px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  line-height: 1;            /* button height = font-size + padding, no leading */
 }
 .session-mode-toggle .mode-btn {
-  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
   background: transparent;
-  border: none;
+  border: 0;
   color: var(--fg-3);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  border-radius: 4px;
+  white-space: nowrap;
   transition: background 120ms, color 120ms;
 }
-.session-mode-toggle .mode-btn:hover {
-  color: var(--fg-2);
+/* Round the corners of the first/last buttons so the active fill matches
+   the pill outline. Replaces the `overflow: hidden` that was clipping
+   "Workshop" when the meta row was tight. */
+.session-mode-toggle .mode-btn:first-child { border-radius: 4px 0 0 4px; }
+.session-mode-toggle .mode-btn:last-child  { border-radius: 0 4px 4px 0; }
+.session-mode-toggle .mode-btn + .mode-btn {
+  border-left: 1px solid var(--rule);
 }
+.session-mode-toggle .mode-btn:hover { color: var(--fg-2); background: var(--bg-2); }
 .session-mode-toggle .mode-btn.active {
   background: var(--accent);
   color: var(--bg);
 }
-.session-mode-toggle .mode-btn.active:hover {
-  color: var(--bg);
-}
+.session-mode-toggle .mode-btn.active:hover { color: var(--bg); }
 .session-mode-toggle[hidden] { display: none; }
 
 /* ---- Engagement view (PDT-1.0-SPEC §5.3) ---- */
@@ -311,6 +647,193 @@
   max-width: 480px;
   margin: 0 auto 20px;
   line-height: 1.5;
+}
+.engagement-empty-shape {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px !important;
+  color: var(--fg-4);
+  background: var(--bg-1);
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px dashed var(--rule-soft);
+}
+.engagement-empty-actions {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0 32px;
+}
+/* Demo-pack shortcut card grid (one-click load of the bundled engagement). */
+.engagement-empty-demo { max-width: 640px; margin: 0 auto; }
+.engagement-demo-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-4);
+  margin: 16px 0 10px;
+  text-align: left;
+}
+.engagement-demo-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.engagement-demo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--rule-soft);
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms, transform 120ms;
+  /* a11y: rendered as a <button>; reset the default button chrome. */
+  font: inherit;
+  color: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+}
+.engagement-demo-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.engagement-demo-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.engagement-demo-card-path {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--fg-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.engagement-demo-card-cta {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 6px;
+}
+/* Path crumb under the title — "Folder: D:\\...\\demo-pack" */
+.engagement-folder-crumb {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--fg-4);
+  margin: -16px 0 20px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Loud banner when the picked folder isn't a valid engagement. */
+.engagement-misconfig-banner {
+  margin: 24px 0;
+  padding: 20px 24px;
+  background: color-mix(in srgb, var(--bnva, #c08530) 12%, var(--bg-1));
+  border-left: 4px solid var(--bnva, #c08530);
+  border-radius: 4px;
+}
+.engagement-misconfig-banner strong {
+  display: block;
+  font-size: 15px;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+.engagement-misconfig-banner p {
+  font-size: 13px;
+  color: var(--fg-2);
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+.engagement-switch-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* ---- Ollama / Naming Layer status (topbar, right of mode toggle) ----
+   A traffic-light dot + short label that tells the analyst whether the
+   local LLM is reachable. Without this, AI-driven names appear with no
+   indication WHY (or fail with no indication that the LLM is off). */
+.ollama-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--fg-3);
+  background: var(--bg-2);
+  cursor: pointer;
+  user-select: none;
+  /* a11y: rendered as a <button>; reset the default button chrome so the
+     pill look from the spec is preserved. */
+  font: 11px var(--font-mono, monospace);
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ollama-status:hover { color: var(--fg-2); border-color: var(--accent); }
+.ollama-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-4);  /* unknown / checking */
+}
+.ollama-status.ai-on  .ollama-status-dot { background: #4caf50; box-shadow: 0 0 6px color-mix(in srgb, #4caf50 50%, transparent); }
+.ollama-status.ai-off .ollama-status-dot { background: var(--fg-4); }
+.ollama-status.ai-err .ollama-status-dot { background: #e53935; }
+.ollama-status.ai-on  .ollama-status-label { color: var(--fg-2); }
+.ollama-status.ai-off .ollama-status-label { color: var(--fg-4); }
+.ollama-status.ai-err .ollama-status-label { color: #e53935; }
+
+.ollama-status-popup {
+  position: absolute;
+  right: 12px;
+  top: 52px;
+  width: 360px;
+  max-height: 480px;
+  overflow-y: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  z-index: 220;
+  padding: 16px;
+}
+.ollama-status-popup-head strong { font-size: 13px; color: var(--fg); display: block; }
+.ollama-status-popup-sub {
+  display: block;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--fg-4);
+  margin-top: 4px;
+}
+.ollama-status-popup-body { margin-top: 14px; font-size: 12px; color: var(--fg-2); line-height: 1.5; }
+.ollama-status-popup-body h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-4);
+  margin: 12px 0 6px 0;
+}
+.ollama-status-popup-body ul { margin: 0; padding-left: 18px; }
+.ollama-status-popup-body li { margin: 4px 0; }
+.ollama-status-popup-body .ai-named-name {
+  font-weight: 600;
+  color: var(--accent);
+}
+.ollama-status-popup-body .ai-named-from {
+  color: var(--fg-4);
+  font-size: 11px;
+}
+.ollama-status-popup-empty {
+  color: var(--fg-4);
+  font-style: italic;
 }
 
 .engagement-title-row {
@@ -400,50 +923,75 @@
   border-radius: 6px;
 }
 
-/* Cards grid */
+/* Cards grid — wider minmax + thicker padding so a 1600px viewport fits 3
+   cards with room to breathe; cards still flow to 2 columns on narrower
+   windows. The card itself uses flex so the "Open details" CTA can pin
+   to the bottom regardless of meta-text length. */
 .engagement-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
 }
 .engagement-card {
-  padding: 16px;
+  padding: 20px 20px 18px;
   background: var(--bg-1);
   border: 1px solid var(--rule-soft);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: border-color 120ms, transform 120ms, box-shadow 120ms;
+  transition: border-color 140ms, transform 140ms, box-shadow 140ms, background 140ms;
   position: relative;
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  /* a11y: rendered as a <button>, so the default button chrome is reset
+     here. text-align/font/color inherit, full-width box, no UA appearance. */
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
 }
 .engagement-card:hover {
-  border-color: var(--accent-muted, var(--accent));
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(60, 35, 10, 0.12);
+  background: var(--bg);
+}
+.engagement-card:hover .engagement-card-cta {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+.engagement-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .engagement-card-low { opacity: 0.6; }
 .engagement-card-rank {
   position: absolute;
-  top: 14px;
-  right: 16px;
-  font-size: 12px;
+  top: 16px;
+  right: 18px;
+  font-size: 11px;
   color: var(--fg-4);
   letter-spacing: 0.05em;
+  font-weight: 500;
 }
 .engagement-card-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   padding-right: 40px;
 }
 .engagement-card-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  line-height: 1.3;
 }
 .engagement-card-ai {
   font-size: 10px;
@@ -452,44 +1000,62 @@
   border-radius: 3px;
   background: var(--accent);
   color: var(--bg);
+  flex-shrink: 0;
 }
 .engagement-card-meta {
   font-size: 12px;
   color: var(--fg-3);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  line-height: 1.45;
 }
+/* Two-stat layout: AVG + CONFIDENCE. The labels read after the value now
+   (value first, label below) and the value font scales up so 100% / 7s
+   doesn't get drowned out by the label. */
 .engagement-card-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.engagement-card-stats-2 {
+  /* explicit two-column variant — kept as a modifier for readability. */
+  grid-template-columns: 1fr 1fr;
 }
 .engagement-card-stat {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .engagement-card-stat .stat-val {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--fg);
+  line-height: 1.1;
 }
 .engagement-card-stat .stat-lbl {
   font-size: 10px;
   color: var(--fg-4);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
   margin-top: 2px;
+  font-weight: 500;
 }
 .engagement-card-warn {
   font-size: 11px;
-  color: var(--bnva, #c08530);
+  color: var(--bnva-text, var(--bnva, #c08530));
   margin-bottom: 8px;
   font-style: italic;
 }
 .engagement-card-cta {
   font-size: 12px;
-  color: var(--accent);
-  font-weight: 500;
+  color: var(--fg-3);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-top: auto;
+  transition: color 140ms, transform 140ms;
 }
 
 /* Detail page */
@@ -521,13 +1087,13 @@
 }
 .engagement-detail-section {
   margin: 24px 0;
-  padding: 16px;
+  padding: 18px 20px;
   background: var(--bg-1);
   border: 1px solid var(--rule-soft);
   border-radius: 8px;
 }
 .engagement-detail-section h3 {
-  margin: 0 0 8px 0;
+  margin: 0 0 12px 0;
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
@@ -544,4 +1110,241 @@
   display: flex;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* ---- Detail page: Process-map preview strip (modal path) ----
+   A horizontally-scrolling chain of step pills with arrows between, so the
+   most frequently observed sequence reads at a glance. The pills carry a
+   subtle accent so the strip looks like a process line rather than a row
+   of buttons. */
+.engagement-preview .engagement-path-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 4px;
+  margin-bottom: 8px;
+}
+.engagement-path-node {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--rule-soft));
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: var(--fg);
+  font-weight: 500;
+  line-height: 1.2;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.engagement-path-arrow {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+.engagement-preview-cap {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--fg-4);
+}
+
+/* ---- Detail page: Variants list ----
+   Each variant is one row in an ordered list: the joined step-path on the
+   first line, and an aggregate count + sessions + % share on the second.
+   The first row (#1) carries a "MODAL" badge so the most-frequent path
+   reads as the spine of the others. */
+.engagement-variant-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  counter-reset: vrow;
+}
+.engagement-variant-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 12px 38px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 6px;
+  background: var(--bg-2);
+  margin-bottom: 8px;
+  counter-increment: vrow;
+}
+.engagement-variant-row::before {
+  content: counter(vrow);
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-1);
+  border: 1px solid var(--rule);
+  color: var(--fg-3);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.engagement-variant-row.modal {
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-2));
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--rule-soft));
+}
+.engagement-variant-row.modal::before {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+.engagement-variant-row.modal::after {
+  content: "MODAL";
+  position: absolute;
+  right: 12px;
+  top: 11px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.engagement-variant-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.engagement-variant-step {
+  font-size: 12.5px;
+  color: var(--fg);
+  background: var(--bg);
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--rule-soft);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.engagement-variant-arrow {
+  color: var(--fg-4);
+  font-size: 12px;
+  font-weight: 600;
+}
+.engagement-variant-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--fg-3);
+  padding-left: 0;
+}
+.engagement-variant-count {
+  font-weight: 600;
+  color: var(--fg-2);
+}
+.engagement-variant-sep {
+  color: var(--fg-4);
+}
+.engagement-variant-pct {
+  color: var(--fg-4);
+}
+.engagement-variant-more {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--fg-4);
+}
+
+/* ---- Detail page: Evidence table ----
+   One row per contributing session with: session id, worker, cases for
+   THIS process in this session, capture date, an "Open in Workshop"
+   button. Whole-row hover affords clickability; the explicit button is
+   keyboard-reachable. Five columns; the last one ("Open") right-aligns. */
+.engagement-evidence-table {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 0.7fr 0.9fr auto;
+  margin-top: 8px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.engagement-evidence-head {
+  display: contents;
+}
+.engagement-evidence-head .engagement-evidence-cell {
+  background: var(--bg-2);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-4);
+  font-weight: 600;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.engagement-evidence-row {
+  display: contents;
+  cursor: pointer;
+}
+.engagement-evidence-row > .engagement-evidence-cell {
+  background: var(--bg-1);
+  font-size: 12.5px;
+  color: var(--fg-2);
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--rule-soft);
+  transition: background 120ms;
+  display: flex;
+  align-items: center;
+}
+.engagement-evidence-row:last-child > .engagement-evidence-cell {
+  border-bottom: 0;
+}
+.engagement-evidence-row:hover > .engagement-evidence-cell {
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-1));
+}
+.engagement-evidence-cell.ec-session {
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.engagement-evidence-cell.ec-worker {
+  color: var(--fg-2);
+}
+.engagement-evidence-cell.ec-cases {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--fg);
+}
+.engagement-evidence-cell.ec-date {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+.engagement-evidence-cell.ec-open {
+  justify-content: flex-end;
+  padding-left: 6px;
+}
+.engagement-evidence-open {
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--accent);
+  padding: 4px 10px;
+  font-size: 11.5px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.engagement-evidence-open:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
 }

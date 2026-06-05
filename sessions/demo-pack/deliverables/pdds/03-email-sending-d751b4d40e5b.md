@@ -10,7 +10,7 @@
 
 ## 1. Process at a glance
 
-Email Sending is a crucial process within an executive reader's workflow that ensures timely communication with stakeholders and clients. Executives often need to send urgent messages or important documents quickly without delay. This process involves logging into their Outlook account, selecting the appropriate email template based on the urgency of the message, filling in any necessary details such as recipients' names and subject lines, attaching relevant files if needed, and finally sending the email through a secure connection. The importance of this process lies in maintaining professional relationships and ensuring that critical information reaches its intended audience promptly. It represents a blend of communication skills and technical proficiency, requiring quick thinking and efficient execution to meet deadlines effectively.
+The cues indicate that a worker is sending an email through Outlook. The context of the sender's inbox shows they have selected "Send" in the RE: Send label within the Explorer window.
 
 This process was observed **12× across 12 cases** in 4 sessions, with an average duration of **4s**.
 

@@ -10,7 +10,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
 endobj
 4 0 obj
-<< /Length 3379 >>
+<< /Length 2833 >>
 stream
 BT
 /F1 9 Tf
@@ -28,14 +28,9 @@ BT
 () Tj T*
 ( 1. Process at a glance) Tj T*
 () Tj T*
-(The "Save Record" process is designed to capture and preserve detailed records of user) Tj T*
-(interactions within an application. Executives often need comprehensive insights into how) Tj T*
-(their team operates or makes decisions, which can be achieved through this method. By) Tj T*
-(saving the entire session in a browser context like Chrome, we ensure that every action) Tj T*
-(taken by users is meticulously recorded for future reference. This process is crucial for) Tj T*
-(executives looking to understand workflows, identify bottlenecks, and make informed) Tj T*
-(strategic decisions based on realtime data. It represents a valuable tool for enhancing) Tj T*
-(operational efficiency and decisionmaking capabilities within the organization.) Tj T*
+(The cues indicate that a worker is saving records in an incident context using Chrome.) Tj T*
+(This suggests a recurring desktop work pattern involving document management and incident) Tj T*
+(handling.) Tj T*
 () Tj T*
 (This process was observed 12× across 12 cases in 4 sessions, with an average duration of) Tj T*
 (7s.) Tj T*
@@ -97,9 +92,9 @@ xref
 0000000064 00000 n 
 0000000121 00000 n 
 0000000247 00000 n 
-0000003678 00000 n 
+0000003132 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-3748
+3202
 %%EOF

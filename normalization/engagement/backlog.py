@@ -108,6 +108,12 @@ def build_backlog(
         "confidence_n": 0,
         "sessions": [],
         "case_ids": set(),
+        # Literal structural cues collected from every contributing
+        # candidate so downstream consumers (PDD prose, exports) have the
+        # observed vocabulary to ground themselves against. Sets dedup.
+        "activity_labels": set(),
+        "screen_labels": set(),
+        "interaction_types": set(),
     })
 
     # PDT-1.0-SPEC §3.2: collect LLM-named clusters across sessions so backlog
@@ -185,6 +191,17 @@ def build_backlog(
             for cid in (c.get("case_ids") or []):
                 row["case_ids"].add(cid)
             row["case_count"] = len(row["case_ids"])
+            # Cue collection — the literal step labels seen in this segment,
+            # plus whatever screen/interaction context the segment carries.
+            for sl in (c.get("step_labels") or []):
+                if sl:
+                    row["activity_labels"].add(str(sl).strip())
+            for sl in (c.get("screen_labels") or []):
+                if sl:
+                    row["screen_labels"].add(str(sl).strip())
+            for it in (c.get("interaction_types") or []):
+                if it:
+                    row["interaction_types"].add(str(it).strip())
 
         # PDT-1.0-SPEC §3.1 + §6.4: also surface activity clusters from
         # patterns.json when they exceed the variant-suppression
@@ -224,6 +241,19 @@ def build_backlog(
             for ccid in (c.get("case_ids") or []):
                 row["case_ids"].add(ccid)
             row["case_count"] = len(row["case_ids"])
+            # Cue collection — the cluster's literal process_label + any
+            # screen / interaction surface present.
+            if label:
+                row["activity_labels"].add(label.strip())
+            for sl in (c.get("screen_labels") or []):
+                if sl:
+                    row["screen_labels"].add(str(sl).strip())
+            sl_single = c.get("screen_label")
+            if sl_single:
+                row["screen_labels"].add(str(sl_single).strip())
+            for it in (c.get("interaction_types") or []):
+                if it:
+                    row["interaction_types"].add(str(it).strip())
 
     rows: list[dict[str, Any]] = []
     suppressed_low_confidence = 0
@@ -258,6 +288,12 @@ def build_backlog(
             # automation candidates. Surfaced explicitly so the analyst can
             # see *why* a row ranks where it does.
             "rank_score": row["instance_count"] * mean_elapsed_ms * confidence,
+            # Structural cues — preserved verbatim so downstream consumers
+            # (PDD prose, exporters) can ground themselves in observed
+            # vocabulary instead of speculating.
+            "activity_labels": sorted(row["activity_labels"]),
+            "screen_labels": sorted(row["screen_labels"]),
+            "interaction_types": sorted(row["interaction_types"]),
         }
         if confidence < confidence_floor:
             suppressed_low_confidence += 1

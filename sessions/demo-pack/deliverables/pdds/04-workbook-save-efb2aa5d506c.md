@@ -10,7 +10,7 @@
 
 ## 1. Process at a glance
 
-Workbook Save is an essential process for executive readers who manage large datasets. It involves saving Excel workbooks to ensure data integrity and accessibility across different platforms. The process ensures that all changes made during meetings or research projects are preserved in a secure format. This step is crucial because it prevents loss of valuable information, maintains consistency between various versions, and facilitates easy sharing with team members or stakeholders who need access to the latest updates. By automating this task, executive readers can focus on more strategic tasks without worrying about manual data management, thereby enhancing productivity and reducing errors.
+Workbook Save: The worker saves a workbook named "Incident Tracker.xlsx" in the EXCEL application. This action is observed on their screen while working on various tasks.
 
 This process was observed **12× across 12 cases** in 4 sessions, with an average duration of **3s**.
 

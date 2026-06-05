@@ -6,6 +6,239 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-05
+
+UX redesign + WCAG 2.1 AA accessibility pass on the v1.0 surface. v1.0.0 and
+v1.0.1 shipped without a real consultant-eye review; this release closes that
+gap. All numerical content still traces to measurements, the integrity
+backbone is unchanged. Validated against the existing in-repo e2e gate plus a
+new accessibility gate — 111/111 checks across six suites.
+
+### Added
+
+- **Cockpit right-rail (PDT-1.0-SPEC §4.2).** The summary-first surface was a
+  centered narrow column with two-thirds of the canvas empty. It now reads as
+  a two-column memo: candidates + "What stood out" on the left, an at-a-glance
+  rail on the right with Engagement context, Process Shape preview, Breakdown
+  (cases / steps / avg per case), and Top Apps with %time bars.
+- **Glance right-rail + Submit-to-consultant CTA (§4.1.2).** Same widening;
+  the rail carries a "Your review · N steps" progress card (confirmed /
+  corrected / rejected / remaining) and a Submit button that flips
+  `annotations.glance_submitted` — soft, non-destructive state so the
+  consultant sees the session has been reviewed and the worker can Undo.
+- **"What stood out" — real findings.** Replaced one-line bullet stubs with
+  icon + headline + hint + per-item action affordance (anchor candidates,
+  marker suggestions, waste, idle gaps, app switching — each routed to the
+  Workshop surface that owns the detail).
+- **Engagement detail page — Process Map Preview + Variants + Evidence.** The
+  three empty section frames are gone. Process Map Preview shows the modal
+  step sequence as a chip strip; Variants ranks observed paths by frequency
+  with a MODAL badge on the headline; Evidence is a real table — session id,
+  worker, cases-in-this-session, capture date, and a per-row "Open in
+  Workshop →" link. The Engagement IPC payload now carries per-session
+  `step_variants` + manifest pulls so the table populates from on-disk truth.
+- **Demo Pack one-click shortcut.** Engagement empty state offers a "Try a
+  bundled demo" card grid that loads `sessions/demo-pack/` without a folder
+  picker. Resolves both the dev tree (`sessions/demo-pack`) and the packaged
+  `resources/demo-pack` via a new `viewer:resolveDemoPacks` IPC; the grid
+  grows automatically as future demos ship.
+- **Engagement folder crumb + "Switch engagement…" action.** Always-visible
+  monospace breadcrumb under the title so the consultant knows which folder
+  is loaded, plus a persistent switch action in the export bar. Wrong-folder
+  state surfaces a loud "this doesn't look like an engagement" banner with a
+  one-click re-pick instead of dying silently with "(unnamed) · 0 sessions".
+- **AI status pill in the topbar.** Green-dot pill that probes the local
+  Ollama Naming Layer every 30 s and shows the resolved chat model
+  (preferring `qwen2.5` / `*-instruct` over embedding-only tags). Click for a
+  popup listing the active endpoint, model, and exactly what the LLM produced
+  for the current session (`Email Sending ← RE: Send`, …). When unreachable,
+  the dot turns gray and the popup explains how to enable it.
+- **Verify-drill banner.** Clicking a Cockpit candidate's "Verify →" drops
+  into Workshop → Analysis with a banner across the top naming the candidate,
+  describing what to verify ("Confirm this candidate is real and worth
+  automating…"), and a one-click "← Back to Cockpit". Closes the
+  "where am I, what do I do here" gap from the v1.0 surface. The matching
+  segment row gets a brief accent pulse so it's findable; the heuristic-
+  estimate banner suppresses itself when the drill banner is on screen
+  (no stacking).
+- **Inline rename + Reject in Glance.** Step rows in Glance used to look like
+  hyperlinks but clicking them ran `window.prompt()`, which Electron
+  renderers block — the click did nothing. Plain-text name now, with explicit
+  `✎ Rename` (inline `<input>`, Enter to save, Esc to cancel) and `✗ Not an
+  activity` (drops from the worker view, retained for the consultant in
+  Workshop) hover actions. Both write a `disagreements[]` entry feeding the
+  ADR-0029 §4.3 re-mine loop.
+- **Logo.** Replaced the abstract gradient square with a 4-node process-map
+  inline SVG that tracks the accent.
+- **Bundled-recorder end-to-end test (`e2e/real-capture.js`).** Spawns the
+  C# recorder, drives Notepad + Calculator via PowerShell SendKeys, stops
+  cleanly, normalizes, opens the captured session in the viewer, and asserts
+  the Cockpit / Glance render real interaction events. The first session
+  validation that exercises CAPTURE → events.jsonl → NORMALIZE → VIEWER end
+  to end, not just the bottom of the pipeline.
+
+### Changed
+
+- **Glance / Cockpit / Workshop mode toggle is session-only.** Was visible
+  globally in v1.0; now hidden on Engagement / Compare / Process Template /
+  App Library tabs where it carries no meaning. Mode toggle moved inside
+  `.topbar-meta` so the three-column topbar grid stays balanced (the v1.0
+  four-children layout wrapped meta onto a second row at common widths).
+- **`"AI SUGGESTION"` chip in Glance → `"AUTO-SUGGESTED"`.** The label
+  misrepresented `auto_suggested` (heuristic `step_suggest`) as AI output.
+  Reserved the orange "AI-named" chip for steps the LLM Naming Layer
+  actually relabelled (`step.state === "auto_named"`).
+- **Workshop chrome compression.** The actions bar's session pills + "More"
+  menu tuck behind a `session info ▾` disclosure; "Analyze session" demotes
+  from primary to secondary once the session has been analyzed, and "Export
+  ▾" promotes to primary. SESSION SUMMARY `<details>` starts collapsed so the
+  timeline is above-the-fold. Net: ~150 px of vertical chrome reclaimed.
+- **One button vocabulary across the surface.** v1.0 carried eight distinct
+  button presentations (`.primary`, `.icon-btn`, `.icon-btn.xs`, `.link-btn`,
+  `.project-btn`, `.cockpit-candidate-drill`, `.engagement-card-cta`,
+  `.glance-step-action`) — same purpose, different look. Consolidated to four
+  roles: `.btn-primary` (the single orange CTA per surface), `.btn-secondary`
+  (outlined common actions), `.btn-link` (text + arrow for navigation),
+  `.btn-icon` (28×28 compact). Legacy class names alias to the new ones so
+  external HTML keeps working.
+- **One confidence chip everywhere.** Shared `.confidence-pill` with
+  `.conf-high` / `.conf-med` / `.conf-low` modifiers now renders in Cockpit
+  candidates, Engagement backlog cards, Engagement detail headline, and
+  Workshop Analysis automation candidates (which previously showed
+  confidence as plain text only).
+- **Recent menu popup.** Anchored to the right edge of its parent so it
+  opens leftward into the meta zone, with `max-width: min(420px, 90vw)` so
+  a long recents list cannot overflow the viewport. Previously truncated
+  off the left edge when the topbar wrapped.
+- **Engagement CAPTURED headline stat.** Was reading `session_duration_ms`
+  from `stats.json`; falls back to `case_stats` range and then to a direct
+  scan of `events.jsonl` first/last timestamps when that field is absent.
+  The Demo Pack now reads 4m instead of `—`.
+- **Backlog cards tightened.** Dropped the cramped 4-stat row (cases /
+  sessions / avg / confidence) to AVG + CONFIDENCE only; cases / sessions
+  are implied by the title-row and the detail page.
+- **Demo manifests carry `worker_id`** (`alice.morgan`, `bob.singh`,
+  `carol.kapoor`, `dave.nakamura`) so the Engagement Evidence table reads
+  with real names instead of "unknown".
+- **PDD §1 prose grounded in observed cues, never invented.** The v1.0 LLM
+  prompt was open-ended ("Write a paragraph introducing the process for an
+  executive reader") and qwen2.5:1.5b filled the gap with generic boilerplate
+  ("executive readers", "professional relationships", "ensures data
+  integrity"). Replaced with a minimal-cue prompt that lists the literal
+  cluster cues and explicit hard rules forbidding speculation. Added a
+  hallucination-marker detector — text containing words like "executive",
+  "stakeholder", "crucial", "ensures" falls back to a templated paragraph
+  that quotes the observed step labels verbatim. The MD and PDF for the same
+  row now share a single LLM result (cached per row in `export_pdd_bundle`)
+  so they stop disagreeing.
+- **Activity-name LLM prompt simplified.** v1.0 produced INSUFFICIENT_SIGNAL
+  on perfectly good clusters because the prompt's "if any field is too thin,
+  refuse" rule fired conservatively on small models. New prompt focuses the
+  model on paraphrasing the literal process label with three examples; only
+  refuses when every input field is empty. Demo-pack clusters that v1.0
+  fell back to the heuristic label now name as `Save Record`, `Send Email`,
+  `Save Workbook` — and the same input across five runs at temperature 0.2
+  produces identical names.
+
+### Fixed
+
+- **Engagement view crashed on load** with `Failed to execute 'appendChild'
+  on 'Node': parameter 1 is not of type 'Node'`. The view's `_h()` helper
+  threw on numeric children (case counts, session counts, ranks). Now
+  promotes numbers to text nodes; same fix applied to the Cockpit and
+  Glance helpers preventively.
+- **Glance rename wiped every step.** The `_glancePersist` wrapper called
+  `persistAnnotations({ topics: ["steps"] })` — passing the topics dict
+  where the *annotations object* belongs. The persist layer happily wrote
+  that one-key blob to `annotations.json`, deleting every step on disk.
+  Any successful Glance edit in v1.0 would have nuked the session. Fixed:
+  pass the live annotations object plus the topics array as the third arg.
+- **Cockpit drill didn't move the active level.** Workshop's
+  `.view-mode-btn.active` class was managed by the click handler, not
+  `applyLevel()`, so programmatic callers (the cockpit drill, command
+  palette) updated state without updating the button. The active class is
+  now driven from `applyLevel()`, so the highlighted level always matches
+  what's rendered.
+- **FLOW SHORTCUTS overlay leaked onto Cockpit / Glance.** Was gated on
+  "Session tab active" only; now also requires Workshop mode and re-renders
+  on mode change so the bottom-right shortcuts widget disappears when it's
+  not applicable.
+- **Workshop's "Analyze session" + SESSION SUMMARY + raw events leaked into
+  Cockpit / Glance.** Cockpit was meant to be a single-column read-like-a-memo
+  but v1.0 still showed the full actions bar, pill row, summary panel, and
+  raw events. `body.mode-cockpit` / `body.mode-glance` classes drive CSS
+  suppression so each chrome element opts in or out cleanly.
+- **Topbar wrapped to two rows at common widths** (1f auto 1fr grid with
+  four children pushed `.topbar-meta` to row 2). Mode toggle moved inside
+  `.topbar-meta` so the three-children layout holds.
+- **"Workshop" truncated to "Work"** in the mode toggle when the meta row
+  ran tight: `overflow: hidden` on the segmented pill clipped the third
+  button. Replaced with `flex-shrink: 0` + per-button rounded corners.
+
+### Security / integrity
+
+- No new network endpoints. The renderer's Ollama probe routes through the
+  main process so the existing `connect-src 'none'` CSP stays intact.
+- No PII added to the manifest; the `worker_id` field is a stable id, not
+  a name lookup.
+- No LLM-produced numbers in any deliverable (PDD or backlog). Hallucination
+  detector forces template fallback when the model drifts; the footer in
+  every PDD honestly reports `prose is templated` vs `LLM-drafted` based on
+  the actual source.
+
+### Accessibility — WCAG 2.1 AA
+
+A focused audit pass; runtime contrast checks now pin the fixes via the new
+`e2e/a11y-smoke.js`.
+
+- **`--fg-4` darkened from `#c0b5a5` to `#736756`** in the light theme
+  (5.21:1 on `--bg`, was 1.6:1 — the engagement folder crumb, demo-pack card
+  path, suppressed counts, empty hints, and card-rank labels were
+  effectively invisible). Dark theme `--fg-4` lifted accordingly.
+- **Universal `:focus-visible` ring** — `3px solid var(--accent-hover)`
+  with `outline-offset: 2px`, sitting at 4.23:1 against `--bg` (was zero
+  visible focus on most interactive elements). Inverse-ring overrides for
+  the active mode-btn and primary buttons so the orange ring doesn't
+  disappear into the orange fill.
+- **Clickable `<div>`s become `<button>`s** — `ollama-status`,
+  `engagement-card`, `engagement-demo-card`. Keyboard users can now Tab to
+  them; screen readers announce them as actionable.
+- **`--bnva-text` (`#8a6a1d`) for amber on cream.** The base `--bnva`
+  (`#c2922f`) computes 2.9:1 on cream — fine as a fill, unreadable as 11px
+  text. New token used by `.confidence-pill.conf-med`, `.cockpit-conf-med`,
+  `.engagement-card-warn`.
+- **Confidence chip carries shape, not just color.** Every `.confidence-pill`
+  has a `::before` glyph variant — `●` (high), `◆` (med), `—` (low) — so
+  color-blind reviewers don't lose the signal.
+- **Mode toggle is a real tablist.** `role="tablist"` on the wrapper,
+  `role="tab"` + `aria-selected` synced to `.active` on each button so a
+  screen reader announces "Cockpit, tab, selected" instead of three
+  independent buttons.
+- **`prefers-reduced-motion: no-preference`** wraps the drill-banner pulse
+  so users who opt out of motion don't see the accent animation.
+- **`aria-label` on title-only badges** — Cockpit `AI` chip ("Named by AI"),
+  semantic-merged chip ("Merged from N similar labels"), engagement card
+  `AI`, folder crumb ("Engagement loaded from {path}"), suppressed-count
+  spans (full sentence explaining what was hidden and where to find it).
+
+### Verification
+
+In-repo e2e gate, all six suites green:
+
+- `session-smoke.js`     — 23/23 (existing; map connectivity, ROI panel, refmaps, grain)
+- `vocab-smoke.js`       — 11/11 (existing)
+- `cockpit-smoke.js`     — 22/22 (new in v1.1: default mode, chrome suppression, drill)
+- `glance-smoke.js`      — 13/13 (new in v1.1: rename + reject disagreement loop)
+- `engagement-smoke.js`  — 24/24 (new in v1.1: backlog cards, detail page, exports)
+- `a11y-smoke.js`        — 18/18 (new in v1.1: focusability, ARIA, runtime contrast probes)
+- `llm-stress.js`        — 4/4 (new in v1.1: refusal on empty cluster, 5× stability, PDD hallucination markers)
+
+Runtime contrast probes (a11y-smoke.js):
+
+- `--fg-4` text on `--bg` — **5.21:1** (≥ 4.5:1 required)
+- `.cockpit-conf-med` text on its computed bg — **4.76:1** (≥ 4.5:1 required)
+- focus outline (`--accent-hover`) on `--bg` — **4.23:1** (≥ 3:1 required)
+
 ## [1.0.1] - 2026-06-05
 
 Fix-only patch on top of v1.0.0.
