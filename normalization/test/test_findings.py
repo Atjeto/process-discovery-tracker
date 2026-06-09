@@ -134,7 +134,7 @@ def test_screen_time_sink_claims_the_top_app_share():
     assert "chrome.exe" in f["claim"]
     assert "80%" in f["claim"]          # 120s of 150s
     assert f["tier"] == 1
-    assert f["evidence"]["ms"] == 120000
+    assert f["evidence"]["foreground_ms"] == 120000
     assert f["id"].startswith("screen_time_sink-")
     assert f["confidence_note"]
 

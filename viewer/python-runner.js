@@ -70,6 +70,7 @@ function runNormalize(opts) {
   const {
     sessionFolder, taxonomyPath, mine, onLog, onProc,
     canonical, pddOut, pddMapImage, pddTobeImage, stepBpmnOut, phaseBpmnOut, stepCsvOut,
+    memoOut,
     bootstrapVocabOut, vocabId, vocabName,
   } = opts || {};
   /* onProc(child) fires once with the spawned process handle so the
@@ -105,6 +106,7 @@ function runNormalize(opts) {
       if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
       if (phaseBpmnOut) args.push("--phase-bpmn-out", phaseBpmnOut);
       if (stepCsvOut) args.push("--step-csv-out", stepCsvOut);
+      if (memoOut) args.push("--memo-out", memoOut);
     }
 
     const proc = spawn(python, args, {

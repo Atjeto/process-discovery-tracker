@@ -39,6 +39,29 @@ with measured claims.
   `case_quality` unlocks it (one honest line otherwise), and a "to say more"
   box enumerating the missing inputs. Templated sentences + measured numbers
   only.
+- **Viewer: Overview level** (§A5, `viewer/views/overview-view.js`) — a new
+  first entry in the view-mode bar and the **default level on session load**:
+  case-quality badge (✓ Markers / ✓ Anchor / ⚠ Unsegmented + a Tier-2
+  lock chip) → anchor hero (unsegmented sessions only; Accept/Dismiss reuse
+  the existing flow-view-markers wiring) → 6-tile fact strip → findings feed
+  (claim + evidence + "Show on timeline" + an "include in memo" checkbox
+  persisted to the additive `annotations.memo_selection[]`) → "to say more"
+  box → memo export button (`--memo-out` through the normalize IPC, then
+  reveal). Guarded by the new `e2e/overview-smoke.js` gate (both badge
+  states, fact tiles, memo export, zero page errors, clip check).
+
+### Changed
+
+- **Honesty gates on existing surfaces** (§A5, surgical): the Analysis
+  view's process-efficiency ratio (and the session-summary Efficiency tile)
+  are **withheld until an analyst sets any `bnva_ms` override** — while
+  business-required defaults to 0 the ratio is an artifact, not a
+  measurement; the section states why and how to enable it. The time-study
+  table renders distribution columns (mean/stdev/P50/P95) **only when a
+  step type reaches 10 instances** (and only at the element grain, where
+  they exist in the data); below that it shows instances + total + range.
+- `analysis.json` is now written for **step-less** sessions too (the Tier-1
+  blocks need no steps); the classic step-grained blocks stay empty there.
 
 ## [0.22.2] - 2026-06-01
 

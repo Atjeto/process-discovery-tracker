@@ -569,6 +569,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       stepBpmnOut: opts.stepBpmnOut || null,
       phaseBpmnOut: opts.phaseBpmnOut || null,
       stepCsvOut: opts.stepCsvOut || null,
+      memoOut: opts.memoOut || null,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
     });

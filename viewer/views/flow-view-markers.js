@@ -535,4 +535,8 @@ module.exports = {
   initMarkers,
   effectiveLabel, visibleMarkerSuggestions,
   renderMarkersList, renderAnchorCandidates,
+  // The Overview level's anchor hero (lab-phase spec §A5) REUSES this
+  // accept/dismiss wiring -- exported, not duplicated, so the override /
+  // dismiss-list semantics stay in one place.
+  acceptAnchorCandidate, dismissAnchorCandidate, clearAnchorOverride,
 };

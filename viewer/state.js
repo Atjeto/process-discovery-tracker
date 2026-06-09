@@ -18,7 +18,7 @@
 
 "use strict";
 
-/** @typedef {"flow"|"steps"|"phases"|"analysis"} Level */
+/** @typedef {"overview"|"flow"|"steps"|"phases"|"map"|"analysis"} Level */
 
 /**
  * Renderable concerns a view can subscribe to. An edit emits the
@@ -85,7 +85,9 @@
 const _s = {
   currentSession: null,
   aggregateSessions: [],
-  currentLevel: "flow",
+  // Lab-phase §A5: the Overview level (case-quality badge → facts →
+  // findings → memo) is the default surface a loaded session opens on.
+  currentLevel: "overview",
   // ADR-0024: the view-time grain notch shared across Flow / Steps / Map.
   // One of element|screen|app|phase|case; default "screen" ("one step per
   // screen"). A view-only control -- changing it never re-normalizes.

@@ -40,6 +40,7 @@ const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = re
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnchorCandidates, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
 const { renderAnalysisLevel } = require("./views/analysis-view.js");
+const { renderOverviewLevel } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
 const RefmapUI = require("./refmap-ui.js");
@@ -154,6 +155,7 @@ function _applyGrain(notch, opts = {}) {
 })();
 
 const VIEW_MODE_HELP = {
+  overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the memo export — the consultant's landing surface.",
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Grain slider to roll them up by screen / app / phase / case.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
@@ -173,6 +175,15 @@ const VIEW_MODE_HELP = {
    (Zoom still reads/writes the renderer-local vars; they move into the
    state module in a later step.) */
 const MODE_VIEWPORT = {
+  // Lab-phase §A5: the Overview has no timeline / zoom of its own; the
+  // no-op zoom accessors let it ride the viewport-transfer path harmlessly
+  // (same shape as analysis/map — an absent entry would silently SKIP the
+  // render on switch, the v0.18.0 "Map opens but is empty" failure mode).
+  overview: {
+    scrollSel: "#session-layout-overview",
+    getZoom: () => 1, setZoom: () => {},
+    render: renderOverviewLevel,
+  },
   flow: {
     scrollSel: "#timeline-scroll",
     getZoom: State.getZoomFactor, setZoom: State.setZoomFactor,
@@ -435,7 +446,7 @@ function renderMapLevel() {
   try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
 }
 
-const LEVEL_RENDERERS = { flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };
+const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };
 
 /* Wire the state change-notification bus: an annotation edit emits the
    topics it touched (see persistAnnotations / performUndo / performRedo)
@@ -448,6 +459,10 @@ State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
 State.subscribe("markers",  renderAnchorCandidates);
 State.subscribe("analysis", renderAnalysisLevel);
+// Lab-phase §A5: the Overview renders the anchor hero (markers topic) and
+// the analysis-backed badge / facts / findings, so it follows both.
+State.subscribe("markers",  renderOverviewLevel);
+State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderMapLevel);
 State.subscribe("phases",   renderMapLevel);
 // ADR-0024: a grain change re-renders the Steps list and the Flow timeline to
@@ -477,7 +492,7 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
-  const layouts = ["flow", "steps", "phases", "map", "analysis"];
+  const layouts = ["overview", "flow", "steps", "phases", "map", "analysis"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";

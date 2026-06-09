@@ -167,7 +167,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- View-mode bar: prominent, controls what the whole session view shows -->
         <div class="view-mode-bar">
           <span class="view-mode-label">View:</span>
-          <button class="view-mode-btn active" data-level="flow" title="Timeline of every captured event">
+          <button class="view-mode-btn active" data-level="overview" title="What the capture measured: case-quality gate, fact strip, findings feed, memo export (the default landing surface)">
+            <span class="view-mode-icon">◈</span> Overview
+            <span class="view-mode-desc">facts &amp; findings</span>
+          </button>
+          <button class="view-mode-btn" data-level="flow" title="Timeline of every captured event">
             <span class="view-mode-icon">≡</span> Flow
             <span class="view-mode-desc">raw event timeline</span>
           </button>
@@ -212,8 +216,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
              below the view-mode bar so the level switcher leads (clutter pass). -->
         <details class="session-summary" id="session-summary" style="display:none"></details>
 
+        <!-- ========= OVERVIEW view (lab-phase §A5: badge → hero → facts → findings → memo) ========= -->
+        <div class="session-layout-overview" id="session-layout-overview">
+          <div id="overview-content"></div>
+        </div>
+
         <!-- ========= FLOW view (full-width timeline on top, video+annotations below) ========= -->
-        <div class="session-layout" id="session-layout-flow">
+        <div class="session-layout" id="session-layout-flow" style="display:none">
           <div class="timeline-pane">
             <div class="timeline-header">
               <strong>Timeline</strong>

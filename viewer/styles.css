@@ -946,6 +946,110 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   flex: 1; min-height: 360px; height: auto;
 }
 
+/* ===== Overview view (lab-phase §A5 — the honesty redesign's landing) ===== */
+.session-layout-overview {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0; overflow-y: auto;
+}
+#overview-content {
+  display: flex; flex-direction: column; gap: 14px;
+  max-width: 980px; width: 100%; margin: 0 auto;
+}
+.ov-badge-row { display: flex; align-items: center; gap: 10px; }
+.ov-badge {
+  display: inline-block; padding: 6px 14px; font-size: 13px; font-weight: 600;
+  border-radius: var(--radius-sm); border: 1px solid var(--rule);
+  background: var(--bg-2); box-shadow: var(--shadow);
+}
+.ov-badge.ok { color: var(--va); border-color: var(--va); }
+.ov-badge.warn { color: var(--warn); border-color: var(--warn); }
+.ov-tier2 {
+  font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.4px;
+  text-transform: uppercase; padding: 3px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--rule); color: var(--fg-3); background: var(--bg-2);
+}
+.ov-tier2.ok { color: var(--va); border-color: var(--va); }
+.ov-tier2.locked { color: var(--fg-3); border-style: dashed; }
+.ov-section {
+  background: var(--bg-2); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px 14px;
+}
+.ov-section-title {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px;
+}
+/* Anchor hero — the unsegmented-session call to action (full-width card). */
+.ov-hero {
+  background: var(--accent-muted); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.ov-hero .ov-section-title { color: var(--fg-2); }
+.ov-hero-hint { font-size: 12px; color: var(--fg-2); margin-bottom: 10px; line-height: 1.5; }
+.ov-hero-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 6px;
+}
+.ov-hero-field { flex: 1 1 260px; font-size: 13px; min-width: 0; }
+.ov-hero-metrics { flex: 0 0 auto; font-size: 11px; color: var(--fg-3); font-family: var(--font-mono); }
+.ov-hero-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+/* Fact strip — 6 measured tiles. */
+.ov-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.ov-tile {
+  background: var(--bg-2); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px; min-width: 0;
+}
+.ov-tile-value {
+  font-size: 20px; font-weight: 700; color: var(--fg);
+  font-family: var(--font-mono); line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ov-tile-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-3); margin-top: 4px;
+}
+.ov-tile-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Findings feed. */
+.ov-finding {
+  border-top: 1px solid var(--rule-soft); padding: 10px 2px;
+}
+.ov-finding:first-of-type { border-top: none; }
+.ov-finding-head { display: flex; align-items: baseline; gap: 8px; }
+.ov-finding-tier {
+  flex: 0 0 auto; font-size: 10px; font-family: var(--font-mono);
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--rule); color: var(--fg-3);
+}
+.ov-finding-tier.t2 { color: var(--accent-2); border-color: var(--accent-2); }
+.ov-finding-claim { font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.45; }
+.ov-finding-evidence {
+  font-size: 11px; color: var(--fg-2); font-family: var(--font-mono);
+  margin: 4px 0 0 30px;
+}
+.ov-finding-refs { font-size: 11px; color: var(--fg-2); margin: 3px 0 0 30px; }
+.ov-finding-note { font-size: 11px; color: var(--fg-3); font-style: italic; margin: 3px 0 0 30px; line-height: 1.45; }
+.ov-finding-actions {
+  display: flex; align-items: center; gap: 14px; margin: 6px 0 0 30px;
+}
+.ov-memo-check {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--fg-2); cursor: pointer;
+}
+.ov-memo-check input { margin: 0; }
+/* "To say more" box. */
+.ov-saymore { border-left: 3px solid var(--accent-2); }
+.ov-saymore ul { margin: 0; padding-left: 18px; }
+.ov-saymore li { font-size: 12px; color: var(--fg-2); line-height: 1.55; margin-bottom: 4px; }
+/* Export bar. */
+.ov-export-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 2px 18px;
+}
+
 /* ===== Analysis view (Cluster N / ADR-0008) ===== */
 .session-layout-analysis {
   display: flex; flex-direction: column;

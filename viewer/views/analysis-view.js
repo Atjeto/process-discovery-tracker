@@ -191,8 +191,24 @@ function _caption(overrideCount) {
   return html + "</div>";
 }
 
-function _efficiencySection(eff) {
+/* Honesty gate (lab-phase §A5): while every step's `bnva_ms` still sits at
+   the heuristic default of 0, the VA/(VA+BNVA+NVA) ratio is an artifact of
+   that default, not a measurement -- so the big number is WITHHELD until the
+   analyst has judged business-required time on at least one step type. The
+   section is replaced by the call to action (the Tier-gate pattern), never
+   rendered with fact-level authority. */
+function _efficiencySection(eff, hasBnvaOverride) {
   if (!eff || typeof eff.process_efficiency_ratio !== "number") return "";
+  if (!hasBnvaOverride) {
+    return '<div class="analysis-section">' +
+      '<div class="analysis-section-title">Process efficiency</div>' +
+      '<div class="analysis-note">Withheld — the value-add vs business-required ' +
+        "split is an analyst judgment, and no step type has one yet (the " +
+        "heuristic defaults business-required to 0, which would inflate the " +
+        "ratio). Click a row under <strong>Waste by step</strong> to set " +
+        "business-required minutes; the ratio renders from then on.</div>" +
+      "</div>";
+  }
   const pct = Math.round(eff.process_efficiency_ratio * 100);
   return '<div class="analysis-section">' +
     '<div class="analysis-section-title">Process efficiency</div>' +
@@ -390,30 +406,58 @@ function _regroupTimeStudy(ts, notch, maps) {
   })).sort((a, b) => (b.active_ms + b.waiting_ms) - (a.active_ms + a.waiting_ms));
 }
 
+/* Honesty gate (lab-phase §A5): distribution statistics (mean/stdev/
+   percentiles) at tiny N are cargo-cult precision -- a "p95" over 3
+   instances is noise wearing a lab coat. The distribution columns render
+   only when at least one row has `instances >= 10` (and only at the
+   element notch, where stdev/percentiles exist in the data -- the coarse-
+   grain regroup can't derive them); below that the table states what was
+   actually measured: instances, total, and the min–max range. */
+const TIME_STUDY_DISTRIBUTION_MIN_N = 10;
+
 function _timeStudySection(ts, notch, maps) {
   if (!ts.length) return "";
   const regroup = (notch && notch !== "element" && maps);
   const study = _regroupTimeStudy(ts, notch, maps);
+  const maxN = study.reduce((m, t) => Math.max(m, t.instances || 0), 0);
+  const distribution = !regroup && maxN >= TIME_STUDY_DISTRIBUTION_MIN_N;
   const rows = study.map((t) => {
     const c = t.cycle_ms || {};
+    const total = Math.round((c.mean || 0) * (t.instances || 0));
+    const range = escapeHtml(_fmt(c.min)) + " – " + escapeHtml(_fmt(c.max));
+    const cells = distribution
+      ? '<td class="num">' + escapeHtml(_fmt(c.mean)) + "</td>" +
+        '<td class="num">' + escapeHtml(_fmt(c.stdev)) + "</td>" +
+        '<td class="num">' + escapeHtml(_fmt(c.p50)) + "</td>" +
+        '<td class="num">' + escapeHtml(_fmt(c.p95)) + "</td>" +
+        '<td class="num">' + range + "</td>"
+      : '<td class="num">' + escapeHtml(_fmt(total)) + "</td>" +
+        '<td class="num">' + range + "</td>";
     return "<tr>" +
       "<td>" + escapeHtml(t.name || "(step)") + "</td>" +
       '<td class="num">' + (t.instances || 0) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(c.mean)) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(c.min)) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(c.max)) + "</td>" +
+      cells +
       '<td class="num">' + escapeHtml(_fmt(t.active_ms)) + "</td>" +
       '<td class="num">' + escapeHtml(_fmt(t.waiting_ms)) + "</td>" +
       '<td class="num">' + escapeHtml(_fmt(t.switching_ms)) + "</td>" +
     "</tr>";
   }).join("");
   const head = regroup ? escapeHtml(notch.charAt(0).toUpperCase() + notch.slice(1)) : "Step";
+  const statHead = distribution
+    ? "<th>Mean</th><th>Stdev</th><th>P50</th><th>P95</th><th>Range</th>"
+    : "<th>Total</th><th>Range</th>";
+  const gateNote = distribution ? "" :
+    '<div class="analysis-caption">Distribution columns (mean/stdev/percentiles) ' +
+    "render once a step type reaches " + TIME_STUDY_DISTRIBUTION_MIN_N +
+    " instances — below that the table shows what was measured: instances, " +
+    "total and range.</div>";
   return '<div class="analysis-section">' +
     '<div class="analysis-section-title">Time study' +
       (regroup ? ' <span class="meta">(by ' + escapeHtml(notch) + ")</span>" : "") + "</div>" +
+    gateNote +
     '<table class="analysis-table">' +
-      "<thead><tr><th>" + head + "</th><th>Instances</th><th>Mean</th>" +
-      "<th>Min</th><th>Max</th><th>Active</th><th>Waiting</th>" +
+      "<thead><tr><th>" + head + "</th><th>Instances</th>" + statHead +
+      "<th>Active</th><th>Waiting</th>" +
       "<th>Switching</th></tr></thead>" +
       "<tbody>" + rows + "</tbody></table></div>";
 }
@@ -959,9 +1003,13 @@ function renderAnalysisLevel() {
   // maps once (skipped at the element notch, which keeps the editable default).
   const notch = State.getGrain();
   const maps = (notch && notch !== "element") ? _grainMaps(notch) : null;
+  // Honesty gate: the efficiency ratio renders only once an analyst has
+  // judged business-required time somewhere (any bnva_ms override).
+  const hasBnvaOverride = overrides.some(
+    (ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
   host.innerHTML =
     _caption(overrides.length) +
-    _efficiencySection(analysis.efficiency || {}) +
+    _efficiencySection(analysis.efficiency || {}, hasBnvaOverride) +
     _wasteSection(analysis.waste_classification || [], notch, maps) +
     _timeStudySection(analysis.time_study || [], notch, maps) +
     _automationSection(analysis.automation_candidates || []) +

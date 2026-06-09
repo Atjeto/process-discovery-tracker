@@ -26,6 +26,7 @@ const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
 const { renderAnalysisLevel } = require("./analysis-view.js");
+const { renderOverviewLevel } = require("./overview-view.js");
 const SessionSummary = require("../session-summary.js");
 const PdtProject = require("../project.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
@@ -539,6 +540,9 @@ async function loadSessionIntoView(folder) {
   // same-folder re-analyze wrote analysis.json yet the Analysis view kept showing
   // "No analysis available" until the session was reopened.
   renderAnalysisLevel();
+  // The Overview level (lab-phase §A5) is the default on load; it reads the
+  // freshly-loaded analysis.json blocks, so refresh it the same way.
+  renderOverviewLevel();
   // The map's "N nodes / Open / Reveal" status line is now driven by the map
   // controller's onRender (renderer._syncMapStatus), so it always reflects the
   // file actually displayed at the current grain -- no stale process_map.bpmn
@@ -803,7 +807,14 @@ function renderSessionSummary() {
     { label: "Steps", value: s.stepCount,
       sub: `${s.autoSteps} to review · ${s.confirmedSteps} confirmed` },
   ];
-  if (s.efficiencyRatio != null) {
+  // Honesty gate (lab-phase §A5, same condition as the Analysis view's
+  // efficiency block): while bnva_ms is the heuristic 0 everywhere, the
+  // ratio is an artifact of that default (typically a fact-shaped "100%"),
+  // so the summary tile is withheld until an analyst has judged
+  // business-required time on at least one step type.
+  const _hasBnva = ((State.getSession().annotations || {}).analysis_overrides || [])
+    .some((ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
+  if (s.efficiencyRatio != null && _hasBnva) {
     tiles.push({ label: "Efficiency", value: pct(s.efficiencyRatio),
       sub: "value-add share (heuristic)" });
   }

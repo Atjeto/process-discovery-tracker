@@ -147,7 +147,7 @@ def _detect_screen_time_sink(events, facts) -> list[dict]:
         "claim": claim,
         "evidence": {
             "app": lead["app"],
-            "ms": lead["ms"],
+            "foreground_ms": lead["ms"],
             "share": lead["share"],
             "active_ms": active,
             "top_apps": top,
