@@ -74,8 +74,10 @@ and it drives the viewer's own `electron`.
 
 ### The DOM handles to reach every surface (so a context-blind chip can navigate)
 - **Top-nav views:** `.tab[data-view="session"|"aggregate"|"template"|"library"]`
-- **Session-view levels:** `.view-mode-btn[data-level="flow"|"steps"|"phases"|"map"|"analysis"]`
-  → each shows its container `#session-layout-<level>`.
+- **Session-view levels:** `.view-mode-btn[data-level="overview"|"flow"|"steps"|"phases"|"map"|"analysis"]`
+  → each shows its container `#session-layout-<level>`. **Overview is the default
+  on session load** (lab-phase §A5) — its badge/hero/facts/findings/memo surface is
+  pinned by `e2e/overview-smoke.js`.
 - **Compare-Sessions:** stub the OS open-dialog, then click `#btn-open-multi-hero` to load:
   `app.evaluate(({dialog}, p) => { dialog.showOpenDialog = async () => ({canceled:false, filePaths:[p]}); }, AGG_FOLDER)`
 - **Map controls:** notation `.panel-tab[data-map="bpmn"|"dfg"]`; grain select `#session-map-level`

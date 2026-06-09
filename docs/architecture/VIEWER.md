@@ -65,6 +65,7 @@ modules need no build step). The apps run on **Electron 42**.
 
 | File | Surface |
 |---|---|
+| `views/overview-view.js` | **Overview level — the default on session load** (lab-phase spec §A5, honesty redesign). One column: case-quality badge (3 states from `analysis.case_quality` + a Tier-2 lock chip) → anchor hero on unsegmented sessions (Accept/Dismiss **reuse** `flow-view-markers`' exported accept/dismiss — one wiring) → 6-tile fact strip (`analysis.facts`) → findings feed (`analysis.findings[]`: claim + evidence + "Show on timeline" + an include-in-memo checkbox persisting `annotations.memo_selection[]`) → "to say more" box → memo export (`--memo-out` through `runNormalizeExtended`, then reveal). Pinned by `e2e/overview-smoke.js`. |
 | `views/flow-view.js` | Flow level — session load + analyze, range selection, event table, case scope, command-palette provider, session pills/summary, the marker-insert menu + queue actions. The hub; it `require()`s the five `flow-view-*` helper modules below and re-exports their public entry points so its surface (`renderTimeline`, `seekToTimestamp`, `renderMarkersList`, …) is unchanged for `renderer.js`/`steps-view.js`/`analysis-view.js`. |
 | `views/flow-view-apps.js` | Pure per-app colour (`appColor`), display label (`appLabel`), and the timeline legend (`renderLegend`). No DOM/state coupling back into the Flow view. |
 | `views/flow-view-timeline.js` | The Flow timeline subsystem — `renderTimeline` (the lane stack: ticks / cases / activity+idle+markers+suggested / screenshots / density / titles / steps / notes via `TimelineCore.renderLaneStack`), its lane helpers (`layoutCaseLanes` / `isUserActivityEvent` / `monitorBadgeFor`), the minimap + middle-drag-pan, the lane-visibility toggles, per-session zoom/scroll persistence, and the timeline summary. `require()`s apps/video/markers/screenshots one-way; the flow-view glue its lanes call (`currentScopeRange`, `showMarkerInsertMenu`, `showCaseContextMenu`, `activateAnnoTab`) is injected via `initTimeline()`. flow-view re-exports `renderTimeline` and feeds it to `initMarkers()`. |
@@ -193,11 +194,13 @@ The renderer has **four top-level surfaces** (containers in `index.html`):
 | `#view-canonical` | Process Template editor | `views/template-view.js` |
 | `#view-vocabularies` | App Library (App Vocabulary editor) | `views/vocab-view.js` |
 
-Inside `#view-session` there are **five levels**, switched by the `.view-mode-btn`
-buttons → `applyLevel(name)` in `renderer.js`:
+Inside `#view-session` there are **six levels**, switched by the `.view-mode-btn`
+buttons → `applyLevel(name)` in `renderer.js`. **`overview` is the default on
+session load** (lab-phase spec §A5):
 
 | Level | Layout container | Render entry |
 |---|---|---|
+| `overview` | `#session-layout-overview` | `renderOverviewLevel()` — `overview-view.js` |
 | `flow` | `#session-layout-flow` | `renderTimeline()` — `flow-view.js` |
 | `steps` | `#session-layout-steps` | `renderStepsLevel()` — `steps-view.js` |
 | `phases` | `#session-layout-phases` | `renderPhasesLevel()` — `phases-view.js` |
