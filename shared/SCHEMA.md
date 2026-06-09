@@ -223,6 +223,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "notes": [],
   "drift_markers": [],
   "starred_screenshots": [],
+  "memo_selection": [],
   "matched_against": null,
   "last_modified": null,
   "last_modified_by": null,
@@ -230,7 +231,9 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`) are additive; missing files are treated as empty.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`, `memo_selection`) are additive; missing files are treated as empty.
+
+**`memo_selection`** *(optional string array; lab-phase spec §A4/§A5)* — the `findings[].id` values the analyst ticked "include in memo" on in the viewer's Overview level. `memo_export` renders exactly these findings when the list is non-empty (falling back to the top findings in feed order when empty or when no listed id matches the regenerated findings). Analyst-owned; never written by the pipeline.
 
 **`calibration`** *(optional object; absent = pipeline defaults)* — the segmentation-tuning surface a Process Template or analyst can set per session to control how the auto-suggester splits steps (the over-segmentation / "308-step" knobs). Read by `normalize.py` (`_calibration`); missing keys fall back to the prior hardcoded defaults, so an absent or empty block reproduces the default pipeline output exactly. Recognised keys: `coalesce_idle_ms` (1500), `step_split_idle_ms` (10000), `step_max_interactions` (60), `step_min_interactions` (2), `step_max_idle_ms` (5000), `step_split_on_element` (true), `filter_browser_chrome` (true). Unknown keys are ignored. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
 
@@ -780,10 +783,14 @@ files actually present and surfaces any that are missing.
 
 Heuristic IE/CI findings, written by the normalization **analysis layer**
 ([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md) / IMPROVEMENTS.md
-Cluster N) whenever a session has steps. Absent on sessions normalized before
-the layer existed, and on step-less sessions. Every figure is a provisional
-heuristic — `meta.provisional` is always `true` and `meta.heuristic_version`
-identifies the classifier generation.
+Cluster N). Absent on sessions normalized before the layer existed. Every
+step-grained figure is a provisional heuristic — `meta.provisional` is always
+`true` and `meta.heuristic_version` identifies the classifier generation.
+
+Since the honesty redesign (lab-phase spec §A1–§A3) the file also carries
+three **Tier-1 measured blocks** — `case_quality`, `facts`, `findings` —
+which need no case boundaries and no steps, so the file now writes for a
+step-less session too (the classic step-grained blocks stay empty there).
 
 ```json
 {
@@ -868,9 +875,55 @@ identifies the classifier generation.
         "needs_input": false }
     ],
     "totals": { "saved_hours_per_year": 0.0, "net_annual": 0.0, "gross_annual": 0.0 }
-  }
+  },
+  "case_quality": {
+    "mode": "markers | anchor | unsegmented",
+    "case_count": 0,
+    "coverage": 0.0,
+    "tier2_unlocked": false,
+    "anchor": { "field_property": "automation_id", "field_value": "customer-id-field" }
+  },
+  "facts": {
+    "active_ms": 0, "idle_ms": 0, "session_span_ms": 0,
+    "top_apps": [ { "app": "chrome.exe", "ms": 0, "share": 0.31 } ],
+    "app_switches": 0, "switches_per_hour": 0.0,
+    "longest_focus_ms": 0,
+    "rekey_count": 0,
+    "repeated_sequence_count": 0
+  },
+  "findings": [
+    { "id": "screen_time_sink-3fa2b1c0d4e5",
+      "detector": "screen_time_sink | fragmentation | waiting | repetition | backtracking | rekey_transfer | coverage_caveat",
+      "claim": "templated sentence, measured numbers, never normative",
+      "evidence": { "step_ids": ["uuid"], "event_ids": ["uuid"],
+                    "screenshot_refs": ["screenshots/shot_01.png"] },
+      "tier": 1,
+      "confidence_note": "how the number was measured / its limits" }
+  ]
 }
 ```
+
+**Tier-1 measured blocks** (lab-phase spec §A1–§A3; computed by
+`case_quality.py` / `facts.py` / `findings.py` + `motifs.py`, additive):
+
+- **`case_quality`** — the Tier-2 gatekeeper. `mode` records how cases were
+  derived (`markers` / `anchor` / `unsegmented` when there are none);
+  `coverage` is the fraction of interaction events inside a case;
+  `tier2_unlocked` = `mode != "unsegmented" AND coverage >= 0.7`. The
+  `anchor` sub-object is present only in anchor mode. Case-based surfaces
+  (cycle times, variants, per-case comparison) must not render with
+  fact-level authority while `tier2_unlocked` is false.
+- **`facts`** — direct measurements over the derived stream, no heuristics:
+  foreground time, measured idle, top apps by share, switch cadence, longest
+  unbroken same-app stretch, values re-keyed across 2+ apps (value equality
+  on the derived stream — masked values compare by token), and the count of
+  distinct (maximal) repeated step-label sequences.
+- **`findings[]`** — the detector library's claims feed (viewer Overview +
+  the memo). Claims are comparative/factual; each carries its evidence
+  (numbers plus `step_ids` / `event_ids` / `screenshot_refs` where the
+  detector has them) and a `confidence_note` stating measurement limits.
+  `tier` is 1 for case-free detectors, 2 for case-based ones
+  (`repetition`). Ids are stable across re-runs (detector + content hash).
 
 `waste_classification` has one entry per step; `time_study` has one entry per
 *logical* step — instances are grouped by `step_group_key` =

@@ -491,30 +491,92 @@ def _run_analysis(
     existing_anno: dict,
     summary: dict,
     manifest: dict,
+    cases: Any = None,
+    canonical: Any = None,
 ) -> Any:
     """Analysis layer (ADR-0008 / IMPROVEMENTS.md Cluster N). Heuristic
     IE/CI findings -- waste classification, time study, automation
     candidates, the process-efficiency ratio -- written to
-    analysis.json. Runs whenever the session has steps; best-effort,
-    never blocks the pipeline. Returns the analysis result (or None)."""
+    analysis.json. Best-effort, never blocks the pipeline. Returns the
+    analysis result (or None).
+
+    Phase A (honesty redesign, LAB-PHASE-SPEC §A1-§A3) adds the Tier-1
+    measured blocks -- `case_quality`, `facts`, `findings` -- as additive
+    keys on the same file. Tier 1 needs no case boundaries and no steps,
+    so analysis.json now writes for a stepless session too (the classic
+    step-grained blocks stay empty there)."""
     analysis_result = None
-    if existing_anno.get("steps"):
-        try:
-            from analysis import run_analysis
-            analysis_result = run_analysis(
-                events=classified,
-                steps=existing_anno.get("steps") or [],
-                phases=existing_anno.get("phases") or [],
-                stats=summary,
-                manifest=manifest,
-                annotations=existing_anno,
-            )
-            analysis_path = session_folder / "analysis.json"
-            with open(analysis_path, "w", encoding="utf-8") as f:
-                json.dump(analysis_result, f, indent=2)
-            print(f"[normalize] wrote {analysis_path}")
-        except Exception as e:
-            print(f"[normalize] WARNING: analysis layer failed: {e}")
+    try:
+        from analysis import run_analysis
+        analysis_result = run_analysis(
+            events=classified,
+            steps=existing_anno.get("steps") or [],
+            phases=existing_anno.get("phases") or [],
+            stats=summary,
+            manifest=manifest,
+            annotations=existing_anno,
+        )
+    except Exception as e:
+        print(f"[normalize] WARNING: analysis layer failed: {e}")
+    if analysis_result is None:
+        # The classic layer failed entirely; still attempt the Tier-1
+        # blocks on a minimal shell rather than losing the whole file.
+        analysis_result = {"meta": {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "session_id": (manifest or {}).get("session_id", ""),
+            "step_count": len(existing_anno.get("steps") or []),
+            "provisional": True,
+        }}
+
+    steps = existing_anno.get("steps") or []
+    try:
+        from case_quality import compute_case_quality
+        analysis_result["case_quality"] = compute_case_quality(
+            classified, cases, annotations=existing_anno, canonical=canonical)
+        cq = analysis_result["case_quality"]
+        print(f"[normalize] case quality: {cq['mode']}, "
+              f"coverage {cq['coverage']:.0%}, "
+              f"tier2 {'unlocked' if cq['tier2_unlocked'] else 'locked'}")
+    except Exception as e:
+        print(f"[normalize] WARNING: case_quality failed: {e}")
+    motifs: list = []
+    bounces: list = []
+    try:
+        from motifs import find_motifs, find_bounces, maximal_motifs
+        # The maximal filter keeps the repeated-sequence count honest --
+        # the raw sliding window counts every overlapping sub-window.
+        motifs = maximal_motifs(find_motifs(steps))
+        bounces = find_bounces(steps)
+    except Exception as e:
+        print(f"[normalize] WARNING: motif mining failed: {e}")
+    try:
+        from facts import compute_facts
+        analysis_result["facts"] = compute_facts(classified, motifs)
+    except Exception as e:
+        print(f"[normalize] WARNING: facts failed: {e}")
+    try:
+        from findings import detect_findings
+        analysis_result["findings"] = detect_findings(
+            classified, steps,
+            analysis_result.get("facts"),
+            case_quality=analysis_result.get("case_quality"),
+            analysis_blocks=analysis_result,
+            bounces=bounces)
+        n = len(analysis_result["findings"])
+        if n:
+            # ASCII-only: the bundled embeddable's console codepage mangles
+            # non-ASCII in print output (it lands in normalize.log too).
+            print(f"[normalize] {n} finding(s) detected (lab-phase A3)")
+    except Exception as e:
+        print(f"[normalize] WARNING: findings failed: {e}")
+
+    try:
+        analysis_path = session_folder / "analysis.json"
+        with open(analysis_path, "w", encoding="utf-8") as f:
+            json.dump(analysis_result, f, indent=2)
+        print(f"[normalize] wrote {analysis_path}")
+    except Exception as e:
+        print(f"[normalize] WARNING: analysis write failed: {e}")
     return analysis_result
 
 

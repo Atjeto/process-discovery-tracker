@@ -98,6 +98,7 @@ def normalize(
     step_bpmn_out: str | None = None,
     phase_bpmn_out: str | None = None,
     step_csv_out: str | None = None,
+    memo_out: str | None = None,
 ) -> dict[str, Any]:
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
@@ -178,8 +179,25 @@ def normalize(
         unmatched_evs)
 
     # Analysis layer (ADR-0008), best-effort -- never blocks the pipeline.
+    # Phase A (LAB-PHASE-SPEC §A1-§A3): cases + canonical feed the additive
+    # case_quality / facts / findings blocks.
     analysis_result = _run_analysis(
-        session_folder, classified, existing_anno, summary, manifest)
+        session_folder, classified, existing_anno, summary, manifest,
+        cases=cases, canonical=canonical)
+
+    # Findings memo (LAB-PHASE-SPEC §A4) -- the consultant deliverable seed.
+    # Rendered from the just-computed in-memory objects; best-effort.
+    if memo_out:
+        try:
+            from memo_export import render_memo
+            md = render_memo(manifest=manifest, stats=summary,
+                             analysis=analysis_result,
+                             annotations=existing_anno)
+            with open(memo_out, "w", encoding="utf-8") as f:
+                f.write(md)
+            print(f"[normalize] wrote memo: {memo_out}")
+        except Exception as e:
+            print(f"[normalize] WARNING: memo export failed: {e}")
 
     # Mining (DFG / BPMN variants) + Phase E exports (PDD, BPMN, step CSV).
     _run_mining_exports(
@@ -225,6 +243,9 @@ def main():
                         help="Write phase-level BPMN to this path.")
     parser.add_argument("--step-csv-out", type=str, default=None,
                         help="Write step CSV to this path.")
+    parser.add_argument("--memo-out", type=str, default=None,
+                        help="Write the 2-page findings memo (Markdown) to this "
+                             "path (lab-phase spec §A4).")
     parser.add_argument("--bootstrap-vocab-out", type=str, default=None,
                         help="Generate a starter App Vocabulary YAML from this session's "
                              "interactions and write to the given path. Skips full normalization.")
@@ -264,6 +285,7 @@ def main():
         step_bpmn_out=getattr(args, "step_bpmn_out"),
         phase_bpmn_out=getattr(args, "phase_bpmn_out"),
         step_csv_out=getattr(args, "step_csv_out"),
+        memo_out=getattr(args, "memo_out"),
     )
     print(json.dumps(result, indent=2))
 

@@ -6,6 +6,40 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Phase A of the honesty redesign ([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)):
+the pipeline grows three additive Tier-1 blocks in `analysis.json`, a findings
+memo export, and the viewer gets a new default **Overview** level that leads
+with measured claims.
+
+### Added
+
+- **`analysis.case_quality`** (§A1, `normalization/case_quality.py`) — the
+  Tier-2 gatekeeper: how cases were derived (`markers` / `anchor` /
+  `unsegmented`), case count, interaction coverage, and the single
+  `tier2_unlocked` flag (mode != unsegmented AND coverage ≥ 0.7) that gates
+  every case-based surface.
+- **`analysis.facts`** (§A2, `normalization/facts.py`) — Tier-1 measured
+  facts, no heuristics: active/idle time, top apps with share, app-switch
+  cadence, longest unbroken focus, values re-keyed across 2+ apps, repeated
+  step-sequence count. Computed even for a step-less session, so
+  `analysis.json` now writes whenever the pipeline runs.
+- **`analysis.findings[]`** (§A3, `normalization/findings.py`) — a detector
+  library (screen_time_sink, fragmentation, waiting, repetition,
+  backtracking, rekey_transfer, coverage_caveat) emitting comparative/factual
+  claims with evidence (numbers + step/event ids + screenshot refs) and a
+  per-finding confidence note. Detectors fire only when their preconditions
+  hold; each is best-effort.
+- **`normalization/motifs.py`** (§A3) — the sequence-motif miner ported as-is
+  from the parked ML branch (stdlib), plus A→B→A bounce detection and a
+  maximal-motif filter so the repeated-sequence count isn't inflated by
+  overlapping sub-windows.
+- **`--memo-out <path.md>` memo export** (§A4, `normalization/memo_export.py`)
+  — a ~2-page findings memo: fact strip, selected findings with evidence and
+  starred screenshot refs, a Tier-2 section that renders only when
+  `case_quality` unlocks it (one honest line otherwise), and a "to say more"
+  box enumerating the missing inputs. Templated sentences + measured numbers
+  only.
+
 ## [0.22.2] - 2026-06-01
 
 A fix-only patch from stress-testing "Discover from window" against the two
