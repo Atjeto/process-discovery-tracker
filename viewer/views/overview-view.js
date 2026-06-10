@@ -33,6 +33,7 @@ const { acceptAnchorCandidate, dismissAnchorCandidate } = require("./flow-view-m
 const { seekToTimestamp, jumpToStepInFlow } = require("./flow-view-video.js");
 const Posture = require("../posture.js");
 const LlmExport = require("../llm-export.js");
+const { findingCardHtml } = require("../finding-cards.js");
 
 function _fmt(ms) { return formatDuration(ms || 0); }
 function _pct(x) { return Math.round((x || 0) * 100) + "%"; }
@@ -167,19 +168,6 @@ function _factStrip(facts) {
 
 /* ---- 4. Findings feed --------------------------------------------------- */
 
-/* The scalar evidence numbers, compact -- mirrors memo_export's rendering
-   so the feed and the memo read the same. */
-function _evidenceNumbers(ev) {
-  const parts = [];
-  for (const [k, v] of Object.entries(ev || {})) {
-    if (typeof v !== "number" || !isFinite(v)) continue;
-    if (k.endsWith("_ms")) parts.push(k.replace(/_/g, " ") + " " + _fmt(v));
-    else if (k === "share" || k === "coverage") parts.push(k + " " + _pct(v));
-    else parts.push(k.replace(/_/g, " ") + " " + (Number.isInteger(v) ? v : v.toFixed(2)));
-  }
-  return parts.join(" · ");
-}
-
 /* Resolve the finding's best timeline target: the first evidenced step, else
    the first evidenced event's timestamp, else a screenshot-free null. */
 function _timelineTarget(f) {
@@ -208,29 +196,12 @@ function _findingsFeed(findings, memoSelection) {
       '<div class="analysis-note">No findings fired on this capture — the ' +
       "detectors found nothing above their preconditions.</div></div>";
   }
-  const selected = new Set(memoSelection || []);
-  const rows = findings.map((f) => {
-    const ev = f.evidence || {};
-    const nums = _evidenceNumbers(ev);
-    const refs = (ev.screenshot_refs || []).slice(0, 2);
-    const target = _timelineTarget(f);
-    return '<div class="ov-finding" data-fid="' + escapeAttr(f.id || "") + '">' +
-      '<div class="ov-finding-head">' +
-        '<span class="ov-finding-tier t' + (f.tier || 1) + '" title="' +
-          (f.tier === 2 ? "Tier 2 — case-based" : "Tier 1 — measured, no cases needed") +
-          '">T' + (f.tier || 1) + "</span>" +
-        '<span class="ov-finding-claim">' + escapeHtml(f.claim || "") + "</span>" +
-      "</div>" +
-      (nums ? '<div class="ov-finding-evidence">' + escapeHtml(nums) + "</div>" : "") +
-      (refs.length ? '<div class="ov-finding-refs">' +
-        refs.map((r) => "★ <code>" + escapeHtml(r) + "</code>").join(" ") + "</div>" : "") +
-      (f.confidence_note ? '<div class="ov-finding-note">' + escapeHtml(f.confidence_note) + "</div>" : "") +
-      '<div class="ov-finding-actions">' +
-        (target ? '<button type="button" class="link-btn" data-act="show" title="Jump the Flow timeline (and video) to this finding\'s evidence">Show on timeline</button>' : "") +
-        '<label class="ov-memo-check" title="Selected findings render in the exported memo (annotations.json memo_selection)">' +
-          '<input type="checkbox" data-act="memo"' + (selected.has(f.id) ? " checked" : "") + " /> include in memo</label>" +
-      "</div></div>";
-  }).join("");
+  // §D2: the card itself is the shared finding-card component, so the
+  // Overview feed and the Compare divergence feed render identically.
+  const rows = findings.map((f) => findingCardHtml(f, {
+    timelineTarget: _timelineTarget,
+    memoSelection: new Set(memoSelection || []),
+  })).join("");
   return '<div class="ov-section"><div class="ov-section-title">Findings — ' +
     "measured claims, analyst judgment pending</div>" + rows + "</div>";
 }
