@@ -6,8 +6,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Phases B, C, D and E of the honesty redesign
-([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)).
+## [1.1.0] - 2026-06-10
+
+The honesty redesign — lab-phase Phases A–E
+([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)): confidence-tiered
+output (measured facts always; case-based analysis gated on real case
+quality; projections only on analyst inputs), the anchor-first Overview
+default screen, the findings memo as primary deliverable, slimmed honest
+maps, vocab semantics + discovery autofill, the consultant-side
+Copy-for-LLM round-trip behind the sealed/reviewable/open data-posture
+setting, cross-session divergence findings + the template flywheel, and
+the capture-side field kit. Clean edition — no ML / no LLM at runtime,
+permanent posture. (Phase A shipped the Overview/findings/memo base;
+phase detail below.)
 
 ### Added (Phase E — capture-side field kit, worker-facing)
 
