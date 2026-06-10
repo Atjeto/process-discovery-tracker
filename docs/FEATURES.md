@@ -51,6 +51,26 @@ Worker-side Electron tray app; see [architecture/CAPTURE.md](architecture/CAPTUR
   plus value-recovery and an opt-in OCR last resort, so thin captures on hard
   frameworks (Citrix/RDP, terminal, legacy controls) are *flagged* rather than
   silently lost ([ADR-0023](adr/0023-recorder-capture-confidence.md)).
+- **Readiness check** — tray item (*Run readiness check…*) and a `--readiness`
+  CLI for the day before a pilot: free disk on the session target **and** on the
+  recorder's self-extract drive (the full-disk → 0-events failure class), the
+  recorder starts and UI Automation answers, and a per-running-app **trust tier**
+  (rich / basic / minimal / wall) from a short UIA snapshot probe using the same
+  §11e identity/framework/confidence fields as real captures. Writes
+  `readiness-report.json` next to the sessions plus a human summary (lab-phase §E1).
+- **Dead-man alert** — if an active session sees **no interaction event and no
+  recorder heartbeat for over 2 minutes**, the tray icon flips to a warning state,
+  an OS notification fires, and a durable `recorder_silent` system event lands in
+  `events.jsonl` (with `recorder_silent_end` on recovery) — the silently-dead
+  recorder is loud within minutes instead of invisible all day (lab-phase §E2).
+- **Worker close-out wizard** — at session end, up to 5 observed-value questions
+  (longest focus stretch, most-repeated action, heaviest app-switch pair,
+  re-keyed values — heuristic templates over measured `events.jsonl` facts, no
+  LLM) append the worker's own answers to `annotations.json self_annotations[]`
+  (`manually_authored: true`, preserved by re-normalization); then a read-only
+  review pane (facts + the steps they marked) with an explicit **Submit
+  session** that stamps `manifest.worker_review` — worker agency as the consent
+  feature (lab-phase §E3).
 
 ## Normalization — transforming the recording
 

@@ -24,10 +24,24 @@
 > regeneration — Phase D is viewer-side only; consolidation pending owner
 > sign-off. Fix landed en route: the Match-Template flow no longer
 > clobbers the freshly matched annotations.)
-> Phase E below is the remaining build contract, written to be
-> **chipped one per session**: it is self-contained, sized for one
-> session, and ends with the same non-negotiable validation discipline
-> as §A6.
+> **Phase E: BUILT + validated** on `lab-phase-e` (capture-side only:
+> capture suite 86 → **129 passed** + 1 pre-existing skip, incl. the
+> ported wizard suite + the new observe / persist / readiness / dead-man
+> suites; the §E2 health-event gap is FAKED via an injected clock — no
+> real waits; the `--readiness` CLI ran against the dev box: recorder
+> ready, UIA reachable, 6 visible windows tiered rich/basic/minimal,
+> exit 0; a REAL dev-box capture run — start → ~75 s of live Notepad
+> interactions through the C# recorder → end → close-out wizard asked 2
+> observed-value questions → Submit session — landed `self_annotations[]`
+> (2 entries, `manually_authored: true`) + `manifest.worker_review`, and
+> a bundled-python re-normalize preserved both while adding its own
+> keys; viewer 309, pytest 486, recorder 69, session golden green
+> WITHOUT regeneration, session-smoke 22/22, overview-smoke 11/11,
+> map-slim-smoke 9/9, vocab-smoke 22/22, flywheel-smoke 8/8 — no viewer
+> changes; consolidation pending owner sign-off.)
+> **All phases A–E are built.** The per-phase sections below stay as the
+> record of contract + scope; the chip protocol applies to any follow-on
+> chip.
 >
 > **Chip protocol (every phase):** branch `lab-phase-<x>` off the latest
 > consolidated tip (master once Phase A is merged; else off the prior

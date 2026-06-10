@@ -62,9 +62,12 @@ screenshot triggers, the label picker, and the `pdt:*` IPC handlers.
 | `events.js` | Event-envelope factories — `activityEvent`, `markerEvent`, `systemEvent`, `interactionEvent`. |
 | `config.js` | Loads + deep-merges per-session YAML over `DEFAULTS` — the single source of default values. |
 | `recorder.js` | Spawns and supervises the C# `recorder.exe` sidecar; parses its NDJSON output; auto-restarts on crash; runs a stdout-quiet liveness watchdog. |
+| `dead-man.js` | §E2 dead-man monitor (pure, injectable clock): no interaction event AND no `recorder_health` heartbeat for >2 min during an active session ⇒ main.js flips the tray to a warning icon, fires an OS notification, and lands a durable `recorder_silent` system event (`recorder_silent_end` on recovery). |
+| `readiness.js` | §E1 pre-pilot readiness probe — free disk on the session target + the recorder's self-extract drive, recorder starts + UIA answers, per-running-app trust tier (rich/basic/minimal/wall) from a short snapshot probe of each visible window. Tray item **Run readiness check…** (idle-only) and the `--readiness` CLI both write `readiness-report.json` into the sessions base dir; CLI exit codes 0 ready / 2 not ready / 3 crashed. |
 | `obs.js` | OBS WebSocket integration — scene bootstrap, start/stop recording, clock-offset sync. |
 | `screenshots.js` | Desktop capture via `desktopCapturer`; multi-monitor handling. |
 | `log.js` | Per-session `capture.log` writer. |
+| `self-annotation/` | §E3 worker close-out (ported from the ML branch, heuristic-templated, **no LLM**): `observe.js` derives measured facts from `events.jsonl` (focus stretches, switch pairs, re-keyed values, markers); `wizard.js` turns them into ≤5 observed-value questions; `wizard-window.{js,html}` shows the questions then the read-only review pane with **Submit session**; `persist.js` (electron-free) appends `self_annotations[]` to `annotations.json`, stamps `manifest.worker_review`, and refreshes `session-integrity.json` after each write. |
 
 **Windows.** Each window module builds a `BrowserWindow` and loads its markup from
 a sibling file in `capture/ui/` — the HTML was extracted from the JS modules in
@@ -230,7 +233,13 @@ notification.
   (`status: closed`, `ended_at`); a `session-integrity.json` file manifest is
   written so the viewer can detect an incomplete copy; and the Live Session
   window shows a post-session summary with an optional field to label the
-  session.
+  session. For ordinary process captures (not `app_prep`, not the quit /
+  failed-start paths) the **worker close-out wizard** then opens (§E3,
+  `self-annotation/`): ≤5 observed-value questions appended to
+  `annotations.json self_annotations[]`, then a read-only review pane whose
+  **Submit session** stamps `manifest.worker_review` — the worker's explicit
+  hand-off consent. Its writes re-refresh `session-integrity.json` so the
+  late files stay declared.
 - **Crash recovery** — on next launch, `session.js` finds sessions still marked
   `active` with no `ended_at`, marks them `recovered`; the normalization layer
   reconciles any markers left open.

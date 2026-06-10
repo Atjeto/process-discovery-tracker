@@ -6,8 +6,59 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Phases B, C and D of the honesty redesign
+Phases B, C, D and E of the honesty redesign
 ([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)).
+
+### Added (Phase E — capture-side field kit, worker-facing)
+
+- **Readiness check** (§E1) — new `capture/readiness.js` + tray item *Run
+  readiness check…* (idle-only) + a `--readiness` CLI on the capture app.
+  Probes: free disk on the session target **and** on the recorder's
+  self-extract drive (honors `DOTNET_BUNDLE_EXTRACT_BASE_DIR`; the
+  full-disk → 0-events silent failure class), the recorder sidecar starts
+  and reports `ready`, UI Automation answers, and a per-running-app **trust
+  tier** — rich / basic / minimal / wall — scored from a short UIA snapshot
+  probe of each visible top-level window using the same §11e
+  `identity_source` / `confidence` / `framework` semantics as captured
+  interactions (wall = nothing identifiable or a remote/terminal surface).
+  Writes `readiness-report.json` into the sessions base dir + a human
+  summary (dialog on the tray path, stdout on the CLI; exit 0 ready /
+  2 not ready / 3 crashed). `recorder.js` gained an additive `onReady`
+  callback for the positive start confirmation.
+- **Dead-man alert** (§E2) — new `capture/dead-man.js` (pure state machine,
+  injectable clock, unit-tested by faking the gap): during an active session
+  with interactions enabled, **no interaction event AND no `recorder_health`
+  heartbeat for >2 minutes** flips the tray icon to a warning state (amber
+  badge composed from the base icon — no new asset), fires a critical OS
+  notification ("Recorder silent — check capture"), tags the tray status
+  line `recorder SILENT`, and lands a durable `recorder_silent` system event
+  in `events.jsonl` (`recorder_silent_end` with the true signal-to-signal
+  gap on recovery; both documented in `shared/SCHEMA.md`). One alert per
+  silence stretch; re-arms on recovery. Deliberately also fires when the
+  recorder never spawned in non-required mode — interactions were expected
+  and none will come.
+- **Worker close-out wizard** (§E3) — `capture/self-annotation/` ported from
+  the `project-vision-ai-ml` branch (wizard.js + wizard-window.html +
+  wizard.test.js; heuristic-templated, deterministic, **no LLM**) and
+  extended for the clean edition: new `observe.js` derives **measured**
+  facts straight from `events.jsonl` at session end (longest focus stretch,
+  most-repeated interaction, heaviest app-switch pair, values re-keyed into
+  ≥2 controls, markers, per-app time) since no pipeline has touched the
+  session yet, and `generateQuestions` consumes them via a
+  `capture_observations` input (the ML branch's analyst-shaped sources keep
+  their ported precedence). ≤5 observed-value questions at session end;
+  answers append to `annotations.json` **`self_annotations[]`**
+  (`manually_authored: true`, additive key documented in `shared/SCHEMA.md`;
+  the pipeline round-trips it untouched). Then the **worker review
+  handover**: a read-only summary (facts + the steps they marked, or where
+  the time went when marker-less) with an explicit **Submit session** that
+  stamps **`manifest.worker_review`** — worker agency as the consent
+  feature; closing without the button withholds the stamp. Both writes go
+  through the electron-free `persist.js`, which re-refreshes
+  `session-integrity.json` so the late files stay declared to the viewer's
+  completeness check. Skipped for `app_prep` sessions and the quit /
+  failed-start teardown paths; the tray's old "Session ended" dialog yields
+  to the wizard instead of stacking on it.
 
 ### Added (Phase D — multi-session truth: divergence, Compare reframe, flywheel)
 
