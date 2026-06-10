@@ -13,6 +13,7 @@ viewer/python/python.exe normalization/golden_check.py   # session golden — pi
 cd viewer && npm test          # + cd capture && npm test
 dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj
 cd e2e && node session-smoke.js   # the REAL viewer — INCLUDES the map-connectivity pin
+cd e2e && node overview-smoke.js && node map-slim-smoke.js   # lab-phase pins (Overview default · slimmed map)
 ```
 
 If any goes red, you broke something — fix it or revert; never commit red, never delete a
@@ -81,7 +82,12 @@ and it drives the viewer's own `electron`.
 - **Compare-Sessions:** stub the OS open-dialog, then click `#btn-open-multi-hero` to load:
   `app.evaluate(({dialog}, p) => { dialog.showOpenDialog = async () => ({canceled:false, filePaths:[p]}); }, AGG_FOLDER)`
 - **Map controls:** notation `.panel-tab[data-map="bpmn"|"dfg"]`; grain select `#session-map-level`
-  (session) / `#map-level` (aggregate).
+  (session) / `#map-level` (aggregate). **§B2 (lab-phase):** the session default is the
+  screen-grain Flow diagram with TIME-weighted edges (count in the `.dfg-edge-tip` hover);
+  the element/step-grain BPMN is Tier-2-gated — locked it renders the replace-pattern line
+  with a `[data-map-cta="overview"]` button; the activity-taxonomy cells + per-case BPMNs
+  live behind `#map-expert-drawer` (`#btn-expert-activity-dfg` / `#btn-expert-activity-bpmn`
+  / `#btn-expert-percase`). Pinned by `e2e/map-slim-smoke.js`.
 - **Live map graph:** the DFG host exposes `host.__cy` (a cytoscape instance); the BPMN host
   has `.djs-element[data-element-id]` shapes. Hosts: `#session-map-{bpmn,dfg}-host` (session) ·
   `#{bpmn,dfg}-host` (aggregate).

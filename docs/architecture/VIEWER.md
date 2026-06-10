@@ -74,7 +74,7 @@ modules need no build step). The apps run on **Electron 42**.
 | `views/flow-view-markers.js` | The markers side-panel + unbracketed-session recovery — marker-edit resolution (effective label/timestamp/deleted), the markers list, **suggested markers** (dashed `.tl-suggested` bars + Accept/Dismiss rows, [ADR-0017](../adr/0017-suggested-markers.md)), the **anchor-candidates** panel ([ADR-0018](../adr/0018-anchor-candidates.md)), and per-marker adjust/delete/rename. flow-view consumes `effectiveLabel`/`visibleMarkerSuggestions` (the timeline overlay); `renderTimeline` injected via `initMarkers()`. |
 | `views/steps-view.js` | Steps level — step list/detail, step CRUD, the **Flat / Aligned** reading toggle (consensus backbone, curate-one→propagate, exceptions — [ADR-0015](../adr/0015-intra-session-repetition-alignment.md)), the ignored-apps dialog. |
 | `views/phases-view.js` | Phases level — phase list/detail, phase CRUD, grouping suggestions. |
-| `views/analysis-view.js` | Analysis level — per-session heuristic waste / time-study / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)), plus the €-ROI panel (§11c) rendering `analysis.json`'s `roi` band with the `roi_inputs` analyst-assumption + per-segment "tune" forms (persisted via the undo path; re-analyze recomputes the €). |
+| `views/analysis-view.js` | Analysis level — per-session heuristic waste / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)), the **"Where the time goes" instance strip** (lab-phase §B1: one row per step group, one clickable dot per observed instance on a shared duration axis → `jumpToStepInFlow`; summary stats render only at ≥ 10 instances), plus the €-ROI panel (§11c) rendering `analysis.json`'s `roi` band with the `roi_inputs` analyst-assumption + per-segment "tune" forms (persisted via the undo path; re-analyze recomputes the €). |
 | `views/aggregate-view.js` | Compare Sessions — the notation × level process-map matrix, drill-down scoping, cross-session statistics + analysis, exports. |
 | `views/template-view.js` | Process Template tab — version compare, exemplar match. |
 | `views/vocab-view.js` | App Library (Vocabulary editor) tab. Hosts **"Discover from window"** ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)): point at a prepared app window → the recorder snapshots its live UI → the volatility picker + `bootstrap_from_snapshot` return a stable-signature skeleton merged into the editor. Each discovered entry shows *why* its signature was picked (`identity_source` + ADR-0023 confidence, and any rejected volatile id); re-discovery **merges** (analyst-named entries are preserved, never overwritten); discovery-provenance fields are stripped on save. |
@@ -90,8 +90,8 @@ former `window.Pdt*` globals were converted; the globals are gone):
 | `bpmn-viewer.js` | `render`, `fit`, `exportSvg`, `exportXml`, `editable` mode | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`; re-lays out via `require("@dagrejs/dagre")`). An `editable` mode un-hides the full palette off a non-`.map-host` host for **Reference Maps** ([ADR-0019](../adr/0019-reference-maps.md)) |
 | `reference-maps.js` | (pure store) | **Reference Maps** store ([ADR-0019](../adr/0019-reference-maps.md)) — the `annotations.json reference_maps[]` model: fork (snapshot the live laid-out XML), kind (As-Is/To-Be/Reference), PDD-role (exclusive per slot), drift (blake2b hash of the source cell vs. now), Re-fork; every verb persists through `session.saveAnnotationsWithUndo` so app-level Ctrl+Z reverts it. Pure (no DOM) |
 | `refmap-ui.js` | (DOM/state) | Reference Maps UI — the **⑂ Fork map** action, the per-session gallery (kind / PDD-role / drift chips), the full-screen editor overlay (bpmn-js `editable`, dagre-on-open skipped to honour the hand-layout), and the To-Be→PDD image bridge (`exportSvg` → off-screen PNG → `--pdd-tobe-image`) |
-| `process-map-levels.js` | `buildAnnotationDfg`, `rollUpSteps`, `grainKey`/`grainLabel`, `resolveStepGrainKeys`, `processLabel`, `dropRareEdges` | Pure DFG + view-time grain roll-up from annotations (the `element ⊂ screen ⊂ app ⊂ phase ⊂ case` ladder), value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md), [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)) |
-| `map-controller.js` | `createMapController` | The shared process-map UI controller (notation × level matrix, drill-down scoping, rare-path slider, BPMN/DFG render + zoom). Extracted from the Aggregate view so the **same** controller mounts in both Compare Sessions and the Session view's in-view **Map** level — each caller passes its own host elements + a session-set provider |
+| `process-map-levels.js` | `buildAnnotationDfg`, `rollUpSteps`, `grainKey`/`grainLabel`, `resolveStepGrainKeys`, `processLabel`, `dropRareEdges` | Pure DFG + view-time grain roll-up from annotations (the `element ⊂ screen ⊂ app ⊂ phase ⊂ case` ladder), value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md), [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)). §B2: edges carry an additive `total_ms` (accumulated transition time) next to `frequency` — the grain-ladder maps render time-weighted by default (`edgeWeight: "time"` from the data source; the count stays in the dfg-viewer edge tooltip) |
+| `map-controller.js` | `createMapController` | The shared process-map UI controller (notation × level matrix, drill-down scoping, rare-path slider, BPMN/DFG render + zoom). Extracted from the Aggregate view so the **same** controller mounts in both Compare Sessions and the Session view's in-view **Map** level — each caller passes its own host elements + a session-set provider. §B2 slims the SESSION matrix: the step/element BPMN cell gates on `case_quality.tier2_unlocked` (locked = the replace-pattern line + Overview CTA, built in `renderer.js`'s data source), and the activity-taxonomy cells + per-case BPMNs live behind the collapsed **Expert drawer** (`#map-expert-drawer`) |
 | `recognition.js` | `recognize`, `isChrome`, … | Semantic interaction category from documented platform/framework signatures (`shared/recognition-patterns.json`); twin of the Python `recognition.py` ([ADR-0011](../adr/0011-platform-recognition-layer.md)) |
 | `step-alignment.js` | `alignCases`, `alignSteps`, `groupForStep`, `representativeCuration`, … | Intra-session repetition alignment ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md)). `alignCases` builds the consensus **backbone** across detected cases (Needleman–Wunsch over value-free `process_label` tokens) with per-position frequency + exceptions — behind the Steps view's Aligned reading; `alignSteps`/`groupForStep` are the older signature-based repeat grouping (per-row badges + "Apply to N repeats"). Pure, fuzz-tested |
 | `analysis-aggregate.js` | `aggregateAnalysis` | Pure cross-session rollup of per-session `analysis.json` (time study / per-worker / automation / efficiency) for the Compare-Sessions Analysis panel |
@@ -308,12 +308,23 @@ map.
 - **Notation** — *Process diagram* (**BPMN**, `bpmn-viewer.js`) or *Flow diagram*
   (**DFG**, `dfg-viewer.js`), as panel tabs.
 - **Level / Grain** — the **Grain** ladder `element ⊂ screen ⊂ app ⊂ phase ⊂ case`
-  ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)), plus the **Activity**
-  taxonomy level, via the `#session-map-level` dropdown — synced with the shared
-  **Grain** slider in the view-mode bar (`State.getGrain()`, default `screen`).
-  The old fixed Activity/Step/Phase levels fold into this ladder (`step` == the
-  `element` notch's map collapse). BPMN is mined only at the Element/Phase grains;
-  for screen/app/case the map falls back to the Flow diagram (no dead host).
+  ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)) via the
+  `#session-map-level` dropdown — synced with the shared **Grain** slider in the
+  view-mode bar (`State.getGrain()`, default `screen`). The old fixed
+  Activity/Step/Phase levels fold into this ladder (`step` == the `element`
+  notch's map collapse). BPMN is mined only at the Element/Phase grains; for
+  screen/app/case the map falls back to the Flow diagram (no dead host).
+
+In the **Session view** the matrix is slimmed (lab-phase §B2): the default cell
+is the screen-grain Flow diagram with **time-weighted** edges (accumulated
+transition time as thickness/label; traversal count in the edge hover tooltip);
+the step/element-grain Process diagram gates on
+`analysis.case_quality.tier2_unlocked` (locked = the replace-pattern line + a
+"Review on Overview" CTA); and the off-contract cells — the **Activity**
+taxonomy level (whose BPMN is the inductive-miner `process_map.bpmn`) and the
+per-case BPMN files — sit behind the collapsed **Expert drawer**
+(`#map-expert-drawer`) under the map host. Files and CLI flags are unchanged.
+Pinned by `e2e/map-slim-smoke.js`.
 
 The axes are independent — changing level never swaps notation and vice versa. As
 of v0.18.0 the matrix, drill-down scoping, rare-path slider, and BPMN/DFG render

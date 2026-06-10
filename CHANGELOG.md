@@ -6,6 +6,53 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Phase B of the honesty redesign ([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)
+§B1–§B5): honest analysis surfaces + deliverable polish on top of Phase A.
+
+### Added (Phase B)
+
+- **"Where the time goes" instance strip** (§B1) — the Analysis level's
+  time-study stats table is replaced by one row per step group (name, N,
+  total) with **one clickable dot per observed instance** on a shared
+  duration axis; a dot jumps the Flow timeline to that instance. The A5
+  small-N gate relocates: summary statistics (mean/stdev/percentiles) render
+  as a per-row line only at ≥ 10 instances. Render change only.
+- **Time-weighted Flow diagram** (§B2) — `buildAnnotationDfg` edges gain an
+  additive `total_ms` (entering source group → entering target group, summed
+  per traversal); the default screen-grain session map (and the aggregate
+  grain ladder) weighs edge thickness/labels by accumulated transition
+  **time**, with the traversal count one hover away in a new edge tooltip.
+  Count weighting stays for the taxonomy DFG and as the honest fallback when
+  no time was measurable.
+- **Step-BPMN Tier-2 lock** (§B2) — the element/step-grain observed Process
+  diagram renders only when `analysis.case_quality.tier2_unlocked`; locked,
+  the host shows the replace-pattern line (why + anchor-candidate count + a
+  "Review on Overview" CTA) instead of a case-flow diagram.
+- **Expert drawer** (§B2) — the off-contract map cells (activity-taxonomy
+  level in both notations = the inductive-miner BPMN; per-case BPMN files)
+  leave the default notation×level matrix into a collapsed, labelled
+  `<details>` under the map. Files + CLI flags unchanged.
+- **PDD findings-first** (§B3) — `pdd_export` §1 is now the findings memo
+  content, rendered from the same `build_memo_model()` (findings +
+  `memo_selection`) as the memo exports — one source of truth; the long-form
+  body renumbers behind it (2 control · 3 introduction · 4 As-Is ·
+  5 automation · 6 exceptions). Honesty parity: the efficiency ratio gates
+  on an analyst `bnva_ms` override; cycle times (4.4) and path variants (6.1)
+  gate on `tier2_unlocked` with the replace-pattern note.
+- **Word memo** (§B4) — `--memo-out` is repeatable and renders by extension:
+  `.docx` produces the Word memo with the starred evidence screenshots
+  embedded inline (same path-containment check as the PDD); the Overview
+  export button writes `memo.docx` + `memo.md` in one run.
+- **Short repetition labels** (§B4) — repetition findings render
+  `app — first 2 steps … (+N more)` capped ~60 chars in claims/memo/PDD; the
+  full segment label stays in the finding's evidence (additive `short_label`).
+- **`e2e/map-slim-smoke.js`** (§B5) — the Phase B merge gate: time-weighted
+  default map, tooltip count, unlocked step BPMN on the marked demo, the
+  locked replace-pattern + working CTA on a marker-stripped copy, Expert
+  drawer cells, zero page errors.
+
+---
+
 Phase A of the honesty redesign ([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)):
 the pipeline grows three additive Tier-1 blocks in `analysis.json`, a findings
 memo export, and the viewer gets a new default **Overview** level that leads

@@ -2,10 +2,15 @@
 
 > **Status:** Approved direction (2026-06-10). **Phase A: BUILT + validated**
 > on `lab-phase-a` (overview-smoke 9/9, session-smoke 22/22, pytest 458,
-> viewer 276; consolidation to master pending owner sign-off). Phases B–E
-> below are the remaining build contracts, written to be **chipped one per
-> session**: each is self-contained, sized for one session, and ends with
-> the same non-negotiable validation discipline as §A6.
+> viewer 276; consolidation to master pending owner sign-off).
+> **Phase B: BUILT + validated** on `lab-phase-b` (map-slim-smoke 9/9,
+> session-smoke 22/22, overview-smoke 9/9, pytest 465, viewer 280, capture
+> 86, recorder 69, session golden green WITHOUT regeneration — the dfg.json
+> projection counts did not move; consolidation pending owner sign-off).
+> Phases C–E below are the remaining build contracts, written to be
+> **chipped one per session**: each is self-contained, sized for one
+> session, and ends with the same non-negotiable validation discipline
+> as §A6.
 >
 > **Chip protocol (every phase):** branch `lab-phase-<x>` off the latest
 > consolidated tip (master once Phase A is merged; else off the prior
