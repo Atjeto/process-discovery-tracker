@@ -403,7 +403,9 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
             if img is None or Inches is None:
                 continue
             try:
-                doc.add_picture(str(img), width=Inches(4.5))
+                # 3.2" keeps an evidence figure memo-sized (the memo stays
+                # ~2 pages); the PDD's step screenshots remain 4.5".
+                doc.add_picture(str(img), width=Inches(3.2))
                 _docx_note(doc, "★ " + str(ref))
             except (OSError, ValueError) as exc:
                 logger.warning("memo_export: skipping screenshot %s: %s", ref, exc)
