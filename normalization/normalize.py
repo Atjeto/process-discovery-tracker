@@ -98,7 +98,7 @@ def normalize(
     step_bpmn_out: str | None = None,
     phase_bpmn_out: str | None = None,
     step_csv_out: str | None = None,
-    memo_out: str | None = None,
+    memo_out: str | list[str] | None = None,
 ) -> dict[str, Any]:
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
@@ -185,17 +185,27 @@ def normalize(
         session_folder, classified, existing_anno, summary, manifest,
         cases=cases, canonical=canonical)
 
-    # Findings memo (LAB-PHASE-SPEC §A4) -- the consultant deliverable seed.
-    # Rendered from the just-computed in-memory objects; best-effort.
-    if memo_out:
+    # Findings memo (LAB-PHASE-SPEC §A4/§B4) -- the consultant deliverable.
+    # Rendered from the just-computed in-memory objects; best-effort. The flag
+    # is repeatable: each path renders by extension (.docx = the Word variant
+    # with inline evidence screenshots; anything else = Markdown).
+    memo_paths = [memo_out] if isinstance(memo_out, (str, Path)) else (memo_out or [])
+    for memo_path in memo_paths:
         try:
-            from memo_export import render_memo
-            md = render_memo(manifest=manifest, stats=summary,
-                             analysis=analysis_result,
-                             annotations=existing_anno)
-            with open(memo_out, "w", encoding="utf-8") as f:
-                f.write(md)
-            print(f"[normalize] wrote memo: {memo_out}")
+            if str(memo_path).lower().endswith(".docx"):
+                from memo_export import render_memo_docx
+                render_memo_docx(str(memo_path), manifest=manifest,
+                                 stats=summary, analysis=analysis_result,
+                                 annotations=existing_anno,
+                                 session_folder=session_folder)
+            else:
+                from memo_export import render_memo
+                md = render_memo(manifest=manifest, stats=summary,
+                                 analysis=analysis_result,
+                                 annotations=existing_anno)
+                with open(memo_path, "w", encoding="utf-8") as f:
+                    f.write(md)
+            print(f"[normalize] wrote memo: {memo_path}")
         except Exception as e:
             print(f"[normalize] WARNING: memo export failed: {e}")
 
@@ -243,9 +253,11 @@ def main():
                         help="Write phase-level BPMN to this path.")
     parser.add_argument("--step-csv-out", type=str, default=None,
                         help="Write step CSV to this path.")
-    parser.add_argument("--memo-out", type=str, default=None,
-                        help="Write the 2-page findings memo (Markdown) to this "
-                             "path (lab-phase spec §A4).")
+    parser.add_argument("--memo-out", type=str, action="append", default=None,
+                        help="Write the 2-page findings memo to this path -- "
+                             ".docx gets the Word variant with inline evidence "
+                             "screenshots, anything else Markdown. Repeatable "
+                             "(lab-phase spec §A4/§B4).")
     parser.add_argument("--bootstrap-vocab-out", type=str, default=None,
                         help="Generate a starter App Vocabulary YAML from this session's "
                              "interactions and write to the given path. Skips full normalization.")

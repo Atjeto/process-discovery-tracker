@@ -1,9 +1,22 @@
 """Generate a Process Definition Document (.docx) from a normalized session.
 
-The structure mirrors a standard RPA PDD (cf. the document UiPath Task Capture
-generates from a recorded process): document control, an introduction, an As-Is
-process description (overview, applications, map, statistics, detailed steps,
-input data), an automation assessment, and an exceptions/variations section.
+FINDINGS-FIRST (lab-phase spec §B3): §1 is the findings memo content,
+rendered from the SAME `analysis.findings` + `annotations.memo_selection[]`
+model as memo_export (one source of truth -- the memo and the PDD cannot
+disagree). The long-form body follows: document control, an introduction,
+an As-Is process description (overview, applications, map, statistics,
+detailed steps, input data), an automation assessment, and an
+exceptions/variations section -- the outline a standard RPA PDD uses
+(cf. the document UiPath Task Capture generates), demoted behind the
+findings.
+
+Honesty parity with the viewer (§B3): the efficiency ratio in the
+statistics section renders only once an analyst has judged
+business-required time somewhere (any `bnva_ms` override); the Tier-2
+sections (cycle times, variants) render only when
+`analysis.case_quality.tier2_unlocked` -- below the gate each is
+REPLACED by the one-line call to action, never rendered with fact-level
+authority.
 
 Sections are auto-filled where the pipeline has the data and carry explicit
 "[To be completed: ...]" placeholders where they need analyst judgement (purpose,
@@ -64,24 +77,44 @@ def write_pdd(
     annotations = annotations or {}
 
     doc = Document()
-    _write_title(doc, manifest, canonical)            # 1. Document control
-    _write_introduction(doc, manifest)                # 2. Introduction
+    _write_findings_first(doc, manifest, stats, analysis, annotations,
+                          session_folder)             # 1. Findings (memo, §B3)
+    _write_title(doc, manifest, canonical)            # 2. Document control
+    _write_introduction(doc, manifest)                # 3. Introduction
 
-    doc.add_heading("3. As-Is Process", level=1)
-    _write_overview(doc, stats, manifest, canonical)  # 3.1 Process overview
-    _write_applications(doc, stats)                   # 3.2 Applications used
-    _write_process_map(doc, process_map_image)        # 3.3 As-Is process map
-    _write_statistics(doc, stats, analysis)           # 3.4 Process statistics
-    _write_steps(doc, annotations, session_folder, analysis)  # 3.5 Detailed steps
-    _write_input_data(doc)                            # 3.6 Input data
+    doc.add_heading("4. As-Is Process", level=1)
+    _write_overview(doc, stats, manifest, canonical)  # 4.1 Process overview
+    _write_applications(doc, stats)                   # 4.2 Applications used
+    _write_process_map(doc, process_map_image)        # 4.3 As-Is process map
+    _write_statistics(doc, stats, analysis, annotations)  # 4.4 Process statistics
+    _write_steps(doc, annotations, session_folder, analysis)  # 4.5 Detailed steps
+    _write_input_data(doc)                            # 4.6 Input data
 
-    _write_automation(doc, analysis)                  # 4. Automation assessment
-    _write_roi(doc, analysis)                         # 4.4 Estimated ROI
-    _write_tobe_map(doc, tobe_map_image)              # 4.5 Proposed to-be process (ADR-0019)
-    _write_exceptions(doc, annotations, stats)        # 5. Exceptions & variations
+    _write_automation(doc, analysis)                  # 5. Automation assessment
+    _write_roi(doc, analysis)                         # 5.4 Estimated ROI
+    _write_tobe_map(doc, tobe_map_image)              # 5.5 Proposed to-be process (ADR-0019)
+    _write_exceptions(doc, annotations, stats, analysis)  # 6. Exceptions & variations
     _write_footer(doc)
 
     doc.save(str(out_path))
+
+
+# ---- 1. Findings (the memo content, findings-first -- §B3) -------------------
+
+def _write_findings_first(doc, manifest, stats, analysis, annotations,
+                          session_folder):
+    """§1 = the findings memo, rendered from the same build_memo_model()
+    the md/docx memo uses -- one source of truth, the two artifacts
+    cannot disagree on a claim, a number, or the analyst's selection."""
+    from memo_export import build_memo_model, write_memo_into_docx
+    doc.add_heading("1. Findings", level=1)
+    model = build_memo_model(manifest, stats, analysis, annotations)
+    _note(doc, f"Captured {model['captured']} · {model['coverage_line']}")
+    write_memo_into_docx(doc, model, session_folder=session_folder,
+                         heading_offset=1)
+    _note(doc, "Every number above was measured from the capture; sentences "
+               "are templated. The sections below are the long-form As-Is "
+               "documentation behind these findings.")
 
 
 # ---- shared bits ------------------------------------------------------------
@@ -113,7 +146,7 @@ def _kv_table(doc, rows):
     return t
 
 
-# ---- 1. Document control ----------------------------------------------------
+# ---- 2. Document control ----------------------------------------------------
 
 def _write_title(doc, manifest, canonical):
     doc.add_heading("Process Definition Document", level=0)
@@ -122,7 +155,7 @@ def _write_title(doc, manifest, canonical):
         sub = doc.add_paragraph()
         sub.add_run(proc_name).bold = True
 
-    doc.add_heading("1. Document control", level=1)
+    doc.add_heading("2. Document control", level=1)
     worker = (manifest.get("config", {}).get("worker") or {}).get("id", "-")
     _kv_table(doc, [
         ("Engagement", manifest.get("engagement_id") or "-"),
@@ -134,16 +167,16 @@ def _write_title(doc, manifest, canonical):
     ])
 
 
-# ---- 2. Introduction --------------------------------------------------------
+# ---- 3. Introduction --------------------------------------------------------
 
 def _write_introduction(doc, manifest):
-    doc.add_heading("2. Introduction", level=1)
-    doc.add_heading("2.1 Purpose", level=2)
+    doc.add_heading("3. Introduction", level=1)
+    doc.add_heading("3.1 Purpose", level=2)
     _placeholder(doc, "the business need this process serves and why it is being "
                       "documented / considered for automation")
-    doc.add_heading("2.2 Objectives", level=2)
+    doc.add_heading("3.2 Objectives", level=2)
     _placeholder(doc, "what this document and any resulting automation aim to achieve")
-    doc.add_heading("2.3 Key contacts", level=2)
+    doc.add_heading("3.3 Key contacts", level=2)
     worker = (manifest.get("config", {}).get("worker") or {}).get("id", "-")
     t = doc.add_table(rows=1, cols=3)
     h = t.rows[0].cells
@@ -153,10 +186,10 @@ def _write_introduction(doc, manifest):
     _placeholder(doc, "the process owner, SME, and automation lead")
 
 
-# ---- 3.1 Process overview ---------------------------------------------------
+# ---- 4.1 Process overview ---------------------------------------------------
 
 def _write_overview(doc, stats, manifest, canonical):
-    doc.add_heading("3.1 Process overview", level=2)
+    doc.add_heading("4.1 Process overview", level=2)
     meta = stats.get("meta") or {}
     name = (canonical or {}).get("name")
     worker = (manifest.get("config", {}).get("worker") or {}).get("id")
@@ -184,10 +217,10 @@ def _write_overview(doc, stats, manifest, canonical):
                       "the outcome it produces")
 
 
-# ---- 3.2 Applications used --------------------------------------------------
+# ---- 4.2 Applications used --------------------------------------------------
 
 def _write_applications(doc, stats):
-    doc.add_heading("3.2 Applications used", level=2)
+    doc.add_heading("4.2 Applications used", level=2)
     meta = stats.get("meta") or {}
     cov = meta.get("vocab_coverage") or {}
     apps = sorted(cov.items(),
@@ -217,10 +250,10 @@ def _write_applications(doc, stats):
     _note(doc, "The role each application plays is to be completed by the analyst.")
 
 
-# ---- 3.3 As-Is process map --------------------------------------------------
+# ---- 4.3 As-Is process map --------------------------------------------------
 
 def _write_process_map(doc, process_map_image):
-    doc.add_heading("3.3 As-Is process map", level=2)
+    doc.add_heading("4.3 As-Is process map", level=2)
     if process_map_image and Path(process_map_image).exists() and Inches is not None:
         try:
             doc.add_picture(str(process_map_image), width=Inches(6.0))
@@ -235,7 +268,7 @@ def _write_process_map(doc, process_map_image):
     )
 
 
-# ---- 4.5 Proposed to-be process map (analyst-authored, ADR-0019) ------------
+# ---- 5.5 Proposed to-be process map (analyst-authored, ADR-0019) ------------
 
 def _write_tobe_map(doc, tobe_map_image):
     """Embed an analyst-authored To-Be reference map, when one was selected for
@@ -245,7 +278,7 @@ def _write_tobe_map(doc, tobe_map_image):
     selected (no empty placeholder)."""
     if not (tobe_map_image and Path(tobe_map_image).exists() and Inches is not None):
         return
-    doc.add_heading("4.5 Proposed to-be process", level=2)
+    doc.add_heading("5.5 Proposed to-be process", level=2)
     try:
         doc.add_picture(str(tobe_map_image), width=Inches(6.0))
     except (FileNotFoundError, OSError, ValueError) as exc:
@@ -256,20 +289,34 @@ def _write_tobe_map(doc, tobe_map_image):
                "NOT mined from the captured events.")
 
 
-# ---- 3.4 Process statistics -------------------------------------------------
+# ---- 4.4 Process statistics -------------------------------------------------
 
-def _write_statistics(doc, stats, analysis):
-    doc.add_heading("3.4 Process statistics", level=2)
+def _has_bnva_override(annotations) -> bool:
+    """Has the analyst judged business-required time anywhere? The same
+    gate the viewer's Analysis level applies to the efficiency ratio
+    (lab-phase §A5/§B3): while every step's bnva_ms sits at the
+    heuristic default of 0, the ratio is an artifact of that default."""
+    return any(
+        isinstance(ov, dict) and ov.get("bnva_ms") is not None
+        for ov in (annotations or {}).get("analysis_overrides") or [])
+
+
+def _write_statistics(doc, stats, analysis, annotations=None):
+    doc.add_heading("4.4 Process statistics", level=2)
     meta = stats.get("meta") or {}
     case_stats = stats.get("case_stats") or []
     activity_stats = stats.get("activity_stats") or []
     efficiency = (analysis or {}).get("efficiency") or {}
+    tier2 = bool(((analysis or {}).get("case_quality") or {}).get("tier2_unlocked"))
 
     rows = []
     cc = meta.get("case_count")
     if cc is None and case_stats:
         cc = len(case_stats)
-    if cc is not None:
+    # Tier-2 gate (§B3): per-case cycle time is case-based analysis -- it
+    # renders only when the case segmentation is trustworthy. Below the
+    # gate the row is REPLACED by the call to action (after the table).
+    if cc is not None and tier2:
         durs = [c.get("active_ms") or c.get("wall_clock_ms") for c in case_stats]
         durs = [d for d in durs if d]
         rows.append(("Cases observed",
@@ -284,12 +331,27 @@ def _write_statistics(doc, stats, analysis):
         rows.append(("Phases", str(meta["phase_count"])))
     if activity_stats:
         rows.append(("Distinct activities", str(len(activity_stats))))
-    if efficiency.get("process_efficiency_ratio") is not None:
+    # Honesty gate (§B3, parity with the viewer): the VA/(VA+BNVA+NVA) ratio
+    # is WITHHELD until an analyst has set business-required time on at least
+    # one step type -- the heuristic defaults bnva to 0, which inflates it.
+    if efficiency.get("process_efficiency_ratio") is not None and _has_bnva_override(annotations):
         rows.append(("Process efficiency",
                      f"{round(efficiency['process_efficiency_ratio'] * 100)}% "
-                     "value-add (heuristic estimate)"))
+                     "value-add (analyst-reviewed split)"))
     if rows:
         _kv_table(doc, rows)
+    if not tier2:
+        _note(doc, "Case-based statistics (cycle times per case) are withheld: "
+                   "this session is not case-segmented to the trust threshold. "
+                   "Accepting an anchor or capturing Start/End markers in the "
+                   "viewer unlocks them.")
+    if efficiency.get("process_efficiency_ratio") is not None and not _has_bnva_override(annotations):
+        _note(doc, "A process-efficiency ratio is withheld: the value-add vs "
+                   "business-required split is an analyst judgment, and no "
+                   "step type has one yet (the heuristic defaults "
+                   "business-required to 0, which would inflate the ratio). "
+                   "Set business-required minutes in the viewer's Analysis "
+                   "level to state it.")
 
     timed = sorted((a for a in activity_stats if a.get("total_duration_ms")),
                    key=lambda a: a["total_duration_ms"], reverse=True)
@@ -320,7 +382,7 @@ def _write_statistics(doc, stats, analysis):
             _note(doc, f"Showing 25 of {len(activity_stats)} activities.")
 
 
-# ---- 3.5 Detailed process steps ---------------------------------------------
+# ---- 4.5 Detailed process steps ---------------------------------------------
 
 def _analysis_maps(analysis):
     analysis = analysis or {}
@@ -330,7 +392,7 @@ def _analysis_maps(analysis):
 
 
 def _write_steps(doc, annotations, session_folder, analysis):
-    doc.add_heading("3.5 Detailed process steps", level=2)
+    doc.add_heading("4.5 Detailed process steps", level=2)
     phases = annotations.get("phases") or []
     # Noise-suppressed steps are hidden everywhere else in the pipeline; the
     # PDD honours that convention too (M-5).
@@ -411,10 +473,10 @@ def _write_step(doc, step, session_folder, waste_by_step=None, level=3):
                 run.italic = True
 
 
-# ---- 3.6 Input data ---------------------------------------------------------
+# ---- 4.6 Input data ---------------------------------------------------------
 
 def _write_input_data(doc):
-    doc.add_heading("3.6 Input data", level=2)
+    doc.add_heading("4.6 Input data", level=2)
     doc.add_paragraph(
         "The data the process consumes and produces is visible inline in the "
         "detailed step descriptions above (entered values, selected options)."
@@ -423,7 +485,7 @@ def _write_input_data(doc):
                       "(source, format, mandatory vs optional)")
 
 
-# ---- 4. Automation assessment -----------------------------------------------
+# ---- 5. Automation assessment -----------------------------------------------
 
 def _write_automation(doc, analysis):
     """Render §4 with the segment grain (ADR-0016): "a coherent stretch of
@@ -431,13 +493,13 @@ def _write_automation(doc, analysis):
     "the CRM lookup → copy → paste sequence ran 4× across cases, total
     2m 14s" -- a unit you can actually scope to a robot, not a single
     button-click."""
-    doc.add_heading("4. Automation assessment", level=1)
-    doc.add_heading("4.1 In scope for automation", level=2)
+    doc.add_heading("5. Automation assessment", level=1)
+    doc.add_heading("5.1 In scope for automation", level=2)
     _placeholder(doc, "which segments / sub-processes are in scope for automation")
-    doc.add_heading("4.2 Out of scope", level=2)
+    doc.add_heading("5.2 Out of scope", level=2)
     _placeholder(doc, "which segments / sub-processes are explicitly out of scope")
 
-    doc.add_heading("4.3 Automation candidates", level=2)
+    doc.add_heading("5.3 Automation candidates", level=2)
     doc.add_paragraph(
         "Candidacy is evaluated at the level of a coherent segment -- a "
         "contiguous run of work in one application within one case, such "
@@ -501,7 +563,7 @@ def _write_automation(doc, analysis):
                 run.italic = True
 
 
-# ---- 4.4 Estimated ROI ------------------------------------------------------
+# ---- 5.4 Estimated ROI ------------------------------------------------------
 
 _CCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 
@@ -525,7 +587,7 @@ def _write_roi(doc, analysis):
     never fabricates a labour rate."""
     roi = (analysis or {}).get("roi") or {}
     cands = roi.get("candidates") or []
-    doc.add_heading("4.4 Estimated ROI", level=2)
+    doc.add_heading("5.4 Estimated ROI", level=2)
     if not cands:
         _placeholder(doc, "the annual time and cost savings of automating the "
                           "candidate segments (no multi-instance candidates "
@@ -581,10 +643,10 @@ def _write_roi(doc, analysis):
                "automation captures the stated automatable fraction.")
 
 
-# ---- 5. Exceptions & variations ---------------------------------------------
+# ---- 6. Exceptions & variations ---------------------------------------------
 
-def _write_exceptions(doc, annotations, stats):
-    doc.add_heading("5. Exceptions & variations", level=1)
+def _write_exceptions(doc, annotations, stats, analysis=None):
+    doc.add_heading("6. Exceptions & variations", level=1)
     # ADR-0027: an exception/variation is a property of a PATH, not a single
     # step, so this section is DERIVED from the observed trace variants (the most
     # frequent path is the norm; every other distinct sequence is a variation) —
@@ -593,9 +655,18 @@ def _write_exceptions(doc, annotations, stats):
     variants = sorted((stats.get("trace_variants") or []),
                       key=lambda v: v.get("frequency", 0), reverse=True)
     rework = stats.get("rework_loops") or []
+    tier2 = bool(((analysis or {}).get("case_quality") or {}).get("tier2_unlocked"))
 
-    doc.add_heading("5.1 Process variations", level=2)
-    if len(variants) > 1:
+    doc.add_heading("6.1 Process variations", level=2)
+    # Tier-2 gate (§B3): a "variant" is a per-CASE path -- on an unsegmented
+    # session every event pools into one default bucket and the variant table
+    # would be an artifact, so it is REPLACED by the call to action.
+    if not tier2:
+        _note(doc, "Path variants are case-based analysis and are withheld: "
+                   "this session is not case-segmented to the trust threshold. "
+                   "Accepting an anchor or capturing Start/End markers in the "
+                   "viewer unlocks them.")
+    elif len(variants) > 1:
         norm_freq = variants[0].get("frequency", 0)
         t = doc.add_table(rows=1, cols=3)
         h = t.rows[0].cells
@@ -615,7 +686,7 @@ def _write_exceptions(doc, annotations, stats):
     else:
         _placeholder(doc, "known business exceptions and how the operator handles each")
 
-    doc.add_heading("5.2 Rework", level=2)
+    doc.add_heading("6.2 Rework", level=2)
     if rework:
         t = doc.add_table(rows=1, cols=2)
         h = t.rows[0].cells
@@ -627,7 +698,7 @@ def _write_exceptions(doc, annotations, stats):
     else:
         _placeholder(doc, "repeated work within a case (none observed in this capture)")
 
-    doc.add_heading("5.3 Application errors", level=2)
+    doc.add_heading("6.3 Application errors", level=2)
     _placeholder(doc, "system / application errors that can interrupt the process and "
                       "the recovery steps for each")
 

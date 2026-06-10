@@ -39,6 +39,15 @@ def _sample():
     }
     stats = {"activity_stats": []}
     analysis = {
+        "case_quality": {"mode": "markers", "case_count": 2,
+                         "coverage": 0.95, "tier2_unlocked": True},
+        "findings": [
+            {"id": "screen_time_sink-aaa", "detector": "screen_time_sink",
+             "claim": "crm.exe accounts for 31% of measured foreground time.",
+             "evidence": {"app": "crm.exe", "share": 0.31,
+                          "screenshot_refs": []},
+             "tier": 1, "confidence_note": "Foreground-window time."},
+        ],
         "waste_classification": [
             {"step_id": "st1", "name": "Enter customer data",
              "elapsed_ms": 100000, "va_ms": 60000, "bnva_ms": 0,
@@ -141,20 +150,26 @@ def test_pdd_structure_mirrors_real_pdd():
         texts = [p.text for p in doc.paragraphs]
         cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
 
-        # The canonical section outline is present.
-        for heading in ["1. Document control", "2. Introduction", "3. As-Is Process",
-                        "3.2 Applications used", "3.4 Process statistics",
-                        "3.5 Detailed process steps", "4. Automation assessment",
-                        "4.3 Automation candidates", "5. Exceptions & variations"]:
+        # The canonical section outline is present -- findings-first (§B3):
+        # §1 is the memo content, the long-form body renumbered behind it.
+        for heading in ["1. Findings", "2. Document control", "3. Introduction",
+                        "4. As-Is Process", "4.2 Applications used",
+                        "4.4 Process statistics", "4.5 Detailed process steps",
+                        "5. Automation assessment", "5.3 Automation candidates",
+                        "6. Exceptions & variations"]:
             assert heading in texts, f"missing PDD section: {heading}"
+
+        # §1 renders the same findings model the memo uses (one source of truth).
+        assert any("crm.exe accounts for 31%" in t for t in texts)
+        assert "What the capture measured" in texts
 
         # Analyst-judgement gaps are explicit, not silently dropped.
         assert any(t.startswith("[To be completed:") for t in texts)
 
         # Auto-filled data lands in the right sections.
-        assert any(c == "2 (avg 50.0s each)" for c in cells)            # 3.4 statistics
+        assert any(c == "2 (avg 50.0s each)" for c in cells)            # 4.4 statistics
         assert any(c == "5 (4 auto-detected, 1 confirmed)" for c in cells)
-        assert any(c == "app.exe" for c in cells)                       # 3.2 applications
+        assert any(c == "app.exe" for c in cells)                       # 4.2 applications
         assert any("Where the time went" in t for t in texts)
         # 4.3 candidates: the segment label, application column, and
         # instance count from the sample analysis above.
@@ -219,7 +234,7 @@ def test_pdd_embeds_tobe_map_when_selected():
         from docx import Document
         doc = Document(str(out))
         texts = [p.text for p in doc.paragraphs]
-        assert any("4.5 Proposed to-be process" in t for t in texts)
+        assert any("5.5 Proposed to-be process" in t for t in texts)
         assert any("NOT mined" in t for t in texts)          # provenance caption
         assert len(doc.inline_shapes) >= 1
 
@@ -305,6 +320,91 @@ def test_hidden_step_is_not_rendered():
         # The hidden step appears in neither §3.5 nor the §5 exceptions table.
         assert not any("Hidden noise step" in t for t in texts)
         assert not any("Hidden noise step" in c for c in cells)
+
+
+def _pdd_texts(tmp, manifest, annotations, stats, analysis):
+    out = Path(tmp) / "pdd.docx"
+    pdd_export.write_pdd(
+        out, session_folder=Path(tmp), canonical=None,
+        annotations=annotations, stats=stats, manifest=manifest,
+        analysis=analysis)
+    from docx import Document
+    doc = Document(str(out))
+    return ([p.text for p in doc.paragraphs],
+            [c.text for t in doc.tables for r in t.rows for c in r.cells])
+
+
+def test_pdd_findings_honour_memo_selection():
+    """§B3 one-source-of-truth: when the analyst selected findings via
+    annotations.memo_selection, PDD §1 renders exactly those -- the same
+    selection memo_export uses."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis = _sample()
+    analysis["findings"] = [
+        {"id": "f-keep", "detector": "fragmentation",
+         "claim": "KEEP-THIS-CLAIM appears.", "evidence": {}, "tier": 1},
+        {"id": "f-drop", "detector": "waiting",
+         "claim": "DROP-THIS-CLAIM does not.", "evidence": {}, "tier": 1},
+    ]
+    annotations = dict(annotations, memo_selection=["f-keep"])
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, _cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
+        assert any("KEEP-THIS-CLAIM" in t for t in texts)
+        assert not any("DROP-THIS-CLAIM" in t for t in texts)
+
+
+def test_efficiency_ratio_gated_on_bnva_override():
+    """§B3 honesty parity: the efficiency ratio is withheld (replaced by the
+    call-to-action note) until an analyst bnva_ms override exists -- the same
+    gate the viewer's Analysis level applies."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis = _sample()
+    # No override -> withheld + the replace-pattern note.
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
+        assert not any("value-add (analyst-reviewed split)" in c for c in cells)
+        assert any("process-efficiency ratio is withheld" in t for t in texts)
+    # With an analyst override -> the ratio renders.
+    annotations = dict(annotations,
+                       analysis_overrides=[{"process_label": "Enter customer data",
+                                            "bnva_ms": 5000}])
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
+        assert any("60% value-add (analyst-reviewed split)" in c for c in cells)
+        assert not any("process-efficiency ratio is withheld" in t for t in texts)
+
+
+def test_tier2_sections_gated_on_case_quality():
+    """§B3: cycle times (4.4 'Cases observed') and path variants (6.1) are
+    Tier-2 -- on an unsegmented session both are replaced by the one-line
+    call to action, never rendered with fact authority."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, _stats, analysis = _sample()
+    stats = {
+        "activity_stats": [],
+        "case_stats": [{"case_id": "c1", "active_ms": 40000}],
+        "trace_variants": [{"variant": ["A", "B"], "frequency": 3},
+                           {"variant": ["A", "C"], "frequency": 1}],
+        "meta": {"case_count": 1, "step_count": 1},
+    }
+    analysis["case_quality"] = {"mode": "unsegmented", "case_count": 0,
+                                "coverage": 0.0, "tier2_unlocked": False}
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
+        assert not any("Cases observed" in c for c in cells)
+        assert any("Case-based statistics" in t and "withheld" in t for t in texts)
+        assert any("Path variants are case-based analysis" in t for t in texts)
+        assert not any(c == "Variation 1" for c in cells)
+    # Unlocked -> both render as before.
+    analysis["case_quality"] = {"mode": "markers", "case_count": 1,
+                                "coverage": 0.95, "tier2_unlocked": True}
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
+        assert any("Cases observed" in c for c in cells)
+        assert any(c == "Variation 1" for c in cells)
 
 
 def test_screenshot_ref_path_traversal_is_skipped():

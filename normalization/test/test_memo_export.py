@@ -166,6 +166,93 @@ def test_render_tolerates_empty_inputs():
     assert "## To say more" in md
 
 
+# ---- §B4: the docx variant (deps-gated like test_pdd_export) ----------------
+
+import memo_export as _memo_mod  # noqa: E402
+
+_HAVE_DOCX = _memo_mod.Document is not None
+
+
+def _docx_texts(path):
+    from docx import Document
+    doc = Document(str(path))
+    return [p.text for p in doc.paragraphs], doc
+
+
+def _make_png():
+    """A tiny but fully-valid PNG (correct CRCs), as in test_pdd_export."""
+    import struct, zlib
+    def chunk(typ, data):
+        body = typ + data
+        return (struct.pack(">I", len(data)) + body
+                + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF))
+    ihdr = struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0)
+    raw = b"".join(b"\x00" + b"\xff\xff\xff" * 2 for _ in range(2))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def test_write_memo_docx_variant_with_inline_screenshots():
+    """`--memo-out x.docx` writes the Word memo; the starred screenshot
+    refs embed INLINE as evidence figures (lab-phase §B4)."""
+    if not _HAVE_DOCX:
+        return
+    tmp = Path(tempfile.mkdtemp(prefix="pdt-memo-docx-"))
+    (tmp / "screenshots").mkdir()
+    (tmp / "screenshots" / "shot_02.png").write_bytes(_make_png())
+    (tmp / "manifest.json").write_text(json.dumps(_manifest()), encoding="utf-8")
+    (tmp / "stats.json").write_text(json.dumps(_stats()), encoding="utf-8")
+    (tmp / "analysis.json").write_text(json.dumps(_analysis()), encoding="utf-8")
+    (tmp / "annotations.json").write_text(json.dumps({}), encoding="utf-8")
+    out = tmp / "memo.docx"
+    write_memo(str(out), str(tmp))
+    assert out.exists() and out.stat().st_size > 0
+    texts, doc = _docx_texts(out)
+    assert any(t.startswith("Findings memo — sess-2026-0514-0900") for t in texts)
+    assert "What the capture measured" in texts
+    assert any("chrome.exe accounts for 31%" in t for t in texts)
+    assert len(doc.inline_shapes) >= 1            # the ★ screenshot embedded
+    assert any("★ screenshots/shot_02.png" in t for t in texts)
+    # The fact strip lands as a table with the shared 6 cells.
+    cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
+    assert "Active (foreground)" in cells and "1h 15m" in cells
+
+
+def test_memo_docx_skips_traversal_screenshot_refs():
+    """The docx memo applies the same containment check as pdd_export: an
+    absolute or out-of-folder ref is skipped, never embedded."""
+    if not _HAVE_DOCX:
+        return
+    tmp = Path(tempfile.mkdtemp(prefix="pdt-memo-sec-"))
+    evil = _analysis(findings=[
+        {"id": "x", "detector": "screen_time_sink",
+         "claim": "claim.", "tier": 1,
+         "evidence": {"screenshot_refs": ["..\\..\\outside.png",
+                                          "C:\\Windows\\notepad.png"]}},
+    ])
+    (tmp / "manifest.json").write_text(json.dumps(_manifest()), encoding="utf-8")
+    (tmp / "stats.json").write_text(json.dumps(_stats()), encoding="utf-8")
+    (tmp / "analysis.json").write_text(json.dumps(evil), encoding="utf-8")
+    (tmp / "annotations.json").write_text(json.dumps({}), encoding="utf-8")
+    out = tmp / "memo.docx"
+    write_memo(str(out), str(tmp))
+    _texts, doc = _docx_texts(out)
+    assert len(doc.inline_shapes) == 0
+
+
+def test_memo_model_and_md_agree_on_selection():
+    """§B3 one-source-of-truth: build_memo_model returns exactly the findings
+    the md render shows (the PDD §1 consumes the same model)."""
+    from memo_export import build_memo_model
+    anno = {"memo_selection": ["fragmentation-bbb"]}
+    model = build_memo_model(_manifest(), _stats(), _analysis(), anno)
+    assert [f["claim"] for f in model["findings"]] == [
+        "Focus moved between apps 47 times (11.2/h)."]
+    md = render_memo(_manifest(), _stats(), _analysis(), anno)
+    assert "Focus moved between apps 47 times" in md
+    assert "chrome.exe accounts for" not in md
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

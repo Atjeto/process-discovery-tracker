@@ -106,7 +106,11 @@ function runNormalize(opts) {
       if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
       if (phaseBpmnOut) args.push("--phase-bpmn-out", phaseBpmnOut);
       if (stepCsvOut) args.push("--step-csv-out", stepCsvOut);
-      if (memoOut) args.push("--memo-out", memoOut);
+      // Repeatable (lab-phase §B4): each path renders by extension
+      // (.docx = Word memo with inline evidence figures, else Markdown).
+      for (const p of [].concat(memoOut || [])) {
+        if (p) args.push("--memo-out", p);
+      }
     }
 
     const proc = spawn(python, args, {

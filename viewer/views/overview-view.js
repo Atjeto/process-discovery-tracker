@@ -300,15 +300,18 @@ function _toSayMore(analysis, anno) {
 async function _exportMemo() {
   const sess = State.getSession();
   if (!sess || !sess.sessionFolder) return;
-  const memoPath = path.join(sess.sessionFolder, "memo.md");
+  // §B4: the Word memo (inline evidence figures) is the deliverable; the
+  // Markdown seed is written alongside it. One re-analyze, two renders.
+  const memoDocx = path.join(sess.sessionFolder, "memo.docx");
+  const memoMd = path.join(sess.sessionFolder, "memo.md");
   const btn = document.getElementById("btn-ov-export-memo");
   if (btn) { btn.disabled = true; btn.textContent = "Exporting…"; }
-  toast("Re-analyzing + writing memo.md…");
+  toast("Re-analyzing + writing memo.docx + memo.md…");
   try {
     const r = await Ipc.runNormalizeExtended({
       sessionFolder: sess.sessionFolder,
       mine: false,
-      memoOut: memoPath,
+      memoOut: [memoDocx, memoMd],
     });
     if (!r || !r.ok) {
       toast("Memo export failed: " + ((r && r.error) || "unknown"), "error");
@@ -318,18 +321,18 @@ async function _exportMemo() {
     // recomputed analysis the memo was rendered from.
     const { loadSessionIntoView } = require("./flow-view.js");
     await loadSessionIntoView(sess.sessionFolder);
-    toast("memo.md written", "success");
-    await Ipc.revealFile(memoPath);
+    toast("memo.docx + memo.md written", "success");
+    await Ipc.revealFile(memoDocx);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "Export memo (memo.md)"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Export memo (.docx + .md)"; }
   }
 }
 
 function _exportBar() {
   return '<div class="ov-export-bar">' +
     '<button type="button" id="btn-ov-export-memo" class="primary" ' +
-      'title="Re-runs the analysis with --memo-out and writes <session>\\memo.md — the 2-page findings memo (claims + measured numbers), then reveals it">' +
-      "Export memo (memo.md)</button>" +
+      'title="Re-runs the analysis with --memo-out and writes <session>\\memo.docx (starred screenshots embedded inline) + memo.md — the 2-page findings memo (claims + measured numbers), then reveals it">' +
+      "Export memo (.docx + .md)</button>" +
     '<span class="meta">2 pages: fact strip · selected findings · the Tier-2 ' +
       "section only if unlocked · what's missing</span>" +
     "</div>";

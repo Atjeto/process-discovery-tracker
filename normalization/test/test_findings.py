@@ -197,6 +197,44 @@ def test_repetition_needs_multi_instance_candidates():
     assert "4 times" in f["claim"]
     assert f["tier"] == 2
     assert f["evidence"]["step_ids"] == ["s1", "s2", "s3"]
+    # B4: the claim carries the short label (app + steps, no .exe).
+    assert '"excel — Lookup → Paste"' in f["claim"]
+    assert f["evidence"]["short_label"] == "excel — Lookup → Paste"
+
+
+def test_repetition_claim_label_is_shortened():
+    """B4: a long segment renders as 'app — first 2 steps … (+N more)'
+    capped ~60 chars in the claim; the FULL label stays in the evidence."""
+    from findings import short_segment_label, SEGMENT_LABEL_MAX
+    long_steps = ["Open customer record", "Copy account number",
+                  "Switch to billing", "Paste account number",
+                  "Validate", "Submit", "Confirm dialog"]
+    full = "crm — " + " → ".join(long_steps[:5]) + " → … (+2 more)"
+    blocks = {
+        "automation_candidates": [
+            {"segment_signature": "sigLong", "label": full,
+             "app": "crm.exe", "instance_count": 3,
+             "total_elapsed_ms": 300000, "mean_elapsed_ms": 100000,
+             "step_labels": long_steps,
+             "data_sufficiency": "multi_instance"},
+        ],
+        "segments": [],
+    }
+    fs = _by_detector(_detect(_base_events(), analysis_blocks=blocks))
+    f = fs["repetition"][0]
+    short = f["evidence"]["short_label"]
+    assert short in f["claim"]
+    assert len(short) <= SEGMENT_LABEL_MAX
+    assert short.startswith("crm — ")
+    assert "(+" in short and "more)" in short      # the elided-count tail
+    assert f["evidence"]["label"] == full          # full label preserved
+    # The helper holds the cap even on absurd names (hard truncation),
+    # only ever exceeding it by the preserved "(+N more)" count tail.
+    monster = short_segment_label(
+        "averyverylongprocessname.exe",
+        ["An extremely long step label that on its own overflows the cap",
+         "Another"], 60)
+    assert len(monster) <= 60 + len(" … (+1 more)")
 
 
 def test_backtracking_uses_bounces_and_needs_steps():

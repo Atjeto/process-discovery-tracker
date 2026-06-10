@@ -38,6 +38,11 @@ from facts import rekey_details
 MAX_BOUNCE_FINDINGS = 3
 MAX_REPETITION_FINDINGS = 3
 
+# B4 (lab-phase spec): repetition claims render a SHORT segment label --
+# the full "app — s1 → s2 → s3 → s4 → s5 …" narrative label overflows a
+# memo sentence. Cap ~60 chars; the full label stays in the evidence.
+SEGMENT_LABEL_MAX = 60
+
 # Per-app trust: coverage_hint values that mark reduced capture fidelity
 # (§11e). A remote/terminal framework is the capture "wall" -- the field
 # data is a proxy for pixels.
@@ -67,6 +72,34 @@ def _fmt_ms(ms: float | int | None) -> str:
 
 def _pct(x: float) -> str:
     return f"{round((x or 0) * 100)}%"
+
+
+def short_segment_label(app: Any, step_labels: list | tuple | None,
+                        max_len: int = SEGMENT_LABEL_MAX) -> str:
+    """'<app> — first 2 steps … (+N more)' capped at ~`max_len` chars
+    (lab-phase B4). Degrades to 1 step, then a hard truncation, so the
+    cap holds even for pathological step names. The FULL label is never
+    lost -- it lives in the finding's evidence detail."""
+    app = str(app or "").strip()
+    if app.lower().endswith(".exe"):
+        app = app[:-4]
+    app = app or "one app"
+    labels = [str(s).strip() for s in (step_labels or []) if str(s).strip()]
+    if not labels:
+        return app[:max_len]
+    for take in (2, 1):
+        shown = labels[:take]
+        extra = len(labels) - take
+        out = app + " — " + " → ".join(shown)
+        if extra > 0:
+            out += f" … (+{extra} more)"
+        if len(out) <= max_len:
+            return out
+    # Even a single step overflows: hard-cap the head, keep the count tail.
+    extra = len(labels) - 1
+    tail = f" … (+{extra} more)" if extra > 0 else ""
+    keep = max(1, max_len - len(tail) - 1)
+    return (app + " — " + labels[0])[:keep] + "…" + tail
 
 
 def _screenshots_between(events: list[dict], start_iso: str, end_iso: str,
@@ -233,8 +266,10 @@ def _detect_repetition(analysis_blocks) -> list[dict]:
     out = []
     for c in cands[:MAX_REPETITION_FINDINGS]:
         step_ids = step_ids_by_sig.get(c.get("segment_signature")) or []
-        app = str(c.get("app") or "").replace(".exe", "") or "one app"
-        claim = (f"The segment \"{c.get('label') or '(segment)'}\" ({app}) was "
+        # B4: the claim sentence carries the SHORT label (app + first 2 steps,
+        # ~60 chars); the full narrative label stays in the evidence detail.
+        short = short_segment_label(c.get("app"), c.get("step_labels"))
+        claim = (f"The segment \"{short}\" was "
                  f"performed {c.get('instance_count') or 0} times, totalling "
                  f"{_fmt_ms(c.get('total_elapsed_ms'))} "
                  f"(mean {_fmt_ms(c.get('mean_elapsed_ms'))} per instance).")
@@ -245,6 +280,7 @@ def _detect_repetition(analysis_blocks) -> list[dict]:
             "evidence": {
                 "segment_signature": c.get("segment_signature"),
                 "label": c.get("label"),
+                "short_label": short,
                 "app": c.get("app"),
                 "instance_count": c.get("instance_count") or 0,
                 "total_elapsed_ms": c.get("total_elapsed_ms") or 0,
