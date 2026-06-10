@@ -699,6 +699,26 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   flex: 0 0 auto; overflow: hidden; }
 .map-pane { position: absolute; inset: 0; overflow: auto; }
 .map-pane.active { display: block; }
+/* §B2: edge hover tooltip on the live Flow diagram — keeps the traversal
+   count readable while the line itself encodes accumulated time. */
+.dfg-edge-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  padding: 3px 8px; border-radius: var(--radius-sm);
+  background: var(--bg); border: 1px solid var(--rule);
+  color: var(--fg-2); font-family: var(--font-mono); font-size: 10px;
+  box-shadow: var(--shadow); white-space: nowrap;
+}
+/* §B2: the Expert drawer — the off-contract map cells (activity taxonomy,
+   inductive BPMN, per-case BPMNs) removed from the default matrix. */
+.map-expert { margin-top: 6px; font-size: 12px; }
+.map-expert > summary {
+  cursor: pointer; color: var(--fg-4); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.map-expert > summary:hover { color: var(--fg-2); }
+.map-expert-body { padding: 6px 0 2px 14px; }
+.map-expert-hint { color: var(--fg-3); font-size: 11px; margin: 0 0 6px; }
+.map-expert-cells { display: flex; gap: 14px; flex-wrap: wrap; }
 .bpmn-warning { position: absolute; bottom: 8px; right: 8px; padding: 4px 10px;
   background: var(--warn); color: var(--bg); font-size: 11px; border-radius: 3px; }
 /* The BPMN map uses the bpmn-js Modeler so its boxes can be DRAGGED to
@@ -1162,6 +1182,52 @@ button.waste-tag-btn:hover {
   text-align: right; font-family: var(--font-mono); font-size: 11px;
 }
 .analysis-table .score-na { color: var(--fg-4); }
+/* §B1 "Where the time goes" — the instance strip: one row per step group,
+   one clickable dot per observed instance on a shared duration axis. */
+.ts-axis {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px; color: var(--fg-3); font-family: var(--font-mono);
+  margin: 6px 0 4px;
+}
+.ts-axis-lbl {
+  font-family: var(--font-ui); text-transform: uppercase;
+  letter-spacing: 0.3px; color: var(--fg-4); font-size: 9px;
+}
+.ts-axis-line { flex: 1; border-top: 1px dashed var(--rule); }
+.ts-rows { display: flex; flex-direction: column; }
+.ts-row {
+  display: grid; grid-template-columns: minmax(140px, 240px) 40px 76px 1fr;
+  gap: 10px; align-items: center; padding: 4px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.ts-name {
+  font-size: 12px; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ts-n { font-size: 11px; color: var(--fg-3); text-align: right; }
+.ts-total {
+  font-family: var(--font-mono); font-size: 11px; color: var(--fg-2);
+  text-align: right;
+}
+.ts-strip { position: relative; height: 16px; min-width: 120px; }
+.ts-strip::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%;
+  border-top: 1px solid var(--rule-soft);
+}
+.ts-dot {
+  position: absolute; top: 50%; width: 9px; height: 9px;
+  margin: -4.5px 0 0 -4.5px; border-radius: 50%;
+  background: var(--accent); opacity: 0.55;
+  border: none; padding: 0; cursor: pointer;
+}
+.ts-dot:hover, .ts-dot:focus-visible {
+  opacity: 1; outline: none; box-shadow: 0 0 0 2px var(--accent-muted);
+}
+.ts-dot[disabled] { cursor: default; background: var(--fg-4); }
+.ts-stats {
+  grid-column: 1 / -1; font-family: var(--font-mono); font-size: 10px;
+  color: var(--fg-3); padding: 0 0 2px;
+}
 /* Analyst-correction affordances (ANALYSIS-LAYER-FOLLOWUPS.md). */
 .waste-row-editable {
   cursor: pointer; padding: 2px 4px; margin: 0 -4px;

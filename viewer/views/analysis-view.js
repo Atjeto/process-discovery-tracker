@@ -406,14 +406,57 @@ function _regroupTimeStudy(ts, notch, maps) {
   })).sort((a, b) => (b.active_ms + b.waiting_ms) - (a.active_ms + a.waiting_ms));
 }
 
-/* Honesty gate (lab-phase §A5): distribution statistics (mean/stdev/
-   percentiles) at tiny N are cargo-cult precision -- a "p95" over 3
-   instances is noise wearing a lab coat. The distribution columns render
-   only when at least one row has `instances >= 10` (and only at the
-   element notch, where stdev/percentiles exist in the data -- the coarse-
-   grain regroup can't derive them); below that the table states what was
-   actually measured: instances, total, and the min–max range. */
+/* Honesty gate (lab-phase §A5, relocated by §B1): distribution statistics
+   (mean/stdev/percentiles) at tiny N are cargo-cult precision -- a "p95"
+   over 3 instances is noise wearing a lab coat. The summary-stat line
+   renders only when at least one row has `instances >= 10` (and only at
+   the element notch, where stdev/percentiles exist in the data -- the
+   coarse-grain regroup can't derive them); below that each row shows what
+   was actually measured: the instances themselves, as dots. */
 const TIME_STUDY_DISTRIBUTION_MIN_N = 10;
+
+/* ===== §B1: "Where the time goes" — the instance strip ================= */
+
+/* The JS mirror of analysis_common.step_group_label: the label a step's
+   time-study row carries. A template-matched step keeps its canonical
+   name; an auto step uses the value-free process_label. */
+function _studyStepLabel(st) {
+  if (st.canonical_step_id) return st.name || st.process_label || "(unnamed step)";
+  return st.process_label || processLabel(st.name || "") || st.name || "(unnamed step)";
+}
+
+function _stepDurMs(st) {
+  const tr = (st && st.time_range) || {};
+  const a = tr.start ? new Date(tr.start).getTime() : NaN;
+  const b = tr.end ? new Date(tr.end).getTime() : NaN;
+  return (isFinite(a) && isFinite(b) && b >= a) ? (b - a) : 0;
+}
+
+/* Resolve each study row's INSTANCES (the individual annotated steps behind
+   the aggregate row) so the strip draws one clickable dot per instance. At
+   the element notch rows are keyed by the step-group label; at a coarse
+   notch the rows were regrouped by grain label, so match via maps.byStepId.
+   A row whose steps can't be resolved (e.g. stale analysis.json against
+   edited steps) just renders without dots -- nothing is fabricated. */
+function _instancesByRowLabel(notch, maps) {
+  const sess = State.getSession();
+  const steps = (((sess && sess.annotations) || {}).steps || [])
+    .filter((s) => s && s.state !== "hidden");
+  const coarse = (notch && notch !== "element" && maps);
+  const byLabel = new Map();
+  for (const st of steps) {
+    const label = coarse
+      ? (st.step_id && maps.byStepId.get(st.step_id))
+      : _studyStepLabel(st);
+    if (!label) continue;
+    if (!byLabel.has(label)) byLabel.set(label, []);
+    byLabel.get(label).push(st);
+  }
+  return byLabel;
+}
+
+/* step_id -> step for the dot click handlers (rebuilt every render). */
+let _tsDotSteps = new Map();
 
 function _timeStudySection(ts, notch, maps) {
   if (!ts.length) return "";
@@ -421,45 +464,74 @@ function _timeStudySection(ts, notch, maps) {
   const study = _regroupTimeStudy(ts, notch, maps);
   const maxN = study.reduce((m, t) => Math.max(m, t.instances || 0), 0);
   const distribution = !regroup && maxN >= TIME_STUDY_DISTRIBUTION_MIN_N;
-  const rows = study.map((t) => {
+  const instancesOf = _instancesByRowLabel(notch, maps);
+  _tsDotSteps = new Map();
+
+  // Shared horizontal time axis: 0 .. the longest single instance anywhere,
+  // so durations compare across rows. Fall back to the study's cycle max for
+  // rows whose steps didn't resolve.
+  let axisMax = 0;
+  for (const t of study) {
+    axisMax = Math.max(axisMax, ((t.cycle_ms || {}).max) || 0);
+    for (const st of (instancesOf.get(t.name) || [])) {
+      axisMax = Math.max(axisMax, _stepDurMs(st));
+    }
+  }
+
+  // Render order: biggest total first — this section answers "where did the
+  // time go", so the heaviest step type leads. Display order only.
+  const ordered = study.slice().sort((a, b) => {
+    const tot = (t) => Math.round(((t.cycle_ms || {}).mean || 0) * (t.instances || 0));
+    return tot(b) - tot(a);
+  });
+
+  const rows = ordered.map((t) => {
     const c = t.cycle_ms || {};
     const total = Math.round((c.mean || 0) * (t.instances || 0));
-    const range = escapeHtml(_fmt(c.min)) + " – " + escapeHtml(_fmt(c.max));
-    const cells = distribution
-      ? '<td class="num">' + escapeHtml(_fmt(c.mean)) + "</td>" +
-        '<td class="num">' + escapeHtml(_fmt(c.stdev)) + "</td>" +
-        '<td class="num">' + escapeHtml(_fmt(c.p50)) + "</td>" +
-        '<td class="num">' + escapeHtml(_fmt(c.p95)) + "</td>" +
-        '<td class="num">' + range + "</td>"
-      : '<td class="num">' + escapeHtml(_fmt(total)) + "</td>" +
-        '<td class="num">' + range + "</td>";
-    return "<tr>" +
-      "<td>" + escapeHtml(t.name || "(step)") + "</td>" +
-      '<td class="num">' + (t.instances || 0) + "</td>" +
-      cells +
-      '<td class="num">' + escapeHtml(_fmt(t.active_ms)) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(t.waiting_ms)) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(t.switching_ms)) + "</td>" +
-    "</tr>";
+    const insts = instancesOf.get(t.name) || [];
+    const dots = insts.map((st) => {
+      const ms = _stepDurMs(st);
+      const x = axisMax > 0 ? (ms / axisMax) * 100 : 0;
+      if (st.step_id) _tsDotSteps.set(st.step_id, st);
+      const canJump = !!(st.step_id && st.time_range && st.time_range.start);
+      return '<button type="button" class="ts-dot" style="left:' + x.toFixed(2) + '%"' +
+        (st.step_id ? ' data-step-id="' + escapeAttr(st.step_id) + '"' : "") +
+        ' title="' + escapeAttr(_fmt(ms) +
+          (canJump ? " — click to open this instance on the Flow timeline" : "")) +
+        '"' + (canJump ? "" : " disabled") + "></button>";
+    }).join("");
+    const breakdown = "active " + _fmt(t.active_ms) + " · waiting " + _fmt(t.waiting_ms) +
+      " · switching " + _fmt(t.switching_ms);
+    const stats = distribution
+      ? '<div class="ts-stats">mean ' + escapeHtml(_fmt(c.mean)) +
+        " · stdev " + escapeHtml(_fmt(c.stdev)) +
+        " · p50 " + escapeHtml(_fmt(c.p50)) +
+        " · p95 " + escapeHtml(_fmt(c.p95)) +
+        " · range " + escapeHtml(_fmt(c.min)) + "–" + escapeHtml(_fmt(c.max)) + "</div>"
+      : "";
+    return '<div class="ts-row">' +
+      '<span class="ts-name" title="' + escapeAttr((t.name || "(step)") + " — " + breakdown) + '">' +
+        escapeHtml(t.name || "(step)") + "</span>" +
+      '<span class="ts-n">' + (t.instances || 0) + "×</span>" +
+      '<span class="ts-total">' + escapeHtml(_fmt(total)) + "</span>" +
+      '<div class="ts-strip">' + dots + "</div>" +
+      stats +
+    "</div>";
   }).join("");
-  const head = regroup ? escapeHtml(notch.charAt(0).toUpperCase() + notch.slice(1)) : "Step";
-  const statHead = distribution
-    ? "<th>Mean</th><th>Stdev</th><th>P50</th><th>P95</th><th>Range</th>"
-    : "<th>Total</th><th>Range</th>";
+
   const gateNote = distribution ? "" :
-    '<div class="analysis-caption">Distribution columns (mean/stdev/percentiles) ' +
+    '<div class="analysis-caption">Summary statistics (mean/stdev/percentiles) ' +
     "render once a step type reaches " + TIME_STUDY_DISTRIBUTION_MIN_N +
-    " instances — below that the table shows what was measured: instances, " +
-    "total and range.</div>";
-  return '<div class="analysis-section">' +
-    '<div class="analysis-section-title">Time study' +
+    " instances — below that the strip shows exactly what was measured: " +
+    "one dot per observed instance.</div>";
+  const axis = '<div class="ts-axis"><span class="ts-axis-lbl">per-instance ' +
+    'duration</span><span>0s</span><span class="ts-axis-line"></span><span>' +
+    escapeHtml(_fmt(axisMax)) + "</span></div>";
+  return '<div class="analysis-section" id="time-goes-section">' +
+    '<div class="analysis-section-title">Where the time goes' +
       (regroup ? ' <span class="meta">(by ' + escapeHtml(notch) + ")</span>" : "") + "</div>" +
-    gateNote +
-    '<table class="analysis-table">' +
-      "<thead><tr><th>" + head + "</th><th>Instances</th>" + statHead +
-      "<th>Active</th><th>Waiting</th>" +
-      "<th>Switching</th></tr></thead>" +
-      "<tbody>" + rows + "</tbody></table></div>";
+    gateNote + axis +
+    '<div class="ts-rows">' + rows + "</div></div>";
 }
 
 function _decisionCell(a) {
@@ -950,6 +1022,16 @@ function _wireControls(host, analysis) {
       renderAnalysisLevel();
     });
   }
+
+  // §B1: instance-strip dots — click jumps the Flow timeline to that step
+  // (same path the Overview findings use). Lazy require: flow-view-video
+  // touches the DOM at load, which would break this module's pure unit tests.
+  host.querySelectorAll(".ts-dot[data-step-id]").forEach((dot) => {
+    dot.addEventListener("click", () => {
+      const st = _tsDotSteps.get(dot.dataset.stepId);
+      if (st) require("./flow-view-video.js").jumpToStepInFlow(st);
+    });
+  });
 
   const autoBySig = {};
   for (const a of (analysis.automation_candidates || [])) {
