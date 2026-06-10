@@ -95,6 +95,13 @@ function saveHtmlFile(payload) {
   return ipcRenderer.invoke("viewer:saveHtmlFile", payload);
 }
 
+/** Generic save-text-as dialog (Copy-for-LLM JSON, §C3).
+ * @param {object} payload { content, suggestedName, title?, filterName?, filterExt? }
+ * @returns {Promise<any>} { ok, path } | { ok:false, error } | null on cancel */
+function saveTextFile(payload) {
+  return ipcRenderer.invoke("viewer:saveTextFile", payload);
+}
+
 /** @param {string} filePath @returns {Promise<any>} */
 function revealFile(filePath) {
   return ipcRenderer.invoke("viewer:revealFile", filePath);
@@ -244,7 +251,7 @@ module.exports = {
   runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
   cancelNormalize,
   saveAnnotations, addClassificationOverride, promoteTaxonomyRules,
-  exportFile, saveSvgFile, saveHtmlFile, revealFile, openExternal, openDiagram,
+  exportFile, saveSvgFile, saveHtmlFile, saveTextFile, revealFile, openExternal, openDiagram,
   openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
   discoverFromWindow, pickWindow, deleteVocab,

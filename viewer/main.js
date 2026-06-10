@@ -277,6 +277,25 @@ ipcMain.handle("viewer:saveHtmlFile", async (_e, { content, suggestedName }) => 
   }
 });
 
+/* Generic save-text-as sink (lab-phase §C3: the Copy-for-LLM JSON). Local
+   file write only -- the export's egress is the operator's paste, never
+   this app. */
+ipcMain.handle("viewer:saveTextFile", async (_e, payload) => {
+  const { content, suggestedName, title, filterName, filterExt } = payload || {};
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: title || "Save",
+    defaultPath: suggestedName || "export.txt",
+    filters: [{ name: filterName || "Text", extensions: [filterExt || "txt"] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  try {
+    fs.writeFileSync(r.filePath, String(content == null ? "" : content), "utf-8");
+    return { ok: true, path: r.filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("viewer:revealFile", (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle("viewer:openExternal", (_e, p) => {
   // SECURITY: `p` originates from untrusted session data (a screenshot

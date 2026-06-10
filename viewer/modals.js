@@ -192,7 +192,9 @@ function formModal(opts) {
 /* A modal with a list of checkboxes. `items` is an array of
    { key, label, hint, checked, disabled }; resolves to an object of
    key->bool, or null on cancel/escape. Used by the findings-report
-   export to pick which optional sections to include. */
+   export to pick which optional sections to include, and by the §C3
+   LLM-suggestions import (`selectAll: true` adds a master select-all/none
+   toggle above the rows — per-row or select-all approval, never implicit). */
 function checklistModal(opts) {
   opts = opts || {};
   const items = Array.isArray(opts.items) ? opts.items : [];
@@ -201,7 +203,12 @@ function checklistModal(opts) {
     backdrop.className = "modal-backdrop modal-prompt";
     const okLabel = opts.okLabel || "OK";
     const cancelLabel = opts.cancelLabel || "Cancel";
-    const rows = items.map((it) =>
+    const master = opts.selectAll
+      ? '<label class="modal-check modal-check-all">' +
+        '<input type="checkbox" class="modal-check-master">' +
+        "<span>Select all</span></label>"
+      : "";
+    const rows = master + items.map((it) =>
       '<label class="modal-check' + (it.disabled ? " disabled" : "") + '">' +
       '<input type="checkbox" data-key="' + escapeAttr(it.key || "") + '"' +
       (it.checked ? " checked" : "") + (it.disabled ? " disabled" : "") + ">" +
@@ -234,10 +241,22 @@ function checklistModal(opts) {
     }
     function collect() {
       const out = {};
-      backdrop.querySelectorAll("input[type=checkbox]").forEach((c) => {
+      backdrop.querySelectorAll("input[type=checkbox][data-key]").forEach((c) => {
         out[c.dataset.key] = c.checked;
       });
       return out;
+    }
+    const masterBox = backdrop.querySelector(".modal-check-master");
+    if (masterBox) {
+      masterBox.addEventListener("change", () => {
+        backdrop.querySelectorAll("input[type=checkbox][data-key]:not(:disabled)")
+          .forEach((c) => { c.checked = masterBox.checked; });
+      });
+      backdrop.addEventListener("change", (e) => {
+        if (e.target === masterBox || !e.target.dataset || e.target.dataset.key === undefined) return;
+        const boxes = Array.from(backdrop.querySelectorAll("input[type=checkbox][data-key]:not(:disabled)"));
+        masterBox.checked = boxes.length > 0 && boxes.every((c) => c.checked);
+      });
     }
     function onKey(e) {
       if (e.key === "Enter") { e.preventDefault(); done(collect()); }

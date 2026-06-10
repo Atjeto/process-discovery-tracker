@@ -990,6 +990,17 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-tier2.ok { color: var(--va); border-color: var(--va); }
 .ov-tier2.locked { color: var(--fg-3); border-style: dashed; }
+/* §C4: the data-posture chip + selector on the Overview header line. */
+.ov-posture {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.ov-posture select {
+  font-size: 11px; padding: 3px 6px; border-radius: var(--radius-sm);
+  background: var(--bg-2); color: var(--fg); border: 1px solid var(--rule);
+}
+.ov-posture.sealed select { color: var(--warn); border-color: var(--warn); }
 .ov-section {
   background: var(--bg-2); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 12px 14px;
@@ -2818,6 +2829,64 @@ button.danger:hover:not(:disabled) { filter: brightness(0.9); }
 .vocab-uncommon { margin-top: 6px; }
 .vocab-uncommon > summary {
   cursor: pointer; font-size: 11px; color: var(--fg-2); padding: 4px 0;
+}
+
+/* ===== Lab-phase C1/C2: row semantics + the discovery review checklist == */
+.vocab-int-semantics {
+  display: grid; grid-template-columns: minmax(90px, 0.6fr) 1fr;
+  gap: 6px 10px; align-items: end;
+  padding: 8px 10px; margin-bottom: 10px;
+  background: var(--bg-3); border-radius: 3px;
+  border-left: 2px solid var(--accent-2);
+}
+.vocab-int-semantics > label {
+  font-size: 9px; color: var(--fg-3); letter-spacing: 1px; text-transform: uppercase;
+  margin: 0;
+}
+.vocab-int-semantics > label > span { display: block; margin-bottom: 3px; }
+.vocab-int-semantics input,
+.vocab-int-semantics select {
+  display: block; width: 100%;
+  padding: 5px 8px; background: var(--bg-2);
+  border: 1px solid var(--rule); border-radius: 3px;
+  color: var(--fg); font-size: 12px;
+  text-transform: none; letter-spacing: 0;
+}
+.vocab-int-semantics .vocab-sem-means { grid-column: 1 / -1; }
+.vocab-sem-flags {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+}
+.vocab-sem-flag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--fg-2); cursor: pointer;
+  text-transform: none; letter-spacing: 0;
+}
+.vocab-sem-flag input { margin: 0; }
+/* The per-row "reviewed" tick (discovery checklist). */
+.vocab-int-review {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--fg-2); cursor: pointer; white-space: nowrap;
+}
+.vocab-int-review input { margin: 0; }
+.vocab-int-review.done { color: var(--va); }
+.vocab-int.vocab-int-unreviewed > .vocab-int-head { border-left: 3px solid var(--accent-2); }
+.vocab-review-progress { font-size: 11px; color: var(--fg-3); margin-left: 10px; }
+.vocab-review-progress.all-done { color: var(--va); }
+
+/* ===== Lab-phase C3: the Copy-for-LLM review modal ====================== */
+.llm-export-modal { width: min(860px, 92vw); }
+.llm-export-modal .llm-export-text {
+  width: 100%; height: min(52vh, 480px); resize: vertical;
+  background: var(--bg-3); color: var(--fg);
+  border: 1px solid var(--rule); border-radius: 3px;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
+  padding: 10px 12px; white-space: pre;
+}
+.llm-export-modal .modal-footer { display: flex; align-items: center; gap: 8px; }
+.modal-check-all {
+  border-bottom: 1px solid var(--rule); padding-bottom: 6px; margin-bottom: 6px;
+  font-weight: 600;
 }
 
 /* ===== Mode-specific shortcuts overlay (P2.4) ===================== */

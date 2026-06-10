@@ -10,19 +10,37 @@
 "use strict";
 
 const { $, escapeHtml, escapeAttr, toast } = require("../dom.js");
-const { confirmModal, promptModal } = require("../modals.js");
+const { confirmModal, promptModal, checklistModal } = require("../modals.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const CA = require("../canonical-author.js");
+const Posture = require("../posture.js");
+const LlmExport = require("../llm-export.js");
 
 // Discovery-provenance fields the picker stamps on each entry (ADR-0025).
 // They drive the editor's "why this signature" legend + annotator context
 // (role / framework / on-screen region / tree ancestry / merged members) but
 // are stripped before save so the persisted vocab stays signature-focused.
+// `_reviewed` is the C2 checklist tick -- a review-pass aid, not data.
 const DISCOVERY_META_KEYS = [
   "identity_source", "confidence", "volatile_aids", "_hint",
-  "role", "framework", "region", "ancestry", "_members",
+  "role", "framework", "region", "ancestry", "_members", "_reviewed",
 ];
+
+// C1 semantic columns persisted on a vocab entry (mirror of
+// app_vocab.SEMANTIC_FIELDS -- additive, absent on pre-C1 vocabs).
+const SEMANTIC_TEXT_FIELDS = ["object", "means"];
+const SEMANTIC_FLAG_FIELDS = ["completion", "carries_value", "case_id_source"];
+// The auto-derivable verb list (app_vocab.VERBS). An authored vocab may
+// carry any string; the select keeps a custom value as an extra option.
+const VERBS = ["enter", "select", "click", "submit", "toggle", "open"];
+
+/* A row joins the discovery review checklist when the picker stamped
+   provenance on it (a hand-added row has none -- the analyst IS its review). */
+function isDiscoveredEntry(ent) {
+  return !!(ent && (ent.identity_source !== undefined
+    || ent.confidence !== undefined || ent._hint !== undefined));
+}
 
 async function reloadVocabList() {
   const r = await Ipc.listAppVocabs();
@@ -151,19 +169,57 @@ function renderVocabEditor() {
     '</div>' +
     '<div class="vocab-toolbar">' +
     '<strong>Interactions (' + interactions.length + ')</strong>' +
+    '<span class="vocab-review-progress" id="vocab-review-progress" title="Discovered rows arrive pre-filled (signature, verb, flags) — tick each as reviewed; the count tracks your pass"></span>' +
     '<span class="flex-spacer"></span>' +
+    '<button id="btn-vocab-approve-all" title="Mark every discovered row as reviewed (the inverse is per-row: untick its “reviewed” box)">✓ Approve all</button>' +
     '<button id="btn-vocab-add-interaction">+ Add interaction</button>' +
     '<button id="btn-vocab-save" class="primary">Save vocabulary</button>' +
     '</div>' +
     '<div id="vocab-interactions"></div>';
   renderVocabInteractions();
+  updateReviewProgress();
   $("#vocab-name").addEventListener("input", markDirty);
   $("#vocab-id").addEventListener("input", markDirty);
   $("#vocab-version").addEventListener("input", markDirty);
   $("#vocab-scope-proc").addEventListener("input", markDirty);
   $("#vocab-scope-title").addEventListener("input", markDirty);
+  $("#btn-vocab-approve-all").addEventListener("click", approveAllDiscovered);
   $("#btn-vocab-add-interaction").addEventListener("click", addInteraction);
   $("#btn-vocab-save").addEventListener("click", saveVocab);
+}
+
+/* C2 checklist progress: "reviewed X / Y discovered". Hidden (with its
+   Approve-all button) on a vocab with no discovered rows. */
+function updateReviewProgress() {
+  const prog = $("#vocab-review-progress");
+  const btn = $("#btn-vocab-approve-all");
+  const v = State.getVocabState().current;
+  const discovered = ((v && v.interactions) || []).filter(isDiscoveredEntry);
+  if (!prog) return;
+  if (!discovered.length) {
+    prog.textContent = "";
+    prog.style.display = "none";
+    if (btn) btn.style.display = "none";
+    return;
+  }
+  const done = discovered.filter((e) => e._reviewed).length;
+  prog.style.display = "";
+  prog.textContent = "reviewed " + done + " / " + discovered.length + " discovered";
+  prog.classList.toggle("all-done", done === discovered.length);
+  if (btn) {
+    btn.style.display = "";
+    btn.disabled = done === discovered.length;
+  }
+}
+
+function approveAllDiscovered() {
+  const v = State.getVocabState().current;
+  if (!v) return;
+  for (const e of v.interactions || []) {
+    if (isDiscoveredEntry(e)) e._reviewed = true;
+  }
+  renderVocabInteractions();
+  updateReviewProgress();
 }
 
 function _buildVocabIntRow(ent, i) {
@@ -239,8 +295,45 @@ function _buildVocabIntRow(ent, i) {
       '<details class="vocab-int-members"><summary>⚠ ' + total +
       ' distinct controls were merged here — review before naming</summary><ul>' + lis + '</ul></details>';
   }
+  // C2: the discovery review checklist -- a discovered row renders an
+  // explicit "reviewed" tick so the 10-minute pass is approve/edit per row,
+  // not authoring into blank boxes. In-session aid only (stripped on save).
+  const discovered = isDiscoveredEntry(ent);
+  const review = discovered
+    ? '<label class="vocab-int-review' + (ent._reviewed ? " done" : "") + '" ' +
+      'title="Discovery pre-filled this row (signature, verb, flags). Tick it once you\'ve approved or corrected it — a review-pass aid, not saved data.">' +
+      '<input type="checkbox" data-review="1"' + (ent._reviewed ? " checked" : "") + '> reviewed</label>'
+    : "";
+  // C1 semantics strip: verb select + auto flags + the human/LLM columns.
+  const verbVal = (ent.verb || "").trim();
+  const verbOpts = ['<option value="">verb…</option>']
+    .concat(VERBS.map((v) =>
+      '<option value="' + v + '"' + (v === verbVal ? " selected" : "") + ">" + v + "</option>"));
+  if (verbVal && VERBS.indexOf(verbVal) === -1) {
+    verbOpts.push('<option value="' + escapeAttr(verbVal) + '" selected>' + escapeHtml(verbVal) + "</option>");
+  }
+  const flagTitles = {
+    completion: "Invoking this control completes the unit of work — step suggestion ends a step here (auto-guessed for Save/Submit/Send/OK buttons)",
+    carries_value: "The control holds a business value — its typed values join the re-key detector's field set (auto-guessed for value-holding controls)",
+    case_id_source: "The field's typed value names the case — anchor candidates on this field get a small scoring bonus (never auto-guessed; your judgment)",
+  };
+  const flagLabels = { completion: "completes step", carries_value: "carries value", case_id_source: "case-id source" };
+  const semantics =
+    '<div class="vocab-int-semantics">' +
+    '<label class="vocab-sem-verb" title="What interacting with this control DOES — auto-derived from the control type at discovery (control × event kind); override freely.">' +
+    '<span>Verb</span><select data-sem="verb">' + verbOpts.join("") + "</select></label>" +
+    '<label title="The business object the control acts on (e.g. “customer record”) — the human/LLM half of the row; never auto-guessed.">' +
+    '<span>Object</span><input type="text" data-sem="object" value="' + escapeAttr(ent.object || "") + '" placeholder="e.g., customer record"></label>' +
+    '<label class="vocab-sem-means" title="What using this control means in the process — free text; never auto-guessed.">' +
+    '<span>Means</span><input type="text" data-sem="means" value="' + escapeAttr(ent.means || "") + '" placeholder="e.g., closes intake and hands off to billing"></label>' +
+    '<span class="vocab-sem-flags">' +
+    SEMANTIC_FLAG_FIELDS.map((f) =>
+      '<label class="vocab-sem-flag" title="' + escapeAttr(flagTitles[f]) + '">' +
+      '<input type="checkbox" data-semflag="' + f + '"' + (ent[f] === true ? " checked" : "") + "> " +
+      flagLabels[f] + "</label>").join("") +
+    "</span></div>";
   const row = document.createElement("div");
-  row.className = "vocab-int";
+  row.className = "vocab-int" + (discovered && !ent._reviewed ? " vocab-int-unreviewed" : "");
   row.dataset.idx = String(i);
   row.innerHTML =
     '<div class="vocab-int-head">' +
@@ -248,6 +341,7 @@ function _buildVocabIntRow(ent, i) {
     '<div class="vocab-int-sig">' + escapeHtml(sigSummary) + '</div>' +
     conf +
     seen +
+    review +
     '<button class="icon-btn vocab-int-remove" title="Remove">✕</button>' +
     '</div>' +
     '<div class="vocab-int-body">' +
@@ -256,6 +350,7 @@ function _buildVocabIntRow(ent, i) {
     weak +
     members +
     '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
+    semantics +
     '<div class="vocab-int-sig-fields">' +
     '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
     '<label>class_name<input type="text" data-sig="class_name" value="' + escapeAttr(sig.class_name || "") + '"></label>' +
@@ -265,7 +360,18 @@ function _buildVocabIntRow(ent, i) {
     '</div>' +
     '</div>';
   row.querySelector(".vocab-int-remove").addEventListener("click", () => removeInteraction(i));
-  row.querySelectorAll("[data-field], [data-sig], [data-flag]").forEach((el) => {
+  const reviewBox = row.querySelector("[data-review]");
+  if (reviewBox) reviewBox.addEventListener("change", () => {
+    const v = State.getVocabState().current;
+    const entRef = v && (v.interactions || [])[i];
+    if (!entRef) return;
+    if (reviewBox.checked) entRef._reviewed = true; else delete entRef._reviewed;
+    row.classList.toggle("vocab-int-unreviewed", !reviewBox.checked);
+    const lbl = row.querySelector(".vocab-int-review");
+    if (lbl) lbl.classList.toggle("done", reviewBox.checked);
+    updateReviewProgress();
+  });
+  row.querySelectorAll("[data-field], [data-sig], [data-flag], [data-sem], [data-semflag]").forEach((el) => {
     el.addEventListener("input", collectAndMark);
     el.addEventListener("change", collectAndMark);
   });
@@ -317,15 +423,27 @@ function renderVocabInteractions() {
    prior entry so unmodeled fields survive a save -- most importantly the
    bootstrapped `seen_count` frequency ranking, which used to be dropped
    (H-3) because save rewrote each entry from scratch. Overwrites ONLY
-   `signature` and `name`; sets `flags` when any flag is checked and
-   removes it otherwise (an entry with no flags carries no `flags` key).
-   Pure -- exported for unit testing. */
-function mergeVocabEntry(priorEntry, { signature, name, flags }) {
+   `signature` and `name` (plus, when supplied, the C1 `semantics` form
+   state -- a non-empty field is set, an emptied/unchecked one is removed,
+   and an absent `semantics` argument leaves prior semantic fields
+   untouched, so pre-C1 callers keep their exact behavior); sets `flags`
+   when any flag is checked and removes it otherwise (an entry with no
+   flags carries no `flags` key). Pure -- exported for unit testing. */
+function mergeVocabEntry(priorEntry, { signature, name, flags, semantics }) {
   const ent = { ...(priorEntry || {}) };
   ent.signature = signature || {};
   ent.name = name || "";
   if (flags && Object.keys(flags).length) ent.flags = flags;
   else delete ent.flags;
+  if (semantics) {
+    for (const k of ["verb"].concat(SEMANTIC_TEXT_FIELDS)) {
+      const v = (semantics[k] || "").trim();
+      if (v) ent[k] = v; else delete ent[k];
+    }
+    for (const k of SEMANTIC_FLAG_FIELDS) {
+      if (semantics[k] === true) ent[k] = true; else delete ent[k];
+    }
+  }
   return ent;
 }
 
@@ -360,8 +478,16 @@ function collectAndMark() {
     row.querySelectorAll("[data-flag]").forEach(el => {
       if (el.checked) flags[el.dataset.flag] = true;
     });
+    // C1 semantics form state (verb select, object/means text, the flags).
+    const semantics = {};
+    row.querySelectorAll("[data-sem]").forEach(el => {
+      semantics[el.dataset.sem] = el.value;
+    });
+    row.querySelectorAll("[data-semflag]").forEach(el => {
+      if (el.checked) semantics[el.dataset.semflag] = true;
+    });
     const name = row.querySelector('[data-field="name"]').value.trim() || "";
-    next.push(mergeVocabEntry(base, { signature: sig, name, flags }));
+    next.push(mergeVocabEntry(base, { signature: sig, name, flags, semantics }));
   });
   v.interactions = next;
   markDirty();
@@ -536,6 +662,127 @@ async function discoverFromWindow() {
   }
 }
 
+/* ---- "Copy for LLM" + suggestions import (lab-phase §C3) -------------- */
+
+/* Copy-for-LLM from the App Library: the SELECTED vocab as skeleton rows
+   (signatures + auto-semantics + value-free titles). Authoring-time,
+   consultant-side; the export modal shows the exact artifact for
+   line-by-line review before anything is copied. */
+function copyVocabForLlm() {
+  const v = State.getVocabState().current;
+  if (!v) { toast("Pick a vocabulary on the left first.", "error"); return; }
+  LlmExport.showExportModal({
+    vocabs: [v],
+    posture: Posture.getDataPosture(),
+    surface: "app-library",
+  });
+}
+
+/* Multiline paste modal (promptModal is single-line). Resolves to the
+   pasted text or null. */
+function _pasteSuggestionsModal() {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML =
+      '<div class="modal llm-export-modal">' +
+      '<header class="modal-header"><h2>Import LLM suggestions</h2>' +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<div class="modal-body">' +
+      '<p class="modal-msg">Paste the JSON the LLM returned (the <code>{ "suggestions": { "&lt;row_key&gt;": { name / object / means } } }</code> shape from the export\'s instructions). ' +
+      "Nothing is applied yet — next you approve each suggestion row by row.</p>" +
+      '<textarea class="llm-export-text" spellcheck="false" placeholder="{\n  &quot;suggestions&quot;: { … }\n}"></textarea>' +
+      "</div>" +
+      '<footer class="modal-footer">' +
+      '<button class="modal-cancel">Cancel</button>' +
+      '<button class="primary llm-import-next">Review suggestions…</button>' +
+      "</footer></div>";
+    document.body.appendChild(backdrop);
+    const ta = backdrop.querySelector("textarea");
+    let resolved = false;
+    function done(val) {
+      if (resolved) return;
+      resolved = true;
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey, true);
+      resolve(val);
+    }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); done(null); } }
+    document.addEventListener("keydown", onKey, true);
+    backdrop.querySelector(".modal-close").addEventListener("click", () => done(null));
+    backdrop.querySelector(".modal-cancel").addEventListener("click", () => done(null));
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) done(null); });
+    backdrop.querySelector(".llm-import-next").addEventListener("click", () => done(ta.value));
+    setTimeout(() => ta.focus(), 0);
+  });
+}
+
+/* Import path (§C3): paste -> parse -> per-row approval checklist ->
+   apply ONLY the approved rows onto the in-memory vocab (dirty; the
+   analyst still presses Save). Suggest-don't-mutate end to end. */
+async function importLlmSuggestions() {
+  const v = State.getVocabState().current;
+  if (!v) { toast("Pick the vocabulary the suggestions belong to first.", "error"); return; }
+  const text = await _pasteSuggestionsModal();
+  if (!text || !text.trim()) return;
+  const parsed = LlmExport.parseSuggestions(text);
+  if (!parsed.suggestions) { toast(parsed.error, "error"); return; }
+  const m = LlmExport.matchSuggestions(v, parsed.suggestions);
+  if (!m.rows.length) {
+    toast("No suggestions matched this vocabulary's rows" +
+      (m.unmatched.length ? " (" + m.unmatched.length + " unknown row_key(s))" : "") +
+      " — nothing to apply.", "error");
+    return;
+  }
+  const items = m.rows.map((r) => {
+    const cur = r.current.name || "(unnamed row)";
+    const parts = [];
+    if (r.proposed.name) parts.push("name → “" + r.proposed.name + "”");
+    if (r.proposed.object) parts.push("object → “" + r.proposed.object + "”");
+    if (r.proposed.means) parts.push("means → “" + r.proposed.means + "”");
+    return { key: r.key, label: cur + ":  " + parts.join("  ·  "), checked: false };
+  });
+  const picked = await checklistModal({
+    title: "Apply LLM suggestions? (" + m.rows.length + " row" + (m.rows.length === 1 ? "" : "s") + ")",
+    message: "Nothing applies without your approval — tick the rows to accept" +
+      (m.unmatched.length ? " (" + m.unmatched.length + " suggestion(s) named unknown rows and were ignored)" : "") +
+      ". Applying marks the vocabulary dirty; Save persists it.",
+    items, selectAll: true, okLabel: "Apply selected",
+  });
+  if (!picked) return;
+  const approvedKeys = Object.keys(picked).filter((k) => picked[k]);
+  if (!approvedKeys.length) { toast("No rows approved — nothing applied.", "info"); return; }
+  const applied = LlmExport.applySuggestionsToVocab(v, m.rows, approvedKeys);
+  renderVocabEditor();
+  markDirty();
+  toast("Applied " + applied + " suggestion(s) — review and Save vocabulary.", "success");
+}
+
+/* The two §C3 buttons live in the App Library toolbar ONLY while the data
+   posture allows them: `sealed` REMOVES them from the DOM (§C4) — the
+   egress promise is enforced by code, not by a disabled button. */
+function renderVocabLlmButtons() {
+  const copyOld = $("#btn-vocab-copy-llm");
+  const importOld = $("#btn-vocab-import-llm");
+  if (copyOld) copyOld.remove();
+  if (importOld) importOld.remove();
+  if (!Posture.copyForLlmAllowed()) return;
+  const anchor = $("#btn-vocab-reload");
+  if (!anchor || !anchor.parentNode) return;
+  const copyBtn = document.createElement("button");
+  copyBtn.id = "btn-vocab-copy-llm";
+  copyBtn.textContent = "Copy for LLM…";
+  copyBtn.title = "Build a reviewable, PII-masked JSON of the selected vocabulary's skeleton rows (signatures + auto-semantics) to paste into an LLM session for name/object/means suggestions. Shown for line-by-line review first; data posture: " + Posture.getDataPosture() + ".";
+  copyBtn.addEventListener("click", copyVocabForLlm);
+  const importBtn = document.createElement("button");
+  importBtn.id = "btn-vocab-import-llm";
+  importBtn.textContent = "Import suggestions…";
+  importBtn.title = "Paste the LLM's suggestions JSON back — rendered as a per-row approval checklist; nothing applies without your tick (suggest-don't-mutate).";
+  importBtn.addEventListener("click", importLlmSuggestions);
+  anchor.parentNode.insertBefore(copyBtn, anchor);
+  anchor.parentNode.insertBefore(importBtn, anchor);
+}
+
 /* Wire the App Library tab controls. Call once at boot. */
 function initVocabView() {
   if ($("#btn-vocab-new")) {
@@ -561,9 +808,14 @@ function initVocabView() {
       if (State.getVocabState().selectedPath) Ipc.openVocabFile(State.getVocabState().selectedPath);
     });
   }
+  // §C3/§C4: the LLM buttons exist only under a permitting posture, and
+  // appear/disappear live when the posture changes (Overview header select).
+  renderVocabLlmButtons();
+  Posture.onPostureChange(renderVocabLlmButtons);
 }
 
 module.exports = {
   initVocabView, reloadVocabList, mergeVocabEntry,
   mergeDiscoveredSkeleton, mergeScreens, stripDiscoveryMeta,
+  isDiscoveredEntry, renderVocabLlmButtons,
 };

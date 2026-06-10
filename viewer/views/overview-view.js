@@ -31,6 +31,8 @@ const { escapeHtml, escapeAttr, formatDuration, toast } = require("../dom.js");
 const { saveAnnotationsWithUndo } = require("../session.js");
 const { acceptAnchorCandidate, dismissAnchorCandidate } = require("./flow-view-markers.js");
 const { seekToTimestamp, jumpToStepInFlow } = require("./flow-view-video.js");
+const Posture = require("../posture.js");
+const LlmExport = require("../llm-export.js");
 
 function _fmt(ms) { return formatDuration(ms || 0); }
 function _pct(x) { return Math.round((x || 0) * 100) + "%"; }
@@ -63,7 +65,22 @@ function _badge(cq) {
     : '<span class="ov-tier2 locked" title="Case-based analysis is withheld — needs segmentation (markers or an accepted anchor) with ≥ 70% interaction coverage">Tier 2 locked</span>';
   return '<div class="ov-badge-row">' +
     '<span class="ov-badge ' + cls + '" title="' + escapeAttr(title) + '">' +
-    escapeHtml(text) + "</span>" + tier2 + "</div>";
+    escapeHtml(text) + "</span>" + tier2 + _postureControl() + "</div>";
+}
+
+/* §C4: the engagement data posture, displayed (and settable) on the
+   Overview header line. `sealed` removes the Copy-for-LLM surface from
+   the DOM entirely — code-enforced, mirroring the egress guard. */
+function _postureControl() {
+  const cur = Posture.getDataPosture();
+  const opts = Posture.POSTURES.map((p) =>
+    '<option value="' + p + '"' + (p === cur ? " selected" : "") + ">" + p + "</option>").join("");
+  return '<span class="ov-posture' + (cur === "sealed" ? " sealed" : "") + '" ' +
+    'title="' + escapeAttr(Posture.POSTURE_LABELS[cur] || "") + '">' +
+    '<span class="ov-posture-label">Data posture</span>' +
+    '<select id="ov-posture-select" title="' +
+    escapeAttr(Posture.POSTURES.map((p) => Posture.POSTURE_LABELS[p]).join("\n")) + '">' +
+    opts + "</select></span>";
 }
 
 /* ---- 2. Anchor hero ---------------------------------------------------- */
@@ -329,13 +346,48 @@ async function _exportMemo() {
 }
 
 function _exportBar() {
+  // §C3/§C4: the Copy-for-LLM button EXISTS only under a permitting
+  // posture — sealed removes it from the DOM, not just from view.
+  const llm = Posture.copyForLlmAllowed()
+    ? '<button type="button" id="btn-ov-copy-llm" ' +
+      'title="One reviewable, PII-masked JSON of the DERIVED stream — facts, findings (values tokenized), step groups, the vocab skeletons this session hit. No raw events, no screenshots. Shown for line-by-line review; you paste it, the app sends nothing.">' +
+      "Copy for LLM…</button>"
+    : "";
   return '<div class="ov-export-bar">' +
     '<button type="button" id="btn-ov-export-memo" class="primary" ' +
       'title="Re-runs the analysis with --memo-out and writes <session>\\memo.docx (starred screenshots embedded inline) + memo.md — the 2-page findings memo (claims + measured numbers), then reveals it">' +
       "Export memo (.docx + .md)</button>" +
+    llm +
     '<span class="meta">2 pages: fact strip · selected findings · the Tier-2 ' +
       "section only if unlocked · what's missing</span>" +
     "</div>";
+}
+
+/* §C3 from the Overview: the session's derived blocks + the skeletons of
+   the vocabs this session actually hit (stats.meta.app_vocabulary_hits_by_id),
+   so the export carries exactly the engagement's working set. */
+async function _copySessionForLlm() {
+  const sess = State.getSession();
+  if (!sess) return;
+  const hitIds = Object.keys(
+    (((sess.stats || {}).meta) || {}).app_vocabulary_hits_by_id || {});
+  const vocabs = [];
+  if (hitIds.length) {
+    try {
+      const r = await Ipc.listAppVocabs();
+      for (const v of ((r && r.vocabs) || [])) {
+        if (!hitIds.includes(v.id)) continue;
+        const doc = await Ipc.readVocab(v.path);
+        if (doc && !doc._error) vocabs.push(doc);
+      }
+    } catch (_) { /* export still works without the vocab section */ }
+  }
+  LlmExport.showExportModal({
+    session: { analysis: sess.analysis || {}, annotations: sess.annotations || {} },
+    vocabs,
+    posture: Posture.getDataPosture(),
+    surface: "overview",
+  });
 }
 
 /* ---- Render -------------------------------------------------------------- */
@@ -371,6 +423,13 @@ function renderOverviewLevel() {
   _wireFindings(host);
   const exp = host.querySelector("#btn-ov-export-memo");
   if (exp) exp.addEventListener("click", () => _exportMemo());
+  const llm = host.querySelector("#btn-ov-copy-llm");
+  if (llm) llm.addEventListener("click", () => _copySessionForLlm());
+  const posture = host.querySelector("#ov-posture-select");
+  if (posture) posture.addEventListener("change", () => {
+    Posture.setDataPosture(posture.value);
+    renderOverviewLevel();   // re-render: header chip + export bar follow the posture
+  });
 }
 
 module.exports = { renderOverviewLevel };
