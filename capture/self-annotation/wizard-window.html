@@ -1,0 +1,238 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Wrap up your session</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:       #14141A;
+    --bg-2:     #22222A;
+    --border:   #424250;
+    --fg:       #D8D6CE;
+    --fg-2:     #A8A69E;
+    --fg-3:     #8E8C82;
+    --accent:   #6E8A66;
+    --mono:     ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5;
+  }
+  body { display: flex; flex-direction: column; }
+  header { padding: 20px 26px 12px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0 0 4px 0; font-size: 16px; font-weight: 600; }
+  header p { margin: 0; color: var(--fg-3); font-size: 12px; }
+  main { flex: 1; padding: 20px 26px; overflow-y: auto;
+         display: flex; flex-direction: column; gap: 14px; }
+  .progress { font-size: 11px; color: var(--fg-3);
+              text-transform: uppercase; letter-spacing: 0.05em; }
+  .question { font-size: 15px; line-height: 1.45; }
+  textarea {
+    width: 100%; min-height: 64px; padding: 9px 10px;
+    font: inherit; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg-2); resize: vertical; outline: none;
+  }
+  textarea:focus { border-color: var(--accent); }
+  .exception { display: flex; align-items: center; gap: 8px;
+               font-size: 12px; color: var(--fg-2); }
+  footer { padding: 14px 26px; border-top: 1px solid var(--border);
+           display: flex; justify-content: space-between; gap: 10px; }
+  footer .right { display: flex; gap: 10px; }
+  button {
+    font-family: inherit; font-size: 13px; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg-2); color: var(--fg-2);
+  }
+  button:hover { color: var(--fg); }
+  button.primary { background: var(--accent); color: #11140F;
+                   border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.45; cursor: default; }
+
+  /* Review handover pane */
+  .review-note { color: var(--fg-2); font-size: 12px; }
+  .facts { background: var(--bg-2); border: 1px solid var(--border);
+           border-radius: 5px; padding: 6px 10px; }
+  .facts .row { display: flex; justify-content: space-between; padding: 3px 0; }
+  .facts .row .fk { color: var(--fg-3); }
+  .facts .row .fv { font-family: var(--mono); }
+  .steps-title { font-size: 11px; color: var(--fg-3);
+                 text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+  .steps { background: var(--bg-2); border: 1px solid var(--border);
+           border-radius: 5px; padding: 6px 10px; max-height: 180px; overflow-y: auto; }
+  .steps .row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+  .steps .row .st { font-family: var(--mono); color: var(--fg-3); white-space: nowrap; }
+  .steps .empty { color: var(--fg-3); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Wrap up your session</h1>
+  <p id="subtitle">A few quick questions, then review and submit.</p>
+</header>
+<main id="main">
+  <div id="qpane">
+    <div class="progress" id="progress"></div>
+    <div class="question" id="question" style="margin:10px 0 12px"></div>
+    <textarea id="answer" placeholder="Optional — type or skip."></textarea>
+    <label class="exception" style="margin-top:10px">
+      <input type="checkbox" id="exception" />
+      This was an exception or rework, not the normal flow.
+    </label>
+  </div>
+  <div id="rpane" style="display:none">
+    <div class="review-note" id="review-note" style="margin-bottom:10px">
+      Here is what was recorded. Nothing leaves this machine — submitting
+      marks the session as reviewed by you and ready to hand to the analyst.
+    </div>
+    <div class="facts" id="facts"></div>
+    <div class="steps-title" id="steps-title"></div>
+    <div class="steps" id="steps"></div>
+  </div>
+</main>
+<footer>
+  <button id="btn-skip" type="button">Skip remaining</button>
+  <div class="right">
+    <button id="btn-prev" type="button">&#8592; Back</button>
+    <button id="btn-next" type="button" class="primary">Next &#8594;</button>
+  </div>
+</footer>
+
+<script>
+  "use strict";
+  const { ipcRenderer } = require("electron");
+
+  const state = { qs: [], idx: 0, answers: [], summary: null, phase: "questions", answersSaved: false };
+
+  const el = (id) => document.getElementById(id);
+
+  async function init() {
+    const payload = await ipcRenderer.invoke("pdt-wizard:load");
+    state.qs = (payload && payload.questions) || [];
+    state.summary = (payload && payload.summary) || { facts: [], steps: [], stepsTitle: "" };
+    if (state.qs.length === 0) {
+      showReview();
+      return;
+    }
+    el("subtitle").textContent =
+      state.qs.length + " question" + (state.qs.length > 1 ? "s" : "") +
+      ", ~30s each. Skip any that don't apply.";
+    renderQuestion();
+  }
+
+  function renderQuestion() {
+    const q = state.qs[state.idx];
+    if (!q) return;
+    el("progress").textContent = (state.idx + 1) + " of " + state.qs.length;
+    el("question").textContent = q.question;
+    const saved = state.answers[state.idx] || {};
+    el("answer").value = saved.answer || "";
+    el("exception").checked = !!saved.is_exception;
+    el("btn-prev").disabled = state.idx === 0;
+    el("btn-next").textContent = state.idx === state.qs.length - 1 ? "Finish" : "Next →";
+    el("answer").focus();
+  }
+
+  function stashCurrent() {
+    state.answers[state.idx] = {
+      answer: el("answer").value,
+      is_exception: el("exception").checked,
+    };
+  }
+
+  async function saveAnswers() {
+    if (state.answersSaved) return;
+    state.answersSaved = true;
+    const out = [];
+    state.qs.forEach((q, i) => {
+      const a = state.answers[i] || {};
+      const txt = (a.answer || "").trim();
+      if (!txt && !a.is_exception) return;   // empty + not flagged = skipped
+      out.push({ question: q, answer: txt, is_exception: !!a.is_exception });
+    });
+    await ipcRenderer.invoke("pdt-wizard:answers", out);
+  }
+
+  async function showReview() {
+    await saveAnswers();
+    state.phase = "review";
+    el("qpane").style.display = "none";
+    el("rpane").style.display = "block";
+    el("title").textContent = "Review and submit";
+    const answered = state.answers.filter(
+      (a) => a && ((a.answer || "").trim() || a.is_exception)).length;
+    el("subtitle").textContent = state.qs.length
+      ? answered + " of " + state.qs.length + " questions answered. Read-only summary below."
+      : "Read-only summary of what was recorded.";
+    el("facts").innerHTML = (state.summary.facts || []).map(
+      (r) => '<div class="row"><span class="fk"></span><span class="fv"></span></div>').join("");
+    const factRows = el("facts").querySelectorAll(".row");
+    (state.summary.facts || []).forEach((r, i) => {
+      factRows[i].querySelector(".fk").textContent = r[0];
+      factRows[i].querySelector(".fv").textContent = r[1];
+    });
+    el("steps-title").textContent = state.summary.stepsTitle || "";
+    const steps = state.summary.steps || [];
+    if (steps.length) {
+      el("steps").innerHTML = steps.map(
+        () => '<div class="row"><span class="sl"></span><span class="st"></span></div>').join("");
+      const stepRows = el("steps").querySelectorAll(".row");
+      steps.forEach((s, i) => {
+        stepRows[i].querySelector(".sl").textContent = s.label;
+        stepRows[i].querySelector(".st").textContent = s.time || "";
+      });
+    } else {
+      el("steps").innerHTML = '<div class="empty">No activity recorded.</div>';
+    }
+    el("btn-skip").textContent = "Close without submitting";
+    el("btn-prev").style.display = "none";
+    el("btn-next").textContent = "Submit session";
+  }
+
+  el("btn-next").addEventListener("click", async () => {
+    if (state.phase === "review") {
+      el("btn-next").disabled = true;
+      await ipcRenderer.invoke("pdt-wizard:submitSession");
+      window.close();
+      return;
+    }
+    stashCurrent();
+    if (state.idx < state.qs.length - 1) {
+      state.idx += 1;
+      renderQuestion();
+    } else {
+      await showReview();
+    }
+  });
+
+  el("btn-prev").addEventListener("click", () => {
+    if (state.phase !== "questions" || state.idx === 0) return;
+    stashCurrent();
+    state.idx -= 1;
+    renderQuestion();
+  });
+
+  el("btn-skip").addEventListener("click", async () => {
+    if (state.phase === "review") {
+      window.close();   // answers already saved; submit deliberately withheld
+      return;
+    }
+    stashCurrent();
+    await showReview();
+  });
+
+  // Closing mid-questions must not lose typed answers: persist best-effort.
+  window.addEventListener("beforeunload", () => {
+    if (state.phase === "questions") {
+      try { stashCurrent(); } catch (_) {}
+      try { saveAnswers(); } catch (_) {}
+    }
+  });
+
+  init().catch((e) => console.error(e));
+</script>
+</body></html>

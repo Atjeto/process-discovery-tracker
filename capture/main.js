@@ -108,6 +108,15 @@ let recorder = null;
 let recorderRestartCount = 0;
 let recorderPermanentlyDead = false;
 
+/* §E2 dead-man monitor: during an active session with interactions
+   enabled, no interaction event AND no recorder_health for >2 minutes
+   means the recorder died silently -- go loud (tray warning + toast +
+   a durable recorder_silent system event). State lives in the pure
+   dead-man.js module; this is just the wiring. */
+let deadMan = null;
+let deadManHandle = null;
+let trayWarning = false;
+
 // Idle monitor state
 let idleMonitorHandle = null;
 let isIdle = false;
@@ -121,7 +130,10 @@ let autoEndedThisIdle = false;
 // App-switch screenshot tracking
 let lastTrackedApp = null;
 
-const { notifyUser, trayIconImage } = require("./notify.js");
+const { notifyUser, trayIconImage, trayWarningImage } = require("./notify.js");
+const { createDeadManMonitor } = require("./dead-man.js");
+const { runReadinessProbe, summarizeReadiness } = require("./readiness.js");
+const { showCloseoutWizard } = require("./self-annotation/wizard-window.js");
 
 /* Session disk-usage accounting + the delete / prune flows. */
 const sessionStorage = createSessionStorage({
@@ -256,6 +268,105 @@ async function onTickHandler(status) {
     /* skip the very first set so we don't take a screenshot at session
        start for every session; the manual launch is well-known */
     if (lastTrackedApp !== null) fireScreenshot("screenshot");
+  }
+}
+
+/* §E1: pre-pilot readiness check. Shared by the tray item and the
+   --readiness CLI: runs the probe with the real seams, writes
+   readiness-report.json next to the sessions, returns everything the
+   caller needs to present it. Never throws -- failures live IN the
+   report. */
+async function runReadinessAndWrite() {
+  fs.mkdirSync(baseDir, { recursive: true });
+  const report = await runReadinessProbe({
+    sessionTarget: baseDir,
+    /* The single-file recorder self-extracts to DOTNET_BUNDLE_EXTRACT_BASE_DIR
+       when set (the documented fix for a constrained C:), else %TEMP% --
+       check the drive it will actually extract to. */
+    tempDir: process.env.DOTNET_BUNDLE_EXTRACT_BASE_DIR || require("node:os").tmpdir(),
+    hostExeName: path.basename(process.execPath),
+    spawnRecorderFn: require("./recorder.js").spawnRecorder,
+    bootLog,
+  });
+  const summary = summarizeReadiness(report);
+  const reportPath = path.join(baseDir, "readiness-report.json");
+  try { fs.writeFileSync(reportPath, JSON.stringify(report, null, 2)); }
+  catch (e) { bootLog(`readiness-report write failed: ${e && e.message}`); }
+  bootLog(`readiness: ${report.overall} (report at ${reportPath})`);
+  return { report, summary, reportPath };
+}
+
+/* The tray flow: toast that it's running (the probe takes ~10-20s),
+   then a summary dialog. Idle-only -- the probe spawns its own sidecar
+   and must not run beside a live session's recorder. */
+async function showReadinessDialog() {
+  notifyUser("Readiness check running", "Probing disk, recorder, and the open app windows (~15 s)...", { urgency: "low", silent: true });
+  try {
+    const { report, summary, reportPath } = await runReadinessAndWrite();
+    await dialog.showMessageBox({
+      type: report.overall === "ready" ? "info" : "warning",
+      title: "Capture readiness",
+      message: report.overall === "ready" ? "Ready to capture."
+        : report.overall === "ready_with_warnings" ? "Ready, with warnings."
+          : "NOT ready to capture.",
+      detail: summary + `\n\nFull report: ${reportPath}`,
+      buttons: ["OK"],
+    });
+  } catch (e) {
+    bootLog(`readiness check crashed: ${e && (e.stack || e.message)}`);
+    dialog.showErrorBox("Readiness check failed", String(e && e.message));
+  }
+}
+
+/* §E2: tray warning state -- amber-badged icon while the dead-man
+   monitor says the recorder is silent; the plain icon otherwise. */
+function setTrayWarning(on) {
+  if (trayWarning === !!on) return;
+  trayWarning = !!on;
+  if (tray) {
+    try { tray.setImage(trayWarning ? trayWarningImage() : trayIconImage()); }
+    catch (e) { bootLog(`tray setImage failed: ${e && e.message}`); }
+  }
+}
+
+function startDeadManMonitor() {
+  stopDeadManMonitor();
+  /* Only meaningful when interactions are expected at all -- with the
+     recorder disabled by config there is nothing to go silent. */
+  if (!(config && config.interactions && config.interactions.enabled)) return;
+  deadMan = createDeadManMonitor();
+  deadManHandle = setInterval(checkDeadMan, 15_000);
+}
+
+function stopDeadManMonitor() {
+  if (deadManHandle) clearInterval(deadManHandle);
+  deadManHandle = null;
+  deadMan = null;
+  setTrayWarning(false);
+}
+
+function checkDeadMan() {
+  if (!tracker || !deadMan) return;
+  const r = deadMan.check();
+  if (r.transition === "went_silent") {
+    bootLog(`dead-man: recorder silent for ${r.silentForMs}ms`);
+    try { tracker.fireSystem("recorder_silent", { silent_for_ms: r.silentForMs }); }
+    catch (e) { bootLog(`recorder_silent emit failed: ${e && e.message}`); }
+    setTrayWarning(true);
+    refreshTray();
+    notifyUser(
+      "Recorder silent -- check capture",
+      "No UI interactions and no recorder heartbeat for over 2 minutes. " +
+      "The session is still rolling (markers, screenshots), but interaction " +
+      "capture looks dead. Open the tray and restart the session if this persists.",
+      { urgency: "critical" }
+    );
+  } else if (r.transition === "recovered") {
+    bootLog(`dead-man: recorder signal resumed after ${r.gapMs}ms gap`);
+    try { tracker.fireSystem("recorder_silent_end", { gap_ms: r.gapMs }); }
+    catch (e) { bootLog(`recorder_silent_end emit failed: ${e && e.message}`); }
+    setTrayWarning(false);
+    refreshTray();
   }
 }
 
@@ -840,10 +951,16 @@ async function startSession(opts) {
     const ok = await startRecorderForSession();
     if (!ok && config.interactions.required) {
       // Strict mode: required recorder failed - tear down the session.
-      await endSession();
+      await endSession({ skipCloseout: true });
       return null;
     }
   }
+
+  /* §E2: arm the dead-man monitor. Deliberately armed even when the
+     recorder failed to spawn (non-required mode) -- interactions were
+     expected, nothing will flow, and that is exactly the silent failure
+     the alarm exists for. */
+  startDeadManMonitor();
 
   bootLog(`session started: ${session.sessionFolder}`);
   return session;
@@ -863,6 +980,8 @@ async function startRecorderForSession() {
         // Feed the browser-no-events watchdog so we don't alarm on a
         // browser that is actually producing UIA traffic.
         try { _noteBrowserInteractionIfApplicable(data); } catch (_) {}
+        // §E2: an interaction proves the recorder is alive.
+        if (deadMan) deadMan.noteSignal();
       },
       onWarning: (w) => bootLog(`[recorder] ${w.msg || ""}: ${w.detail || ""}`),
       onStats: (s) => {
@@ -873,6 +992,8 @@ async function startRecorderForSession() {
           try { tracker.fireSystem("recorder_health", s); }
           catch (e) { bootLog(`recorder_health emit failed: ${e && e.message}`); }
         }
+        // §E2: a stats heartbeat also proves the recorder is alive.
+        if (deadMan) deadMan.noteSignal();
       },
       onExit: (info) => handleRecorderExit(info),
       bootLog,
@@ -963,9 +1084,17 @@ function handleTrackerNotice(kind, payload) {
   );
 }
 
-async function endSession() {
+/* §E3: whether the last endSession() showed the worker close-out wizard
+   -- callers that pop their own post-end dialog (the tray item) read it
+   to avoid stacking two surfaces. */
+let lastCloseoutShown = false;
+
+async function endSession(opts) {
+  opts = opts || {};
   if (!tracker) return null;
+  lastCloseoutShown = false;
   stopIdleMonitor();
+  stopDeadManMonitor();   // §E2: a clean end is not a silent death
   const hadVideo = obsConnected;  // B1: captured before the OBS teardown clears it
 
   if (recorder) {
@@ -1038,10 +1167,32 @@ async function endSession() {
   }
   bootLog(`session ended: ${session.sessionFolder}`);
   const oldFolder = session.sessionFolder;
+  const purpose = (session.manifest && session.manifest.purpose) || "process";
   tracker = null;
   session = null;
   lastStatus = null;
   sessionStorage.invalidateSessionsCache();  // new session lands in the count + size
+
+  /* §E3: worker close-out -- the self-annotation wizard + the review
+     handover ("Submit session"). Skipped for app-prep sessions (the
+     operator's own throwaway vocab walkthrough) and on paths that must
+     not pop UI (quit, a failed-start teardown). Fire-and-forget: its
+     writes are additive sidecar/metadata via persist.js, and a wizard
+     problem must never break session end. */
+  if (!opts.skipCloseout && purpose !== "app_prep") {
+    lastCloseoutShown = true;
+    showCloseoutWizard({
+      sessionFolder: oldFolder,
+      summary: {
+        durationMs: finalStatus.elapsedMs,
+        events: finalStatus.eventCount,
+        markers: finalStatus.markerCount,
+        screenshots: finalStatus.screenshotCount,
+        interactions: finalStatus.interactionCount,
+        hadVideo,
+      },
+    }).catch((e) => bootLog(`closeout wizard failed: ${e && e.message}`));
+  }
   return oldFolder;
 }
 
@@ -1405,6 +1556,7 @@ function statusLine() {
   if (config && config.interactions && config.interactions.enabled) {
     if (recorderPermanentlyDead) recTag = " - recorder DEAD";
     else if (!recorder) recTag = " - recorder OFF";
+    else if (deadMan && deadMan.isSilent()) recTag = " - recorder SILENT";
   }
   return `Tracking: ${appName} - ${depth} open${obsTag}${idleTag}${recTag}`;
 }
@@ -1487,15 +1639,19 @@ function buildMenu() {
       label: "End capture session",
       click: async () => {
         const folder = await endSession();
-        const r = await dialog.showMessageBox({
-          type: "info",
-          message: "Session ended.",
-          detail: folder ? `Saved to: ${folder}` : "",
-          buttons: folder ? ["Open in viewer", "Close"] : ["OK"],
-          defaultId: 0,
-          cancelId: folder ? 1 : 0,
-        });
-        if (folder && r.response === 0) openInViewer(folder);
+        /* §E3: when the close-out wizard opened, it IS the post-end
+           surface -- don't stack a second dialog on top of it. */
+        if (!lastCloseoutShown) {
+          const r = await dialog.showMessageBox({
+            type: "info",
+            message: "Session ended.",
+            detail: folder ? `Saved to: ${folder}` : "",
+            buttons: folder ? ["Open in viewer", "Close"] : ["OK"],
+            defaultId: 0,
+            cancelId: folder ? 1 : 0,
+          });
+          if (folder && r.response === 0) openInViewer(folder);
+        }
         refreshTray();
       },
     });
@@ -1510,6 +1666,12 @@ function buildMenu() {
     items.push({
       label: "Session setup...",
       click: () => showSessionConfigDialog(),
+    });
+    /* §E1: run before any pilot day -- disk, recorder, UIA, per-app
+       trust tiers. Idle-only (spawns its own probe sidecar). */
+    items.push({
+      label: "Run readiness check...",
+      click: () => showReadinessDialog(),
     });
   }
   // P2.13: group everything beyond the muscle-memory action items
@@ -1605,7 +1767,9 @@ function buildMenu() {
   items.push({
     label: "Quit",
     click: async () => {
-      if (tracker) await endSession();
+      // skipCloseout: the app is quitting -- a wizard window would be
+      // torn down mid-question. The session data is intact either way.
+      if (tracker) await endSession({ skipCloseout: true });
       globalShortcut.unregisterAll();
       app.quit();
     },
@@ -1627,6 +1791,25 @@ function refreshTray() {
 app.whenReady().then(() => {
   bootLog("app ready");
   baseDir = path.join(app.getPath("userData"), "sessions");
+
+  /* §E1 CLI mode: `<capture> --readiness` runs the readiness probe,
+     writes readiness-report.json next to the sessions, prints the human
+     summary to stdout, and exits -- no tray, no hotkeys, no windows.
+     Exit codes: 0 ready (warnings included), 2 not ready, 3 crashed. */
+  if (process.argv.includes("--readiness")) {
+    runReadinessAndWrite()
+      .then(({ report, summary, reportPath }) => {
+        // eslint-disable-next-line no-console
+        console.log(summary + `\n\nFull report: ${reportPath}`);
+        app.exit(report.overall === "not_ready" ? 2 : 0);
+      })
+      .catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error(`readiness check crashed: ${e && (e.stack || e.message)}`);
+        app.exit(3);
+      });
+    return;
+  }
 
   let cfgPath = process.env.PDT_CONFIG || null;
   if (!cfgPath) {

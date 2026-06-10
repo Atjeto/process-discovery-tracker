@@ -99,7 +99,7 @@ function ensureRecorderExtracted({ bootLog, onStart } = {}) {
   });
 }
 
-function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, onSnapshotControl, onSnapshotDone, bootLog }) {
+function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, onSnapshotControl, onSnapshotDone, onReady, bootLog }) {
   const exe = recorderPath || resolveRecorderPath(bootLog);
   const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
@@ -125,7 +125,11 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     // snapshot_done per pass. Transient -- never written to events.jsonl.
     else if (msg.type === "snapshot_control" && onSnapshotControl) onSnapshotControl(msg.data);
     else if (msg.type === "snapshot_done" && onSnapshotDone) onSnapshotDone(msg.data);
-    else if (msg.type === "ready" && bootLog) bootLog("[recorder] ready");
+    else if (msg.type === "ready") {
+      if (bootLog) bootLog("[recorder] ready");
+      // §E1 readiness probe: positive confirmation the sidecar came up.
+      if (onReady) { try { onReady(); } catch (_) {} }
+    }
   });
 
   const rlErr = readline.createInterface({ input: child.stderr });

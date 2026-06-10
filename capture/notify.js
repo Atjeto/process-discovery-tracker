@@ -24,6 +24,46 @@ function trayIconImage() {
 }
 
 /*
+ * Warning-state variant of the tray icon (lab-phase §E2): the base icon
+ * with an amber disc badged into the bottom-right corner, composed from
+ * the raw bitmap so no second PNG asset has to ship. Falls back to the
+ * plain icon when the bitmap is unavailable (empty icon, odd DPI).
+ * Cached -- the composition runs once.
+ */
+let _warningImage = null;
+function trayWarningImage() {
+  if (_warningImage) return _warningImage;
+  const base = trayIconImage();
+  try {
+    const size = base.getSize();
+    if (!size.width || !size.height) return base;
+    const buf = base.toBitmap(); // raw BGRA, scale factor 1
+    if (!buf || buf.length < size.width * size.height * 4) return base;
+    const r = Math.max(3, Math.floor(Math.min(size.width, size.height) * 0.3));
+    const cx = size.width - r - 1;
+    const cy = size.height - r - 1;
+    for (let y = cy - r; y <= cy + r; y += 1) {
+      for (let x = cx - r; x <= cx + r; x += 1) {
+        if (x < 0 || y < 0 || x >= size.width || y >= size.height) continue;
+        const dx = x - cx;
+        const dy = y - cy;
+        if (dx * dx + dy * dy > r * r) continue;
+        const i = (y * size.width + x) * 4;
+        buf[i] = 16;       // B
+        buf[i + 1] = 150;  // G
+        buf[i + 2] = 230;  // R  -> amber #E69610
+        buf[i + 3] = 255;  // A
+      }
+    }
+    _warningImage = nativeImage.createFromBitmap(buf, { width: size.width, height: size.height });
+    return _warningImage;
+  } catch (e) {
+    bootLog(`trayWarningImage failed: ${e && e.message}`);
+    return base;
+  }
+}
+
+/*
  * Native OS toast for failure modes the user otherwise wouldn't notice
  * (recorder dead, OBS dropped, screenshots failing). Routes through the
  * OS notification surface so it pierces attention without a modal.
@@ -48,4 +88,4 @@ function notifyUser(title, body, options) {
   }
 }
 
-module.exports = { notifyUser, trayIconImage };
+module.exports = { notifyUser, trayIconImage, trayWarningImage };

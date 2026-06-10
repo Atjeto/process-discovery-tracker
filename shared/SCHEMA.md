@@ -82,7 +82,7 @@ End markers carry `null` label by convention; they close the innermost open Star
 }
 ```
 
-Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`, `recorder_start`, `recorder_stop`, `recorder_died`, `recorder_dead_permanent`, `recorder_health`, `uncaptured_app`.
+Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`, `recorder_start`, `recorder_stop`, `recorder_died`, `recorder_dead_permanent`, `recorder_health`, `recorder_silent`, `recorder_silent_end`, `uncaptured_app`.
 
 Kind-specific payloads:
 
@@ -97,6 +97,8 @@ Kind-specific payloads:
 | `recorder_start` / `recorder_stop` / `recorder_dead_permanent` | (empty) |
 | `recorder_died` | `{ code, signal, restart_count }` |
 | `recorder_health` | `{ queued, emitted_total, dropped_total, errors, last_error? }` -- a periodic snapshot of the C# recorder's stats line (~every 30s). `last_error` (`{ kind, pid, process_name, control_type, message }`) is present only after a recorder-side failure. |
+| `recorder_silent` | `{ silent_for_ms }` -- the capture app's dead-man monitor detected no interaction event AND no `recorder_health` heartbeat for over ~2 minutes during an active session (the silent-death failure mode). Fired once per silence stretch, alongside a tray warning state + OS notification. The analyst should treat the span from the last signal as interaction-blind. |
+| `recorder_silent_end` | `{ gap_ms }` -- recorder signals resumed after a `recorder_silent` stretch; `gap_ms` is the full signal-to-signal gap. |
 | `uncaptured_app` | `{ app, pid }` -- a foreground app the recorder produced no interaction events for, after a sustained stretch frontmost (commonly an elevated process, or one with no UI Automation surface). Emitted once per pid. |
 | `session_start` / `session_end` / `paused` / `resumed` | (empty) |
 
@@ -225,6 +227,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "drift_markers": [],
   "starred_screenshots": [],
   "memo_selection": [],
+  "self_annotations": [],
   "matched_against": null,
   "last_modified": null,
   "last_modified_by": null,
@@ -232,7 +235,26 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`, `memo_selection`) are additive; missing files are treated as empty.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`, `memo_selection`, `self_annotations`) are additive; missing files are treated as empty.
+
+**`self_annotations`** *(optional array; lab-phase spec §E3)* — the worker's own answers from the capture app's close-out wizard, written **on the worker's machine at session end** (the one annotations.json key the capture side authors; everything else is analyst-side). Each entry:
+
+```json
+{
+  "self_annotation_id": "sa-x1y2z3a4",
+  "template_key": "longest_segment" | "top_activity_cluster" | "anomaly" |
+                  "ambiguous_case_boundary" | "high_frequency_motif" |
+                  "app_switching" | "high_retypes",
+  "question": "the exact observed-value question shown",
+  "answer": "the worker's free-text answer (may be empty if only the flag was set)",
+  "is_exception": false,
+  "observed": { "...the measured values the question referenced..." },
+  "manually_authored": true,
+  "created_at": "ISO 8601"
+}
+```
+
+Questions are heuristic-templated from observed values only (durations, counts, labels measured in `events.jsonl` — no inference, no LLM); `manually_authored: true` means re-normalization preserves the entries verbatim, like any analyst edit. The pipeline treats the key as opaque and round-trips it.
 
 **`memo_selection`** *(optional string array; lab-phase spec §A4/§A5)* — the `findings[].id` values the analyst ticked "include in memo" on in the viewer's Overview level. `memo_export` renders exactly these findings when the list is non-empty (falling back to the top findings in feed order when empty or when no listed id matches the regenerated findings). Analyst-owned; never written by the pipeline.
 
@@ -721,6 +743,12 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
     "worker_id": "alice",
     "acknowledged_at": "ISO 8601 or null"
   },
+  "worker_review": {
+    "submitted": true,
+    "submitted_at": "ISO 8601",
+    "questions_asked": 4,
+    "questions_answered": 3
+  },
   "recovered": false
 }
 ```
@@ -761,6 +789,14 @@ to that. Display precedence is `label` (a post-session rename) → `engagement_n
 curated on an `app_prep` session (`null` otherwise). App-prep sessions are filed
 under `engagement_id: "vocab-prep"` so they don't pollute a real engagement's
 captures — see [CAPTURE.md](../docs/architecture/CAPTURE.md).
+
+`worker_review` *(optional; lab-phase spec §E3)* is the worker's explicit
+"Submit session" from the close-out wizard's read-only review pane — worker
+agency as the consent feature. **Absent = the worker never submitted** (they
+closed the wizard without the button, or the session predates the feature);
+the recording itself is unaffected either way. `questions_asked` /
+`questions_answered` count the wizard's observed-value questions (answers live
+in `annotations.json self_annotations[]`).
 
 ## session-integrity.json
 
