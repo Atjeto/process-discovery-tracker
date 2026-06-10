@@ -14,8 +14,18 @@
 > recorder 69, session golden green WITHOUT regeneration — the shipped
 > vocabs carry no semantic fields, so the pipeline output is bit-stable;
 > consolidation pending owner sign-off).
-> Phases D–E below are the remaining build contracts, written to be
-> **chipped one per session**: each is self-contained, sized for one
+> **Phase D: BUILT + validated** on `lab-phase-d` (new flywheel-smoke 8/8 —
+> anchor Accept → template export carries `case_anchor` → session 2
+> self-segments via the INHERITED anchor + 26 auto_matched steps → Compare
+> leads with a `variant_divergence` card; session-smoke 22/22,
+> overview-smoke 11/11, map-slim-smoke 9/9, vocab-smoke 22/22, pytest 486
+> (no Python changes), viewer 309 incl. the new divergence + anchor-carry
+> suites, capture 86, recorder 69, session golden green WITHOUT
+> regeneration — Phase D is viewer-side only; consolidation pending owner
+> sign-off. Fix landed en route: the Match-Template flow no longer
+> clobbers the freshly matched annotations.)
+> Phase E below is the remaining build contract, written to be
+> **chipped one per session**: it is self-contained, sized for one
 > session, and ends with the same non-negotiable validation discipline
 > as §A6.
 >
@@ -115,7 +125,7 @@ Detectors fire only when preconditions hold:
 | `backtracking` | steps exist | motif port: `git show project-vision-ai-ml:normalization/patterns/motif_mining.py` — stdlib, port as-is into `normalization/motifs.py`, detect A→B→A bounces + repeats |
 | `rekey_transfer` | vocab matches or value-equality on masked derived values | coalesced interactions |
 | `coverage_caveat` | any app at basic/minimal/wall trust | per-app capture tiers from `framework`/`identity_source`/`coverage_hint` (§11e fields — already captured, currently unrendered) |
-| `variant_divergence` | Tier 2 + ≥2 sessions | deferred to Phase B (Compare surface) |
+| `variant_divergence` | Tier 2 + ≥2 sessions | landed in Phase D (`viewer/variant-divergence.js`, aggregate-level findings) |
 
 ### A4. Pipeline — memo export
 

@@ -15,6 +15,7 @@ dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj
 cd e2e && node session-smoke.js   # the REAL viewer — INCLUDES the map-connectivity pin
 cd e2e && node overview-smoke.js && node map-slim-smoke.js   # lab-phase pins (Overview default · slimmed map · §C4 posture)
 cd e2e && node vocab-smoke.js     # App Library pins (discovery row legibility · §C2 checklist · §C3 export · §C4 sealed)
+cd e2e && node flywheel-smoke.js  # §D4: accept anchor → export template (carries case_anchor) → session 2 self-segments → Compare divergence feed
 ```
 
 If any goes red, you broke something — fix it or revert; never commit red, never delete a
@@ -82,6 +83,18 @@ and it drives the viewer's own `electron`.
   pinned by `e2e/overview-smoke.js`.
 - **Compare-Sessions:** stub the OS open-dialog, then click `#btn-open-multi-hero` to load:
   `app.evaluate(({dialog}, p) => { dialog.showOpenDialog = async () => ({canceled:false, filePaths:[p]}); }, AGG_FOLDER)`
+  **§D2 (lab-phase):** the Compare grid LEADS with `#agg-findings-panel` (cross-session
+  `variant_divergence` cards — same `.ov-finding` component as the Overview, ids prefixed
+  `variant_divergence-`) and `#agg-aligned-panel` (`#agg-aligned-content .backbone-row` pooled
+  backbone rows, read-only); the merged map panel sits BELOW them. Both render only for ≥ 2
+  Tier-2 sessions of the same process (template id or accepted anchor); below the precondition
+  the findings panel shows the replace-pattern note. Pinned by `e2e/flywheel-smoke.js`.
+- **Template flywheel (§D3):** the Steps toolbar's `#btn-steps-to-template` export carries the
+  session's accepted anchor into the template's `case_anchor` (a name prompt = `.modal-prompt
+  .modal-input` + `.modal-ok`; the save dialog is `dialog.showSaveDialog`); the Template view's
+  YAML + version compare live in the collapsed `#template-machine-drawer`. The Phases view's
+  "Suggest groupings..." button EXISTS only behind `require("./flags.js").setFlag("autoPhaseSuggest", true)`
+  (default off) — do not "fix" its absence.
 - **Map controls:** notation `.panel-tab[data-map="bpmn"|"dfg"]`; grain select `#session-map-level`
   (session) / `#map-level` (aggregate). **§B2 (lab-phase):** the session default is the
   screen-grain Flow diagram with TIME-weighted edges (count in the `.dfg-edge-tip` hover);

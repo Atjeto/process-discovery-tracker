@@ -175,7 +175,21 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 
 ### Compare Sessions (Aggregate) view
 
-- **Process maps — notation × level matrix** — Process diagram (BPMN, via bpmn-js)
+- **Cross-session findings feed** (lab-phase §D1/§D2) — the surface LEADS with
+  `variant_divergence`: for ≥ 2 Tier-2 sessions of the **same process** (same
+  Process Template or the same accepted case anchor), per-case step-label
+  sequences are aligned on the consensus backbone and compared per
+  worker/session — *who completes a case in how many steps (median active
+  time), and where the paths first diverge*. Rendered with the same
+  finding-card component as the Overview; claims comparative, never normative;
+  below the precondition an honest replace-pattern note renders instead. The
+  findings export at the top of the Markdown report (all loaded sessions).
+- **Aligned reading** (lab-phase §D2) — the pooled consensus step backbone
+  across every loaded case, with per-worker/session hit counts (`A 4/4 ·
+  B 0/3`) and off-backbone exceptions — how the process reads before it is
+  drawn. Read-only here; curation stays in the Steps view's Aligned reading.
+- **Process maps — notation × level matrix** (demoted below the findings +
+  aligned reading, §D2) — Process diagram (BPMN, via bpmn-js)
   or Flow diagram (DFG, via cytoscape + `@dagrejs/dagre`), each at Activity / Step
   / Phase level; the two axes are independent (ADR-0012). Both lay out
   **left-to-right** and group the screen axis **value-free** (one logical screen is
@@ -195,7 +209,15 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 ### Across the viewer
 
 - **Process Template editor** — define and version a canonical step set and match
-  sessions against it.
+  sessions against it. **The primary way a template is born is as a byproduct
+  of curation** (lab-phase §D3): Steps → "Export as Process Template" carries
+  each curated step's match rules **and the accepted case anchor** into the
+  YAML, so the next session of the same process arrives **self-segmented**
+  (anchor inherited via template) and auto-matched — the flywheel. The raw
+  YAML editor + version compare live in a collapsed **Machine-layer drawer**;
+  auto-phase suggestion is out of the default flow (config flag
+  `autoPhaseSuggest`, default off — phases come from the template or the
+  analyst's own grouping).
 - **App Library** — create, edit, and **delete** the App Vocabularies that enrich
   interactions, and **Discover from window** — point-and-learn discovery snapshots a
   prepared app window (two passes) and loads a stable-signature skeleton, the picker

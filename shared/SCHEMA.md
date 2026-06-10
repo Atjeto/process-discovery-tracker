@@ -567,6 +567,8 @@ The non-`_`-prefixed keys are the standard `case_anchor` shape (see `normalizati
 
 `null` (the default) means "no override set" — the pipeline falls back to marker mode.
 
+**The flywheel (lab-phase §D3):** the viewer's "Export as Process Template" copies an accepted override into the exported template's `canonical_process.case_anchor` (audit fields stripped — `canonical-author.anchorFromOverride`, the JS twin of `coerce_anchor_override`). A later session matched against that template is case-stamped by the **inherited** anchor (template precedence above), so it needs no `case_anchor_override` of its own.
+
 ### Reference maps (`reference_maps[]`)
 
 Analyst-authored, **decoupled** editable BPMN copies forked from a mined map cell (ADR-0019). A reference map is a **one-way leaf**: the analyst forks the live (laid-out) Process diagram into a standalone `.bpmn`, edits it freely with the full bpmn-js palette, and the pipeline **never** re-mines, merges, or regenerates it. The metadata row lives here; the diagram blob lives at `derived_maps/<map_id>.bpmn`.

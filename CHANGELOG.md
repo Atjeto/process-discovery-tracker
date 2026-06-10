@@ -6,8 +6,66 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Phases B and C of the honesty redesign
+Phases B, C and D of the honesty redesign
 ([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)).
+
+### Added (Phase D — multi-session truth: divergence, Compare reframe, flywheel)
+
+- **`variant_divergence` detector** (§D1) — new `viewer/variant-divergence.js`:
+  given ≥ 2 loaded sessions of the **same process** (same Process Template id
+  or the same accepted case anchor — the identities coalesce, so an
+  anchor-accepted session pairs with a template-matched one), and **Tier-2
+  case quality on every participant**, it aligns the per-case step-label
+  sequences on the aligned-reading consensus backbone (the same
+  Needleman-Wunsch engine as the Steps view) and emits comparative findings
+  into an **aggregate-level `findings[]`** (additive, in-memory Compare
+  payload — nothing is written into session folders): *"Worker A completes a
+  case in N steps (median X active, c cases); worker B in M (median Y); first
+  divergence at step Z — A includes it in a/cA cases, B in b/cB."* Workers
+  collapsing to one id (the single-operator lab corpus) fall back to
+  per-session units. Claims stay comparative/factual; the confidence note
+  names the renamed-step failure mode. Same finding shape as
+  `analysis.findings[]`.
+- **Compare surface reframe** (§D2) — the Compare grid now leads with
+  **Cross-session findings** (the divergence feed, rendered by the same
+  finding-card component as the Overview — extracted to
+  `viewer/finding-cards.js` so the two feeds cannot drift) and the **Aligned
+  reading** (the pooled consensus backbone with per-worker/session hit counts
+  + off-backbone exceptions, read-only with a pointer to the Steps view for
+  curation), with the merged process map **demoted below** them. Below the
+  precondition the findings panel shows the honest replace-pattern note, not
+  silence. The Markdown report (all loaded sessions) now opens with the same
+  cross-session findings the panel showed.
+- **Template flywheel** (§D3) — "Export as Process Template" carries the
+  session's **accepted case anchor** into `canonical_process.case_anchor`
+  (new `anchorFromOverride`, the JS twin of `coerce_anchor_override`: audit
+  fields stripped), so the **next session of the same process arrives
+  self-segmented** (anchor inherited via template, no per-session Accept) and
+  auto-matched. Fixed on the way: the Match-Process-Template flow saved the
+  pre-normalize in-memory annotations AFTER the pipeline wrote the matched
+  ones, clobbering the freshly auto-matched steps (total loss on a raw
+  session) — it now reloads first, then stamps `template_path`.
+- **Machine-layer drawer** (§D3) — the Template view's raw YAML editor and
+  the version-compare panel (which lived on the Compare tab) collapse into
+  one labelled `<details>` drawer at the bottom of the Template view; the
+  explainer now leads with the byproduct path (curate → Steps → Export as
+  Process Template). Hand-authoring (`+ New Process Template`) stays, demoted
+  from primary styling.
+- **Auto-phase suggestion out of the default flow** (§D3, a §1 cargo-cult
+  cut) — the Phases view's heuristic "Suggest groupings..." button renders
+  only behind a config flag (new `viewer/flags.js`, `pdt.flag.autoPhaseSuggest`,
+  default off). Phases come from the Process Template or the analyst's own
+  grouping by default; sessions whose annotations already carry phases render
+  them unchanged.
+- **`e2e/flywheel-smoke.js`** (§D4) — the Phase D merge gate: curates a
+  marker-stripped demo session through the REAL viewer (anchor hero Accept →
+  re-analyze → ✓ Anchor badge), exports the template via the Steps toolbar
+  (asserts the YAML carries `case_anchor` + match-ruled steps), matches a raw
+  second session against it through the UI (asserts **inherited** anchor
+  segmentation — no `case_anchor_override` in its annotations — Tier 2, ≥ 1
+  `auto_matched` step), then loads the pair in Compare and asserts ≥ 1
+  `variant_divergence` card, aligned-reading backbone rows, the map demoted
+  below the findings, and zero page errors.
 
 ### Added (Phase C — vocab semantics, discovery autofill, Copy-for-LLM, posture)
 

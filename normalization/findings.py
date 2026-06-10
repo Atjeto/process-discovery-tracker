@@ -21,8 +21,10 @@ Each finding:
 
 Detectors fire only when their preconditions hold; each runs in its own
 try/except so one detector edge case never costs the rest (the analysis
-layer's standing posture). `variant_divergence` from the spec table is
-deferred to Phase B (it needs the Compare surface + 2 sessions).
+layer's standing posture). `variant_divergence` from the spec table lives
+viewer-side (`viewer/variant-divergence.js`, lab-phase §D1): it needs >= 2
+LOADED sessions, so it runs in the Compare surface's in-memory aggregate
+payload, never in a single session's analysis.json.
 
 Pure stdlib.
 """
@@ -460,6 +462,7 @@ def detect_findings(
             findings.extend(det() or [])
         except Exception:  # noqa: BLE001 -- a detector never blocks the rest
             continue
-    # variant_divergence (spec table): deferred to Phase B -- needs the
-    # Compare surface and >= 2 sessions.
+    # variant_divergence (spec table) is viewer-side (lab-phase §D1):
+    # it needs >= 2 loaded sessions, so it runs in the Compare surface's
+    # aggregate payload (viewer/variant-divergence.js), not here.
     return findings
