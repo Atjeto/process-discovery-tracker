@@ -6,8 +6,55 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Phase B of the honesty redesign ([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)
-§B1–§B5): honest analysis surfaces + deliverable polish on top of Phase A.
+Phases B and C of the honesty redesign
+([docs/LAB-PHASE-SPEC.md](docs/LAB-PHASE-SPEC.md)).
+
+### Added (Phase C — vocab semantics, discovery autofill, Copy-for-LLM, posture)
+
+- **Vocab record semantics** (§C1) — six optional, additive fields on every
+  App-Vocabulary interaction entry: `verb` (enter/select/click/submit/toggle/
+  open), `object`, `means`, `completion`, `case_id_source`, `carries_value`.
+  The loader tolerates absence (all 10 shipped vocabs stay valid untouched —
+  pinned by a loader round-trip suite); matched interactions carry the entry's
+  semantics as an additive `data.vocab_semantics`. Three consumers:
+  `completion: true` ends a step in `step_suggest` (an explicit boundary hint
+  beside the word heuristic); `case_id_source: true` adds a small
+  `anchor_suggest` scoring **bonus** (+0.08, clamped — never a gate, and never
+  enough to create a candidate that fails the structural minimums);
+  `carries_value: true` admits the field's typed values into
+  `facts.rekey_details` at a relaxed minimum length, and rekey rows now name
+  the vocab fields involved (`fields`, threaded into the finding evidence).
+- **Discovery autofill + review checklist** (§C2) — `bootstrap_from_snapshot`
+  (Discover from window) and `bootstrap_from_session` pre-fill the derivable
+  semantics on every row (verb from control type × observed event kind,
+  completion-candidates for Save/Submit/Send/OK buttons, carries_value for
+  value-holding roles; `object`/`means` are never guessed) plus the existing
+  screen grouping — and the App Library editor renders discovered rows as a
+  **checklist**: a semantics strip per row, a per-row "reviewed" tick
+  (in-session aid, stripped on save), a `reviewed n / m discovered` progress
+  count, and **Approve all**. The human pass is review, not authoring.
+- **"Copy for LLM" + reviewed import** (§C3 — authoring-time, consultant-side;
+  the runtime stays no-LLM/no-network) — buttons on the App Library and the
+  Overview export bar build **one human-readable JSON from the derived stream
+  only**: vocab skeleton rows (signatures + auto-semantics + value-free window
+  titles + a stable `row_key`), the fact strip, the findings (screenshot refs
+  and event/step id lists stripped; re-keyed values replaced by
+  join-preserving `value-N` tokens in the evidence AND inside the claim
+  sentence), and value-free step groups. The artifact opens in a line-by-line
+  review modal (Copy to clipboard / Save to file via a new generic
+  `viewer:saveTextFile` sink) — the app itself sends nothing. The import path
+  parses the LLM's `{suggestions: {row_key: {name/object/means}}}` reply into
+  a per-row approval checklist (with a select-all master toggle, a new opt-in
+  on the shared `checklistModal`); only ticked rows apply, only to the
+  human/LLM columns, and the vocabulary still needs an explicit Save.
+- **Data posture** (§C4) — `data_posture: sealed | reviewable | open`
+  (new `viewer/posture.js`, persisted in viewer user-config at
+  `pdt.dataPosture`, default `reviewable`), displayed and settable on the
+  Overview header line. **`sealed` removes every Copy-for-LLM button from the
+  DOM** (not hidden/disabled — the egress promise is enforced by code,
+  mirroring the empty-allowlist egress guard), live on change via a posture
+  bus. Pinned by `e2e/vocab-smoke.js` (§C2 checklist + §C3 export + §C4
+  sealed) and two new `e2e/overview-smoke.js` checks.
 
 ### Added (Phase B)
 

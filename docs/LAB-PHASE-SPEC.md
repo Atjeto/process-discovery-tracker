@@ -7,7 +7,14 @@
 > session-smoke 22/22, overview-smoke 9/9, pytest 465, viewer 280, capture
 > 86, recorder 69, session golden green WITHOUT regeneration — the dfg.json
 > projection counts did not move; consolidation pending owner sign-off).
-> Phases C–E below are the remaining build contracts, written to be
+> **Phase C: BUILT + validated** on `lab-phase-c` (vocab-smoke 22/22 incl.
+> the §C2 checklist / §C3 export / §C4 sealed pins, overview-smoke 11/11,
+> session-smoke 22/22, map-slim-smoke 9/9, pytest 486 incl. the new
+> semantics round-trip + discovery-autofill suites, viewer 297, capture 86,
+> recorder 69, session golden green WITHOUT regeneration — the shipped
+> vocabs carry no semantic fields, so the pipeline output is bit-stable;
+> consolidation pending owner sign-off).
+> Phases D–E below are the remaining build contracts, written to be
 > **chipped one per session**: each is self-contained, sized for one
 > session, and ends with the same non-negotiable validation discipline
 > as §A6.

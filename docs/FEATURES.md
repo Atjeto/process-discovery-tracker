@@ -204,6 +204,26 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   an honest weak-signature note), `class_name`-keyed signatures survive the save
   round-trip, and re-discovery merges into the selected vocab — entirely on-device
   ([ADR-0025](adr/0025-in-app-vocabulary-discovery.md)).
+- **Vocab record semantics + discovery autofill** (lab-phase §C1/§C2) — each
+  vocabulary row carries optional semantics (`verb`, `object`, `means`,
+  `completion`, `case_id_source`, `carries_value`); discovery **auto-fills** the
+  derivable ones (verb from control type × event kind, completion for
+  Save/Submit/Send/OK buttons, carries_value for value-holding roles) so the
+  editor pass is a per-row **review checklist** (reviewed ticks, progress count,
+  Approve all), not authoring into blank boxes. Consumers: `completion` ends a
+  step in step suggestion, `case_id_source` adds a small anchor-candidate scoring
+  bonus (never a gate), `carries_value` widens the re-key detector's field set.
+- **"Copy for LLM" + reviewed import** (lab-phase §C3 — authoring-time,
+  consultant-side; the product runtime stays no-LLM) — one human-readable,
+  PII-masked JSON of the **derived stream only** (vocab skeleton rows + facts +
+  findings with tokenized values + value-free step groups; no raw events, no
+  screenshots, no id lists), shown in a line-by-line review modal before
+  copy/save; the LLM's suggestions paste back as a per-row approval checklist
+  (suggest-don't-mutate — nothing applies without a tick, and Save stays manual).
+- **Data posture** (lab-phase §C4) — `sealed | reviewable | open` (default
+  reviewable), set and displayed on the Overview header; **sealed removes the
+  Copy-for-LLM surface from the DOM entirely** — the egress promise is enforced
+  by code, mirroring the empty-allowlist egress guard.
 - **Team taxonomy** — promote analyst classification corrections into a shared
   `taxonomy.yaml`, so they classify every future session, not just this one.
 - **Project layer** — save the working set (loaded sessions, focus session,

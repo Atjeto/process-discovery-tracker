@@ -205,6 +205,39 @@ async function shot(page, name) {
     !!(feed && !feed.err && feed.findings > 0 && feed.memoChecks === feed.findings),
     JSON.stringify(feed));
 
+  // §C4: the data posture is displayed on the Overview header line
+  // (default reviewable), the Copy-for-LLM button exists under it, and
+  // sealing the posture REMOVES the button from the DOM (re-render).
+  const posture = await page.evaluate(() => {
+    const sel = document.querySelector("#ov-posture-select");
+    return {
+      present: !!sel, value: sel ? sel.value : null,
+      copyBtn: document.querySelectorAll("#btn-ov-copy-llm").length,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("§C4: posture shown on the Overview header (default reviewable) + Copy-for-LLM present",
+    !!(posture && !posture.err && posture.present && posture.value === "reviewable" && posture.copyBtn === 1),
+    JSON.stringify(posture));
+  const sealedOv = await page.evaluate(() => {
+    const sel = document.querySelector("#ov-posture-select");
+    sel.value = "sealed";
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    return {
+      copyBtn: document.querySelectorAll("#btn-ov-copy-llm").length,
+      selValue: (document.querySelector("#ov-posture-select") || {}).value,
+      memoBtn: document.querySelectorAll("#btn-ov-export-memo").length,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("§C4: sealed posture removes Copy-for-LLM from the Overview DOM (memo export unaffected)",
+    !!(sealedOv && !sealedOv.err && sealedOv.copyBtn === 0 && sealedOv.selValue === "sealed" && sealedOv.memoBtn === 1),
+    JSON.stringify(sealedOv));
+  await page.evaluate(() => {
+    const sel = document.querySelector("#ov-posture-select");
+    sel.value = "reviewable";
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }).catch(() => {});
+  await wait(200);
+
   await shot(page, "overview-markers-state.png");
 
   // (e) Memo export: stub the shell reveal (no Explorer window in a gate),

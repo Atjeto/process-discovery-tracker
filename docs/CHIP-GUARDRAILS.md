@@ -13,7 +13,8 @@ viewer/python/python.exe normalization/golden_check.py   # session golden — pi
 cd viewer && npm test          # + cd capture && npm test
 dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj
 cd e2e && node session-smoke.js   # the REAL viewer — INCLUDES the map-connectivity pin
-cd e2e && node overview-smoke.js && node map-slim-smoke.js   # lab-phase pins (Overview default · slimmed map)
+cd e2e && node overview-smoke.js && node map-slim-smoke.js   # lab-phase pins (Overview default · slimmed map · §C4 posture)
+cd e2e && node vocab-smoke.js     # App Library pins (discovery row legibility · §C2 checklist · §C3 export · §C4 sealed)
 ```
 
 If any goes red, you broke something — fix it or revert; never commit red, never delete a
@@ -91,6 +92,18 @@ and it drives the viewer's own `electron`.
 - **Live map graph:** the DFG host exposes `host.__cy` (a cytoscape instance); the BPMN host
   has `.djs-element[data-element-id]` shapes. Hosts: `#session-map-{bpmn,dfg}-host` (session) ·
   `#{bpmn,dfg}-host` (aggregate).
+- **App Library (vocab editor):** list rows `#vocab-list .vocab-row`; per-interaction rows
+  `#vocab-interactions .vocab-int` with signature inputs `[data-sig="…"]`, the §C1 semantics strip
+  (`select[data-sem="verb"]`, `input[data-sem="object"|"means"]`,
+  `input[data-semflag="completion"|"carries_value"|"case_id_source"]`), and on DISCOVERED rows the
+  §C2 review tick `[data-review]` (+ `#vocab-review-progress`, `#btn-vocab-approve-all`).
+  Toolbar: `#btn-vocab-discover` / `#btn-vocab-save`, and — only when the data posture permits —
+  `#btn-vocab-copy-llm` / `#btn-vocab-import-llm`. Pinned by `e2e/vocab-smoke.js`.
+- **Data posture (§C4):** `require("./posture.js").setDataPosture("sealed"|"reviewable"|"open")`
+  (persisted at localStorage `pdt.dataPosture`; default reviewable); the Overview header select is
+  `#ov-posture-select`, the Overview export button `#btn-ov-copy-llm`. **Invariant: `sealed`
+  REMOVES every Copy-for-LLM button from the DOM** — pinned by vocab-smoke + overview-smoke.
+  The §C3 review modal is `.llm-export-modal` with its artifact in `.llm-export-text`.
 - **Theme:** `page.evaluate(() => require("./theme.js").setTheme("light"|"dark"))`.
 - **Window size:** `app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setContentSize(1500, 950))`.
 - **Clipping check** (labels have drifted before — see e1f5680): a visible element with
