@@ -237,6 +237,10 @@ function createMapController(config) {
     if (!hostDfg || !PdtDfg) return;
     let dfg = data && data.dfg;
     const opts = { onZoomChange: (z) => _setZoomPct(z) };
+    // §B2: the data source decides the edge-weight encoding ("time" on the
+    // annotation grain ladder, count on the taxonomy DFG); the viewer keeps
+    // the other weight in the edge tooltip either way.
+    if (data && data.edgeWeight) opts.edgeWeight = data.edgeWeight;
 
     if (level === "activity") {
       // Drill scope: a step node was clicked, so show only the activity labels

@@ -57,6 +57,18 @@
     try { ls.setItem(_layoutKey(c), JSON.stringify(pos)); } catch (_) {}
   }
 
+  /* Compact duration for edge labels / the edge tooltip ("1h 04m",
+     "4m 32s", "12s", "<1s"). Mirrors the Python claim formatter. */
+  function _fmtDur(ms) {
+    const s = Math.round((ms || 0) / 1000);
+    if (s < 1) return "<1s";
+    if (s < 60) return s + "s";
+    const m = Math.floor(s / 60), rs = s % 60;
+    if (m < 60) return rs ? m + "m " + String(rs).padStart(2, "0") + "s" : m + "m";
+    const h = Math.floor(m / 60), rm = m % 60;
+    return h + "h " + String(rm).padStart(2, "0") + "m";
+  }
+
   function render(host, dfg, opts) {
     opts = opts || {};
     host.innerHTML = "";
@@ -73,6 +85,14 @@
     // reduce, not Math.max(...spread): a large DFG (thousands of edges) would
     // overflow the JS argument-count limit and throw.
     const maxFreq = dfg.edges.reduce((m, e) => Math.max(m, e.frequency || 1), 1);
+    /* §B2 time-weighted edges: when the caller asks for edgeWeight "time"
+       AND the edges carry measured `total_ms`, thickness + label encode
+       accumulated transition TIME (the default session/aggregate grain
+       maps); the traversal count stays one hover away in the edge tooltip.
+       With no measurable time anywhere the map degrades honestly to the
+       count weighting rather than rendering uniform noodles. */
+    const maxMs = dfg.edges.reduce((m, e) => Math.max(m, e.total_ms || 0), 0);
+    const timeWeighted = opts.edgeWeight === "time" && maxMs > 0;
     const elements = [];
     for (const n of nodes) {
       const isStart = dfg.start_activities && dfg.start_activities[n];
@@ -87,13 +107,19 @@
       });
     }
     for (const e of dfg.edges) {
+      const freq = e.frequency || 1;
+      const totalMs = e.total_ms || 0;
       elements.push({
         data: {
           id: `${e.source}__${e.target}`,
           source: e.source,
           target: e.target,
-          freq: e.frequency || 1,
-          width: 1 + 5 * Math.sqrt((e.frequency || 1) / maxFreq),
+          freq,
+          totalMs,
+          edgeLabel: timeWeighted ? _fmtDur(totalMs) : String(freq),
+          width: timeWeighted
+            ? 1 + 5 * Math.sqrt(totalMs / maxMs)
+            : 1 + 5 * Math.sqrt(freq / maxFreq),
         },
       });
     }
@@ -162,7 +188,7 @@
             "target-arrow-color": tok.fg3,
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            label: "data(freq)",
+            label: "data(edgeLabel)",
             "font-family": '"JetBrains Mono", Consolas, monospace',
             "font-size": 9,
             color: tok.fg2,
@@ -215,6 +241,35 @@
     if (opts.onZoomChange) {
       cy.on("zoom", () => opts.onZoomChange(cy.zoom()));
     }
+
+    /* §B2: edge hover tooltip — the canvas has no DOM titles, so a small
+       positioned div keeps BOTH weights readable whichever one the line
+       encodes: "12× traversed · 4m 32s accumulated · mean 23s". */
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    const tip = document.createElement("div");
+    tip.className = "dfg-edge-tip";
+    tip.style.display = "none";
+    host.appendChild(tip);
+    cy.on("mouseover", "edge", (e) => {
+      const freq = e.target.data("freq") || 1;
+      const totalMs = e.target.data("totalMs") || 0;
+      let text = freq + "× traversed";
+      if (totalMs > 0) {
+        text += " · " + _fmtDur(totalMs) + " accumulated · mean " +
+          _fmtDur(totalMs / freq);
+      }
+      tip.textContent = text;
+      const p = e.renderedPosition ||
+        (e.originalEvent && { x: e.originalEvent.offsetX, y: e.originalEvent.offsetY });
+      if (p) {
+        tip.style.left = Math.max(0, Math.round(p.x + 10)) + "px";
+        tip.style.top = Math.max(0, Math.round(p.y - 24)) + "px";
+      }
+      tip.style.display = "";
+    });
+    cy.on("mouseout", "edge", () => { tip.style.display = "none"; });
+    // Any pan/zoom invalidates the anchored position — just hide it.
+    cy.on("pan zoom", () => { tip.style.display = "none"; });
 
     // Variant overlay (Phase E). Pre-index, for every activity, the set
     // of node ids and edge ids on variants passing through it. On node

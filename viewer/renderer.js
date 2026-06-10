@@ -308,6 +308,17 @@ function _sessionMapDataSource({ notation, level, scope }) {
           'For the ' + level + ' grain, switch to the Flow diagram tab above — it rolls up live.',
       };
     }
+    // §B2 honesty gate: the step-grain observed BPMN draws CASE flow (one
+    // trace per case), so it is Tier-2 — it renders only when
+    // case_quality.tier2_unlocked. Below the gate the section is REPLACED
+    // by the one-line state + the anchor call to action (the §1 replace
+    // pattern), never rendered with fact-level authority.
+    if (level === "step" || level === "element") {
+      const cq = (sess.analysis || {}).case_quality;
+      if (!cq || !cq.tier2_unlocked) {
+        return { emptyMessage: _stepBpmnLockedMessage(sess, cq) };
+      }
+    }
     const bpmnPath = sess.sessionFolder ? path.join(sess.sessionFolder, file) : null;
     if (!bpmnPath || !fs.existsSync(bpmnPath)) {
       return {
@@ -338,9 +349,33 @@ function _sessionMapDataSource({ notation, level, scope }) {
     ? { phaseName: scope.phaseName } : null;
   return {
     dfg: buildAnnotationDfg([sess], level, phaseFilter, _sessionGrainCtx(sess)),
+    // §B2: the default map is TIME-weighted — edge thickness/labels carry
+    // accumulated transition time; the traversal count stays in the tooltip.
+    edgeWeight: "time",
     emptyMessage: 'No ' + level + '-grain Flow diagram yet — add steps to this ' +
       'session in the Steps view (the map rolls them up at the chosen grain).',
   };
+}
+
+/* §B2: the replace-pattern lock message for the step-grain Process diagram.
+   One honest line on WHY it is withheld + the anchor call to action. HTML —
+   the CTA button is handled by the delegated listener installed on the BPMN
+   host in _ensureSessionMapCtrl (innerHTML rewrites keep delegation alive). */
+function _stepBpmnLockedMessage(sess, cq) {
+  const cands = (((sess && sess.annotations) || {}).anchor_candidates || []).length;
+  const why = !cq
+    ? "this session has no computed case quality yet — run Analyze once"
+    : (cq.mode === "unsegmented"
+        ? "this session is not case-segmented"
+        : "case coverage is " + Math.round((cq.coverage || 0) * 100) +
+          "%, below the 70% trust threshold");
+  const cta = cands
+    ? cands + " anchor candidate" + (cands === 1 ? "" : "s") + " await review."
+    : "Capture Start/End markers or accept an anchor to unlock it.";
+  return "Step-level Process diagram withheld — it draws case-based flow " +
+    "(Tier 2), and " + why + ". " + cta +
+    ' <button type="button" class="link-btn" data-map-cta="overview">' +
+    "Review on Overview</button>";
 }
 
 /* Resolver context for the grain roll-up: a stable case label and the
@@ -434,7 +469,40 @@ function _ensureSessionMapCtrl() {
     initialNotation: "dfg",
     initialLevel: State.getGrain(),
   });
+  // §B2: the lock-state CTA inside the BPMN host (the replace-pattern's
+  // "Review on Overview"). Delegated once — innerHTML rewrites keep it alive.
+  const bpmnHost = document.getElementById("session-map-bpmn-host");
+  if (bpmnHost) {
+    bpmnHost.addEventListener("click", (e) => {
+      if (e.target.closest('[data-map-cta="overview"]')) applyLevel("overview");
+    });
+  }
+  _wireMapExpertDrawer();
   return _sessionMapCtrl;
+}
+
+/* §B2: the Expert drawer — the off-contract cells removed from the default
+   notation×level matrix (lab-phase §1 cargo-cult cuts): the activity-taxonomy
+   level (both notations; the BPMN there IS the inductive-miner output) and
+   the per-case BPMN files. The files + CLI flags are untouched; the drawer
+   is the explicit, labelled way back in. */
+function _wireMapExpertDrawer() {
+  const dfgBtn = document.getElementById("btn-expert-activity-dfg");
+  const bpmnBtn = document.getElementById("btn-expert-activity-bpmn");
+  const perCase = document.getElementById("btn-expert-percase");
+  if (dfgBtn) dfgBtn.addEventListener("click", () => {
+    _ensureSessionMapCtrl().setState({ notation: "dfg", level: "activity" });
+  });
+  if (bpmnBtn) bpmnBtn.addEventListener("click", () => {
+    _ensureSessionMapCtrl().setState({ notation: "bpmn", level: "activity" });
+  });
+  if (perCase) perCase.addEventListener("click", async () => {
+    const sess = State.getSession();
+    const dir = sess && sess.sessionFolder
+      ? path.join(sess.sessionFolder, "process_maps") : null;
+    if (dir && fs.existsSync(dir)) await Ipc.revealFile(dir);
+    else toast("No per-case BPMNs on disk yet — Analyze with \"Build process map\" checked (needs 2+ cases).", "error");
+  });
 }
 
 function renderMapLevel() {

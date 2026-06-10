@@ -427,10 +427,15 @@ const OVERLAP_PROBE = () => {
     const minedBefore = fs.existsSync(minedBpmn)
       ? fs.statSync(minedBpmn).size + ":" + fs.readFileSync(minedBpmn, "utf-8").length : null;
 
-    // Fork from the Process diagram (BPMN) at the Activity level.
+    // Fork from the Process diagram (BPMN) at the Activity level. §B2 moved
+    // the activity-taxonomy cell into the Expert drawer — reach it the way a
+    // user now does (selector update only; the fork assertions are unchanged).
     if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(700); }
-    await page.click('#session-layout-map .panel-tab[data-map="bpmn"]').catch((e) => console.log("bpmn tab", e.message));
-    await page.selectOption("#session-map-level", "activity").catch(() => {});
+    await page.evaluate(() => {
+      const d = document.getElementById("map-expert-drawer");
+      if (d) d.open = true;
+    }).catch(() => {});
+    await page.click("#btn-expert-activity-bpmn").catch((e) => console.log("expert activity bpmn", e.message));
     await wait(1400);
     await page.click("#btn-fork-refmap").catch((e) => console.log("fork", e.message));
     await wait(1600);

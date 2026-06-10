@@ -61,6 +61,63 @@ test("step level: repeated cases give edges a frequency > 1", () => {
   assert.equal(dfg.end_activities["Resolve"], 2);
 });
 
+test("§B2: edges accumulate transition time across traversals (total_ms)", () => {
+  // Per traversal the edge carries entering(source) -> entering(target).
+  // c1: Search@1s -> Resolve@2s (1000ms); c2: Search@3s -> Resolve@7s (4000ms).
+  const s = sess([
+    step("a1", "Search", "c1", 1000),
+    step("b1", "Resolve", "c1", 2000),
+    step("a2", "Search", "c2", 3000),
+    step("b2", "Resolve", "c2", 7000),
+  ]);
+  const dfg = buildAnnotationDfg([s], "step");
+  const edge = dfg.edges.find((e) => e.source === "Search" && e.target === "Resolve");
+  assert.equal(edge.frequency, 2);
+  assert.equal(edge.total_ms, 1000 + 4000);
+});
+
+test("§B2: a consecutive same-label run contributes its FULL dwell to the outgoing edge", () => {
+  // Two Search steps collapse to one node; the edge to Resolve carries the
+  // time from entering the FIRST Search to entering Resolve.
+  const s = sess([
+    step("a1", "Search", "c1", 1000),
+    step("a2", "Search", "c1", 4000),     // same node (consecutive duplicate)
+    step("b1", "Resolve", "c1", 9000),
+  ]);
+  const dfg = buildAnnotationDfg([s], "step");
+  assert.equal(dfg.edges.length, 1);
+  assert.equal(dfg.edges[0].frequency, 1);
+  assert.equal(dfg.edges[0].total_ms, 8000);
+});
+
+test("§B2: a missing timestamp contributes 0 to total_ms, never a guess", () => {
+  const steps = [
+    step("a", "Search", "c1", 1000),
+    step("b", "Resolve", "c1", 2000),
+  ];
+  delete steps[1].time_range;            // hand-authored step, no times
+  const dfg = buildAnnotationDfg([sess(steps)], "step");
+  const edge = dfg.edges[0];
+  assert.equal(edge.frequency, 1);
+  assert.equal(edge.total_ms, 0);
+});
+
+test("§B2: dropRareEdges preserves the time weight on surviving edges", () => {
+  const dfg = {
+    edges: [
+      { source: "A", target: "B", frequency: 5, total_ms: 60000 },
+      { source: "B", target: "C", frequency: 4, total_ms: 40000 },
+      { source: "B", target: "X", frequency: 1, total_ms: 500 },
+    ],
+    start_activities: { A: 5 },
+    end_activities: { C: 4, X: 1 },
+  };
+  const r = dropRareEdges(dfg, 2);
+  assert.equal(r.hidden, 1);
+  for (const e of r.dfg.edges) assert.equal(typeof e.total_ms, "number");
+  assert.equal(r.dfg.edges.find((e) => e.target === "B").total_ms, 60000);
+});
+
 test("phase level: collapses consecutive steps in the same phase to one node", () => {
   const s = sess([
     step("a", "s1", "c1", 1000, "p1"),

@@ -431,8 +431,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="panel-tabs">
                 <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
                 <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
-                <select id="session-map-level" class="map-status-select" title="Map grain (ADR-0024): Activity (taxonomy, needs rules) or the grain ladder element ⊂ screen ⊂ app ⊂ phase ⊂ case (built from your annotations, no taxonomy needed). Synced with the Grain slider above.">
-                  <option value="activity">Activity (taxonomy)</option>
+                <select id="session-map-level" class="map-status-select" title="Map grain (ADR-0024): the grain ladder element ⊂ screen ⊂ app ⊂ phase ⊂ case (built from your annotations, no taxonomy needed). Synced with the Grain slider above. The activity-taxonomy level moved into the Expert drawer below the map (lab-phase §B2).">
+                  <!-- §B2: the activity-taxonomy cell left the default matrix (the
+                       Expert drawer below the map reaches it). The hidden option keeps
+                       the select showing an honest label while an expert cell is active. -->
+                  <option value="activity" hidden>Activity (taxonomy — expert)</option>
                   <option value="element">Element — every field</option>
                   <option value="screen">Screen — one per screen</option>
                   <option value="app">App</option>
@@ -467,6 +470,20 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="map-pane active" id="session-map-bpmn-host"></div>
               <div class="map-pane" id="session-map-dfg-host" style="display:none"></div>
             </div>
+            <!-- §B2 Expert drawer: the off-contract cells cut from the default
+                 notation×level matrix (lab-phase §1 cargo-cult cuts). Files +
+                 CLI flags untouched; this is the explicit, labelled way back. -->
+            <details class="map-expert" id="map-expert-drawer">
+              <summary title="Views imported from system-log process mining that desktop capture can't support with fact-level authority — kept reachable for experts, off the deliverable contract.">Expert / off-contract views</summary>
+              <div class="map-expert-body">
+                <p class="map-expert-hint">These cells render canon that desktop data can't back at fact authority (taxonomy-classified activities; an inductive-miner model on unmarked data; per-case models). They stay on disk and on the CLI — use deliberately.</p>
+                <div class="map-expert-cells">
+                  <button type="button" class="link-btn" id="btn-expert-activity-dfg" title="The taxonomy-classified activity Flow diagram (needs taxonomy rules for this estate's apps).">Activity (taxonomy) — Flow diagram</button>
+                  <button type="button" class="link-btn" id="btn-expert-activity-bpmn" title="The inductive-miner BPMN over taxonomy activities (process_map.bpmn) — a model fit, not observed flow.">Inductive-miner BPMN (activity)</button>
+                  <button type="button" class="link-btn" id="btn-expert-percase" title="Reveal the per-case BPMN files (process_maps\&lt;case&gt;.bpmn) in Explorer.">Per-case BPMN files…</button>
+                </div>
+              </div>
+            </details>
             <div class="refmap-panel" id="refmap-panel" style="display:none">
               <div class="refmap-panel-head">
                 <h4>Reference maps</h4>

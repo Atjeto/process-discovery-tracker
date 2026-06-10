@@ -303,23 +303,43 @@ function buildAnnotationDfg(sessions, level, filter, ctx) {
       // value-free step type (computed live so the flow collapses without a
       // re-analyze, persisted process_label preferred); "screen"/"app"/"case"
       // read the containment key; "phase" the phase name.
-      let seq = caseSteps.map((st) => grainLabel(st, notch, labelCtx));
-      // Collapse consecutive duplicates (a run of same-grain steps = one node).
-      seq = seq.filter((v, i) => i === 0 || v !== seq[i - 1]);
-      if (!seq.length) continue;
+      // Collapse consecutive duplicates (a run of same-grain steps = one
+      // node), keeping each collapsed group's ENTRY time so the edges can
+      // accumulate transition time (§B2).
+      const labels = [];
+      const entries = [];
+      for (const st of caseSteps) {
+        const label = grainLabel(st, notch, labelCtx);
+        if (!labels.length || labels[labels.length - 1] !== label) {
+          labels.push(label);
+          entries.push(_stepStart(st));
+        }
+      }
+      if (!labels.length) continue;
 
-      startAct[seq[0]] = (startAct[seq[0]] || 0) + 1;
-      endAct[seq[seq.length - 1]] = (endAct[seq[seq.length - 1]] || 0) + 1;
-      for (let i = 0; i < seq.length - 1; i++) {
-        const k = seq[i] + SEP + seq[i + 1];
-        edgeMap.set(k, (edgeMap.get(k) || 0) + 1);
+      startAct[labels[0]] = (startAct[labels[0]] || 0) + 1;
+      endAct[labels[labels.length - 1]] = (endAct[labels[labels.length - 1]] || 0) + 1;
+      for (let i = 0; i < labels.length - 1; i++) {
+        const k = labels[i] + SEP + labels[i + 1];
+        const cur = edgeMap.get(k) || { freq: 0, ms: 0 };
+        cur.freq += 1;
+        // §B2 time-weighted edges: the time that flows along A->B is
+        // entering A -> entering B (A's dwell, trailing gap included), so
+        // a thick edge reads "this hand-off carried the time". Summed over
+        // every traversal; a missing timestamp contributes 0, never a guess.
+        const a = entries[i];
+        const b = entries[i + 1];
+        if (a && b && b > a) cur.ms += (b - a);
+        edgeMap.set(k, cur);
       }
     }
   }
 
-  const edges = [...edgeMap.entries()].map(([k, freq]) => {
+  const edges = [...edgeMap.entries()].map(([k, v]) => {
     const [source, target] = k.split(SEP);
-    return { source, target, frequency: freq };
+    // `total_ms` is ADDITIVE next to the traversal count -- dfg-viewer keeps
+    // rendering count-weighted when asked (or when no time was measurable).
+    return { source, target, frequency: v.freq, total_ms: Math.round(v.ms) };
   });
   return { edges, start_activities: startAct, end_activities: endAct };
 }

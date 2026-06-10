@@ -144,6 +144,8 @@ function _aggregateMapDataSource({ notation, level, scope }) {
   return {
     dfg: buildAnnotationDfg(_lastFilteredForMap || [], level, phaseFilter,
                             { caseLabel: (id) => id }),
+    // §B2: grain-ladder edges are time-weighted (count stays in the tooltip).
+    edgeWeight: "time",
     emptyMessage: 'No ' + level + '-grain flow yet — add steps to the loaded sessions',
   };
 }
