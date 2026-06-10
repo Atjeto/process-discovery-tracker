@@ -141,16 +141,39 @@ function stepsToTemplateSteps(steps, events, vocabs) {
   });
 }
 
-/** A minimal valid canonical_process object. `steps` defaults to []. */
-function canonicalSkeleton(name, steps) {
-  return {
-    canonical_process: {
-      id: slugify(name) || "untitled-process",
-      name: (name || "Untitled Process").trim(),
-      version: 1,
-      steps: Array.isArray(steps) ? steps : [],
-    },
+/** A minimal valid canonical_process object. `steps` defaults to [].
+ *  opts.caseAnchor (a clean `case_anchor` block, see anchorFromOverride)
+ *  rides along so a template exported from a curated session carries the
+ *  accepted anchor -- the flywheel (lab-phase §D3): the NEXT session of
+ *  the same process arrives self-segmented, no per-session Accept. */
+function canonicalSkeleton(name, steps, opts) {
+  const proc = {
+    id: slugify(name) || "untitled-process",
+    name: (name || "Untitled Process").trim(),
+    version: 1,
   };
+  if (opts && opts.caseAnchor) proc.case_anchor = opts.caseAnchor;
+  proc.steps = Array.isArray(steps) ? steps : [];
+  return { canonical_process: proc };
+}
+
+/* The session's accepted anchor (annotations.case_anchor_override) as a
+   clean template `case_anchor` block -- JS port of
+   normalization/anchor_suggest.coerce_anchor_override. Strips the
+   `_accepted_*` audit fields (they tie the override to its candidate;
+   a template is session-independent) and null values; null when the
+   override is absent/malformed (no `field` string and no `recognized`
+   category). Keep the two in sync. */
+function anchorFromOverride(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (typeof raw.field !== "string" && !raw.recognized) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k.startsWith("_") || v === null || v === undefined) continue;
+    out[k] = v;
+  }
+  if (out.case_label_from == null) out.case_label_from = "value";
+  return out;
 }
 
 /* ---- Phase authoring. A canonical_process may carry a `phases` list,
@@ -333,7 +356,7 @@ function ruleDrift(rule, vocabs) {
 
 module.exports = {
   slugify, interactionMatches, longestCommonSubstring,
-  deriveMatchRule, stepsToTemplateSteps, canonicalSkeleton,
+  deriveMatchRule, stepsToTemplateSteps, canonicalSkeleton, anchorFromOverride,
   ensurePhase, assignStepToPhase,
   vocabSignatureKey, signatureFromInteraction, mergeInteractionsIntoVocab,
   vocabInteractionToRule, recognizeRule, ruleDrift,

@@ -18,7 +18,7 @@ const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
 const PdtAlign = require("../step-alignment.js");
 const PdtPalette = require("../command-palette.js");
-const { stepsToTemplateSteps, canonicalSkeleton, slugify } = require("../canonical-author.js");
+const { stepsToTemplateSteps, canonicalSkeleton, anchorFromOverride, slugify } = require("../canonical-author.js");
 const { loadVocabs } = require("./identity-picker.js");
 const { rollUpSteps } = require("../process-map-levels.js");
 
@@ -1055,10 +1055,19 @@ async function exportStepsAsTemplate() {
     toast("This session has no steps to export — add or analyze steps first.", "error");
     return;
   }
+  // §D3 (the flywheel): the accepted case anchor rides along into the
+  // template's case_anchor, so the NEXT session of this process arrives
+  // self-segmented + auto-matched -- no per-session Accept.
+  const caseAnchor = anchorFromOverride(anno.case_anchor_override);
+  const anchorNote = caseAnchor
+    ? ' The accepted case anchor ("' +
+      (caseAnchor.field || caseAnchor.recognized) +
+      '") is carried into the template, so the next session of this process self-segments.'
+    : "";
   const name = await promptModal({
     title: "Export as Process Template",
     message: "Name this process",
-    detail: steps.length + " step(s) will be carried over, each with a match rule derived from its interactions.",
+    detail: steps.length + " step(s) will be carried over, each with a match rule derived from its interactions." + anchorNote,
     placeholder: "e.g. Customer Onboarding",
     okLabel: "Create template",
   });
@@ -1067,7 +1076,8 @@ async function exportStepsAsTemplate() {
   let vocabs = [];
   try { vocabs = await loadVocabs(); } catch (_) { vocabs = []; }
   const tplSteps = stepsToTemplateSteps(steps, State.getSession().events || [], vocabs);
-  const content = yaml.dump(canonicalSkeleton(name, tplSteps),
+  const content = yaml.dump(
+    canonicalSkeleton(name, tplSteps, caseAnchor ? { caseAnchor } : undefined),
     { lineWidth: 120, noRefs: true, sortKeys: false });
   const r = await Ipc.newCanonicalFile({
     content, suggestedName: slugify(name) || "new-process",
@@ -1075,7 +1085,8 @@ async function exportStepsAsTemplate() {
   if (!r) return;
   const withRules = tplSteps.filter((s) => s.match.length).length;
   toast("Process Template created — " + tplSteps.length + " step(s), " +
-    withRules + " with a derived match rule", "success");
+    withRules + " with a derived match rule" +
+    (caseAnchor ? ", case anchor carried over" : ""), "success");
   const open = await confirmModal({
     title: "Open the new template?",
     message: "Switch to the Process Template tab to review and refine the match rules?",

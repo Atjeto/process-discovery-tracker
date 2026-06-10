@@ -25,6 +25,8 @@ const SessionSummary = require("../session-summary.js");
 const AnalysisAggregate = require("../analysis-aggregate.js");
 const PdtTheme = require("../theme.js");
 const TimelineCore = require("../timeline/timeline-core.js");
+const { detectVariantDivergence, pooledAlignment } = require("../variant-divergence.js");
+const { findingCardHtml } = require("../finding-cards.js");
 
 /* H2/H3 conformance colours -- must match dfg-viewer.js's CONF_*. */
 const CONF_GREEN = "#4f9d5b";
@@ -475,6 +477,10 @@ function renderAggregate() {
   const filtered = filteredAggregateSessions();
   renderOutlierBanner(filtered);
   renderTaxonomyBanner(filtered);
+  // §D2: the Compare surface leads with the divergence findings feed and
+  // the aligned reading; the merged map renders below them.
+  renderAggFindings(filtered);
+  renderAggAligned(filtered);
   renderAggAnalysis(filtered);
   // H1: the group-by-worker toggle is only meaningful with 2+ workers.
   const workerWrap = document.getElementById("agg-group-worker-wrap");
@@ -814,6 +820,119 @@ function renderAggregate() {
       driftPanel.style.display = "none";
     }
   }
+}
+
+/* ============ §D1/§D2: cross-session findings + aligned reading ==== */
+
+/* The aggregate-level findings[] (additive, in-memory payload): computed
+   fresh on every Compare render, cached only so the Markdown report
+   export ships exactly what the panel showed. */
+let _lastAggFindings = [];
+
+/** The findings the Compare surface is currently showing (for export). */
+function getAggregateFindings() {
+  return _lastAggFindings.slice();
+}
+
+/* Per-unit breakdown line under a divergence card -- the evidence detail
+   the scalar-number renderer can't reach (it lives in a nested array). */
+function _divergenceDetailHtml(f) {
+  const units = ((f.evidence || {}).per_unit) || [];
+  if (!units.length) return "";
+  const line = units.map((u) =>
+    escapeHtml(u.label) + ": " + u.case_count + " case" + (u.case_count === 1 ? "" : "s") +
+    " · median " + u.median_steps + " step" + (u.median_steps === 1 ? "" : "s") +
+    " · " + u.variant_count + " variant" + (u.variant_count === 1 ? "" : "s")
+  ).join('<span class="agg-vs"> ↔ </span>');
+  return '<div class="ov-finding-evidence">' + line + "</div>";
+}
+
+/* §D2: Compare's TOP section -- the divergence findings feed, rendered
+   with the same finding-card component as the Overview. Below the
+   precondition (>= 2 Tier-2 sessions of the same process) the section
+   shows the §1 replace-pattern note instead of empty authority. */
+function renderAggFindings(sessions) {
+  const panel = document.getElementById("agg-findings-panel");
+  const host = document.getElementById("agg-findings-content");
+  if (!panel || !host) return;
+  let findings = [];
+  try { findings = detectVariantDivergence(sessions) || []; }
+  catch (_) { findings = []; }
+  _lastAggFindings = findings;
+  if (findings.length) {
+    panel.style.display = "";
+    host.innerHTML = findings.map((f) =>
+      findingCardHtml(f, { detailHtml: _divergenceDetailHtml })).join("");
+    return;
+  }
+  if ((sessions || []).length >= 2) {
+    // Honest empty state: say what is missing, never render silence.
+    panel.style.display = "";
+    host.innerHTML = '<div class="analysis-note">No cross-session findings yet — ' +
+      "the loaded sessions don't form a same-process, case-segmented pair. " +
+      "Divergence is measured between ≥ 2 sessions that share a Process " +
+      "Template or the same accepted case anchor, each with Tier-2 case " +
+      "quality (markers, or an accepted anchor with ≥ 70% coverage — see the " +
+      "session's Overview).</div>";
+  } else {
+    panel.style.display = "none";
+  }
+}
+
+/* §D2: the aligned reading -- the Compare default for template-matched
+   sessions. The pooled consensus backbone across every loaded case, with
+   per-unit hit counts, ABOVE the merged map: how the process reads
+   before it is drawn. Read-only here (curation lives in the Steps view's
+   Aligned reading; the legend says so). */
+function renderAggAligned(sessions) {
+  const panel = document.getElementById("agg-aligned-panel");
+  const host = document.getElementById("agg-aligned-content");
+  if (!panel || !host) return;
+  let pa = null;
+  try { pa = pooledAlignment(sessions); }
+  catch (_) { pa = null; }
+  if (!pa || !pa.backbone.length) {
+    panel.style.display = "none";
+    host.innerHTML = "";
+    return;
+  }
+  panel.style.display = "";
+  const letters = "ABCDEFGH";
+  const meta = document.getElementById("agg-aligned-meta");
+  if (meta) {
+    meta.textContent = pa.case_count + " cases · " +
+      pa.units.map((u, i) => (letters[i] || "?") + " = " + u.label).join(" · ");
+  }
+  const rows = pa.backbone.map((r, i) => {
+    const partial = r.frequency < pa.case_count;
+    const per = r.per_unit_hits.map((h, ui) =>
+      '<span title="' + escapeAttr(pa.units[ui].label) + '">' +
+      (letters[ui] || "?") + " " + h + "/" + pa.units[ui].case_count + "</span>").join(" · ");
+    return '<div class="backbone-row agg-bb-row">' +
+      '<span class="bb-seq">' + (i + 1) + "</span>" +
+      '<span class="bb-name" title="' + escapeAttr(r.token) + '">' + escapeHtml(r.token) + "</span>" +
+      '<span class="agg-bb-units">' + per + "</span>" +
+      '<span class="bb-freq' + (partial ? " partial" : "") + '" title="' +
+        r.frequency + " of " + pa.case_count + ' cases include this step">' +
+        r.frequency + "/" + pa.case_count + "</span>" +
+      "</div>";
+  }).join("");
+  const excParts = [];
+  pa.units.forEach((u, i) => {
+    const uniq = [...new Set(u.exceptions || [])];
+    if (uniq.length) {
+      excParts.push((letters[i] || "?") + " only: " +
+        uniq.slice(0, 4).map((t) => '"' + t + '"').join(", ") +
+        (uniq.length > 4 ? " (+" + (uniq.length - 4) + " more)" : ""));
+    }
+  });
+  const exc = excParts.length
+    ? '<div class="bb-exceptions"><div class="bb-exc-head">Off-backbone steps</div>' +
+      '<div class="analysis-note">' + escapeHtml(excParts.join(" · ")) + "</div></div>"
+    : "";
+  host.innerHTML = rows + exc +
+    '<div class="analysis-note">Read-only here — curate the backbone in the ' +
+    "Steps view's Aligned reading (open a session, Steps → Aligned).</div>";
 }
 
 /* ============ Analysis aggregation (ANALYSIS-LAYER-FOLLOWUPS) ====== */
@@ -1410,4 +1529,4 @@ function initAggregateView(opts) {
   _initMapController();
 }
 
-module.exports = { initAggregateView, renderAggregate, openMultiFlow, loadAggregateFolders, filteredAggregateSessions };
+module.exports = { initAggregateView, renderAggregate, openMultiFlow, loadAggregateFolders, filteredAggregateSessions, getAggregateFindings };

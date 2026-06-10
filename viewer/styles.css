@@ -1866,6 +1866,17 @@ button.waste-tag-btn:hover {
   color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: var(--warn);
 }
 
+/* §D2: the Compare surface's aligned reading -- read-only backbone rows
+   (curation lives in the Steps view's Aligned reading) + the per-unit
+   hit column ("A 2/2 · B 0/3"). */
+.agg-bb-row { cursor: default; }
+.agg-bb-row:hover { background: transparent; }
+.agg-bb-units {
+  flex: none; display: flex; gap: 6px;
+  font-size: 10px; font-family: var(--font-mono); color: var(--fg-3);
+}
+.agg-vs { color: var(--fg-4); padding: 0 4px; }
+
 /* Backbone detail (consensus step) */
 .bb-detail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
 .bb-detail-title { font-size: 15px; font-weight: 600; color: var(--fg); }

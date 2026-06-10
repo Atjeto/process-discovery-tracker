@@ -579,6 +579,24 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <div class="worker-legend" id="agg-worker-legend" style="display:none"></div>
 
         <div class="aggregate-grid">
+          <!-- §D2: Compare leads with the cross-session findings feed (the
+               same finding-card component the Overview renders), then the
+               aligned reading; the merged process map is demoted below. -->
+          <div class="panel panel-wide" id="agg-findings-panel" style="display:none">
+            <h3>Cross-session findings</h3>
+            <p class="meta" style="margin-top:0">Comparative claims measured across loaded sessions of the <em>same process</em> (same Process Template or the same accepted case anchor) — who completes a case in how many steps, and where the paths first diverge. Tier 2: compared sessions must be case-segmented. Selected findings export with the Markdown report (all loaded sessions).</p>
+            <div id="agg-findings-content"></div>
+          </div>
+
+          <div class="panel panel-wide" id="agg-aligned-panel" style="display:none">
+            <div class="agg-panel-head">
+              <h3>Aligned reading</h3>
+              <span class="meta" id="agg-aligned-meta"></span>
+            </div>
+            <p class="meta" style="margin-top:0"><span class="bb-freq">n/N</span> = cases that include the step, split per worker/session. The consensus step backbone across every case in the loaded sessions — how the process reads before it is drawn. Steps off the backbone are listed as exceptions; the merged map below shows the same flow as a diagram.</p>
+            <div id="agg-aligned-content"></div>
+          </div>
+
           <div class="panel panel-wide">
             <div class="panel-header">
               <h3>Process map</h3>
@@ -687,20 +705,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <div id="drift-content"></div>
         </div>
 
-        <div class="panel panel-wide template-compare" id="template-compare-panel" style="display:none">
-          <h3>Compare Process Template versions</h3>
-          <p class="meta">When you save a Process Template, every save is archived. Pick two versions to see what changed structurally — steps and phases added, removed, or renamed.</p>
-          <div class="row">
-            <label>Version A
-              <select id="tpl-cmp-a"></select>
-            </label>
-            <label>Version B
-              <select id="tpl-cmp-b"></select>
-            </label>
-            <button id="tpl-cmp-refresh" type="button" class="link-btn">Refresh versions</button>
-          </div>
-          <div id="tpl-cmp-output" class="summary">Pick two versions to compare.</div>
-        </div>
       </div>
     </section>
 
@@ -709,11 +713,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="loaded" id="canonical-loaded">
         <div class="template-explainer">
           <h2>Process Template</h2>
-          <p>A Process Template is a reusable definition of an expected process: its steps, phases, and the UI patterns that identify each one. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
-          <p class="meta">The list of steps below is directly editable — rename, reorder, add, or delete. Match rules (which UI patterns identify each step) live in the Advanced section for engineers. Save your changes here, then re-match sessions from the Compare Sessions view.</p>
+          <p>A Process Template is a reusable definition of an expected process: its steps, phases, the UI patterns that identify each one — and the case anchor that segments a session into cases. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
+          <p class="meta"><strong>The primary way to make one is as a byproduct of curation:</strong> open a session, curate its steps, then <em>Steps → Export as Process Template</em>. The export carries each step's match rules <em>and the accepted case anchor</em>, so the next session of the same process arrives self-segmented and auto-matched. The list below stays directly editable; the raw YAML and version compare live in the Machine layer at the bottom.</p>
         </div>
         <div class="actions-bar">
-          <button id="btn-new-canonical" class="primary">+ New Process Template</button>
+          <button id="btn-new-canonical">+ New Process Template</button>
           <button id="btn-open-canonical">Open Process Template...</button>
           <button id="btn-save-canonical" disabled>Save changes</button>
           <button id="btn-close-canonical" disabled>Close</button>
@@ -739,10 +743,31 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <p class="meta exemplar-promote-hint">Adds the ticked steps to the open Process Template as new steps. Existing steps aren't changed.</p>
           </div>
         </div>
-        <details class="advanced-yaml advanced-yaml-strip" id="canonical-advanced">
-          <summary>Advanced: full template definition (YAML)</summary>
-          <p class="meta" style="margin-top:6px">Direct edit of the underlying definition — useful for fine-tuning match rules. Usually you'll add steps via the editable list above, or from a sample session. Save validates the format before writing to disk.</p>
-          <textarea id="canonical-yaml" spellcheck="false"></textarea>
+        <!-- §D3: the Machine layer — the raw template definition and its
+             version history, collapsed. The byproduct path (curate a
+             session, then Steps → Export as Process Template) is the
+             primary way templates are made; this drawer is for tuning
+             the machine, not the default workflow. -->
+        <details class="advanced-yaml advanced-yaml-strip" id="template-machine-drawer">
+          <summary>Machine layer: template definition (YAML) + version compare</summary>
+          <div id="canonical-advanced">
+            <p class="meta" style="margin-top:6px">Direct edit of the underlying definition — useful for fine-tuning match rules or the <code>case_anchor</code>. Usually you'll add steps via the editable list above, or from a sample session. Save validates the format before writing to disk.</p>
+            <textarea id="canonical-yaml" spellcheck="false"></textarea>
+          </div>
+          <div class="panel panel-wide template-compare" id="template-compare-panel" style="display:none">
+            <h3>Compare Process Template versions</h3>
+            <p class="meta">When you save a Process Template, every save is archived. Pick two versions to see what changed structurally — steps and phases added, removed, or renamed.</p>
+            <div class="row">
+              <label>Version A
+                <select id="tpl-cmp-a"></select>
+              </label>
+              <label>Version B
+                <select id="tpl-cmp-b"></select>
+              </label>
+              <button id="tpl-cmp-refresh" type="button" class="link-btn">Refresh versions</button>
+            </div>
+            <div id="tpl-cmp-output" class="summary">Pick two versions to compare.</div>
+          </div>
         </details>
       </div>
     </section>

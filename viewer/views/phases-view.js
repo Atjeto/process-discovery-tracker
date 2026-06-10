@@ -16,6 +16,7 @@ const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const PdtPhases = require("../phase-editor.js");
 const PdtPalette = require("../command-palette.js");
+const Flags = require("../flags.js");
 
 /* Injected by renderer.js. */
 let ensureAnnoShape = (a) => a;
@@ -339,7 +340,19 @@ function initPhasesView(deps) {
   }
   if ($("#btn-add-manual-phase")) $("#btn-add-manual-phase").addEventListener("click", addManualPhase);
   if ($("#btn-group-into-phase")) $("#btn-group-into-phase").addEventListener("click", groupIntoPhase);
-  if ($("#btn-suggest-phases")) $("#btn-suggest-phases").addEventListener("click", suggestPhaseGroupings);
+  // §D3: auto-phase suggestion is OUT of the default flow (a cargo-cult
+  // cut, lab-phase spec §1) -- phases come from the Process Template or
+  // the analyst's own grouping. The heuristic stays behind a config flag
+  // (default off; flags.js); existing sessions with phases render
+  // unchanged either way.
+  const _suggestBtn = $("#btn-suggest-phases");
+  if (_suggestBtn) {
+    if (Flags.flagEnabled("autoPhaseSuggest")) {
+      _suggestBtn.addEventListener("click", suggestPhaseGroupings);
+    } else {
+      _suggestBtn.remove();
+    }
+  }
 
   // I72: Phases-view commands for the Ctrl+K palette.
   if (PdtPalette) {

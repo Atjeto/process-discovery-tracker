@@ -184,7 +184,7 @@ function buildSessionReport(session) {
   return lines.join("\n");
 }
 
-function buildAggregateReport(sessions, mergedActivity, mergedCases, dfg) {
+function buildAggregateReport(sessions, mergedActivity, mergedCases, dfg, findings) {
   const lines = [];
   lines.push(`# Process Discovery - Aggregate Report`);
   lines.push("");
@@ -198,6 +198,24 @@ function buildAggregateReport(sessions, mergedActivity, mergedCases, dfg) {
   if (earliest) lines.push(`**Earliest session start:** ${fmtTs(earliest)}`);
   if (latest) lines.push(`**Latest session end:** ${fmtTs(latest)}`);
   lines.push("");
+
+  /* §D1: the cross-session findings lead the multi-session report --
+     the same claims (and order) the Compare findings feed showed. */
+  if (findings && findings.length) {
+    lines.push(`## Cross-session findings`);
+    lines.push("");
+    for (const f of findings) {
+      lines.push(`- **${mdEscape(f.claim)}**`);
+      const units = ((f.evidence || {}).per_unit) || [];
+      for (const u of units) {
+        lines.push(`  - ${mdEscape(u.label)}: ${u.case_count} case(s), ` +
+          `median ${u.median_steps} steps, median ${fmtDuration(u.median_case_ms)} active, ` +
+          `${u.variant_count} variant(s)`);
+      }
+      if (f.confidence_note) lines.push(`  - *${mdEscape(f.confidence_note)}*`);
+    }
+    lines.push("");
+  }
 
   lines.push(`## Sessions`);
   lines.push("");

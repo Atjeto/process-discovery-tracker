@@ -450,7 +450,13 @@ if (btnMatchTemplate) {
       toast("Template match failed: " + ((result && result.error) || "unknown"), "error");
       return;
     }
-    // Persist template path into annotations.json so future re-analyses remember it.
+    // Reload FIRST: the normalize just rewrote annotations.json (matched
+    // steps, suggestions, drift). Saving the pre-normalize in-memory copy
+    // here used to clobber that file — on a raw session it wiped the
+    // freshly auto_matched steps entirely (caught by flywheel-smoke §D4).
+    await loadSessionIntoView(State.getSession().sessionFolder);
+    // Persist template path into the FRESH annotations so future
+    // re-analyses remember it (the pipeline writes only id + version).
     try {
       const a = State.getSession().annotations || {};
       a.matched_against = a.matched_against || {};
@@ -459,9 +465,9 @@ if (btnMatchTemplate) {
         sessionFolder: State.getSession().sessionFolder,
         annotations: a,
       });
+      State.getSession().annotations = a;
     } catch (_) {}
     toast("Matched against Process Template", "success");
-    await loadSessionIntoView(State.getSession().sessionFolder);
   });
 }
 

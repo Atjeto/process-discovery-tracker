@@ -31,7 +31,7 @@ require("./layout-controls.js"); // side-effect import: self-wires resize handle
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
 const { promptModal, confirmModal, checklistModal } = require("./modals.js");
 const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent, relTime } = require("./recent.js");
-const { initAggregateView, renderAggregate, loadAggregateFolders, filteredAggregateSessions } = require("./views/aggregate-view.js");
+const { initAggregateView, renderAggregate, loadAggregateFolders, filteredAggregateSessions, getAggregateFindings } = require("./views/aggregate-view.js");
 const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
 const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
 const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = require("./views/template-view.js");
@@ -83,8 +83,10 @@ function activateTab(name) {
       if (PdtBpmn) PdtBpmn.fit();
       if (PdtDfg) PdtDfg.fit();
     }, 100);
-    // AM.1: refresh the version compare list when the analyst lands
-    // on the aggregate view (and a template is loaded).
+  }
+  // AM.1/§D3: refresh the version-compare list when the analyst lands on
+  // the Template view -- the panel lives in its Machine-layer drawer now.
+  if (name === "canonical") {
     if (typeof refreshTemplateVersions === "function") refreshTemplateVersions().catch(() => {});
   }
   if (name === "vocabularies") {
@@ -1014,7 +1016,10 @@ $("#btn-export-md").addEventListener("click", async () => {
     const [source, target] = k.split("\x00");
     return { source, target, frequency: freq };
   })};
-  const md = PdtReport.buildAggregateReport(filtered, mergedActivity, mergedCases, dfg);
+  // §D1: the multi-session report leads with the cross-session findings
+  // exactly as the Compare feed showed them (one source of truth).
+  const md = PdtReport.buildAggregateReport(filtered, mergedActivity, mergedCases, dfg,
+    getAggregateFindings());
   await saveMarkdownReport(md, "aggregate-report.md");
 });
 

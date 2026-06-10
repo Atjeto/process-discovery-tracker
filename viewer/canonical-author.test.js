@@ -298,3 +298,49 @@ test("ruleDrift detects a hybrid rule whose cache lags the Library entry", () =>
   assert.equal(CA.ruleDrift({ process_name: "chrome.exe" }, [v]), false); // no ref
   assert.equal(CA.ruleDrift(fresh, []), false); // unresolved, not drift
 });
+
+/* ---- §D3 (flywheel): the accepted anchor rides into the template ---- */
+
+test("anchorFromOverride strips audit fields and nulls, defaults case_label_from", () => {
+  const override = {
+    field: "automation_id",
+    equals: "customer-id-field",
+    min_case_interactions: 2,
+    min_case_duration_ms: 1000,
+    nothing: null,
+    _accepted_signature: "abc123def456",
+    _accepted_at: "2026-06-10T09:00:00Z",
+    _accepted_by: "analyst",
+  };
+  const a = CA.anchorFromOverride(override);
+  assert.deepEqual(a, {
+    field: "automation_id",
+    equals: "customer-id-field",
+    min_case_interactions: 2,
+    min_case_duration_ms: 1000,
+    case_label_from: "value",
+  });
+  // An explicit case_label_from is kept, not clobbered.
+  assert.equal(CA.anchorFromOverride({ field: "name", case_label_from: "name" }).case_label_from, "name");
+  // A recognized-category anchor needs no field.
+  assert.deepEqual(CA.anchorFromOverride({ recognized: "search" }),
+    { recognized: "search", case_label_from: "value" });
+});
+
+test("anchorFromOverride rejects absent / malformed overrides", () => {
+  assert.equal(CA.anchorFromOverride(null), null);
+  assert.equal(CA.anchorFromOverride(undefined), null);
+  assert.equal(CA.anchorFromOverride("x"), null);
+  assert.equal(CA.anchorFromOverride([]), null);
+  assert.equal(CA.anchorFromOverride({}), null);                       // no field, no recognized
+  assert.equal(CA.anchorFromOverride({ field: { equals: "x" } }), null); // field must be a string
+});
+
+test("canonicalSkeleton carries opts.caseAnchor into canonical_process.case_anchor", () => {
+  const anchor = { field: "automation_id", equals: "customer-id-field", case_label_from: "value" };
+  const sk = CA.canonicalSkeleton("Order Process", [], { caseAnchor: anchor });
+  assert.deepEqual(sk.canonical_process.case_anchor, anchor);
+  // Without the option the key is absent entirely (not null) -- an
+  // anchor-less template stays byte-compatible with the old shape.
+  assert.ok(!("case_anchor" in CA.canonicalSkeleton("P").canonical_process));
+});
