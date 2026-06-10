@@ -1,10 +1,19 @@
-# Lab-Phase Spec — Honesty Redesign, Phase A
+# Lab-Phase Spec — Honesty Redesign, Phases A–E
 
-> **Status:** Approved direction (2026-06-10), distilled from the owner-Claude
-> design session. Branch: `lab-phase-a` off `master` (clean edition v1.0.0,
-> no ML / no LLM — that constraint is permanent for product runtime; see
-> "LLM posture" below). This doc is the build contract for Phase A and the
-> standing frame for the lab phase.
+> **Status:** Approved direction (2026-06-10). **Phase A: BUILT + validated**
+> on `lab-phase-a` (overview-smoke 9/9, session-smoke 22/22, pytest 458,
+> viewer 276; consolidation to master pending owner sign-off). Phases B–E
+> below are the remaining build contracts, written to be **chipped one per
+> session**: each is self-contained, sized for one session, and ends with
+> the same non-negotiable validation discipline as §A6.
+>
+> **Chip protocol (every phase):** branch `lab-phase-<x>` off the latest
+> consolidated tip (master once Phase A is merged; else off the prior
+> phase branch). Read this doc §1 (frame) + §3 (hard constraints) +
+> [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) first. Hard rules from §3 apply
+> verbatim to every phase. No master commits, no releases, max 1–2
+> concurrent subagents, no narration, validation before any "done" claim.
+> Clean edition stays no-ML/no-LLM at runtime — permanent.
 
 ## 1. Strategic frame (why)
 
@@ -160,12 +169,10 @@ Phase A.
   screenshot; confirm the memo reads as claims+numbers, not template
   skeleton showing through. Paste the memo body into the final report.
 
-### Out of scope (Phase B/C — do not touch)
+### Out of scope for Phase A
 
-Instance-strip redesign of time study, map matrix slimming, vocab semantic
-fields + discovery autofill + "Copy for LLM", template-as-byproduct polish,
-Compare reframe, readiness check, dead-man alert, docx memo, Engagement
-concept (stays dead), anything LLM-runtime.
+Everything in Phases B–E below, the Engagement concept (stays dead), and
+anything LLM-runtime (permanently).
 
 ## 3. Constraints (hard)
 
@@ -189,6 +196,216 @@ LLM" export (Phase B) produces reviewable, PII-masked derived JSON for
 pasting into a Claude session; suggestions return as reviewed-checklist
 imports. Three engagement data postures (sealed / reviewable-derived /
 open) become a setting in Phase B; sealed = the button doesn't render.
+
+## Phase B — Honest analysis surfaces + deliverable polish
+
+**Why now:** serves lab assets 5 (mirror-tested memos) and 6 (timed
+runbook) — the memo/PDD pair must read clean before any colleague sees one.
+
+### B1. Time study → instance strip ("Where the time goes")
+
+Replace the Analysis view's time-study stats table with an **instance
+strip**: one row per step group — name, N, total time, and one dot per
+instance on a shared horizontal time axis; click a dot → jump to that
+step on the Flow timeline (reuse `jumpToStepInFlow`). Summary stat columns
+(mean/stdev/percentiles) render only at `instances >= 10` (gate exists
+from A5 — keep it, relocate). Rename the section header "Time study" →
+"Where the time goes". Data source unchanged (`analysis.time_study` +
+`step_id` evidence); this is a render change only.
+
+### B2. Map slimming (cargo-cult cut, §1)
+
+- Default map = **screen-grain DFG with time-weighted edges**: edge
+  thickness/labels from accumulated transition *time*, not traversal
+  count (extend `buildAnnotationDfg` in process-map-levels.js with an
+  edge-weight mode; keep count available in the edge tooltip).
+- **Step-grain observed BPMN renders only when `case_quality.tier2_unlocked`**;
+  locked state shows the §1 replace-pattern (one line + anchor CTA link).
+- Remove from the UI (keep CLI flags + files): inductive-miner BPMN
+  (`--mine` output `process_map.bpmn`), per-case BPMNs, the
+  activity-taxonomy map level. The notation×level matrix collapses to the
+  two defaults + an **Expert drawer** (a collapsed `<details>` exposing
+  the removed cells, clearly labeled "expert / off-contract views").
+- e2e: the map-connectivity pin (session-smoke) MUST stay green —
+  screen-grain DFG remains its subject. Update selectors only if the
+  DOM moves, never the assertion.
+
+### B3. PDD restructure — findings-first + honesty parity
+
+`normalization/pdd_export.py`: §1 becomes the findings memo content
+(same `analysis.findings` + `annotations.memo_selection[]` source as
+memo_export — one source of truth, the two artifacts cannot disagree).
+Fix the Phase-A handoff: the **ungated efficiency ratio in PDD §3.4** gets
+the same bnva_ms-override gate as the viewer; when withheld, the §1
+replace-pattern note. Tier-2 sections (cycle times, variants) gate on
+`case_quality.tier2_unlocked`. As-Is/To-Be map pair section unchanged.
+
+### B4. Memo polish
+
+- `--memo-out` docx variant (python-docx is in the bundled python — same
+  engine pdd_export uses), embedding starred screenshots inline as
+  evidence figures.
+- **Repetition-label shortening** (Phase-A handoff): segment labels in
+  findings/memo render as `app — first 2 steps … (+N more)` capped ~60
+  chars; full label in evidence detail.
+
+### B5. Validation (DoD)
+
+Suites + both e2e smokes green; overview-smoke extended only if Overview
+DOM changed. New `e2e/map-slim-smoke.js`: default map is time-weighted
+screen DFG; BPMN tab locked on a marker-stripped copy + unlocked on the
+demo session; expert drawer opens; zero page errors. Eyeball: one docx
+memo opened (screenshot), one PDD §1 read — paste both checks in report.
+Regenerate goldens ONLY if the golden projection actually changes (it
+covers stats.meta/steps/DFG — B2's dfg.json edge weights WILL hit it;
+follow the CHIP-GUARDRAILS update workflow and say so).
+
+---
+
+## Phase C — Vocab semantics, discovery autofill, Copy-for-LLM, posture
+
+**Why now:** serves lab asset 3 (vocab library for the real estate) — the
+10-minute-per-app discovery promise.
+
+### C1. Vocab record semantics (additive YAML fields)
+
+Extend the app-vocab interaction shape (loader: `app_vocab.py`; authoring
+UI: vocab-view) with optional fields: `verb` (enter/click/select/submit —
+**auto-derived** from control_type × event kind), `object` (human/LLM),
+`completion` (bool — **auto-heuristic**: Button + save/submit/send/OK
+text), `case_id_source` (bool — bridges to anchor candidacy),
+`carries_value` (bool — auto: value_changed observed), `means` (free
+text, optional). Loader tolerates absent fields (all existing vocabs stay
+valid). Consumers: `completion` becomes a step-boundary hint in
+step_suggest (natural step ends); `case_id_source` candidates feed
+anchor_suggest scoring (small bonus, never a gate); `carries_value` feeds
+the rekey detector's field set.
+
+### C2. Discovery autofill
+
+`discover_vocab.py` (+ the viewer Discover flow): after the volatility
+diff, auto-fill `verb`/`carries_value`/`completion`-candidates and screen
+grouping on every discovered row, so the human pass is *review*, not
+authoring. The vocab editor shows the auto-filled skeleton as a
+**checklist** (approve / edit per row) rather than empty boxes.
+
+### C3. "Copy for LLM" + import (authoring-time, consultant-side)
+
+- Viewer button (App Library + Overview) producing **one human-readable
+  JSON** to clipboard/file from the DERIVED stream only: vocab skeleton
+  rows (signatures + auto-semantics + window titles), fact strip,
+  findings, step groups. PII-masked values only; no raw events.jsonl
+  content; no screenshots. The export is the reviewable-egress artifact —
+  a security officer must be able to read it line by line.
+- Import path: paste/load a suggestions JSON (`{row_key: {object, means,
+  name}}`) → rendered as a reviewed checklist (suggest-don't-mutate;
+  nothing applies without per-row or select-all approval).
+
+### C4. Data-posture setting
+
+Per-session/app-level setting `data_posture: sealed | reviewable | open`
+(default `reviewable`), persisted in viewer user-config. `sealed` removes
+the Copy-for-LLM buttons from the DOM entirely (the egress promise is
+enforced by code, mirroring the egress-guard philosophy). Posture is
+displayed on the Overview header line.
+
+### C5. Validation (DoD)
+
+Suites green; vocab loader round-trip tests (old vocabs load unchanged;
+new fields tolerated + consumed); discovery autofill pytest on a recorded
+snapshot fixture; e2e `vocab-smoke.js` extended: discovery produces
+checklist rows with auto-filled verbs; sealed posture hides the button.
+Eyeball: one exported Copy-for-LLM JSON read line-by-line for leakage
+(paste it in the report), one discovered vocab screenshot.
+
+---
+
+## Phase D — Multi-session truth: Compare reframe, divergence, flywheel
+
+**Why now:** serves lab assets 4 (template flywheel proof) and the
+strongest finding class (cross-worker divergence) for asset 5.
+
+### D1. `variant_divergence` detector (Tier 2, ≥2 sessions)
+
+In the Compare/aggregate path: given ≥2 sessions of the same process
+(same template or same accepted anchor), align case step-label sequences
+(the aligned-reading backbone logic already in steps-view) and emit
+findings: "Worker A completes in N steps (median X), worker B in M
+(median Y); divergence at step Z." Written to an aggregate-level
+`findings[]` (additive, in the aggregate stats payload), rendered in
+Compare and exportable into the memo when a multi-session memo is
+generated.
+
+### D2. Compare surface reframe
+
+Compare's top section becomes the divergence findings feed (same card
+component as Overview); the merged map demotes below it. Aligned reading
+gets promoted from a Steps-view toggle to the Compare default for
+template-matched sessions.
+
+### D3. Template-as-byproduct polish (flywheel)
+
+- "Export as Process Template" from a curated session carries the
+  **accepted anchor** into `canonical_process.case_anchor` (verify; wire
+  if missing) — headline behavior: session 2 of the same process arrives
+  **self-segmented** (anchor inherited via template) and auto-matched.
+- The template YAML editor + version compare move behind a Machine-layer
+  collapse in the template view; the byproduct path (button) is primary.
+- Auto-phase suggestion comes out of the default pipeline flow: phases
+  render only when the template defines them (config flag, default off;
+  existing sessions with phases unaffected).
+
+### D4. Validation (DoD)
+
+Suites green. New `e2e/flywheel-smoke.js`: curate demo session 1 →
+export template → load session 2 (second demo session) with the template
+→ assert it case-segments via inherited anchor + auto-matches ≥1 step +
+Compare shows ≥1 divergence finding on the pair. Eyeball: the divergence
+finding text quality (paste in report).
+
+---
+
+## Phase E — Capture-side field kit (worker-facing)
+
+**Why now:** serves lab assets 2 (colleague captures) and 6 (timed
+runbook) — the first session that runs on a machine you're not sitting at.
+
+### E1. Readiness check
+
+Capture-app surface (tray menu + a `--readiness` CLI): disk space on the
+session target (the C:-full → 0-events failure class), recorder
+starts + UIA reachable, per-running-app trust tier (rich/basic/minimal/
+wall from `framework`/`identity_source`/`coverage_hint` heuristics on a
+10-second probe), writes `readiness-report.json` + a human summary
+dialog. Run before any pilot day.
+
+### E2. Dead-man alert
+
+The capture tray already receives `recorder_health` (~30 s cadence) and
+`recorder_died`. Add: if no interaction event AND no recorder_health for
+> 2 minutes during an active session → tray icon goes warning-state +
+Windows notification ("recorder silent — check capture"). The silent
+10am death must be loud.
+
+### E3. Worker close-out (port from ML branch, deterministic)
+
+Port `capture/self-annotation/` (wizard.js + wizard-window.html +
+wizard.test.js) from `project-vision-ai-ml` — it is heuristic-templated,
+no LLM, and its tests ran green there. Trigger at session end; ≤5
+observed-value questions; answers append `self_annotations[]`
+(manually_authored: true). Add the **worker review handover**: after the
+wizard, show the session summary (facts + step list, read-only) with
+"Submit session" — worker agency as the consent feature.
+
+### E4. Validation (DoD)
+
+Capture `npm test` green incl. ported wizard tests; readiness CLI run
+against the dev box pasted in report; dead-man path unit-tested by
+faking the health-event gap (no real 2-minute wait in tests); a manual
+capture run on the dev box exercising wizard → submit → session folder
+carries `self_annotations[]` (paste the JSON block). e2e stays green.
+
+---
 
 ## 5. Owner's week-zero test (runs tonight, needs no Phase A code)
 
