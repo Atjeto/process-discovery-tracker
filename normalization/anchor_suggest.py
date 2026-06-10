@@ -64,6 +64,13 @@ _W_BALANCE = 0.30     # 1 - coefficient of variation of case sizes
 _W_DIVERSITY = 0.20   # distinct labels / fire count
 _W_FOCUS = 0.10       # 1 / log2(case_count + 1) -- prefer a "right-sized" handful
 
+# Lab-phase C1: a field whose vocab entry declares `case_id_source: true`
+# gets a small additive bonus (clamped to 1.0). A BONUS, never a gate --
+# the candidate still has to clear _MIN_FIRES/_MIN_CASES and out-score the
+# field evidence on its own; the vocab just breaks ties toward the field
+# the app vocabulary says names the case.
+_VOCAB_CASE_ID_BONUS = 0.08
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -235,6 +242,7 @@ def suggest_anchors(
     # empty label that detect_cases_from_anchors deliberately skips.
     by_field: dict[tuple[str, str, str], list[str]] = defaultdict(list)
     window_titles: dict[tuple[str, str, str], Counter[str]] = defaultdict(Counter)
+    vocab_case_id: set[tuple[str, str, str]] = set()
     for ev in interactions:
         d = _interaction_data(ev)
         val = _typed_value(ev)
@@ -244,6 +252,8 @@ def suggest_anchors(
         if fid is None:
             continue
         by_field[fid].append(val)
+        if (d.get("vocab_semantics") or {}).get("case_id_source") is True:
+            vocab_case_id.add(fid)
         wt = (d.get("window_title") or "").strip()
         if wt:
             window_titles[fid][wt] += 1
@@ -280,6 +290,11 @@ def suggest_anchors(
             "coverage": round(cov, 3),
         }
         score = _score(metrics)
+        if fid in vocab_case_id:
+            # C1 consumer: the app vocabulary names this field a case-id
+            # source -- nudge it up the ranking, transparently.
+            score = round(min(1.0, score + _VOCAB_CASE_ID_BONUS), 3)
+            metrics["vocab_case_id_source"] = True
         # Choose the most common window-title as the display hint.
         wt_hint = ""
         if window_titles[fid]:

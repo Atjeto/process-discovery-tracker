@@ -272,12 +272,18 @@ def auto_suggest_steps(
             candidate.append(ev)
             last_ts = ts
             # Completion-action boundary: an invoked Button/Hyperlink
-            # with a completion word closes the current step.
-            if (data.get("kind") == "invoked"
-                    and data.get("control_type") in ("Button", "Hyperlink")):
-                name_lower = (data.get("name") or "").lower()
-                if any(w in name_lower for w in _COMPLETION_WORDS):
+            # with a completion word closes the current step. A vocab
+            # entry that declares `completion: true` (lab-phase C1) is an
+            # explicit analyst/discovery hint and closes the step without
+            # the word heuristic -- enrichment stamps it as
+            # data.vocab_semantics.completion.
+            if data.get("kind") == "invoked":
+                if (data.get("vocab_semantics") or {}).get("completion") is True:
                     flush()
+                elif data.get("control_type") in ("Button", "Hyperlink"):
+                    name_lower = (data.get("name") or "").lower()
+                    if any(w in name_lower for w in _COMPLETION_WORDS):
+                        flush()
         flush()
 
     return steps

@@ -112,6 +112,120 @@ def load_vocabularies(extra_dirs: list[str] | None = None) -> list[dict[str, Any
     return vocabs
 
 
+# --- Semantic layer (lab-phase C1) --------------------------------------
+#
+# Optional, additive per-interaction fields. A vocab written before these
+# existed loads and matches identically (every field is read with .get and
+# absent means "no semantic"); a vocab carrying them gets three consumers:
+#   completion      -> a step-boundary hint in step_suggest (a step ends when
+#                      the control completes the unit of work),
+#   case_id_source  -> a small scoring bonus in anchor_suggest (never a gate),
+#   carries_value   -> widens the rekey detector's field set (facts.rekey_details).
+# verb / object / means are authoring-time meaning (discovery autofills verb;
+# object/means are human- or LLM-suggested, always analyst-reviewed).
+
+SEMANTIC_FIELDS = (
+    "verb", "object", "completion", "case_id_source", "carries_value", "means",
+)
+
+# The controlled verb list discovery derives from control_type x event kind.
+# An authored vocab may carry any string; this is the AUTO vocabulary.
+VERBS = ("enter", "select", "click", "submit", "toggle", "open")
+
+# Name words that mark a control as completing a unit of work (the spec's
+# auto-heuristic: Button + save/submit/send/OK). Word-boundary matched so
+# "Send" fires but "Sender address" does not... ("OK" however is matched
+# case-insensitively as a whole word).
+_COMPLETION_NAME_WORDS = frozenset(
+    "save submit send ok apply confirm finish done complete post order".split()
+)
+_COMPLETION_CONTROLS = frozenset({"button", "splitbutton", "hyperlink"})
+
+# control_type -> verb, for controls whose role implies the action.
+_VERB_BY_CONTROL = {
+    "edit": "enter", "document": "enter", "spinner": "enter",
+    "combobox": "select", "list": "select", "listitem": "select",
+    "treeitem": "select", "dataitem": "select", "radiobutton": "select",
+    "checkbox": "toggle",
+    "menuitem": "open", "tabitem": "open", "tab": "open", "hyperlink": "open",
+}
+
+# Observed event kind -> verb (the session-bootstrap path, where we saw what
+# the worker actually DID with the control; beats the control-role guess).
+_VERB_BY_KIND = {
+    "value_changed": "enter", "text_changed": "enter",
+    "selection_changed": "select", "toggle_changed": "toggle",
+}
+
+# Controls that hold a typed/selected business value (the snapshot path's
+# carries_value heuristic; the session path uses observed value_changed).
+_VALUE_CONTROLS = frozenset(
+    {"edit", "document", "combobox", "spinner", "dataitem"})
+
+
+def _ct(control_type: Any) -> str:
+    return str(control_type or "").strip().lower()
+
+
+def derive_completion(control_type: Any, name: Any) -> bool:
+    """Auto-heuristic (spec C1): an action control whose label is a
+    completion word ("Save", "Submit incident", "Send", "OK")."""
+    if _ct(control_type) not in _COMPLETION_CONTROLS:
+        return False
+    words = re.findall(r"[a-z]+", str(name or "").lower())
+    return any(w in _COMPLETION_NAME_WORDS for w in words)
+
+
+def derive_verb(control_type: Any, name: Any = None,
+                kinds: set[str] | None = None) -> str:
+    """control_type x event kind -> verb (spec C1). `kinds` are the observed
+    event kinds for this control when bootstrapping from a session; absent
+    (snapshot discovery) the control role decides. Completion wins as
+    "submit" so a Save/Send button reads as the step-closing act it is."""
+    if derive_completion(control_type, name):
+        return "submit"
+    for k in (kinds or ()):
+        v = _VERB_BY_KIND.get(k)
+        if v:
+            return v
+    return _VERB_BY_CONTROL.get(_ct(control_type), "click")
+
+
+def derive_carries_value(control_type: Any,
+                         kinds: set[str] | None = None) -> bool:
+    """True when the control carries a business value: observed typing
+    (value_changed/text_changed) when we have a session, else the
+    control role (an Edit/ComboBox holds a value, a Button doesn't)."""
+    if kinds is not None:
+        return bool({"value_changed", "text_changed"} & kinds)
+    return _ct(control_type) in _VALUE_CONTROLS
+
+
+def auto_semantics(control_type: Any, name: Any = None,
+                   kinds: set[str] | None = None) -> dict[str, Any]:
+    """The auto-derivable semantic subset for one control (discovery
+    autofill, spec C2). object/means are never guessed -- they are the
+    human/LLM half of the record."""
+    out: dict[str, Any] = {"verb": derive_verb(control_type, name, kinds)}
+    if derive_completion(control_type, name):
+        out["completion"] = True
+    if derive_carries_value(control_type, kinds):
+        out["carries_value"] = True
+    return out
+
+
+def semantics_from_entry(entry: dict) -> dict[str, Any]:
+    """The semantic fields an authored entry actually carries (absent /
+    empty fields stay absent -- old vocabs produce {})."""
+    out: dict[str, Any] = {}
+    for k in SEMANTIC_FIELDS:
+        v = entry.get(k)
+        if v is None or v == "":
+            continue
+        out[k] = v
+    return out
+
+
 # --- Matching engine ---------------------------------------------------
 
 def _compile_regex(pattern: str | None):
@@ -248,6 +362,10 @@ def lookup(vocabs: list[dict], ev_data: dict) -> dict | None:
         "meaningful_name": best_entry.get("name"),
         "screen_id": _resolve_screen(best_vocab, best_entry.get("screen"), ev_data),
         "vocab_flags": dict(best_entry.get("flags") or {}),
+        # C1: the entry's semantic fields, when authored/auto-filled. {} (an
+        # old vocab) is dropped by enrich_events' non-empty filter, so the
+        # derived stream only ever carries a semantics dict that says something.
+        "vocab_semantics": semantics_from_entry(best_entry),
         "vocab_source": {
             "vocab_id": best_vocab.get("id"),
             "vocab_version": best_vocab.get("version", 1),
@@ -374,6 +492,8 @@ def bootstrap_from_session(
         entry = seen.get(key)
         if entry:
             entry["_count"] += 1
+            if d.get("kind"):
+                entry["_kinds"].add(d.get("kind"))
             continue
         sig = _signature_from_event(d)
         if not sig:
@@ -382,6 +502,8 @@ def bootstrap_from_session(
             "signature": sig,
             "_count": 1,
             "_raw_name": d.get("name") or d.get("automation_id") or "",
+            "_control_type": d.get("control_type") or "",
+            "_kinds": {d.get("kind")} if d.get("kind") else set(),
         }
 
     # I57: rank interactions by observed frequency (descending) so the
@@ -391,6 +513,11 @@ def bootstrap_from_session(
     interactions = []
     for v in sorted(seen.values(), key=lambda x: -x["_count"]):
         item = {"signature": v["signature"], "name": "", "seen_count": v["_count"]}
+        # C2 autofill: verb from control x OBSERVED kinds, carries_value from
+        # observed typing, completion from the button-word heuristic -- so the
+        # analyst's pass is review, not authoring.
+        item.update(auto_semantics(
+            v["_control_type"], v["_raw_name"], v["_kinds"] or None))
         hint = v["_raw_name"]
         if hint:
             # Stash a hint as a YAML comment -- analyst will overwrite name.
@@ -643,6 +770,14 @@ def bootstrap_from_snapshot(
             "confidence": pick["confidence"],
             "seen_count": 1,
         }
+        # C2 autofill (spec): every discovered row arrives with the auto
+        # semantics -- verb from the control role, completion from the
+        # button-word heuristic, carries_value from the value-holding roles.
+        # No kinds here (a snapshot observed no events); the session
+        # bootstrap path refines from observed kinds instead.
+        item.update(auto_semantics(
+            sig.get("control_type") or rep.get("control_type")
+            or rep.get("role"), label))
         # ADR-0025 annotator context (discovery-meta; stripped on save): WHAT the
         # control is + WHERE it lives, so a row is never a contextless signature.
         if rep.get("role"):

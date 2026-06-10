@@ -343,7 +343,11 @@ def _detect_rekey_transfer(events) -> list[dict]:
             "rekey_count": len(rows),
             "values": [
                 {"value": r["value"], "apps": r["apps"],
-                 "entry_count": r["entry_count"]}
+                 "entry_count": r["entry_count"],
+                 # C1: the vocab-named fields the value moved between (empty
+                 # when no vocab named them) -- lets the memo/export say
+                 # "Customer ID <-> Account number" instead of raw ids.
+                 "fields": r.get("fields") or []}
                 for r in rows[:3]
             ],
             "event_ids": top["event_ids"][:20],

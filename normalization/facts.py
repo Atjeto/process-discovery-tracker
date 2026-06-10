@@ -30,6 +30,12 @@ from _dt import parse_ts_or_none as _parse_ts
 # analysis_common.TRANSFER_MIN_LEN.
 REKEY_MIN_LEN = 4
 
+# Lab-phase C1: a field whose vocab entry declares `carries_value: true` is a
+# KNOWN business-value carrier, so its typed values join the rekey field set
+# at a relaxed minimum (a 3-char cost-center code re-keyed across apps is
+# signal when the vocab vouches for the field; still never single chars).
+REKEY_MIN_LEN_VOCAB = 2
+
 TOP_APPS_N = 5
 
 
@@ -95,25 +101,50 @@ def _typed_value(ev: dict) -> str:
     return val.strip()
 
 
+def _field_label(data: dict) -> str:
+    """A short display handle for the field a value was typed into --
+    the vocab meaningful_name when enriched, else the raw control identity."""
+    for k in ("meaningful_name", "automation_id", "name"):
+        v = data.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+
 def rekey_details(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Values typed (value_changed/text_changed) into 2+ distinct apps.
 
     Compares the DERIVED stream's values literally, so a PII-masked value
     matches by its join-preserving token -- the masking deliberately keeps
-    equality intact. Returns one row per re-keyed value with the apps and
-    the typing event_ids, sorted by app-spread then value for stability.
+    equality intact. Returns one row per re-keyed value with the apps, the
+    fields involved, and the typing event_ids, sorted by app-spread then
+    value for stability.
+
+    The field set (lab-phase C1): values must clear REKEY_MIN_LEN, except
+    when typed into a field whose vocab entry declares `carries_value: true`
+    (data.vocab_semantics, stamped by app_vocab enrichment) -- those join
+    at REKEY_MIN_LEN_VOCAB, because the vocabulary vouches that the field
+    holds a business value rather than noise.
     """
     by_value: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    fields_by_value: dict[str, set[str]] = defaultdict(set)
     for ev in events or []:
         if not isinstance(ev, dict) or ev.get("type") != "interaction":
             continue
         val = _typed_value(ev)
-        if len(val) < REKEY_MIN_LEN:
+        if not val:
             continue
-        app = ((ev.get("data") or {}).get("process_name") or "").strip().lower()
+        data = ev.get("data") or {}
+        vouched = (data.get("vocab_semantics") or {}).get("carries_value") is True
+        if len(val) < (REKEY_MIN_LEN_VOCAB if vouched else REKEY_MIN_LEN):
+            continue
+        app = (data.get("process_name") or "").strip().lower()
         if not app:
             continue
         by_value[val][app].append(ev.get("event_id") or "")
+        label = _field_label(data)
+        if label:
+            fields_by_value[val].add(label)
 
     out: list[dict[str, Any]] = []
     for val, apps in by_value.items():
@@ -124,6 +155,7 @@ def rekey_details(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "value": val,
             "apps": sorted(apps.keys()),
             "app_count": len(apps),
+            "fields": sorted(fields_by_value.get(val) or []),
             "event_ids": event_ids,
             "entry_count": sum(len(ids) for ids in apps.values()),
         })

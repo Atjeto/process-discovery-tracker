@@ -144,6 +144,7 @@ When an App Vocabulary (ADR-0002) matches an interaction, normalize.py adds:
 | `meaningful_name` | string | Analyst-curated name for this interaction (e.g. "Run customer search") |
 | `screen_id` | string | Named screen the interaction belongs to, if the vocab defines screens. Set when the interaction's control matches a vocab signature carrying a `screen`, **or** (ADR-0024 §6b) when its `window_title` matches a vocab screen's `window_title_regex` — so every interaction on one form shares one value-free screen even if its specific control isn't in the vocab (a screen tag only; not counted as a vocab name match). |
 | `vocab_flags` | object | Default flags from the vocab; only `waste` rolls up onto the containing step (ADR-0027 — other keys are ignored) |
+| `vocab_semantics` | object | The matched entry's **semantic fields** (lab-phase §C1, all optional in the vocab YAML): `verb` (enter/select/click/submit/toggle/open — auto-derived at discovery from control type × event kind), `object` + `means` (human/LLM-authored meaning), `completion` (bool — closes a step in step_suggest), `case_id_source` (bool — small anchor_suggest scoring bonus, never a gate), `carries_value` (bool — admits the field's typed values into the rekey detector at a relaxed minimum length). Present only when the entry carries at least one of them — a pre-C1 vocab produces exactly the pre-C1 event shape. |
 | `vocab_source` | object | `{ vocab_id, vocab_version }` for traceability |
 
 These fields are additive; the raw `name`, `control_type`, etc. always remain.

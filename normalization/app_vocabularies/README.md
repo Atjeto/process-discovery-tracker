@@ -11,6 +11,24 @@ regex) and then by the most-specific **signature** (`control_type` +
 `meaningful_name`, `screen_id`, and `vocab_flags` to the event — they are
 **signatures on UIA properties, never CSS selectors**.
 
+## Semantic fields (lab-phase §C1 — all optional, additive)
+
+Every interaction entry may also carry record semantics; a vocab without them
+(everything in this folder predates them) loads and matches identically:
+
+| Field | Type | Filled by | Consumed by |
+|---|---|---|---|
+| `verb` | `enter / select / click / submit / toggle / open` | **auto** — discovery derives it from control type × observed event kind | authoring/export context |
+| `object` | free text (the business object, e.g. `customer record`) | human / LLM-suggested (always analyst-reviewed) | authoring/export context |
+| `means` | free text (what using the control means in the process) | human / LLM-suggested | authoring/export context |
+| `completion` | bool | **auto-heuristic** — Button + save/submit/send/OK label | `step_suggest` ends a step when the control is invoked |
+| `case_id_source` | bool | analyst judgment (never auto) | `anchor_suggest` adds a small scoring **bonus** (never a gate) |
+| `carries_value` | bool | **auto** — value-holding control role / observed typing | `facts.rekey_details` admits the field's values at a relaxed min length |
+
+Discovery (`Discover from window…` / `bootstrap_from_snapshot`) pre-fills the
+auto columns on every row, so the App Library pass is a review checklist, not
+authoring into blank boxes.
+
 ## Shipped vocabularies (§11d)
 
 Most of these are **real-value mappings** — their signatures were probed live from
