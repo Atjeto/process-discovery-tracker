@@ -4,6 +4,61 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Lab Phase G: real-session hardening
+
+Hardening from the owner's first real 1.5-hour company session (capture
+v0.9.0 on the worker machine) — ground truth in
+[docs/To-Do/real-session-findings.md](docs/To-Do/real-session-findings.md);
+phase record in [docs/LAB-PHASE-SPEC.md → Phase G](docs/LAB-PHASE-SPEC.md).
+
+### Fixed (Phase G)
+
+- **G-1 — Fork map works from the default map state.** The Map opens on
+  the Flow diagram at the screen detail level (no Process-diagram file);
+  Fork silently did nothing there on a real session. It now self-drives
+  to the step-level Process diagram (the supported post-§B2 source),
+  forks it, and opens the editor; when no Process-diagram source exists
+  it fails LOUD with a plain-language toast. New e2e pin in
+  `e2e/session-smoke.js`: fork from the DEFAULT map state must create a
+  copy AND open the editor (the old refmap checks pre-selected a
+  still-rendered cell, which is why they stayed green).
+- **G-2 — Tier-1 facts never render a confident zero on an old capture.**
+  Capture v0.9.0 emits no activity events, so active time / top apps /
+  switches / longest stretch all showed 0 while idle and span were right.
+  `facts.py` now falls back to an interaction-derived estimate (gap-capped
+  dwell from `process_name` + timestamps) and stamps the additive
+  `facts.app_time_source` (`activity` / `interactions` / `none`); the
+  Overview fact strip and the memo label estimates and render
+  "not available from this recording" when there is no signal at all.
+  New pytest fixture mimics the v0.9.0 event shape.
+- **G-3 — Case analysis needs at least 2 cases.** `case_quality.
+  tier2_unlocked` now also requires `case_count >= 2` (the real session
+  unlocked it on ONE marked case at 0.999 coverage); the Overview badge
+  ("1 case marked — case comparisons need at least 2"), the step-map lock
+  note, the memo's case section and both "to say more" boxes say why.
+- **G-4 — Step-label hygiene on real data.** "(split N)" suffixes no
+  longer stack (split/merge strip them; a shared `pre_rules` scrubber in
+  `process-label-patterns.json` keeps them out of the grouping key in
+  both Python and JS); bare "Enter `<value>`" names collapse to
+  "Enter a value" for value-LIKE tails only (numbers, junk "null",
+  masked tokens, quoted text); PII-masked tokens render as
+  "(masked value)" instead of `«password#…»`; merged step names dedupe
+  and cap; the Copy-for-AI export aggregates zero-duration step groups
+  into one tail row; self-exclusion now also drops windows browsing the
+  capture install folder (`capture-vX.Y.Z` in any window title — the
+  worker exploring the tool's own folder in Explorer).
+
+### Changed (Phase G)
+
+- **G-5 — Copy for AI review export v2.** Row keys are namespaced
+  `<vocab_id>|<row_key>` so two apps' identical signatures can't collide
+  (import tolerates bare v1 keys and routes other-vocab rows aside with a
+  plain message); the export adds `candidate_rows` — the session's top
+  controls/screens in apps NO vocabulary covers (derived labels only) —
+  so the round-trip helps exactly where the naming gap is; and an in-band
+  `review_note` tells the reviewer window-title-derived labels can carry
+  business names, so labels deserve the same read as values.
+
 ## [1.2.0] - 2026-06-11
 
 Lab Phase F — business-user language + typography

@@ -494,6 +494,55 @@ the new copy, assertions never weakened) + screenshots of Overview, the
 open Advanced drawer, Analysis, the App Library checklist row, the wizard
 question + review panes eyeballed for font consistency and clipping.
 
+## Phase G — Real-session hardening
+
+> **Status: BUILT + validated** on `lab-phase-g` (2026-06-11). All five
+> G-items from the owner's first real 1.5-hour company session landed
+> (capture v0.9.0 on the worker machine; ground truth:
+> [docs/To-Do/real-session-findings.md](To-Do/real-session-findings.md) —
+> that file IS the Phase G spec). Validation: pytest 501 passed (+11
+> pre-existing pipeline-deps skips under system Python) incl. new
+> v0.9.0-shape + label-hygiene + min-cases fixtures; viewer 319; capture
+> 129 (+1 pre-existing skip); recorder 69; session golden green WITHOUT
+> regeneration (the new label rules did not move the demo projection);
+> all five e2e smokes green (session 23/23 incl. the NEW G-1 pin,
+> overview 11/11, map-slim 9/9, vocab 22/22 — one selector updated to the
+> v2 row key, assertion unchanged — flywheel 8/8). Consolidation pending
+> owner sign-off.
+
+**Why now:** the owner's first real company session surfaced five
+hardening gaps (one owner-reported regression, four honesty/quality
+leaks). The round-trip verdict was "viable — hardening, not redesign".
+
+- **G-1 Fork map from the default map state** (owner-reported). Fork read
+  the bpmn singleton even when the current cell was the Flow diagram
+  (screen detail — no Process-diagram file post-§B2), silently doing
+  nothing. Fork now self-drives to the step-level Process diagram, forks
+  it, opens the editor; no source at all → LOUD plain-language toast.
+  *Why the old e2e missed it:* `session-smoke`'s refmap checks navigated
+  to the Expert-drawer activity BPMN (a still-rendered cell) before
+  clicking Fork, so Fork always had a diagram; the silent no-op paths
+  exited with only a toast, which nothing asserted. New pin: fork from
+  the DEFAULT map state creates a copy AND opens the editor.
+- **G-2 Tier-1 facts on the v0.9.0 capture shape.** No activity events →
+  every app-time fact rendered a confident 0. `facts.py` falls back to an
+  interaction-derived estimate (gap-capped) and stamps the additive
+  `app_time_source`; consumers label estimates and render "not available
+  from this recording" when the signal is absent (honesty rule).
+- **G-3 Tier 2 needs ≥ 2 cases.** `tier2_unlocked` adds `case_count >= 2`;
+  badge / lock notes / memo explain the single-case state instead of
+  pretending no cases exist.
+- **G-4 Step-label hygiene.** Shared `pre_rules` scrub stacked
+  "(split N)" artifacts in both labelers; bare "Enter <value>" collapses
+  for value-LIKE tails only; masked tokens render "(masked value)"; merged
+  names dedupe + cap; zero-duration step groups aggregate into one export
+  tail row; self-exclusion drops `capture-vX.Y.Z`-titled windows
+  (Explorer browsing the tool's own install).
+- **G-5 Copy-for-AI export v2.** `<vocab_id>|<row_key>` namespacing
+  (import tolerates v1 keys, other-vocab rows routed aside),
+  `candidate_rows` for un-vocabbed apps (derived labels only), and the
+  in-band `review_note` about window-title-derived labels.
+
 ## 5. Owner's week-zero test (runs tonight, needs no Phase A code)
 
 On a real marker-less session, locally:
