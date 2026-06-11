@@ -29,9 +29,9 @@ const DEFAULT_POSTURE = "reviewable";
 
 /* What each posture means, for the selector's tooltip / legend. */
 const POSTURE_LABELS = {
-  sealed: "Sealed — nothing leaves this machine; the Copy-for-LLM export is removed from the UI entirely",
-  reviewable: "Reviewable — derived, PII-masked exports allowed after line-by-line review (default)",
-  open: "Open — derived exports allowed; the engagement permits open sharing",
+  sealed: "Sealed — nothing leaves this machine; the Copy-for-AI-review export is removed from the app entirely",
+  reviewable: "Reviewable — privacy-masked summaries can be copied out after you review them line by line (default)",
+  open: "Open — summaries may be shared; the client has agreed to open sharing",
 };
 
 /* In-memory fallback so the module works where localStorage is absent

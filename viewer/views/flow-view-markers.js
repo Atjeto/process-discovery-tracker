@@ -246,13 +246,13 @@ function renderAnchorCandidates() {
     const sig = override._accepted_signature || "";
     const label = override.equals || override.recognized || "(custom)";
     host.innerHTML =
-      '<div class="ac-header">Active case anchor</div>' +
+      '<div class="ac-header" title="The case anchor is the field that identifies each ticket/order — the app uses it to split the recording into cases">Active case anchor</div>' +
       '<div class="ac-active-row">' +
         '<span class="ac-active-label">' + escapeHtml(String(override.field || "recognized")) +
         ' = ' + escapeHtml(String(label)) + '</span>' +
         '<span class="ac-samples">re-run Analyze to apply</span>' +
         '<span class="ac-actions">' +
-          '<button class="icon-btn xs" data-act="clear" title="Clear the override (the inverse of Accept)">↺</button>' +
+          '<button class="icon-btn xs" data-act="clear" title="Undo Accept — go back to having no case anchor">↺</button>' +
         '</span>' +
       '</div>';
     const clearBtn = host.querySelector('[data-act="clear"]');
@@ -276,17 +276,17 @@ function renderAnchorCandidates() {
           ' <span class="ac-meta">' + escapeHtml(meta) + '</span></span>' +
         '<span class="ac-samples">' + (samples ? "e.g. " + escapeHtml(samples) : "") + '</span>' +
         '<span class="ac-actions">' +
-          '<button class="icon-btn xs" data-act="accept" title="Accept (set as case anchor, re-run Analyze to apply)">✓</button>' +
-          '<button class="icon-btn xs" data-act="dismiss" title="Dismiss (suppress on re-normalize)">✕</button>' +
+          '<button class="icon-btn xs" data-act="accept" title="Use this field to split the recording into cases — re-run Analyze to apply">✓</button>' +
+          '<button class="icon-btn xs" data-act="dismiss" title="Hide this suggestion — it stays hidden on future analyses">✕</button>' +
         '</span>' +
       '</div>'
     );
   }).join("");
   host.innerHTML =
-    '<div class="ac-header">Anchor candidates</div>' +
+    '<div class="ac-header" title="The case anchor is the field that identifies each ticket/order — the app uses it to split the recording into cases">Anchor candidates</div>' +
     '<div class="ac-hint">This session has ' + cands.length +
       ' field' + (cands.length === 1 ? "" : "s") +
-      ' that look like case anchors. Accept one to stamp cases on the next Analyze.</div>' +
+      ' that could identify each case. Accept one and the next Analyze splits the recording into cases.</div>' +
     rows;
 
   // Wire the per-row buttons by walking each .ac-row and resolving its

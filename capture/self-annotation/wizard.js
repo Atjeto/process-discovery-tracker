@@ -58,7 +58,7 @@ const TEMPLATES = [
     phrasings: [
       "Around {time}, this case looked different from the others — what happened?",
       "We flagged the case starting at {time} as unusual. Was it an exception?",
-      "The case at {time} doesn't fit the modal pattern. What was different?",
+      "The work at {time} didn't follow your usual pattern. What was different?",
     ],
     placeholders: ["time"],
   },
@@ -66,7 +66,7 @@ const TEMPLATES = [
     key: "ambiguous_case_boundary",
     phrasings: [
       "Between {time_a} and {time_b}, was this one task or two?",
-      "We're not sure if there's a case boundary around {time_a}. Did you finish a task here?",
+      "We're not sure whether one piece of work ended around {time_a}. Did you finish a task here?",
       "Did something end and another start around {time_a}?",
     ],
     placeholders: ["time_a", "time_b"],
@@ -197,7 +197,7 @@ function generateQuestions(session, opts) {
   motifs.sort((a, b) => (b.frequency || 0) - (a.frequency || 0));
   if (motifs.length > 0 && (motifs[0].frequency || 0) >= 3) {
     const m = motifs[0];
-    const motif_str = Array.isArray(m.labels) ? m.labels.join(" → ") : "(motif)";
+    const motif_str = Array.isArray(m.labels) ? m.labels.join(" → ") : "(repeated sequence)";
     questions.push(_fillTemplate("high_frequency_motif", variantIdx, {
       motif: motif_str,
       n: m.frequency,

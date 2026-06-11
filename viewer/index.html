@@ -108,7 +108,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <button class="project-menu-item" id="btn-save-vocab" title="Generate a starter App Library entry from this session's captured interactions. Edit names afterward; once saved, future sessions auto-use it to label what the user did inside this app.">Save to App Library...</button>
               <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
               <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
-              <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Run the inductive miner to produce a BPMN process map and DFG."/> Build process map</label>
+              <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Also build the process maps (flowchart and process diagram) during analysis."/> Build process map</label>
             </div>
           </div>
           <!-- Session facts chips ride the actions bar now (clutter pass: they
@@ -145,7 +145,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="onboarding-num">1</span>
             <div>
               <strong>Click <em>Analyze session</em></strong>
-              <span class="onboarding-detail">Builds the timeline, classifies every activity using the team's taxonomy (Salesforce, Outlook, Excel, etc.), groups events into cases, computes statistics, and discovers a process map. Takes 5-20 seconds for a typical session. You can re-run it any time without losing your edits.</span>
+              <span class="onboarding-detail">Builds the timeline, labels every activity by app category (Salesforce, Outlook, Excel, etc.), groups events into cases, computes statistics, and builds a process map. Takes 5-20 seconds for a typical session. You can re-run it any time without losing your edits.</span>
             </div>
           </div>
           <div class="onboarding-step">
@@ -167,7 +167,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- View-mode bar: prominent, controls what the whole session view shows -->
         <div class="view-mode-bar">
           <span class="view-mode-label">View:</span>
-          <button class="view-mode-btn active" data-level="overview" title="What the capture measured: case-quality gate, fact strip, findings feed, memo export (the default landing surface)">
+          <button class="view-mode-btn active" data-level="overview" title="What the recording measured: case quality, the key numbers, findings, and the memo export (the default landing view)">
             <span class="view-mode-icon">◈</span> Overview
             <span class="view-mode-desc">facts &amp; findings</span>
           </button>
@@ -185,11 +185,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-desc">milestones</span>
             <span class="badge" id="phases-badge">0</span>
           </button>
-          <button class="view-mode-btn" data-level="map" title="The interactive process map (Flow diagram / Process diagram BPMN) at the chosen Grain notch (element ⊂ screen ⊂ app ⊂ phase ⊂ case, plus the Activity taxonomy level) for this single session">
+          <button class="view-mode-btn" data-level="map" title="The interactive process map (flowchart or process diagram) for this session, at the detail level chosen on the Detail slider (every field → screen → app → phase → case)">
             <span class="view-mode-icon">◯</span> Map
             <span class="view-mode-desc">process diagram</span>
           </button>
-          <button class="view-mode-btn" data-level="analysis" title="Heuristic waste, time-study and automation findings">
+          <button class="view-mode-btn" data-level="analysis" title="Where the time goes: waste, timing and automation candidates">
             <span class="view-mode-icon">⊞</span> Analysis
             <span class="view-mode-desc">waste &amp; automation</span>
           </button>
@@ -204,9 +204,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                (element), right for screen / app / phase / case. Default: one
                step per screen. Sliding back undoes it with zero data mutation;
                raw events are never re-segmented. -->
-          <label class="grain-control" id="grain-control" title="Grain — how far steps consolidate as you zoom out. element = every field · screen = one step per screen (default) · app · phase · case. A view-only control: it never re-analyzes; sliding back restores the detail.">
-            <span class="grain-label">Grain:</span>
-            <input type="range" id="grain-slider" class="grain-range" min="0" max="4" step="1" value="1" aria-label="Step grain notch" />
+          <label class="grain-control" id="grain-control" title="Detail — how much steps combine as you zoom out. element = every field · screen = one step per screen (default) · app · phase · case. A view-only control: it never re-analyzes; sliding back restores the detail.">
+            <span class="grain-label">Detail:</span>
+            <input type="range" id="grain-slider" class="grain-range" min="0" max="4" step="1" value="1" aria-label="Step detail level" />
             <span class="grain-notch" id="grain-notch-lbl">screen</span>
           </label>
           <span class="view-mode-help" id="view-mode-help"></span>
@@ -294,7 +294,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </div>
               <div class="anno-panel" data-panel="notes">
                 <div id="annotations-list"></div>
-                <textarea id="anno-note" placeholder="Anchor a note to the current playback time..."></textarea>
+                <textarea id="anno-note" placeholder="Pin a note to the current playback time..."></textarea>
                 <button id="btn-save-note">Save note at current time</button>
               </div>
               <div class="anno-panel" data-panel="screens" style="display:none">
@@ -406,7 +406,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="editor-list-pane">
               <div class="editor-pane-title">
                 Phases · <span id="phases-pane-count">0</span>
-                <button id="btn-suggest-phases" class="link-btn" type="button" title="Heuristically group consecutive steps by app and gap into a starting set of phases. You'll be shown the suggestions to accept or skip.">Suggest groupings...</button>
+                <button id="btn-suggest-phases" class="link-btn" type="button" title="Automatically group consecutive steps by app and time gap into a starting set of phases. You'll be shown the suggestions to accept or skip.">Suggest groupings...</button>
               </div>
               <div class="list-filter" id="phase-list-filter">
                 <input type="search" class="list-filter-input" id="phase-filter-text" placeholder="Filter phases by name..." />
@@ -431,11 +431,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="panel-tabs">
                 <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
                 <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
-                <select id="session-map-level" class="map-status-select" title="Map grain (ADR-0024): the grain ladder element ⊂ screen ⊂ app ⊂ phase ⊂ case (built from your annotations, no taxonomy needed). Synced with the Grain slider above. The activity-taxonomy level moved into the Expert drawer below the map (lab-phase §B2).">
+                <select id="session-map-level" class="map-status-select" title="Map detail level: every field → screen → app → phase → case (built from your annotations). Synced with the Detail slider above. The by-app-category level moved into the Advanced views drawer below the map.">
                   <!-- §B2: the activity-taxonomy cell left the default matrix (the
                        Expert drawer below the map reaches it). The hidden option keeps
                        the select showing an honest label while an expert cell is active. -->
-                  <option value="activity" hidden>Activity (taxonomy — expert)</option>
+                  <option value="activity" hidden>By app category (advanced)</option>
                   <option value="element">Element — every field</option>
                   <option value="screen">Screen — one per screen</option>
                   <option value="app">App</option>
@@ -474,13 +474,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                  notation×level matrix (lab-phase §1 cargo-cult cuts). Files +
                  CLI flags untouched; this is the explicit, labelled way back. -->
             <details class="map-expert" id="map-expert-drawer">
-              <summary title="Views imported from system-log process mining that desktop capture can't support with fact-level authority — kept reachable for experts, off the deliverable contract.">Expert / off-contract views</summary>
+              <summary title="Extra views that need cleaner data than desktop recording can provide — useful for exploring, not as evidence.">Advanced views</summary>
               <div class="map-expert-body">
-                <p class="map-expert-hint">These cells render canon that desktop data can't back at fact authority (taxonomy-classified activities; an inductive-miner model on unmarked data; per-case models). They stay on disk and on the CLI — use deliberately.</p>
+                <p class="map-expert-hint">These views use methods that need cleaner data than desktop recording can provide, so treat them as exploration, not evidence. The files are still exported for specialists.</p>
                 <div class="map-expert-cells">
-                  <button type="button" class="link-btn" id="btn-expert-activity-dfg" title="The taxonomy-classified activity Flow diagram (needs taxonomy rules for this estate's apps).">Activity (taxonomy) — Flow diagram</button>
-                  <button type="button" class="link-btn" id="btn-expert-activity-bpmn" title="The inductive-miner BPMN over taxonomy activities (process_map.bpmn) — a model fit, not observed flow.">Inductive-miner BPMN (activity)</button>
-                  <button type="button" class="link-btn" id="btn-expert-percase" title="Reveal the per-case BPMN files (process_maps\&lt;case&gt;.bpmn) in Explorer.">Per-case BPMN files…</button>
+                  <button type="button" class="link-btn" id="btn-expert-activity-dfg" title="A flowchart with one box per activity category (Salesforce search, Outlook email, …) — needs category rules for this team's apps.">Flowchart by app category</button>
+                  <button type="button" class="link-btn" id="btn-expert-activity-bpmn" title="A process model an algorithm generated from the recording (process_map.bpmn) — a statistical best fit, not the flow as it was observed.">Auto-generated process model</button>
+                  <button type="button" class="link-btn" id="btn-expert-percase" title="Open the folder with one flowchart file per case (process_maps\&lt;case&gt;.bpmn).">One flowchart per case…</button>
                 </div>
               </div>
             </details>
@@ -567,7 +567,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <button class="project-menu-item" id="btn-export-step-csv" disabled>Step CSV</button>
               <button class="project-menu-item" id="btn-export-xes" disabled>XES</button>
               <button class="project-menu-item" id="btn-export-stats" disabled>stats.json</button>
-              <button class="project-menu-item" id="btn-export-promotions" disabled>Taxonomy promotions</button>
+              <button class="project-menu-item" id="btn-export-promotions" disabled title="Draft an app-category rule for every app the loaded sessions could not classify.">App-category rule drafts</button>
             </div>
           </div>
           <span class="flex-spacer"></span>
@@ -584,7 +584,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                aligned reading; the merged process map is demoted below. -->
           <div class="panel panel-wide" id="agg-findings-panel" style="display:none">
             <h3>Cross-session findings</h3>
-            <p class="meta" style="margin-top:0">Comparative claims measured across loaded sessions of the <em>same process</em> (same Process Template or the same accepted case anchor) — who completes a case in how many steps, and where the paths first diverge. Tier 2: compared sessions must be case-segmented. Selected findings export with the Markdown report (all loaded sessions).</p>
+            <p class="meta" style="margin-top:0">Comparative claims measured across loaded sessions of the <em>same process</em> (same Process Template, or cases identified by the same confirmed field) — who completes a case in how many steps, and where the paths first part ways. Shown only when every compared session has confirmed cases. Selected findings export with the Markdown report (all loaded sessions).</p>
             <div id="agg-findings-content"></div>
           </div>
 
@@ -603,8 +603,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="panel-tabs">
                 <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
                 <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
-                <select id="map-level" class="map-status-select" title="Map grain (ADR-0024): Activity (taxonomy, needs rules) or the grain ladder element ⊂ screen ⊂ app ⊂ phase ⊂ case (built from your annotations, no taxonomy needed). Default: one step per screen.">
-                  <option value="activity">Activity (taxonomy)</option>
+                <select id="map-level" class="map-status-select" title="Map detail level: by app category (needs category rules) or every field → screen → app → phase → case (built from your annotations). Default: one step per screen.">
+                  <option value="activity">By app category</option>
                   <option value="element">Element — every field</option>
                   <option value="screen">Screen — one per screen</option>
                   <option value="app">App</option>
@@ -674,7 +674,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
           <div class="panel panel-wide" id="agg-analysis-panel" style="display:none">
             <h3>Analysis</h3>
-            <p class="meta" style="margin-top:0">Heuristic findings pooled across the loaded sessions — a step seen once per session gains real signal once recordings are combined. Provisional estimates; review before relying on them.</p>
+            <p class="meta" style="margin-top:0">Findings pooled across the loaded sessions — a step seen once per session gains real signal once recordings are combined. These are estimates — review before relying on them.</p>
             <div id="agg-analysis-content"></div>
           </div>
 
@@ -713,8 +713,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="loaded" id="canonical-loaded">
         <div class="template-explainer">
           <h2>Process Template</h2>
-          <p>A Process Template is a reusable definition of an expected process: its steps, phases, the UI patterns that identify each one — and the case anchor that segments a session into cases. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
-          <p class="meta"><strong>The primary way to make one is as a byproduct of curation:</strong> open a session, curate its steps, then <em>Steps → Export as Process Template</em>. The export carries each step's match rules <em>and the accepted case anchor</em>, so the next session of the same process arrives self-segmented and auto-matched. The list below stays directly editable; the raw YAML and version compare live in the Machine layer at the bottom.</p>
+          <p>A Process Template is a reusable definition of an expected process: its steps, phases, the UI patterns that identify each one — and the case anchor (the field that identifies each ticket/order) that splits a session into cases. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
+          <p class="meta"><strong>The primary way to make one is as a byproduct of curation:</strong> open a session, curate its steps, then <em>Steps → Export as Process Template</em>. The export carries each step's match rules <em>and the confirmed case anchor (the field that identifies each ticket/order)</em>, so the next session of the same process arrives with its cases already identified and its steps auto-matched. The list below stays directly editable; the raw YAML and version compare live in the Machine layer at the bottom.</p>
         </div>
         <div class="actions-bar">
           <button id="btn-new-canonical">+ New Process Template</button>
@@ -881,7 +881,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Persistent zoom + scroll</strong>: each session remembers its zoom factor and scroll position in localStorage. Reopening a session restores where you were.</li>
             <li><strong>Annotations</strong> (right column) with three sub-tabs:
               <ul>
-                <li><em>Notes</em> - anchor text to current playback time</li>
+                <li><em>Notes</em> - pin text to the current playback time</li>
                 <li><em>Screenshots</em> - thumbnail grid; click to seek the video</li>
                 <li><em>Markers</em> - full list; <strong>double-click a Start marker to rename it</strong> (edit saved to <code>annotations.json</code>)</li>
               </ul>
@@ -919,7 +919,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>What state means</h3>
           <p>Every step has a colored dot indicating where it came from:</p>
           <ul class="help-list">
-            <li><span class="state-icon state-auto_suggested"></span> <strong>auto-suggested</strong> - heuristic guess from interactions. Replaced on every re-normalization.</li>
+            <li><span class="state-icon state-auto_suggested"></span> <strong>auto-suggested</strong> - an automatic guess from the interactions. Replaced on every re-analysis.</li>
             <li><span class="state-icon state-auto_matched"></span> <strong>auto-matched</strong> - matched a Process Template. Replaced when you re-match against a newer template version.</li>
             <li><span class="state-icon state-manually_authored"></span> <strong>manually authored</strong> - you typed it. Survives re-normalization.</li>
             <li><span class="state-icon state-edited"></span> <strong>edited</strong> - you modified an auto-suggested or auto-matched step. Survives re-normalization.</li>
@@ -1010,7 +1010,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <ul class="help-list">
             <li><strong>BPMN 2.0 XML / XES / stats.json</strong>: copy the per-session artifact from the first loaded session that has it.</li>
             <li><strong>Markdown report</strong>: a Confluence-friendly summary of the currently-filtered sessions (activity table, case table, top transitions). Use it as a paste-ready draft for a Process Definition Document.</li>
-            <li><strong>Taxonomy promotions</strong>: emits a YAML stub with one rule candidate per app that appears as "Unclassified" in the loaded sessions. Refine labels and regexes, then append to the central taxonomy.</li>
+            <li><strong>App-category rule drafts</strong>: writes a YAML draft with one rule candidate per app that appears as "Unclassified" in the loaded sessions. Refine the labels and patterns, then add them to the team's central category rules.</li>
           </ul>
         </section>
 
@@ -1078,7 +1078,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <dd>Check the type checkboxes (activity / marker / system) and clear the text filter.</dd>
 
             <dt>Drill-down landed on a session but the wrong moment</dt>
-            <dd>The drill uses a heuristic match on app/title to find the first activity event matching the label. For exact precision, click directly on the timeline bands.</dd>
+            <dd>The drill uses a best-effort match on app/title to find the first activity event matching the label. For exact precision, click directly on the timeline bands.</dd>
 
             <dt>Hotkey didn't register in capture</dt>
             <dd>Another app may have the same global shortcut. Enable <code>PDT_DEBUG=1</code> in the capture launch env and check <code>%APPDATA%\process-discovery-tracker\boot.log</code> for "hotkeys: start=false". Edit your <code>config.yaml</code> to use different keys.</dd>
@@ -1087,10 +1087,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <dd>active-win cannot see inside Citrix windows from the local host. Either run the capture tracker inside the Citrix session, or accept that local capture will not classify inner apps and rely on markers + the OBS video for context.</dd>
 
             <dt>Multi-machine shift review: timelines from different workers do not line up</dt>
-            <dd>Have each worker fire a sync marker (default Ctrl+Shift+Y in capture) at agreed moments with the same sync_id. The aggregate view treats these as alignment anchors.</dd>
+            <dd>Have each worker fire a sync marker (default Ctrl+Shift+Y in capture) at agreed moments with the same sync_id. The aggregate view uses these as alignment points.</dd>
 
-            <dt>Aggregate report or taxonomy promotion exports nothing useful</dt>
-            <dd>Both work off analyzed sessions. Click "Analyze all sessions" first so every loaded session has stats.json. Taxonomy promotion needs at least one event classified as Unclassified - that means there is an app the central taxonomy does not yet cover.</dd>
+            <dt>Aggregate report or app-category rule draft exports nothing useful</dt>
+            <dd>Both work off analyzed sessions. Click "Analyze all sessions" first so every loaded session has stats.json. The rule draft needs at least one event classified as Unclassified - that means there is an app the team's category rules do not yet cover.</dd>
           </dl>
         </section>
       </div>

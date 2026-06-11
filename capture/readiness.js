@@ -103,7 +103,7 @@ function computeAppTier(controls) {
     return {
       tier: "wall", n_controls: 0, share_automation_id: 0,
       mean_confidence: 0, dominant_framework: null,
-      note: "no identifiable UIA controls -- elevated, UIA-dark, or accessibility off",
+      note: "the recorder couldn't see any controls in this window -- the app may run as administrator or block accessibility tools",
     };
   }
   const fwTally = {};
@@ -127,16 +127,16 @@ function computeAppTier(controls) {
   if (dominant === "remote" || dominant === "terminal") {
     return {
       tier: "wall", ...base,
-      note: `${dominant} surface -- structured capture sees the host window, not the real controls; plan markers + video here`,
+      note: `a ${dominant} window -- the recorder sees only the window frame, not the controls inside; plan markers + video here`,
     };
   }
   if (shareAid >= 0.25 && meanConf >= 0.6) {
-    return { tier: "rich", ...base, note: "stable automation ids at high confidence" };
+    return { tier: "rich", ...base, note: "controls are reliably identifiable -- best capture quality" };
   }
   if (meanConf >= 0.5) {
-    return { tier: "basic", ...base, note: "accessible names dominate; capture is honest but ids are few" };
+    return { tier: "basic", ...base, note: "controls have readable names but few stable ids -- capture works, with some detail lost" };
   }
-  return { tier: "minimal", ...base, note: "identity mostly class_name -- expect thin, low-trust capture" };
+  return { tier: "minimal", ...base, note: "controls are mostly anonymous -- expect thin detail from this app" };
 }
 
 /* ----------------------------------------------- window enumeration seam */
@@ -242,15 +242,15 @@ async function runReadinessProbe({
       bootLog,
     });
   } catch (e) {
-    checks.recorder = { status: "fail", note: `recorder did not start: ${e && e.message}` };
-    checks.uia = { status: "fail", note: "not probed (recorder unavailable)" };
+    checks.recorder = { status: "fail", note: `the recording engine did not start: ${e && e.message}` };
+    checks.uia = { status: "fail", note: "not checked (the recording engine is unavailable)" };
     return finishReport({ checks, apps: [] });
   }
 
   const ready = await withTimeout(readyPromise, readyTimeoutMs, false);
   checks.recorder = ready
-    ? { status: "ok", note: "sidecar started and reported ready" }
-    : { status: "fail", note: `no ready line within ${readyTimeoutMs / 1000}s -- check temp disk space / antivirus` };
+    ? { status: "ok", note: "the recording engine started and reported ready" }
+    : { status: "fail", note: `the recording engine did not become ready within ${readyTimeoutMs / 1000}s -- check temp disk space / antivirus` };
 
   const apps = [];
   let anyControls = false;
@@ -279,16 +279,16 @@ async function runReadinessProbe({
       doneResolve = null;
     }
     checks.uia = anyControls
-      ? { status: "ok", note: `UI Automation reachable (${apps.length} window(s) probed)` }
+      ? { status: "ok", note: `the recorder can read app windows (${apps.length} probed)` }
       : {
           status: apps.length ? "fail" : "warn",
           note: apps.length
-            ? "no probed window returned a single identifiable control -- UIA looks unreachable"
+            ? "no probed window showed a single identifiable control -- the recorder looks blocked on this machine"
             : "no visible app windows to probe (open the pilot apps and re-run)",
         };
     try { await rec.stop({ drainTimeoutMs: 1000 }); } catch (_e) {}
   } else {
-    checks.uia = { status: "fail", note: "not probed (recorder did not become ready)" };
+    checks.uia = { status: "fail", note: "not checked (the recording engine did not become ready)" };
     try { await rec.stop({ drainTimeoutMs: 500 }); } catch (_e) {}
   }
 
@@ -328,7 +328,7 @@ function summarizeReadiness(report) {
   }
   if (report.apps && report.apps.length) {
     lines.push("");
-    lines.push("App capture tiers (rich ++ / basic + / minimal ~ / wall X):");
+    lines.push("How much detail the recorder can see, per app (++ full / + good / ~ thin / X blocked):");
     for (const a of report.apps) {
       const g = TIER_GLYPH[a.tier] || "?";
       lines.push(

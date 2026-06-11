@@ -44,26 +44,27 @@ function _badge(cq) {
   let cls, text, title;
   if (cq.mode === "markers") {
     cls = "ok";
-    text = "✓ Markers — " + (cq.case_count || 0) + " case" + (cq.case_count === 1 ? "" : "s");
-    title = "Cases bracketed by worker-fired Start/End markers · " +
-      _pct(cq.coverage) + " of interactions inside a case";
+    text = "✓ " + (cq.case_count || 0) + " case" + (cq.case_count === 1 ? "" : "s") + " — marked by the worker";
+    title = "The worker marked case starts/ends during recording · " +
+      _pct(cq.coverage) + " of recorded actions fall inside a case";
   } else if (cq.mode === "anchor") {
     const a = cq.anchor || {};
     cls = "ok";
-    text = '✓ Anchor "' + (a.field_value || a.field_property || "?") + '" — ' +
-      (cq.case_count || 0) + " case" + (cq.case_count === 1 ? "" : "s") +
-      ", " + _pct(cq.coverage) + " coverage";
-    title = "Cases stamped by the accepted case anchor (" +
+    text = "✓ " + (cq.case_count || 0) + " case" + (cq.case_count === 1 ? "" : "s") +
+      ' — identified by "' + (a.field_value || a.field_property || "?") + '"' +
+      " (" + _pct(cq.coverage) + " covered)";
+    title = "Cases were identified by the confirmed field (" +
       (a.field_property || "?") + " = " + (a.field_value || "?") + ")";
   } else {
     cls = "warn";
-    text = "⚠ Unsegmented";
-    title = "No case boundaries — case-based analysis (cycle times, variants, " +
-      "per-case comparison) stays locked until markers exist or an anchor is accepted";
+    text = "⚠ No cases identified yet";
+    title = "The recording is not split into cases yet — how long each case " +
+      "takes, the paths taken, and case-by-case comparison stay locked until " +
+      "the worker records markers or you confirm the field that identifies each case";
   }
   const tier2 = cq.tier2_unlocked
-    ? '<span class="ov-tier2 ok" title="Case-based analysis renders — mode is segmented and coverage ≥ 70%">Tier 2 unlocked</span>'
-    : '<span class="ov-tier2 locked" title="Case-based analysis is withheld — needs segmentation (markers or an accepted anchor) with ≥ 70% interaction coverage">Tier 2 locked</span>';
+    ? '<span class="ov-tier2 ok" title="Cases are identified and cover at least 70% of the recording, so the case-by-case numbers are shown">Case analysis on</span>'
+    : '<span class="ov-tier2 locked" title="The case-by-case numbers are hidden — they need confirmed cases (worker markers, or a confirmed identifying field) covering at least 70% of the recording">Case analysis locked</span>';
   return '<div class="ov-badge-row">' +
     '<span class="ov-badge ' + cls + '" title="' + escapeAttr(title) + '">' +
     escapeHtml(text) + "</span>" + tier2 + _postureControl() + "</div>";
@@ -78,7 +79,7 @@ function _postureControl() {
     '<option value="' + p + '"' + (p === cur ? " selected" : "") + ">" + p + "</option>").join("");
   return '<span class="ov-posture' + (cur === "sealed" ? " sealed" : "") + '" ' +
     'title="' + escapeAttr(Posture.POSTURE_LABELS[cur] || "") + '">' +
-    '<span class="ov-posture-label">Data posture</span>' +
+    '<span class="ov-posture-label">Data sharing</span>' +
     '<select id="ov-posture-select" title="' +
     escapeAttr(Posture.POSTURES.map((p) => Posture.POSTURE_LABELS[p]).join("\n")) + '">' +
     opts + "</select></span>";
@@ -100,17 +101,18 @@ function _anchorHero(cands) {
         (m.coverage != null ? _pct(m.coverage) + " coverage" : "? coverage") +
         " · score " + (c.score != null ? c.score.toFixed(2) : "?") + "</div>" +
       '<div class="ov-hero-actions">' +
-        '<button type="button" class="primary" data-act="accept" title="Set as the case anchor (re-runs on next Analyze); the inverse lives in the Markers panel (↺ clear)">Accept</button>' +
-        '<button type="button" data-act="dismiss" title="Suppress this candidate across re-analyzes">Dismiss</button>' +
+        '<button type="button" class="primary" data-act="accept" title="Use this field to split the recording into cases (applies on the next Analyze). You can undo this from the Markers panel.">Accept</button>' +
+        '<button type="button" data-act="dismiss" title="Hide this suggestion — it stays hidden on future analyses.">Dismiss</button>' +
       "</div></div>";
   }).join("");
   return '<div class="ov-hero">' +
-    '<div class="ov-section-title">This session has no case boundaries — ' +
+    '<div class="ov-section-title">No cases identified yet — ' +
       cands.length + " field" + (cands.length === 1 ? "" : "s") +
-      " look like case anchors</div>" +
-    '<div class="ov-hero-hint">Accepting one stamps cases on the next Analyze ' +
-      "and unlocks case-based analysis (suggest-don't-mutate: raw events are " +
-      "never touched; Accept is reversible from the Markers panel).</div>" +
+      " could identify each ticket/order</div>" +
+    '<div class="ov-hero-hint">Accept one and the next Analyze will split the ' +
+      "recording into separate cases, unlocking the case-by-case numbers. The " +
+      "recording itself is never changed, and Accept can be undone from the " +
+      "Markers panel.</div>" +
     rows + "</div>";
 }
 
@@ -139,24 +141,24 @@ function _factStrip(facts) {
   const top = (facts.top_apps || [])[0] || {};
   const seqs = facts.repeated_sequence_count || 0;
   const tiles = [
-    { v: _fmt(facts.active_ms), l: "Active (foreground)",
-      s: facts.session_span_ms ? "of " + _fmt(facts.session_span_ms) + " span" : "",
-      t: "Foreground-window time summed from focus events" },
-    { v: _fmt(facts.idle_ms), l: "Idle (measured)",
-      s: facts.idle_ms ? "" : "no idle events captured",
-      t: "Recorder-flagged input inactivity (idle_start/idle_end)" },
+    { v: _fmt(facts.active_ms), l: "Active time",
+      s: facts.session_span_ms ? "of " + _fmt(facts.session_span_ms) + " recorded" : "",
+      t: "Time an app spent as the front window, summed across the recording" },
+    { v: _fmt(facts.idle_ms), l: "Idle time",
+      s: facts.idle_ms ? "" : "no idle time recorded",
+      t: "Stretches with no mouse or keyboard input, as flagged by the recorder" },
     { v: top.app ? escapeHtml(top.app) : "—", l: "Top app",
-      s: top.app ? _pct(top.share) + " of foreground time" : "",
-      t: "Largest share of measured foreground time" },
+      s: top.app ? _pct(top.share) + " of active time" : "",
+      t: "The app with the largest share of measured active time" },
     { v: String(facts.app_switches || 0), l: "App switches",
       s: (facts.switches_per_hour || 0) + "/h",
-      t: "Foreground-app changes across the session" },
-    { v: _fmt(facts.longest_focus_ms), l: "Longest focus",
+      t: "How often a different app came to the front" },
+    { v: _fmt(facts.longest_focus_ms), l: "Longest stretch",
       s: "unbroken in one app",
-      t: "The longest contiguous same-app foreground stretch" },
-    { v: String(facts.rekey_count || 0), l: "Re-keyed values",
+      t: "The longest unbroken stretch of work in a single app" },
+    { v: String(facts.rekey_count || 0), l: "Re-typed values",
       s: seqs + " repeated sequence" + (seqs === 1 ? "" : "s"),
-      t: "Distinct values typed into 2+ apps (value equality on the derived stream) · repeated step sequences from motif mining" },
+      t: "Values typed into more than one app — a sign the same data is re-entered by hand · plus how many step sequences repeat" },
   ];
   return '<div class="ov-facts">' + tiles.map((t) =>
     '<div class="ov-tile" title="' + escapeAttr(t.t) + '">' +
@@ -193,8 +195,8 @@ function _timelineTarget(f) {
 function _findingsFeed(findings, memoSelection) {
   if (!findings.length) {
     return '<div class="ov-section"><div class="ov-section-title">Findings</div>' +
-      '<div class="analysis-note">No findings fired on this capture — the ' +
-      "detectors found nothing above their preconditions.</div></div>";
+      '<div class="analysis-note">Nothing stood out — the automatic checks ' +
+      "found nothing worth reporting on this recording.</div></div>";
   }
   // §D2: the card itself is the shared finding-card component, so the
   // Overview feed and the Compare divergence feed render identically.
@@ -203,7 +205,7 @@ function _findingsFeed(findings, memoSelection) {
     memoSelection: new Set(memoSelection || []),
   })).join("");
   return '<div class="ov-section"><div class="ov-section-title">Findings — ' +
-    "measured claims, analyst judgment pending</div>" + rows + "</div>";
+    "measured from the recording; review before sharing</div>" + rows + "</div>";
 }
 
 async function _toggleMemoSelection(fid, on) {
@@ -250,10 +252,11 @@ function _toSayMore(analysis, anno) {
   const cq = analysis.case_quality || {};
   if (!cq.tier2_unlocked) {
     const n = ((anno || {}).anchor_candidates || []).length;
-    items.push("Case segmentation" +
-      (n ? " (" + n + " anchor candidate" + (n === 1 ? "" : "s") + " above)" : "") +
-      " — accepting an anchor or capturing Start/End markers unlocks cycle " +
-      "times, variants and per-case comparison.");
+    items.push("No cases identified yet" +
+      (n ? " (" + n + " candidate field" + (n === 1 ? "" : "s") + " above)" : "") +
+      " — confirming the field that identifies each ticket/order, or " +
+      "recording Start/End markers, unlocks how long each case takes, the " +
+      "paths taken, and case-by-case comparison.");
   }
   if (!(anno || {}).roi_inputs) {
     items.push("A loaded labour rate and annual volume (Analysis → Edit " +
@@ -262,24 +265,25 @@ function _toSayMore(analysis, anno) {
   const caveat = (analysis.findings || []).find((f) => f.detector === "coverage_caveat");
   if (caveat) {
     const apps = (((caveat.evidence || {}).flagged_apps) || []).map((a) => a.app);
-    items.push("Capture confidence is reduced in " + apps.slice(0, 4).join(", ") +
-      " — an App Vocabulary for " + (apps.length === 1 ? "it" : "them") +
-      " would firm up element identity.");
+    items.push("The recorder saw less detail in " + apps.slice(0, 4).join(", ") +
+      " — teaching the app " + (apps.length === 1 ? "its" : "their") +
+      " screens (App Library → Discover from window) would make those " +
+      "numbers firmer.");
   }
   if (!((analysis.facts || {}).idle_ms)) {
-    items.push("No idle events were measured — waiting time spent inside an " +
-      "app without input is invisible to this capture.");
+    items.push("No idle time was measured — time spent waiting inside an " +
+      "app without typing or clicking is invisible to this recording.");
   }
   const hasBnva = ((anno || {}).analysis_overrides || []).some(
     (ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
   if (!hasBnva) {
-    items.push("The value-add vs business-required split needs an analyst " +
-      "judgment per step type (Analysis → Waste by step) before a " +
-      "process-efficiency ratio can be stated.");
+    items.push("Saying how much of the time added value needs an analyst " +
+      "to judge each step type first (Analysis → Waste by step); until " +
+      "then no efficiency claim is made.");
   }
   if (!items.length) return "";
   return '<div class="ov-section ov-saymore">' +
-    '<div class="ov-section-title">To say more, this engagement needs</div>' +
+    '<div class="ov-section-title">To say more, this analysis needs</div>' +
     "<ul>" + items.map((i) => "<li>" + escapeHtml(i) + "</li>").join("") + "</ul></div>";
 }
 
@@ -321,16 +325,16 @@ function _exportBar() {
   // posture — sealed removes it from the DOM, not just from view.
   const llm = Posture.copyForLlmAllowed()
     ? '<button type="button" id="btn-ov-copy-llm" ' +
-      'title="One reviewable, PII-masked JSON of the DERIVED stream — facts, findings (values tokenized), step groups, the vocab skeletons this session hit. No raw events, no screenshots. Shown for line-by-line review; you paste it, the app sends nothing.">' +
-      "Copy for LLM…</button>"
+      'title="A privacy-masked text summary — facts, findings, step groups, and the App Library entries this session used. No raw events, no screenshots. You review it line by line, then copy it yourself — the app sends nothing anywhere.">' +
+      "Copy for AI review…</button>"
     : "";
   return '<div class="ov-export-bar">' +
     '<button type="button" id="btn-ov-export-memo" class="primary" ' +
       'title="Re-runs the analysis with --memo-out and writes <session>\\memo.docx (starred screenshots embedded inline) + memo.md — the 2-page findings memo (claims + measured numbers), then reveals it">' +
       "Export memo (.docx + .md)</button>" +
     llm +
-    '<span class="meta">2 pages: fact strip · selected findings · the Tier-2 ' +
-      "section only if unlocked · what's missing</span>" +
+    '<span class="meta">2 pages: the key numbers · selected findings · ' +
+      "case-by-case numbers only when cases are confirmed · what's missing</span>" +
     "</div>";
 }
 

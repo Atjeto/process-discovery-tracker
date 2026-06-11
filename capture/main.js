@@ -233,10 +233,10 @@ function _checkBrowserForegroundWatchdog() {
     _browserToastShownThisSession = true;
     notifyUser(
       "Process Discovery Tracker",
-      status.currentApp + " is foreground but no interactions are reaching the " +
-      "recorder. Chrome / Edge may be blocking accessibility (UIA). Try closing " +
-      "and re-opening the browser, or enabling the AccessibilityModeEnabled " +
-      "registry policy. The session is still recording markers + screenshots.",
+      status.currentApp + " is the front window but none of your clicks or " +
+      "typing are being recorded. Chrome / Edge may be blocking accessibility " +
+      "tools. Try closing and re-opening the browser, or ask IT to enable the " +
+      "AccessibilityModeEnabled policy. Markers and screenshots still record.",
       { urgency: "normal" }
     );
   }
@@ -356,10 +356,10 @@ function checkDeadMan() {
     setTrayWarning(true);
     refreshTray();
     notifyUser(
-      "Recorder silent -- check capture",
-      "No UI interactions and no recorder heartbeat for over 2 minutes. " +
-      "The session is still rolling (markers, screenshots), but interaction " +
-      "capture looks dead. Open the tray and restart the session if this persists.",
+      "Recording may have stopped -- please check",
+      "Nothing has been recorded for over 2 minutes. Markers and screenshots " +
+      "still work, but clicks and typing are no longer being captured. Open " +
+      "the tray and restart the session if this persists.",
       { urgency: "critical" }
     );
   } else if (r.transition === "recovered") {
@@ -746,7 +746,7 @@ function promptForAppName() {
       </style></head><body>
       <div>
         <h1>Prep app vocabulary</h1>
-        <div class="sub">Capture a session focused on one app. Click through every button, menu, and form field you want named. When you end the session, the viewer will offer to bootstrap an App Vocabulary YAML.</div>
+        <div class="sub">Record a short session focused on one app. Click through every button, menu, and form field you want named. When you end the session, the viewer will offer to build a starter App Library entry from it.</div>
       </div>
       <div>
         <label for="app">App name</label>
@@ -808,8 +808,8 @@ async function startAppPrepSession() {
     message: `Recording app vocabulary prep for "${appName}"`,
     detail:
       "Click through every button, menu, and form field in the app that you want named.\n\n" +
-      "When you're done, end the session from the tray. The viewer will offer to bootstrap " +
-      "the App Vocabulary YAML automatically.",
+      "When you're done, end the session from the tray. The viewer will offer to build " +
+      "a starter App Library entry from it automatically.",
     buttons: ["OK"],
   });
   return s;

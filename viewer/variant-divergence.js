@@ -321,10 +321,10 @@ function detectVariantDivergence(sessions) {
           claim: _pairClaim(a, b, al),
           evidence,
           tier: 2,
-          confidence_note: "Aligned on value-free step labels across the " +
-            "loaded sessions' cases (the same consensus backbone as the " +
-            "Aligned reading); a renamed step reads as divergence -- " +
-            "verify in the Aligned reading below.",
+          confidence_note: "Aligned on step names (with ticket/order values " +
+            "stripped out) across the loaded sessions' cases -- the same " +
+            "shared sequence the Aligned reading shows; a renamed step reads " +
+            "as a difference, so verify in the Aligned reading below.",
         });
         pairs++;
       }

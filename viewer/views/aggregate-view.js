@@ -113,8 +113,8 @@ function _aggregateMapDataSource({ notation, level, scope }) {
     // Flow diagram rather than render a dead BPMN host.
     if (!_bpmnFileForLevel(level)) {
       return {
-        emptyMessage: 'The Process diagram (BPMN) is mined at the Element and Phase grains. ' +
-          'For the ' + level + ' grain, switch to the Flow diagram tab — it rolls up live.',
+        emptyMessage: 'The Process diagram (BPMN) is built at the Element and Phase detail levels. ' +
+          'For the ' + level + ' level, switch to the Flow diagram tab — it regroups live.',
       };
     }
     const sess = _firstSessionWithBpmn(level);
@@ -135,7 +135,7 @@ function _aggregateMapDataSource({ notation, level, scope }) {
       dfg: _lastActivityDfg,
       variants: _lastVariantsForMap,
       conformance: (_lastConfActive && _lastConformance) ? _lastConformance.status : null,
-      emptyMessage: 'No activity-level flow yet — classify your apps in the taxonomy',
+      emptyMessage: 'No category-level flow yet — give your apps activity categories first (Classify activities)',
     };
   }
   // element / screen / app / phase / case — the grain ladder (ADR-0024), rolled
@@ -148,7 +148,7 @@ function _aggregateMapDataSource({ notation, level, scope }) {
                             { caseLabel: (id) => id }),
     // §B2: grain-ladder edges are time-weighted (count stays in the tooltip).
     edgeWeight: "time",
-    emptyMessage: 'No ' + level + '-grain flow yet — add steps to the loaded sessions',
+    emptyMessage: 'Nothing to draw at the ' + level + ' level yet — add steps to the loaded sessions',
   };
 }
 
@@ -462,10 +462,10 @@ function renderTaxonomyBanner(sessions) {
   if (versions.size > 1) {
     banner.style.display = "";
     banner.textContent =
-      "Sessions were analyzed with different taxonomy versions (" +
+      "Sessions were analyzed with different versions of the category rules (" +
       [...versions].join(", ") + ") — activity labels may not line up, " +
       "so variant comparison can be unreliable. Re-analyze them against " +
-      "the same taxonomy for a consistent comparison.";
+      "the same rules for a consistent comparison.";
   } else {
     banner.style.display = "none";
     banner.textContent = "";
@@ -869,11 +869,11 @@ function renderAggFindings(sessions) {
     // Honest empty state: say what is missing, never render silence.
     panel.style.display = "";
     host.innerHTML = '<div class="analysis-note">No cross-session findings yet — ' +
-      "the loaded sessions don't form a same-process, case-segmented pair. " +
-      "Divergence is measured between ≥ 2 sessions that share a Process " +
-      "Template or the same accepted case anchor, each with Tier-2 case " +
-      "quality (markers, or an accepted anchor with ≥ 70% coverage — see the " +
-      "session's Overview).</div>";
+      "the loaded sessions are not two recordings of the same process with " +
+      "confirmed cases. Differences are measured between 2 or more sessions " +
+      "that share a Process Template (or have cases identified by the same " +
+      "confirmed field), each with cases covering at least 70% of the " +
+      "recording — see each session's Overview.</div>";
   } else {
     panel.style.display = "none";
   }

@@ -47,7 +47,7 @@ function findingCardHtml(f, opts) {
   const refs = (ev.screenshot_refs || []).slice(0, 2);
   const target = typeof opts.timelineTarget === "function" ? opts.timelineTarget(f) : null;
   const memo = opts.memoSelection instanceof Set
-    ? '<label class="ov-memo-check" title="Selected findings render in the exported memo (annotations.json memo_selection)">' +
+    ? '<label class="ov-memo-check" title="Ticked findings are included in the exported memo">' +
       '<input type="checkbox" data-act="memo"' + (opts.memoSelection.has(f.id) ? " checked" : "") + " /> include in memo</label>"
     : "";
   const show = target
@@ -60,8 +60,9 @@ function findingCardHtml(f, opts) {
   return '<div class="ov-finding" data-fid="' + escapeAttr(f.id || "") + '">' +
     '<div class="ov-finding-head">' +
       '<span class="ov-finding-tier t' + (f.tier || 1) + '" title="' +
-        (f.tier === 2 ? "Tier 2 — case-based" : "Tier 1 — measured, no cases needed") +
-        '">T' + (f.tier || 1) + "</span>" +
+        (f.tier === 2 ? "Based on the identified cases — needs confirmed cases to be reliable"
+                      : "Measured directly from the recording — no case identification needed") +
+        '">' + (f.tier === 2 ? "case-based" : "measured") + "</span>" +
       '<span class="ov-finding-claim">' + escapeHtml(f.claim || "") + "</span>" +
     "</div>" +
     (nums ? '<div class="ov-finding-evidence">' + escapeHtml(nums) + "</div>" : "") +

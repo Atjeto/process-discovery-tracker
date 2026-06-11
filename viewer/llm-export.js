@@ -381,12 +381,12 @@ function showExportModal(opts) {
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML =
     '<div class="modal llm-export-modal">' +
-    '<header class="modal-header"><h2>Copy for LLM — review before it leaves</h2>' +
+    '<header class="modal-header"><h2>Copy for AI review — check it before it leaves</h2>' +
     '<button class="icon-btn modal-close" title="Close (Esc)">✕</button></header>' +
     '<div class="modal-body">' +
-    '<p class="modal-msg">Derived, PII-masked JSON only — vocab skeletons, facts, findings, step groups. ' +
-    'No raw events, no screenshots, no typed values (tokens instead). ' +
-    'Read it line by line; nothing is sent anywhere by this app — <em>you</em> paste it.</p>' +
+    '<p class="modal-msg">A privacy-masked summary only — app entries, key numbers, findings, step groups. ' +
+    'No raw events, no screenshots, no typed values (placeholders stand in for them). ' +
+    'Read it line by line; this app sends nothing anywhere — <em>you</em> paste it.</p>' +
     '<textarea class="llm-export-text" readonly spellcheck="false"></textarea>' +
     "</div>" +
     '<footer class="modal-footer">' +
@@ -408,7 +408,7 @@ function showExportModal(opts) {
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
   backdrop.querySelector(".llm-export-copy").addEventListener("click", () => {
     clipboard.writeText(text);
-    toast("Copied — paste into your LLM session (data posture: " + (opts.posture || "?") + ")", "success");
+    toast("Copied — paste it into your AI chat yourself (data sharing mode: " + (opts.posture || "?") + ")", "success");
   });
   backdrop.querySelector(".llm-export-save").addEventListener("click", async () => {
     const r = await Ipc.saveTextFile({

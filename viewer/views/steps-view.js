@@ -361,7 +361,7 @@ function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
   if (legendEl) {
     legendEl.innerHTML = 'Grouped by <strong>' + escapeHtml(grain) +
       '</strong> — each row folds a run of consecutive steps on the same ' +
-      escapeHtml(grain) + '. <span class="grain-legend-hint">Set Grain to ' +
+      escapeHtml(grain) + '. <span class="grain-legend-hint">Set the Detail slider to ' +
       '<strong>element</strong> to edit individual steps.</span>';
     legendEl.style.display = "";
   }
@@ -379,8 +379,8 @@ function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
     const dur = formatDuration(Math.max(0, endMs - startMs));
     const sel = g.step_ids.includes(selId) ? " selected" : "";
     const countBadge = g.count > 1
-      ? '<span class="grain-group-count" title="' + g.count + ' steps folded at the ' +
-        escapeHtml(grain) + ' grain">' + g.count + "&times;</span>"
+      ? '<span class="grain-group-count" title="' + g.count + ' steps combined at the ' +
+        escapeHtml(grain) + ' detail level">' + g.count + "&times;</span>"
       : "";
     return '<div class="step-row grain-group-row' + sel + '" data-step-id="' +
         escapeHtml(g.step_ids[0] || "") + '" data-count="' + g.count + '">' +
@@ -392,7 +392,7 @@ function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
   const list = $("#step-list");
   if (list) {
     list.innerHTML = rows ||
-      '<div class="empty-hint">No steps at this grain.</div>';
+      '<div class="empty-hint">No steps at this detail level.</div>';
     list.querySelectorAll(".grain-group-row").forEach((row) => {
       row.addEventListener("click", () => {
         State.setSelectedStepId(row.dataset.stepId || null);

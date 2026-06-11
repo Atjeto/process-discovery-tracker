@@ -180,9 +180,9 @@ function applyAnalysisOverrides(analysis, overrides) {
 /* ============ Sections ============================================ */
 
 function _caption(overrideCount) {
-  let html = '<div class="analysis-caption">Heuristic estimate — these figures ' +
-    "come from rule-of-thumb classifiers tuned ahead of real recording " +
-    "data. Review them before relying on them.";
+  let html = '<div class="analysis-caption">Estimates — these figures ' +
+    "come from rules of thumb set before any real recording data existed. " +
+    "Review them before relying on them.";
   if (overrideCount > 0) {
     html += " <strong>" + overrideCount + " analyst correction" +
       (overrideCount === 1 ? "" : "s") + "</strong> applied in this view — " +
@@ -202,11 +202,11 @@ function _efficiencySection(eff, hasBnvaOverride) {
   if (!hasBnvaOverride) {
     return '<div class="analysis-section">' +
       '<div class="analysis-section-title">Process efficiency</div>' +
-      '<div class="analysis-note">Withheld — the value-add vs business-required ' +
-        "split is an analyst judgment, and no step type has one yet (the " +
-        "heuristic defaults business-required to 0, which would inflate the " +
-        "ratio). Click a row under <strong>Waste by step</strong> to set " +
-        "business-required minutes; the ratio renders from then on.</div>" +
+      '<div class="analysis-note">Not shown yet — deciding which time adds ' +
+        "value is an analyst judgment, and no step type has been judged yet " +
+        "(an automatic default would inflate the figure). Click a row under " +
+        "<strong>Waste by step</strong> to set business-required minutes; " +
+        "the figure appears from then on.</div>" +
       "</div>";
   }
   const pct = Math.round(eff.process_efficiency_ratio * 100);
@@ -294,7 +294,7 @@ function _buildWasteRow(g, editable = true) {
     ? (g.instances > 1
         ? "Click to set the business-required share across all " + g.instances + " instances"
         : "Click to set the business-required share of this step")
-    : "Read-only at this grain — set Grain to element to adjust business-required time";
+    : "Read-only at this detail level — set the Detail slider to element to adjust business-required time";
   return '<div class="' + cls + '" data-process-label="' +
       escapeAttr(g.process_label || "") +
       '" title="' + escapeAttr(title) + '">' +
@@ -359,8 +359,8 @@ function _wasteSection(waste, notch, maps) {
   }
   const title = regroup ? ("Waste by " + escapeHtml(notch)) : "Waste by step";
   const grainHint = regroup
-    ? '<div class="analysis-caption">Rolled up to the <strong>' + escapeHtml(notch) +
-      "</strong> grain (read-only — set Grain to <strong>element</strong> to adjust " +
+    ? '<div class="analysis-caption">Combined at the <strong>' + escapeHtml(notch) +
+      "</strong> detail level (read-only — set the Detail slider to <strong>element</strong> to adjust " +
       "business-required time). The waste totals, and so the efficiency figure, are unchanged.</div>"
     : "";
   return '<div class="analysis-section">' +
@@ -723,9 +723,9 @@ function _roiSection(roi) {
   // the coherent-segment grain (ADR-0016) and the total is time-based, so the
   // Grain slider re-itemises the Steps and Map views but never moves this total.
   const grainNote = '<div class="analysis-caption roi-grain-note">The headline ' +
-    "total is grain-invariant: the Grain slider re-itemises the Steps and Map " +
-    "views, but a robot saves the same hours however the work is grouped, so " +
-    "this figure never moves.</div>";
+    "total does not depend on the Detail slider: it re-groups the Steps and " +
+    "Map views, but a robot saves the same hours however the work is grouped, " +
+    "so this figure never moves.</div>";
 
   const rows = cands.map((r) => _roiRow(r, roi)).join("");
   const unit = roi.needs_input ? "Hours/yr" : "Net €/yr";
@@ -947,19 +947,19 @@ async function _editBnva(group) {
   const message = n > 1
     ? '"' + (group.process_label || "step") + '" runs ' + _fmt(totalElapsed) +
       " across " + n + " instances (avg " + _fmt(Math.round(avgElapsed)) +
-      "). The heuristic counts active time as value-add. Enter the " +
+      "). By default all active time counts as value-add. Enter the " +
       "business-required minutes per instance — applied to every instance " +
       "(clamped to each one's available active time); measured waste is unaffected."
     : '"' + (group.process_label || "step") + '" runs ' + _fmt(totalElapsed) +
-      ". The heuristic counts all active time as value-add. Enter the part " +
+      ". By default all active time counts as value-add. Enter the part " +
       "that is business-required — necessary, but not adding value. The rest " +
       "stays value-add; measured waste is unaffected.";
   const hint = n > 1
     ? "Up to " + (Math.round(maxBnvaMin * 100) / 100) +
       " min per instance (average available active time). Applies to all " +
-      n + " instances. Leave blank to reset to the heuristic."
+      n + " instances. Leave blank to go back to the default."
     : "Up to " + (Math.round(maxBnvaMin * 100) / 100) +
-      " min of active time. Leave blank to reset to the heuristic.";
+      " min of active time. Leave blank to go back to the default.";
   const res = await formModal({
     title: "Business-required time",
     message,

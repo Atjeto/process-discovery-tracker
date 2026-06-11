@@ -162,7 +162,7 @@ const VIEW_MODE_HELP = {
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Grain slider to roll them up by screen / app / phase / case.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
   map:    "Map view: the process diagram (BPMN) or Flow diagram (DFG) for this session, at the chosen Grain notch (element … case) or the Activity taxonomy level.",
-  analysis: "Analysis view: heuristic waste, time-study and automation findings — review before relying on them.",
+  analysis: "Analysis view: where the time goes, waste and automation candidates — estimates; review before relying on them.",
 };
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
@@ -306,8 +306,8 @@ function _sessionMapDataSource({ notation, level, scope }) {
     // guide to the Flow diagram rather than render a dead/empty BPMN host.
     if (!file) {
       return {
-        emptyMessage: 'The Process diagram (BPMN) is mined at the Element and Phase grains. ' +
-          'For the ' + level + ' grain, switch to the Flow diagram tab above — it rolls up live.',
+        emptyMessage: 'The Process diagram (BPMN) is built at the Element and Phase detail levels. ' +
+          'For the ' + level + ' level, switch to the Flow diagram tab above — it regroups live.',
       };
     }
     // §B2 honesty gate: the step-grain observed BPMN draws CASE flow (one
@@ -339,7 +339,7 @@ function _sessionMapDataSource({ notation, level, scope }) {
     if (!dfg || !dfg.edges || !dfg.edges.length) {
       return {
         dfg,
-        emptyMessage: 'No activity-level Flow diagram yet — Analyze the session, then classify your apps in the taxonomy (the activity DFG comes from taxonomy-classified events). The grain ladder (element … case) builds its flow from your annotations and needs no taxonomy.',
+        emptyMessage: 'No category-level Flow diagram yet — Analyze the session, then give your apps activity categories (Classify activities). The detail levels (element … case) build their flow from your annotations and need no categories.',
       };
     }
     return { dfg };
@@ -354,8 +354,8 @@ function _sessionMapDataSource({ notation, level, scope }) {
     // §B2: the default map is TIME-weighted — edge thickness/labels carry
     // accumulated transition time; the traversal count stays in the tooltip.
     edgeWeight: "time",
-    emptyMessage: 'No ' + level + '-grain Flow diagram yet — add steps to this ' +
-      'session in the Steps view (the map rolls them up at the chosen grain).',
+    emptyMessage: 'Nothing to draw at the ' + level + ' level yet — add steps to this ' +
+      'session in the Steps view (the map groups them at the chosen detail level).',
   };
 }
 
@@ -366,16 +366,16 @@ function _sessionMapDataSource({ notation, level, scope }) {
 function _stepBpmnLockedMessage(sess, cq) {
   const cands = (((sess && sess.annotations) || {}).anchor_candidates || []).length;
   const why = !cq
-    ? "this session has no computed case quality yet — run Analyze once"
+    ? "this session has not been analyzed yet — run Analyze once"
     : (cq.mode === "unsegmented"
-        ? "this session is not case-segmented"
-        : "case coverage is " + Math.round((cq.coverage || 0) * 100) +
-          "%, below the 70% trust threshold");
+        ? "no cases have been identified in this recording yet"
+        : "the identified cases cover only " + Math.round((cq.coverage || 0) * 100) +
+          "% of the recording, below the 70% needed to trust them");
   const cta = cands
-    ? cands + " anchor candidate" + (cands === 1 ? "" : "s") + " await review."
-    : "Capture Start/End markers or accept an anchor to unlock it.";
-  return "Step-level Process diagram withheld — it draws case-based flow " +
-    "(Tier 2), and " + why + ". " + cta +
+    ? cands + " candidate field" + (cands === 1 ? "" : "s") + " that could identify each case await" + (cands === 1 ? "s" : "") + " review."
+    : "Recording Start/End markers, or confirming the field that identifies each case, unlocks it.";
+  return "The step-level Process diagram is not shown — it draws how cases " +
+    "flow, and " + why + ". " + cta +
     ' <button type="button" class="link-btn" data-map-cta="overview">' +
     "Review on Overview</button>";
 }

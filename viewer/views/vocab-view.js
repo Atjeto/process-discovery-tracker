@@ -301,7 +301,7 @@ function _buildVocabIntRow(ent, i) {
   const discovered = isDiscoveredEntry(ent);
   const review = discovered
     ? '<label class="vocab-int-review' + (ent._reviewed ? " done" : "") + '" ' +
-      'title="Discovery pre-filled this row (signature, verb, flags). Tick it once you\'ve approved or corrected it — a review-pass aid, not saved data.">' +
+      'title="Discovery pre-filled this row. Tick it once you\'ve checked or corrected it — a checklist aid; the tick itself isn\'t saved into the file.">' +
       '<input type="checkbox" data-review="1"' + (ent._reviewed ? " checked" : "") + '> reviewed</label>'
     : "";
   // C1 semantics strip: verb select + auto flags + the human/LLM columns.
@@ -313,19 +313,19 @@ function _buildVocabIntRow(ent, i) {
     verbOpts.push('<option value="' + escapeAttr(verbVal) + '" selected>' + escapeHtml(verbVal) + "</option>");
   }
   const flagTitles = {
-    completion: "Invoking this control completes the unit of work — step suggestion ends a step here (auto-guessed for Save/Submit/Send/OK buttons)",
-    carries_value: "The control holds a business value — its typed values join the re-key detector's field set (auto-guessed for value-holding controls)",
-    case_id_source: "The field's typed value names the case — anchor candidates on this field get a small scoring bonus (never auto-guessed; your judgment)",
+    completion: "Pressing this finishes a piece of work (like Save, Submit or Send). We use it to know where one step ends and the next begins. Pre-ticked for Save/Submit/Send/OK buttons.",
+    carries_value: "This field holds typed information. We use it to notice when the same data is re-typed into several apps. Pre-ticked for fields workers type into.",
+    case_id_source: "What's typed here tells us which ticket, order or customer the work belongs to — it lets the app split a long recording into separate cases. Never pre-ticked; your judgment.",
   };
-  const flagLabels = { completion: "completes step", carries_value: "carries value", case_id_source: "case-id source" };
+  const flagLabels = { completion: "'Done' action", carries_value: "Workers type data here", case_id_source: "Identifies the ticket/order" };
   const semantics =
     '<div class="vocab-int-semantics">' +
-    '<label class="vocab-sem-verb" title="What interacting with this control DOES — auto-derived from the control type at discovery (control × event kind); override freely.">' +
+    '<label class="vocab-sem-verb" title="What using this control does — click, type, select or submit. Pre-filled automatically from the control type; change it if it&#39;s wrong.">' +
     '<span>Verb</span><select data-sem="verb">' + verbOpts.join("") + "</select></label>" +
-    '<label title="The business object the control acts on (e.g. “customer record”) — the human/LLM half of the row; never auto-guessed.">' +
+    '<label title="The thing this control works on, in plain words — e.g. “customer record”. Always filled in by a person, never guessed.">' +
     '<span>Object</span><input type="text" data-sem="object" value="' + escapeAttr(ent.object || "") + '" placeholder="e.g., customer record"></label>' +
-    '<label class="vocab-sem-means" title="What using this control means in the process — free text; never auto-guessed.">' +
-    '<span>Means</span><input type="text" data-sem="means" value="' + escapeAttr(ent.means || "") + '" placeholder="e.g., closes intake and hands off to billing"></label>' +
+    '<label class="vocab-sem-means" title="One plain sentence on what this action does for the business. Always written by a person, never guessed.">' +
+    '<span>Means</span><input type="text" data-sem="means" value="' + escapeAttr(ent.means || "") + '" placeholder="What does this do, in plain words? e.g. &#39;sends the order to billing&#39;"></label>' +
     '<span class="vocab-sem-flags">' +
     SEMANTIC_FLAG_FIELDS.map((f) =>
       '<label class="vocab-sem-flag" title="' + escapeAttr(flagTitles[f]) + '">' +
@@ -686,10 +686,10 @@ function _pasteSuggestionsModal() {
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML =
       '<div class="modal llm-export-modal">' +
-      '<header class="modal-header"><h2>Import LLM suggestions</h2>' +
+      '<header class="modal-header"><h2>Import AI suggestions</h2>' +
       '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
       '<div class="modal-body">' +
-      '<p class="modal-msg">Paste the JSON the LLM returned (the <code>{ "suggestions": { "&lt;row_key&gt;": { name / object / means } } }</code> shape from the export\'s instructions). ' +
+      '<p class="modal-msg">Paste the reply text the AI returned (the <code>{ "suggestions": { "&lt;row_key&gt;": { name / object / means } } }</code> shape from the export\'s instructions). ' +
       "Nothing is applied yet — next you approve each suggestion row by row.</p>" +
       '<textarea class="llm-export-text" spellcheck="false" placeholder="{\n  &quot;suggestions&quot;: { … }\n}"></textarea>' +
       "</div>" +
@@ -743,7 +743,7 @@ async function importLlmSuggestions() {
     return { key: r.key, label: cur + ":  " + parts.join("  ·  "), checked: false };
   });
   const picked = await checklistModal({
-    title: "Apply LLM suggestions? (" + m.rows.length + " row" + (m.rows.length === 1 ? "" : "s") + ")",
+    title: "Apply AI suggestions? (" + m.rows.length + " row" + (m.rows.length === 1 ? "" : "s") + ")",
     message: "Nothing applies without your approval — tick the rows to accept" +
       (m.unmatched.length ? " (" + m.unmatched.length + " suggestion(s) named unknown rows and were ignored)" : "") +
       ". Applying marks the vocabulary dirty; Save persists it.",
@@ -771,13 +771,13 @@ function renderVocabLlmButtons() {
   if (!anchor || !anchor.parentNode) return;
   const copyBtn = document.createElement("button");
   copyBtn.id = "btn-vocab-copy-llm";
-  copyBtn.textContent = "Copy for LLM…";
-  copyBtn.title = "Build a reviewable, PII-masked JSON of the selected vocabulary's skeleton rows (signatures + auto-semantics) to paste into an LLM session for name/object/means suggestions. Shown for line-by-line review first; data posture: " + Posture.getDataPosture() + ".";
+  copyBtn.textContent = "Copy for AI review…";
+  copyBtn.title = "Build a privacy-masked text summary of the selected app's rows to paste into an AI chat for naming suggestions. You review it line by line first; data sharing mode: " + Posture.getDataPosture() + ".";
   copyBtn.addEventListener("click", copyVocabForLlm);
   const importBtn = document.createElement("button");
   importBtn.id = "btn-vocab-import-llm";
   importBtn.textContent = "Import suggestions…";
-  importBtn.title = "Paste the LLM's suggestions JSON back — rendered as a per-row approval checklist; nothing applies without your tick (suggest-don't-mutate).";
+  importBtn.title = "Paste the AI's suggestions back — shown as a per-row approval checklist; nothing is applied without your tick.";
   importBtn.addEventListener("click", importLlmSuggestions);
   anchor.parentNode.insertBefore(copyBtn, anchor);
   anchor.parentNode.insertBefore(importBtn, anchor);
