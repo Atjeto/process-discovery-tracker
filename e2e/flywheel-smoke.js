@@ -172,7 +172,7 @@ async function until(fn, timeoutMs, stepMs = 500) {
   const anchorBadge = await until(() => page.evaluate(() => {
     const b = document.querySelector("#overview-content .ov-badge");
     const t = b ? (b.textContent || "").trim() : "";
-    return /✓ Anchor/.test(t) ? t : null;
+    return /✓ \d+ cases? — identified by/.test(t) ? t : null;
   }), 120000);
   record("(a) session 1: anchor hero Accept + re-analyze → ✓ Anchor badge",
     !!(heroRows >= 1 && anchorBadge),
@@ -248,7 +248,7 @@ async function until(fn, timeoutMs, stepMs = 500) {
   const badge2 = await until(() => page2.evaluate(() => {
     const b = document.querySelector("#overview-content .ov-badge");
     const t = b ? (b.textContent || "").trim() : "";
-    return /✓ Anchor/.test(t) ? t : null;
+    return /✓ \d+ cases? — identified by/.test(t) ? t : null;
   }), 120000);
   let cq2 = null, anno2 = null;
   try {

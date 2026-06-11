@@ -164,9 +164,9 @@ async function shot(page, name) {
     };
   }).catch((e) => ({ err: e.message }));
   const badgeOk = !!(badge && !badge.err && badge.ok &&
-    /✓ Markers — \d+ cases?/.test(badge.text || "") &&
-    /unlocked/i.test(badge.tier2 || ""));
-  record("(b) badge shows the markers state + Tier 2 unlocked", badgeOk, JSON.stringify(badge));
+    /✓ \d+ cases? — marked by the worker/.test(badge.text || "") &&
+    /case analysis on/i.test(badge.tier2 || ""));
+  record("(b) badge shows the worker-marked state + case analysis on", badgeOk, JSON.stringify(badge));
 
   // (c) Fact strip: 6 tiles, every value non-empty, no clipped labels.
   const tiles = await page.evaluate(() => {
@@ -287,9 +287,9 @@ async function shot(page, name) {
     };
   }).catch((e) => ({ err: e.message }));
   const heroOk = !!(hero && !hero.err && hero.badgeWarn &&
-    /Unsegmented/.test(hero.badgeText || "") &&
+    /No cases identified yet/.test(hero.badgeText || "") &&
     hero.heroRows >= 1 && hero.acceptBtns === hero.heroRows);
-  record("(d) marker-stripped session: ⚠ Unsegmented badge + anchor hero with >= 1 candidate",
+  record("(d) marker-stripped session: ⚠ no-cases badge + anchor hero with >= 1 candidate",
     heroOk, JSON.stringify(hero));
   if (!heroOk) await shot(page2, "fail-overview-hero.png");
 

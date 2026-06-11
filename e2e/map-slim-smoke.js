@@ -187,7 +187,7 @@ async function openMapLevel(page) {
     const host = document.getElementById("session-map-bpmn-host");
     return {
       shapes: host ? host.querySelectorAll(".djs-element[data-element-id]").length : 0,
-      lockText: host ? /withheld/i.test(host.textContent || "") : null,
+      lockText: host ? /is not shown/i.test(host.textContent || "") : null,
     };
   }).catch((e) => ({ err: e.message }));
   record("(c) marked demo: element-grain Process diagram (step BPMN) renders unlocked",
@@ -264,8 +264,8 @@ async function openMapLevel(page) {
     const empty = host && host.querySelector(".map-empty-inline");
     const text = empty ? (empty.textContent || "") : "";
     return {
-      hasLockLine: /withheld/i.test(text) && /Tier 2/i.test(text),
-      explainsWhy: /not case-segmented|coverage|case quality/i.test(text),
+      hasLockLine: /is not shown/i.test(text) && /draws how cases\s+flow/i.test(text),
+      explainsWhy: /no cases have been identified|cover only|not been analyzed/i.test(text),
       ctaPresent: !!(empty && empty.querySelector('[data-map-cta="overview"]')),
       shapes: host ? host.querySelectorAll(".djs-element[data-element-id]").length : 0,
       text: text.slice(0, 220),
