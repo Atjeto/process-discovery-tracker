@@ -4,7 +4,7 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-06-11
 
 Lab Phase F — business-user language + typography
 ([docs/LAB-PHASE-SPEC.md → Phase F](docs/LAB-PHASE-SPEC.md)), answering
