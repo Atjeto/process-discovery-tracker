@@ -369,8 +369,10 @@ function _stepBpmnLockedMessage(sess, cq) {
     ? "this session has not been analyzed yet — run Analyze once"
     : (cq.mode === "unsegmented"
         ? "no cases have been identified in this recording yet"
-        : "the identified cases cover only " + Math.round((cq.coverage || 0) * 100) +
-          "% of the recording, below the 70% needed to trust them");
+        : ((cq.case_count || 0) < 2
+            ? "only one case was identified — case comparisons need at least 2"
+            : "the identified cases cover only " + Math.round((cq.coverage || 0) * 100) +
+              "% of the recording, below the 70% needed to trust them"));
   const cta = cands
     ? cands + " candidate field" + (cands === 1 ? "" : "s") + " that could identify each case await" + (cands === 1 ? "s" : "") + " review."
     : "Recording Start/End markers, or confirming the field that identifies each case, unlocks it.";

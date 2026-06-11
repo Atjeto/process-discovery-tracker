@@ -42,17 +42,24 @@ function _pct(x) { return Math.round((x || 0) * 100) + "%"; }
 
 function _badge(cq) {
   let cls, text, title;
+  const oneCase = (cq.case_count || 0) === 1;
   if (cq.mode === "markers") {
     cls = "ok";
-    text = "✓ " + (cq.case_count || 0) + " case" + (cq.case_count === 1 ? "" : "s") + " — marked by the worker";
+    // G-3: one case never unlocks comparisons — say so on the badge itself.
+    text = oneCase
+      ? "✓ 1 case marked — case comparisons need at least 2"
+      : "✓ " + (cq.case_count || 0) + " cases — marked by the worker";
     title = "The worker marked case starts/ends during recording · " +
       _pct(cq.coverage) + " of recorded actions fall inside a case";
   } else if (cq.mode === "anchor") {
     const a = cq.anchor || {};
     cls = "ok";
-    text = "✓ " + (cq.case_count || 0) + " case" + (cq.case_count === 1 ? "" : "s") +
-      ' — identified by "' + (a.field_value || a.field_property || "?") + '"' +
-      " (" + _pct(cq.coverage) + " covered)";
+    text = oneCase
+      ? '✓ 1 case identified by "' + (a.field_value || a.field_property || "?") +
+        '" — case comparisons need at least 2'
+      : "✓ " + (cq.case_count || 0) + " cases" +
+        ' — identified by "' + (a.field_value || a.field_property || "?") + '"' +
+        " (" + _pct(cq.coverage) + " covered)";
     title = "Cases were identified by the confirmed field (" +
       (a.field_property || "?") + " = " + (a.field_value || "?") + ")";
   } else {
@@ -63,8 +70,8 @@ function _badge(cq) {
       "the worker records markers or you confirm the field that identifies each case";
   }
   const tier2 = cq.tier2_unlocked
-    ? '<span class="ov-tier2 ok" title="Cases are identified and cover at least 70% of the recording, so the case-by-case numbers are shown">Case analysis on</span>'
-    : '<span class="ov-tier2 locked" title="The case-by-case numbers are hidden — they need confirmed cases (worker markers, or a confirmed identifying field) covering at least 70% of the recording">Case analysis locked</span>';
+    ? '<span class="ov-tier2 ok" title="At least 2 cases are identified and cover at least 70% of the recording, so the case-by-case numbers are shown">Case analysis on</span>'
+    : '<span class="ov-tier2 locked" title="The case-by-case numbers are hidden — they need at least 2 confirmed cases (worker markers, or a confirmed identifying field) covering at least 70% of the recording">Case analysis locked</span>';
   return '<div class="ov-badge-row">' +
     '<span class="ov-badge ' + cls + '" title="' + escapeAttr(title) + '">' +
     escapeHtml(text) + "</span>" + tier2 + _postureControl() + "</div>";
@@ -140,22 +147,41 @@ function _wireAnchorHero(host) {
 function _factStrip(facts) {
   const top = (facts.top_apps || [])[0] || {};
   const seqs = facts.repeated_sequence_count || 0;
+  // G-2 honesty rule: an old recording can carry NO app-time signal at all
+  // (facts.app_time_source === "none") — those tiles must say so, never
+  // render a confident 0. An interaction-derived estimate is labelled.
+  const src = facts.app_time_source;
+  const noAppSignal = src === "none";
+  const derived = src === "interactions";
+  const naSub = "not available from this recording";
+  const naTip = "This recording (an older recorder version) has no " +
+    "window-focus signal, so this number can't be measured from it";
+  const estSub = "estimated from clicks and typing";
   const tiles = [
-    { v: _fmt(facts.active_ms), l: "Active time",
-      s: facts.session_span_ms ? "of " + _fmt(facts.session_span_ms) + " recorded" : "",
-      t: "Time an app spent as the front window, summed across the recording" },
+    noAppSignal
+      ? { v: "—", l: "Active time", s: naSub, t: naTip }
+      : { v: _fmt(facts.active_ms), l: "Active time",
+          s: derived ? estSub
+            : (facts.session_span_ms ? "of " + _fmt(facts.session_span_ms) + " recorded" : ""),
+          t: "Time an app spent as the front window, summed across the recording" },
     { v: _fmt(facts.idle_ms), l: "Idle time",
       s: facts.idle_ms ? "" : "no idle time recorded",
       t: "Stretches with no mouse or keyboard input, as flagged by the recorder" },
-    { v: top.app ? escapeHtml(top.app) : "—", l: "Top app",
-      s: top.app ? _pct(top.share) + " of active time" : "",
-      t: "The app with the largest share of measured active time" },
-    { v: String(facts.app_switches || 0), l: "App switches",
-      s: (facts.switches_per_hour || 0) + "/h",
-      t: "How often a different app came to the front" },
-    { v: _fmt(facts.longest_focus_ms), l: "Longest stretch",
-      s: "unbroken in one app",
-      t: "The longest unbroken stretch of work in a single app" },
+    noAppSignal
+      ? { v: "—", l: "Top app", s: naSub, t: naTip }
+      : { v: top.app ? escapeHtml(top.app) : "—", l: "Top app",
+          s: top.app ? _pct(top.share) + " of active time" : "",
+          t: "The app with the largest share of measured active time" },
+    noAppSignal
+      ? { v: "—", l: "App switches", s: naSub, t: naTip }
+      : { v: String(facts.app_switches || 0), l: "App switches",
+          s: (facts.switches_per_hour || 0) + "/h" + (derived ? " · " + estSub : ""),
+          t: "How often a different app came to the front" },
+    noAppSignal
+      ? { v: "—", l: "Longest stretch", s: naSub, t: naTip }
+      : { v: _fmt(facts.longest_focus_ms), l: "Longest stretch",
+          s: derived ? estSub : "unbroken in one app",
+          t: "The longest unbroken stretch of work in a single app" },
     { v: String(facts.rekey_count || 0), l: "Re-typed values",
       s: seqs + " repeated sequence" + (seqs === 1 ? "" : "s"),
       t: "Values typed into more than one app — a sign the same data is re-entered by hand · plus how many step sequences repeat" },
@@ -251,12 +277,20 @@ function _toSayMore(analysis, anno) {
   const items = [];
   const cq = analysis.case_quality || {};
   if (!cq.tier2_unlocked) {
-    const n = ((anno || {}).anchor_candidates || []).length;
-    items.push("No cases identified yet" +
-      (n ? " (" + n + " candidate field" + (n === 1 ? "" : "s") + " above)" : "") +
-      " — confirming the field that identifies each ticket/order, or " +
-      "recording Start/End markers, unlocks how long each case takes, the " +
-      "paths taken, and case-by-case comparison.");
+    if (cq.mode && cq.mode !== "unsegmented" && (cq.case_count || 0) >= 1) {
+      // G-3: cases exist, just not enough of them to compare.
+      items.push("Only " + (cq.case_count || 0) + " case" +
+        ((cq.case_count || 0) === 1 ? " was" : "s were") + " identified — " +
+        "case comparisons need at least 2, so capturing or marking one more " +
+        "case would unlock how long each case takes and the paths taken.");
+    } else {
+      const n = ((anno || {}).anchor_candidates || []).length;
+      items.push("No cases identified yet" +
+        (n ? " (" + n + " candidate field" + (n === 1 ? "" : "s") + " above)" : "") +
+        " — confirming the field that identifies each ticket/order, or " +
+        "recording Start/End markers, unlocks how long each case takes, the " +
+        "paths taken, and case-by-case comparison.");
+    }
   }
   if (!(anno || {}).roi_inputs) {
     items.push("A loaded labour rate and annual volume (Analysis → Edit " +
@@ -340,26 +374,31 @@ function _exportBar() {
 
 /* §C3 from the Overview: the session's derived blocks + the skeletons of
    the vocabs this session actually hit (stats.meta.app_vocabulary_hits_by_id),
-   so the export carries exactly the engagement's working set. */
+   so the export carries exactly the engagement's working set. G-5: ALL known
+   vocabs are read for the candidate-rows coverage check (an app with a vocab
+   the session didn't hit is still covered, not a naming gap); only the hit
+   ones export their skeleton rows. */
 async function _copySessionForLlm() {
   const sess = State.getSession();
   if (!sess) return;
   const hitIds = Object.keys(
     (((sess.stats || {}).meta) || {}).app_vocabulary_hits_by_id || {});
   const vocabs = [];
-  if (hitIds.length) {
-    try {
-      const r = await Ipc.listAppVocabs();
-      for (const v of ((r && r.vocabs) || [])) {
-        if (!hitIds.includes(v.id)) continue;
-        const doc = await Ipc.readVocab(v.path);
-        if (doc && !doc._error) vocabs.push(doc);
-      }
-    } catch (_) { /* export still works without the vocab section */ }
-  }
+  const allVocabs = [];
+  try {
+    const r = await Ipc.listAppVocabs();
+    for (const v of ((r && r.vocabs) || [])) {
+      const doc = await Ipc.readVocab(v.path);
+      if (!doc || doc._error) continue;
+      allVocabs.push(doc);
+      if (hitIds.includes(v.id)) vocabs.push(doc);
+    }
+  } catch (_) { /* export still works without the vocab section */ }
   LlmExport.showExportModal({
     session: { analysis: sess.analysis || {}, annotations: sess.annotations || {} },
     vocabs,
+    events: sess.events || [],
+    coverageVocabs: allVocabs,
     posture: Posture.getDataPosture(),
     surface: "overview",
   });
