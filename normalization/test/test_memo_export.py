@@ -109,6 +109,36 @@ def test_tier2_locked_without_candidates_points_at_markers():
     assert "no candidate field was detected" in md
 
 
+def test_tier2_locked_on_single_case_says_so_not_unsegmented():
+    # G-3 (owner's real session): 1 marked case at near-full coverage is
+    # locked, and the memo must say WHY -- not pretend no cases exist.
+    a = _analysis(tier2=False)
+    a["case_quality"] = {"mode": "markers", "case_count": 1,
+                         "coverage": 0.999, "tier2_unlocked": False}
+    md = render_memo(_manifest(), _stats(), a, {})
+    assert "1 case was marked" in md
+    assert "need at least 2" in md
+    assert "No cases identified yet" not in md
+    assert "Cycle time (wall clock)" not in md
+
+
+def test_fact_strip_says_not_available_when_no_app_signal():
+    # G-2: app_time_source == "none" must never render a confident 0.
+    a = _analysis()
+    a["facts"].update({"active_ms": 0, "top_apps": [], "app_switches": 0,
+                       "longest_focus_ms": 0, "app_time_source": "none"})
+    md = render_memo(_manifest(), _stats(), a, {})
+    assert md.count("not available from this recording") >= 3
+    assert "| 0 (0/h) |" not in md
+
+
+def test_fact_strip_labels_interaction_derived_estimate():
+    a = _analysis()
+    a["facts"]["app_time_source"] = "interactions"
+    md = render_memo(_manifest(), _stats(), a, {})
+    assert "estimated from clicks and typing" in md
+
+
 def test_memo_selection_filters_the_findings():
     anno = {"memo_selection": ["fragmentation-bbb"]}
     md = render_memo(_manifest(), _stats(), _analysis(), anno)

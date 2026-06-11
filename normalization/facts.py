@@ -15,6 +15,15 @@ Overview fact strip plus the memo's fact strip.
                       (value-equality on the derived stream; PII-masked
                       values compare by their join-preserving token).
   repeated_sequence_count -- motif count from motifs.find_motifs (§A3).
+  app_time_source  -- where the app-time numbers came from (G-2, additive):
+                      "activity" (measured foreground durations),
+                      "interactions" (estimated from interaction
+                      process_name + timestamps when activity events are
+                      absent or carry no durations -- old captures, e.g.
+                      v0.9.0), or "none" (no usable signal at all; the
+                      app-time numbers above are then NOT facts and every
+                      consumer must render "not available from this
+                      recording" instead of a confident zero).
 
 Pure stdlib.
 """
@@ -37,6 +46,16 @@ REKEY_MIN_LEN = 4
 REKEY_MIN_LEN_VOCAB = 2
 
 TOP_APPS_N = 5
+
+# G-2 interaction-derived fallback: the dwell attributed to an interaction is
+# the gap to the NEXT interaction, capped -- a long think/lunch gap must not
+# credit one app with an hour of "focus" the recorder never measured.
+INTERACTION_GAP_CAP_MS = 60_000
+
+# Literal junk an old recorder emits as a typed "value" -- never a business
+# value, so it must not feed re-key matching (G-4: the owner's v0.9.0 session
+# emitted the string "null").
+_NOISE_VALUES = frozenset({"null", "(null)", "undefined", "(undefined)"})
 
 
 def _activity_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -98,7 +117,10 @@ def _typed_value(ev: dict) -> str:
     val = d.get("value")
     if not isinstance(val, str):
         return ""
-    return val.strip()
+    val = val.strip()
+    if val.lower() in _NOISE_VALUES:
+        return ""
+    return val
 
 
 def _field_label(data: dict) -> str:
@@ -163,6 +185,59 @@ def rekey_details(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _derive_app_time_from_interactions(
+    events: list[dict[str, Any]],
+) -> tuple[dict[str, float], int, float] | None:
+    """G-2 fallback: estimate (per_app, switches, longest_focus) from
+    interaction events' process_name + timestamps when the session has no
+    usable activity signal (old captures, e.g. v0.9.0, emit no activity
+    events / no duration_ms). The dwell credited to an interaction is the
+    gap to the next one, capped at INTERACTION_GAP_CAP_MS so unmeasured
+    pauses don't inflate one app. Returns None when interactions carry no
+    usable app/timestamp signal -- the caller then reports "none" and the
+    consumers say "not available from this recording" instead of 0."""
+    rows: list[tuple[Any, str]] = []
+    for ev in events or []:
+        if not isinstance(ev, dict) or ev.get("type") != "interaction":
+            continue
+        data = ev.get("data")
+        if not isinstance(data, dict):
+            continue
+        app = (data.get("process_name") or "").strip()
+        if app.lower().endswith(".exe"):
+            app = app[:-4]
+        t = _parse_ts(ev.get("timestamp"))
+        if not app or t is None:
+            continue
+        rows.append((t, app))
+    if len(rows) < 2:
+        return None
+    rows.sort(key=lambda r: r[0])
+    per_app: dict[str, float] = defaultdict(float)
+    switches = 0
+    longest = 0.0
+    run = 0.0
+    prev_app = None
+    for i, (t, app) in enumerate(rows):
+        if i + 1 < len(rows):
+            gap = (rows[i + 1][0] - t).total_seconds() * 1000.0
+            dwell = min(max(gap, 0.0), INTERACTION_GAP_CAP_MS)
+        else:
+            dwell = 0.0
+        per_app[app] += dwell
+        if prev_app is not None and app != prev_app:
+            switches += 1
+            run = dwell
+        else:
+            run += dwell
+        if run > longest:
+            longest = run
+        prev_app = app
+    if sum(per_app.values()) <= 0:
+        return None
+    return per_app, switches, longest
+
+
 def compute_facts(
     events: list[dict[str, Any]],
     motifs: list[dict[str, Any]] | None = None,
@@ -191,6 +266,20 @@ def compute_facts(
         prev_app = app
 
     active_ms = round(sum(per_app.values()))
+
+    # G-2: an old capture shape (v0.9.0) has no activity events / durations,
+    # which used to render every app-time fact as a confident 0. Fall back to
+    # an interaction-derived estimate; failing that, say so via the source key.
+    app_time_source = "activity"
+    if active_ms <= 0:
+        derived = _derive_app_time_from_interactions(events)
+        if derived is not None:
+            per_app, switches, longest = derived
+            per_app = defaultdict(float, per_app)
+            active_ms = round(sum(per_app.values()))
+            app_time_source = "interactions"
+        else:
+            app_time_source = "none"
     top_apps = [
         {"app": app, "ms": round(ms),
          "share": round(ms / active_ms, 3) if active_ms else 0.0}
@@ -211,4 +300,5 @@ def compute_facts(
         "longest_focus_ms": round(longest),
         "rekey_count": len(rekey_details(events)),
         "repeated_sequence_count": len(motifs or []),
+        "app_time_source": app_time_source,
     }

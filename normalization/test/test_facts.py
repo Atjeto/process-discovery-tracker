@@ -129,6 +129,73 @@ def test_negative_and_bool_durations_count_zero():
     assert compute_facts(evs)["active_ms"] == 0
 
 
+# ---- G-2: the v0.9.0 capture shape (owner's real session) ------------------
+# The old capture emits NO activity events (and no duration_ms anywhere), so
+# every app-time fact used to render a confident 0 while idle/span were right.
+# facts must fall back to an interaction-derived estimate, and say so.
+
+def _click(app, ts, eid, title="w"):
+    return {"event_id": eid, "type": "interaction", "timestamp": ts,
+            "data": {"kind": "invoked", "process_name": app,
+                     "window_title": title, "name": "OK",
+                     "control_type": "Button"}}
+
+
+def _v090_stream():
+    """Interaction-only stream mimicking capture v0.9.0: no activity events,
+    junk 'null' typed values, idle pair still present."""
+    return [
+        _sys("session_start", BASE.format(0)),
+        _click("TAMBA.exe", BASE.format(0), "i1"),
+        _click("TAMBA.exe", BASE.format(1), "i2"),
+        _click("EXCEL.EXE", BASE.format(2), "i3"),
+        _typed("TAMBA.exe", "null", BASE.format(3), "i4"),
+        _typed("EXCEL.EXE", "null", BASE.format(3), "i5"),
+        _sys("idle_start", BASE.format(4)),
+        _sys("idle_end", BASE.format(6)),
+        _click("OUTLOOK.EXE", BASE.format(7), "i6"),
+    ]
+
+
+def test_v090_shape_derives_app_time_from_interactions():
+    f = compute_facts(_v090_stream())
+    assert f["app_time_source"] == "interactions"
+    assert f["active_ms"] > 0
+    assert f["top_apps"], "top apps must not be empty when interactions exist"
+    assert f["app_switches"] > 0
+    assert f["longest_focus_ms"] > 0
+    # idle and span were always measured correctly on the real session.
+    assert f["idle_ms"] == 120000
+    assert f["session_span_ms"] == 7 * 60000
+
+
+def test_v090_gap_cap_limits_unmeasured_pauses():
+    # Two interactions 10 minutes apart: the first app gets at most the cap,
+    # never the whole unmeasured pause.
+    evs = [
+        _click("a.exe", "2026-05-14T09:00:00Z", "x1"),
+        _click("b.exe", "2026-05-14T09:10:00Z", "x2"),
+    ]
+    f = compute_facts(evs)
+    assert f["app_time_source"] == "interactions"
+    assert f["active_ms"] <= 60000
+
+
+def test_v090_junk_null_values_do_not_count_as_rekey():
+    f = compute_facts(_v090_stream())
+    assert f["rekey_count"] == 0
+
+
+def test_app_time_source_is_activity_when_measured():
+    assert compute_facts(_stream())["app_time_source"] == "activity"
+
+
+def test_app_time_source_none_when_no_signal_at_all():
+    f = compute_facts([_sys("session_start", BASE.format(0))])
+    assert f["app_time_source"] == "none"
+    assert f["active_ms"] == 0
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

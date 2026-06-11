@@ -161,6 +161,17 @@ def _top_app_longest_run(events: list[dict], app: str) -> tuple[str, str] | None
     return best[1], best[2]
 
 
+def _derived_app_time_note(facts: dict) -> str:
+    """G-2: when the app-time numbers were estimated from interaction
+    timestamps (no activity signal in the recording), every claim built on
+    them says so. Empty for measured recordings."""
+    if (facts or {}).get("app_time_source") == "interactions":
+        return (" This recording has no direct window-focus signal, so the "
+                "app time here is estimated from where clicks and typing "
+                "happened.")
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Detectors. Each returns a list of findings (possibly empty).
 
@@ -191,7 +202,8 @@ def _detect_screen_time_sink(events, facts) -> list[dict]:
         "tier": 1,
         "confidence_note": "Time the app spent as the front window; short "
                            "pauses inside the app count too, unless the "
-                           "recorder flagged them as idle.",
+                           "recorder flagged them as idle."
+                           + _derived_app_time_note(facts),
     }]
 
 
@@ -218,7 +230,7 @@ def _detect_fragmentation(facts) -> list[dict]:
         "tier": 1,
         "confidence_note": "A switch is counted each time a different app "
                            "comes to the front; near-instant switches can "
-                           "merge into one.",
+                           "merge into one." + _derived_app_time_note(facts),
     }]
 
 

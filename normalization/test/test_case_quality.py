@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from case_quality import COVERAGE_THRESHOLD, compute_case_quality
+from case_quality import COVERAGE_THRESHOLD, MIN_CASES, compute_case_quality
 
 
 def _interaction(case_ids=None, eid="e1"):
@@ -46,17 +46,30 @@ def test_unsegmented_when_no_cases():
 
 
 def test_coverage_below_threshold_locks_tier2_even_with_cases():
-    # 6 of 10 interactions in a case -> 0.6 < 0.7.
-    cq = compute_case_quality(_events(6, 4), {"c1": {}})
+    # 6 of 10 interactions in a case -> 0.6 < 0.7 (2 cases, so coverage
+    # alone is the lock reason).
+    cq = compute_case_quality(_events(6, 4), {"c1": {}, "c2": {}})
     assert cq["mode"] == "markers"
     assert cq["coverage"] == 0.6
     assert cq["tier2_unlocked"] is False
 
 
 def test_coverage_exactly_at_threshold_unlocks():
-    cq = compute_case_quality(_events(7, 3), {"c1": {}})
+    cq = compute_case_quality(_events(7, 3), {"c1": {}, "c2": {}})
     assert cq["coverage"] == COVERAGE_THRESHOLD == 0.7
     assert cq["tier2_unlocked"] is True
+
+
+def test_single_case_locks_tier2_even_at_full_coverage():
+    # G-3 (owner's real session): markers mode, ONE case, coverage 0.999 ->
+    # cycle-time / variant / across-case comparison is meaningless with
+    # nothing to compare against, so Tier 2 must stay locked.
+    cq = compute_case_quality(_events(10, 0), {"c1": {}})
+    assert cq["mode"] == "markers"
+    assert cq["case_count"] == 1
+    assert cq["coverage"] == 1.0
+    assert cq["tier2_unlocked"] is False
+    assert MIN_CASES == 2
 
 
 def test_anchor_mode_from_annotations_override():

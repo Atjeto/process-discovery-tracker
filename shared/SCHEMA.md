@@ -928,7 +928,8 @@ step-less session too (the classic step-grained blocks stay empty there).
     "app_switches": 0, "switches_per_hour": 0.0,
     "longest_focus_ms": 0,
     "rekey_count": 0,
-    "repeated_sequence_count": 0
+    "repeated_sequence_count": 0,
+    "app_time_source": "activity | interactions | none"
   },
   "findings": [
     { "id": "screen_time_sink-3fa2b1c0d4e5",
@@ -948,7 +949,9 @@ step-less session too (the classic step-grained blocks stay empty there).
 - **`case_quality`** — the Tier-2 gatekeeper. `mode` records how cases were
   derived (`markers` / `anchor` / `unsegmented` when there are none);
   `coverage` is the fraction of interaction events inside a case;
-  `tier2_unlocked` = `mode != "unsegmented" AND coverage >= 0.7`. The
+  `tier2_unlocked` = `mode != "unsegmented" AND coverage >= 0.7 AND
+  case_count >= 2` (Phase G-3: one case has nothing to compare against,
+  so a single marked case never unlocks the case-based surfaces). The
   `anchor` sub-object is present only in anchor mode. Case-based surfaces
   (cycle times, variants, per-case comparison) must not render with
   fact-level authority while `tier2_unlocked` is false.
@@ -956,7 +959,12 @@ step-less session too (the classic step-grained blocks stay empty there).
   foreground time, measured idle, top apps by share, switch cadence, longest
   unbroken same-app stretch, values re-keyed across 2+ apps (value equality
   on the derived stream — masked values compare by token), and the count of
-  distinct (maximal) repeated step-label sequences.
+  distinct (maximal) repeated step-label sequences. `app_time_source`
+  (Phase G-2, additive) records where the app-time numbers came from:
+  `activity` (measured foreground durations), `interactions` (estimated
+  from interaction timestamps when the capture is too old to emit activity
+  durations — capture v0.9.0), or `none` (no usable signal; consumers must
+  render "not available from this recording", never a confident 0).
 - **`findings[]`** — the detector library's claims feed (viewer Overview +
   the memo). Claims are comparative/factual; each carries its evidence
   (numbers plus `step_ids` / `event_ids` / `screenshot_refs` where the

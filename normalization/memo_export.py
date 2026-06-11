@@ -88,21 +88,36 @@ def _coverage_line(stats: dict, analysis: dict) -> str:
 
 def _fact_cells(facts: dict) -> list[tuple[str, str]]:
     """The 6 (header, value) fact-strip pairs every renderer (md table,
-    docx table, PDD §1) shares."""
+    docx table, PDD §1) shares.
+
+    G-2 honesty rule: when the recording carries no app-time signal at all
+    (facts.app_time_source == "none" -- old captures), the four app-time
+    cells say "not available from this recording" instead of a confident
+    0; an interaction-derived estimate is labelled as one."""
     top = (facts.get("top_apps") or [{}])
     lead = top[0] if top else {}
     lead_cell = (f"{lead.get('app', '—')} ({_pct(lead.get('share', 0))})"
                  if lead.get("app") else "—")
     rekey = facts.get("rekey_count") or 0
     seqs = facts.get("repeated_sequence_count") or 0
-    return [
-        ("Active time", _fmt_ms(facts.get("active_ms"))),
-        ("Idle time", _fmt_ms(facts.get("idle_ms"))),
-        ("Top app", lead_cell),
-        ("App switches", "{} ({}/h)".format(
+    source = facts.get("app_time_source") or "activity"
+    na = "not available from this recording"
+    est = " (estimated from clicks and typing)" if source == "interactions" else ""
+    if source == "none":
+        active_cell = top_cell = switches_cell = longest_cell = na
+    else:
+        active_cell = _fmt_ms(facts.get("active_ms")) + est
+        top_cell = lead_cell
+        switches_cell = "{} ({}/h)".format(
             facts.get("app_switches") or 0,
-            facts.get("switches_per_hour") or 0)),
-        ("Longest stretch in one app", _fmt_ms(facts.get("longest_focus_ms"))),
+            facts.get("switches_per_hour") or 0) + est
+        longest_cell = _fmt_ms(facts.get("longest_focus_ms"))
+    return [
+        ("Active time", active_cell),
+        ("Idle time", _fmt_ms(facts.get("idle_ms"))),
+        ("Top app", top_cell),
+        ("App switches", switches_cell),
+        ("Longest stretch in one app", longest_cell),
         ("Values re-typed across apps", "{} ({} repeated sequence{})".format(
             rekey, seqs, "s" if seqs != 1 else "")),
     ]
@@ -172,6 +187,16 @@ def _findings_section(analysis: dict, annotations: dict) -> list[str]:
 def _tier2_section(analysis: dict, stats: dict, annotations: dict) -> list[str]:
     cq = (analysis or {}).get("case_quality") or {}
     if not cq.get("tier2_unlocked"):
+        # G-3: cases WERE identified, just not enough of them to compare.
+        if cq.get("mode") != "unsegmented" and (cq.get("case_count") or 0) >= 1:
+            n_cases = cq.get("case_count") or 0
+            verb = "marked" if cq.get("mode") == "markers" else "identified"
+            return [
+                "{} case{} {} in this recording — case comparisons (how "
+                "long each case takes, the paths taken) need at least 2 "
+                "cases, so none are reported.".format(
+                    n_cases, "s were" if n_cases != 1 else " was", verb),
+            ]
         n = len((annotations or {}).get("anchor_candidates") or [])
         return [
             "No cases identified yet in this recording; {} candidate "
@@ -223,13 +248,23 @@ def _to_say_more(analysis: dict, annotations: dict) -> list[str]:
     cq = (analysis or {}).get("case_quality") or {}
     facts = (analysis or {}).get("facts") or {}
     if not cq.get("tier2_unlocked"):
-        n = len((annotations or {}).get("anchor_candidates") or [])
-        hint = (f" ({n} candidate field{'s' if n != 1 else ''} awaiting "
-                "review)" if n else "")
-        items.append("No cases identified yet{} -- confirming the field that "
-                     "identifies each ticket/order, or recording Start/End "
-                     "markers, unlocks how long each case takes, the paths "
-                     "taken, and case-by-case comparison.".format(hint))
+        if cq.get("mode") != "unsegmented" and (cq.get("case_count") or 0) >= 1:
+            # G-3: identified but too few to compare.
+            items.append("Only {} case{} identified -- case comparisons "
+                         "need at least 2, so recording one more case (or "
+                         "marking another in this recording) would unlock "
+                         "how long each case takes and the paths taken."
+                         .format(cq.get("case_count") or 0,
+                                 " was" if (cq.get("case_count") or 0) == 1
+                                 else "s were"))
+        else:
+            n = len((annotations or {}).get("anchor_candidates") or [])
+            hint = (f" ({n} candidate field{'s' if n != 1 else ''} awaiting "
+                    "review)" if n else "")
+            items.append("No cases identified yet{} -- confirming the field that "
+                         "identifies each ticket/order, or recording Start/End "
+                         "markers, unlocks how long each case takes, the paths "
+                         "taken, and case-by-case comparison.".format(hint))
     if not (annotations or {}).get("roi_inputs"):
         items.append("A loaded labour rate and annual volume (Analysis → Edit "
                      "assumptions) would turn the measured time into a € "
