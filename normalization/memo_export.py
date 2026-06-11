@@ -82,7 +82,7 @@ def _coverage_line(stats: dict, analysis: dict) -> str:
                    if f.get("detector") == "coverage_caveat"), None)
     if caveat:
         n = len(((caveat.get("evidence") or {}).get("flagged_apps")) or [])
-        parts.append(f"{n} app{'s' if n != 1 else ''} at reduced capture confidence")
+        parts.append(f"{n} app{'s' if n != 1 else ''} recorded with less detail")
     return " · ".join(parts) if parts else "no capture metadata available"
 
 
@@ -96,14 +96,14 @@ def _fact_cells(facts: dict) -> list[tuple[str, str]]:
     rekey = facts.get("rekey_count") or 0
     seqs = facts.get("repeated_sequence_count") or 0
     return [
-        ("Active (foreground)", _fmt_ms(facts.get("active_ms"))),
-        ("Idle (measured)", _fmt_ms(facts.get("idle_ms"))),
+        ("Active time", _fmt_ms(facts.get("active_ms"))),
+        ("Idle time", _fmt_ms(facts.get("idle_ms"))),
         ("Top app", lead_cell),
         ("App switches", "{} ({}/h)".format(
             facts.get("app_switches") or 0,
             facts.get("switches_per_hour") or 0)),
-        ("Longest focus", _fmt_ms(facts.get("longest_focus_ms"))),
-        ("Re-keyed values", "{} ({} repeated sequence{})".format(
+        ("Longest stretch in one app", _fmt_ms(facts.get("longest_focus_ms"))),
+        ("Values re-typed across apps", "{} ({} repeated sequence{})".format(
             rekey, seqs, "s" if seqs != 1 else "")),
     ]
 
@@ -150,8 +150,8 @@ def _select_findings(analysis: dict, annotations: dict) -> list[dict]:
 def _findings_section(analysis: dict, annotations: dict) -> list[str]:
     chosen = _select_findings(analysis, annotations)
     if not chosen:
-        return ["_No findings fired on this capture -- the detectors found "
-                "nothing above their preconditions._"]
+        return ["_Nothing stood out -- the automatic checks found nothing "
+                "worth reporting on this recording._"]
     lines: list[str] = []
     for i, f in enumerate(chosen, 1):
         lines.append(f"{i}. **{f.get('claim') or '(no claim)'}**")
@@ -174,26 +174,29 @@ def _tier2_section(analysis: dict, stats: dict, annotations: dict) -> list[str]:
     if not cq.get("tier2_unlocked"):
         n = len((annotations or {}).get("anchor_candidates") or [])
         return [
-            "This session is not case-segmented; {} anchor candidate{} "
-            "awaiting review.".format(n, "s are" if n != 1 else " is")
+            "No cases identified yet in this recording; {} candidate "
+            "field{} that could identify each case {} awaiting review in "
+            "the viewer.".format(n, "s" if n != 1 else "",
+                                 "are" if n != 1 else "is")
             if n else
-            "This session is not case-segmented and no anchor candidates "
-            "were detected; capture Start/End markers to unlock case-based "
-            "analysis.",
+            "No cases identified yet in this recording, and no candidate "
+            "field was detected; recording Start/End markers would unlock "
+            "the case-by-case numbers.",
         ]
     lines = []
     mode = cq.get("mode")
     if mode == "anchor":
         anchor = cq.get("anchor") or {}
-        lines.append("Cases stamped by anchor `{}` = `{}` -- {} cases, {} of "
-                     "interactions covered.".format(
+        lines.append("Cases identified by the field `{}` (sample value: "
+                     "`{}`) -- {} cases, {} of recorded actions fall inside "
+                     "one.".format(
                          anchor.get("field_property") or "?",
                          anchor.get("field_value") or "?",
                          cq.get("case_count") or 0,
                          _pct(cq.get("coverage") or 0)))
     else:
-        lines.append("Cases bracketed by worker-fired markers -- {} cases, {} "
-                     "of interactions covered.".format(
+        lines.append("Cases marked by the worker during recording -- {} "
+                     "cases, {} of recorded actions fall inside one.".format(
                          cq.get("case_count") or 0,
                          _pct(cq.get("coverage") or 0)))
     rows = [r for r in (stats or {}).get("case_stats") or []
@@ -221,11 +224,12 @@ def _to_say_more(analysis: dict, annotations: dict) -> list[str]:
     facts = (analysis or {}).get("facts") or {}
     if not cq.get("tier2_unlocked"):
         n = len((annotations or {}).get("anchor_candidates") or [])
-        hint = (f" ({n} anchor candidate{'s' if n != 1 else ''} awaiting review)"
-                if n else "")
-        items.append("Case segmentation{} -- accepting an anchor or capturing "
-                     "Start/End markers unlocks cycle times, variants and "
-                     "per-case comparison.".format(hint))
+        hint = (f" ({n} candidate field{'s' if n != 1 else ''} awaiting "
+                "review)" if n else "")
+        items.append("No cases identified yet{} -- confirming the field that "
+                     "identifies each ticket/order, or recording Start/End "
+                     "markers, unlocks how long each case takes, the paths "
+                     "taken, and case-by-case comparison.".format(hint))
     if not (annotations or {}).get("roi_inputs"):
         items.append("A loaded labour rate and annual volume (Analysis → Edit "
                      "assumptions) would turn the measured time into a € "
@@ -235,21 +239,23 @@ def _to_say_more(analysis: dict, annotations: dict) -> list[str]:
     if caveat:
         apps = [a.get("app") for a in
                 ((caveat.get("evidence") or {}).get("flagged_apps")) or []]
-        items.append("Capture confidence is reduced in {} -- an App "
-                     "Vocabulary for {} would firm up element identity."
+        items.append("The recorder saw less detail in {} -- teaching the "
+                     "app {} screens (App Library -> Discover from window) "
+                     "would make those numbers firmer."
                      .format(", ".join(apps[:4]),
-                             "them" if len(apps) != 1 else "it"))
+                             "their" if len(apps) != 1 else "its"))
     if not facts.get("idle_ms"):
-        items.append("No idle events were measured -- waiting time spent "
-                     "inside an app without input is invisible to this "
-                     "capture.")
+        items.append("No idle time was measured -- time spent waiting "
+                     "inside an app without typing or clicking is invisible "
+                     "to this recording.")
     has_bnva = any(
         isinstance(ov, dict) and ov.get("bnva_ms") is not None
         for ov in (annotations or {}).get("analysis_overrides") or [])
     if not has_bnva:
-        items.append("The value-add vs business-required split needs an "
-                     "analyst judgment per step type (Analysis → Waste by "
-                     "step) before a process-efficiency ratio can be stated.")
+        items.append("Saying how much of the time added value needs an "
+                     "analyst to judge each step type first (Analysis → "
+                     "Waste by step); until then the memo makes no "
+                     "efficiency claim.")
     return items
 
 
@@ -315,14 +321,14 @@ def render_memo(
     out.append("")
     out.append(f"*Captured {model['captured']} · {model['coverage_line']}*")
     out.append("")
-    out.append("## What the capture measured")
+    out.append("## What the recording measured")
     out.append("")
     out.extend(_fact_strip(analysis.get("facts") or {}))
     out.append("")
     out.append("## Findings")
     out.append("")
     out.extend(_findings_section(analysis, annotations))
-    out.append("## Case-based analysis (Tier 2)")
+    out.append("## Case-by-case analysis")
     out.append("")
     out.extend(model["tier2_lines"])
     out.append("")
@@ -336,9 +342,10 @@ def render_memo(
                    "can use was supplied.")
     out.append("")
     out.append("---")
-    out.append("*Every number above was measured from the capture; sentences "
-               "are templated. Evidence pointers (★) name screenshots in the "
-               "session folder.*")
+    out.append("*Every number above was measured from the recording; the "
+               "sentences around them are standard wording, not opinion. "
+               "Evidence pointers (★) name screenshots in the session "
+               "folder.*")
     out.append("")
     return "\n".join(out)
 
@@ -382,7 +389,7 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
     memo with level-1 sections; 1 = nested under a PDD level-1 head)."""
     h = lambda lvl: lvl + heading_offset  # noqa: E731
 
-    doc.add_heading("What the capture measured", level=h(1))
+    doc.add_heading("What the recording measured", level=h(1))
     cells = model["fact_cells"]
     t = doc.add_table(rows=2, cols=len(cells))
     for i, (head, val) in enumerate(cells):
@@ -391,8 +398,8 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
 
     doc.add_heading("Findings", level=h(1))
     if not model["findings"]:
-        _docx_note(doc, "No findings fired on this capture -- the detectors "
-                        "found nothing above their preconditions.")
+        _docx_note(doc, "Nothing stood out -- the automatic checks found "
+                        "nothing worth reporting on this recording.")
     for i, f in enumerate(model["findings"], 1):
         p = doc.add_paragraph()
         p.add_run(f"{i}. {f['claim']}").bold = True
@@ -412,7 +419,7 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
         if f["confidence_note"]:
             _docx_note(doc, f["confidence_note"])
 
-    doc.add_heading("Case-based analysis (Tier 2)", level=h(1))
+    doc.add_heading("Case-by-case analysis", level=h(1))
     for line in model["tier2_lines"]:
         doc.add_paragraph(line)
 
@@ -446,9 +453,10 @@ def render_memo_docx(
     doc.add_heading(f"Findings memo — {model['label']}", level=0)
     _docx_note(doc, f"Captured {model['captured']} · {model['coverage_line']}")
     write_memo_into_docx(doc, model, session_folder=session_folder)
-    _docx_note(doc, "Every number above was measured from the capture; "
-                    "sentences are templated. Evidence figures (★) are the "
-                    "screenshots named from the session folder.")
+    _docx_note(doc, "Every number above was measured from the recording; "
+                    "the sentences around them are standard wording, not "
+                    "opinion. Evidence figures (★) are the screenshots "
+                    "named from the session folder.")
     doc.save(str(out_path))
     return str(out_path)
 

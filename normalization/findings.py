@@ -189,9 +189,9 @@ def _detect_screen_time_sink(events, facts) -> list[dict]:
             "screenshot_refs": refs,
         },
         "tier": 1,
-        "confidence_note": "Foreground-window time summed from focus events; "
-                           "it includes in-window pauses the recorder did not "
-                           "flag as idle.",
+        "confidence_note": "Time the app spent as the front window; short "
+                           "pauses inside the app count too, unless the "
+                           "recorder flagged them as idle.",
     }]
 
 
@@ -216,8 +216,8 @@ def _detect_fragmentation(facts) -> list[dict]:
             "longest_focus_ms": facts.get("longest_focus_ms") or 0,
         },
         "tier": 1,
-        "confidence_note": "A switch is a foreground-window change; switches "
-                           "faster than the recorder's batching window may "
+        "confidence_note": "A switch is counted each time a different app "
+                           "comes to the front; near-instant switches can "
                            "merge into one.",
     }]
 
@@ -245,9 +245,9 @@ def _detect_waiting(facts, analysis_blocks) -> list[dict]:
             "waiting_in_steps_ms": round(waiting_in_steps),
         },
         "tier": 1,
-        "confidence_note": "Idle is recorder-flagged input inactivity; waiting "
-                           "for a slow system while moving the mouse is not "
-                           "counted.",
+        "confidence_note": "Idle means no mouse or keyboard input for a "
+                           "while; waiting on a slow system while still "
+                           "moving the mouse is not counted.",
     }]
 
 
@@ -271,10 +271,10 @@ def _detect_repetition(analysis_blocks) -> list[dict]:
         # B4: the claim sentence carries the SHORT label (app + first 2 steps,
         # ~60 chars); the full narrative label stays in the evidence detail.
         short = short_segment_label(c.get("app"), c.get("step_labels"))
-        claim = (f"The segment \"{short}\" was "
-                 f"performed {c.get('instance_count') or 0} times, totalling "
+        claim = (f"The step sequence \"{short}\" was "
+                 f"repeated {c.get('instance_count') or 0} times, totalling "
                  f"{_fmt_ms(c.get('total_elapsed_ms'))} "
-                 f"(mean {_fmt_ms(c.get('mean_elapsed_ms'))} per instance).")
+                 f"(average {_fmt_ms(c.get('mean_elapsed_ms'))} per repeat).")
         out.append({
             "id": _fid("repetition", c.get("segment_signature")),
             "detector": "repetition",
@@ -291,10 +291,10 @@ def _detect_repetition(analysis_blocks) -> list[dict]:
                 "step_ids": step_ids,
             },
             "tier": 2,
-            "confidence_note": "Counts repeats of the same ordered step "
-                               "sequence within one app across cases; a "
-                               "near-miss with an extra step counts as a "
-                               "different segment.",
+            "confidence_note": "Counts exact repeats of the same ordered "
+                               "steps within one app; a near-miss with an "
+                               "extra step is counted as a different "
+                               "sequence.",
         })
     return out
 
@@ -307,9 +307,8 @@ def _detect_backtracking(steps, bounces) -> list[dict]:
         occurrences = b.get("occurrences") or []
         step_ids = [sid for occ in occurrences for sid in (occ.get("step_ids") or [])][:30]
         n = b.get("count") or 0
-        claim = (f"The flow returned to \"{b.get('returned_to')}\" immediately "
-                 f"after \"{b.get('via')}\" {n} time{'s' if n != 1 else ''} "
-                 f"(A→B→A).")
+        claim = (f"Work went back to \"{b.get('returned_to')}\" immediately "
+                 f"after \"{b.get('via')}\" {n} time{'s' if n != 1 else ''}.")
         out.append({
             "id": _fid("backtracking", b.get("bounce_id")),
             "detector": "backtracking",
@@ -321,9 +320,10 @@ def _detect_backtracking(steps, bounces) -> list[dict]:
                 "first_occurrence_ts": (occurrences[0].get("start_ts") if occurrences else ""),
             },
             "tier": 1,
-            "confidence_note": "Read from the ordered step labels; an "
-                               "intentional check-back reads the same as "
-                               "rework -- verify on the timeline.",
+            "confidence_note": "Read from the order of the recorded steps. A "
+                               "deliberate double-check looks the same as "
+                               "rework here -- confirm on the timeline "
+                               "before relying on it.",
         })
     return out
 
@@ -334,9 +334,9 @@ def _detect_rekey_transfer(events) -> list[dict]:
         return []
     top = rows[0]
     apps = ", ".join(top["apps"])
-    claim = (f"{len(rows)} distinct value{'s were' if len(rows) != 1 else ' was'} "
-             f"typed into 2+ different apps -- e.g. \"{top['value']}\" was "
-             f"entered in {apps} ({top['entry_count']} typings).")
+    claim = (f"{len(rows)} value{'s were' if len(rows) != 1 else ' was'} "
+             f"typed into more than one app -- e.g. \"{top['value']}\" was "
+             f"entered in {apps} ({top['entry_count']} times in total).")
     return [{
         "id": _fid("rekey_transfer", len(rows), top["value"]),
         "detector": "rekey_transfer",
@@ -355,10 +355,10 @@ def _detect_rekey_transfer(events) -> list[dict]:
             "event_ids": top["event_ids"][:20],
         },
         "tier": 1,
-        "confidence_note": "Matched by exact value equality on the derived "
-                           "stream (masked values compare by token); a "
-                           "copy-paste transfer that never re-types does not "
-                           "appear here.",
+        "confidence_note": "Counted when exactly the same typed text appears "
+                           "in two or more apps (privacy-masked values "
+                           "still match reliably); a copy-paste transfer "
+                           "that is never re-typed does not show up here.",
     }]
 
 
@@ -394,14 +394,15 @@ def _detect_coverage_caveat(events) -> list[dict]:
             continue
         if wall:
             tier_label = "wall"
-            why = "remote/terminal surface -- captured fields proxy for pixels"
+            why = "a remote/terminal window -- only the screen image crosses it"
         elif reduced_hint:
             tier_label = sorted(rec["hints"] & _REDUCED_HINTS)[0]
-            why = ("no stable control ids" if tier_label == "basic"
-                   else "window-level identity only")
+            why = ("the app does not name its fields reliably"
+                   if tier_label == "basic"
+                   else "only the window title was readable")
         else:
             tier_label = "low-confidence"
-            why = f"mean element confidence {round(mean_conf, 2)}"
+            why = f"field identification was weak (score {round(mean_conf, 2)} of 1)"
         flagged.append({
             "app": app,
             "trust": tier_label,
@@ -411,8 +412,10 @@ def _detect_coverage_caveat(events) -> list[dict]:
     if not flagged:
         return []
     total_apps = len(per_app)
-    listing = "; ".join(f"{f['app']} ({f['trust']} -- {f['why']})" for f in flagged[:4])
-    claim = (f"Capture confidence is reduced in {len(flagged)} of "
+    # The machine tier name ("wall"/"basic"/"minimal") stays in the evidence
+    # for tooling; the claim sentence says only the plain-words reason.
+    listing = "; ".join(f"{f['app']} ({f['why']})" for f in flagged[:4])
+    claim = (f"The recorder saw less detail in {len(flagged)} of "
              f"{total_apps} apps: {listing}.")
     return [{
         "id": _fid("coverage_caveat", *(f["app"] for f in flagged)),
@@ -423,9 +426,10 @@ def _detect_coverage_caveat(events) -> list[dict]:
             "total_apps": total_apps,
         },
         "tier": 1,
-        "confidence_note": "Derived from the per-interaction capture-"
-                           "confidence fields (§11e); numbers measured "
-                           "inside these apps rest on weaker element identity.",
+        "confidence_note": "Based on how reliably the recorder could "
+                           "identify what was clicked or typed in each app; "
+                           "numbers measured inside these apps are less "
+                           "precise.",
     }]
 
 

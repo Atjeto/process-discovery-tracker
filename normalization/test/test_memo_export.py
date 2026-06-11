@@ -72,7 +72,7 @@ def test_header_names_the_session_and_capture_date():
 
 def test_fact_strip_renders_measured_values():
     md = render_memo(_manifest(), _stats(), _analysis(), {})
-    assert "| Active (foreground) |" in md
+    assert "| Active time |" in md
     assert "1h 15m" in md            # active_ms
     assert "chrome.exe (31%)" in md  # top app + share
     assert "47 (11.2/h)" in md       # switches
@@ -92,20 +92,21 @@ def test_tier2_section_renders_only_when_unlocked():
     assert "4 cases" in md
     assert "Cycle time (wall clock): mean 15m" in md
     assert "2 distinct path variants" in md
-    assert "not case-segmented" not in md
+    assert "No cases identified yet" not in md
 
 
 def test_tier2_locked_renders_the_one_honest_line():
     anno = {"anchor_candidates": [{"signature": "x"}, {"signature": "y"}]}
     md = render_memo(_manifest(), _stats(), _analysis(tier2=False), anno)
-    assert "not case-segmented; 2 anchor candidates are awaiting review" in md
+    assert ("No cases identified yet in this recording; 2 candidate fields "
+            "that could identify each case are awaiting review") in md
     # No fabricated case numbers below the gate.
     assert "Cycle time (wall clock)" not in md
 
 
 def test_tier2_locked_without_candidates_points_at_markers():
     md = render_memo(_manifest(), _stats(), _analysis(tier2=False), {})
-    assert "no anchor candidates were detected" in md
+    assert "no candidate field was detected" in md
 
 
 def test_memo_selection_filters_the_findings():
@@ -125,10 +126,10 @@ def test_to_say_more_enumerates_missing_inputs():
     md = render_memo(_manifest(), _stats(), _analysis(tier2=False),
                      {"anchor_candidates": [{"signature": "x"}]})
     assert "## To say more" in md
-    assert "Case segmentation" in md
+    assert "No cases identified yet" in md
     assert "loaded labour rate" in md          # roi_inputs absent
-    assert "No idle events were measured" in md
-    assert "value-add vs business-required" in md.lower()
+    assert "No idle time was measured" in md
+    assert "judge each step type" in md
 
 
 def test_to_say_more_drops_supplied_inputs():
@@ -138,13 +139,13 @@ def test_to_say_more_drops_supplied_inputs():
     a["facts"]["idle_ms"] = 60000
     md = render_memo(_manifest(), _stats(), a, anno)
     assert "loaded labour rate" not in md
-    assert "No idle events" not in md
-    assert "business-required split" not in md
+    assert "No idle time was measured" not in md
+    assert "judge each step type" not in md
 
 
 def test_no_findings_renders_an_honest_empty_line():
     md = render_memo(_manifest(), _stats(), _analysis(findings=[]), {})
-    assert "No findings fired" in md
+    assert "Nothing stood out" in md
 
 
 def test_write_memo_reads_session_sidecars(tmp_path=None):
@@ -209,13 +210,13 @@ def test_write_memo_docx_variant_with_inline_screenshots():
     assert out.exists() and out.stat().st_size > 0
     texts, doc = _docx_texts(out)
     assert any(t.startswith("Findings memo — sess-2026-0514-0900") for t in texts)
-    assert "What the capture measured" in texts
+    assert "What the recording measured" in texts
     assert any("chrome.exe accounts for 31%" in t for t in texts)
     assert len(doc.inline_shapes) >= 1            # the ★ screenshot embedded
     assert any("★ screenshots/shot_02.png" in t for t in texts)
     # The fact strip lands as a table with the shared 6 cells.
     cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
-    assert "Active (foreground)" in cells and "1h 15m" in cells
+    assert "Active time" in cells and "1h 15m" in cells
 
 
 def test_memo_docx_skips_traversal_screenshot_refs():

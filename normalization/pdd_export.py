@@ -341,17 +341,17 @@ def _write_statistics(doc, stats, analysis, annotations=None):
     if rows:
         _kv_table(doc, rows)
     if not tier2:
-        _note(doc, "Case-based statistics (cycle times per case) are withheld: "
-                   "this session is not case-segmented to the trust threshold. "
-                   "Accepting an anchor or capturing Start/End markers in the "
-                   "viewer unlocks them.")
+        _note(doc, "Per-case statistics (how long each case took) are not "
+                   "shown: no cases have been identified in this recording "
+                   "yet. Confirming the field that identifies each "
+                   "ticket/order, or recording Start/End markers, unlocks "
+                   "them in the viewer.")
     if efficiency.get("process_efficiency_ratio") is not None and not _has_bnva_override(annotations):
-        _note(doc, "A process-efficiency ratio is withheld: the value-add vs "
-                   "business-required split is an analyst judgment, and no "
-                   "step type has one yet (the heuristic defaults "
-                   "business-required to 0, which would inflate the ratio). "
-                   "Set business-required minutes in the viewer's Analysis "
-                   "level to state it.")
+        _note(doc, "No process-efficiency ratio is stated: deciding which "
+                   "time adds value is an analyst judgment, and no step type "
+                   "has been judged yet (an automatic default would inflate "
+                   "the ratio). Set business-required minutes in the "
+                   "viewer's Analysis view to state it.")
 
     timed = sorted((a for a in activity_stats if a.get("total_duration_ms")),
                    key=lambda a: a["total_duration_ms"], reverse=True)
@@ -495,25 +495,25 @@ def _write_automation(doc, analysis):
     button-click."""
     doc.add_heading("5. Automation assessment", level=1)
     doc.add_heading("5.1 In scope for automation", level=2)
-    _placeholder(doc, "which segments / sub-processes are in scope for automation")
+    _placeholder(doc, "which step sequences / sub-processes are in scope for automation")
     doc.add_heading("5.2 Out of scope", level=2)
-    _placeholder(doc, "which segments / sub-processes are explicitly out of scope")
+    _placeholder(doc, "which step sequences / sub-processes are explicitly out of scope")
 
     doc.add_heading("5.3 Automation candidates", level=2)
     doc.add_paragraph(
-        "Candidacy is evaluated at the level of a coherent segment -- a "
-        "contiguous run of work in one application within one case, such "
-        "as a lookup followed by a copy-paste sequence. An individual "
-        "click or keystroke is not a meaningful automation unit on its "
-        "own (you cannot have a human fill a form, a robot click Search, "
-        "then a human continue); segments capture the smallest stretch a "
+        "Candidates are judged as whole step sequences -- an unbroken "
+        "stretch of work in one application within one case, such as a "
+        "lookup followed by a copy-paste. An individual click or "
+        "keystroke is not a meaningful automation unit on its own (you "
+        "cannot have a human fill a form, a robot click Search, then a "
+        "human continue); a step sequence is the smallest stretch a "
         "robot can realistically take end-to-end."
     )
     cands = [a for a in ((analysis or {}).get("automation_candidates") or [])
              if a.get("data_sufficiency") == "multi_instance"]
     if not cands:
-        _placeholder(doc, "coherent segments with automation potential (this "
-                          "capture lacks the repetition needed to identify "
+        _placeholder(doc, "step sequences with automation potential (this "
+                          "recording lacks the repetition needed to identify "
                           "candidates automatically -- consider loading more "
                           "sessions of this process)")
         return
@@ -521,25 +521,26 @@ def _write_automation(doc, analysis):
     t = doc.add_table(rows=1, cols=6)
     h = t.rows[0].cells
     h[0].text = "Rank"
-    h[1].text = "Segment"
+    h[1].text = "Step sequence"
     h[2].text = "Application"
-    h[3].text = "Instances"
+    h[3].text = "Times run"
     h[4].text = "Total time"
-    h[5].text = "Mean per instance"
+    h[5].text = "Average per run"
     for i, a in enumerate(cands, start=1):
         r = t.add_row().cells
         r[0].text = str(a.get("rank") or i)
-        r[1].text = str(a.get("label", "(segment)"))
+        r[1].text = str(a.get("label", "(step sequence)"))
         r[2].text = str(a.get("app", "—")).replace(".exe", "") or "—"
         r[3].text = str(a.get("instance_count", 0))
         r[4].text = _fmt_ms(a.get("total_elapsed_ms", 0))
         r[5].text = _fmt_ms(a.get("mean_elapsed_ms", 0))
 
-    _note(doc, "An instance is one execution of the segment within one case; "
-               "segments grouped here share the same application and the same "
-               "ordered list of step types. Rank orders the candidates by "
-               "automation priority — frequency × mean time per instance × the "
-               "automatable fraction — so the highest-leverage segment is first.")
+    _note(doc, "An instance is one run of the step sequence within one "
+               "case; sequences grouped here share the same application and "
+               "the same ordered steps. Rank orders the candidates by "
+               "automation priority — how often it ran × average time per "
+               "run × the automatable share — so the best-value sequence "
+               "is first.")
 
     # Narrative summary for the analyst: the top 3 segments, expressed as
     # prose so §4.3 reads like a recommendation, not just a grid.
@@ -556,8 +557,8 @@ def _write_automation(doc, analysis):
                 f'{a.get("instance_count", 0)}× across the captured cases '
                 f'(total elapsed {_fmt_ms(a.get("total_elapsed_ms", 0))}, '
                 f'mean {_fmt_ms(a.get("mean_elapsed_ms", 0))} per instance). '
-                "Suggested automation: scope this segment as a single, "
-                "end-to-end automation unit."
+                "Suggested automation: scope this step sequence as a "
+                "single, end-to-end automation unit."
             )
             for run in p.runs:
                 run.italic = True
@@ -589,18 +590,20 @@ def _write_roi(doc, analysis):
     cands = roi.get("candidates") or []
     doc.add_heading("5.4 Estimated ROI", level=2)
     if not cands:
-        _placeholder(doc, "the annual time and cost savings of automating the "
-                          "candidate segments (no multi-instance candidates "
-                          "were detected, so no ROI band could be computed)")
+        _placeholder(doc, "the annual time and cost savings of automating "
+                          "the candidate step sequences (none repeated often "
+                          "enough in this recording for a savings band to be "
+                          "computed)")
         return
 
     currency = roi.get("currency") or "EUR"
     needs_input = roi.get("needs_input")
     doc.add_paragraph(
-        "Each candidate segment is projected to an annual saving using the "
-        "observed mean instance duration, an automatable fraction, an annual "
-        "volume, and a loaded labour cost. The figures are reported as a "
-        "conservative / expected / optimistic band rather than a single number."
+        "Each candidate step sequence is projected to an annual saving "
+        "using its observed average duration, the share of it a robot "
+        "could take over, an annual volume, and a loaded labour cost. The "
+        "figures are reported as a conservative / expected / optimistic "
+        "band rather than a single number."
     )
     if needs_input:
         _note(doc, "Monetary figures require a loaded cost per hour (and an "
@@ -609,7 +612,7 @@ def _write_roi(doc, analysis):
 
     t = doc.add_table(rows=1, cols=5)
     h = t.rows[0].cells
-    h[0].text = "Segment"
+    h[0].text = "Step sequence"
     h[1].text = "Hours/yr (cons.–opt.)"
     h[2].text = "Net/yr (expected)"
     h[3].text = "Payback (expected)"
@@ -620,7 +623,7 @@ def _write_roi(doc, analysis):
         opt = (bands.get("optimistic") or {}).get("saved_hours_per_year")
         exp = bands.get("expected") or {}
         row = t.add_row().cells
-        row[0].text = str(r.get("label", "(segment)"))
+        row[0].text = str(r.get("label", "(step sequence)"))
         row[1].text = (f"{cons:g}–{opt:g} h"
                        if cons is not None and opt is not None else "—")
         row[2].text = _fmt_money(exp.get("net_annual"), currency)
@@ -636,8 +639,8 @@ def _write_roi(doc, analysis):
         bits = [f"{th:g} hours/yr saved (expected)"]
         if tnet is not None:
             bits.append(f"{_fmt_money(tnet, currency)} net annual (expected)")
-        doc.add_paragraph("Estimated total across candidate segments: "
-                          + "; ".join(bits) + ".")
+        doc.add_paragraph("Estimated total across the candidate step "
+                          "sequences: " + "; ".join(bits) + ".")
     _note(doc, "ROI is a planning estimate, not a guarantee: it assumes the "
                "supplied annual volume and labour rate hold and that the "
                "automation captures the stated automatable fraction.")
@@ -662,10 +665,11 @@ def _write_exceptions(doc, annotations, stats, analysis=None):
     # session every event pools into one default bucket and the variant table
     # would be an artifact, so it is REPLACED by the call to action.
     if not tier2:
-        _note(doc, "Path variants are case-based analysis and are withheld: "
-                   "this session is not case-segmented to the trust threshold. "
-                   "Accepting an anchor or capturing Start/End markers in the "
-                   "viewer unlocks them.")
+        _note(doc, "Path variations compare one case against another, so "
+                   "they are not shown: no cases have been identified in "
+                   "this recording yet. Confirming the field that identifies "
+                   "each ticket/order, or recording Start/End markers, "
+                   "unlocks them in the viewer.")
     elif len(variants) > 1:
         norm_freq = variants[0].get("frequency", 0)
         t = doc.add_table(rows=1, cols=3)

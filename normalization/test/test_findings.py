@@ -246,7 +246,7 @@ def test_backtracking_uses_bounces_and_needs_steps():
     bounces = find_bounces(steps)
     fs = _by_detector(_detect(_base_events(), steps=steps, bounces=bounces))
     f = fs["backtracking"][0]
-    assert 'returned to "Search"' in f["claim"]
+    assert 'went back to "Search"' in f["claim"]
     assert f["evidence"]["count"] == 1
     assert f["evidence"]["step_ids"] == ["s1", "s2", "s3"]
     # No steps -> precondition unmet even with bounces supplied.
