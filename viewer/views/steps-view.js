@@ -657,12 +657,15 @@ async function splitStep(stepId) {
   const firstEvents = firstIds.map(id => interMap[id]).filter(Boolean);
   const secondEvents = secondIds.map(id => interMap[id]).filter(Boolean);
   if (!firstEvents.length || !secondEvents.length) { toast("Could not split step", "error"); return; }
+  // G-4: splitting an already-split step must not stack suffixes
+  // ("X (split 1) (split 1)") — strip any existing artifact first.
+  const baseName = stripSplitSuffix(s.name);
   const second = { ...s, step_id: cryptoRandomId(),
-    name: s.name + " (split 2)",
+    name: baseName + " (split 2)",
     time_range: { start: secondEvents[0].timestamp, end: secondEvents[secondEvents.length - 1].timestamp },
     evidence: { ...s.evidence, interaction_event_ids: secondIds },
     state: "edited" };
-  const first = { ...s, name: s.name + " (split 1)",
+  const first = { ...s, name: baseName + " (split 1)",
     time_range: { start: firstEvents[0].timestamp, end: firstEvents[firstEvents.length - 1].timestamp },
     evidence: { ...s.evidence, interaction_event_ids: firstIds },
     state: "edited" };
@@ -781,15 +784,32 @@ function nextStepName(steps) {
 const byStartTime = (a, b) =>
   ((a.time_range && a.time_range.start) || "").localeCompare((b.time_range && b.time_range.start) || "");
 
+/* G-4: "(split N)" suffixes are split-tool artifacts; they stack and then
+   ride along into merged names ("X (split 1) (split 1) + Y" — the owner's
+   real session). Strip them whenever a name is reused as a building block. */
+function stripSplitSuffix(name) {
+  return String(name || "").replace(/(\s*\(split \d+\))+/g, "").trim() || String(name || "").trim();
+}
+
 /* Fold an ordered list of steps into one. The first step's identity +
    metadata wins; the time range stretches to cover the last; evidence is
-   concatenated. Shared by both merge entry points so they cannot diverge. */
+   concatenated. Shared by both merge entry points so they cannot diverge.
+   The merged name dedupes the parts (merging "X (split 1)" + "X (split 2)"
+   reads "X", not "X + X") and caps its length — a merge of long auto names
+   must not produce a paragraph. */
 function mergeStepObjects(toMerge) {
   const first = toMerge[0];
   const last = toMerge[toMerge.length - 1];
+  const parts = [];
+  for (const s of toMerge) {
+    const n = stripSplitSuffix(s.name);
+    if (n && !parts.includes(n)) parts.push(n);
+  }
+  let mergedName = parts.join(" + ") || stripSplitSuffix(first.name);
+  if (mergedName.length > 120) mergedName = mergedName.slice(0, 119) + "…";
   return {
     ...first,
-    name: toMerge.map(s => s.name).join(" + "),
+    name: mergedName,
     time_range: { start: first.time_range.start, end: last.time_range.end },
     evidence: {
       ...first.evidence,
@@ -1309,4 +1329,6 @@ module.exports = {
   // Pure phase-membership coherence helpers (CR M-1..M-3) -- exported
   // for unit testing; production callers above reuse them directly.
   detachStepsFromPhases, ensureStepInPhase, substituteSurvivorInPhases,
+  // G-4 label hygiene -- pure, exported for unit testing.
+  stripSplitSuffix, mergeStepObjects,
 };

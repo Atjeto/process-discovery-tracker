@@ -23,6 +23,16 @@
     ["Trailing newline — Y\n", "Trailing newline"],
     ["Tabbed\t— Y", "Tabbed"],
     ["Mixed   —   spaces around dash", "Mixed"],
-    ["Salesforce: Enter  in  Quantity", "Salesforce: Enter  in  Quantity"]
+    ["Salesforce: Enter  in  Quantity", "Salesforce: Enter  in  Quantity"],
+    ["TAMBA: Enter .19", "TAMBA: Enter a value"],
+    ["TAMBA: Enter null", "TAMBA: Enter a value"],
+    ["App: Enter 3498796", "App: Enter a value"],
+    ["TAMBA: Enter **Problem** ProblemDesc", "TAMBA: Enter a value"],
+    ["ES CALL MANAGEMENT: Enter «password#f02847ea»", "ES CALL MANAGEMENT: Enter a value"],
+    ["App: Enter customer details", "App: Enter customer details"],
+    ["Step name (split 2)", "Step name"],
+    ["AMPLIFY FCU: Fill 8 fields (Specifics, more) (split 1) (split 1)", "AMPLIFY FCU: Fill 8 fields (Specifics, more)"],
+    ["A (split 1) + B", "A + B"],
+    ["TAMBA: Enter .19 (split 1)", "TAMBA: Enter a value"]
   ]
 }

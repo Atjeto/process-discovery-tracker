@@ -48,6 +48,25 @@ def test_enter_in_wins_over_tail_when_both_could_apply():
     assert process_label("App: Enter 5 in Qty — CUST-1") == "App: Enter Qty — CUST-1"
 
 
+def test_split_artifacts_are_scrubbed_even_when_stacked():
+    # G-4: "(split N)" suffixes stack when a split step is split/merged again;
+    # the artifact must never reach the grouping key.
+    assert process_label("Fill form (split 1)") == "Fill form"
+    assert process_label("Fill form (split 1) (split 1)") == "Fill form"
+    assert process_label("Fill form (split 2) + Other step") == "Fill form + Other step"
+
+
+def test_bare_enter_value_collapses_only_value_like_tails():
+    # G-4: typed-value fragments / junk literals / masked tokens leak into
+    # "App: Enter <value>" names; collapse those to one group while leaving
+    # hand-authored prose names alone.
+    assert process_label("TAMBA: Enter .19") == "TAMBA: Enter a value"
+    assert process_label("TAMBA: Enter null") == "TAMBA: Enter a value"
+    assert process_label("App: Enter 3498796") == "App: Enter a value"
+    assert process_label("ES: Enter «password#f02847ea»") == "ES: Enter a value"
+    assert process_label("App: Enter customer details") == "App: Enter customer details"
+
+
 def test_matches_cross_language_golden():
     """Every golden case must hold here AND in the JS twin
     (viewer/process-map-levels.test.js). A divergence means the Python and JS

@@ -176,3 +176,39 @@ test("substituteSurvivorInPhases clears phase_id when no consumed id was in any 
   assert.deepEqual(anno.phases[0].step_ids, ["other"]);
   assert.equal(anno.steps[0].phase_id, null);
 });
+
+// --- G-4: split/merge name hygiene (owner's real-session findings) ---------
+
+test("stripSplitSuffix removes single and stacked (split N) artifacts", () => {
+  assert.equal(SV.stripSplitSuffix("Fill form (split 1)"), "Fill form");
+  assert.equal(SV.stripSplitSuffix("Fill form (split 1) (split 1)"), "Fill form");
+  assert.equal(SV.stripSplitSuffix("Fill form (split 2) + Other"), "Fill form + Other");
+  assert.equal(SV.stripSplitSuffix("No artifact"), "No artifact");
+});
+
+test("mergeStepObjects dedupes split halves into one clean name", () => {
+  const mk = (id, name) => ({
+    step_id: id, name,
+    time_range: { start: "2026-05-14T09:00:00Z", end: "2026-05-14T09:01:00Z" },
+    evidence: { interaction_event_ids: [id + "-e"], screenshot_refs: [] },
+    state: "edited",
+  });
+  const merged = SV.mergeStepObjects([
+    mk("a", "Fill 8 fields (split 1) (split 1)"),
+    mk("b", "Fill 8 fields (split 2)"),
+  ]);
+  assert.equal(merged.name, "Fill 8 fields");
+  const merged2 = SV.mergeStepObjects([mk("a", "A (split 1)"), mk("b", "B")]);
+  assert.equal(merged2.name, "A + B");
+});
+
+test("mergeStepObjects caps a runaway merged name", () => {
+  const long = "X".repeat(100);
+  const mk = (id, name) => ({
+    step_id: id, name,
+    time_range: { start: "t1", end: "t2" },
+    evidence: { interaction_event_ids: [], screenshot_refs: [] },
+  });
+  const merged = SV.mergeStepObjects([mk("a", long + "1"), mk("b", long + "2")]);
+  assert.ok(merged.name.length <= 120, "merged name capped at ~120 chars");
+});

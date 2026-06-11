@@ -48,6 +48,29 @@ def test_exe_suffix_is_insensitive():
     assert out == []
 
 
+def test_explorer_browsing_the_capture_install_is_dropped():
+    # G-4 (owner's real session): the worker browsed the capture tool's own
+    # folder in Windows Explorer -- process is explorer.exe, so only the
+    # window title ("capture-v0.9.0") betrays the tool's own surface.
+    evs = [
+        _inter("i1", "explorer.exe", "capture-v0.9.0"),
+        _inter("i2", "explorer.exe", r"D:\tools\capture-v0.9.0\sessions"),
+        _inter("i3", "explorer.exe", "Customer scans"),     # real work browsing kept
+        _inter("i4", "chrome.exe", "viewer-v1.2.0 download"),
+    ]
+    out, report = filter_excluded(evs)
+    assert [e["event_id"] for e in out] == ["i3"]
+    assert report["excluded_count"] == 3
+    assert report["self_window_pattern"]
+
+
+def test_capture_like_words_without_version_are_kept():
+    # "capture" alone (a business app could be named that) must not trip it.
+    evs = [_inter("i1", "explorer.exe", "Capture review meeting notes")]
+    out, _ = filter_excluded(evs)
+    assert [e["event_id"] for e in out] == ["i1"]
+
+
 def test_system_and_marker_events_always_pass():
     evs = [
         {"event_id": "s1", "type": "system", "data": {"kind": "session_start"}},

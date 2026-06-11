@@ -69,6 +69,24 @@ _COMPLETION_WORDS = frozenset(
     "search submit save apply ok close confirm send next finish done".split()
 )
 
+# G-4 label hygiene: a PII-masked value token («password#3f9a1c0e», see
+# pii_masking) must never render raw in a user-facing step name/description,
+# and literal junk an old recorder emits as a "value" must not leak in either.
+_MASKED_VALUE_RE = re.compile(r"^«[^»]*»$")
+_NOISE_VALUES = frozenset({"null", "(null)", "undefined", "(undefined)"})
+MASKED_VALUE_DISPLAY = "(masked value)"
+
+
+def _display_value(v: str | None) -> str:
+    """The user-facing form of a typed value: '' for noise junk ('null'),
+    '(masked value)' for a redaction token, else the value unchanged."""
+    v = (v or "").strip()
+    if not v or v.lower() in _NOISE_VALUES:
+        return ""
+    if _MASKED_VALUE_RE.match(v):
+        return MASKED_VALUE_DISPLAY
+    return v
+
 
 def _element_key(data: dict[str, Any]) -> tuple:
     """Identity of the UI element an interaction targeted, for A4
@@ -296,7 +314,7 @@ def _primary_value(interactions: list[dict[str, Any]]) -> str:
     for ev in reversed(interactions):
         d = ev["data"]
         if d.get("kind") in ("value_changed", "text_changed"):
-            v = (d.get("value") or "").strip()
+            v = _display_value(d.get("value"))
             if v:
                 return v[:39] + "…" if len(v) > 40 else v
     return ""
@@ -346,7 +364,7 @@ def _default_step_name(interactions: list[dict[str, Any]]) -> str:
     if all(k in ("value_changed", "text_changed") for k in kinds):
         last_val = ""
         for ev in reversed(interactions):
-            v = (ev["data"].get("value") or "").strip()
+            v = _display_value(ev["data"].get("value"))
             if v:
                 last_val = v[:40]
                 break
@@ -417,13 +435,20 @@ def _describe_interaction(data: dict[str, Any]) -> str | None:
     field = target or "a control"
 
     if kind == "value_changed":
-        value = (data.get("value") or "").strip()
+        raw = (data.get("value") or "").strip()
+        value = _display_value(raw)
         if len(value) > 160:
             value = value[:159] + "…"
         count = data.get("_coalesced_count") or 0
         keys = f" ({count} keystrokes)" if count > 1 else ""
+        if value == MASKED_VALUE_DISPLAY:
+            return f"entered a masked value into {field}{keys}"
         if value:
             return f'entered "{value}" into {field}{keys}'
+        if raw:
+            # A junk literal ("null") -- the recorder saw an edit but no
+            # readable value; don't echo the junk into the narration.
+            return f"edited {field}{keys}"
         return f"cleared {field}{keys}"
 
     if kind == "text_changed":
@@ -752,19 +777,24 @@ _LABEL_PATTERNS_PATH = (
 )
 
 
-def _load_label_rules() -> list[tuple[Any, str]]:
+def _load_label_rules() -> tuple[list[tuple[Any, str]], list[tuple[Any, str]]]:
     with open(_LABEL_PATTERNS_PATH, encoding="utf-8") as fh:
-        raw = json.load(fh)["rules"]
-    rules: list[tuple[Any, str]] = []
-    for r in raw:
-        # The shared file uses JS-style $1/$2 capture refs; map them to Python
-        # backreferences (\1/\2) for re.sub.
-        repl = re.sub(r"\$(\d+)", r"\\\1", r["replacement"])
-        rules.append((re.compile(r["pattern"]), repl))
-    return rules
+        doc = json.load(fh)
+
+    def compile_rules(raw):
+        rules: list[tuple[Any, str]] = []
+        for r in raw or []:
+            # The shared file uses JS-style $1/$2 capture refs; map them to
+            # Python backreferences (\1/\2) for re.sub.
+            repl = re.sub(r"\$(\d+)", r"\\\1", r["replacement"])
+            rules.append((re.compile(r["pattern"]), repl))
+        return rules
+
+    # pre_rules (G-4): artifact scrubbers, applied first, always, globally.
+    return compile_rules(doc.get("pre_rules")), compile_rules(doc["rules"])
 
 
-_LABEL_RULES = _load_label_rules()
+_LABEL_PRE_RULES, _LABEL_RULES = _load_label_rules()
 
 
 # Value-free SCREEN/window strip (ADR-0024 §6a/§6b), shared with the viewer's
@@ -811,6 +841,12 @@ def process_label(name: str) -> str:
     s = (name or "").strip()
     if not s:
         return s
+    # G-4 pre_rules: scrub editing artifacts ('(split N)' stacks) first --
+    # always, globally -- so they never reach the grouping key.
+    for rx, repl in _LABEL_PRE_RULES:
+        s = rx.sub(repl, s).strip()
+    if not s:
+        return (name or "").strip()
     # First rule that CHANGES the name wins (enter-in rewrite, else value-tail strip).
     for rx, repl in _LABEL_RULES:
         out = rx.sub(repl, s)

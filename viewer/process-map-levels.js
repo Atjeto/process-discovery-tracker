@@ -35,9 +35,15 @@ const SEP = String.fromCharCode(1);
 const _labelPath = require("node:path").join(__dirname, "..", "shared", "process-label-patterns.json");
 const _LABEL_RULES = require(_labelPath).rules.map(
   (r) => ({ re: new RegExp(r.pattern), replacement: r.replacement }));
+// G-4 pre_rules: artifact scrubbers ('(split N)' stacks), applied first,
+// always, globally -- mirrors step_suggest.process_label (Python).
+const _LABEL_PRE_RULES = (require(_labelPath).pre_rules || []).map(
+  (r) => ({ re: new RegExp(r.pattern, "g"), replacement: r.replacement }));
 function processLabel(name) {
-  const s = (name || "").trim();
+  let s = (name || "").trim();
   if (!s) return s;
+  for (const rule of _LABEL_PRE_RULES) s = s.replace(rule.re, rule.replacement).trim();
+  if (!s) return (name || "").trim();
   // First rule that CHANGES the name wins (enter-in rewrite, else value-tail strip).
   for (const rule of _LABEL_RULES) {
     const out = s.replace(rule.re, rule.replacement);

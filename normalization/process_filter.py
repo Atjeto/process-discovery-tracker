@@ -14,6 +14,10 @@ session cleans it without rewriting capture data.
 
 Exclusions are the union of:
   * a built-in default: PDT's own process names (the capture app + viewer);
+  * a built-in window-title pattern for the tool's own install folder
+    (`capture-vX.Y.Z` / `viewer-vX.Y.Z` -- the worker browsing the capture
+    install in Explorer shows up as explorer.exe, so only the title betrays
+    it; G-4);
   * the capture-side `manifest.config.exclude_processes` knob;
   * the capture app's self-recorded `manifest.tool.process_name` (future-proof,
     exact -- works in dev where the exe is electron.exe);
@@ -31,6 +35,7 @@ stdlib-only so it runs under the bundled embeddable and a bare test Python.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # PDT's own apps. Stored WITHOUT the .exe suffix; the comparison strips it from
@@ -39,6 +44,16 @@ _DEFAULT_PROCESS_NAMES = {
     "process discovery tracker",   # the capture app (all its Electron windows)
     "process discovery viewer",    # the viewer (never the work app; defensive)
 }
+
+# G-4: a worker browsing the TOOL'S OWN install/session folder in Windows
+# Explorer is tool housekeeping, not the business process -- but Explorer's
+# process is explorer.exe, so the process-name exclusion never fires; only the
+# window TITLE betrays it (Explorer titles the window with the folder name).
+# The release zips unpack to `capture-vX.Y.Z/` / `viewer-vX.Y.Z/` (DEPLOY.md),
+# so a title carrying that folder-name shape is PDT's own surface. Matched on
+# the title of ANY process (a stray browser tab on the release page is equally
+# not the business process).
+_SELF_WINDOW_RE = re.compile(r"\b(?:capture|viewer)-v\d+(?:\.\d+)*\b", re.IGNORECASE)
 
 
 def _norm_proc(s: Any) -> str:
@@ -102,6 +117,9 @@ def filter_excluded(
         "by_process": {},
         "process_names": sorted(procs),
         "window_substrings": list(windows),
+        # G-4 (additive): the built-in title pattern that drops windows
+        # browsing the tool's own install folder (Explorer et al.).
+        "self_window_pattern": _SELF_WINDOW_RE.pattern,
     }
     if not isinstance(events, list):
         return ([] if events is None else events), report
@@ -111,7 +129,9 @@ def filter_excluded(
     for ev in events:
         if isinstance(ev, dict) and ev.get("type") in ("interaction", "activity"):
             pn, wt = _proc_and_window(ev)
-            if (pn and pn in procs) or (wt and any(w in wt for w in windows)):
+            if ((pn and pn in procs)
+                    or (wt and any(w in wt for w in windows))
+                    or (wt and _SELF_WINDOW_RE.search(wt))):
                 by_proc[pn or "(unknown)"] = by_proc.get(pn or "(unknown)", 0) + 1
                 continue
         out.append(ev)

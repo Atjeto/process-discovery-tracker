@@ -643,3 +643,38 @@ def test_process_label_leaves_value_free_names_untouched():
     assert process_label("Salesforce: Fill Customer ID field") == "Salesforce: Fill Customer ID field"
     assert process_label("Lookup customer") == "Lookup customer"   # analyst rename
     assert process_label("") == ""
+
+
+# --- G-4: label hygiene on real-session shapes --------------------------------
+
+def test_masked_value_renders_as_masked_value_in_names():
+    """A PII redaction token («password#3f9a1c0e») must never show raw in a
+    user-facing step name or description."""
+    t0 = datetime(2026, 5, 18, 9, 0, 0)
+    evs = [
+        _inter_full(t0, kind="value_changed", name="Password",
+                    value="«password#f02847ea»", window="ES CALL MANAGEMENT"),
+        _inter_full(t0 + timedelta(seconds=2), kind="value_changed",
+                    name="Password", value="«password#f02847ea»",
+                    window="ES CALL MANAGEMENT"),
+    ]
+    steps = auto_suggest_steps(evs, session_id="s1")
+    assert len(steps) == 1
+    assert "«" not in steps[0]["name"]
+    assert "«" not in steps[0]["description"]
+    assert "masked value" in (steps[0]["name"] + steps[0]["description"])
+
+
+def test_junk_null_value_does_not_leak_into_names():
+    """The old capture (v0.9.0) emits the literal string 'null' as a typed
+    value; it must not become 'App: Enter null'."""
+    t0 = datetime(2026, 5, 18, 9, 0, 0)
+    evs = [
+        _inter_full(t0, kind="value_changed", value="null", window="TAMBA"),
+        _inter_full(t0 + timedelta(seconds=2), kind="value_changed",
+                    value="null", window="TAMBA"),
+    ]
+    steps = auto_suggest_steps(evs, session_id="s1")
+    assert len(steps) == 1
+    assert "null" not in steps[0]["name"].lower()
+    assert '"null"' not in steps[0]["description"]
