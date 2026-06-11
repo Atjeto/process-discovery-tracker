@@ -153,7 +153,7 @@ function analysisSection(session, options) {
   const analysis = session.analysis;
   if (!options.includeAnalysis || !analysis) return "";
   let out = "<h2>Waste &amp; automation findings</h2>" +
-    '<p class="muted">Heuristic estimate &mdash; review before relying on these figures.</p>';
+    '<p class="muted">Estimates &mdash; review before relying on these figures.</p>';
   const eff = analysis.efficiency || {};
   if (typeof eff.process_efficiency_ratio === "number") {
     out += "<p>Process efficiency: <b>" +

@@ -587,7 +587,7 @@
       </div>` : "";
     host.innerHTML = `
       <div class="bb-detail-head">
-        <div class="bb-detail-title" title="The value-free process label these instances share">${escapeHtml(entry.token)}</div>
+        <div class="bb-detail-title" title="The shared step name (ticket/order values stripped out)">${escapeHtml(entry.token)}</div>
         <div class="bb-detail-freq${partial ? " partial" : ""}">Seen in ${entry.frequency} of ${caseCount} cases</div>
       </div>
       <p class="meta">${partial

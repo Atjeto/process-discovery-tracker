@@ -618,7 +618,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <button class="icon-btn xs" id="btn-dfg-zoom-out" title="Zoom out">−</button>
                 <button class="icon-btn xs" id="btn-dfg-zoom-fit" title="Fit to view">fit</button>
                 <button class="icon-btn xs" id="btn-dfg-zoom-in" title="Zoom in">+</button>
-                <label class="cb" id="dfg-conformance-wrap" style="display:none" title="Colour Flow-diagram nodes by how they match the loaded Process Template: green matches a canonical step, amber is off-template."><input type="checkbox" id="cb-dfg-conformance" /> Conformance</label>
+                <label class="cb" id="dfg-conformance-wrap" style="display:none" title="Colour Flow-diagram nodes by how they match the loaded Process Template: green matches a template step, amber is off-template."><input type="checkbox" id="cb-dfg-conformance" /> Conformance</label>
                 <span class="map-rare" id="hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
               </div>
             </div>
@@ -978,7 +978,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Matching against a captured session</h3>
           <p>From the Process Template tab, load the YAML, click <em>Load sample session</em>, and the match rate shows up. Aim for 80% or higher; below that you need to refine the match rules until they cover the real patterns the SME hit.</p>
           <h3>Versioning + drift</h3>
-          <p>Templates have a <code>version</code> field. When you change a template and re-normalize old sessions, any step the analyst edited manually that now maps to a different canonical step gets a <strong>drift marker</strong> (you'll see a ⚠ icon in the Steps view). The aggregate Drift panel shows the trend across loaded sessions.</p>
+          <p>Templates have a <code>version</code> field. When you change a template and re-normalize old sessions, any step the analyst edited manually that now maps to a different template step gets a <strong>drift marker</strong> (you'll see a ⚠ icon in the Steps view). The aggregate Drift panel shows the trend across loaded sessions.</p>
         </section>
 
         <section class="help-section" data-section="aggregate">

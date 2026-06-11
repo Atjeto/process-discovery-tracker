@@ -45,6 +45,13 @@ guard to make it pass.
 7. **Verify UI in the harness, not just unit tests.** Green units are NOT enough — that is this
    project's #1 recurring failure. Drive the real viewer (`e2e/session-smoke.js` or
    `../_pdt_verify/`), screenshot, read the PNGs back.
+8. **User-facing copy stays in business English (lab Phase F).** No internal vocabulary
+   ("Tier 2", "unsegmented", "anchor" in worker copy, "heuristic", "posture", …) in rendered
+   strings — the banned list + approved replacements live in
+   [DESIGN-SYSTEM.md → UI copy style guide](architecture/DESIGN-SYSTEM.md). *Guard:
+   `viewer/ui-copy-guard.test.js` (scans viewer + capture window string literals; runs in
+   `cd viewer && npm test`).* Capture windows also share the viewer font tokens via
+   `capture/ui/tokens.js` — keep it in sync with `viewer/styles.css` when the stack changes.
 
 ## How to drive the viewer for UI validation (entirely in-repo — no external deps)
 

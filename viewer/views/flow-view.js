@@ -822,7 +822,7 @@ function renderSessionSummary() {
     .some((ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
   if (s.efficiencyRatio != null && _hasBnva) {
     tiles.push({ label: "Efficiency", value: pct(s.efficiencyRatio),
-      sub: "value-add share (heuristic)" });
+      sub: "value-add share (default estimate)" });
   }
   if (s.hasTemplate || s.matchedInteractions > 0) {
     tiles.push({ label: "Template match", value: pct(s.matchRate || 0),

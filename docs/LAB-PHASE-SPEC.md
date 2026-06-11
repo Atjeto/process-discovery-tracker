@@ -443,6 +443,57 @@ carries `self_annotations[]` (paste the JSON block). e2e stays green.
 
 ---
 
+## Phase F — Business-user language + typography pass
+
+**Why now:** the owner's v1.1.0 walk-through produced verbatim complaints:
+fonts inconsistent across the app, and copy ("off-contract", "fact
+authority", the App Library checklist row) unreadable even to the owner.
+Collected ground truth: [docs/To-Do/ui-copy-feedback.md](To-Do/ui-copy-feedback.md).
+
+### F1. Typography unification
+
+One source of truth: the design-system tokens (`--font-ui` Plus Jakarta
+Sans / `--font-mono` JetBrains Mono). Capture windows adopt the same stack
+via `capture/ui/tokens.js` — an `@font-face` + token block injected into
+every window's markup (fonts inlined as `data:` URIs because the windows
+load via `data:` URLs; byte-copies of the woff2 under `capture/ui/fonts/`;
+values duplicated verbatim from `viewer/styles.css`, no cross-imports).
+The wizard window moves to the same token-injected `data:`-URL mechanism.
+Stat tiles normalize to one 20px/700 mono step; overline labels to one
+10px/600/0.4px style; the full type scale is documented in
+[DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md).
+
+### F2. Business-user language pass
+
+Every user-facing string in viewer + capture rewritten to the register
+"a business analyst with zero process-mining background understands it on
+first read" — Expert drawer → **Advanced views**, the §C2 checklist row →
+the owner-calibrated labels/tooltips, Overview badge/chips/hero/facts,
+Analysis gates, map lock notes, Compare empty states, memo + PDD templated
+sentences (pipeline-side, golden-safe: the golden projection pins counts,
+not claim text), wizard question phrasings, readiness notes, dead-man
+notification, Copy-for-LLM → **Copy for AI review**, Grain → **Detail**.
+Banned-vocabulary table + worked examples: DESIGN-SYSTEM.md → *UI copy
+style guide*.
+
+### F3. Pin it
+
+`viewer/ui-copy-guard.test.js` (egress-guard pattern) scans viewer +
+capture window string literals for the banned list (exported as
+`BANNED_COPY`; allowlist only for genuine non-rendered values, each
+justified inline). Registered as invariant #8 in
+[CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md). The feedback file stays as the
+owner's collection point; resolved items are marked, not deleted.
+
+### F4. Validation (DoD)
+
+All suites green (pytest, viewer incl. the copy guard, capture incl. the
+re-worded wizard tests, recorder) + all five e2e smokes (session,
+overview, map-slim, vocab, flywheel — selectors/expected text updated to
+the new copy, assertions never weakened) + screenshots of Overview, the
+open Advanced drawer, Analysis, the App Library checklist row, the wizard
+question + review panes eyeballed for font consistency and clipping.
+
 ## 5. Owner's week-zero test (runs tonight, needs no Phase A code)
 
 On a real marker-less session, locally:

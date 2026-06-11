@@ -147,6 +147,57 @@ by hand in the same commit.
 - **Video pane** — stays dark (`#0a0908`) regardless of theme; video is
   dark by nature, and its overlay controls use light-on-dark colours.
 
+## UI copy style guide (lab Phase F)
+
+Business users read every string the product renders — labels, tooltips,
+empty states, the memo, the PDD. The register rules, set after the owner's
+v1.1.0 walk-through ([docs/To-Do/ui-copy-feedback.md](../To-Do/ui-copy-feedback.md)):
+
+1. **The test for every string:** would a business analyst with zero
+   process-mining background understand it on first read? If a technical
+   artifact name is unavoidable (BPMN, case anchor in analyst surfaces),
+   the tooltip explains it in plain words.
+2. **Sentences over fragments.** Say what the user gets or risks, not how
+   the machine works ("Pressing this finishes a piece of work — we use it
+   to know where one step ends", not "completion: step-boundary hint").
+3. **No internal vocabulary in rendered copy.** The banned list below is
+   enforced by `viewer/ui-copy-guard.test.js` (which exports it as
+   `BANNED_COPY` — keep the two in sync). The terms stay legal in code
+   identifiers, JSON keys, comments, and docs.
+
+| Banned in copy | Say instead |
+|---|---|
+| canon, fact authority, off-contract | "treat as exploration, not evidence" / "advanced" |
+| Tier 1 / Tier 2 / Tier 3 | what it means: "measured" / "needs confirmed cases" |
+| inductive-miner | "auto-generated process model" |
+| taxonomy-classified | "by app category" |
+| grain notch | "detail level" |
+| value-free | "with ticket/order values stripped out" |
+| motif | "repeated sequence" |
+| segment-grain | "step sequence" |
+| heuristic | "estimate" / "automatic guess" / "by default" |
+| provisional | "estimate — review before relying on it" |
+| unsegmented, case-segmented | "no cases identified yet" / "cases identified" |
+| posture | "data sharing mode" |
+| modal pattern | "usual pattern" |
+| cargo-cult | (code comments/docs only) |
+| anchor *(worker/business copy)* | "the field that identifies the ticket/order" — may stay in analyst Machine surfaces with a plain tooltip |
+
+**Worked examples (the bar):**
+
+- Expert drawer → **"Advanced views** — These views use methods that need
+  cleaner data than desktop recording can provide, so treat them as
+  exploration, not evidence. The files are still exported for specialists."
+- App Library checklist: `completes step` → **"'Done' action"** (*"Pressing
+  this finishes a piece of work — like Save, Submit or Send. We use it to
+  know where one step ends and the next begins."*); `carries value` →
+  **"Workers type data here"**; `case-id source` → **"Identifies the
+  ticket/order"** (*"What's typed here tells us which ticket, order or
+  customer the work belongs to — it lets the app split a long recording
+  into separate cases."*).
+- Free-text placeholder → *"What does this do, in plain words? e.g. 'sends
+  the order to billing'"*.
+
 ## JS colour palettes (data marks)
 
 Activity bands, step / phase blocks, and the DFG render colours into

@@ -74,11 +74,11 @@ const TEMPLATES = [
   {
     key: "high_frequency_motif",
     phrasings: [
-      "We saw '{motif}' repeat {n} times. Is this a routine you do often?",
-      "'{motif}' showed up {n}× — does this happen daily, weekly, occasionally?",
-      "How often do you do '{motif}'? We saw it {n} times this session.",
+      "We saw '{sequence}' repeat {n} times. Is this a routine you do often?",
+      "'{sequence}' showed up {n}× — does this happen daily, weekly, occasionally?",
+      "How often do you do '{sequence}'? We saw it {n} times this session.",
     ],
-    placeholders: ["motif", "n"],
+    placeholders: ["sequence", "n"],
   },
   {
     key: "app_switching",
@@ -199,7 +199,7 @@ function generateQuestions(session, opts) {
     const m = motifs[0];
     const motif_str = Array.isArray(m.labels) ? m.labels.join(" → ") : "(repeated sequence)";
     questions.push(_fillTemplate("high_frequency_motif", variantIdx, {
-      motif: motif_str,
+      sequence: motif_str,
       n: m.frequency,
     }, { motif_id: m.motif_id }));
   }

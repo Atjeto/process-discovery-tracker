@@ -6,6 +6,39 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Lab Phase F — business-user language + typography
+([docs/LAB-PHASE-SPEC.md → Phase F](docs/LAB-PHASE-SPEC.md)), answering
+the owner's v1.1.0 walk-through feedback
+([docs/To-Do/ui-copy-feedback.md](docs/To-Do/ui-copy-feedback.md)).
+
+### Changed (Phase F)
+
+- **Typography unified** (§F1) — capture windows adopt the viewer's
+  design-system font stack (Plus Jakarta Sans / JetBrains Mono) via a
+  shared token block (`capture/ui/tokens.js`, fonts inlined as `data:`
+  URIs); the wizard window joins the common window mechanism; stat tiles
+  and overline labels normalize to one scale, now documented in
+  [DESIGN-SYSTEM.md](docs/architecture/DESIGN-SYSTEM.md).
+- **Every user-facing string rewritten for business users** (§F2) — the
+  Expert drawer becomes *Advanced views*; the App Library checklist row
+  gets the owner-calibrated labels ("'Done' action" / "Workers type data
+  here" / "Identifies the ticket/order"); Overview, Analysis gates, map
+  lock notes, Compare empty states, the memo + PDD templated sentences,
+  the worker wizard questions, the readiness report, and the dead-man
+  notification all drop the internal vocabulary (Tier 1/2, unsegmented,
+  anchor in worker copy, heuristic, posture, motif, grain notch,
+  off-contract); *Copy for LLM* becomes *Copy for AI review*; the Grain
+  slider is labelled *Detail*.
+
+### Added (Phase F)
+
+- **UI copy guard** (§F3) — `viewer/ui-copy-guard.test.js` fails the
+  viewer suite when banned vocabulary re-enters viewer or capture
+  user-facing string literals; the banned list + approved replacements
+  and the register rules live in DESIGN-SYSTEM.md → *UI copy style
+  guide*, registered as invariant #8 in
+  [CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md).
+
 ## [1.1.0] - 2026-06-10
 
 The honesty redesign — lab-phase Phases A–E
