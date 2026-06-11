@@ -137,13 +137,15 @@ test("window titles and step labels pass the value-free strip", () => {
   assert.ok(!JSON.stringify(groups).includes("ORD-100"), "step group label kept a record id");
 });
 
-test("vocab skeleton rows carry row_key + semantics", () => {
+test("vocab skeleton rows carry vocab-namespaced row_key + semantics (v2)", () => {
+  // G-5: two browsers both emit cn|OmniboxViewViews — a flat key can't
+  // address one vocab, so v2 prefixes the vocab id.
   const skel = vocabSkeleton(VOCAB);
-  assert.equal(skel.rows[0].row_key, "aid|order-id");
+  assert.equal(skel.rows[0].row_key, "orders|aid|order-id");
   assert.equal(skel.rows[0].verb, "enter");
   assert.equal(skel.rows[0].carries_value, true);
   assert.equal(skel.rows[1].completion, true);
-  assert.equal(skel.rows[2].row_key, "ctn|Button|Search");
+  assert.equal(skel.rows[2].row_key, "orders|ctn|Button|Search");
 });
 
 test("the export is one human-readable JSON with the response contract", () => {
@@ -185,6 +187,18 @@ test("matchSuggestions joins by row_key and reports unmatched", () => {
   // A suggestion equal to the current value is not a change row.
   const same = matchSuggestions(VOCAB, { "aid|order-id": { name: "Order ID" } });
   assert.equal(same.rows.length, 0);
+});
+
+test("matchSuggestions accepts v2 namespaced keys and routes other vocabs aside (G-5)", () => {
+  const m = matchSuggestions(VOCAB, {
+    "orders|aid|order-id": { object: "order record" },       // v2, this vocab
+    "ctn|Button|Search": { name: "Search orders" },          // v1 bare key
+    "chrome|cn|OmniboxViewViews": { name: "Address bar" },   // v2, ANOTHER vocab
+    "orders|aid|nope": { name: "Ghost" },                    // v2, unknown row
+  });
+  assert.equal(m.rows.length, 2);
+  assert.deepEqual(m.otherVocab, ["chrome|cn|OmniboxViewViews"]);
+  assert.deepEqual(m.unmatched, ["orders|aid|nope"]);
 });
 
 test("applySuggestionsToVocab touches ONLY approved rows", () => {
@@ -241,4 +255,70 @@ test("vocabRowKey mirrors the canonical-author signature key", () => {
   assert.equal(vocabRowKey({ signature: { automation_id: "a", control_type: "Edit" } }), "aid|a");
   assert.equal(vocabRowKey({ signature: { class_name: "x-btn" } }), "cn|x-btn");
   assert.equal(vocabRowKey({ signature: {} }), null);
+});
+
+/* ---- G-5: export v2 — header note + candidate rows ----------------------- */
+
+test("export is version 2 and carries the label-review note in-band", () => {
+  const doc = buildFull();
+  assert.equal(doc.pdt_copy_for_llm.version, 2);
+  assert.ok(doc.pdt_copy_for_llm.review_note.includes("window titles"),
+    "the reviewer must be told labels can carry business names");
+});
+
+const EVENTS = [
+  { type: "interaction", data: { process_name: "TAMBA.exe", name: "ProblemDesc",
+    control_type: "Edit", window_title: "TAMBA - Case 339481", value: "SECRET-VALUE" } },
+  { type: "interaction", data: { process_name: "TAMBA.exe", name: "ProblemDesc",
+    control_type: "Edit", window_title: "TAMBA - Case 339482" } },
+  { type: "interaction", data: { process_name: "orders.exe", name: "Order ID",
+    control_type: "Edit", window_title: "Orders" } },          // vocab-covered
+  { type: "interaction", data: { process_name: "ES.exe", name: "Resolve",
+    control_type: "Button", window_title: "ES CALL MANAGEMENT" } },
+  { type: "activity", data: { app: "TAMBA.exe" } },            // not an interaction
+];
+
+test("candidate_rows lists top un-vocabbed controls, derived labels only (G-5)", () => {
+  const { candidateRows } = require("./llm-export.js");
+  const rows = candidateRows(EVENTS, [VOCAB]);
+  const apps = rows.map((r) => r.app);
+  assert.ok(apps.includes("TAMBA"), "the un-vocabbed app must appear");
+  assert.ok(apps.includes("ES"));
+  assert.ok(!apps.includes("orders"), "a vocab-covered app is not a naming gap");
+  const tamba = rows.find((r) => r.app === "TAMBA");
+  assert.equal(tamba.seen_count, 2);
+  assert.equal(tamba.control, "ProblemDesc");
+  assert.ok(!JSON.stringify(rows).includes("SECRET-VALUE"), "typed values must never ride along");
+  assert.ok(!JSON.stringify(rows).includes("339481"), "screen labels must be value-free");
+});
+
+test("the session export embeds candidate_rows when events are supplied", () => {
+  const doc = buildLlmExport({
+    vocabs: [VOCAB],
+    events: EVENTS,
+    session: { analysis: {}, annotations: { steps: [] } },
+    posture: "reviewable", surface: "overview",
+  });
+  const rows = doc.pdt_copy_for_llm.session.candidate_rows;
+  assert.ok(Array.isArray(rows) && rows.length >= 2);
+});
+
+test("step groups aggregate the zero-duration tail instead of listing it (G-4)", () => {
+  const mk = (label, ms, i) => ({
+    state: "auto_suggested", name: label, process_label: label,
+    time_range: { start: "2026-06-01T09:00:00Z",
+                  end: new Date(Date.parse("2026-06-01T09:00:00Z") + ms).toISOString() },
+    grain_keys: { app: "a" }, step_id: "s" + i,
+  });
+  const steps = [
+    mk("Real work", 60000, 1),
+    mk("Instant A", 0, 2), mk("Instant B", 0, 3), mk("Instant C", 0, 4),
+  ];
+  const groups = stepGroups(steps);
+  assert.equal(groups[0].label, "Real work");
+  const tail = groups[groups.length - 1];
+  assert.ok(tail.label.includes("no measurable duration"), JSON.stringify(tail));
+  assert.equal(tail.group_count, 3);
+  assert.equal(tail.instances, 3);
+  assert.equal(groups.length, 2, "instant groups collapse into one tail row");
 });

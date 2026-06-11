@@ -729,8 +729,14 @@ async function importLlmSuggestions() {
   if (!parsed.suggestions) { toast(parsed.error, "error"); return; }
   const m = LlmExport.matchSuggestions(v, parsed.suggestions);
   if (!m.rows.length) {
+    const extra = [];
+    if ((m.otherVocab || []).length) {
+      extra.push(m.otherVocab.length + " row(s) belong to a different app's " +
+        "entry — pick that app in the list and import again");
+    }
+    if (m.unmatched.length) extra.push(m.unmatched.length + " unknown row_key(s)");
     toast("No suggestions matched this vocabulary's rows" +
-      (m.unmatched.length ? " (" + m.unmatched.length + " unknown row_key(s))" : "") +
+      (extra.length ? " (" + extra.join("; ") + ")" : "") +
       " — nothing to apply.", "error");
     return;
   }

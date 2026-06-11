@@ -39,7 +39,12 @@
 const { screenType } = require("./process-map-levels.js");
 const { vocabSignatureKey } = require("./canonical-author.js");
 
-const EXPORT_VERSION = 1;
+// v2 (Phase G-5): row keys are namespaced `<vocab_id>|<row_key>` (two
+// browsers both emit `cn|OmniboxViewViews` — a flat key can't address one
+// vocab); the import tolerates bare v1 keys. The export also carries
+// `candidate_rows` — the session's top controls/screens with NO vocabulary —
+// so the round-trip helps exactly where the naming gap is.
+const EXPORT_VERSION = 2;
 
 /* The semantic columns a vocab row carries (mirror app_vocab.SEMANTIC_FIELDS). */
 const SEMANTIC_FIELDS = ["verb", "object", "completion", "case_id_source", "carries_value", "means"];
@@ -58,6 +63,15 @@ function maskLabel(s) {
 /** Stable row key for one vocab interaction (the import join key). */
 function vocabRowKey(entry) {
   return vocabSignatureKey((entry || {}).signature || {});
+}
+
+/** v2 namespaced row key: `<vocab_id>|<signature key>`. The signature key
+ *  itself contains "|" separators, so consumers must split on the FIRST
+ *  "|" only — and only after a bare-key lookup misses (v1 tolerance). */
+function nsRowKey(vocabId, entry) {
+  const k = vocabRowKey(entry);
+  if (!k) return k;
+  return vocabId ? String(vocabId) + "|" + k : k;
 }
 
 /* ---- findings scrub ------------------------------------------------------ */
@@ -148,7 +162,7 @@ function vocabSkeleton(vocab) {
   }));
   const rows = (v.interactions || []).map((e) => {
     const row = {
-      row_key: vocabRowKey(e),
+      row_key: nsRowKey(v.id || "", e),
       signature: e.signature || {},
       name: e.name || "",
     };
@@ -189,7 +203,7 @@ function stepGroups(steps) {
     const app = ((s.grain_keys || {}).app || "").trim();
     if (app) g.apps.set(app, (g.apps.get(app) || 0) + 1);
   }
-  return Array.from(groups.values())
+  const rows = Array.from(groups.values())
     .sort((x, y) => y.total_ms - x.total_ms || y.instances - x.instances)
     .map((g) => {
       let top = "", n = 0;
@@ -201,6 +215,71 @@ function stepGroups(steps) {
         app: top || undefined,
       };
     });
+  // G-4: a real session produces MANY single-instant groups (start == end,
+  // total_ms 0) that clutter the ranking without carrying any time signal.
+  // Aggregate them into one honest tail row instead of listing each.
+  const timed = rows.filter((r) => r.total_ms > 0);
+  const instant = rows.filter((r) => r.total_ms <= 0);
+  if (instant.length > 1) {
+    timed.push({
+      label: "(quick steps with no measurable duration — " + instant.length + " kinds, grouped)",
+      instances: instant.reduce((s, r) => s + r.instances, 0),
+      total_ms: 0,
+      group_count: instant.length,
+    });
+    return timed;
+  }
+  return rows;
+}
+
+/* ---- candidate rows (G-5) -------------------------------------------------
+   The export used to carry ONLY existing vocab skeletons — browser chrome and
+   Outlook, already well named — while the apps that actually needed naming
+   help had no vocab and so sent nothing. candidate_rows lists the session's
+   top observed controls/screens in apps NO vocabulary covers, DERIVED LABELS
+   ONLY: control name / automation id / control type / value-free screen
+   string. Never a typed value, never an event id. */
+
+const CANDIDATE_ROWS_MAX = 15;
+
+function candidateRows(events, vocabs, opts) {
+  const max = (opts && opts.maxRows) || CANDIDATE_ROWS_MAX;
+  const covered = new Set();
+  for (const v of vocabs || []) {
+    const pn = ((v || {}).scope || {}).process_name;
+    if (pn) covered.add(String(pn).toLowerCase().replace(/\.exe$/, ""));
+  }
+  const byKey = new Map();
+  for (const ev of events || []) {
+    if (!ev || ev.type !== "interaction") continue;
+    const d = ev.data || {};
+    let app = String(d.process_name || "").trim();
+    if (!app) continue;
+    app = app.replace(/\.exe$/i, "");
+    if (covered.has(app.toLowerCase())) continue;
+    const control = String(d.name || d.automation_id || "").trim();
+    const screen = maskLabel(String(d.window_title || "").trim());
+    if (!control && !screen) continue;
+    const key = app.toLowerCase() + "\x1f" + control + "\x1f" + (d.control_type || "");
+    let row = byKey.get(key);
+    if (!row) {
+      row = { app, control: maskLabel(control), control_type: d.control_type || "",
+              screens: new Set(), seen_count: 0 };
+      byKey.set(key, row);
+    }
+    row.seen_count += 1;
+    if (screen) row.screens.add(screen);
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => b.seen_count - a.seen_count || a.app.localeCompare(b.app))
+    .slice(0, max)
+    .map((r) => ({
+      app: r.app,
+      control: r.control || undefined,
+      control_type: r.control_type || undefined,
+      screens: Array.from(r.screens).slice(0, 3),
+      seen_count: r.seen_count,
+    }));
 }
 
 /* ---- the one export object ----------------------------------------------- */
@@ -212,6 +291,10 @@ function stepGroups(steps) {
  * @param {object} opts
  *   {Array}  opts.vocabs   -- vocab dicts (the YAML app_vocabulary objects)
  *   {object} opts.session  -- { analysis, annotations } (derived artifacts)
+ *   {Array}  opts.events   -- the session's in-memory events; ONLY derived
+ *                             labels are read from them (candidate_rows, G-5)
+ *   {Array}  opts.coverageVocabs -- every known vocab, for the candidate-rows
+ *                             coverage check (defaults to opts.vocabs)
  *   {string} opts.posture  -- the current data posture (recorded in-band)
  *   {string} opts.surface  -- "app-library" | "overview" (provenance)
  */
@@ -224,18 +307,27 @@ function buildLlmExport(opts) {
       data_posture: o.posture || "",
       contents: "Derived, PII-masked working data from a process-discovery " +
         "session: vocabulary skeleton rows (UI control signatures + " +
-        "auto-derived semantics), measured facts, findings, and step groups. " +
+        "auto-derived semantics), measured facts, findings, step groups, " +
+        "and candidate rows (controls/screens no vocabulary covers yet). " +
         "No raw event stream, no screenshots, no typed values (re-keyed " +
         "values appear as join-preserving tokens like \"value-1\").",
+      review_note: "Before sharing: labels that come from window titles can " +
+        "carry business names — a site, customer or ticket subject that was " +
+        "part of the window's title. Record numbers are stripped " +
+        "automatically, words are not. Review the labels and screen names " +
+        "below as carefully as the values.",
       how_to_respond: {
         instructions: "Suggest better human-readable values for the vocabulary " +
           "rows: a concise `name` (what an analyst would call the control), " +
           "an `object` (the business object it acts on, e.g. \"customer " +
           "record\"), and a `means` line (what using it means in the " +
           "process). Respond with ONE JSON object in exactly this shape; " +
-          "key every suggestion by the row's `row_key`. Only suggest fields " +
-          "you are confident about; omit rows you cannot improve. The " +
-          "analyst reviews every suggestion before anything is applied.",
+          "key every suggestion by the row's `row_key` EXACTLY as given " +
+          "(it starts with the app vocabulary's id). `candidate_rows` are " +
+          "context only — they name the apps with no vocabulary yet and " +
+          "cannot be imported. Only suggest fields you are confident " +
+          "about; omit rows you cannot improve. The analyst reviews every " +
+          "suggestion before anything is applied.",
         response_shape: {
           suggestions: {
             "<row_key>": { name: "…", object: "…", means: "…" },
@@ -277,6 +369,14 @@ function buildLlmExport(opts) {
     }
     const steps = ((sess.annotations || {}).steps) || [];
     section.step_groups = stepGroups(steps);
+    // G-5: the naming-gap rows — top observed controls/screens in apps no
+    // vocabulary covers (derived labels only; built from the same in-memory
+    // events the viewer renders, never re-read from disk). Coverage is
+    // checked against `coverageVocabs` (every known vocab) when supplied —
+    // an app whose vocab the session didn't hit is covered, not a gap.
+    if (Array.isArray(o.events) && o.events.length) {
+      section.candidate_rows = candidateRows(o.events, o.coverageVocabs || o.vocabs);
+    }
     root.session = section;
   }
   return doc;
@@ -325,10 +425,18 @@ function parseSuggestions(text) {
 /**
  * Match suggestions against a vocab's rows. Returns
  * [{ key, entryIndex, current, proposed }] for rows that exist AND would
- * change; unknown row_keys are returned in `unmatched`.
+ * change; unknown row_keys land in `unmatched`; keys namespaced to a
+ * DIFFERENT vocab land in `otherVocab` (they are not errors — a v2 export
+ * carries several apps' rows in one document).
+ *
+ * Key resolution (G-5): try the key VERBATIM first (a v1 export's bare
+ * signature key — signature keys themselves contain "|", so a prefix split
+ * must not run first); on a miss, split on the FIRST "|" and use the rest
+ * when the prefix is this vocab's id.
  */
 function matchSuggestions(vocab, suggestions) {
   const entries = ((vocab || {}).interactions) || [];
+  const vid = String((vocab || {}).id || "");
   const byKey = new Map();
   entries.forEach((e, i) => {
     const k = vocabRowKey(e);
@@ -336,8 +444,21 @@ function matchSuggestions(vocab, suggestions) {
   });
   const rows = [];
   const unmatched = [];
+  const otherVocab = [];
   for (const [key, proposed] of Object.entries(suggestions || {})) {
-    const idx = byKey.get(key);
+    let idx = byKey.get(key);   // v1 bare key
+    if (idx === undefined && key.includes("|")) {
+      const cut = key.indexOf("|");
+      const prefix = key.slice(0, cut);
+      if (vid && prefix === vid) {
+        idx = byKey.get(key.slice(cut + 1));
+      } else if (prefix && prefix !== vid
+                 && !["aid", "ctn", "cnn", "n", "cn"].includes(prefix)) {
+        // Namespaced to another app's vocabulary — not unknown, just not ours.
+        otherVocab.push(key);
+        continue;
+      }
+    }
     if (idx === undefined) { unmatched.push(key); continue; }
     const e = entries[idx];
     const delta = {};
@@ -348,7 +469,7 @@ function matchSuggestions(vocab, suggestions) {
       rows.push({ key, entryIndex: idx, current: { name: e.name || "", object: e.object || "", means: e.means || "" }, proposed: delta });
     }
   }
-  return { rows, unmatched };
+  return { rows, unmatched, otherVocab };
 }
 
 /**
@@ -423,9 +544,9 @@ function showExportModal(opts) {
 }
 
 module.exports = {
-  EXPORT_VERSION, SEMANTIC_FIELDS, IMPORTABLE_FIELDS,
-  maskLabel, vocabRowKey, scrubFinding, vocabSkeleton, stepGroups,
-  buildLlmExport, exportText,
+  EXPORT_VERSION, SEMANTIC_FIELDS, IMPORTABLE_FIELDS, CANDIDATE_ROWS_MAX,
+  maskLabel, vocabRowKey, nsRowKey, scrubFinding, vocabSkeleton, stepGroups,
+  candidateRows, buildLlmExport, exportText,
   parseSuggestions, matchSuggestions, applySuggestionsToVocab,
   showExportModal,
 };

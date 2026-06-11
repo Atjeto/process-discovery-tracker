@@ -245,7 +245,9 @@ const SEED = {
     try { doc = JSON.parse(ta.value); } catch (e) { parseErr = e.message; }
     const root = doc && doc.pdt_copy_for_llm;
     const rows = (root && root.vocabularies && root.vocabularies[0] && root.vocabularies[0].rows) || [];
-    const row = rows.find((r) => r.row_key === "aid|order-id");
+    // G-5 v2: row keys are namespaced `<vocab_id>|<signature key>` so one
+    // export can carry several apps' rows without key collisions.
+    const row = rows.find((r) => r.row_key === "spotify-e2e|aid|order-id");
     return {
       modal: true, parseErr,
       posture: root && root.data_posture,
