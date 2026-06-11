@@ -99,6 +99,36 @@ rgba(40,30,10,.08)`. Corners are **sharp**: `--radius` `4px`,
 both self-hosted variable woff2, declared via `@font-face` at the top of
 `styles.css`.
 
+### Type scale (both apps)
+
+Every font-size in the product sits on this ladder — don't invent
+in-between steps on new surfaces:
+
+| Step | Use | Weight |
+|---|---|---|
+| 8–9px | micro mono badges (state glyphs, axis ticks) | 400–600 |
+| 10px | **overline labels** — uppercase, `letter-spacing: 0.4px`, 600, `--fg-3` (section titles, tile labels) | 600 |
+| 11px | secondary text, mono data values, hints | 400 |
+| 12px | controls, buttons, body-secondary | 400 |
+| 13px | **body** (the `html` base) and emphasized labels | 400 / 600 |
+| 14px | emphasized mono (timers) | 400–600 |
+| 15–16px | pane / dialog titles (`h2`, window headers) | 600 |
+| 20px | **stat values** in tiles — `--font-mono`, `line-height: 1.2` | 700 |
+| 34px | the single hero stat (Analysis efficiency figure) | 700 |
+
+### Capture windows share the same stack
+
+The capture app's windows (operator panel, wizard, welcome, settings,
+consent, label picker, …) consume the **same two font tokens** via
+[`capture/ui/tokens.js`](../../capture/ui/tokens.js), which injects an
+`@font-face` + `:root { --font-ui; --font-mono }` block (fonts inlined as
+`data:` URIs — capture windows load via `data:` URLs where `file:` fetches
+are CSP-blocked) into every window's markup. The token values are
+**duplicated verbatim** from `styles.css` — capture and viewer are
+separate apps with no cross-imports, so when the stack changes here,
+update `capture/ui/tokens.js` (and the `capture/ui/fonts/` byte-copies)
+by hand in the same commit.
+
 ## Component conventions
 
 - **Cards / panels** — `--bg-2` (white) fill, `var(--shadow)`, sharp

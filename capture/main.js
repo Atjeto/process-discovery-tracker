@@ -67,6 +67,7 @@ const { createWindowManager } = require("./window-manager.js");
 const { createSessionStorage } = require("./session-storage.js");
 const { appLogger } = require("./log.js");
 const { jsonForScript } = require("./json-for-script.js");
+const { injectTokens } = require("./ui/tokens.js");
 const crypto = require("node:crypto");
 
 const { bootLog } = require("./boot-log.js");
@@ -727,7 +728,7 @@ function promptForAppName() {
           --accent:#6E8A66;--accent-2:#5A7488}
         *{box-sizing:border-box}
         html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
-          font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:13px;line-height:1.5}
+          font-family:var(--font-ui);font-size:13px;line-height:1.5}
         body{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
         h1{font-size:14px;margin:0;font-weight:600}
         .sub{color:var(--fg-3);font-size:12px}
@@ -774,7 +775,7 @@ function promptForAppName() {
           else if (e.key === "Escape") document.getElementById("cancel").click();
         });
       </script></body></html>`;
-    w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+    w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(injectTokens(html)));
     const handler = (_e, value) => {
       if (resolved) return;
       resolved = true;
@@ -1290,7 +1291,7 @@ function showLabelPicker(opts) {
   labelPickerWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   labelPickerWindow.webContents.on("will-navigate", (e) => e.preventDefault());
   labelPickerWindow.loadURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(buildPickerHtml())
+    "data:text/html;charset=utf-8," + encodeURIComponent(injectTokens(buildPickerHtml()))
   );
   labelPickerWindow.on("closed", () => { labelPickerWindow = null; });
   labelPickerWindow.on("blur", () => {
@@ -1329,11 +1330,11 @@ function buildPickerHtml() {
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 14px 16px; background: var(--bg); color: var(--fg);
-         font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 13px; }
+         font-family: var(--font-ui); font-size: 13px; }
   .lbl { font-size: 11px; margin: 0 0 8px; color: var(--fg-3); letter-spacing: 0.5px; text-transform: uppercase; }
   .stack-hint { font-size: 11px; color: var(--warn); margin: 0 0 8px; padding: 5px 8px;
                 background: rgba(160, 128, 80, 0.10); border-radius: 4px; }
-  .stack-hint code { font-family: "IBM Plex Mono", Consolas, monospace; color: var(--fg-2); }
+  .stack-hint code { font-family: var(--font-mono); color: var(--fg-2); }
   input { width: 100%; padding: 9px 11px; background: var(--bg-2);
           border: 1px solid var(--border); color: var(--fg);
           border-radius: 4px; font-family: inherit; font-size: 13px; outline: none; }

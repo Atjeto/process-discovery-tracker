@@ -17,13 +17,13 @@
     --accent-2: #5A7488;
     --good:     #6E8A66;
     --bad:      #885A42;
-    --mono:     ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --mono:     var(--font-mono);
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; height: 100%;
     background: var(--bg); color: var(--fg);
-    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     font-size: 13px; line-height: 1.5;
   }
   body { padding: 18px 22px 16px; display: flex; flex-direction: column; gap: 12px; }

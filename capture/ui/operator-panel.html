@@ -19,13 +19,13 @@
     --warn:     #A08050;
     --danger:   #903838;
     --rec:      #903838;
-    --mono:     "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    --mono:     var(--font-mono);
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; height: 100%;
     background: var(--bg); color: var(--fg);
-    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     font-size: 13px;
   }
   body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }

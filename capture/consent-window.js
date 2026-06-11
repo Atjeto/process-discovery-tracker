@@ -22,11 +22,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow, ipcMain } = require("electron");
+const { injectTokens } = require("./ui/tokens.js");
 const { loadUserConfig, saveUserConfig } = require("./user-config.js");
 const { acknowledgementKey } = require("./consent.js");
 
 function buildHtml(opts) {
-  const tpl = fs.readFileSync(path.join(__dirname, "ui", "consent.html"), "utf-8");
+  const tpl = injectTokens(fs.readFileSync(path.join(__dirname, "ui", "consent.html"), "utf-8"));
   const text = (opts && opts.text) || "";
   // The template carries a single {{CONSENT_TEXT}} slot; escape for HTML.
   const safe = String(text)

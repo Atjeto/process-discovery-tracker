@@ -18,6 +18,7 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const { BrowserWindow, screen, app } = require("electron");
+const { injectTokens } = require("./ui/tokens.js");
 
 const STATE_FILE = "hotkey-overlay.json";
 
@@ -125,11 +126,11 @@ function buildHtml(hotkeys) {
   const shot = hotkeys.manual_screenshot || "Ctrl+Shift+P";
   /* Markup lives in ui/hotkey-overlay.html; the three {{HK_*}} tokens
      carry the (escaped) current hotkey bindings. */
-  return fs
+  return injectTokens(fs
     .readFileSync(path.join(__dirname, "ui", "hotkey-overlay.html"), "utf-8")
     .split("{{HK_START}}").join(escapeHtml(start))
     .split("{{HK_END}}").join(escapeHtml(end))
-    .split("{{HK_SHOT}}").join(escapeHtml(shot));
+    .split("{{HK_SHOT}}").join(escapeHtml(shot)));
 }
 
 function escapeHtml(s) {

@@ -19,9 +19,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
+const { injectTokens } = require("./ui/tokens.js");
 
 function buildHtml() {
-  return fs.readFileSync(path.join(__dirname, "ui", "profile.html"), "utf-8");
+  return injectTokens(fs.readFileSync(path.join(__dirname, "ui", "profile.html"), "utf-8"));
 }
 
 function showProfileWindow(opts) {

@@ -11,10 +11,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
+const { injectTokens } = require("./ui/tokens.js");
 
 /* Read-only content from ui/help-window.html, with the app version injected. */
 function buildHelpHtml() {
-  const html = fs.readFileSync(path.join(__dirname, "ui", "help-window.html"), "utf-8");
+  const html = injectTokens(fs.readFileSync(path.join(__dirname, "ui", "help-window.html"), "utf-8"));
   return html.replace("{{VERSION}}", require("./package.json").version);
 }
 

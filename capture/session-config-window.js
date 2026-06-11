@@ -23,12 +23,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
+const { injectTokens } = require("./ui/tokens.js");
 
 /* Markup is served verbatim from ui/session-config.html -- the slimmer
    form has no runtime-templated slots (the old {{IDLE}} substitution
    left with the hotkeys / OBS / idle fields). */
 function buildHtml() {
-  return fs.readFileSync(path.join(__dirname, "ui", "session-config.html"), "utf-8");
+  return injectTokens(fs.readFileSync(path.join(__dirname, "ui", "session-config.html"), "utf-8"));
 }
 
 function showSessionConfigWindow(opts) {

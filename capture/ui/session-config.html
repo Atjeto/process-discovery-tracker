@@ -21,7 +21,7 @@
   html, body {
     margin: 0; height: 100%;
     background: var(--bg); color: var(--fg);
-    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     font-size: 13px; line-height: 1.5;
   }
   body { padding: 20px 24px 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -32,7 +32,7 @@
   header .sub { color: var(--fg-3); font-size: 12px; margin-top: 2px; }
   .nav-hint { font-size: 11px; color: var(--fg-3); }
   .nav-hint code { background: var(--bg-2); padding: 1px 5px; border-radius: 3px;
-    font-family: ui-monospace, Consolas, monospace; font-size: 10px; color: var(--fg-2); }
+    font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }
 
   fieldset {
     border: 1px solid var(--border); border-radius: 5px;
@@ -50,7 +50,7 @@
     color: var(--fg); border-radius: 3px;
     font-family: inherit; font-size: 12px; outline: none;
   }
-  textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, Consolas, monospace; }
+  textarea { min-height: 110px; resize: vertical; font-family: var(--font-mono); }
   input:focus, textarea:focus { border-color: var(--accent); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .help-hint { font-size: 11px; color: var(--fg-3); margin-top: 6px; line-height: 1.5; }

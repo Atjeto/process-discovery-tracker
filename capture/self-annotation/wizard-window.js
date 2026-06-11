@@ -16,12 +16,14 @@
 
 "use strict";
 
+const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow, ipcMain } = require("electron");
 const { generateQuestions, buildSelfAnnotation } = require("./wizard.js");
 const { observeSessionFolder } = require("./observe.js");
 const { writeSelfAnnotations, stampWorkerReview } = require("./persist.js");
 const { bootLog } = require("../boot-log.js");
+const { injectTokens } = require("../ui/tokens.js");
 
 function fmtDur(ms) {
   const s = Math.max(0, Math.round((ms || 0) / 1000));
@@ -176,7 +178,10 @@ function showCloseoutWizard({ sessionFolder, summary }) {
       resolve({ asked: questions.length, answered, submitted });
     });
 
-    win.loadFile(path.join(__dirname, "wizard-window.html"));
+    /* data: URL like every other capture window, so the shared typography
+       tokens (ui/tokens.js) can be injected into the markup. */
+    win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(
+      injectTokens(fs.readFileSync(path.join(__dirname, "wizard-window.html"), "utf-8"))));
   });
 }
 

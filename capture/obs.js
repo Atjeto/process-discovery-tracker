@@ -29,7 +29,7 @@ function getOBSWebSocket() {
    OBS 28+ CEF accepts data: URLs. Refreshes at 10 Hz per §4.2. */
 const TIMESTAMP_OVERLAY_HTML = `<!doctype html><html><head><style>
 html,body{margin:0;padding:0;background:transparent;}
-body{color:#fff;font-family:'Consolas','Courier New',monospace;font-size:32px;font-weight:bold;}
+body{color:#fff;font-family:'JetBrains Mono','Consolas','Cascadia Code','Courier New',monospace;font-size:32px;font-weight:bold;}
 #t{padding:8px 12px;background:rgba(0,0,0,0.55);display:inline-block;border-radius:4px;text-shadow:0 0 4px #000;}
 </style></head><body>
 <div id="t">--:--:--.---</div>

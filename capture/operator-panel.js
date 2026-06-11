@@ -29,6 +29,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
 const { jsonForScript } = require("./json-for-script.js");
+const { injectTokens } = require("./ui/tokens.js");
 
 /* Markup lives in ui/operator-panel.html, loaded via a data: URL.
    {{LABELS}} is the one runtime-dynamic slot -- the JSON-encoded
@@ -37,10 +38,10 @@ const { jsonForScript } = require("./json-for-script.js");
    out and -- with nodeIntegration:true -- execute. See json-for-script.js. */
 function buildOperatorHtml(config) {
   const labels = jsonForScript((config && config.process_labels) || []);
-  return fs
+  return injectTokens(fs
     .readFileSync(path.join(__dirname, "ui", "operator-panel.html"), "utf-8")
     .split("{{LABELS}}")
-    .join(labels);
+    .join(labels));
 }
 
 function showOperatorPanel(config) {
