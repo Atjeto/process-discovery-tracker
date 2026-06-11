@@ -548,6 +548,52 @@ const OVERLAP_PROBE = () => {
     record("reference map: the mined map is untouched (one-way leaf)",
       minedBefore != null && minedBefore === minedAfter,
       "before=" + minedBefore + " after=" + minedAfter);
+
+    // --- G-1 pin: Fork from the DEFAULT map state -----------------------------
+    // The owner's real session: the Map opens on the Flow diagram at the screen
+    // detail level (no Process-diagram file), and Fork silently did nothing —
+    // while this suite forked only from a pre-selected, still-rendered BPMN cell
+    // and stayed green. Pin the real flow: from the default state, Fork must
+    // create a copy AND open the editor (it self-drives to the step-level
+    // Process diagram, the supported post-§B2 source).
+    await page.evaluate(() => {
+      // Reset to the default cell the way a fresh session presents it.
+      const dfgTab = document.querySelector('#session-layout-map .panel-tab[data-map="dfg"]');
+      if (dfgTab) dfgTab.click();
+      const lvl = document.getElementById("session-map-level");
+      if (lvl) { lvl.value = "screen"; lvl.dispatchEvent(new Event("change")); }
+    }).catch(() => {});
+    await wait(900);
+    const beforeDefaultFork = await page.evaluate(() => {
+      const State = require("./state.js"), RM = require("./reference-maps.js");
+      return RM.list(State.getSession().annotations).length;
+    }).catch(() => -1);
+    await page.click("#btn-fork-refmap").catch((e) => console.log("default-state fork", e.message));
+    await wait(2500);   // setMapCell("step") render + fork + editor open
+    const defFork = await page.evaluate(() => {
+      const State = require("./state.js"), RM = require("./reference-maps.js");
+      const s = State.getSession();
+      const maps = RM.list(s.annotations);
+      const e = maps[maps.length - 1] || null;
+      const overlay = document.getElementById("refmap-editor-overlay");
+      const host = document.getElementById("refmap-editor-host");
+      return {
+        count: maps.length,
+        fileOnDisk: e ? RM.fileExists(s.sessionFolder, e) : false,
+        sourceLevel: e && e.source ? e.source.level : null,
+        editorOpen: !!(overlay && overlay.style.display !== "none"),
+        editorSvg: !!(host && host.querySelector("svg")),
+      };
+    }).catch((e) => ({ err: e.message }));
+    const defForkOk = defFork && !defFork.err &&
+      defFork.count === beforeDefaultFork + 1 && defFork.fileOnDisk &&
+      defFork.editorOpen && defFork.editorSvg && defFork.sourceLevel === "step";
+    record("G-1: Fork from the DEFAULT map state creates a copy AND opens the editor",
+      defForkOk, "before=" + beforeDefaultFork + " " + JSON.stringify(defFork));
+    if (!defForkOk) await shot(page, "fail-refmap-default-fork.png");
+    else await shot(page, "g1-fork-default-state-editor.png");
+    await page.click("#btn-refmap-editor-close", { timeout: 2500 }).catch(() => {});
+    await wait(400);
   }
 
   // Page errors gate (checked last so we capture errors from every interaction).

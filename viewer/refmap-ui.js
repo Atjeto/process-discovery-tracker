@@ -152,22 +152,54 @@ async function onRowPdd(id, role) {
 }
 
 /* ---- fork --------------------------------------------------------------- */
+/* G-1: Fork must work from the DEFAULT map state. The Map opens on the Flow
+   diagram at the screen detail level — a cell with NO Process-diagram file —
+   and the old fork read whatever the bpmn singleton happened to hold (usually
+   nothing), silently doing nothing on a real session. Now: fork what is on
+   screen when the current cell IS a rendered Process diagram; otherwise drive
+   the map to the step-level Process diagram (the supported mined cell) and
+   fork that. When no Process-diagram source exists at all, fail LOUD with a
+   plain-language toast — never a silent no-op. */
 async function onFork() {
   const s = session();
   if (!s || !s.sessionFolder) { toast("Open a session first.", "error"); return; }
+  const fs = require("node:fs");
   const state = _deps.getMapState ? _deps.getMapState() : {};
-  if (!state || state.notation !== "bpmn") {
-    toast("Switch to the Process diagram tab to fork a reference map.", "info");
-    return;
-  }
+  let level = (state && state.level) || "step";
+  let srcPath = (state && state.notation === "bpmn" && _deps.sourceBpmnPath)
+    ? _deps.sourceBpmnPath(state) : null;
   let xml = null;
-  try { xml = await PdtBpmn.exportXml(); } catch (_) { xml = null; }
-  if (!xml) {
-    toast("No Process diagram is rendered yet — Analyze the session, then open the Process diagram tab.", "error");
-    return;
+  if (srcPath && fs.existsSync(srcPath)) {
+    // The current cell is a real Process diagram — fork what's on screen.
+    try { xml = await PdtBpmn.exportXml(); } catch (_) { xml = null; }
   }
-  const source = { notation: "bpmn", level: state.level, scope: null };
-  const srcPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath(state) : null;
+  if (!xml) {
+    const stepState = { notation: "bpmn", level: "step" };
+    const stepPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath(stepState) : null;
+    if (!stepPath || !fs.existsSync(stepPath)) {
+      toast("Nothing to fork yet — this session has no mined Process diagram. " +
+        'Run Analyze with "Build process map" checked (under ⋯ More), then fork again.', "error");
+      return;
+    }
+    const cq = (s.analysis || {}).case_quality;
+    if (!cq || !cq.tier2_unlocked) {
+      toast("Nothing to fork yet — the step-level Process diagram stays hidden " +
+        "until cases are confirmed. Review the case suggestions on the Overview first.", "error");
+      return;
+    }
+    // Drive the map to the step-level Process diagram and wait for the paint.
+    if (_deps.setMapCell) { try { await _deps.setMapCell("step"); } catch (_) {} }
+    try { xml = await PdtBpmn.exportXml(); } catch (_) { xml = null; }
+    if (!xml) {
+      toast("Could not read the Process diagram to fork — open the Map level's " +
+        "Process diagram tab, wait for it to draw, and try again.", "error");
+      return;
+    }
+    level = "step";
+    srcPath = stepPath;
+    toast("Forked from the step-level Process diagram.", "info");
+  }
+  const source = { notation: "bpmn", level, scope: null };
   const n = RefStore.list(s.annotations).length;
   const name = RefStore.cellLabel(source) + " — reference " + (n + 1);
   const entry = RefStore.fork({

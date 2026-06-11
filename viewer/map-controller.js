@@ -429,7 +429,9 @@ function createMapController(config) {
        upstream data refresh wants to nudge both level and notation in one go
        (e.g. an empty activity DFG defaulting to step/phase on the Flow tab).
        Always renders (the caller usually invokes this BECAUSE the data
-       changed, even when the controller's own state didn't). */
+       changed, even when the controller's own state didn't). Returns the
+       render promise so a caller that must read the rendered diagram (the
+       Fork action, G-1) can await the paint instead of sleeping. */
     setState: ({ notation: newNotation, level: newLevel, scope: newScope, rareCutoff: newCutoff } = {}) => {
       if (newNotation !== undefined) {
         notation = newNotation === "dfg" ? "dfg" : "bpmn";
@@ -446,8 +448,9 @@ function createMapController(config) {
       if (newCutoff !== undefined) {
         rareCutoff = Math.max(1, parseInt(newCutoff, 10) || 1);
       }
-      render();
+      const done = render();
       _notifyChange();
+      return done;
     },
     getState: () => ({ notation, level, scope: drillFilter, rareCutoff }),
     refit: _refit,
