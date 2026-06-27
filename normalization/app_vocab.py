@@ -439,53 +439,25 @@ def enrich_events(
 
 # --- Bootstrap-from-session authoring -----------------------------------
 
-def bootstrap_from_session(
-    events: list[dict[str, Any]],
-    *,
-    vocab_id: str = "untitled",
-    vocab_name: str = "Untitled",
-) -> dict[str, Any]:
-    """Build a starter vocabulary YAML by deduplicating the unique
-    interaction signatures observed in a session.
-
-    Strategy:
-      - Group events by (process_name) -- the most stable scope key.
-        For now we emit one vocabulary; multi-process splitting is the
-        analyst's job in post-editing.
-      - Within a group, dedup events by the most-specific available
-        signature: prefer automation_id, then (control_type, name),
-        then class_name+name. Carry a count for analyst sizing.
-      - Leave `name` field blank with a hint (the raw control name) so
-        the analyst fills it in. Don't guess -- we'd just be lying.
-    """
-    if not events:
-        return {
-            "app_vocabulary": {
-                "id": vocab_id, "name": vocab_name, "version": 1,
-                "scope": {}, "interactions": [],
-            }
-        }
-    by_proc: dict[str, list[dict]] = {}
-    for ev in events:
-        if ev.get("type") != "interaction":
-            continue
-        d = ev.get("data") or {}
-        pn = d.get("process_name") or "(unknown)"
-        by_proc.setdefault(pn, []).append(d)
-
-    # Most-frequent process is the assumed app for the vocab.
-    dominant_proc = max(by_proc.keys(), key=lambda k: len(by_proc[k]))
-    titles = [d.get("window_title") for d in by_proc[dominant_proc] if d.get("window_title")]
+def _scope_for_app(proc_name: str, datas: list[dict]) -> dict[str, Any]:
+    """The scope block for one app: its process_name plus, when the windows
+    share a stable common prefix, a window_title_regex narrowing it."""
+    scope: dict[str, Any] = {"process_name": proc_name}
+    titles = [d.get("window_title") for d in datas if d.get("window_title")]
     title_prefix = _common_prefix(titles) if titles else ""
-
-    scope: dict[str, Any] = {"process_name": dominant_proc}
     if title_prefix and len(title_prefix) >= 3:
-        # Use the common prefix as the window scope, escaped for regex.
         scope["window_title_regex"] = f".*{re.escape(title_prefix.strip())}.*"
+    return scope
 
-    # Dedup interactions by signature key, keep an example raw name.
+
+def _interactions_for_app(datas: list[dict]) -> list[dict[str, Any]]:
+    """Dedup one app's interaction-event data dicts into starter vocab rows,
+    frequency-ranked. Each row carries the picked signature, a blank `name`
+    for the analyst to fill, the auto semantics, `seen_count`, and a `_hint`
+    (the raw control label + count). The `_hint` doubles as the discovery
+    marker the editor reads to show each row in the review checklist."""
     seen: dict[tuple, dict] = {}
-    for d in by_proc[dominant_proc]:
+    for d in datas:
         key = _signature_key(d)
         if key is None:
             continue
@@ -518,21 +490,129 @@ def bootstrap_from_session(
         # analyst's pass is review, not authoring.
         item.update(auto_semantics(
             v["_control_type"], v["_raw_name"], v["_kinds"] or None))
-        hint = v["_raw_name"]
-        if hint:
-            # Stash a hint as a YAML comment -- analyst will overwrite name.
-            item["_hint"] = f"raw: {hint!r} (seen {v['_count']}x)"
+        # Stash a hint as a YAML comment -- analyst will overwrite name. Always
+        # present (even with no raw label) so EVERY bootstrapped row reads as a
+        # review-checklist row in the editor (isDiscoveredEntry keys on _hint).
+        raw = v["_raw_name"]
+        item["_hint"] = (f"raw: {raw!r} (seen {v['_count']}x)" if raw
+                         else f"unnamed control (seen {v['_count']}x)")
         interactions.append(item)
+    return interactions
 
+
+def _empty_vocab(vocab_id: str, vocab_name: str) -> dict[str, Any]:
+    return {
+        "app_vocabulary": {
+            "id": vocab_id, "name": vocab_name, "version": 1,
+            "scope": {}, "interactions": [],
+        }
+    }
+
+
+def _friendly_app_name(proc_name: str) -> str:
+    """A display name for an app from its process name: drop the .exe and
+    Capitalise a plain lower-case name (`chrome` -> `Chrome`), but leave an
+    all-caps acronym alone (`SAPGUI`, `EXCEL`)."""
+    base = proc_name[:-4] if proc_name.lower().endswith(".exe") else proc_name
+    base = base.strip() or proc_name
+    if base.islower():
+        return base[:1].upper() + base[1:]
+    return base
+
+
+def bootstrap_from_session(
+    events: list[dict[str, Any]],
+    *,
+    vocab_id: str = "untitled",
+    vocab_name: str = "Untitled",
+) -> dict[str, Any]:
+    """Build a starter vocabulary YAML by deduplicating the unique
+    interaction signatures observed in a session.
+
+    Strategy:
+      - Group events by (process_name) -- the most stable scope key, and
+        emit ONE vocabulary for the most-frequent process. (The per-app
+        variant ``bootstrap_per_app_from_session`` emits one per app.)
+      - Within a group, dedup events by the most-specific available
+        signature: prefer automation_id, then (control_type, name),
+        then class_name+name. Carry a count for analyst sizing.
+      - Leave `name` field blank with a hint (the raw control name) so
+        the analyst fills it in. Don't guess -- we'd just be lying.
+    """
+    if not events:
+        return _empty_vocab(vocab_id, vocab_name)
+    by_proc: dict[str, list[dict]] = {}
+    for ev in events:
+        if ev.get("type") != "interaction":
+            continue
+        d = ev.get("data") or {}
+        pn = d.get("process_name") or "(unknown)"
+        by_proc.setdefault(pn, []).append(d)
+    if not by_proc:
+        return _empty_vocab(vocab_id, vocab_name)
+
+    # Most-frequent process is the assumed app for the vocab.
+    dominant_proc = max(by_proc.keys(), key=lambda k: len(by_proc[k]))
     return {
         "app_vocabulary": {
             "id": vocab_id,
             "name": vocab_name,
             "version": 1,
-            "scope": scope,
-            "interactions": interactions,
+            "scope": _scope_for_app(dominant_proc, by_proc[dominant_proc]),
+            "interactions": _interactions_for_app(by_proc[dominant_proc]),
         }
     }
+
+
+def bootstrap_per_app_from_session(
+    events: list[dict[str, Any]],
+    *,
+    min_interactions: int = 1,
+) -> list[dict[str, Any]]:
+    """Build ONE starter vocabulary per observed app (G-7).
+
+    The arrival-session workflow: a received recording touches several apps
+    the analyst has no vocabulary for. Rather than the dominant-app-only
+    ``bootstrap_from_session``, this emits a per-app skeleton -- each scoped
+    to its own process_name + window-title pattern, frequency-ranked -- so
+    the analyst can start a vocabulary for whichever app they choose, with
+    every observed control pre-listed for naming.
+
+    Returns a list of ``{ app, vocab_id, vocab_name, interaction_count,
+    app_vocabulary }`` sorted by observed interaction volume (densest first).
+    Apps with fewer than ``min_interactions`` distinct named rows are skipped.
+    Callers are expected to have already dropped PDT's own surfaces via
+    ``process_filter`` (so the tool's own windows never become an "app").
+    """
+    by_proc: dict[str, list[dict]] = {}
+    for ev in events or []:
+        if ev.get("type") != "interaction":
+            continue
+        d = ev.get("data") or {}
+        pn = d.get("process_name") or "(unknown)"
+        by_proc.setdefault(pn, []).append(d)
+
+    out: list[dict[str, Any]] = []
+    for proc_name, datas in by_proc.items():
+        interactions = _interactions_for_app(datas)
+        if len(interactions) < max(1, min_interactions):
+            continue
+        name = _friendly_app_name(proc_name)
+        out.append({
+            "app": proc_name,
+            "vocab_id": _slug(name) or _slug(proc_name) or "untitled",
+            "vocab_name": name,
+            "interaction_count": len(interactions),
+            "app_vocabulary": {
+                "id": _slug(name) or _slug(proc_name) or "untitled",
+                "name": name,
+                "version": 1,
+                "scope": _scope_for_app(proc_name, datas),
+                "interactions": interactions,
+            },
+        })
+    out.sort(key=lambda a: -a["interaction_count"])
+    return out
 
 
 def _signature_key(d: dict) -> tuple | None:

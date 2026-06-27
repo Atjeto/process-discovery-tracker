@@ -237,3 +237,79 @@ def test_bootstrap_carries_seen_count_ranked_by_frequency():
     interactions = doc["app_vocabulary"]["interactions"]
     assert [i["seen_count"] for i in interactions] == [3, 1]
     assert interactions[0]["signature"]["automation_id"] == "common"
+
+
+# --- G-7: per-app bootstrap (the arrival-session workflow) -------------
+
+def _multi_app_events() -> list[dict]:
+    """A received recording touching three apps the analyst has no vocab for."""
+    return [
+        _ev({"process_name": "chrome.exe", "window_title": "Salesforce - Acme",
+             "control_type": "Button", "automation_id": "searchBtn", "name": "Search"}),
+        _ev({"process_name": "chrome.exe", "window_title": "Salesforce - Acme",
+             "control_type": "Button", "automation_id": "searchBtn", "name": "Search"}),
+        _ev({"process_name": "chrome.exe", "window_title": "Salesforce - Beta",
+             "control_type": "Edit", "automation_id": "customer-id", "name": "Customer",
+             "kind": "value_changed"}),
+        _ev({"process_name": "SAPGUI.exe", "window_title": "SAP Easy Access",
+             "control_type": "Edit", "name": "Material", "kind": "value_changed"}),
+        _ev({"process_name": "OUTLOOK.EXE", "window_title": "Inbox",
+             "control_type": "Button", "name": "Send"}),
+    ]
+
+
+def test_bootstrap_per_app_emits_one_vocab_per_observed_app():
+    apps = app_vocab.bootstrap_per_app_from_session(_multi_app_events())
+    # One starter vocab per app, densest first (chrome has the most rows).
+    by_id = {a["vocab_id"]: a for a in apps}
+    assert set(by_id) == {"chrome", "sapgui", "outlook"}
+    assert apps[0]["vocab_id"] == "chrome"
+    assert apps[0]["interaction_count"] == 2          # searchBtn (deduped) + customer-id
+    # Each app's vocab is scoped to ITS OWN process, not a mixed catch-all.
+    for a in apps:
+        scope = a["app_vocabulary"]["scope"]
+        assert scope["process_name"] == a["app"]
+        # The doc id/name mirror the top-level summary fields.
+        assert a["app_vocabulary"]["id"] == a["vocab_id"]
+        assert a["app_vocabulary"]["name"] == a["vocab_name"]
+
+
+def test_bootstrap_per_app_rows_carry_hint_for_review_checklist():
+    """Every bootstrapped row carries a `_hint` -- the editor reads it as the
+    discovery marker that renders the row in the review checklist (G-7)."""
+    apps = app_vocab.bootstrap_per_app_from_session(_multi_app_events())
+    for a in apps:
+        for row in a["app_vocabulary"]["interactions"]:
+            assert row.get("_hint"), f"{a['vocab_id']} row missing _hint: {row}"
+            assert "seen_count" in row
+
+
+def test_bootstrap_per_app_skips_apps_below_min_interactions():
+    # Outlook + SAP each have a single row; require >= 2 leaves only chrome.
+    apps = app_vocab.bootstrap_per_app_from_session(
+        _multi_app_events(), min_interactions=2)
+    assert [a["vocab_id"] for a in apps] == ["chrome"]
+
+
+def test_bootstrap_per_app_friendly_names():
+    apps = app_vocab.bootstrap_per_app_from_session(_multi_app_events())
+    names = {a["vocab_id"]: a["vocab_name"] for a in apps}
+    assert names["chrome"] == "Chrome"        # plain lower-case -> Capitalised
+    assert names["sapgui"] == "SAPGUI"        # all-caps acronym left alone
+    assert names["outlook"] == "OUTLOOK"
+
+
+def test_bootstrap_per_app_scope_narrows_by_window_title():
+    apps = app_vocab.bootstrap_per_app_from_session(_multi_app_events())
+    chrome = next(a for a in apps if a["vocab_id"] == "chrome")
+    scope = chrome["app_vocabulary"]["scope"]
+    # The two chrome windows share the "Salesforce - " prefix -> a narrowing regex.
+    assert "window_title_regex" in scope
+    assert "Salesforce" in scope["window_title_regex"]
+
+
+def test_bootstrap_per_app_no_interactions_is_empty():
+    # Activity-only / marker-only events produce no apps (and never crash).
+    assert app_vocab.bootstrap_per_app_from_session(
+        [{"type": "activity", "data": {"app": "chrome.exe"}}]) == []
+    assert app_vocab.bootstrap_per_app_from_session([]) == []

@@ -265,6 +265,11 @@ def main():
                         help="Vocabulary id (used with --bootstrap-vocab-out).")
     parser.add_argument("--vocab-name", type=str, default="Untitled",
                         help="Vocabulary display name (used with --bootstrap-vocab-out).")
+    parser.add_argument("--bootstrap-vocabs-json", action="store_true",
+                        help="Emit ONE starter App Vocabulary skeleton per observed "
+                             "app from this session's interactions as a single compact "
+                             "JSON object on stdout (G-7). Self-exclusion is applied "
+                             "first. Skips full normalization.")
     args = parser.parse_args()
 
     setup_logging()
@@ -281,6 +286,21 @@ def main():
             f.write(yaml_text)
         print(json.dumps({"ok": True, "vocab_path": args.bootstrap_vocab_out,
                           "interactions": len(doc["app_vocabulary"].get("interactions") or [])}, indent=2))
+        return
+
+    if args.bootstrap_vocabs_json:
+        if not args.session_folder or not args.session_folder.is_dir():
+            print("ERROR: session folder required for --bootstrap-vocabs-json", file=sys.stderr)
+            sys.exit(2)
+        events, _dropped = load_events(args.session_folder / "events.jsonl")
+        manifest = load_manifest(args.session_folder)
+        annotations = load_annotations(args.session_folder)
+        # Drop PDT's own surfaces (and analyst-ignored apps/windows) BEFORE
+        # grouping, so the tool's own windows never become a bootstrap "app".
+        events, _excl = filter_excluded(events, manifest, annotations)
+        apps = app_vocab.bootstrap_per_app_from_session(events)
+        # Compact single-line JSON: the Node runner parses the last stdout line.
+        print(json.dumps({"ok": True, "apps": apps}, ensure_ascii=False))
         return
 
     if not args.session_folder or not args.session_folder.is_dir():
