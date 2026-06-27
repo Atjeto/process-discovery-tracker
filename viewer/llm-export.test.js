@@ -299,8 +299,25 @@ test("the session export embeds candidate_rows when events are supplied", () => 
     session: { analysis: {}, annotations: { steps: [] } },
     posture: "reviewable", surface: "overview",
   });
-  const rows = doc.pdt_copy_for_llm.session.candidate_rows;
+  // G-6: candidate_rows is the PRIMARY payload — top-level, not nested.
+  const rows = doc.pdt_copy_for_llm.candidate_rows;
   assert.ok(Array.isArray(rows) && rows.length >= 2);
+  assert.ok(!(doc.pdt_copy_for_llm.session || {}).candidate_rows,
+    "candidate_rows must not be duplicated inside the session block");
+});
+
+test("G-6: candidate_rows lead the document; loaded vocab skeletons come last", () => {
+  const doc = buildLlmExport({
+    vocabs: [VOCAB],
+    events: EVENTS,
+    session: { analysis: {}, annotations: { steps: [] } },
+    posture: "reviewable", surface: "overview",
+  });
+  const keys = Object.keys(doc.pdt_copy_for_llm);
+  assert.ok(keys.indexOf("candidate_rows") >= 0, "candidate_rows present");
+  assert.ok(keys.indexOf("vocabularies") >= 0, "vocabularies present");
+  assert.ok(keys.indexOf("candidate_rows") < keys.indexOf("vocabularies"),
+    "the session's own naming gap (candidate_rows) must precede the loaded vocab skeletons");
 });
 
 test("step groups aggregate the zero-duration tail instead of listing it (G-4)", () => {

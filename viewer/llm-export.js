@@ -305,27 +305,31 @@ function buildLlmExport(opts) {
       version: EXPORT_VERSION,
       surface: o.surface || "",
       data_posture: o.posture || "",
-      contents: "Derived, PII-masked working data from a process-discovery " +
-        "session: vocabulary skeleton rows (UI control signatures + " +
-        "auto-derived semantics), measured facts, findings, step groups, " +
-        "and candidate rows (controls/screens no vocabulary covers yet). " +
-        "No raw event stream, no screenshots, no typed values (re-keyed " +
-        "values appear as join-preserving tokens like \"value-1\").",
+      contents: "Derived, privacy-masked working data from a process-discovery " +
+        "recording, to help name the apps it used. FIRST and most important: " +
+        "`candidate_rows` — the controls and screens this recording used that " +
+        "have NO vocabulary yet, i.e. the apps that most need naming help. " +
+        "Then, for context: measured facts, findings, and step groups. LAST: " +
+        "`vocabularies` — any app vocabularies already started, to refine. No " +
+        "raw event stream, no screenshots, no typed values (re-keyed values " +
+        "appear as join-preserving tokens like \"value-1\").",
       review_note: "Before sharing: labels that come from window titles can " +
         "carry business names — a site, customer or ticket subject that was " +
         "part of the window's title. Record numbers are stripped " +
         "automatically, words are not. Review the labels and screen names " +
         "below as carefully as the values.",
       how_to_respond: {
-        instructions: "Suggest better human-readable values for the vocabulary " +
-          "rows: a concise `name` (what an analyst would call the control), " +
-          "an `object` (the business object it acts on, e.g. \"customer " +
-          "record\"), and a `means` line (what using it means in the " +
-          "process). Respond with ONE JSON object in exactly this shape; " +
-          "key every suggestion by the row's `row_key` EXACTLY as given " +
-          "(it starts with the app vocabulary's id). `candidate_rows` are " +
-          "context only — they name the apps with no vocabulary yet and " +
-          "cannot be imported. Only suggest fields you are confident " +
+        instructions: "Your main task: suggest clear, human-readable names for " +
+          "the controls and screens in `candidate_rows` — these are the apps " +
+          "with no vocabulary yet, where naming help is most valuable. For " +
+          "each, give what an analyst would call the control, and where you " +
+          "can tell, the business object it acts on (e.g. \"customer record\"). " +
+          "You can also refine the already-started `vocabularies` rows below: " +
+          "for those, key every suggestion by the row's `row_key` EXACTLY as " +
+          "given (it starts with the app vocabulary's id) so it imports " +
+          "directly. Names you give for `candidate_rows` guide the analyst, " +
+          "who applies them after starting that app's vocabulary. Respond with " +
+          "ONE JSON object in this shape. Only suggest names you are confident " +
           "about; omit rows you cannot improve. The analyst reviews every " +
           "suggestion before anything is applied.",
         response_shape: {
@@ -337,8 +341,12 @@ function buildLlmExport(opts) {
     },
   };
   const root = doc.pdt_copy_for_llm;
-  if (Array.isArray(o.vocabs) && o.vocabs.length) {
-    root.vocabularies = o.vocabs.map(vocabSkeleton);
+  // PRIMARY payload (G-6): the session's OWN un-named controls/screens — the
+  // apps that most need naming help — lead the document, above the loaded
+  // vocab skeletons (which are the secondary, already-started payload). Built
+  // from the in-memory events the viewer renders, derived labels only.
+  if (Array.isArray(o.events) && o.events.length) {
+    root.candidate_rows = candidateRows(o.events, o.coverageVocabs || o.vocabs);
   }
   const sess = o.session || null;
   if (sess) {
@@ -369,15 +377,14 @@ function buildLlmExport(opts) {
     }
     const steps = ((sess.annotations || {}).steps) || [];
     section.step_groups = stepGroups(steps);
-    // G-5: the naming-gap rows — top observed controls/screens in apps no
-    // vocabulary covers (derived labels only; built from the same in-memory
-    // events the viewer renders, never re-read from disk). Coverage is
-    // checked against `coverageVocabs` (every known vocab) when supplied —
-    // an app whose vocab the session didn't hit is covered, not a gap.
-    if (Array.isArray(o.events) && o.events.length) {
-      section.candidate_rows = candidateRows(o.events, o.coverageVocabs || o.vocabs);
-    }
+    // The session context (facts/findings/step groups) sits BELOW
+    // candidate_rows — it informs naming, but the naming gap is the point.
     root.session = section;
+  }
+  // SECONDARY payload (G-6): already-started app vocabularies, to refine —
+  // emitted LAST so the document leads with where the naming gap actually is.
+  if (Array.isArray(o.vocabs) && o.vocabs.length) {
+    root.vocabularies = o.vocabs.map(vocabSkeleton);
   }
   return doc;
 }
