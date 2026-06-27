@@ -224,7 +224,41 @@ function runDiscoverVocab(payload) {
   });
 }
 
+/* G-7: build ONE starter App Vocabulary skeleton per app observed in a
+   received session, via normalize.py --bootstrap-vocabs-json (self-exclusion
+   applied first). Returns the parsed { ok, apps: [...] }. Like
+   runDiscoverVocab, the pandas-free path runs on the bundled embeddable; the
+   final stdout line is the compact JSON object. */
+function runBootstrapVocabs({ sessionFolder } = {}) {
+  return new Promise((resolve, reject) => {
+    const python = resolvePython();
+    const script = resolveNormalizeScript();
+    const proc = spawn(python, [script, sessionFolder, "--bootstrap-vocabs-json"], {
+      cwd: path.dirname(script),
+      env: Object.assign({}, process.env, { PYTHONUTF8: "1" }),
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (b) => { stdout += b.toString("utf8"); });
+    proc.stderr.on("data", (b) => { stderr += b.toString(); });
+    proc.on("error", (e) => reject(new Error(`failed to spawn python: ${e.message}`)));
+    proc.on("close", (code) => {
+      if (code !== 0) { reject(new Error(`normalize.py (bootstrap) exited ${code}: ${stderr}`)); return; }
+      // The summary is the trailing compact-JSON line (log lines precede it).
+      const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const last = lines[lines.length - 1];
+      if (!last) { reject(new Error("bootstrap produced no JSON")); return; }
+      try {
+        const doc = JSON.parse(last);
+        if (doc && doc.error) { reject(new Error(doc.error)); return; }
+        resolve(doc);
+      } catch (e) { reject(new Error("could not parse bootstrap output: " + e.message)); }
+    });
+  });
+}
+
 module.exports = {
   runNormalize, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
-  runDiscoverVocab, resolveDiscoverScript,
+  runDiscoverVocab, resolveDiscoverScript, runBootstrapVocabs,
 };

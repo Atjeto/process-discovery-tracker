@@ -10,7 +10,7 @@
 "use strict";
 
 const { $, escapeHtml, escapeAttr, toast } = require("../dom.js");
-const { confirmModal, promptModal, checklistModal } = require("../modals.js");
+const { confirmModal, promptModal, checklistModal, pickerModal } = require("../modals.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const CA = require("../canonical-author.js");
@@ -71,11 +71,12 @@ function renderVocabList() {
   if (!State.getVocabState().list.length) {
     host.innerHTML =
       '<div class="empty-pane">' +
-      '<p><strong>No vocabularies yet.</strong></p>' +
-      '<p>Two ways to start:</p>' +
+      '<p><strong>No app vocabularies yet — and you may not need any.</strong></p>' +
+      '<p>Reading a recording you received works without this: the Overview summary, findings and step groups stand on their own. A vocabulary is worth building when you will record the <em>same</em> process again. Ways to start one:</p>' +
       '<ol>' +
-      '<li>Click <strong>+ New vocabulary</strong> above to start an empty one.</li>' +
-      '<li>Capture a prep session from the tracker tray (<em>Start app vocabulary prep session...</em>), then bootstrap from it.</li>' +
+      '<li>Click <strong>Start from a recording…</strong> above to read every control a saved recording used and name one of its apps — no live app needed.</li>' +
+      '<li>Click <strong>+ New vocabulary</strong> to start an empty one by hand.</li>' +
+      '<li>Or capture a quick prep session from the tracker tray, then start from it.</li>' +
       '</ol>' +
       '</div>';
     return;
@@ -662,6 +663,161 @@ async function discoverFromWindow() {
   }
 }
 
+/* ---- G-7: "Start from a recording" (per-app bootstrap) ----------------
+   The arrival-session workflow: a received recording touches apps the analyst
+   has no vocabulary for. This reads one starter skeleton per app from the
+   recording's interactions and opens the chosen app's skeleton in the review
+   checklist — every observed control pre-listed, names blank for the analyst.
+   Nothing is saved until the analyst presses Save (suggest-don't-mutate).
+   Building a vocabulary is an asset for when the SAME process is recorded
+   again; it is never a prerequisite to READING a recording (Overview memo +
+   findings + step groups stand alone). */
+async function bootstrapFromSession() {
+  const btn = $("#btn-vocab-bootstrap-session");
+  const sess = State.getSession();
+  const currentFolder = sess && sess.sessionFolder;
+  if (btn) { btn.disabled = true; btn.textContent = "Reading the recording…"; }
+  try {
+    const r = await Ipc.bootstrapVocabsFromSession({ sessionFolder: currentFolder || null });
+    if (r && r.cancelled) return;
+    if (!r || !r.ok) {
+      toast("Couldn't read the recording: " + ((r && r.error) || "unknown"), "error");
+      return;
+    }
+    const apps = (r.apps || []).filter((a) => a && (a.interaction_count || 0) > 0);
+    if (!apps.length) { toast("No app controls were found in that recording.", "error"); return; }
+    const list = await Ipc.listAppVocabs();
+    const existingById = new Map(((list && list.vocabs) || []).map((v) => [v.id, v]));
+    const options = apps.map((a) => ({
+      key: a.vocab_id,
+      label: a.vocab_name + " — " + a.interaction_count + " control" + (a.interaction_count === 1 ? "" : "s"),
+      hint: existingById.has(a.vocab_id)
+        ? "already in your App Library — adds any new controls" : undefined,
+    }));
+    const chosenId = await pickerModal({
+      title: "Start a vocabulary from this recording",
+      message: "This recording used these apps. Pick one to start naming its controls — " +
+        "every control we saw is filled in for you to review. Worth doing when you'll " +
+        "record this process again; never needed just to read a recording.",
+      options, okLabel: "Start naming",
+    });
+    if (!chosenId) return;
+    const picked = apps.find((a) => a.vocab_id === chosenId);
+    if (!picked) return;
+    await openSkeletonForReview(picked.app_vocabulary, existingById.get(chosenId));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Start from a recording…"; }
+  }
+}
+
+/* Load a bootstrapped skeleton into the editor for review. When a vocabulary
+   for the app already exists, MERGE into it (analyst-named rows preserved, new
+   controls added); otherwise create a new file and adopt the skeleton. Either
+   way the new rows arrive as review-checklist rows (each carries the bootstrap
+   `_hint`), dirty until the analyst Saves. */
+async function openSkeletonForReview(skeleton, existing) {
+  const sk = skeleton || {};
+  if (existing && existing.path) {
+    await selectVocab(existing.path);
+    const v = State.getVocabState().current;
+    if (!v) { toast("Couldn't open that App Library entry.", "error"); return; }
+    const merged = mergeDiscoveredSkeleton(v, sk);
+    State.getVocabState().current = merged.vocab;
+    renderVocabEditor();
+    markDirty();
+    toast("Read " + (sk.interactions || []).length + " control(s) from the recording — " +
+      merged.added + " new to name, " + merged.skipped + " already named. Review and Save.",
+      "success");
+    return;
+  }
+  // New app: create the file (the analyst chooses where), then adopt the
+  // skeleton's scope + rows in memory for review.
+  const p = await Ipc.newVocabFile({ suggestedId: sk.id || "new-app" });
+  if (!p) return;
+  await reloadVocabList();
+  await selectVocab(p);
+  const seed = State.getVocabState().current;
+  if (!seed) { toast("Couldn't open the new App Library file.", "error"); return; }
+  const merged = mergeDiscoveredSkeleton(seed, sk);
+  merged.vocab.name = sk.name || merged.vocab.name;
+  State.getVocabState().current = merged.vocab;
+  renderVocabEditor();
+  markDirty();
+  toast("Started “" + (sk.name || "vocabulary") + "” from the recording — " +
+    merged.added + " control(s) to name. Review each, then Save.", "success");
+}
+
+/* ---- G-8: "Add to App Library…" from a step interaction ---------------
+   Right-clicking an interaction in the Steps detail offers this. It takes the
+   interaction's signature (control_type + automation_id/name/class_name) and a
+   label prefilled from the step name, lets the analyst choose or create the
+   target vocabulary, and adds the row — dirty, for review, never auto-saved.
+   Called by steps-view via the renderer (which switches to this tab first). */
+async function addInteractionFromStep({ signature, suggestedName } = {}) {
+  if (!signature) { toast("That interaction has no usable element signature to add.", "error"); return; }
+  await reloadVocabList();
+  const list = State.getVocabState().list || [];
+  const options = list.map((v) => ({
+    key: v.path,
+    label: (v.name || v.id) + " — " + v.interaction_count + " control" + (v.interaction_count === 1 ? "" : "s"),
+  }));
+  options.push({ key: "__new__", label: "+ New vocabulary…" });
+  const chosen = await pickerModal({
+    title: "Add this control to a vocabulary",
+    message: "Pick the app vocabulary this control belongs to (or start a new one). " +
+      "The element signature is filled in and the name is taken from the step — " +
+      "review it, then Save the vocabulary.",
+    options, okLabel: "Add control",
+  });
+  if (!chosen) return;
+  let targetPath = chosen;
+  if (chosen === "__new__") {
+    const name = await promptModal({
+      title: "New App Library entry",
+      message: "Which app is this control for?",
+      placeholder: "e.g., Salesforce", okLabel: "Create",
+    });
+    if (!name) return;
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    targetPath = await Ipc.newVocabFile({ suggestedId: id });
+    if (!targetPath) return;
+    await reloadVocabList();
+    await selectVocab(targetPath);
+    const v0 = State.getVocabState().current;
+    if (v0) v0.name = name;
+  } else {
+    await selectVocab(targetPath);
+  }
+  const v = State.getVocabState().current;
+  if (!v) { toast("Couldn't open that App Library entry.", "error"); return; }
+  v.interactions = v.interactions || [];
+  const key = CA.vocabSignatureKey(signature);
+  const dupIdx = v.interactions.findIndex((e) => CA.vocabSignatureKey(e && e.signature) === key);
+  if (key && dupIdx >= 0) {
+    renderVocabEditor();
+    _flashInteractionRow(dupIdx);
+    toast("This control is already in “" + (v.name || v.id) + "”. Highlighted it for you.", "info");
+    return;
+  }
+  v.interactions.push({ signature, name: (suggestedName || "").trim() });
+  renderVocabEditor();
+  markDirty();
+  _flashInteractionRow(v.interactions.length - 1);
+  toast("Added a control to “" + (v.name || v.id) + "” — give it a name and Save the vocabulary.", "success");
+}
+
+/* Scroll a freshly-added/duplicate interaction row into view + flash it. */
+function _flashInteractionRow(idx) {
+  const host = $("#vocab-interactions");
+  const row = host && host.querySelector('.vocab-int[data-idx="' + idx + '"]');
+  if (!row) return;
+  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  row.classList.add("vocab-int-new");
+  setTimeout(() => row.classList.remove("vocab-int-new"), 1500);
+  const nameInput = row.querySelector('[data-field="name"]');
+  if (nameInput) nameInput.focus();
+}
+
 /* ---- "Copy for LLM" + suggestions import (lab-phase §C3) -------------- */
 
 /* Copy-for-LLM from the App Library: the SELECTED vocab as skeleton rows
@@ -803,6 +959,9 @@ function initVocabView() {
       toast("New App Library entry created — fill in interactions in plain English and save", "success");
     });
   }
+  if ($("#btn-vocab-bootstrap-session")) {
+    $("#btn-vocab-bootstrap-session").addEventListener("click", bootstrapFromSession);
+  }
   if ($("#btn-vocab-discover")) {
     $("#btn-vocab-discover").addEventListener("click", discoverFromWindow);
   }
@@ -824,4 +983,5 @@ module.exports = {
   initVocabView, reloadVocabList, mergeVocabEntry,
   mergeDiscoveredSkeleton, mergeScreens, stripDiscoveryMeta,
   isDiscoveredEntry, renderVocabLlmButtons,
+  bootstrapFromSession, addInteractionFromStep,
 };

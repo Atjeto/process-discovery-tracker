@@ -195,6 +195,13 @@ function pickWindow(payload) {
   return ipcRenderer.invoke("viewer:pickWindow", payload || {});
 }
 
+/** G-7: build one starter App Vocabulary skeleton per app observed in a session.
+ *  @param {object} payload { sessionFolder? } — when absent, the user is asked to pick a recording.
+ *  @returns {Promise<any>} { ok, apps, sessionFolder } | { ok:false, cancelled } | { ok:false, error } */
+function bootstrapVocabsFromSession(payload) {
+  return ipcRenderer.invoke("viewer:bootstrapVocabsFromSession", payload || {});
+}
+
 /** Delete an App Library vocabulary file by path. @returns {Promise<any>} { deleted } | { error } */
 function deleteVocab(p) {
   return ipcRenderer.invoke("viewer:deleteVocab", p);
@@ -254,7 +261,7 @@ module.exports = {
   exportFile, saveSvgFile, saveHtmlFile, saveTextFile, revealFile, openExternal, openDiagram,
   openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
-  discoverFromWindow, pickWindow, deleteVocab,
+  discoverFromWindow, pickWindow, deleteVocab, bootstrapVocabsFromSession,
   attachExternalVideo, saveExternalVideoSync,
   saveProjectAs, saveProject, openProject, loadProjectFile,
   onNormalizeLog, onOpenInitialSession,

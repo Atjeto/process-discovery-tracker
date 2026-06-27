@@ -105,7 +105,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="project-menu-popup" id="session-more-popup" style="display:none">
               <button class="project-menu-item" id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
               <button class="project-menu-item" id="btn-classify-activities" title="Give each application a meaningful activity label so the process map and timeline show real activities instead of 'Unclassified'. Adds rules for this session and re-analyzes.">Classify activities…</button>
-              <button class="project-menu-item" id="btn-save-vocab" title="Generate a starter App Library entry from this session's captured interactions. Edit names afterward; once saved, future sessions auto-use it to label what the user did inside this app.">Save to App Library...</button>
+              <button class="project-menu-item" id="btn-save-vocab" title="Start an App Library entry from this session's captured interactions. Optional — worth doing when you'll record this process again, so future sessions label what the user did inside this app. Never needed just to read this recording.">Save to App Library...</button>
               <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
               <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
               <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Also build the process maps (flowchart and process diagram) during analysis."/> Build process map</label>
@@ -778,10 +778,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <div class="template-explainer">
           <h2>App Library</h2>
           <p>Each app you record gets one vocabulary file that maps its UI elements (Save button, Search field, etc.) to meaningful names. The names roll into step names automatically on every future session that touches the app. Edit them as a form here - no YAML required.</p>
+          <p class="meta"><strong>This is optional.</strong> Reading a recording you've received needs nothing here — the Overview summary, findings, and step groups stand on their own. A vocabulary pays off when you'll record the <em>same</em> process again: name an app once and every later recording of it reads better. Start one from a recording you already have (no live app needed) with <em>Start from a recording…</em> below.</p>
           <p class="meta">Underlying storage is YAML at <code>normalization/app_vocabularies/</code>. You can edit those files directly if you prefer, or use this form. Both write to the same place.</p>
         </div>
         <div class="actions-bar">
           <button id="btn-vocab-new" class="primary">+ New vocabulary</button>
+          <button id="btn-vocab-bootstrap-session" title="Read every control a saved recording touched and start a vocabulary for one of its apps, with names pre-filled for you to review. Worth doing when you'll record this process again — never needed just to read a recording.">Start from a recording…</button>
           <button id="btn-vocab-discover" title="Point at a prepared app window and auto-discover a stable-signature vocabulary skeleton from its live UI. On-device; nothing leaves the box.">Discover from window…</button>
           <button id="btn-vocab-reload">Reload list</button>
           <button id="btn-vocab-open-yaml" disabled>Open YAML in editor</button>

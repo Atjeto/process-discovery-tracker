@@ -271,4 +271,67 @@ function checklistModal(opts) {
   });
 }
 
-module.exports = { promptModal, confirmModal, formModal, checklistModal };
+/* A single-choice modal: a list of radio options, resolves to the chosen
+   option's `key` (or null on cancel/escape). `options` is an array of
+   { key, label, hint, disabled }; `selectedKey` pre-selects one (defaults to
+   the first enabled option). Used by the "Start from a recording" app picker
+   (G-7) — pick which app to begin a vocabulary for. */
+function pickerModal(opts) {
+  opts = opts || {};
+  const options = Array.isArray(opts.options) ? opts.options : [];
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop modal-prompt modal-picker";
+    const okLabel = opts.okLabel || "OK";
+    const cancelLabel = opts.cancelLabel || "Cancel";
+    const firstEnabled = (options.find((o) => !o.disabled) || {}).key;
+    const selected = opts.selectedKey != null ? opts.selectedKey : firstEnabled;
+    const rows = options.map((o) =>
+      '<label class="modal-check' + (o.disabled ? " disabled" : "") + '">' +
+      '<input type="radio" name="picker-choice" data-key="' + escapeAttr(o.key || "") + '"' +
+      (o.key === selected ? " checked" : "") + (o.disabled ? " disabled" : "") + ">" +
+      "<span>" + escapeHtml(o.label || o.key || "") + "</span>" +
+      (o.hint ? "<small>" + escapeHtml(o.hint) + "</small>" : "") +
+      "</label>").join("");
+    backdrop.innerHTML =
+      '<div class="modal modal-sm">' +
+      '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Pick one") + "</h2>" +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<div class="modal-body">' +
+      (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + "</p>" : "") +
+      rows +
+      "</div>" +
+      '<footer class="modal-footer">' +
+      '<button class="modal-cancel">' + escapeHtml(cancelLabel) + "</button>" +
+      '<button class="primary modal-ok">' + escapeHtml(okLabel) + "</button>" +
+      "</footer></div>";
+    document.body.appendChild(backdrop);
+    const okBtn = backdrop.querySelector(".modal-ok");
+    const cancelBtn = backdrop.querySelector(".modal-cancel");
+    const closeBtn = backdrop.querySelector(".modal-close");
+    let resolved = false;
+    function done(value) {
+      if (resolved) return;
+      resolved = true;
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey, true);
+      resolve(value);
+    }
+    function chosen() {
+      const c = backdrop.querySelector('input[name="picker-choice"]:checked');
+      return c ? c.dataset.key : null;
+    }
+    function onKey(e) {
+      if (e.key === "Enter") { e.preventDefault(); done(chosen()); }
+      else if (e.key === "Escape") { e.preventDefault(); done(null); }
+    }
+    okBtn.addEventListener("click", () => done(chosen()));
+    cancelBtn.addEventListener("click", () => done(null));
+    closeBtn.addEventListener("click", () => done(null));
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) done(null); });
+    document.addEventListener("keydown", onKey, true);
+    setTimeout(() => { okBtn.focus(); }, 0);
+  });
+}
+
+module.exports = { promptModal, confirmModal, formModal, checklistModal, pickerModal };

@@ -18,7 +18,7 @@ const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
 const PdtAlign = require("../step-alignment.js");
 const PdtPalette = require("../command-palette.js");
-const { stepsToTemplateSteps, canonicalSkeleton, anchorFromOverride, slugify } = require("../canonical-author.js");
+const { stepsToTemplateSteps, canonicalSkeleton, anchorFromOverride, slugify, signatureFromInteraction } = require("../canonical-author.js");
 const { loadVocabs } = require("./identity-picker.js");
 const { rollUpSteps } = require("../process-map-levels.js");
 
@@ -29,6 +29,9 @@ let videoTimeToSessionTs = () => null;
 let jumpToStepInFlow = () => {};
 let watchStep = () => {};
 let openCanonicalInTemplateTab = () => {};
+// G-8: hand an interaction's signature to the App Library (renderer switches
+// to that tab, then vocab-view adds the row for review). Injected by renderer.
+let addInteractionToVocab = () => {};
 
 /* A2: the analyst-chosen split boundary for the currently-selected step --
    { stepId, index } where index means "split AFTER this interaction". Null
@@ -420,6 +423,7 @@ function stepDetailCallbacks(selected, interactionsById) {
     onJumpToFlow: (step) => jumpToStepInFlow(step),
     onWatchStep: (step) => watchStep(step),
     onToggleHide: toggleStepHidden,
+    onAddInteractionToVocab: (ev, step, x, y) => showInteractionVocabMenu(ev, step, x, y),
     interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
     // Decision 1: how many tickets this step recurs in + the propagate action.
@@ -1126,6 +1130,7 @@ function initStepsView(deps) {
   jumpToStepInFlow = deps.jumpToStepInFlow;
   watchStep = deps.watchStep || (() => {});
   if (deps.openCanonicalInTemplateTab) openCanonicalInTemplateTab = deps.openCanonicalInTemplateTab;
+  if (deps.addInteractionToVocab) addInteractionToVocab = deps.addInteractionToVocab;
 
   // I72: Steps-view commands for the Ctrl+K palette.
   if (PdtPalette) {
@@ -1228,6 +1233,48 @@ async function propagateStepToGroup(stepId) {
   await persistAnnotations(anno, "apply step to repeats");
   toast("Applied to " + applied + " matching step(s) in other tickets", "success");
   renderStepsLevel();
+}
+
+/* G-8: a one-item context menu on an interaction in the Steps detail — "Add
+   to App Library…". Hands the interaction's element signature + the step name
+   to the App Library (suggest-don't-mutate; nothing saves without the
+   vocabulary's own Save). Mirrors showStepContextMenu's inline-styled menu. */
+function showInteractionVocabMenu(ev, step, x, y) {
+  const prior = document.getElementById("step-ctx-menu");
+  if (prior) prior.remove();
+  const signature = signatureFromInteraction(ev);
+  const menu = document.createElement("div");
+  menu.id = "step-ctx-menu";
+  menu.style.cssText =
+    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
+    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
+    "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:200px;cursor:default;user-select:none;";
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+  const item = document.createElement("div");
+  item.textContent = signature ? "Add to App Library…" : "No element signature to add";
+  item.style.cssText = "padding:6px 14px;cursor:" + (signature ? "pointer" : "default") +
+    ";" + (signature ? "" : "opacity:.55;");
+  if (signature) {
+    item.addEventListener("mouseenter", () => { item.style.background = "var(--accent)"; });
+    item.addEventListener("mouseleave", () => { item.style.background = ""; });
+    item.addEventListener("click", () => {
+      menu.remove();
+      addInteractionToVocab({ signature, suggestedName: (step && step.name) || "" });
+    });
+  }
+  menu.appendChild(item);
+  document.body.appendChild(menu);
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    menu.remove();
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", dismiss, true);
+  };
+  setTimeout(() => {
+    document.addEventListener("mousedown", dismiss, true);
+    document.addEventListener("keydown", dismiss, true);
+  }, 0);
 }
 
 /* A5: right-click context menu for a step block in the Step timeline.

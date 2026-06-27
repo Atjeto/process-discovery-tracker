@@ -28,7 +28,7 @@ const _noopApp = { whenReady() { return new Promise(() => {}); }, on() {}, quit(
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
   ? _electron
   : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
-const { runNormalize, runDiscoverVocab } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}), runDiscoverVocab: async () => ({}) };
+const { runNormalize, runDiscoverVocab, runBootstrapVocabs } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}), runDiscoverVocab: async () => ({}), runBootstrapVocabs: async () => ({ apps: [] }) };
 const { snapshotWindow, pickWindow } = _underElectron ? require("./recorder-snapshot.js") : { snapshotWindow: async () => ({ controls: [] }), pickWindow: async () => ({ cancelled: true }) };
 
 let mainWindow = null;
@@ -642,6 +642,34 @@ ipcMain.handle("viewer:bootstrapAppVocab", async (_e, { sessionFolder, vocabId, 
     const yamlText = fs.readFileSync(tmpOut, "utf-8");
     try { fs.unlinkSync(tmpOut); } catch (_) {}
     return { ok: true, yaml: yamlText, summary: r && r.summary };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+/* G-7: build one starter App Vocabulary skeleton per app observed in a
+   received session. When no sessionFolder is supplied (no session open in the
+   viewer), the analyst is asked to point at the received recording folder.
+   Returns { ok, apps, sessionFolder } — the renderer opens the chosen app's
+   skeleton in the review checklist (nothing is saved here). */
+ipcMain.handle("viewer:bootstrapVocabsFromSession", async (_e, { sessionFolder } = {}) => {
+  try {
+    let root = sessionFolder ? path.resolve(sessionFolder) : null;
+    if (!root) {
+      const r = await dialog.showOpenDialog(mainWindow, {
+        title: "Pick a recording to learn its apps",
+        properties: ["openDirectory"],
+      });
+      if (r.canceled || !r.filePaths.length) return { ok: false, cancelled: true };
+      root = r.filePaths[0];
+    }
+    if (!fs.existsSync(path.join(root, "manifest.json")) ||
+        !fs.existsSync(path.join(root, "events.jsonl"))) {
+      return { ok: false, error: "That folder isn't a recording (no events found in it)." };
+    }
+    const doc = await runBootstrapVocabs({ sessionFolder: root });
+    const apps = (doc && doc.apps) || [];
+    return { ok: true, apps, sessionFolder: root };
   } catch (e) {
     return { ok: false, error: e.message };
   }

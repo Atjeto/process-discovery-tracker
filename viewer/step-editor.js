@@ -259,6 +259,21 @@
         if (callbacks.onPickSplit && Number.isInteger(after)) callbacks.onPickSplit(after);
       });
     });
+    // G-8: right-click an interaction to add its element signature to an App
+    // Library vocabulary — kills the hand-copying of identifiers that manual
+    // vocabulary curation needs.
+    if (callbacks && callbacks.onAddInteractionToVocab) {
+      host.querySelectorAll(".step-interaction[data-idx]").forEach((li) => {
+        li.addEventListener("contextmenu", (e) => {
+          const idx = parseInt(li.dataset.idx, 10);
+          const ev = Number.isInteger(idx) ? resolvedInter[idx] : null;
+          if (!ev) return;
+          e.preventDefault();
+          e.stopPropagation();
+          callbacks.onAddInteractionToVocab(ev, step, e.clientX, e.clientY);
+        });
+      });
+    }
     document.getElementById("btn-step-merge").addEventListener("click", () =>
       callbacks.onMerge && callbacks.onMerge(step.step_id));
     const _mergeSelBtn = document.getElementById("btn-step-merge-selected");

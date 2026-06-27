@@ -32,7 +32,7 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { promptModal, confirmModal, checklistModal } = require("./modals.js");
 const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent, relTime } = require("./recent.js");
 const { initAggregateView, renderAggregate, loadAggregateFolders, filteredAggregateSessions, getAggregateFindings } = require("./views/aggregate-view.js");
-const { initVocabView, reloadVocabList } = require("./views/vocab-view.js");
+const { initVocabView, reloadVocabList, addInteractionFromStep } = require("./views/vocab-view.js");
 const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
 const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = require("./views/template-view.js");
 const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp } = require("./views/steps-view.js");
@@ -698,6 +698,9 @@ initStepsView({
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   watchStep: (s) => watchStep(s),
   openCanonicalInTemplateTab: (r) => { activateTab("canonical"); loadCanonical(r); },
+  // G-8: switch to the App Library tab, then add the interaction's signature
+  // there for review (suggest-don't-mutate; the analyst Saves the vocabulary).
+  addInteractionToVocab: (p) => { activateTab("vocabularies"); return addInteractionFromStep(p); },
 });
 initPhasesView({
   ensureAnnoShape: (a) => ensureAnnoShape(a),
