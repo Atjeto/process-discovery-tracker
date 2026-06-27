@@ -117,8 +117,13 @@ and it drives the viewer's own `electron`.
   (`select[data-sem="verb"]`, `input[data-sem="object"|"means"]`,
   `input[data-semflag="completion"|"carries_value"|"case_id_source"]`), and on DISCOVERED rows the
   §C2 review tick `[data-review]` (+ `#vocab-review-progress`, `#btn-vocab-approve-all`).
-  Toolbar: `#btn-vocab-discover` / `#btn-vocab-save`, and — only when the data posture permits —
-  `#btn-vocab-copy-llm` / `#btn-vocab-import-llm`. Pinned by `e2e/vocab-smoke.js`.
+  Toolbar: `#btn-vocab-discover` / `#btn-vocab-save` / `#btn-vocab-bootstrap-session` (lab Phase H
+  G-7 "Start from a recording…" → a single-choice `.modal-picker` of observed apps → the chosen
+  app's skeleton opens as the review checklist), and — only when the data posture permits —
+  `#btn-vocab-copy-llm` / `#btn-vocab-import-llm`. **Phase H G-8:** right-clicking an interaction
+  row `#step-detail .step-interaction[data-idx]` (Steps view) opens `#step-ctx-menu` → "Add to App
+  Library…" → the same `.modal-picker` (existing vocabs + "+ New vocabulary…") adds a signature row,
+  name prefilled from the step. Pinned by `e2e/vocab-smoke.js` (loads a session so both flows drive).
 - **Data posture (§C4):** `require("./posture.js").setDataPosture("sealed"|"reviewable"|"open")`
   (persisted at localStorage `pdt.dataPosture`; default reviewable); the Overview header select is
   `#ov-posture-select`, the Overview export button `#btn-ov-copy-llm`. **Invariant: `sealed`

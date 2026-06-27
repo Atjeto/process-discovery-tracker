@@ -4,6 +4,56 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Lab Phase H: arrival-session reframe + vocab-friction killers
+
+The first real session arrived as a folder from a remote worker — no
+vocabularies for the recorded apps, no access to the live apps, one
+recording. Every vocab assist assumed the analyst sat in front of the live
+applications. Phase H makes reading a received recording need **zero**
+vocabulary / CLI / discovery work, and turns vocabulary building from a
+prerequisite into a one-click asset for *repeat* recordings. Ground truth:
+[docs/To-Do/real-session-findings.md → G-6/7/8](docs/To-Do/real-session-findings.md);
+phase record in [docs/LAB-PHASE-SPEC.md → Phase H](docs/LAB-PHASE-SPEC.md).
+
+### Changed (Phase H)
+
+- **G-6 — The arrival session is the primary workflow; reframe.** The
+  Copy-for-AI export now leads with `candidate_rows` (the recording's own
+  un-named controls/screens — the apps that most need naming help) as the
+  PRIMARY payload, with the loaded-vocab skeletons moved last as the
+  secondary, already-started payload (`viewer/llm-export.js`; header +
+  instructions reworded to match). Vocabulary-building copy across the App
+  Library tab, its empty state, and the "Save to App Library" action is
+  repositioned as "worth doing when you'll record this process again —
+  never needed just to read a recording."
+
+### Added (Phase H)
+
+- **G-7 — One-click "Start from a recording" (App Library).** A new App
+  Library button reads every control a saved recording touched and writes
+  one starter vocabulary *per observed app* (scope inferred from
+  `process_name` + the window-title pattern), then opens the chosen app's
+  skeleton in the review checklist — every control pre-listed, names blank.
+  Defaults to the open session; otherwise asks for a recording folder. No
+  terminal: the existing `--bootstrap-vocab-out` machinery is reused via a
+  new `normalize.py --bootstrap-vocabs-json` (self-exclusion applied) and
+  the established Python-runner IPC. Suggest-don't-mutate: nothing saves
+  until the analyst presses Save. (`normalization/app_vocab.py`
+  `bootstrap_per_app_from_session`, `viewer/views/vocab-view.js`,
+  `viewer/main.js`, `viewer/python-runner.js`, `viewer/modals.js`
+  `pickerModal`.)
+- **G-8 — Right-click "Add to App Library…" from a step.** In Workshop →
+  Steps, right-clicking an interaction in the step detail offers to add its
+  element signature (control_type + automation_id/name/class_name) to a
+  chosen-or-new vocabulary, with the row name prefilled from the step name —
+  killing the hand-copying of identifiers. Suggest-don't-mutate; nothing
+  auto-saves. (`viewer/step-editor.js`, `viewer/views/steps-view.js`,
+  `viewer/views/vocab-view.js` `addInteractionFromStep`.)
+- **e2e** — `e2e/vocab-smoke.js` extended (29 checks): the
+  "Start from a recording" button produces a review checklist with rows,
+  and the Steps right-click "Add to App Library…" adds a prefilled row;
+  new-button + picker labels are pinned non-clipped.
+
 ## [Unreleased] — Lab Phase G: real-session hardening
 
 Hardening from the owner's first real 1.5-hour company session (capture

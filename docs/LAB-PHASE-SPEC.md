@@ -543,6 +543,49 @@ leaks). The round-trip verdict was "viable — hardening, not redesign".
   `candidate_rows` for un-vocabbed apps (derived labels only), and the
   in-band `review_note` about window-title-derived labels.
 
+## Phase H — Arrival-session reframe + vocab-friction killers
+
+> **Status: BUILT + validated** on `lab-phase-h` (branched off `master`
+> `7d5822c`, Phase G integrated). The three items are numbered G-6/7/8 in
+> [docs/To-Do/real-session-findings.md](To-Do/real-session-findings.md) (the
+> binding spec) but build as their own phase — the "G" branch was already
+> merged. Validation: pytest **507 passed** (+11 pre-existing pipeline-deps
+> skips under system Python) incl. new per-app-bootstrap + scope-inference +
+> friendly-name fixtures; viewer **320**; capture **129** (+1 pre-existing
+> skip); session golden green WITHOUT regeneration (Phase H is viewer/copy +
+> a new CLI path; the demo projection did not move); all five e2e smokes
+> green — session 23, overview 11, map-slim 9, **vocab 29** (the new G-7
+> "Start from a recording" checklist + G-8 "Add to App Library" + a
+> not-clipped pin), flywheel 8. Consolidation pending owner sign-off.
+
+**Why now:** the first real session arrived as a folder from a remote worker
+— no vocabularies for the recorded apps (TAMBA, ES CALL MANAGEMENT, SNFI,
+Account View), no access to the live apps, one recording. Every vocab assist
+(Discover-from-window, Copy-for-AI over loaded vocabs, manual authoring)
+assumed the analyst sat in front of the live applications. Reading a received
+session must require **zero** vocab / CLI / discovery work; vocabulary
+building is an asset for *repeat* recordings, never a prerequisite to reading
+one.
+
+- **G-6 The arrival session is the primary workflow (reframe).** The
+  Copy-for-AI export leads with the session-derived `candidate_rows` (the
+  recording's own un-named controls/screens) as the PRIMARY payload; the
+  loaded-vocab skeletons move last as the secondary, already-started payload
+  (header + instructions reworded). Vocab-building copy across the App
+  Library tab / empty state / "Save to App Library" is repositioned as
+  "worth it when you'll record this process again," never a gate to reading.
+- **G-7 One-click "Start from a recording" (App Library).** A new button
+  reads every control a recording touched and writes one starter vocabulary
+  *per observed app* (scope from `process_name` + window-title pattern),
+  opening the chosen app's skeleton in the review checklist — names blank
+  for review. Defaults to the open session, else asks for a folder. Reuses
+  the `--bootstrap-vocab-out` machinery via a new `--bootstrap-vocabs-json`
+  CLI path + the Python-runner IPC (no terminal). Suggest-don't-mutate.
+- **G-8 Right-click "Add to App Library…" from a step.** The Steps detail
+  pane's interaction rows gain a context action that adds the element
+  signature to a chosen/new vocabulary, label prefilled from the step name —
+  killing the hand-copying of identifiers. Suggest-don't-mutate.
+
 ## 5. Owner's week-zero test (runs tonight, needs no Phase A code)
 
 On a real marker-less session, locally:

@@ -96,11 +96,23 @@ const SEED = {
   const seedPath = path.join(vocabDir, "spotify-e2e.yaml");
   fs.writeFileSync(seedPath, yaml.dump(SEED), "utf-8");
 
+  // A loadable session, so the G-7 bootstrap (default = the open session) and
+  // the G-8 Steps right-click flow can run. Copy the committed, already-analyzed
+  // demo into TEMP — never mutate committed data (CLAUDE.md). Files only; the
+  // Steps interaction list needs events.jsonl + annotations.json, not the
+  // screenshots/process_maps subdirs.
+  const SRC_SESSION = path.join(REPO, "sessions", "example-aggregate", "sess-2026-0514-0900");
+  const sessDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-vocab-sess-"));
+  for (const f of fs.readdirSync(SRC_SESSION)) {
+    const s = path.join(SRC_SESSION, f);
+    try { if (fs.statSync(s).isFile()) fs.copyFileSync(s, path.join(sessDir, f)); } catch (_) {}
+  }
+
   let app;
   try {
     app = await electron.launch({
       executablePath: electronPath,
-      args: ["."],
+      args: [".", "--session=" + sessDir],
       cwd: VIEWER,
       env: Object.assign({}, process.env, { PDT_APP_VOCABULARIES: vocabDir }),
     });
@@ -311,12 +323,147 @@ const SEED = {
     !!(e1 && !("_reviewed" in e1) && !("identity_source" in e1) && !("confidence" in e1)),
     e1 ? "leftover=" + (Object.keys(e1).filter((k) => ["_reviewed", "identity_source", "confidence"].includes(k)).join(",") || "(none)") : "?");
 
+  // =====================================================================
+  // G-7: "Start from a recording" → per-app picker → review checklist
+  // =====================================================================
+  // Stub the save dialog so the new app's vocab file lands in our temp dir.
+  // We pick SAPGUI from the recording: its id ("sapgui") is NOT one of the
+  // shipped vocabs, so it takes the clean NEW-vocab path — every row arrives
+  // unnamed, for review. (chrome/excel/outlook collide with shipped vocabs and
+  // would exercise the merge-into-existing path instead.)
+  const newVocabPath = path.join(vocabDir, "sapgui-from-rec.yaml");
+  await app.evaluate(({ dialog }, fp) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: fp });
+  }, newVocabPath);
+  await page.click('.tab[data-view="vocabularies"]').catch(() => {});
+  await wait(300);
+  await page.click("#btn-vocab-bootstrap-session").catch((e) => console.log("bootstrap click", e.message));
+  let pickerUp = false;
+  try {
+    await page.waitForSelector(".modal-picker input[name='picker-choice']", { state: "visible", timeout: 30000 });
+    pickerUp = true;
+  } catch (_) { pickerUp = false; }
+  const pickerProbe = pickerUp ? await page.evaluate(() => {
+    const clip = [];
+    const btn = document.querySelector("#btn-vocab-bootstrap-session");
+    if (btn && btn.scrollWidth > btn.clientWidth + 1) clip.push("button:" + (btn.textContent || "").trim());
+    document.querySelectorAll(".modal-picker .modal-check span, .modal-picker .modal-ok").forEach((el) => {
+      if (el.scrollWidth > el.clientWidth + 1) clip.push((el.textContent || "").trim().slice(0, 24));
+    });
+    return {
+      count: document.querySelectorAll(".modal-picker input[name='picker-choice']").length,
+      labels: [...document.querySelectorAll(".modal-picker .modal-check span")].map((s) => (s.textContent || "").trim()).slice(0, 8),
+      clipped: clip,
+    };
+  }) : { count: 0, labels: [], clipped: [] };
+  record("G-7: 'Start from a recording' offers one starter per observed app",
+    pickerUp && pickerProbe.count >= 3, "apps offered: [" + pickerProbe.labels.join(", ") + "]");
+  record("G-7: the new button + picker option labels are not clipped",
+    pickerUp && pickerProbe.clipped.length === 0,
+    pickerProbe.clipped.length ? "clipped: " + pickerProbe.clipped.join(", ") : "all fit");
+  await shot(page, "vocab-bootstrap-picker.png");
+  // Choose SAPGUI (a clean, no-prior-vocab app) before confirming.
+  await page.evaluate(() => {
+    const row = [...document.querySelectorAll(".modal-picker .modal-check")]
+      .find((l) => /SAPGUI/.test(l.textContent || ""));
+    const radio = row && row.querySelector("input[type=radio]");
+    if (radio) radio.checked = true;
+  });
+  await page.click(".modal-picker .modal-ok").catch((e) => console.log("picker ok", e.message));
+  await wait(1600);  // newVocabFile (stubbed save) + merge + render
+  const boot = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
+    const prog = document.querySelector("#vocab-review-progress");
+    return {
+      rows: rows.length,
+      ticks: document.querySelectorAll("#vocab-interactions [data-review]").length,
+      progress: prog ? (prog.textContent || "").trim() : null,
+      names: rows.map((r) => { const n = r.querySelector('[data-field="name"]'); return n ? n.value : null; }),
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("G-7: the bootstrapped app opens as a review checklist WITH rows",
+    !!(boot && !boot.err && boot.rows >= 4 && boot.ticks === boot.rows &&
+      new RegExp("reviewed 0 / " + boot.rows).test(boot.progress || "")), JSON.stringify(boot));
+  record("G-7: bootstrapped rows arrive UNNAMED for the analyst to name",
+    !!(boot && Array.isArray(boot.names) && boot.names.length && boot.names.every((n) => n === "")),
+    "names=" + JSON.stringify(boot && boot.names));
+  await shot(page, "vocab-bootstrap-checklist.png");
+  await page.click("#btn-vocab-save").catch(() => {});   // clear dirty before G-8
+  await wait(800);
+
+  // =====================================================================
+  // G-8: right-click a step interaction → "Add to App Library…" → row added
+  // =====================================================================
+  await page.click('.tab[data-view="session"]').catch(() => {});
+  await wait(400);
+  await page.evaluate(() => {   // element grain → flat list with real interactions
+    const s = document.getElementById("grain-slider");
+    if (s) { s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); }
+  });
+  await page.click('.view-mode-btn[data-level="steps"]').catch(() => {});
+  await wait(800);
+  let stepReady = false;
+  try {
+    await page.waitForSelector("#step-list .step-row", { state: "visible", timeout: 8000 });
+    await page.click("#step-list .step-row");
+    await page.waitForSelector("#step-detail .step-interaction[data-idx]", { state: "attached", timeout: 6000 });
+    stepReady = true;
+  } catch (_) { stepReady = false; }
+  const stepName = stepReady
+    ? await page.evaluate(() => { const n = document.querySelector("#step-name"); return n ? n.value : null; })
+    : null;
+  if (stepReady) {
+    await page.evaluate(() => {
+      const li = document.querySelector("#step-detail .step-interaction[data-idx]");
+      const r = li.getBoundingClientRect();
+      li.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true,
+        clientX: Math.round(r.left + 5), clientY: Math.round(r.top + 5) }));
+    });
+    await page.waitForSelector("#step-ctx-menu", { state: "visible", timeout: 4000 }).catch(() => {});
+  }
+  const menuClicked = stepReady ? await page.evaluate(() => {
+    const it = [...document.querySelectorAll("#step-ctx-menu div")]
+      .find((d) => /Add to App Library/.test(d.textContent || ""));
+    if (it) { it.click(); return true; }
+    return false;
+  }).catch(() => false) : false;
+  record("G-8: right-click a step interaction offers 'Add to App Library…'", menuClicked,
+    menuClicked ? "" : "no 'Add to App Library…' item in #step-ctx-menu");
+  await shot(page, "vocab-add-from-step-menu.png");
+  let added = null;
+  if (menuClicked) {
+    await page.waitForSelector(".modal-picker input[name='picker-choice']", { state: "visible", timeout: 6000 }).catch(() => {});
+    await page.evaluate(() => {
+      const spot = [...document.querySelectorAll(".modal-picker .modal-check")]
+        .find((l) => /Spotify E2E/.test(l.textContent || ""));
+      const radio = spot && spot.querySelector("input[type=radio]");
+      if (radio) radio.checked = true;
+    });
+    await page.click(".modal-picker .modal-ok").catch(() => {});
+    await wait(1300);   // activateTab(vocabularies) + selectVocab + push + render
+    added = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
+      const active = document.querySelector(".tab.active");
+      return {
+        count: rows.length, tab: active ? active.dataset.view : null,
+        names: rows.map((r) => { const n = r.querySelector('[data-field="name"]'); return n ? n.value : ""; }),
+      };
+    }).catch((e) => ({ err: e.message }));
+  }
+  record("G-8: the interaction is added as a new row in the chosen vocabulary",
+    !!(added && !added.err && added.tab === "vocabularies" && added.count === 3), JSON.stringify(added));
+  record("G-8: the new row's name is prefilled from the step name",
+    !!(added && stepName && added.names.includes(stepName)),
+    "stepName='" + stepName + "' rowNames=" + JSON.stringify(added && added.names));
+  await shot(page, "vocab-add-from-step-result.png");
+
   record("zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.slice(0, 5).join(" | ") : "");
   if (pageErrors.length) await shot(page, "fail-vocab-page-errors.png");
 
   await app.close().catch(() => {});
   try { fs.rmSync(vocabDir, { recursive: true, force: true }); } catch (_) {}
+  try { fs.rmSync(sessDir, { recursive: true, force: true }); } catch (_) {}
 
   const pass = results.filter((r) => r.ok).length;
   const fail = results.filter((r) => !r.ok).length;
