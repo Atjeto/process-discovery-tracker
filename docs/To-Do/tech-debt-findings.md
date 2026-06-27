@@ -12,6 +12,27 @@ build output, nor `viewer/python/`, the bundled embeddable).
 
 Scoring: **Priority = (Impact + Risk) × (6 − Effort)**, each axis 1–5 (Effort inverted).
 
+> **Update — 2026-06-27 (status reconcile + #16 partial).** A pass re-verified
+> the open items against current code (this file is v0.19.0-era). **Already
+> resolved, do NOT re-open:** **#1** (durability-path swallowing — `obs.js` now
+> `bootLog`s every stop/status/path-null branch, tagged `TD#1b`), **#2** (no
+> unbounded `while` remains in `capture/main.js`), **#3** (`electron-builder`
+> devDep removed), **#11** (`normalize.normalize()` decomposed — §0.7),
+> **#12** (`flow-view.js` split — §0.7), **#15** (Electron 33→42 — v0.20.0),
+> **#19** (`dagre`→`@dagrejs/dagre` — v0.20.0). **#5** is NOT a live bug: the
+> two range checks are logically equivalent (`b < a` skip ≡ `b >= a` accept);
+> only the copy-paste *duplication* remains (a no-behaviour-change refactor,
+> deferred per the phasing). **#16 — DONE for 3 of 4 modules:** seeded fuzzers
+> added for `app_vocab`, `canonical_match`, `classification`
+> (`test_*_fuzz.py`). They surfaced + fixed ~16 real robustness gaps where a
+> malformed template / vocab YAML or an odd-shape capture event would have
+> CRASHED normalization with an `AttributeError`/`TypeError` (non-dict
+> vocab/scope/rule/step/data, non-string window_title/process_name/app/title,
+> non-numeric duration, an unhashable list-valued signature field); every guard
+> is identity on well-formed input (golden 10/10 byte-stable). `pdd_export` is
+> **deferred**: it needs `python-docx`, which the test runner's system Python
+> lacks, so a fuzzer there would only ever skip.
+
 ---
 
 ## Tier 1 — Quick wins (low effort, self-contained)
