@@ -110,7 +110,7 @@ def _recognition_activity_label(
     a_ts = _ts_ms(activity_ev.get("timestamp", ""))
     if a_ts is None:
         return None
-    duration = activity_ev["data"].get("duration_ms") or 0
+    duration = _num(_as_dict(activity_ev.get("data")).get("duration_ms"))
     end = a_ts + max(duration, 1)
     counts: Counter[str] = Counter()
     for its, category in recognised:
@@ -124,18 +124,37 @@ def _recognition_activity_label(
     return f"{counts.most_common(1)[0][0]} -- {app}"
 
 
+def _as_dict(x: Any) -> dict:
+    """A dict view of `x`, or {} when it isn't one. A malformed taxonomy.yaml
+    or an odd capture can put a non-dict where a dict is expected; guarding
+    degrades (no rule / no label) instead of crashing the whole run -- the same
+    posture as load_canonical / load_vocabularies."""
+    return x if isinstance(x, dict) else {}
+
+
+def _num(x: Any) -> float:
+    """A numeric duration, or 0 for a non-number (a corrupt event can carry a
+    list/string duration_ms; arithmetic on it would raise)."""
+    return x if isinstance(x, (int, float)) and not isinstance(x, bool) else 0
+
+
 def _compile_rules(taxonomy: dict[str, Any]) -> list[dict[str, Any]]:
-    """Compile regex patterns up front so we don't pay the cost per event."""
+    """Compile regex patterns up front so we don't pay the cost per event.
+    A non-list `rules` / a non-dict rule / a non-dict `match` is skipped or
+    treated as empty rather than crashing on a hand-edited taxonomy."""
     compiled = []
-    for rule in taxonomy.get("rules", []):
-        match = rule.get("match", {})
+    rules = _as_dict(taxonomy).get("rules")
+    for rule in (rules if isinstance(rules, list) else []):
+        if not isinstance(rule, dict):
+            continue
+        match = _as_dict(rule.get("match"))
         compiled_rule = {
             "label": rule.get("label", "Unclassified"),
             "app": match.get("app"),
             "title_regex": re.compile(match["title_regex"], re.IGNORECASE)
                 if match.get("title_regex") else None,
         }
-        extract = rule.get("extract", {})
+        extract = _as_dict(rule.get("extract"))
         if extract.get("transaction_id"):
             compiled_rule["transaction_id_regex"] = re.compile(extract["transaction_id"])
         compiled.append(compiled_rule)
@@ -159,16 +178,17 @@ def classify_events(
     # Recognise every interaction's semantic category once, paired with its
     # timestamp, for the no-taxonomy-match fallback below.
     recognised = [
-        (_ts_ms(ev.get("timestamp", "")), recognize(ev.get("data") or {}).get("category"))
-        for ev in events if ev.get("type") == "interaction"
+        (_ts_ms(ev.get("timestamp", "")), recognize(_as_dict(ev.get("data"))).get("category"))
+        for ev in events if isinstance(ev, dict) and ev.get("type") == "interaction"
     ]
     out: list[dict[str, Any]] = []
     for ev in events:
-        if ev.get("type") != "activity":
+        if not isinstance(ev, dict) or ev.get("type") != "activity":
             out.append(ev)
             continue
-        app = ev["data"].get("app", "") or ""
-        title = ev["data"].get("title", "") or ""
+        data = _as_dict(ev.get("data"))
+        app = str(data.get("app") or "")
+        title = str(data.get("title") or "")
         label = f"Unclassified -- {app}"
         transaction_id = None
         matched = False
@@ -191,7 +211,7 @@ def classify_events(
             if recognised_label:
                 label = recognised_label
         new_ev = dict(ev)
-        new_data = dict(ev["data"])
+        new_data = dict(data)
         new_data["activity_label"] = label
         if transaction_id is not None:
             new_data["transaction_id"] = transaction_id
@@ -217,13 +237,13 @@ def collapse_adjacent(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     out: list[dict[str, Any]] = []
     for ev in events:
-        if ev.get("type") != "activity":
+        if not isinstance(ev, dict) or ev.get("type") != "activity":
             out.append(ev)
             continue
-        if out and out[-1].get("type") == "activity":
+        if out and isinstance(out[-1], dict) and out[-1].get("type") == "activity":
             prev = out[-1]
-            pd = prev["data"]
-            cd = ev["data"]
+            pd = _as_dict(prev.get("data"))
+            cd = _as_dict(ev.get("data"))
             same = (
                 pd.get("app") == cd.get("app")
                 and pd.get("title") == cd.get("title")
@@ -234,7 +254,7 @@ def collapse_adjacent(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 # Merge into previous
                 merged = dict(prev)
                 merged_data = dict(pd)
-                merged_data["duration_ms"] = (pd.get("duration_ms") or 0) + (cd.get("duration_ms") or 0)
+                merged_data["duration_ms"] = _num(pd.get("duration_ms")) + _num(cd.get("duration_ms"))
                 merged["data"] = merged_data
                 out[-1] = merged
                 continue
@@ -262,13 +282,13 @@ def collapse_activity_occurrences(events: list[dict[str, Any]]) -> list[dict[str
     out: list[dict[str, Any]] = []
     last_idx: int | None = None  # index in `out` of the most recent activity event
     for ev in events:
-        if ev.get("type") != "activity":
+        if not isinstance(ev, dict) or ev.get("type") != "activity":
             out.append(ev)
             continue
         if last_idx is not None:
             prev = out[last_idx]
-            pd = prev["data"]
-            cd = ev["data"]
+            pd = _as_dict(prev.get("data"))
+            cd = _as_dict(ev.get("data"))
             same = (
                 pd.get("activity_label") == cd.get("activity_label")
                 and (pd.get("case_ids") or []) == (cd.get("case_ids") or [])
@@ -276,7 +296,7 @@ def collapse_activity_occurrences(events: list[dict[str, Any]]) -> list[dict[str
             if same:
                 merged = dict(prev)
                 merged_data = dict(pd)
-                merged_data["duration_ms"] = (pd.get("duration_ms") or 0) + (cd.get("duration_ms") or 0)
+                merged_data["duration_ms"] = _num(pd.get("duration_ms")) + _num(cd.get("duration_ms"))
                 merged["data"] = merged_data
                 out[last_idx] = merged
                 continue
