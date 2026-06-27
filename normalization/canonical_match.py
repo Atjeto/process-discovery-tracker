@@ -40,6 +40,13 @@ INTERACTION_FIELDS = (
 )
 
 
+def _as_dict(x: Any) -> dict:
+    """A dict view of `x`, or {} when it isn't one. A hand-edited template or
+    an odd capture can put a non-dict where a dict is expected; guarding here
+    degrades to no-match instead of an AttributeError that crashes analysis."""
+    return x if isinstance(x, dict) else {}
+
+
 def _op_match(spec: dict, actual) -> bool:
     if actual is None:
         return False
@@ -58,7 +65,9 @@ def _op_match(spec: dict, actual) -> bool:
 
 def _interaction_matches(rule: dict, ev: dict) -> bool:
     """Check whether one match rule fires on a single interaction event."""
-    data = ev.get("data", {})
+    if not isinstance(rule, dict):
+        return False   # a garbage rule (None / scalar) never fires
+    data = _as_dict(ev.get("data"))
     pn = rule.get("process_name")
     if pn and data.get("process_name") != pn:
         return False
@@ -66,7 +75,7 @@ def _interaction_matches(rule: dict, ev: dict) -> bool:
     if wtr:
         # Guard the authored window_title_regex (untrusted window title input).
         r = regex_guard.compile_guarded(wtr)
-        if r is None or not r.search(data.get("window_title") or ""):
+        if r is None or not r.search(str(data.get("window_title") or "")):
             return False
     irule = rule.get("interaction")
     if irule:
@@ -86,8 +95,25 @@ from _dt import parse_ts as _parse_ts  # public re-export
 
 
 def _event_case(ev: dict) -> str | None:
-    cids = ev.get("data", {}).get("case_ids") or []
-    return cids[-1] if cids else None
+    cids = _as_dict(ev.get("data")).get("case_ids")
+    if not isinstance(cids, list) or not cids:
+        return None
+    return cids[-1]
+
+
+def _ts_or_none(ev):
+    """An event's timestamp as a datetime, or None when missing / unparseable
+    -- a corrupt event must not crash the boundary arithmetic with a KeyError
+    or a parse error."""
+    if not isinstance(ev, dict):
+        return None
+    ts = ev.get("timestamp")
+    if not ts:
+        return None
+    try:
+        return _parse_ts(ts)
+    except (ValueError, TypeError):
+        return None
 
 
 def match_canonical(
@@ -104,14 +130,17 @@ def match_canonical(
     """
     from step_suggest import _short_app
 
-    # Tolerate a hand-authored / partial template: a step lacking a step_id is
-    # skipped rather than crashing the whole run with a KeyError.
-    cstep_defs = {s["step_id"]: s for s in canonical.get("steps", []) if s.get("step_id")}
-    order = [sid for sid in (s.get("step_id") for s in canonical.get("steps", [])) if sid]
+    # Tolerate a hand-authored / partial template: a non-list `steps`, a
+    # non-dict step, or a step lacking a step_id is skipped rather than
+    # crashing the whole run.
+    _steps_val = _as_dict(canonical).get("steps")
+    _cdefs = [s for s in _steps_val if isinstance(s, dict)] if isinstance(_steps_val, list) else []
+    cstep_defs = {s["step_id"]: s for s in _cdefs if s.get("step_id")}
+    order = [s["step_id"] for s in _cdefs if s.get("step_id")]
 
     interactions = [
         e for e in events
-        if e.get("type") == "interaction"
+        if isinstance(e, dict) and e.get("type") == "interaction"
     ]
     # A corrupt/hand-edited event may lack a timestamp; sort it first rather
     # than KeyError (load_events already coerces timestamp to a string).
@@ -128,7 +157,8 @@ def match_canonical(
             return
         evs = open_step["events"]
         cdef = cstep_defs[open_step["canonical_step_id"]]
-        cids = evs[0]["data"].get("case_ids") or []
+        cids = _event_case(evs[0])
+        cids = [cids] if cids is not None else []
         step_dict: dict[str, Any] = {
             "step_id": str(uuid.uuid4()),
             "session_id": session_id,
@@ -136,8 +166,8 @@ def match_canonical(
             "name": cdef.get("name") or open_step["canonical_step_id"],
             "description": cdef.get("description", ""),
             "time_range": {
-                "start": evs[0]["timestamp"],
-                "end": evs[-1]["timestamp"],
+                "start": evs[0].get("timestamp"),
+                "end": evs[-1].get("timestamp"),
             },
             "evidence": {
                 "interaction_event_ids": [e.get("event_id") for e in evs],
@@ -153,7 +183,7 @@ def match_canonical(
         if open_step["boundary"] == "until_next_step":
             apps = set()
             for e in evs:
-                apps.add(_short_app(e.get("data", {})))
+                apps.add(_short_app(_as_dict(e.get("data"))))
             step_dict["scope"] = {
                 "apps": sorted(apps),
                 "interaction_count": len(evs),
@@ -167,7 +197,7 @@ def match_canonical(
             return False
 
         boundary = open_step["boundary"]
-        data = ev.get("data", {})
+        data = _as_dict(ev.get("data"))
 
         # Universal: case_id change always closes
         if _event_case(ev) != open_step.get("open_case"):
@@ -189,14 +219,14 @@ def match_canonical(
 
         if boundary == "until_pause":
             pause_ms = open_step.get("pause_ms", 5000)
-            gap = (_parse_ts(ev["timestamp"])
-                   - _parse_ts(open_step["events"][-1]["timestamp"])
-                   ).total_seconds() * 1000
-            if gap > pause_ms:
-                return True
+            a, b = _ts_or_none(ev), _ts_or_none(open_step["events"][-1])
+            if a is not None and b is not None:
+                gap = (a - b).total_seconds() * 1000
+                if gap > pause_ms:
+                    return True
 
         if boundary == "until_field_change":
-            prev_d = open_step["events"][-1].get("data", {})
+            prev_d = _as_dict(open_step["events"][-1].get("data"))
             ft_prev = (prev_d.get("window_title"), prev_d.get("automation_id"),
                        prev_d.get("class_name"))
             ft_cur = (data.get("window_title"), data.get("automation_id"),
@@ -205,11 +235,11 @@ def match_canonical(
                 return True
 
         if boundary == "until_next_step":
-            elapsed = (_parse_ts(ev["timestamp"])
-                       - _parse_ts(open_step["events"][0]["timestamp"])
-                       ).total_seconds() * 1000
-            if elapsed > open_step.get("max_span_ms", 1800000):
-                return True
+            a, b = _ts_or_none(ev), _ts_or_none(open_step["events"][0])
+            if a is not None and b is not None:
+                elapsed = (a - b).total_seconds() * 1000
+                if elapsed > open_step.get("max_span_ms", 1800000):
+                    return True
 
         return False
 
@@ -245,7 +275,7 @@ def match_canonical(
                 matched_step_id = None
                 end_when = None
                 for sid in order:
-                    for rule in cstep_defs[sid].get("match", []):
+                    for rule in (cstep_defs[sid].get("match") if isinstance(cstep_defs[sid].get("match"), list) else []):
                         if _interaction_matches(rule, ev):
                             matched_step_id = sid
                             end_when = rule.get("end_when")
@@ -262,7 +292,7 @@ def match_canonical(
                         "end_when_rule": end_when,
                         "boundary": cdef.get("boundary", "group_contiguous"),
                         "open_case": _event_case(ev),
-                        "open_app": _short_app(ev.get("data", {})),
+                        "open_app": _short_app(_as_dict(ev.get("data"))),
                         "pause_ms": cdef.get("pause_ms", 5000),
                         "max_span_ms": cdef.get("max_span_ms", 1800000),
                     }
@@ -280,7 +310,7 @@ def match_canonical(
         matched_step_id = None
         end_when = None
         for sid in order:
-            for rule in cstep_defs[sid].get("match", []):
+            for rule in (cstep_defs[sid].get("match") if isinstance(cstep_defs[sid].get("match"), list) else []):
                 if _interaction_matches(rule, ev):
                     matched_step_id = sid
                     end_when = rule.get("end_when")
@@ -304,7 +334,7 @@ def match_canonical(
                 "end_when_rule": end_when,
                 "boundary": cdef.get("boundary", "group_contiguous"),
                 "open_case": _event_case(ev),
-                "open_app": _short_app(ev.get("data", {})),
+                "open_app": _short_app(_as_dict(ev.get("data"))),
                 "pause_ms": cdef.get("pause_ms", 5000),
                 "max_span_ms": cdef.get("max_span_ms", 1800000),
             }
@@ -321,13 +351,17 @@ def rollup_phases(
     """For each canonical phase definition, build a phase containing the
     matched steps whose canonical_step_id is in the phase's step_ids list.
     """
-    cphases = canonical.get("phases", []) or []
+    cphases = _as_dict(canonical).get("phases")
+    cphases = cphases if isinstance(cphases, list) else []
     phases = []
     for cp in cphases:
-        target_step_ids = set(cp.get("step_ids", []))
+        if not isinstance(cp, dict):
+            continue   # a hand-edited template may carry a non-dict phase
+        sids = cp.get("step_ids")
+        target_step_ids = set(sids) if isinstance(sids, list) else set()
         contained = [
             s for s in steps
-            if s.get("canonical_step_id") in target_step_ids
+            if isinstance(s, dict) and s.get("canonical_step_id") in target_step_ids
         ]
         if not contained:
             continue
@@ -337,7 +371,7 @@ def rollup_phases(
             "case_id": contained[0].get("case_id"),
             "name": cp.get("name") or cp.get("phase_id"),
             "description": cp.get("description", ""),
-            "step_ids": [s["step_id"] for s in contained],
+            "step_ids": [s.get("step_id") for s in contained],
             "state": "auto_matched",
             "canonical_phase_id": cp.get("phase_id"),
         })

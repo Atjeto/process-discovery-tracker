@@ -579,7 +579,11 @@ def _short_app(data: dict) -> str:
     is usually the app name on Windows: "Salesforce | Search Accounts"
     becomes "Salesforce"). Falls back to process_name without .exe.
     """
-    title = (data.get("window_title") or "").strip()
+    # A corrupt/old capture can carry a non-dict `data` or a non-string
+    # window_title / process_name; `str(... or "")` keeps `.strip()` safe.
+    if not isinstance(data, dict):
+        data = {}
+    title = str(data.get("window_title") or "").strip()
     if title:
         # Common Windows separators: " - ", " | ", " :: "
         for sep in (" — ", " - ", " | ", " :: ", " : "):
@@ -597,7 +601,7 @@ def _short_app(data: dict) -> str:
                     return screen_label(head)
         # No separator: use the title up to ~40 chars
         return screen_label(title[:40])
-    proc = (data.get("process_name") or "").strip()
+    proc = str(data.get("process_name") or "").strip()
     if proc.lower().endswith(".exe"):
         proc = proc[:-4]
     return proc or "App"
