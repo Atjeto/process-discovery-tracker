@@ -236,11 +236,21 @@ def _compile_regex(pattern: str | None):
     return regex_guard.compile_guarded(pattern)
 
 
+def _as_dict(x: Any) -> dict:
+    """A dict view of `x`, or {} when it isn't one. Malformed YAML can put a
+    string/list/None where the matcher expects a dict (load_vocabularies only
+    catches PARSE errors, not a structurally-wrong-but-valid vocab); an odd
+    capture can emit a non-dict event `data`. Guarding here degrades to
+    no-match instead of an AttributeError that would crash normalization."""
+    return x if isinstance(x, dict) else {}
+
+
 def _scope_matches(vocab: dict, ev_data: dict) -> bool:
     """An interaction enters a vocab's domain when the vocab's scope
     matches the event. Empty scope matches everything (a "catch-all"
     vocab is legal but probably a mistake)."""
-    scope = vocab.get("scope") or {}
+    scope = _as_dict(_as_dict(vocab).get("scope"))
+    ev_data = _as_dict(ev_data)
     pn = scope.get("process_name")
     if pn:
         # process_name is matched case-insensitively: the OS / recorder reports
@@ -254,7 +264,7 @@ def _scope_matches(vocab: dict, ev_data: dict) -> bool:
     if wtr:
         r = _compile_regex(wtr)
         if r is None: return False
-        if not r.search(ev_data.get("window_title") or ""):
+        if not r.search(str(ev_data.get("window_title") or "")):
             return False
     return True
 
@@ -265,6 +275,8 @@ _SIG_FIELDS = ("control_type", "automation_id", "name", "class_name", "framework
 def _signature_match(sig: dict, ev_data: dict) -> tuple[bool, int]:
     """Return (matches, specificity). Specificity is the number of
     non-empty signature fields that participated in the match."""
+    sig = _as_dict(sig)
+    ev_data = _as_dict(ev_data)
     if not sig:
         return False, 0
     specificity = 0
@@ -278,7 +290,7 @@ def _signature_match(sig: dict, ev_data: dict) -> tuple[bool, int]:
     wtr = sig.get("window_title_regex")
     if wtr:
         r = _compile_regex(wtr)
-        if r is None or not r.search(ev_data.get("window_title") or ""):
+        if r is None or not r.search(str(ev_data.get("window_title") or "")):
             return False, 0
         specificity += 1
     return specificity > 0, specificity
@@ -290,12 +302,15 @@ def _resolve_screen(vocab: dict, screen_id: str | None, ev_data: dict) -> str | 
     matches."""
     if screen_id:
         return screen_id
-    for s in (vocab.get("screens") or []):
+    ev_data = _as_dict(ev_data)
+    for s in (_as_dict(vocab).get("screens") or []):
+        if not isinstance(s, dict):
+            continue
         wtr = s.get("window_title_regex")
         if not wtr:
             continue
         r = _compile_regex(wtr)
-        if r and r.search(ev_data.get("window_title") or ""):
+        if r and r.search(str(ev_data.get("window_title") or "")):
             return s.get("id")
     return None
 
@@ -327,7 +342,9 @@ def _best_entry(vocab: dict, ev_data: dict) -> tuple[dict | None, int]:
     ties broken by first-defined."""
     best = None
     best_spec = -1
-    for entry in (vocab.get("interactions") or []):
+    for entry in (_as_dict(vocab).get("interactions") or []):
+        if not isinstance(entry, dict):
+            continue
         sig = entry.get("signature") or {}
         ok, spec = _signature_match(sig, ev_data)
         if ok and spec > best_spec:
@@ -392,10 +409,10 @@ def enrich_events(
     hit: dict[str, int] = {}
     per_app: dict[str, list[int]] = {}   # process_name -> [total, enriched]
     for ev in events:
-        if ev.get("type") != "interaction":
+        if not isinstance(ev, dict) or ev.get("type") != "interaction":
             continue
         total += 1
-        data = ev.get("data") or {}
+        data = _as_dict(ev.get("data"))
         app = data.get("process_name") or "(unknown)"
         counts = per_app.setdefault(app, [0, 0])
         counts[0] += 1
@@ -429,7 +446,8 @@ def enrich_events(
         "matched": matched,
         "total": total,
         "vocabs_loaded": [
-            {"id": v.get("id"), "version": v.get("version", 1)} for v in vocabs
+            {"id": v.get("id"), "version": v.get("version", 1)}
+            for v in vocabs if isinstance(v, dict)
         ],
         "vocabs_hit": hit,
         "coverage": coverage,
@@ -443,7 +461,9 @@ def _scope_for_app(proc_name: str, datas: list[dict]) -> dict[str, Any]:
     """The scope block for one app: its process_name plus, when the windows
     share a stable common prefix, a window_title_regex narrowing it."""
     scope: dict[str, Any] = {"process_name": proc_name}
-    titles = [d.get("window_title") for d in datas if d.get("window_title")]
+    # Only STRING titles feed the common-prefix: a corrupt event can carry a
+    # non-string window_title, and min()/max() over mixed types raises.
+    titles = [t for d in datas if isinstance((t := d.get("window_title")), str) and t]
     title_prefix = _common_prefix(titles) if titles else ""
     if title_prefix and len(title_prefix) >= 3:
         scope["window_title_regex"] = f".*{re.escape(title_prefix.strip())}.*"
@@ -513,6 +533,7 @@ def _friendly_app_name(proc_name: str) -> str:
     """A display name for an app from its process name: drop the .exe and
     Capitalise a plain lower-case name (`chrome` -> `Chrome`), but leave an
     all-caps acronym alone (`SAPGUI`, `EXCEL`)."""
+    proc_name = str(proc_name or "")
     base = proc_name[:-4] if proc_name.lower().endswith(".exe") else proc_name
     base = base.strip() or proc_name
     if base.islower():
@@ -543,10 +564,10 @@ def bootstrap_from_session(
         return _empty_vocab(vocab_id, vocab_name)
     by_proc: dict[str, list[dict]] = {}
     for ev in events:
-        if ev.get("type") != "interaction":
+        if not isinstance(ev, dict) or ev.get("type") != "interaction":
             continue
-        d = ev.get("data") or {}
-        pn = d.get("process_name") or "(unknown)"
+        d = _as_dict(ev.get("data"))
+        pn = str(d.get("process_name") or "(unknown)")
         by_proc.setdefault(pn, []).append(d)
     if not by_proc:
         return _empty_vocab(vocab_id, vocab_name)
@@ -586,10 +607,10 @@ def bootstrap_per_app_from_session(
     """
     by_proc: dict[str, list[dict]] = {}
     for ev in events or []:
-        if ev.get("type") != "interaction":
+        if not isinstance(ev, dict) or ev.get("type") != "interaction":
             continue
-        d = ev.get("data") or {}
-        pn = d.get("process_name") or "(unknown)"
+        d = _as_dict(ev.get("data"))
+        pn = str(d.get("process_name") or "(unknown)")
         by_proc.setdefault(pn, []).append(d)
 
     out: list[dict[str, Any]] = []
@@ -615,20 +636,30 @@ def bootstrap_per_app_from_session(
     return out
 
 
+def _sig_str(d: dict, key: str) -> str | None:
+    """A signature field as a non-empty string, else None. A corrupt event can
+    carry a list/dict/number where a string is expected; a list embedded in a
+    dedup key tuple is unhashable (and a non-string signature is unusable
+    anyway), so such a value is dropped rather than crashing the bootstrap."""
+    v = d.get(key)
+    return v if isinstance(v, str) and v else None
+
+
 def _signature_key(d: dict) -> tuple | None:
     """Deterministic key for deduplication. Prefers automation_id."""
-    aid = d.get("automation_id")
+    pn = _sig_str(d, "process_name")
+    aid = _sig_str(d, "automation_id")
     if aid:
-        return ("aid", d.get("process_name"), aid)
-    ct = d.get("control_type")
-    name = d.get("name")
+        return ("aid", pn, aid)
+    ct = _sig_str(d, "control_type")
+    name = _sig_str(d, "name")
     if ct and name:
-        return ("ctn", d.get("process_name"), ct, name)
-    cn = d.get("class_name")
+        return ("ctn", pn, ct, name)
+    cn = _sig_str(d, "class_name")
     if cn and name:
-        return ("cnn", d.get("process_name"), cn, name)
+        return ("cnn", pn, cn, name)
     if name:
-        return ("n", d.get("process_name"), name)
+        return ("n", pn, name)
     return None
 
 
@@ -638,18 +669,18 @@ def _signature_from_event(d: dict) -> dict | None:
     automation_id (if present and non-empty) is the most stable handle
     and is preferred alone. Otherwise use control_type+name.
     """
-    aid = d.get("automation_id")
+    aid = _sig_str(d, "automation_id")
     if aid:
-        ct = d.get("control_type")
         sig = {"automation_id": aid}
+        ct = _sig_str(d, "control_type")
         if ct:
             sig["control_type"] = ct
         return sig
-    ct = d.get("control_type")
-    name = d.get("name")
+    ct = _sig_str(d, "control_type")
+    name = _sig_str(d, "name")
     if ct and name:
         return {"control_type": ct, "name": name}
-    cn = d.get("class_name")
+    cn = _sig_str(d, "class_name")
     if cn and name:
         return {"class_name": cn, "name": name}
     if name:
