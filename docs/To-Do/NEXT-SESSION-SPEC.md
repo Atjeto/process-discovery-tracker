@@ -1,6 +1,6 @@
 # Next-Session Spec — plan of record
 
-**Updated:** 2026-05-31 · **Branch:** `master` · **Status:** plan of record (operational).
+**Updated:** 2026-06-27 · **Branch:** `master` · **Status:** plan of record (operational).
 **Source-of-truth chain:** [PDT-MASTER-ASSESSMENT.md](PDT-MASTER-ASSESSMENT.md) (strategy) →
 [PDT-ROADMAP-CODEBASE-FIT.md](PDT-ROADMAP-CODEBASE-FIT.md) (engineering fit) → **this doc**
 (what we're doing next). When this doc and the Fit Analysis disagree on sequencing, the Fit
@@ -10,6 +10,31 @@ Analysis wins; this doc is its operational projection. **Scope is bounded by
 
 Self-contained hand-off — read top to bottom; assumes no memory of the prior
 session. Earlier specs live in git history and [Archive/](Archive/).
+
+> **Update — 2026-06-27 (reconcile to v0.22.2 + lab phases A–H).** This file
+> predates the lab-phase cycle; the **live** sources are CLAUDE.md's *Active
+> direction* block + [LAB-PHASE-SPEC.md](LAB-PHASE-SPEC.md) + CHANGELOG. The
+> §0.x / §1 / §2 blocks below are the **historical record** of the Wave-0 /
+> Wave-1 work (all landed). Current state:
+> - **Released v0.22.2** — the v0.20.0 internal-rollout cycle + the
+>   v0.20.1→0.22.2 coherence / fix-first increments (see CHANGELOG).
+> - **Lab phases A–H all BUILT** (honesty redesign → real-session hardening).
+>   The owner's first real-session findings
+>   ([real-session-findings.md](real-session-findings.md), **G-1→G-8**) are
+>   fully addressed; **Phase H** (G-6/7/8 — arrival-session reframe + one-click
+>   per-app "Start from a recording" bootstrap + right-click "Add to App
+>   Library") is the latest, on master.
+> - **Tech-debt** ([tech-debt-findings.md](tech-debt-findings.md)): Tier-1 + the
+>   god-file / Electron-42 / dagre-fork epics are done; **#16** fuzzers added for
+>   `app_vocab` / `canonical_match` / `classification` / `pdd_export` (pure
+>   helpers) — surfacing + fixing ~20 crash-on-corrupt-input gaps; **#7** manifest
+>   read-modify-write race closed (one atomic `session.updateManifest`).
+>   Remaining: opportunistic Tier-2 refactors (#4/#6/#8/#9/#10 — do alongside a
+>   feature, not for their own sake) + #17 (bundled-Python patch bump + lockfile).
+> - **What's genuinely next is owner-gated** (the §3 list still stands):
+>   calibration on real captures, live-app coverage (SAP / Citrix / Java / Qt),
+>   the released-`.exe` smoke on the locked-down laptop, and any release cut.
+>   The autonomous / headless backlog is essentially drained.
 
 ---
 
