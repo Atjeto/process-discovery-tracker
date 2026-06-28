@@ -22,16 +22,18 @@ Scoring: **Priority = (Impact + Risk) × (6 − Effort)**, each axis 1–5 (Effo
 > **#19** (`dagre`→`@dagrejs/dagre` — v0.20.0). **#5** is NOT a live bug: the
 > two range checks are logically equivalent (`b < a` skip ≡ `b >= a` accept);
 > only the copy-paste *duplication* remains (a no-behaviour-change refactor,
-> deferred per the phasing). **#16 — DONE for 3 of 4 modules:** seeded fuzzers
-> added for `app_vocab`, `canonical_match`, `classification`
-> (`test_*_fuzz.py`). They surfaced + fixed ~16 real robustness gaps where a
-> malformed template / vocab YAML or an odd-shape capture event would have
-> CRASHED normalization with an `AttributeError`/`TypeError` (non-dict
-> vocab/scope/rule/step/data, non-string window_title/process_name/app/title,
-> non-numeric duration, an unhashable list-valued signature field); every guard
-> is identity on well-formed input (golden 10/10 byte-stable). `pdd_export` is
-> **deferred**: it needs `python-docx`, which the test runner's system Python
-> lacks, so a fuzzer there would only ever skip.
+> deferred per the phasing). **#16 — DONE (all 4 modules):** seeded fuzzers
+> added for `app_vocab`, `canonical_match`, `classification`, and `pdd_export`
+> (`test_*_fuzz.py`). They surfaced + fixed ~20 real robustness gaps where a
+> malformed template / vocab YAML, an odd-shape capture event, or a hand-edited
+> annotations / analysis block would have CRASHED normalization (or the PDD
+> export) with an `AttributeError`/`TypeError` (non-dict vocab/scope/rule/step/
+> data/annotations, non-string window_title/process_name/app/title, non-numeric
+> duration/amount, an unhashable list-valued signature field); every guard is
+> identity on well-formed input (golden 10/10 byte-stable). For `pdd_export`,
+> only the docx-free pure helpers (`_fmt_ms`/`_fmt_money`/`_analysis_maps`/
+> `_has_bnva_override`) are fuzzed -- the python-docx rendering body can't run
+> under the test runner's system Python (no docx) and stays out of scope.
 >
 > **#7 — DONE.** The manifest read-modify-write is centralised into one atomic
 > `session.updateManifest(folder, fn)` (synchronous read+mutate+write, no await
