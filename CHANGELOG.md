@@ -4,7 +4,13 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Lab Phase H: arrival-session reframe + vocab-friction killers
+## [1.3.0] - 2026-06-28
+
+Bundles the arrival-session feature work (**Phase H**) and the real-session
+hardening (**Phase G**) accumulated since v1.2.0, plus an internal robustness
+pass (untrusted-input parser fuzzers + a capture manifest-race fix).
+
+### Phase H — arrival-session reframe + vocab-friction killers
 
 The first real session arrived as a folder from a remote worker — no
 vocabularies for the recorded apps, no access to the live apps, one
@@ -54,7 +60,7 @@ phase record in [docs/LAB-PHASE-SPEC.md → Phase H](docs/LAB-PHASE-SPEC.md).
   and the Steps right-click "Add to App Library…" adds a prefilled row;
   new-button + picker labels are pinned non-clipped.
 
-## [Unreleased] — Lab Phase G: real-session hardening
+### Phase G — real-session hardening
 
 Hardening from the owner's first real 1.5-hour company session (capture
 v0.9.0 on the worker machine) — ground truth in
@@ -108,6 +114,18 @@ phase record in [docs/LAB-PHASE-SPEC.md → Phase G](docs/LAB-PHASE-SPEC.md).
   so the round-trip helps exactly where the naming gap is; and an in-band
   `review_note` tells the reviewer window-title-derived labels can carry
   business names, so labels deserve the same read as values.
+
+### Hardened (internal — no behaviour change on valid data)
+
+- **Robustness fuzzers** for the untrusted-input parsers (`app_vocab`,
+  `canonical_match`, `classification`, and `pdd_export`'s pure helpers) —
+  found + fixed ~20 crash-on-corrupt-input gaps: a malformed Process Template /
+  vocab YAML, an odd-shape capture event, or a hand-edited annotations / analysis
+  block would have raised an `AttributeError`/`TypeError` instead of degrading.
+  Pipeline output is byte-stable on valid data (golden 10/10).
+- **Capture manifest race** closed — the read-modify-write is centralised into
+  one atomic `session.updateManifest(folder, fn)`, so a background OBS write
+  can't clobber the concurrent display-geometry write (a lost update).
 
 ## [1.2.0] - 2026-06-11
 
