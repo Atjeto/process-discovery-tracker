@@ -32,6 +32,16 @@ Scoring: **Priority = (Impact + Risk) × (6 − Effort)**, each axis 1–5 (Effo
 > is identity on well-formed input (golden 10/10 byte-stable). `pdd_export` is
 > **deferred**: it needs `python-docx`, which the test runner's system Python
 > lacks, so a fuzzer there would only ever skip.
+>
+> **#7 — DONE.** The manifest read-modify-write is centralised into one atomic
+> `session.updateManifest(folder, fn)` (synchronous read+mutate+write, no await
+> between), and the four duplicated inline sites (`session.js` close / recover /
+> label; `main.js` OBS-attach / display-geometry / OBS-stop) route through it --
+> a background OBS `.then()` stamping `m.obs` can no longer clobber the
+> display-geometry write (a lost update), and a future await-between-read-write
+> edit can't reintroduce it. Pinned by two new `session.test.js` cases
+> (other-field preservation; no-op on a missing/corrupt manifest). It was a
+> latent/structural race + duplication, not a reproduced bug.
 
 ---
 

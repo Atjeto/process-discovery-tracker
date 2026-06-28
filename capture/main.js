@@ -38,6 +38,7 @@ const {
   listRecentSessions,
   writeSessionIntegrity,
   setSessionLabel,
+  updateManifest,
 } = require("./session.js");
 const { spawn } = require("node:child_process");
 const { loadConfig, writeConfigSnapshot, validateConfig, deepMerge } = require("./config.js");
@@ -664,12 +665,15 @@ async function attachObsRecording() {
   try {
     const sync = await startRecording(obs);
     writeSyncFile(path.join(session.sessionFolder, "obs"), sync);
-    const manifestFile = path.join(session.sessionFolder, "manifest.json");
-    const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
-    m.obs.recording_path = sync.recording_path;
-    m.obs.recording_start_ts = sync.obs_recording_start_ts;
-    m.obs.offset_ms = sync.offset_ms;
-    fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2));
+    // #7: atomic update so this background-OBS write can't clobber a concurrent
+    // manifest update (e.g. the display-geometry write). The awaited `sync` is
+    // computed BEFORE the read-modify-write, so the mutate touches a fresh copy.
+    updateManifest(session.sessionFolder, (m) => {
+      m.obs = m.obs || {};
+      m.obs.recording_path = sync.recording_path;
+      m.obs.recording_start_ts = sync.obs_recording_start_ts;
+      m.obs.offset_ms = sync.offset_ms;
+    });
     return true;
   } catch (e) {
     bootLog(`OBS startRecording failed: ${e && e.message}`);
@@ -938,14 +942,13 @@ async function startSession(opts) {
   startIdleMonitor();
 
   /* I43: stamp the display geometry onto the manifest so the viewer can
-     badge which monitor each captured window was on. Read-modify-write
-     so it sits alongside the fields createSession already wrote. */
+     badge which monitor each captured window was on. #7: atomic update so it
+     sits alongside the fields createSession + the background OBS write touch,
+     without a stale read clobbering them. */
   try {
     const { screen } = require("electron");
-    const mf = path.join(session.sessionFolder, "manifest.json");
-    const m = JSON.parse(fs.readFileSync(mf, "utf-8"));
-    m.displays = screen.getAllDisplays().map((d) => ({ id: d.id, bounds: d.bounds }));
-    fs.writeFileSync(mf, JSON.stringify(m, null, 2));
+    const displays = screen.getAllDisplays().map((d) => ({ id: d.id, bounds: d.bounds }));
+    updateManifest(session.sessionFolder, (m) => { m.displays = displays; });
   } catch (e) { bootLog(`display geometry write failed: ${e && e.message}`); }
 
   if (config.interactions && config.interactions.enabled) {
@@ -1111,13 +1114,12 @@ async function endSession(opts) {
       tracker.fireSystem("obs_recording_stop");
       const r = await stopRecording(obs);
       if (r && r.outputPath) {
-        /* If OBS reported a final path after stop, update the manifest. */
-        const manifestFile = path.join(session.sessionFolder, "manifest.json");
-        try {
-          const m = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+        /* If OBS reported a final path after stop, update the manifest (#7:
+           atomic; the awaited stop result is computed before the write). */
+        updateManifest(session.sessionFolder, (m) => {
+          m.obs = m.obs || {};
           m.obs.recording_path = r.outputPath;
-          fs.writeFileSync(manifestFile, JSON.stringify(m, null, 2));
-        } catch (_e) {}
+        });
       }
     } catch (e) {
       bootLog(`OBS stopRecording failed: ${e && e.message}`);

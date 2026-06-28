@@ -14,6 +14,7 @@ const {
   listRecentSessions,
   writeSessionIntegrity,
   setSessionLabel,
+  updateManifest,
 } = require("../session.js");
 
 function tmpBase() {
@@ -183,5 +184,37 @@ test("setSessionLabel writes a trimmed label, and a blank one clears it (B1)", (
   assert.strictEqual(readManifest(s.sessionFolder).label, "Acme morning run");
   setSessionLabel(s.sessionFolder, "   ");
   assert.ok(!("label" in readManifest(s.sessionFolder)));
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test("updateManifest read-modify-writes in place and preserves other fields (#7)", () => {
+  const base = tmpBase();
+  const s = createSession({ baseDir: base, engagementId: "eng1" });
+  // Two SEQUENTIAL updates each touching a different field: both survive --
+  // a stale full-object read can't clobber the other (the lost-update fix).
+  const okA = updateManifest(s.sessionFolder, (m) => { m.obs = { recording_path: "r.mkv" }; });
+  const okB = updateManifest(s.sessionFolder, (m) => { m.displays = [{ id: 1 }]; });
+  assert.strictEqual(okA, true);
+  assert.strictEqual(okB, true);
+  const m = readManifest(s.sessionFolder);
+  assert.deepStrictEqual(m.obs, { recording_path: "r.mkv" }, "first update's field survived");
+  assert.deepStrictEqual(m.displays, [{ id: 1 }], "second update's field survived");
+  assert.strictEqual(m.status, "active", "createSession's fields are untouched");
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test("updateManifest is a no-op (returns false) on a missing or corrupt manifest (#7)", () => {
+  const base = tmpBase();
+  // Missing file.
+  let called = false;
+  assert.strictEqual(
+    updateManifest(path.join(base, "nope"), () => { called = true; }), false);
+  assert.strictEqual(called, false, "mutate is not called when the file is missing");
+  // Corrupt (un-parseable) manifest: degrade, never throw.
+  const s = createSession({ baseDir: base, engagementId: "eng1" });
+  fs.writeFileSync(path.join(s.sessionFolder, "manifest.json"), "{ not json", "utf-8");
+  let res;
+  assert.doesNotThrow(() => { res = updateManifest(s.sessionFolder, (m) => { m.x = 1; }); });
+  assert.strictEqual(res, false);
   fs.rmSync(base, { recursive: true, force: true });
 });

@@ -66,23 +66,41 @@ function createSession({ baseDir, engagementId, config, purpose, prepApp, consen
   };
 }
 
-function closeSession({ sessionFolder, status }) {
+/* #7 (tech-debt): one atomic read-modify-write for a session manifest.
+   `mutate(manifest)` edits the freshly-read object in place; the read, mutate,
+   and write happen in a single synchronous pass with NO await between, so two
+   concurrent updaters -- e.g. the background OBS `.then()` stamping `m.obs` and
+   the display-geometry write adding `m.displays` -- can never each read a stale
+   copy and clobber the other's fields (a lost update). A missing file or a
+   parse error is a no-op. Returns true when the write happened. Replaces the
+   inline read-modify-write that was duplicated across session.js + main.js. */
+function updateManifest(sessionFolder, mutate) {
   const manifestFile = path.join(sessionFolder, "manifest.json");
-  if (!fs.existsSync(manifestFile)) return;
-  const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
-  manifest.ended_at = new Date().toISOString();
-  manifest.status = status || "closed";
+  if (!fs.existsSync(manifestFile)) return false;
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
+  } catch (_e) {
+    return false;   // a torn / hand-corrupted manifest: skip, don't crash
+  }
+  mutate(manifest);
   fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
+  return true;
+}
+
+function closeSession({ sessionFolder, status }) {
+  updateManifest(sessionFolder, (manifest) => {
+    manifest.ended_at = new Date().toISOString();
+    manifest.status = status || "closed";
+  });
 }
 
 function markSessionRecovered({ sessionFolder }) {
-  const manifestFile = path.join(sessionFolder, "manifest.json");
-  if (!fs.existsSync(manifestFile)) return;
-  const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
-  manifest.recovered = true;
-  manifest.status = "recovered";
-  manifest.ended_at = manifest.ended_at || new Date().toISOString();
-  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
+  updateManifest(sessionFolder, (manifest) => {
+    manifest.recovered = true;
+    manifest.status = "recovered";
+    manifest.ended_at = manifest.ended_at || new Date().toISOString();
+  });
 }
 
 function findOrphanedSessions(baseDir) {
@@ -200,13 +218,11 @@ function writeSessionIntegrity(sessionFolder) {
 /* B1: stamp an analyst-facing label onto a finished session's manifest,
    set from the post-session summary panel. A blank label clears it. */
 function setSessionLabel(sessionFolder, label) {
-  const manifestFile = path.join(sessionFolder, "manifest.json");
-  if (!fs.existsSync(manifestFile)) return;
-  const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf-8"));
   const clean = (label || "").trim();
-  if (clean) manifest.label = clean;
-  else delete manifest.label;
-  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
+  updateManifest(sessionFolder, (manifest) => {
+    if (clean) manifest.label = clean;
+    else delete manifest.label;
+  });
 }
 
 module.exports = {
@@ -217,4 +233,5 @@ module.exports = {
   listRecentSessions,
   writeSessionIntegrity,
   setSessionLabel,
+  updateManifest,
 };
