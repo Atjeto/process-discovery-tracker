@@ -4,10 +4,18 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-06) — START HERE:** Released **v0.22.2**. The big feature
-cycle was **v0.20.0** — the push toward a small internal rollout, cut from this
-branch; **v0.20.1 → v0.22.2** are coherence + fix-first increments on top of it
-(see *Since v0.20.0* below). The v0.19.0 lineage still ships — **Phase 0** of the
+**Active direction (2026-06) — START HERE:** Released **v1.3.0** (2026-06-28).
+**Version-number note (read first):** this block describes work by its *internal
+lab-phase / 0.x cycle* names, but the shipped **release tags are 1.x**. The project
+re-versioned at the **2026-06-09 1.0 milestone**, which also split the **clean
+edition** (no-ML — this is `master`) from the parked **ml edition**
+(`project-vision-ai-ml`, tag `v1.0.0-ml`, not on master). Lab-phase → release map:
+**Phases A–E → v1.1.0**, **Phase F → v1.2.0**, **Phases G+H → v1.3.0**. So the
+"v0.20.0 → v0.22.2" cycle named below is the **pre-1.0 internal numbering** that
+shipped inside **v1.0.0–v1.1.0**; the CHANGELOG headers are the source of truth for
+release tags. The big feature cycle was **v0.20.0** — the push toward a small
+internal rollout; **v0.20.1 → v0.22.2** are coherence + fix-first increments on top
+of it (see *Since v0.20.0* below). The v0.19.0 lineage still ships — **Phase 0** of the
 ML recommendation, two non-ML detectors (**suggested markers**
 [ADR-0017](docs/adr/0017-suggested-markers.md) and **anchor candidates**
 [ADR-0018](docs/adr/0018-anchor-candidates.md)) that close the "worker forgot to
@@ -101,7 +109,9 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **0.22.2** (SemVer 0.x).
+Current released version **v1.3.0** (the **clean edition** line; tags + CHANGELOG
+are the source of truth — see the *Version-number note* at the top for why the
+"0.2x" cycle numbers in this doc are pre-1.0 internal milestones).
 
 ## Layout
 
