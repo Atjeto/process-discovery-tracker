@@ -296,9 +296,12 @@ def _has_bnva_override(annotations) -> bool:
     gate the viewer's Analysis level applies to the efficiency ratio
     (lab-phase §A5/§B3): while every step's bnva_ms sits at the
     heuristic default of 0, the ratio is an artifact of that default."""
+    ann = annotations if isinstance(annotations, dict) else {}
+    ovs = ann.get("analysis_overrides")
+    if not isinstance(ovs, list):
+        return False
     return any(
-        isinstance(ov, dict) and ov.get("bnva_ms") is not None
-        for ov in (annotations or {}).get("analysis_overrides") or [])
+        isinstance(ov, dict) and ov.get("bnva_ms") is not None for ov in ovs)
 
 
 def _write_statistics(doc, stats, analysis, annotations=None):
@@ -385,10 +388,10 @@ def _write_statistics(doc, stats, analysis, annotations=None):
 # ---- 4.5 Detailed process steps ---------------------------------------------
 
 def _analysis_maps(analysis):
-    analysis = analysis or {}
-    waste = {w["step_id"]: w for w in (analysis.get("waste_classification") or [])
-             if w.get("step_id")}
-    return waste
+    analysis = analysis if isinstance(analysis, dict) else {}
+    wc = analysis.get("waste_classification")
+    wc = wc if isinstance(wc, list) else []
+    return {w["step_id"]: w for w in wc if isinstance(w, dict) and w.get("step_id")}
 
 
 def _write_steps(doc, annotations, session_folder, analysis):
@@ -570,9 +573,10 @@ _CCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 
 
 def _fmt_money(amount, currency):
-    if amount is None:
+    # A non-numeric amount (hand-edited / odd roi block) renders as a dash.
+    if not isinstance(amount, (int, float)) or isinstance(amount, bool):
         return "—"
-    sym = _CCY_SYMBOLS.get(currency, "")
+    sym = _CCY_SYMBOLS.get(currency, "") if isinstance(currency, str) else ""
     s = f"{round(amount):,}"
     return f"{sym}{s}" if sym else f"{s} {currency}"
 
@@ -715,7 +719,9 @@ def _write_footer(doc):
 
 
 def _fmt_ms(ms):
-    if ms is None:
+    # A non-numeric duration (hand-edited annotations / odd analysis) renders
+    # as a dash rather than raising in the PDD export.
+    if not isinstance(ms, (int, float)) or isinstance(ms, bool):
         return "-"
     s = ms / 1000
     if s < 60:
