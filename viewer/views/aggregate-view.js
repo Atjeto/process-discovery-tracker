@@ -866,14 +866,34 @@ function renderAggFindings(sessions) {
     return;
   }
   if ((sessions || []).length >= 2) {
-    // Honest empty state: say what is missing, never render silence.
+    // Item 11: honest empty state, compressed to one resident sentence + a
+    // disclosure for the mechanics, and a real button (not a prose pointer)
+    // to go check on it -- jumps to the FIRST loaded session's Overview,
+    // the same drill mechanism the map uses (onDrillToSession), just
+    // targeting the Overview level explicitly instead of a timestamp.
     panel.style.display = "";
-    host.innerHTML = '<div class="analysis-note">No cross-session findings yet — ' +
-      "the loaded sessions are not two recordings of the same process with " +
-      "confirmed cases. Differences are measured between 2 or more sessions " +
-      "that share a Process Template (or have cases identified by the same " +
-      "confirmed field), each with cases covering at least 70% of the " +
-      "recording — see each session's Overview.</div>";
+    const first = sessions[0];
+    const cta = first && first.sessionFolder
+      ? ' <button type="button" class="link-btn" data-agg-cta="overview">' +
+        "Check a session's Overview</button>"
+      : "";
+    host.innerHTML =
+      '<div class="analysis-note">No cross-session findings yet — the loaded sessions ' +
+      "aren't confirmed recordings of the same process." + cta + "</div>" +
+      '<details class="how-this-works agg-findings-why">' +
+      "<summary>▸ Why these sessions don't compare yet</summary>" +
+      "<p>Differences are measured between 2 or more sessions that share a Process " +
+      "Template (or have cases identified by the same confirmed field), each with " +
+      "cases covering at least 70% of the recording. Check each session's Overview " +
+      "for its case-quality badge — once every loaded session clears that bar, this " +
+      "feed fills in on its own. Selected findings export with the Markdown report " +
+      "(all loaded sessions).</p></details>";
+    const ctaBtn = host.querySelector('[data-agg-cta="overview"]');
+    if (ctaBtn && first && first.sessionFolder) {
+      ctaBtn.addEventListener("click", () => {
+        onDrillToSession(first.sessionFolder, null, { level: "overview" });
+      });
+    }
   } else {
     panel.style.display = "none";
   }

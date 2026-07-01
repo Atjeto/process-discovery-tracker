@@ -444,16 +444,22 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   display: flex; flex-direction: column; gap: 1px; overflow: hidden;
   color: #fff; font-family: var(--font-ui);
   text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  min-width: 0;
 }
+/* Item 20: a flex column's children default to min-width: auto, so
+   overflow:hidden + text-overflow:ellipsis on the span itself did nothing --
+   the span (and so the label) refused to shrink below its own text's
+   intrinsic width, clipping against the band edge instead of eliding.
+   min-width: 0 lets the flex item actually shrink to the ellipsis. */
 .tl-act-app {
   font-size: 10px; font-weight: 600; letter-spacing: 0.2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  opacity: 0.95;
+  opacity: 0.95; min-width: 0;
 }
 .tl-act-title {
   font-size: 10px; font-weight: 400;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  opacity: 0.8;
+  opacity: 0.8; min-width: 0;
 }
 .tl-act-dur {
   position: absolute; bottom: 2px; right: 4px;
@@ -689,8 +695,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   border-radius: 4px; border: 1px solid var(--rule); flex-shrink: 0; }
 .panel-tab { background: transparent; border: 1px solid transparent; padding: 4px 12px;
   font-size: 11px; color: var(--fg-3); border-radius: 3px; }
-.panel-tab.active { background: var(--bg-1); color: var(--fg); }
+/* Item 12: the active notation tab reads as data (accent fill), matching the
+   .view-mode-btn.active treatment other selected controls use -- previously
+   --bg-1 on the --bg-3 trough read as *disabled*, not selected. */
+.panel-tab.active { background: var(--accent); color: var(--accent-text); font-weight: 500; }
 .panel-tab:hover { color: var(--fg-2); }
+.panel-tab.active:hover { color: var(--accent-text); }
 /* Drill-down scope chip (sits between the tabs and the zoom controls). */
 .map-scope { display: inline-flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--fg-2); }
@@ -1746,6 +1756,19 @@ button.waste-tag-btn:hover {
 .template-explainer h2 { margin: 0 0 8px; color: var(--fg); font-size: 16px; }
 .template-explainer p { margin: 0 0 8px; font-size: 12px; line-height: 1.55; color: var(--fg-2); }
 .template-explainer em { color: var(--accent); font-style: normal; font-weight: 500; }
+.template-explainer p:last-child { margin-bottom: 0; }
+/* Item 10: the landing prose collapses behind a disclosure -- one sentence +
+   the primary actions stay resident; the rest (unchanged wording) is one
+   click away. Same native <details> mechanism as the Machine-layer drawers
+   (.advanced-yaml), reused here for a Evidence-altitude "show more text"
+   rather than a Machine control -- the summary styling is intentionally
+   plainer (no uppercase) since it discloses prose, not raw data. */
+.how-this-works { margin-top: 2px; }
+.how-this-works > summary {
+  cursor: pointer; color: var(--fg-3); font-size: 12px; padding: 2px 0;
+}
+.how-this-works > summary:hover { color: var(--fg-2); }
+.how-this-works[open] > summary { color: var(--accent); margin-bottom: 6px; }
 
 /* ===== Step + phase timelines (compact strip) ===== */
 .timeline-steps, .timeline-phases {
@@ -1761,12 +1784,23 @@ button.waste-tag-btn:hover {
   cursor: pointer; transition: filter 0.15s, background 0.15s;
   display: flex; align-items: center; padding: 0 6px; overflow: hidden;
   box-sizing: border-box;
+  container-type: inline-size;
 }
 .step-block:hover { filter: brightness(1.4); }
 .step-block-label {
   font-size: 10px; font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   opacity: 0.85; pointer-events: none;
+  min-width: 0;
+}
+/* Item 13: at default zoom, narrow step blocks rendered clipped one-letter
+   fragments ("S..", "E") instead of eliding cleanly -- worse than showing
+   nothing. Below ~40px render a color-only chip (no text) via the same
+   container-query technique .tl-activity already uses; the block's title
+   attribute (native tooltip) still carries the full name, and the label
+   reappears once zooming widens the block past the threshold. */
+@container (max-width: 40px) {
+  .step-block-label { display: none; }
 }
 
 /* Phase band: even quieter -- sits below steps as soft milestone tint. */
@@ -2331,6 +2365,16 @@ button.waste-tag-btn:hover {
   text-transform: none; letter-spacing: 0;
 }
 .vocab-int-body > label input:focus { outline: none; border-color: var(--accent); }
+/* Item 17: the raw signature fields are a per-row Machine-layer disclosure --
+   same collapsed-by-default / accent-on-open treatment as .advanced-yaml,
+   sized for a small per-row summary rather than a page-level drawer. */
+.vocab-int-sig-details { margin-bottom: 4px; }
+.vocab-int-sig-details > summary {
+  cursor: pointer; color: var(--fg-3); font-size: 10px;
+  letter-spacing: 0.5px; text-transform: uppercase; padding: 4px 0;
+}
+.vocab-int-sig-details > summary:hover { color: var(--fg-2); }
+.vocab-int-sig-details[open] > summary { color: var(--accent); margin-bottom: 2px; }
 .vocab-int-sig-fields {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 10px;
   padding: 8px 10px; background: var(--bg-3); border-radius: 3px;
@@ -2502,6 +2546,14 @@ button.danger {
   background: var(--rec); border-color: var(--rec); color: var(--accent-text); font-weight: 500;
 }
 button.danger:hover:not(:disabled) { filter: brightness(0.9); }
+/* Item 16: a DISABLED destructive button (e.g. "Delete template" with
+   nothing loaded) must not out-saturate every enabled control on the
+   surface. Fall back to the plain button look while disabled; the red
+   fill returns only once the action is actually available. */
+button.danger:disabled {
+  background: var(--bg-2); border-color: var(--rule); color: var(--fg);
+  font-weight: 400;
+}
 
 /* ===== Timeline accessibility ===== */
 /* Activity bands: alternating subtle stripes so adjacent runs are

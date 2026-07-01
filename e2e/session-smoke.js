@@ -174,6 +174,61 @@ const OVERLAP_PROBE = () => {
     if (!visible) await shot(page, "fail-level-" + lvl + ".png");
   }
 
+  // Item 19: "Scope to playhead" is orphaned chrome on Overview (no visible
+  // playhead there) but meaningful everywhere a timeline exists. We just
+  // cycled through flow/steps/phases/map/analysis (the loop above), so the
+  // button should be visible now (last level = analysis, not overview);
+  // switch back to Flow (has it) then Overview (hides it) to check both ends.
+  await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
+  await wait(500);
+  const playheadOnFlow = await page.evaluate(() => {
+    const b = document.getElementById("btn-scope-to-playhead");
+    return !!(b && getComputedStyle(b).display !== "none");
+  }).catch(() => false);
+  await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
+  await wait(500);
+  const playheadOnOverview = await page.evaluate(() => {
+    const b = document.getElementById("btn-scope-to-playhead");
+    return !!(b && getComputedStyle(b).display !== "none");
+  }).catch(() => true);
+  record("item 19: 'Scope to playhead' hidden on Overview, visible on Flow",
+    playheadOnFlow && !playheadOnOverview,
+    "flow=" + playheadOnFlow + " overview=" + playheadOnOverview);
+
+  // Item 20: .tl-act-app activity labels must never escape their band --
+  // NOTE this is deliberately NOT the usual scrollWidth>clientWidth clipping
+  // probe: text-overflow:ellipsis makes that comparison true by design
+  // whenever a label like "Chrome" is legitimately elided to fit a narrow
+  // band (the ellipsis IS the fix -- item 20 asked for "ellipsis... so
+  // nothing clips", meaning no RAW unellipsized overflow, not that ellipsis
+  // itself is forbidden). The actual pre-fix bug was a flex min-width:auto
+  // default that kept the label's own BOX wider than the band -- so the
+  // real regression pin is: the label's rendered box never exceeds the
+  // band's available (padded) width, and where it's shown at all, ellipsis
+  // is actually the active text-overflow (proving the CSS mechanism fired).
+  await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
+  await wait(800);
+  const actAppBox = await page.evaluate(() => {
+    const bad = [];
+    document.querySelectorAll(".tl-act-app").forEach((el) => {
+      const cs = getComputedStyle(el);
+      if (cs.display === "none") return;   // below the container-query hide threshold
+      const band = el.closest(".tl-band.tl-activity");
+      if (!band) return;
+      const avail = band.clientWidth - 12;   // .tl-activity-label inset: 4px 6px
+      if (el.clientWidth > avail + 1) {
+        bad.push((el.textContent || "").trim() + " box=" + el.clientWidth + " avail=" + avail);
+      }
+      if ((el.textContent || "").trim() && el.scrollWidth > el.clientWidth + 1 && cs.textOverflow !== "ellipsis") {
+        bad.push((el.textContent || "").trim() + " truncated without ellipsis");
+      }
+    });
+    return bad;
+  }).catch((e) => ["probe error: " + e.message]);
+  record("item 20: .tl-act-app never escapes its band; truncation (if any) is via ellipsis",
+    actAppBox.length === 0,
+    actAppBox.length ? "bad: " + actAppBox.join(", ") : "all fit");
+
   // --- ADR-0024 grain control: the single view-time roll-up slider ---
   // The slider exists; the Steps list reproduces the FINE count at the element
   // notch (detail never destroyed) and CONSOLIDATES at the screen notch; and

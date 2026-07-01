@@ -136,7 +136,7 @@ async function until(fn, timeoutMs, stepMs = 500) {
   const SESSION_B = makeTempSession(SRC_B);
   const TPL_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pdt-fly-tpl-")),
     "flywheel-order-process.yaml");
-  if (!normalize(SESSION_A)) {
+  if (!normalize(SESSION_A) || !normalize(SESSION_B)) {
     record("prepare session 1 (prerequisite)", false, "no deps-bearing Python");
     process.exit(1);
   }
@@ -151,6 +151,56 @@ async function until(fn, timeoutMs, stepMs = 500) {
     console.error("FATAL: could not launch viewer:", e && e.stack ? e.stack : e);
     process.exit(2);
   }
+
+  // (item 11) Compare empty state, BEFORE session 1 is curated: both raw
+  // sessions are still unsegmented, so Compare's cross-session findings
+  // panel hits the "not confirmed cases of the same process" precondition --
+  // one resident sentence, a "Why these sessions don't compare yet"
+  // disclosure, and a real CTA button (not a prose pointer) to a session's
+  // Overview. Uses the same #btn-open-multi-hero load path as (e) below.
+  await app.evaluate(({ dialog }, folders) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: folders });
+  }, [SESSION_A, SESSION_B]);
+  await page.evaluate(() => document.querySelector('.tab[data-view="aggregate"]').click());
+  await wait(300);
+  await page.evaluate(() => document.querySelector("#btn-open-multi-hero").click());
+  const compareEmpty = await until(() => page.evaluate(() => {
+    const panel = document.getElementById("agg-findings-panel");
+    if (!panel || getComputedStyle(panel).display === "none") return null;
+    const note = panel.querySelector(".analysis-note");
+    const details = panel.querySelector(".agg-findings-why");
+    const cta = panel.querySelector('[data-agg-cta="overview"]');
+    if (!note || !details || !cta) return null;
+    return {
+      noteLen: (note.textContent || "").trim().length,
+      hasDisclosure: !!details,
+      summaryText: (details.querySelector("summary") || {}).textContent || "",
+      ctaIsButton: cta.tagName === "BUTTON",
+      ctaText: (cta.textContent || "").trim(),
+    };
+  }), 60000);
+  record("(item 11) Compare empty state: one sentence + disclosure + a real CTA button",
+    !!(compareEmpty && compareEmpty.noteLen > 0 && compareEmpty.noteLen < 200 &&
+      compareEmpty.hasDisclosure && compareEmpty.ctaIsButton && compareEmpty.ctaText.length > 0),
+    JSON.stringify(compareEmpty));
+  if (!compareEmpty) await shot(page, "fail-compare-empty-state.png");
+  // Exercise the CTA: it must switch to the Session tab, load that session,
+  // and land on its Overview (not merely "some level").
+  await page.evaluate(() => document.querySelector('[data-agg-cta="overview"]').click());
+  const ctaLanded = await until(() => page.evaluate(() => {
+    const activeTab = document.querySelector(".tab.active");
+    const activeLevel = document.querySelector(".view-mode-btn.active");
+    return {
+      tab: activeTab ? activeTab.dataset.view : null,
+      level: activeLevel ? activeLevel.dataset.level : null,
+      overviewVisible: !!document.getElementById("overview-content") &&
+        getComputedStyle(document.getElementById("session-layout-overview")).display !== "none",
+    };
+  }), 15000);
+  record("(item 11) the CTA switches to Session view, Overview level",
+    !!(ctaLanded && ctaLanded.tab === "session" && ctaLanded.level === "overview" &&
+      ctaLanded.overviewVisible),
+    JSON.stringify(ctaLanded));
 
   // (a) The anchor hero renders on the unsegmented copy; Accept the top
   // candidate, then re-run Analyze (the accept path's documented inverse

@@ -193,9 +193,17 @@ function _factStrip(facts) {
       : { v: _fmt(facts.longest_focus_ms), l: "Longest stretch",
           s: derived ? estSub : "unbroken in one app",
           t: "The longest unbroken stretch of work in a single app" },
-    { v: String(facts.rekey_count || 0), l: "Re-typed values",
+    // Item 14: kept as one tile (splitting to 7 tiles would crowd the 980px-
+    // wide, 6-tile-tuned row — see DESIGN-CRITIQUE item 14) but fixed the
+    // grammar slip (the label pluralized even when rekey_count === 1). The
+    // subtitle text itself is unchanged (a longer rewrite clipped the tile
+    // at typical widths); the tooltip spells out that it is a second,
+    // separate measurement rather than a qualifier on the headline number.
+    { v: String(facts.rekey_count || 0),
+      l: "Re-typed value" + (facts.rekey_count === 1 ? "" : "s"),
       s: seqs + " repeated sequence" + (seqs === 1 ? "" : "s"),
-      t: "Values typed into more than one app — a sign the same data is re-entered by hand · plus how many step sequences repeat" },
+      t: "Values typed into more than one app — a sign the same data is re-entered by hand. " +
+         "Subtitle: how many step sequences repeat across the recording (a separate measurement)." },
   ];
   return '<div class="ov-facts">' + tiles.map((t) =>
     '<div class="ov-tile" title="' + escapeAttr(t.t) + '">' +

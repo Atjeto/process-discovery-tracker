@@ -191,6 +191,48 @@ const SEED = {
   }
   await shot(page, "vocab-enriched-row.png");
 
+  // ---- Item 17: the raw signature block is a per-row disclosure ----------
+  // Both seeded rows arrived via the on-disk vocab file, so both are
+  // "discovered" entries (they carry identity_source/confidence) -- the
+  // disclosure should already be auto-OPEN on both, and its inputs must
+  // still be the exact ones collectAndMark()/the discovery-fill logic reads
+  // ([data-sig]) regardless of DOM nesting inside <details>.
+  const sigDisclosure = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
+    return rows.map((r) => {
+      const det = r.querySelector(".vocab-int-sig-details");
+      return {
+        hasDetails: !!det,
+        open: !!(det && det.open),
+        sigInputCount: r.querySelectorAll(".vocab-int-sig-fields [data-sig]").length,
+      };
+    });
+  }).catch((e) => ([{ err: e.message }]));
+  record("item 17: discovered rows render the signature block behind an auto-OPEN disclosure",
+    sigDisclosure.length === 2 && sigDisclosure.every((r) => r.hasDetails && r.open && r.sigInputCount === 5),
+    JSON.stringify(sigDisclosure));
+  // A freshly hand-added row (+ Add interaction) is NOT a discovered entry --
+  // its signature block must start COLLAPSED (the item 17 default), while
+  // its inputs stay reachable via [data-sig] for collectAndMark() either way.
+  await page.click("#btn-vocab-add-interaction").catch((e) => console.log("add-interaction", e.message));
+  await wait(300);
+  const newRowDisclosure = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
+    const last = rows[rows.length - 1];
+    const det = last && last.querySelector(".vocab-int-sig-details");
+    return { hasDetails: !!det, open: !!(det && det.open), sigInputCount: last ? last.querySelectorAll(".vocab-int-sig-fields [data-sig]").length : 0 };
+  }).catch((e) => ({ err: e.message }));
+  record("item 17: a hand-added (non-discovered) row's signature block starts COLLAPSED",
+    !!(newRowDisclosure && newRowDisclosure.hasDetails && !newRowDisclosure.open && newRowDisclosure.sigInputCount === 5),
+    JSON.stringify(newRowDisclosure));
+  // Undo the manual add so it doesn't leak into the later row-count assertions.
+  await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int-remove")];
+    const last = rows[rows.length - 1];
+    if (last) last.click();
+  });
+  await wait(300);
+
   // ---- §C2: the discovery review checklist + auto-filled semantics --------
   const checklist = await page.evaluate(() => {
     const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];

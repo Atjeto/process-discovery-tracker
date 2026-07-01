@@ -41,6 +41,19 @@ broken there" regressions is gone.
 | Zoom state | `State.zoomFactor` | `State.stepZoom` | `State.phaseZoom` |
 | Height / resize | `--timeline-height` (`#resize-timeline`) | `--mini-timeline-height` | `--mini-timeline-height` |
 
+**Narrow-band label hiding (design critique item 13).** A block/band's width is
+data-driven (a percent of the timeline span), so whether its text label fits is
+only knowable after layout — handled in CSS, not JS, via a `container-type:
+inline-size` container query on the block/band class itself: below a px
+threshold the label `display: none`s (color-only chip; the native `title`
+tooltip still carries the full name), and it reappears once zooming widens the
+block past the threshold. `.tl-activity` (Flow, `@container (max-width: 36px)`
+hides `.tl-act-app`, `70px` hides `.tl-act-title`/`.tl-act-dur`) and
+`.step-block` (Steps mini-timeline, `@container (max-width: 40px)` hides
+`.step-block-label`) share this technique — a fix to the threshold or the
+approach applies to both by touching one rule per class, same spirit as the
+shared `timeline-core.js` core.
+
 The Steps and Phases mini-timelines are thin: each gathers its lane items, then
 hands them to `TimelineCore.renderMiniTimeline`, which does lane packing, the
 axis, and band DOM. The Flow timeline is richer — it has the optional lanes

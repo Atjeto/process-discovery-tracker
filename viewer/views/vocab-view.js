@@ -352,6 +352,14 @@ function _buildVocabIntRow(ent, i) {
     members +
     '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
     semantics +
+    // Item 17: the raw signature inputs are Machine layer inside the card --
+    // collapsed by default so they don't sit at equal weight with the
+    // meaningful name + semantics strip. A DISCOVERED row auto-expands this
+    // (the `open` attribute) so the §C2 review checklist -- which needs the
+    // analyst to actually see/correct control_type / automation_id / etc. --
+    // stays fully usable without an extra click.
+    '<details class="vocab-int-sig-details"' + (discovered ? " open" : "") + '>' +
+    '<summary>▸ Match signature</summary>' +
     '<div class="vocab-int-sig-fields">' +
     '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
     '<label>class_name<input type="text" data-sig="class_name" value="' + escapeAttr(sig.class_name || "") + '"></label>' +
@@ -359,6 +367,7 @@ function _buildVocabIntRow(ent, i) {
     '<label>name (raw)<input type="text" data-sig="name" value="' + escapeAttr(sig.name || "") + '"></label>' +
     '<label>window_title_regex<input type="text" data-sig="window_title_regex" value="' + escapeAttr(sig.window_title_regex || "") + '"></label>' +
     '</div>' +
+    '</details>' +
     '</div>';
   row.querySelector(".vocab-int-remove").addEventListener("click", () => removeInteraction(i));
   const reviewBox = row.querySelector("[data-review]");
@@ -929,7 +938,10 @@ function renderVocabLlmButtons() {
   if (copyOld) copyOld.remove();
   if (importOld) importOld.remove();
   if (!Posture.copyForLlmAllowed()) return;
-  const anchor = $("#btn-vocab-reload");
+  // Item 18: anchor on the dedicated marker span, not #btn-vocab-reload --
+  // that button now lives inside the "⋯ More" overflow popup, while these
+  // two stay resident primary actions in the main toolbar.
+  const anchor = $("#vocab-llm-anchor");
   if (!anchor || !anchor.parentNode) return;
   const copyBtn = document.createElement("button");
   copyBtn.id = "btn-vocab-copy-llm";

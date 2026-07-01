@@ -58,6 +58,14 @@ render **zero-information or duplicated content that looks like a result**.
   cure. Extend the existing right-click "Add to App Library…" (Steps view, Phase H
   G-8) to map nodes and Analysis rows, or minimally style unmatched labels with a
   subtle "unnamed control" tooltip pointing at the App Library.
+  **Investigated and skipped (2026-07-01):** detecting "no vocab match" IS
+  available (an interaction's `meaningful_name` is absent), but the Analysis
+  "Where the time goes" row (`.ts-row`) is an aggregate across every instance of
+  a `process_label` group — potentially many distinct interactions/controls —
+  while the existing "Add to App Library…" flow needs ONE interaction's
+  signature. Picking a representative interaction would be new, un-scoped
+  aggregation logic with a real risk of silently misnaming the wrong control.
+  An honest skip beats a hack; map nodes were already excluded from scope.
 - [x] **8. Merge the duplicate case-state chips (Overview).** "✓ 4 cases — marked by
   the worker" (badge) and "CASE ANALYSIS ON" (chip) state the same fact in two
   vocabularies. One badge, subtitle carries the second clause.
@@ -65,45 +73,48 @@ render **zero-information or duplicated content that looks like a result**.
   ANALYZED / VOCABS chips persist on every session surface but are static session
   metadata — the collapsed SESSION SUMMARY band's job. Fold them into it (or show
   only state that can change mid-session).
-- [ ] **10. Compress the Template and App Library prose landings.** Both lead with
+- [x] **10. Compress the Template and App Library prose landings.** Both lead with
   2–3 paragraphs before the first control. One-sentence definition + primary
   actions resident; the rest behind a "How this works ▸" disclosure. (Copy stays
   business-English per the UI copy guide.)
-- [ ] **11. Tighten the Compare empty state and make its pointer a button.** Two
+- [x] **11. Tighten the Compare empty state and make its pointer a button.** Two
   long italic paragraphs → one sentence + disclosure; "see each session's
   Overview" should be the same CTA-button pattern the locked map uses
   (`data-map-cta` equivalent), not prose.
 
 ### P3 — smaller legibility / consistency fixes
 
-- [ ] **12. Strengthen the active-notation tab state on the map toolbar.** The
+- [x] **12. Strengthen the active-notation tab state on the map toolbar.** The
   selected "Process diagram"/"Flow diagram" tab reads as *disabled* (gray-on-gray);
   the active tab needs the accent treatment other selected controls get.
-- [ ] **13. Silence the Steps mini-timeline chips below a width threshold.** At
+- [x] **13. Silence the Steps mini-timeline chips below a width threshold.** At
   default zoom the chips render clipped one-letter fragments ("S..", "E" — probe
   measured 111–155px overflow). Below the threshold render color-only chips;
   text appears on zoom.
-- [ ] **14. Split the mixed fact tile (Overview).** "1 RE-TYPED VALUES / 9 repeated
+- [x] **14. Split the mixed fact tile (Overview).** "1 RE-TYPED VALUES / 9 repeated
   sequences" is two metrics in one tile plus a grammar slip. Two tiles, or
   re-word ("Re-typed value · 1", subtitle "9 repeated sequences" only if the
-  pairing is intentional).
-- [ ] **15. One name for the grain control.** Helper copy says "Grain slider", the
+  pairing is intentional). **Landed as:** kept one tile (splitting to 7 would
+  crowd/wrap the 6-tile-tuned 980px row) but fixed the grammar slip.
+- [x] **15. One name for the grain control.** Helper copy says "Grain slider", the
   control label says "DETAIL:", Analysis copy says "Detail slider". Pick "Detail"
   everywhere (business-English rule already bans "grain" in rendered copy).
-- [ ] **16. Use the plain-disabled style for "Delete template" on the empty Template
+- [x] **16. Use the plain-disabled style for "Delete template" on the empty Template
   view.** Currently the most color-saturated control on the surface is a disabled
   destructive action — the eye lands on it first.
-- [ ] **17. Collapse the raw signature block per interaction row (App Library).**
+- [x] **17. Collapse the raw signature block per interaction row (App Library).**
   CONTROL_TYPE / CLASS_NAME / AUTOMATION_ID / WINDOW_TITLE_REGEX inputs sit at
   equal weight with MEANINGFUL NAME + the semantics strip. Machine layer inside
   the card: "Match signature ▸" collapsed by default, semantics strip stays.
-- [ ] **18. Overflow the App Library toolbar.** Seven buttons; "Reload list" and
+- [x] **18. Overflow the App Library toolbar.** Seven buttons; "Reload list" and
   "Open YAML in editor" are Machine-layer verbs — demote to a "⋯" menu next to the
   primary actions.
-- [ ] **19. Hide "Scope to playhead" on Overview.** There is no visible
+- [x] **19. Hide "Scope to playhead" on Overview.** There is no visible
   playhead/timeline on that level; the link is orphaned chrome.
-- [ ] **20. Ellipsize the timeline app labels.** `tl-act-app` "Chrome" clips by
-  ~13px in narrow bands (probe-confirmed) — needs ellipsis/min-width.
+- [x] **20. Ellipsize the timeline app labels.** `tl-act-app` "Chrome" clips by
+  ~13px in narrow bands (probe-confirmed) — needs ellipsis/min-width. **Root
+  cause:** a flex-column min-width:auto default kept the label's own box wider
+  than the band; `min-width: 0` fixed it.
 
 ### P4 — the "configurable analytical modules" ask (new, small scope)
 

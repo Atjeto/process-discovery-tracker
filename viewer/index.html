@@ -585,7 +585,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                aligned reading; the merged process map is demoted below. -->
           <div class="panel panel-wide" id="agg-findings-panel" style="display:none">
             <h3>Cross-session findings</h3>
-            <p class="meta" style="margin-top:0">Comparative claims measured across loaded sessions of the <em>same process</em> (same Process Template, or cases identified by the same confirmed field) — who completes a case in how many steps, and where the paths first part ways. Shown only when every compared session has confirmed cases. Selected findings export with the Markdown report (all loaded sessions).</p>
+            <p class="meta" style="margin-top:0">Comparative claims across sessions of the <em>same process</em> — who completes a case in how many steps, and where the paths first part ways.</p>
             <div id="agg-findings-content"></div>
           </div>
 
@@ -714,8 +714,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="loaded" id="canonical-loaded">
         <div class="template-explainer">
           <h2>Process Template</h2>
-          <p>A Process Template is a reusable definition of an expected process: its steps, phases, the UI patterns that identify each one — and the case anchor (the field that identifies each ticket/order) that splits a session into cases. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
-          <p class="meta"><strong>The primary way to make one is as a byproduct of curation:</strong> open a session, curate its steps, then <em>Steps → Export as Process Template</em>. The export carries each step's match rules <em>and the confirmed case anchor (the field that identifies each ticket/order)</em>, so the next session of the same process arrives with its cases already identified and its steps auto-matched. The list below stays directly editable; the raw YAML and version compare live in the Machine layer at the bottom.</p>
+          <p>A reusable definition of an expected process — its steps, phases, and the case anchor (the field that identifies each ticket/order) — that future sessions can auto-match against instead of getting generic step suggestions.</p>
+          <details class="how-this-works">
+            <summary>▸ How this works</summary>
+            <p>A Process Template is a reusable definition of an expected process: its steps, phases, the UI patterns that identify each one — and the case anchor (the field that identifies each ticket/order) that splits a session into cases. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
+            <p class="meta"><strong>The primary way to make one is as a byproduct of curation:</strong> open a session, curate its steps, then <em>Steps → Export as Process Template</em>. The export carries each step's match rules <em>and the confirmed case anchor (the field that identifies each ticket/order)</em>, so the next session of the same process arrives with its cases already identified and its steps auto-matched. The list below stays directly editable; the raw YAML and version compare live in the Machine layer at the bottom.</p>
+          </details>
         </div>
         <div class="actions-bar">
           <button id="btn-new-canonical">+ New Process Template</button>
@@ -778,16 +782,33 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="loaded">
         <div class="template-explainer">
           <h2>App Library</h2>
-          <p>Each app you record gets one vocabulary file that maps its UI elements (Save button, Search field, etc.) to meaningful names. The names roll into step names automatically on every future session that touches the app. Edit them as a form here - no YAML required.</p>
-          <p class="meta"><strong>This is optional.</strong> Reading a recording you've received needs nothing here — the Overview summary, findings, and step groups stand on their own. A vocabulary pays off when you'll record the <em>same</em> process again: name an app once and every later recording of it reads better. Start one from a recording you already have (no live app needed) with <em>Start from a recording…</em> below.</p>
-          <p class="meta">Underlying storage is YAML at <code>normalization/app_vocabularies/</code>. You can edit those files directly if you prefer, or use this form. Both write to the same place.</p>
+          <p>Each app you record gets one vocabulary file mapping its UI elements to meaningful names — optional, and worth building when you'll record the <em>same</em> process again.</p>
+          <details class="how-this-works">
+            <summary>▸ How this works</summary>
+            <p>Each app you record gets one vocabulary file that maps its UI elements (Save button, Search field, etc.) to meaningful names. The names roll into step names automatically on every future session that touches the app. Edit them as a form here - no YAML required.</p>
+            <p class="meta"><strong>This is optional.</strong> Reading a recording you've received needs nothing here — the Overview summary, findings, and step groups stand on their own. A vocabulary pays off when you'll record the <em>same</em> process again: name an app once and every later recording of it reads better. Start one from a recording you already have (no live app needed) with <em>Start from a recording…</em> below.</p>
+            <p class="meta">Underlying storage is YAML at <code>normalization/app_vocabularies/</code>. You can edit those files directly if you prefer, or use this form. Both write to the same place.</p>
+          </details>
         </div>
         <div class="actions-bar">
           <button id="btn-vocab-new" class="primary">+ New vocabulary</button>
           <button id="btn-vocab-bootstrap-session" title="Read every control a saved recording touched and start a vocabulary for one of its apps, with names pre-filled for you to review. Worth doing when you'll record this process again — never needed just to read a recording.">Start from a recording…</button>
           <button id="btn-vocab-discover" title="Point at a prepared app window and auto-discover a stable-signature vocabulary skeleton from its live UI. On-device; nothing leaves the box.">Discover from window…</button>
-          <button id="btn-vocab-reload">Reload list</button>
-          <button id="btn-vocab-open-yaml" disabled>Open YAML in editor</button>
+          <!-- Item 18: "Reload list" and "Open YAML in editor" are Machine-layer
+               verbs (re-read the folder from disk / edit the raw file directly),
+               tucked into the same "⋯ More" popup mechanism the session toolbar
+               uses -- the primary actions (New / Start from a recording / Discover
+               / Copy for AI review / Import suggestions) stay resident. -->
+          <div class="project-menu" id="vocab-more-menu">
+            <button class="project-btn" id="btn-vocab-more-menu" title="More actions for the App Library">
+              <span>⋯ More</span><span class="project-menu-caret">▾</span>
+            </button>
+            <div class="project-menu-popup" id="vocab-more-popup" style="display:none">
+              <button class="project-menu-item" id="btn-vocab-reload">Reload list</button>
+              <button class="project-menu-item" id="btn-vocab-open-yaml" disabled>Open YAML in editor</button>
+            </div>
+          </div>
+          <span id="vocab-llm-anchor"></span>
           <span class="flex-spacer"></span>
           <span class="meta" id="vocab-list-meta"></span>
         </div>

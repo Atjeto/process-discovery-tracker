@@ -61,6 +61,105 @@ Item numbers are from [docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md](docs/To-Do/DESI
   no separate chip) and added pins for methodology-once-per-detector-group and the
   finding-card expand-in-place + screenshot chip.
 
+### Changed — disclosure pass, second sweep (items 10–20)
+
+Continues the same disclosure pass. Item 7 was investigated and **skipped** (see
+below) — an honest skip beats a hack; every other item in this sweep landed.
+
+- **Template + App Library — compress the prose landings (item 10).** Both views
+  led with 2–3 paragraphs before the first control. Each is now a one-sentence
+  definition + the primary actions, with the original wording (unchanged) moved
+  behind a collapsed `▸ How this works` disclosure (native `<details>`, same
+  mechanism as the Machine-layer drawers).
+- **Compare — tighten the empty state and make its pointer a real button (item
+  11).** The cross-session findings panel's two-paragraph precondition-not-met
+  message is now one resident sentence + a `▸ Why these sessions don't compare
+  yet` disclosure holding the mechanics. "See each session's Overview" is now an
+  actual `<button>` (mirroring the map's `data-map-cta` pattern) that switches to
+  the Session tab, loads the first loaded session, and lands on its Overview
+  level — reuses the existing `onDrillToSession` injection (extended with an
+  optional `{ level }`), not a new mechanism.
+- **Map toolbar — give the active notation tab an accent state (item 12).** CSS
+  only: `.panel-tab.active` now uses the accent fill + accent-text color (the
+  same treatment `.view-mode-btn.active` already uses) instead of a `--bg-1` on
+  `--bg-3` combination that read as *disabled*. Both themes.
+- **Steps mini-timeline — silence clipped one-letter chip fragments (item 13).**
+  Below ~40px a step block hides its label entirely (via the same
+  `container-type: inline-size` + `@container` technique `.tl-activity` already
+  used) instead of showing an unreadable "S.." fragment; the block's native
+  tooltip (`title`) still carries the full name, and the label reappears once
+  zooming widens the block. CSS only — no JS width measurement needed.
+- **Overview — fix the mixed fact tile's grammar (item 14).** "1 RE-TYPED VALUES"
+  now reads "1 Re-typed value" (correct singular/plural). Kept as one tile rather
+  than splitting to 7 (the row is tuned for 6 across the 980px-wide Overview
+  column; a 7th tile would either crowd or wrap unevenly) — the tooltip now
+  spells out that the subtitle's repeated-sequence count is a separate
+  measurement, not a qualifier on the headline number.
+- **One name for the detail control everywhere (item 15).** The one remaining
+  "Grain slider" mention (the Steps view-mode help text) is now "Detail slider",
+  matching the toolbar label ("Detail:") and the rest of the app's copy. No code
+  identifiers, ADR references, or docs prose were touched — rendered strings
+  only.
+- **Template — plain-disabled "Delete template" on the empty view (item 16).**
+  `button.danger:disabled` now falls back to the same neutral look as every
+  other disabled control; the destructive red fill returns only once the button
+  is enabled (a template is loaded).
+- **App Library — collapse the raw signature block per interaction row (item
+  17).** `CONTROL_TYPE` / `CLASS_NAME` / `AUTOMATION_ID` / `NAME (RAW)` /
+  `WINDOW_TITLE_REGEX` now live behind a per-row `▸ Match signature` disclosure;
+  `MEANINGFUL NAME` and the semantics strip stay resident. A **discovered** row
+  (identity_source/confidence present) auto-opens the disclosure so the §C2
+  review checklist stays fully usable without an extra click; a hand-added row
+  (`+ Add interaction`) starts collapsed. The `[data-sig]` inputs are unchanged
+  and still reachable regardless of DOM nesting — `e2e/vocab-smoke.js` verifies
+  both states plus that discovery/save/collectAndMark are unaffected.
+- **App Library — overflow the toolbar (item 18).** "Reload list" and "Open YAML
+  in editor" (Machine-layer verbs) moved into a new "⋯ More" popup menu, reusing
+  the existing dropdown-menu mechanism (`wireDropdownMenu`, the same one behind
+  the session toolbar's "⋯ More"). The five primary actions (New vocabulary /
+  Start from a recording… / Discover from window… / Copy for AI review… / Import
+  suggestions…) stay resident; the two posture-gated Copy-for-AI buttons anchor
+  on a new `#vocab-llm-anchor` marker instead of `#btn-vocab-reload` (which moved
+  into the popup) — their ids and sealed-posture removal logic are unchanged.
+- **Hide "Scope to playhead" on Overview (item 19).** The link is orphaned chrome
+  on the one level with no visible playhead; it now hides there (set once at
+  boot and on every `applyLevel` switch) and stays visible on every level with a
+  timeline (Flow, Steps, Phases, Map, Analysis).
+- **Ellipsize the timeline app labels (item 20).** `.tl-act-app` (and its
+  sibling `.tl-act-title`) now carry `min-width: 0` — the real bug was a classic
+  flex-column sizing default (`min-width: auto`) that kept the label's own box
+  wider than the activity band regardless of `overflow`/`text-overflow`; the box
+  now correctly shrinks to the band and ellipsizes its text instead of
+  overflowing.
+- **Skipped — item 7, un-vocabed labels on Analysis rows.** Detection of "this
+  came from no vocabulary match" IS available (an interaction's `meaningful_name`
+  is absent, e.g. a raw `va01` token survives), but the existing "Add to App
+  Library…" flow (`addInteractionFromStep`) operates on ONE interaction's
+  signature, while an Analysis "Where the time goes" row (`.ts-row`) is an
+  aggregate across every instance of a `process_label` group — potentially many
+  distinct interactions/controls across many step instances, with no single
+  canonical signature to hand the flow without inventing new
+  pick-a-representative-interaction logic. Picking one arbitrarily risks
+  silently misnaming the wrong control — the opposite of this codebase's
+  suggest-don't-mutate / honest-confidence discipline (ADR-0023). Skipped rather
+  than hacked; map nodes were already excluded from this item's scope.
+
+### Tests (second sweep)
+
+- `e2e/flywheel-smoke.js` — added pins for item 11: the Compare empty state
+  renders one sentence + the "Why these sessions don't compare yet" disclosure +
+  a real `<button>` CTA, and that the CTA switches to the Session tab and lands
+  on Overview.
+- `e2e/vocab-smoke.js` — added pins for item 17: a discovered row's signature
+  disclosure is auto-open with all 5 signature inputs present; a hand-added row's
+  disclosure starts collapsed with the same inputs reachable.
+- `e2e/session-smoke.js` — added pins for item 19 ("Scope to playhead" hidden on
+  Overview, visible on Flow) and item 20 (no `.tl-act-app` label ever escapes its
+  band; where text is truncated it is via `text-overflow: ellipsis`, not raw
+  overflow — deliberately NOT the usual `scrollWidth > clientWidth` clipping
+  probe, since that comparison is true by design whenever ellipsis legitimately
+  elides a label).
+
 ## [1.3.0] - 2026-06-28
 
 Bundles the arrival-session feature work (**Phase H**) and the real-session

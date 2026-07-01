@@ -114,6 +114,14 @@ $$(".view-mode-btn").forEach((btn) => {
     applyLevel(btn.dataset.level);
   });
 });
+// Item 19: Overview is the default level on boot (State.getLevel() ===
+// "overview" before any session loads) -- set the playhead-button visibility
+// once up front so it isn't visible-by-HTML-default until the first level
+// switch fires applyLevel().
+(() => {
+  const playheadBtn = document.getElementById("btn-scope-to-playhead");
+  if (playheadBtn) playheadBtn.style.display = (State.getLevel() === "overview") ? "none" : "";
+})();
 
 /* ADR-0024: the single grain control. The slider notch (and the synced map
    level select) set the shared view-time grain; Steps / Flow / Map all roll up
@@ -159,7 +167,7 @@ function _applyGrain(notch, opts = {}) {
 const VIEW_MODE_HELP = {
   overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the memo export — the consultant's landing surface.",
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
-  steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Grain slider to roll them up by screen / app / phase / case.",
+  steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Detail slider to roll them up by screen / app / phase / case.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
   map:    "Map view: the Process diagram (BPMN) or Flow diagram for this session, at the chosen detail level (element … case) or by app category.",
   analysis: "Analysis view: where the time goes, waste and automation candidates — estimates; review before relying on them.",
@@ -564,6 +572,13 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
+  // Item 19: "Scope to playhead" jumps the case scope to whichever case
+  // contains the current video playhead -- meaningless on Overview, which has
+  // no visible playhead/timeline. Hide it there; it stays wherever a timeline
+  // (or a timeline-driven view) exists. The Case: select itself stays --
+  // scoping by case is still meaningful on Overview.
+  const playheadBtn = document.getElementById("btn-scope-to-playhead");
+  if (playheadBtn) playheadBtn.style.display = (name === "overview") ? "none" : "";
   const layouts = ["overview", "flow", "steps", "phases", "map", "analysis"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
@@ -928,10 +943,18 @@ if ($("#btn-export-step-csv"))   $("#btn-export-step-csv").addEventListener("cli
 /* ============ Aggregate (Compare Sessions) view =================== */
 
 initAggregateView({
-  onDrillToSession: async (folder, timestamp) => {
+  onDrillToSession: async (folder, timestamp, opts) => {
     activateTab("session");
     await loadSessionIntoView(folder);
     if (timestamp) seekToTimestamp(timestamp);
+    // Item 11: the Compare empty-state CTA jumps to a SPECIFIC session's
+    // Overview (opts.level) -- unlike the map drill-down (always a
+    // timestamp, no explicit level), which keeps whichever level the
+    // Session view was last showing.
+    if (opts && opts.level) {
+      const btn = document.querySelector('.view-mode-btn[data-level="' + opts.level + '"]');
+      if (btn) btn.click(); else applyLevel(opts.level);
+    }
   },
 });
 
@@ -1692,6 +1715,7 @@ function wireDropdownMenu(btnId, popupId) {
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");
 wireDropdownMenu("btn-session-more-menu", "session-more-popup");
 wireDropdownMenu("btn-agg-export-menu", "agg-export-popup");
+wireDropdownMenu("btn-vocab-more-menu", "vocab-more-popup");
 
 async function projectSaveAs() {
   toggleProjectMenu(false);

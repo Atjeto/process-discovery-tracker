@@ -217,8 +217,10 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   worker/session — *who completes a case in how many steps (median active
   time), and where the paths first diverge*. Rendered with the same
   finding-card component as the Overview; claims comparative, never normative;
-  below the precondition an honest replace-pattern note renders instead. The
-  findings export at the top of the Markdown report (all loaded sessions).
+  below the precondition one resident sentence + a collapsed disclosure
+  (mechanics) + a real button that jumps to a loaded session's Overview render
+  instead (no prose pointer). The findings export at the top of the Markdown
+  report (all loaded sessions).
 - **Aligned reading** (lab-phase §D2) — the pooled consensus step backbone
   across every loaded case, with per-worker/session hit counts (`A 4/4 ·
   B 0/3`) and off-backbone exceptions — how the process reads before it is
@@ -260,7 +262,10 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   context the UIA walk captured (role / framework / on-screen region / ancestry +
   an honest weak-signature note), `class_name`-keyed signatures survive the save
   round-trip, and re-discovery merges into the selected vocab — entirely on-device
-  ([ADR-0025](adr/0025-in-app-vocabulary-discovery.md)).
+  ([ADR-0025](adr/0025-in-app-vocabulary-discovery.md)). Each row's raw signature
+  fields collapse behind a "Match signature ▸" disclosure (auto-open on a
+  discovered row); the toolbar's Machine-layer verbs ("Reload list", "Open YAML
+  in editor") live in a "⋯ More" popup alongside the primary actions.
 - **Vocab record semantics + discovery autofill** (lab-phase §C1/§C2) — each
   vocabulary row carries optional semantics (`verb`, `object`, `means`,
   `completion`, `case_id_source`, `carries_value`); discovery **auto-fills** the
