@@ -511,17 +511,28 @@ async function loadSessionIntoView(folder) {
   const video = $("#video");
   const noVid = $("#no-video");
   const overlay = $("#video-overlay");
+  // Item 1: when no recording is linked, collapse the tall black video stage
+  // to a slim one-line band and give the freed space to the timeline + notes.
+  // The `no-recording` class on the workspace drives the CSS collapse; the
+  // slim band keeps a "Link recording…" affordance so the inverse verb
+  // survives. When a recording IS linked, behaviour is unchanged.
+  const workspace = document.getElementById("lower-workspace");
+  const pane = document.getElementById("video-pane");
   if (State.getSession().recordingAvailable && State.getSession().recordingPath) {
     video.src = "file:///" + State.getSession().recordingPath.replace(/\\/g, "/");
     video.style.display = "";
     noVid.style.display = "none";
     overlay.style.display = "";
+    if (workspace) workspace.classList.remove("no-recording");
+    if (pane) pane.classList.remove("no-recording");
   } else {
     video.removeAttribute("src");
     video.load();
     video.style.display = "none";
     noVid.style.display = "";
     overlay.style.display = "none";
+    if (workspace) workspace.classList.add("no-recording");
+    if (pane) pane.classList.add("no-recording");
   }
   // The #video timeupdate/loadedmetadata listeners are wired ONCE at module
   // init (see wireVideoListeners below) -- adding them here ran on every
@@ -708,6 +719,23 @@ async function maybeApplyStepTemplate() {
   });
 })();
 
+/* Item 9: the session chip row (events / status / video / analyzed / vocabs)
+   is STATIC session metadata, not something that changes while the analyst
+   works — so it no longer rides the toolbar as a resident row. renderSessionPills
+   computes it and stashes it here; renderSessionSummary folds it into the
+   collapsed SESSION SUMMARY band (a one-line summary when collapsed, the chip
+   row when expanded). The one genuinely dynamic chip — pending marker edits —
+   is surfaced separately so it stays visible. */
+let _sessionPills = [];
+
+function _sessionPillsHtml(pills) {
+  return pills.map((p) =>
+    '<div class="pill' + (p.cls ? " " + p.cls : "") + '"' +
+    (p.title ? ' title="' + escapeHtml(p.title) + '"' : "") + '><span class="dot"></span>' +
+    '<span class="lbl">' + escapeHtml(p.label) + '</span>' + escapeHtml(String(p.val)) + '</div>'
+  ).join("");
+}
+
 function renderSessionPills() {
   const m = State.getSession().manifest || {};
   const pills = [];
@@ -742,11 +770,14 @@ function renderSessionPills() {
   }
   const editCount = ((State.getSession().annotations || {}).marker_edits || []).length;
   if (editCount > 0) pills.push({ label: "edits", val: editCount, cls: "warn" });
-  $("#session-pills").innerHTML = pills.map((p) =>
-    '<div class="pill' + (p.cls ? " " + p.cls : "") + '"' +
-    (p.title ? ' title="' + escapeHtml(p.title) + '"' : "") + '><span class="dot"></span>' +
-    '<span class="lbl">' + escapeHtml(p.label) + '</span>' + escapeHtml(String(p.val)) + '</div>'
-  ).join("");
+  // Stash for the summary band (item 9). The toolbar chip row is retired:
+  // the static metadata lives in SESSION SUMMARY now. Only the dynamic
+  // "pending edits" chip stays on the toolbar so an in-progress edit is
+  // never hidden behind a collapsed band.
+  _sessionPills = pills;
+  const dynamic = pills.filter((p) => p.label === "edits");
+  const toolbar = $("#session-pills");
+  if (toolbar) toolbar.innerHTML = _sessionPillsHtml(dynamic);
 
   // Show onboarding card until the session is analyzed.
   const onboarding = $("#onboarding-card");
@@ -975,8 +1006,18 @@ function renderSessionSummary() {
   // D4: lead with the project name the operator typed at setup; keep the
   // engagement id alongside it for reference when a name is present.
   const engLabel = s.engagementName || s.engagement;
+  // Item 9: the static session-metadata chips fold into this band. The teaser
+  // carries a compact text summary of them so a collapsed band still states
+  // the metadata; the full chip row shows inside the expanded body.
+  const pillsHtml = _sessionPills.length
+    ? `<div class="summary-section"><div class="summary-section-title">Session</div>` +
+      `<div class="session-pills summary-pills">${_sessionPillsHtml(_sessionPills)}</div></div>`
+    : "";
+  const pillTeaser = _sessionPills
+    .map((p) => `${p.label} ${p.val}`).join(" · ");
   const teaser = `${engLabel} · ${formatDuration(s.durationMs)} · ` +
-    `${s.caseCount} case${s.caseCount === 1 ? "" : "s"}`;
+    `${s.caseCount} case${s.caseCount === 1 ? "" : "s"}` +
+    (pillTeaser ? ` · ${pillTeaser}` : "");
 
   panel.innerHTML =
     '<summary><span class="summary-label">Session summary</span>' +
@@ -989,6 +1030,7 @@ function renderSessionSummary() {
         `<strong>${escapeHtml(s.worker)}</strong> · ` +
         `<strong>${escapeHtml(formatDuration(s.durationMs))}</strong> · ` +
         `analyzed ${escapeHtml(analyzed)}</div>` +
+      pillsHtml +
       `<div class="summary-tiles">${tilesHtml}</div>` +
       activityHtml + casesHtml + driftHtml + integrityHtml + taxonomyHtml + problemsHtml + hint + bannerHtml +
     '</div>';

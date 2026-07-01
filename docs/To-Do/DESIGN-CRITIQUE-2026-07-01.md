@@ -22,18 +22,18 @@ render **zero-information or duplicated content that looks like a result**.
 
 ### P1 — defaults that render noise as if it were signal
 
-- [ ] **1. Collapse the video stage when no recording is linked (Flow view).**
+- [x] **1. Collapse the video stage when no recording is linked (Flow view).**
   ~40% of the viewport is a black "No OBS recording linked" box even though the
   session bar itself says `VIDEO no recording`. When the manifest has no video,
   render a slim band (one line + "Link recording…" affordance) and give the space
   to the timeline + notes panel. *Verify: e2e screenshot of Flow with the demo
   session; guard could pin stage height < timeline height when no video.*
-- [ ] **2. Gate "Waste by screen" like its sibling "Process efficiency" (Analysis).**
+- [x] **2. Gate "Waste by screen" like its sibling "Process efficiency" (Analysis).**
   Before any waste/business-required judgment exists, it renders a wall of
   identical full-width green bars — zero information that *looks like* "all
   value-add", while Process efficiency correctly withholds with a call-to-action.
   Same replace-pattern: until ≥1 step is judged, show the CTA, not default-green.
-- [ ] **3. Floor the €-ROI hero figure (Analysis).** "0.01 h saved per year" renders
+- [x] **3. Floor the €-ROI hero figure (Analysis).** "0.01 h saved per year" renders
   at hero (34px) weight on short sessions. Below a floor (e.g. < 1 h/yr) replace the
   hero with a sentence: "Under an hour a year at observed volume — more recorded
   instances would size this." An analyst pasting the hero into a memo gets laughed
@@ -41,15 +41,15 @@ render **zero-information or duplicated content that looks like a result**.
 
 ### P2 — clutter and duplication on the default path
 
-- [ ] **4. De-duplicate the findings feed (Overview).** The same italic methodology
+- [x] **4. De-duplicate the findings feed (Overview).** The same italic methodology
   sentence repeats verbatim under each finding of the same detector (3× for
   repetition findings on the demo). Show it once per detector group or behind ⓘ.
   Consider folding the mono evidence line + explainer behind the card so the
   resident card is claim + "include in memo" (memo layer), evidence one click in
   (evidence layer).
-- [ ] **5. Render screenshot evidence as a chip/thumbnail, not a raw path.**
+- [x] **5. Render screenshot evidence as a chip/thumbnail, not a raw path.**
   "★ screenshots/shot_04.png" is a Machine-layer string sitting in the memo layer.
-- [ ] **6. Print each automation-candidate chain once (Analysis).** The full
+- [x] **6. Print each automation-candidate chain once (Analysis).** The full
   step-chain name appears twice per candidate row (bold title + gray sub-line) and
   a third time in the ROI table below. Once, with "+N more" expansion.
 - [ ] **7. Give un-vocabed labels an affordance instead of leaking raw tokens.**
@@ -58,10 +58,10 @@ render **zero-information or duplicated content that looks like a result**.
   cure. Extend the existing right-click "Add to App Library…" (Steps view, Phase H
   G-8) to map nodes and Analysis rows, or minimally style unmatched labels with a
   subtle "unnamed control" tooltip pointing at the App Library.
-- [ ] **8. Merge the duplicate case-state chips (Overview).** "✓ 4 cases — marked by
+- [x] **8. Merge the duplicate case-state chips (Overview).** "✓ 4 cases — marked by
   the worker" (badge) and "CASE ANALYSIS ON" (chip) state the same fact in two
   vocabularies. One badge, subtitle carries the second clause.
-- [ ] **9. Demote the resident session chip row.** EVENTS / STATUS / VIDEO /
+- [x] **9. Demote the resident session chip row.** EVENTS / STATUS / VIDEO /
   ANALYZED / VOCABS chips persist on every session surface but are static session
   metadata — the collapsed SESSION SUMMARY band's job. Fold them into it (or show
   only state that can change mid-session).
@@ -107,7 +107,7 @@ render **zero-information or duplicated content that looks like a result**.
 
 ### P4 — the "configurable analytical modules" ask (new, small scope)
 
-- [ ] **21. Per-analyst collapse state for Analysis sections.** The Analysis view is
+- [x] **21. Per-analyst collapse state for Analysis sections.** The Analysis view is
   a fixed stack (Efficiency → Waste → Where-the-time-goes → Candidates → ROI).
   Make each section header a disclosure and persist collapsed state per analyst
   (localStorage, like `pdt.theme`). This delivers "configurable modules" inside

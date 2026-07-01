@@ -349,7 +349,32 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
   background-size: 48px 48px; }
 .nv-icon { font-size: 36px; color: var(--fg-4); }
+.nv-text { color: var(--fg-2); }
+.nv-hint { font-size: 11px; color: var(--fg-3); }
+.nv-link { color: var(--accent); }
 .video-pane video[src] ~ .no-video { display: none; }
+
+/* Item 1: no recording linked — the tall black video stage collapses to a
+   slim one-line band (icon + message + "Link recording…") stacked ABOVE a
+   full-width notes pane, so the freed space goes to the timeline + notes
+   (not a ~40%-tall black box). The video controls header + <video> are
+   hidden (nothing to play); the "Link recording…" affordance survives. */
+.lower-workspace.no-recording { flex-direction: column; min-height: 0; gap: 8px; }
+.lower-workspace.no-recording .resize-h { display: none; }
+.lower-workspace.no-recording .video-pane {
+  flex: 0 0 auto; min-height: 0; min-width: 0;
+  background: var(--bg-2); box-shadow: var(--shadow); background-image: none;
+}
+.lower-workspace.no-recording .annotations-pane { flex: 1 1 auto; min-height: 200px; }
+.video-pane.no-recording .video-controls,
+.video-pane.no-recording .video-overlay,
+.video-pane.no-recording video { display: none; }
+.video-pane.no-recording .no-video {
+  flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; gap: 10px;
+  padding: 10px 14px; justify-content: flex-start; align-items: center;
+  text-align: left; background-image: none; color: var(--fg-3);
+}
+.video-pane.no-recording .nv-icon { font-size: 14px; }
 .video-overlay { position: absolute; bottom: 8px; left: 8px; padding: 4px 10px;
   background: rgba(0, 0, 0, 0.55); border-radius: 4px; font-family: var(--font-mono);
   font-size: 11px; color: rgba(255, 255, 255, 0.82); pointer-events: none; z-index: 2; }
@@ -977,12 +1002,24 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-badge-row { display: flex; align-items: center; gap: 10px; }
 .ov-badge {
-  display: inline-block; padding: 6px 14px; font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 14px; font-size: 13px; font-weight: 600;
   border-radius: var(--radius-sm); border: 1px solid var(--rule);
   background: var(--bg-2); box-shadow: var(--shadow);
 }
 .ov-badge.ok { color: var(--va); border-color: var(--va); }
 .ov-badge.warn { color: var(--warn); border-color: var(--warn); }
+.ov-badge-text { min-width: 0; }
+/* Item 8: the "case analysis on/locked" fact folded in as the badge's
+   subtitle (was a second, duplicating chip). */
+.ov-badge-sub {
+  flex: 0 0 auto; font-size: 10px; font-weight: 600;
+  font-family: var(--font-mono); letter-spacing: 0.4px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--rule); background: var(--bg-3);
+}
+.ov-badge-sub.ok { color: var(--va); border-color: var(--va); }
+.ov-badge-sub.locked { color: var(--fg-3); border-style: dashed; }
 .ov-tier2 {
   font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.4px;
   text-transform: uppercase; padding: 3px 8px; border-radius: var(--radius-sm);
@@ -1044,24 +1081,60 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-tile-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Findings feed. */
-.ov-finding {
-  border-top: 1px solid var(--rule-soft); padding: 10px 2px;
+/* Findings feed. Grouped by detector (rule 3: methodology once per group). */
+.ov-finding-group { margin-top: 12px; }
+.ov-finding-group:first-of-type { margin-top: 0; }
+.ov-finding-group-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 2px;
 }
-.ov-finding:first-of-type { border-top: none; }
-.ov-finding-head { display: flex; align-items: baseline; gap: 8px; }
+.ov-finding-group-title {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.ov-group-count { font-size: 11px; color: var(--fg-3); }
+.ov-finding-method-btn {
+  margin-left: auto; font: inherit; font-size: 11px; color: var(--fg-3);
+  background: none; border: none; cursor: pointer; padding: 0;
+}
+.ov-finding-method-btn:hover { color: var(--fg); text-decoration: underline; }
+.ov-finding-method {
+  flex-basis: 100%; font-size: 11px; color: var(--fg-3); font-style: italic;
+  line-height: 1.45; margin-top: 4px;
+}
+.ov-finding {
+  border-top: 1px solid var(--rule-soft); padding: 8px 2px;
+}
+.ov-finding-group .ov-finding:first-of-type { border-top: none; }
+.ov-finding-head { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
 .ov-finding-tier {
   flex: 0 0 auto; font-size: 10px; font-family: var(--font-mono);
   padding: 1px 6px; border-radius: var(--radius-sm);
   border: 1px solid var(--rule); color: var(--fg-3);
 }
 .ov-finding-tier.t2 { color: var(--accent-2); border-color: var(--accent-2); }
-.ov-finding-claim { font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.45; }
+.ov-finding-claim { flex: 1; font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.45; }
+.ov-finding-expand {
+  flex: 0 0 auto; font: inherit; font-size: 12px; color: var(--fg-3);
+  background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1;
+}
+.ov-finding-expand:hover { color: var(--accent); }
+.ov-finding-memo { margin: 4px 0 0 30px; }
+.ov-finding-body { margin-top: 2px; }
 .ov-finding-evidence {
   font-size: 11px; color: var(--fg-2); font-family: var(--font-mono);
   margin: 4px 0 0 30px;
 }
 .ov-finding-refs { font-size: 11px; color: var(--fg-2); margin: 3px 0 0 30px; }
+/* Item 5: screenshot evidence as a chip that opens the image (never a raw path). */
+.ov-finding-shot {
+  display: inline-flex; align-items: center; gap: 4px;
+  font: inherit; font-size: 11px; color: var(--fg-2); cursor: pointer;
+  background: var(--bg-3); border: 1px solid var(--rule);
+  border-radius: var(--radius-sm); padding: 2px 8px;
+}
+.ov-finding-shot:hover { border-color: var(--accent); color: var(--fg); }
+.ov-shot-star { color: var(--warn); }
 .ov-finding-note { font-size: 11px; color: var(--fg-3); font-style: italic; margin: 3px 0 0 30px; line-height: 1.45; }
 .ov-finding-actions {
   display: flex; align-items: center; gap: 14px; margin: 6px 0 0 30px;
@@ -1107,6 +1180,31 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px;
 }
+/* Item 21: the collapsible Analysis module. A uniform header (title +
+   one-line takeaway + chevron); the takeaway renders even when collapsed
+   (the module's memo altitude). Collapse persists per analyst. */
+details.analysis-module { padding: 0; }
+.analysis-module-head {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  cursor: pointer; padding: 12px 14px; list-style: none; user-select: none;
+}
+.analysis-module-head::-webkit-details-marker { display: none; }
+.analysis-module-head:hover { background: var(--bg-3); }
+.analysis-module[open] .analysis-module-head { border-bottom: 1px solid var(--rule-soft); }
+.analysis-module-title {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.analysis-module-takeaway { font-size: 12px; color: var(--fg-2); flex: 1; min-width: 0; }
+.analysis-module-takeaway[data-gated] { color: var(--warn); }
+.analysis-module-chevron {
+  flex: 0 0 auto; color: var(--fg-3); font-size: 12px; line-height: 1;
+  transition: transform var(--transition);
+}
+.analysis-module-chevron::before { content: "▸"; }
+.analysis-module[open] .analysis-module-chevron::before { content: "▾"; }
+.analysis-module-body { padding: 12px 14px; }
+.analysis-module[open] .analysis-module-body { padding-top: 12px; }
 .efficiency-row { display: flex; align-items: baseline; gap: 14px; }
 .efficiency-big {
   font-size: 34px; font-weight: 700; color: var(--accent);
@@ -1142,6 +1240,13 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background: var(--bg-4); border-radius: 2px; overflow: hidden;
 }
 .waste-seg { height: 100%; }
+/* Item 2: the unjudged placeholder — a neutral measured-time chip, not a
+   green (value-add) bar, so nothing reads as a measured "all value-add". */
+.waste-bar-unjudged {
+  height: auto; background: none; overflow: visible;
+  font-size: 11px; color: var(--fg-3); font-family: var(--font-mono);
+  display: flex; align-items: center;
+}
 .waste-tags { flex: 0 0 auto; display: flex; gap: 4px; }
 .waste-tag {
   font-size: 10px; color: var(--fg-2); background: var(--bg-3);
@@ -1296,6 +1401,12 @@ button.waste-tag-btn:hover {
   font-family: var(--font-mono); line-height: 1.2;
 }
 .roi-total-label { font-size: 11px; color: var(--fg-3); margin-top: 2px; }
+/* Item 3: below the hero floor the number is carried by a sentence, not the
+   20px stat figure (presentation weight matches the evidence). */
+.roi-total-floor { flex: 1 1 100%; }
+.roi-floor-note {
+  font-size: 12px; color: var(--fg-2); line-height: 1.5; max-width: 640px;
+}
 .roi-table td.roi-expected, .roi-table th.roi-expected {
   background: var(--accent-muted);
 }
@@ -2070,6 +2181,8 @@ button.waste-tag-btn:hover {
 .summary-tile .t-value { color: var(--fg); font-size: 20px; font-weight: 700;
   font-family: var(--font-mono); line-height: 1.2; }
 .summary-tile .t-sub { display: block; color: var(--fg-3); font-size: 11px; }
+/* Item 9: the demoted session chip row, now inside the summary band. */
+.summary-pills { margin-top: 2px; }
 .summary-section { margin-top: 14px; }
 .summary-section-title {
   color: var(--fg-3); font-size: 10px; font-weight: 600; text-transform: uppercase;

@@ -153,20 +153,27 @@ async function shot(page, name) {
     !!(def && !def.err && def.overviewVisible && def.flowHidden && def.btnActive && def.btnFirst),
     JSON.stringify(def));
 
-  // (b) Case-quality badge: markers state on the 4-case demo.
+  // (b) Case-quality badge: markers state on the 4-case demo. Item 8 merged
+  // the duplicate "case analysis on" chip INTO the badge as its subtitle
+  // (.ov-badge-sub), so the "one fact, one place" merge is pinned here — the
+  // separate .ov-tier2 chip must be gone.
   const badge = await page.evaluate(() => {
     const b = document.querySelector("#overview-content .ov-badge");
-    const t2 = document.querySelector("#overview-content .ov-tier2");
+    const main = b && b.querySelector(".ov-badge-text");
+    const sub = b && b.querySelector(".ov-badge-sub");
     return {
-      text: b ? (b.textContent || "").trim() : null,
+      text: main ? (main.textContent || "").trim() : (b ? (b.textContent || "").trim() : null),
       ok: !!(b && b.classList.contains("ok")),
-      tier2: t2 ? (t2.textContent || "").trim() : null,
+      sub: sub ? (sub.textContent || "").trim() : null,
+      legacyTier2: document.querySelectorAll("#overview-content .ov-tier2").length,
     };
   }).catch((e) => ({ err: e.message }));
   const badgeOk = !!(badge && !badge.err && badge.ok &&
     /✓ \d+ cases? — marked by the worker/.test(badge.text || "") &&
-    /case analysis on/i.test(badge.tier2 || ""));
-  record("(b) badge shows the worker-marked state + case analysis on", badgeOk, JSON.stringify(badge));
+    /case analysis on/i.test(badge.sub || "") &&
+    badge.legacyTier2 === 0);
+  record("(b) badge shows the worker-marked state + case analysis on as its subtitle (item 8 merge)",
+    badgeOk, JSON.stringify(badge));
 
   // (c) Fact strip: 6 tiles, every value non-empty, no clipped labels.
   const tiles = await page.evaluate(() => {
@@ -204,6 +211,58 @@ async function shot(page, name) {
   record("findings feed renders with memo checkboxes",
     !!(feed && !feed.err && feed.findings > 0 && feed.memoChecks === feed.findings),
     JSON.stringify(feed));
+
+  // Item 4a (ADD pin d): the "how this was measured" methodology sentence
+  // renders AT MOST ONCE per detector group. The demo has 3 `repetition`
+  // findings that used to repeat the same sentence 3×; now each detector
+  // group carries a single ⓘ methodology disclosure.
+  const method = await page.evaluate(() => {
+    const groups = [...document.querySelectorAll("#overview-content .ov-finding-group")];
+    const perGroup = groups.map((g) => ({
+      det: g.dataset.detector,
+      cards: g.querySelectorAll(".ov-finding").length,
+      methodEls: g.querySelectorAll(".ov-finding-method").length,
+    }));
+    return {
+      groups: groups.length,
+      // per-card methodology notes must NOT exist (moved to the group ⓘ)
+      perCardNotes: document.querySelectorAll("#overview-content .ov-finding .ov-finding-note").length,
+      // no detector group renders its methodology sentence more than once
+      maxMethodPerGroup: perGroup.reduce((m, g) => Math.max(m, g.methodEls), 0),
+      // the multi-finding repetition group exists and has one methodology
+      repetition: perGroup.find((g) => g.det === "repetition") || null,
+    };
+  }).catch((e) => ({ err: e.message }));
+  const methodOk = !!(method && !method.err && method.groups > 0 &&
+    method.maxMethodPerGroup <= 1 && method.perCardNotes === 0 &&
+    method.repetition && method.repetition.cards >= 2);
+  record("(d) methodology sentence renders at most once per detector group",
+    methodOk, JSON.stringify(method));
+
+  // Item 4b + 5: a finding card is resident claim + expand chevron; the
+  // evidence body (with the screenshot chip, not a raw path) is one click in.
+  // The screen_time_sink finding carries a screenshot ref → a chip, not text.
+  const cardStruct = await page.evaluate(() => {
+    const shotChips = document.querySelectorAll('#overview-content [data-act="shot"]');
+    const rawPathLeak = /screenshots\/shot_\d+\.png/.test(
+      (document.querySelector("#overview-content") || {}).textContent || "");
+    // Expand the first card that has a body, confirm the body reveals inline.
+    const card = [...document.querySelectorAll("#overview-content .ov-finding")]
+      .find((c) => c.querySelector(".ov-finding-body"));
+    let expandedOk = null;
+    if (card) {
+      const body = card.querySelector(".ov-finding-body");
+      const before = body.hidden;
+      const btn = card.querySelector('[data-act="expand"]');
+      if (btn) btn.click();
+      expandedOk = before === true && body.hidden === false;
+    }
+    return { shotChips: shotChips.length, rawPathLeak, expandedOk };
+  }).catch((e) => ({ err: e.message }));
+  record("(4b/5) findings are resident claim + expand-in-place evidence; screenshot is a chip",
+    !!(cardStruct && !cardStruct.err && cardStruct.shotChips >= 1 &&
+      cardStruct.rawPathLeak === false && cardStruct.expandedOk === true),
+    JSON.stringify(cardStruct));
 
   // §C4: the data posture is displayed on the Overview header line
   // (default reviewable), the Copy-for-LLM button exists under it, and

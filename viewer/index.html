@@ -277,9 +277,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </div>
               <video id="video" controls preload="metadata"></video>
               <div class="no-video" id="no-video">
-                <div class="nv-icon">▶</div>
-                <div>No OBS recording linked.</div>
-                <div class="hint">Capture without OBS still produces a full timeline -- click bands to focus.</div>
+                <span class="nv-icon">▶</span>
+                <span class="nv-text">No recording linked</span>
+                <span class="nv-hint">The timeline below is complete without one.</span>
+                <button type="button" id="btn-link-recording" class="link-btn nv-link" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Link recording…</button>
               </div>
               <div class="video-overlay" id="video-overlay"></div>
             </div>

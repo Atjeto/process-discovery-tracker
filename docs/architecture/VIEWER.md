@@ -98,7 +98,7 @@ former `window.Pdt*` globals were converted; the globals are gone):
 | `step-alignment.js` | `alignCases`, `alignSteps`, `groupForStep`, `representativeCuration`, … | Intra-session repetition alignment ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md)). `alignCases` builds the consensus **backbone** across detected cases (Needleman–Wunsch over value-free `process_label` tokens) with per-position frequency + exceptions — behind the Steps view's Aligned reading; `alignSteps`/`groupForStep` are the older signature-based repeat grouping (per-row badges + "Apply to N repeats"). Pure, fuzz-tested |
 | `analysis-aggregate.js` | `aggregateAnalysis` | Pure cross-session rollup of per-session `analysis.json` (time study / per-worker / automation / efficiency) for the Compare-Sessions Analysis panel |
 | `variant-divergence.js` | `detectVariantDivergence`, `sameProcessGroups`, `pooledAlignment` | The §D1 **`variant_divergence` detector** (Tier 2, ≥ 2 sessions): groups loaded sessions into same-process groups (template id ∪ accepted-anchor identity), aligns the pooled per-case token sequences on the `step-alignment.js` backbone, and emits comparative findings (median steps / median active per worker-or-session unit, first divergence position, off-backbone extras) into the in-memory aggregate `findings[]` — same shape as `analysis.findings[]`. Pure, unit-tested |
-| `finding-cards.js` | `findingCardHtml`, `evidenceNumbers` | The shared **finding-card component** (§D2) — one card = claim + tier chip + evidence numbers (+ optional Show-on-timeline / include-in-memo actions, opt-in per caller), extracted from the Overview so the Overview feed and the Compare divergence feed render identically. Pure string builders |
+| `finding-cards.js` | `findingCardHtml`, `evidenceNumbers` | The shared **finding-card component** (§D2, re-altituded by the disclosure pass — DISCLOSURE-MODEL rule 1) — resident = tier chip + claim sentence + include-in-memo checkbox + an expand chevron; the evidence numbers, the screenshot **chip** (opens the image via the security-hardened `openScreenshot`, never a raw path), Show-on-timeline and the per-card methodology note collapse into an **expand-in-place** body. `opts.omitMethodology` drops the per-card note when the caller renders it once per detector group; `opts.screenshots:false` omits the chip. Same component on the Overview feed + the Compare divergence feed. Pure string builders |
 | `flags.js` | `flagEnabled`, `setFlag` | Viewer feature flags (config switches, **default off**; localStorage `pdt.flag.*` like `pdt.theme`) — §D3 re-enables a cargo-cut heuristic deliberately (currently: `autoPhaseSuggest`). Headless-safe |
 | `session-summary.js` | `summarize`, `detectDurationOutliers` | Pure per-session summary + duration-outlier detection |
 | `theme.js` | `stepPalette`, `dfgStyleTokens`, … | Light/dark theme tokens + chart/DFG colour palettes |
@@ -225,6 +225,32 @@ restores the outgoing and incoming levels' viewport (zoom + scroll fraction) via
 `_viewportSnapshotForMode` / `_viewportApplyToMode`. The `MODE_VIEWPORT` table and
 `LEVEL_RENDERERS` map in `renderer.js` replace what used to be a hand-written
 3-way `if (currentLevel === …)` block repeated across the renderer.
+
+**Disclosure pass (2026-07-01, [DISCLOSURE-MODEL.md](DISCLOSURE-MODEL.md)).** Three
+levels tightened so a default surface never renders zero-information or duplicated
+content as if it were a measured result:
+
+- **Overview.** The case-quality badge carries the "case analysis on/locked" clause
+  as its **subtitle** (`.ov-badge-sub`), not a second chip. The findings feed groups
+  by detector: one methodology sentence per group behind an ⓘ (`.ov-finding-method`),
+  and each card is resident claim + include-in-memo with the evidence one click
+  behind an expand chevron (`_wireFindings` in `overview-view.js`).
+- **Flow.** When the session has no linked recording, `loadSessionIntoView` adds
+  `no-recording` to `#lower-workspace` / `#video-pane`; CSS collapses the video stage
+  to a slim one-line band (keeping a `#btn-link-recording` "Link recording…"
+  affordance) and gives the freed height to the timeline + notes.
+- **Analysis.** Each section renders inside a **collapsible module** (`_moduleShell`
+  in `analysis-view.js`) with a uniform header — title + one-line takeaway + chevron;
+  collapse state persists per analyst in `localStorage` (`pdt.analysis.*`). A tier gate
+  always wins: the "Process efficiency" and "Waste by step/screen" modules withhold
+  their figure/bars behind a call-to-action until a step's business-required time is
+  judged, and that CTA renders even when the module is expanded. The €-ROI hero is
+  floored — below 1 h/yr expected saving a sentence carries the number.
+
+The static session chips (EVENTS / STATUS / VIDEO / ANALYZED / VOCABS) no longer ride
+the toolbar; `renderSessionPills` stashes them and `renderSessionSummary` folds them
+into the collapsed **Session summary** band (`flow-view.js`) — only the dynamic
+pending-edits chip stays on the toolbar row.
 
 ## 6. State model
 

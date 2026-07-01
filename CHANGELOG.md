@@ -4,6 +4,63 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed — disclosure pass (design critique 2026-07-01)
+
+Polish where default viewer surfaces rendered zero-information or duplicated
+content that read as a measured result. All changes stay inside the Honesty
+Redesign (Memo / Evidence / Machine + tier gates) and follow the presentation
+ruleset in [docs/architecture/DISCLOSURE-MODEL.md](docs/architecture/DISCLOSURE-MODEL.md).
+Item numbers are from [docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md](docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md).
+
+- **Flow view — collapse the video stage when no recording is linked (item 1).**
+  The tall black "No recording linked" box becomes a slim one-line band (keeping
+  a "Link recording…" affordance) and the freed space goes to the timeline +
+  notes. Unchanged when a recording is linked.
+- **Analysis — gate "Waste by screen/step" like Process efficiency (item 2).**
+  Until at least one step type has a business-required judgment, the value/waste
+  bars are withheld behind a call-to-action instead of a wall of all-green bars
+  that read as a measured "all value-add"; each row shows a neutral measured-time
+  chip. Bars render as before once any judgment exists.
+- **Analysis — floor the €-ROI hero (item 3).** Below 1 h/yr expected saving, the
+  hero figure is replaced by a plain sentence ("Under an hour a year at observed
+  volume — more recorded instances would size this"); the per-candidate table
+  stays.
+- **Overview — de-duplicate and re-altitude the findings feed (items 4, 5).** The
+  "how this was measured" methodology sentence renders once per detector group
+  (behind an ⓘ) instead of under every card; each finding card is now resident
+  claim + tier chip + "include in memo", with the evidence numbers, screenshot
+  chip and "Show on timeline" one click behind an expand-in-place chevron. The
+  screenshot reference renders as a "★ screenshot" chip that opens the image
+  (reusing the security-hardened open path), not a raw path string.
+- **Analysis — print each automation-candidate chain once (item 6).** The step
+  chain is shown once (with "+N more" truncation); the row title is a short app +
+  size descriptor, and the ROI table uses a shortened first→last form with the
+  full chain on hover.
+- **Overview — merge the duplicate case-state chips (item 8).** "Case analysis
+  on/locked" folds into the case-quality badge as its subtitle instead of a second
+  chip stating the same fact.
+- **Session view — demote the resident session chip row (item 9).** The static
+  EVENTS / STATUS / VIDEO / ANALYZED / VOCABS chips fold into the collapsed Session
+  summary band (chip row when expanded, summary-line text when collapsed), freeing
+  the toolbar row; the dynamic pending-edits chip stays visible.
+- **Analysis — collapsible modules with per-analyst persistence (item 21).** Every
+  Analysis section wears a uniform header (title + one-line takeaway + chevron);
+  the takeaway renders even when collapsed. Collapse state persists per analyst in
+  `localStorage` (`pdt.analysis.*`, same pattern as `pdt.theme`). A tier gate
+  always wins — a gated module keeps its call-to-action even when expanded.
+
+### Tests
+
+- `e2e/session-smoke.js` — added pins for the collapsed no-recording video band,
+  the withheld Waste bars behind a CTA, the €-ROI floor sentence, and Analysis
+  module collapse persistence across a re-render; updated the €-ROI total read to
+  accept the floor sentence.
+- `e2e/overview-smoke.js` — updated the badge pin for the item-8 merge (subtitle,
+  no separate chip) and added pins for methodology-once-per-detector-group and the
+  finding-card expand-in-place + screenshot chip.
+
 ## [1.3.0] - 2026-06-28
 
 Bundles the arrival-session feature work (**Phase H**) and the real-session

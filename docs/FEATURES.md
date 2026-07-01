@@ -137,8 +137,16 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 
 ### Session view
 
+- **Overview landing** — the default level: a case-quality badge (with the
+  "case analysis on/locked" clause folded in as its subtitle), six measured fact
+  tiles, a findings feed grouped by detector (one "how this was measured" note per
+  group), and the memo export. Each finding card is a resident claim + tier chip +
+  include-in-memo, with its evidence numbers, a screenshot **chip**, and a
+  Show-on-timeline link one click behind an expand chevron.
 - **Video-synced timeline** — a Flow timeline of activity bands, idle, markers, a
   labelled case header lane, and a screenshot rail; clicking seeks the OBS video.
+  When no recording is linked the video stage collapses to a slim one-line band
+  (with a "Link recording…" affordance), giving the space to the timeline + notes.
 - **Optional timeline lanes** — density histogram, window-title runs, per-step
   bands, note dots — toggled via a Lanes menu.
 - **Minimap, range selection, playhead** — whole-session orientation, Shift-drag
@@ -177,13 +185,20 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
   ([ADR-0019](adr/0019-reference-maps.md)).
 - **Run normalization in-app** — spawn the bundled Python pipeline with progress
   streaming and a cancel control.
-- **Analysis findings** — a per-session Analysis level surfaces the heuristic
+- **Analysis findings** — a per-session Analysis level surfaces the estimated
   waste / time-study / automation / efficiency findings for review and correction
-  (ADR-0008).
+  (ADR-0008). Each section renders inside a **collapsible module** (title +
+  one-line takeaway + chevron) whose collapse state persists per analyst; the
+  takeaway shows even when collapsed. Tier gates always win — the efficiency figure
+  and the value/waste bars stay behind a call-to-action until a step's
+  business-required time is judged, so a default surface never shows a
+  measured-looking "all value-add" result.
 - **Return on automation (€-ROI)** — the Analysis level shows each automation
   candidate's conservative / expected / optimistic savings band (hours/yr, or €
   net/yr once a labour rate is set) with an **Edit assumptions…** form and per-row
-  tuning; the headline total is provably grain-invariant (§11c).
+  tuning; the headline total is provably grain-invariant (§11c). Below a floor
+  (< 1 h/yr) the hero figure is replaced by a plain sentence so a near-zero saving
+  is not dressed up as a hero stat.
 - **Findings report (HTML)** — a one-click self-contained HTML report (process
   summary, the process map inline, the steps table, the waste/automation/efficiency
   findings, notes, and starred screenshots, plus an editable recommendations block)

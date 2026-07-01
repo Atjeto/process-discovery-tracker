@@ -1511,6 +1511,11 @@ async function attachExternalVideo() {
 if ($("#btn-attach-video")) {
   $("#btn-attach-video").addEventListener("click", attachExternalVideo);
 }
+// Item 1: the "Link recording…" affordance on the slim no-recording band is
+// the same verb as "Attach video…" — keep the inverse verb reachable there.
+if ($("#btn-link-recording")) {
+  $("#btn-link-recording").addEventListener("click", attachExternalVideo);
+}
 
 /* ============ Project / engagement wiring (P2.1) ==================
    A project bundles aggregate sessions, the current focus session, the

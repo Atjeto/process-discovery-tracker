@@ -192,13 +192,20 @@ const OVERLAP_PROBE = () => {
   record("grain slider (#grain-slider) present", grainSliderExists,
     grainSliderExists ? "" : "no #grain-slider in the view-mode bar");
 
-  // Read the €-ROI expected total on the Analysis level (for the invariance check).
+  // Read the €-ROI expected total on the Analysis level (for the invariance
+  // check). Item 3 floors the hero: below 1 h/yr the big figure is replaced by
+  // a sentence (.roi-floor-note), so read whichever carries the number. The ROI
+  // module is now collapsible (item 21) — open it first so its body renders.
   async function roiTotalText() {
     const ab = await page.$('.view-mode-btn[data-level="analysis"]');
     if (ab) { await ab.click().catch(() => {}); await wait(900); }
     return page.evaluate(() => {
-      const el = document.querySelector("#analysis-content .roi-total-big");
-      return el ? (el.textContent || "").trim() : null;
+      const mod = document.querySelector('#analysis-content .analysis-module[data-module="roi"]');
+      if (mod && !mod.open) { mod.open = true; }
+      const big = document.querySelector("#analysis-content .roi-total-big");
+      if (big) return (big.textContent || "").trim();
+      const floor = document.querySelector("#analysis-content .roi-floor-note");
+      return floor ? (floor.textContent || "").trim() : null;
     }).catch(() => null);
   }
   const roiAtScreen = await roiTotalText();   // default notch = screen
@@ -281,6 +288,111 @@ const OVERLAP_PROBE = () => {
       " autoRankCells=" + roiProbe.autoRank);
     if (!ok) await shot(page, "fail-roi-panel.png");
   }
+
+  // --- Disclosure pass (2026-07-01) pins -------------------------------------
+  // Item 2: until a step is judged, the Waste module withholds the value/waste
+  // BARS behind its call-to-action (a wall of all-green would read as a measured
+  // "all value-add"). The demo has no bnva overrides, so the CTA must show and
+  // no colored .waste-seg bar may render inside the Waste module.
+  const wasteGate = await page.evaluate(() => {
+    const mod = document.querySelector('#analysis-content .analysis-module[data-module="waste"]');
+    if (!mod) return { present: false };
+    if (!mod.open) mod.open = true;
+    const body = mod.querySelector(".analysis-module-body");
+    return {
+      present: true,
+      hasCta: /Not shown yet/.test((body && body.textContent) || ""),
+      coloredBars: mod.querySelectorAll(".waste-seg").length,
+      unjudgedChips: mod.querySelectorAll(".waste-bar-unjudged").length,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("(disclosure 2) Waste module withholds bars behind a CTA until a step is judged",
+    !!(wasteGate && !wasteGate.err && wasteGate.present &&
+      wasteGate.hasCta && wasteGate.coloredBars === 0 && wasteGate.unjudgedChips > 0),
+    JSON.stringify(wasteGate));
+  if (!(wasteGate && wasteGate.hasCta)) await shot(page, "fail-waste-gate.png");
+
+  // Item 3: the €-ROI hero is floored — the demo saves ~0.01 h/yr, so the big
+  // figure is replaced by a plain sentence (never a 20px "0.01 h" hero). The
+  // per-candidate table still renders below.
+  if (FRESH) {
+    const roiFloor = await page.evaluate(() => {
+      const mod = document.querySelector('#analysis-content .analysis-module[data-module="roi"]');
+      if (mod && !mod.open) mod.open = true;
+      const floor = document.querySelector("#analysis-content .roi-floor-note");
+      return {
+        floorNote: !!floor && /Under an hour a year/.test(floor.textContent || ""),
+        heroBig: document.querySelectorAll("#analysis-content .roi-total-big").length,
+        table: !!document.querySelector("#analysis-content .roi-table"),
+      };
+    }).catch((e) => ({ err: e.message }));
+    // needs_input demo → no money heroes either, so heroBig must be 0 and the
+    // floor sentence carries the number; the table stays.
+    record("(disclosure 3) €-ROI hero floored to a sentence below 1 h/yr; table stays",
+      !!(roiFloor && !roiFloor.err && roiFloor.floorNote && roiFloor.heroBig === 0 && roiFloor.table),
+      JSON.stringify(roiFloor));
+    if (!(roiFloor && roiFloor.floorNote)) await shot(page, "fail-roi-floor.png");
+  } else {
+    record("(disclosure 3) €-ROI hero floored (skipped — session not re-normalized)", true, "");
+  }
+
+  // Item 21: Analysis module collapse persists per analyst (localStorage,
+  // pdt.* keys). Two halves: (i) collapsing a module WRITES the key; (ii) the
+  // stored key survives a re-render (the "set localStorage, reload, assert"
+  // spec). Use the "time" module.
+  // (i) collapse via the native summary → the toggle listener persists "0".
+  const wroteKey = await page.evaluate(async () => {
+    const mod = document.querySelector('#analysis-content .analysis-module[data-module="time"]');
+    if (!mod) return { present: false };
+    if (mod.open) mod.querySelector("summary").click();   // collapse
+    await new Promise((r) => setTimeout(r, 50));           // let the toggle event fire
+    let stored = null;
+    try { stored = localStorage.getItem("pdt.analysis.time"); } catch (_) {}
+    return { present: true, stored };
+  }).catch((e) => ({ err: e.message }));
+  // (ii) re-render the level; the module must come back collapsed from storage.
+  const persisted = await page.evaluate(() => {
+    require("./views/analysis-view.js").renderAnalysisLevel();
+    const after = document.querySelector('#analysis-content .analysis-module[data-module="time"]');
+    return after ? after.open : null;
+  }).catch((e) => ({ err: e.message }));
+  record("(disclosure 21) Analysis module collapse persists across a re-render",
+    !!(wroteKey && !wroteKey.err && wroteKey.present && wroteKey.stored === "0" &&
+      persisted === false),
+    JSON.stringify({ wroteKey, reopenedOpen: persisted }));
+  // Restore the default (expanded) so the persisted key doesn't leak to a human run.
+  await page.evaluate(() => {
+    try { localStorage.removeItem("pdt.analysis.time"); } catch (_) {}
+    require("./views/analysis-view.js").renderAnalysisLevel();
+  }).catch(() => {});
+
+  // Item 1: no recording linked → the tall black video stage collapses to a
+  // slim band, and the freed height goes to the timeline + notes. On the Flow
+  // level the video pane must carry the `no-recording` class and be much
+  // shorter than the annotations/notes pane beside it.
+  const flowBtn2 = await page.$('.view-mode-btn[data-level="flow"]');
+  if (flowBtn2) { await flowBtn2.click().catch(() => {}); await wait(900); }
+  const videoBand = await page.evaluate(() => {
+    const pane = document.getElementById("video-pane");
+    const notes = document.querySelector("#session-layout-flow .annotations-pane");
+    if (!pane || !notes) return { present: false };
+    const pr = pane.getBoundingClientRect();
+    const nr = notes.getBoundingClientRect();
+    return {
+      present: true,
+      collapsedClass: pane.classList.contains("no-recording"),
+      videoHidden: getComputedStyle(document.getElementById("video")).display === "none",
+      linkAffordance: !!document.getElementById("btn-link-recording"),
+      paneH: Math.round(pr.height),
+      notesH: Math.round(nr.height),
+    };
+  }).catch((e) => ({ err: e.message }));
+  const videoBandOk = !!(videoBand && !videoBand.err && videoBand.present &&
+    videoBand.collapsedClass && videoBand.videoHidden && videoBand.linkAffordance &&
+    videoBand.paneH < videoBand.notesH);
+  record("(disclosure 1) no-recording video stage collapses to a slim band (notes gets the space)",
+    videoBandOk, JSON.stringify(videoBand));
+  if (!videoBandOk) await shot(page, "fail-video-collapse.png");
 
   // --- Map-overlay regression pin ---
   // On the Map level, the process-map host must NOT vertically overlap the

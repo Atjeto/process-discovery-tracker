@@ -69,12 +69,23 @@ function _badge(cq) {
       "takes, the paths taken, and case-by-case comparison stay locked until " +
       "the worker records markers or you confirm the field that identifies each case";
   }
-  const tier2 = cq.tier2_unlocked
-    ? '<span class="ov-tier2 ok" title="At least 2 cases are identified and cover at least 70% of the recording, so the case-by-case numbers are shown">Case analysis on</span>'
-    : '<span class="ov-tier2 locked" title="The case-by-case numbers are hidden — they need at least 2 confirmed cases (worker markers, or a confirmed identifying field) covering at least 70% of the recording">Case analysis locked</span>';
+  // Item 8: the case-state and the "case analysis on/locked" fact are the
+  // SAME fact in two vocabularies — merge them. The tier-2 clause becomes the
+  // badge's subtitle rather than a second, duplicating chip. The three badge
+  // states (markers / anchor / unsegmented) are preserved.
+  const subCls = cq.tier2_unlocked ? "ok" : "locked";
+  const subText = cq.tier2_unlocked
+    ? "Case analysis on"
+    : "Case analysis locked";
+  const subTitle = cq.tier2_unlocked
+    ? "At least 2 cases are identified and cover at least 70% of the recording, so the case-by-case numbers are shown"
+    : "The case-by-case numbers are hidden — they need at least 2 confirmed cases (worker markers, or a confirmed identifying field) covering at least 70% of the recording";
   return '<div class="ov-badge-row">' +
     '<span class="ov-badge ' + cls + '" title="' + escapeAttr(title) + '">' +
-    escapeHtml(text) + "</span>" + tier2 + _postureControl() + "</div>";
+    '<span class="ov-badge-text">' + escapeHtml(text) + "</span>" +
+    '<span class="ov-badge-sub ' + subCls + '" title="' + escapeAttr(subTitle) + '">' +
+    escapeHtml(subText) + "</span>" +
+    "</span>" + _postureControl() + "</div>";
 }
 
 /* §C4: the engagement data posture, displayed (and settable) on the
@@ -218,6 +229,21 @@ function _timelineTarget(f) {
   return null;
 }
 
+/* A plain-English name for a detector group's heading. Falls back to the
+   raw detector key (title-cased) so a new detector still groups sensibly. */
+const _DETECTOR_LABEL = {
+  screen_time_sink: "Time sinks",
+  fragmentation: "Fragmented attention",
+  repetition: "Repeated sequences",
+  rekey_transfer: "Re-typed values",
+  coverage_caveat: "Recording coverage",
+};
+function _detectorHeading(det) {
+  if (_DETECTOR_LABEL[det]) return _DETECTOR_LABEL[det];
+  return String(det || "Findings").replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function _findingsFeed(findings, memoSelection) {
   if (!findings.length) {
     return '<div class="ov-section"><div class="ov-section-title">Findings</div>' +
@@ -226,12 +252,41 @@ function _findingsFeed(findings, memoSelection) {
   }
   // §D2: the card itself is the shared finding-card component, so the
   // Overview feed and the Compare divergence feed render identically.
-  const rows = findings.map((f) => findingCardHtml(f, {
-    timelineTarget: _timelineTarget,
-    memoSelection: new Set(memoSelection || []),
-  })).join("");
+  // DISCLOSURE-MODEL rule 3: the "how this was measured" sentence renders
+  // ONCE per detector group (behind an ⓘ), not repeated under every card.
+  // Group findings by detector, preserving first-seen order.
+  const order = [];
+  const byDet = new Map();
+  for (const f of findings) {
+    const det = f.detector || "other";
+    if (!byDet.has(det)) { byDet.set(det, []); order.push(det); }
+    byDet.get(det).push(f);
+  }
+  const sel = new Set(memoSelection || []);
+  const groups = order.map((det) => {
+    const list = byDet.get(det);
+    const method = list.map((f) => f.confidence_note).find((n) => n) || "";
+    // The methodology note is the group's shared ⓘ; the per-card copy is
+    // omitted (opts.omitMethodology) so it appears at most once per group.
+    const cards = list.map((f) => findingCardHtml(f, {
+      timelineTarget: _timelineTarget,
+      memoSelection: sel,
+      omitMethodology: true,
+    })).join("");
+    const info = method
+      ? '<button type="button" class="ov-finding-method-btn" data-act="method" ' +
+        'aria-expanded="false" title="How this was measured">ⓘ how this was measured</button>' +
+        '<div class="ov-finding-method" hidden>' + escapeHtml(method) + "</div>"
+      : "";
+    return '<div class="ov-finding-group" data-detector="' + escapeAttr(det) + '">' +
+      '<div class="ov-finding-group-head">' +
+        '<span class="ov-finding-group-title">' + escapeHtml(_detectorHeading(det)) + "</span>" +
+        (list.length > 1 ? '<span class="ov-group-count">' + list.length + " findings</span>" : "") +
+        info +
+      "</div>" + cards + "</div>";
+  }).join("");
   return '<div class="ov-section"><div class="ov-section-title">Findings — ' +
-    "measured from the recording; review before sharing</div>" + rows + "</div>";
+    "measured from the recording; review before sharing</div>" + groups + "</div>";
 }
 
 async function _toggleMemoSelection(fid, on) {
@@ -257,6 +312,27 @@ function _wireFindings(host) {
   host.querySelectorAll(".ov-finding").forEach((row) => {
     const f = findings.find((x) => x.id === row.dataset.fid);
     if (!f) return;
+    // Expand-in-place: the chevron (or a click on the head, away from the
+    // controls) toggles the evidence body inline — no navigation.
+    const body = row.querySelector(".ov-finding-body");
+    const expand = row.querySelector('[data-act="expand"]');
+    const toggle = () => {
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      if (expand) {
+        expand.setAttribute("aria-expanded", String(open));
+        expand.textContent = open ? "▾" : "▸";
+      }
+      row.classList.toggle("expanded", open);
+    };
+    if (expand) expand.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+    const head = row.querySelector(".ov-finding-head");
+    if (head && body) head.addEventListener("click", (e) => {
+      // A click on the tier chip / claim text (not a control) expands.
+      if (e.target.closest("button, a, label, input")) return;
+      toggle();
+    });
     const show = row.querySelector('[data-act="show"]');
     if (show) show.addEventListener("click", () => {
       const target = _timelineTarget(f);
@@ -266,8 +342,27 @@ function _wireFindings(host) {
       if (flowBtn) flowBtn.click();
       setTimeout(() => seekToTimestamp(target.ts), 0);
     });
+    // Screenshot chip -> the security-hardened open path (reused, never
+    // weakened): openScreenshot validates the session-relative image path.
+    row.querySelectorAll('[data-act="shot"]').forEach((chip) => {
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rel = chip.dataset.shot;
+        if (rel) require("./flow-view-screenshots.js").openScreenshot(rel);
+      });
+    });
     const memo = row.querySelector('[data-act="memo"]');
     if (memo) memo.addEventListener("change", () => _toggleMemoSelection(f.id, memo.checked));
+  });
+  // Group methodology ⓘ: one per detector group, expand-in-place.
+  host.querySelectorAll(".ov-finding-method-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const note = btn.parentElement && btn.parentElement.querySelector(".ov-finding-method");
+      if (!note) return;
+      const open = note.hidden;
+      note.hidden = !open;
+      btn.setAttribute("aria-expanded", String(open));
+    });
   });
 }
 
