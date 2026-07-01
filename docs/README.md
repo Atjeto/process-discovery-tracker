@@ -50,6 +50,7 @@ discovery hardening, and the UI density pass. Describes the code as it is today.
 | [architecture/VIEWER.md](architecture/VIEWER.md) | Viewer architecture — modules, views, state, IPC, render pipeline *(deep)* |
 | [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline subsystem and the shared timeline core *(deep)* |
 | [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, colour palettes, and the contrast problem |
+| [architecture/DISCLOSURE-MODEL.md](architecture/DISCLOSURE-MODEL.md) | Where content renders — Memo/Evidence/Machine as mechanical placement rules |
 | [ARCHITECTURE-ISSUES.md](ARCHITECTURE-ISSUES.md) | Viewer refactor register — structural / design-system / regression issues (all resolved) |
 | [CAPTURE-ARCHITECTURE-ISSUES.md](CAPTURE-ARCHITECTURE-ISSUES.md) | Capture refactor register — tech-debt items C1-C8 (all resolved in v0.5.0) |
 | [architecture/VALUE-CHAIN-REVIEW.md](architecture/VALUE-CHAIN-REVIEW.md) | Strategic review — where meaning leaks across the capture→insight value chain |
