@@ -83,7 +83,11 @@ and it drives the viewer's own `electron`.
    depend on it. The in-repo `e2e/` is the portable entry point.)*
 
 ### The DOM handles to reach every surface (so a context-blind chip can navigate)
-- **Top-nav views:** `.tab[data-view="session"|"aggregate"|"template"|"library"]`
+- **Top-nav views:** `.tab[data-view="session"|"aggregate"|"canonical"|"vocabularies"]`
+  — Process Template = `canonical`, App Library = `vocabularies` (NOT
+  "template"/"library"; this doc shipped the wrong handles once — grep
+  `viewer/index.html` if a selector misses, and make missing-selector paths in
+  drive scripts fail LOUD, never silently skip a surface).
 - **Session-view levels:** `.view-mode-btn[data-level="overview"|"flow"|"steps"|"phases"|"map"|"analysis"]`
   → each shows its container `#session-layout-<level>`. **Overview is the default
   on session load** (lab-phase §A5) — its badge/hero/facts/findings/memo surface is
@@ -132,7 +136,31 @@ and it drives the viewer's own `electron`.
 - **Theme:** `page.evaluate(() => require("./theme.js").setTheme("light"|"dark"))`.
 - **Window size:** `app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setContentSize(1500, 950))`.
 - **Clipping check** (labels have drifted before — see e1f5680): a visible element with
-  `scrollWidth - clientWidth > 2` and non-empty text is clipped/overflowing.
+  `scrollWidth - clientWidth > 2` and non-empty text is clipped/overflowing — **unless it
+  has `text-overflow: ellipsis`**, where that comparison is true BY DESIGN whenever the
+  ellipsis legitimately elides. For ellipsized labels assert box-vs-container geometry
+  (the label's box must not escape its band) instead; eyeball to disambiguate.
+
+### UI-verification pitfalls (from the 2026-07-02 delegation post-mortem)
+
+Each of these shipped or nearly shipped once — full case register in
+[To-Do/AGENT-DELEGATION-POSTMORTEM-2026-07-02.md](To-Do/AGENT-DELEGATION-POSTMORTEM-2026-07-02.md):
+
+1. **Doubled disclosure markers.** A `<summary>` carrying its own `▸` glyph needs the
+   native `<details>` marker suppressed (`list-style: none` + `::-webkit-details-marker`);
+   check every new disclosure in the screenshot.
+2. **"Mirror pattern X" means the REAL X.** Open X's markup/CSS and put X and the new
+   instance side-by-side in the eyeball pass — both when implementing and when reviewing.
+   DOM-level compliance is not visual compliance, and X may not look like you imagine.
+3. **Removing a component includes its styles.** Grep the removed class names for
+   now-dead CSS rules in the same commit.
+4. **The committed demo session regenerates on EVERY viewer launch** (the viewer
+   re-analyzes on load) — eyeball launches load a temp copy (see `freshenSession()` in
+   `e2e/session-smoke.js`) or are immediately followed by the revert pair above.
+5. **Eyeball beyond 1500×950 once** — one glance at a narrow width catches wrap/crowding
+   that the standard size hides; disclosed-but-unverified risks must get an owner.
+6. **Multi-candidate actions need a selection rule** in the spec (which session? which
+   row?) — "the first one" is an accident, not a decision.
 
 ## Concurrency (we've collided before)
 
