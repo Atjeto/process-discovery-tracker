@@ -247,20 +247,21 @@ const OVERLAP_PROBE = () => {
   record("grain slider (#grain-slider) present", grainSliderExists,
     grainSliderExists ? "" : "no #grain-slider in the view-mode bar");
 
-  // Read the €-ROI expected total on the Analysis level (for the invariance
-  // check). Item 3 floors the hero: below 1 h/yr the big figure is replaced by
-  // a sentence (.roi-floor-note), so read whichever carries the number. The ROI
-  // module is now collapsible (item 21) — open it first so its body renders.
+  // Read the €-ROI module's takeaway (its memo-altitude summary — item 21)
+  // on the Analysis level, for the invariance check below. R1 gates the
+  // whole section body on an analyst-entered volume; the demo has none, so
+  // the body never renders a hero/floor figure at all (the replace-pattern
+  // CTA shows instead) — the takeaway is the one thing that ALWAYS renders
+  // (collapsed or gated) and is never grain-dependent (the €-ROI candidates
+  // are at the segment grain, not the Detail-slider step grain), so it is
+  // the correct invariance signal either way.
   async function roiTotalText() {
     const ab = await page.$('.view-mode-btn[data-level="analysis"]');
     if (ab) { await ab.click().catch(() => {}); await wait(900); }
     return page.evaluate(() => {
       const mod = document.querySelector('#analysis-content .analysis-module[data-module="roi"]');
-      if (mod && !mod.open) { mod.open = true; }
-      const big = document.querySelector("#analysis-content .roi-total-big");
-      if (big) return (big.textContent || "").trim();
-      const floor = document.querySelector("#analysis-content .roi-floor-note");
-      return floor ? (floor.textContent || "").trim() : null;
+      const takeaway = mod && mod.querySelector(".analysis-module-takeaway");
+      return takeaway ? (takeaway.textContent || "").trim() : null;
     }).catch(() => null);
   }
   const roiAtScreen = await roiTotalText();   // default notch = screen
@@ -291,104 +292,138 @@ const OVERLAP_PROBE = () => {
       "screen='" + roiAtScreen + "' app='" + roiAtApp + "' (must match)");
     if (!invariant) await shot(page, "fail-roi-invariance.png");
   }
-  // The step-grained Analysis itemisation follows the notch: at "screen" the
-  // Waste/Time-study sections re-bucket by screen (a "Waste by screen" heading).
-  await setGrainNotch(1);   // screen notch
-  const analysisFollowsNotch = await (async () => {
+  // R1 (approachability redesign, 2026-07-03): "Process efficiency" and the
+  // resident "Waste by step/screen" module are GONE from the Analysis stack.
+  // The judgment editor relocated into a "Where the time goes" row's
+  // expand-in-place body -- reachable only at the element notch (the
+  // business-required override is process_label-scoped). At a coarser notch
+  // the same expansion shows a read-only "set the Detail slider to element"
+  // message instead. This IS the itemisation-follows-the-notch pin now.
+  const analysisBtn = await page.$('.view-mode-btn[data-level="analysis"]');
+  if (analysisBtn) { await analysisBtn.click().catch(() => {}); await wait(900); }
+  const noResidentModules = await page.evaluate(() => {
+    const titles = Array.from(document.querySelectorAll("#analysis-content .analysis-module-title"))
+      .map((e) => (e.textContent || "").trim());
+    return {
+      titles,
+      hasEfficiency: titles.some((t) => /process efficiency/i.test(t)),
+      hasWasteModule: titles.some((t) => /^waste by/i.test(t)),
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("(R1) 'Process efficiency' is not a resident module", !!(noResidentModules && !noResidentModules.hasEfficiency),
+    JSON.stringify(noResidentModules));
+  record("(R1) 'Waste by step/screen' is not a resident module", !!(noResidentModules && !noResidentModules.hasWasteModule),
+    JSON.stringify(noResidentModules));
+
+  async function tsJudgeExpansionAt(idx) {
+    await setGrainNotch(idx);
     const ab = await page.$('.view-mode-btn[data-level="analysis"]');
     if (ab) { await ab.click().catch(() => {}); await wait(900); }
+    await page.evaluate(() => {
+      const mod = document.querySelector('#analysis-content .analysis-module[data-module="time"]');
+      if (mod && !mod.open) mod.open = true;
+    });
+    await wait(300);
+    const expandBtn = await page.$("#analysis-content .ts-judge-expand");
+    if (expandBtn) { await expandBtn.click().catch(() => {}); await wait(300); }
     return page.evaluate(() => {
-      const h = document.querySelector("#analysis-content");
-      return h ? /Waste by screen/i.test(h.textContent || "") : false;
-    }).catch(() => false);
-  })();
-  if (grainSliderExists) {
-    record("Analysis itemisation follows the grain notch (Waste by screen)", analysisFollowsNotch,
-      analysisFollowsNotch ? "" : "expected a 'Waste by screen' section at the screen notch");
-    if (!analysisFollowsNotch) await shot(page, "fail-analysis-grain.png");
+      const row = document.querySelector("#analysis-content .ts-row");
+      const body = row && row.querySelector(".ts-judge-body");
+      return {
+        rowPresent: !!row,
+        hidden: body ? body.hidden : null,
+        hasEditor: !!(body && body.querySelector(".waste-row")),
+        readOnlyNote: !!(body && /Detail slider/.test(body.textContent || "")),
+      };
+    }).catch((e) => ({ err: e.message }));
   }
+  const tsAtElement = await tsJudgeExpansionAt(0);   // element notch
+  record("(R1) 'Where the time goes' row expand-in-place opens the judgment editor at the element notch",
+    !!(tsAtElement && !tsAtElement.err && tsAtElement.rowPresent && tsAtElement.hidden === false && tsAtElement.hasEditor),
+    JSON.stringify(tsAtElement));
+  if (!(tsAtElement && tsAtElement.hasEditor)) await shot(page, "fail-ts-judge-editor.png");
 
-  // --- €-ROI panel pin (§11c) ---
-  // On the Analysis level the €-ROI section must render with its band legend
-  // and a session-level "Edit assumptions…" affordance. The demo has no
-  // roi_inputs, so it runs in time-savings mode — assert the legend + edit
-  // button + at least one tune affordance, which is the structural surface.
-  const analysisBtn = await page.$('.view-mode-btn[data-level="analysis"]');
-  if (analysisBtn) { await analysisBtn.click().catch(() => {}); await wait(1200); }
+  const tsAtScreen = await tsJudgeExpansionAt(1);   // screen notch (coarser)
+  record("(R1) the same row expansion is read-only (element-only) at a coarser detail level",
+    !!(tsAtScreen && !tsAtScreen.err && tsAtScreen.rowPresent && !tsAtScreen.hasEditor && tsAtScreen.readOnlyNote),
+    JSON.stringify(tsAtScreen));
+  if (!(tsAtScreen && tsAtScreen.readOnlyNote)) await shot(page, "fail-ts-readonly.png");
+  await setGrainNotch(1);   // leave at the default (screen) notch for the pins below
+
+  // --- Automation candidates render as finding cards (R1 §5) ---
+  // The ranked table is gone; candidates render via the SAME shared
+  // finding-card component the Overview findings feed uses (finding-cards.js
+  // -- .ov-finding markup), one card per candidate, in rank order, with the
+  // Confirm/Dismiss decision preserved and reachable behind the card's
+  // expand-in-place evidence body.
+  const autoCardsProbe = await page.evaluate(() => {
+    const mod = document.querySelector('#analysis-content .analysis-module[data-module="automation"]');
+    if (mod && !mod.open) mod.open = true;
+    const body = mod && mod.querySelector(".analysis-module-body");
+    if (!body) return { present: false };
+    const cards = body.querySelectorAll(".auto-cards .ov-finding");
+    return {
+      present: true,
+      cardCount: cards.length,
+      noOldTable: !body.querySelector("table.analysis-table"),
+      firstClaim: cards.length ? (cards[0].querySelector(".ov-finding-claim") || {}).textContent : null,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("(R1) automation candidates render as finding cards, not a ranked table",
+    !!(autoCardsProbe && !autoCardsProbe.err && autoCardsProbe.present &&
+      autoCardsProbe.cardCount > 0 && autoCardsProbe.noOldTable),
+    JSON.stringify(autoCardsProbe));
+  if (!(autoCardsProbe && autoCardsProbe.cardCount > 0)) await shot(page, "fail-automation-cards.png");
+
+  // Confirm/Dismiss must still work: expand the first card and click Confirm;
+  // the SAME analysis_overrides automation_confirmed write path (unchanged).
+  const firstCard = await page.$("#analysis-content .auto-cards .ov-finding");
+  if (firstCard) { await firstCard.click().catch(() => {}); await wait(300); }
+  const confirmBtn = await page.$('#analysis-content .auto-cards .ov-finding .auto-btn[data-confirm="true"]');
+  if (confirmBtn) { await confirmBtn.click().catch(() => {}); await wait(900); }
+  const confirmActive = await page.evaluate(() =>
+    !!document.querySelector('#analysis-content .auto-cards .ov-finding .auto-btn[data-confirm="true"].active')
+  ).catch(() => false);
+  record("(R1) a finding card's Confirm button works (activates + persists the decision)",
+    !!(confirmBtn && confirmActive), "confirmBtnFound=" + !!confirmBtn + " active=" + confirmActive);
+  if (!(confirmBtn && confirmActive)) await shot(page, "fail-automation-confirm.png");
+
+  // --- €-ROI whole-section gate (R1 §4) ---
+  // The full body (table, hero figures, per-row tune, AUTO% -- which no
+  // longer exists as a column anywhere) renders ONLY once an analyst has
+  // entered an explicit annual volume. The demo has no roi_inputs, so the
+  // gate must be CLOSED: the section replaces its whole body with the
+  // one-line observed-volume takeaway + the "Edit assumptions…" CTA --
+  // no table, no legend, no hero figures, no zeros.
   const roiProbe = await page.evaluate(() => {
     const host = document.querySelector("#analysis-content");
     if (!host) return { host: false };
+    const mod = host.querySelector('.analysis-module[data-module="roi"]');
+    if (mod && !mod.open) mod.open = true;
+    const body = mod && mod.querySelector(".analysis-module-body");
     return {
       host: true,
       title: /Return on automation/.test(host.textContent || ""),
-      legend: !!host.querySelector(".roi-legend"),
-      editBtn: !!host.querySelector(".roi-edit-btn"),
-      tune: host.querySelectorAll(".roi-tune-btn").length,
-      // §11f automation ranking: the candidates table carries a rank column.
-      autoRank: host.querySelectorAll(".auto-rank").length,
+      editBtn: !!(body && body.querySelector(".roi-edit-btn")),
+      table: !!(body && body.querySelector("table")),
+      legend: !!(body && body.querySelector(".roi-legend")),
+      heroBig: body ? body.querySelectorAll(".roi-total-big").length : 0,
+      autoPctColumn: /Auto%/.test((body && body.textContent) || ""),
+      takeaway: (mod && mod.querySelector(".analysis-module-takeaway") || {}).textContent,
     };
   }).catch((e) => ({ err: e.message }));
   if (roiProbe && roiProbe.err) {
-    record("€-ROI panel renders on Analysis level", false, "probe error: " + roiProbe.err);
+    record("€-ROI section renders on Analysis level", false, "probe error: " + roiProbe.err);
     await shot(page, "fail-roi-probe.png");
   } else if (!FRESH) {
-    record("€-ROI panel renders on Analysis level (skipped — session not re-normalized)", true,
+    record("€-ROI section renders on Analysis level (skipped — session not re-normalized)", true,
       "no deps-Python to produce a fresh roi block; panel correctly hidden, not asserted");
   } else {
-    const ok = !!(roiProbe.host && roiProbe.title && roiProbe.legend &&
-      roiProbe.editBtn && roiProbe.autoRank > 0);
-    record("€-ROI panel renders on Analysis level", ok,
-      "title=" + roiProbe.title + " legend=" + roiProbe.legend +
-      " editBtn=" + roiProbe.editBtn + " tuneRows=" + roiProbe.tune +
-      " autoRankCells=" + roiProbe.autoRank);
-    if (!ok) await shot(page, "fail-roi-panel.png");
-  }
-
-  // --- Disclosure pass (2026-07-01) pins -------------------------------------
-  // Item 2: until a step is judged, the Waste module withholds the value/waste
-  // BARS behind its call-to-action (a wall of all-green would read as a measured
-  // "all value-add"). The demo has no bnva overrides, so the CTA must show and
-  // no colored .waste-seg bar may render inside the Waste module.
-  const wasteGate = await page.evaluate(() => {
-    const mod = document.querySelector('#analysis-content .analysis-module[data-module="waste"]');
-    if (!mod) return { present: false };
-    if (!mod.open) mod.open = true;
-    const body = mod.querySelector(".analysis-module-body");
-    return {
-      present: true,
-      hasCta: /Not shown yet/.test((body && body.textContent) || ""),
-      coloredBars: mod.querySelectorAll(".waste-seg").length,
-      unjudgedChips: mod.querySelectorAll(".waste-bar-unjudged").length,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("(disclosure 2) Waste module withholds bars behind a CTA until a step is judged",
-    !!(wasteGate && !wasteGate.err && wasteGate.present &&
-      wasteGate.hasCta && wasteGate.coloredBars === 0 && wasteGate.unjudgedChips > 0),
-    JSON.stringify(wasteGate));
-  if (!(wasteGate && wasteGate.hasCta)) await shot(page, "fail-waste-gate.png");
-
-  // Item 3: the €-ROI hero is floored — the demo saves ~0.01 h/yr, so the big
-  // figure is replaced by a plain sentence (never a 20px "0.01 h" hero). The
-  // per-candidate table still renders below.
-  if (FRESH) {
-    const roiFloor = await page.evaluate(() => {
-      const mod = document.querySelector('#analysis-content .analysis-module[data-module="roi"]');
-      if (mod && !mod.open) mod.open = true;
-      const floor = document.querySelector("#analysis-content .roi-floor-note");
-      return {
-        floorNote: !!floor && /Under an hour a year/.test(floor.textContent || ""),
-        heroBig: document.querySelectorAll("#analysis-content .roi-total-big").length,
-        table: !!document.querySelector("#analysis-content .roi-table"),
-      };
-    }).catch((e) => ({ err: e.message }));
-    // needs_input demo → no money heroes either, so heroBig must be 0 and the
-    // floor sentence carries the number; the table stays.
-    record("(disclosure 3) €-ROI hero floored to a sentence below 1 h/yr; table stays",
-      !!(roiFloor && !roiFloor.err && roiFloor.floorNote && roiFloor.heroBig === 0 && roiFloor.table),
-      JSON.stringify(roiFloor));
-    if (!(roiFloor && roiFloor.floorNote)) await shot(page, "fail-roi-floor.png");
-  } else {
-    record("(disclosure 3) €-ROI hero floored (skipped — session not re-normalized)", true, "");
+    const gateOk = !!(roiProbe.host && roiProbe.title && roiProbe.editBtn &&
+      !roiProbe.table && !roiProbe.legend && roiProbe.heroBig === 0 && !roiProbe.autoPctColumn);
+    record("(R1) €-ROI section: no analyst-entered volume -> whole body replaced by the takeaway + Edit-assumptions CTA (no table, no AUTO% column)",
+      gateOk, JSON.stringify(roiProbe));
+    if (!gateOk) await shot(page, "fail-roi-gate.png");
   }
 
   // Item 21: Analysis module collapse persists per analyst (localStorage,

@@ -1,13 +1,18 @@
 /*
  * analysis-view.js -- the Analysis level of the Session view.
  *
- * Renders the heuristic findings from analysis.json: the process
- * efficiency ratio, per-step-type waste classification, the time
- * study, and automation candidates (segment-grain, ADR-0016).
+ * R1 of the approachability redesign (docs/To-Do/APPROACHABILITY-REDESIGN-
+ * 2026-07-03.md §4/§5) subtracted this view down to three modules: "Where
+ * the time goes" (the time study, now also the judgment-editor entry point),
+ * "Automation candidates" (finding cards, ADR-0016), and the €-ROI section
+ * (whole-section gated on an analyst-entered annual volume). "Process
+ * efficiency" and the "Waste by step/screen" resident module were removed
+ * (efficiency returns later as a finding; its underlying computation in
+ * `applyAnalysisOverrides` stays intact for that future use, unrendered).
  *
- * The heuristics ship provisional (ADR-0008): the value-add vs.
- * business-required split needs a human, and confirming a segment
- * really is automation-worthy is an analyst call. Corrections live in
+ * The underlying estimates ship provisional (ADR-0008): the value-add vs.
+ * business-required split needs a human, and confirming a candidate really
+ * is automation-worthy is an analyst call. Corrections live in
  * annotations.json `analysis_overrides[]`, keyed by `process_label`
  * for waste and by `segment_signature` for automation; not in
  * analysis.json (which `normalize` regenerates every run).
@@ -24,6 +29,7 @@ const Session = require("../session.js");
 const Ipc = require("../ipc.js");
 const { formModal } = require("../modals.js");
 const { processLabel, grainLabel } = require("../process-map-levels.js");
+const { findingCardHtml } = require("../finding-cards.js");
 
 /* ADR-0024: resolve, for the CURRENT grain notch, how to re-bucket the
    step-grained analysis (Waste by step, Time study). Returns two maps built
@@ -78,13 +84,6 @@ function _money(val, currency) {
   catch (_) { n = String(Math.round(Number(val))); }
   return sym ? sym + n : n + " " + code;
 }
-
-/* Waste-type filter (v0.18.1). Clicking a chip on a waste row filters the list
-   to rows tagged with that type; the click also runs stopPropagation so it
-   doesn't bubble to the row's "adjust" handler. Module-level so it persists
-   across re-renders within the same session; reset on session change is
-   handled implicitly because the visible list shape changes anyway. */
-let _wasteTypeFilter = null;
 
 /* ============ Override merge (display side) ======================= */
 
@@ -245,43 +244,6 @@ function _caption(overrideCount) {
   return html + "</div>";
 }
 
-/* Honesty gate (lab-phase §A5): while every step's `bnva_ms` still sits at
-   the heuristic default of 0, the VA/(VA+BNVA+NVA) ratio is an artifact of
-   that default, not a measurement -- so the big number is WITHHELD until the
-   analyst has judged business-required time on at least one step type. The
-   section is replaced by the call to action (the Tier-gate pattern), never
-   rendered with fact-level authority. */
-function _efficiencySection(eff, hasBnvaOverride) {
-  if (!eff || typeof eff.process_efficiency_ratio !== "number") return null;
-  if (!hasBnvaOverride) {
-    return {
-      title: "Process efficiency",
-      takeaway: "Not judged yet — click a step to set business-required minutes",
-      gated: true,
-      body:
-        '<div class="analysis-note">Not shown yet — deciding which time adds ' +
-        "value is an analyst judgment, and no step type has been judged yet " +
-        "(an automatic default would inflate the figure). Click a step under " +
-        "<strong>Waste by step</strong> to set business-required minutes; " +
-        "the figure appears from then on.</div>",
-    };
-  }
-  const pct = Math.round(eff.process_efficiency_ratio * 100);
-  return {
-    title: "Process efficiency",
-    takeaway: pct + "% value-add across steps",
-    body:
-      '<div class="efficiency-row">' +
-        '<div class="efficiency-big">' + pct + "%</div>" +
-        '<div class="efficiency-detail">' +
-          "value-add " + escapeHtml(_fmt(eff.total_va_ms)) + " · " +
-          "waste " + escapeHtml(_fmt(eff.total_nva_ms)) + " · " +
-          "of " + escapeHtml(_fmt(eff.total_elapsed_ms)) + " across steps" +
-        "</div>" +
-      "</div>",
-  };
-}
-
 /* Roll the per-instance waste rows up to one row per `process_label`
    (the value-free step-type key the rest of the UI groups on -- the
    process map's Step level, the time study, the stats). A capture with
@@ -330,25 +292,40 @@ function _groupWasteRows(waste, labelOf) {
   return out;
 }
 
-function _buildWasteRow(g, editable = true, unjudged = false) {
+/* The inline judgment summary shown on a collapsed "Where the time goes" row
+   (item 2 relocated): "36.0s measured · 20s business-required" once an
+   analyst has judged this step type, else "36.0s measured · not judged" —
+   never a colored bar (a default-green bar would read as a measured "all
+   value-add" result, the same honesty gate the old resident module enforced,
+   now applied per row instead of per section). */
+function _wasteInlineSummary(g) {
+  if (!g) return "";
+  const total = (g.va_ms || 0) + (g.bnva_ms || 0) + (g.nva_ms || 0);
+  if (!total) return "";
+  const judged = !!(g.bnva_ms || 0);
+  return judged
+    ? escapeHtml(_fmt(total)) + " measured · " + escapeHtml(_fmt(g.bnva_ms)) + " business-required"
+    : escapeHtml(_fmt(total)) + " measured · not judged";
+}
+
+/* The judgment editor for one step type's process_label, relocated (item 2)
+   from the removed "Waste by screen"/"Waste by step" resident module into
+   the expand-in-place body of its "Where the time goes" row. Reuses the
+   original row markup (value/waste bar + waste-type tags) and the SAME
+   click-to-edit affordance (`.waste-row-editable` -> `_editBnva`, wired in
+   `_wireControls`) -- the write path and undo behavior are unchanged. */
+function _buildWasteRow(g, editable = true) {
   const total = (g.va_ms || 0) + (g.bnva_ms || 0) + (g.nva_ms || 0);
   const seg = (ms, cls) => (!ms || total <= 0) ? "" :
     '<span class="waste-seg ' + cls + '" style="width:' +
     ((ms / total) * 100).toFixed(1) + '%"></span>';
   const tags = (g.waste_types || [])
-    .map((t) => '<button type="button" class="waste-tag waste-tag-btn" ' +
-      'data-waste-type="' + escapeAttr(t) + '" ' +
-      'title="Click to filter the list to step types tagged \'' + escapeAttr(t) + '\' (click again to clear).">' +
-      escapeHtml(t) + "</button>")
+    .map((t) => '<span class="waste-tag">' + escapeHtml(t) + "</span>")
     .join("");
-  const badge = g.instances > 1
-    ? '<span class="waste-instances" title="' + g.instances +
-        ' instances">' + g.instances + "&times;</span>"
-    : "";
-  // ADR-0024: at a coarse grain the rows are READ-ONLY (the business-required
+  const unjudged = !(g.bnva_ms || 0);
+  // ADR-0024: at a coarse grain the row is READ-ONLY (the business-required
   // override is process_label-scoped and a coarse group spans many labels) --
-  // edit at the element notch. The waste totals are unchanged, so the
-  // efficiency figure is grain-invariant either way.
+  // edit at the element notch.
   const cls = editable ? "waste-row waste-row-editable" : "waste-row";
   const title = editable
     ? (g.instances > 1
@@ -365,107 +342,28 @@ function _buildWasteRow(g, editable = true, unjudged = false) {
         seg(g.va_ms, "seg-va") + seg(g.bnva_ms, "seg-bnva") +
         seg(g.nva_ms, "seg-nva") +
       "</span>";
-  return '<div class="' + cls + '" data-process-label="' +
+  const legend = '<div class="waste-legend">' +
+    '<span><span class="swatch seg-va"></span>value-add</span>' +
+    '<span><span class="swatch seg-bnva"></span>business-required</span>' +
+    '<span><span class="swatch seg-nva"></span>waste</span>' +
+  "</div>";
+  return legend + '<div class="' + cls + '" data-process-label="' +
       escapeAttr(g.process_label || "") +
       '" title="' + escapeAttr(title) + '">' +
     '<span class="waste-name" title="' + escapeAttr(g.process_label || "") + '">' +
-      escapeHtml(g.process_label || "(step)") + badge + "</span>" +
+      escapeHtml(g.process_label || "(step)") + "</span>" +
     barCell +
     '<span class="waste-tags">' + tags + "</span>" +
     (editable ? '<span class="waste-edit">adjust</span>' : "") +
   "</div>";
 }
 
-function _wasteSection(waste, notch, maps, hasBnvaOverride) {
-  if (!waste.length) return null;
-  const regroup = (notch && notch !== "element" && maps);
-  // Item 2: gate the value/waste BARS like the sibling "Process efficiency".
-  // Until at least one step type has a business-required judgment, every bar
-  // is 100% value-add green — a wall of default-green that reads as a measured
-  // "all value-add" result. Withhold the bars behind the same replace-pattern
-  // call-to-action; the rows stay as the judgment entry point (they carry the
-  // "adjust" click that SETS the first judgment), so the CTA is actionable.
-  const unjudged = !hasBnvaOverride;
-  const labelOf = regroup
-    ? (w) => (w.step_id && maps.byStepId.get(w.step_id))
-        || maps.byProcessLabel.get(_wasteRowProcessLabel(w)) || null
-    : null;
-  const editable = !regroup;
-  const allGroups = _groupWasteRows(waste, labelOf);
-  if (!allGroups.length) return null;
-  // Apply the waste-type filter (v0.18.1). When set, only rows whose
-  // waste_types include the filter survive; the rest are hidden until the
-  // user clears the filter via the indicator chip.
-  const groups = _wasteTypeFilter
-    ? allGroups.filter((g) => (g.waste_types || []).includes(_wasteTypeFilter))
-    : allGroups;
-  const dur = (g) => (g.va_ms || 0) + (g.bnva_ms || 0) + (g.nva_ms || 0);
-  const hasSignal = (g) => dur(g) > 0 || (g.waste_types && g.waste_types.length);
-  // Surface the wasteful + time-heavy step types; tuck instant (0-duration) ones
-  // behind an expander so the default view isn't a wall of empty bars. Sort by
-  // total waste (nva) desc, then total duration desc.
-  const sorted = groups.slice().sort((a, b) =>
-    (b.nva_ms || 0) - (a.nva_ms || 0) || dur(b) - dur(a));
-  const main = sorted.filter(hasSignal);
-  const instant = sorted.filter((g) => !hasSignal(g));
-  const legend = '<div class="waste-legend">' +
-    '<span><span class="swatch seg-va"></span>value-add</span>' +
-    '<span><span class="swatch seg-bnva"></span>business-required</span>' +
-    '<span><span class="swatch seg-nva"></span>waste</span>' +
-  "</div>";
-  const filterChip = _wasteTypeFilter
-    ? '<div class="waste-filter-chip">Filtered to <span class="waste-tag waste-tag-active">' +
-      escapeHtml(_wasteTypeFilter) + '</span> — ' +
-      groups.length + ' of ' + allGroups.length + ' step types ' +
-      '<button type="button" class="waste-filter-clear" title="Show all step types">show all ✕</button></div>'
-    : "";
-  const rowHtml = (g) => _buildWasteRow(g, editable, unjudged);
-  let body = main.length ? '<div class="waste-rows">' + main.map(rowHtml).join("") + "</div>" : "";
-  if (instant.length) {
-    body += '<details class="waste-instant"><summary>' + instant.length +
-      " instant " + (regroup ? notch : "step type") + (instant.length === 1 ? "" : "s") +
-      " (no measured duration)</summary>" +
-      '<div class="waste-rows">' + instant.map(rowHtml).join("") + "</div></details>";
-  }
-  if (_wasteTypeFilter && !groups.length) {
-    body = '<div class="waste-empty">No step types tagged "' +
-      escapeHtml(_wasteTypeFilter) + '" in this session.</div>';
-  }
-  const title = regroup ? ("Waste by " + notch) : "Waste by step";
-  const grainHint = regroup
-    ? '<div class="analysis-caption">Combined at the <strong>' + escapeHtml(notch) +
-      "</strong> detail level (read-only — set the Detail slider to <strong>element</strong> to adjust " +
-      "business-required time). The waste totals, and so the efficiency figure, are unchanged.</div>"
-    : "";
-  // Item 2: the replace-pattern call-to-action. When nothing is judged, the CTA
-  // leads and the value/waste bars are withheld (a wall of all-green would read
-  // as a measured "all value-add"). At the element detail level the rows carry
-  // the click that sets the first judgment; at a coarse grain they are read-only,
-  // so the CTA points the analyst to the element level to make the judgment.
-  const gated = unjudged && !_wasteTypeFilter;
-  const gateCta = gated
-    ? '<div class="analysis-note">Not shown yet — splitting each step into ' +
-      "value-add, business-required and waste is an analyst judgment, and no " +
-      "step type has been judged yet (drawing every bar as all value-add would " +
-      "invent a measured-looking result). " +
-      (editable
-        ? "Click a step type below and set its business-required minutes; the " +
-          "value/waste bars appear from then on."
-        : "Set the Detail slider to <strong>element</strong> to judge a step, " +
-          "then the value/waste bars appear here.") +
-      "</div>"
-    : "";
-  const showLegend = !gated;
-  const takeaway = gated
-    ? "Not judged yet — click a step to set business-required minutes"
-    : (main.length + instant.length) + " step type" +
-      ((main.length + instant.length) === 1 ? "" : "s") + " measured";
-  return {
-    title,
-    takeaway,
-    gated,
-    body: grainHint + gateCta + (showLegend ? legend : "") + filterChip + body,
-  };
+/* The read-only message shown when a "Where the time goes" row is expanded
+   at a coarser-than-element detail level (the business-required override is
+   process_label-scoped, so it can only be set/read at the element notch). */
+function _wasteReadOnlyNote() {
+  return '<div class="analysis-note">Set the Detail slider to <strong>element</strong> ' +
+    "to judge this step's business-required time.</div>";
 }
 
 /* ADR-0024: merge the per-step-type time-study rows up to the grain notch.
@@ -559,7 +457,7 @@ function _instancesByRowLabel(notch, maps) {
 /* step_id -> step for the dot click handlers (rebuilt every render). */
 let _tsDotSteps = new Map();
 
-function _timeStudySection(ts, notch, maps) {
+function _timeStudySection(ts, notch, maps, wasteByProcessLabel) {
   if (!ts.length) return null;
   const regroup = (notch && notch !== "element" && maps);
   const study = _regroupTimeStudy(ts, notch, maps);
@@ -567,6 +465,11 @@ function _timeStudySection(ts, notch, maps) {
   const distribution = !regroup && maxN >= TIME_STUDY_DISTRIBUTION_MIN_N;
   const instancesOf = _instancesByRowLabel(notch, maps);
   _tsDotSteps = new Map();
+  // Item 2 (relocated): at the element notch, a row's judgment editor is the
+  // waste group sharing its process_label -- at that notch `t.name` IS the
+  // process_label (analysis_common.step_group_label), so the join is exact.
+  const canJudge = !regroup;
+  const wasteFor = (name) => (wasteByProcessLabel && wasteByProcessLabel.get(name)) || null;
 
   // Shared horizontal time axis: 0 .. the longest single instance anywhere,
   // so durations compare across rows. Fall back to the study's cycle max for
@@ -610,13 +513,29 @@ function _timeStudySection(ts, notch, maps) {
         " · p95 " + escapeHtml(_fmt(c.p95)) +
         " · range " + escapeHtml(_fmt(c.min)) + "–" + escapeHtml(_fmt(c.max)) + "</div>"
       : "";
-    return '<div class="ts-row">' +
-      '<span class="ts-name" title="' + escapeAttr((t.name || "(step)") + " — " + breakdown) + '">' +
-        escapeHtml(t.name || "(step)") + "</span>" +
-      '<span class="ts-n">' + (t.instances || 0) + "×</span>" +
-      '<span class="ts-total">' + escapeHtml(_fmt(total)) + "</span>" +
-      '<div class="ts-strip">' + dots + "</div>" +
+    // Item 2 (relocated): the judgment editor lives one click behind this row
+    // (expand-in-place, Evidence mechanic). Rows that already carry a judgment
+    // show it inline on the row line ("36.0s measured · 20s business-required");
+    // the click target for editing lives in the expansion, not the row itself.
+    const g = wasteFor(t.name);
+    const judgment = canJudge ? _wasteInlineSummary(g) : "";
+    const judgmentBody = canJudge
+      ? (g ? _buildWasteRow(g, true) : "")
+      : _wasteReadOnlyNote();
+    const expand = '<button type="button" class="ts-judge-expand" data-act="ts-expand" ' +
+      'aria-expanded="false" title="Set business-required time for this step">▸</button>';
+    return '<div class="ts-row" data-process-label="' + escapeAttr(t.name || "") + '">' +
+      '<div class="ts-row-line">' +
+        '<span class="ts-name" title="' + escapeAttr((t.name || "(step)") + " — " + breakdown) + '">' +
+          escapeHtml(t.name || "(step)") + "</span>" +
+        '<span class="ts-n">' + (t.instances || 0) + "×</span>" +
+        '<span class="ts-total">' + escapeHtml(_fmt(total)) + "</span>" +
+        '<div class="ts-strip">' + dots + "</div>" +
+        (judgment ? '<span class="ts-judgment">' + judgment + "</span>" : "") +
+        expand +
+      "</div>" +
       stats +
+      '<div class="ts-judge-body" hidden>' + judgmentBody + "</div>" +
     "</div>";
   }).join("");
 
@@ -644,17 +563,6 @@ function _timeStudySection(ts, notch, maps) {
   };
 }
 
-/* Item 6: a segment's step chain is printed ONCE (in the candidates table's
-   Segment cell) with "+N more" truncation; the bold title above it is a short
-   name — the app plus a size descriptor — so the row does not repeat the chain
-   twice. `label` is "app — step1 → step2 → …"; strip the chain to just the app. */
-function _segmentAppTitle(a) {
-  const raw = String(a.label || "");
-  const app = raw.split(" — ")[0] || String(a.app || "").replace(/\.exe$/i, "") || "segment";
-  const n = (a.step_labels || []).length;
-  return app + (n ? " · " + n + "-step sequence" : "");
-}
-
 /* A shortened chain form for the ROI table (app · first → … → last step) —
    the full chain lives on hover/title. Item 6: the ROI table must not repeat
    the whole chain a third time. The ROI candidate carries only `label`
@@ -675,6 +583,10 @@ function _shortChainLabel(r) {
   return raw.length > 60 ? raw.slice(0, 57) + "…" : raw;
 }
 
+/* Confirm/Dismiss — preserved EXACTLY as-is functionally: same data-confirm
+   handling, same analysis_overrides automation_confirmed write path
+   (_writeSegmentOverride, wired in _wireControls). Only the container moved
+   (table cell -> finding-card detail line). */
 function _decisionCell(a) {
   const c = a.automation_confirmed;
   const btn = (val, label) =>
@@ -685,11 +597,36 @@ function _decisionCell(a) {
     btn(true, "Confirm") + btn(false, "Dismiss") + "</div>";
 }
 
-/* Render the Automation candidates list at the segment grain
-   (ADR-0016). A row is a coherent stretch of work the segment detector
-   found repeating: same app, same case, same ordered step sequence.
-   That is the smallest unit a robot can actually take end-to-end --
-   we deliberately do NOT render single clicks or keystrokes here. */
+/* Item 6: the full step chain, printed once, behind the card's expand-in-place
+   (the evidence line) -- never repeated in the claim sentence. */
+function _stepChainHtml(a) {
+  const allSteps = a.step_labels || [];
+  if (!allSteps.length) return '<span class="score-na">no labelled steps</span>';
+  const steps = allSteps.slice(0, 4);
+  const moreSteps = allSteps.length - steps.length;
+  const fullChain = allSteps.join(" → ");
+  return '<div class="auto-sequence" title="' + escapeAttr(fullChain) + '">' +
+    steps.map(escapeHtml).join('<span class="auto-arrow"> → </span>') +
+    (moreSteps > 0 ? ' <span class="auto-more">+' + moreSteps + " more</span>" : "") +
+  "</div>";
+}
+
+/* The claim sentence for one candidate's finding card, e.g. "chrome ·
+   6-step sequence — ran 4×, 1m7s total, mean 16.8s". */
+function _candidateClaim(a) {
+  const app = String(a.app || "").replace(/\.exe$/i, "") || "segment";
+  const n = (a.step_labels || []).length;
+  const size = n ? n + "-step sequence" : "sequence";
+  const runs = (a.instance_count || 0) + "×";
+  return app + " · " + size + " — ran " + runs + ", " +
+    _fmt(a.total_elapsed_ms) + " total, mean " + _fmt(a.mean_elapsed_ms);
+}
+
+/* R1 (§4/§5): the ranked table is replaced by finding-card presentation,
+   reusing the SAME shared card component the Overview findings feed uses
+   (finding-cards.js) -- one card per candidate, in the existing rank order.
+   Detection + scoring (Python) and the Confirm/Dismiss write path are
+   unchanged; only the presentation moved from a table row to a card. */
 function _automationSection(auto) {
   if (!auto.length) return null;
   const scored = auto.filter((a) => a.data_sufficiency === "multi_instance");
@@ -713,31 +650,24 @@ function _automationSection(auto) {
       body: lead + '<div class="analysis-note">' + escapeHtml(note) + "</div>",
     };
   }
-  const rows = scored.map((a, i) => {
-    // Item 6: the step chain is printed ONCE here (with "+N more" truncation);
-    // the title above it is a short app + size descriptor, not the chain again.
-    const allSteps = a.step_labels || [];
-    const steps = allSteps.slice(0, 4);
-    const moreSteps = allSteps.length - steps.length;
-    const fullChain = allSteps.join(" → ");
-    const sequence = steps.length
-      ? '<span title="' + escapeAttr(fullChain) + '">' +
-        steps.map(escapeHtml).join('<span class="auto-arrow"> → </span>')
-        + (moreSteps > 0 ? ' <span class="auto-more">+' + moreSteps + " more</span>" : "") +
-        "</span>"
-      : '<span class="score-na">no labelled steps</span>';
-    const app = String(a.app || "").replace(/\.exe$/i, "") || "—";
+  // Card order = existing rank order (unchanged from the table).
+  const cards = scored.map((a, i) => {
     const rank = (a.rank === null || a.rank === undefined) ? (i + 1) : a.rank;
-    return "<tr>" +
-      '<td class="num auto-rank">' + escapeHtml(String(rank)) + "</td>" +
-      '<td><div class="auto-label">' + escapeHtml(_segmentAppTitle(a)) + "</div>" +
-        '<div class="auto-sequence">' + sequence + "</div></td>" +
-      "<td>" + escapeHtml(app) + "</td>" +
-      '<td class="num">' + (a.instance_count || 0) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(a.total_elapsed_ms)) + "</td>" +
-      '<td class="num">' + escapeHtml(_fmt(a.mean_elapsed_ms)) + "</td>" +
-      "<td>" + _decisionCell(a) + "</td>" +
-    "</tr>";
+    const f = {
+      id: "automation-" + (a.segment_signature || i),
+      tier: 1,
+      claim: _candidateClaim(a),
+      evidence: {
+        instances: a.instance_count || 0,
+        mean_ms: a.mean_elapsed_ms,
+      },
+    };
+    const cardHtml = findingCardHtml(f, {
+      screenshots: false,
+      detailHtml: () => _stepChainHtml(a) + _decisionCell(a),
+    });
+    // Rank prefix stays visible on the card (the existing priority order).
+    return '<div class="auto-card" data-rank="' + escapeAttr(String(rank)) + '">' + cardHtml + "</div>";
   }).join("");
   const tail = lonely
     ? '<div class="analysis-note">' + lonely + " more segment" +
@@ -749,13 +679,7 @@ function _automationSection(auto) {
     title: "Automation candidates",
     takeaway: scored.length + " candidate" + (scored.length === 1 ? "" : "s") +
       " ranked by automation priority",
-    body: lead +
-      '<table class="analysis-table">' +
-        '<thead><tr><th title="Automation priority rank">#</th>' +
-        "<th>Segment</th><th>App</th>" +
-        "<th>Instances</th><th>Total time</th><th>Mean per instance</th>" +
-        "<th>Decision</th></tr></thead>" +
-        "<tbody>" + rows + "</tbody></table>" + tail,
+    body: lead + '<div class="auto-cards">' + cards + "</div>" + tail,
   };
 }
 
@@ -848,7 +772,6 @@ function _roiRow(r, roi) {
       escapeHtml(_shortChainLabel(r) || "(segment)") + "</div></td>" +
     '<td class="num">' + (r.instance_count || 0) + "</td>" +
     '<td class="num">' + escapeHtml(_fmt(r.mean_elapsed_ms)) + "</td>" +
-    '<td class="num">' + Math.round((r.automatable_fraction || 0) * 100) + "%</td>" +
     '<td class="num">' + escapeHtml(String(r.annual_volume)) + basisNote + "</td>" +
     '<td class="num">' + _bandCell(bands.conservative, roi) + "</td>" +
     '<td class="num roi-expected">' + _bandCell(bands.expected, roi) + "</td>" +
@@ -862,10 +785,18 @@ function _roiRow(r, roi) {
 
 /* The €-ROI module's memo-altitude takeaway: the expected yearly saving in
    the honest unit (hours until a labour rate turns it into money), or the
-   below-floor phrasing when it is under an hour. */
+   below-floor phrasing when it is under an hour.
+
+   R1 (§4 "a floored headline above a rendered table of zeros is a gate in
+   name only"): the totals Python returns are always computed off SOME volume
+   basis, including the observed-instance floor -- so before an analyst has
+   entered a real annual volume, this takeaway must NOT surface that
+   floor-based hours/€ figure (one recording is not a year). It falls back to
+   the same one-line observed-volume sentence the gated body shows. */
 function _roiTakeaway(roi) {
   const cands = Array.isArray(roi.candidates) ? roi.candidates : [];
   if (!cands.length) return "None to cost yet — needs a sequence seen across 2+ cases";
+  if (!_hasAnalystVolume(roi)) return "No annual volume entered yet — showing observed instances only";
   const t = roi.totals || {};
   const h = t.saved_hours_per_year;
   if (h === null || h === undefined) return cands.length + " candidate" + (cands.length === 1 ? "" : "s") + " costed";
@@ -876,9 +807,45 @@ function _roiTakeaway(roi) {
   return h + " h/yr saved (expected)";
 }
 
+/* R1 (§4/§5, use gate §3): does an analyst-entered annual volume exist
+   anywhere -- the flat session-wide default, or a per-segment override that
+   actually resolved for a candidate (volume_basis "default"/"annotated")?
+   The observed-instance-count floor ("observed") does NOT count: one
+   recording is not a year, and the use gate says an assumption never earns
+   a table until someone entered it. */
+function _hasAnalystVolume(roi) {
+  const flat = roi.inputs_used && roi.inputs_used.annual_volume;
+  if (flat !== null && flat !== undefined) return true;
+  const cands = Array.isArray(roi.candidates) ? roi.candidates : [];
+  return cands.some((r) => r && r.volume_basis && r.volume_basis !== "observed");
+}
+
+/* The one-line observed-volume takeaway sentence shown in the replace-pattern
+   body when no analyst-entered volume exists yet -- names the observed
+   instance count so the CTA reads as "here's what we saw", not a blank ask. */
+function _observedVolumeSentence(roi) {
+  const cands = Array.isArray(roi.candidates) ? roi.candidates : [];
+  if (!cands.length) {
+    return "No multi-instance automation candidates to cost yet — the €-ROI " +
+      "projects a yearly saving from a segment seen across 2+ cases.";
+  }
+  const totalInstances = cands.reduce((s, r) => s + (r.instance_count || 0), 0);
+  return cands.length + " automation candidate" + (cands.length === 1 ? "" : "s") +
+    " observed " + totalInstances + " time" + (totalInstances === 1 ? "" : "s") +
+    " in this recording — enter how often the process runs per year to project " +
+    "a real yearly saving.";
+}
+
 /* Build the €-ROI module object (title/takeaway/body). Pure (no DOM reads).
    `_roiSection` wraps it in the collapsible module shell so it stays unit-
-   testable as a string (its substrings live in the module body). */
+   testable as a string (its substrings live in the module body).
+
+   R1 (§4 verdict "Whole section gates on entered volume + wage"): the FULL
+   body (table, hero figures, per-row tune) renders only once an analyst has
+   entered an explicit annual volume. Below that, disclosure's replace-
+   pattern swaps the whole body for the one-line observed-volume takeaway +
+   the "Edit assumptions…" CTA -- never a table of manufactured zeros. The
+   monetary-figures-need-a-rate gate (`roi.needs_input`) is unchanged. */
 function _roiModule(roi) {
   const cands = Array.isArray(roi.candidates) ? roi.candidates : [];
   const title = "Return on automation (€-ROI)";
@@ -886,13 +853,12 @@ function _roiModule(roi) {
     'title="Set the loaded labour rate, annual volume, build cost and realism factors">' +
     "Edit assumptions…</button>";
 
-  if (!cands.length) {
+  if (!cands.length || !_hasAnalystVolume(roi)) {
     return {
       title, takeaway: _roiTakeaway(roi),
+      gated: !!cands.length,
       body: '<div class="roi-head">' + editBtn + "</div>" +
-        '<div class="analysis-note">No multi-instance automation candidates to cost yet — ' +
-        "the €-ROI projects a yearly saving from a segment seen across 2+ cases. " +
-        "Analyze a longer recording or load more sessions.</div>",
+        '<div class="analysis-note">' + escapeHtml(_observedVolumeSentence(roi)) + "</div>",
     };
   }
 
@@ -905,6 +871,14 @@ function _roiModule(roi) {
       "realism factor) × loaded €/hr, less the build cost amortised over " +
       escapeHtml(String((roi.inputs_used && roi.inputs_used.amortization_years) || 3)) +
       " years. Figures are a band, not a point estimate — read the range.</div>";
+  // Item 4: an assumption never gets a column. The automatable share is a
+  // configured assumption (flat or per-segment tuned), not a per-row
+  // measurement -- it renders once, here, never as an AUTO% table column.
+  // Per-row overrides stay reachable via each row's "tune" affordance.
+  const autoShareNote = '<div class="analysis-caption roi-auto-share-note">Assumes ' +
+    Math.round(((roi.inputs_used && roi.inputs_used.automatable_fraction) || 0.7) * 100) +
+    "% of each candidate's time is automatable unless tuned per segment " +
+    '(<span class="roi-tune-hint">the "tune" button on a row</span>).</div>';
   // ADR-0024: make the grain↔ROI relationship explicit. The candidates are at
   // the coherent-segment grain (ADR-0016) and the total is time-based, so the
   // Grain slider re-itemises the Steps and Map views but never moves this total.
@@ -917,7 +891,7 @@ function _roiModule(roi) {
   const unit = roi.needs_input ? "Hours/yr" : "Net €/yr";
   const table =
     '<table class="analysis-table roi-table">' +
-      "<thead><tr><th>Segment</th><th>Inst.</th><th>Mean</th><th>Auto%</th>" +
+      "<thead><tr><th>Segment</th><th>Inst.</th><th>Mean</th>" +
       "<th>Volume/yr</th>" +
       '<th title="conservative band">Cons.</th>' +
       '<th class="roi-expected" title="expected band">' + escapeHtml(unit) + "</th>" +
@@ -927,7 +901,7 @@ function _roiModule(roi) {
 
   return {
     title, takeaway: _roiTakeaway(roi),
-    body: '<div class="roi-head">' + editBtn + "</div>" + caption + grainNote +
+    body: '<div class="roi-head">' + editBtn + "</div>" + caption + autoShareNote + grainNote +
       _roiLegend(roi) + _roiTotals(roi) + table,
   };
 }
@@ -1198,27 +1172,6 @@ function _wireControls(host, analysis) {
     });
   });
 
-  /* v0.18.1: chip-driven waste-type filter. Click a chip on a row to scope the
-     list to step types tagged with that waste type; stopPropagation keeps the
-     click from also opening the row's adjust modal. Click the chip of the
-     currently-filtered type (or the "show all ✕" indicator) to clear. */
-  host.querySelectorAll(".waste-tag-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const t = btn.dataset.wasteType;
-      _wasteTypeFilter = _wasteTypeFilter === t ? null : t;
-      renderAnalysisLevel();
-    });
-  });
-  const clearBtn = host.querySelector(".waste-filter-clear");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      _wasteTypeFilter = null;
-      renderAnalysisLevel();
-    });
-  }
-
   // §B1: instance-strip dots — click jumps the Flow timeline to that step
   // (same path the Overview findings use). Lazy require: flow-view-video
   // touches the DOM at load, which would break this module's pure unit tests.
@@ -1226,6 +1179,45 @@ function _wireControls(host, analysis) {
     dot.addEventListener("click", () => {
       const st = _tsDotSteps.get(dot.dataset.stepId);
       if (st) require("./flow-view-video.js").jumpToStepInFlow(st);
+    });
+  });
+
+  // Item 2 (relocated): the judgment editor expand-in-place toggle on a
+  // "Where the time goes" row (Evidence mechanic — inline, no navigation).
+  host.querySelectorAll(".ts-judge-expand").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const row = btn.closest(".ts-row");
+      const body = row && row.querySelector(".ts-judge-body");
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      btn.setAttribute("aria-expanded", String(open));
+      btn.textContent = open ? "▾" : "▸";
+    });
+  });
+
+  // Automation candidate cards (finding-cards.js): expand-in-place toggle for
+  // the evidence body (the step chain + the Confirm/Dismiss decision). Mirrors
+  // overview-view.js's _wireFindings toggle so the same component behaves the
+  // same everywhere it's reused.
+  host.querySelectorAll(".auto-cards .ov-finding").forEach((card) => {
+    const body = card.querySelector(".ov-finding-body");
+    const expand = card.querySelector('[data-act="expand"]');
+    const toggle = () => {
+      if (!body) return;
+      const open = body.hidden;
+      body.hidden = !open;
+      if (expand) {
+        expand.setAttribute("aria-expanded", String(open));
+        expand.textContent = open ? "▾" : "▸";
+      }
+    };
+    if (expand) expand.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+    const head = card.querySelector(".ov-finding-head");
+    if (head && body) head.addEventListener("click", (e) => {
+      if (e.target.closest("button, a, label, input")) return;
+      toggle();
     });
   });
 
@@ -1276,15 +1268,19 @@ function renderAnalysisLevel() {
   const overrides = (session.annotations &&
     session.annotations.analysis_overrides) || [];
   const analysis = applyAnalysisOverrides(raw, overrides);
-  // ADR-0024: the step-grained itemisation (Waste by step, Time study) follows
-  // the current grain notch; the €-ROI total stays invariant. Build the regroup
+  // ADR-0024: the step-grained itemisation ("Where the time goes") follows the
+  // current grain notch; the €-ROI total stays invariant. Build the regroup
   // maps once (skipped at the element notch, which keeps the editable default).
   const notch = State.getGrain();
   const maps = (notch && notch !== "element") ? _grainMaps(notch) : null;
-  // Honesty gate: the efficiency ratio renders only once an analyst has
-  // judged business-required time somewhere (any bnva_ms override).
-  const hasBnvaOverride = overrides.some(
-    (ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
+  // R1: "Process efficiency" and the "Waste by step/screen" resident module are
+  // gone (§4 of the redesign) -- the judgment editor relocates into the
+  // "Where the time goes" row expansion (item 2 relocated). Build the
+  // process_label -> waste group map once, at the element notch only (the
+  // override is process_label-scoped, so it only makes sense to judge there).
+  const wasteByProcessLabel = (notch === "element" || !notch)
+    ? new Map(_groupWasteRows(analysis.waste_classification || []).map((g) => [g.process_label, g]))
+    : null;
   // Item 21: each section renders inside a uniform collapsible module (title +
   // one-line takeaway + chevron), collapse state persisted per analyst. The
   // section builders return { title, takeaway, body, gated } (null = no data);
@@ -1294,9 +1290,7 @@ function renderAnalysisLevel() {
   // native <details> retains the body in the DOM).
   host.innerHTML =
     _caption(overrides.length) +
-    _moduleShell("efficiency", _efficiencySection(analysis.efficiency || {}, hasBnvaOverride)) +
-    _moduleShell("waste", _wasteSection(analysis.waste_classification || [], notch, maps, hasBnvaOverride)) +
-    _moduleShell("time", _timeStudySection(analysis.time_study || [], notch, maps)) +
+    _moduleShell("time", _timeStudySection(analysis.time_study || [], notch, maps, wasteByProcessLabel)) +
     _moduleShell("automation", _automationSection(analysis.automation_candidates || [])) +
     _roiSection(analysis.roi);
   _wireControls(host, analysis);

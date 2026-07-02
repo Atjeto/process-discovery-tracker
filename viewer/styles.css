@@ -1215,12 +1215,9 @@ details.analysis-module { padding: 0; }
 .analysis-module[open] .analysis-module-chevron::before { content: "▾"; }
 .analysis-module-body { padding: 12px 14px; }
 .analysis-module[open] .analysis-module-body { padding-top: 12px; }
-.efficiency-row { display: flex; align-items: baseline; gap: 14px; }
-.efficiency-big {
-  font-size: 34px; font-weight: 700; color: var(--accent);
-  font-family: var(--font-mono); line-height: 1;
-}
-.efficiency-detail { color: var(--fg-2); font-size: 12px; }
+/* R1: the judgment editor relocated from the removed "Waste by step/screen"
+   resident module into a "Where the time goes" row's expand-in-place body
+   (.ts-judge-body) -- this chrome is reused there, unchanged. */
 .waste-legend {
   display: flex; gap: 14px; margin-bottom: 8px;
   font-size: 11px; color: var(--fg-3);
@@ -1229,21 +1226,10 @@ details.analysis-module { padding: 0; }
   display: inline-block; width: 10px; height: 10px;
   border-radius: 2px; margin-right: 4px; vertical-align: middle;
 }
-.waste-rows { display: flex; flex-direction: column; gap: 6px; }
-.waste-instant { margin-top: 4px; }
-.waste-instant > summary {
-  cursor: pointer; color: var(--fg-3); font-size: 12px; padding: 2px 0;
-}
-.waste-instant > summary:hover { color: var(--fg); }
-.waste-instant[open] > summary { margin-bottom: 6px; }
 .waste-row { display: flex; align-items: center; gap: 10px; }
 .waste-name {
   flex: 0 0 180px; font-size: 12px; color: var(--fg);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.waste-instances {
-  font-size: 10px; color: var(--fg-3); margin-left: 6px;
-  font-family: var(--font-mono);
 }
 .waste-bar {
   flex: 1; display: flex; height: 14px;
@@ -1261,35 +1247,6 @@ details.analysis-module { padding: 0; }
 .waste-tag {
   font-size: 10px; color: var(--fg-2); background: var(--bg-3);
   border: 1px solid var(--rule); border-radius: 2px; padding: 1px 5px;
-}
-/* v0.18.1: chips on waste rows are real buttons now -- click to filter the
-   list by waste type. cursor + hover signal interactivity; active state
-   highlights the chip whose type is currently filtered. */
-button.waste-tag-btn {
-  font: inherit; font-size: 10px; line-height: normal; cursor: pointer;
-}
-button.waste-tag-btn:hover {
-  border-color: var(--accent); color: var(--fg);
-}
-.waste-tag-active {
-  background: var(--accent-muted); border-color: var(--accent); color: var(--fg);
-}
-.waste-filter-chip {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--fg-3);
-  padding: 4px 6px; margin: 4px 0;
-  background: var(--bg-2); border: 1px solid var(--rule-soft);
-  border-radius: var(--radius-sm);
-}
-.waste-filter-clear {
-  font-size: 10px; color: var(--fg-3); background: transparent;
-  border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  padding: 1px 6px; cursor: pointer; margin-left: auto;
-}
-.waste-filter-clear:hover { color: var(--accent); border-color: var(--accent); }
-.waste-empty {
-  color: var(--fg-3); font-size: 12px; font-style: italic;
-  padding: 12px 4px;
 }
 .seg-va { background: var(--va); }
 .seg-bnva { background: var(--bnva); }
@@ -1321,10 +1278,11 @@ button.waste-tag-btn:hover {
 }
 .ts-axis-line { flex: 1; border-top: 1px dashed var(--rule); }
 .ts-rows { display: flex; flex-direction: column; }
-.ts-row {
-  display: grid; grid-template-columns: minmax(140px, 240px) 40px 76px 1fr;
-  gap: 10px; align-items: center; padding: 4px 0;
-  border-bottom: 1px solid var(--rule-soft);
+.ts-row { padding: 4px 0; border-bottom: 1px solid var(--rule-soft); }
+.ts-row-line {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) 40px 76px minmax(80px, 1fr) minmax(0, 260px) 16px;
+  gap: 10px; align-items: center;
 }
 .ts-name {
   font-size: 12px; color: var(--fg);
@@ -1351,9 +1309,22 @@ button.waste-tag-btn:hover {
 }
 .ts-dot[disabled] { cursor: default; background: var(--fg-4); }
 .ts-stats {
-  grid-column: 1 / -1; font-family: var(--font-mono); font-size: 10px;
-  color: var(--fg-3); padding: 0 0 2px;
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--fg-3); padding: 2px 0 0;
 }
+/* Item 2 (relocated): the inline judgment summary on a "Where the time goes"
+   row line, and the expand-in-place trigger that opens the judgment editor
+   (the SAME editor that used to live in the resident "Waste by step" module). */
+.ts-judgment {
+  font-size: 11px; color: var(--fg-3); text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ts-judge-expand {
+  flex: 0 0 auto; background: none; border: none; cursor: pointer;
+  color: var(--fg-3); font-size: 12px; line-height: 1; padding: 2px;
+}
+.ts-judge-expand:hover { color: var(--accent); }
+.ts-judge-body { padding: 8px 0 4px; }
 /* Analyst-correction affordances (ANALYSIS-LAYER-FOLLOWUPS.md). */
 .waste-row-editable {
   cursor: pointer; padding: 2px 4px; margin: 0 -4px;
@@ -1384,7 +1355,16 @@ button.waste-tag-btn:hover {
 }
 .auto-arrow { color: var(--fg-4); padding: 0 2px; }
 .auto-more { color: var(--fg-4); font-style: italic; }
-.auto-rank { color: var(--fg-3); font-weight: 600; width: 1%; white-space: nowrap; }
+/* Automation-candidate finding cards (R1 §5): reuses .ov-finding chrome
+   (finding-cards.js); .auto-card only adds spacing between cards, and
+   restates the existing rank order as a small gutter number. */
+.auto-cards { display: flex; flex-direction: column; gap: 2px; }
+.auto-card { position: relative; padding-left: 22px; }
+.auto-card::before {
+  content: attr(data-rank); position: absolute; left: 0; top: 10px;
+  font-size: 10px; font-weight: 600; color: var(--fg-4);
+  font-family: var(--font-mono); width: 18px; text-align: right;
+}
 /* €-ROI section (§11c): the commercial closer -- a savings band per candidate
    plus session totals. Reuses .analysis-section / .analysis-table chrome. */
 .roi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
