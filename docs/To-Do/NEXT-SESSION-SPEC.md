@@ -11,6 +11,14 @@ Analysis wins; this doc is its operational projection. **Scope is bounded by
 Self-contained hand-off — read top to bottom; assumes no memory of the prior
 session. Earlier specs live in git history and [Archive/](Archive/).
 
+> **Update — 2026-07-03 (plan of record moved).** The owner's full-app
+> usability critique (2026-07-02/03) concluded this backlog's remaining
+> owner-gated items are subsumed by a new cycle:
+> **[APPROACHABILITY-REDESIGN-2026-07-03.md](APPROACHABILITY-REDESIGN-2026-07-03.md)**
+> is now the operational plan of record (layer diagnosis, use gate, phases
+> R1–R5). Start there. This file remains the historical record of the
+> pre-redesign waves; its §3 real-data items land inside R2/R5.
+
 > **Update — 2026-06-27 (reconcile to v0.22.2 + lab phases A–H).** This file
 > predates the lab-phase cycle; the **live** sources are CLAUDE.md's *Active
 > direction* block + [LAB-PHASE-SPEC.md](LAB-PHASE-SPEC.md) + CHANGELOG. The
