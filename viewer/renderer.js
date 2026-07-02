@@ -74,6 +74,13 @@ initRecent({ onOpenSession: (folder) => loadSessionIntoView(folder) });
 $$(".tab").forEach((tab) => {
   tab.addEventListener("click", () => activateTab(tab.dataset.view));
 });
+// R1: Process Template moved off the resident tab row into the "More" overflow
+// menu (APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1) -- same activateTab(),
+// just triggered from a menu item instead of a .tab button.
+(() => {
+  const item = document.getElementById("btn-tabs-more-canonical");
+  if (item) item.addEventListener("click", () => activateTab("canonical"));
+})();
 function activateTab(name) {
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
@@ -1716,6 +1723,7 @@ wireDropdownMenu("btn-session-export-menu", "session-export-popup");
 wireDropdownMenu("btn-session-more-menu", "session-more-popup");
 wireDropdownMenu("btn-agg-export-menu", "agg-export-popup");
 wireDropdownMenu("btn-vocab-more-menu", "vocab-more-popup");
+wireDropdownMenu("btn-tabs-more-menu", "tabs-more-popup");
 
 async function projectSaveAs() {
   toggleProjectMenu(false);

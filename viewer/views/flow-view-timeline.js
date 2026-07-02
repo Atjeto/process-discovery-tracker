@@ -261,13 +261,19 @@ function renderTimelineSummary() {
     " · " + formatDuration(last - first);
 }
 
-/* P2.D: timeline lane visibility. Defaults keep the core lanes on and
-   the denser additions (density / window-titles / per-step / notes)
-   off so the timeline isn't overwhelming out of the box. Persisted
-   per-installation since it's a workflow preference, not session data. */
+/* P2.D / R1 timeline-defaults pass: lane visibility. The timeline's job is
+   find-the-moment (DISCLOSURE-MODEL "Flow / Steps / Phases" = Evidence), so a
+   fresh profile opens with only the apps/activity lane (always on, no toggle)
+   and the case-span lane visible; every other lane -- including markers and
+   screenshots, previously on by default -- starts collapsed and is one click
+   away in the Lanes menu. This changes ONLY the default for a profile with no
+   saved preference; getLaneToggles() below still layers a saved choice from
+   localStorage over these defaults, so an analyst who already turned a lane on
+   keeps seeing it on. Persisted per-installation since it's a workflow
+   preference, not session data. */
 const LANE_KEY = "pdt.timelineLanes";
 const LANE_DEFAULTS = {
-  idle: true, markers: true, screenshots: true, cases: true,
+  idle: true, markers: false, screenshots: false, cases: true,
   density: false, titles: false, steps: false, notes: false,
 };
 function getLaneToggles() {

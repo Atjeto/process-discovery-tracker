@@ -152,15 +152,70 @@ function _aggregateMapDataSource({ notation, level, scope }) {
   };
 }
 
+/* R1 restack: the merged-map panel is a single DOM node (stamped once from
+   the <template id="agg-map-panel-template">) that renderAggregate() moves
+   between two mount points depending on whether computeConformance() has
+   anything to say -- RESIDENT (#agg-map-resident-mount, with its legend) when
+   a template match makes the map a comparable claim, else the EXPLORATION
+   drawer (#agg-map-drawer-mount). Moving the panel via appendChild reparents
+   the live node (same #bpmn-host/#dfg-host elements, same listeners) -- it
+   does NOT clone, so the map-controller's captured element references from
+   _initMapController() below never go stale. Materialized once; safe to call
+   repeatedly (no-ops if already stamped). */
+function _ensureMapPanel() {
+  let panel = document.getElementById("agg-map-panel");
+  if (panel) return panel;
+  const tmpl = document.getElementById("agg-map-panel-template");
+  if (!tmpl) return null;
+  const frag = tmpl.content.cloneNode(true);
+  panel = frag.getElementById ? frag.getElementById("agg-map-panel")
+    : frag.querySelector("#agg-map-panel");
+  // Start parked in the drawer mount (the conformance-unavailable default);
+  // renderAggregate() moves it to the resident mount once data says otherwise.
+  const drawerMount = document.getElementById("agg-map-drawer-mount");
+  if (drawerMount && panel) drawerMount.appendChild(panel);
+  return panel;
+}
+
+/* Place the (already-materialized) map panel resident or in the drawer for
+   this render, per whether a template conformance reading exists. A no-op
+   reparent (panel already the mount's only child) does not disturb the map's
+   live viewer state -- appendChild on a node already in that position is a
+   no-op per the DOM spec. */
+function _placeMapPanel(conformanceAvailable) {
+  const panel = _ensureMapPanel();
+  if (!panel) return;
+  const residentMount = document.getElementById("agg-map-resident-mount");
+  const drawerMount = document.getElementById("agg-map-drawer-mount");
+  if (conformanceAvailable) {
+    if (residentMount) {
+      residentMount.appendChild(panel);
+      residentMount.style.display = "";
+    }
+    if (drawerMount) drawerMount.style.display = "none";
+  } else {
+    if (drawerMount) {
+      drawerMount.appendChild(panel);
+      drawerMount.style.display = "";
+    }
+    if (residentMount) residentMount.style.display = "none";
+  }
+}
+
 /* Lazily create the controller once the aggregate DOM exists (called from
    initAggregateView). Held at module scope so renderAggregate and the
    conformance toggle can call .render() / .setState() on it. */
 function _initMapController() {
   if (_mapCtrl) return _mapCtrl;
+  _ensureMapPanel();
   _mapCtrl = createMapController({
     hostBpmn: document.getElementById("bpmn-host"),
     hostDfg: document.getElementById("dfg-host"),
-    notationTabs: Array.from(document.querySelectorAll(".aggregate-grid .panel-tab[data-map]")),
+    // Scoped to #agg-map-panel (not .aggregate-grid) -- R1 restack moves this
+    // panel between a resident mount and the EXPLORATION drawer, both of
+    // which contain a .aggregate-grid, so a grid-scoped selector would still
+    // resolve today but is fragile to which grid the panel starts in.
+    notationTabs: Array.from(document.querySelectorAll("#agg-map-panel .panel-tab[data-map]")),
     levelSelect: document.getElementById("map-level"),
     scopeChip: document.getElementById("map-scope"),
     zoomControls: {
@@ -475,11 +530,15 @@ function renderTaxonomyBanner(sessions) {
 function renderAggregate() {
   // Pills - count filtered + total
   const filtered = filteredAggregateSessions();
+  // R1 restack (APPROACHABILITY-REDESIGN-2026-07-03 §5 R1): the divergence
+  // findings feed is the topmost content block -- comparative content leads,
+  // merged/pooled content follows or moves to the EXPLORATION drawer. The
+  // outlier/taxonomy banners render in HTML order right after the findings
+  // panel now (never above it); call order here doesn't affect DOM position,
+  // kept in reading order for clarity.
+  renderAggFindings(filtered);
   renderOutlierBanner(filtered);
   renderTaxonomyBanner(filtered);
-  // §D2: the Compare surface leads with the divergence findings feed and
-  // the aligned reading; the merged map renders below them.
-  renderAggFindings(filtered);
   renderAggAligned(filtered);
   renderAggAnalysis(filtered);
   // H1: the group-by-worker toggle is only meaningful with 2+ workers.
@@ -733,6 +792,12 @@ function renderAggregate() {
     if (confCb) confCb.checked = _lastConfActive;
     renderConformanceLegend(_lastConfActive ? _lastConformance : null);
   }
+
+  // R1 restack: the merged map is a comparable CLAIM only when it can be read
+  // against a template (computeConformance() non-null) -- resident with its
+  // legend then. Otherwise it is exploration -- the EXPLORATION drawer, same
+  // panel, same controls, just not asserting anything about "the" process.
+  _placeMapPanel(!!_lastConformance);
 
   // Default cell: if the activity Flow diagram is empty (e.g. no taxonomy) but
   // the analyst has steps/phases, fall back to that level on the Flow diagram
@@ -1539,11 +1604,28 @@ function findFirstActivityByLabel(session, activityLabel) {
   return session.events.find((e) => e.type === "activity") || null;
 }
 
+/* R1: the EXPLORATION drawer's open/close persists per analyst -- same
+   localStorage pattern as pdt.summaryOpen (flow-view.js) and pdt.analysis.*
+   (analysis-view.js). Default collapsed (DISCLOSURE-MODEL Machine mechanic). */
+const AGG_EXPLORE_KEY = "pdt.aggExploreOpen";
+function _wireExplorationDrawer() {
+  const drawer = document.getElementById("agg-exploration-drawer");
+  if (!drawer || drawer._pdtWired) return;
+  drawer._pdtWired = true;
+  try { drawer.open = localStorage.getItem(AGG_EXPLORE_KEY) === "1"; }
+  catch (_) { drawer.open = false; }
+  drawer.addEventListener("toggle", () => {
+    try { localStorage.setItem(AGG_EXPLORE_KEY, drawer.open ? "1" : "0"); }
+    catch (_) {}
+  });
+}
+
 /* Wire the aggregate surface. onDrillToSession(folder, timestamp) is
    injected by renderer.js. Call once at boot. */
 function initAggregateView(opts) {
   onDrillToSession = (opts && opts.onDrillToSession) || (async () => {});
   wireAggregateControls();
+  _wireExplorationDrawer();
   // Build the map controller now that the aggregate DOM is in the document
   // (so its querySelector lookups resolve). Defaults: BPMN tab, Activity level.
   _initMapController();

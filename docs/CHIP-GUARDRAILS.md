@@ -83,11 +83,19 @@ and it drives the viewer's own `electron`.
    depend on it. The in-repo `e2e/` is the portable entry point.)*
 
 ### The DOM handles to reach every surface (so a context-blind chip can navigate)
-- **Top-nav views:** `.tab[data-view="session"|"aggregate"|"canonical"|"vocabularies"]`
-  — Process Template = `canonical`, App Library = `vocabularies` (NOT
-  "template"/"library"; this doc shipped the wrong handles once — grep
-  `viewer/index.html` if a selector misses, and make missing-selector paths in
-  drive scripts fail LOUD, never silently skip a surface).
+- **Top-nav views:** `.tab[data-view="session"|"aggregate"|"vocabularies"]` for the
+  three resident tabs — App Library = `vocabularies` (NOT "library"; this doc
+  shipped the wrong handles once — grep `viewer/index.html` if a selector misses,
+  and make missing-selector paths in drive scripts fail LOUD, never silently skip
+  a surface). **R1 (2026-07):** Process Template (`canonical`) is OUT of the
+  resident tab row (APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1 — a byproduct
+  destination, not a landing). It is NOT `.tab[data-view="canonical"]` anymore.
+  Reach it via the "More ▾" overflow next to the tabs: click
+  `#btn-tabs-more-menu` to open `#tabs-more-popup`, then click
+  `#btn-tabs-more-canonical` — both call the same `activateTab("canonical")` the
+  old tab called, so `#view-canonical` and the view's own IPC/state are
+  unchanged. The keyboard shortcut `3` still activates it directly (no menu
+  needed) and the `openCanonicalInTemplateTab` drill from Steps still works.
 - **Session-view levels:** `.view-mode-btn[data-level="overview"|"flow"|"steps"|"phases"|"map"|"analysis"]`
   → each shows its container `#session-layout-<level>`. **Overview is the default
   on session load** (lab-phase §A5) — its badge/hero/facts/findings/memo surface is

@@ -30,8 +30,19 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     <nav class="tabs">
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
       <button class="tab" data-view="aggregate"><span class="kbd">2</span> Compare Sessions</button>
-      <button class="tab" data-view="canonical"><span class="kbd">3</span> Process Template</button>
       <button class="tab" data-view="vocabularies"><span class="kbd">4</span> App Library</button>
+      <!-- R1: Process Template is a byproduct destination nothing in the
+           default workflow hands you (APPROACHABILITY-REDESIGN-2026-07-03
+           §4) -- out of the resident tab row, reachable one click down. The
+           view, its IPC, and the command palette entry are unchanged. -->
+      <div class="project-menu tabs-more-menu" id="tabs-more-menu">
+        <button class="project-btn tabs-more-btn" id="btn-tabs-more-menu" title="More views">
+          <span>More</span><span class="project-menu-caret">▾</span>
+        </button>
+        <div class="project-menu-popup" id="tabs-more-popup" style="display:none">
+          <button class="project-menu-item" id="btn-tabs-more-canonical"><span class="kbd">3</span> Process Template</button>
+        </div>
+      </div>
     </nav>
     <div class="topbar-meta">
       <div class="project-menu" id="recent-menu">
@@ -549,7 +560,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <label class="cb" title="YYYY-MM-DD">From <input type="date" id="agg-from" /></label>
           <label class="cb" title="YYYY-MM-DD">To <input type="date" id="agg-to" /></label>
           <span class="hint" style="align-self:center">YYYY-MM-DD</span>
-          <label class="cb" id="agg-group-worker-wrap" style="display:none" title="Colour the activity and case charts by worker, so you can compare how different people ran the same process."><input type="checkbox" id="cb-agg-group-worker" /> Group by worker</label>
           <div class="project-menu" id="agg-export-menu">
             <button class="project-btn" id="btn-agg-export-menu" title="Export process maps, reports, and data">
               <span>Export</span><span class="project-menu-caret">▾</span>
@@ -575,30 +585,145 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <div class="session-pills" id="aggregate-pills"></div>
         </div>
         <div class="alert" id="agg-version-spread" style="display:none"></div>
-        <div class="alert" id="agg-outlier-banner" style="display:none"></div>
-        <div class="alert" id="agg-taxonomy-banner" style="display:none"></div>
-        <div class="worker-legend" id="agg-worker-legend" style="display:none"></div>
 
         <div class="aggregate-grid">
-          <!-- §D2: Compare leads with the cross-session findings feed (the
-               same finding-card component the Overview renders), then the
-               aligned reading; the merged process map is demoted below. -->
+          <!-- R1 restack (APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1): Compare's
+               job is differences, so comparative content is resident and merged/
+               pooled content is one Machine drawer. Resident order: findings feed
+               (topmost content block) -> outlier/taxonomy banners -> aligned
+               reading -> side-by-side (2-session only) -> drift (conditional) ->
+               merged map ONLY when template conformance is available. Everything
+               else moves into #agg-exploration-drawer below, unchanged inside. -->
           <div class="panel panel-wide" id="agg-findings-panel" style="display:none">
             <h3>Cross-session findings</h3>
             <p class="meta" style="margin-top:0">Comparative claims across sessions of the <em>same process</em> — who completes a case in how many steps, and where the paths first part ways.</p>
             <div id="agg-findings-content"></div>
           </div>
 
+          <div class="alert" id="agg-outlier-banner" style="display:none"></div>
+          <div class="alert" id="agg-taxonomy-banner" style="display:none"></div>
+
           <div class="panel panel-wide" id="agg-aligned-panel" style="display:none">
             <div class="agg-panel-head">
               <h3>Aligned reading</h3>
               <span class="meta" id="agg-aligned-meta"></span>
             </div>
-            <p class="meta" style="margin-top:0"><span class="bb-freq">n/N</span> = cases that include the step, split per worker/session. The consensus step backbone across every case in the loaded sessions — how the process reads before it is drawn. Steps off the backbone are listed as exceptions; the merged map below shows the same flow as a diagram.</p>
+            <p class="meta" style="margin-top:0"><span class="bb-freq">n/N</span> = cases that include the step, split per worker/session. The consensus step backbone across every case in the loaded sessions — how the process reads before it is drawn. Steps off the backbone are listed as exceptions.</p>
             <div id="agg-aligned-content"></div>
           </div>
 
-          <div class="panel panel-wide">
+          <div class="panel panel-wide" id="side-by-side-panel" style="display:none">
+            <div class="agg-panel-head">
+              <h3>Side-by-side comparison</h3>
+              <button id="btn-sxs-align" class="agg-toggle-btn" title="Align both timelines by wall-clock time, or by each session's first case start.">Align: by time</button>
+            </div>
+            <p class="meta" style="margin-top:0">Two sessions' step timelines stacked for a direct visual comparison. Steps both sessions share are green; steps unique to one session are amber.</p>
+            <button id="btn-compare-sxs" class="primary">Compare side-by-side</button>
+            <div id="side-by-side-summary" class="meta"></div>
+            <div id="side-by-side-container"></div>
+          </div>
+
+          <div class="panel panel-wide" id="drift-panel" style="display:none">
+            <h3>Drift</h3>
+            <div id="drift-content"></div>
+          </div>
+
+          <!-- Resident mount for the merged map -- only populated (moved in from
+               the drawer) when computeConformance() finds a template match; see
+               aggregate-view.js renderAggregate(). Empty and display:none
+               otherwise, so it costs nothing when the map lives in the drawer. -->
+          <div id="agg-map-resident-mount" style="display:none"></div>
+        </div>
+
+        <!-- Machine mechanic (DISCLOSURE-MODEL.md): merged/pooled quantities are
+             exploration, not a comparison claim, so they collapse here by
+             default. State persists per analyst at localStorage pdt.aggExploreOpen
+             (same pattern as pdt.summaryOpen / pdt.analysis.*). Everything inside
+             keeps its existing ids, handlers, and behaviour -- only the
+             surrounding position changed. -->
+        <details class="advanced-yaml agg-exploration-drawer" id="agg-exploration-drawer">
+          <summary class="agg-exploration-summary">
+            <span class="agg-exploration-chevron" aria-hidden="true"></span>
+            <span>EXPLORATION — merged views</span>
+          </summary>
+          <div class="agg-exploration-body">
+            <p class="meta agg-exploration-hint">Merged and pooled across the loaded sessions — useful for exploring the corpus, but a merged quantity can't answer a comparison question. The findings feed above is the comparison.</p>
+            <label class="cb" id="agg-group-worker-wrap" style="display:none" title="Colour the activity and case charts by worker, so you can compare how different people ran the same process."><input type="checkbox" id="cb-agg-group-worker" /> Group by worker</label>
+            <div class="worker-legend" id="agg-worker-legend" style="display:none"></div>
+
+            <div class="aggregate-grid">
+              <!-- Resident mount point for the merged map when conformance is
+                   UNAVAILABLE (computeConformance() returned null) -- the map
+                   still needs the notation/level selectors here, same markup as
+                   the resident slot above. Exactly one of the two mounts holds
+                   the map panel at any time. -->
+              <div id="agg-map-drawer-mount"></div>
+
+              <div class="panel">
+                <h3>Activity frequency</h3>
+                <div id="activity-chart" class="chart-host"></div>
+              </div>
+
+              <div class="panel">
+                <h3>Case durations</h3>
+                <div id="case-chart" class="chart-host"></div>
+              </div>
+
+              <div class="panel panel-wide">
+                <div class="agg-panel-head">
+                  <h3>Path variations</h3>
+                  <div class="agg-level-switcher" id="variant-mode-switch" title="Compare the raw activity sequence, or the analyst's stepped view of the process.">
+                    <button class="agg-level-btn active" data-vmode="activity">By activity</button>
+                    <button class="agg-level-btn" data-vmode="step">By step</button>
+                  </div>
+                </div>
+                <p class="meta" style="margin-top:0">Every distinct activity sequence across the loaded sessions, ranked by how many sessions follow it. The bar shows relative frequency; amber-highlighted activities are positions where paths diverge.</p>
+                <div class="stats-table-host" id="variant-table-host">
+                  <table class="stats-table" id="variants">
+                    <thead><tr><th>freq</th><th>len</th><th>variant</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel panel-wide" id="agg-analysis-panel" style="display:none">
+                <h3>Analysis</h3>
+                <p class="meta" style="margin-top:0">Findings pooled across the loaded sessions — a step seen once per session gains real signal once recordings are combined. These are estimates — review before relying on them.</p>
+                <div id="agg-analysis-content"></div>
+              </div>
+
+              <div class="panel">
+                <h3>App outliers (&lt;5%)</h3>
+                <div class="stats-table-host">
+                  <table class="stats-table" id="outliers">
+                    <thead><tr><th>app</th><th>cases</th><th>%</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h3 title="How often a worker had to revisit the same activity inside a single case — often a sign of rework or fixing a mistake.">Repeated activities within a case</h3>
+                <p class="meta" style="margin-top:0">Activities a worker did more than once inside the same case. Frequent repeats often mean rework — re-checking, re-entering, or fixing something.</p>
+                <div class="stats-table-host">
+                  <table class="stats-table" id="rework">
+                    <thead><tr><th>activity</th><th>times repeated</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- The merged-map panel itself: a single DOM node reparented by
+             aggregate-view.js between #agg-map-resident-mount (conformance
+             available) and #agg-map-drawer-mount (conformance unavailable), so
+             the map-controller's captured #bpmn-host/#dfg-host element
+             references never go stale. Starts here (outside both mounts) and is
+             moved into place on first renderAggregate(). -->
+        <template id="agg-map-panel-template">
+          <div class="panel panel-wide" id="agg-map-panel">
             <div class="panel-header">
               <h3>Process map</h3>
               <div class="panel-tabs">
@@ -634,77 +759,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div id="dfg-conformance-legend" class="conformance-legend" style="display:none"></div>
             <div class="resize-v" id="resize-map" title="Drag to resize the process map"></div>
           </div>
-
-          <div class="panel">
-            <h3>Activity frequency</h3>
-            <div id="activity-chart" class="chart-host"></div>
-          </div>
-
-          <div class="panel">
-            <h3>Case durations</h3>
-            <div id="case-chart" class="chart-host"></div>
-          </div>
-
-          <div class="panel panel-wide">
-            <div class="agg-panel-head">
-              <h3>Path variations</h3>
-              <div class="agg-level-switcher" id="variant-mode-switch" title="Compare the raw activity sequence, or the analyst's stepped view of the process.">
-                <button class="agg-level-btn active" data-vmode="activity">By activity</button>
-                <button class="agg-level-btn" data-vmode="step">By step</button>
-              </div>
-            </div>
-            <p class="meta" style="margin-top:0">Every distinct activity sequence across the loaded sessions, ranked by how many sessions follow it. The bar shows relative frequency; amber-highlighted activities are positions where paths diverge. Hover a node in the Flow diagram above to see the same paths laid out visually.</p>
-            <div class="stats-table-host" id="variant-table-host">
-              <table class="stats-table" id="variants">
-                <thead><tr><th>freq</th><th>len</th><th>variant</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="panel panel-wide" id="side-by-side-panel" style="display:none">
-            <div class="agg-panel-head">
-              <h3>Side-by-side comparison</h3>
-              <button id="btn-sxs-align" class="agg-toggle-btn" title="Align both timelines by wall-clock time, or by each session's first case start.">Align: by time</button>
-            </div>
-            <p class="meta" style="margin-top:0">Two sessions' step timelines stacked for a direct visual comparison. Steps both sessions share are green; steps unique to one session are amber.</p>
-            <button id="btn-compare-sxs" class="primary">Compare side-by-side</button>
-            <div id="side-by-side-summary" class="meta"></div>
-            <div id="side-by-side-container"></div>
-          </div>
-
-          <div class="panel panel-wide" id="agg-analysis-panel" style="display:none">
-            <h3>Analysis</h3>
-            <p class="meta" style="margin-top:0">Findings pooled across the loaded sessions — a step seen once per session gains real signal once recordings are combined. These are estimates — review before relying on them.</p>
-            <div id="agg-analysis-content"></div>
-          </div>
-
-          <div class="panel">
-            <h3>App outliers (&lt;5%)</h3>
-            <div class="stats-table-host">
-              <table class="stats-table" id="outliers">
-                <thead><tr><th>app</th><th>cases</th><th>%</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="panel">
-            <h3 title="How often a worker had to revisit the same activity inside a single case — often a sign of rework or fixing a mistake.">Repeated activities within a case</h3>
-            <p class="meta" style="margin-top:0">Activities a worker did more than once inside the same case. Frequent repeats often mean rework — re-checking, re-entering, or fixing something.</p>
-            <div class="stats-table-host">
-              <table class="stats-table" id="rework">
-                <thead><tr><th>activity</th><th>times repeated</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel panel-wide" id="drift-panel" style="display:none">
-          <h3>Drift</h3>
-          <div id="drift-content"></div>
-        </div>
+        </template>
 
       </div>
     </section>
@@ -976,7 +1031,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <section class="help-section" data-section="template">
           <h3>What a Process Template is</h3>
           <p>A Process Template is a YAML file that says: "<em>This is what Customer Onboarding looks like. It has three phases. The first phase has three steps. Here's how to recognize each step when you see it in a captured session.</em>"</p>
-          <p>The third tab at the top of the viewer (<strong>Process Template</strong>) is where you open, edit, and test templates. A sample one ships at <code>normalization/canonical/sample-customer-onboarding-v3.yaml</code>.</p>
+          <p>The <strong>Process Template</strong> view is where you open, edit, and test templates — click <strong>More ▾</strong> at the top of the viewer, then <strong>Process Template</strong>. A sample template ships at <code>normalization/canonical/sample-customer-onboarding-v3.yaml</code>.</p>
           <h3>Why bother</h3>
           <p>Without a template, the viewer can only auto-suggest steps from interaction patterns. The names it picks are generic ("App: 4 actions"). With a template, every matched interaction gets the right name ("Search existing customer record"), groups into the right step, and the steps roll up into named phases. The PDD export, the step BPMN export, and the aggregate statistics all become hugely more useful.</p>
           <h3>The minimal shape</h3>

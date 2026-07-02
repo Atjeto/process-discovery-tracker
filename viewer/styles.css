@@ -218,6 +218,17 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   .brand .tagline { display: none; }
   .tab { padding: 6px 10px; }
 }
+/* R1: the "More" overflow menu sits inline in the tab row (Process Template
+   relocated here -- APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1) and should
+   read as one more tab, not a topbar project-menu button. */
+.tabs-more-menu { display: inline-block; }
+.tabs-more-btn.project-btn {
+  background: transparent; border: 1px solid transparent; color: var(--fg-3);
+  padding: 6px 16px; border-radius: var(--radius-sm); font-size: inherit;
+  max-width: none;
+}
+.tabs-more-btn.project-btn:hover { background: var(--bg-2); color: var(--fg-2); border-color: transparent; }
+.tabs-more-menu .project-menu-popup { left: 0; right: auto; min-width: 200px; }
 .topbar-meta { justify-self: end; color: var(--fg-3); font-size: 11px;
   font-family: var(--font-mono); display: flex; align-items: center; gap: 10px; }
 .help-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%;
@@ -688,6 +699,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .panel { background: var(--bg-2); border-radius: var(--radius); padding: 14px 18px;
   min-height: 220px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .panel-wide { grid-column: 1 / -1; }
+/* R1: the merged-map mount points (aggregate-view.js _placeMapPanel) are grid
+   items that hold the map .panel-wide one level down, not as a direct grid
+   child -- grid-column: 1/-1 on the nested .panel-wide would have no effect
+   on its own containing block, so span the mount itself the same way. */
+#agg-map-resident-mount, #agg-map-drawer-mount { grid-column: 1 / -1; }
 .panel-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px;
   flex-wrap: wrap; }
 .panel-header h3 { margin: 0; }
@@ -3174,6 +3190,27 @@ button.danger:disabled {
   outline: none;
 }
 .advanced-yaml textarea:focus { border-color: var(--accent); }
+
+/* R1: the Compare surface's "EXPLORATION -- merged views" Machine drawer
+   (APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1). Extends .advanced-yaml's
+   collapsed-by-default look, but the summary carries its own glyph + label
+   (not the browser's default disclosure text), so the native marker is
+   suppressed the same way .analysis-module-head does -- otherwise the
+   triangle doubles (CHIP-GUARDRAILS "Doubled disclosure markers" pitfall). */
+.agg-exploration-drawer { margin: 16px 0 4px; }
+.agg-exploration-summary {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer; color: var(--fg-3); list-style: none; user-select: none;
+  font-size: 11px; padding: 6px 0; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.agg-exploration-summary::-webkit-details-marker { display: none; }
+.agg-exploration-summary:hover { color: var(--fg-2); }
+.agg-exploration-drawer[open] > .agg-exploration-summary { color: var(--accent); }
+.agg-exploration-chevron { flex: 0 0 auto; font-size: 11px; line-height: 1; }
+.agg-exploration-chevron::before { content: "▸"; }
+.agg-exploration-drawer[open] .agg-exploration-chevron::before { content: "▾"; }
+.agg-exploration-body { padding-top: 8px; }
+.agg-exploration-hint { margin: 0 0 12px; }
 
 /* ===== Process Template form editor (Phase 5++) =================== */
 .canonical-meta-form {
