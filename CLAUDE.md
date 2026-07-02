@@ -4,7 +4,11 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-06) — START HERE:** Released **v1.3.0** (2026-06-28).
+**Active direction (2026-07) — START HERE:** Released **v1.4.0** (2026-07-02) —
+a viewer-only presentation/disclosure pass (design critique 2026-07-01;
+[docs/architecture/DISCLOSURE-MODEL.md](docs/architecture/DISCLOSURE-MODEL.md),
+[docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md](docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md)),
+on top of **v1.3.0** (2026-06-28).
 **Version-number note (read first):** this block describes work by its *internal
 lab-phase / 0.x cycle* names, but the shipped **release tags are 1.x**. The project
 re-versioned at the **2026-06-09 1.0 milestone**, which also split the **clean
@@ -109,7 +113,7 @@ layers that never talk over a network:
 
 The hand-off between the two halves is a self-contained **session folder** moved
 from the worker's machine to the analyst's — no network, no shared services.
-Current released version **v1.3.0** (the **clean edition** line; tags + CHANGELOG
+Current released version **v1.4.0** (the **clean edition** line; tags + CHANGELOG
 are the source of truth — see the *Version-number note* at the top for why the
 "0.2x" cycle numbers in this doc are pre-1.0 internal milestones).
 

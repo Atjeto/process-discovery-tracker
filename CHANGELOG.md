@@ -4,7 +4,15 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0] - 2026-07-02
+
+Presentation / disclosure pass over the viewer from the 2026-07-01 design
+critique: default surfaces are calmer and business-readable, with the fuller
+analytical + technical detail one click behind an expand or a named drawer. All
+changes stay inside the Honesty Redesign (Memo / Evidence / Machine + tier
+gates) and follow the new presentation ruleset in
+[docs/architecture/DISCLOSURE-MODEL.md](docs/architecture/DISCLOSURE-MODEL.md).
+Viewer-only — no capture, pipeline, schema, or session-data changes.
 
 ### Changed — disclosure pass (design critique 2026-07-01)
 
