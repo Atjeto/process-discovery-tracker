@@ -1654,6 +1654,53 @@ details.analysis-module { padding: 0; }
 .grain-group-dur { font-size: 10px; }
 .grain-legend-hint { color: var(--fg-4); }
 
+/* ADR-0028 (R3): the Steps case tree — cases -> case-scoped screen-visit work
+   items. The case head is a collapsible group; work items are indented rows. */
+.wi-case-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 3px; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--fg);
+  border: 1px solid transparent; margin-bottom: 1px; min-height: 28px;
+}
+.wi-case-head:hover { background: var(--bg-3); border-color: var(--rule); }
+.wi-case-head.open { background: var(--bg-2); }
+.wi-case-caret { flex: 0 0 auto; width: 12px; color: var(--fg-3); font-size: 10px; }
+.wi-case-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-case-meta { flex-shrink: 0; font-size: 10px; }
+.wi-item-group { margin: 0 0 3px 14px; border-left: 1px solid var(--rule-soft); padding-left: 4px; }
+.wi-item-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 12px;
+  border: 1px solid transparent; margin-bottom: 1px; min-height: 24px;
+}
+.wi-item-row:hover { background: var(--bg-3); border-color: var(--rule); }
+.wi-item-row.selected { background: var(--accent-muted); border-color: var(--accent); }
+.wi-item-row.wi-item-hidden { opacity: 0.45; }
+.wi-item-name { flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-item-meta { flex-shrink: 0; font-size: 10px; }
+.wi-item-dur { flex-shrink: 0; font-size: 10px; font-family: var(--font-mono); color: var(--fg-3); }
+.wi-visits { color: var(--accent-2); }
+.wi-waste-tag {
+  display: inline-block; padding: 0 5px; margin-right: 4px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
+  background: var(--bg-4); color: var(--fg-3); border-radius: 8px;
+}
+/* Work-item detail: member fragment list under "More". */
+.wi-members { display: flex; flex-direction: column; gap: 1px; }
+.wi-member-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 4px; border-radius: 3px; font-size: 11px; cursor: pointer;
+}
+.wi-member-row:hover { background: var(--bg-3); }
+.wi-member-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-2); }
+.wi-member-time { flex-shrink: 0; font-size: 10px; font-family: var(--font-mono); }
+.wi-member-jump {
+  flex-shrink: 0; padding: 1px 6px; font-size: 10px;
+  background: var(--bg-3); border: 1px solid var(--rule); border-radius: 3px;
+  color: var(--fg-3); cursor: pointer;
+}
+.wi-member-jump:hover { color: var(--accent); border-color: var(--accent); }
+
 /* Flow timeline activity bands dimmed when out of the scoped case. */
 .tl-activity.out-of-scope { opacity: 0.15; filter: grayscale(0.4); }
 

@@ -11,7 +11,7 @@
 
 "use strict";
 
-const { $, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
+const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
@@ -21,6 +21,7 @@ const PdtPalette = require("../command-palette.js");
 const { stepsToTemplateSteps, canonicalSkeleton, anchorFromOverride, slugify, signatureFromInteraction } = require("../canonical-author.js");
 const { loadVocabs } = require("./identity-picker.js");
 const { rollUpSteps, screenType, resolveStepGrainKeys } = require("../process-map-levels.js");
+const { buildWorkItems, findGroupAnnotation } = require("../work-items.js");
 
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
@@ -45,6 +46,12 @@ let _splitAfter = { stepId: null, index: null };
    selected instead (its per-instance editor shows, keyed on getSelectedStepId). */
 let _alignMode = false;
 let _alignSelIndex = null;
+
+/* ADR-0028 (R3): the selected case-tree work item -- { caseId, screenKey } --
+   and the set of expanded case ids (collapsed by default). Null selection shows
+   the empty hint; a selection shows the group-scoped R1c detail panel. */
+let _wiSelected = null;
+let _wiExpandedCases = new Set();
 
 function getSpan() {
   const evs = (State.getSession() && State.getSession().events) || [];
@@ -252,6 +259,30 @@ function renderStepsLevel() {
   // read-oriented: clicking a group selects its first member so the per-step
   // editor still works; the legend points back to the element notch to edit.
   const grain = State.getGrain();
+  // ADR-0028 (R3): the DEFAULT Steps reading at the screen notch is the CASE
+  // TREE -- cases -> case-scoped screen-visit work items (fragments merged
+  // NON-consecutively across bounces within a case), the analyst's real unit of
+  // work. When the session has NO cases there is no scope to merge within, so we
+  // fall back to the ADR-0024 consecutive roll-up + a CTA (§5). The element notch
+  // and the other coarse notches keep their ADR-0024 behavior below (the Detail
+  // slider reaches the flat fragment list -- detail is never destroyed).
+  if (grain === "screen") {
+    const anno0 = (State.getSession() && State.getSession().annotations) || {};
+    const wi = buildWorkItems(filtered, {
+      interactionsById,
+      caseLabel: caseLabeler(),
+      groupAnnotations: anno0.group_annotations || [],
+    });
+    if (wi.hasCases) {
+      renderCaseTree(wi, allSteps, interactionsById);
+      _renderStepsMiniTimeline(allSteps, filteredIds);
+      return;
+    }
+    // No cases: keep the ADR-0024 roll-up, but show the segment-me CTA.
+    renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById, /*noCasesCta=*/true);
+    _renderStepsMiniTimeline(allSteps, filteredIds);
+    return;
+  }
   if (grain !== "element") {
     renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById);
     _renderStepsMiniTimeline(allSteps, filteredIds);
@@ -347,7 +378,7 @@ function _renderStepsMiniTimeline(allSteps, filteredIds) {
    detail editor (rename / flag / split) still works; the legend points back to
    the element notch to edit individual steps. The fine steps are never
    destroyed: slide back to "element" to see them all. */
-function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
+function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById, noCasesCta) {
   const anno = (State.getSession() && State.getSession().annotations) || {};
   const phaseName = {};
   for (const ph of (anno.phases || [])) phaseName[ph.phase_id] = ph.name || "(phase)";
@@ -362,10 +393,17 @@ function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
   // the steps-legend slot the flat/aligned readings use.
   const legendEl = $("#steps-legend");
   if (legendEl) {
+    // ADR-0028 §5: an unsegmented session can't group work by ticket, so the
+    // screen notch falls back here -- name that + offer the segment-me path.
+    const cta = noCasesCta
+      ? ' <span class="grain-legend-hint">This session isn\'t split into cases yet — ' +
+        'segment it by ticket (review the case anchor on the Overview, or fire ' +
+        'markers) to group work the way you worked it.</span>'
+      : ' <span class="grain-legend-hint">Set the Detail slider to ' +
+        '<strong>element</strong> to edit individual steps.</span>';
     legendEl.innerHTML = 'Grouped by <strong>' + escapeHtml(grain) +
       '</strong> — each row folds a run of consecutive steps on the same ' +
-      escapeHtml(grain) + '. <span class="grain-legend-hint">Set the Detail slider to ' +
-      '<strong>element</strong> to edit individual steps.</span>';
+      escapeHtml(grain) + '.' + cta;
     legendEl.style.display = "";
   }
   // Hide the per-step filter controls that don't act on a roll-up (mirrors the
@@ -407,6 +445,249 @@ function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
   const selected = allSteps.find((s) => s.step_id === selId) || null;
   PdtSteps.renderStepDetail($("#step-detail"), selected,
     stepDetailCallbacks(selected, interactionsById));
+}
+
+/* ===== ADR-0028 (R3): the case tree -- cases -> work items ============== */
+
+/* Render the Steps list as the CASE TREE: cases (collapsed) -> case-scoped
+   screen-visit work items. This is the DEFAULT screen-notch reading when the
+   session has cases. A work-item row shows the work item's name (group
+   annotation -> screen label), its duration, and "visited N× · M steps".
+   Expanding a case shows its work items; clicking a work item selects it and
+   shows the group-scoped R1c detail panel. The fine fragments are never
+   destroyed -- slide the Detail slider to element to edit them individually. */
+function renderCaseTree(wi, allSteps, interactionsById) {
+  // Legend: name the active reading + the inverse (element to edit fragments).
+  const legendEl = $("#steps-legend");
+  if (legendEl) {
+    legendEl.innerHTML = 'Grouped by <strong>ticket → screen</strong> — each row is ' +
+      'one screen visit for a ticket, its bounces merged back together. ' +
+      '<span class="grain-legend-hint">Set the Detail slider to <strong>element</strong> ' +
+      'to edit individual fragments.</span>';
+    legendEl.style.display = "";
+  }
+  // Hide the per-step filter/align controls that don't act on the tree.
+  const listFilterEl = $("#step-list-filter");
+  if (listFilterEl) listFilterEl.style.display = "none";
+  const alignToggle = $("#step-align-toggle");
+  if (alignToggle) alignToggle.style.display = "none";
+
+  const meta = $("#step-filter-meta");
+  if (meta) {
+    const totalItems = wi.cases.reduce((n, c) => n + c.work_items.length, 0);
+    meta.textContent = wi.cases.length + " case" + (wi.cases.length === 1 ? "" : "s") +
+      " · " + totalItems + " work item" + (totalItems === 1 ? "" : "s");
+  }
+
+  // Default: all cases collapsed. First render pre-expands nothing; a selection
+  // keeps its case open so the selected row is visible.
+  if (_wiSelected) _wiExpandedCases.add(_wiSelected.caseId == null ? "__unassigned__" : _wiSelected.caseId);
+
+  const caseKey = (cid) => (cid == null ? "__unassigned__" : cid);
+  const rowsHtml = wi.cases.map((cs) => {
+    const ck = caseKey(cs.case_id);
+    const expanded = _wiExpandedCases.has(ck);
+    const nItems = cs.work_items.length;
+    const totalMs = cs.work_items.reduce((n, w) => n + (w.total_ms || 0), 0);
+    const head =
+      '<div class="wi-case-head' + (expanded ? " open" : "") + '" data-case-key="' + escapeHtml(ck) + '">' +
+        '<span class="wi-case-caret" aria-hidden="true">' + (expanded ? "▾" : "▸") + "</span>" +
+        '<span class="wi-case-name" title="' + escapeHtml(cs.case_label) + '">' + escapeHtml(cs.case_label) + "</span>" +
+        '<span class="wi-case-meta meta">' + nItems + " item" + (nItems === 1 ? "" : "s") +
+          " · " + escapeHtml(formatDuration(totalMs)) + "</span>" +
+      "</div>";
+    if (!expanded) return head;
+    const items = cs.work_items.map((w) => {
+      const isSel = _wiSelected && _wiSelected.caseId === cs.case_id &&
+        _wiSelected.screenKey === w.screen_key;
+      const visited = w.visit_count > 1
+        ? '<span class="wi-visits" title="' + w.visit_count + ' separate visits to this screen for this ticket, merged">visited ' +
+          w.visit_count + "×</span> · " : "";
+      const wasteTag = w.waste ? '<span class="wi-waste-tag" title="Flagged as waste">waste</span> ' : "";
+      const hiddenCls = w.hidden ? " wi-item-hidden" : "";
+      return '<div class="wi-item-row' + (isSel ? " selected" : "") + hiddenCls +
+          '" data-case-key="' + escapeHtml(ck) + '" data-screen-key="' + escapeHtml(w.screen_key) + '">' +
+        '<span class="wi-item-name" title="' + escapeHtml(w.label) + '">' + wasteTag + escapeHtml(w.label) + "</span>" +
+        '<span class="wi-item-meta meta">' + visited + w.fragment_count +
+          " step" + (w.fragment_count === 1 ? "" : "s") + "</span>" +
+        '<span class="wi-item-dur meta">' + escapeHtml(formatDuration(w.total_ms || 0)) + "</span>" +
+      "</div>";
+    }).join("");
+    return head + '<div class="wi-item-group">' + items + "</div>";
+  }).join("");
+
+  const list = $("#step-list");
+  if (list) {
+    list.innerHTML = rowsHtml || '<div class="empty-hint">No work items — no cases with steps.</div>';
+    list.querySelectorAll(".wi-case-head").forEach((h) => {
+      h.addEventListener("click", () => {
+        const ck = h.dataset.caseKey;
+        if (_wiExpandedCases.has(ck)) _wiExpandedCases.delete(ck);
+        else _wiExpandedCases.add(ck);
+        renderStepsLevel();
+      });
+    });
+    list.querySelectorAll(".wi-item-row").forEach((r) => {
+      r.addEventListener("click", () => {
+        const ck = r.dataset.caseKey;
+        _wiSelected = { caseId: ck === "__unassigned__" ? null : ck, screenKey: r.dataset.screenKey };
+        // Select the first member step too, so a Jump-to-Flow / timeline seek
+        // has a concrete target.
+        const cs = wi.cases.find((c) => (c.case_id == null ? "__unassigned__" : c.case_id) === ck);
+        const item = cs && cs.work_items.find((w) => w.screen_key === r.dataset.screenKey);
+        if (item && item.step_ids.length) State.setSelectedStepId(item.step_ids[0]);
+        renderStepsLevel();
+      });
+    });
+  }
+
+  // Detail: the group-scoped R1c panel for the selected work item (facts
+  // aggregated; name/waste/hide act on the group).
+  const selItem = _wiSelected ? _findSelectedWorkItem(wi) : null;
+  renderWorkItemDetail($("#step-detail"), selItem, allSteps, interactionsById);
+}
+
+function _findSelectedWorkItem(wi) {
+  if (!_wiSelected) return null;
+  for (const cs of wi.cases) {
+    if (cs.case_id !== _wiSelected.caseId) continue;
+    const w = cs.work_items.find((x) => x.screen_key === _wiSelected.screenKey);
+    if (w) return Object.assign({ case_label: cs.case_label }, w);
+  }
+  return null;
+}
+
+/* The group-scoped detail panel for a selected work item (ADR-0028): the R1c
+   triage panel scoped to the WHOLE screen visit. Facts aggregated (duration,
+   visits, fragment count, case); name/waste/hide act on the GROUP (writing to
+   group_annotations); "More ▸" lists the member fragments with jump-to-timeline.
+   Built here (not via renderStepDetail) because the acts target a group, not a
+   single step -- but it reuses the same visual affordances. */
+function renderWorkItemDetail(host, item, allSteps, interactionsById) {
+  if (!host) return;
+  if (!item) {
+    host.innerHTML =
+      '<div class="empty-pane">' +
+        "<p>Pick a work item on the left to name it, note it, or flag it.</p>" +
+        '<p class="meta">A work item is one <strong>screen visit for a ticket</strong> — ' +
+        "every time you bounced into that screen while working the ticket, merged into " +
+        "one thing to read and annotate. Naming it flows down to its fragments on the " +
+        "timeline and the map.</p>" +
+      "</div>";
+    return;
+  }
+  const ga = item.group_annotation || {};
+  const name = (ga.name || item.label || "").toString();
+  const notes = (ga.notes || "").toString();
+  const dur = formatDuration(item.total_ms || 0);
+  const membersHtml = item.steps.map((s, i) => {
+    const nm = escapeHtml(s.name || s.step_id || ("Fragment " + (i + 1)));
+    const t = (s.time_range && s.time_range.start) ? new Date(s.time_range.start).toLocaleTimeString() : "";
+    return '<div class="wi-member-row" data-step-id="' + escapeHtml(s.step_id) + '">' +
+      '<span class="wi-member-name" title="' + escapeAttr(s.name || "") + '">' + nm + "</span>" +
+      '<span class="wi-member-time meta">' + escapeHtml(t) + "</span>" +
+      '<button class="wi-member-jump" title="Jump to this fragment in the Flow timeline">Jump ▸</button>' +
+    "</div>";
+  }).join("");
+  const isHidden = !!ga.hidden;
+  host.innerHTML =
+    '<div class="step-stat-tiles">' +
+      '<div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">' + escapeHtml(dur) + "</div></div>" +
+      '<div class="stat-tile"><div class="stat-tile-label">Visits</div><div class="stat-tile-value" title="How many separate times you entered this screen for this ticket">' + item.visit_count + "×</div></div>" +
+      '<div class="stat-tile"><div class="stat-tile-label">Fragments</div><div class="stat-tile-value">' + item.fragment_count + "</div></div>" +
+      '<div class="stat-tile"><div class="stat-tile-label">Case</div><div class="stat-tile-value" title="' + escapeAttr(item.case_label || "") + '">' + escapeHtml(item.case_label || "") + "</div></div>" +
+    "</div>" +
+    '<label>Name <input type="text" id="wi-name" value="' + escapeAttr(name) + '"></label>' +
+    '<label>Notes <textarea id="wi-notes">' + escapeHtml(notes) + "</textarea></label>" +
+    '<div class="flags">' +
+      '<label title="This whole screen visit shouldn\'t be necessary (rework, duplicate effort). Feeds the waste analysis."><input type="checkbox" id="wi-waste" ' + (ga.waste ? "checked" : "") + "> Waste</label>" +
+    "</div>" +
+    '<div class="actions">' +
+      '<button id="wi-save" class="primary">Save</button>' +
+      '<button id="wi-hide" title="' + (isHidden ? "Bring this work item back into the tree" : "Suppress this whole screen visit from the case tree") + '">' + (isHidden ? "Unhide" : "Hide") + "</button>" +
+    "</div>" +
+    '<details class="step-detail-more">' +
+      '<summary class="step-detail-more-head">' +
+        '<span class="step-detail-more-title">More — ' + item.fragment_count + " fragment" + (item.fragment_count === 1 ? "" : "s") + "</span>" +
+        '<span class="step-detail-more-chevron" aria-hidden="true"></span>' +
+      "</summary>" +
+      '<div class="step-detail-more-body"><div class="wi-members">' + membersHtml + "</div></div>" +
+    "</details>";
+
+  const saveBtn = host.querySelector("#wi-save");
+  if (saveBtn) saveBtn.addEventListener("click", () => {
+    const nm = (host.querySelector("#wi-name").value || "").trim();
+    const nt = (host.querySelector("#wi-notes").value || "").trim();
+    const wst = host.querySelector("#wi-waste").checked;
+    saveWorkItemAnnotation(item, { name: nm, notes: nt, waste: wst });
+  });
+  const hideBtn = host.querySelector("#wi-hide");
+  if (hideBtn) hideBtn.addEventListener("click", () => toggleWorkItemHidden(item));
+  host.querySelectorAll(".wi-member-row").forEach((row) => {
+    const jump = () => {
+      const s = allSteps.find((x) => x.step_id === row.dataset.stepId);
+      if (s) { State.setSelectedStepId(s.step_id); jumpToStepInFlow(s); }
+    };
+    const jb = row.querySelector(".wi-member-jump");
+    if (jb) jb.addEventListener("click", (e) => { e.stopPropagation(); jump(); });
+    row.addEventListener("click", () => {
+      State.setSelectedStepId(row.dataset.stepId || null);
+    });
+  });
+}
+
+/* Upsert a work item's group_annotations entry (name/notes/waste), keyed by
+   {case_id, screen_key}. Writes via persistAnnotations so Ctrl+Z reverts it
+   (the annotation snapshot deep-clones the whole blob, so the additive key is
+   covered by the existing undo mechanism -- no new undo system). An entry that
+   becomes empty (no name/notes/waste/hidden) is removed, keeping the array lean. */
+async function saveWorkItemAnnotation(item, patch) {
+  if (!State.getSession() || !item) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const cid = item.case_id == null ? null : item.case_id;
+  const key = item.screen_key;
+  let entry = findGroupAnnotation(anno.group_annotations, cid, key);
+  if (!entry) {
+    entry = { case_id: cid, screen_key: key, manually_authored: true };
+    anno.group_annotations.push(entry);
+  }
+  if ("name" in patch) entry.name = patch.name || "";
+  if ("notes" in patch) entry.notes = patch.notes || "";
+  if ("waste" in patch) entry.waste = !!patch.waste;
+  entry.manually_authored = true;
+  _pruneEmptyGroupAnnotation(anno, entry);
+  await persistAnnotations(anno, "annotate work item");
+  toast("Work item saved", "success");
+  renderStepsLevel();
+}
+
+async function toggleWorkItemHidden(item) {
+  if (!State.getSession() || !item) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const cid = item.case_id == null ? null : item.case_id;
+  const key = item.screen_key;
+  let entry = findGroupAnnotation(anno.group_annotations, cid, key);
+  const nextHidden = !(entry && entry.hidden);
+  if (!entry) {
+    entry = { case_id: cid, screen_key: key, manually_authored: true };
+    anno.group_annotations.push(entry);
+  }
+  entry.hidden = nextHidden;
+  entry.manually_authored = true;
+  _pruneEmptyGroupAnnotation(anno, entry);
+  await persistAnnotations(anno, nextHidden ? "hide work item" : "unhide work item");
+  toast(nextHidden ? "Work item hidden" : "Work item restored", "success");
+  renderStepsLevel();
+}
+
+/* Drop a group_annotations entry that carries no analyst content (all of
+   name/notes/waste/hidden empty) so the array doesn't accumulate blank rows. */
+function _pruneEmptyGroupAnnotation(anno, entry) {
+  const empty = !((entry.name || "").trim()) && !((entry.notes || "").trim()) &&
+    !entry.waste && !entry.hidden;
+  if (empty) {
+    anno.group_annotations = (anno.group_annotations || []).filter((g) => g !== entry);
+  }
 }
 
 /* R1 triage economics: a resident "App / Screen" fact for the step detail

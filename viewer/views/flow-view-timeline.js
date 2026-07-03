@@ -386,8 +386,12 @@ function renderTimeline() {
     for (const ev of (State.getSession().events || [])) {
       if (ev.type === "interaction" && ev.event_id) _interById[ev.event_id] = ev;
     }
+    // ADR-0028 §3: at the screen notch a named work item flows its name down to
+    // its member fragments' timeline band (same grainLabel seam the map uses).
+    const _groupName = require("../work-items.js")
+      .groupNameResolver(_anno.group_annotations || []);
     _stepsForLane = rollUpSteps(_rawSteps, _grain,
-      { phaseName: _phaseName, interactionsById: _interById, caseLabel: (id) => id })
+      { phaseName: _phaseName, interactionsById: _interById, caseLabel: (id) => id, groupName: _groupName })
       .map((g) => ({
         label: g.label, step_id: (g.step_ids && g.step_ids[0]) || null,
         time_range: g.time_range, count: g.count,

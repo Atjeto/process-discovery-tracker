@@ -266,19 +266,38 @@ const OVERLAP_PROBE = () => {
   }
   const roiAtScreen = await roiTotalText();   // default notch = screen
 
-  // Count the Steps-list rows at the element vs screen notch.
-  async function stepRowCountAt(idx) {
+  // ADR-0028 (R3): the DEFAULT screen-notch Steps reading is now the CASE TREE
+  // (cases -> case-scoped screen-visit work items), NOT the ADR-0024 consecutive
+  // roll-up in .step-row. The element notch still shows every fine fragment.
+  // Pin the same invariant against the new default: element shows the fine
+  // fragment count; the screen notch consolidates to fewer work-item units.
+  async function goSteps() {
     const sb = await page.$('.view-mode-btn[data-level="steps"]');
     if (sb) { await sb.click().catch(() => {}); await wait(700); }
-    await setGrainNotch(idx);
-    return page.evaluate(() => document.querySelectorAll("#step-list .step-row").length).catch(() => 0);
   }
-  const elementCount = await stepRowCountAt(0);   // element notch
-  const screenCount = await stepRowCountAt(1);    // screen notch (default)
+  await goSteps();
+  await setGrainNotch(0);   // element notch -> the flat fragment list
+  const elementCount = await page.evaluate(
+    () => document.querySelectorAll("#step-list .step-row").length).catch(() => 0);
+  await goSteps();
+  await setGrainNotch(1);   // screen notch (default) -> the R3 case tree
+  // Expand every case (each click re-renders the list, so click one at a time,
+  // re-querying between), then count the work-item rows.
+  const caseCount = await page.evaluate(
+    () => document.querySelectorAll("#step-list .wi-case-head").length).catch(() => 0);
+  for (let i = 0; i < caseCount; i++) {
+    await page.evaluate((idx) => {
+      const heads = document.querySelectorAll("#step-list .wi-case-head");
+      if (heads[idx] && !heads[idx].classList.contains("open")) heads[idx].click();
+    }, i).catch(() => {});
+    await wait(120);
+  }
+  const screenCount = await page.evaluate(
+    () => document.querySelectorAll("#step-list .wi-item-row").length).catch(() => 0);
   if (grainSliderExists) {
     const consolidates = elementCount > 0 && screenCount > 0 && screenCount < elementCount;
-    record("grain roll-up: element shows the fine count, screen consolidates", consolidates,
-      "element=" + elementCount + " rows, screen=" + screenCount + " rows (screen must be fewer, both > 0)");
+    record("grain roll-up: element shows the fine count, screen consolidates to work items", consolidates,
+      "element=" + elementCount + " fragments, screen=" + screenCount + " work items (screen must be fewer, both > 0)");
     if (!consolidates) await shot(page, "fail-grain-rollup.png");
   }
 

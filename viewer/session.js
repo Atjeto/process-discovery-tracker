@@ -153,6 +153,9 @@ function ensureAnnoShape(anno) {
   a.reference_maps = a.reference_maps || [];
   a.step_filters = a.step_filters || { ignored_processes: [], ignored_window_titles: [] };
   if (!Array.isArray(a.step_filters.ignored_processes)) a.step_filters.ignored_processes = [];
+  // ADR-0028: case-scoped work-item annotations (name/notes/waste/hidden keyed
+  // by {case_id, screen_key}). Additive; pipeline-preserved-not-consumed.
+  a.group_annotations = a.group_annotations || [];
   const _sess = State.getSession();
   if (_sess) {
     a.session_id = (_sess.manifest && _sess.manifest.session_id) || a.session_id || "";

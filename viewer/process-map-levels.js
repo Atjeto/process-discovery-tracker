@@ -186,7 +186,20 @@ function grainLabel(step, notch, ctx) {
   const stepType = step.process_label || processLabel(step.name) || "(unnamed)";
   switch (notch) {
     case "element": return stepType;
-    case "screen":  return screenType(k.screen) || "(screen)";
+    case "screen": {
+      // ADR-0028 §3 render-time flow-down: a member fragment shows its
+      // case-scoped work item's analyst NAME when one exists. This is the ONE
+      // label-resolution seam every screen-grain surface (Steps roll-up, the
+      // timeline step lane, the map's screen level) routes through, so a
+      // `ctx.groupName(case_id, screen_key)` resolver reaches all of them at
+      // once. Falls back to the value-free screen label. The screen_key is the
+      // exact grainKey(step,"screen") value so it matches group_annotations.
+      if (ctx && typeof ctx.groupName === "function") {
+        const nm = ctx.groupName(step.case_id || null, grainKey(step, "screen", ctx));
+        if (nm) return nm;
+      }
+      return screenType(k.screen) || "(screen)";
+    }
     case "app":     return k.app || "(app)";
     case "phase":   return step.phase_id
       ? ((ctx && ctx.phaseName && ctx.phaseName[step.phase_id]) || "(phase)")

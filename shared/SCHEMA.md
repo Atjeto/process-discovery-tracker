@@ -228,6 +228,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "starred_screenshots": [],
   "memo_selection": [],
   "self_annotations": [],
+  "group_annotations": [],
   "matched_against": null,
   "last_modified": null,
   "last_modified_by": null,
@@ -235,7 +236,7 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`, `memo_selection`, `self_annotations`) are additive; missing files are treated as empty.
+`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`, `memo_selection`, `self_annotations`, `group_annotations`) are additive; missing files are treated as empty.
 
 **`self_annotations`** *(optional array; lab-phase spec §E3)* — the worker's own answers from the capture app's close-out wizard, written **on the worker's machine at session end** (the one annotations.json key the capture side authors; everything else is analyst-side). Each entry:
 
@@ -255,6 +256,25 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
 ```
 
 Questions are heuristic-templated from observed values only (durations, counts, labels measured in `events.jsonl` — no inference, no LLM); `manually_authored: true` means re-normalization preserves the entries verbatim, like any analyst edit. The pipeline treats the key as opaque and round-trips it.
+
+**`group_annotations`** *(optional array; [ADR-0028](../docs/adr/0028-case-screen-work-items.md))* — analyst annotations attached to a **case-scoped screen visit** (the R3 "work item": a case's fragments merged non-consecutively across app bounces, computed at *view time* in the viewer on the ADR-0024 grain ladder). Each entry is keyed by the composite `(case_id, screen_key)`:
+
+```json
+{
+  "case_id": "7d7bd6ed-… | null",
+  "screen_key": "scr:TAMBA",
+  "name": "Investigate serial in TAMBA",
+  "notes": "half of this is re-keying the serial",
+  "waste": false,
+  "hidden": false,
+  "manually_authored": true
+}
+```
+
+- `case_id` is the step's `case_id` (or `null` for the Unassigned pseudo-case); `screen_key` is the exact value-free `grainKey(step,"screen")` (e.g. `"scr:TAMBA"`) — stable across re-analyze because the raw steps and the screen-strip rules are unchanged.
+- `name` / `notes` / `waste` / `hidden` are all optional; an entry with none of them is pruned by the viewer, so the array holds only real annotations.
+- **Viewer-written, pipeline-preserved-not-consumed.** `manually_authored: true`; re-normalization round-trips the key verbatim (like `self_annotations`) — nothing under `normalization/` reads or regenerates it. The raw `steps[]` array and every other annotation key keep their exact shape; this key is purely additive.
+- **Render-time flow-down:** wherever a member fragment shows a name at the screen grain (the Steps case tree, the timeline step lane, the map's screen level), a named work item's `name` replaces the value-free screen label. **Not yet read by the Python-side PDD/memo export** (the R3 follow-up, ADR-0028 §4).
 
 **`memo_selection`** *(optional string array; lab-phase spec §A4/§A5)* — the `findings[].id` values the analyst ticked "include in memo" on in the viewer's Overview level. `memo_export` renders exactly these findings when the list is non-empty (falling back to the top findings in feed order when empty or when no listed id matches the regenerated findings). Analyst-owned; never written by the pipeline.
 

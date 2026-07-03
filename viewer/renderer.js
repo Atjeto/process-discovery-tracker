@@ -412,7 +412,11 @@ function _sessionGrainCtx(sess) {
   for (const ev of (sess.events || [])) {
     if (ev.type === "interaction" && ev.event_id) interactionsById[ev.event_id] = ev;
   }
-  return { caseLabel, interactionsById };
+  // ADR-0028 §3: a work item's analyst name flows down to its member fragments
+  // on the map's screen level (the same seam the Steps roll-up + timeline use).
+  const groupName = require("./work-items.js")
+    .groupNameResolver((sess.annotations && sess.annotations.group_annotations) || []);
+  return { caseLabel, interactionsById, groupName };
 }
 
 /* Activity-node click in the Session-view map: seek the Flow timeline to the
