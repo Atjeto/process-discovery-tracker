@@ -16,6 +16,13 @@ const Ipc = require("../ipc.js");
 const CA = require("../canonical-author.js");
 const Posture = require("../posture.js");
 const LlmExport = require("../llm-export.js");
+const VocabMatch = require("../vocab-match.js");
+
+// Renderer-injected callback: re-run the pipeline on the loaded session so
+// newly-authored names take effect (reuses the existing "Analyze session"
+// path — NEVER auto-triggered; the analyst clicks the workbench CTA). Set by
+// initVocabView({ onReanalyze }).
+let onReanalyze = null;
 
 // Discovery-provenance fields the picker stamps on each entry (ADR-0025).
 // They drive the editor's "why this signature" legend + annotator context
@@ -144,18 +151,65 @@ async function selectVocab(p) {
   if (btn) btn.disabled = !p;
 }
 
+/* The App Library editor host. When a session is loaded and a vocab is
+   selected, the DEFAULT surface is the MATCH WORKBENCH (session × vocab): a
+   resident coverage sentence + three evidence lists (matched / unnamed / dead
+   rules) + the observed-screens split, all computed from the captured
+   interactions. The blank-form rule editor demotes to a Machine drawer at the
+   bottom (▸ MACHINE LAYER: rule editor); no capability is removed. Without a
+   session (or vocab) we show the honest empty state / the rule editor alone. */
 function renderVocabEditor() {
   const host = $("#vocab-editor");
   if (!host) return;
   const v = State.getVocabState().current;
+  const sess = State.getSession();
   if (!v) {
-    host.innerHTML =
-      '<div class="empty-pane">' +
-      '<p>Pick a vocabulary on the left to edit it, or click <strong>+ New vocabulary</strong> above to create one.</p>' +
-      '<p class="meta">The editor renders the YAML as a form. The underlying file is rewritten on save; you can also edit the YAML directly with <em>Open YAML in editor</em>.</p>' +
-      '</div>';
+    // No vocab selected — the empty state depends on whether a session is open.
+    host.innerHTML = renderNoVocabEmptyState(!!sess);
     return;
   }
+  if (sess && Array.isArray(sess.events)) {
+    renderWorkbench(host, v, sess);
+    return;
+  }
+  // No session loaded: the workbench has no evidence to stand on. Show the
+  // honest CTA + the rule editor so hand-authoring still works.
+  host.innerHTML =
+    '<div class="wb-nosession empty-pane">' +
+    '<p><strong>Open a session to see this vocabulary matched against real captures.</strong></p>' +
+    '<p class="meta">The match workbench needs a loaded recording: it shows which captured controls this vocabulary named, which it missed, and which rules matched nothing. Open a session on the <strong>Session</strong> tab, then come back. You can still hand-edit the rules below.</p>' +
+    '</div>' +
+    '<div id="vocab-machine-host"></div>';
+  renderRuleEditorDrawer($("#vocab-machine-host"), v, { forceOpen: true });
+}
+
+/* The blank-form rule editor — the Machine layer. Rendered inside a named,
+   collapsed drawer (Memo/Evidence/Machine: this is Machine). Its DOM ids
+   (#vocab-interactions, #btn-vocab-save, the toolbar) are UNCHANGED so all
+   existing wiring + e2e selectors keep working; only its residence moved. */
+function renderRuleEditorDrawer(host, v, opts) {
+  if (!host) return;
+  opts = opts || {};
+  const open = opts.forceOpen || State.getVocabState()._ruleEditorOpen;
+  const det = document.createElement("details");
+  det.className = "vocab-machine-drawer";
+  if (open) det.open = true;
+  det.innerHTML =
+    '<summary class="vocab-machine-summary">' +
+    '<span class="vocab-machine-chevron"></span>' +
+    '<span>Machine layer: rule editor</span>' +
+    '</summary>' +
+    '<div class="vocab-machine-body" id="vocab-rule-editor"></div>';
+  host.innerHTML = "";
+  host.appendChild(det);
+  det.addEventListener("toggle", () => { State.getVocabState()._ruleEditorOpen = det.open; });
+  renderRuleEditor($("#vocab-rule-editor"), v);
+}
+
+/* The old renderVocabEditor body, now targeting an explicit host so it can live
+   inside the Machine drawer. Unchanged markup + wiring. */
+function renderRuleEditor(host, v) {
+  if (!host) return;
   const interactions = v.interactions || [];
   const scope = v.scope || {};
   host.innerHTML =
@@ -187,6 +241,432 @@ function renderVocabEditor() {
   $("#btn-vocab-approve-all").addEventListener("click", approveAllDiscovered);
   $("#btn-vocab-add-interaction").addEventListener("click", addInteraction);
   $("#btn-vocab-save").addEventListener("click", saveVocab);
+}
+
+/* ===================================================================
+   R2 — the MATCH WORKBENCH (APPROACHABILITY-REDESIGN §5 R2)
+   The default App Library surface for (session × vocab): the analyst looks
+   at what the session CAPTURED, points, and names; signatures are derived,
+   never typed. Advisory matching via vocab-match.js (mirrors app_vocab.py);
+   the pipeline stays ground truth (a re-analyze reconciles).
+   =================================================================== */
+
+let _wbData = null;   // last computed workbench model (for the Name… flow etc.)
+
+function renderWorkbench(host, v, sess) {
+  const wb = VocabMatch.buildWorkbench(sess.events, v);
+  _wbData = wb;
+  const cov = wb.coverage;
+  const app = v.name || v.id || "this app";
+
+  // Coverage header (Memo altitude — the ONE resident number). A calm sentence
+  // carries it; the lists are Evidence, visible below (not hidden behind a
+  // click) since the worklist IS the point of the surface.
+  const headerNum = cov.totalControls
+    ? cov.namedControls + " of " + cov.totalControls
+    : "0 of 0";
+  const covLine = cov.totalControls
+    ? '<strong>' + headerNum + '</strong> captured controls named' +
+      ' · <strong>' + cov.pctInteractions + '%</strong> of interactions'
+    : 'No controls from this recording fall in ' + escapeHtml(app) + '’s scope yet';
+
+  let html =
+    '<div class="wb">' +
+    '<div class="wb-coverage">' +
+    '<div class="wb-coverage-line" id="wb-coverage-line">' + covLine + '</div>' +
+    '<div class="wb-coverage-bar" title="' + cov.namedControls + ' of ' + cov.totalControls + ' distinct captured controls named">' +
+    '<span class="wb-coverage-fill" style="width:' + (cov.totalControls ? cov.pctControls : 0) + '%"></span>' +
+    '</div>' +
+    '<div class="wb-coverage-sub meta">Measured against the loaded recording. ' +
+    'Naming a control here edits the vocabulary in memory; ' +
+    '<button type="button" class="link-btn" id="btn-wb-reanalyze">Re-analyze to apply names to this session</button>.</div>' +
+    '</div>';
+
+  // The three evidence lists.
+  html += renderUnnamedList(wb.unnamed);
+  html += renderMatchedList(wb.matched);
+  html += renderDeadRulesList(wb.deadRules);
+  html += renderScreensSection(wb.screens);
+
+  // The rule editor (Machine layer) at the bottom.
+  html += '<div id="vocab-machine-host"></div>';
+  html += '</div>';
+  host.innerHTML = html;
+
+  renderRuleEditorDrawer($("#vocab-machine-host"), v);
+  wireWorkbench();
+}
+
+function renderUnnamedList(unnamed) {
+  const n = unnamed.length;
+  let body;
+  if (!n) {
+    body = '<p class="wb-empty meta">Every captured control in scope has a name. Nothing to do here.</p>';
+  } else {
+    body = '<div class="wb-rows">' + unnamed.map(function (u, i) {
+      const id = u.identity;
+      const idChip = '<span class="wb-idkind" title="The strongest identity the recorder captured for this control">' +
+        escapeHtml(id.kind === "unknown" ? "no id" : id.kind) + '</span>';
+      const canName = !!u.addSignature;
+      return '<div class="wb-row wb-row-unnamed" data-wb-unnamed="' + i + '">' +
+        '<div class="wb-row-main">' +
+        '<span class="wb-ct">' + escapeHtml(u.controlType || "control") + '</span>' +
+        idChip +
+        '<span class="wb-idval" title="What the recorder saw">' + escapeHtml(id.value) + '</span>' +
+        '</div>' +
+        '<div class="wb-row-meta meta">' + escapeHtml(u.window || "(no window title)") +
+        ' · seen ' + u.count + '×</div>' +
+        '<div class="wb-row-act">' +
+        (canName
+          ? '<button type="button" class="primary wb-name-btn" data-wb-name="' + i + '">Name…</button>'
+          : '<span class="meta" title="No stable identity to key a rule on">no usable signature</span>') +
+        '</div>' +
+        '</div>';
+    }).join("") + '</div>';
+  }
+  return wbListShell("unnamed", "Unnamed captured controls", n,
+    "Controls this recording used that " + "no rule names yet — the worklist. Name the most-used first.",
+    body, /*openByDefault*/ true);
+}
+
+function renderMatchedList(matched) {
+  const n = matched.length;
+  let body;
+  if (!n) {
+    body = '<p class="wb-empty meta">No captured control matched a rule in this vocabulary yet. ' +
+      'Name a few from the worklist above, then re-analyze.</p>';
+  } else {
+    body = '<div class="wb-rows">' + matched.map(function (m, i) {
+      const windows = (m.windows && m.windows.length ? m.windows : [m.window]).filter(Boolean);
+      const values = (m.values || []).filter(Boolean);
+      const evidence =
+        '<div class="wb-evidence">' +
+        '<div class="wb-ev-line"><span class="wb-ev-k">seen in</span> ' +
+        (windows.length ? windows.map(function (w) { return '<span class="wb-ev-win">' + escapeHtml(w) + '</span>'; }).join(" ") : '<span class="meta">—</span>') +
+        '</div>' +
+        (values.length
+          ? '<div class="wb-ev-line"><span class="wb-ev-k">example values</span> ' +
+            values.map(function (x) { return '<code class="wb-ev-val">' + escapeHtml(x) + '</code>'; }).join(" ") + '</div>'
+          : '') +
+        '<div class="wb-ev-line"><span class="wb-ev-k">rule signature</span> ' +
+        '<code class="wb-ev-sig">' + escapeHtml(sigSummary(m.signature)) + '</code></div>' +
+        '</div>';
+      return '<details class="wb-row wb-row-matched" data-wb-matched="' + i + '">' +
+        '<summary class="wb-row-summary">' +
+        '<span class="wb-match-name">' + escapeHtml(m.vocabName) + '</span>' +
+        '<span class="wb-match-sigsum meta">' + escapeHtml(shortIdentity(m)) + '</span>' +
+        '<span class="wb-match-count meta">seen ' + m.count + '×</span>' +
+        '</summary>' + evidence +
+        '</details>';
+    }).join("") + '</div>';
+  }
+  return wbListShell("matched", "Matched controls", n,
+    "Distinct captured controls a rule named — expand a row to check it against the evidence.",
+    body, /*openByDefault*/ n > 0 && n <= 30);
+}
+
+function renderDeadRulesList(dead) {
+  const n = dead.length;
+  let body;
+  if (!n) {
+    body = '<p class="wb-empty meta">Every rule in this vocabulary matched at least one captured control. No dead rules.</p>';
+  } else {
+    body = '<div class="wb-rows">' + dead.map(function (d) {
+      return '<div class="wb-row wb-row-dead">' +
+        '<div class="wb-row-main">' +
+        '<span class="wb-dead-name">' + escapeHtml(d.name) + '</span>' +
+        '<code class="wb-ev-sig">' + escapeHtml(sigSummary(d.signature)) + '</code>' +
+        '</div>' +
+        '<div class="wb-row-meta meta">Matched nothing in this recording — the selector may be wrong, ' +
+        'or this control just wasn’t used here.</div>' +
+        '</div>';
+    }).join("") + '</div>';
+  }
+  return wbListShell("dead", "Dead rules", n,
+    "Rules that named nothing this recording — the “is my selector wrong?” list.",
+    body, /*openByDefault*/ n > 0);
+}
+
+function renderScreensSection(screens) {
+  const matched = screens.matched || [];
+  const unnamed = screens.unnamed || [];
+  const total = matched.length + unnamed.length;
+  let body = '<div class="wb-screens">';
+  if (matched.length) {
+    body += '<div class="wb-screens-group"><div class="wb-screens-h meta">Named screens</div>' +
+      matched.map(function (s) {
+        return '<div class="wb-screen-row wb-screen-matched">' +
+          '<span class="wb-screen-name">' + escapeHtml(s.screenName || s.screenId) + '</span>' +
+          '<span class="wb-screen-title meta">' + escapeHtml(s.title) + '</span>' +
+          '<span class="wb-screen-count meta">' + s.count + '×</span>' +
+          '</div>';
+      }).join("") + '</div>';
+  }
+  if (unnamed.length) {
+    body += '<div class="wb-screens-group"><div class="wb-screens-h meta">Unnamed windows</div>' +
+      unnamed.map(function (s, i) {
+        return '<div class="wb-screen-row wb-screen-unnamed" data-wb-screen="' + i + '">' +
+          '<span class="wb-screen-title">' + escapeHtml(s.title) + '</span>' +
+          '<span class="wb-screen-count meta">' + s.count + '×</span>' +
+          '<button type="button" class="wb-name-screen-btn" data-wb-name-screen="' + i + '">Name screen…</button>' +
+          '</div>';
+      }).join("") + '</div>';
+  }
+  if (!total) {
+    body += '<p class="wb-empty meta">No windows observed for this app in the recording.</p>';
+  }
+  body += '</div>';
+  return wbListShell("screens", "Screens", total,
+    "Distinct windows seen in this recording, split into named vs. unnamed.",
+    body, /*openByDefault*/ false);
+}
+
+/* A collapsible Evidence section shell with a count + one-line takeaway
+   (Disclosure model: title + count resident, body expand-in-place). Uses a
+   glyph-carrying summary with the native marker suppressed (avoids the doubled
+   disclosure-marker pitfall). */
+function wbListShell(key, title, count, takeaway, bodyHtml, openByDefault) {
+  const persisted = State.getVocabState()._wbOpen && State.getVocabState()._wbOpen[key];
+  const open = (persisted === undefined ? openByDefault : persisted);
+  return '<details class="wb-list" data-wb-list="' + key + '"' + (open ? " open" : "") + '>' +
+    '<summary class="wb-list-summary">' +
+    '<span class="wb-list-chevron"></span>' +
+    '<span class="wb-list-title">' + escapeHtml(title) + '</span>' +
+    '<span class="wb-list-count">' + count + '</span>' +
+    '<span class="wb-list-takeaway meta">' + escapeHtml(takeaway) + '</span>' +
+    '</summary>' +
+    '<div class="wb-list-body">' + bodyHtml + '</div>' +
+    '</details>';
+}
+
+function sigSummary(sig) {
+  sig = sig || {};
+  const parts = [];
+  if (sig.control_type) parts.push(sig.control_type);
+  if (sig.automation_id) parts.push("aid=" + sig.automation_id);
+  if (sig.name) parts.push("name=" + sig.name);
+  if (sig.class_name) parts.push("class=" + sig.class_name);
+  if (sig.framework_id) parts.push("fwk=" + sig.framework_id);
+  if (sig.window_title_regex) parts.push("win~" + sig.window_title_regex);
+  return parts.length ? parts.join(" · ") : "(empty signature)";
+}
+
+function shortIdentity(m) {
+  const id = m.identity || {};
+  if (id.kind === "automation_id") return "aid: " + id.value;
+  if (id.kind === "name") return id.value;
+  if (id.kind === "class_name") return "class: " + id.value;
+  return id.value || m.controlType || "";
+}
+
+function wireWorkbench() {
+  // Persist per-list open state (Disclosure rule 10: every disclosure remembers).
+  document.querySelectorAll(".wb-list[data-wb-list]").forEach(function (det) {
+    det.addEventListener("toggle", function () {
+      const st = State.getVocabState();
+      st._wbOpen = st._wbOpen || {};
+      st._wbOpen[det.dataset.wbList] = det.open;
+    });
+  });
+  document.querySelectorAll(".wb-name-btn[data-wb-name]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      const i = parseInt(btn.dataset.wbName, 10);
+      nameUnnamedControl(i);
+    });
+  });
+  document.querySelectorAll(".wb-name-screen-btn[data-wb-name-screen]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      const i = parseInt(btn.dataset.wbNameScreen, 10);
+      nameScreen(i);
+    });
+  });
+  const re = $("#btn-wb-reanalyze");
+  if (re) re.addEventListener("click", reanalyzeCurrentSession);
+}
+
+/* "Name…" on an UNNAMED row. Reuses the SAME add-from-interaction derivation
+   the G-8 flow uses (signatureFromInteraction over the captured event), adds the
+   row to the CURRENTLY-selected vocab (the workbench's whole point is one
+   session × one vocab), opens the rule editor drawer with the fresh row focused,
+   and lets the analyst type the business name + Save. Suggest-don't-mutate:
+   nothing persists until the vocabulary's own Save. */
+async function nameUnnamedControl(idx) {
+  const wb = _wbData;
+  const v = State.getVocabState().current;
+  if (!wb || !v) return;
+  const u = wb.unnamed[idx];
+  if (!u) return;
+  // Derive the signature from the ACTUAL captured interaction (G-8 derivation),
+  // falling back to the list-built minimal signature.
+  const signature = CA.signatureFromInteraction(u.sampleEvent) || u.addSignature;
+  if (!signature) {
+    toast("That control has no stable signature to key a rule on.", "error");
+    return;
+  }
+  // Volatility-suspect ids: flag the way the discovery picker does — if the
+  // automation_id looks auto-generated (a trailing render counter), warn the
+  // analyst before keying a rule on it.
+  if (signature.automation_id && looksVolatile(signature.automation_id)) {
+    const ok = await confirmModal({
+      title: "This id may change between runs",
+      message: "The automation_id “" + signature.automation_id + "” looks auto-generated " +
+        "(a per-render counter). A rule keyed on it may not match the next recording. " +
+        "Add it anyway, or Cancel and key on the label instead?",
+      okLabel: "Add anyway",
+    });
+    if (!ok) return;
+  }
+  v.interactions = v.interactions || [];
+  const key = CA.vocabSignatureKey(signature);
+  const dupIdx = v.interactions.findIndex(function (e) {
+    return CA.vocabSignatureKey(e && e.signature) === key;
+  });
+  if (key && dupIdx >= 0) {
+    openRuleEditorFocused(dupIdx);
+    toast("This control is already a rule — highlighted it below.", "info");
+    return;
+  }
+  const suggested = (u.identity && u.identity.kind === "name") ? u.identity.value : "";
+  v.interactions.push({ signature: signature, name: suggested });
+  markDirty();
+  State.getVocabState()._ruleEditorOpen = true;
+  // Re-render the workbench so the row leaves UNNAMED immediately (advisory), and
+  // the rule editor drawer opens with the new row focused for naming.
+  renderVocabEditor();
+  openRuleEditorFocused(v.interactions.length - 1);
+  toast("Added a rule for this control — type its business name, then Save the vocabulary.", "success");
+}
+
+/* Open the Machine-layer rule editor drawer and focus a specific interaction
+   row's name field. */
+function openRuleEditorFocused(idx) {
+  const drawer = document.querySelector(".vocab-machine-drawer");
+  if (drawer && !drawer.open) drawer.open = true;
+  State.getVocabState()._ruleEditorOpen = true;
+  _flashInteractionRow(idx);
+}
+
+/* Heuristic mirror of the discovery volatility flag: an id ending in a render
+   counter (trailing digits after a hyphen/underscore, or a long hash) is
+   suspect. Advisory only. */
+function looksVolatile(aid) {
+  const s = String(aid || "");
+  return /[-_]\d{2,}$/.test(s) || /^[a-z]+-\d+$/i.test(s) || /[0-9a-f]{8,}/i.test(s);
+}
+
+/* "Name screen…" on an unnamed window. Suggests a window_title_regex by diffing
+   the observed title variants of that screen (the volatile token becomes the
+   wildcard; a single variant is escaped literally, and we say so). The analyst
+   accepts/edits the suggestion; a screens entry is added to the current vocab
+   (in memory, dirty — never auto-saved). */
+async function nameScreen(idx) {
+  const wb = _wbData;
+  const v = State.getVocabState().current;
+  const sess = State.getSession();
+  if (!wb || !v || !sess) return;
+  const s = wb.screens.unnamed[idx];
+  if (!s) return;
+  const name = await promptModal({
+    title: "Name this screen",
+    message: "Give this window a plain-English screen name (e.g., “New order”).",
+    placeholder: "New order", okLabel: "Next",
+  });
+  if (!name) return;
+  // Gather every observed title that shares this window's logical screen. For the
+  // suggestion we diff the sibling variants: titles that share a long common
+  // frame with the picked one. Cheap approach: use the picked title plus any
+  // observed title with a >=6-char shared prefix OR suffix.
+  const observed = collectObservedTitles(sess.events, v);
+  const variants = siblingVariants(s.title, observed);
+  const suggestion = VocabMatch.suggestScreenRegex(variants);
+  const note = suggestion.single
+    ? "Only one variant of this window was observed, so the title is matched literally. " +
+      "If the window title carries a record number that changes per case, edit the pattern to replace it with .* ."
+    : "Suggested by diffing the observed variants — the part that changed became a wildcard. Accept or edit.";
+  const regex = await promptModal({
+    title: "Window match pattern for “" + name + "”",
+    message: note,
+    defaultValue: suggestion.regex,
+    placeholder: ".*" + name + ".*", okLabel: "Add screen",
+  });
+  if (!regex) return;
+  v.screens = Array.isArray(v.screens) ? v.screens : [];
+  const id = CA.slugify(name) || ("screen-" + (v.screens.length + 1));
+  if (v.screens.some(function (x) { return x && x.id === id; })) {
+    toast("A screen named “" + name + "” already exists in this vocabulary.", "info");
+    return;
+  }
+  v.screens.push({ id: id, name: name, window_title_regex: regex });
+  markDirty();
+  renderVocabEditor();
+  toast("Added screen “" + name + "” — review it in the rule editor and Save the vocabulary.", "success");
+}
+
+/* Every window title observed for this vocab's app (in scope), deduped. */
+function collectObservedTitles(events, v) {
+  const titles = new Set();
+  for (const ev of (events || [])) {
+    if (!ev || ev.type !== "interaction") continue;
+    const d = ev.data || {};
+    if (!VocabMatch.scopeMatches(v, d)) continue;
+    if (d.window_title) titles.add(String(d.window_title));
+  }
+  return Array.from(titles);
+}
+
+/* Observed titles that plausibly belong to the SAME logical screen as `title`:
+   they share a substantial common prefix or suffix with it. Always includes the
+   picked title itself. */
+function siblingVariants(title, observed) {
+  const out = [title];
+  for (const t of observed) {
+    if (t === title) continue;
+    const pre = VocabMatch.commonPrefix([title, t]).length;
+    const suf = VocabMatch.commonSuffix([title, t], 0).length;
+    if (pre >= 6 || suf >= 6) out.push(t);
+  }
+  return out;
+}
+
+/* Re-analyze the loaded session so authored names take effect. Reuses the
+   existing "Analyze session" pipeline path (injected by the renderer) — NEVER
+   auto-run; the analyst clicks the CTA. */
+async function reanalyzeCurrentSession() {
+  const sess = State.getSession();
+  if (!sess) { toast("Open a session first.", "error"); return; }
+  if (State.getVocabState().dirty) {
+    toast("Save the vocabulary first, then re-analyze.", "error");
+    return;
+  }
+  if (typeof onReanalyze !== "function") {
+    toast("Re-analyze isn't available here — open the session and use Analyze session.", "error");
+    return;
+  }
+  toast("Re-analyzing this session with the current vocabularies…");
+  try { await onReanalyze(); } catch (e) { toast("Re-analyze failed: " + (e && e.message || e), "error"); return; }
+  // The session reloaded; if the App Library tab is still visible, refresh the
+  // workbench against the fresh data.
+  renderVocabEditor();
+}
+
+/* Honest empty states (Disclosure replace-pattern). */
+function renderNoVocabEmptyState(hasSession) {
+  if (hasSession) {
+    return '<div class="empty-pane">' +
+      '<p><strong>Pick a vocabulary to match it against this recording.</strong></p>' +
+      '<p class="meta">Choose an entry on the left to open the match workbench, or click ' +
+      '<strong>+ New vocabulary</strong> to start one — then <strong>Start from a recording…</strong> ' +
+      'fills it from what this session captured.</p>' +
+      '</div>';
+  }
+  return '<div class="empty-pane">' +
+    '<p><strong>Open a session, or pick a vocabulary, to begin.</strong></p>' +
+    '<p class="meta">The match workbench matches a vocabulary against a loaded recording. ' +
+    'Open a session on the <strong>Session</strong> tab, then pick a vocabulary here — or hand-edit ' +
+    'the rules by selecting one on the left.</p>' +
+    '</div>';
 }
 
 /* C2 checklist progress: "reviewed X / Y discovered". Hidden (with its
@@ -803,20 +1283,28 @@ async function addInteractionFromStep({ signature, suggestedName } = {}) {
   const key = CA.vocabSignatureKey(signature);
   const dupIdx = v.interactions.findIndex((e) => CA.vocabSignatureKey(e && e.signature) === key);
   if (key && dupIdx >= 0) {
+    State.getVocabState()._ruleEditorOpen = true;
     renderVocabEditor();
     _flashInteractionRow(dupIdx);
     toast("This control is already in “" + (v.name || v.id) + "”. Highlighted it for you.", "info");
     return;
   }
   v.interactions.push({ signature, name: (suggestedName || "").trim() });
+  // Open the rule editor drawer so the new row is visible/nameable even when the
+  // workbench is the default surface (R2).
+  State.getVocabState()._ruleEditorOpen = true;
   renderVocabEditor();
   markDirty();
   _flashInteractionRow(v.interactions.length - 1);
   toast("Added a control to “" + (v.name || v.id) + "” — give it a name and Save the vocabulary.", "success");
 }
 
-/* Scroll a freshly-added/duplicate interaction row into view + flash it. */
+/* Scroll a freshly-added/duplicate interaction row into view + flash it. Opens
+   the Machine-layer rule editor drawer first (it may be collapsed under the
+   workbench). */
 function _flashInteractionRow(idx) {
+  const drawer = document.querySelector(".vocab-machine-drawer");
+  if (drawer && !drawer.open) drawer.open = true;
   const host = $("#vocab-interactions");
   const row = host && host.querySelector('.vocab-int[data-idx="' + idx + '"]');
   if (!row) return;
@@ -957,8 +1445,11 @@ function renderVocabLlmButtons() {
   anchor.parentNode.insertBefore(importBtn, anchor);
 }
 
-/* Wire the App Library tab controls. Call once at boot. */
-function initVocabView() {
+/* Wire the App Library tab controls. Call once at boot. `deps.onReanalyze` is
+   the renderer's re-run-the-pipeline path (the existing "Analyze session"
+   flow), used by the workbench's "Re-analyze to apply names" CTA. */
+function initVocabView(deps) {
+  if (deps && typeof deps.onReanalyze === "function") onReanalyze = deps.onReanalyze;
   if ($("#btn-vocab-new")) {
     $("#btn-vocab-new").addEventListener("click", async () => {
       const name = await promptModal({ title: "New App Library entry", message: "Which app is this entry for?", placeholder: "e.g., Salesforce", okLabel: "Create" });
@@ -996,4 +1487,6 @@ module.exports = {
   mergeDiscoveredSkeleton, mergeScreens, stripDiscoveryMeta,
   isDiscoveredEntry, renderVocabLlmButtons,
   bootstrapFromSession, addInteractionFromStep,
+  // R2 workbench helpers (exported for unit testing).
+  siblingVariants, looksVolatile,
 };

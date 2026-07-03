@@ -55,6 +55,19 @@ async function shot(page, name) {
     .catch((e) => console.log("shot fail", name, e.message));
 }
 
+// R2: open the demoted rule-editor Machine drawer so its form fields drive.
+async function openRuleEditor(page) {
+  return await page.evaluate(() => {
+    const det = document.querySelector(".vocab-machine-drawer");
+    if (!det) return false;
+    if (!det.open) {
+      det.open = true;
+      det.dispatchEvent(new Event("toggle"));  // persist _ruleEditorOpen
+    }
+    return !!document.querySelector("#vocab-interactions");
+  }).catch(() => false);
+}
+
 // One "discovered" entry whose only signature is a weak class_name, plus the
 // enrichment the picker now stamps (the post-discovery editor state). Two members
 // at DISTINCT regions == the over-merge the annotator must be able to see.
@@ -144,6 +157,24 @@ const SEED = {
     opened ? "" : "could not find/select the 'Spotify E2E' row");
   if (!opened) { await shot(page, "fail-vocab-open.png"); await app.close().catch(() => {}); process.exit(1); }
   await wait(1000); // editor render
+
+  // R2: with a session loaded, selecting a vocab opens the MATCH WORKBENCH by
+  // default; the blank-form rule editor is demoted to a Machine drawer
+  // (.vocab-machine-drawer). This smoke drives the rule editor's form fields, so
+  // open that drawer first. Opening it persists (_ruleEditorOpen) across the
+  // re-renders below (Approve-all, add-interaction, G-7 skeleton, save), so this
+  // single open keeps #vocab-interactions reachable for every later check.
+  const drawerOpened = await openRuleEditor(page);
+  record("R2: the rule editor Machine drawer opens under the workbench", drawerOpened,
+    drawerOpened ? "" : "could not open .vocab-machine-drawer");
+  // R2: the workbench renders its resident coverage header for (session × vocab).
+  const wbHeader = await page.evaluate(() => {
+    const line = document.querySelector("#wb-coverage-line");
+    return { present: !!line, text: line ? (line.textContent || "").trim() : null };
+  }).catch((e) => ({ err: e.message }));
+  record("R2: the workbench coverage header renders", !!(wbHeader && wbHeader.present),
+    JSON.stringify(wbHeader));
+  await shot(page, "vocab-workbench-default.png");
 
   // Probe the rendered interaction row.
   const ui = await page.evaluate(() => {

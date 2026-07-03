@@ -14,7 +14,8 @@ cd viewer && npm test          # + cd capture && npm test
 dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj
 cd e2e && node session-smoke.js   # the REAL viewer — INCLUDES the map-connectivity pin
 cd e2e && node overview-smoke.js && node map-slim-smoke.js   # lab-phase pins (Overview default · slimmed map · §C4 posture)
-cd e2e && node vocab-smoke.js     # App Library pins (discovery row legibility · §C2 checklist · §C3 export · §C4 sealed)
+cd e2e && node vocab-smoke.js     # App Library pins (discovery row legibility · §C2 checklist · §C3 export · §C4 sealed · R2 workbench-as-default + demoted rule editor)
+cd e2e && node workbench-smoke.js # R2 match workbench: coverage header · matched/unnamed/dead lists · Name… derivation · re-analyze moves a control out of UNNAMED
 cd e2e && node flywheel-smoke.js  # §D4: accept anchor → export template (carries case_anchor) → session 2 self-segments → Compare divergence feed
 ```
 
@@ -129,7 +130,19 @@ and it drives the viewer's own `electron`.
 - **Live map graph:** the DFG host exposes `host.__cy` (a cytoscape instance); the BPMN host
   has `.djs-element[data-element-id]` shapes. Hosts: `#session-map-{bpmn,dfg}-host` (session) ·
   `#{bpmn,dfg}-host` (aggregate).
-- **App Library (vocab editor):** list rows `#vocab-list .vocab-row`; per-interaction rows
+- **App Library (R2 match workbench):** with a session loaded, selecting a vocab
+  (`#vocab-list .vocab-row`) opens the **match workbench** by default — a resident
+  coverage header `#wb-coverage-line`, three Evidence lists
+  `.wb-list[data-wb-list="unnamed"|"matched"|"dead"]` (each with a `.wb-list-count`),
+  a `.wb-list[data-wb-list="screens"]` section, and the "Name…" derivation on an
+  UNNAMED row (`.wb-name-btn[data-wb-name]`). The blank-form **rule editor is demoted
+  to a Machine drawer** `.vocab-machine-drawer` — its `#vocab-interactions` etc. still
+  exist but the drawer is COLLAPSED by default; open it (set `.open` + dispatch
+  `toggle`, which persists `_ruleEditorOpen`) before driving the form fields. Advisory
+  matcher: `viewer/vocab-match.js` (mirrors `normalization/app_vocab.py`; the pipeline
+  stays ground truth — the "Re-analyze to apply names" CTA `#btn-wb-reanalyze` re-runs
+  it). Pinned by `e2e/workbench-smoke.js` + `e2e/vocab-smoke.js`.
+- **App Library (vocab editor — the Machine drawer):** list rows `#vocab-list .vocab-row`; per-interaction rows
   `#vocab-interactions .vocab-int` with signature inputs `[data-sig="…"]`, the §C1 semantics strip
   (`select[data-sem="verb"]`, `input[data-sem="object"|"means"]`,
   `input[data-semflag="completion"|"carries_value"|"case_id_source"]`), and on DISCOVERED rows the

@@ -3069,6 +3069,138 @@ button.danger:disabled {
 .vocab-review-progress { font-size: 11px; color: var(--fg-3); margin-left: 10px; }
 .vocab-review-progress.all-done { color: var(--va); }
 
+/* ===== R2: the match workbench (APPROACHABILITY-REDESIGN §5) ============ */
+.wb { display: flex; flex-direction: column; gap: 12px; }
+.wb-nosession { margin-bottom: 8px; }
+
+/* Coverage header — the ONE resident number (Memo altitude). */
+.wb-coverage {
+  padding: 12px 14px; background: var(--bg-2);
+  border: 1px solid var(--rule); border-radius: 6px;
+}
+.wb-coverage-line { font-size: 15px; color: var(--fg); line-height: 1.4; }
+.wb-coverage-line strong { color: var(--accent); font-weight: 600; }
+.wb-coverage-bar {
+  margin: 8px 0 6px; height: 6px; border-radius: 3px;
+  background: var(--bg-3); overflow: hidden;
+}
+.wb-coverage-fill { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.wb-coverage-sub { line-height: 1.5; }
+.wb-coverage-sub .link-btn { font-size: 11px; }
+
+/* Evidence lists — a titled, collapsible section each. Glyph-carrying summary
+   with the native marker suppressed (doubled-marker pitfall). */
+.wb-list { border: 1px solid var(--rule); border-radius: 6px; background: var(--bg-1); }
+.wb-list-summary {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; list-style: none; user-select: none;
+  padding: 9px 12px; font-size: 12px;
+}
+.wb-list-summary::-webkit-details-marker { display: none; }
+.wb-list-summary:hover { background: var(--bg-2); }
+.wb-list[open] > .wb-list-summary { border-bottom: 1px solid var(--rule); }
+.wb-list-chevron { flex: 0 0 auto; font-size: 10px; color: var(--fg-3); line-height: 1; }
+.wb-list-chevron::before { content: "▸"; }
+.wb-list[open] > .wb-list-summary .wb-list-chevron::before { content: "▾"; }
+.wb-list-title { color: var(--fg); font-weight: 600; }
+.wb-list-count {
+  min-width: 20px; text-align: center; padding: 1px 7px;
+  background: var(--bg-3); border-radius: 10px;
+  font-size: 11px; color: var(--fg-2); font-variant-numeric: tabular-nums;
+}
+.wb-list[data-wb-list="dead"] .wb-list-count { color: var(--bad); }
+.wb-list-takeaway { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-list-body { padding: 8px 12px 12px; }
+.wb-empty { margin: 4px 0; }
+.wb-rows { display: flex; flex-direction: column; gap: 6px; }
+
+/* A generic evidence row. */
+.wb-row {
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--bg-2); padding: 8px 10px;
+}
+.wb-row-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wb-ct {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--fg-3); font-family: var(--font-mono);
+}
+.wb-idkind {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 1px 5px; border-radius: 3px; border: 1px solid var(--rule);
+  color: var(--fg-3);
+}
+.wb-idval { color: var(--fg); font-size: 13px; word-break: break-word; }
+.wb-row-meta { margin-top: 4px; }
+.wb-row-act { margin-top: 6px; }
+.wb-name-btn { font-size: 11px; padding: 3px 12px; }
+
+/* Unnamed worklist rows get a subtle accent stripe (there's work here). */
+.wb-row-unnamed { border-left: 3px solid var(--accent); }
+/* Dead rules get a warning stripe (a selector is likely wrong). */
+.wb-row-dead { border-left: 3px solid var(--bad); }
+.wb-dead-name { color: var(--fg); font-size: 13px; margin-right: 8px; }
+
+/* Matched rows are expandable (Evidence one click behind the claim). */
+details.wb-row-matched { padding: 0; }
+.wb-row-summary {
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer; list-style: none; padding: 8px 10px;
+}
+.wb-row-summary::-webkit-details-marker { display: none; }
+.wb-row-summary:hover { background: var(--bg-3); }
+.wb-match-name { color: var(--fg); font-size: 13px; font-weight: 500; }
+.wb-match-sigsum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-match-count { flex: 0 0 auto; }
+.wb-evidence {
+  padding: 8px 12px 10px; border-top: 1px solid var(--rule);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.wb-ev-line { font-size: 11px; color: var(--fg-2); line-height: 1.5; }
+.wb-ev-k {
+  display: inline-block; min-width: 92px;
+  color: var(--fg-3); text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px;
+}
+.wb-ev-win {
+  display: inline-block; padding: 1px 6px; margin: 1px 2px 1px 0;
+  background: var(--bg-3); border-radius: 3px; font-size: 11px; color: var(--fg-2);
+}
+.wb-ev-val, .wb-ev-sig {
+  font-family: var(--font-mono); font-size: 10px;
+  background: var(--bg-3); padding: 1px 5px; border-radius: 3px; color: var(--fg-2);
+}
+.wb-ev-sig { word-break: break-all; }
+
+/* Screens section. */
+.wb-screens { display: flex; flex-direction: column; gap: 10px; }
+.wb-screens-h { text-transform: uppercase; font-size: 9px; letter-spacing: 0.6px; margin-bottom: 4px; }
+.wb-screen-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--bg-2); margin-bottom: 4px;
+}
+.wb-screen-matched { border-left: 3px solid var(--accent-2); }
+.wb-screen-name { color: var(--fg); font-size: 12px; font-weight: 500; }
+.wb-screen-title { flex: 1; min-width: 0; color: var(--fg-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-screen-count { flex: 0 0 auto; }
+.wb-name-screen-btn { flex: 0 0 auto; font-size: 11px; padding: 2px 10px; }
+
+/* The rule editor demoted to a Machine drawer at the bottom of the workbench.
+   Mirrors the R1 Compare / template Machine-drawer look (collapsed, own glyph,
+   native marker suppressed). */
+.vocab-machine-drawer { margin-top: 6px; border-top: 1px solid var(--rule); padding-top: 8px; }
+.vocab-machine-summary {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer; color: var(--fg-3); list-style: none; user-select: none;
+  font-size: 11px; padding: 6px 0; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.vocab-machine-summary::-webkit-details-marker { display: none; }
+.vocab-machine-summary:hover { color: var(--fg-2); }
+.vocab-machine-drawer[open] > .vocab-machine-summary { color: var(--accent); }
+.vocab-machine-chevron { flex: 0 0 auto; font-size: 11px; line-height: 1; }
+.vocab-machine-chevron::before { content: "▸"; }
+.vocab-machine-drawer[open] .vocab-machine-chevron::before { content: "▾"; }
+.vocab-machine-body { padding-top: 8px; }
+
 /* ===== Lab-phase C3: the Copy-for-LLM review modal ====================== */
 .llm-export-modal { width: min(860px, 92vw); }
 .llm-export-modal .llm-export-text {

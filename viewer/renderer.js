@@ -1483,7 +1483,33 @@ Ipc.onOpenInitialSession((folder) => {
 
 /* ============ Vocabularies tab -- see views/vocab-view.js ========= */
 
-initVocabView();
+initVocabView({
+  // R2: the workbench "Re-analyze to apply names" CTA reuses the existing
+  // "Analyze session" pipeline path (#btn-normalize, wired in flow-view.js —
+  // it re-runs normalize and reloads the session). NEVER auto-triggered.
+  onReanalyze: () => new Promise((resolve) => {
+    const btn = $("#btn-normalize");
+    if (!btn) { resolve(); return; }
+    // #btn-normalize (flow-view) re-runs normalize then reloads the session via
+    // loadSessionIntoView. It disables itself while running (setAnalysisRunning),
+    // so: click, wait a beat for it to enter the running state, then poll until
+    // it settles. If it never enters running (e.g. no session), resolve anyway.
+    btn.click();
+    let ticks = 0;
+    let sawRunning = false;
+    const poll = setInterval(() => {
+      ticks++;
+      const running = !!($("#btn-normalize") && $("#btn-normalize").disabled);
+      if (running) sawRunning = true;
+      // Settle once we've seen it run and it stopped, or after ~2s if it never
+      // ran, or a hard 60s cap.
+      if ((sawRunning && !running) || (!sawRunning && ticks > 20) || ticks > 600) {
+        clearInterval(poll);
+        resolve();
+      }
+    }, 100);
+  }),
+});
 
 /* I72: the topbar command-palette hint opens the palette (also Ctrl+K). */
 const _cmdkHint = document.getElementById("btn-cmdk-hint");

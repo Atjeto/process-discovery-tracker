@@ -4,6 +4,38 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — approachability redesign (branch `redesign-r1`)
+
+Viewer-only work on the approachability redesign
+([docs/To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md](docs/To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md)).
+Phase gates close on an owner real-session sit-down; the suites are the floor.
+
+### Added — R2: the App Library match workbench
+
+- **The App Library is now a match workbench (§5 R2).** With a session loaded,
+  selecting a vocabulary opens — by default — the match workbench for that
+  (session × vocab): the analyst looks at what the recording *captured*, points,
+  and names; signatures are **derived, never typed**. Three evidence lists
+  computed from the session's captured interactions — **matched** (distinct named
+  controls, expand-in-place to the evidence: windows seen in, example values, the
+  rule signature), **unnamed** (the worklist, ordered by occurrence, each with a
+  single "Name…" act reusing the G-8 add-from-interaction derivation), and **dead
+  rules** (vocab entries that matched nothing this recording — the "is my selector
+  wrong?" state). A resident coverage header ("N of M captured controls named ·
+  X% of interactions"), a screens split with a suggested `window_title_regex`
+  diffed from the observed title variants (volatile token → wildcard), and the
+  existing non-destructive re-analyze CTA (never auto-run).
+- **The blank-form rule/YAML editor demoted to a Machine drawer.** No capability
+  removed — hand-editing the four signature inputs and the YAML still lives one
+  disclosure down (`▸ MACHINE LAYER: rule editor`).
+- **New advisory matcher `viewer/vocab-match.js`** mirrors
+  `normalization/app_vocab.py` matching semantics (scope: case-insensitive
+  `process_name` + `window_title_regex`; signature: exact-field-equality with
+  most-specific-wins). It is viewer-side and **advisory** — the pipeline stays
+  ground truth; a re-analyze reconciles. Unit-tested (`vocab-match.test.js`);
+  pinned end-to-end by `e2e/workbench-smoke.js` and the re-pointed
+  `e2e/vocab-smoke.js`.
+
 ## [1.4.0] - 2026-07-02
 
 Presentation / disclosure pass over the viewer from the 2026-07-01 design

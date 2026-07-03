@@ -137,6 +137,18 @@ session and reports "I can look at it."
 
 ### R2 — Name things fast (the match workbench) · ~2–3 sessions
 
+**Status (built, pending owner real-session gate):** the viewer-side workbench
+landed on `redesign-r1` — `viewer/vocab-view.js` renders the match workbench as
+the default App Library surface for (session × vocab); the blank-form editor
+demoted to a `.vocab-machine-drawer`. The advisory matcher
+`viewer/vocab-match.js` mirrors `normalization/app_vocab.py` (scope +
+signature-specificity semantics; pipeline stays ground truth). Three evidence
+lists (matched / unnamed-worklist / dead-rules), a resident coverage header,
+screens split with a diffed `window_title_regex` suggestion, "Name…" reusing the
+G-8 derivation, and the existing re-analyze CTA. Pinned by
+`e2e/workbench-smoke.js` (+ re-pointed `e2e/vocab-smoke.js`). The real-session
+gate below (owner-run) still closes the phase.
+
 The App Library rebuilt around captured evidence, closing ADR-0025's open
 trigger-placement question in favor of **viewer-side, session-grounded**:
 
