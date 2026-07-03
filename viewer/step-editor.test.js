@@ -36,6 +36,28 @@ function inter(data) {
   };
 }
 
+/* ---- R1 Steps chrome diet: the per-row move buttons are retired --------- */
+// renderStepList needs a DOM, so pin the invariant DOM-free by scanning the
+// source: the flat list must not emit the ↑ / ↓ reorder buttons (reorder moved
+// to the right-click context menu + Alt+Arrow). Guards against regression.
+test("R1: renderStepList no longer emits per-row move-up/down buttons", () => {
+  const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
+  for (const cls of ["step-move-up", "step-move-down", "step-reorder"]) {
+    assert.ok(!src.includes(cls),
+      `retired per-row reorder control ${cls} must not return to the step list`);
+  }
+});
+
+test("R1: the truncated step name's title carries the full name + rename hint", () => {
+  const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
+  // The old instruction-only title is gone; the new title composes the full
+  // name with the rename hint (so a truncated label is readable on hover).
+  assert.ok(!/title="Double-click to rename"/.test(src),
+    "the step-name title must no longer be the bare rename instruction");
+  assert.ok(src.includes('"double-click to rename"'),
+    "the rename hint should ride after the full name in the title");
+});
+
 /* ---- describeInteraction ------------------------------------------- */
 
 test("describeInteraction: a typed value names the value and field", () => {
@@ -237,4 +259,47 @@ test("renderInteractionList: not splittable by default (back-compat)", () => {
   const events = [inter({ kind: "invoked", name: "A" }), inter({ kind: "invoked", name: "B" })];
   const html = renderInteractionList(events, 2);
   assert.ok(!html.includes("si-split-btn"));
+});
+
+/* ---- TASK 3: identityLine in the interaction rows ------------------- */
+
+test("renderInteractionList: each row carries a composed identity line", () => {
+  const events = [inter({
+    kind: "invoked", control_type: "Button", name: "Search",
+    window_title: "Customer lookup — CRM",
+  })];
+  const html = renderInteractionList(events, 1);
+  // The verb sentence is still there (what happened) ...
+  assert.ok(html.includes("Clicked Search"));
+  // ... plus the composed identity line (control type · "identity" · window).
+  assert.ok(html.includes("si-identity"));
+  assert.ok(html.includes("Button"));
+  assert.ok(html.includes("Customer lookup"));
+});
+
+test("renderInteractionList: a volatile automation_id renders the marker + tooltip", () => {
+  // No name, a render-counter-looking id -> identityLine flags it volatile.
+  const events = [inter({
+    kind: "invoked", control_type: "Button", automation_id: "btn-4821",
+  })];
+  const html = renderInteractionList(events, 1);
+  assert.ok(html.includes("si-marker-volatile"), "volatile marker class must render");
+  assert.ok(/auto-generated/.test(html), "the marker's tooltip note must render");
+});
+
+test("renderInteractionList: a class-name-only control renders the weak marker", () => {
+  const events = [inter({
+    kind: "invoked", control_type: "Pane", class_name: "TfrmMain",
+  })];
+  const html = renderInteractionList(events, 1);
+  assert.ok(html.includes("si-marker-weak"), "weak-identity marker class must render");
+});
+
+test("renderInteractionList: a strong named control renders no marker", () => {
+  const events = [inter({
+    kind: "invoked", control_type: "Button", name: "Save",
+  })];
+  const html = renderInteractionList(events, 1);
+  assert.ok(html.includes("si-identity"));
+  assert.ok(!html.includes("si-marker-"), "a stable named control needs no marker");
 });

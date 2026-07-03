@@ -6,6 +6,12 @@
   const PdtRecognize = require("./recognition.js");
   const { stepStateLabel } = require("./session-summary.js");
   const { escapeHtml, escapeAttr } = require("./dom.js");   // shared escapers (deduped)
+  // One composed human identity line per element (App Library pass, R1). Reused
+  // here for the step-detail interaction rows so a control with no accessible
+  // name reads as `<ControlType> · "<best identity>" · <window>` with the
+  // volatility/weak marker + tooltip -- never a bare automation_id or a raw
+  // window title. The matcher stays ground truth; this is presentation only.
+  const { identityLine } = require("./vocab-match.js");
 
   /* Local "HH:MM:SS" from an ISO timestamp. The mini-timeline axis
      already uses toLocaleTimeString, so step times must use the same
@@ -37,7 +43,7 @@
     return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
   }
 
-  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onReorder) {
+  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu) {
     host.innerHTML = "";
     if (!steps || !steps.length) {
       host.innerHTML = `
@@ -75,16 +81,20 @@
       const repeatBadge = s._repeatDiscriminating
         ? `<span class="step-repeat" title="Appears in ${s._repeat} of ${s._repeatCaseCount} cases (not all) — edit one, then Apply to repeats">${s._repeat}×</span>`
         : "";
+      // R1 (Steps chrome diet): a truncated name (the list ellipsizes) must be
+      // readable on hover, so the title shows the FULL name; the rename hint
+      // rides after it. The per-row ↑ / ↓ reorder buttons are gone -- reorder
+      // moved into the right-click context menu (steps-view.js
+      // showStepContextMenu "Move up / Move down"), so 500-step lists aren't
+      // multiplied by two always-present controls. The multi-select check
+      // stays (a genuine per-row act for merge / phase grouping).
+      const _nameTitle = (s.name ? s.name + " — " : "") + "double-click to rename";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
         <span class="multi-check" title="Click to select for merge or phase grouping"></span>
-        <span class="step-name" title="Double-click to rename" tabindex="-1">${escapeHtml(s.name)}</span>
+        <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
         ${driftTag}${flagBadges}${repeatBadge}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
-        <span class="step-reorder">
-          <button type="button" class="step-move-up" title="Move up" tabindex="-1">↑</button>
-          <button type="button" class="step-move-down" title="Move down" tabindex="-1">↓</button>
-        </span>
       `;
       row.addEventListener("click", (e) => {
         if (e.ctrlKey || e.metaKey) {
@@ -100,14 +110,17 @@
         e.stopPropagation();
         if (onMultiSelect) onMultiSelect(s.step_id);
       });
-      row.querySelector(".step-move-up").addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (onReorder) onReorder(s.step_id, -1);
-      });
-      row.querySelector(".step-move-down").addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (onReorder) onReorder(s.step_id, 1);
-      });
+      // Right-click a row for the full step context menu (Split / Merge /
+      // Rename / Hide / Jump / flags AND the relocated Move up / Move down).
+      // Same menu the Steps timeline blocks open, so reorder stays reachable
+      // where the ↑ / ↓ buttons used to live.
+      if (onContextMenu) {
+        row.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(s.step_id, e.clientX, e.clientY);
+        });
+      }
       const nameEl = row.querySelector(".step-name");
       nameEl.addEventListener("dblclick", (e) => {
         e.stopPropagation();
@@ -246,8 +259,8 @@
           <div class="evidence">
             ${interListHtml}
             <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
-            ${step.canonical_step_id ? `<p class="meta">canonical: <code>${escapeHtml(step.canonical_step_id)}</code></p>` : ""}
-            ${step.drift ? `<p class="drift-note">⚠ Canonical drift: was <code>${escapeHtml(step.drift.previous_canonical_step_id || "")}</code> → now <code>${escapeHtml(step.drift.new_canonical_step_id || "")}</code></p>` : ""}
+            ${step.canonical_step_id ? `<p class="meta" title="The reference-process step this was matched to">Reference id: <code>${escapeHtml(step.canonical_step_id)}</code></p>` : ""}
+            ${step.drift ? `<p class="drift-note">⚠ Reference drift: was <code>${escapeHtml(step.drift.previous_canonical_step_id || "")}</code> → now <code>${escapeHtml(step.drift.new_canonical_step_id || "")}</code></p>` : ""}
           </div>
           <div class="actions">
             ${propagateBtn}
@@ -478,6 +491,27 @@
     return `<div class="si-legend">${items}</div>`;
   }
 
+  /* The one composed human identity line for an interaction row, via the
+     shared identityLine (App Library pass): `<ControlType> · "<best identity>"
+     · <window>` with the volatility/weak marker rendered as a tooltip'd glyph.
+     The event's own `data` blob carries exactly the signature fields
+     identityLine reads (control_type / automation_id / name / class_name /
+     window_title), so it is passed straight through. Kept alongside the action
+     verb (describeInteraction) so a row reads "what happened" AND "on which
+     control" -- the identity replaces the old raw automation_id / window-title
+     fallback, not the verb. Returns "" when there is no identity worth a second
+     line (an unidentified control still gets the muted marker). */
+  function interactionIdentityHtml(ev) {
+    const data = (ev && ev.data) || {};
+    const line = identityLine(data);
+    const marker = line.marker
+      ? `<span class="si-marker si-marker-${escapeAttr(line.marker.kind)}" title="${escapeAttr(line.marker.note)}">${line.marker.kind === "volatile" ? "⚠" : "?"}</span>`
+      : "";
+    // Identity text (ellipsized) + the marker glyph share one inline row so the
+    // marker sits right after the identity, not wrapped to its own line.
+    return `<span class="si-idrow"><span class="si-identity" title="${escapeAttr(line.text)}">${escapeHtml(line.text)}</span>${marker}</span>`;
+  }
+
   function renderInteractionList(events, total, opts) {
     if (!total) return `<p class="meta">No interactions recorded for this step.</p>`;
     opts = opts || {};
@@ -492,7 +526,10 @@
         ? `<button type="button" class="si-split-btn${isBoundary ? " active" : ""}" data-after="${i}" tabindex="-1" title="Split the step here, after this interaction">&#9988;</button>`
         : "";
       return `<li class="step-interaction ${siKindClass(ev)}${isBoundary ? " split-boundary" : ""}" data-idx="${i}">` +
-        `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
+        `<span class="si-body">` +
+          `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
+          interactionIdentityHtml(ev) +
+        `</span>` +
         `<span class="si-time">${escapeHtml(t)}</span>${splitBtn}</li>`;
     });
     const missing = total - events.length;

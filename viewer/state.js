@@ -117,6 +117,12 @@ const _s = {
   undoStack: [],
   redoStack: [],
   pendingStepJumpTs: null,
+  // One-shot: reveal the already-selected step row on the NEXT Steps render.
+  // Set on arrival at the Steps level (e.g. returning from a Flow jump) so the
+  // surviving selection is scrolled back into view -- an arrival, not an
+  // incidental re-render (select/rename/flag never set this, so they never
+  // scroll). Mirrors pendingStepJumpTs's consume-once discipline.
+  pendingStepReveal: false,
 };
 
 /* ---- change-notification bus ------------------------------------- */
@@ -295,6 +301,15 @@ function consumePendingStepJump() {
   _s.pendingStepJumpTs = null;
   return ts;
 }
+/* One-shot "reveal the selected step on the next Steps render" flag (arrival
+   reveal for a surviving selection). Consume-once, same as the jump above. */
+function setPendingStepReveal() { _s.pendingStepReveal = true; }
+/** @returns {boolean} */
+function consumePendingStepReveal() {
+  const v = _s.pendingStepReveal;
+  _s.pendingStepReveal = false;
+  return v;
+}
 
 /* Zoom */
 function getZoomFactor() { return _s.zoomFactor; }
@@ -347,6 +362,7 @@ module.exports = {
   getListFilters, getCaseScope, setCaseScope,
   // cross-view step-jump request
   setPendingStepJump, consumePendingStepJump,
+  setPendingStepReveal, consumePendingStepReveal,
   // zoom
   getZoomFactor, setZoomFactor, getStepZoom, setStepZoom, getPhaseZoom, setPhaseZoom,
   // flow timeline range selection

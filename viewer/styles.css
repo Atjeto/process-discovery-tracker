@@ -2031,7 +2031,23 @@ details.analysis-module { padding: 0; }
 .editor-detail-pane .si-split-btn:hover { opacity: 1; color: var(--accent); }
 .editor-detail-pane .si-split-btn.active { opacity: 1; color: var(--accent); }
 .editor-detail-pane .step-interaction.split-boundary { border-bottom: 2px solid var(--accent); }
-.editor-detail-pane .si-text { flex: 1; color: var(--fg-2); word-break: break-word; }
+/* The interaction row body stacks the action verb over the composed element
+   identity line (App Library pass identityLine). .si-text keeps its colour;
+   the identity is muted + smaller so the verb still leads the row. */
+.editor-detail-pane .si-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.editor-detail-pane .si-text { color: var(--fg-2); word-break: break-word; }
+/* Identity text (ellipsized, shrinks) + its marker glyph share one inline
+   row -- the marker stays pinned right after the identity. */
+.editor-detail-pane .si-idrow { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+.editor-detail-pane .si-identity {
+  color: var(--fg-3); font-size: 10px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Volatility / weak-identity marker (identityLine.marker) -- a small tooltip'd
+   glyph after the identity line; warm-warn for a volatile id, muted for weak. */
+.editor-detail-pane .si-marker { flex: none; font-size: 10px; cursor: help; }
+.editor-detail-pane .si-marker-volatile { color: var(--warn); }
+.editor-detail-pane .si-marker-weak { color: var(--fg-4); }
 .editor-detail-pane .si-time {
   flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px;
 }
@@ -2560,15 +2576,6 @@ details.analysis-module { padding: 0; }
   border-color: var(--accent-2);
 }
 .step-row .multi-check:hover { border-color: var(--accent-2); }
-
-/* ===== Step row reorder buttons ===== */
-.step-row .step-reorder { flex: 0 0 auto; display: flex; gap: 1px; }
-.step-row .step-reorder button {
-  width: 16px; height: 16px; padding: 0; line-height: 1;
-  background: var(--bg-3); border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg-3); font-size: 9px; cursor: pointer;
-}
-.step-row .step-reorder button:hover { background: var(--bg-4); color: var(--fg); }
 
 /* ===== promptModal (replaces broken window.prompt) ===== */
 .modal-prompt {

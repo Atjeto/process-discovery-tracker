@@ -35,7 +35,7 @@ const { initAggregateView, renderAggregate, loadAggregateFolders, filteredAggreg
 const { initVocabView, reloadVocabList, addInteractionFromStep } = require("./views/vocab-view.js");
 const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
 const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = require("./views/template-view.js");
-const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp } = require("./views/steps-view.js");
+const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, reorderSelectedStep } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnchorCandidates, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
@@ -614,6 +614,15 @@ function applyLevel(name) {
       });
     }
   }
+  // Arrival reveal: switching TO Steps with a surviving selection (e.g. after
+  // a "Jump to in Flow" round-trip) should scroll that row back into view. This
+  // is an arrival, not an incidental re-render, so it is gated by a one-shot
+  // flag renderStepsLevel consumes -- select/rename/flag re-renders never set
+  // it and never scroll (scroll-law: the only unrequested scroll is the
+  // arrival reveal).
+  if (name === "steps" && prev !== "steps" && State.getSelectedStepId()) {
+    State.setPendingStepReveal();
+  }
   if (incomingSnap) {
     _viewportApplyToMode(name, incomingSnap);
   } else {
@@ -642,6 +651,7 @@ const VIEW_SHORTCUTS = {
   ],
   steps: [
     ["J / K", "Prev / next step"],
+    ["Alt+↑ / ↓", "Move step up / down"],
     ["S",     "Split step at playhead"],
     ["M",     "Merge selected"],
     ["Ctrl+Z", "Undo"],
@@ -1316,7 +1326,13 @@ document.addEventListener("keydown", (e) => {
   // Step editor shortcuts (only when on session view and steps panel)
   else if (State.getLevel() === "steps" && State.getSession()) {
     const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
-    if (e.key === "j" || e.key === "ArrowDown") {
+    // R1 (Steps chrome diet): reorder keeps a keyboard path now that the per-row
+    // ↑ / ↓ buttons are gone -- Alt+ArrowUp / Alt+ArrowDown move the selected
+    // step (same reorderStep semantics the right-click Move up/down items use).
+    // Plain Arrow / j / k still just navigate the selection.
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (State.getSelectedStepId()) { reorderSelectedStep(e.key === "ArrowUp" ? -1 : 1); e.preventDefault(); }
+    } else if (e.key === "j" || e.key === "ArrowDown") {
       const idx = steps.findIndex(s => s.step_id === State.getSelectedStepId());
       if (idx < steps.length - 1) { State.setSelectedStepId(steps[Math.max(0, idx + 1)].step_id); renderStepsLevel(); e.preventDefault(); }
     } else if (e.key === "k" || e.key === "ArrowUp") {

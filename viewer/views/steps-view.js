@@ -331,7 +331,10 @@ function renderStepsLevel() {
       },
       inlineRenameStep,
       State.getMultiSelectedStepIds(),
-      reorderStep,
+      // R1 (Steps chrome diet): the per-row ↑ / ↓ move buttons are retired;
+      // reorder lives in the right-click menu now (Move up / Move down),
+      // reachable from the flat-list rows via this same context-menu opener.
+      showStepContextMenu,
     );
     const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
     PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById));
@@ -340,7 +343,14 @@ function renderStepsLevel() {
     renderAlignedReading(interactionsById);
   }
   _renderStepsMiniTimeline(allSteps, filteredIds);
-  if (pendingTs && State.getSelectedStepId()) {
+  // The ONLY unrequested scroll: reveal the selected row on ARRIVAL -- either a
+  // Flow-seek step jump (pendingTs) or a view switch back to Steps with a
+  // surviving selection (pendingStepReveal, e.g. after "Jump to in Flow").
+  // Consume pendingStepReveal unconditionally so it never leaks into a later
+  // incidental re-render. Select / rename / flag / multi-select re-renders set
+  // neither flag, so they never scroll.
+  const arriveReveal = State.consumePendingStepReveal();
+  if ((pendingTs || arriveReveal) && State.getSelectedStepId()) {
     setTimeout(() => {
       const row = document.querySelector('.step-row[data-step-id="' + State.getSelectedStepId() + '"]');
       if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -1207,6 +1217,20 @@ async function reorderStep(stepId, delta) {
   await persistAnnotations(anno, 'reorder step');
 }
 
+/* Keyboard reorder (Alt+ArrowUp / Alt+ArrowDown from renderer): move the
+   SELECTED step one slot, then re-render + keep it visible. reorderStep
+   persists but does not re-render, so this wraps it. Reuses the arrival-reveal
+   scroll path (the only unrequested scroll) since the moved row is the point of
+   the act -- an explicit reorder is a request to see the row move. */
+async function reorderSelectedStep(delta) {
+  const sid = State.getSelectedStepId();
+  if (!sid) return;
+  await reorderStep(sid, delta);
+  renderStepsLevel();
+  const row = document.querySelector('.step-row[data-step-id="' + sid + '"]');
+  if (row) row.scrollIntoView({ block: "nearest" });
+}
+
 /* Reorder the whole step list chronologically by time_range.start. */
 async function sortStepsByTime() {
   if (!State.getSession()) return;
@@ -1629,6 +1653,21 @@ function showStepContextMenu(stepId, x, y) {
     addItem("Merge " + _multiSel.size + " selected steps", () => mergeSelectedSteps());
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
+  // R1 (Steps chrome diet): reorder relocated here from the retired per-row
+  // ↑ / ↓ buttons. Same reorderStep callback + semantics (swap with the
+  // visible neighbour in the filtered list). Only offer a direction that has a
+  // neighbour, so no menu item is a no-op. reorderStep persists but does not
+  // re-render, so re-render after it (mirrors the other mutating items).
+  const _f = State.getListFilters().step;
+  const _visible = decorateDrift((anno.steps || []))
+    .filter(s => stepMatchesFilter(s, _f, State.getCaseScope()));
+  const _vIdx = _visible.findIndex(s => s.step_id === stepId);
+  if (_vIdx > 0) {
+    addItem("Move up", async () => { await reorderStep(stepId, -1); renderStepsLevel(); });
+  }
+  if (_vIdx >= 0 && _vIdx < _visible.length - 1) {
+    addItem("Move down", async () => { await reorderStep(stepId, 1); renderStepsLevel(); });
+  }
   addItem(step.state === "hidden" ? "Unhide" : "Hide as noise", () => toggleStepHidden(stepId));
   addItem("Jump to in Flow", () => {
     const s = (anno.steps || []).find(x => x.step_id === stepId);
@@ -1675,7 +1714,7 @@ function showStepContextMenu(stepId, x, y) {
 module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
   deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps,
-  addStepAtTimestamp,
+  addStepAtTimestamp, reorderSelectedStep,
   // Pure phase-membership coherence helpers (CR M-1..M-3) -- exported
   // for unit testing; production callers above reuse them directly.
   detachStepsFromPhases, ensureStepInPhase, substituteSurvivorInPhases,
