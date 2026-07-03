@@ -39,7 +39,6 @@ const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, d
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnchorCandidates, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
-const { renderAnalysisLevel } = require("./views/analysis-view.js");
 const { renderOverviewLevel } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
@@ -177,7 +176,6 @@ const VIEW_MODE_HELP = {
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Detail slider to roll them up by screen / app / phase / case.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
   map:    "Map view: the Process diagram (BPMN) or Flow diagram for this session, at the chosen detail level (element … case) or by app category.",
-  analysis: "Analysis view: where the time goes, waste and automation candidates — estimates; review before relying on them.",
 };
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
@@ -215,13 +213,6 @@ const MODE_VIEWPORT = {
     scrollSel: "#session-layout-phases .mini-timeline-scroll",
     getZoom: State.getPhaseZoom, setZoom: State.setPhaseZoom,
     render: renderPhasesLevel,
-  },
-  // The Analysis view has no timeline / zoom; the no-op zoom accessors
-  // let it ride the same viewport-transfer code path harmlessly.
-  analysis: {
-    scrollSel: "#session-layout-analysis",
-    getZoom: () => 1, setZoom: () => {},
-    render: renderAnalysisLevel,
   },
   // v0.18.1: the Map level also has no timeline / scroll / zoom of its own
   // (the BPMN + DFG viewers have their own zoom controls inside the map
@@ -537,7 +528,7 @@ function renderMapLevel() {
   try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
 }
 
-const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel, analysis: renderAnalysisLevel };
+const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel };
 
 /* Wire the state change-notification bus: an annotation edit emits the
    topics it touched (see persistAnnotations / performUndo / performRedo)
@@ -549,11 +540,14 @@ State.subscribe("phases",   renderPhasesLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
 State.subscribe("markers",  renderAnchorCandidates);
-State.subscribe("analysis", renderAnalysisLevel);
-// Lab-phase §A5: the Overview renders the anchor hero (markers topic) and
-// the analysis-backed badge / facts / findings, so it follows both.
+// Lab-phase §A5 + R4: the Overview renders the anchor hero (markers topic), the
+// analysis-backed badge / facts / findings / rail, AND (R4) the Evidence
+// modules retired from the Analysis level -- so it follows markers, analysis,
+// steps (the rail's story/case signals + work-item shape), and grain (the
+// time-goes itemisation notch).
 State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
+State.subscribe("steps",    renderOverviewLevel);
 State.subscribe("steps",    renderMapLevel);
 State.subscribe("phases",   renderMapLevel);
 // ADR-0024: a grain change re-renders the Steps list and the Flow timeline to
@@ -561,7 +555,7 @@ State.subscribe("phases",   renderMapLevel);
 // here to avoid a double render).
 State.subscribe("grain",    renderStepsLevel);
 State.subscribe("grain",    renderTimeline);
-State.subscribe("grain",    renderAnalysisLevel);
+State.subscribe("grain",    renderOverviewLevel);
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
@@ -590,7 +584,7 @@ function applyLevel(name) {
   // scoping by case is still meaningful on Overview.
   const playheadBtn = document.getElementById("btn-scope-to-playhead");
   if (playheadBtn) playheadBtn.style.display = (name === "overview") ? "none" : "";
-  const layouts = ["overview", "flow", "steps", "phases", "map", "analysis"];
+  const layouts = ["overview", "flow", "steps", "phases", "map"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";

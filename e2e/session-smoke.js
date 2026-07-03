@@ -10,7 +10,8 @@
  * demo session, then verifies:
  *   - zero PAGE ERRORs surfaced on the renderer console,
  *   - the session loaded (#session-loaded visible),
- *   - all 5 Session-view levels (flow/steps/phases/map/analysis) render,
+ *   - the 4 remaining Session-view levels (flow/steps/phases/map) render
+ *     (R4 retired the Analysis level; its modules moved into the Overview),
  *   - the map-overlay regression stays fixed: on the Map level the process-map
  *     host must NOT vertically overlap the raw-events host
  *     (#session-layout-map .map-host bottom <= .event-table-host top).
@@ -82,12 +83,14 @@ async function shot(page, name) {
 }
 
 // Per-level layout container that must become visible when its level is active.
+// R4: the Analysis level was retired -- its three modules moved into the
+// Overview's Evidence host (#overview-evidence). The evidence assertions below
+// navigate to Overview and read #overview-evidence instead of #analysis-content.
 const LEVEL_HOST = {
   flow: "#session-layout-flow",
   steps: "#session-layout-steps",
   phases: "#session-layout-phases",
   map: "#session-layout-map",
-  analysis: "#session-layout-analysis",
 };
 
 // Geometry probe for the map-overlay regression. Returns the map host and the
@@ -150,8 +153,9 @@ const OVERLAP_PROBE = () => {
   }
   await wait(1500); // settle first render
 
-  // Cycle the 5 Session-view levels; each must show its layout container.
-  for (const lvl of ["flow", "steps", "phases", "map", "analysis"]) {
+  // Cycle the 4 remaining Session-view levels; each must show its layout
+  // container. (R4 retired Analysis; there is no analysis view-mode button now.)
+  for (const lvl of ["flow", "steps", "phases", "map"]) {
     const btn = await page.$('.view-mode-btn[data-level="' + lvl + '"]');
     if (!btn) {
       record("level '" + lvl + "' renders", false, "no view-mode-btn[data-level=" + lvl + "]");
@@ -176,9 +180,9 @@ const OVERLAP_PROBE = () => {
 
   // Item 19: "Scope to playhead" is orphaned chrome on Overview (no visible
   // playhead there) but meaningful everywhere a timeline exists. We just
-  // cycled through flow/steps/phases/map/analysis (the loop above), so the
-  // button should be visible now (last level = analysis, not overview);
-  // switch back to Flow (has it) then Overview (hides it) to check both ends.
+  // cycled through flow/steps/phases/map (the loop above), so the button should
+  // be visible now (last level = map, not overview); switch back to Flow
+  // (has it) then Overview (hides it) to check both ends.
   await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
   await wait(500);
   const playheadOnFlow = await page.evaluate(() => {
@@ -247,8 +251,17 @@ const OVERLAP_PROBE = () => {
   record("grain slider (#grain-slider) present", grainSliderExists,
     grainSliderExists ? "" : "no #grain-slider in the view-mode bar");
 
+  // R4: the Analysis modules now live in the Overview's Evidence host
+  // (#overview-evidence). Navigating to Evidence = go to Overview (the default)
+  // and read #overview-evidence. This helper replaces every old
+  // "click data-level=analysis; read #analysis-content" navigation below.
+  async function goEvidence() {
+    const ob = await page.$('.view-mode-btn[data-level="overview"]');
+    if (ob) { await ob.click().catch(() => {}); await wait(900); }
+  }
+
   // Read the €-ROI module's takeaway (its memo-altitude summary — item 21)
-  // on the Analysis level, for the invariance check below. R1 gates the
+  // in the Overview Evidence host, for the invariance check below. R1 gates the
   // whole section body on an analyst-entered volume; the demo has none, so
   // the body never renders a hero/floor figure at all (the replace-pattern
   // CTA shows instead) — the takeaway is the one thing that ALWAYS renders
@@ -256,10 +269,9 @@ const OVERLAP_PROBE = () => {
   // are at the segment grain, not the Detail-slider step grain), so it is
   // the correct invariance signal either way.
   async function roiTotalText() {
-    const ab = await page.$('.view-mode-btn[data-level="analysis"]');
-    if (ab) { await ab.click().catch(() => {}); await wait(900); }
+    await goEvidence();
     return page.evaluate(() => {
-      const mod = document.querySelector('#analysis-content .analysis-module[data-module="roi"]');
+      const mod = document.querySelector('#overview-evidence .analysis-module[data-module="roi"]');
       const takeaway = mod && mod.querySelector(".analysis-module-takeaway");
       return takeaway ? (takeaway.textContent || "").trim() : null;
     }).catch(() => null);
@@ -318,10 +330,9 @@ const OVERLAP_PROBE = () => {
   // business-required override is process_label-scoped). At a coarser notch
   // the same expansion shows a read-only "set the Detail slider to element"
   // message instead. This IS the itemisation-follows-the-notch pin now.
-  const analysisBtn = await page.$('.view-mode-btn[data-level="analysis"]');
-  if (analysisBtn) { await analysisBtn.click().catch(() => {}); await wait(900); }
+  await goEvidence();
   const noResidentModules = await page.evaluate(() => {
-    const titles = Array.from(document.querySelectorAll("#analysis-content .analysis-module-title"))
+    const titles = Array.from(document.querySelectorAll("#overview-evidence .analysis-module-title"))
       .map((e) => (e.textContent || "").trim());
     return {
       titles,
@@ -336,17 +347,16 @@ const OVERLAP_PROBE = () => {
 
   async function tsJudgeExpansionAt(idx) {
     await setGrainNotch(idx);
-    const ab = await page.$('.view-mode-btn[data-level="analysis"]');
-    if (ab) { await ab.click().catch(() => {}); await wait(900); }
+    await goEvidence();
     await page.evaluate(() => {
-      const mod = document.querySelector('#analysis-content .analysis-module[data-module="time"]');
+      const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
       if (mod && !mod.open) mod.open = true;
     });
     await wait(300);
-    const expandBtn = await page.$("#analysis-content .ts-judge-expand");
+    const expandBtn = await page.$("#overview-evidence .ts-judge-expand");
     if (expandBtn) { await expandBtn.click().catch(() => {}); await wait(300); }
     return page.evaluate(() => {
-      const row = document.querySelector("#analysis-content .ts-row");
+      const row = document.querySelector("#overview-evidence .ts-row");
       const body = row && row.querySelector(".ts-judge-body");
       return {
         rowPresent: !!row,
@@ -375,8 +385,9 @@ const OVERLAP_PROBE = () => {
   // -- .ov-finding markup), one card per candidate, in rank order, with the
   // Confirm/Dismiss decision preserved and reachable behind the card's
   // expand-in-place evidence body.
+  await goEvidence();
   const autoCardsProbe = await page.evaluate(() => {
-    const mod = document.querySelector('#analysis-content .analysis-module[data-module="automation"]');
+    const mod = document.querySelector('#overview-evidence .analysis-module[data-module="automation"]');
     if (mod && !mod.open) mod.open = true;
     const body = mod && mod.querySelector(".analysis-module-body");
     if (!body) return { present: false };
@@ -396,12 +407,12 @@ const OVERLAP_PROBE = () => {
 
   // Confirm/Dismiss must still work: expand the first card and click Confirm;
   // the SAME analysis_overrides automation_confirmed write path (unchanged).
-  const firstCard = await page.$("#analysis-content .auto-cards .ov-finding");
+  const firstCard = await page.$("#overview-evidence .auto-cards .ov-finding");
   if (firstCard) { await firstCard.click().catch(() => {}); await wait(300); }
-  const confirmBtn = await page.$('#analysis-content .auto-cards .ov-finding .auto-btn[data-confirm="true"]');
+  const confirmBtn = await page.$('#overview-evidence .auto-cards .ov-finding .auto-btn[data-confirm="true"]');
   if (confirmBtn) { await confirmBtn.click().catch(() => {}); await wait(900); }
   const confirmActive = await page.evaluate(() =>
-    !!document.querySelector('#analysis-content .auto-cards .ov-finding .auto-btn[data-confirm="true"].active')
+    !!document.querySelector('#overview-evidence .auto-cards .ov-finding .auto-btn[data-confirm="true"].active')
   ).catch(() => false);
   record("(R1) a finding card's Confirm button works (activates + persists the decision)",
     !!(confirmBtn && confirmActive), "confirmBtnFound=" + !!confirmBtn + " active=" + confirmActive);
@@ -415,7 +426,7 @@ const OVERLAP_PROBE = () => {
   // one-line observed-volume takeaway + the "Edit assumptions…" CTA --
   // no table, no legend, no hero figures, no zeros.
   const roiProbe = await page.evaluate(() => {
-    const host = document.querySelector("#analysis-content");
+    const host = document.querySelector("#overview-evidence");
     if (!host) return { host: false };
     const mod = host.querySelector('.analysis-module[data-module="roi"]');
     if (mod && !mod.open) mod.open = true;
@@ -432,10 +443,10 @@ const OVERLAP_PROBE = () => {
     };
   }).catch((e) => ({ err: e.message }));
   if (roiProbe && roiProbe.err) {
-    record("€-ROI section renders on Analysis level", false, "probe error: " + roiProbe.err);
+    record("€-ROI section renders in the Overview Evidence host", false, "probe error: " + roiProbe.err);
     await shot(page, "fail-roi-probe.png");
   } else if (!FRESH) {
-    record("€-ROI section renders on Analysis level (skipped — session not re-normalized)", true,
+    record("€-ROI section renders in the Overview Evidence host (skipped — session not re-normalized)", true,
       "no deps-Python to produce a fresh roi block; panel correctly hidden, not asserted");
   } else {
     const gateOk = !!(roiProbe.host && roiProbe.title && roiProbe.editBtn &&
@@ -445,13 +456,13 @@ const OVERLAP_PROBE = () => {
     if (!gateOk) await shot(page, "fail-roi-gate.png");
   }
 
-  // Item 21: Analysis module collapse persists per analyst (localStorage,
-  // pdt.* keys). Two halves: (i) collapsing a module WRITES the key; (ii) the
-  // stored key survives a re-render (the "set localStorage, reload, assert"
-  // spec). Use the "time" module.
+  // Item 21: the Evidence module collapse persists per analyst (localStorage,
+  // pdt.analysis.* keys — the module keys are unchanged by the R4 relocation).
+  // Two halves: (i) collapsing a module WRITES the key; (ii) the stored key
+  // survives a re-render. Use the "time" module in #overview-evidence.
   // (i) collapse via the native summary → the toggle listener persists "0".
   const wroteKey = await page.evaluate(async () => {
-    const mod = document.querySelector('#analysis-content .analysis-module[data-module="time"]');
+    const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
     if (!mod) return { present: false };
     if (mod.open) mod.querySelector("summary").click();   // collapse
     await new Promise((r) => setTimeout(r, 50));           // let the toggle event fire
@@ -459,20 +470,21 @@ const OVERLAP_PROBE = () => {
     try { stored = localStorage.getItem("pdt.analysis.time"); } catch (_) {}
     return { present: true, stored };
   }).catch((e) => ({ err: e.message }));
-  // (ii) re-render the level; the module must come back collapsed from storage.
+  // (ii) re-render the Overview (which re-renders the Evidence modules); the
+  // module must come back collapsed from storage.
   const persisted = await page.evaluate(() => {
-    require("./views/analysis-view.js").renderAnalysisLevel();
-    const after = document.querySelector('#analysis-content .analysis-module[data-module="time"]');
+    require("./views/overview-view.js").renderOverviewLevel();
+    const after = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
     return after ? after.open : null;
   }).catch((e) => ({ err: e.message }));
-  record("(disclosure 21) Analysis module collapse persists across a re-render",
+  record("(disclosure 21) Evidence module collapse persists across a re-render",
     !!(wroteKey && !wroteKey.err && wroteKey.present && wroteKey.stored === "0" &&
       persisted === false),
     JSON.stringify({ wroteKey, reopenedOpen: persisted }));
   // Restore the default (expanded) so the persisted key doesn't leak to a human run.
   await page.evaluate(() => {
     try { localStorage.removeItem("pdt.analysis.time"); } catch (_) {}
-    require("./views/analysis-view.js").renderAnalysisLevel();
+    require("./views/overview-view.js").renderOverviewLevel();
   }).catch(() => {});
 
   // Item 1: no recording linked → the tall black video stage collapses to a

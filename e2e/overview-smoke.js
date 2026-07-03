@@ -202,12 +202,71 @@ async function shot(page, name) {
     !!(tiles && !tiles.err && tiles.clipped.length === 0),
     tiles && tiles.clipped && tiles.clipped.length ? "clipped: " + tiles.clipped.join(", ") : "all fit");
 
+  // R4: the next-act rail. On the MARKED demo the rail must show exactly ONE
+  // highlighted act, and (reasoned) it must be act 1, "Name what the recorder
+  // saw": the demo has 4 marked cases (act 2 "cases" is DONE), but its captured
+  // controls carry no signatures the shipped App Library vocabs target, so the
+  // advisory matcher reports ~53 UNNAMED distinct controls (> 0) — and "name"
+  // comes first in the sequence, so it wins the highlight. The count is fetched
+  // async, so poll until the rail leaves the "checking…" state.
+  let railProbe = null;
+  const railDeadline = Date.now() + 15000;
+  while (Date.now() < railDeadline) {
+    railProbe = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll("#overview-content #ov-rail .ov-rail-row")];
+      const active = rows.filter((r) => r.classList.contains("active"));
+      const nameRow = rows.find((r) => r.getAttribute("data-rail-act") === "name");
+      const nameSentence = nameRow ? (nameRow.querySelector(".ov-rail-sentence").textContent || "") : "";
+      return {
+        rowCount: rows.length,
+        activeCount: active.length,
+        activeAct: active.length ? active[0].getAttribute("data-rail-act") : null,
+        casesDone: (() => {
+          const c = rows.find((r) => r.getAttribute("data-rail-act") === "cases");
+          return c ? c.classList.contains("done") : null;
+        })(),
+        nameStillChecking: /Checking/.test(nameSentence),
+        nameSentence,
+      };
+    }).catch((e) => ({ err: e.message }));
+    if (railProbe && !railProbe.err && !railProbe.nameStillChecking) break;
+    await wait(400);
+  }
+  const railOk = !!(railProbe && !railProbe.err &&
+    railProbe.rowCount === 5 &&
+    railProbe.activeCount === 1 &&
+    railProbe.activeAct === "name" &&
+    railProbe.casesDone === true &&
+    /~\d+ control/.test(railProbe.nameSentence));
+  record("R4: next-act rail shows exactly one highlighted act; on the demo it is 'name' (cases done, controls unnamed)",
+    railOk, JSON.stringify(railProbe));
+  if (!railOk) await shot(page, "fail-overview-rail.png");
+
+  // R4: the Evidence modules (retired Analysis) render below the findings feed.
+  const evidence = await page.evaluate(() => {
+    const host = document.querySelector("#overview-content #overview-evidence");
+    if (!host) return { present: false };
+    const mods = [...host.querySelectorAll(".analysis-module[data-module]")]
+      .map((m) => m.getAttribute("data-module"));
+    return { present: true, modules: mods };
+  }).catch((e) => ({ err: e.message }));
+  record("R4: Evidence modules (time / automation / roi) render in #overview-evidence below the findings",
+    !!(evidence && !evidence.err && evidence.present &&
+      evidence.modules.includes("time") && evidence.modules.includes("automation")),
+    JSON.stringify(evidence));
+
   // Findings feed sanity on the demo (claims + at least one memo checkbox).
-  const feed = await page.evaluate(() => ({
-    findings: document.querySelectorAll("#overview-content .ov-finding").length,
-    memoChecks: document.querySelectorAll('#overview-content [data-act="memo"]').length,
-    showBtns: document.querySelectorAll('#overview-content [data-act="show"]').length,
-  })).catch((e) => ({ err: e.message }));
+  const feed = await page.evaluate(() => {
+    // R4: the Evidence host below the feed reuses the .ov-finding component for
+    // automation candidate cards (no memo checkbox). Scope the findings-feed
+    // count to cards OUTSIDE #overview-evidence so the "every finding has a memo
+    // checkbox" invariant still holds exactly (never weakened).
+    const inFeed = (el) => el.closest("#overview-evidence") === null;
+    const findings = [...document.querySelectorAll("#overview-content .ov-finding")].filter(inFeed);
+    const memoChecks = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed);
+    const showBtns = [...document.querySelectorAll('#overview-content [data-act="show"]')].filter(inFeed);
+    return { findings: findings.length, memoChecks: memoChecks.length, showBtns: showBtns.length };
+  }).catch((e) => ({ err: e.message }));
   record("findings feed renders with memo checkboxes",
     !!(feed && !feed.err && feed.findings > 0 && feed.memoChecks === feed.findings),
     JSON.stringify(feed));

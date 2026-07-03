@@ -1392,11 +1392,11 @@ async function exportStepsAsTemplate() {
       '") is carried into the template, so the next session of this process self-segments.'
     : "";
   const name = await promptModal({
-    title: "Export as Process Template",
+    title: "Save as reference for this process",
     message: "Name this process",
     detail: steps.length + " step(s) will be carried over, each with a match rule derived from its interactions." + anchorNote,
     placeholder: "e.g. Customer Onboarding",
-    okLabel: "Create template",
+    okLabel: "Save reference",
   });
   if (!name) return;
   const yaml = require("js-yaml");

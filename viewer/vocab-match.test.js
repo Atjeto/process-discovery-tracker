@@ -238,3 +238,36 @@ test("minimalSignature: prefers automation_id, falls back to control_type+name",
   );
   assert.equal(VM.minimalSignature({ control_type: "Button" }), null);
 });
+
+/* R4: the next-act-rail advisory unnamed count. */
+test("countUnnamedControls: distinct controls minus those any vocab named", () => {
+  // The fixture session has 4 distinct controls in Salesforce scope
+  // (customer-id-field, Search, Product code) + 1 Notepad control = 4 distinct.
+  // VOCAB names customer-id-field + Search → 2 named; 2 remain unnamed
+  // (Product code + the out-of-scope Notepad control, which no vocab names).
+  const r = VM.countUnnamedControls(session(), [VOCAB]);
+  assert.equal(r.distinctControls, 4);
+  assert.equal(r.named, 2);
+  assert.equal(r.unnamed, 2);
+});
+
+test("countUnnamedControls: no vocabs → every distinct control is unnamed", () => {
+  const r = VM.countUnnamedControls(session(), []);
+  assert.equal(r.named, 0);
+  assert.equal(r.unnamed, r.distinctControls);
+  assert.equal(r.unnamed, 4);
+});
+
+test("countUnnamedControls: a control named by ANY vocab counts as named (union)", () => {
+  // Two narrow vocabs, each naming ONE control; the union covers both.
+  const v1 = { scope: {}, interactions: [{ signature: { automation_id: "customer-id-field", control_type: "Edit" }, name: "A" }] };
+  const v2 = { scope: {}, interactions: [{ signature: { control_type: "Button", name: "Search" }, name: "B" }] };
+  const r = VM.countUnnamedControls(session(), [v1, v2]);
+  assert.equal(r.named, 2);   // NOT double-counted despite empty (match-all) scopes
+  assert.equal(r.unnamed, 2);
+});
+
+test("countUnnamedControls: empty/no events → zero", () => {
+  const r = VM.countUnnamedControls([], [VOCAB]);
+  assert.deepEqual(r, { distinctControls: 0, named: 0, unnamed: 0 });
+});

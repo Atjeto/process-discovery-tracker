@@ -1107,6 +1107,68 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-tile-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* R4: the next-act rail — the resident "what's the next valuable act" checklist,
+   directly under the badge/fact tiles. Exactly one row is `.active`. */
+.ov-rail {
+  background: var(--bg-2); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px 14px;
+}
+.ov-rail-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 10px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; margin-bottom: 4px;
+}
+.ov-rail-row:last-child { margin-bottom: 0; }
+.ov-rail-row.done    { opacity: 0.62; }
+.ov-rail-row.pending { opacity: 0.72; }
+.ov-rail-row.active {
+  opacity: 1; background: var(--accent-muted); border-color: var(--accent);
+}
+.ov-rail-tick {
+  flex: 0 0 auto; width: 18px; text-align: center; font-size: 13px;
+  color: var(--fg-3); font-family: var(--font-mono);
+}
+.ov-rail-row.done .ov-rail-tick   { color: var(--va); }
+.ov-rail-row.active .ov-rail-tick { color: var(--accent); font-weight: 700; }
+.ov-rail-num {
+  flex: 0 0 auto; width: 20px; height: 20px; line-height: 20px; text-align: center;
+  font-size: 11px; font-family: var(--font-mono); color: var(--fg-3);
+  border: 1px solid var(--rule); border-radius: 50%;
+}
+.ov-rail-row.active .ov-rail-num { color: var(--accent); border-color: var(--accent); }
+.ov-rail-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ov-rail-title { font-size: 13px; font-weight: 600; color: var(--fg); }
+.ov-rail-sentence { font-size: 12px; color: var(--fg-2); line-height: 1.45; }
+.ov-rail-btn {
+  flex: 0 0 auto; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 6px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--rule); background: var(--bg-3); color: var(--fg-2);
+}
+.ov-rail-btn:hover { background: var(--bg-hover); color: var(--fg); }
+.ov-rail-btn.primary {
+  background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 500;
+}
+.ov-rail-btn.primary:hover { filter: brightness(1.08); }
+
+/* R4 (Task 3b): the template-match offer line (renders only when the pipeline
+   already found a match — replace-pattern: absent when no match data). */
+.ov-template-offer {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--bg-2); border: 1px solid var(--accent-2);
+  border-left-width: 3px; border-radius: var(--radius); padding: 10px 14px;
+}
+.ov-template-offer-text { flex: 1 1 auto; font-size: 13px; color: var(--fg); min-width: 0; }
+.ov-template-offer-btn {
+  flex: 0 0 auto; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 6px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-2); background: var(--bg-3); color: var(--fg);
+}
+.ov-template-offer-btn:hover { background: var(--bg-hover); }
+
+/* R4 (Task 2): the Evidence section — the retired Analysis modules, below the
+   findings feed. The modules keep their own .analysis-module styling. */
+.ov-evidence-section #overview-evidence { display: flex; flex-direction: column; gap: 10px; }
+
 /* Findings feed. Grouped by detector (rule 3: methodology once per group). */
 .ov-finding-group { margin-top: 12px; }
 .ov-finding-group:first-of-type { margin-top: 0; }

@@ -1,5 +1,6 @@
 /*
- * analysis-view.js -- the Analysis level of the Session view.
+ * analysis-view.js -- the analytical Evidence modules (formerly the Analysis
+ * level of the Session view; the level was retired in R4).
  *
  * R1 of the approachability redesign (docs/To-Do/APPROACHABILITY-REDESIGN-
  * 2026-07-03.md §4/§5) subtracted this view down to three modules: "Where
@@ -9,6 +10,11 @@
  * efficiency" and the "Waste by step/screen" resident module were removed
  * (efficiency returns later as a finding; its underlying computation in
  * `applyAnalysisOverrides` stays intact for that future use, unrendered).
+ *
+ * R4 (§5) retired the Analysis view-mode tab: these three modules now render
+ * into the Overview's Evidence layer (below the findings feed) via
+ * `renderEvidenceInto(host)`. The uniform collapsible-module header + per-
+ * analyst collapse persistence (pdt.analysis.* keys) are unchanged.
  *
  * The underlying estimates ship provisional (ADR-0008): the value-add vs.
  * business-required split needs a human, and confirming a candidate really
@@ -1250,12 +1256,26 @@ function _wireControls(host, analysis) {
   });
 }
 
-/* Render the Analysis level into #analysis-content. Reads the loaded
-   session's analysis.json sidecar (session.analysis), merged with any
-   analyst corrections from annotations.json; shows an empty state when
-   the session was not analyzed or has no steps. */
-function renderAnalysisLevel() {
-  const host = $("#analysis-content");
+/* Render the surviving Analysis modules (R1's three: "Where the time goes"
+   with its judgment expansion, the automation candidate finding-cards, and the
+   gated €-ROI section) into a caller-supplied host element.
+
+   R4 (APPROACHABILITY-REDESIGN-2026-07-03 §5): the Analysis LEVEL is retired.
+   These modules move into the Overview as Evidence modules below the findings
+   feed (DISCLOSURE-MODEL "Analysis → Evidence"), keeping their uniform header +
+   collapse-persistence pattern. Overview calls this with its `#overview-evidence`
+   host. The RAW EVENTS Machine drawer stays in the Flow view (it always lived
+   there, not in this stack); this function renders the analytical trio.
+
+   Reads the loaded session's analysis.json sidecar (session.analysis) merged
+   with annotations.json corrections; renders an empty note when unanalyzed.
+
+   DETAIL SLIDER (R4 decision): the "Where the time goes" judgment editor is
+   element-notch-gated. The Detail slider lives in the always-visible view-mode
+   bar (not inside any level), so it is fully usable while the Overview shows —
+   sliding it to `element` opens the judgment editor here exactly as it did on
+   the retired Analysis level. No per-module local detail toggle is needed. */
+function renderEvidenceInto(host) {
   if (!host) return;
   const session = State.getSession();
   const raw = session && session.analysis;
@@ -1297,4 +1317,4 @@ function renderAnalysisLevel() {
   _wireModulePersistence(host);
 }
 
-module.exports = { renderAnalysisLevel, _roiSection };
+module.exports = { renderEvidenceInto, _roiSection };

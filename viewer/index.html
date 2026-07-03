@@ -205,10 +205,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-icon">◯</span> Map
             <span class="view-mode-desc">process diagram</span>
           </button>
-          <button class="view-mode-btn" data-level="analysis" title="Where the time goes: waste, timing and automation candidates">
-            <span class="view-mode-icon">⊞</span> Analysis
-            <span class="view-mode-desc">waste &amp; automation</span>
-          </button>
           <span class="flex-spacer"></span>
           <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, Phases mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
             <span class="case-scope-label">Case:</span>
@@ -343,7 +339,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button id="btn-delete-selected-steps" hidden title="Delete all the ticked steps at once">Delete selected</button>
             <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
             <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
-            <button id="btn-steps-to-template" title="Turn this session's steps into a new Process Template YAML, with a match rule derived from each step's interactions.">Export as Process Template...</button>
+            <button id="btn-steps-to-template" title="Save this session's steps as a reusable reference for this process — a match rule is derived from each step's interactions, so the next recording of the same process can be compared against it.">Save as reference for this process…</button>
             <span class="meta" id="steps-summary"></span>
             <span class="meta" id="steps-legend" style="display:none"></span>
             <span class="flex-spacer"></span>
@@ -512,10 +508,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
         </div>
 
-        <!-- ========= ANALYSIS view (Cluster N / ADR-0008 findings) ========= -->
-        <div class="session-layout-analysis" id="session-layout-analysis" style="display:none">
-          <div id="analysis-content"></div>
-        </div>
+        <!-- ANALYSIS level retired in R4 (APPROACHABILITY-REDESIGN-2026-07-03
+             §5): its three surviving modules (Where the time goes / Automation
+             candidates / €-ROI) render into the Overview's #overview-evidence
+             host below the findings feed. -->
 
         <details class="event-table-host">
           <summary>Raw events (<span id="event-count">0</span>)</summary>

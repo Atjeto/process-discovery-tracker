@@ -25,7 +25,6 @@ const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotat
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
-const { renderAnalysisLevel } = require("./analysis-view.js");
 const { renderOverviewLevel } = require("./overview-view.js");
 const SessionSummary = require("../session-summary.js");
 const PdtProject = require("../project.js");
@@ -556,12 +555,10 @@ async function loadSessionIntoView(folder) {
   if ($("#btn-group-into-phase")) $("#btn-group-into-phase").disabled = true;
   renderStepsLevel();
   renderPhasesLevel();
-  // The Analysis level must refresh on (re)load too -- it was missing here, so a
-  // same-folder re-analyze wrote analysis.json yet the Analysis view kept showing
-  // "No analysis available" until the session was reopened.
-  renderAnalysisLevel();
   // The Overview level (lab-phase §A5) is the default on load; it reads the
-  // freshly-loaded analysis.json blocks, so refresh it the same way.
+  // freshly-loaded analysis.json blocks and (R4) renders the Evidence modules
+  // that the retired Analysis level used to own, so refreshing it here covers
+  // both the memo surface and the analytical trio.
   renderOverviewLevel();
   // The map's "N nodes / Open / Reveal" status line is now driven by the map
   // controller's onRender (renderer._syncMapStatus), so it always reflects the

@@ -34,6 +34,10 @@ const { seekToTimestamp, jumpToStepInFlow } = require("./flow-view-video.js");
 const Posture = require("../posture.js");
 const LlmExport = require("../llm-export.js");
 const { findingCardHtml } = require("../finding-cards.js");
+const { buildRail } = require("../next-act-rail.js");
+const { buildWorkItems } = require("../work-items.js");
+const { countUnnamedControls } = require("../vocab-match.js");
+const { renderEvidenceInto } = require("./analysis-view.js");
 
 function _fmt(ms) { return formatDuration(ms || 0); }
 function _pct(x) { return Math.round((x || 0) * 100) + "%"; }
@@ -396,8 +400,9 @@ function _toSayMore(analysis, anno) {
     }
   }
   if (!(anno || {}).roi_inputs) {
-    items.push("A loaded labour rate and annual volume (Analysis → Edit " +
-      "assumptions) would turn the measured time into a € savings band.");
+    items.push("A loaded labour rate and annual volume (Evidence → Return on " +
+      "automation → Edit assumptions, below) would turn the measured time into " +
+      "a € savings band.");
   }
   const caveat = (analysis.findings || []).find((f) => f.detector === "coverage_caveat");
   if (caveat) {
@@ -415,13 +420,192 @@ function _toSayMore(analysis, anno) {
     (ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
   if (!hasBnva) {
     items.push("Saying how much of the time added value needs an analyst " +
-      "to judge each step type first (Analysis → Waste by step); until " +
-      "then no efficiency claim is made.");
+      "to judge each step type first (Evidence → Where the time goes, below); " +
+      "until then no efficiency claim is made.");
   }
   if (!items.length) return "";
   return '<div class="ov-section ov-saymore">' +
     '<div class="ov-section-title">To say more, this analysis needs</div>' +
     "<ul>" + items.map((i) => "<li>" + escapeHtml(i) + "</li>").join("") + "</ul></div>";
+}
+
+/* ---- R4: the next-act rail ---------------------------------------------- */
+
+/* Advisory unnamed-control count for act 1, cached per render pass so the rail
+   can render immediately (count = null → "checking…") and repaint once the
+   vocabs load. A null cache means "not computed for this session yet". */
+let _railUnnamedCount = null;
+let _railUnnamedFolder = null;
+
+/* Map an act's symbolic button target to the click it performs. Every target
+   points AT an existing surface/CTA; the rail never bypasses a tier gate. */
+function _railActivate(target) {
+  switch (target) {
+    case "app-library": {
+      // The App Library (R2 match workbench) is the "vocabularies" resident tab.
+      const { activateTab } = require("./flow-view.js");
+      try { activateTab("vocabularies"); } catch (_) {}
+      return;
+    }
+    case "markers": {
+      // The Flow view's Markers/anchor panel — switch to Flow, open the Markers
+      // annotation tab via its canonical activator (not a brittle selector).
+      const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
+      if (flowBtn) flowBtn.click();
+      setTimeout(() => {
+        try { require("./flow-view.js").activateAnnoTab("markers"); } catch (_) {}
+      }, 60);
+      return;
+    }
+    case "flow": {
+      const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
+      if (flowBtn) flowBtn.click();
+      return;
+    }
+    case "time-goes": {
+      // The time-goes module now lives in Overview's Evidence layer — open it +
+      // scroll it into view (it is right here on the same surface).
+      const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
+      if (mod) {
+        if (!mod.open) mod.open = true;
+        mod.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      return;
+    }
+    case "findings": {
+      const feed = document.querySelector("#overview-content .ov-section .ov-finding, #overview-content .ov-finding");
+      const anchor = feed || document.querySelector("#overview-content .ov-export-bar");
+      if (anchor) anchor.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+/* The rail's HTML. Exactly one act row carries `.active`; done rows dim with a
+   ✓ tick, pending rows with a ○. Only the active row's button is emphasised. */
+function _railHtml(rail) {
+  const rows = rail.acts.map((a, i) => {
+    const state = a.done ? "done" : (a.active ? "active" : "pending");
+    const tick = a.done ? "✓" : (a.active ? "→" : "○");
+    const btn = '<button type="button" class="ov-rail-btn' + (a.active ? " primary" : "") +
+      '" data-rail-target="' + escapeAttr(a.button.target) + '">' +
+      escapeHtml(a.button.label) + "</button>";
+    return '<div class="ov-rail-row ' + state + '" data-rail-act="' + escapeAttr(a.id) + '">' +
+      '<span class="ov-rail-tick" aria-hidden="true">' + tick + "</span>" +
+      '<span class="ov-rail-num" aria-hidden="true">' + (i + 1) + "</span>" +
+      '<span class="ov-rail-body">' +
+        '<span class="ov-rail-title">' + escapeHtml(a.title) + "</span>" +
+        '<span class="ov-rail-sentence">' + escapeHtml(a.sentence) + "</span>" +
+      "</span>" +
+      btn +
+    "</div>";
+  }).join("");
+  return '<div class="ov-rail" id="ov-rail">' +
+    '<div class="ov-section-title">Your next step</div>' +
+    rows + "</div>";
+}
+
+function _wireRail(host) {
+  host.querySelectorAll("#ov-rail .ov-rail-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _railActivate(btn.dataset.railTarget);
+    });
+  });
+}
+
+/* Fetch the advisory unnamed count (act 1) once per session, then repaint the
+   rail. The rail renders synchronously with `null` first so it is never blank
+   while this resolves. */
+async function _computeRailUnnamed() {
+  const sess = State.getSession();
+  if (!sess) return;
+  const folder = sess.sessionFolder || null;
+  if (_railUnnamedFolder === folder && _railUnnamedCount !== null) return;
+  try {
+    const r = await Ipc.listAppVocabs();
+    const vocabs = [];
+    for (const v of ((r && r.vocabs) || [])) {
+      const doc = await Ipc.readVocab(v.path);
+      if (doc && !doc._error) vocabs.push(doc);
+    }
+    const res = countUnnamedControls(sess.events || [], vocabs);
+    _railUnnamedCount = res.unnamed;
+    _railUnnamedFolder = folder;
+  } catch (_) {
+    // No vocabs available: treat as "nothing computed" rather than fabricating.
+    _railUnnamedCount = 0;
+    _railUnnamedFolder = folder;
+  }
+  // Repaint only the rail (the rest of the Overview is unaffected).
+  renderOverviewLevel();
+}
+
+/* Build the rail from the current session snapshot. `hasCases` is the EXACT R3
+   no-cases signal (work-items.buildWorkItems().hasCases). */
+function _railFor(sess) {
+  const anno = sess.annotations || {};
+  const analysis = sess.analysis || {};
+  const interactionsById = {};
+  for (const ev of (sess.events || [])) {
+    if (ev.type === "interaction" && ev.event_id) interactionsById[ev.event_id] = ev;
+  }
+  const wi = buildWorkItems(anno.steps || [], {
+    interactionsById,
+    groupAnnotations: anno.group_annotations || [],
+  });
+  return buildRail({
+    annotations: anno,
+    analysis,
+    hasCases: wi.hasCases,
+    unnamedControls: (_railUnnamedFolder === (sess.sessionFolder || null)) ? _railUnnamedCount : null,
+    findingCount: (analysis.findings || []).length,
+  });
+}
+
+/* ---- R4 (Task 3b): template-match offer ---------------------------------- */
+
+/* When the pipeline ALREADY computed a template match for this session
+   (stats.meta.canonical_process_id + match_rate), surface one offer line in the
+   rail area. No match data → nothing renders (replace-pattern: absent, not
+   grayed). This never computes a new match; it only surfaces what the pipeline
+   produced. The button links to the existing re-match/Compare path
+   (#btn-match-template). */
+function _templateOffer(sess) {
+  const meta = ((sess.stats || {}).meta) || {};
+  const id = meta.canonical_process_id;
+  const rate = typeof meta.match_rate === "number" ? meta.match_rate : null;
+  if (!id || rate === null) return "";
+  const name = meta.canonical_process_name || id;
+  const pct = Math.round(rate * 100);
+  return '<div class="ov-template-offer" id="ov-template-offer">' +
+    '<span class="ov-template-offer-text">This session matches <strong>' +
+      escapeHtml(String(name)) + "</strong> (" + pct + "%).</span>" +
+    '<button type="button" class="ov-template-offer-btn" id="btn-ov-template-compare" ' +
+      'title="Re-check this session against the reference process and see where it differs">' +
+      "Compare against reference</button>" +
+    "</div>";
+}
+
+function _wireTemplateOffer(host) {
+  const btn = host.querySelector("#btn-ov-template-compare");
+  if (btn) btn.addEventListener("click", () => {
+    const mt = document.getElementById("btn-match-template");
+    if (mt) mt.click();
+  });
+}
+
+/* ---- R4 (Task 2): the Evidence modules (retired Analysis, in Overview) --- */
+
+function _evidenceSection() {
+  // A resident section header + the host the analysis-view modules render into.
+  // renderEvidenceInto() fills #overview-evidence with the three collapsible
+  // modules (time / automation / roi), each with its own collapse persistence.
+  return '<div class="ov-section ov-evidence-section">' +
+    '<div class="ov-section-title">Evidence — the measured detail behind the findings</div>' +
+    '<div id="overview-evidence"></div></div>';
 }
 
 /* ---- 6. Memo export bar -------------------------------------------------- */
@@ -531,13 +715,24 @@ function renderOverviewLevel() {
   let html = _badge(cq);
   if (cq.mode === "unsegmented" && cands.length) html += _anchorHero(cands);
   html += _factStrip(facts);
+  // R4: the next-act rail, resident directly under the badge/fact tiles, and
+  // (Task 3b) the template-match offer line in the same rail area.
+  html += _railHtml(_railFor(sess));
+  html += _templateOffer(sess);
   html += _findingsFeed(findings, anno.memo_selection);
+  // R4 (Task 2): the retired Analysis modules, as Evidence, BELOW the findings.
+  html += _evidenceSection();
   html += _toSayMore(analysis, anno);
   html += _exportBar();
   host.innerHTML = html;
 
   _wireAnchorHero(host);
   _wireFindings(host);
+  _wireRail(host);
+  _wireTemplateOffer(host);
+  // Fill the Evidence host with the analysis modules (own wiring + collapse
+  // persistence). Kept after innerHTML so the modules render into the live host.
+  renderEvidenceInto(host.querySelector("#overview-evidence"));
   const exp = host.querySelector("#btn-ov-export-memo");
   if (exp) exp.addEventListener("click", () => _exportMemo());
   const llm = host.querySelector("#btn-ov-copy-llm");
@@ -547,6 +742,9 @@ function renderOverviewLevel() {
     Posture.setDataPosture(posture.value);
     renderOverviewLevel();   // re-render: header chip + export bar follow the posture
   });
+  // R4: kick off the advisory unnamed-control count for the rail's act 1; it
+  // repaints the rail when it lands (renders null="checking…" until then).
+  _computeRailUnnamed();
 }
 
 module.exports = { renderOverviewLevel };

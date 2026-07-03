@@ -317,6 +317,32 @@ function buildWorkbench(events, vocab) {
   };
 }
 
+/* R4 (next-act rail act 1): how many DISTINCT captured controls no loaded vocab
+   named, across the whole session. Advisory (mirrors, not the pipeline).
+   Computed as: every distinct in-session control (controlKey) MINUS the union of
+   the controls any vocab matched. This deliberately does NOT sum each vocab's
+   UNNAMED list -- the shipped vocabs often carry an empty scope (which matches
+   every app), so per-vocab summing double-counts. A control named by ANY vocab
+   is "named" for this rail signal (the honest "is anything still unnamed?"
+   question, not the per-vocab "is THIS selector right?" the workbench answers).
+
+   `events` = the session's raw events; `vocabs` = the loaded App Library
+   vocabularies. Returns { distinctControls, named, unnamed }. */
+function countUnnamedControls(events, vocabs) {
+  const interactions = (Array.isArray(events) ? events : []).filter(
+    (e) => e && e.type === "interaction");
+  const allKeys = new Set();
+  for (const ev of interactions) allKeys.add(controlKey(_asData(ev.data)));
+  const named = new Set();
+  for (const vocab of (Array.isArray(vocabs) ? vocabs : [])) {
+    const wb = buildWorkbench(events, vocab);
+    for (const m of wb.matched) named.add(m.key);
+  }
+  let unnamed = 0;
+  for (const k of allKeys) if (!named.has(k)) unnamed += 1;
+  return { distinctControls: allKeys.size, named: named.size, unnamed };
+}
+
 /* Distinct observed window titles for this vocab's app, split into those a
    `screens` entry's window_title_regex matches vs. those unnamed. */
 function buildScreens(groups, vocab) {
@@ -442,6 +468,7 @@ module.exports = {
   minimalSignature,
   coverage,
   buildWorkbench,
+  countUnnamedControls,
   buildScreens,
   suggestScreenRegex,
   escapeRegex,
