@@ -223,6 +223,15 @@ Detail: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [CONTRIBUTING.md](CONT
 
 ## Verification
 
+> **Skills pack — live home is `~/.claude/skills/` (user-global, loads in every
+> project; its own git repo):** the compiled judgment of prior sessions (core
+> reasoning + design judgment, the delegation/briefing lifecycle, agent-facing
+> counter-skills). Sessions that delegate read `subagent-briefing` there first; raw
+> per-cycle findings land in this repo's `.claude/agent-findings/`; the global
+> README carries the maintenance contract and lineage.
+> [docs/claude-skills/](docs/claude-skills/README.md) is the frozen 2026-07-03
+> snapshot that seeded it — don't edit the snapshot.
+>
 > **Agents/chips: read [docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md) before any task.**
 > It pairs each hard invariant (map connectivity, the session golden, ADR numbering, immutable
 > raw data, suggest-don't-mutate) with the **CI guard that fails if you break it** — so a

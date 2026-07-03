@@ -56,3 +56,7 @@ Thumbs.db
 .env.local
 .vscode/
 .idea/
+
+# Claude harness — per-machine (.claude/agent-findings/ IS tracked; these are not)
+.claude/settings.local.json
+.claude/worktrees/
