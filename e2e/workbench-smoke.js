@@ -10,8 +10,9 @@
  *   - the coverage header renders WITH a number;
  *   - the three evidence lists render with plausible counts (MATCHED > 0 on the
  *     demo, UNNAMED holds the worklist, DEAD RULES lists the injected entry);
- *   - "Name…" on an UNNAMED row opens the derivation flow with the rule editor
- *     drawer, the fresh row pre-filled with the derived signature;
+ *   - "Name…" on an UNNAMED row opens an INLINE editor inside that row (Task 1:
+ *     naming never navigates) — the identity line stays, a focused name input +
+ *     Save appear in place, the page does not scroll and the drawer does not jump;
  *   - naming that control and saving moves it OUT of UNNAMED after the
  *     re-analyze CTA is exercised.
  *
@@ -163,61 +164,73 @@ const SEED = {
     JSON.stringify(matchedEv));
   await shot(page, "workbench-matched-expanded.png");
 
-  // ---- "Name…" on an UNNAMED row → derivation flow, pre-filled ------------
-  // Capture the pre-name UNNAMED count + the identity of the first row.
+  // ---- "Name…" on an UNNAMED row → INLINE editor, in place ----------------
+  // Capture the pre-name UNNAMED count + the identity of the first row, and the
+  // scroll position, so we can assert the page does NOT jump when naming.
   const before = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('.wb-list[data-wb-list="unnamed"] .wb-row-unnamed')];
     const first = rows[0];
+    const scroller = document.querySelector(".view.active");
     return {
       unnamedCount: rows.length,
       firstIdentity: first ? (first.querySelector(".wb-idval") || {}).textContent : null,
+      scrollTop: scroller ? scroller.scrollTop : 0,
     };
   }).catch((e) => ({ err: e.message }));
 
-  // Click "Name…" on the first UNNAMED row (there IS a selection rule: the
-  // first row of the worklist, which is the most-used un-named control).
+  // Click "Name…" on the first UNNAMED row (selection rule: the first/most-used
+  // row of the worklist). It must open the INLINE editor INSIDE that row — no
+  // drawer jump, no page scroll (Task 1: naming never navigates).
   const nameClicked = await page.evaluate(() => {
     const btn = document.querySelector('.wb-list[data-wb-list="unnamed"] .wb-name-btn[data-wb-name]');
     if (btn) { btn.click(); return true; }
     return false;
   }).catch(() => false);
-  await wait(700);
-  // The rule editor drawer should now be open with a fresh row pre-filled with
-  // the derived signature (control_type + name/aid — NOT typed by hand).
-  const derived = await page.evaluate((wantIdentity) => {
-    const drawer = document.querySelector(".vocab-machine-drawer");
-    const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
-    // The newly-added row is the LAST one (appended). Its signature inputs must
-    // be pre-populated (derived), and its name field empty/awaiting the analyst.
-    const last = rows[rows.length - 1];
-    let sig = {};
-    if (last) {
-      last.querySelectorAll("[data-sig]").forEach((el) => { if (el.value) sig[el.dataset.sig] = el.value; });
-    }
+  await wait(500);
+  const inline = await page.evaluate(() => {
+    const ed = document.querySelector('.wb-row-unnamed.editing .wb-inline-editor[data-wb-inline]');
+    const input = ed && ed.querySelector(".wb-inline-input");
+    const identityLine = ed ? !!ed.closest(".wb-row-unnamed").querySelector(".wb-idval") : false;
+    const scroller = document.querySelector(".view.active");
     return {
-      drawerOpen: !!(drawer && drawer.open),
-      rowCount: rows.length,
-      derivedSig: sig,
-      hasDerivedSig: Object.keys(sig).length > 0,
+      inlineOpen: !!ed,
+      hasInput: !!input,
+      focused: !!(input && document.activeElement === input),
+      identityLineStays: identityLine,
+      hasSave: !!(ed && ed.querySelector(".wb-inline-save")),
+      scrollTop: scroller ? scroller.scrollTop : 0,
     };
-  }, before && before.firstIdentity).catch((e) => ({ err: e.message }));
-  record("'Name…' on an UNNAMED row opens the derivation flow with a pre-filled signature",
-    !!(nameClicked && derived && derived.drawerOpen && derived.hasDerivedSig),
-    JSON.stringify({ clicked: nameClicked, sig: derived && derived.derivedSig }));
+  }).catch((e) => ({ err: e.message }));
+  record("'Name…' on an UNNAMED row opens an INLINE editor inside that row (identity line + name input + Save)",
+    !!(nameClicked && inline && inline.inlineOpen && inline.hasInput && inline.identityLineStays && inline.hasSave),
+    JSON.stringify(inline));
+  record("naming does NOT navigate: the page scroll position is unchanged",
+    !!(inline && Math.abs((inline.scrollTop || 0) - (before && before.scrollTop || 0)) <= 2),
+    "before=" + (before && before.scrollTop) + " after=" + (inline && inline.scrollTop));
   await shot(page, "workbench-name-flow.png");
 
-  // Type the business name into the fresh row, then Save the vocabulary.
+  // Type the business name into the inline input, then Save (the inline Save
+  // derives the rule in place — no separate vocab Save needed to leave UNNAMED).
   const namedOk = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
-    const last = rows[rows.length - 1];
-    const nameInput = last && last.querySelector('[data-field="name"]');
-    if (!nameInput) return false;
-    nameInput.value = "Named in workbench e2e";
-    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    const input = document.querySelector('.wb-row-unnamed.editing .wb-inline-input');
+    if (!input) return false;
+    input.value = "Named in workbench e2e";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const save = document.querySelector('.wb-row-unnamed.editing .wb-inline-save');
+    if (save) save.click();
     return true;
   }).catch(() => false);
-  record("the analyst can type a business name into the derived row", namedOk, "");
-  await page.click("#btn-vocab-save").catch((e) => console.log("save", e.message));
+  record("the analyst can type a business name into the inline editor and Save in place", namedOk, "");
+  await wait(500);
+  // Persist to disk so re-analyze picks it up (the inline Save edits the vocab
+  // in memory + marks dirty; the vocabulary Save writes the YAML). #btn-vocab-save
+  // lives in the collapsed Machine drawer — open it, then click.
+  await page.evaluate(() => {
+    const det = document.querySelector(".vocab-machine-drawer");
+    if (det && !det.open) { det.open = true; det.dispatchEvent(new Event("toggle")); }
+    const btn = document.querySelector("#btn-vocab-save");
+    if (btn) btn.click();
+  }).catch((e) => console.log("save", e.message));
   await wait(1200);
 
   // ---- Exercise the re-analyze CTA, then confirm the control left UNNAMED --

@@ -47,6 +47,10 @@
  * @property {string|null} selectedPath
  * @property {*} current
  * @property {boolean} dirty
+ * @property {*[]} [_candidates]   Transient discovery/bootstrap/snapshot candidates
+ *   for the selected vocab (NOT persisted; naming one derives a real entry).
+ * @property {number|null} [_inlineNaming]  Index of the UNNAMED workbench row
+ *   whose inline name editor is open (Task 1: naming never navigates).
  */
 
 /**

@@ -24,11 +24,14 @@ const VocabMatch = require("../vocab-match.js");
 // initVocabView({ onReanalyze }).
 let onReanalyze = null;
 
-// Discovery-provenance fields the picker stamps on each entry (ADR-0025).
-// They drive the editor's "why this signature" legend + annotator context
-// (role / framework / on-screen region / tree ancestry / merged members) but
-// are stripped before save so the persisted vocab stays signature-focused.
-// `_reviewed` is the C2 checklist tick -- a review-pass aid, not data.
+// Discovery-provenance fields the picker stamps on a candidate / a discovered
+// entry (ADR-0025). They drive the editor's "why this signature" legend +
+// annotator context (role / framework / on-screen region / tree ancestry /
+// merged members) but are stripped before save so the persisted vocab stays
+// signature-focused. `_reviewed` (the retired C2 checklist tick) stays in this
+// strip list so an OLD vocab whose YAML still carries it loads + saves clean —
+// we ignore it, never migrate it (R1 App Library pass: discovery produces
+// candidates, and naming a candidate IS the review, so there is no tick).
 const DISCOVERY_META_KEYS = [
   "identity_source", "confidence", "volatile_aids", "_hint",
   "role", "framework", "region", "ancestry", "_members", "_reviewed",
@@ -135,6 +138,10 @@ async function selectVocab(p) {
   }
   State.getVocabState().selectedPath = p;
   State.getVocabState().dirty = false;
+  // Candidates + any open inline editor belong to the previously-selected vocab
+  // (a transient probe result) — clear them when switching entries.
+  clearCandidates();
+  State.getVocabState()._inlineNaming = null;
   const v = await Ipc.readVocab(p);
   if (!v) {
     State.getVocabState().current = null;
@@ -173,14 +180,22 @@ function renderVocabEditor() {
     return;
   }
   // No session loaded: the workbench has no evidence to stand on. Show the
-  // honest CTA + the rule editor so hand-authoring still works.
+  // honest CTA + any transient discovery candidates + the rule editor so
+  // hand-authoring (and naming a just-discovered candidate) still works.
+  const candSection = renderCandidatesSection();
   host.innerHTML =
+    '<div class="wb">' +
     '<div class="wb-nosession empty-pane">' +
     '<p><strong>Open a session to see this vocabulary matched against real captures.</strong></p>' +
-    '<p class="meta">The match workbench needs a loaded recording: it shows which captured controls this vocabulary named, which it missed, and which rules matched nothing. Open a session on the <strong>Session</strong> tab, then come back. You can still hand-edit the rules below.</p>' +
+    '<p class="meta">The match workbench needs a loaded recording: it shows which captured controls this vocabulary named, which it missed, and which rules matched nothing. Open a session on the <strong>Session</strong> tab, then come back. You can still name discovered controls below, or hand-edit the rules.</p>' +
     '</div>' +
-    '<div id="vocab-machine-host"></div>';
-  renderRuleEditorDrawer($("#vocab-machine-host"), v, { forceOpen: true });
+    candSection +
+    '<div id="vocab-machine-host"></div>' +
+    '</div>';
+  renderRuleEditorDrawer($("#vocab-machine-host"), v, { forceOpen: !candSection });
+  // Wire candidate naming even without a session (buildWorkbench never ran, so
+  // wireWorkbench's list wiring didn't fire here).
+  if (candSection) wireWorkbench();
 }
 
 /* The blank-form rule editor — the Machine layer. Rendered inside a named,
@@ -224,21 +239,17 @@ function renderRuleEditor(host, v) {
     '</div>' +
     '<div class="vocab-toolbar">' +
     '<strong>Interactions (' + interactions.length + ')</strong>' +
-    '<span class="vocab-review-progress" id="vocab-review-progress" title="Discovered rows arrive pre-filled (signature, verb, flags) — tick each as reviewed; the count tracks your pass"></span>' +
     '<span class="flex-spacer"></span>' +
-    '<button id="btn-vocab-approve-all" title="Mark every discovered row as reviewed (the inverse is per-row: untick its “reviewed” box)">✓ Approve all</button>' +
     '<button id="btn-vocab-add-interaction">+ Add interaction</button>' +
     '<button id="btn-vocab-save" class="primary">Save vocabulary</button>' +
     '</div>' +
     '<div id="vocab-interactions"></div>';
   renderVocabInteractions();
-  updateReviewProgress();
   $("#vocab-name").addEventListener("input", markDirty);
   $("#vocab-id").addEventListener("input", markDirty);
   $("#vocab-version").addEventListener("input", markDirty);
   $("#vocab-scope-proc").addEventListener("input", markDirty);
   $("#vocab-scope-title").addEventListener("input", markDirty);
-  $("#btn-vocab-approve-all").addEventListener("click", approveAllDiscovered);
   $("#btn-vocab-add-interaction").addEventListener("click", addInteraction);
   $("#btn-vocab-save").addEventListener("click", saveVocab);
 }
@@ -252,6 +263,75 @@ function renderRuleEditor(host, v) {
    =================================================================== */
 
 let _wbData = null;   // last computed workbench model (for the Name… flow etc.)
+
+/* ---- Discovery/bootstrap/snapshot CANDIDATES (transient) ---------------
+   R1 App Library pass: "Discover from window", a prep-recording bootstrap, and
+   a snapshot no longer turn discovered elements into vocab interactions on
+   import. They become CANDIDATE rows in the workbench's UNNAMED worklist, held
+   transiently on the vocab state (re-runnable probe; never persisted into the
+   YAML). Naming a candidate derives a real vocab entry (the existing path);
+   ignoring one costs nothing and renders no debt.
+
+   A candidate is { signature, suggestedName, source, seenCount, meta } where
+   `meta` carries the discovery legend fields (confidence / role / region /
+   framework / weak note / _members) for the row's context display. */
+
+/* Convert a discovered/bootstrapped skeleton's interactions into candidate
+   objects (never mutating v.interactions). Pure-ish (reads nothing global). */
+function _skeletonToCandidates(skeletonInteractions, source) {
+  return (Array.isArray(skeletonInteractions) ? skeletonInteractions : [])
+    .map((ent) => {
+      const e = ent || {};
+      const meta = {};
+      for (const k of DISCOVERY_META_KEYS) if (e[k] !== undefined) meta[k] = e[k];
+      // control_type lives in the signature; keep the whole signature so the
+      // Name… derivation + identity line have everything.
+      return {
+        signature: Object.assign({}, e.signature || {}),
+        suggestedName: (e.name || "").trim(),
+        source: source || "session",
+        seenCount: typeof e.seen_count === "number" ? e.seen_count : 1,
+        meta,
+      };
+    })
+    .filter((c) => c.signature && Object.keys(c.signature).length);
+}
+
+function _getCandidates() {
+  const st = State.getVocabState();
+  return Array.isArray(st._candidates) ? st._candidates : [];
+}
+
+/* Install a transient candidate set from a triaged probe. `allCandidates` is
+   the FULL candidate list (pre-cap); `source` tags provenance. Snapshot/window
+   discovery gets the interactive-type triage + cap; a prep-recording bootstrap
+   needs no type filter (interaction implies relevance) — pass triaged=false to
+   show every candidate uncapped. */
+function setCandidates(allCandidates, source, triaged) {
+  const st = State.getVocabState();
+  const all = Array.isArray(allCandidates) ? allCandidates : [];
+  st._candidatesAll = all;
+  st._candidatesShowDeferred = false;
+  if (triaged === false) {
+    // Recording bootstrap: no type filter, no cap — every observed interaction
+    // is relevant. (Still transient candidates, still named in place.)
+    st._candidates = all.slice();
+    st._candidatesMeta = { rawTotal: all.length, keptTotal: all.length, deferredCount: 0, cap: 0, source: source || "recording" };
+  } else {
+    const cap = 40;
+    const t = VocabMatch.triageSnapshotCandidates(all, cap);
+    st._candidates = t.shown;
+    st._candidatesMeta = { rawTotal: t.rawTotal, keptTotal: t.keptTotal, deferredCount: t.deferred.length, cap, source: source || "snapshot" };
+  }
+}
+
+function clearCandidates() {
+  const st = State.getVocabState();
+  st._candidates = [];
+  st._candidatesAll = [];
+  st._candidatesMeta = null;
+  st._candidatesShowDeferred = false;
+}
 
 function renderWorkbench(host, v, sess) {
   const wb = VocabMatch.buildWorkbench(sess.events, v);
@@ -282,6 +362,8 @@ function renderWorkbench(host, v, sess) {
     '<button type="button" class="link-btn" id="btn-wb-reanalyze">Re-analyze to apply names to this session</button>.</div>' +
     '</div>';
 
+  // Discovered candidates (transient) lead the worklist when a probe just ran.
+  html += renderCandidatesSection();
   // The three evidence lists.
   html += renderUnnamedList(wb.unnamed);
   html += renderMatchedList(wb.matched);
@@ -297,36 +379,142 @@ function renderWorkbench(host, v, sess) {
   wireWorkbench();
 }
 
+/* The composed identity LINE (Task 2) for a workbench row — read-only, one
+   sentence, plus the volatility/weak marker as a small tooltip'd suffix. Used
+   for every default-path row (unnamed captured + candidates); the raw four
+   signature fields never render here. `scope` is an optional screen/window
+   context string. */
+function identityLineHtml(signature, scope) {
+  const line = VocabMatch.identityLine(signature, scope);
+  const ct = line.controlType || "Control";
+  let marker = "";
+  if (line.marker) {
+    const glyph = line.marker.kind === "volatile" ? "⚠" : "◦";
+    marker = ' <span class="wb-idmark wb-idmark-' + line.marker.kind + '" title="' +
+      escapeAttr(line.marker.note) + '">' + glyph + '</span>';
+  }
+  const idVal = line.identity.value
+    ? '"' + escapeHtml(line.identity.value) + '"'
+    : '<span class="meta">(unidentified control)</span>';
+  const ctxHtml = line.context
+    ? ' <span class="wb-idsep">·</span> <span class="wb-idctx meta" title="Where the control was seen">' + escapeHtml(line.context) + '</span>'
+    : "";
+  return '<span class="wb-ct">' + escapeHtml(ct) + '</span>' +
+    ' <span class="wb-idsep">·</span> ' +
+    '<span class="wb-idval">' + idVal + '</span>' + marker + ctxHtml;
+}
+
+/* The inline name editor (Task 1: naming never navigates). Rendered INSIDE the
+   row when its editor is open: the identity line stays, one focused name input,
+   an optional existing-screen assignment, Save + Cancel. Saving derives the
+   rule in place; the page never scrolls. */
+function inlineEditorHtml(kind, index, signature, suggestedName, scope) {
+  const scoped = (typeof scope === "string" && scope) ? scope : "";
+  return '<div class="wb-inline-editor" data-wb-inline="' + kind + ':' + index + '">' +
+    '<label class="wb-inline-name">Meaningful name' +
+    '<input type="text" class="wb-inline-input" value="' + escapeAttr(suggestedName || "") +
+    '" placeholder="e.g., Search customer record"></label>' +
+    (scoped
+      ? '<div class="wb-inline-screen meta">On screen: <strong>' + escapeHtml(scoped) + '</strong></div>'
+      : "") +
+    '<div class="wb-inline-act">' +
+    '<button type="button" class="primary wb-inline-save">Save</button>' +
+    '<button type="button" class="wb-inline-cancel">Cancel</button>' +
+    '</div>' +
+    '</div>';
+}
+
 function renderUnnamedList(unnamed) {
   const n = unnamed.length;
+  const openIdx = State.getVocabState()._inlineNaming;
   let body;
   if (!n) {
     body = '<p class="wb-empty meta">Every captured control in scope has a name. Nothing to do here.</p>';
   } else {
     body = '<div class="wb-rows">' + unnamed.map(function (u, i) {
-      const id = u.identity;
-      const idChip = '<span class="wb-idkind" title="The strongest identity the recorder captured for this control">' +
-        escapeHtml(id.kind === "unknown" ? "no id" : id.kind) + '</span>';
       const canName = !!u.addSignature;
-      return '<div class="wb-row wb-row-unnamed" data-wb-unnamed="' + i + '">' +
-        '<div class="wb-row-main">' +
-        '<span class="wb-ct">' + escapeHtml(u.controlType || "control") + '</span>' +
-        idChip +
-        '<span class="wb-idval" title="What the recorder saw">' + escapeHtml(id.value) + '</span>' +
-        '</div>' +
-        '<div class="wb-row-meta meta">' + escapeHtml(u.window || "(no window title)") +
-        ' · seen ' + u.count + '×</div>' +
-        '<div class="wb-row-act">' +
-        (canName
-          ? '<button type="button" class="primary wb-name-btn" data-wb-name="' + i + '">Name…</button>'
-          : '<span class="meta" title="No stable identity to key a rule on">no usable signature</span>') +
-        '</div>' +
+      const isOpen = openIdx === i;
+      return '<div class="wb-row wb-row-unnamed' + (isOpen ? " editing" : "") + '" data-wb-unnamed="' + i + '">' +
+        '<div class="wb-row-main">' + identityLineHtml(u.data || u.signature, u.window) + '</div>' +
+        '<div class="wb-row-meta meta">seen ' + u.count + '×</div>' +
+        (isOpen
+          ? inlineEditorHtml("unnamed", i, u.addSignature, "",
+              (u.data && u.data.window_title) || u.window || "")
+          : '<div class="wb-row-act">' +
+            (canName
+              ? '<button type="button" class="primary wb-name-btn" data-wb-name="' + i + '">Name…</button>'
+              : '<span class="meta" title="No stable identity to key a rule on">no usable signature</span>') +
+            '</div>') +
         '</div>';
     }).join("") + '</div>';
   }
   return wbListShell("unnamed", "Unnamed captured controls", n,
     "Controls this recording used that " + "no rule names yet — the worklist. Name the most-used first.",
     body, /*openByDefault*/ true);
+}
+
+/* The transient discovered-candidate worklist (Task 3). Only rendered when a
+   probe produced candidates. Each row shows the identity line + a Name… action
+   that opens the same inline editor; naming derives a real entry and drops the
+   candidate. Ignoring costs nothing. A cap row reveals the deferred overflow
+   (past-cap interactive + non-interactive). */
+function renderCandidatesSection() {
+  const st = State.getVocabState();
+  const cands = _getCandidates();
+  if (!cands.length && !(st._candidatesMeta && st._candidatesMeta.deferredCount)) return "";
+  const meta = st._candidatesMeta || {};
+  const openKey = st._inlineNaming;
+  const rowsHtml = cands.map(function (c, i) {
+    const isOpen = openKey === ("cand:" + i);
+    const chips = _candidateContextHtml(c.meta);
+    return '<div class="wb-row wb-row-candidate' + (isOpen ? " editing" : "") + '" data-wb-cand="' + i + '">' +
+      '<div class="wb-row-main">' + identityLineHtml(c.signature) + '</div>' +
+      (chips ? '<div class="wb-cand-context">' + chips + '</div>' : "") +
+      (isOpen
+        ? inlineEditorHtml("cand", i, c.signature, c.suggestedName, "")
+        : '<div class="wb-row-act">' +
+          '<button type="button" class="primary wb-name-btn" data-wb-cand-name="' + i + '">Name…</button>' +
+          '<button type="button" class="wb-cand-ignore" data-wb-cand-ignore="' + i + '" ' +
+          'title="Drop this candidate — ignoring one costs nothing; re-run the probe to bring them back">Ignore</button>' +
+          '</div>') +
+      '</div>';
+  }).join("");
+
+  let capRow = "";
+  if (meta.deferredCount) {
+    capRow = st._candidatesShowDeferred
+      ? '<button type="button" class="link-btn wb-cand-more" id="btn-wb-cand-less">▴ Hide the ' +
+        meta.deferredCount + ' less-likely control(s)</button>'
+      : '<button type="button" class="link-btn wb-cand-more" id="btn-wb-cand-more">▾ Show ' +
+        meta.deferredCount + ' more, incl. non-interactive controls</button>';
+  }
+
+  const srcLabel = meta.source === "snapshot" ? "this window snapshot"
+    : (meta.source === "recording" ? "this recording" : "the probe");
+  const takeaway = (meta.rawTotal && meta.keptTotal !== undefined)
+    ? "Interactive controls from " + srcLabel + " — name the ones you recognise; ignore the rest."
+    : "Controls the probe found — name the ones you recognise; ignore the rest.";
+
+  const body = (cands.length || capRow)
+    ? '<div class="wb-rows">' + rowsHtml + '</div>' + (capRow ? '<div class="wb-cand-morewrap">' + capRow + '</div>' : "")
+    : '<p class="wb-empty meta">No candidates. Run “Discover from window…” or “Start from a recording…” to find controls.</p>';
+
+  return wbListShell("candidates", "Discovered candidates", cands.length, takeaway,
+    body, /*openByDefault*/ true);
+}
+
+/* Small context chips for a candidate (role / region / framework + weak note),
+   reusing the discovery-meta the picker stamped. */
+function _candidateContextHtml(meta) {
+  meta = meta || {};
+  const chips = [];
+  if (meta.role) chips.push('<span class="vocab-int-chip" title="UIA control role">' + escapeHtml(meta.role) + '</span>');
+  if (meta.region) chips.push('<span class="vocab-int-chip" title="Where in the window the control sits">' + escapeHtml(meta.region) + '</span>');
+  if (meta.framework) chips.push('<span class="vocab-int-chip" title="UI framework — sets how reliable the signature is">' + escapeHtml(meta.framework) + '</span>');
+  if (typeof meta.confidence === "number" && meta.confidence < 0.6) {
+    chips.push('<span class="wb-cand-weak" title="Weak signature — keyed on a generic attribute; may not match reliably.">weak signature</span>');
+  }
+  return chips.join("");
 }
 
 function renderMatchedList(matched) {
@@ -471,8 +659,19 @@ function wireWorkbench() {
   document.querySelectorAll(".wb-name-btn[data-wb-name]").forEach(function (btn) {
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
-      const i = parseInt(btn.dataset.wbName, 10);
-      nameUnnamedControl(i);
+      openInlineNamer("unnamed", parseInt(btn.dataset.wbName, 10));
+    });
+  });
+  document.querySelectorAll(".wb-name-btn[data-wb-cand-name]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openInlineNamer("cand", parseInt(btn.dataset.wbCandName, 10));
+    });
+  });
+  document.querySelectorAll(".wb-cand-ignore[data-wb-cand-ignore]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      ignoreCandidate(parseInt(btn.dataset.wbCandIgnore, 10));
     });
   });
   document.querySelectorAll(".wb-name-screen-btn[data-wb-name-screen]").forEach(function (btn) {
@@ -482,39 +681,89 @@ function wireWorkbench() {
       nameScreen(i);
     });
   });
+  // The candidate cap row (show/hide the deferred overflow).
+  const more = $("#btn-wb-cand-more");
+  if (more) more.addEventListener("click", function () { toggleCandidateDeferred(true); });
+  const less = $("#btn-wb-cand-less");
+  if (less) less.addEventListener("click", function () { toggleCandidateDeferred(false); });
+  // Wire whichever inline editor is open (Task 1: naming never navigates).
+  wireInlineEditor();
   const re = $("#btn-wb-reanalyze");
   if (re) re.addEventListener("click", reanalyzeCurrentSession);
 }
 
-/* "Name…" on an UNNAMED row. Reuses the SAME add-from-interaction derivation
-   the G-8 flow uses (signatureFromInteraction over the captured event), adds the
-   row to the CURRENTLY-selected vocab (the workbench's whole point is one
-   session × one vocab), opens the rule editor drawer with the fresh row focused,
-   and lets the analyst type the business name + Save. Suggest-don't-mutate:
-   nothing persists until the vocabulary's own Save. */
-async function nameUnnamedControl(idx) {
-  const wb = _wbData;
+/* Wire the inline name editor's Save / Cancel / Enter (Task 1). The editor
+   lives INSIDE the open row; Save derives the rule in place, Cancel restores. */
+function wireInlineEditor() {
+  const ed = document.querySelector(".wb-inline-editor[data-wb-inline]");
+  if (!ed) return;
+  const [kind, idxStr] = String(ed.dataset.wbInline).split(":");
+  const index = parseInt(idxStr, 10);
+  const input = ed.querySelector(".wb-inline-input");
+  const save = ed.querySelector(".wb-inline-save");
+  const cancel = ed.querySelector(".wb-inline-cancel");
+  if (save) save.addEventListener("click", function () { commitInlineName(kind, index, input ? input.value : ""); });
+  if (cancel) cancel.addEventListener("click", cancelInlineName);
+  if (input) {
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); commitInlineName(kind, index, input.value); }
+      else if (e.key === "Escape") { e.preventDefault(); cancelInlineName(); }
+    });
+    // Focus without scrolling the page (Task 1: the user's position never moves).
+    try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
+  }
+}
+
+/* "Name…" on an UNNAMED captured row OR a discovered candidate: open the INLINE
+   editor in place (Task 1 — naming never navigates). The identity line stays,
+   one focused name input appears, Save/Cancel below. No scroll, no drawer. */
+function openInlineNamer(kind, index) {
+  const key = kind === "cand" ? ("cand:" + index) : index;
+  State.getVocabState()._inlineNaming = key;
+  renderVocabEditor();   // re-render so the row shows its inline editor
+  // wireInlineEditor (called from wireWorkbench during the re-render) focuses.
+}
+
+function cancelInlineName() {
+  State.getVocabState()._inlineNaming = null;
+  renderVocabEditor();
+}
+
+/* Derive + add the rule for the row being named, IN PLACE. Shared by the
+   unnamed-captured and candidate paths (the derivation is identical — a
+   signature + a business name). Suggest-don't-mutate: the row moves lists on the
+   advisory re-match; nothing persists until the vocabulary's own Save. */
+async function commitInlineName(kind, index, nameValue) {
   const v = State.getVocabState().current;
-  if (!wb || !v) return;
-  const u = wb.unnamed[idx];
-  if (!u) return;
-  // Derive the signature from the ACTUAL captured interaction (G-8 derivation),
-  // falling back to the list-built minimal signature.
-  const signature = CA.signatureFromInteraction(u.sampleEvent) || u.addSignature;
-  if (!signature) {
+  if (!v) return;
+  const name = String(nameValue || "").trim();
+  if (!name) { toast("Give the control a name, or press Cancel.", "info"); return; }
+
+  let signature = null;
+  if (kind === "cand") {
+    const c = _getCandidates()[index];
+    if (!c) return;
+    signature = Object.assign({}, c.signature);
+  } else {
+    const wb = _wbData;
+    const u = wb && wb.unnamed[index];
+    if (!u) return;
+    // Same derivation the G-8 flow uses (over the captured event), with the
+    // list-built minimal signature as a fallback.
+    signature = CA.signatureFromInteraction(u.sampleEvent) || u.addSignature;
+  }
+  if (!signature || !Object.keys(signature).length) {
     toast("That control has no stable signature to key a rule on.", "error");
     return;
   }
-  // Volatility-suspect ids: flag the way the discovery picker does — if the
-  // automation_id looks auto-generated (a trailing render counter), warn the
-  // analyst before keying a rule on it.
+  // Volatility guard: warn before keying a rule on an auto-generated id.
   if (signature.automation_id && looksVolatile(signature.automation_id)) {
     const ok = await confirmModal({
       title: "This id may change between runs",
       message: "The automation_id “" + signature.automation_id + "” looks auto-generated " +
         "(a per-render counter). A rule keyed on it may not match the next recording. " +
-        "Add it anyway, or Cancel and key on the label instead?",
-      okLabel: "Add anyway",
+        "Save it anyway, or Cancel and key on the label instead?",
+      okLabel: "Save anyway",
     });
     if (!ok) return;
   }
@@ -524,36 +773,66 @@ async function nameUnnamedControl(idx) {
     return CA.vocabSignatureKey(e && e.signature) === key;
   });
   if (key && dupIdx >= 0) {
-    openRuleEditorFocused(dupIdx);
-    toast("This control is already a rule — highlighted it below.", "info");
+    // Already a rule — just rename it in place (don't create a duplicate).
+    v.interactions[dupIdx].name = name;
+    if (kind === "cand") _dropCandidate(index);
+    State.getVocabState()._inlineNaming = null;
+    markDirty();
+    renderVocabEditor();
+    toast("That control was already a rule — updated its name to “" + name + "”.", "info");
     return;
   }
-  const suggested = (u.identity && u.identity.kind === "name") ? u.identity.value : "";
-  v.interactions.push({ signature: signature, name: suggested });
+  v.interactions.push({ signature: signature, name: name });
+  if (kind === "cand") _dropCandidate(index);
+  State.getVocabState()._inlineNaming = null;
   markDirty();
-  State.getVocabState()._ruleEditorOpen = true;
-  // Re-render the workbench so the row leaves UNNAMED immediately (advisory), and
-  // the rule editor drawer opens with the new row focused for naming.
+  // Re-render: the newly-named control leaves UNNAMED / candidates immediately
+  // (advisory re-match). The page position is unchanged — no scrollIntoView.
   renderVocabEditor();
-  openRuleEditorFocused(v.interactions.length - 1);
-  toast("Added a rule for this control — type its business name, then Save the vocabulary.", "success");
+  toast("Named “" + name + "”. Re-analyze to apply it to this session, or keep naming.", "success");
 }
 
-/* Open the Machine-layer rule editor drawer and focus a specific interaction
-   row's name field. */
-function openRuleEditorFocused(idx) {
-  const drawer = document.querySelector(".vocab-machine-drawer");
-  if (drawer && !drawer.open) drawer.open = true;
-  State.getVocabState()._ruleEditorOpen = true;
-  _flashInteractionRow(idx);
+/* Ignore a candidate — drop it from the transient set. No debt: re-run the
+   probe to bring them back. */
+function ignoreCandidate(index) {
+  _dropCandidate(index);
+  if (State.getVocabState()._inlineNaming === ("cand:" + index)) {
+    State.getVocabState()._inlineNaming = null;
+  }
+  renderVocabEditor();
+}
+
+function _dropCandidate(index) {
+  const st = State.getVocabState();
+  if (!Array.isArray(st._candidates)) return;
+  st._candidates.splice(index, 1);
+  // Any open inline-name index above the removed one shifts down by one.
+  if (typeof st._inlineNaming === "string" && st._inlineNaming.startsWith("cand:")) {
+    const openIdx = parseInt(st._inlineNaming.split(":")[1], 10);
+    if (openIdx > index) st._inlineNaming = "cand:" + (openIdx - 1);
+    else if (openIdx === index) st._inlineNaming = null;
+  }
+}
+
+function toggleCandidateDeferred(show) {
+  const st = State.getVocabState();
+  st._candidatesShowDeferred = !!show;
+  // Fold/unfold: rebuild the shown list from the stored full set.
+  if (st._candidatesAll && st._candidatesMeta) {
+    const cap = st._candidatesMeta.cap || 40;
+    const t = VocabMatch.triageSnapshotCandidates(st._candidatesAll, cap);
+    st._candidates = show ? t.shown.concat(t.deferred) : t.shown;
+    st._candidatesMeta.deferredCount = t.deferred.length;
+  }
+  renderVocabEditor();
 }
 
 /* Heuristic mirror of the discovery volatility flag: an id ending in a render
    counter (trailing digits after a hyphen/underscore, or a long hash) is
-   suspect. Advisory only. */
+   suspect. Advisory only. Delegates to the shared vocab-match rule so the
+   identity line and this Name… guard never drift apart. */
 function looksVolatile(aid) {
-  const s = String(aid || "");
-  return /[-_]\d{2,}$/.test(s) || /^[a-z]+-\d+$/i.test(s) || /[0-9a-f]{8,}/i.test(s);
+  return VocabMatch.looksVolatileId(aid);
 }
 
 /* "Name screen…" on an unnamed window. Suggests a window_title_regex by diffing
@@ -669,40 +948,6 @@ function renderNoVocabEmptyState(hasSession) {
     '</div>';
 }
 
-/* C2 checklist progress: "reviewed X / Y discovered". Hidden (with its
-   Approve-all button) on a vocab with no discovered rows. */
-function updateReviewProgress() {
-  const prog = $("#vocab-review-progress");
-  const btn = $("#btn-vocab-approve-all");
-  const v = State.getVocabState().current;
-  const discovered = ((v && v.interactions) || []).filter(isDiscoveredEntry);
-  if (!prog) return;
-  if (!discovered.length) {
-    prog.textContent = "";
-    prog.style.display = "none";
-    if (btn) btn.style.display = "none";
-    return;
-  }
-  const done = discovered.filter((e) => e._reviewed).length;
-  prog.style.display = "";
-  prog.textContent = "reviewed " + done + " / " + discovered.length + " discovered";
-  prog.classList.toggle("all-done", done === discovered.length);
-  if (btn) {
-    btn.style.display = "";
-    btn.disabled = done === discovered.length;
-  }
-}
-
-function approveAllDiscovered() {
-  const v = State.getVocabState().current;
-  if (!v) return;
-  for (const e of v.interactions || []) {
-    if (isDiscoveredEntry(e)) e._reviewed = true;
-  }
-  renderVocabInteractions();
-  updateReviewProgress();
-}
-
 function _buildVocabIntRow(ent, i) {
   const sig = ent.signature || {};
   // class_name is a real (if weak) signature dimension — include it so a
@@ -776,15 +1021,12 @@ function _buildVocabIntRow(ent, i) {
       '<details class="vocab-int-members"><summary>⚠ ' + total +
       ' distinct controls were merged here — review before naming</summary><ul>' + lis + '</ul></details>';
   }
-  // C2: the discovery review checklist -- a discovered row renders an
-  // explicit "reviewed" tick so the 10-minute pass is approve/edit per row,
-  // not authoring into blank boxes. In-session aid only (stripped on save).
+  // A row that arrived via discovery still shows its legend (confidence / weak
+  // note / merged members) so the analyst sees the picker's reasoning — but
+  // there is no "reviewed" tick: naming a candidate in the workbench IS the
+  // review (R1 App Library pass). Legacy discovered entries in an old vocab
+  // load + render exactly the same, minus the retired tick.
   const discovered = isDiscoveredEntry(ent);
-  const review = discovered
-    ? '<label class="vocab-int-review' + (ent._reviewed ? " done" : "") + '" ' +
-      'title="Discovery pre-filled this row. Tick it once you\'ve checked or corrected it — a checklist aid; the tick itself isn\'t saved into the file.">' +
-      '<input type="checkbox" data-review="1"' + (ent._reviewed ? " checked" : "") + '> reviewed</label>'
-    : "";
   // C1 semantics strip: verb select + auto flags + the human/LLM columns.
   const verbVal = (ent.verb || "").trim();
   const verbOpts = ['<option value="">verb…</option>']
@@ -814,7 +1056,7 @@ function _buildVocabIntRow(ent, i) {
       flagLabels[f] + "</label>").join("") +
     "</span></div>";
   const row = document.createElement("div");
-  row.className = "vocab-int" + (discovered && !ent._reviewed ? " vocab-int-unreviewed" : "");
+  row.className = "vocab-int";
   row.dataset.idx = String(i);
   row.innerHTML =
     '<div class="vocab-int-head">' +
@@ -822,7 +1064,6 @@ function _buildVocabIntRow(ent, i) {
     '<div class="vocab-int-sig">' + escapeHtml(sigSummary) + '</div>' +
     conf +
     seen +
-    review +
     '<button class="icon-btn vocab-int-remove" title="Remove">✕</button>' +
     '</div>' +
     '<div class="vocab-int-body">' +
@@ -832,14 +1073,12 @@ function _buildVocabIntRow(ent, i) {
     members +
     '<label>Meaningful name<input type="text" data-field="name" value="' + escapeAttr(ent.name || "") + '" placeholder="e.g., Search customer record"></label>' +
     semantics +
-    // Item 17: the raw signature inputs are Machine layer inside the card --
-    // collapsed by default so they don't sit at equal weight with the
-    // meaningful name + semantics strip. A DISCOVERED row auto-expands this
-    // (the `open` attribute) so the §C2 review checklist -- which needs the
-    // analyst to actually see/correct control_type / automation_id / etc. --
-    // stays fully usable without an extra click.
-    '<details class="vocab-int-sig-details"' + (discovered ? " open" : "") + '>' +
-    '<summary>▸ Match signature</summary>' +
+    // Item 17: the raw signature inputs are the Machine layer inside the card --
+    // "Raw match rule", collapsed by default (manual surgery only). The human's
+    // default path never touches it: naming a control derives its signature;
+    // this is where a specialist hand-edits the four re-identification fields.
+    '<details class="vocab-int-sig-details">' +
+    '<summary>▸ Raw match rule</summary>' +
     '<div class="vocab-int-sig-fields">' +
     '<label>control_type<input type="text" data-sig="control_type" value="' + escapeAttr(sig.control_type || "") + '"></label>' +
     '<label>class_name<input type="text" data-sig="class_name" value="' + escapeAttr(sig.class_name || "") + '"></label>' +
@@ -850,17 +1089,6 @@ function _buildVocabIntRow(ent, i) {
     '</details>' +
     '</div>';
   row.querySelector(".vocab-int-remove").addEventListener("click", () => removeInteraction(i));
-  const reviewBox = row.querySelector("[data-review]");
-  if (reviewBox) reviewBox.addEventListener("change", () => {
-    const v = State.getVocabState().current;
-    const entRef = v && (v.interactions || [])[i];
-    if (!entRef) return;
-    if (reviewBox.checked) entRef._reviewed = true; else delete entRef._reviewed;
-    row.classList.toggle("vocab-int-unreviewed", !reviewBox.checked);
-    const lbl = row.querySelector(".vocab-int-review");
-    if (lbl) lbl.classList.toggle("done", reviewBox.checked);
-    updateReviewProgress();
-  });
   row.querySelectorAll("[data-field], [data-sig], [data-flag], [data-sem], [data-semflag]").forEach((el) => {
     el.addEventListener("input", collectAndMark);
     el.addEventListener("change", collectAndMark);
@@ -997,16 +1225,16 @@ function addInteraction() {
   const newIdx = v.interactions.length - 1;
   renderVocabInteractions();
   markDirty();
-  // Make the freshly-added row obvious: scroll it into view, flash a
-  // highlight, and focus its name field so the analyst can type at once.
+  // Make the freshly-added row obvious: flash a highlight + focus its name field.
+  // Task 1 (naming never navigates): NO scrollIntoView — focus with
+  // preventScroll so the analyst's position in the drawer doesn't jump.
   const host = $("#vocab-interactions");
   const row = host && host.querySelector('.vocab-int[data-idx="' + newIdx + '"]');
   if (row) {
-    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
     row.classList.add("vocab-int-new");
     setTimeout(() => row.classList.remove("vocab-int-new"), 1500);
     const nameInput = row.querySelector('[data-field="name"]');
-    if (nameInput) nameInput.focus();
+    if (nameInput) { try { nameInput.focus({ preventScroll: true }); } catch (_) { nameInput.focus(); } }
   }
 }
 
@@ -1140,12 +1368,19 @@ async function discoverFromWindow() {
       toast("No controls discovered in that window.", "error");
       return;
     }
-    const merged = mergeDiscoveredSkeleton(v, skeleton);
-    State.getVocabState().current = merged.vocab;
+    // R1 App Library pass: discovered elements become CANDIDATES (transient),
+    // NOT vocab interactions. Triage to the interactive control types + cap so a
+    // real window's ~100 controls don't flood the worklist. Naming a candidate
+    // derives the entry; ignoring costs nothing. Nothing is merged/persisted.
+    const candidates = _skeletonToCandidates(skeleton.interactions, "snapshot");
+    setCandidates(candidates, "snapshot", /*triaged*/ true);
+    const meta = State.getVocabState()._candidatesMeta || {};
     renderVocabEditor();
-    markDirty();
     toast("Discovered " + r.control_count + " controls from “" + (r.window_title || "window") +
-      "” — " + merged.added + " new, " + merged.skipped + " already present. Review names and Save.",
+      "” — showing " + (State.getVocabState()._candidates || []).length +
+      " interactive candidate(s) to name" +
+      (meta.deferredCount ? " (" + meta.deferredCount + " more available)" : "") +
+      ". Name the ones you recognise; ignore the rest.",
       "success");
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "Discover from window…"; }
@@ -1199,41 +1434,54 @@ async function bootstrapFromSession() {
   }
 }
 
-/* Load a bootstrapped skeleton into the editor for review. When a vocabulary
-   for the app already exists, MERGE into it (analyst-named rows preserved, new
-   controls added); otherwise create a new file and adopt the skeleton. Either
-   way the new rows arrive as review-checklist rows (each carries the bootstrap
-   `_hint`), dirty until the analyst Saves. */
+/* Open a bootstrapped skeleton for naming. R1 App Library pass: the recording's
+   observed controls become CANDIDATES (transient), NOT interactions merged into
+   the vocab. When a vocabulary for the app already exists we select it and adopt
+   its scope; otherwise we create a new file. Either way the controls arrive as
+   candidate rows the analyst names in place — no `_reviewed` checklist, no debt
+   for the ones ignored. A prep-recording source needs no type filter (an
+   observed interaction is relevant by definition), so triaged=false. Candidates
+   whose signature already matches a named entry are dropped (nothing to re-name).
+   Selecting/creating the vocab may set `dirty` when we adopt a scope; naming a
+   candidate is what actually edits the vocab. */
 async function openSkeletonForReview(skeleton, existing) {
   const sk = skeleton || {};
+  let v;
   if (existing && existing.path) {
     await selectVocab(existing.path);
-    const v = State.getVocabState().current;
+    v = State.getVocabState().current;
     if (!v) { toast("Couldn't open that App Library entry.", "error"); return; }
-    const merged = mergeDiscoveredSkeleton(v, sk);
-    State.getVocabState().current = merged.vocab;
-    renderVocabEditor();
-    markDirty();
-    toast("Read " + (sk.interactions || []).length + " control(s) from the recording — " +
-      merged.added + " new to name, " + merged.skipped + " already named. Review and Save.",
-      "success");
-    return;
+  } else {
+    const p = await Ipc.newVocabFile({ suggestedId: sk.id || "new-app" });
+    if (!p) return;
+    await reloadVocabList();
+    await selectVocab(p);
+    v = State.getVocabState().current;
+    if (!v) { toast("Couldn't open the new App Library file.", "error"); return; }
+    // Adopt the discovered scope + display name for a brand-new vocab (in memory,
+    // dirty), so the workbench scopes correctly against a session later.
+    if (sk.scope && !((v.scope || {}).process_name) && !((v.scope || {}).window_title_regex)) {
+      v.scope = Object.assign({}, sk.scope);
+      markDirty();
+    }
+    if (sk.name && !v.name) { v.name = sk.name; markDirty(); }
   }
-  // New app: create the file (the analyst chooses where), then adopt the
-  // skeleton's scope + rows in memory for review.
-  const p = await Ipc.newVocabFile({ suggestedId: sk.id || "new-app" });
-  if (!p) return;
-  await reloadVocabList();
-  await selectVocab(p);
-  const seed = State.getVocabState().current;
-  if (!seed) { toast("Couldn't open the new App Library file.", "error"); return; }
-  const merged = mergeDiscoveredSkeleton(seed, sk);
-  merged.vocab.name = sk.name || merged.vocab.name;
-  State.getVocabState().current = merged.vocab;
+  const candidates = _candidatesNotAlreadyNamed(_skeletonToCandidates(sk.interactions, "recording"), v);
+  setCandidates(candidates, "recording", /*triaged*/ false);
   renderVocabEditor();
-  markDirty();
-  toast("Started “" + (sk.name || "vocabulary") + "” from the recording — " +
-    merged.added + " control(s) to name. Review each, then Save.", "success");
+  toast("Read " + candidates.length + " control(s) from the recording — name the ones you " +
+    "recognise; ignore the rest. Nothing is saved until you Save.", "success");
+}
+
+/* Drop candidates whose signature already matches an existing vocab entry (they
+   are already named — no candidate needed). */
+function _candidatesNotAlreadyNamed(candidates, v) {
+  const existing = new Set(((v && v.interactions) || [])
+    .map((e) => CA.vocabSignatureKey(e && e.signature)).filter(Boolean));
+  return (candidates || []).filter((c) => {
+    const k = CA.vocabSignatureKey(c.signature);
+    return !k || !existing.has(k);
+  });
 }
 
 /* ---- G-8: "Add to App Library…" from a step interaction ---------------
@@ -1279,40 +1527,48 @@ async function addInteractionFromStep({ signature, suggestedName } = {}) {
   }
   const v = State.getVocabState().current;
   if (!v) { toast("Couldn't open that App Library entry.", "error"); return; }
-  v.interactions = v.interactions || [];
   const key = CA.vocabSignatureKey(signature);
-  const dupIdx = v.interactions.findIndex((e) => CA.vocabSignatureKey(e && e.signature) === key);
+  const dupIdx = (v.interactions || []).findIndex((e) => CA.vocabSignatureKey(e && e.signature) === key);
   if (key && dupIdx >= 0) {
+    // Already a rule — reveal it in the Machine drawer (a "show me", not a
+    // naming; naming never navigates, but revealing an existing rule may).
     State.getVocabState()._ruleEditorOpen = true;
     renderVocabEditor();
     _flashInteractionRow(dupIdx);
     toast("This control is already in “" + (v.name || v.id) + "”. Highlighted it for you.", "info");
     return;
   }
-  v.interactions.push({ signature, name: (suggestedName || "").trim() });
-  // Open the rule editor drawer so the new row is visible/nameable even when the
-  // workbench is the default surface (R2).
-  State.getVocabState()._ruleEditorOpen = true;
+  // R1 App Library pass: the control from the step becomes a CANDIDATE with its
+  // INLINE name editor open (prefilled from the step name), NOT a row pushed
+  // into the rule editor drawer. Naming it derives the entry in place.
+  const candidate = {
+    signature: Object.assign({}, signature),
+    suggestedName: (suggestedName || "").trim(),
+    source: "session",
+    seenCount: 1,
+    meta: {},
+  };
+  setCandidates([candidate], "session", /*triaged*/ false);
+  State.getVocabState()._inlineNaming = "cand:0";
   renderVocabEditor();
-  markDirty();
-  _flashInteractionRow(v.interactions.length - 1);
-  toast("Added a control to “" + (v.name || v.id) + "” — give it a name and Save the vocabulary.", "success");
+  toast("Added a control from the step to “" + (v.name || v.id) +
+    "” — type its name and Save.", "success");
 }
 
-/* Scroll a freshly-added/duplicate interaction row into view + flash it. Opens
-   the Machine-layer rule editor drawer first (it may be collapsed under the
-   workbench). */
+/* Flash + focus an EXISTING interaction row (the G-8 "already a rule" reveal).
+   Opens the Machine-layer rule editor drawer first (it may be collapsed under
+   the workbench). Task 1: no scrollIntoView relocation — focus with
+   preventScroll so revealing the row doesn't yank the page. */
 function _flashInteractionRow(idx) {
   const drawer = document.querySelector(".vocab-machine-drawer");
   if (drawer && !drawer.open) drawer.open = true;
   const host = $("#vocab-interactions");
   const row = host && host.querySelector('.vocab-int[data-idx="' + idx + '"]');
   if (!row) return;
-  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
   row.classList.add("vocab-int-new");
   setTimeout(() => row.classList.remove("vocab-int-new"), 1500);
   const nameInput = row.querySelector('[data-field="name"]');
-  if (nameInput) nameInput.focus();
+  if (nameInput) { try { nameInput.focus({ preventScroll: true }); } catch (_) { nameInput.focus(); } }
 }
 
 /* ---- "Copy for LLM" + suggestions import (lab-phase §C3) -------------- */
@@ -1489,4 +1745,6 @@ module.exports = {
   bootstrapFromSession, addInteractionFromStep,
   // R2 workbench helpers (exported for unit testing).
   siblingVariants, looksVolatile,
+  // R1 App Library pass: candidate helpers (exported for tests / harness render).
+  setCandidates, clearCandidates, renderVocabEditor,
 };

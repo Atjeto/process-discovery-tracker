@@ -227,6 +227,124 @@ test("suggestScreenRegex: single variant → escaped literally, flagged single",
   assert.ok(re.test("Salesforce - Account lookup"));
 });
 
+/* R1 App Library pass: the ONE composed human identity line that replaces the
+   four raw signature inputs on the default path. */
+test("identityLine: name present → controlType · \"name\" · window, no marker", () => {
+  const line = VM.identityLine(
+    { control_type: "Button", name: "Search", automation_id: "search-btn", window_title: "Salesforce - Account lookup" }
+  );
+  assert.equal(line.identity.kind, "name");
+  assert.equal(line.identity.value, "Search");
+  assert.equal(line.controlType, "Button");
+  assert.equal(line.context, "Salesforce - Account lookup");
+  assert.equal(line.marker, null); // a clean accessible name is not flagged
+  assert.equal(line.text, 'Button · "Search" · Salesforce - Account lookup');
+});
+
+test("identityLine: automation_id fallback when no name; stable id → no marker", () => {
+  const line = VM.identityLine({ control_type: "Edit", automation_id: "customer_id", window_title: "New Account" });
+  assert.equal(line.identity.kind, "automation_id");
+  assert.equal(line.identity.value, "customer_id");
+  assert.equal(line.marker, null); // "customer_id" is not a per-render counter
+  assert.equal(line.text, 'Edit · "customer_id" · New Account');
+});
+
+test("identityLine: a volatile-looking automation_id (name absent) gets a volatile marker", () => {
+  const line = VM.identityLine({ control_type: "Edit", automation_id: "input-378" });
+  assert.equal(line.identity.kind, "automation_id");
+  assert.ok(line.marker && line.marker.kind === "volatile");
+  assert.match(line.marker.note, /auto-generated|change/i);
+});
+
+test("identityLine: class-only weak case → class_name identity + weak marker", () => {
+  const line = VM.identityLine({ control_type: "Button", class_name: "x-btn" });
+  assert.equal(line.identity.kind, "class_name");
+  assert.equal(line.identity.value, "x-btn");
+  assert.ok(line.marker && line.marker.kind === "weak");
+  assert.equal(line.text, 'Button · "x-btn"'); // no window context → omitted
+});
+
+test("identityLine: empty signature → unidentified control, weak marker, safe text", () => {
+  const line = VM.identityLine({});
+  assert.equal(line.identity.kind, "unknown");
+  assert.equal(line.identity.value, "");
+  assert.ok(line.marker && line.marker.kind === "weak");
+  assert.equal(line.text, 'Control · (unidentified control)');
+});
+
+test("identityLine: an explicit scope string wins over the control's own window", () => {
+  const line = VM.identityLine(
+    { control_type: "Button", name: "Save", window_title: "raw window" },
+    "New order"
+  );
+  assert.equal(line.context, "New order");
+  assert.equal(line.text, 'Button · "Save" · New order');
+});
+
+/* R1 App Library pass: snapshot triage — candidates, not entries; interactive
+   control types lead, the rest defers behind a cap, nothing preselected. */
+function candidate(control_type, extra) {
+  return { signature: Object.assign({ control_type }, extra || {}), seenCount: (extra && extra.seenCount) || 1 };
+}
+
+test("triageSnapshotCandidates: keeps interactive types, defers non-interactive", () => {
+  const controls = [
+    candidate("Button", { name: "Save" }),
+    candidate("Edit", { automation_id: "customer_id" }),
+    candidate("Text", { name: "some label" }),      // non-interactive → deferred
+    candidate("Pane", {}),                           // non-interactive → deferred
+    candidate("ComboBox", { name: "Country" }),
+  ];
+  const t = VM.triageSnapshotCandidates(controls, 40);
+  assert.equal(t.rawTotal, 5);
+  assert.equal(t.keptTotal, 3);                      // Button + Edit + ComboBox
+  assert.equal(t.shown.length, 3);
+  assert.equal(t.deferred.length, 2);                // Text + Pane
+  // Every deferred entry is non-interactive.
+  assert.ok(t.deferred.every((c) => !VM.INTERACTIVE_CONTROL_TYPES.has(c.signature.control_type)));
+});
+
+test("triageSnapshotCandidates: ranks stable-identity controls ahead of weak ones", () => {
+  const controls = [
+    candidate("Button", { class_name: "x-btn" }),           // weak (class only)
+    candidate("Button", { name: "Save" }),                  // stable (name)
+    candidate("Edit", { automation_id: "input-378" }),      // volatile id → weak
+    candidate("Edit", { automation_id: "customer_id" }),    // stable id
+  ];
+  const t = VM.triageSnapshotCandidates(controls, 40);
+  // The two stable-identity controls come first (order among them by seenCount).
+  const firstTwoStable = t.shown.slice(0, 2).every((c) =>
+    c.signature.name === "Save" || c.signature.automation_id === "customer_id");
+  assert.ok(firstTwoStable, "stable-identity controls should lead: " +
+    JSON.stringify(t.shown.map((c) => c.signature)));
+});
+
+test("triageSnapshotCandidates: hard-caps the default render, overflow → deferred", () => {
+  const controls = [];
+  for (let i = 0; i < 50; i++) controls.push(candidate("Button", { name: "B" + i, seenCount: 50 - i }));
+  const t = VM.triageSnapshotCandidates(controls, 40);
+  assert.equal(t.keptTotal, 50);
+  assert.equal(t.shown.length, 40);                  // capped
+  assert.equal(t.deferred.length, 10);               // overflow interactive
+});
+
+test("triageSnapshotCandidates: overflow puts interactive-past-cap before non-interactive", () => {
+  const controls = [];
+  for (let i = 0; i < 42; i++) controls.push(candidate("Button", { name: "B" + i, seenCount: 100 - i }));
+  controls.push(candidate("Text", { name: "label" }));
+  const t = VM.triageSnapshotCandidates(controls, 40);
+  assert.equal(t.shown.length, 40);
+  // 2 interactive overflow + 1 non-interactive = 3 deferred; the 2 interactive lead.
+  assert.equal(t.deferred.length, 3);
+  assert.ok(VM.INTERACTIVE_CONTROL_TYPES.has(t.deferred[0].signature.control_type));
+  assert.equal(t.deferred[2].signature.control_type, "Text");
+});
+
+test("triageSnapshotCandidates: empty input → empty result", () => {
+  const t = VM.triageSnapshotCandidates([], 40);
+  assert.deepEqual(t, { shown: [], deferred: [], keptTotal: 0, rawTotal: 0 });
+});
+
 test("minimalSignature: prefers automation_id, falls back to control_type+name", () => {
   assert.deepEqual(
     VM.minimalSignature({ automation_id: "aid1", control_type: "Edit", name: "x" }),

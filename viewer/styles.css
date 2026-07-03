@@ -2406,6 +2406,15 @@ details.analysis-module { padding: 0; }
   background: var(--bg-1); border: 1px solid var(--rule);
   border-radius: var(--radius-sm); padding: 10px 12px; overflow: auto;
 }
+/* Task 1 (naming never navigates): the vocab list stays reachable no matter how
+   long the editor grows. In the two-column layout each panel already scrolls
+   independently; on the narrow single-column layout the list would otherwise be
+   pushed off-screen above a long editor, so pin it to the top of the scroll
+   container. align-self:start keeps it from stretching to the editor's height. */
+.vocab-list-panel { align-self: start; position: sticky; top: 0; max-height: 100%; }
+@media (max-width: 1100px) {
+  .vocab-list-panel { max-height: 42vh; z-index: 1; }
+}
 .vocab-row {
   padding: 8px 10px; margin-bottom: 4px;
   border: 1px solid transparent; border-radius: 4px; cursor: pointer;
@@ -3167,16 +3176,6 @@ button.danger:disabled {
   text-transform: none; letter-spacing: 0;
 }
 .vocab-sem-flag input { margin: 0; }
-/* The per-row "reviewed" tick (discovery checklist). */
-.vocab-int-review {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; color: var(--fg-2); cursor: pointer; white-space: nowrap;
-}
-.vocab-int-review input { margin: 0; }
-.vocab-int-review.done { color: var(--va); }
-.vocab-int.vocab-int-unreviewed > .vocab-int-head { border-left: 3px solid var(--accent-2); }
-.vocab-review-progress { font-size: 11px; color: var(--fg-3); margin-left: 10px; }
-.vocab-review-progress.all-done { color: var(--va); }
 
 /* ===== R2: the match workbench (APPROACHABILITY-REDESIGN §5) ============ */
 .wb { display: flex; flex-direction: column; gap: 12px; }
@@ -3245,6 +3244,58 @@ button.danger:disabled {
 
 /* Unnamed worklist rows get a subtle accent stripe (there's work here). */
 .wb-row-unnamed { border-left: 3px solid var(--accent); }
+/* Discovered candidate rows (transient) share the worklist look, with a
+   distinct hue so they read as "just found, name or ignore". */
+.wb-row-candidate { border-left: 3px solid var(--accent-2); }
+.wb-row.editing { background: var(--bg-3); }
+
+/* The composed identity LINE (Task 2): one read-only sentence per row. */
+.wb-idsep { color: var(--fg-3); }
+.wb-idctx { font-size: 12px; }
+.wb-idmark {
+  display: inline-block; margin-left: 4px; cursor: help;
+  font-size: 11px; line-height: 1;
+}
+.wb-idmark-volatile { color: var(--bad); }
+.wb-idmark-weak { color: var(--fg-3); }
+
+/* Candidate context chips + weak marker. */
+.wb-cand-context { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.wb-cand-weak {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 1px 5px; border-radius: 3px;
+  border: 1px solid var(--rule); color: var(--fg-3);
+}
+.wb-cand-ignore {
+  font-size: 11px; padding: 3px 12px; margin-left: 6px;
+  color: var(--fg-3);
+}
+.wb-cand-morewrap { margin-top: 8px; }
+.wb-cand-more { font-size: 11px; }
+
+/* The inline name editor (Task 1: naming never navigates). Sits inside the
+   row; the identity line above it stays put. */
+.wb-inline-editor {
+  margin-top: 8px; padding: 8px 10px;
+  background: var(--bg-2); border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+.wb-inline-name {
+  display: block; font-size: 10px; color: var(--fg-3);
+  letter-spacing: 1px; text-transform: uppercase;
+}
+.wb-inline-input {
+  display: block; width: 100%; margin-top: 4px;
+  padding: 7px 10px; background: var(--bg-3);
+  border: 1px solid var(--rule); border-radius: 3px;
+  color: var(--fg); font-size: 13px;
+  text-transform: none; letter-spacing: 0;
+}
+.wb-inline-input:focus { outline: none; border-color: var(--accent); }
+.wb-inline-screen { margin-top: 6px; }
+.wb-inline-act { display: flex; gap: 8px; margin-top: 8px; }
+.wb-inline-save, .wb-inline-cancel { font-size: 11px; padding: 4px 14px; }
+
 /* Dead rules get a warning stripe (a selector is likely wrong). */
 .wb-row-dead { border-left: 3px solid var(--bad); }
 .wb-dead-name { color: var(--fg); font-size: 13px; margin-right: 8px; }

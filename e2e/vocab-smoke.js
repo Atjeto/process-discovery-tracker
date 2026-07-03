@@ -14,9 +14,10 @@
  *     ancestry + the honest weak-signature note render, and the over-merge
  *     members disclosure lists the distinct controls that collapsed together;
  *   - the chips/labels are not clipped (scrollWidth <= clientWidth);
- *   - §C2: discovered rows render as a REVIEW CHECKLIST — per-row "reviewed"
- *     ticks, a progress counter, Approve-all — and the auto-filled semantics
- *     (verb select pre-set from the control role, carries_value pre-ticked);
+ *   - the retired review checklist (R1 App Library pass): a loaded discovered
+ *     row carries NO "reviewed" tick, progress counter, or Approve-all — naming
+ *     a candidate IS the review — but the auto-filled semantics (verb pre-set
+ *     from the control role, carries_value pre-ticked) still arrive on the row;
  *   - §C3: "Copy for LLM…" opens the line-by-line review modal whose textarea
  *     is ONE parseable JSON carrying the vocab skeleton rows (row_key + verb),
  *     and the suggestions import path exists alongside it;
@@ -222,29 +223,28 @@ const SEED = {
   }
   await shot(page, "vocab-enriched-row.png");
 
-  // ---- Item 17: the raw signature block is a per-row disclosure ----------
-  // Both seeded rows arrived via the on-disk vocab file, so both are
-  // "discovered" entries (they carry identity_source/confidence) -- the
-  // disclosure should already be auto-OPEN on both, and its inputs must
-  // still be the exact ones collectAndMark()/the discovery-fill logic reads
-  // ([data-sig]) regardless of DOM nesting inside <details>.
+  // ---- Item 17 (R1 rename): the raw signature block is a per-row "Raw match
+  // rule" disclosure, COLLAPSED by default on EVERY row (manual surgery only —
+  // the human's default path names controls in the workbench, never here). Its
+  // inputs stay reachable via [data-sig] for collectAndMark() regardless.
   const sigDisclosure = await page.evaluate(() => {
     const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
     return rows.map((r) => {
       const det = r.querySelector(".vocab-int-sig-details");
+      const sum = det && det.querySelector("summary");
       return {
         hasDetails: !!det,
         open: !!(det && det.open),
+        summary: sum ? (sum.textContent || "").trim() : null,
         sigInputCount: r.querySelectorAll(".vocab-int-sig-fields [data-sig]").length,
       };
     });
   }).catch((e) => ([{ err: e.message }]));
-  record("item 17: discovered rows render the signature block behind an auto-OPEN disclosure",
-    sigDisclosure.length === 2 && sigDisclosure.every((r) => r.hasDetails && r.open && r.sigInputCount === 5),
+  record("item 17: every row's raw signature block is behind a COLLAPSED 'Raw match rule' disclosure",
+    sigDisclosure.length === 2 &&
+      sigDisclosure.every((r) => r.hasDetails && !r.open && r.sigInputCount === 5 && /Raw match rule/.test(r.summary || "")),
     JSON.stringify(sigDisclosure));
-  // A freshly hand-added row (+ Add interaction) is NOT a discovered entry --
-  // its signature block must start COLLAPSED (the item 17 default), while
-  // its inputs stay reachable via [data-sig] for collectAndMark() either way.
+  // A freshly hand-added row (+ Add interaction) is likewise COLLAPSED.
   await page.click("#btn-vocab-add-interaction").catch((e) => console.log("add-interaction", e.message));
   await wait(300);
   const newRowDisclosure = await page.evaluate(() => {
@@ -253,7 +253,7 @@ const SEED = {
     const det = last && last.querySelector(".vocab-int-sig-details");
     return { hasDetails: !!det, open: !!(det && det.open), sigInputCount: last ? last.querySelectorAll(".vocab-int-sig-fields [data-sig]").length : 0 };
   }).catch((e) => ({ err: e.message }));
-  record("item 17: a hand-added (non-discovered) row's signature block starts COLLAPSED",
+  record("item 17: a hand-added row's raw signature block starts COLLAPSED",
     !!(newRowDisclosure && newRowDisclosure.hasDetails && !newRowDisclosure.open && newRowDisclosure.sigInputCount === 5),
     JSON.stringify(newRowDisclosure));
   // Undo the manual add so it doesn't leak into the later row-count assertions.
@@ -264,16 +264,17 @@ const SEED = {
   });
   await wait(300);
 
-  // ---- §C2: the discovery review checklist + auto-filled semantics --------
+  // ---- The retired review checklist + surviving auto-filled semantics ------
+  // R1 App Library pass: naming a candidate IS the review, so a loaded
+  // discovered row carries NO "reviewed" tick / progress / Approve-all. The
+  // auto-derived semantics (verb/carries_value) still arrive on the row.
   const checklist = await page.evaluate(() => {
     const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
-    const prog = document.querySelector("#vocab-review-progress");
-    const approveAll = document.querySelector("#btn-vocab-approve-all");
     const row2 = rows.find((r) => {
       const aid = r.querySelector('input[data-sig="automation_id"]');
       return aid && aid.value === "order-id";
     });
-    let verb = null, carries = null, completion = null, hasReview = null;
+    let verb = null, carries = null, completion = null;
     if (row2) {
       const v = row2.querySelector('select[data-sem="verb"]');
       const c = row2.querySelector('input[data-semflag="carries_value"]');
@@ -281,37 +282,24 @@ const SEED = {
       verb = v ? v.value : null;
       carries = c ? c.checked : null;
       completion = f ? f.checked : null;
-      hasReview = !!row2.querySelector("[data-review]");
     }
     return {
       rows: rows.length,
       reviewTicks: document.querySelectorAll("#vocab-interactions [data-review]").length,
-      progress: prog ? (prog.textContent || "").trim() : null,
-      approveAllVisible: !!(approveAll && approveAll.style.display !== "none"),
-      verb, carries, completion, hasReview,
+      progressGone: !document.querySelector("#vocab-review-progress"),
+      approveAllGone: !document.querySelector("#btn-vocab-approve-all"),
+      verb, carries, completion,
     };
   }).catch((e) => ({ err: e.message }));
-  record("§C2: discovered rows render as a review checklist (per-row ticks + progress + Approve all)",
-    !!(checklist && !checklist.err && checklist.rows === 2 && checklist.reviewTicks === 2 &&
-      /reviewed 0 \/ 2/.test(checklist.progress || "") && checklist.approveAllVisible),
+  record("retired review checklist: NO per-row ticks, NO progress counter, NO Approve-all",
+    !!(checklist && !checklist.err && checklist.rows === 2 && checklist.reviewTicks === 0 &&
+      checklist.progressGone && checklist.approveAllGone),
     JSON.stringify(checklist));
-  record("§C2: auto-filled semantics arrive pre-set (verb=enter, carries_value ticked, completion not)",
-    !!(checklist && checklist.verb === "enter" && checklist.carries === true &&
-      checklist.completion === false && checklist.hasReview),
+  record("auto-filled semantics still arrive pre-set (verb=enter, carries_value ticked, completion not)",
+    !!(checklist && checklist.verb === "enter" && checklist.carries === true && checklist.completion === false),
     "verb=" + (checklist && checklist.verb) + " carries=" + (checklist && checklist.carries) +
     " completion=" + (checklist && checklist.completion));
-  await shot(page, "vocab-discovered-checklist.png");
-
-  await page.click("#btn-vocab-approve-all").catch((e) => console.log("approve-all", e.message));
-  await wait(300);
-  const prog2 = await page.evaluate(() => ({
-    text: (document.querySelector("#vocab-review-progress") || {}).textContent || "",
-    disabled: !!(document.querySelector("#btn-vocab-approve-all") || {}).disabled,
-    unreviewed: document.querySelectorAll(".vocab-int-unreviewed").length,
-  })).catch((e) => ({ err: e.message }));
-  record("§C2: Approve-all marks every discovered row reviewed",
-    !!(prog2 && !prog2.err && /reviewed 2 \/ 2/.test(prog2.text) && prog2.disabled && prog2.unreviewed === 0),
-    JSON.stringify(prog2));
+  await shot(page, "vocab-discovered-row.png");
 
   // ---- §C3: Copy for LLM — review modal, one parseable derived-only JSON ---
   const llmBtns = await page.evaluate(() => ({
@@ -372,7 +360,13 @@ const SEED = {
     !!(restored && restored.copy === 1), JSON.stringify(restored));
 
   // The load-bearing fix: Save, then the on-disk YAML must still carry class_name.
-  await page.click("#btn-vocab-save").catch((e) => console.log("save", e.message));
+  // #btn-vocab-save lives in the (possibly collapsed) Machine drawer — ensure open.
+  await page.evaluate(() => {
+    const det = document.querySelector(".vocab-machine-drawer");
+    if (det && !det.open) { det.open = true; det.dispatchEvent(new Event("toggle")); }
+    const btn = document.querySelector("#btn-vocab-save");
+    if (btn) btn.click();
+  }).catch((e) => console.log("save", e.message));
   await wait(1200);
   let saved = null;
   try { saved = yaml.load(fs.readFileSync(seedPath, "utf-8")); } catch (e) { saved = { _err: e.message }; }
@@ -385,25 +379,27 @@ const SEED = {
   record("after Save, discovery-meta is stripped (clean persisted vocab)",
     !!(e0 && !("role" in e0) && !("_members" in e0) && !("confidence" in e0) && !("region" in e0)),
     "leftover keys=" + (e0 ? Object.keys(e0).filter((k) => ["role", "framework", "region", "ancestry", "_members", "confidence", "identity_source"].includes(k)).join(",") || "(none)" : "?"));
-  // §C1/§C2: the semantics SURVIVE the save (they are data, not meta) while
-  // the review tick (_reviewed, set by Approve-all above) is stripped.
+  // §C1: the semantics SURVIVE the save (they are data, not meta). The retired
+  // review tick (_reviewed) stays in the strip list so an OLD vocab carrying it
+  // still saves clean; provenance (identity_source/confidence) is stripped.
   const e1 = saved && saved.app_vocabulary && (saved.app_vocabulary.interactions || [])[1];
   record("after Save, the §C1 semantics persist on disk (verb=enter, carries_value=true)",
     !!(e1 && e1.verb === "enter" && e1.carries_value === true &&
       e1.signature && e1.signature.automation_id === "order-id"),
     "row2=" + JSON.stringify(e1 && { verb: e1.verb, carries_value: e1.carries_value, signature: e1.signature }));
-  record("after Save, the review tick (_reviewed) + provenance are stripped from row 2",
+  record("after Save, the retired review tick (_reviewed) + provenance are stripped from row 2",
     !!(e1 && !("_reviewed" in e1) && !("identity_source" in e1) && !("confidence" in e1)),
     e1 ? "leftover=" + (Object.keys(e1).filter((k) => ["_reviewed", "identity_source", "confidence"].includes(k)).join(",") || "(none)") : "?");
 
   // =====================================================================
-  // G-7: "Start from a recording" → per-app picker → review checklist
+  // G-7: "Start from a recording" → per-app picker → CANDIDATE worklist
   // =====================================================================
   // Stub the save dialog so the new app's vocab file lands in our temp dir.
   // We pick SAPGUI from the recording: its id ("sapgui") is NOT one of the
-  // shipped vocabs, so it takes the clean NEW-vocab path — every row arrives
-  // unnamed, for review. (chrome/excel/outlook collide with shipped vocabs and
-  // would exercise the merge-into-existing path instead.)
+  // shipped vocabs, so it takes the clean NEW-vocab path — every control arrives
+  // as an UNNAMED candidate to name (R1 App Library pass; no review checklist).
+  // (chrome/excel/outlook collide with shipped vocabs and would exercise the
+  // merge-into-existing path instead.)
   const newVocabPath = path.join(vocabDir, "sapgui-from-rec.yaml");
   await app.evaluate(({ dialog }, fp) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: fp });
@@ -443,26 +439,32 @@ const SEED = {
     if (radio) radio.checked = true;
   });
   await page.click(".modal-picker .modal-ok").catch((e) => console.log("picker ok", e.message));
-  await wait(1600);  // newVocabFile (stubbed save) + merge + render
+  await wait(1600);  // newVocabFile (stubbed save) + candidate build + render
   const boot = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
-    const prog = document.querySelector("#vocab-review-progress");
+    const rows = [...document.querySelectorAll('.wb-list[data-wb-list="candidates"] .wb-row-candidate')];
+    // Candidates are NOT pushed into the persisted vocab: the rule editor should
+    // have no interaction rows yet (nothing named).
+    const drawerRows = document.querySelectorAll("#vocab-interactions .vocab-int").length;
     return {
-      rows: rows.length,
-      ticks: document.querySelectorAll("#vocab-interactions [data-review]").length,
-      progress: prog ? (prog.textContent || "").trim() : null,
-      names: rows.map((r) => { const n = r.querySelector('[data-field="name"]'); return n ? n.value : null; }),
+      candRows: rows.length,
+      hasNameBtns: [...rows].every((r) => !!r.querySelector(".wb-name-btn[data-wb-cand-name]")),
+      hasIgnore: [...rows].every((r) => !!r.querySelector(".wb-cand-ignore")),
+      hasIdentityLine: [...rows].every((r) => !!r.querySelector(".wb-idval")),
+      drawerRows,
+      noReviewTicks: document.querySelectorAll("[data-review]").length === 0,
     };
   }).catch((e) => ({ err: e.message }));
-  record("G-7: the bootstrapped app opens as a review checklist WITH rows",
-    !!(boot && !boot.err && boot.rows >= 4 && boot.ticks === boot.rows &&
-      new RegExp("reviewed 0 / " + boot.rows).test(boot.progress || "")), JSON.stringify(boot));
-  record("G-7: bootstrapped rows arrive UNNAMED for the analyst to name",
-    !!(boot && Array.isArray(boot.names) && boot.names.length && boot.names.every((n) => n === "")),
-    "names=" + JSON.stringify(boot && boot.names));
-  await shot(page, "vocab-bootstrap-checklist.png");
-  await page.click("#btn-vocab-save").catch(() => {});   // clear dirty before G-8
-  await wait(800);
+  record("G-7: the bootstrapped app opens as a CANDIDATE worklist WITH rows (name/ignore, identity line)",
+    !!(boot && !boot.err && boot.candRows >= 4 && boot.hasNameBtns && boot.hasIgnore && boot.hasIdentityLine && boot.noReviewTicks),
+    JSON.stringify(boot));
+  record("G-7: candidates are transient — not persisted into the vocab's interactions",
+    !!(boot && boot.drawerRows === 0), "drawer interaction rows=" + (boot && boot.drawerRows));
+  await shot(page, "vocab-bootstrap-candidates.png");
+  // The new SAPGUI vocab adopted the recording's scope (dirty). Clear dirty so
+  // the G-8 selectVocab (a different vocab) doesn't hit the discard-changes
+  // confirm. Candidates are transient; nothing named is lost.
+  await page.evaluate(() => { require("./state.js").getVocabState().dirty = false; }).catch(() => {});
+  await wait(300);
 
   // =====================================================================
   // G-8: right-click a step interaction → "Add to App Library…" → row added
@@ -513,21 +515,28 @@ const SEED = {
       if (radio) radio.checked = true;
     });
     await page.click(".modal-picker .modal-ok").catch(() => {});
-    await wait(1300);   // activateTab(vocabularies) + selectVocab + push + render
+    await wait(1300);   // activateTab(vocabularies) + selectVocab + candidate + render
+    // R1 App Library pass: the step's control arrives as a CANDIDATE with its
+    // INLINE name editor open (prefilled from the step name), NOT a row pushed
+    // into the rule-editor drawer (naming never navigates).
     added = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll("#vocab-interactions .vocab-int")];
       const active = document.querySelector(".tab.active");
+      const editing = document.querySelector('.wb-row-candidate.editing');
+      const input = editing && editing.querySelector(".wb-inline-input");
+      const drawerRows = document.querySelectorAll("#vocab-interactions .vocab-int").length;
       return {
-        count: rows.length, tab: active ? active.dataset.view : null,
-        names: rows.map((r) => { const n = r.querySelector('[data-field="name"]'); return n ? n.value : ""; }),
+        tab: active ? active.dataset.view : null,
+        candOpen: !!editing,
+        inlineName: input ? input.value : null,
+        drawerRows,
       };
     }).catch((e) => ({ err: e.message }));
   }
-  record("G-8: the interaction is added as a new row in the chosen vocabulary",
-    !!(added && !added.err && added.tab === "vocabularies" && added.count === 3), JSON.stringify(added));
-  record("G-8: the new row's name is prefilled from the step name",
-    !!(added && stepName && added.names.includes(stepName)),
-    "stepName='" + stepName + "' rowNames=" + JSON.stringify(added && added.names));
+  record("G-8: the step control is added as a candidate with its inline editor open in the chosen vocab",
+    !!(added && !added.err && added.tab === "vocabularies" && added.candOpen), JSON.stringify(added));
+  record("G-8: the inline editor's name is prefilled from the step name",
+    !!(added && stepName && added.inlineName === stepName),
+    "stepName='" + stepName + "' inlineName='" + (added && added.inlineName) + "'");
   await shot(page, "vocab-add-from-step-result.png");
 
   record("zero PAGE ERRORs", pageErrors.length === 0,

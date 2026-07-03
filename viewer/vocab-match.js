@@ -52,6 +52,81 @@
 // Signature fields, in the SAME set app_vocab.py::_SIG_FIELDS uses.
 const SIG_FIELDS = ["control_type", "automation_id", "name", "class_name", "framework_id"];
 
+// The UIA control types a person actually interacts with — the default triage
+// keep-set for a "Discover from window" snapshot (R1 App Library pass). A live
+// snapshot of a real app returns ~100+ controls, most of them decorative Text /
+// structural Pane/Group; naming those is noise. This is the interactive subset
+// the recorder emits as `control_type` (the standard UIA localized control-type
+// names). Non-interactive controls are hidden behind an explicit "show more"
+// row, never dropped. (Matches app_vocab's verb/value control-role tables.)
+const INTERACTIVE_CONTROL_TYPES = new Set([
+  "Button", "Edit", "ComboBox", "CheckBox", "RadioButton", "MenuItem",
+  "ListItem", "TreeItem", "TabItem", "SplitButton", "Hyperlink", "DataItem",
+]);
+
+function _isInteractive(controlType) {
+  return INTERACTIVE_CONTROL_TYPES.has(String(controlType || "").trim());
+}
+
+/* Does a candidate have a stable (non-volatile) identity to key a rule on?
+   name or a non-volatile automation_id = stable; a volatile automation_id or a
+   class_name-only / empty identity = not. Drives the triage RANK (stable ids
+   sort first). */
+function _hasStableIdentity(sig) {
+  sig = _asData(sig);
+  if (sig.name) return true;
+  if (sig.automation_id && !looksVolatileId(sig.automation_id)) return true;
+  return false;
+}
+
+/* Triage a raw snapshot control set BEFORE it renders as candidates (R1 App
+   Library pass — "discovery produces candidates, not entries; naming is the
+   review"). A live probe returns ~100 mostly-decorative controls; showing all
+   of them as a worklist is the exact defect the owner reported. So:
+     - keep interactive control types only (Button/Edit/ComboBox/… — the set
+       above); everything else is deferred, not dropped;
+     - rank the kept set by has-stable-identity, then interactive-ness, then
+       occurrence (seen_count desc), so the nameable, high-traffic controls
+       lead;
+     - hard-cap the default render (`cap`, default 40); the overflow (the rest
+       of the interactive set past the cap PLUS every deferred non-interactive
+       control) is returned separately so the view offers "show N more incl.
+       non-interactive". NOTHING is preselected — these are candidates.
+
+   `controls` are candidate-shaped objects carrying at least a `signature`
+   (with control_type) and optionally `seenCount`. Returns
+   { shown, deferred, keptTotal, rawTotal } where shown.length <= cap. Pure. */
+function triageSnapshotCandidates(controls, cap) {
+  const list = Array.isArray(controls) ? controls.slice() : [];
+  const rawTotal = list.length;
+  const limit = typeof cap === "number" && cap > 0 ? cap : 40;
+
+  const interactive = [];
+  const nonInteractive = [];
+  for (const c of list) {
+    const ct = (_asData(c).signature || {}).control_type;
+    if (_isInteractive(ct)) interactive.push(c); else nonInteractive.push(c);
+  }
+
+  // Rank the interactive set: stable identity first, then occurrence.
+  const rank = (a, b) => {
+    const sa = _hasStableIdentity((_asData(a).signature) || {}) ? 1 : 0;
+    const sb = _hasStableIdentity((_asData(b).signature) || {}) ? 1 : 0;
+    if (sa !== sb) return sb - sa;
+    const ca = typeof a.seenCount === "number" ? a.seenCount : 0;
+    const cb = typeof b.seenCount === "number" ? b.seenCount : 0;
+    return cb - ca;
+  };
+  interactive.sort(rank);
+  nonInteractive.sort(rank);
+
+  const shown = interactive.slice(0, limit);
+  // Overflow = interactive past the cap, then ALL non-interactive (labeled as
+  // such by the view's "incl. non-interactive" copy).
+  const deferred = interactive.slice(limit).concat(nonInteractive);
+  return { shown, deferred, keptTotal: interactive.length, rawTotal };
+}
+
 function _asData(x) {
   return x && typeof x === "object" ? x : {};
 }
@@ -156,6 +231,86 @@ function bestIdentity(data) {
   if (data.class_name) return { kind: "class_name", value: String(data.class_name) };
   if (data.control_type) return { kind: "control_type", value: String(data.control_type) };
   return { kind: "unknown", value: "(unidentified control)" };
+}
+
+/* THE one composed human identity line for a control — shown wherever a row
+   used to render the four raw signature inputs. Design (R1 App Library pass):
+   the four signature fields are the MACHINE's re-identification key (kept as
+   data, edited only in the raw-rule expansion); the HUMAN sees one line and
+   writes one name.
+
+   Shape: `<ControlType> · "<best identity>" · <window/screen context>`
+     - best identity = name || automation_id || class_name (in THAT order — the
+       human-legible label first; the machine ladder in bestIdentity() prefers
+       automation_id, but a person reads the accessible name best).
+     - window/screen context = the explicit `scope` string when the caller has
+       one (a named screen), else the signature/event's own window_title, else
+       omitted.
+     - volatility/weak flags render as a small trailing marker `{kind, note}`
+       (NOT baked into the string) so the view can attach the existing tooltip;
+       the plain `.text` is always the human sentence with no marker noise.
+
+   `signature` is a signature-shaped object (control_type / automation_id / name
+   / class_name / window_title / window_title_regex — a rule signature OR a raw
+   captured-event data blob both work, since we only read those fields).
+   `scope` (optional) is an explicit screen/window context string to append.
+
+   Returns { text, controlType, identity:{kind,value}, context, marker|null }.
+   Pure — unit-tested in vocab-match.test.js. */
+function identityLine(signature, scope) {
+  const sig = _asData(signature);
+  const controlType = String(sig.control_type || "").trim();
+  // Human-first identity ladder: name, then automation_id, then class_name.
+  let identity;
+  if (sig.name) identity = { kind: "name", value: String(sig.name) };
+  else if (sig.automation_id) identity = { kind: "automation_id", value: String(sig.automation_id) };
+  else if (sig.class_name) identity = { kind: "class_name", value: String(sig.class_name) };
+  else identity = { kind: "unknown", value: "" };
+
+  // Window/screen context: explicit scope wins, else the control's own window.
+  let context = "";
+  if (typeof scope === "string" && scope.trim()) context = scope.trim();
+  else if (sig.window_title) context = String(sig.window_title);
+  else if (sig.window_title_regex) context = String(sig.window_title_regex);
+
+  // Reuse the volatility/weak flag logic already used by the Name… flow
+  // (looksVolatile) — do NOT duplicate the rule shapes. A volatile-looking
+  // automation_id we're keying on, or a class_name-only weak identity, gets a
+  // small marker with a tooltip the view renders.
+  let marker = null;
+  if (identity.kind === "automation_id" && looksVolatileId(identity.value)) {
+    marker = {
+      kind: "volatile",
+      note: "This id looks auto-generated (a per-render counter) — it may change between recordings.",
+    };
+  } else if (identity.kind === "class_name") {
+    marker = {
+      kind: "weak",
+      note: "Weak identity — keyed on a generic class name, with no stable id or accessible label. It may not match reliably.",
+    };
+  } else if (identity.kind === "unknown") {
+    marker = {
+      kind: "weak",
+      note: "No stable identity was captured for this control.",
+    };
+  }
+
+  // Compose the sentence. An empty identity reads as "unidentified control".
+  const parts = [];
+  parts.push(controlType || "Control");
+  parts.push(identity.value ? '"' + identity.value + '"' : "(unidentified control)");
+  if (context) parts.push(context);
+  return { text: parts.join(" · "), controlType, identity, context, marker };
+}
+
+/* Heuristic mirror of the discovery volatility flag + vocab-view.looksVolatile:
+   an id ending in a render counter (trailing digits after a hyphen/underscore),
+   a `prefix-NNN` pattern, or a long hex hash is suspect. Kept here (pure) so
+   identityLine has no view dependency; vocab-view.looksVolatile stays the DOM
+   caller. Advisory only. */
+function looksVolatileId(aid) {
+  const s = String(aid || "");
+  return /[-_]\d{2,}$/.test(s) || /^[a-z]+-\d+$/i.test(s) || /[0-9a-f]{8,}/i.test(s);
 }
 
 /* Derive the minimum signature to hand the add-from-interaction flow, mirroring
@@ -460,11 +615,15 @@ function commonSuffix(strings, reserve) {
 
 module.exports = {
   SIG_FIELDS,
+  INTERACTIVE_CONTROL_TYPES,
+  triageSnapshotCandidates,
   scopeMatches,
   signatureMatch,
   bestEntry,
   controlKey,
   bestIdentity,
+  identityLine,
+  looksVolatileId,
   minimalSignature,
   coverage,
   buildWorkbench,
