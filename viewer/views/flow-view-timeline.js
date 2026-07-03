@@ -29,6 +29,24 @@ const { effectiveLabel, visibleMarkerSuggestions } = require("./flow-view-marker
 const { openScreenshot } = require("./flow-view-screenshots.js");
 const { rollUpSteps } = require("../process-map-levels.js");
 
+/* NAV-AUDIT §J/§9: case-label density. At a multi-hour span dozens of case
+   bands pack into ~1500px and their left-anchored labels overlap into
+   unreadable repetition (the audit saw 60 labels collide at 3.60h). Mirror the
+   window-title lane's chip-silencing precedent (minLabelPx below): a case label
+   renders ONLY when its band is at least CASE_LABEL_MIN_PX wide on screen;
+   narrower bands stay a pure colour stripe (the full label is always one hover
+   away in the band's title). Zooming in widens the bands, so labels reappear.
+   Because layoutCaseLanes packs non-overlapping bands per lane, a per-band width
+   floor is sufficient — a labelled band has room before the next band in its
+   lane. Pure + unit-tested (flow-view-timeline.test.js). */
+const CASE_LABEL_MIN_PX = 46;
+/** @returns {boolean} whether a case band that spans `widthPct` percent of a
+ *  `hostW`-px-wide timeline is wide enough to carry its label. */
+function caseLabelFits(widthPct, hostW, minPx) {
+  const floor = (typeof minPx === "number") ? minPx : CASE_LABEL_MIN_PX;
+  return ((widthPct / 100) * (hostW || 0)) >= floor;
+}
+
 /* Injected by flow-view.js via initTimeline() -- kept out of a require() to
    avoid a flow-view <-> timeline cycle. */
 let currentScopeRange = () => null;
@@ -261,6 +279,57 @@ function renderTimelineSummary() {
     " · " + formatDuration(last - first);
 }
 
+/* NAV-AUDIT §A3: the labeled Flow→Steps affordance for a steps-lane band. A
+   plain band click selects + seeks (no view change); this right-click menu is
+   the LABELED verb that actually switches to Steps, reusing the arrival-reveal
+   (setSelectedStepId + setPendingStepReveal, which the Steps render consumes to
+   scroll the row into view). Mirrors showMarkerInsertMenu's construction. */
+function _showStepBandMenu(x, y, stepId, ts) {
+  const prior = document.getElementById("tl-ctx-menu");
+  if (prior) prior.remove();
+  const menu = document.createElement("div");
+  menu.id = "tl-ctx-menu";
+  menu.style.cssText =
+    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
+    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
+    "box-shadow:var(--shadow);font:13px var(--font-ui);" +
+    "min-width:180px;cursor:default;user-select:none;";
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+  function addItem(label, handler) {
+    const item = document.createElement("div");
+    item.textContent = label;
+    item.style.cssText = "padding:6px 14px;cursor:pointer;";
+    item.addEventListener("mouseenter", () => item.style.background = "var(--accent)");
+    item.addEventListener("mouseleave", () => item.style.background = "");
+    item.addEventListener("click", () => { menu.remove(); handler(); });
+    menu.appendChild(item);
+  }
+  addItem("Open in Steps", () => {
+    if (stepId) {
+      State.setSelectedStepId(stepId);
+      State.setPendingStepReveal();   // Steps render scrolls the row into view
+    }
+    const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
+    if (stepsBtn) setTimeout(() => stepsBtn.click(), 0);
+  });
+  addItem("Select + seek here", () => {
+    if (stepId) State.setSelectedStepId(stepId);
+    if (ts) seekToTimestamp(ts);
+  });
+  document.body.appendChild(menu);
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    menu.remove();
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", dismiss, true);
+  };
+  setTimeout(() => {
+    document.addEventListener("mousedown", dismiss, true);
+    document.addEventListener("keydown", dismiss, true);
+  }, 0);
+}
+
 /* P2.D / R1 timeline-defaults pass: lane visibility. The timeline's job is
    find-the-moment (DISCLOSURE-MODEL "Flow / Steps / Phases" = Evidence), so a
    fresh profile opens with only the apps/activity lane (always on, no toggle)
@@ -467,6 +536,9 @@ function renderTimeline() {
     gapBefore: 4,
     render(host, ctx) {
       const casesTop = ctx.slot.top;
+      // host.style.width is already the zoomed width when this runs (see the
+      // titles lane note), so clientWidth reflects the on-screen px width.
+      const hostW = host.clientWidth || 800;
       for (const c of (lanes.cases ? caseLanes.cases : [])) {
         const x = ((c.startMs - first) / span) * 100;
         const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
@@ -495,12 +567,19 @@ function renderTimeline() {
           showCaseContextMenu(e.clientX, e.clientY, c);
         });
         host.appendChild(band);
-        const lbl = document.createElement("div");
-        lbl.className = "tl-case-label";
-        lbl.style.left = "calc(" + x + "% + 4px)";
-        lbl.style.top = (top + 3) + "px";
-        lbl.textContent = c.label || "(unlabeled)";
-        host.appendChild(lbl);
+        // NAV-AUDIT §J/§9: only label a band wide enough to read it; the rest
+        // stay pure stripes (label still in the band's title on hover). The
+        // label is also clipped to the band width so a kept label can never
+        // spill into its neighbour.
+        if (caseLabelFits(w, hostW)) {
+          const lbl = document.createElement("div");
+          lbl.className = "tl-case-label";
+          lbl.style.left = "calc(" + x + "% + 4px)";
+          lbl.style.top = (top + 3) + "px";
+          lbl.style.maxWidth = "calc(" + w + "% - 4px)";
+          lbl.textContent = c.label || "(unlabeled)";
+          host.appendChild(lbl);
+        }
       }
     },
   };
@@ -816,12 +895,30 @@ function renderTimeline() {
         // At a coarse grain a band folds several steps — show the count.
         const foldNote = (s.count > 1) ? " (" + s.count + " steps)" : "";
         band.textContent = lbl;
-        band.title = lbl + foldNote + " — " + formatDuration(sEnd - sStart);
+        band.title = lbl + foldNote + " — " + formatDuration(sEnd - sStart) +
+          "\nClick: select + seek · Right-click: Open in Steps";
+        if (s.step_id) band.dataset.stepId = s.step_id;
+        if (s.step_id && s.step_id === State.getSelectedStepId()) {
+          band.classList.add("tl-step-selected");
+        }
+        // NAV-AUDIT §A3: a plain click is SELECT + SEEK, never a view change
+        // ("selecting never changes view; view changes are labeled verbs only").
+        // It selects the step (highlight in the lane + State.setSelectedStepId,
+        // so a later Steps arrival reveals it) and seeks the playhead/timeline
+        // to the step start. The Flow→Steps jump is now the labeled "Open in
+        // Steps" affordance on the right-click menu below.
         band.addEventListener("click", (e) => {
           e.stopPropagation();
           if (s.step_id) State.setSelectedStepId(s.step_id);
-          const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
-          if (stepsBtn) stepsBtn.click();
+          host.querySelectorAll(".tl-step-band.tl-step-selected")
+            .forEach((b) => b.classList.remove("tl-step-selected"));
+          band.classList.add("tl-step-selected");
+          if (s.time_range && s.time_range.start) seekToTimestamp(s.time_range.start);
+        });
+        band.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          _showStepBandMenu(e.clientX, e.clientY, s.step_id, s.time_range && s.time_range.start);
         });
         host.appendChild(band);
       }
@@ -1005,4 +1102,5 @@ module.exports = {
   renderTimeline, renderTimelineSummary, renderMinimap, syncMinimapViewport,
   restoreTimelineForCurrent, persistTimelineForCurrent, maybeAutoScrollToFirstCase,
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
+  caseLabelFits, CASE_LABEL_MIN_PX,
 };

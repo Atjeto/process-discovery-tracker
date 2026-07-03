@@ -180,7 +180,22 @@ function createMapController(config) {
      file that cannot be re-filtered live, so there a click descends UNFILTERED. */
   function _drillDownLevel(label) {
     const next = level === "phase" ? "step" : level === "step" ? "activity" : null;
-    if (!next) return;
+    if (!next) {
+      // NAV-AUDIT §E1: the grain notches with no deeper in-map destination
+      // (screen / app / case) used to no-op here, leaving the default map
+      // surface with dead nodes while the shortcuts overlay advertised a drill.
+      // The grain is a GLOBAL view control (State.getGrain drives Steps + Flow
+      // + Map together), so a node click must not silently mutate it — that
+      // would be an unlabeled view change. Instead the click SELECTS the node
+      // and REVEALS its info (label · role · throughput), the contract's
+      // "click = select + reveal". Only the live Flow diagram has clickable
+      // nodes at these notches (BPMN shows the "mined at Element/Phase"
+      // fallback), so select on the DFG.
+      if (notation === "dfg" && PdtDfg && typeof PdtDfg.selectNode === "function") {
+        PdtDfg.selectNode(label);
+      }
+      return;
+    }
     const canScope = notation === "dfg" && !!label;
     if (canScope && level === "phase") {
       drillFilter = { level: "step", parent: label, phaseName: label };

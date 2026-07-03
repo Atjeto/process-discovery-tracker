@@ -517,6 +517,38 @@ function _wireMapExpertDrawer() {
     if (dir && fs.existsSync(dir)) await Ipc.revealFile(dir);
     else toast("No per-case BPMNs on disk yet — Analyze with \"Build process map\" checked (needs 2+ cases).", "error");
   });
+
+  // NAV-AUDIT §E2/§7a: keep the drawer LOCAL — opening it must grow the page
+  // downward, not steal the map's height. The map host is a flex child that
+  // otherwise gives up its grow-share to the opening drawer (546→499px). The
+  // flex cascade can't be fixed by min-height here (an ancestor pins
+  // min-height:0), so freeze the host at its CLOSED height and release it on
+  // close. The height must be captured BEFORE the drawer expands (the `toggle`
+  // event fires too late — the host has already reflowed), so snapshot it on the
+  // summary's click in the capture phase; the `toggle` handler then applies the
+  // freeze on open and clears it on close. The frozen host + drawer content
+  // overflow the panel, so the Session view (overflow:auto) scrolls and the
+  // drawer's own summary stays put under the cursor.
+  const drawer = document.getElementById("map-expert-drawer");
+  const mapHost = document.querySelector("#session-layout-map .map-host");
+  if (drawer && mapHost) {
+    let _closedHostH = 0;
+    const snap = () => {
+      if (!drawer.open) _closedHostH = Math.round(mapHost.getBoundingClientRect().height);
+    };
+    const summary = drawer.querySelector("summary");
+    if (summary) summary.addEventListener("click", snap, true);
+    drawer.addEventListener("toggle", () => {
+      if (drawer.open) {
+        const h = _closedHostH || Math.round(mapHost.getBoundingClientRect().height);
+        if (h > 0) { mapHost.style.height = h + "px"; mapHost.style.flex = "0 0 auto"; }
+      } else {
+        mapHost.style.height = "";
+        mapHost.style.flex = "";
+        try { _sessionMapCtrl && _sessionMapCtrl.refit(); } catch (_) {}
+      }
+    });
+  }
 }
 
 function renderMapLevel() {
@@ -639,7 +671,11 @@ function applyLevel(name) {
 const SHORTCUTS_OVERLAY_KEY = "pdt.shortcutsOverlayHidden";
 const VIEW_SHORTCUTS = {
   map: [
-    ["Click node", "Drill into details"],
+    // NAV-AUDIT §E1: at the phase/element grains a node click drills one level
+    // in; at screen/app/case (no deeper in-map level) it selects the node and
+    // reveals its info. "Select · drill in" is honest for both, and never
+    // implies a drill the default (screen) surface can't do.
+    ["Click node", "Select · drill in"],
     ["Scroll",     "Zoom map"],
     ["Drag",       "Pan map"],
   ],

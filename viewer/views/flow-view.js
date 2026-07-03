@@ -1791,6 +1791,48 @@ $("#cb-show-marker").addEventListener("change", () => renderEventTable());
 $("#cb-show-system").addEventListener("change", () => renderEventTable());
 if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("change", () => renderEventTable());
 
+/* NAV-AUDIT §D13/§I: the Raw events drawer is shared chrome below the active
+   session layout. On Flow, opening it shifts its OWN summary −24px because the
+   growable layout above (.session-layout's .lower-workspace, flex:1) shrinks to
+   make room instead of the page growing. Same cure as the map Advanced-views
+   drawer: on open, freeze the visible layout's height so the drawer content
+   grows the page (the Session view's overflow:auto scrolls) and the toggle
+   stays put; release on close so tall monitors still fill. Steps already
+   measured 0 (its layout has no growable sibling to steal from), and the freeze
+   is a no-op there. */
+(function wireRawEventsLocality() {
+  const drawer = document.querySelector(".event-table-host");
+  if (!drawer) return;
+  const layoutSel = "#session-layout-flow, #session-layout-overview, " +
+    "#session-layout-map, #session-layout-steps, #session-layout-phases";
+  let _frozen = null;
+  let _snap = null;   // { el, h } captured BEFORE the drawer expands
+  const snap = () => {
+    if (drawer.open) { _snap = null; return; }
+    const layout = Array.from(document.querySelectorAll(layoutSel))
+      .find((el) => el.offsetParent !== null);
+    _snap = layout ? { el: layout, h: Math.round(layout.getBoundingClientRect().height) } : null;
+  };
+  const summary = drawer.querySelector("summary");
+  // Capture-phase snapshot: the `toggle` event fires after the layout above has
+  // already shrunk, so read its CLOSED height on the summary click first.
+  if (summary) summary.addEventListener("click", snap, true);
+  drawer.addEventListener("toggle", () => {
+    if (drawer.open) {
+      const s = _snap;
+      if (s && s.el && s.h > 0) {
+        s.el.style.height = s.h + "px";
+        s.el.style.flex = "0 0 auto";
+        _frozen = s.el;
+      }
+    } else if (_frozen) {
+      _frozen.style.height = "";
+      _frozen.style.flex = "";
+      _frozen = null;
+    }
+  });
+})();
+
 /* ============ Annotations / screenshots / markers ================= */
 
 function renderAnnotations() {

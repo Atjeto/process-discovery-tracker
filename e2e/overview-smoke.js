@@ -242,6 +242,75 @@ async function shot(page, name) {
     railOk, JSON.stringify(railProbe));
   if (!railOk) await shot(page, "fail-overview-rail.png");
 
+  // NAV-AUDIT §D1 fix: EVERY rail act button must LAND on its destination — not
+  // merely exist. The prior pin only checked the rail rendered, so the dead
+  // "Open the App Library" button (its require path threw) slipped through. Here
+  // each button is CLICKED and the destination asserted VISIBLE, returning to
+  // Overview between checks. Destinations by act:
+  //   name  -> App Library resident tab (#view-vocabularies active)
+  //   story -> Flow level (#session-layout-flow visible)
+  //   judge -> the time-goes Evidence module opened on Overview
+  //   memo  -> stays on Overview (findings feed scrolled into view)
+  //   cases -> Flow + the Markers annotation tab active (done-act target=markers)
+  const gotoOverview = async () => {
+    await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
+    await page.click('.tab[data-view="session"]').catch(() => {});
+    await wait(300);
+  };
+  async function clickRailAct(actId) {
+    return page.evaluate((id) => {
+      const row = document.querySelector('#ov-rail .ov-rail-row[data-rail-act="' + id + '"]');
+      const btn = row && row.querySelector(".ov-rail-btn");
+      if (!btn) return { clicked: false, target: null };
+      const target = btn.getAttribute("data-rail-target");
+      btn.click();
+      return { clicked: true, target };
+    }, actId);
+  }
+  const railLandChecks = [
+    { act: "name", desc: "App Library",
+      landed: () => page.evaluate(() => {
+        const tab = document.querySelector('.tab[data-view="vocabularies"]');
+        const view = document.querySelector("#view-vocabularies");
+        return !!(tab && tab.classList.contains("active") &&
+          view && view.classList.contains("active"));
+      }) },
+    { act: "story", desc: "Flow level",
+      landed: () => page.evaluate(() => {
+        const el = document.querySelector("#session-layout-flow");
+        return !!(el && getComputedStyle(el).display !== "none");
+      }) },
+    { act: "judge", desc: "time-goes module open on Overview",
+      landed: () => page.evaluate(() => {
+        const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
+        const ov = document.querySelector("#session-layout-overview");
+        return !!(mod && mod.open && ov && getComputedStyle(ov).display !== "none");
+      }) },
+    { act: "memo", desc: "stays on Overview (findings feed)",
+      landed: () => page.evaluate(() => {
+        const ov = document.querySelector("#session-layout-overview");
+        return !!(ov && getComputedStyle(ov).display !== "none");
+      }) },
+    { act: "cases", desc: "Flow + Markers annotation tab",
+      landed: () => page.evaluate(() => {
+        const flow = document.querySelector("#session-layout-flow");
+        const markersTab = document.querySelector('.anno-tab[data-anno="markers"]');
+        return !!(flow && getComputedStyle(flow).display !== "none" &&
+          markersTab && markersTab.classList.contains("active"));
+      }) },
+  ];
+  for (const chk of railLandChecks) {
+    await gotoOverview();
+    const c = await clickRailAct(chk.act);
+    await wait(500);   // allow deferred nav (markers uses a 60ms setTimeout)
+    const landed = c.clicked ? await chk.landed() : false;
+    record("§D1 rail act '" + chk.act + "' → " + chk.desc + " LANDS (button click reaches destination)",
+      !!(c.clicked && landed),
+      "clicked=" + c.clicked + " target=" + c.target + " landed=" + landed);
+    if (!landed) await shot(page, "fail-rail-land-" + chk.act + ".png");
+  }
+  await gotoOverview();
+
   // R4: the Evidence modules (retired Analysis) render below the findings feed.
   const evidence = await page.evaluate(() => {
     const host = document.querySelector("#overview-content #overview-evidence");

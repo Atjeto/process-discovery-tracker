@@ -283,6 +283,7 @@ let _aggregateNormalizeCancelled = false;
 let _groupByWorker = false;        // H1
 let _variantMode = "activity";     // H10: "activity" | "step"
 let _sxsAlign = "time";            // H2: "time" | "case"
+let _sxsOpen = false;              // NAV-AUDIT §G3: side-by-side content open?
 let _dfgConformance = false;       // H3
 /* Cached map data: set by renderAggregate; read by the controller's
    dataSource (_aggregateMapDataSource) on every render. The map's own view
@@ -384,15 +385,42 @@ function wireAggregateControls() {
     renderAggregate();
   });
 
-  // H2: two-session side-by-side comparison.
+  // H2: two-session side-by-side comparison — a true toggle (NAV-AUDIT §G3).
+  // The button OPENS the comparison and, re-clicked, CLOSES it; its label and
+  // the panel's Close control both reflect + drive the open state. View state
+  // only (module-level _sxsOpen), nothing persisted.
   const sxsBtn = document.getElementById("btn-compare-sxs");
-  if (sxsBtn) sxsBtn.addEventListener("click", renderSideBySide);
+  if (sxsBtn) sxsBtn.addEventListener("click", () => setSideBySideOpen(!_sxsOpen));
+  const sxsClose = document.getElementById("btn-sxs-close");
+  if (sxsClose) sxsClose.addEventListener("click", () => setSideBySideOpen(false));
   const sxsAlign = document.getElementById("btn-sxs-align");
   if (sxsAlign) sxsAlign.addEventListener("click", () => {
     _sxsAlign = _sxsAlign === "time" ? "case" : "time";
     sxsAlign.textContent = "Align: by " + (_sxsAlign === "time" ? "time" : "first case");
-    renderSideBySide();
+    if (_sxsOpen) renderSideBySide();
   });
+}
+
+/* Open/close the side-by-side comparison content (the inverse the audit found
+   missing). Reflects state on the button label + the Close control, renders the
+   two strips when opening and clears them when closing. */
+function setSideBySideOpen(open) {
+  _sxsOpen = !!open;
+  const btn = document.getElementById("btn-compare-sxs");
+  const closeBtn = document.getElementById("btn-sxs-close");
+  const container = document.getElementById("side-by-side-container");
+  const summary = document.getElementById("side-by-side-summary");
+  if (btn) {
+    btn.textContent = _sxsOpen ? "Hide side-by-side" : "Compare side-by-side";
+    btn.classList.toggle("active", _sxsOpen);
+  }
+  if (closeBtn) closeBtn.style.display = _sxsOpen ? "" : "none";
+  if (_sxsOpen) {
+    renderSideBySide();
+  } else {
+    if (container) container.innerHTML = "";
+    if (summary) summary.textContent = "";
+  }
 }
 
 function matchesFilter(text) {
@@ -550,6 +578,10 @@ function renderAggregate() {
   // H2: the side-by-side panel is available only for exactly two sessions.
   const sxsPanel = document.getElementById("side-by-side-panel");
   if (sxsPanel) sxsPanel.style.display = filtered.length === 2 ? "" : "none";
+  // NAV-AUDIT §G3: leaving the two-session precondition closes the comparison
+  // and resets the toggle so the button label never lies about a hidden panel.
+  if (filtered.length !== 2 && _sxsOpen) setSideBySideOpen(false);
+  else if (_sxsOpen) renderSideBySide();   // keep the open content fresh on re-render
   const numNormalized = filtered.filter((s) => !!s.stats).length;
   const rangeNote = (State.getAggregateFromDate() || State.getAggregateToDate())
     ? ` (filtered from ${State.getAggregateSessions().length})` : "";

@@ -23,6 +23,7 @@
   }
 
   let cy = null;
+  let _host = null;   // the container of the current render — for the node-info tip
 
   const PdtTheme = require("./theme.js");
 
@@ -71,6 +72,8 @@
 
   function render(host, dfg, opts) {
     opts = opts || {};
+    _host = host;
+    _hideNodeTip();
     host.innerHTML = "";
     if (!dfg || !dfg.edges || !dfg.edges.length) {
       host.innerHTML = '<div class="map-empty-inline">no DFG data</div>';
@@ -334,6 +337,62 @@
   }
   function getZoom() { return cy ? cy.zoom() : 1; }
 
+  /* ---- Node select + info reveal (NAV-AUDIT §E1) --------------------------
+     At a grain notch with no deeper in-map destination (screen / app / case)
+     a node click is a SELECT + REVEAL, not a drill and never a view change:
+     the node is selected (the accent `node:selected` style) and a small info
+     tip — label, role, and how many times the flow enters/leaves it — is shown
+     beside it. Built from the graph the viewer already has (no new data), and
+     styled to mirror the existing `.dfg-edge-tip` so it reads as one family. */
+  function _hideNodeTip() {
+    if (_host) {
+      const t = _host.querySelector(".dfg-node-tip");
+      if (t) t.style.display = "none";
+    }
+  }
+  /* Select a node by id and reveal its info tip. Returns true when the node was
+     found and revealed, false otherwise (caller can fall back). */
+  function selectNode(id) {
+    if (!cy || !_host || id == null) return false;
+    const node = cy.getElementById(String(id));
+    if (!node || node.empty()) return false;
+    cy.nodes().unselect();
+    node.select();
+
+    // Throughput from the live edges: sum the traversal counts in / out.
+    let inCount = 0, outCount = 0;
+    node.connectedEdges().forEach((e) => {
+      const f = e.data("freq") || 0;
+      if (e.data("target") === node.id()) inCount += f;
+      if (e.data("source") === node.id()) outCount += f;
+    });
+    const role = node.data("role");
+    const roleWord = role === "start" ? "start of the flow"
+      : role === "end" ? "end of the flow" : "step";
+
+    if (getComputedStyle(_host).position === "static") _host.style.position = "relative";
+    let tip = _host.querySelector(".dfg-node-tip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "dfg-node-tip";
+      _host.appendChild(tip);
+    }
+    const parts = [String(node.data("label") || node.id()), roleWord];
+    if (inCount) parts.push("entered " + inCount + "×");
+    if (outCount) parts.push("left " + outCount + "×");
+    tip.textContent = parts.join(" · ");
+    const p = node.renderedPosition();
+    const rh = (node.renderedHeight && node.renderedHeight()) || 0;
+    tip.style.display = "";
+    // Position under the node; clamp into the host.
+    tip.style.left = Math.max(0, Math.round(p.x - tip.offsetWidth / 2)) + "px";
+    tip.style.top = Math.max(0, Math.round(p.y + rh / 2 + 6)) + "px";
+    // Any pan/zoom invalidates the anchored position — hide it (same as edges).
+    cy.off("pan zoom", _hideNodeTip);
+    cy.on("pan zoom", _hideNodeTip);
+    return true;
+  }
+
   /* Export the current DFG as a standalone SVG. cytoscape has no
      native SVG export (that needs the cytoscape-svg extension, which
      isn't bundled), so we serialize the graph by hand: a rect + label
@@ -400,5 +459,5 @@
     }
   }
 
-  module.exports = { render, fit, zoomIn, zoomOut, getZoom, exportSvg, exportPng };
+  module.exports = { render, fit, zoomIn, zoomOut, getZoom, selectNode, exportSvg, exportPng };
 })();

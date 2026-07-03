@@ -233,6 +233,73 @@ const OVERLAP_PROBE = () => {
     actAppBox.length === 0,
     actAppBox.length ? "bad: " + actAppBox.join(", ") : "all fit");
 
+  // NAV-AUDIT §A3 fix: a plain steps-lane band click SELECTS + SEEKS and does
+  // NOT switch view; the Flow→Steps jump is the labeled "Open in Steps"
+  // right-click item. Enable the (default-off) steps lane at the element notch
+  // so bands carry a real step_id, then drive both paths.
+  await page.evaluate(() => {
+    const s = document.getElementById("grain-slider");
+    if (s) { s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); }  // element
+  });
+  await wait(500);
+  await page.evaluate(() => {
+    const T = require("./views/flow-view-timeline.js");
+    T.setLaneToggle("steps", true);
+    T.renderTimeline();
+  });
+  await wait(600);
+  const laneClick = await page.evaluate(() => {
+    const State = require("./state.js");
+    const levelBefore = State.getLevel();
+    const band = document.querySelector(".tl-step-band[data-step-id]");
+    if (!band) return { ok: false, why: "no step band", count: document.querySelectorAll(".tl-step-band").length };
+    const sid = band.dataset.stepId;
+    band.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return {
+      ok: true,
+      stayedFlow: levelBefore === "flow" && State.getLevel() === "flow",
+      selected: State.getSelectedStepId() === sid,
+      highlighted: band.classList.contains("tl-step-selected"),
+    };
+  }).catch((e) => ({ ok: false, why: e.message }));
+  record("§A3: steps-lane band click selects + seeks WITHOUT a view switch (stays on Flow)",
+    !!(laneClick.ok && laneClick.stayedFlow && laneClick.selected && laneClick.highlighted),
+    JSON.stringify(laneClick));
+  const openInSteps = await page.evaluate(() => {
+    const band = document.querySelector(".tl-step-band[data-step-id]");
+    if (!band) return { ok: false };
+    band.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 300, clientY: 250 }));
+    const menu = document.getElementById("tl-ctx-menu");
+    const item = menu && [...menu.querySelectorAll("div")].find((d) => /open in steps/i.test(d.textContent || ""));
+    if (!item) return { ok: false, why: "no Open in Steps item" };
+    item.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { ok: true };
+  }).catch((e) => ({ ok: false, why: e.message }));
+  let openLanded = { onSteps: false };
+  if (openInSteps.ok) {
+    await wait(700);
+    openLanded = await page.evaluate(() => {
+      const State = require("./state.js");
+      const layout = document.getElementById("session-layout-steps");
+      return {
+        onSteps: State.getLevel() === "steps" && layout && getComputedStyle(layout).display !== "none",
+        selectionKept: !!State.getSelectedStepId(),
+      };
+    });
+  }
+  record("§A3: the labeled 'Open in Steps' right-click item switches to Steps + keeps the selection (arrival reveal)",
+    !!(openInSteps.ok && openLanded.onSteps && openLanded.selectionKept),
+    JSON.stringify({ openInSteps, openLanded }));
+  // Restore: back to Flow, steps lane off, screen notch (leave the view as found).
+  await page.evaluate(() => {
+    const T = require("./views/flow-view-timeline.js");
+    T.setLaneToggle("steps", false);
+    const s = document.getElementById("grain-slider");
+    if (s) { s.value = "1"; s.dispatchEvent(new Event("input", { bubbles: true })); }
+  });
+  await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
+  await wait(400);
+
   // --- ADR-0024 grain control: the single view-time roll-up slider ---
   // The slider exists; the Steps list reproduces the FINE count at the element
   // notch (detail never destroyed) and CONSOLIDATES at the screen notch; and

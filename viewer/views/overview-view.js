@@ -443,8 +443,14 @@ function _railActivate(target) {
   switch (target) {
     case "app-library": {
       // The App Library (R2 match workbench) is the "vocabularies" resident tab.
-      const { activateTab } = require("./flow-view.js");
-      try { activateTab("vocabularies"); } catch (_) {}
+      // Reach it the SAME way the flow/markers acts below reach a view-mode
+      // button: click the resident tab, whose listener (renderer.js) calls
+      // activateTab. The earlier `require("./flow-view.js").activateTab` path was
+      // dead — flow-view.js never exports activateTab (it is an injected local),
+      // so the destructure yielded undefined, the call threw, and the catch
+      // swallowed it (NAV-AUDIT §D1). The DOM tab is the canonical control.
+      const tab = document.querySelector('.tab[data-view="vocabularies"]');
+      if (tab) tab.click();
       return;
     }
     case "markers": {

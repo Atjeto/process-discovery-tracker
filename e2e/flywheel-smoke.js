@@ -318,6 +318,10 @@ async function until(fn, timeoutMs, stepMs = 500) {
     autoMatched >= 1, autoMatched + " auto_matched step(s)");
   await shot(page2, "flywheel-session2-badge.png");
 
+  // NAV-AUDIT §G4/#12: clear the persisted EXPLORATION-drawer key so the pin
+  // below tests the DEFAULT (collapsed), not a value left by a prior run.
+  await page2.evaluate(() => { try { localStorage.removeItem("pdt.aggExploreOpen"); } catch (_) {} });
+
   // (e) Compare: load BOTH sessions, assert the reframed surface — the
   // divergence findings feed on top (≥ 1 variant_divergence card), the
   // aligned reading below it, the merged map demoted below both.
@@ -363,6 +367,93 @@ async function until(fn, timeoutMs, stepMs = 500) {
     console.log("\n[e2e] divergence claim (memo candidate):\n      " + compare.claim + "\n");
   }
   await shot(page2, "compare-divergence-state.png");
+
+  // NAV-AUDIT §G4/#12: the EXPLORATION drawer is Machine-altitude and must ship
+  // COLLAPSED (we cleared its key above). The persisted-open case is covered by
+  // the unit-level localStorage read; here we pin the default on the real load.
+  const exploreDefault = await page2.evaluate(() => {
+    const d = document.getElementById("agg-exploration-drawer");
+    return { present: !!d, open: d ? d.open : null };
+  });
+  record("§G4/#12 EXPLORATION drawer defaults COLLAPSED (Machine-altitude, no persisted key)",
+    !!(exploreDefault.present && exploreDefault.open === false),
+    JSON.stringify(exploreDefault));
+
+  // NAV-AUDIT §G6/#5: the merged activity chart advertises .clickable — clicking
+  // a bar must DRILL by filtering the whole Compare surface via #agg-filter (the
+  // filter box shows the value = the visible inverse). This regressed to "looks
+  // clickable, does nothing" in the audit; pin that it actually filters.
+  await page2.evaluate(() => {
+    const d = document.getElementById("agg-exploration-drawer");
+    if (d && !d.open) { d.open = true; d.dispatchEvent(new Event("toggle")); }
+  });
+  await wait(600);
+  const drill = await page2.evaluate(() => {
+    const chart = document.getElementById("activity-chart");
+    const rect = chart && chart.querySelector(".bar-rect.clickable");
+    const filterBox = document.getElementById("agg-filter");
+    if (!rect || !filterBox) return { ok: false, why: "no clickable bar or filter box" };
+    const before = filterBox.value || "";
+    rect.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { ok: true, before, after: filterBox.value || "" };
+  });
+  await wait(400);
+  const drillEffect = await page2.evaluate(() => ({
+    filter: (document.getElementById("agg-filter") || {}).value || "",
+    bars: document.querySelectorAll("#activity-chart .bar-rect").length,
+  }));
+  record("§G6/#5 activity-chart bar click drills (sets #agg-filter → the surface filters)",
+    !!(drill.ok && drill.after && drill.after !== drill.before && drillEffect.filter === drill.after),
+    JSON.stringify({ drill, drillEffect }));
+  // Inverse: clearing the filter restores the full chart.
+  const cleared = await page2.evaluate(() => {
+    const f = document.getElementById("agg-filter");
+    if (!f) return null;
+    f.value = ""; f.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  });
+  await wait(300);
+  const restored = await page2.evaluate(() => document.querySelectorAll("#activity-chart .bar-rect").length);
+  record("§G6/#5 inverse: clearing #agg-filter restores the full activity chart",
+    !!(cleared && restored >= (drillEffect.bars || 0)),
+    "barsAfterClear=" + restored + " barsWhileFiltered=" + drillEffect.bars);
+
+  // NAV-AUDIT §G3/#4: side-by-side compare is a TRUE toggle. With exactly two
+  // sessions loaded the panel is available; "Compare side-by-side" opens it and
+  // re-clicking (or the Close control) closes it, the button label reflecting
+  // state. The audit found a verb with no inverse — pin the round trip.
+  const sxsSnap = () => page2.evaluate(() => {
+    const btn = document.getElementById("btn-compare-sxs");
+    const closeBtn = document.getElementById("btn-sxs-close");
+    const container = document.getElementById("side-by-side-container");
+    const panel = document.getElementById("side-by-side-panel");
+    return {
+      panelAvailable: panel ? getComputedStyle(panel).display !== "none" : null,
+      label: btn ? (btn.textContent || "").trim() : null,
+      active: btn ? btn.classList.contains("active") : null,
+      closeVisible: closeBtn ? getComputedStyle(closeBtn).display !== "none" : null,
+      content: container ? container.children.length : null,
+    };
+  });
+  const sxs0 = await sxsSnap();
+  await page2.click("#btn-compare-sxs").catch(() => {}); await wait(600);
+  const sxs1 = await sxsSnap();   // open
+  await page2.click("#btn-compare-sxs").catch(() => {}); await wait(400);
+  const sxs2 = await sxsSnap();   // re-click closes (true toggle)
+  await page2.click("#btn-compare-sxs").catch(() => {}); await wait(500);
+  const sxs3 = await sxsSnap();   // reopen
+  await page2.click("#btn-sxs-close").catch(() => {}); await wait(400);
+  const sxs4 = await sxsSnap();   // Close control closes
+  const sxsOk = !!(sxs0.panelAvailable && sxs0.content === 0 && sxs0.label === "Compare side-by-side" &&
+    sxs1.content > 0 && sxs1.active === true && sxs1.closeVisible === true && sxs1.label === "Hide side-by-side" &&
+    sxs2.content === 0 && sxs2.active === false && sxs2.label === "Compare side-by-side" &&
+    sxs3.content > 0 &&
+    sxs4.content === 0 && sxs4.label === "Compare side-by-side");
+  record("§G3/#4 side-by-side is a true toggle (open ↔ close, button label + Close control reflect state)",
+    sxsOk, JSON.stringify({ sxs0, sxs1, sxs2, sxs3, sxs4 }));
+
+  // Leave the profile clean.
+  await page2.evaluate(() => { try { localStorage.removeItem("pdt.aggExploreOpen"); } catch (_) {} });
 
   await app2.close().catch(() => {});
 

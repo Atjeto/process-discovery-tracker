@@ -501,7 +501,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   border-top-style: dashed; }
 .tl-case-label { position: absolute; padding: 1px 5px; font-size: 10px;
   color: var(--bg); background: var(--accent-2); border-radius: 2px;
-  white-space: nowrap; pointer-events: none; font-weight: 500; }
+  white-space: nowrap; pointer-events: none; font-weight: 500;
+  /* NAV-AUDIT §J/§9: clip a kept label to its band so it never spills into a
+     neighbour (the max-width is set inline per band). */
+  overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
 .tl-playhead { position: absolute; top: 0; bottom: 0; width: 1.5px;
   background: var(--fg); pointer-events: none; z-index: 6; }
 .tl-playhead::before { content: ""; position: absolute; top: -3px; left: -2.5px;
@@ -756,6 +759,15 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   position: absolute; z-index: 5; pointer-events: none;
   padding: 3px 8px; border-radius: var(--radius-sm);
   background: var(--bg); border: 1px solid var(--rule);
+  color: var(--fg-2); font-family: var(--font-mono); font-size: 10px;
+  box-shadow: var(--shadow); white-space: nowrap;
+}
+/* NAV-AUDIT §E1: the node select+info tip. Same family as the edge tip; the
+   accent border echoes the selected-node highlight so the two read as one act. */
+.dfg-node-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  padding: 3px 8px; border-radius: var(--radius-sm);
+  background: var(--bg); border: 1px solid var(--accent);
   color: var(--fg-2); font-family: var(--font-mono); font-size: 10px;
   box-shadow: var(--shadow); white-space: nowrap;
 }
@@ -1014,6 +1026,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   flex: 1;
 }
 .session-layout-map .map-host {
+  /* NAV-AUDIT §E2/§7a: the Advanced views drawer opening must not steal the
+     map's height. The flex cascade can't be pinned here (an ancestor sets
+     min-height:0), so the drawer's toggle handler in renderer.js freezes this
+     host's pixel height on open and releases it on close — see _wireMapExpertDrawer. */
   flex: 1; min-height: 360px; height: auto;
 }
 
@@ -2936,6 +2952,11 @@ button.danger:disabled {
   cursor: pointer;
 }
 .tl-step-band:hover { opacity: 0.8; }
+/* NAV-AUDIT §A3: the selected steps-lane band (plain click = select + seek). */
+.tl-step-band.tl-step-selected {
+  opacity: 1; outline: 1.5px solid var(--accent); outline-offset: -1px;
+  box-shadow: 0 0 0 1px var(--accent);
+}
 
 /* ===== Annotation lane on timeline (P1.9) ========================= */
 .tl-note-dot {
