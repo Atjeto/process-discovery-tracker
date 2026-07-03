@@ -207,6 +207,8 @@ decisions, and zero capture instructions across all three memos is cut or
 Machine-demoted**, with COHERENCE-AUDIT inverses. Update CLAUDE.md's active
 direction; cut the release.
 
+Runbook: [R5-SITDOWN-RUNBOOK.md](R5-SITDOWN-RUNBOOK.md).
+
 ## 6. Process rules (new, permanent)
 
 1. **Real-session acceptance.** No phase closes on demo data. The owner
