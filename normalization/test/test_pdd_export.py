@@ -476,6 +476,99 @@ def test_screenshot_ref_within_folder_is_embedded():
         assert len(doc.inline_shapes) >= 1
 
 
+# ---- ADR-0028 §4: work-item grain in §4.5 (detailed steps) ------------------
+
+def _cased_step(step_id, case_id, screen, start):
+    """A step carrying the fields the work-item grouping reads: case_id, the
+    value-free screen grain key source, and a start time for ordering."""
+    return {
+        "step_id": step_id, "name": f"{screen}: {step_id}",
+        "description": "", "flags": {}, "state": "auto_suggested",
+        "case_id": case_id,
+        "grain_keys": {"element": step_id, "screen": screen, "app": "app"},
+        "time_range": {"start": start, "end": start},
+    }
+
+
+def _cased_annotations():
+    """Two cases; case c1 has a Salesforce bounce (non-consecutive va01)."""
+    steps = [
+        _cased_step("s1", "c1", "Salesforce - Order #10900", "2026-05-14T09:00:00Z"),
+        _cased_step("s2", "c1", "va01", "2026-05-14T09:00:05Z"),
+        _cased_step("s3", "c1", "Salesforce - Order #10900", "2026-05-14T09:00:10Z"),
+        _cased_step("s4", "c2", "va01", "2026-05-14T09:05:00Z"),
+    ]
+    return {"steps": steps, "phases": []}
+
+
+def _cased_stats():
+    return {"activity_stats": [],
+            "case_stats": [{"case_id": "c1", "label": "Order #10900"},
+                           {"case_id": "c2", "label": "Order #10901"}],
+            "meta": {"case_count": 2, "step_count": 4}}
+
+
+def test_pdd_steps_render_at_work_item_grain_with_group_names():
+    """§4.5 groups the detailed steps by case -> work item -> fragments; a named
+    work item shows the analyst's name (heading), its note, and a waste flag,
+    with the member fragments preserved beneath."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _a, _s, analysis = _sample()
+    annotations = _cased_annotations()
+    annotations["group_annotations"] = [
+        {"case_id": "c1", "screen_key": "scr:Salesforce - Order",
+         "name": "Enter the order lines",
+         "notes": "unit price is always 49.99", "manually_authored": True},
+        {"case_id": "c1", "screen_key": "scr:va01",
+         "waste": True, "manually_authored": True},
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, _cells = _pdd_texts(tmp, manifest, annotations, _cased_stats(), analysis)
+        # Case headings use the friendly case_stats label, not raw ids.
+        assert any(t == "Order #10900" for t in texts)
+        assert any(t == "Order #10901" for t in texts)
+        # A named work item shows its analyst name + note.
+        assert any(t == "Enter the order lines" for t in texts)
+        assert any("unit price is always 49.99" in t for t in texts)
+        # A waste-flagged work item shows the flag; its label falls back to the
+        # value-free screen (no name given).
+        assert any(t == "Flags: Waste" for t in texts)
+        assert any(t == "va01" for t in texts)
+        # Member fragments are preserved beneath the work items.
+        assert any("s1" in t for t in texts)
+
+
+def test_pdd_unnamed_work_items_use_value_free_screen_label():
+    """With cases but no group_annotations, §4.5 still groups by work item; each
+    heading is the value-free screen label (record number stripped)."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _a, _s, analysis = _sample()
+    annotations = _cased_annotations()   # no group_annotations
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, _cells = _pdd_texts(tmp, manifest, annotations, _cased_stats(), analysis)
+        assert any(t == "Salesforce - Order" for t in texts)   # "#10900" stripped
+        assert any(t == "va01" for t in texts)
+        assert not any("Flags: Waste" in t for t in texts)     # nothing flagged
+
+
+def test_pdd_no_cases_keeps_flat_step_rendering():
+    """The graceful fallback: an unsegmented session (no case_id) keeps the
+    exact flat per-step rendering, not a work-item tree."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _a, stats, analysis = _sample()
+    annotations = {"steps": [
+        {"step_id": "st1", "name": "Enter customer data",
+         "description": "", "flags": {}, "state": "auto_matched"},
+    ], "phases": []}
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, _cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
+        # The step renders under its own name, flat -- no case heading.
+        assert any(t == "Enter customer data" for t in texts)
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

@@ -294,6 +294,72 @@ def _to_say_more(analysis: dict, annotations: dict) -> list[str]:
     return items
 
 
+def _case_labels(stats: dict | None) -> dict:
+    """A `case_id -> friendly label` map from `stats.case_stats` (e.g.
+    "Order #10900"), so a named work item reads against its ticket rather than
+    a raw UUID."""
+    out = {}
+    for c in (stats or {}).get("case_stats") or []:
+        cid = c.get("case_id")
+        lbl = c.get("label")
+        if cid and isinstance(lbl, str) and lbl.strip():
+            out[cid] = lbl.strip()
+    return out
+
+
+def _named_work_items(annotations: dict | None, stats: dict | None) -> list[dict]:
+    """The analyst-NAMED case-scoped screen visits (ADR-0028 §4), for the memo's
+    Case-by-case section. Additive: only work items the analyst gave a name (or
+    a note, or a waste flag) surface here -- an un-annotated session yields an
+    empty list, so the memo is byte-identical to before. Reuses the shared
+    view-time grouping (work_items.build_work_items) so the memo, the PDD, and
+    the viewer agree on the unit and its name."""
+    annotations = annotations or {}
+    if not (annotations.get("group_annotations")):
+        return []                       # nothing named -> no memo lines (no-op)
+    try:
+        from work_items import build_work_items
+    except ImportError:                 # pragma: no cover - defensive
+        return []
+    labels = _case_labels(stats)
+    result = build_work_items(annotations.get("steps"),
+                              annotations.get("group_annotations"))
+    out: list[dict] = []
+    for i, case in enumerate(result["cases"], start=1):
+        cid = case["case_id"]
+        case_label = (labels.get(cid) or f"Case {i}") if cid is not None \
+            else "Unassigned"
+        for wi in case["work_items"]:
+            ga = wi.get("group_annotation")
+            # Only annotated visits reach the memo: a name, a note, or a waste
+            # flag. The screen-label fallback alone is not memo-worthy.
+            named = bool(ga and (ga.get("name") or wi["notes"] or wi["waste"]))
+            if not named:
+                continue
+            out.append({
+                "case_label": case_label,
+                "name": wi["label"],
+                "notes": wi["notes"],
+                "waste": wi["waste"],
+                "fragment_count": len(wi["step_ids"]),
+            })
+    return out
+
+
+def _work_item_lines(items: list[dict]) -> list[str]:
+    """Render the named work items as memo Markdown lines (shared by the md
+    memo). One line per visit: the ticket, the analyst's name, a waste tag, and
+    the note."""
+    lines: list[str] = []
+    for wi in items:
+        tag = " *(waste)*" if wi["waste"] else ""
+        line = f"- **{wi['case_label']}: {wi['name']}**{tag}"
+        if wi["notes"]:
+            line += f" -- {wi['notes']}"
+        lines.append(line)
+    return lines
+
+
 def build_memo_model(
     manifest: dict | None,
     stats: dict | None,
@@ -332,6 +398,7 @@ def build_memo_model(
         "tier2_unlocked": bool(
             ((analysis.get("case_quality") or {}).get("tier2_unlocked"))),
         "tier2_lines": _tier2_section(analysis, stats, annotations),
+        "named_work_items": _named_work_items(annotations, stats),
         "to_say_more": _to_say_more(analysis, annotations),
     }
 
@@ -366,6 +433,14 @@ def render_memo(
     out.append("## Case-by-case analysis")
     out.append("")
     out.extend(model["tier2_lines"])
+    # ADR-0028 §4: the analyst's named work items (case-scoped screen visits),
+    # so their business names reach the deliverable. Additive -- absent when
+    # nothing is named.
+    wi = model.get("named_work_items") or []
+    if wi:
+        out.append("")
+        out.append("Named work items:")
+        out.extend(_work_item_lines(wi))
     out.append("")
     out.append("## To say more")
     out.append("")
@@ -457,6 +532,17 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
     doc.add_heading("Case-by-case analysis", level=h(1))
     for line in model["tier2_lines"]:
         doc.add_paragraph(line)
+    # ADR-0028 §4: the analyst's named work items reach the deliverable here.
+    # Additive -- nothing renders when no work item is named.
+    wi = model.get("named_work_items") or []
+    if wi:
+        doc.add_paragraph("Named work items:")
+        for w in wi:
+            tag = " (waste)" if w["waste"] else ""
+            text = f"{w['case_label']}: {w['name']}{tag}"
+            if w["notes"]:
+                text += f" -- {w['notes']}"
+            doc.add_paragraph(text, style="List Bullet")
 
     doc.add_heading("To say more", level=h(1))
     more = model["to_say_more"]

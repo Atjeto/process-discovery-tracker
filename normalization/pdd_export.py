@@ -87,7 +87,7 @@ def write_pdd(
     _write_applications(doc, stats)                   # 4.2 Applications used
     _write_process_map(doc, process_map_image)        # 4.3 As-Is process map
     _write_statistics(doc, stats, analysis, annotations)  # 4.4 Process statistics
-    _write_steps(doc, annotations, session_folder, analysis)  # 4.5 Detailed steps
+    _write_steps(doc, annotations, session_folder, analysis, stats)  # 4.5 Detailed steps
     _write_input_data(doc)                            # 4.6 Input data
 
     _write_automation(doc, analysis)                  # 5. Automation assessment
@@ -394,7 +394,52 @@ def _analysis_maps(analysis):
     return {w["step_id"]: w for w in wc if isinstance(w, dict) and w.get("step_id")}
 
 
-def _write_steps(doc, annotations, session_folder, analysis):
+def _case_labels(stats) -> dict:
+    """A `case_id -> friendly label` map from `stats.case_stats` (e.g.
+    "Order #10900"), so a work-item case heading reads as the ticket, not a
+    raw UUID. Empty when the session has no per-case stats."""
+    out = {}
+    for c in (stats or {}).get("case_stats") or []:
+        cid = c.get("case_id")
+        lbl = c.get("label")
+        if cid and isinstance(lbl, str) and lbl.strip():
+            out[cid] = lbl.strip()
+    return out
+
+
+def _write_steps_by_work_item(doc, annotations, session_folder,
+                              waste_by_step, stats) -> bool:
+    """Render §4.5 grouped by case -> work item -> member fragments (ADR-0028).
+    Returns True when it rendered (the session has cases), False when there is
+    no case scope to group within, in which case the caller keeps the existing
+    phase-or-flat rendering. The work item's heading is its analyst name
+    (`group_annotations`) when one exists, else the value-free screen label;
+    group notes and the waste flag flow in above the fragments."""
+    from work_items import build_work_items
+    result = build_work_items(annotations.get("steps"),
+                              annotations.get("group_annotations"))
+    if not result["has_cases"]:
+        return False
+    case_labels = _case_labels(stats)
+    for i, case in enumerate(result["cases"], start=1):
+        cid = case["case_id"]
+        heading = (case_labels.get(cid) or f"Case {i}") if cid is not None \
+            else "Unassigned steps"
+        doc.add_heading(heading, level=3)
+        for wi in case["work_items"]:
+            doc.add_heading(wi["label"], level=4)
+            if wi["notes"]:
+                doc.add_paragraph(wi["notes"])
+            if wi["waste"]:
+                p = doc.add_paragraph("Flags: Waste")
+                for run in p.runs:
+                    run.italic = True
+            for step in wi["steps"]:
+                _write_step(doc, step, session_folder, waste_by_step, level=5)
+    return True
+
+
+def _write_steps(doc, annotations, session_folder, analysis, stats=None):
     doc.add_heading("4.5 Detailed process steps", level=2)
     phases = annotations.get("phases") or []
     # Noise-suppressed steps are hidden everywhere else in the pipeline; the
@@ -403,6 +448,18 @@ def _write_steps(doc, annotations, session_folder, analysis):
              if s.get("state") != "hidden"]
     step_by_id = {s["step_id"]: s for s in steps}
     waste_by_step = _analysis_maps(analysis)
+
+    # ADR-0028 §4: when the session has cases, render the detailed steps at the
+    # analyst-facing WORK-ITEM grain -- a case's fragments merged non-
+    # consecutively per screen (the same grouping the viewer's Steps case tree
+    # uses), so a named work item shows the analyst's business name and its
+    # group notes / waste flag, with the member fragments preserved beneath.
+    # An unsegmented session (no case_id) or steps without grain_keys keep the
+    # exact phase-or-flat rendering below (graceful fallback).
+    if _write_steps_by_work_item(doc, annotations, session_folder,
+                                 waste_by_step, stats):
+        return
+
     if phases:
         phased_ids = set()
         for phase in phases:

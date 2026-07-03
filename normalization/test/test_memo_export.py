@@ -271,6 +271,83 @@ def test_memo_docx_skips_traversal_screenshot_refs():
     assert len(doc.inline_shapes) == 0
 
 
+# ---- ADR-0028 §4: named work items in the Case-by-case section --------------
+
+def _wi_step(step_id, case_id, screen, start):
+    return {"step_id": step_id, "name": f"{screen}: {step_id}",
+            "case_id": case_id, "state": "auto_suggested",
+            "grain_keys": {"element": step_id, "screen": screen, "app": "app"},
+            "time_range": {"start": start, "end": start}}
+
+
+def _wi_annotations():
+    return {
+        "steps": [
+            _wi_step("s1", "c1", "Salesforce - Order #10900", "2026-05-14T09:00:00Z"),
+            _wi_step("s2", "c1", "va01", "2026-05-14T09:00:05Z"),
+        ],
+        "group_annotations": [
+            {"case_id": "c1", "screen_key": "scr:Salesforce - Order",
+             "name": "Enter the order lines", "notes": "unit price is always 49.99",
+             "manually_authored": True},
+            {"case_id": "c1", "screen_key": "scr:va01",
+             "name": "Re-key order into SAP", "waste": True,
+             "manually_authored": True},
+        ],
+    }
+
+
+def _wi_stats():
+    return {"meta": {"raw_event_count": 900, "interaction_count": 460},
+            "case_stats": [{"case_id": "c1", "label": "Order #10900",
+                            "wall_clock_ms": 60000}]}
+
+
+def test_named_work_items_appear_in_memo_case_section():
+    md = render_memo(_manifest(), _wi_stats(), _analysis(tier2=True),
+                     _wi_annotations())
+    assert "Named work items:" in md
+    # The analyst name against its ticket, and its note.
+    assert "Order #10900: Enter the order lines" in md
+    assert "unit price is always 49.99" in md
+    # The waste-flagged item carries the waste tag.
+    assert "Order #10900: Re-key order into SAP" in md
+    assert "*(waste)*" in md
+
+
+def test_memo_without_group_annotations_is_unchanged():
+    """Additive no-op: a session with no group_annotations gets NO 'Named work
+    items' line -- the memo is exactly as before (the demo-session posture)."""
+    md = render_memo(_manifest(), _stats(), _analysis(tier2=True), {})
+    assert "Named work items" not in md
+
+
+def test_memo_model_carries_named_work_items():
+    from memo_export import build_memo_model
+    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True),
+                             _wi_annotations())
+    names = [wi["name"] for wi in model["named_work_items"]]
+    assert "Enter the order lines" in names
+    assert "Re-key order into SAP" in names
+    # Only annotated visits reach the memo (both here carry a name).
+    assert all(wi["case_label"] == "Order #10900" for wi in model["named_work_items"])
+
+
+def test_named_work_items_in_docx_memo():
+    if not _HAVE_DOCX:
+        return
+    tmp = Path(tempfile.mkdtemp(prefix="pdt-memo-wi-"))
+    (tmp / "manifest.json").write_text(json.dumps(_manifest()), encoding="utf-8")
+    (tmp / "stats.json").write_text(json.dumps(_wi_stats()), encoding="utf-8")
+    (tmp / "analysis.json").write_text(json.dumps(_analysis(tier2=True)), encoding="utf-8")
+    (tmp / "annotations.json").write_text(json.dumps(_wi_annotations()), encoding="utf-8")
+    out = tmp / "memo.docx"
+    write_memo(str(out), str(tmp))
+    texts, _doc = _docx_texts(out)
+    assert any("Enter the order lines" in t for t in texts)
+    assert any("Re-key order into SAP" in t for t in texts)
+
+
 def test_memo_model_and_md_agree_on_selection():
     """§B3 one-source-of-truth: build_memo_model returns exactly the findings
     the md render shows (the PDD §1 consumes the same model)."""
