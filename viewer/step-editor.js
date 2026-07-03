@@ -152,6 +152,23 @@
     input.addEventListener("blur", () => commit("stay"));
   }
 
+  /* R1 triage economics (APPROACHABILITY-REDESIGN-2026-07-03 §3-5): a real
+     session carries ~500 auto steps and only ~10-15 ever matter for the memo,
+     so any per-step ask is multiplied by 500 -- empty fields read as owed
+     work. RESIDENT (zero-click, disclosure Memo altitude): the name (inline-
+     editable), the one-line facts (duration, app/screen, case), and the three
+     primary one-click acts that already existed (Hide/Unhide, the Waste flag,
+     the name edit) -- nothing else. Everything else the panel used to show at
+     equal weight (description, interaction evidence, screenshot count,
+     classification/canonical + drift detail, split/merge/jump/watch/
+     propagate/delete) moves behind ONE native <details> expansion ("More ▸"),
+     collapsed by default and NOT persisted per step -- renderStepDetail is
+     called fresh on every selection change, so a re-render always starts
+     collapsed (the default posture is triage, per the brief). This mirrors
+     the disclosure model's expand-in-place mechanic (same <details> +
+     ::-webkit-details-marker suppression + CSS-only chevron as
+     .analysis-module in analysis-view.js/styles.css) -- Evidence altitude,
+     one click, stays on page, no navigation. */
   function renderStepDetail(host, step, callbacks) {
     if (!step) {
       host.innerHTML = `
@@ -194,46 +211,62 @@
     const mergeSelectedBtn = mergeSelCount >= 2
       ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
       : "";
+    // Resident one-line facts: duration/start/end (unchanged) plus the R1
+    // app/screen + case facts threaded in from steps-view.js (a step with
+    // neither resolves to no chip, never a placeholder "(app)").
+    const appScreenFact = (callbacks && callbacks.appScreenFact) || "";
+    const caseLabel = (callbacks && callbacks.caseLabel) || "";
+    const factTiles =
+      (appScreenFact ? `<div class="stat-tile"><div class="stat-tile-label">App / Screen</div><div class="stat-tile-value" title="${escapeAttr(appScreenFact)}">${escapeHtml(appScreenFact)}</div></div>` : "") +
+      (caseLabel ? `<div class="stat-tile"><div class="stat-tile-label">Case</div><div class="stat-tile-value" title="${escapeAttr(caseLabel)}">${escapeHtml(caseLabel)}</div></div>` : "");
+    const isHidden = step.state === "hidden";
     host.innerHTML = `
       <div class="step-stat-tiles">
         <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
         <div class="stat-tile"><div class="stat-tile-label">Start</div><div class="stat-tile-value">${_start}</div></div>
         <div class="stat-tile"><div class="stat-tile-label">End</div><div class="stat-tile-value">${_end}</div></div>
+        ${factTiles}
       </div>
       <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"></label>
-      ${step.suggestion_reason ? `<p class="step-suggestion-reason" title="Why the tool grouped these interactions into a step">Auto-detected: ${escapeHtml(step.suggestion_reason)}</p>` : ""}
-      <label>Description <textarea id="step-desc">${escapeHtml(step.description || "")}</textarea></label>
       <div class="flags">
         <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Feeds the value-add / waste analysis and surfaces in the aggregate as 'waste hotspots'."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
-      <div class="evidence">
-        ${interListHtml}
-        <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
-        ${step.canonical_step_id ? `<p class="meta">canonical: <code>${escapeHtml(step.canonical_step_id)}</code></p>` : ""}
-        ${step.drift ? `<p class="drift-note">⚠ Canonical drift: was <code>${escapeHtml(step.drift.previous_canonical_step_id || "")}</code> → now <code>${escapeHtml(step.drift.new_canonical_step_id || "")}</code></p>` : ""}
-      </div>
       <div class="actions">
         <button id="btn-step-save" class="primary">Save</button>
-        ${propagateBtn}
-        <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
-        ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
-        <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
-        <button id="btn-step-merge" title="Merge this step with the one that follows it (the inverse of Split)">Merge with next</button>
-        ${mergeSelectedBtn}
-        <span class="project-menu step-more-menu" id="step-more-menu">
-          <button class="project-btn step-more-btn" id="btn-step-more" title="More actions" aria-haspopup="true">⋯</button>
-          <div class="project-menu-popup" id="step-more-popup" style="display:none">
-            <button class="project-menu-item" id="btn-step-hide" title="${step.state === "hidden" ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${step.state === "hidden" ? "Unhide" : "Hide as noise"}</button>
-            <button class="project-menu-item danger" id="btn-step-delete">Delete</button>
+        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${isHidden ? "Unhide" : "Hide as noise"}</button>
+      </div>
+      <details class="step-detail-more">
+        <summary class="step-detail-more-head">
+          <span class="step-detail-more-title">More</span>
+          <span class="step-detail-more-chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="step-detail-more-body">
+          ${step.suggestion_reason ? `<p class="step-suggestion-reason" title="Why the tool grouped these interactions into a step">Auto-detected: ${escapeHtml(step.suggestion_reason)}</p>` : ""}
+          <label>Description <textarea id="step-desc">${escapeHtml(step.description || "")}</textarea></label>
+          <div class="evidence">
+            ${interListHtml}
+            <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
+            ${step.canonical_step_id ? `<p class="meta">canonical: <code>${escapeHtml(step.canonical_step_id)}</code></p>` : ""}
+            ${step.drift ? `<p class="drift-note">⚠ Canonical drift: was <code>${escapeHtml(step.drift.previous_canonical_step_id || "")}</code> → now <code>${escapeHtml(step.drift.new_canonical_step_id || "")}</code></p>` : ""}
           </div>
-        </span>
-      </div>`;
+          <div class="actions">
+            ${propagateBtn}
+            <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
+            ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
+            <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
+            <button id="btn-step-merge" title="Merge this step with the one that follows it (the inverse of Split)">Merge with next</button>
+            ${mergeSelectedBtn}
+            <button id="btn-step-delete" class="danger">Delete</button>
+          </div>
+        </div>
+      </details>`;
     document.getElementById("btn-step-save").addEventListener("click", () => {
       if (!callbacks.onSave) return;
+      const descEl = document.getElementById("step-desc");
       callbacks.onSave({
         ...step,
         name: document.getElementById("step-name").value.trim(),
-        description: document.getElementById("step-desc").value.trim(),
+        description: descEl ? descEl.value.trim() : (step.description || ""),
         flags: {
           ...flags,
           waste: document.getElementById("flag-waste").checked,
@@ -261,7 +294,11 @@
     });
     // G-8: right-click an interaction to add its element signature to an App
     // Library vocabulary — kills the hand-copying of identifiers that manual
-    // vocabulary curation needs.
+    // vocabulary curation needs. The interaction list lives inside the
+    // collapsed "More" <details> now, but native <details> keeps its body in
+    // the DOM while closed (same guarantee analysis-view.js relies on), so
+    // these listeners still wire up and the row is still reachable -- just
+    // one click (the expansion) away from a right-click.
     if (callbacks && callbacks.onAddInteractionToVocab) {
       host.querySelectorAll(".step-interaction[data-idx]").forEach((li) => {
         li.addEventListener("contextmenu", (e) => {
@@ -288,27 +325,6 @@
     if (watchBtn) {
       watchBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       watchBtn.disabled = !(step.time_range && step.time_range.start);
-    }
-    // Overflow "⋯" menu holding the destructive Hide / Delete actions. Open on
-    // click; the outside-click closer removes itself so re-renders don't stack
-    // listeners.
-    const moreBtn = document.getElementById("btn-step-more");
-    const morePopup = document.getElementById("step-more-popup");
-    if (moreBtn && morePopup) {
-      moreBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const show = morePopup.style.display === "none";
-        morePopup.style.display = show ? "" : "none";
-        if (show) {
-          const onDoc = (ev) => {
-            if (!morePopup.contains(ev.target) && ev.target !== moreBtn) {
-              morePopup.style.display = "none";
-              document.removeEventListener("click", onDoc, true);
-            }
-          };
-          document.addEventListener("click", onDoc, true);
-        }
-      });
     }
   }
 

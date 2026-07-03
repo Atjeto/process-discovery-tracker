@@ -1708,11 +1708,16 @@ details.analysis-module { padding: 0; }
 #step-list {
   flex: 1 1 0; min-height: 350px; overflow-y: auto;
 }
-/* Stat tiles at the top of the selected-step detail pane. */
-.step-stat-tiles { display: flex; gap: 6px; margin-bottom: 12px; }
+/* Stat tiles at the top of the selected-step detail pane. R1 added two
+   resident fact tiles (App/Screen, Case) alongside Duration/Start/End, so the
+   row wraps instead of squeezing five tiles into one line at narrow widths;
+   each tile keeps a floor width and ellipsizes a long fact value rather than
+   forcing the tile wider or clipping silently (CHIP-GUARDRAILS clipping
+   check -- ellipsis is the declared cure here, not an accident). */
+.step-stat-tiles { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .stat-tile {
-  flex: 1; padding: 8px 10px; border-radius: var(--radius-sm);
-  background: var(--bg-3);
+  flex: 1 1 84px; min-width: 84px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-3); max-width: 100%; overflow: hidden;
 }
 .stat-tile-label {
   font-size: 9px; color: var(--fg-3);
@@ -1721,6 +1726,7 @@ details.analysis-module { padding: 0; }
 .stat-tile-value {
   font-size: 13px; font-weight: 600; font-family: var(--font-mono);
   color: var(--fg); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* The selected-step editor fills its column and scrolls internally;
    the step list scrolls inside its own pane, so the editor stays in
@@ -1946,6 +1952,27 @@ details.analysis-module { padding: 0; }
 .editor-detail-pane .danger:hover:not(:disabled) {
   background: var(--bad); color: #fff;
 }
+/* R1 triage economics (APPROACHABILITY-REDESIGN-2026-07-03 §3-5): the step
+   detail's single "More" expand-in-place disclosure -- everything beyond the
+   resident name/facts/Waste/Hide moves here, collapsed by default. Same
+   mechanism as .analysis-module (native <details>, marker suppressed via
+   list-style:none + ::-webkit-details-marker, a dedicated chevron span driven
+   entirely by CSS ::before content) so there is exactly one glyph per row,
+   never a native marker doubled with a text glyph. */
+.step-detail-more { margin-top: 12px; border-top: 1px solid var(--rule-soft); }
+.step-detail-more-head {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer; padding: 8px 2px; list-style: none; user-select: none;
+  font-size: 11px; color: var(--fg-3);
+}
+.step-detail-more-head::-webkit-details-marker { display: none; }
+.step-detail-more-head:hover { color: var(--fg-2); }
+.step-detail-more[open] > .step-detail-more-head { color: var(--accent); }
+.step-detail-more-title { text-transform: uppercase; letter-spacing: 0.6px; }
+.step-detail-more-chevron { font-size: 10px; color: var(--fg-4); }
+.step-detail-more-chevron::before { content: "▸"; }
+.step-detail-more[open] .step-detail-more-chevron::before { content: "▾"; }
+.step-detail-more-body { padding-top: 4px; }
 .drift-indicator { color: var(--warn); margin-left: 4px; }
 .drift-note { color: var(--warn); font-size: 11px; }
 /* A3: analyst flag badges in the step list. Marking a step visibly shows
@@ -2710,14 +2737,9 @@ button.danger:disabled {
   text-transform: uppercase; color: var(--fg-4); pointer-events: none;
 }
 .project-menu-group:first-child { padding-top: 2px; }
-/* Destructive item tucked in an overflow menu (e.g. step Delete). */
+/* Destructive item tucked in an overflow menu (e.g. Delete elsewhere). */
 .project-menu-item.danger { color: var(--rec); }
 .project-menu-item.danger:hover { background: var(--rec); color: #fff; }
-/* Compact "⋯" overflow trigger in the step action row. */
-.step-more-btn { padding: 4px 9px; }
-/* The step action row sits at the bottom of the detail pane, so open its
-   overflow UPWARD — opening downward would clip it below the fold. */
-#step-more-popup { top: auto; bottom: calc(100% + 4px); }
 
 /* Recent dropdown (top-bar) -- sessions + projects reachable any time */
 .recent-menu-section { max-height: 380px; overflow-y: auto; }

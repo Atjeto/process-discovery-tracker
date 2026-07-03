@@ -20,7 +20,7 @@ const PdtAlign = require("../step-alignment.js");
 const PdtPalette = require("../command-palette.js");
 const { stepsToTemplateSteps, canonicalSkeleton, anchorFromOverride, slugify, signatureFromInteraction } = require("../canonical-author.js");
 const { loadVocabs } = require("./identity-picker.js");
-const { rollUpSteps } = require("../process-map-levels.js");
+const { rollUpSteps, screenType, resolveStepGrainKeys } = require("../process-map-levels.js");
 
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
@@ -409,6 +409,24 @@ function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById) {
     stepDetailCallbacks(selected, interactionsById));
 }
 
+/* R1 triage economics: a resident "App / Screen" fact for the step detail
+   panel's fact line. Prefers the pipeline-stamped grain_keys (screen already
+   value-freed at stamp time is not guaranteed, so re-apply screenType -- the
+   same read-only helper the map's screen axis uses, imported but never
+   mutated here); falls back to resolving live from the step's interactions
+   for older sessions/hand-authored steps (mirrors process-map-levels' own
+   _containmentKeys fallback). Never touches process-map-levels.js. */
+function stepAppScreenFact(step, interactionsById) {
+  if (!step) return "";
+  const keys = (step.grain_keys && typeof step.grain_keys === "object")
+    ? step.grain_keys
+    : resolveStepGrainKeys(step, interactionsById || {});
+  const app = (keys.app || "").trim();
+  const screen = screenType(keys.screen || "").trim();
+  if (app && screen && screen !== "(screen)") return app + " — " + screen;
+  return app || (screen && screen !== "(screen)" ? screen : "");
+}
+
 /* The callbacks the per-step detail editor needs. Factored so both the flat
    reading and the aligned reading's exception editor (ADR-0015 Phase 4) wire the
    same verbs to a selected step. */
@@ -440,6 +458,10 @@ function stepDetailCallbacks(selected, interactionsById) {
       }
       renderStepsLevel();
     },
+    // R1 triage economics: resident one-line facts (duration/start/end already
+    // came from time_range; these two are the added app/screen + case facts).
+    appScreenFact: stepAppScreenFact(selected, interactionsById),
+    caseLabel: selected && selected.case_id ? caseLabeler()(selected.case_id) : "",
   };
 }
 

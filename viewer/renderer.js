@@ -1307,10 +1307,14 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
+  // R1 (APPROACHABILITY-REDESIGN-2026-07-03 §5): renumbered to match the
+  // resident tab row (1/2/3, no gap where Template used to sit at 3).
+  // Template's hotkey is retired, not reassigned -- it's a "More ▾"
+  // destination now, reachable via the menu / command palette / the
+  // openCanonicalInTemplateTab drill, never a top-level number.
   if (e.key === "1") activateTab("session");
   else if (e.key === "2") activateTab("aggregate");
-  else if (e.key === "3") activateTab("canonical");
-  else if (e.key === "4") activateTab("vocabularies");
+  else if (e.key === "3") activateTab("vocabularies");
   // Step editor shortcuts (only when on session view and steps panel)
   else if (State.getLevel() === "steps" && State.getSession()) {
     const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];

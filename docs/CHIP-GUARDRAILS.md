@@ -94,8 +94,13 @@ and it drives the viewer's own `electron`.
   `#btn-tabs-more-menu` to open `#tabs-more-popup`, then click
   `#btn-tabs-more-canonical` — both call the same `activateTab("canonical")` the
   old tab called, so `#view-canonical` and the view's own IPC/state are
-  unchanged. The keyboard shortcut `3` still activates it directly (no menu
-  needed) and the `openCanonicalInTemplateTab` drill from Steps still works.
+  unchanged. **R1 renumbering (§5):** the resident row now reads `1`/`2`/`3`
+  (Session / Compare / App Library — no gap where Template used to sit at
+  `3`); Template's own `3` hotkey is RETIRED, not reassigned, since a
+  non-resident destination shouldn't claim a top-level number. Reach it via
+  the More menu, the command palette ("Switch to Process Template"), or the
+  `openCanonicalInTemplateTab` drill from Steps (all still work; only the
+  bare `3` keypress no longer does).
 - **Session-view levels:** `.view-mode-btn[data-level="overview"|"flow"|"steps"|"phases"|"map"|"analysis"]`
   → each shows its container `#session-layout-<level>`. **Overview is the default
   on session load** (lab-phase §A5) — its badge/hero/facts/findings/memo surface is

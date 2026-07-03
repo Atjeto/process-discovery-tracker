@@ -296,8 +296,11 @@ function commandPaletteProvider(rawQuery) {
     { label: "Open another session…", hint: "", run: () => $("#btn-open-session") && $("#btn-open-session").click() },
     { label: "Switch to Aggregate", hint: "Tab 2", run: () => activateTab("aggregate") },
     { label: "Switch to Session", hint: "Tab 1", run: () => activateTab("session") },
-    { label: "Switch to Process Template", hint: "Tab 3", run: () => activateTab("canonical") },
-    { label: "Switch to Vocabularies", hint: "Tab 4", run: () => activateTab("vocabularies") },
+    // R1 (APPROACHABILITY-REDESIGN-2026-07-03 §5): Process Template moved out
+    // of the resident tab row (it's "More ▾" now) and its "3" hotkey retired
+    // -- Vocabularies is Tab 3. The palette still finds Template by name/search.
+    { label: "Switch to Process Template", hint: "", run: () => activateTab("canonical") },
+    { label: "Switch to Vocabularies", hint: "Tab 3", run: () => activateTab("vocabularies") },
     { label: "Clear case scope", hint: "Show all cases", run: () => {
         State.setCaseScope("");
         populateCaseScope();

@@ -30,17 +30,22 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     <nav class="tabs">
       <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
       <button class="tab" data-view="aggregate"><span class="kbd">2</span> Compare Sessions</button>
-      <button class="tab" data-view="vocabularies"><span class="kbd">4</span> App Library</button>
+      <button class="tab" data-view="vocabularies"><span class="kbd">3</span> App Library</button>
       <!-- R1: Process Template is a byproduct destination nothing in the
            default workflow hands you (APPROACHABILITY-REDESIGN-2026-07-03
            §4) -- out of the resident tab row, reachable one click down. The
-           view, its IPC, and the command palette entry are unchanged. -->
+           view, its IPC, and the command palette entry are unchanged. R1
+           renumbering (§5): the resident row reads 1/2/3 (no gap where
+           Template used to be 3); Template's own hotkey "3" is RETIRED
+           (App Library now owns it) rather than reassigned, since a
+           non-resident destination shouldn't claim a top-level number --
+           it stays one click away via this menu (or the command palette). -->
       <div class="project-menu tabs-more-menu" id="tabs-more-menu">
         <button class="project-btn tabs-more-btn" id="btn-tabs-more-menu" title="More views">
           <span>More</span><span class="project-menu-caret">▾</span>
         </button>
         <div class="project-menu-popup" id="tabs-more-popup" style="display:none">
-          <button class="project-menu-item" id="btn-tabs-more-canonical"><span class="kbd">3</span> Process Template</button>
+          <button class="project-menu-item" id="btn-tabs-more-canonical">Process Template</button>
         </div>
       </div>
     </nav>
@@ -1115,7 +1120,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <section class="help-section" data-section="shortcuts">
           <h3>Viewer keyboard shortcuts</h3>
           <table class="help-table">
-            <tr><td><span class="kbd">1</span> / <span class="kbd">2</span></td><td>Session view / Compare Sessions view</td></tr>
+            <tr><td><span class="kbd">1</span> / <span class="kbd">2</span> / <span class="kbd">3</span></td><td>Session view / Compare Sessions view / App Library</td></tr>
             <tr><td><span class="kbd">Space</span></td><td>Play / pause video</td></tr>
             <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Scrub 5 seconds (hold <span class="kbd">Shift</span> for 10s)</td></tr>
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>
