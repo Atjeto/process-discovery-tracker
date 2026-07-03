@@ -4,11 +4,80 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — approachability redesign (branch `redesign-r1`)
+## [1.5.0] - 2026-07-03 — approachability redesign
 
-Viewer-only work on the approachability redesign
-([docs/To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md](docs/To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md)).
-Phase gates close on an owner real-session sit-down; the suites are the floor.
+The largest usability cycle since 1.0. Trigger: the owner "struggled for months
+to sit down and annotate" real recordings — every panel was honest, tested, and
+documented, yet the sum was "unapproachable, scary, tiring just to look at."
+This release adds a **use gate** on top of the Honesty Redesign's tier gates (a
+resident surface must, on a real session, earn its place by producing a memo
+sentence, a recorded decision, or a capture instruction —
+[docs/To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md](docs/To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md))
+and rebuilds the surfaces that failed it.
+
+Almost entirely viewer-side; the one pipeline change is additive (exports read
+the new `group_annotations`), the session golden is unchanged, and old
+`annotations.json` loads unmodified. **The redesign's phase gates close on an
+owner real-session sit-down (the R5 runbook), not on the green suites — that
+validation is still pending; this build is its instrument.**
+
+### Added — R3: case×screen work items ([ADR-0028](docs/adr/0028-case-screen-work-items.md))
+
+- **The Steps view leads with a case tree** built on a new analyst-facing unit:
+  the **case-scoped screen visit** — the fragments a worker produced on one
+  screen within one case, merged across app bounces (non-consecutive), so a real
+  hour folds to memory-sized items instead of a ~500-row wall. Computed at
+  **view time** on the ADR-0024 grain ladder; raw steps are never destroyed and
+  the element-grain list stays one notch away.
+- **Group-level annotation** — a new additive `group_annotations[]` keyed
+  `{case_id, screen_key}` carries a name / note / waste / hidden per work item,
+  flowing down to member fragments at render and into the exports. Written by the
+  viewer, preserved-not-consumed by re-normalization (verified: an unknown
+  additive key survives `--mine`).
+
+### Added — R4: the workflow spine
+
+- **A next-act rail on Overview** turns the app from a set of nouns (views) into
+  a sequence of verbs: it derives, from the session's own data, the one most
+  valuable next act (name controls → mark cases → walk the story → judge the top
+  time sinks → assemble the memo) and highlights exactly one. Advisory counts are
+  labelled advisory; nothing auto-runs.
+- **The Analysis tab is retired** — its surviving modules (Where the time goes,
+  automation candidates, the gated €-ROI) move into Overview's evidence layer,
+  below the findings feed, keeping their collapse-persistence.
+- **Templates return as a byproduct verb** ("Save as reference for this
+  process…") plus an offer line when a loaded session matches a saved template.
+- **Capture guidance line** — a single status-driven line on the operator panel
+  ("Recording — fire a marker when a new case starts", with the real hotkey).
+
+### Added — R5: the sit-down runbook
+
+- **[docs/To-Do/R5-SITDOWN-RUNBOOK.md](docs/To-Do/R5-SITDOWN-RUNBOOK.md)** — the
+  owner-run instrument that closes the redesign: three real sessions → three
+  timed 2-page memos → a border ledger that cuts any surface producing no memo
+  sentence, decision, or capture instruction. The suites are the floor; the
+  ledgers are the gate.
+
+### Changed — R1: subtract to what earns residence
+
+- **Analysis gutted to the modules that earn their pixels.** "Process
+  efficiency" and "Waste by screen" removed as resident modules (the waste
+  judgment relocates into a "Where the time goes" row expansion); the €-ROI
+  section is gated **as a whole** on analyst-entered volume (below it, one
+  sentence + an "Edit assumptions…" CTA — no table of zeros, no assumption
+  rendered as a per-row AUTO% column); automation candidates render as finding
+  cards (Confirm/Dismiss preserved), not a ranked table.
+- **Compare restacked to lead with difference, not merge.** Divergence findings
+  → aligned reading → side-by-side are resident; the merged charts, the 80-row
+  variants table, the pooled outlier/rework tables, and the aggregate-analysis
+  block move behind one **EXPLORATION** Machine drawer; exports collapse to one
+  menu; the merged map renders resident only under template conformance.
+- **Flow timeline defaults to two lanes** (apps + cases/playhead); markers,
+  screenshots, and steps lanes are opt-in.
+- **Step detail is triage-first** — name / waste / hide resident, everything else
+  behind one "More" disclosure that resets to collapsed on each selection.
+- **Templates demoted** out of the primary nav (reachable via "More"); resident
+  tab hotkeys renumbered 1/2/3.
 
 ### Added — R2: the App Library match workbench
 
@@ -35,6 +104,62 @@ Phase gates close on an owner real-session sit-down; the suites are the floor.
   ground truth; a re-analyze reconciles. Unit-tested (`vocab-match.test.js`);
   pinned end-to-end by `e2e/workbench-smoke.js` and the re-pointed
   `e2e/vocab-smoke.js`.
+
+### Changed — App Library and Steps: one identity, one name, no jumps
+
+- **App Library (post-R2 UX pass).** Naming happens **in the clicked row** — the
+  old jump-to-bottom scroll is gone; every row shows one composed **identity
+  line** (`ControlType · "identity" · window`, with a volatility marker) plus one
+  name field, and the four raw signature inputs survive only behind a per-row
+  "Raw match rule" disclosure in the Machine drawer. "Discover from window" and
+  prep recordings now yield **triaged candidates** (interactive control types,
+  capped, nothing preselected) into the one unnamed worklist — naming is the
+  review; the per-row "reviewed" ticks and "Approve all" are removed.
+- **Steps (UX pass).** Per-row ↑/↓ move buttons removed (reorder → right-click
+  menu + Alt+Arrow); truncated step names now carry the **full name** in their
+  tooltip (audited across every truncating label on the surface); the interaction
+  evidence in step detail renders through the same **identity line** as the App
+  Library. Returning from "Jump to in Flow" now reveals the still-selected step.
+
+### Fixed — the navigation contract ([NAV-AUDIT-2026-07-03](docs/To-Do/NAV-AUDIT-2026-07-03.md))
+
+A read-only audit of every navigation edge against a five-law contract (one click
+semantic; arrivals reveal / returns restore; disclosure is local; scale degrades
+honestly; what you write, you can find), then the confirmed fixes:
+
+- **The Overview rail's App Library button** navigated nowhere (a `TypeError`
+  swallowed by an empty catch) — fixed, and the overview smoke now asserts every
+  rail act **lands**, not merely exists.
+- **Map nodes were inert at the default notch** — a click now selects the node and
+  shows its info; the shortcuts legend was corrected to match.
+- **A steps-lane click silently switched views** — now it selects + seeks and
+  stays on Flow; the view change is a labelled "Open in Steps" verb.
+- **Side-by-side compare had no inverse** (couldn't be closed) — now a true toggle
+  with a Close control.
+- **Two drawers shrank their siblings / moved their own toggle on open** (map
+  Advanced views −47px, Raw events −24px) — both now grow the page downward with
+  zero toggle movement.
+- **~60 case labels overlapped into noise** on multi-hour timelines — labels now
+  render only where they fit (full label on hover, all back on zoom-in).
+
+### Changed — exports render at the work-item grain ([ADR-0028](docs/adr/0028-case-screen-work-items.md) §4)
+
+- The memo and PDD now render analyst-written work-item names (and their notes /
+  waste flags) wherever they enumerate a case's work, via a Python twin of the
+  viewer's grouping that reuses the shared screen-label rules. Output is
+  byte-identical when no `group_annotations` exist.
+
+### Documentation
+
+- Read-only analyses committed alongside the code: the deliverable (memo/PDD)
+  use-gate audit
+  ([DELIVERABLE-AUDIT-2026-07-03.md](docs/To-Do/DELIVERABLE-AUDIT-2026-07-03.md)),
+  the measured performance ceiling (linear to ~3,840 steps / 14.85 h with no
+  virtualization needed —
+  [PERF-CEILING-2026-07-03.md](docs/To-Do/PERF-CEILING-2026-07-03.md)), and a
+  structure-only real-data vitals report.
+- The compiled cross-session operating knowledge now lives in a global skills
+  pack; a frozen snapshot is committed under `docs/claude-skills/`.
 
 ## [1.4.0] - 2026-07-02
 
