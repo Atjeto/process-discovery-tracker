@@ -45,19 +45,16 @@ public sealed class UiaSubscriber {
     // an ordinary capture. See OcrBridge / ADR-0023.
     private readonly OcrBridge? _ocr;
     // The capture app's own exe (from hello's host_process). Interactions from
-    // this process are PDT's OWN windows (operator panel / label picker /
-    // dialogs) and are never emitted -- keeps the raw log free of self-capture.
+    // this process are PDT's OWN windows (operator panel / dialogs) and are
+    // never emitted -- keeps the raw log free of self-capture.
     private readonly string? _hostProcess;
     private bool _started;
 
-    // value_changed coalescer: per-element debouncer.
+    // value_changed coalescer: per-element debouncer (ValueCoalescer, RP-24).
     // Key: "{pid}|{automation_id}" (falls back to name/class, then to the
-    // UIA RuntimeId, when the AutomationId is missing).
-    // Value: latest pending event + timer that fires after the debounce window.
-    private readonly ConcurrentDictionary<string, PendingValue> _pending = new();
-    // value_changed coalescing window. Configurable via the hello cmd's
-    // debounce_ms field; set once in the constructor.
-    private readonly TimeSpan _valueCoalesceWindow;
+    // UIA RuntimeId, when the AutomationId is missing). The window is the
+    // hello cmd's debounce_ms; set once in the constructor.
+    private readonly ValueCoalescer _values;
 
     // Control types whose UIA notifications are almost always layout
     // chrome rather than user action. Combined with Win32 framework
@@ -115,7 +112,7 @@ public sealed class UiaSubscriber {
         _opts = opts;
         _onEvent = onEvent;
         _verbose = verbose;
-        _valueCoalesceWindow = TimeSpan.FromMilliseconds(debounceMs > 0 ? debounceMs : 750);
+        _values = new ValueCoalescer(TimeSpan.FromMilliseconds(debounceMs > 0 ? debounceMs : 750), onEvent);
         // Bind the OCR engine once per session when opted in; an unavailable
         // language pack leaves the bridge present-but-inert (Available=false).
         _ocr = ocr ? new OcrBridge() : null;
@@ -221,12 +218,7 @@ public sealed class UiaSubscriber {
         try { Automation.RemoveAllEventHandlers(); } catch { }
         // Flush anything still pending in the value coalescer so we
         // don't lose the last keystroke before shutdown.
-        foreach (var key in new List<string>(_pending.Keys)) {
-            if (_pending.TryRemove(key, out var pending)) {
-                pending.Timer.Dispose();
-                _onEvent(pending.Event);
-            }
-        }
+        _values.FlushAll();
         _started = false;
     }
 
@@ -291,36 +283,7 @@ public sealed class UiaSubscriber {
         }
         var built = BuildEvent("value_changed", el, extra);
         if (built == null) return;
-        // Arm the timer OUTSIDE the AddOrUpdate factory. ConcurrentDictionary
-        // may invoke an add/update factory more than once under contention, so
-        // creating a Timer inside it leaks the losing factory runs' timers --
-        // and a leaked armed timer still fires and races TryRemove. Instead:
-        // build a DISARMED timer, let AddOrUpdate pick the winner, then arm the
-        // winner exactly once and dispose ours if an existing entry won.
-        var fresh = new PendingValue { Event = built, Timer = NewDisarmedTimer(key) };
-        var winner = _pending.AddOrUpdate(key,
-            fresh,
-            // Existing entry: replace the event (its timer is re-armed below).
-            (_, existing) => { existing.Event = built; return existing; });
-        // (Re-)arm the winner's timer once, after the entry is settled.
-        winner.Timer.Change(_valueCoalesceWindow, Timeout.InfiniteTimeSpan);
-        if (!ReferenceEquals(winner, fresh)) {
-            // An existing entry won the race -- our disarmed timer is a
-            // duplicate that was never inserted; dispose it so it can't leak.
-            fresh.Timer.Dispose();
-        }
-    }
-
-    // A flush timer that is created DISARMED (Infinite due time); the caller
-    // arms it via Change once it has won the AddOrUpdate race. On fire it
-    // removes its pending entry and emits the coalesced event.
-    private Timer NewDisarmedTimer(string key) {
-        return new Timer(_ => {
-            if (_pending.TryRemove(key, out var pending)) {
-                pending.Timer.Dispose();
-                _onEvent(pending.Event);
-            }
-        }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _values.Submit(key, built);
     }
 
     /// <summary>
@@ -707,9 +670,8 @@ public sealed class UiaSubscriber {
             TrySet(data, "window_title", () => GetTopWindowTitle(el));
             TrySet(data, "process_name", () => GetProcessName(el));
             TrySet(data, "pid", () => el.Current.ProcessId);
-            // Never record PDT's OWN windows (operator panel / label picker /
-            // dialogs) as interactions. Short-circuit before the OCR/coverage
-            // work below.
+            // Never record PDT's OWN windows (operator panel / dialogs) as
+            // interactions. Short-circuit before the OCR/coverage work below.
             if (IsHostProcess(data.TryGetValue("process_name", out var pnv) ? pnv as string : null,
                               _hostProcess)) {
                 return null;
@@ -860,10 +822,5 @@ public sealed class UiaSubscriber {
         } catch {
             return null;
         }
-    }
-
-    private sealed class PendingValue {
-        public object Event = null!;
-        public Timer Timer = null!;
     }
 }

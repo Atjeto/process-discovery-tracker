@@ -5,9 +5,10 @@
  * capture control panel's single status-driven guidance line.
  *
  * One sentence that tells the worker what to do NOW, driven by the existing
- * session state machine (no new state, zero behaviour change). The marker
+ * session state machine (no new state, zero behaviour change). The run
  * hotkey is read from the existing config so the line always names the real
- * key, never a hardcoded default.
+ * key, never a hardcoded default. The worker brackets each run with that one
+ * key, so the copy speaks of runs.
  *
  * The panel's states (from pdt:status): not tracking = "not recording";
  * tracking && !paused = "recording"; tracking && paused = "paused". Anything
@@ -44,9 +45,11 @@ function guidanceState(status) {
   return "recording";
 }
 
-/* The guidance sentence for the current state. `hotkey` is the raw marker
+/* The guidance sentence for the current state. `hotkey` is the raw run
    (start) accelerator from config.hotkeys.start_picker; it is formatted here
-   and named in the recording-state sentence so the worker knows the real key.
+   and named so the worker knows the real key. Pressing it also starts
+   recording, hence the not-recording sentence names it too. With no key
+   configured, the sentences point at the panel instead.
 
    `opts.state` may be passed directly (already-derived); otherwise `opts.status`
    is a pdt:status snapshot this function derives the state from. */
@@ -54,15 +57,18 @@ function guidanceLine(opts) {
   const o = opts || {};
   const state = o.state || guidanceState(o.status);
   const key = formatHotkey(o.hotkey);
-  const keyPhrase = key ? " (" + key + ")" : "";
   switch (state) {
     case "recording":
-      return "Recording — fire a marker when a new case starts" + keyPhrase + ".";
+      return key
+        ? "Recording: press " + key + " at the start of each run."
+        : "Recording: press Start next run at the start of each run.";
     case "paused":
-      return "Paused — resume when the worker starts again; markers you fire wait until then.";
+      return "Paused: resume to keep recording.";
     case "not-recording":
     default:
-      return "Not recording — start capture when the worker begins.";
+      return key
+        ? "Not recording: press " + key + " to start recording and your first run."
+        : "Not recording: start recording, then start your first run.";
   }
 }
 

@@ -2,7 +2,7 @@
  * Process Discovery Tracker -- capture-side Electron main process.
  *
  * Wires up:
- *   - Tray UI + global hotkeys (label picker, end marker, manual screenshot)
+ *   - Tray UI + global hotkeys (start next run, end run, manual screenshot)
  *   - Session lifecycle with per-session config (YAML)
  *   - Active-window polling (tracker.js)
  *   - Idle detection via powerMonitor.getSystemIdleTime (§3.3)
@@ -67,9 +67,6 @@ const hotkeyOverlay = require("./hotkey-overlay.js");
 const { createWindowManager } = require("./window-manager.js");
 const { createSessionStorage } = require("./session-storage.js");
 const { appLogger } = require("./log.js");
-const { jsonForScript } = require("./json-for-script.js");
-const { injectTokens } = require("./ui/tokens.js");
-const crypto = require("node:crypto");
 
 const { bootLog } = require("./boot-log.js");
 process.on("uncaughtException", (e) =>
@@ -96,9 +93,8 @@ let lastStatus = null;
    containing this rect, so firing a marker from the recorder -- which moves
    focus to the recorder's monitor -- still captures the worker's monitor. */
 let lastWorkBounds = null;
-let labelPickerWindow = null;
 /* status, help, operator, obsSettings, sessionConfig — all single-instance
-   tray windows; the picker stays separate (blur-close + nest IPC). */
+   tray windows. */
 const windows = createWindowManager();
 let obs = null;
 let obsConnected = false;
@@ -106,8 +102,9 @@ let config = null;
 let configSourcePath = null;
 let baseDir = null;
 let recoveredCount = 0;
+/* The session's recorder supervisor (recorder.js superviseRecorder); its
+   current() is the live recorder, null while restarting or after death. */
 let recorder = null;
-let recorderRestartCount = 0;
 let recorderPermanentlyDead = false;
 
 /* §E2 dead-man monitor: during an active session with interactions
@@ -135,7 +132,6 @@ let lastTrackedApp = null;
 const { notifyUser, trayIconImage, trayWarningImage } = require("./notify.js");
 const { createDeadManMonitor } = require("./dead-man.js");
 const { runReadinessProbe, summarizeReadiness } = require("./readiness.js");
-const { showCloseoutWizard } = require("./self-annotation/wizard-window.js");
 
 /* Session disk-usage accounting + the delete / prune flows. */
 const sessionStorage = createSessionStorage({
@@ -187,7 +183,7 @@ async function fireScreenshot(kind, opts) {
       screenshotFailureNotified = true;
       notifyUser(
         "Process Discovery Tracker",
-        "Screenshots are failing. The session is still recording markers, video, and interactions, but screenshots will be missing until you restart the session.",
+        "Screenshots are failing. The session is still recording runs, video, and interactions, but screenshots will be missing until you restart the session.",
         { urgency: "normal" }
       );
     }
@@ -237,7 +233,7 @@ function _checkBrowserForegroundWatchdog() {
       status.currentApp + " is the front window but none of your clicks or " +
       "typing are being recorded. Chrome / Edge may be blocking accessibility " +
       "tools. Try closing and re-opening the browser, or ask IT to enable the " +
-      "AccessibilityModeEnabled policy. Markers and screenshots still record.",
+      "AccessibilityModeEnabled policy. Runs and screenshots still record.",
       { urgency: "normal" }
     );
   }
@@ -246,7 +242,7 @@ function _checkBrowserForegroundWatchdog() {
 async function onTickHandler(status) {
   lastStatus = status;
   /* D3: remember the last work-window bounds, excluding our own recorder
-     windows. While a recorder window (panel / picker / status) holds focus,
+     windows. While a recorder window (panel / status) holds focus,
      BrowserWindow.getFocusedWindow() is non-null -- skip the update so a
      marker screenshot keeps targeting the worker's monitor, not the
      recorder's. (Single-monitor occlusion -- the panel physically covering
@@ -358,7 +354,7 @@ function checkDeadMan() {
     refreshTray();
     notifyUser(
       "Recording may have stopped -- please check",
-      "Nothing has been recorded for over 2 minutes. Markers and screenshots " +
+      "Nothing has been recorded for over 2 minutes. Runs and screenshots " +
       "still work, but clicks and typing are no longer being captured. Open " +
       "the tray and restart the session if this persists.",
       { urgency: "critical" }
@@ -701,125 +697,7 @@ function showOnceNoObsHint() {
   } catch (_e) { /* best-effort */ }
 }
 
-function promptForAppName() {
-  /* Tiny modal prompt window. The label picker pattern is overkill;
-     this is one input + Start/Cancel. Returns a promise that resolves
-     to the typed app name or null on cancel. */
-  return new Promise((resolve) => {
-    let resolved = false;
-    const w = new BrowserWindow({
-      width: 460,
-      height: 280,
-      title: "Prep app vocabulary",
-      resizable: false, frame: true,
-      autoHideMenuBar: true,
-      backgroundColor: "#14141A",
-      modal: false,
-      webPreferences: {
-        nodeIntegration: true, contextIsolation: false, sandbox: false,
-        webSecurity: true, allowRunningInsecureContent: false,
-        experimentalFeatures: false, spellcheck: false,
-      },
-    });
-    w.removeMenu();
-    w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    w.webContents.on("will-navigate", (e) => e.preventDefault());
-    const html = `<!doctype html><html><head><meta charset="utf-8">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-      <style>
-        :root{color-scheme:dark;--bg:#14141A;--bg-2:#22222A;--bg-3:#2E2E37;--bg-4:#3A3A44;
-          --border:#424250;--fg:#D8D6CE;--fg-2:#A8A69E;--fg-3:#807E78;
-          --accent:#6E8A66;--accent-2:#5A7488}
-        *{box-sizing:border-box}
-        html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
-          font-family:var(--font-ui);font-size:13px;line-height:1.5}
-        body{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
-        h1{font-size:14px;margin:0;font-weight:600}
-        .sub{color:var(--fg-3);font-size:12px}
-        label{display:block;font-size:11px;color:var(--fg-3);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
-        input{width:100%;padding:9px 11px;background:var(--bg-2);border:1px solid var(--border);
-          color:var(--fg);border-radius:3px;font-size:13px;outline:none}
-        input:focus{border-color:var(--accent)}
-        .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:auto}
-        button{padding:8px 16px;background:var(--bg-3);color:var(--fg);
-          border:1px solid var(--border);border-radius:3px;cursor:pointer;font-family:inherit;font-size:12px}
-        button:hover{background:var(--bg-4);border-color:var(--accent)}
-        button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
-        button.primary:hover{filter:brightness(1.1)}
-        .hint{color:var(--fg-3);font-size:11px}
-      </style></head><body>
-      <div>
-        <h1>Prep app vocabulary</h1>
-        <div class="sub">Record a short session focused on one app. Click through every button, menu, and form field you want named. When you end the session, the viewer will offer to build a starter App Library entry from it.</div>
-      </div>
-      <div>
-        <label for="app">App name</label>
-        <input id="app" placeholder="e.g., Salesforce, Outlook, SAP" autofocus>
-        <p class="hint">Plain English. The id (lower-case, hyphenated) is derived automatically.</p>
-      </div>
-      <div class="actions">
-        <button id="cancel">Cancel</button>
-        <button id="start" class="primary">Start prep session</button>
-      </div>
-      <script>
-        const { ipcRenderer } = require("electron");
-        const ip = document.getElementById("app");
-        document.getElementById("start").addEventListener("click", () => {
-          const v = (ip.value || "").trim();
-          if (!v) return;
-          ipcRenderer.send("pdt:prepAppResult", v);
-          window.close();
-        });
-        document.getElementById("cancel").addEventListener("click", () => {
-          ipcRenderer.send("pdt:prepAppResult", null);
-          window.close();
-        });
-        ip.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") document.getElementById("start").click();
-          else if (e.key === "Escape") document.getElementById("cancel").click();
-        });
-      </script></body></html>`;
-    w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(injectTokens(html)));
-    const handler = (_e, value) => {
-      if (resolved) return;
-      resolved = true;
-      try { ipcMain.removeListener("pdt:prepAppResult", handler); } catch (_) {}
-      resolve(value);
-    };
-    ipcMain.on("pdt:prepAppResult", handler);
-    w.on("closed", () => {
-      if (!resolved) { resolved = true; resolve(null); }
-      try { ipcMain.removeListener("pdt:prepAppResult", handler); } catch (_) {}
-    });
-  });
-}
-
-async function startAppPrepSession() {
-  const appName = await promptForAppName();
-  if (!appName) return null;
-  const prepApp = appName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
-  const s = await startSession({ purpose: "app_prep", prepApp });
-  if (!s) return null;
-  /* Helpful starter marker so the analyst sees clear timeline boundaries
-     during the prep walkthrough. */
-  try {
-    tracker.fireMarker({ markerType: "start", label: `Prep: ${appName}` });
-    lastStatus = tracker.getStatus();
-  } catch (_e) {}
-  dialog.showMessageBox({
-    type: "info",
-    title: "Prep session started",
-    message: `Recording app vocabulary prep for "${appName}"`,
-    detail:
-      "Click through every button, menu, and form field in the app that you want named.\n\n" +
-      "When you're done, end the session from the tray. The viewer will offer to build " +
-      "a starter App Library entry from it automatically.",
-    buttons: ["OK"],
-  });
-  return s;
-}
-
-async function startSession(opts) {
+async function startSession() {
   if (session) return session;
   fs.mkdirSync(baseDir, { recursive: true });
 
@@ -828,11 +706,9 @@ async function startSession(opts) {
      the worker in front of a recording they wanted. Surface problems
      as a low-urgency toast and proceed; the operator can address them
      between recordings via tray -> Session setup / Settings. */
-  if (!(opts && opts.purpose === "app_prep")) {
-    const problems = validateConfig(config, baseDir);
-    if (problems.length) {
-      notifyUser("Check the recording setup", problems.join(" "), { urgency: "low" });
-    }
+  const problems = validateConfig(config, baseDir);
+  if (problems.length) {
+    notifyUser("Check the recording setup", problems.join(" "), { urgency: "low" });
   }
 
   /* Strict-mode OBS preflight: connect synchronously so a failed
@@ -842,20 +718,14 @@ async function startSession(opts) {
     if (!ok) return null;
   }
 
-  /* App-prep sessions get parked under engagement_id="vocab-prep" so
-     they don't pollute the engagement's process captures. The prep_app
-     name is recorded on the manifest for downstream auto-naming. */
-  const isPrep = !!(opts && opts.purpose === "app_prep");
-
   /* Worker consent gate (§11f). Off by default; when configured, the worker
      must consent before any recording starts -- declining aborts the start.
-     The decision is recorded on the manifest. App-prep (vocab curation) is the
-     operator's own desktop, so it is exempt. */
+     The decision is recorded on the manifest. */
   const cmode = (config.consent && config.consent.mode) || "off";
   const cversion = (config.consent && config.consent.version) || 1;
   const cworker = (config.worker && config.worker.id) || "unknown";
   let consent = consentRecord({ mode: "off" });
-  if (!isPrep && cmode !== "off") {
+  if (cmode !== "off") {
     let granted = false;
     if (cmode === "once" && hasAcknowledged(cworker, cversion)) {
       granted = true;
@@ -877,10 +747,8 @@ async function startSession(opts) {
 
   session = createSession({
     baseDir,
-    engagementId: isPrep ? "vocab-prep" : config.engagement_id,
+    engagementId: config.engagement_id,
     config,
-    purpose: opts && opts.purpose,
-    prepApp: opts && opts.prepApp,
     consent,
   });
   writeConfigSnapshot(session.sessionFolder, config);
@@ -951,6 +819,7 @@ async function startSession(opts) {
     updateManifest(session.sessionFolder, (m) => { m.displays = displays; });
   } catch (e) { bootLog(`display geometry write failed: ${e && e.message}`); }
 
+  recorderPermanentlyDead = false;   // RP-20: recorder state resets per session only
   if (config.interactions && config.interactions.enabled) {
     const ok = await startRecorderForSession();
     if (!ok && config.interactions.required) {
@@ -970,41 +839,58 @@ async function startSession(opts) {
   return session;
 }
 
+/* The recorder for this session, under recorder.js's superviseRecorder: it
+   restarts a crashed recorder after 5 s, at most
+   interactions.max_restarts_per_session times per session (RP-20: the
+   budget is the supervisor's, created here once per session, and never
+   refilled by a successful re-spawn). A clean exit (code 0, what endSession
+   asks for) is not a death: no recorder_died, no restart. */
 async function startRecorderForSession() {
   try {
-    recorder = require("./recorder.js").spawnRecorder({
-      sessionId: session.sessionId,
-      verbose: !!(config.interactions && config.interactions.verbose),
-      debounceMs: config.interactions && config.interactions.debounce_ms,
-      ocr: !!(config.interactions && config.interactions.ocr),
-      onEvent: (data) => {
-        if (!tracker) return;
-        try { tracker.fireInteraction(data); }
-        catch (e) { bootLog(`fireInteraction failed: ${e && e.message}`); }
-        // Feed the browser-no-events watchdog so we don't alarm on a
-        // browser that is actually producing UIA traffic.
-        try { _noteBrowserInteractionIfApplicable(data); } catch (_) {}
-        // §E2: an interaction proves the recorder is alive.
-        if (deadMan) deadMan.noteSignal();
+    recorder = require("./recorder.js").superviseRecorder({
+      spawnOpts: {
+        sessionId: session.sessionId,
+        verbose: !!(config.interactions && config.interactions.verbose),
+        debounceMs: config.interactions && config.interactions.debounce_ms,
+        ocr: !!(config.interactions && config.interactions.ocr),
+        onEvent: (data) => {
+          if (!tracker) return;
+          try { tracker.fireInteraction(data); }
+          catch (e) { bootLog(`fireInteraction failed: ${e && e.message}`); }
+          // Feed the browser-no-events watchdog so we don't alarm on a
+          // browser that is actually producing UIA traffic.
+          try { _noteBrowserInteractionIfApplicable(data); } catch (_) {}
+          // §E2: an interaction proves the recorder is alive.
+          if (deadMan) deadMan.noteSignal();
+        },
+        onWarning: (w) => bootLog(`[recorder] ${w.msg || ""}: ${w.detail || ""}`),
+        onStats: (s) => {
+          bootLog(`[recorder.stats] queued=${s.queued} dropped=${s.dropped_total} emitted=${s.emitted_total} errors=${s.errors || 0}`);
+          // Land recorder health in events.jsonl so the analyst sees drops
+          // and errors against the session timeline, not only in boot.log.
+          if (tracker) {
+            try { tracker.fireSystem("recorder_health", s); }
+            catch (e) { bootLog(`recorder_health emit failed: ${e && e.message}`); }
+          }
+          // §E2: a stats heartbeat also proves the recorder is alive.
+          if (deadMan) deadMan.noteSignal();
+        },
+        bootLog,
       },
-      onWarning: (w) => bootLog(`[recorder] ${w.msg || ""}: ${w.detail || ""}`),
-      onStats: (s) => {
-        bootLog(`[recorder.stats] queued=${s.queued} dropped=${s.dropped_total} emitted=${s.emitted_total} errors=${s.errors || 0}`);
-        // Land recorder health in events.jsonl so the analyst sees drops
-        // and errors against the session timeline, not only in boot.log.
-        if (tracker) {
-          try { tracker.fireSystem("recorder_health", s); }
-          catch (e) { bootLog(`recorder_health emit failed: ${e && e.message}`); }
-        }
-        // §E2: a stats heartbeat also proves the recorder is alive.
-        if (deadMan) deadMan.noteSignal();
+      autoRestart: !!config.interactions.auto_restart,
+      maxRestarts: config.interactions.max_restarts_per_session,
+      onStarted: () => { if (tracker) tracker.fireSystem("recorder_start"); },
+      onDied: (info) => { if (tracker) tracker.fireSystem("recorder_died", info); },
+      onDead: () => {
+        recorderPermanentlyDead = true;
+        if (tracker) tracker.fireSystem("recorder_dead_permanent");
+        notifyUser(
+          "Process Discovery Tracker",
+          "Interaction recorder stopped. The session is still recording runs and screenshots, but no UI interaction events will be captured until you restart the session.",
+          { urgency: "critical" }
+        );
       },
-      onExit: (info) => handleRecorderExit(info),
-      bootLog,
     });
-    if (tracker) tracker.fireSystem("recorder_start");
-    recorderRestartCount = 0;
-    recorderPermanentlyDead = false;
     return true;
   } catch (e) {
     bootLog(`recorder spawn failed: ${e && e.message}`);
@@ -1019,53 +905,22 @@ async function startRecorderForSession() {
   }
 }
 
-function handleRecorderExit(info) {
-  if (!tracker) {
-    recorder = null;
-    return;
-  }
-  // recorder_died has "the recorder failed" semantics per the schema --
-  // every session log used to carry one even on a clean session-end
-  // shutdown (the tracker emits `recorder_stop`, the C# process exits
-  // with code 0, and we used to unconditionally fire recorder_died
-  // here). Treat an exit code of 0 as a clean shutdown; only fire the
-  // failure event when the recorder actually crashed.
-  const cleanExit = info && info.code === 0 && !info.signal;
-  if (!cleanExit) {
-    tracker.fireSystem("recorder_died", {
-      code: info.code, signal: info.signal, restart_count: recorderRestartCount,
-    });
-  }
-  recorder = null;
-  // Only auto-restart on a non-clean exit. A clean exit is the result
-  // of endSession() asking the recorder to stop -- restarting would
-  // race the rest of the shutdown.
-  if (
-    !cleanExit &&
-    config.interactions &&
-    config.interactions.auto_restart &&
-    recorderRestartCount < config.interactions.max_restarts_per_session
-  ) {
-    recorderRestartCount += 1;
-    setTimeout(() => {
-      if (!tracker) return;
-      startRecorderForSession();
-    }, 5000);
-  } else if (!cleanExit) {
-    recorderPermanentlyDead = true;
-    tracker.fireSystem("recorder_dead_permanent");
+/* Tracker-side notices that warrant a desktop toast: write_error,
+   events_dropped, and uncaptured_app (a foreground app the recorder produced
+   no interaction events for -- commonly an elevated process, or one with no
+   UIA surface). */
+function handleTrackerNotice(kind, payload) {
+  if (kind === "events_dropped") {
+    // RP-21: a batch of clicks/typing could not be written and was dropped;
+    // the tracker records the gap as an events_dropped system event. Told
+    // once per loss stretch, not per failed flush.
+    bootLog(`tracker events_dropped notice: ${JSON.stringify(payload)}`);
     notifyUser(
       "Process Discovery Tracker",
-      "Interaction recorder stopped. The session is still recording markers and screenshots, but no UI interaction events will be captured until you restart the session.",
-      { urgency: "critical" }
+      "Some clicks and typing could not be saved to the session log. The gap is noted in the recording. If this keeps happening, check the session folder's disk space and permissions."
     );
+    return;
   }
-}
-
-/* Tracker-side notices that warrant a desktop toast. Currently only
-   uncaptured_app: a foreground app the recorder produced no interaction
-   events for -- commonly an elevated process, or one with no UIA surface. */
-function handleTrackerNotice(kind, payload) {
   if (kind === "write_error") {
     // H-6: a durability-critical batch (markers/system events) failed to
     // write and was re-queued for retry. Surface it loudly -- the durable
@@ -1080,33 +935,54 @@ function handleTrackerNotice(kind, payload) {
   if (kind !== "uncaptured_app") return;
   // Stay quiet when there is no live recorder -- its own failure toast
   // (or the required-recorder dialog) already told the user.
-  if (!recorder || recorderPermanentlyDead) return;
+  if (!recorder || !recorder.current() || recorderPermanentlyDead) return;
   const app = (payload && payload.app) || "An application";
   notifyUser(
     "Process Discovery Tracker",
-    `${app} interactions aren't being recorded -- it may be running as administrator or may not expose UI Automation. Markers, screenshots and video are unaffected.`
+    `${app} interactions aren't being recorded -- it may be running as administrator or may not expose UI Automation. Runs, screenshots and video are unaffected.`
   );
 }
 
-/* §E3: whether the last endSession() showed the worker close-out wizard
-   -- callers that pop their own post-end dialog (the tray item) read it
-   to avoid stacking two surfaces. */
-let lastCloseoutShown = false;
+/* The one-screen end summary (replaces the §E3 close-out wizard): the Live
+   Session window shows runs recorded, duration, interactions and
+   screenshots with a Done button. The window is opened when it is closed;
+   a window that is still loading gets the summary once its page is up. */
+function showEndSummary(summary) {
+  let created = false;
+  let win;
+  try {
+    win = windows.show("operator", () => { created = true; return showOperatorPanel(config); });
+  } catch (e) {
+    bootLog(`end summary: could not open the Live Session window: ${e && (e.stack || e.message)}`);
+    return;
+  }
+  const send = () => {
+    if (win.isDestroyed()) {
+      bootLog("end summary: the Live Session window closed before the summary was shown");
+      return;
+    }
+    win.webContents.send("pdt:sessionSummary", summary);
+  };
+  if (created || win.webContents.isLoading()) win.webContents.once("did-finish-load", send);
+  else send();
+}
 
 async function endSession(opts) {
   opts = opts || {};
   if (!tracker) return null;
-  lastCloseoutShown = false;
   stopIdleMonitor();
   stopDeadManMonitor();   // §E2: a clean end is not a silent death
-  const hadVideo = obsConnected;  // B1: captured before the OBS teardown clears it
 
   if (recorder) {
-    try { tracker.fireSystem("recorder_stop"); } catch (_e) {}
+    // recorder_stop only when a recorder is live (not mid-restart or dead).
+    if (recorder.current()) {
+      try { tracker.fireSystem("recorder_stop"); } catch (_e) {}
+    }
+    // Resolves once the recorder's output has closed (RP-23), so its final
+    // flushed values reach the tracker before tracker.stop() below.
     try { await recorder.stop({ drainTimeoutMs: 1500 }); } catch (_e) {}
     recorder = null;
   }
-  recorderRestartCount = 0;
   recorderPermanentlyDead = false;
 
   if (obsConnected && obs) {
@@ -1154,78 +1030,44 @@ async function endSession(opts) {
     }
   } catch (e) { bootLog(`storage check failed: ${e && e.message}`); }
 
-  /* B1: hand the operator a post-session summary if the Live Session
-     window is open -- a harmless no-op when it is not. */
-  const opPanel = windows.get("operator");
-  if (opPanel && !opPanel.isDestroyed()) {
-    opPanel.webContents.send("pdt:sessionSummary", {
-      sessionFolder: session.sessionFolder,
-      durationMs: finalStatus.elapsedMs,
-      events: finalStatus.eventCount,
-      markers: finalStatus.markerCount,
-      screenshots: finalStatus.screenshotCount,
-      interactions: finalStatus.interactionCount,
-      hadVideo,
-    });
-  }
   bootLog(`session ended: ${session.sessionFolder}`);
   const oldFolder = session.sessionFolder;
-  const purpose = (session.manifest && session.manifest.purpose) || "process";
   tracker = null;
   session = null;
   lastStatus = null;
   sessionStorage.invalidateSessionsCache();  // new session lands in the count + size
 
-  /* §E3: worker close-out -- the self-annotation wizard + the review
-     handover ("Submit session"). Skipped for app-prep sessions (the
-     operator's own throwaway vocab walkthrough) and on paths that must
-     not pop UI (quit, a failed-start teardown). Fire-and-forget: its
-     writes are additive sidecar/metadata via persist.js, and a wizard
-     problem must never break session end. */
-  if (!opts.skipCloseout && purpose !== "app_prep") {
-    lastCloseoutShown = true;
-    showCloseoutWizard({
+  /* The end summary. Skipped on paths that must not pop UI (quit, a
+     failed-start teardown). */
+  if (!opts.skipCloseout) {
+    showEndSummary({
       sessionFolder: oldFolder,
-      summary: {
-        durationMs: finalStatus.elapsedMs,
-        events: finalStatus.eventCount,
-        markers: finalStatus.markerCount,
-        screenshots: finalStatus.screenshotCount,
-        interactions: finalStatus.interactionCount,
-        hadVideo,
-      },
-    }).catch((e) => bootLog(`closeout wizard failed: ${e && e.message}`));
+      runs: finalStatus.startMarkerCount,
+      durationMs: finalStatus.elapsedMs,
+      interactions: finalStatus.interactionCount,
+      screenshots: finalStatus.screenshotCount,
+    });
   }
   return oldFolder;
 }
 
-/* Default semantics: pressing Start with a marker already open
-   should CLOSE the current one and open the new one as a sibling.
-   The previous default (always nest) was producing sessions like
-   "4 starts, 0 ends, all chained" because users had no obvious way
-   to end markers. To still allow intentional nesting, callers pass
-   `nest: true` (operator panel offers a Shift+Click button, label
-   picker offers a "Nest under current" submenu). */
-async function fireStartMarker(label, opts) {
-  opts = opts || {};
+/* One-hotkey runs: the start hotkey starts the next run at once, labelled
+   "Run N" (a named run from the task shortcuts passes its own label). A
+   run that is still open is ended first, so runs never nest --
+   tracker.startRun owns that rule. Starts the session when none is
+   running, so the first press of the hotkey also starts recording. */
+async function fireStartMarker(label) {
   if (!tracker) {
     const s = await startSession();
     if (!s) return;
   }
-  const stat = tracker.getStatus();
-  if (!opts.nest && stat.markerDepth > 0) {
-    /* Close any currently-open markers (innermost first) before
-       starting the new one. Mirrors what the worker probably meant
-       when they pressed Start the second time. Bounded by the known
-       open-marker depth so a future fireMarker change can't infinite-
-       loop on mutated tracker state. */
-    const openDepth = stat.markerDepth;
-    for (let i = 0; i < openDepth; i += 1) {
-      if (tracker.getStatus().markerDepth <= 0) break;
-      tracker.fireMarker({ markerType: "end", reason: "auto_close_for_sibling" });
-    }
+  if (!tracker) {
+    // startSession() returned the session object while another caller is
+    // still starting it (strict-OBS attach in flight): nothing to write to yet.
+    bootLog("run start ignored: the session is still starting");
+    return;
   }
-  tracker.fireMarker({ markerType: "start", label: label || "(unlabeled)" });
+  tracker.startRun(label);
   if (config.screenshots.enabled && config.screenshots.on_marker_fire) {
     fireScreenshot("screenshot");
   }
@@ -1249,216 +1091,14 @@ function fireManualScreenshot() {
   fireScreenshot("screenshot_manual", { force: true });
 }
 
-/* Picker semantics: if a marker is already open and the caller doesn't
-   force nest, the picker shows "Nest" as a secondary action so the
-   user can flip semantics on the fly. The default (Enter, primary
-   button) closes-and-opens, matching the new fireStartMarker default. */
-let _pickerNest = false;
-function showLabelPicker(opts) {
-  opts = opts || {};
-  _pickerNest = !!opts.nest;
-  if (labelPickerWindow && !labelPickerWindow.isDestroyed()) {
-    // Reload with the current nest mode so the secondary button text
-    // and the hint update.
-    labelPickerWindow.webContents.send("pdt:setNest", _pickerNest);
-    labelPickerWindow.show();
-    labelPickerWindow.focus();
-    return;
-  }
-  labelPickerWindow = new BrowserWindow({
-    width: 460,
-    height: 400,
-    title: "Start marker",
-    resizable: false,
-    frame: false,
-    alwaysOnTop: true,
-    autoHideMenuBar: true,
-    skipTaskbar: false,
-    backgroundColor: "#1a1a1a",
-    webPreferences: {
-      /* Trusted first-party HTML loaded via a data: URL. CSP in the
-         page restricts what the renderer can do. */
-      nodeIntegration: true,
-      contextIsolation: false,
-      sandbox: false,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-      experimentalFeatures: false,
-      spellcheck: false,
-    },
-  });
-  // D1: keep the picker above full-screen / always-on-top apps so the
-  // operator can actually see it to type a label.
-  labelPickerWindow.setAlwaysOnTop(true, "screen-saver");
-  labelPickerWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  labelPickerWindow.webContents.on("will-navigate", (e) => e.preventDefault());
-  labelPickerWindow.loadURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(injectTokens(buildPickerHtml()))
-  );
-  labelPickerWindow.on("closed", () => { labelPickerWindow = null; });
-  labelPickerWindow.on("blur", () => {
-    if (labelPickerWindow && !labelPickerWindow.isDestroyed()) {
-      labelPickerWindow.close();
-    }
-  });
-}
-
-function buildPickerHtml() {
-  // jsonForScript (not bare JSON.stringify): these strings are interpolated
-  // into an inline <script>, so a label containing "</script>..." would break
-  // out and -- with nodeIntegration:true -- execute. See json-for-script.js.
-  const labels = jsonForScript(config.process_labels || []);
-  // Pass current marker stack so we can show "Will close: <innermost>"
-  // hint, and the initial nest mode requested by the caller.
-  const stack = lastStatus && lastStatus.openMarkers ? lastStatus.openMarkers : [];
-  const stackJson = jsonForScript(stack);
-  const initialNest = _pickerNest ? "true" : "false";
-  return `<!doctype html>
-<html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Start marker</title>
-<style>
-  :root {
-    color-scheme: dark;
-    --bg:       #14141A;
-    --bg-2:     #22222A;
-    --bg-3:     #2E2E37;
-    --border:   #424250;
-    --fg:       #D8D6CE;
-    --fg-2:     #A8A69E;
-    --fg-3:     #807E78;
-    --accent:   #6E8A66;
-    --warn:     #A08050;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 14px 16px; background: var(--bg); color: var(--fg);
-         font-family: var(--font-ui); font-size: 13px; }
-  .lbl { font-size: 11px; margin: 0 0 8px; color: var(--fg-3); letter-spacing: 0.5px; text-transform: uppercase; }
-  .stack-hint { font-size: 11px; color: var(--warn); margin: 0 0 8px; padding: 5px 8px;
-                background: rgba(160, 128, 80, 0.10); border-radius: 4px; }
-  .stack-hint code { font-family: var(--font-mono); color: var(--fg-2); }
-  input { width: 100%; padding: 9px 11px; background: var(--bg-2);
-          border: 1px solid var(--border); color: var(--fg);
-          border-radius: 4px; font-family: inherit; font-size: 13px; outline: none; }
-  input:focus { border-color: var(--accent); }
-  input::placeholder { color: var(--fg-3); }
-  ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 200px; overflow-y: auto; }
-  li { padding: 7px 10px; border-radius: 4px; cursor: pointer; color: var(--fg-2); font-size: 13px; }
-  li.sel { background: var(--accent); color: var(--bg); }
-  li:hover:not(.sel) { background: var(--bg-3); color: var(--fg); }
-  .row { display: flex; gap: 6px; margin-top: 10px; }
-  .row button { flex: 1; padding: 7px 10px; background: var(--bg-2); color: var(--fg-2);
-                border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
-                font-family: inherit; font-size: 12px; }
-  .row button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
-  .row button:hover:not(:disabled) { background: var(--bg-3); color: var(--fg); }
-  .row button.primary:hover { background: #8AAB7E; border-color: #8AAB7E; }
-  .hint { font-size: 11px; color: var(--fg-3); margin-top: 8px; line-height: 1.4; }
-</style></head><body>
-<div class="lbl">Start marker</div>
-<div id="stack-hint" class="stack-hint" style="display:none"></div>
-<input id="q" placeholder="Type a label, Enter to fire" autofocus />
-<ul id="list"></ul>
-<div class="row">
-  <button id="btn-fire" class="primary">Fire</button>
-  <button id="btn-fire-nest">Nest under current</button>
-</div>
-<div class="hint">Enter to fire · Esc to cancel · ↑↓ navigate · Shift+Enter to nest</div>
-<script>
-const { ipcRenderer } = require("electron");
-const all = ${labels};
-const stack = ${stackJson};
-let nestMode = ${initialNest};
-const q = document.getElementById("q");
-const list = document.getElementById("list");
-const stackHint = document.getElementById("stack-hint");
-const btnFire = document.getElementById("btn-fire");
-const btnNest = document.getElementById("btn-fire-nest");
-let sel = 0;
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-function refreshChrome() {
-  if (stack.length > 0) {
-    const innermost = stack[stack.length - 1];
-    stackHint.innerHTML = nestMode
-      ? 'Will nest <strong>under</strong> <code>' + esc(innermost) + '</code> (closes nothing).'
-      : 'Will <strong>close</strong> <code>' + esc(innermost) + '</code>' +
-        (stack.length > 1 ? ' (and ' + (stack.length - 1) + ' parent' + (stack.length > 2 ? 's' : '') + ')' : '') +
-        ' before firing.';
-    stackHint.style.display = 'block';
-    btnFire.textContent = 'Fire (close current)';
-    btnNest.disabled = false;
-    btnNest.style.display = '';
-    if (nestMode) {
-      btnFire.classList.remove('primary');
-      btnNest.classList.add('primary');
-    } else {
-      btnFire.classList.add('primary');
-      btnNest.classList.remove('primary');
-    }
-  } else {
-    stackHint.style.display = 'none';
-    btnFire.textContent = 'Fire';
-    btnNest.style.display = 'none';
-  }
-}
-function filtered() {
-  const term = q.value.toLowerCase();
-  const matched = all.filter(l => l.toLowerCase().includes(term));
-  const typed = q.value.trim();
-  if (typed && !matched.some(l => l.toLowerCase() === typed.toLowerCase())) {
-    matched.push(typed + "  (new)");
-  }
-  return matched;
-}
-function render() {
-  const items = filtered();
-  if (sel >= items.length) sel = items.length - 1;
-  if (sel < 0) sel = 0;
-  /* XSS guard: labels come from user typing and from config; both are
-     escaped before being injected via innerHTML. */
-  list.innerHTML = items.map((l, i) =>
-    '<li class="' + (i === sel ? 'sel' : '') + '" data-i="' + i + '">' + esc(l) + '</li>'
-  ).join('');
-  list.querySelectorAll('li').forEach(li => {
-    li.addEventListener('click', () => { sel = Number(li.dataset.i); fire(nestMode); });
-  });
-}
-function fire(nest) {
-  const items = filtered();
-  let label = items[sel] || q.value.trim();
-  label = label.replace(/  \\(new\\)$/, "");
-  if (!label) return;
-  ipcRenderer.invoke("pdt:fireStart", label, { nest: !!nest });
-  window.close();
-}
-q.addEventListener("input", () => { sel = 0; render(); });
-q.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    fire(e.shiftKey ? !nestMode : nestMode);
-  }
-  else if (e.key === "Escape") { window.close(); }
-  else if (e.key === "ArrowDown") { sel++; render(); e.preventDefault(); }
-  else if (e.key === "ArrowUp") { sel--; render(); e.preventDefault(); }
-});
-btnFire.addEventListener("click", () => fire(false));
-btnNest.addEventListener("click", () => fire(true));
-refreshChrome();
-render();
-</script></body></html>`;
-}
-
-ipcMain.handle("pdt:fireStart", (_e, label, opts) => fireStartMarker(label, opts || {}));
+ipcMain.handle("pdt:fireStart", (_e, label) => fireStartMarker(label));
 
 /* --- Status window IPC -------------------------------------------- */
 
 function recorderStateLabel(paused) {
   if (!config || !config.interactions || !config.interactions.enabled) return "disabled";
   if (recorderPermanentlyDead) return "dead";
-  if (!recorder) return "off";
+  if (!recorder || !recorder.current()) return "off";
   return paused ? "paused" : "on";
 }
 
@@ -1488,6 +1128,7 @@ ipcMain.handle("pdt:status", () => {
     markerDepth: s.markerDepth,
     eventCount: s.eventCount,
     markerCount: s.markerCount,
+    runCount: s.startMarkerCount,
     screenshotCount: s.screenshotCount,
     interactionCount: s.interactionCount || 0,
     elapsedMs: s.elapsedMs,
@@ -1502,8 +1143,9 @@ function togglePause() {
   const s = tracker.getStatus();
   if (s.paused) tracker.resume(); else tracker.pause();
   lastStatus = tracker.getStatus();
-  if (recorder) {
-    try { lastStatus.paused ? recorder.pause() : recorder.resume(); } catch (_e) {}
+  const live = recorder && recorder.current();
+  if (live) {
+    try { lastStatus.paused ? live.pause() : live.resume(); } catch (_e) {}
   }
   refreshTray();
   return lastStatus;
@@ -1529,17 +1171,6 @@ ipcMain.handle("pdt:setSessionLabel", (_e, sessionFolder, label) => {
   catch (e) { bootLog(`setSessionLabel failed: ${e && e.message}`); }
 });
 
-ipcMain.handle("pdt:fireSync", (_e, syncId) => {
-  /* Cross-machine sync marker (§13). Workers fire this at agreed
-     moments (transaction handoffs, hourly ticks). The shared sync_id
-     lets the analyst correlate timelines across machines later. */
-  if (!tracker) return null;
-  const id = (syncId && String(syncId).trim()) ||
-    `sync-${new Date().toISOString().replace(/[:.]/g, "")}-${crypto.randomBytes(3).toString("hex")}`;
-  tracker.fireSystem("sync_marker", { sync_id: id });
-  return id;
-});
-
 function showHelp() {
   windows.show("help", () => showHelpWindow());
 }
@@ -1550,24 +1181,20 @@ function toggleOperatorPanel() {
 
 function statusLine() {
   if (!tracker) return "Idle -- click to start a session";
-  if (lastStatus && lastStatus.paused) return `Paused (${lastStatus.markerDepth} open)`;
+  const runTag = lastStatus && lastStatus.markerDepth > 0 ? "run open" : "no run open";
+  if (lastStatus && lastStatus.paused) return `Paused (${runTag})`;
   const appName = (lastStatus && lastStatus.currentApp) || "(no window)";
-  const depth = (lastStatus && lastStatus.markerDepth) || 0;
   const obsTag = obsConnected ? " - OBS" : "";
   const idleTag = isIdle ? " - idle" : "";
   let recTag = "";
   if (config && config.interactions && config.interactions.enabled) {
     if (recorderPermanentlyDead) recTag = " - recorder DEAD";
-    else if (!recorder) recTag = " - recorder OFF";
+    else if (!recorder || !recorder.current()) recTag = " - recorder OFF";
     else if (deadMan && deadMan.isSilent()) recTag = " - recorder SILENT";
   }
-  return `Tracking: ${appName} - ${depth} open${obsTag}${idleTag}${recTag}`;
+  return `Tracking: ${appName} - ${runTag}${obsTag}${idleTag}${recTag}`;
 }
 
-// Quick-start nesting preference (clutter pass): instead of a parallel "Quick
-// start (nested)" submenu duplicating every label, one submenu carries a
-// "Nest under current" checkbox that flips this flag.
-let quickStartNest = false;
 function buildMenu() {
   const items = [
     { label: statusLine(), enabled: false },
@@ -1578,53 +1205,31 @@ function buildMenu() {
       label: "Start capture session",
       click: async () => { await startSession(); refreshTray(); },
     });
-    items.push({
-      label: "Start app vocabulary prep session...",
-      click: async () => { await startAppPrepSession(); refreshTray(); },
-    });
   } else {
     items.push({
-      label: "Fire Start marker...",
+      label: "Start next run",
       accelerator: config.hotkeys.start_picker,
-      click: () => showLabelPicker(),
+      click: () => fireStartMarker(),
     });
-    // When a marker is already open the label picker itself still offers
-    // nesting (Shift+Enter / its stack hint), so we no longer carry a separate
-    // "Fire Start (nest under current)" item. Quick-start nesting folds into
-    // ONE submenu via a "Nest under current" checkbox (clutter pass: was two
-    // parallel submenus duplicating every label).
-    const hasOpen = lastStatus && lastStatus.markerDepth > 0;
+    // Named runs from the configured task shortcuts (process_labels). Like
+    // the run hotkey, each one ends the open run first; runs never nest.
     if (config.process_labels && config.process_labels.length) {
-      const quickStart = [];
-      if (hasOpen) {
-        quickStart.push({
-          label: "Nest under current marker",
-          type: "checkbox",
-          checked: quickStartNest,
-          click: () => { quickStartNest = !quickStartNest; refreshTray(); },
-        });
-        quickStart.push({ type: "separator" });
-      } else if (quickStartNest) {
-        // No open marker -> nothing to nest under; reset so the next session
-        // starts un-nested.
-        quickStartNest = false;
-      }
-      for (const label of config.process_labels) {
-        quickStart.push({
+      items.push({
+        label: "Start a named run",
+        submenu: config.process_labels.map((label) => ({
           label,
-          click: () => fireStartMarker(label, { nest: hasOpen && quickStartNest }),
-        });
-      }
-      items.push({ label: "Quick start", submenu: quickStart });
+          click: () => fireStartMarker(label),
+        })),
+      });
     }
-    const innermost =
+    const openRun =
       lastStatus && lastStatus.markerDepth > 0
         ? lastStatus.openMarkers[lastStatus.openMarkers.length - 1]
         : null;
     items.push({
-      label: innermost ? `Fire End marker (closes "${innermost}")` : "Fire End marker",
+      label: openRun ? `End run (${openRun})` : "End run",
       accelerator: config.hotkeys.end_innermost,
-      enabled: !!innermost,
+      enabled: !!openRun,
       click: () => fireEndMarker(),
     });
     items.push({
@@ -1640,23 +1245,8 @@ function buildMenu() {
     });
     items.push({
       label: "End capture session",
-      click: async () => {
-        const folder = await endSession();
-        /* §E3: when the close-out wizard opened, it IS the post-end
-           surface -- don't stack a second dialog on top of it. */
-        if (!lastCloseoutShown) {
-          const r = await dialog.showMessageBox({
-            type: "info",
-            message: "Session ended.",
-            detail: folder ? `Saved to: ${folder}` : "",
-            buttons: folder ? ["Open in viewer", "Close"] : ["OK"],
-            defaultId: 0,
-            cancelId: folder ? 1 : 0,
-          });
-          if (folder && r.response === 0) openInViewer(folder);
-        }
-        refreshTray();
-      },
+      // The end summary in the Live Session window is the post-end surface.
+      click: async () => { await endSession(); refreshTray(); },
     });
   }
   items.push({ type: "separator" });
@@ -1770,8 +1360,8 @@ function buildMenu() {
   items.push({
     label: "Quit",
     click: async () => {
-      // skipCloseout: the app is quitting -- a wizard window would be
-      // torn down mid-question. The session data is intact either way.
+      // skipCloseout: the app is quitting -- the end summary would be torn
+      // down with it. The session data is intact either way.
       if (tracker) await endSession({ skipCloseout: true });
       globalShortcut.unregisterAll();
       app.quit();
@@ -1876,37 +1466,21 @@ app.whenReady().then(() => {
     return { ok: false, key: accelerator, fellBack: false };
   }
 
-  const startHK = registerHotkey(config.hotkeys.start_picker, async () => {
-    if (!tracker) {
-      const s = await startSession();
-      if (!s) return;
-    }
-    showLabelPicker();
-  });
+  // One key per run: starts the next run (and the session, if needed).
+  const startHK = registerHotkey(config.hotkeys.start_picker, () => fireStartMarker());
   const endHK = registerHotkey(config.hotkeys.end_innermost, () => fireEndMarker());
   const shotHK = registerHotkey(config.hotkeys.manual_screenshot, () => fireManualScreenshot());
-  let syncHK = { ok: false, key: config.hotkeys.sync_marker, fellBack: false };
-  if (config.hotkeys.sync_marker) {
-    syncHK = registerHotkey(config.hotkeys.sync_marker, () => {
-      if (!tracker) return;
-      const id = `sync-${new Date().toISOString().replace(/[:.]/g, "")}-${crypto.randomBytes(3).toString("hex")}`;
-      tracker.fireSystem("sync_marker", { sync_id: id });
-    });
-  }
-  bootLog(`hotkeys: start=${startHK.ok}(${startHK.key}) end=${endHK.ok}(${endHK.key}) shot=${shotHK.ok}(${shotHK.key}) sync=${syncHK.ok}(${syncHK.key})`);
+  bootLog(`hotkeys: start=${startHK.ok}(${startHK.key}) end=${endHK.ok}(${endHK.key}) shot=${shotHK.ok}(${shotHK.key})`);
 
   /* P2.10 + B3: surface hotkey trouble to the operator via a toast --
      both bindings that fell back to an alternate, and bindings that
      could not be registered at all (boot.log alone is too quiet; some
      screen-recorder / password-manager combos grab Ctrl+Shift+S). */
   const hotkeyInfo = [
-    ["Start picker", config.hotkeys.start_picker, startHK],
-    ["End marker", config.hotkeys.end_innermost, endHK],
+    ["Start run", config.hotkeys.start_picker, startHK],
+    ["End run", config.hotkeys.end_innermost, endHK],
     ["Screenshot", config.hotkeys.manual_screenshot, shotHK],
   ];
-  if (config.hotkeys.sync_marker) {
-    hotkeyInfo.push(["Sync marker", config.hotkeys.sync_marker, syncHK]);
-  }
   const fellBack = hotkeyInfo.filter((h) => h[2].fellBack);
   const failed = hotkeyInfo.filter((h) => !h[2].ok);
   if (fellBack.length) {
@@ -1967,7 +1541,7 @@ app.whenReady().then(() => {
       } else if (!r.ok && r.reason !== "no-zip") {
         notifyUser(
           "Interaction recorder",
-          "Could not unpack recorder.exe. Markers and screenshots will still work; interactions will not be captured. See boot.log.",
+          "Could not unpack recorder.exe. Runs and screenshots will still work; interactions will not be captured. See boot.log.",
           { urgency: "normal" }
         );
       }

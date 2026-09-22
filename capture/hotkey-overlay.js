@@ -4,7 +4,7 @@
  * A tiny always-on-top frameless window that sits in the
  * bottom-right corner showing the three primary hotkeys. Defeats the
  * "what was the shortcut again?" problem that costs an SME a tray
- * round-trip every marker.
+ * round-trip every run.
  *
  * Toggled via tray menu. Persists position across sessions. Click-
  * through (the user can still click whatever's behind it).

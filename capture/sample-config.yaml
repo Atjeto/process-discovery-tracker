@@ -15,8 +15,9 @@ auto_end_idle_minutes: 30
 poll_interval_seconds: 5
 idle_threshold_seconds: 60
 
-# Labels surfaced in the operator panel, tray Quick-start submenu, and
-# label picker. Set per engagement. Leave empty to type labels freely.
+# Named runs ("task shortcuts") offered in the Live Session window and the
+# tray's "Start a named run" submenu. Set per engagement. Leave empty and
+# the run hotkey labels runs "Run 1", "Run 2", ...
 process_labels: []
 
 # OBS integration. Set required: true in production so a session fails
@@ -33,7 +34,6 @@ hotkeys:
   start_picker: "Control+Shift+S"
   end_innermost: "Control+Shift+E"
   manual_screenshot: "Control+Shift+P"
-  sync_marker: "Control+Shift+Y"        # cross-machine sync marker for multi-machine shift reviews
 
 # Taxonomy version this session was captured against. Stamped into
 # manifest.json so re-normalization can reproduce or upgrade results.

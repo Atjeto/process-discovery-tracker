@@ -36,7 +36,6 @@ const DEFAULTS = {
     start_picker: "Control+Shift+S",
     end_innermost: "Control+Shift+E",
     manual_screenshot: "Control+Shift+P",
-    sync_marker: "Control+Shift+Y",
   },
   taxonomy_version: "v0",
   screenshots: {

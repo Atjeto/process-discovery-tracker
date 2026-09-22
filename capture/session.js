@@ -14,7 +14,7 @@ function sessionTimestampFolder() {
   );
 }
 
-function createSession({ baseDir, engagementId, config, purpose, prepApp, consent }) {
+function createSession({ baseDir, engagementId, config, consent }) {
   const sessionId = crypto.randomUUID();
   const engagement = engagementId || "default";
   const sessionFolder = path.join(baseDir, engagement, sessionTimestampFolder());
@@ -40,12 +40,9 @@ function createSession({ baseDir, engagementId, config, purpose, prepApp, consen
     started_at: new Date().toISOString(),
     ended_at: null,
     status: "active",
-    /* purpose:
-       - undefined / "process": ordinary business process capture (default)
-       - "app_prep":            curating an App Vocabulary; prep_app names the target
-    */
-    purpose: purpose || "process",
-    prep_app: prepApp || null,
+    /* Every capture is an ordinary business-process recording; the field is
+       kept so the manifest shape the viewer reads stays unchanged. */
+    purpose: "process",
     config: config || {},
     /* Worker consent record (§11f). Always present so the analyst can see the
        consent posture of every capture; defaults to the not-required shape

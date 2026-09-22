@@ -193,7 +193,7 @@ public class UiaSubscriberTests {
     }
 
     // Pins IsHostProcess: an interaction from PDT's OWN app (operator panel /
-    // label picker) must not be recorded. Match is case-insensitive and ignores
+    // dialogs) must not be recorded. Match is case-insensitive and ignores
     // a trailing ".exe"; empty/absent on either side is never the host.
     [Theory]
     [InlineData("Process Discovery Tracker.exe", "Process Discovery Tracker.exe", true)]

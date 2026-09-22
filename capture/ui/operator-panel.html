@@ -54,12 +54,11 @@
   .lbl { font-size: 10px; color: var(--fg-3); margin-bottom: 4px;
          letter-spacing: 0.5px; text-transform: uppercase; }
 
-  /* Open markers strip */
+  /* Current run strip */
   .markers { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; }
   .markers.empty { color: var(--fg-3); font-size: 12px; align-items: center; }
   .mk { padding: 3px 8px; background: var(--bg-3); border: 1px solid var(--border);
         border-radius: 4px; font-size: 12px; color: var(--fg); }
-  .mk .d { color: var(--fg-3); margin-right: 6px; font-family: var(--mono); font-size: 11px; }
 
   /* Counter grid (formerly in status-window) */
   .counters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
@@ -68,28 +67,20 @@
   .ctr .v { font-family: var(--mono); font-size: 16px; color: var(--fg); display: block; }
   .ctr .k { font-size: 9px; color: var(--fg-3); letter-spacing: 0.5px; text-transform: uppercase; }
 
-  /* Fire row */
-  .fire-row { display: flex; gap: 6px; }
-  .fire-row input {
-    flex: 1; padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--border);
-    color: var(--fg); border-radius: 4px; font-family: inherit; font-size: 13px; outline: none;
+  /* Run controls: the panel's mouse twin of the run hotkeys. */
+  .run-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .run-row button {
+    padding: 9px; border-radius: 4px; font-family: inherit; font-size: 13px; cursor: pointer;
   }
-  .fire-row input:focus { border-color: var(--accent); }
-  .fire-row input::placeholder { color: var(--fg-3); }
-  .fire-row button {
-    padding: 8px 14px; background: var(--accent); border: 1px solid var(--accent);
-    color: var(--bg); border-radius: 4px; font-family: inherit; font-size: 13px; cursor: pointer;
-    font-weight: 500;
+  .run-row .run-start {
+    background: var(--accent); border: 1px solid var(--accent); color: var(--bg); font-weight: 500;
   }
-  .fire-row button:hover:not(:disabled) { background: #8AAB7E; border-color: #8AAB7E; }
-  .fire-row button:disabled { background: var(--bg-3); border-color: var(--border); color: var(--fg-3); cursor: not-allowed; }
+  .run-row .run-start:hover { background: #8AAB7E; border-color: #8AAB7E; }
+  .run-row .run-end { background: var(--bg-3); border: 1px solid var(--border); color: var(--fg); }
+  .run-row .run-end:hover:not(:disabled) { background: var(--bg-hover); }
+  .run-row .run-end:disabled { color: var(--fg-3); cursor: not-allowed; }
 
-  .nest-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-3);
-                 margin-top: 4px; user-select: none; cursor: pointer; }
-  .nest-toggle input { accent-color: var(--accent); }
-  .nest-toggle .hint { color: var(--warn); margin-left: 4px; }
-
-  /* Saved labels */
+  /* Saved labels (named runs) */
   /* Clutter pass: cap the quick-pick row at ~2 rows and scroll beyond, so a
      long process_labels list can't push the live controls off the panel. */
   .saved { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; max-height: 84px; overflow-y: auto; }
@@ -120,26 +111,13 @@
      they're dimmed so the eye lands on Start first. */
   body.idle .when-running { opacity: 0.4; pointer-events: none; }
 
-  .secondary-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .secondary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .secondary-row button {
     padding: 7px 6px; background: transparent; border: 1px solid var(--border);
     color: var(--fg-2); border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer;
   }
   .secondary-row button:hover:not(:disabled) { background: var(--bg-2); color: var(--fg); }
   .secondary-row button:disabled { color: var(--fg-3); cursor: not-allowed; }
-
-  /* Sync ID inline input (replaces window.prompt) */
-  .sync-row { display: none; gap: 6px; margin-top: 4px; }
-  .sync-row.open { display: flex; }
-  .sync-row input {
-    flex: 1; padding: 6px 9px; background: var(--bg-2); border: 1px solid var(--border);
-    color: var(--fg); border-radius: 4px; font-family: var(--mono); font-size: 11px; outline: none;
-  }
-  .sync-row button {
-    padding: 6px 12px; background: var(--accent); border: 1px solid var(--accent);
-    color: var(--bg); border-radius: 4px; font-family: inherit; font-size: 12px; cursor: pointer;
-  }
-  .sync-row button.skip { background: transparent; color: var(--fg-3); border-color: var(--border); }
 
   /* Recent events feed */
   .feed { background: var(--bg-2); border: 1px solid var(--border); border-radius: 4px;
@@ -173,8 +151,8 @@
 
   hr { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
 
-  /* B1: post-session summary, shown in place of the live controls
-     once a session ends. */
+  /* The one-screen end summary (runs, duration, interactions, screenshots
+     + Done), shown in place of the live controls once a session ends. */
   #summary { display: none; }
   body.show-summary > * { display: none; }
   body.show-summary > #summary { display: flex; flex-direction: column; gap: 8px; }
@@ -199,7 +177,7 @@
   <div class="timer" id="timer">00:00:00</div>
 </header>
 <div class="now" id="now"></div>
-<div class="guidance" id="guidance">Not recording — start capture when the worker begins.</div>
+<div class="guidance" id="guidance">Not recording: start recording, then start your first run.</div>
 
 <div id="summary">
   <div class="summary-head">Session complete</div>
@@ -212,7 +190,7 @@
 <button id="btn-start-session" class="start-session">Start capture session</button>
 
 <div class="when-running">
-  <div class="lbl">Open markers</div>
+  <div class="lbl">Current run</div>
   <div class="markers empty" id="markers">none</div>
 </div>
 
@@ -220,40 +198,27 @@
   <div class="lbl">Counters</div>
   <div class="counters">
     <div class="ctr"><span class="v" id="c-events">0</span><span class="k">events</span></div>
-    <div class="ctr"><span class="v" id="c-markers">0</span><span class="k">markers</span></div>
+    <div class="ctr"><span class="v" id="c-runs">0</span><span class="k">runs</span></div>
     <div class="ctr"><span class="v" id="c-shots">0</span><span class="k">shots</span></div>
     <div class="ctr"><span class="v" id="c-int">0</span><span class="k">interactions</span></div>
   </div>
 </div>
 
-<div class="when-running">
-  <div class="lbl">Fire start marker</div>
-  <div class="fire-row">
-    <input id="custom" placeholder="Label, then Enter" autocomplete="off" />
-    <button id="custom-btn">Fire</button>
-  </div>
-  <label class="nest-toggle">
-    <input type="checkbox" id="nest-cb">
-    <span>Nest under current</span>
-    <span class="hint" id="nest-hint"></span>
-  </label>
+<div class="run-row when-running">
+  <button id="btn-start-run" class="run-start">Start next run</button>
+  <button id="btn-end-marker" class="run-end" disabled>End run</button>
+</div>
+
+<div class="when-running" id="named-runs" style="display:none">
+  <div class="lbl">Start a named run</div>
   <div class="saved" id="saved"></div>
 </div>
 
 <hr class="when-running"/>
 
-<button id="btn-end-marker" class="primary when-running" disabled>End innermost marker</button>
-
 <div class="secondary-row when-running">
   <button id="btn-pause" disabled>Pause</button>
   <button id="btn-screenshot" disabled>Screenshot</button>
-  <button id="btn-sync" disabled>Sync</button>
-</div>
-
-<div class="sync-row when-running" id="sync-row">
-  <input id="sync-id" placeholder="Sync ID (leave blank to auto-generate)" />
-  <button id="sync-fire">Fire</button>
-  <button id="sync-cancel" class="skip">Cancel</button>
 </div>
 
 <div class="when-running">
@@ -271,7 +236,7 @@
 <script>
 const { ipcRenderer } = require("electron");
 const savedLabels = {{LABELS}};
-// R4: the marker (start) hotkey + the shared guidance component. The module is
+// R4: the run (start) hotkey + the shared guidance component. The module is
 // required by ABSOLUTE path (data: URL pages have no relative-require base);
 // nodeIntegration:true makes require available. If anything fails we fall back
 // to a safe not-recording line -- never a blank.
@@ -282,7 +247,7 @@ function guidanceLineFor(status) {
   if (_guidance && typeof _guidance.guidanceLine === "function") {
     return _guidance.guidanceLine({ status, hotkey: MARKER_HOTKEY });
   }
-  return "Not recording — start capture when the worker begins.";
+  return "Not recording: start recording, then start your first run.";
 }
 
 function pad(n, w) { return String(n).padStart(w || 2, "0"); }
@@ -301,43 +266,28 @@ function fmtTs(iso) {
   return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
 }
 
-const nestCb = document.getElementById("nest-cb");
-const nestHint = document.getElementById("nest-hint");
-
+// Named runs: the configured task shortcuts (process_labels), shown only
+// when there are any. Like "Start next run", each ends the open run first.
 function renderSaved() {
   const host = document.getElementById("saved");
-  if (!savedLabels || !savedLabels.length) { host.innerHTML = ""; return; }
+  const group = document.getElementById("named-runs");
+  if (!savedLabels || !savedLabels.length) { host.innerHTML = ""; group.style.display = "none"; return; }
+  group.style.display = "";
   host.innerHTML = savedLabels.map((l) =>
     '<button data-label="' + esc(l) + '">' + esc(l) + '</button>'
   ).join("");
   host.querySelectorAll("button").forEach((b) =>
-    b.addEventListener("click", () => fireStart(b.dataset.label))
+    b.addEventListener("click", () => startRun(b.dataset.label))
   );
 }
 
-async function fireStart(label) {
-  await ipcRenderer.invoke("pdt:fireStart", label, { nest: nestCb.checked });
-  // Default-back to close-then-open after each fire so the user
-  // explicitly chooses nest each time.
-  nestCb.checked = false;
+// No label = the next "Run N". Runs never nest: main.js ends the open run first.
+async function startRun(label) {
+  await ipcRenderer.invoke("pdt:fireStart", label);
   tick();
 }
 
-document.getElementById("custom-btn").addEventListener("click", () => {
-  const input = document.getElementById("custom");
-  const v = input.value.trim();
-  if (!v) return;
-  fireStart(v);
-  input.value = "";
-});
-document.getElementById("custom").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    // Shift+Enter flips the nest choice for this fire (matches the
-    // label picker's hotkey).
-    if (e.shiftKey) nestCb.checked = !nestCb.checked;
-    document.getElementById("custom-btn").click();
-  }
-});
+document.getElementById("btn-start-run").addEventListener("click", () => startRun());
 document.getElementById("btn-end-marker").addEventListener("click", async () => {
   await ipcRenderer.invoke("pdt:fireEnd");
   tick();
@@ -345,39 +295,14 @@ document.getElementById("btn-end-marker").addEventListener("click", async () => 
 document.getElementById("btn-screenshot").addEventListener("click", () =>
   ipcRenderer.invoke("pdt:manualScreenshot"));
 
-// Sync marker: inline form replaces window.prompt (which is unstyled
-// + handles poorly under Citrix). Auto-generates if input is blank.
-const syncRow = document.getElementById("sync-row");
-const syncBtn = document.getElementById("btn-sync");
-const syncInput = document.getElementById("sync-id");
-const syncFire = document.getElementById("sync-fire");
-const syncCancel = document.getElementById("sync-cancel");
-syncBtn.addEventListener("click", () => {
-  syncInput.value = "";
-  syncRow.classList.add("open");
-  setTimeout(() => syncInput.focus(), 0);
-});
-syncCancel.addEventListener("click", () => { syncRow.classList.remove("open"); });
-syncFire.addEventListener("click", async () => {
-  const id = syncInput.value.trim();
-  await ipcRenderer.invoke("pdt:fireSync", id || null);
-  syncRow.classList.remove("open");
-  tick();
-});
-syncInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") syncFire.click();
-  else if (e.key === "Escape") syncCancel.click();
-});
-
 document.getElementById("btn-pause").addEventListener("click", async () => {
   await ipcRenderer.invoke("pdt:togglePause");
   tick();
 });
 
-// P2.14: window-level keyboard shortcuts. S = focus the custom-marker
-// input (so the operator can type-and-Enter without reaching for the
-// mouse), E = end marker, P = pause/resume, Y = sync marker. Suppressed
-// when an input is focused so typing a label doesn't fire a shortcut.
+// P2.14: window-level keyboard shortcuts. S = start next run, E = end run,
+// P = pause/resume. Suppressed when an input is focused so typing (the
+// summary's session name) doesn't fire a shortcut.
 document.addEventListener("keydown", (e) => {
   const tag = (e.target && e.target.tagName) || "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -385,8 +310,7 @@ document.addEventListener("keydown", (e) => {
   switch (e.key.toLowerCase()) {
     case "s":
       e.preventDefault();
-      const cust = document.getElementById("custom");
-      if (cust) cust.focus();
+      document.getElementById("btn-start-run").click();
       break;
     case "e":
       e.preventDefault();
@@ -395,10 +319,6 @@ document.addEventListener("keydown", (e) => {
     case "p":
       e.preventDefault();
       document.getElementById("btn-pause").click();
-      break;
-    case "y":
-      e.preventDefault();
-      document.getElementById("btn-sync").click();
       break;
   }
 });
@@ -424,26 +344,25 @@ endYes.addEventListener("click", async () => {
 });
 
 // Explicit "Start capture session" -- the obvious idle-state action.
-// Starts a session with no marker (pdt:startSession); the operator can
-// fire markers afterwards. (Firing a marker still auto-starts too.)
+// Starts a session with no run (pdt:startSession); runs start afterwards.
+// (Starting a run still starts the session too.)
 document.getElementById("btn-start-session").addEventListener("click", async () => {
   await ipcRenderer.invoke("pdt:startSession");
   tick();
 });
 
-// B1: post-session summary. main.js sends pdt:sessionSummary when a
-// session ends; swap the panel to a summary + an optional label input.
+// The one-screen end summary. main.js sends pdt:sessionSummary when a
+// session ends (opening this window if it was closed); Done finishes in one
+// click. The optional session name is the pre-existing manifest.label.
 let summaryShowing = false;
 let summaryFolder = null;
 ipcRenderer.on("pdt:sessionSummary", (_e, d) => {
   summaryFolder = d.sessionFolder;
   const rows = [
+    ["Runs recorded", d.runs],
     ["Duration", fmtTimer(d.durationMs)],
-    ["Events", d.events],
-    ["Markers fired", d.markers],
-    ["Screenshots", d.screenshots],
     ["Interactions", d.interactions],
-    ["Video", d.hadVideo ? "recorded" : "not recorded"],
+    ["Screenshots", d.screenshots],
   ];
   document.getElementById("summary-stats").innerHTML = rows.map((r) =>
     '<div class="row"><span class="sk">' + esc(r[0]) +
@@ -454,23 +373,31 @@ ipcRenderer.on("pdt:sessionSummary", (_e, d) => {
   document.body.classList.add("show-summary");
 });
 function saveSummaryLabel() {
-  if (summaryFolder) {
-    ipcRenderer.invoke("pdt:setSessionLabel", summaryFolder,
-      document.getElementById("summary-label").value);
-  }
+  if (!summaryFolder) return Promise.resolve();
+  return ipcRenderer.invoke("pdt:setSessionLabel", summaryFolder,
+    document.getElementById("summary-label").value);
 }
-document.getElementById("summary-label").addEventListener("blur", saveSummaryLabel);
-document.getElementById("summary-done").addEventListener("click", () => {
-  saveSummaryLabel();
+function dismissSummary() {
   summaryShowing = false;
   summaryFolder = null;
   document.body.classList.remove("show-summary");
-  tick();
+}
+document.getElementById("summary-label").addEventListener("blur", saveSummaryLabel);
+document.getElementById("summary-done").addEventListener("click", async () => {
+  await saveSummaryLabel();
+  dismissSummary();
+  window.close();
 });
 
 async function tick() {
   const s = await ipcRenderer.invoke("pdt:status");
-  if (summaryShowing) return;   // B1: don't paint over the summary
+  if (summaryShowing) {
+    // Don't paint over the summary -- unless a new session has already
+    // started (the run hotkey), which the summary must not hide.
+    if (!(s && s.tracking)) return;
+    await saveSummaryLabel();
+    dismissSummary();
+  }
   const dot = document.getElementById("dot");
   const state = document.getElementById("state");
   const timer = document.getElementById("timer");
@@ -484,7 +411,7 @@ async function tick() {
 
   // Counters
   document.getElementById("c-events").textContent = (s && s.eventCount) || 0;
-  document.getElementById("c-markers").textContent = (s && s.markerCount) || 0;
+  document.getElementById("c-runs").textContent = (s && s.runCount) || 0;
   document.getElementById("c-shots").textContent = (s && s.screenshotCount) || 0;
   document.getElementById("c-int").textContent = (s && s.interactionCount) || 0;
 
@@ -499,7 +426,7 @@ async function tick() {
       const t = fmtTs(ev.timestamp);
       let k, v;
       if (ev.type === "marker") {
-        k = ev.data && ev.data.marker_type === "start" ? "marker+" : "marker-";
+        k = ev.data && ev.data.marker_type === "start" ? "run start" : "run end";
         v = (ev.data && ev.data.label) || "";
       } else if (ev.type === "system") {
         k = (ev.data && ev.data.kind) || "system";
@@ -547,7 +474,6 @@ async function tick() {
     btnEndMarker.disabled = true;
     btnPause.disabled = true;
     btnShot.disabled = true;
-    syncBtn.disabled = true;
     btnEndSession.disabled = true;
     // Idle: surface the explicit Start button, dim the running controls.
     document.body.classList.add("idle");
@@ -566,7 +492,6 @@ async function tick() {
     btnEndMarker.disabled = !s.markerDepth;
     btnPause.disabled = false;
     btnShot.disabled = !s.screenshotsEnabled;
-    syncBtn.disabled = false;
     btnEndSession.disabled = false;
     btnPause.textContent = s.paused ? "Resume" : "Pause";
     // Session running: hide the Start button, the controls go live.
@@ -577,22 +502,13 @@ async function tick() {
   if (!s || !s.openMarkers || !s.openMarkers.length) {
     markers.className = "markers empty";
     markers.textContent = "none";
-    nestCb.disabled = true;
-    nestCb.checked = false;
-    nestHint.textContent = "";
   } else {
     markers.className = "markers";
-    markers.innerHTML = s.openMarkers.map((l, i) =>
-      '<div class="mk"><span class="d">L' + i + '</span>' + esc(l) + '</div>'
+    markers.innerHTML = s.openMarkers.map((l) =>
+      '<div class="mk">' + esc(l) + '</div>'
     ).join("");
-    nestCb.disabled = false;
-    nestHint.textContent = nestCb.checked
-      ? "will keep \"" + (s.openMarkers[s.openMarkers.length - 1] || "") + "\" open"
-      : "will close \"" + (s.openMarkers[s.openMarkers.length - 1] || "") + "\"";
   }
 }
-
-nestCb.addEventListener("change", () => tick());
 
 renderSaved();
 tick();

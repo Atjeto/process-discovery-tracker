@@ -76,9 +76,17 @@ test("computeAppTier: class_name-only window = minimal", () => {
 
 /* A fake spawnRecorder: reports ready, then answers each snapshot with
    the canned controls for that window (keyed by hwnd), like the real
-   sidecar but synchronously via setImmediate. */
+   sidecar but synchronously via setImmediate.
+
+   CI-2: like the real recorder child process, the fake holds an event-loop
+   handle until stop(). readiness.js's withTimeout unref()s its timer
+   (harmless in the app: Electron and the real child keep the loop alive),
+   so a ready:false fake that held nothing let Node 18/20 drain the loop
+   before the timeout fired and cancel this and the following tests. The
+   30 s ceiling only bounds a test that never reaches stop(). */
 function fakeRecorderFactory(byHwnd, { ready = true } = {}) {
   return ({ onReady, onSnapshotControl, onSnapshotDone }) => {
+    const alive = setTimeout(() => {}, 30_000);
     if (ready) setImmediate(() => onReady && onReady());
     return {
       snapshot: ({ target }) => {
@@ -87,7 +95,7 @@ function fakeRecorderFactory(byHwnd, { ready = true } = {}) {
           onSnapshotDone({ count: (byHwnd[target] || []).length, pass: 1 });
         });
       },
-      stop: async () => {},
+      stop: async () => { clearTimeout(alive); },
     };
   };
 }

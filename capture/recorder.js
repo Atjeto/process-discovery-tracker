@@ -99,9 +99,10 @@ function ensureRecorderExtracted({ bootLog, onStart } = {}) {
   });
 }
 
-function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, onSnapshotControl, onSnapshotDone, onReady, bootLog }) {
+/* `spawnFn` is child_process.spawn; the unit tests pass a fake child. */
+function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, onSnapshotControl, onSnapshotDone, onReady, bootLog, spawnFn = spawn }) {
   const exe = recorderPath || resolveRecorderPath(bootLog);
-  const child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  const child = spawnFn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
   const rl = readline.createInterface({ input: child.stdout });
   let lastLineMs = Date.now();
@@ -151,10 +152,28 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
   }, 30_000);
   watchdog.unref();
 
-  child.on("exit", (code, signal) => {
+  /* The end of the process is reported to onExit exactly once. RP-22: a
+     spawn failure (bad path, blocked by policy) emits 'error' and never
+     'exit' -- with no 'error' listener it was an uncaught exception and the
+     caller never heard of it (no recorder_died, no restart), while
+     events.jsonl already said recorder_start. */
+  let exitReported = false;
+  function reportExit(info) {
+    if (exitReported) return;
+    exitReported = true;
     exited = true;
     clearInterval(watchdog);
-    if (onExit) onExit({ code, signal });
+    if (onExit) onExit(info);
+  }
+  child.on("exit", (code, signal) => reportExit({ code, signal }));
+  child.on("error", (err) => {
+    if (bootLog) bootLog(`[recorder] process error: ${err && err.message}`);
+    // No pid = the process never started. (A failed kill() after a
+    // successful spawn also emits 'error'; that process is still alive and
+    // its 'exit' reports the real end.)
+    if (child.pid === undefined) {
+      reportExit({ code: null, signal: null, error: String(err && err.message) });
+    }
   });
   /* Swallow EPIPE on stdin so a dead sidecar doesn't crash the parent
      when we try to send pause/resume/shutdown after-the-fact. */
@@ -180,7 +199,7 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     debounce_ms: debounceMs,
     ocr: !!ocr,
     // The capture app's own exe so the recorder never records PDT's OWN windows
-    // (operator panel / label picker / dialogs) as interactions. All of PDT's
+    // (operator panel / dialogs) as interactions. All of PDT's
     // Electron processes share this exe name. Normalization is the analyst-side
     // safety net (process_filter) for sessions captured before this existed.
     host_process: require("node:path").basename(process.execPath),
@@ -201,7 +220,10 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
       const drainMs = (opts && opts.drainTimeoutMs) || 1500;
       let done = false;
       const finish = () => { if (done) return; done = true; resolve(); };
-      child.on("exit", finish);
+      // RP-23: 'close', not 'exit' -- 'close' fires after the stdio streams
+      // have ended, so every line the recorder flushed on shutdown (the last
+      // typed values) has reached onEvent before the caller moves on.
+      child.on("close", finish);
       safeWrite({ cmd: "shutdown" });
       setTimeout(() => {
         if (done) return;
@@ -212,4 +234,67 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
   };
 }
 
-module.exports = { spawnRecorder, resolveRecorderPath, ensureRecorderExtracted };
+/*
+ * Per-session supervision of the recorder sidecar (RP-20). Spawns it and, on
+ * a crash -- a non-zero or signalled exit, or a spawn failure (RP-22) --
+ * re-spawns it after restartDelayMs, at most maxRestarts times. The restart
+ * budget belongs to this supervisor, which main.js creates once per session:
+ * a successful re-spawn never refills it, so a crash-looping recorder reaches
+ * the cap and onDead fires. (Before RP-20 main.js reset the count on every
+ * successful spawn, auto-restarts included, so the cap was never reached and
+ * recorder_dead_permanent never fired.)
+ *
+ * The first spawn throws to the caller exactly like spawnRecorder (no
+ * recorder.exe); a re-spawn that throws counts as one more crash.
+ */
+function superviseRecorder({
+  spawnOpts, autoRestart, maxRestarts, restartDelayMs = 5000, schedule = setTimeout,
+  onStarted, onDied, onDead,
+}) {
+  let current = null;
+  let restartCount = 0;
+  let stopped = false;
+
+  function launch() {
+    current = spawnRecorder({ ...spawnOpts, onExit: handleExit });
+    onStarted();
+  }
+
+  function relaunch() {
+    if (stopped) return;
+    try {
+      launch();
+    } catch (e) {
+      if (spawnOpts.bootLog) spawnOpts.bootLog(`[recorder] re-spawn failed: ${e && e.message}`);
+      handleExit({ code: null, signal: null, error: String(e && e.message) });
+    }
+  }
+
+  function handleExit(info) {
+    current = null;
+    if (stopped) return;                           // the session is ending
+    if (info.code === 0 && !info.signal) return;   // a clean shutdown
+    onDied({ code: info.code, signal: info.signal, restart_count: restartCount });
+    if (autoRestart && restartCount < maxRestarts) {
+      restartCount += 1;
+      schedule(relaunch, restartDelayMs);
+    } else {
+      onDead();
+    }
+  }
+
+  launch();
+  return {
+    /* The live recorder handle, or null while restarting / after death. */
+    current: () => current,
+    restartCount: () => restartCount,
+    async stop(opts) {
+      stopped = true;
+      const child = current;
+      current = null;
+      if (child) await child.stop(opts);
+    },
+  };
+}
+
+module.exports = { spawnRecorder, superviseRecorder, resolveRecorderPath, ensureRecorderExtracted };

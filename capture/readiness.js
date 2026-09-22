@@ -127,7 +127,7 @@ function computeAppTier(controls) {
   if (dominant === "remote" || dominant === "terminal") {
     return {
       tier: "wall", ...base,
-      note: `a ${dominant} window -- the recorder sees only the window frame, not the controls inside; plan markers + video here`,
+      note: `a ${dominant} window -- the recorder sees only the window frame, not the controls inside; mark each run and record video here`,
     };
   }
   if (shareAid >= 0.25 && meanConf >= 0.6) {

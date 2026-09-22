@@ -67,7 +67,7 @@ function resolveTargetDisplays({ mode, foregroundBounds }) {
 }
 
 /* D3: hide our OWN recorder windows during the grab so the always-on-top
-   panel / label picker / status window don't occlude the worker's screen --
+   panel / status window don't occlude the worker's screen --
    the single-monitor case, where there is no other display to push them to.
    `windows` are this process's BrowserWindows (passed by the caller); the
    worker's apps are native OS windows, not BrowserWindows, so they are never

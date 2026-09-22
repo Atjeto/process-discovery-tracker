@@ -39,15 +39,6 @@ test("createSession builds the folder layout and an active manifest", () => {
   fs.rmSync(base, { recursive: true, force: true });
 });
 
-test("createSession honours an app_prep purpose and prepApp", () => {
-  const base = tmpBase();
-  const s = createSession({ baseDir: base, engagementId: "e", purpose: "app_prep", prepApp: "Excel" });
-  const m = readManifest(s.sessionFolder);
-  assert.strictEqual(m.purpose, "app_prep");
-  assert.strictEqual(m.prep_app, "Excel");
-  fs.rmSync(base, { recursive: true, force: true });
-});
-
 test("closeSession stamps ended_at and the given status", () => {
   const base = tmpBase();
   const s = createSession({ baseDir: base, engagementId: "e" });

@@ -1,14 +1,15 @@
 "use strict";
 /* HIGH (review) — script-context JSON injection / RCE.
  *
- * buildPickerHtml (main.js) and buildOperatorHtml (operator-panel.js)
- * interpolate operator-influenced label / marker strings into an inline
- * <script> of a nodeIntegration:true window. Bare JSON.stringify does NOT
- * escape "</script>", so a label like "</script><img onerror=...>" breaks out
- * and executes. jsonForScript neutralizes the markup-significant characters.
- * This pins the helper AND guards that both builders actually route their
- * script slots through it (a context-blind future edit can't silently regress
- * to JSON.stringify). */
+ * buildOperatorHtml (operator-panel.js) interpolates operator-influenced
+ * label strings into an inline <script> of a nodeIntegration:true window.
+ * Bare JSON.stringify does NOT escape "</script>", so a label like
+ * "</script><img onerror=...>" breaks out and executes. jsonForScript
+ * neutralizes the markup-significant characters. This pins the helper AND
+ * guards that the builder actually routes its script slots through it (a
+ * context-blind future edit can't silently regress to JSON.stringify).
+ * (The second builder, main.js's label picker, was removed with the
+ * one-hotkey run flow.) */
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs");
@@ -46,11 +47,11 @@ test("undefined serializes to null, never a broken expression", () => {
   assert.strictEqual(jsonForScript(undefined), "null");
 });
 
-// Regression guard: the two script-context builders must route their dynamic
-// slots through jsonForScript, never bare JSON.stringify (which would re-open
-// the breakout). We scan source rather than rendering (no electron in tests).
-test("buildPickerHtml + buildOperatorHtml use jsonForScript for script slots", () => {
-  for (const f of ["main.js", "operator-panel.js"]) {
+// Regression guard: the script-context builder must route its dynamic slots
+// through jsonForScript, never bare JSON.stringify (which would re-open the
+// breakout). We scan source rather than rendering (no electron in tests).
+test("buildOperatorHtml uses jsonForScript for script slots", () => {
+  for (const f of ["operator-panel.js"]) {
     const src = fs.readFileSync(path.join(ROOT, f), "utf-8");
     assert.ok(
       src.includes("jsonForScript"),

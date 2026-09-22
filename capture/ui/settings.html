@@ -110,12 +110,12 @@
 <fieldset>
   <legend>Hotkeys</legend>
   <div class="hk-row">
-    <span class="hk-label">Start marker / label picker</span>
+    <span class="hk-label">Start next run</span>
     <input type="text" id="hk-start" class="hk-input" readonly />
     <button type="button" class="hk-rec" data-target="hk-start">Record</button>
   </div>
   <div class="hk-row">
-    <span class="hk-label">End marker (close innermost)</span>
+    <span class="hk-label">End run</span>
     <input type="text" id="hk-end" class="hk-input" readonly />
     <button type="button" class="hk-rec" data-target="hk-end">Record</button>
   </div>
@@ -123,11 +123,6 @@
     <span class="hk-label">Manual screenshot</span>
     <input type="text" id="hk-shot" class="hk-input" readonly />
     <button type="button" class="hk-rec" data-target="hk-shot">Record</button>
-  </div>
-  <div class="hk-row">
-    <span class="hk-label">Sync marker (cross-machine)</span>
-    <input type="text" id="hk-sync" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-sync">Record</button>
   </div>
   <div class="restart-note">Hotkeys re-register on the next app launch.</div>
 </fieldset>
@@ -168,7 +163,7 @@
     </div>
   </div>
   <label class="check"><input type="checkbox" id="ss-onswitch" /><span>Capture on app switch</span></label>
-  <label class="check"><input type="checkbox" id="ss-onmarker" /><span>Capture on marker fire</span></label>
+  <label class="check"><input type="checkbox" id="ss-onmarker" /><span>Capture when a run starts or ends</span></label>
   <label class="fld" for="ss-idle">Capture on resume after idle (minutes)</label>
   <input type="number" id="ss-idle" min="0" max="240" step="1" />
   <div class="help-hint">After this many minutes of idle, the next activity triggers one screenshot.</div>
@@ -209,7 +204,6 @@ async function load() {
   $("hk-start").value = hk.start_picker      || "Control+Shift+S";
   $("hk-end").value   = hk.end_innermost     || "Control+Shift+E";
   $("hk-shot").value  = hk.manual_screenshot || "Control+Shift+P";
-  $("hk-sync").value  = hk.sync_marker       || "Control+Shift+Y";
 
   const obs = s.obs || {};
   $("obs-url").value     = obs.websocket_url      || "ws://127.0.0.1:4455";
@@ -242,7 +236,6 @@ function build() {
       start_picker:      $("hk-start").value.trim() || "Control+Shift+S",
       end_innermost:     $("hk-end").value.trim()   || "Control+Shift+E",
       manual_screenshot: $("hk-shot").value.trim()  || "Control+Shift+P",
-      sync_marker:       $("hk-sync").value.trim()  || "Control+Shift+Y",
     },
     obs: {
       websocket_url:      $("obs-url").value.trim()   || null,

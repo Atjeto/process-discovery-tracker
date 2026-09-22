@@ -62,45 +62,45 @@
 <div class="sub">Capture side · v{{VERSION}}</div>
 
 <h2>What this app does</h2>
-<p>Polls the foreground window every 5 seconds and writes a per-session JSONL of activity, marker, and system events.
+<p>Polls the foreground window every 5 seconds and writes a per-session JSONL of window activity, runs, and system events.
 Optionally drives OBS to record the screen and writes a clock-sync file so the analyst's viewer can align timeline events with video.</p>
 
 <h2>Running a session</h2>
 <ol>
   <li>(Optional) Launch OBS with WebSocket enabled. <em>Tools → WebSocket Server Settings → Enable</em>, port 4455. (You can also configure this from tray → Settings → Video/OBS.)</li>
   <li>(Optional) Tray → <em>Session setup…</em> to set the project code and task shortcuts for what you're about to record.</li>
-  <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey — the session auto-starts.</li>
+  <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the run hotkey: recording starts with your first run.</li>
   <li>Open the <strong>Live Session window</strong> from the tray to see what's being captured (or click the tray icon during a session).</li>
-  <li>Fire markers as the SME walks through processes. Tray → <em>End capture session</em> when done.</li>
+  <li>Press the run hotkey each time you begin the process: one press per run. Tray → <em>End capture session</em> when done; a short summary shows what was recorded.</li>
 </ol>
 
 <h2>Default hotkeys</h2>
 <table>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">S</span></td>
-      <td>Open the Start-marker label picker. Auto-starts a session if none running.</td></tr>
+      <td>Start the next run (Run 1, Run 2, ...). Ends the previous run first. Starts recording if it isn't running yet.</td></tr>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">E</span></td>
-      <td>Fire End marker — closes innermost open.</td></tr>
+      <td>End the current run.</td></tr>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span></td>
       <td>Manual screenshot — annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
 </table>
 <p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>. The three are also surfaced in the <strong>hotkey overlay</strong> — a small click-through corner widget that stays visible across windows. Toggle from the tray (<em>Show / hide hotkey overlay</em>); visibility persists across launches.</p>
 
-<h2>The label picker</h2>
-<p>Opened by the Start hotkey or the tray <em>Fire Start marker…</em> action. Type a label and press Enter to fire. If <code>process_labels</code> is configured for this engagement, those entries appear as filterable suggestions; otherwise the picker is a free-form input.</p>
-<p>If a Start marker is already open when you fire a new one, the picker shows a banner naming what will close. Default behaviour is <strong>close-then-open</strong> — closes the open marker, then opens the new one as a sibling. Press <span class="kbd">Shift</span>+<span class="kbd">Enter</span> instead of plain Enter to nest the new marker inside the current one for one fire, or click the <em>Nest under current</em> button. The tray gains <em>Fire Start (nest under current)</em> and <em>Quick start (nested)</em> sub-menus when a marker is open if you prefer to opt into nesting from the tray.</p>
+<h2>Runs</h2>
+<p>A run is one pass through the process, from start to finish. Press the run hotkey at the start of each run: the app ends the previous run (if it is still open) and starts the next one, named Run 1, Run 2, and so on. Runs never overlap. Press the end hotkey when a run is finished, or simply start the next one. Ending the session also ends the open run.</p>
+<p>If task shortcuts (<code>process_labels</code>) are set up for this engagement, they appear as named-run buttons in the Live Session window and under <em>Start a named run</em> in the tray. Each one starts a run with that name instead of a number.</p>
 
 <h2>Live Session window</h2>
 <p>The tray entry <em>Show Live Session window</em> opens a 460×720 always-on-top window that is the single live-session surface:</p>
 <ul>
-  <li><strong>Start capture session</strong> button — shown while idle. Click it to begin a session; the marker controls below dim until a session is running. (Firing a marker also auto-starts a session.)</li>
+  <li><strong>Start capture session</strong> button, shown while idle. Click it to begin a session; the run controls below dim until a session is running. (Starting a run also starts a session.)</li>
   <li>Recording indicator + session timer</li>
   <li>Currently-tracking app + title</li>
-  <li>Open-marker stack with nesting depth labels</li>
-  <li>Counters (events / markers / screenshots / interactions)</li>
+  <li>The current run</li>
+  <li>Counters (events / runs / screenshots / interactions)</li>
   <li>Recent-events feed</li>
-  <li>Inline fire-marker input with a <em>Nest under current</em> checkbox + live "will close X" / "will keep X open" hint</li>
-  <li>Sync-marker fire button (with optional shared sync ID)</li>
+  <li><em>Start next run</em> and <em>End run</em> buttons, plus named-run buttons when task shortcuts are set up</li>
   <li>Inline end-session confirm — no browser dialog</li>
+  <li>When the session ends: a one-screen summary (runs recorded, duration, interactions, screenshots) with a <em>Done</em> button</li>
 </ul>
 
 <h2>First-run welcome</h2>
@@ -116,12 +116,12 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 
 <h2>Tray menu (when a session is running)</h2>
 <ul>
-  <li><strong>Fire Start marker…</strong> — label picker</li>
-  <li><strong>Quick start</strong> — submenu of <code>process_labels</code> entries (hidden when none configured)</li>
-  <li><strong>Fire End marker</strong> — closes innermost open Start</li>
+  <li><strong>Start next run</strong>: same as the run hotkey</li>
+  <li><strong>Start a named run</strong>: submenu of <code>process_labels</code> entries (hidden when none configured)</li>
+  <li><strong>End run</strong>: ends the current run</li>
   <li><strong>Manual screenshot</strong> — capture regardless of trigger config</li>
   <li><strong>Pause / Resume polling</strong></li>
-  <li><strong>End capture session</strong> — close out, finalize manifest, stop OBS recording</li>
+  <li><strong>End capture session</strong>: ends the open run, finalizes the manifest, stops OBS recording, then shows the session summary</li>
   <li><strong>Live status → Show / Hide Live Session window</strong> — toggle the always-on-top dashboard</li>
   <li><strong>Storage → Open sessions folder</strong> — jump to <code>%APPDATA%\process-discovery-tracker\sessions\</code></li>
   <li><strong>Settings…</strong> — hotkeys, OBS, screenshots, storage limits (persists across sessions)</li>
@@ -165,15 +165,11 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li><code>obs/sync.json</code> — clock-sync data (if OBS was connected)</li>
 </ul>
 
-<h2>Sync markers</h2>
-<p>The <em>Show Live Session window</em> tray item opens a larger always-on-top window for the analyst during a walkthrough. Type a marker label, hit Enter — implicitly starts the session and fires the Start marker in one step. Also exposes the sync-marker button.</p>
-<p>The <strong>sync marker</strong> (default <span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">Y</span>) emits a system event with a shared <code>sync_id</code>. Use it at agreed moments during multi-machine shift reviews so the analyst can correlate timelines across workers later. Without a custom ID, one is auto-generated; pass a known ID when you want two machines to share it (the operator panel prompts for one).</p>
-
 <h2>Citrix and remote desktop notes</h2>
 <p>The <code>active-win</code> library that powers polling has known limitations on Citrix: the foreground window is reported as the Citrix client, not the inner app. If your worker runs an app inside Citrix:</p>
 <ul>
   <li>Run the capture tracker <em>inside</em> the Citrix session so it polls inner windows. Requires the Citrix profile to permit running unsigned Electron apps.</li>
-  <li>If that is not possible, run capture on the local machine; you will get one band labelled <code>Citrix Workspace.exe</code> for the duration. OBS still records the visible content. Use markers and annotations heavily; classification of inner apps must be done by the analyst.</li>
+  <li>If that is not possible, run capture on the local machine; you will get one band labelled <code>Citrix Workspace.exe</code> for the duration. OBS still records the visible content. Mark every run with the run hotkey; classification of inner apps must be done by the analyst.</li>
   <li>Validate behavior on a representative machine before scoping a Citrix-heavy engagement.</li>
 </ul>
 
@@ -197,7 +193,7 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <dd>Enable <code>PDT_DEBUG=1</code>, relaunch, and check the boot log. Common causes: another instance already running (single-instance lock), missing tray icon file, antivirus blocking the executable.</dd>
 
   <dt>Session shows up as "recovered" on next launch</dt>
-  <dd>The previous session ended without a clean close (crash, force-quit, power loss). Orphan sessions are auto-marked. Open markers stay in <code>events.jsonl</code> for the normalizer to reconcile per §3.7 of the design.</dd>
+  <dd>The previous session ended without a clean close (crash, force-quit, power loss). Orphan sessions are auto-marked. A run that was still open stays open in <code>events.jsonl</code>; the analyst's tools close it at the end of the recording.</dd>
 
   <dt>Where does my data go?</dt>
   <dd><code>%APPDATA%\process-discovery-tracker\sessions\</code> on Windows. The tray has an "Open sessions folder" item.</dd>

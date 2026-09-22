@@ -9,10 +9,9 @@
  *   "</script><img src=x onerror=alert(1)>"
  * closes the <script> element and injects markup. In these windows
  * nodeIntegration is true, so that is not merely XSS -- it is arbitrary code
- * execution. The labels/marker strings interpolated here come from the
- * operator config and prior marker firings, which a tampered or synced config
- * file can influence, and a stray "</script>" would also simply break the
- * window with no malice at all.
+ * execution. The label strings interpolated here come from the operator
+ * config, which a tampered or synced config file can influence, and a stray
+ * "</script>" would also simply break the window with no malice at all.
  *
  * We escape the HTML-significant characters (< > &) and the two JSON-legal
  * but JS-illegal line terminators (U+2028 / U+2029) into their \uXXXX form.

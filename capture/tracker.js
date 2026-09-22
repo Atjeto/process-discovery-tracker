@@ -105,6 +105,9 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   const sessionStartMs = Date.now();
   let eventCount = 0;
   let markerCount = 0;
+  /* Start markers written this session = runs recorded; the next
+     unnamed run is "Run <startMarkerCount + 1>". */
+  let startMarkerCount = 0;
   let screenshotCount = 0;
   let interactionCount = 0;
   /* H-6: count of failed durability-critical flushes this session. A
@@ -112,6 +115,14 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
      was re-queued for retry; surfaced via getStatus().writeErrorCount so
      the tray/status can show the durable record is at risk. */
   let writeErrorCount = 0;
+  /* RP-21: activity/interaction events lost to a failed write of a batch
+     that held no marker/system event. Such a batch is still dropped (not
+     retried), but no longer silently: droppedEventCount is the session
+     total, and pendingLoss accumulates the not-yet-recorded loss that
+     queueLossRecord() writes as an `events_dropped` system event ahead of
+     the next appended event. */
+  let droppedEventCount = 0;
+  let pendingLoss = null;
   /* I23: wall-clock of the most recent interaction forwarded by the
      recorder. The idle monitor reads it to tell "idle but still at the
      desk" (recent mouse/keyboard) from "idle and away". */
@@ -130,8 +141,9 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
 
   /* I47: deferred-write queue. flushEvents() drains it; markers and
      system events flush synchronously, activity/interaction events ride
-     a 500ms timer. Each entry is { line, critical }: `critical` is true
-     for markers and system events, which must never be silently lost. */
+     a 500ms timer. Each entry is { line, critical, type, ts }: `critical`
+     is true for markers and system events, which must never be silently
+     lost; `type` and `ts` describe a dropped batch in its loss record. */
   let writeQueue = [];
   let flushTimer = null;
   const writeFn = appendFile || fs.appendFileSync;
@@ -166,21 +178,61 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
         // backstop for the idle case.
         if (!flushTimer) flushTimer = setTimeout(flushEvents, 500);
       } else {
-        /* No critical event in this batch -- activity/interaction polls
-           are best-effort, low-stakes (<500ms of data); drop as before. */
-        bootLog(`events.jsonl flush failed for a non-critical batch (${batch.length} events), dropped: ${e && e.message}`);
+        /* No critical event in this batch -- the activity/interaction
+           events are dropped (not retried), and RP-21: the loss is
+           counted and recorded durably instead of vanishing. */
+        noteDroppedBatch(batch, e);
       }
     }
   }
 
-  function appendEvent(ev) {
+  /* RP-21: fold a dropped non-critical batch into the pending loss record.
+     The operator is notified once per loss stretch (until the record is
+     queued), not once per failed 500 ms flush. */
+  function noteDroppedBatch(batch, err) {
+    const interactions = batch.filter((q) => q.type === "interaction").length;
+    const stamps = batch.map((q) => q.ts).sort();
+    droppedEventCount += batch.length;
+    const firstOfStretch = !pendingLoss;
+    if (firstOfStretch) {
+      pendingLoss = {
+        dropped_interactions: 0,
+        dropped_activities: 0,
+        first_dropped_ts: stamps[0],
+        last_dropped_ts: stamps[stamps.length - 1],
+        failed_writes: 0,
+        last_error: null,
+      };
+    }
+    pendingLoss.dropped_interactions += interactions;
+    pendingLoss.dropped_activities += batch.length - interactions;
+    if (stamps[0] < pendingLoss.first_dropped_ts) pendingLoss.first_dropped_ts = stamps[0];
+    if (stamps[stamps.length - 1] > pendingLoss.last_dropped_ts) {
+      pendingLoss.last_dropped_ts = stamps[stamps.length - 1];
+    }
+    pendingLoss.failed_writes += 1;
+    pendingLoss.last_error = String((err && err.message) || err);
+    bootLog(`events.jsonl flush failed for a non-critical batch (${batch.length} events, ` +
+      `${interactions} interactions), dropped and recorded as a loss: ${pendingLoss.last_error}`);
+    if (firstOfStretch && onNotice) {
+      try { onNotice("events_dropped", { events: batch.length, interactions }); }
+      catch (_e) { /* notice is best-effort */ }
+    }
+  }
+
+  /* Stamp an event into the write queue: _seq, the live counters, and the
+     recent-events ring. Returns whether it is durability-critical. */
+  function enqueue(ev) {
     // _seq is the 0-based events.jsonl line ordinal -- assigned in call
     // order so it stays monotonic even though the write is deferred.
     // Normalization uses it as a secondary sort key so events sharing a
     // millisecond timestamp keep their true append order.
     ev._seq = eventCount;
     eventCount += 1;
-    if (ev.type === "marker") markerCount += 1;
+    if (ev.type === "marker") {
+      markerCount += 1;
+      if (ev.data.marker_type === "start") startMarkerCount += 1;
+    }
     if (ev.type === "interaction") interactionCount += 1;
     if (ev.type === "system" && (ev.data.kind === "screenshot" || ev.data.kind === "screenshot_manual")) {
       screenshotCount += 1;
@@ -188,11 +240,27 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
     recentEvents.push(ev);
     if (recentEvents.length > RECENT_BUFFER_SIZE) recentEvents.shift();
     const critical = ev.type === "marker" || ev.type === "system";
-    writeQueue.push({ line: JSON.stringify(ev) + "\n", critical });
+    writeQueue.push({ line: JSON.stringify(ev) + "\n", critical, type: ev.type, ts: ev.timestamp });
+    return critical;
+  }
+
+  /* RP-21: queue the pending loss record (a critical system event, so it
+     is re-queued until written) ahead of the next event. */
+  function queueLossRecord() {
+    if (!pendingLoss) return false;
+    const loss = pendingLoss;
+    pendingLoss = null;
+    enqueue(systemEvent(sessionId, "events_dropped", loss));
+    return true;
+  }
+
+  function appendEvent(ev) {
+    const lossQueued = queueLossRecord();
+    const critical = enqueue(ev);
     // Markers and system events (session start/end, idle, screenshots)
     // are durability-critical -- flush the whole queue now, which also
     // preserves ordering of any activity/interaction events ahead of it.
-    if (critical) {
+    if (critical || lossQueued) {
       flushEvents();
     } else if (!flushTimer) {
       flushTimer = setTimeout(flushEvents, 500);
@@ -302,6 +370,26 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
     return ev;
   }
 
+  /* Write an end marker for every open run, innermost first. Returns how
+     many were ended. `reason` is the existing optional marker field. */
+  function endOpenRuns(reason) {
+    let ended = 0;
+    while (markerStack.length > 0) {
+      fireMarker(reason ? { markerType: "end", reason } : { markerType: "end" });
+      ended += 1;
+    }
+    return ended;
+  }
+
+  /* One key per run: end the open run (reason auto_close_for_sibling, the
+     existing close-then-open value), then start the next one. Runs never
+     nest. An unnamed run is "Run N", N counting every start marker this
+     session, so a named run (a task shortcut) takes a number too. */
+  function startRun(label) {
+    endOpenRuns("auto_close_for_sibling");
+    return fireMarker({ markerType: "start", label: label || `Run ${startMarkerCount + 1}` });
+  }
+
   function fireSystem(kind, payload) {
     const ev = systemEvent(sessionId, kind, payload);
     appendEvent(ev);
@@ -351,9 +439,11 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
       openMarkers: markerStack.map((m) => m.label),
       eventCount,
       markerCount,
+      startMarkerCount,
       screenshotCount,
       interactionCount,
       writeErrorCount,
+      droppedEventCount,
       sessionStartMs,
       elapsedMs: Date.now() - sessionStartMs,
       lastInteractionMs,
@@ -366,6 +456,10 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
     stopped = true;
     if (pollHandle) clearInterval(pollHandle);
     closeRun(Date.now());
+    // Stopping the session ends the open run: its end marker lands before
+    // session_end (and after the recorder's final values, which main.js
+    // drains before calling stop).
+    endOpenRuns();
     fireSystem("session_end");
     flushEvents();   // I47: drain any queued events on a clean exit
     return getStatus();
@@ -388,7 +482,7 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   pollHandle = setInterval(tick, POLL_INTERVAL_MS);
   tick();
 
-  return { fireMarker, fireSystem, fireInteraction, getStatus, pause, resume, stop };
+  return { fireMarker, startRun, fireSystem, fireInteraction, getStatus, pause, resume, stop };
 }
 
 module.exports = { startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun, isUncapturedApp };

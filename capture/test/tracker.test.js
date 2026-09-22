@@ -50,6 +50,81 @@ test("fireMarker writes marker events and tracks open-marker depth", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// --- One-hotkey runs ------------------------------------------------
+// The marker EVENT FORMAT is the pipeline's contract (case assignment reads
+// type "marker", data.marker_type, data.label): these tests pin it exactly.
+
+// Each run test stops its tracker in `finally` (a second stop() is a no-op):
+// a failed assertion must fail the test, not leave the 5 s poll interval
+// alive and hang the runner.
+
+test("startRun: one key per run -- 'Run N' labels, the open run ends first, runs never nest", () => {
+  const { dir, file } = tmpEvents();
+  const t = startTracker({ sessionId: "s", eventsFile: file });
+  try {
+    t.startRun();
+    assert.deepStrictEqual(t.getStatus().openMarkers, ["Run 1"]);
+    t.startRun();                        // run 1 still open: end it, then start run 2
+    assert.strictEqual(t.getStatus().markerDepth, 1);
+    assert.deepStrictEqual(t.getStatus().openMarkers, ["Run 2"]);
+    t.fireMarker({ markerType: "end" }); // the end hotkey
+    assert.strictEqual(t.getStatus().markerDepth, 0);
+    t.startRun();
+    assert.strictEqual(t.getStatus().startMarkerCount, 3);
+    t.stop();
+    const markers = readEvents(file).filter((e) => e.type === "marker");
+    assert.deepStrictEqual(markers.map((e) => e.data), [
+      { marker_type: "start", label: "Run 1" },
+      { marker_type: "end", label: null, reason: "auto_close_for_sibling" },
+      { marker_type: "start", label: "Run 2" },
+      { marker_type: "end", label: null },
+      { marker_type: "start", label: "Run 3" },
+      { marker_type: "end", label: null },   // stop() ends the open run
+    ]);
+    for (const e of markers) {
+      assert.deepStrictEqual(Object.keys(e).sort(),
+        ["_seq", "data", "event_id", "session_id", "timestamp", "type"]);
+    }
+  } finally {
+    t.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("startRun(label): a named run counts toward the next 'Run N'", () => {
+  const { dir, file } = tmpEvents();
+  const t = startTracker({ sessionId: "s", eventsFile: file });
+  try {
+    t.startRun("Order entry");
+    t.startRun();
+    assert.deepStrictEqual(t.getStatus().openMarkers, ["Run 2"]);
+    t.stop();
+    const starts = readEvents(file)
+      .filter((e) => e.type === "marker" && e.data.marker_type === "start")
+      .map((e) => e.data.label);
+    assert.deepStrictEqual(starts, ["Order entry", "Run 2"]);
+  } finally {
+    t.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("stop() writes the open run's end marker before session_end", () => {
+  const { dir, file } = tmpEvents();
+  const t = startTracker({ sessionId: "s", eventsFile: file });
+  try {
+    t.startRun();
+    t.stop();
+    const tail = readEvents(file).slice(-2);
+    assert.deepStrictEqual(tail.map((e) => e.type), ["marker", "system"]);
+    assert.deepStrictEqual(tail[0].data, { marker_type: "end", label: null });
+    assert.strictEqual(tail[1].data.kind, "session_end");
+  } finally {
+    t.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("fireMarker rejects an invalid marker type", () => {
   const { dir, file } = tmpEvents();
   const t = startTracker({ sessionId: "s", eventsFile: file });
@@ -230,26 +305,54 @@ test("flushEvents re-queues a failed durability-critical batch and retries", () 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("a write error on a non-critical-only batch is dropped, not counted", (tc) => {
+test("RP-21: a failed non-critical batch is counted and recorded as an events_dropped event", (tc) => {
   const { dir, file } = tmpEvents();
   tc.mock.timers.enable({ apis: ["setTimeout"] });
-  // Fail every write that carries an interaction line; let the initial
-  // synchronous session_start flush (which runs before timers are faked
-  // is fine since we enabled after construction) succeed.
+  // Fail every write that carries an interaction line while failInteractions
+  // is set; everything else (session_start first) writes normally.
+  let failInteractions = true;
   const appendFile = (f, data) => {
-    if (data.includes('"interaction"')) throw new Error("EACCES (simulated)");
+    if (failInteractions && data.includes('"interaction"')) throw new Error("EACCES (simulated)");
     fs.appendFileSync(f, data);
   };
-  const t = startTracker({ sessionId: "s", eventsFile: file, appendFile });
-  t.fireInteraction({ kind: "click", name: "OK" });
-  // The interaction rides the 500ms deferred timer ONLY -- no critical
-  // event shares its batch. Advance the timer so the (failing) flush runs.
-  tc.mock.timers.tick(500);
-  // Non-critical batch failed -> dropped silently, no error flag raised.
-  assert.strictEqual(t.getStatus().writeErrorCount, 0);
-  tc.mock.timers.reset();
-  t.stop();
-  fs.rmSync(dir, { recursive: true, force: true });
+  const notices = [];
+  const t = startTracker({
+    sessionId: "s", eventsFile: file, appendFile,
+    onNotice: (kind, payload) => notices.push({ kind, payload }),
+  });
+  try {
+    t.fireInteraction({ kind: "click", name: "OK" });
+    t.fireInteraction({ kind: "click", name: "Save" });
+    // The interactions ride the 500ms deferred timer ONLY -- no critical
+    // event shares their batch. Advance the timer so the (failing) flush runs.
+    tc.mock.timers.tick(500);
+    // Dropped (not retried) and not a critical write error (H-6 stays
+    // critical-only) -- but counted, and the operator is told once.
+    assert.strictEqual(t.getStatus().writeErrorCount, 0);
+    assert.strictEqual(t.getStatus().droppedEventCount, 2);
+    assert.deepStrictEqual(notices.map((n) => n.kind), ["events_dropped"]);
+    // The disk recovers; the next event carries the loss record ahead of it.
+    failInteractions = false;
+    t.fireMarker({ markerType: "start", label: "Run 1" });
+    tc.mock.timers.reset();
+    t.stop();
+    const evs = readEvents(file);
+    assert.strictEqual(evs.filter((e) => e.type === "interaction").length, 0, "the batch stayed dropped");
+    const loss = evs.filter((e) => e.type === "system" && e.data.kind === "events_dropped");
+    assert.strictEqual(loss.length, 1, "exactly one durable loss record");
+    const d = loss[0].data;
+    assert.strictEqual(d.dropped_interactions, 2);
+    assert.strictEqual(d.dropped_activities, 0);
+    assert.strictEqual(d.failed_writes, 1);
+    assert.match(d.last_error, /EACCES/);
+    assert.ok(d.first_dropped_ts <= d.last_dropped_ts, "the lost span is bounded");
+    const firstMarker = evs.findIndex((e) => e.type === "marker");
+    assert.ok(evs.indexOf(loss[0]) < firstMarker, "the loss record precedes the event after the gap");
+  } finally {
+    tc.mock.timers.reset();
+    t.stop();   // a no-op when the body already stopped it
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("startTracker accepts the E5 options without disturbing the marker flow", () => {

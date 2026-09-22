@@ -4,12 +4,14 @@
  * This window is the canonical surface for everything an operator
  * needs during an active capture session:
  *   - status header (state dot, current app, session timer)
- *   - open markers stack
- *   - counter grid (events / markers / shots / interactions)
+ *   - the current run
+ *   - counter grid (events / runs / shots / interactions)
  *   - recent events feed (last 8, reverse chronology)
- *   - fire-start input + saved-label buttons
- *   - end-marker, pause/resume, manual screenshot, sync marker
+ *   - start next run / end run, plus named-run buttons (task shortcuts)
+ *   - pause/resume, manual screenshot
  *   - end session (inline confirm, no window.confirm)
+ *   - the one-screen end summary (runs, duration, interactions,
+ *     screenshots, Done)
  *
  * Previously the counter grid + recent events feed lived in a
  * separate status-window.js; that legacy window was removed in the
@@ -17,10 +19,9 @@
  * See ../docs/UX-CHANGES.md for the merge rationale.
  *
  * Renderer talks to main.js via the same IPC channels as before
- * (pdt:fireStart, pdt:fireEnd, pdt:status, pdt:fireSync,
+ * (pdt:fireStart, pdt:fireEnd, pdt:status,
  * pdt:togglePause, pdt:manualScreenshot, pdt:endSession). pdt:fireStart
- * now optionally takes `{ nest: true }` to opt into nested-marker
- * semantics (default is close-then-open).
+ * takes an optional run name; runs never nest (the open run ends first).
  */
 
 "use strict";
@@ -33,8 +34,8 @@ const { injectTokens } = require("./ui/tokens.js");
 
 /* Markup lives in ui/operator-panel.html, loaded via a data: URL.
    Runtime-dynamic slots:
-     {{LABELS}}         the JSON-encoded saved-label list.
-     {{MARKER_HOTKEY}}  the real marker (start) accelerator from config, so the
+     {{LABELS}}         the JSON-encoded saved-label list (named runs).
+     {{MARKER_HOTKEY}}  the real run (start) accelerator from config, so the
                         R4 guidance line names the actual key, not a default.
      {{GUIDANCE_MODULE}} the absolute path to capture-guidance.js, required by
                         the page (nodeIntegration:true) so the one guidance
