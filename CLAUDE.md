@@ -4,7 +4,19 @@ Project context for Claude Code. **New session?** Read the *Active direction* bl
 below, then jump to the doc you need from the *Documentation map*. Full index:
 [docs/README.md](docs/README.md); architecture: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md).
 
-**Active direction (2026-07) — START HERE:** Released **v1.4.0** (2026-07-02) —
+**Active direction (2026-09), START HERE:** PDT is being refocused from a product
+into an internal **BA / process-manager helper**: an SME records a process a few
+times (alone or during a call), the recorder drafts the steps, the analyst confirms
+run 1, and the app produces a process map and a tool-neutral PDD. Plan of record
+(approved 2026-09-23): [docs/To-Do/BA-HELPER-PLAN-2026-09-22.md](docs/To-Do/BA-HELPER-PLAN-2026-09-22.md).
+Baseline it starts from (health, CI history, code review RP-01 to RP-36):
+[docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
+The complete v1.5.0 product is shelved on the `product-edition` branch (tag
+`product-edition-v1.5.0`). Cycle progress: `.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md`.
+The rest of this file still describes the v1.5.0 product until the refocus docs
+land; where it disagrees with the plan, the plan wins.
+
+**Previous direction (2026-07), kept as history:** Released **v1.4.0** (2026-07-02):
 a viewer-only presentation/disclosure pass (design critique 2026-07-01;
 [docs/architecture/DISCLOSURE-MODEL.md](docs/architecture/DISCLOSURE-MODEL.md),
 [docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md](docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md)),
