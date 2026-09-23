@@ -108,6 +108,22 @@ every touched file, and a loop that pipes it through `head` must test the check'
 own exit status, not the pipe's (the coordinator's first loop printed "ok" for the
 broken file).
 
+### BH10: the coordinator rebuilt a product while the owner asked for functional gaps (coordinator)
+Asked "is there anything that could make this more practical", I walked the
+process and project lifecycle and proposed business-case bridges, timed runs,
+stable IDs, test exports, then a five-layer "story" with recorded vs stated
+marks, error detection, value matching and open-question lists. The owner parked
+most of it and then corrected: "I feel you are overcomplicating it again... You
+are deep diving into a lifecycle saying what can cause problems and
+overengineering and creating a product again." Their own nudges were plain
+functional gaps (no project without a recorder; the analyst cannot add
+screenshots; notes unclear). Root cause: the design-judgment lens was applied to
+invent and gate new layers instead of to ask which ordinary operations the user
+expects and cannot do. RULE: when the owner asks what is missing, list the verbs
+the user cannot perform on each object (create, add, edit, remove, attach, link)
+before any analysis layer; propose no verification, detection or lifecycle
+feature the owner did not ask for.
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
