@@ -1,7 +1,7 @@
 /*
  * session.js -- the annotations persistence + undo/redo layer.
  *
- * Step / phase / marker / note edits all route through here:
+ * Step / marker / note edits all route through here:
  * saveAnnotationsWithUndo snapshots the previous annotations.json blob
  * (so Ctrl+Z reverts one operation at a time), persistAnnotations
  * persists + emits the change topics for targeted re-render, and
@@ -122,7 +122,6 @@ function applyRevertedAnnotations(annotations) {
   State.getSession().annotations = ensureAnnoShape(annotations);
   State.batch(() => {
     State.emit("steps");
-    State.emit("phases");
     State.emit("timeline");
     State.emit("markers");
     State.emit("analysis");
@@ -156,10 +155,10 @@ function ensureAnnoShape(anno) {
   return a;
 }
 
-const DEFAULT_EDIT_TOPICS = ["steps", "phases", "timeline"];
+const DEFAULT_EDIT_TOPICS = ["steps", "timeline"];
 
 async function persistAnnotations(anno, undoLabel, topics) {
-  /* Step / phase / marker edits route through here: persist via the
+  /* Step / marker edits route through here: persist via the
      undo helper (so Ctrl+Z reverts) then emit the change topics so the
      affected views re-render themselves -- no full-session reload.
      `topics` defaults to the safe superset; marker edits pass a

@@ -23,36 +23,11 @@ function openSessionFolder() {
   return ipcRenderer.invoke("viewer:openSessionFolder");
 }
 
-/** @returns {Promise<any>} chosen folder paths, or null */
-function openMultipleSessions() {
-  return ipcRenderer.invoke("viewer:openMultipleSessions");
-}
-
-/** @param {string[]} folders @returns {Promise<any>} */
-function loadMultipleSessions(folders) {
-  return ipcRenderer.invoke("viewer:loadMultipleSessions", folders);
-}
-
 /* ---- Normalization ---- */
-
-/** @param {object} opts @returns {Promise<any>} */
-function runNormalize(opts) {
-  return ipcRenderer.invoke("viewer:runNormalize", opts);
-}
 
 /** @param {object} opts @returns {Promise<any>} */
 function runNormalizeExtended(opts) {
   return ipcRenderer.invoke("viewer:runNormalizeExtended", opts);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function testCanonicalMatch(payload) {
-  return ipcRenderer.invoke("viewer:testCanonicalMatch", payload);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function bootstrapAppVocab(payload) {
-  return ipcRenderer.invoke("viewer:bootstrapAppVocab", payload);
 }
 
 /** @returns {Promise<any>} */
@@ -65,17 +40,6 @@ function cancelNormalize() {
 /** @param {object} payload @returns {Promise<any>} */
 function saveAnnotations(payload) {
   return ipcRenderer.invoke("viewer:saveAnnotations", payload);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function addClassificationOverride(payload) {
-  return ipcRenderer.invoke("viewer:addClassificationOverride", payload);
-}
-
-/** Promote classification rules into a shared taxonomy.yaml (team-wide).
- * @param {{rules: Array}} payload @returns {Promise<any>} */
-function promoteTaxonomyRules(payload) {
-  return ipcRenderer.invoke("viewer:promoteTaxonomyRules", payload);
 }
 
 /* ---- Export / shell ---- */
@@ -106,95 +70,6 @@ function openDiagram(filePath) {
   return ipcRenderer.invoke("viewer:openDiagram", filePath);
 }
 
-/* ---- Canonical (Process Template) files ---- */
-
-/** @returns {Promise<any>} */
-function openCanonicalFile() {
-  return ipcRenderer.invoke("viewer:openCanonicalFile");
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function saveCanonicalFile(payload) {
-  return ipcRenderer.invoke("viewer:saveCanonicalFile", payload);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function newCanonicalFile(payload) {
-  return ipcRenderer.invoke("viewer:newCanonicalFile", payload);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function deleteCanonicalFile(payload) {
-  return ipcRenderer.invoke("viewer:deleteCanonicalFile", payload);
-}
-
-/** @param {string} canonicalPath @returns {Promise<any>} */
-function listTemplateVersions(canonicalPath) {
-  return ipcRenderer.invoke("viewer:listTemplateVersions", canonicalPath);
-}
-
-/** @param {string} filePath @returns {Promise<any>} */
-function readTemplateFile(filePath) {
-  return ipcRenderer.invoke("viewer:readTemplateFile", filePath);
-}
-
-/* ---- App vocabularies ---- */
-
-/** @returns {Promise<any>} */
-function listAppVocabs() {
-  return ipcRenderer.invoke("viewer:listAppVocabs");
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function saveAppVocab(payload) {
-  return ipcRenderer.invoke("viewer:saveAppVocab", payload);
-}
-
-/** @param {string} filePath @returns {Promise<any>} */
-function readVocab(filePath) {
-  return ipcRenderer.invoke("viewer:readVocab", filePath);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function writeVocab(payload) {
-  return ipcRenderer.invoke("viewer:writeVocab", payload);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function newVocabFile(payload) {
-  return ipcRenderer.invoke("viewer:newVocabFile", payload);
-}
-
-/** @param {string} filePath @returns {Promise<any>} */
-function openVocabFile(filePath) {
-  return ipcRenderer.invoke("viewer:openVocabFile", filePath);
-}
-
-/** ADR-0025: discover a stable-signature vocab skeleton from a live window.
- *  @param {object} payload { target?, passes?, vocabId?, vocabName? }
- *  @returns {Promise<any>} { ok, skeleton, window_title, control_count } | { error } */
-function discoverFromWindow(payload) {
-  return ipcRenderer.invoke("viewer:discoverFromWindow", payload);
-}
-
-/** ADR-0025: point-and-click window pick. Enters standby; resolves the window
- *  the operator clicks. @returns {Promise<any>} { hwnd, window_title, process_id } | { cancelled, reason } | { error } */
-function pickWindow(payload) {
-  return ipcRenderer.invoke("viewer:pickWindow", payload || {});
-}
-
-/** G-7: build one starter App Vocabulary skeleton per app observed in a session.
- *  @param {object} payload { sessionFolder? } — when absent, the user is asked to pick a recording.
- *  @returns {Promise<any>} { ok, apps, sessionFolder } | { ok:false, cancelled } | { ok:false, error } */
-function bootstrapVocabsFromSession(payload) {
-  return ipcRenderer.invoke("viewer:bootstrapVocabsFromSession", payload || {});
-}
-
-/** Delete an App Library vocabulary file by path. @returns {Promise<any>} { deleted } | { error } */
-function deleteVocab(p) {
-  return ipcRenderer.invoke("viewer:deleteVocab", p);
-}
-
 /* ---- External video ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -220,14 +95,10 @@ function onOpenInitialSession(fn) {
 }
 
 module.exports = {
-  loadSession, openSessionFolder, openMultipleSessions, loadMultipleSessions,
-  runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
-  cancelNormalize,
-  saveAnnotations, addClassificationOverride, promoteTaxonomyRules,
+  loadSession, openSessionFolder,
+  runNormalizeExtended, cancelNormalize,
+  saveAnnotations,
   exportFile, saveSvgFile, revealFile, openExternal, openDiagram,
-  openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
-  listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
-  discoverFromWindow, pickWindow, deleteVocab, bootstrapVocabsFromSession,
   attachExternalVideo, saveExternalVideoSync,
   onNormalizeLog, onOpenInitialSession,
 };

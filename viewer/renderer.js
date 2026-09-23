@@ -2,8 +2,8 @@
  * Viewer renderer -- the thin wiring entry.
  *
  * After the Phase 3 decomposition (ADR-0003) this file only wires the
- * feature modules together: tab routing, the Flow / Steps / Phases
- * level switcher, the state-change bus subscriptions, global keyboard
+ * feature modules together: the Overview / Flow / Steps / Map level
+ * switcher, the state-change bus subscriptions, global keyboard
  * shortcuts, the Recent menu, the export buttons, and boot. Every
  * surface lives in its own module, reached through the require() block
  * below; index.html loads only this entry script plus the vendored
@@ -18,25 +18,17 @@ const fs = require("node:fs");
 const TimelineCore = require("./timeline/timeline-core.js");
 const State = require("./state.js");
 const PdtTheme = require("./theme.js");
-const PdtCharts = require("./charts.js");
-const PdtReport = require("./report-md.js");
 const PdtDfg = require("./dfg-viewer.js");
 const PdtBpmn = require("./bpmn-viewer.js");
 const PdtSteps = require("./step-editor.js");
-const PdtPhases = require("./phase-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
 const { promptModal } = require("./modals.js");
 const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent } = require("./recent.js");
-const { initAggregateView, renderAggregate, loadAggregateFolders, filteredAggregateSessions, getAggregateFindings } = require("./views/aggregate-view.js");
-const { initVocabView, reloadVocabList, addInteractionFromStep } = require("./views/vocab-view.js");
-const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
-const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = require("./views/template-view.js");
 const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, reorderSelectedStep } = require("./views/steps-view.js");
-const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead } = require("./views/flow-view.js");
 const { renderOverviewLevel, openMarkersInFlow, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
@@ -64,48 +56,12 @@ initSession({
 
 initRecent({ onOpenSession: (folder) => loadSessionIntoView(folder) });
 
-/* ============ Tabs ================================================ */
-
-$$(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => activateTab(tab.dataset.view));
-});
-// R1: Process Template moved off the resident tab row into the "More" overflow
-// menu (APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1) -- same activateTab(),
-// just triggered from a menu item instead of a .tab button.
-(() => {
-  const item = document.getElementById("btn-tabs-more-canonical");
-  if (item) item.addEventListener("click", () => activateTab("canonical"));
-})();
-function activateTab(name) {
-  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
-  $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
-  // Trigger lazy re-fit of any active viz
-  if (name === "aggregate") {
-    setTimeout(() => {
-      if (PdtBpmn) PdtBpmn.fit();
-      if (PdtDfg) PdtDfg.fit();
-    }, 100);
-  }
-  // AM.1/§D3: refresh the version-compare list when the analyst lands on
-  // the Template view -- the panel lives in its Machine-layer drawer now.
-  if (name === "canonical") {
-    if (typeof refreshTemplateVersions === "function") refreshTemplateVersions().catch(() => {});
-  }
-  if (name === "vocabularies") {
-    reloadVocabList();
-  }
-  // P2.4: shortcuts overlay only shows on Session view.
-  if (typeof renderShortcutsOverlay === "function") renderShortcutsOverlay();
-  // Let the bottom playback bar re-evaluate its visibility for this tab.
-  document.dispatchEvent(new Event("pdt:tabchange"));
-}
-
-/* ============ Session view-mode switcher (Flow / Steps / Phases) ===
+/* ============ Session view-mode switcher (Flow / Steps / Map) =====
    The view-mode bar at the top of the loaded session swaps between
-   three top-level layouts:
+   the top-level layouts, among them:
      #session-layout-flow    - video + timeline + annotations
      #session-layout-steps   - full-width step editor with timeline band
-     #session-layout-phases  - full-width phase editor with timeline band
+     #session-layout-map     - the interactive process map
    This is a much bigger change than the original "toggle which timeline
    strip is visible" approach because users couldn't find the cramped
    editor inside the narrow annotations panel. */
@@ -169,19 +125,18 @@ const VIEW_MODE_HELP = {
   overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the PDD export.",
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Detail slider to roll them up by screen / app / phase / case.",
-  phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
   map:    "Map view: the Process diagram (BPMN) or Flow diagram for this session, at the chosen detail level (element … case) or by app category.",
 };
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
-   scroll container (the Flow timeline, the Steps mini-timeline, the
-   Phases mini-timeline). When the analyst flips views we snapshot the
-   outgoing mode's zoom + scroll fraction and apply them to the
-   incoming mode -- "stayed at the same zoom + position" feel without
-   forcing the three modes to share a single DOM scroll container. */
+   scroll container (the Flow timeline, the Steps mini-timeline). When
+   the analyst flips views we snapshot the outgoing mode's zoom + scroll
+   fraction and apply them to the incoming mode -- "stayed at the same
+   zoom + position" feel without forcing the modes to share a single DOM
+   scroll container. */
 /* P2.3 viewport transfer: each mode owns its own scroll container and
-   zoom variable. MODE_VIEWPORT pairs the three so snapshot/apply is one
-   code path instead of three copy-pasted `if (mode === ...)` arms.
+   zoom variable. MODE_VIEWPORT pairs them so snapshot/apply is one
+   code path instead of copy-pasted `if (mode === ...)` arms.
    (Zoom still reads/writes the renderer-local vars; they move into the
    state module in a later step.) */
 const MODE_VIEWPORT = {
@@ -203,11 +158,6 @@ const MODE_VIEWPORT = {
     scrollSel: "#session-layout-steps .mini-timeline-scroll",
     getZoom: State.getStepZoom, setZoom: State.setStepZoom,
     render: renderStepsLevel,
-  },
-  phases: {
-    scrollSel: "#session-layout-phases .mini-timeline-scroll",
-    getZoom: State.getPhaseZoom, setZoom: State.setPhaseZoom,
-    render: renderPhasesLevel,
   },
   // v0.18.1: the Map level also has no timeline / scroll / zoom of its own
   // (the BPMN + DFG viewers have their own zoom controls inside the map
@@ -246,9 +196,9 @@ function _viewportApplyToMode(mode, snap) {
 
 /* ============ Map level (Session view) ============================ */
 
-/* The Session view's "Map" level shares the interactive process-map UI with
-   Compare-Sessions, but bound to a single-session data source via
-   map-controller.js. Lazily created on first render so its querySelector
+/* The Session view's "Map" level renders the interactive process-map UI,
+   bound to a single-session data source via map-controller.js. Lazily
+   created on first render so its querySelector
    lookups land after the DOM is ready. State (notation × level × scope ×
    rare-cutoff) lives in the controller and persists across session switches. */
 let _sessionMapCtrl = null;
@@ -265,8 +215,7 @@ function _sessionBpmnFile(level) {
 
 /* Activity labels emitted inside every step whose value-free label matches
    `stepLabel` in the current session -- the children the activity Flow diagram
-   is scoped to when a step node is drilled. Single-session analogue of
-   aggregate-view's pooled version. */
+   is scoped to when a step node is drilled. */
 function _sessionActivityLabelsForStep(stepLabel) {
   const sess = State.getSession();
   const labels = new Set();
@@ -340,7 +289,7 @@ function _sessionMapDataSource({ notation, level, scope }) {
     if (!dfg || !dfg.edges || !dfg.edges.length) {
       return {
         dfg,
-        emptyMessage: 'No category-level Flow diagram yet — Analyze the session, then give your apps activity categories (Classify activities). The detail levels (element … case) build their flow from your annotations and need no categories.',
+        emptyMessage: 'No category-level Flow diagram yet. It needs app category rules for the apps in this session. The detail levels (element … case) build their flow from your annotations and need no categories.',
       };
     }
     return { dfg };
@@ -553,15 +502,14 @@ function renderMapLevel() {
   try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
 }
 
-const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, steps: renderStepsLevel, phases: renderPhasesLevel, map: renderMapLevel };
+const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, steps: renderStepsLevel, map: renderMapLevel };
 
 /* Wire the state change-notification bus: an annotation edit emits the
    topics it touched (see persistAnnotations / performUndo / performRedo)
    and the matching view re-renders itself -- no full-session reload.
    The Map level early-returns when not visible, so subscribing it to the
-   annotation topics is cheap and keeps step/phase-level DFGs fresh. */
+   annotation topics is cheap and keeps the step-level maps fresh. */
 State.subscribe("steps",    renderStepsLevel);
-State.subscribe("phases",   renderPhasesLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
 // Lab-phase §A5 + R4: the Overview renders the analysis-backed badge / facts /
@@ -572,7 +520,6 @@ State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
 State.subscribe("steps",    renderMapLevel);
-State.subscribe("phases",   renderMapLevel);
 // ADR-0024: a grain change re-renders the Steps list and the Flow timeline to
 // the new notch (the Map is moved by mapCtrl.setLevel, so it isn't subscribed
 // here to avoid a double render).
@@ -607,7 +554,7 @@ function applyLevel(name) {
   // scoping by case is still meaningful on Overview.
   const playheadBtn = document.getElementById("btn-scope-to-playhead");
   if (playheadBtn) playheadBtn.style.display = (name === "overview") ? "none" : "";
-  const layouts = ["overview", "flow", "steps", "phases", "map"];
+  const layouts = ["overview", "flow", "steps", "map"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";
@@ -682,21 +629,13 @@ const VIEW_SHORTCUTS = {
     ["M",     "Merge selected"],
     ["Ctrl+Z", "Undo"],
   ],
-  phases: [
-    ["Drag",  "Reorder steps in phase"],
-    ["G",     "Group selected steps into a phase"],
-    ["Ctrl+Z", "Undo"],
-    ["?",     "Open help"],
-  ],
 };
 function renderShortcutsOverlay() {
   const ov = document.getElementById("shortcuts-overlay");
   if (!ov) return;
   const hidden = localStorage.getItem(SHORTCUTS_OVERLAY_KEY) === "1";
-  // Only show on the Session view, when a session is loaded, and not dismissed.
-  const onSession = document.querySelector(".tab.active") &&
-                    document.querySelector(".tab.active").dataset.view === "session";
-  if (hidden || !onSession || !State.getSession()) {
+  // Only show when a session is loaded and the overlay is not dismissed.
+  if (hidden || !State.getSession()) {
     ov.style.display = "none";
     return;
   }
@@ -723,8 +662,8 @@ function renderShortcutsOverlay() {
 
 /* Flips Warm Editorial (light) <-> Studio Dark (dark). CSS chrome
    recolors itself the instant data-theme flips; the JS-painted marks
-   (timeline bands, the cytoscape DFG, the charts) are repainted by
-   re-running the existing renderers. */
+   (timeline bands, the cytoscape DFG) are repainted by re-running the
+   existing renderers. */
 (function wireThemeToggle() {
   const btn = document.getElementById("btn-theme-toggle");
   if (!btn) return;
@@ -738,33 +677,23 @@ function renderShortcutsOverlay() {
   PdtTheme.onChange(() => {
     sync();
     if (State.getSession()) rerenderActiveLevel();
-    renderAggregate();
   });
   sync();
 })();
 
-/* ============ Steps + Phases view modules ========================= */
+/* ============ Steps view module =================================== */
 
-/* Steps + Phases view modules -- see views/steps-view.js + phases-view.js.
-   Deps are passed as lazy wrappers so hoisting order does not matter. */
+/* Steps view module -- see views/steps-view.js. Deps are passed as lazy
+   wrappers so hoisting order does not matter. */
 initStepsView({
   ensureAnnoShape: (a) => ensureAnnoShape(a),
   persistAnnotations: (a, label) => persistAnnotations(a, label),
   videoTimeToSessionTs: (t) => videoTimeToSessionTs(t),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   watchStep: (s) => watchStep(s),
-  openCanonicalInTemplateTab: (r) => { activateTab("canonical"); loadCanonical(r); },
-  // G-8: switch to the App Library tab, then add the interaction's signature
-  // there for review (suggest-don't-mutate; the analyst Saves the vocabulary).
-  addInteractionToVocab: (p) => { activateTab("vocabularies"); return addInteractionFromStep(p); },
-});
-initPhasesView({
-  ensureAnnoShape: (a) => ensureAnnoShape(a),
-  persistAnnotations: (a, label) => persistAnnotations(a, label),
-  activateAnnoTab: (n) => activateAnnoTab(n),
 });
 
-/* ============ Mini-timeline zoom (Steps / Phases) ================= */
+/* ============ Mini-timeline zoom (Steps) ========================== */
 
 function bindMiniTimelineZoom(prefix, getZoom, setZoom, rerender) {
   const buttons = [
@@ -780,125 +709,28 @@ function bindMiniTimelineZoom(prefix, getZoom, setZoom, rerender) {
 bindMiniTimelineZoom("steps",
   State.getStepZoom, State.setStepZoom,
   () => renderStepsLevel());
-bindMiniTimelineZoom("phases",
-  State.getPhaseZoom, State.setPhaseZoom,
-  () => renderPhasesLevel());
 
-/* (Steps + phases CRUD, ignored-apps, grouping suggestions -> views/) */
-/* (Process Template tab editor + version compare -> views/template-view.js) */
+/* (Steps CRUD and ignored apps -> views/steps-view.js) */
 
-/* ============ Save App Vocabulary from this session ================ */
+/* ============ Step map / PDD exports ============================= */
 
-async function buildVocabFromSession(suggestedName) {
-  if (!State.getSession()) return;
-  const vocabName = suggestedName || await promptModal({
-    title: "Save to App Library",
-    message: "App vocabulary name",
-    detail: "e.g., \"Salesforce\". Used as the file name under normalization/app_vocabularies/.",
-    placeholder: "Salesforce",
-    okLabel: "Save",
-  });
-  if (!vocabName) return;
-  const vocabId = vocabName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  const r = await Ipc.bootstrapAppVocab({
-    sessionFolder: State.getSession().sessionFolder,
-    vocabId, vocabName,
-  });
-  if (!r || !r.ok) {
-    toast("App Library entry build failed: " + ((r && r.error) || "unknown"), "error");
-    return;
-  }
-  // Parse the bootstrapped vocab. If a vocab with the same id already
-  // exists, merge into it (signature-deduped) instead of overwriting --
-  // re-running this for an app must never destroy the prior vocab.
-  const yaml = require("js-yaml");
-  let bootstrapped = null;
-  try { bootstrapped = (yaml.load(r.yaml) || {}).app_vocabulary || null; }
-  catch (_) { bootstrapped = null; }
-  const list = await Ipc.listAppVocabs();
-  const existing = ((list && list.vocabs) || []).find((v) => v.id === vocabId);
+async function exportArtifact(kind) {
+  const target = State.getSession();
+  if (!target) return;
 
-  if (bootstrapped && existing) {
-    const current = await Ipc.readVocab(existing.path);
-    if (current && !current._error) {
-      const merged = mergeInteractionsIntoVocab(current, bootstrapped.interactions || []);
-      const w = await Ipc.writeVocab({ path: existing.path, vocab: merged.vocab });
-      if (w && w.ok) {
-        await Ipc.revealFile(existing.path);
-        toast("Merged into the existing App Library entry — " + merged.added +
-          " new interaction(s), " + merged.skipped + " already present.", "success");
-      } else {
-        toast("Couldn't update the App Library file: " + ((w && w.error) || "unknown"), "error");
-      }
-      return;
-    }
-  }
-
-  // No existing vocab for this id -> save as a new file. preferAppVocabDir
-  // defaults to the shipped vocab dir so the analyst needn't hunt for it.
-  const out = await Ipc.saveAppVocab({
-    defaultName: vocabId + ".yaml",
-    content: r.yaml,
-    preferAppVocabDir: true,
-  });
-  if (out) {
-    await Ipc.revealFile(out);
-    toast("App Library starter saved — name each interaction in plain English, then re-analyze any session to apply.", "success");
-  }
-}
-
-const btnSaveVocab = $("#btn-save-vocab");
-if (btnSaveVocab) {
-  btnSaveVocab.addEventListener("click", async () => {
-    btnSaveVocab.disabled = true;
-    await buildVocabFromSession();
-    btnSaveVocab.disabled = false;
-  });
-}
-
-const btnPrepBootstrap = $("#btn-prep-bootstrap");
-if (btnPrepBootstrap) {
-  btnPrepBootstrap.addEventListener("click", async () => {
-    if (!State.getSession()) return;
-    const m = State.getSession().manifest || {};
-    const friendly = (m.prep_app || "").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-    btnPrepBootstrap.disabled = true;
-    await buildVocabFromSession(friendly || null);
-    btnPrepBootstrap.disabled = false;
-  });
-}
-
-/* ============ Step / phase / PDD exports ========================= */
-
-async function exportArtifact(kind, callOpts) {
-  if (!State.getSession() && !State.getAggregateSessions().length) return;
-  // v0.18.1: callers from the Session view (Export → PDD) can pass
-  // { singleSession: true } to force the export to use the current session
-  // rather than whatever aggregate sessions are loaded in Compare-Sessions.
-  // Without this, opening a session in Session view AFTER having loaded a
-  // different set in Compare-Sessions would silently export the wrong target.
-  const forceSingle = callOpts && callOpts.singleSession === true;
-  const filtered = (!forceSingle && State.getAggregateSessions().length)
-    ? filteredAggregateSessions()
-    : [State.getSession()].filter(Boolean);
-  if (!filtered.length) return;
-  const target = filtered[0];
-
-  // Step / Phase BPMN export = the OBSERVED-FLOW map the viewer already shows
-  // (process_map_step|phase.bpmn, mined from the annotations by
-  // bpmn_observed.py under --mine). The old --step-bpmn-out / --phase-bpmn-out
-  // route is the TEMPLATE-derived bpmn_step, which emits an empty Start->End
-  // without a --canonical template — so export the session-folder observed
-  // file instead (mining it first if it is not there yet).
-  if (kind === "step-bpmn" || kind === "phase-bpmn") {
-    const level = kind === "step-bpmn" ? "step" : "phase";
-    const sourcePath = path.join(target.sessionFolder, "process_map_" + level + ".bpmn");
+  // Step BPMN export = the OBSERVED-FLOW map the viewer already shows
+  // (process_map_step.bpmn, mined from the annotations by bpmn_observed.py
+  // under --mine). The --step-bpmn-out route is the template-derived
+  // bpmn_step, so export the session-folder observed file instead (mining it
+  // first if it is not there yet).
+  if (kind === "step-bpmn") {
+    const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
     if (!fs.existsSync(sourcePath)) {
       const r = await Ipc.runNormalizeExtended({ sessionFolder: target.sessionFolder, mine: true });
       if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
     }
     if (!fs.existsSync(sourcePath)) {
-      toast("No " + level + "-level flow to export — analyze a session that has steps first.", "error");
+      toast("No step-level flow to export. Analyze a session that has steps first.", "error");
       return;
     }
     const out = await Ipc.exportFile({ sourcePath, suggestedName: "process." + kind + ".bpmn" });
@@ -909,9 +741,9 @@ async function exportArtifact(kind, callOpts) {
     return;
   }
 
-  // PDD / step-CSV: normalize writes the artifact straight to a temp path.
+  // PDD: normalize writes the document straight to a temp path.
   const os = require("os");
-  const ext = kind === "pdd" ? "docx" : "csv";
+  const ext = "docx";
   const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + "." + ext);
   const opts = { sessionFolder: target.sessionFolder, mine: false };
   let mapImgPath = null, tobeImgPath = null;
@@ -962,7 +794,6 @@ async function exportArtifact(kind, callOpts) {
       console.error("[renderer] reference-map PDD embed failed; continuing:", e);
     }
   }
-  if (kind === "step-csv") opts.stepCsvOut = tmpPath;
   const r = await Ipc.runNormalizeExtended(opts);
   if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
   if (tobeImgPath) { try { fs.unlinkSync(tobeImgPath); } catch (_) {} }
@@ -976,35 +807,11 @@ async function exportArtifact(kind, callOpts) {
   try { fs.unlinkSync(tmpPath); } catch (_) {}
 }
 
-if ($("#btn-export-bpmn-step"))  $("#btn-export-bpmn-step").addEventListener("click", () => exportArtifact("step-bpmn"));
-if ($("#btn-export-bpmn-phase")) $("#btn-export-bpmn-phase").addEventListener("click", () => exportArtifact("phase-bpmn"));
-if ($("#btn-export-pdd"))        $("#btn-export-pdd").addEventListener("click", () => exportArtifact("pdd"));
-if ($("#btn-export-step-csv"))   $("#btn-export-step-csv").addEventListener("click", () => exportArtifact("step-csv"));
-
-/* ============ Aggregate (Compare Sessions) view =================== */
-
-initAggregateView({
-  onDrillToSession: async (folder, timestamp, opts) => {
-    activateTab("session");
-    await loadSessionIntoView(folder);
-    if (timestamp) seekToTimestamp(timestamp);
-    // Item 11: the Compare empty-state CTA jumps to a SPECIFIC session's
-    // Overview (opts.level) -- unlike the map drill-down (always a
-    // timestamp, no explicit level), which keeps whichever level the
-    // Session view was last showing.
-    if (opts && opts.level) {
-      const btn = document.querySelector('.view-mode-btn[data-level="' + opts.level + '"]');
-      if (btn) btn.click(); else applyLevel(opts.level);
-    }
-  },
-});
-
-/* Re-fit the process map after its panel is drag-resized (layout-controls
-   fires pdt:mapresized on drag release). */
-document.addEventListener("pdt:mapresized", () => {
-  if (PdtBpmn && PdtBpmn.fit) PdtBpmn.fit();
-  if (PdtDfg && PdtDfg.fit) PdtDfg.fit();
-});
+/* AD-11: the Session Export menu carries the two map exports. "Step map as
+   BPMN" copies the step-level Process diagram file the pipeline writes;
+   "Map as SVG" is exportMapSvg below. */
+if ($("#btn-session-step-bpmn")) $("#btn-session-step-bpmn").addEventListener("click", () => exportArtifact("step-bpmn"));
+if ($("#btn-session-map-svg"))   $("#btn-session-map-svg").addEventListener("click", () => exportMapSvg());
 
 /* ADR-0019: Reference Maps surface — fork / gallery / editor + the PDD image
    bridge. Wired once at boot; reads the live session map via the controller. */
@@ -1021,85 +828,51 @@ RefmapUI.initRefmapUI({
 
 /* ============ Exports ============================================= */
 
-$("#btn-export-bpmn").addEventListener("click", () => exportFirst("process_map.bpmn"));
-$("#btn-export-xes").addEventListener("click", () => exportFirst("events.xes"));
-$("#btn-export-stats").addEventListener("click", () => exportFirst("stats.json"));
-
-/* Phase F: export the active process-map (BPMN diagram or Flow
-   diagram) as an SVG -- the format Figma / Lucidchart / browsers all
-   import. Picks the renderer for whichever map tab is showing. */
-if ($("#btn-export-map-svg")) {
-  $("#btn-export-map-svg").addEventListener("click", async () => {
-    const activeTab = document.querySelector(".panel-tab.active[data-map]");
-    const which = activeTab ? activeTab.dataset.map : "bpmn";
-    let svg = null;
-    if (which === "dfg" && PdtDfg && PdtDfg.exportSvg) {
-      svg = PdtDfg.exportSvg();
-    } else if (PdtBpmn && PdtBpmn.exportSvg) {
-      svg = await PdtBpmn.exportSvg();
-    }
-    if (!svg) {
-      toast("No process map to export — analyze sessions first.", "error");
-      return;
-    }
-    const r = await Ipc.saveSvgFile({
-      content: svg,
-      suggestedName: (which === "dfg" ? "flow-diagram" : "process-diagram") + ".svg",
-    });
-    if (r && r.ok) toast("Process map exported to " + r.path, "success");
-    else if (r && r.error) toast("Export failed: " + r.error, "error");
+/* AD-11: "Map as SVG" saves the map the Map level shows (the Process diagram
+   or the Flow diagram, at its current detail level) as an SVG image, the
+   format Figma / Lucidchart / browsers all import. From another level it
+   opens the Map first and lets the diagram draw (the same settle the PDD
+   export uses), then reads the renderer of the active notation. A cell that
+   shows a message instead of a diagram (locked, or not built at this detail
+   level) exports nothing and says so. */
+async function exportMapSvg() {
+  if (!State.getSession()) { toast("Open a session first.", "error"); return; }
+  if (State.getLevel() !== "map") {
+    // Click the level button (not applyLevel alone) so the View bar shows Map.
+    const mapBtn = document.querySelector('.view-mode-btn[data-level="map"]');
+    if (mapBtn) mapBtn.click(); else applyLevel("map");
+    await new Promise((r) => setTimeout(r, 900));
+  }
+  const ctrl = _ensureSessionMapCtrl();
+  let which = "dfg";
+  const drawn = () => {
+    which = ctrl.getState().notation === "dfg" ? "dfg" : "bpmn";
+    const host = document.getElementById(which === "dfg" ? "session-map-dfg-host" : "session-map-bpmn-host");
+    return !!(host && host.querySelector(which === "dfg" ? "canvas" : ".djs-container"));
+  };
+  // bpmn-js imports asynchronously: give a Process diagram a bounded moment.
+  for (let i = 0; i < 30 && !drawn(); i++) await new Promise((r) => setTimeout(r, 100));
+  let svg = null;
+  if (drawn()) svg = which === "dfg" ? PdtDfg.exportSvg() : await PdtBpmn.exportSvg();
+  if (!svg) {
+    toast("No process map is drawn on the Map level to export. Analyze the session, or pick a view of the map that shows a diagram.", "error");
+    return;
+  }
+  const r = await Ipc.saveSvgFile({
+    content: svg,
+    suggestedName: (which === "dfg" ? "flow-diagram" : "process-diagram") + ".svg",
   });
+  if (r && r.ok) toast("Process map exported to " + r.path, "success");
+  else if (r && r.error) toast("Export failed: " + r.error, "error");
 }
-
-$("#btn-export-md").addEventListener("click", async () => {
-  if (!PdtReport) return;
-  const filtered = filteredAggregateSessions();
-  if (!filtered.length) return;
-  /* Re-merge activity stats and cases across the filtered set so the
-     report matches what the panels show. */
-  const actMap = new Map();
-  for (const s of filtered) {
-    for (const r of ((s.stats || {}).activity_stats || [])) {
-      const e = actMap.get(r.activity_label) || { activity_label: r.activity_label, frequency: 0, total_duration_ms: 0 };
-      e.frequency += r.frequency;
-      e.total_duration_ms += r.total_duration_ms;
-      actMap.set(r.activity_label, e);
-    }
-  }
-  const mergedActivity = [...actMap.values()].sort((a, b) => b.frequency - a.frequency);
-  const mergedCases = [];
-  for (const s of filtered) {
-    for (const r of ((s.stats || {}).case_stats || [])) {
-      if (!r.parent_case_id) mergedCases.push(r);
-    }
-  }
-  mergedCases.sort((a, b) => (b.active_ms || 0) - (a.active_ms || 0));
-  const edgeMap = new Map();
-  for (const s of filtered) {
-    for (const e of ((s.dfg || {}).edges || [])) {
-      const k = e.source + "\x00" + e.target;
-      edgeMap.set(k, (edgeMap.get(k) || 0) + (e.frequency || 1));
-    }
-  }
-  const dfg = { edges: [...edgeMap.entries()].map(([k, freq]) => {
-    const [source, target] = k.split("\x00");
-    return { source, target, frequency: freq };
-  })};
-  // §D1: the multi-session report leads with the cross-session findings
-  // exactly as the Compare feed showed them (one source of truth).
-  const md = PdtReport.buildAggregateReport(filtered, mergedActivity, mergedCases, dfg,
-    getAggregateFindings());
-  await saveMarkdownReport(md, "aggregate-report.md");
-});
 
 /* PDD export from Session view -- new in v0.18.1. The PDD's As-Is process
    map (section 3.3) is rasterised from the currently-rendered Flow diagram;
-   to embed THIS session's map (not whatever was last shown on the
-   Compare-Sessions tab, or nothing at all), pre-render the Session-view
-   Map controller's Flow tab and let cytoscape settle before invoking the
-   shared exportArtifact("pdd", { singleSession: true }) path. Leaves the
-   user on Map level + Flow tab after the export -- reasonable context for
-   "you just exported this." */
+   to embed THIS session's map (not a blank canvas), pre-render the
+   Session-view Map controller's Flow tab and let cytoscape settle before
+   invoking the shared exportArtifact("pdd") path. Leaves the user on Map
+   level + Flow tab after the export -- reasonable context for "you just
+   exported this." */
 if ($("#btn-session-pdd")) {
   $("#btn-session-pdd").addEventListener("click", async () => {
     if (!State.getSession()) { toast("Open a session first.", "error"); return; }
@@ -1111,112 +884,8 @@ if ($("#btn-session-pdd")) {
     // rendered diagram and not a blank canvas. 900ms matches the post-tab-
     // switch timing used elsewhere in the controller.
     await new Promise((r) => setTimeout(r, 900));
-    await exportArtifact("pdd", { singleSession: true });
+    await exportArtifact("pdd");
   });
-}
-
-/* Reduce a suggested filename to a safe basename for a temp-file write: take
-   the last path segment and drop leading dots, so a crafted name like
-   "..\\..\\evil" cannot escape the temp dir via path.join. */
-function safeBasename(name, fallback) {
-  const segs = String(name || "").split(/[\\/]+/);
-  const base = segs[segs.length - 1].replace(/^\.+/, "");
-  return base || (fallback || "export");
-}
-
-async function saveMarkdownReport(md, suggestedName) {
-  /* Write into a temp file, then ask main.js to copy it via the
-     export-file dialog so the user picks the destination. */
-  const tmpDir = require("os").tmpdir();
-  const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-" + safeBasename(suggestedName, "report.md"));
-  fs.writeFileSync(tmpPath, md, "utf-8");
-  const out = await Ipc.exportFile({
-    sourcePath: tmpPath,
-    suggestedName,
-  });
-  if (out) {
-    await Ipc.revealFile(out);
-    toast("Markdown report saved: " + path.basename(out), "success");
-  }
-  try { fs.unlinkSync(tmpPath); } catch (_) {}
-}
-
-$("#btn-export-promotions").addEventListener("click", async () => {
-  /* Taxonomy promotion (§13). Walk normalized sessions for events
-     classified as "Unclassified - <app>". Emit a YAML stub with one
-     rule per unique app, ready for the analyst to refine and append
-     to the central taxonomy. */
-  const filtered = filteredAggregateSessions();
-  const apps = new Map(); // app -> { firstTitle, count }
-  for (const sess of filtered) {
-    for (const ev of (sess.events || [])) {
-      if (ev.type !== "activity") continue;
-      const label = ev.data.activity_label || "";
-      if (!/^Unclassified/.test(label)) continue;
-      const app = ev.data.app || "unknown";
-      const entry = apps.get(app) || { firstTitle: ev.data.title || "", count: 0 };
-      entry.count += 1;
-      apps.set(app, entry);
-    }
-  }
-  /* Also include unclassified activity_stats entries (which may be the
-     only signal if events aren't loaded for older sessions). */
-  for (const sess of filtered) {
-    for (const r of (((sess.stats || {}).activity_stats) || [])) {
-      if (!/^Unclassified/.test(r.activity_label || "")) continue;
-      const app = (r.activity_label.split("-").pop() || "").trim();
-      if (!apps.has(app)) apps.set(app, { firstTitle: "", count: r.frequency || 0 });
-    }
-  }
-  if (!apps.size) {
-    toast("No Unclassified activities found in the loaded sessions", "");
-    return;
-  }
-  const sorted = [...apps.entries()].sort((a, b) => b[1].count - a[1].count);
-  const lines = [
-    "# Taxonomy promotion candidates",
-    "# Generated by Process Discovery Viewer on " + new Date().toISOString(),
-    "# Each `label` below is prefixed with [REVIEW] — replace the bracketed prefix",
-    "# with the final activity name before appending to the central taxonomy YAML.",
-    "# Refine `title_regex` for stricter matching and add `extract` rules where useful.",
-    "",
-    "rules:",
-  ];
-  for (const [app, info] of sorted) {
-    lines.push("  - match:");
-    lines.push("      app: \"" + app.replace(/"/g, "\\\"") + "\"");
-    lines.push("      title_regex: \".*\"");
-    lines.push("    label: \"[REVIEW] " + app.replace(/"/g, "\\\"") + "\"  # " + info.count + " unclassified events" +
-      (info.firstTitle ? "; sample title: " + JSON.stringify(info.firstTitle.slice(0, 60)) : ""));
-  }
-  const yaml = lines.join("\n") + "\n";
-  const tmpDir = require("os").tmpdir();
-  const tmpPath = path.join(tmpDir, "pdt-" + Date.now() + "-taxonomy-promotions.yaml");
-  fs.writeFileSync(tmpPath, yaml, "utf-8");
-  const out = await Ipc.exportFile({
-    sourcePath: tmpPath,
-    suggestedName: "taxonomy-promotions.yaml",
-  });
-  if (out) {
-    await Ipc.revealFile(out);
-    toast(`Promoted ${sorted.length} app(s) as taxonomy candidates`, "success");
-  }
-  try { fs.unlinkSync(tmpPath); } catch (_) {}
-});
-
-async function exportFirst(filename) {
-  const s = State.getAggregateSessions().find((x) =>
-    fs.existsSync(path.join(x.sessionFolder, filename)));
-  if (!s) return;
-  const src = path.join(s.sessionFolder, filename);
-  const out = await Ipc.exportFile({
-    sourcePath: src,
-    suggestedName: filename,
-  });
-  if (out) {
-    await Ipc.revealFile(out);
-    toast("Exported: " + path.basename(out), "success");
-  }
 }
 
 /* ============ Keyboard shortcuts ================================== */
@@ -1267,16 +936,8 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
-  // R1 (APPROACHABILITY-REDESIGN-2026-07-03 §5): renumbered to match the
-  // resident tab row (1/2/3, no gap where Template used to sit at 3).
-  // Template's hotkey is retired, not reassigned -- it's a "More ▾"
-  // destination now, reachable via the menu / the
-  // openCanonicalInTemplateTab drill, never a top-level number.
-  if (e.key === "1") activateTab("session");
-  else if (e.key === "2") activateTab("aggregate");
-  else if (e.key === "3") activateTab("vocabularies");
-  // Step editor shortcuts (only when on session view and steps panel)
-  else if (State.getLevel() === "steps" && State.getSession()) {
+  // Step editor shortcuts (only when on the Steps level)
+  if (State.getLevel() === "steps" && State.getSession()) {
     const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
     // R1 (Steps chrome diet): reorder keeps a keyboard path now that the per-row
     // ↑ / ↓ buttons are gone -- Alt+ArrowUp / Alt+ArrowDown move the selected
@@ -1346,8 +1007,8 @@ function selectHelpSection(name) {
   $$(".help-section").forEach((s) => s.classList.toggle("active", s.dataset.section === name));
 }
 $("#btn-help").addEventListener("click", () => openHelp());
-/* Inline "What is a step?" / "What is a phase?" links in the toolbar
-   open the help modal at the right section. */
+/* The inline "What is a step?" link in the toolbar opens the help modal
+   at the right section. */
 document.addEventListener("click", (e) => {
   const t = e.target.closest && e.target.closest(".link-help");
   if (!t) return;
@@ -1363,9 +1024,9 @@ $("#help-modal").addEventListener("click", (e) => {
 });
 
 /* ============ Bottom playback bar ================================= */
-/* A global transport mirroring the #video element. Visible only on the
-   Session tab with a recording loaded; the .hidden class collapses it
-   otherwise. Space / arrow shortcuts are handled in the keydown block
+/* A global transport mirroring the #video element. Visible only with a
+   recording loaded; the .hidden class collapses it otherwise. Space /
+   arrow shortcuts are handled in the keydown block
    above and reflect here through the video's own play/pause/timeupdate
    events, so the bar stays in sync regardless of how playback changes. */
 (function wirePlaybackBar() {
@@ -1384,12 +1045,8 @@ $("#help-modal").addEventListener("click", (e) => {
   function hasVideo() {
     return !!(video.src && isFinite(video.duration) && video.duration > 0);
   }
-  function onSessionTab() {
-    const t = document.querySelector(".tab.active");
-    return !!t && t.dataset.view === "session";
-  }
   function refresh() {
-    bar.classList.toggle("hidden", !onSessionTab() || !hasVideo());
+    bar.classList.toggle("hidden", !hasVideo());
     const dur = video.duration || 0, cur = video.currentTime || 0;
     const pct = dur > 0 ? (cur / dur) * 100 : 0;
     fill.style.width = pct + "%";
@@ -1432,7 +1089,6 @@ $("#help-modal").addEventListener("click", (e) => {
   for (const evt of ["timeupdate", "loadedmetadata", "play", "pause", "emptied", "durationchange"]) {
     video.addEventListener(evt, refresh);
   }
-  document.addEventListener("pdt:tabchange", refresh);
   refresh();
 })();
 
@@ -1445,36 +1101,6 @@ $("#topbar-meta").textContent = "v" + require("./package.json").version + " · "
    via this channel. Open it without any further user click. */
 Ipc.onOpenInitialSession((folder) => {
   if (folder) loadSessionIntoView(folder);
-});
-
-/* ============ Vocabularies tab -- see views/vocab-view.js ========= */
-
-initVocabView({
-  // R2: the workbench "Re-analyze to apply names" CTA reuses the existing
-  // "Analyze session" pipeline path (#btn-normalize, wired in flow-view.js —
-  // it re-runs normalize and reloads the session). NEVER auto-triggered.
-  onReanalyze: () => new Promise((resolve) => {
-    const btn = $("#btn-normalize");
-    if (!btn) { resolve(); return; }
-    // #btn-normalize (flow-view) re-runs normalize then reloads the session via
-    // loadSessionIntoView. It disables itself while running (setAnalysisRunning),
-    // so: click, wait a beat for it to enter the running state, then poll until
-    // it settles. If it never enters running (e.g. no session), resolve anyway.
-    btn.click();
-    let ticks = 0;
-    let sawRunning = false;
-    const poll = setInterval(() => {
-      ticks++;
-      const running = !!($("#btn-normalize") && $("#btn-normalize").disabled);
-      if (running) sawRunning = true;
-      // Settle once we've seen it run and it stopped, or after ~2s if it never
-      // ran, or a hard 60s cap.
-      if ((sawRunning && !running) || (!sawRunning && ticks > 20) || ticks > 600) {
-        clearInterval(poll);
-        resolve();
-      }
-    }, 100);
-  }),
 });
 
 /* ============ Attach external video (Teams recording, etc.) ======= */
@@ -1572,7 +1198,6 @@ function renderRecentMenu() {
   host.querySelectorAll(".recent-menu-item").forEach((item) => {
     item.addEventListener("click", () => {
       toggleRecentMenu(false);
-      activateTab("session");
       loadSessionIntoView(item.dataset.folder);
     });
   });
@@ -1597,10 +1222,10 @@ function toggleRecentMenu(force) {
   });
 })();
 
-/* Generic dropdown menu (button + popup) -- used by the Export menus on
-   the Session and Compare Sessions tabs. Mirrors wireRecentMenu: the
-   button toggles the popup, an outside click closes it, and clicking
-   any enabled menu item closes it after the item's own handler runs. */
+/* Generic dropdown menu (button + popup) -- used by the session's Export
+   and More menus. Mirrors wireRecentMenu: the button toggles the popup,
+   an outside click closes it, and clicking any enabled menu item closes
+   it after the item's own handler runs. */
 function wireDropdownMenu(btnId, popupId) {
   const btn = document.getElementById(btnId);
   const popup = document.getElementById(popupId);
@@ -1619,6 +1244,3 @@ function wireDropdownMenu(btnId, popupId) {
 }
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");
 wireDropdownMenu("btn-session-more-menu", "session-more-popup");
-wireDropdownMenu("btn-agg-export-menu", "agg-export-popup");
-wireDropdownMenu("btn-vocab-more-menu", "vocab-more-popup");
-wireDropdownMenu("btn-tabs-more-menu", "tabs-more-popup");

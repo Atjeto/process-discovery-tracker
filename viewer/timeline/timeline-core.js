@@ -3,10 +3,9 @@
 /*
  * timeline-core.js -- shared timeline rendering core.
  *
- * One module behind all three viewer timelines (Flow, Steps, Phases). Before it
- * existed, tick maths, lane packing, and band construction were copy-pasted
- * across renderer.js / step-editor.js / phase-editor.js, so a fix in one never
- * reached the others. See docs/adr/0003-viewer-architecture-refactor.md.
+ * One module behind the viewer timelines (Flow, Steps). Before it existed,
+ * tick maths, lane packing, and band construction were copy-pasted across the
+ * timeline renderers, so a fix in one never reached the others. See docs/adr/0003-viewer-architecture-refactor.md.
  *
  * CommonJS module: `require("./timeline/timeline-core.js")`. Type-checked via
  * JSDoc (`npm run typecheck`); the pure functions are covered by
@@ -150,7 +149,7 @@ function chooseTicks(startMs, endMs, targetCount) {
  * Greedily pack time-ranged items into non-overlapping lanes. Overlap is judged
  * on a *visual* footprint: each item is padded to a minimum width so two items
  * a few ms apart still land on separate lanes. Unifies the old assignLanes /
- * layoutCaseLanes / inline phase-editor lane loop.
+ * layoutCaseLanes / inline lane loops.
  * @param {LaneItem[]} items      Items to place.
  * @param {{ maxLanes: number, spanMs: number }} opts
  * @returns {{ laneCount: number, laneOf: Map<string, number> }}
@@ -348,10 +347,9 @@ function renderLaneStack(host, opts) {
 }
 
 /**
- * Render a single-block-type mini-timeline -- the Steps and Phases strips: a
- * lane-packed row of blocks plus a bottom time axis, scaled to fill the
- * drag-resizable strip height. Replaces the bodies of renderStepTimeline and
- * renderPhaseTimeline.
+ * Render a single-block-type mini-timeline -- the Steps strip: a lane-packed
+ * row of blocks plus a bottom time axis, scaled to fill the drag-resizable
+ * strip height. Replaces the body of renderStepTimeline.
  * @param {HTMLElement} host  The `.timeline` element inside `.mini-timeline-scroll`.
  * @param {MiniTimelineOptions} opts
  * @returns {void}

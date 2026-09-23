@@ -10,47 +10,25 @@
  * them, and `emit` / `subscribe` are the only notification mechanism.
  * Loaded via CommonJS `require("./state.js")`, like timeline-core.js.
  *
- * Note: getListFilters / getCanonicalState / getVocabState / and
- * getMultiSelectedStepIds return the live object so existing
- * field-level mutation keeps working. Mutating those bypasses the bus;
+ * Note: getListFilters and getMultiSelectedStepIds return the live
+ * object so existing field-level mutation keeps working. Mutating those bypasses the bus;
  * the paths that must notify go through emit()/batch() explicitly.
  */
 
 "use strict";
 
-/** @typedef {"overview"|"flow"|"steps"|"phases"|"map"|"analysis"} Level */
+/** @typedef {"overview"|"flow"|"steps"|"map"|"analysis"} Level */
 
 /**
  * Renderable concerns a view can subscribe to. An edit emits the
  * topics it touched; every function subscribed to that topic re-runs.
- * @typedef {"steps"|"phases"|"timeline"|"markers"} ChangeTopic
+ * @typedef {"steps"|"timeline"|"markers"} ChangeTopic
  */
 
 /**
  * @typedef {Object} ListFilters
  * @property {{ text: string, states: Set<string> }} step
- * @property {{ text: string }} phase
  * @property {{ text: string }} marker
- */
-
-/**
- * @typedef {Object} CanonicalState
- * @property {string|null} path
- * @property {string|null} content
- * @property {*} parsed
- * @property {string|null} exemplarFolder
- */
-
-/**
- * @typedef {Object} VocabState
- * @property {*[]} list
- * @property {string|null} selectedPath
- * @property {*} current
- * @property {boolean} dirty
- * @property {*[]} [_candidates]   Transient discovery/bootstrap/snapshot candidates
- *   for the selected vocab (NOT persisted; naming one derives a real entry).
- * @property {number|null} [_inlineNaming]  Index of the UNNAMED workbench row
- *   whose inline name editor is open (Task 1: naming never navigates).
  */
 
 /**
@@ -65,22 +43,14 @@
 /**
  * @typedef {Object} ViewerState
  * @property {*} currentSession         The loaded single session, or null.
- * @property {*[]} aggregateSessions    Sessions loaded for the Aggregate surface.
  * @property {Level} currentLevel       Active session sub-view.
  * @property {string|null} selectedStepId
  * @property {Set<string>} multiSelectedStepIds
- * @property {string|null} selectedPhaseId
  * @property {ListFilters} listFilters
  * @property {string} currentCaseScope  Session-wide case filter; "" = all cases.
  * @property {number} stepZoom
- * @property {number} phaseZoom
  * @property {number} zoomFactor        Flow timeline zoom.
  * @property {*} selectionRange         Flow timeline drag-selected range, or null.
- * @property {CanonicalState} canonicalState
- * @property {VocabState} vocabState
- * @property {string} aggregateFilter
- * @property {string} aggregateFromDate
- * @property {string} aggregateToDate
  * @property {UndoEntry[]} undoStack
  * @property {UndoEntry[]} redoStack
  */
@@ -88,7 +58,6 @@
 /** @type {ViewerState} */
 const _s = {
   currentSession: null,
-  aggregateSessions: [],
   // Lab-phase §A5: the Overview level (case-quality badge → facts →
   // findings → Export PDD) is the default surface a loaded session opens on.
   currentLevel: "overview",
@@ -98,22 +67,14 @@ const _s = {
   currentGrain: "screen",
   selectedStepId: null,
   multiSelectedStepIds: new Set(),
-  selectedPhaseId: null,
   listFilters: {
     step:   { text: "", states: new Set() },
-    phase:  { text: "" },
     marker: { text: "" },
   },
   currentCaseScope: "",
   stepZoom: 1,
-  phaseZoom: 1,
   zoomFactor: 1,
   selectionRange: null,
-  canonicalState: { path: null, content: null, parsed: null, exemplarFolder: null },
-  vocabState: { list: [], selectedPath: null, current: null, dirty: false },
-  aggregateFilter: "",
-  aggregateFromDate: "",
-  aggregateToDate: "",
   undoStack: [],
   redoStack: [],
   pendingStepJumpTs: null,
@@ -253,9 +214,6 @@ function canRedo(folder) { return _s.redoStack.some(e => e.sessionFolder === fol
 function getSession() { return _s.currentSession; }
 /** @param {*} v */
 function setSession(v) { _s.currentSession = v; }
-function getAggregateSessions() { return _s.aggregateSessions; }
-/** @param {*[]} v */
-function setAggregateSessions(v) { _s.aggregateSessions = v; }
 
 /* Level */
 /** @returns {Level} */
@@ -274,9 +232,6 @@ function setGrain(v) { if (_GRAIN_NOTCHES.includes(v)) _s.currentGrain = v; }
 function getSelectedStepId() { return _s.selectedStepId; }
 /** @param {string|null} v */
 function setSelectedStepId(v) { _s.selectedStepId = v; }
-function getSelectedPhaseId() { return _s.selectedPhaseId; }
-/** @param {string|null} v */
-function setSelectedPhaseId(v) { _s.selectedPhaseId = v; }
 /** @returns {Set<string>} the live set */
 function getMultiSelectedStepIds() { return _s.multiSelectedStepIds; }
 /** @param {Set<string>} v */
@@ -318,31 +273,11 @@ function setZoomFactor(v) { _s.zoomFactor = v; }
 function getStepZoom() { return _s.stepZoom; }
 /** @param {number} v */
 function setStepZoom(v) { _s.stepZoom = v; }
-function getPhaseZoom() { return _s.phaseZoom; }
-/** @param {number} v */
-function setPhaseZoom(v) { _s.phaseZoom = v; }
 
 /* Flow timeline range selection */
 function getSelectionRange() { return _s.selectionRange; }
 /** @param {*} v */
 function setSelectionRange(v) { _s.selectionRange = v; }
-
-/* Aggregate filters */
-function getAggregateFilter() { return _s.aggregateFilter; }
-/** @param {string} v */
-function setAggregateFilter(v) { _s.aggregateFilter = v; }
-function getAggregateFromDate() { return _s.aggregateFromDate; }
-/** @param {string} v */
-function setAggregateFromDate(v) { _s.aggregateFromDate = v; }
-function getAggregateToDate() { return _s.aggregateToDate; }
-/** @param {string} v */
-function setAggregateToDate(v) { _s.aggregateToDate = v; }
-
-/* Process Template & Vocabulary editors */
-/** @returns {CanonicalState} the live object */
-function getCanonicalState() { return _s.canonicalState; }
-/** @returns {VocabState} the live object */
-function getVocabState() { return _s.vocabState; }
 
 module.exports = {
   // change-notification bus
@@ -350,13 +285,13 @@ module.exports = {
   // undo / redo
   recordEdit, popUndo, popRedo, pushUndo, pushRedo, resetUndo, canUndo, canRedo, UNDO_MAX,
   // session
-  getSession, setSession, getAggregateSessions, setAggregateSessions,
+  getSession, setSession,
   // level
   getLevel, setLevel,
   // grain (ADR-0024)
   getGrain, setGrain,
   // selection
-  getSelectedStepId, setSelectedStepId, getSelectedPhaseId, setSelectedPhaseId,
+  getSelectedStepId, setSelectedStepId,
   getMultiSelectedStepIds, setMultiSelectedStepIds,
   // filters & case scope
   getListFilters, getCaseScope, setCaseScope,
@@ -364,12 +299,7 @@ module.exports = {
   setPendingStepJump, consumePendingStepJump,
   setPendingStepReveal, consumePendingStepReveal,
   // zoom
-  getZoomFactor, setZoomFactor, getStepZoom, setStepZoom, getPhaseZoom, setPhaseZoom,
+  getZoomFactor, setZoomFactor, getStepZoom, setStepZoom,
   // flow timeline range selection
   getSelectionRange, setSelectionRange,
-  // aggregate filters
-  getAggregateFilter, setAggregateFilter,
-  getAggregateFromDate, setAggregateFromDate, getAggregateToDate, setAggregateToDate,
-  // template & vocab editors
-  getCanonicalState, getVocabState,
 };

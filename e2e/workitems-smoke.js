@@ -19,7 +19,7 @@
  *   - the renamed group's name flows down to its member's timeline step band.
  *
  * Writes ONLY into its own temp dir; the committed demo is copied, never
- * mutated. Exits non-zero on any regression. Mirrors workbench-smoke.js.
+ * mutated. Exits non-zero on any regression.
  */
 
 const path = require("path");

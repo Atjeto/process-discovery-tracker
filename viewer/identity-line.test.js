@@ -1,7 +1,7 @@
 "use strict";
 /*
  * Unit tests for identity-line.js: the composed human identity line for a
- * captured control (moved here from vocab-match.test.js with the function).
+ * captured control.
  * Fixtures are hand-built, never a real capture (CLAUDE.md: company captures
  * stay local).
  */

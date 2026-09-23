@@ -194,7 +194,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 /* ===== Layout ===== */
 .app { display: flex; flex-direction: column; height: 100%; }
 
-.topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+.topbar { display: grid; grid-template-columns: 1fr auto; align-items: center;
   gap: 24px; padding: 8px 20px; background: var(--bg-2);
   border-bottom: 1px solid var(--rule); box-shadow: var(--shadow); z-index: 5; }
 .brand { display: flex; align-items: center; gap: 12px; }
@@ -205,30 +205,11 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   border: 1.5px solid var(--bg); border-radius: 3px; }
 .brand .tagline { font-size: 10px; color: var(--fg-3); letter-spacing: 1.5px;
   text-transform: uppercase; font-family: var(--font-mono); }
-.tabs { display: flex; gap: 4px; background: var(--bg-3); padding: 3px;
-  border-radius: var(--radius-sm); border: 1px solid var(--rule); }
-.tab { background: transparent; border: 1px solid transparent; padding: 6px 16px;
-  border-radius: var(--radius-sm); color: var(--fg-3); transition: all var(--transition);
-  white-space: nowrap; }
-.tab:hover { color: var(--fg-2); }
-.tab.active { background: var(--bg-2); color: var(--fg); box-shadow: var(--shadow); }
-/* Narrow / laptop widths: drop the decorative tagline and tighten the top tabs
-   so the header stays a single row instead of wrapping (clutter pass). */
+/* Narrow / laptop widths: drop the decorative tagline so the header stays a
+   single row instead of wrapping (clutter pass). */
 @media (max-width: 1200px) {
   .brand .tagline { display: none; }
-  .tab { padding: 6px 10px; }
 }
-/* R1: the "More" overflow menu sits inline in the tab row (Process Template
-   relocated here -- APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1) and should
-   read as one more tab, not a topbar project-menu button. */
-.tabs-more-menu { display: inline-block; }
-.tabs-more-btn.project-btn {
-  background: transparent; border: 1px solid transparent; color: var(--fg-3);
-  padding: 6px 16px; border-radius: var(--radius-sm); font-size: inherit;
-  max-width: none;
-}
-.tabs-more-btn.project-btn:hover { background: var(--bg-2); color: var(--fg-2); border-color: transparent; }
-.tabs-more-menu .project-menu-popup { left: 0; right: auto; min-width: 200px; }
 .topbar-meta { justify-self: end; color: var(--fg-3); font-size: 11px;
   font-family: var(--font-mono); display: flex; align-items: center; gap: 10px; }
 .help-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%;
@@ -288,12 +269,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .recent-sessions li:hover .recent-remove { opacity: 1; }
 .recent-sessions .recent-remove:hover { color: var(--fg); }
 
-.empty-icon-sm { font-size: 32px; color: var(--fg-4); margin-bottom: 8px; }
-.map-empty { display: flex; align-items: center; justify-content: center;
-  flex-direction: column; height: 100%; color: var(--fg-3); text-align: center; padding: 40px; }
 .map-empty-inline { padding: 20px; text-align: center; color: var(--fg-3);
-  font-size: 12px; font-style: italic; }
-.chart-empty { padding: 20px; text-align: center; color: var(--fg-3);
   font-size: 12px; font-style: italic; }
 
 /* ===== Actions bar ===== */
@@ -627,19 +603,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   font-family: var(--font-mono); font-size: 11px; max-height: 300px; overflow: auto;
   border: 1px solid var(--rule); color: var(--fg-2); }
 
-/* ===== Aggregate view ===== */
-.aggregate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-/* Ultrawide: a third column so the stat panels read at a sensible width
-   instead of being stretched across half a 2K display. */
-@media (min-width: 1800px) { .aggregate-grid { grid-template-columns: 1fr 1fr 1fr; } }
+/* ===== Panels + process map ===== */
 .panel { background: var(--bg-2); border-radius: var(--radius); padding: 14px 18px;
   min-height: 220px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .panel-wide { grid-column: 1 / -1; }
-/* R1: the merged-map mount points (aggregate-view.js _placeMapPanel) are grid
-   items that hold the map .panel-wide one level down, not as a direct grid
-   child -- grid-column: 1/-1 on the nested .panel-wide would have no effect
-   on its own containing block, so span the mount itself the same way. */
-#agg-map-resident-mount, #agg-map-drawer-mount { grid-column: 1 / -1; }
 .panel-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px;
   flex-wrap: wrap; }
 .panel-header h3 { margin: 0; }
@@ -682,7 +649,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .map-rare-range:disabled { opacity: 0.4; cursor: default; }
 
 .map-host { position: relative; background: var(--bg-3); border-radius: var(--radius-sm);
-  border: 1px solid var(--rule); height: var(--map-height, 420px); min-height: 180px;
+  border: 1px solid var(--rule); height: 420px; min-height: 180px;
   flex: 0 0 auto; overflow: hidden; }
 .map-pane { position: absolute; inset: 0; overflow: auto; }
 .map-pane.active { display: block; }
@@ -731,36 +698,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
    dark. An external label renders as its own group whose data-element-id ends in
    "_label" (the shape itself has no such suffix), so key the override on that to
    recolour only the floating labels. */
-:root[data-theme="dark"] #bpmn-host g[data-element-id$="_label"] text,
-:root[data-theme="dark"] #bpmn-host g[data-element-id$="_label"] tspan,
 :root[data-theme="dark"] #session-map-bpmn-host g[data-element-id$="_label"] text,
 :root[data-theme="dark"] #session-map-bpmn-host g[data-element-id$="_label"] tspan {
   fill: var(--fg) !important;
 }
-
-.chart-host { flex: 1; padding: 4px 0; min-height: 200px; }
-.bar-chart { width: 100%; height: auto; }
-.bar-label { fill: var(--fg-2); font-size: 11px; font-family: var(--font-ui); }
-.bar-value { fill: var(--fg-3); font-size: 10px; font-family: var(--font-mono); }
-.bar-rect { transition: opacity 0.12s; }
-/* Hover/cursor affordance only when the bar is actually clickable (a drill
-   target wired via renderBarChart's onBarClick) — a non-interactive chart must
-   not advertise a click it can't honour. */
-.bar-rect.clickable, .bar-label.clickable { cursor: pointer; }
-.bar-rect.clickable:hover { opacity: 0.75; }
-.bar-label.clickable:hover { fill: var(--accent); }
-.chart-more { fill: var(--fg-4); font-size: 10px; font-family: var(--font-mono); }
-
-.stats-table-host { flex: 1; max-height: 340px; overflow: auto;
-  border: 1px solid var(--rule); border-radius: var(--radius-sm); }
-.stats-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-.stats-table th, .stats-table td { padding: 5px 10px; border-bottom: 1px solid var(--rule);
-  text-align: left; vertical-align: top; }
-.stats-table th { color: var(--fg-3); font-weight: 500; background: var(--bg-2);
-  position: sticky; top: 0; font-family: var(--font-mono); text-transform: uppercase;
-  letter-spacing: 0.5px; font-size: 10px; }
-.stats-table tr:hover { background: var(--bg-3); }
-.stats-table td.num { text-align: right; font-family: var(--font-mono); }
 
 /* ===== Toast ===== */
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(60px);
@@ -866,7 +807,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   .lower-workspace { flex-direction: column; }
   .lower-workspace .video-pane { flex: 0 0 auto; min-height: 240px; }
   .lower-workspace .resize-h { display: none; }
-  .aggregate-grid { grid-template-columns: 1fr; }
 }
 
 /* ===== View-mode bar (compact toolbar, not a hero block) ===== */
@@ -911,20 +851,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .view-mode-help-x:hover { color: var(--fg-2); background: var(--bg-3); }
 
-/* Aggregate level switcher (kept compact for the dense aggregate toolbar) */
-.agg-level-switcher {
-  display: inline-flex; gap: 0; margin: 0 8px;
-  border: 1px solid var(--rule); border-radius: var(--radius-sm); overflow: hidden;
-}
-.agg-level-switcher .agg-level-btn {
-  padding: 4px 12px; background: transparent; border: 0; border-radius: 0;
-  color: var(--fg-2); font-size: 11px; cursor: pointer;
-}
-.agg-level-switcher .agg-level-btn.active {
-  background: var(--accent); color: var(--bg);
-}
-
-/* ===== Full-width Steps / Phases layouts (tight, no waste) ===== */
+/* ===== Full-width Steps layout (tight, no waste) ===== */
 .session-layout-stepsphases {
   display: flex; flex-direction: column; gap: 8px;
   flex: 1;
@@ -1039,21 +966,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-tile-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* R4 (Task 3b): the template-match offer line (renders only when the pipeline
-   already found a match — replace-pattern: absent when no match data). */
-.ov-template-offer {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: var(--bg-2); border: 1px solid var(--accent-2);
-  border-left-width: 3px; border-radius: var(--radius); padding: 10px 14px;
-}
-.ov-template-offer-text { flex: 1 1 auto; font-size: 13px; color: var(--fg); min-width: 0; }
-.ov-template-offer-btn {
-  flex: 0 0 auto; font: inherit; font-size: 12px; cursor: pointer;
-  padding: 6px 12px; border-radius: var(--radius-sm);
-  border: 1px solid var(--accent-2); background: var(--bg-3); color: var(--fg);
-}
-.ov-template-offer-btn:hover { background: var(--bg-hover); }
-
 /* R4 (Task 2): the Evidence section — the retired Analysis modules, below the
    findings feed. The modules keep their own .analysis-module styling. */
 .ov-evidence-section #overview-evidence { display: flex; flex-direction: column; gap: 10px; }
@@ -1153,10 +1065,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background: var(--bg-2); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 12px 14px;
 }
-.analysis-section-title {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
-  text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px;
-}
 /* Item 21: the collapsible Analysis module. A uniform header (title +
    one-line takeaway + chevron); the takeaway renders even when collapsed
    (the module's memo altitude). Collapse persists per analyst. */
@@ -1218,20 +1126,6 @@ details.analysis-module { padding: 0; }
 .seg-va { background: var(--va); }
 .seg-bnva { background: var(--bnva); }
 .seg-nva { background: var(--nva); }
-.analysis-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.analysis-table th {
-  text-align: left; color: var(--fg-3); font-weight: 600;
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px;
-  padding: 4px 8px; border-bottom: 1px solid var(--rule);
-}
-.analysis-table td {
-  padding: 4px 8px; border-bottom: 1px solid var(--rule-soft);
-  color: var(--fg);
-}
-.analysis-table td.num {
-  text-align: right; font-family: var(--font-mono); font-size: 11px;
-}
-.analysis-table .score-na { color: var(--fg-4); }
 /* §B1 "Where the time goes" — the instance strip: one row per step group,
    one clickable dot per observed instance on a shared duration axis. */
 .ts-axis {
@@ -1314,7 +1208,6 @@ details.analysis-module { padding: 0; }
 /* Segment-grain automation candidates (ADR-0016): a row's primary text
    is the segment label; below it, a small chain of step labels carries
    the "what does the segment actually do" detail. */
-.auto-label { font-size: 12px; color: var(--fg); font-weight: 500; }
 .auto-sequence {
   font-size: 11px; color: var(--fg-3); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1332,31 +1225,6 @@ details.analysis-module { padding: 0; }
   font-size: 10px; font-weight: 600; color: var(--fg-4);
   font-family: var(--font-mono); width: 18px; text-align: right;
 }
-/* Compare-Sessions analysis panel -- process-efficiency trend bars. */
-.agg-eff-list { display: flex; flex-direction: column; gap: 6px; }
-.agg-eff-row { display: flex; align-items: center; gap: 10px; }
-.agg-eff-name {
-  flex: 0 0 200px; font-size: 12px; color: var(--fg);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.agg-eff-track {
-  flex: 1; height: 14px; background: var(--bg-4);
-  border-radius: 2px; overflow: hidden;
-}
-.agg-eff-fill { display: block; height: 100%; background: var(--accent); }
-.agg-eff-val {
-  flex: 0 0 auto; font-family: var(--font-mono); font-size: 11px;
-  color: var(--fg-2);
-}
-
-/* ===== Option rows in the single-choice picker modal ===== */
-.modal-check {
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 5px 2px; cursor: pointer; font-size: 13px; color: var(--fg);
-}
-.modal-check input { margin: 0; }
-.modal-check small { color: var(--fg-3); font-size: 11px; }
-.modal-check.disabled { opacity: 0.5; cursor: default; }
 
 /* Multi-line prompt modal (project notes) */
 .modal-textarea {
@@ -1364,10 +1232,10 @@ details.analysis-module { padding: 0; }
   font-family: var(--font-ui); font-size: 13px;
 }
 
-/* Mini-timeline wrapper used by Steps + Phases views. Mirrors the
+/* Mini-timeline wrapper used by the Steps view. Mirrors the
    Flow timeline's affordances: header strip with title + time range
    + zoom buttons, plus a horizontally-scrolling band area. The inner
-   .timeline-steps / .timeline-phases element has its width scaled by
+   .timeline-steps element has its width scaled by
    a zoom factor, so the scroll container handles overflow naturally. */
 .mini-timeline-pane {
   background: var(--bg-2); border-radius: var(--radius);
@@ -1408,7 +1276,7 @@ details.analysis-module { padding: 0; }
   color: var(--fg-4); white-space: nowrap;
 }
 /* Selected block is brighter and gets a thicker border. */
-.step-block.selected, .phase-band.selected {
+.step-block.selected {
   filter: brightness(1.25) saturate(1.4);
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -1535,7 +1403,7 @@ details.analysis-module { padding: 0; }
 /* Flow timeline activity bands dimmed when out of the scoped case. */
 .tl-activity.out-of-scope { opacity: 0.15; filter: grayscale(0.4); }
 
-/* Reusable filter widget for long lists (steps, markers, phases). */
+/* Reusable filter widget for long lists (steps, markers). */
 .list-filter {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 6px 0; border-bottom: 1px solid var(--rule); margin-bottom: 4px;
@@ -1567,7 +1435,7 @@ details.analysis-module { padding: 0; }
   margin-left: auto; white-space: nowrap;
 }
 /* Mini-timeline dimming: blocks whose step is filtered out fade back. */
-.step-block.dimmed, .phase-band.dimmed { opacity: 0.15; }
+.step-block.dimmed { opacity: 0.15; }
 
 .editor-list-pane, .editor-detail-pane {
   background: var(--bg-2); border: 1px solid var(--rule);
@@ -1628,30 +1496,8 @@ details.analysis-module { padding: 0; }
 .empty-pane .meta { font-size: 11px; color: var(--fg-3); }
 .empty-pane code { background: var(--bg-3); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
 
-.template-explainer {
-  padding: 14px 18px; margin: 0 0 12px;
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: var(--radius);
-}
-.template-explainer h2 { margin: 0 0 8px; color: var(--fg); font-size: 16px; }
-.template-explainer p { margin: 0 0 8px; font-size: 12px; line-height: 1.55; color: var(--fg-2); }
-.template-explainer em { color: var(--accent); font-style: normal; font-weight: 500; }
-.template-explainer p:last-child { margin-bottom: 0; }
-/* Item 10: the landing prose collapses behind a disclosure -- one sentence +
-   the primary actions stay resident; the rest (unchanged wording) is one
-   click away. Same native <details> mechanism as the Machine-layer drawers
-   (.advanced-yaml), reused here for a Evidence-altitude "show more text"
-   rather than a Machine control -- the summary styling is intentionally
-   plainer (no uppercase) since it discloses prose, not raw data. */
-.how-this-works { margin-top: 2px; }
-.how-this-works > summary {
-  cursor: pointer; color: var(--fg-3); font-size: 12px; padding: 2px 0;
-}
-.how-this-works > summary:hover { color: var(--fg-2); }
-.how-this-works[open] > summary { color: var(--accent); margin-bottom: 6px; }
-
-/* ===== Step + phase timelines (compact strip) ===== */
-.timeline-steps, .timeline-phases {
+/* ===== Step timeline (compact strip) ===== */
+.timeline-steps {
   position: relative; height: 36px; background: var(--bg-1);
   border: 1px solid var(--rule); border-radius: var(--radius-sm);
 }
@@ -1683,33 +1529,18 @@ details.analysis-module { padding: 0; }
   .step-block-label { display: none; }
 }
 
-/* Phase band: even quieter -- sits below steps as soft milestone tint. */
-.phase-band {
-  position: absolute; top: 6px; height: 24px;
-  border: 1px solid var(--rule-soft); border-radius: 3px;
-  cursor: pointer; transition: filter 0.15s;
-  box-sizing: border-box;
-}
-.phase-band:hover { filter: brightness(1.4); }
-.phase-band-label {
-  position: absolute; top: 50%; left: 8px; transform: translateY(-50%);
-  font-size: 10px; font-weight: 500;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  opacity: 0.85; pointer-events: none;
-}
-
-/* ===== Step / phase list rows (dense) ===== */
-.step-row, .phase-row {
+/* ===== Step list rows (dense) ===== */
+.step-row {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 8px; border-radius: 3px; cursor: pointer; font-size: 12px;
   border: 1px solid transparent; margin-bottom: 1px;
   min-height: 26px;
 }
-.step-row:hover, .phase-row:hover { background: var(--bg-3); border-color: var(--rule); }
-.step-row.selected, .phase-row.selected {
+.step-row:hover { background: var(--bg-3); border-color: var(--rule); }
+.step-row.selected {
   background: var(--accent-muted); border-color: var(--accent);
 }
-.step-row .step-name, .phase-row .phase-name {
+.step-row .step-name {
   flex: 1; color: var(--fg);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1719,7 +1550,7 @@ details.analysis-module { padding: 0; }
   color: var(--fg); border-radius: 2px;
   font-family: inherit; font-size: 12px; outline: none;
 }
-.step-row .step-time, .phase-row .phase-count {
+.step-row .step-time {
   color: var(--fg-3); font-family: var(--font-mono); font-size: 10px;
   flex-shrink: 0;
 }
@@ -1735,7 +1566,7 @@ details.analysis-module { padding: 0; }
 /* Hidden steps render dimmed in the list so they're visibly suppressed. */
 .step-row.step-hidden { opacity: 0.4; }
 
-/* ===== Step / phase detail editor (compact) ===== */
+/* ===== Step detail editor (compact) ===== */
 .editor-detail-pane label {
   display: block; margin-bottom: 10px; font-size: 10px;
   letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3);
@@ -1928,17 +1759,6 @@ details.analysis-module { padding: 0; }
   color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: var(--warn);
 }
 
-/* §D2: the Compare surface's aligned reading -- read-only backbone rows
-   (curation lives in the Steps view's Aligned reading) + the per-unit
-   hit column ("A 2/2 · B 0/3"). */
-.agg-bb-row { cursor: default; }
-.agg-bb-row:hover { background: transparent; }
-.agg-bb-units {
-  flex: none; display: flex; gap: 6px;
-  font-size: 10px; font-family: var(--font-mono); color: var(--fg-3);
-}
-.agg-vs { color: var(--fg-4); padding: 0 4px; }
-
 /* Backbone detail (consensus step) */
 .bb-detail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
 .bb-detail-title { font-size: 15px; font-weight: 600; color: var(--fg); }
@@ -1975,72 +1795,11 @@ details.analysis-module { padding: 0; }
 .bb-exc-row.selected { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .bb-exc-row .bb-name { flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.phase-step-row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 6px; background: var(--bg-2); border-radius: 3px;
-  margin-bottom: 3px; font-size: 12px;
-}
-.phase-step-row .grip { color: var(--fg-4); cursor: move; }
-.phase-step-row .remove-step {
-  margin-left: auto; padding: 2px 6px; background: transparent;
-  border: 0; color: var(--bad); cursor: pointer;
-}
-.phase-step-row .split-step {
-  margin-left: auto; padding: 2px 6px; background: transparent;
-  border: 0; color: var(--accent); cursor: pointer;
-}
-/* Cap the phase's step list so the Save / Delete actions below it stay
-   on screen even when a phase contains hundreds of steps. */
-.phase-step-list { max-height: 320px; overflow-y: auto; }
-
 /* ===== Anno-tab badge ===== */
 .badge {
   display: inline-block; padding: 0 6px; border-radius: 8px;
   background: var(--bg-3); color: var(--fg-3); font-size: 9px;
   font-family: var(--font-mono); margin-left: 4px;
-}
-
-/* ===== Canonical view ===== */
-.canonical-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 1.4fr) minmax(300px, 1fr);
-  gap: 10px; padding: 10px 10px 0;
-}
-@media (max-width: 900px) { .canonical-grid { grid-template-columns: 1fr; } }
-.advanced-yaml-strip { margin: 4px 10px 10px; }
-#canonical-yaml {
-  width: 100%; min-height: 320px;
-  background: var(--bg-2); color: var(--fg); border: 1px solid var(--rule);
-  border-radius: 3px; padding: 8px; font-family: var(--font-mono); font-size: 11px;
-}
-.canonical-step-row {
-  padding: 3px 6px; font-family: var(--font-mono); font-size: 11px;
-  border-bottom: 1px solid var(--rule); color: var(--fg-2);
-}
-#exemplar-events { max-height: 320px; overflow: auto; }
-.exemplar-step {
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 5px 4px; font-size: 12px; cursor: pointer; border-radius: 3px;
-}
-.exemplar-step:hover { background: var(--bg-3); }
-.exemplar-step-name { flex: 0 1 auto; color: var(--fg); }
-.exemplar-step-meta { flex: 1; color: var(--fg-4); font-size: 11px; }
-.exemplar-step-tag {
-  flex: 0 0 auto; font-size: 9px; font-family: var(--font-mono);
-  text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg-4);
-  border: 1px solid var(--rule); border-radius: 3px; padding: 1px 5px;
-}
-.exemplar-promote-bar {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--rule);
-}
-#exemplar-selected-count { flex: 1; }
-.exemplar-promote-hint { margin: 6px 0 0; font-size: 11px; color: var(--fg-4); }
-
-/* ===== Drift panel ===== */
-.alert {
-  padding: 8px 12px; background: var(--bg-2); border-left: 3px solid var(--warn);
-  border-radius: 0 3px 3px 0; color: var(--fg-2); font-size: 12px; margin: 8px 0;
 }
 
 /* ===== Onboarding card (first-run guidance before Analyze) ===== */
@@ -2073,30 +1832,6 @@ details.analysis-module { padding: 0; }
   display: block; margin-top: 4px;
   color: var(--fg-2); font-size: 12px; line-height: 1.6;
 }
-
-/* ===== Prep-session CTA (purpose=app_prep) ===== */
-.prep-cta-card {
-  display: flex; align-items: center; gap: 16px;
-  padding: 16px 20px; margin: 0 0 14px;
-  background: var(--bg-2);
-  border: 1px solid var(--accent-3); border-radius: var(--radius);
-  position: relative;
-}
-.prep-cta-card::before {
-  content: "Prep session"; position: absolute; top: -10px; left: 16px;
-  padding: 1px 10px; background: var(--bg); color: var(--accent-3);
-  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
-  border: 1px solid var(--accent-3); border-radius: 4px;
-}
-.prep-cta-icon {
-  flex: 0 0 36px; height: 36px; line-height: 36px; text-align: center;
-  background: var(--bg-3); color: var(--accent-3);
-  border-radius: 6px; font-size: 18px;
-}
-.prep-cta-body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.prep-cta-body strong { color: var(--fg); font-size: 13px; }
-.prep-cta-detail { color: var(--fg-2); font-size: 12px; line-height: 1.55; }
-.prep-cta-card button { flex: 0 0 auto; }
 
 /* ===== Session summary (post-analysis orientation, Phase A) ===== */
 .session-summary {
@@ -2181,150 +1916,6 @@ details.analysis-module { padding: 0; }
 .summary-link { color: var(--accent); cursor: pointer; text-decoration: none; }
 .summary-link:hover { text-decoration: underline; }
 
-/* ===== Vocabularies tab ===== */
-.vocab-grid {
-  display: grid; grid-template-columns: 300px 1fr; gap: 12px;
-  flex: 1; min-height: 360px;
-}
-@media (max-width: 1100px) { .vocab-grid { grid-template-columns: 1fr; } }
-.vocab-list-panel, .vocab-editor-panel {
-  background: var(--bg-1); border: 1px solid var(--rule);
-  border-radius: var(--radius-sm); padding: 10px 12px; overflow: auto;
-}
-/* Task 1 (naming never navigates): the vocab list stays reachable no matter how
-   long the editor grows. In the two-column layout each panel already scrolls
-   independently; on the narrow single-column layout the list would otherwise be
-   pushed off-screen above a long editor, so pin it to the top of the scroll
-   container. align-self:start keeps it from stretching to the editor's height. */
-.vocab-list-panel { align-self: start; position: sticky; top: 0; max-height: 100%; }
-@media (max-width: 1100px) {
-  .vocab-list-panel { max-height: 42vh; z-index: 1; }
-}
-.vocab-row {
-  padding: 8px 10px; margin-bottom: 4px;
-  border: 1px solid transparent; border-radius: 4px; cursor: pointer;
-  transition: all 0.12s;
-}
-.vocab-row:hover { background: var(--bg-2); border-color: var(--rule); }
-.vocab-row.selected { background: var(--bg-3); border-color: var(--accent); }
-.vocab-row-head { display: flex; align-items: center; gap: 8px; }
-.vocab-row-name { flex: 1; color: var(--fg); font-size: 13px; font-weight: 500; }
-.vocab-row-count {
-  background: var(--bg-3); color: var(--fg-2); font-family: var(--font-mono);
-  font-size: 10px; padding: 1px 7px; border-radius: 8px;
-}
-.vocab-row-meta { color: var(--fg-3); font-size: 10px; font-family: var(--font-mono); margin-top: 2px; }
-/* Per-entry delete (reveals on row hover / when selected, so the list stays calm). */
-.vocab-row-del {
-  border: none; background: transparent; color: var(--fg-3); cursor: pointer;
-  font-size: 12px; line-height: 1; padding: 3px 6px; border-radius: 3px;
-  opacity: 0; transition: opacity .12s, color .12s, background .12s;
-}
-.vocab-row:hover .vocab-row-del, .vocab-row.selected .vocab-row-del { opacity: 1; }
-.vocab-row-del:hover { color: var(--bad); background: var(--bg-hover); }
-
-.vocab-head {
-  display: flex; gap: 10px; margin-bottom: 12px;
-}
-.vocab-head label {
-  flex: 1; font-size: 10px; color: var(--fg-3);
-  letter-spacing: 1px; text-transform: uppercase;
-}
-.vocab-head label input {
-  display: block; width: 100%; margin-top: 4px;
-  padding: 7px 10px; background: var(--bg-2);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg); font-family: inherit; font-size: 13px;
-  text-transform: none; letter-spacing: 0;
-}
-.vocab-head label input:focus { outline: none; border-color: var(--accent); }
-
-.vocab-toolbar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0; margin-bottom: 10px;
-  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
-}
-.vocab-toolbar strong { color: var(--fg); font-size: 12px; }
-
-.vocab-int {
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: 4px; margin-bottom: 8px;
-}
-/* Brief highlight on a just-added interaction row (vocab-view.js). */
-@keyframes vocab-int-flash {
-  from { background: var(--accent-muted); border-color: var(--accent); }
-  to   { background: var(--bg-2); border-color: var(--rule); }
-}
-.vocab-int.vocab-int-new { animation: vocab-int-flash 1.5s ease-out; }
-.vocab-int-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 10px; background: var(--bg-3); border-bottom: 1px solid var(--rule);
-  border-radius: 4px 4px 0 0;
-}
-.vocab-int-num {
-  flex: 0 0 22px; height: 22px; line-height: 22px;
-  text-align: center; border-radius: 11px;
-  background: var(--bg); color: var(--fg-3);
-  font-family: var(--font-mono); font-size: 10px;
-}
-.vocab-int-sig {
-  flex: 1; color: var(--fg-2); font-family: var(--font-mono);
-  font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.vocab-int-remove {
-  color: var(--bad); border-color: var(--rule);
-}
-.vocab-int-remove:hover:not(:disabled) {
-  background: var(--bad); color: #fff; border-color: var(--bad);
-}
-.vocab-int-body { padding: 10px 12px; }
-.vocab-int-body > label {
-  display: block; margin-bottom: 10px;
-  font-size: 10px; color: var(--fg-3);
-  letter-spacing: 1px; text-transform: uppercase;
-}
-.vocab-int-body > label input {
-  display: block; width: 100%; margin-top: 4px;
-  padding: 7px 10px; background: var(--bg-3);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg); font-size: 13px;
-  text-transform: none; letter-spacing: 0;
-}
-.vocab-int-body > label input:focus { outline: none; border-color: var(--accent); }
-/* Item 17: the raw signature fields are a per-row Machine-layer disclosure --
-   same collapsed-by-default / accent-on-open treatment as .advanced-yaml,
-   sized for a small per-row summary rather than a page-level drawer. */
-.vocab-int-sig-details { margin-bottom: 4px; }
-.vocab-int-sig-details > summary {
-  cursor: pointer; color: var(--fg-3); font-size: 10px;
-  letter-spacing: 0.5px; text-transform: uppercase; padding: 4px 0;
-}
-.vocab-int-sig-details > summary:hover { color: var(--fg-2); }
-.vocab-int-sig-details[open] > summary { color: var(--accent); margin-bottom: 2px; }
-.vocab-int-sig-fields {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 10px;
-  padding: 8px 10px; background: var(--bg-3); border-radius: 3px;
-  margin-bottom: 8px;
-}
-.vocab-int-sig-fields label {
-  font-size: 9px; color: var(--fg-3); letter-spacing: 1px; text-transform: uppercase;
-}
-.vocab-int-sig-fields input {
-  display: block; width: 100%; margin-top: 3px;
-  padding: 5px 8px; background: var(--bg-2);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg); font-family: var(--font-mono); font-size: 11px;
-}
-.vocab-int-sig-fields input:focus { outline: none; border-color: var(--accent-2); }
-.vocab-int-flags {
-  display: flex; flex-wrap: wrap; gap: 6px 14px;
-  padding: 6px 10px; background: var(--bg-3); border-radius: 3px;
-}
-.vocab-int-flags label {
-  display: inline-flex; gap: 6px; align-items: center;
-  color: var(--fg); font-size: 11px;
-}
-
 /* ===== Multi-select feedback on step rows ===== */
 .step-row .multi-check {
   flex: 0 0 14px; width: 14px; height: 14px;
@@ -2390,8 +1981,8 @@ details.analysis-module { padding: 0; }
    bookkeeping events.
 
    Flow-timeline ticks use a distinct `.tl-flow-tick` class to avoid
-   colliding with `.tl-tick` (which step-editor.js / phase-editor.js
-   depend on for mini-timeline axes, with different geometry needs). */
+   colliding with `.tl-tick` (which the Steps mini-timeline depends on
+   for its axis, with different geometry needs). */
 .tl-flow-tick {
   position: absolute; width: 1px;
   background: var(--rule); opacity: 0.6;
@@ -2445,14 +2036,6 @@ details.analysis-module { padding: 0; }
 .modal-confirm .modal-body { padding: 16px 18px; }
 
 /* Phase 3: classification manager modal. */
-.cm-modal { width: min(680px, calc(100vw - 40px)); }
-.cm-modal .modal-body { max-height: 60vh; overflow-y: auto; }
-.cm-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-.cm-table th { text-align: left; color: var(--fg-3); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--rule); }
-.cm-table td { padding: 4px 8px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
-.cm-table .cm-app { font-family: var(--font-mono); color: var(--fg-2); }
-.cm-table .cm-count { color: var(--fg-3); text-align: right; width: 64px; }
-.cm-table .cm-label { width: 100%; }
 .modal-confirm .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 6px; }
 .modal-confirm .modal-detail { color: var(--fg-3); font-size: 11px; margin: 0 0 12px; line-height: 1.55; }
 .modal-confirm .modal-footer {
@@ -2595,12 +2178,6 @@ button.danger:disabled {
 /* A setting (checkbox) living among the menu's action items. */
 .project-menu-item.cb { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .project-menu-item.cb input { margin: 0; }
-/* Section label inside a long menu (clutter pass: groups a flat export list). */
-.project-menu-group {
-  padding: 6px 10px 2px; font-size: 9px; letter-spacing: 1px;
-  text-transform: uppercase; color: var(--fg-4); pointer-events: none;
-}
-.project-menu-group:first-child { padding-top: 2px; }
 /* Destructive item tucked in an overflow menu (e.g. Delete elsewhere). */
 .project-menu-item.danger { color: var(--rec); }
 .project-menu-item.danger:hover { background: var(--rec); color: #fff; }
@@ -2695,43 +2272,6 @@ button.danger:disabled {
   100% { box-shadow: 0 0 0 12px transparent; }
 }
 
-/* ===== DFG drill-down picker (P1.5) =============================== */
-.dfg-drill-popup {
-  position: fixed; z-index: 1000;
-  background: var(--bg-2); border: 1px solid var(--accent);
-  border-radius: 5px; padding: 6px 0;
-  box-shadow: var(--shadow);
-  min-width: 320px; max-width: 480px; max-height: 320px;
-  overflow-y: auto;
-}
-.dfg-drill-popup .row {
-  padding: 6px 12px; cursor: pointer;
-  font-size: 12px; color: var(--fg-2);
-  display: flex; gap: 10px; align-items: baseline;
-}
-.dfg-drill-popup .row:hover, .dfg-drill-popup .row.sel {
-  background: var(--bg-3); color: var(--fg);
-}
-.dfg-drill-popup .row .ts { color: var(--fg-3); font-family: var(--font-mono); font-size: 10px; flex: 0 0 auto; }
-.dfg-drill-popup .row .name { flex: 1; }
-.dfg-drill-popup .empty { padding: 8px 12px; color: var(--fg-3); font-style: italic; font-size: 12px; }
-.dfg-drill-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 2px 12px 8px; margin-bottom: 4px;
-  border-bottom: 1px solid var(--bg-3);
-}
-.dfg-drill-head .lbl {
-  flex: 1; min-width: 0; font-size: 11px; color: var(--fg-3);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.dfg-drill-reclassify {
-  flex: 0 0 auto; cursor: pointer; font-size: 11px;
-  padding: 3px 10px; border-radius: 4px;
-  background: var(--bg-3); color: var(--fg);
-  border: 1px solid var(--accent);
-}
-.dfg-drill-reclassify:hover { border-color: var(--fg-2); }
-
 /* Multi-field modal (formModal) field rows. */
 .modal-field { display: block; margin-top: 12px; }
 .modal-field > span { display: block; font-size: 12px; color: var(--fg-2); margin-bottom: 4px; }
@@ -2757,33 +2297,7 @@ button.danger:disabled {
   font-size: 10px; color: var(--accent); cursor: pointer; }
 .selection-stats .clear-link:hover { text-decoration: underline; }
 
-/* ===== Phase H: Compare-Sessions toggles, legends, side-by-side ==== */
-.agg-panel-head {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap;
-}
-.agg-panel-head h3 { margin: 0; }
-.agg-toggle-btn {
-  padding: 4px 12px; font-size: 11px; cursor: pointer;
-  background: var(--bg-3); color: var(--fg-2);
-  border: 1px solid var(--rule); border-radius: var(--radius-sm);
-}
-.agg-toggle-btn.active {
-  background: var(--accent); color: var(--bg); border-color: var(--accent);
-}
-.worker-legend, .conformance-legend {
-  display: flex; flex-wrap: wrap; gap: 6px 16px;
-  font-size: 11px; color: var(--fg-2); margin: 8px 0; padding: 6px 10px;
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-}
-.worker-legend .lg-item, .conformance-legend .lg-item {
-  display: inline-flex; align-items: center; gap: 6px;
-}
-.worker-legend .lg-swatch, .conformance-legend .lg-swatch {
-  width: 11px; height: 11px; border-radius: 2px; display: inline-block;
-}
-.conformance-legend .lg-missing { color: var(--fg-3); }
+/* ===== Phase H: interactive video re-sync ========================= */
 
 /* H4 -- interactive video re-sync instruction card + click targets */
 .video-sync-card {
@@ -2804,15 +2318,6 @@ button.danger:disabled {
 .video-sync-target {
   outline: 2px solid var(--accent); outline-offset: -2px; cursor: crosshair;
 }
-
-/* H2 -- side-by-side step timelines */
-#side-by-side-container {
-  display: flex; flex-direction: column; gap: 4px; margin-top: 8px;
-}
-.sxs-strip-label {
-  font-size: 11px; color: var(--fg-2); font-weight: 500; margin: 6px 0 2px;
-}
-.sxs-strip { height: 78px; }
 
 /* ===== Phase I: polish styles ===================================== */
 /* I5 -- the "why" line under an auto-detected step's name */
@@ -2837,272 +2342,6 @@ button.danger:disabled {
 /* I10 -- gallery near-duplicate expand affordance */
 .gallery-similar { color: var(--accent); cursor: pointer; }
 .gallery-similar:hover { text-decoration: underline; }
-/* I57 -- vocabulary bootstrap frequency hints */
-.vocab-int-seen {
-  font-size: 10px; font-family: var(--font-mono); color: var(--fg-3);
-  margin-left: 6px;
-}
-/* ADR-0025 discovery legend: WHY a signature was auto-picked (identity_source
-   rung + ADR-0023 confidence), and the volatile id(s) the picker rejected. */
-.vocab-int-conf {
-  font-size: 10px; font-family: var(--font-mono); margin-left: 6px;
-  padding: 1px 5px; border-radius: 3px; white-space: nowrap;
-  border: 1px solid var(--rule); color: var(--fg-2);
-}
-.vocab-int-conf.strong { border-color: var(--ok, #3a8); color: var(--ok, #3a8); }
-.vocab-int-conf.ok     { border-color: var(--accent-2, #58a); color: var(--accent-2, #58a); }
-.vocab-int-conf.weak   { border-color: var(--warn, #b83); color: var(--warn, #b83); }
-.vocab-int-volatile {
-  font-size: 10px; font-family: var(--font-mono); color: var(--warn, #b83);
-  margin: 2px 0 6px; opacity: 0.9;
-}
-/* ADR-0025 annotator context: WHAT a discovered control is + WHERE it lives,
-   so a row is never a contextless signature. Chips wrap (never clip). */
-.vocab-int-context {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  margin: 0 0 8px;
-}
-.vocab-int-chip {
-  font-size: 10px; font-family: var(--font-mono);
-  padding: 1px 6px; border-radius: 3px;
-  background: var(--bg-3); border: 1px solid var(--rule); color: var(--fg-2);
-}
-.vocab-int-anc {
-  font-size: 10px; font-family: var(--font-mono); color: var(--fg-3);
-}
-.vocab-int-weak-note {
-  font-size: 11px; color: var(--warn, #b83);
-  margin: 2px 0 8px; line-height: 1.4; opacity: 0.95;
-}
-.vocab-int-members { margin: 2px 0 8px; }
-.vocab-int-members > summary {
-  cursor: pointer; font-size: 11px; color: var(--warn, #b83);
-}
-.vocab-int-members ul {
-  margin: 6px 0 0; padding-left: 18px; color: var(--fg-2);
-  font-family: var(--font-mono); font-size: 10px; line-height: 1.5;
-}
-.vocab-uncommon { margin-top: 6px; }
-.vocab-uncommon > summary {
-  cursor: pointer; font-size: 11px; color: var(--fg-2); padding: 4px 0;
-}
-
-/* ===== Lab-phase C1/C2: row semantics + the discovery review checklist == */
-.vocab-int-semantics {
-  display: grid; grid-template-columns: minmax(90px, 0.6fr) 1fr;
-  gap: 6px 10px; align-items: end;
-  padding: 8px 10px; margin-bottom: 10px;
-  background: var(--bg-3); border-radius: 3px;
-  border-left: 2px solid var(--accent-2);
-}
-.vocab-int-semantics > label {
-  font-size: 9px; color: var(--fg-3); letter-spacing: 1px; text-transform: uppercase;
-  margin: 0;
-}
-.vocab-int-semantics > label > span { display: block; margin-bottom: 3px; }
-.vocab-int-semantics input,
-.vocab-int-semantics select {
-  display: block; width: 100%;
-  padding: 5px 8px; background: var(--bg-2);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg); font-size: 12px;
-  text-transform: none; letter-spacing: 0;
-}
-.vocab-int-semantics .vocab-sem-means { grid-column: 1 / -1; }
-.vocab-sem-flags {
-  grid-column: 1 / -1;
-  display: flex; flex-wrap: wrap; gap: 4px 14px;
-}
-.vocab-sem-flag {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; color: var(--fg-2); cursor: pointer;
-  text-transform: none; letter-spacing: 0;
-}
-.vocab-sem-flag input { margin: 0; }
-
-/* ===== R2: the match workbench (APPROACHABILITY-REDESIGN §5) ============ */
-.wb { display: flex; flex-direction: column; gap: 12px; }
-.wb-nosession { margin-bottom: 8px; }
-
-/* Coverage header — the ONE resident number (Memo altitude). */
-.wb-coverage {
-  padding: 12px 14px; background: var(--bg-2);
-  border: 1px solid var(--rule); border-radius: 6px;
-}
-.wb-coverage-line { font-size: 15px; color: var(--fg); line-height: 1.4; }
-.wb-coverage-line strong { color: var(--accent); font-weight: 600; }
-.wb-coverage-bar {
-  margin: 8px 0 6px; height: 6px; border-radius: 3px;
-  background: var(--bg-3); overflow: hidden;
-}
-.wb-coverage-fill { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
-.wb-coverage-sub { line-height: 1.5; }
-.wb-coverage-sub .link-btn { font-size: 11px; }
-
-/* Evidence lists — a titled, collapsible section each. Glyph-carrying summary
-   with the native marker suppressed (doubled-marker pitfall). */
-.wb-list { border: 1px solid var(--rule); border-radius: 6px; background: var(--bg-1); }
-.wb-list-summary {
-  display: flex; align-items: center; gap: 8px;
-  cursor: pointer; list-style: none; user-select: none;
-  padding: 9px 12px; font-size: 12px;
-}
-.wb-list-summary::-webkit-details-marker { display: none; }
-.wb-list-summary:hover { background: var(--bg-2); }
-.wb-list[open] > .wb-list-summary { border-bottom: 1px solid var(--rule); }
-.wb-list-chevron { flex: 0 0 auto; font-size: 10px; color: var(--fg-3); line-height: 1; }
-.wb-list-chevron::before { content: "▸"; }
-.wb-list[open] > .wb-list-summary .wb-list-chevron::before { content: "▾"; }
-.wb-list-title { color: var(--fg); font-weight: 600; }
-.wb-list-count {
-  min-width: 20px; text-align: center; padding: 1px 7px;
-  background: var(--bg-3); border-radius: 10px;
-  font-size: 11px; color: var(--fg-2); font-variant-numeric: tabular-nums;
-}
-.wb-list[data-wb-list="dead"] .wb-list-count { color: var(--bad); }
-.wb-list-takeaway { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-list-body { padding: 8px 12px 12px; }
-.wb-empty { margin: 4px 0; }
-.wb-rows { display: flex; flex-direction: column; gap: 6px; }
-
-/* A generic evidence row. */
-.wb-row {
-  border: 1px solid var(--rule); border-radius: 4px;
-  background: var(--bg-2); padding: 8px 10px;
-}
-.wb-row-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.wb-ct {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
-  color: var(--fg-3); font-family: var(--font-mono);
-}
-.wb-idkind {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
-  padding: 1px 5px; border-radius: 3px; border: 1px solid var(--rule);
-  color: var(--fg-3);
-}
-.wb-idval { color: var(--fg); font-size: 13px; word-break: break-word; }
-.wb-row-meta { margin-top: 4px; }
-.wb-row-act { margin-top: 6px; }
-.wb-name-btn { font-size: 11px; padding: 3px 12px; }
-
-/* Unnamed worklist rows get a subtle accent stripe (there's work here). */
-.wb-row-unnamed { border-left: 3px solid var(--accent); }
-/* Discovered candidate rows (transient) share the worklist look, with a
-   distinct hue so they read as "just found, name or ignore". */
-.wb-row-candidate { border-left: 3px solid var(--accent-2); }
-.wb-row.editing { background: var(--bg-3); }
-
-/* The composed identity LINE (Task 2): one read-only sentence per row. */
-.wb-idsep { color: var(--fg-3); }
-.wb-idctx { font-size: 12px; }
-.wb-idmark {
-  display: inline-block; margin-left: 4px; cursor: help;
-  font-size: 11px; line-height: 1;
-}
-.wb-idmark-volatile { color: var(--bad); }
-.wb-idmark-weak { color: var(--fg-3); }
-
-/* Candidate context chips + weak marker. */
-.wb-cand-context { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
-.wb-cand-weak {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
-  padding: 1px 5px; border-radius: 3px;
-  border: 1px solid var(--rule); color: var(--fg-3);
-}
-.wb-cand-ignore {
-  font-size: 11px; padding: 3px 12px; margin-left: 6px;
-  color: var(--fg-3);
-}
-.wb-cand-morewrap { margin-top: 8px; }
-.wb-cand-more { font-size: 11px; }
-
-/* The inline name editor (Task 1: naming never navigates). Sits inside the
-   row; the identity line above it stays put. */
-.wb-inline-editor {
-  margin-top: 8px; padding: 8px 10px;
-  background: var(--bg-2); border: 1px solid var(--accent);
-  border-radius: 4px;
-}
-.wb-inline-name {
-  display: block; font-size: 10px; color: var(--fg-3);
-  letter-spacing: 1px; text-transform: uppercase;
-}
-.wb-inline-input {
-  display: block; width: 100%; margin-top: 4px;
-  padding: 7px 10px; background: var(--bg-3);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg); font-size: 13px;
-  text-transform: none; letter-spacing: 0;
-}
-.wb-inline-input:focus { outline: none; border-color: var(--accent); }
-.wb-inline-screen { margin-top: 6px; }
-.wb-inline-act { display: flex; gap: 8px; margin-top: 8px; }
-.wb-inline-save, .wb-inline-cancel { font-size: 11px; padding: 4px 14px; }
-
-/* Dead rules get a warning stripe (a selector is likely wrong). */
-.wb-row-dead { border-left: 3px solid var(--bad); }
-.wb-dead-name { color: var(--fg); font-size: 13px; margin-right: 8px; }
-
-/* Matched rows are expandable (Evidence one click behind the claim). */
-details.wb-row-matched { padding: 0; }
-.wb-row-summary {
-  display: flex; align-items: center; gap: 10px;
-  cursor: pointer; list-style: none; padding: 8px 10px;
-}
-.wb-row-summary::-webkit-details-marker { display: none; }
-.wb-row-summary:hover { background: var(--bg-3); }
-.wb-match-name { color: var(--fg); font-size: 13px; font-weight: 500; }
-.wb-match-sigsum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-match-count { flex: 0 0 auto; }
-.wb-evidence {
-  padding: 8px 12px 10px; border-top: 1px solid var(--rule);
-  display: flex; flex-direction: column; gap: 5px;
-}
-.wb-ev-line { font-size: 11px; color: var(--fg-2); line-height: 1.5; }
-.wb-ev-k {
-  display: inline-block; min-width: 92px;
-  color: var(--fg-3); text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px;
-}
-.wb-ev-win {
-  display: inline-block; padding: 1px 6px; margin: 1px 2px 1px 0;
-  background: var(--bg-3); border-radius: 3px; font-size: 11px; color: var(--fg-2);
-}
-.wb-ev-val, .wb-ev-sig {
-  font-family: var(--font-mono); font-size: 10px;
-  background: var(--bg-3); padding: 1px 5px; border-radius: 3px; color: var(--fg-2);
-}
-.wb-ev-sig { word-break: break-all; }
-
-/* Screens section. */
-.wb-screens { display: flex; flex-direction: column; gap: 10px; }
-.wb-screens-h { text-transform: uppercase; font-size: 9px; letter-spacing: 0.6px; margin-bottom: 4px; }
-.wb-screen-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 8px; border: 1px solid var(--rule); border-radius: 4px;
-  background: var(--bg-2); margin-bottom: 4px;
-}
-.wb-screen-matched { border-left: 3px solid var(--accent-2); }
-.wb-screen-name { color: var(--fg); font-size: 12px; font-weight: 500; }
-.wb-screen-title { flex: 1; min-width: 0; color: var(--fg-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-screen-count { flex: 0 0 auto; }
-.wb-name-screen-btn { flex: 0 0 auto; font-size: 11px; padding: 2px 10px; }
-
-/* The rule editor demoted to a Machine drawer at the bottom of the workbench.
-   Mirrors the R1 Compare / template Machine-drawer look (collapsed, own glyph,
-   native marker suppressed). */
-.vocab-machine-drawer { margin-top: 6px; border-top: 1px solid var(--rule); padding-top: 8px; }
-.vocab-machine-summary {
-  display: flex; align-items: center; gap: 6px;
-  cursor: pointer; color: var(--fg-3); list-style: none; user-select: none;
-  font-size: 11px; padding: 6px 0; text-transform: uppercase; letter-spacing: 0.5px;
-}
-.vocab-machine-summary::-webkit-details-marker { display: none; }
-.vocab-machine-summary:hover { color: var(--fg-2); }
-.vocab-machine-drawer[open] > .vocab-machine-summary { color: var(--accent); }
-.vocab-machine-chevron { flex: 0 0 auto; font-size: 11px; line-height: 1; }
-.vocab-machine-chevron::before { content: "▸"; }
-.vocab-machine-drawer[open] .vocab-machine-chevron::before { content: "▾"; }
-.vocab-machine-body { padding-top: 8px; }
 
 /* ===== Mode-specific shortcuts overlay (P2.4) ===================== */
 .shortcuts-overlay {
@@ -3135,13 +2374,6 @@ details.wb-row-matched { padding: 0; }
   background: var(--bg-3); border: 1px solid var(--rule);
   border-radius: 3px; padding: 1px 5px; color: var(--fg);
   min-width: 32px; text-align: center;
-}
-
-/* ===== Phase drag-reorder visual feedback (P2.6) =================== */
-.phase-row.dragging { opacity: 0.4; }
-.phase-drag-indicator {
-  position: absolute; left: 0; right: 0; height: 2px;
-  background: var(--accent); pointer-events: none; z-index: 5;
 }
 
 /* ===== Window-title strip (P2.12) ================================== */
@@ -3199,228 +2431,10 @@ details.wb-row-matched { padding: 0; }
   font-family: var(--font-mono);
 }
 
-/* ===== Template-version compare panel (AM.1) ====================== */
-.template-compare {
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: 5px; padding: 10px 12px; margin-top: 10px;
-}
-.template-compare h4 { margin: 0 0 8px; font-size: 12px; color: var(--fg); font-weight: 500; }
-.template-compare .row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-.template-compare select {
-  flex: 1; background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg); padding: 4px 6px; border-radius: 3px;
-  font-family: inherit; font-size: 12px;
-}
-.template-compare .summary { font-size: 11px; color: var(--fg-2); margin-top: 8px; }
-.template-compare .delta-up   { color: var(--accent); }
-.template-compare .delta-down { color: var(--bad); }
-
-/* ===== Advanced disclosure for raw-data editors (Phase 5) =========== */
-.advanced-yaml { margin-top: 4px; }
-.advanced-yaml > summary {
-  cursor: pointer; color: var(--fg-3);
-  font-size: 11px; padding: 4px 0;
-  text-transform: uppercase; letter-spacing: 0.5px;
-}
-.advanced-yaml > summary:hover { color: var(--fg-2); }
-.advanced-yaml[open] > summary { color: var(--accent); }
-.advanced-yaml textarea {
-  width: 100%; min-height: 240px; resize: vertical;
-  background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg); border-radius: 3px; padding: 8px;
-  font-family: var(--font-mono); font-size: 11px;
-  outline: none;
-}
-.advanced-yaml textarea:focus { border-color: var(--accent); }
-
-/* R1: the Compare surface's "EXPLORATION -- merged views" Machine drawer
-   (APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1). Extends .advanced-yaml's
-   collapsed-by-default look, but the summary carries its own glyph + label
-   (not the browser's default disclosure text), so the native marker is
-   suppressed the same way .analysis-module-head does -- otherwise the
-   triangle doubles (CHIP-GUARDRAILS "Doubled disclosure markers" pitfall). */
-.agg-exploration-drawer { margin: 16px 0 4px; }
-.agg-exploration-summary {
-  display: flex; align-items: center; gap: 6px;
-  cursor: pointer; color: var(--fg-3); list-style: none; user-select: none;
-  font-size: 11px; padding: 6px 0; text-transform: uppercase; letter-spacing: 0.5px;
-}
-.agg-exploration-summary::-webkit-details-marker { display: none; }
-.agg-exploration-summary:hover { color: var(--fg-2); }
-.agg-exploration-drawer[open] > .agg-exploration-summary { color: var(--accent); }
-.agg-exploration-chevron { flex: 0 0 auto; font-size: 11px; line-height: 1; }
-.agg-exploration-chevron::before { content: "▸"; }
-.agg-exploration-drawer[open] .agg-exploration-chevron::before { content: "▾"; }
-.agg-exploration-body { padding-top: 8px; }
-.agg-exploration-hint { margin: 0 0 12px; }
-
-/* ===== Process Template form editor (Phase 5++) =================== */
-.canonical-meta-form {
-  display: flex; gap: 8px; margin-bottom: 8px;
-  padding-bottom: 8px; border-bottom: 1px solid var(--rule);
-}
-.canonical-meta-form label {
-  display: flex; flex-direction: column; gap: 2px;
-  font-size: 11px; color: var(--fg-3);
-}
-.canonical-meta-form input {
-  background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg); padding: 4px 6px; border-radius: 3px;
-  font-family: inherit; font-size: 12px; outline: none;
-}
-.canonical-meta-form #ctpl-version { width: 60px; }
-.canonical-meta-form input:focus { border-color: var(--accent); }
-.ctpl-step {
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: 4px; padding: 6px 8px; margin-bottom: 6px;
-}
-.ctpl-step-head {
-  display: flex; gap: 4px; align-items: center; margin-bottom: 4px;
-}
-.ctpl-step-name {
-  flex: 1; background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg); padding: 4px 6px; border-radius: 3px;
-  font-family: inherit; font-size: 12px; outline: none;
-}
-.ctpl-step-name:focus { border-color: var(--accent); }
-.ctpl-step-head button {
-  background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg-2); padding: 2px 6px; border-radius: 3px;
-  font-family: inherit; font-size: 11px; cursor: pointer;
-}
-.ctpl-step-head button:hover { background: var(--bg-4); color: var(--fg); }
-.ctpl-step-head button.danger:hover { background: var(--bad); color: var(--fg); border-color: var(--bad); }
-.ctpl-step-desc {
-  width: 100%; min-height: 36px; resize: vertical;
-  background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg); padding: 4px 6px; border-radius: 3px;
-  font-family: inherit; font-size: 11px; outline: none;
-}
-.ctpl-step-desc:focus { border-color: var(--accent); }
-.ctpl-step-rules { margin-top: 4px; }
-.ctpl-rule {
-  font-size: 10px; color: var(--fg-2); font-family: var(--font-mono);
-  padding: 2px 6px; background: var(--bg-3); border-radius: 3px;
-  margin-top: 3px; word-break: break-word;
-}
-.ctpl-step-norules { font-size: 10px; color: var(--bad); margin-top: 4px; }
-.ctpl-actions { margin-top: 8px; }
-
-/* ===== Process Template -- match-rule origin + drift ============== */
-.ctpl-step-rules-head { margin-top: 6px; }
-.ctpl-step-phase {
-  display: flex; align-items: center; gap: 6px; margin-top: 6px;
-}
-.ctpl-step-phase > span {
-  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-  color: var(--fg-4); font-family: var(--font-mono);
-}
-.ctpl-step-phase-sel {
-  flex: 1; background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg); padding: 3px 6px; border-radius: 3px;
-  font-family: inherit; font-size: 11px; outline: none;
-}
-.ctpl-step-phase-sel:focus { border-color: var(--accent); }
-.ctpl-step-rules-btn {
-  background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg-2); padding: 3px 9px; border-radius: 3px;
-  font-family: inherit; font-size: 11px; cursor: pointer;
-}
-.ctpl-step-rules-btn:hover { background: var(--bg-4); color: var(--fg); border-color: var(--accent); }
-.ctpl-rule-origin, .ident-rule-origin {
-  display: inline-block; font-size: 8px; font-family: var(--font-mono);
-  text-transform: uppercase; letter-spacing: 0.5px;
-  padding: 1px 5px; border-radius: 3px; vertical-align: middle;
-  border: 1px solid var(--rule); color: var(--fg-4);
-}
-.origin-library { color: var(--accent); border-color: var(--accent); }
-.origin-derived { color: var(--accent-2); border-color: var(--accent-2); }
-.ctpl-rule-drift, .ident-drift {
-  display: inline-block; font-size: 8px; font-family: var(--font-mono);
-  text-transform: uppercase; letter-spacing: 0.5px;
-  padding: 1px 5px; border-radius: 3px;
-  color: var(--bad); border: 1px solid var(--bad);
-}
-
-/* ===== Identity picker modal ====================================== */
-.ident-picker { width: 720px; max-width: 94vw; }
-.ident-body { display: flex; flex-direction: column; gap: 8px; }
-.ident-section-title {
-  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-  color: var(--fg-4); font-family: var(--font-mono); margin-top: 4px;
-}
-.ident-rules { display: flex; flex-direction: column; gap: 4px; }
-.ident-empty { font-size: 11px; color: var(--fg-3); font-style: italic; margin: 2px 0; }
-.ident-rule {
-  display: flex; align-items: center; gap: 7px;
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: 4px; padding: 5px 8px; font-size: 12px;
-}
-.ident-rule-summary { flex: 1; color: var(--fg); font-family: var(--font-mono); font-size: 11px; }
-.ident-rule-resync, .ident-rule-file, .ident-rule-del {
-  background: var(--bg-3); border: 1px solid var(--rule); color: var(--fg-2);
-  padding: 2px 7px; border-radius: 3px; font-family: inherit;
-  font-size: 10px; cursor: pointer; flex: 0 0 auto;
-}
-.ident-rule-del:hover { background: var(--bad); color: var(--fg); border-color: var(--bad); }
-.ident-rule-resync:hover, .ident-rule-file:hover { background: var(--bg-4); color: var(--fg); }
-.ident-add-actions { display: flex; gap: 12px; }
-.ident-add-actions button {
-  background: transparent; border: 0; color: var(--accent);
-  font-family: inherit; font-size: 11px; cursor: pointer; padding: 2px 0;
-}
-.ident-add-actions button:hover { text-decoration: underline; }
-.ident-coarse { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.ident-coarse .modal-input { flex: 1; min-width: 160px; }
-.ident-catalog {
-  max-height: 300px; overflow-y: auto; display: flex;
-  flex-direction: column; gap: 3px; border: 1px solid var(--rule);
-  border-radius: 4px; padding: 4px;
-}
-.ident-cat-row {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  text-align: left; background: transparent; border: 0;
-  color: var(--fg-2); padding: 5px 7px; border-radius: 3px;
-  font-family: inherit; font-size: 12px; cursor: pointer;
-}
-.ident-cat-row:hover:not(:disabled) { background: var(--bg-3); color: var(--fg); }
-.ident-cat-row:disabled { opacity: 0.5; cursor: default; }
-.ident-cat-label { flex: 1; }
-.ident-cat-strength { flex: 0 0 auto; font-size: 9px; font-family: var(--font-mono); color: var(--fg-4); }
-.ident-cat-strength.strong { color: var(--accent); }
-.ident-cat-added { flex: 0 0 auto; font-size: 9px; color: var(--accent); }
-.ident-cat-back {
-  background: transparent; border: 0; color: var(--accent);
-  font-family: inherit; font-size: 11px; cursor: pointer;
-  text-align: left; padding: 4px 7px;
-}
-.ident-cat-back:hover { text-decoration: underline; }
-
-/* ===== Variant heat (P2.2) ======================================== */
-.variant-heat {
-  display: inline-block; height: 6px;
-  background: var(--accent); opacity: 0.55;
-  border-radius: 2px; margin-right: 6px;
-  vertical-align: middle;
-  min-width: 4px;
-}
-.variant-freq { font-family: var(--font-mono); font-size: 10px; color: var(--fg); }
-.variant-sessions {
-  font-family: var(--font-mono); font-size: 10px;
-  background: var(--bg-3); border: 1px solid var(--rule);
-  color: var(--fg-2); padding: 0 4px; border-radius: 2px; margin-right: 4px;
-}
-.variant-div {
-  background: color-mix(in srgb, var(--accent-3) 16%, transparent);
-  border-bottom: 1px dashed var(--accent-3);
-  padding: 0 2px; border-radius: 2px;
-}
-.variant-arrow { color: var(--fg-3); }
-
 /* ===== Bottom playback bar ========================================= */
 /* Global transport for the session video. Pinned to the bottom of the
-   app shell as a flex sibling of <main>; .hidden collapses it when off
-   the Session tab or when no recording is loaded. */
+   app shell as a flex sibling of <main>; .hidden collapses it when no
+   recording is loaded. */
 .playback-bar {
   flex-shrink: 0; height: 38px; padding: 0 16px;
   display: flex; align-items: center; gap: 10px;

@@ -27,28 +27,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="logo"></div>
       <div><h1>Process Discovery</h1></div>
     </div>
-    <nav class="tabs">
-      <button class="tab active" data-view="session"><span class="kbd">1</span> Session</button>
-      <button class="tab" data-view="aggregate"><span class="kbd">2</span> Compare Sessions</button>
-      <button class="tab" data-view="vocabularies"><span class="kbd">3</span> App Library</button>
-      <!-- R1: Process Template is a byproduct destination nothing in the
-           default workflow hands you (APPROACHABILITY-REDESIGN-2026-07-03
-           §4) -- out of the resident tab row, reachable one click down. The
-           view and its IPC are unchanged. R1
-           renumbering (§5): the resident row reads 1/2/3 (no gap where
-           Template used to be 3); Template's own hotkey "3" is RETIRED
-           (App Library now owns it) rather than reassigned, since a
-           non-resident destination shouldn't claim a top-level number --
-           it stays one click away via this menu. -->
-      <div class="project-menu tabs-more-menu" id="tabs-more-menu">
-        <button class="project-btn tabs-more-btn" id="btn-tabs-more-menu" title="More views">
-          <span>More</span><span class="project-menu-caret">▾</span>
-        </button>
-        <div class="project-menu-popup" id="tabs-more-popup" style="display:none">
-          <button class="project-menu-item" id="btn-tabs-more-canonical">Process Template</button>
-        </div>
-      </div>
-    </nav>
     <div class="topbar-meta">
       <div class="project-menu" id="recent-menu">
         <button class="project-btn" id="btn-recent-menu" title="Open a recent session">
@@ -97,9 +75,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span>⋯ More</span><span class="project-menu-caret">▾</span>
             </button>
             <div class="project-menu-popup" id="session-more-popup" style="display:none">
-              <button class="project-menu-item" id="btn-match-template" title="Pick a Process Template YAML and match this session against it.">Match Process Template...</button>
-              <button class="project-menu-item" id="btn-classify-activities" title="Give each application a meaningful activity label so the process map and timeline show real activities instead of 'Unclassified'. Adds rules for this session and re-analyzes.">Classify activities…</button>
-              <button class="project-menu-item" id="btn-save-vocab" title="Start an App Library entry from this session's captured interactions. Optional — worth doing when you'll record this process again, so future sessions label what the user did inside this app. Never needed just to read this recording.">Save to App Library...</button>
               <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
               <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
               <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Also build the process maps (flowchart and process diagram) during analysis."/> Build process map</label>
@@ -116,19 +91,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             </button>
             <div class="project-menu-popup" id="session-export-popup" style="display:none">
               <button class="project-menu-item" id="btn-session-pdd" title="Generate a standard RPA Process Definition Document (.docx) for this session with the Flow diagram embedded as the As-Is process map.">PDD (.docx)</button>
+              <button class="project-menu-item" id="btn-session-map-svg" title="Save the process map shown on the Map level as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Map as SVG</button>
+              <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the step-level process diagram as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Step map as BPMN</button>
             </div>
           </div>
-        </div>
-
-        <!-- Prep-session CTA: visible when this session was captured to
-             prepare an App Vocabulary. Replaces generic onboarding. -->
-        <div class="prep-cta-card" id="prep-session-cta" style="display:none">
-          <div class="prep-cta-icon">▣</div>
-          <div class="prep-cta-body">
-            <strong>App Library prep session: <span id="prep-app-name"></span></strong>
-            <span class="prep-cta-detail">This session was captured to build the App Library entry for <code id="prep-app-id"></code>. Click below to generate a starter entry from every unique interaction in the capture; you'll then name each interaction in plain English so future sessions can label what the user did inside this app.</span>
-          </div>
-          <button id="btn-prep-bootstrap" class="primary">Build App Library entry from this session</button>
         </div>
 
         <!-- First-run guidance: visible until the session has been analyzed -->
@@ -143,15 +109,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <div class="onboarding-step">
             <span class="onboarding-num">2</span>
             <div>
-              <strong>Optional: <em>Match Process Template...</em></strong>
-              <span class="onboarding-detail">If a teammate has built a Process Template for this workflow (a YAML file describing the expected steps and phases), point at it here. The viewer will auto-name the captured steps to match the template instead of producing generic guesses.</span>
-            </div>
-          </div>
-          <div class="onboarding-step">
-            <span class="onboarding-num">3</span>
-            <div>
-              <strong>Review the timeline, switch to Steps or Phases</strong>
-              <span class="onboarding-detail">Once analysis finishes, the three buttons under "View:" let you look at the session at three levels of abstraction. Flow = raw events. Steps = logical actions. Phases = milestones.</span>
+              <strong>Review the timeline, then switch to Steps</strong>
+              <span class="onboarding-detail">Once analysis finishes, the buttons under "View:" show the session in different ways. Flow = raw events. Steps = logical actions. Map = the process diagram.</span>
             </div>
           </div>
         </div>
@@ -172,17 +131,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-desc">logical actions</span>
             <span class="badge" id="steps-badge">0</span>
           </button>
-          <button class="view-mode-btn" data-level="phases" title="Milestones grouped from steps">
-            <span class="view-mode-icon">▦</span> Phases
-            <span class="view-mode-desc">milestones</span>
-            <span class="badge" id="phases-badge">0</span>
-          </button>
           <button class="view-mode-btn" data-level="map" title="The interactive process map (flowchart or process diagram) for this session, at the detail level chosen on the Detail slider (every field → screen → app → phase → case)">
             <span class="view-mode-icon">◯</span> Map
             <span class="view-mode-desc">process diagram</span>
           </button>
           <span class="flex-spacer"></span>
-          <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, Phases mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
+          <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
             <span class="case-scope-label">Case:</span>
             <select id="case-scope-select"><option value="">All cases</option></select>
             <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">Scope to playhead</button>
@@ -309,11 +263,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button id="btn-sort-steps-time" title="Reorder the step list into chronological order by start time.">Sort by time</button>
             <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
                  syncMultiSelectButtons() toggles `hidden`. -->
-            <button id="btn-group-into-phase" hidden title="Group the ticked steps into a new phase">Group selected into phase</button>
             <button id="btn-delete-selected-steps" hidden title="Delete all the ticked steps at once">Delete selected</button>
             <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
             <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
-            <button id="btn-steps-to-template" title="Save this session's steps as a reusable reference for this process — a match rule is derived from each step's interactions, so the next recording of the same process can be compared against it.">Save as reference for this process…</button>
             <span class="meta" id="steps-summary"></span>
             <span class="meta" id="steps-legend" style="display:none"></span>
             <span class="flex-spacer"></span>
@@ -349,7 +301,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <input type="search" class="list-filter-input" id="step-filter-text" placeholder="Filter steps by name..." />
                 <div class="list-filter-chips" id="step-filter-states">
                   <button class="chip" data-state="auto_suggested" title="auto-suggested"><span class="state-icon state-auto_suggested"></span></button>
-                  <button class="chip" data-state="auto_matched" title="auto-matched"><span class="state-icon state-auto_matched"></span></button>
                   <button class="chip" data-state="manually_authored" title="manually authored"><span class="state-icon state-manually_authored"></span></button>
                   <button class="chip" data-state="edited" title="edited"><span class="state-icon state-edited"></span></button>
                   <button class="chip" data-state="hidden" title="hidden (suppressed by you)"><span class="state-icon state-hidden"></span></button>
@@ -365,52 +316,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
         </div>
 
-        <!-- ========= PHASES view (full-width editor, tight) ========= -->
-        <div class="session-layout-stepsphases" id="session-layout-phases" style="display:none">
-          <div class="editor-toolbar">
-            <button id="btn-add-manual-phase" class="primary">+ Add phase</button>
-            <span class="meta" id="phases-summary"></span>
-            <span class="flex-spacer"></span>
-            <span class="hint"><a href="#" class="link-help" data-help-section="stepsphases">What is a phase?</a></span>
-          </div>
-          <div class="mini-timeline-pane">
-            <div class="mini-timeline-header">
-              <strong>Phase timeline</strong>
-              <span class="meta" id="phases-timeline-range"></span>
-              <span class="flex-spacer"></span>
-              <div class="timeline-controls">
-                <button class="icon-btn" id="btn-phases-zoom-out" title="Zoom out (-)">−</button>
-                <button class="icon-btn" id="btn-phases-zoom-reset" title="Reset zoom (0)">⊙</button>
-                <button class="icon-btn" id="btn-phases-zoom-in" title="Zoom in (+)">+</button>
-              </div>
-            </div>
-            <div class="mini-timeline-scroll">
-              <div class="timeline timeline-phases" id="timeline-phases"></div>
-            </div>
-            <div class="resize-v" id="resize-phases-timeline" title="Drag to resize timeline height"></div>
-          </div>
-          <div class="editor-split">
-            <div class="editor-list-pane">
-              <div class="editor-pane-title">
-                Phases · <span id="phases-pane-count">0</span>
-                <button id="btn-suggest-phases" class="link-btn" type="button" title="Automatically group consecutive steps by app and time gap into a starting set of phases. You'll be shown the suggestions to accept or skip.">Suggest groupings...</button>
-              </div>
-              <div class="list-filter" id="phase-list-filter">
-                <input type="search" class="list-filter-input" id="phase-filter-text" placeholder="Filter phases by name..." />
-                <span class="list-filter-meta" id="phase-filter-meta"></span>
-              </div>
-              <div id="phase-list"></div>
-            </div>
-            <div class="editor-detail-pane">
-              <div class="editor-pane-title">Selected phase</div>
-              <div id="phase-detail"></div>
-            </div>
-          </div>
-        </div>
-
         <!-- ========= MAP view (interactive process map: notation x level matrix
-             for this single session, same UI as Compare-Sessions but bound to
-             one session's data via viewer/map-controller.js) ========= -->
+             for this single session, bound to its data via
+             viewer/map-controller.js) ========= -->
         <div class="session-layout-map" id="session-layout-map" style="display:none">
           <div class="panel panel-wide map-panel">
             <div class="panel-header">
@@ -418,7 +326,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="panel-tabs">
                 <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
                 <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
-                <select id="session-map-level" class="map-status-select" title="Map detail level: every field → screen → app → phase → case (built from your annotations). Synced with the Detail slider above. The by-app-category level moved into the Advanced views drawer below the map.">
+                <select id="session-map-level" class="map-status-select" title="Map detail level: every field → screen → app → case (built from your annotations). Synced with the Detail slider above. The by-app-category level moved into the Advanced views drawer below the map.">
                   <!-- §B2: the activity-taxonomy cell left the default matrix (the
                        Expert drawer below the map reaches it). The hidden option keeps
                        the select showing an honest label while an expert cell is active. -->
@@ -426,7 +334,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                   <option value="element">Element — every field</option>
                   <option value="screen">Screen — one per screen</option>
                   <option value="app">App</option>
-                  <option value="phase">Phase</option>
                   <option value="case">Case</option>
                 </select>
               </div>
@@ -514,350 +421,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       </div>
     </section>
 
-    <!-- ========= Compare Sessions view ========= -->
-    <section class="view" id="view-aggregate">
-
-      <div class="empty-state" id="aggregate-empty">
-        <div class="empty-icon">⌬</div>
-        <h2>No sessions loaded</h2>
-        <p>Open one or more session folders, or an engagement folder containing sessions.</p>
-        <button class="primary" id="btn-open-multi-hero">Open sessions to compare...</button>
-        <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
-      </div>
-
-      <div class="loaded" id="aggregate-loaded" style="display:none">
-        <div class="actions-bar">
-          <button id="btn-open-multi">Open more</button>
-          <button id="btn-normalize-all" class="primary" title="Analyze every loaded session: build timelines, classify activities, mine the process map.">Analyze all sessions</button>
-          <button id="btn-normalize-all-cancel" class="log-cancel-btn" type="button" style="display:none" title="Stop the running aggregate analysis after the current session finishes">Cancel</button>
-          <button id="btn-renormalize-canonical">Re-match to Process Template...</button>
-          <input type="search" id="agg-filter" placeholder="Filter by activity, app, or worker..." />
-          <label class="cb" title="YYYY-MM-DD">From <input type="date" id="agg-from" /></label>
-          <label class="cb" title="YYYY-MM-DD">To <input type="date" id="agg-to" /></label>
-          <span class="hint" style="align-self:center">YYYY-MM-DD</span>
-          <div class="project-menu" id="agg-export-menu">
-            <button class="project-btn" id="btn-agg-export-menu" title="Export process maps, reports, and data">
-              <span>Export</span><span class="project-menu-caret">▾</span>
-            </button>
-            <div class="project-menu-popup" id="agg-export-popup" style="display:none">
-              <!-- Clutter pass: a flat 10-item list, now grouped by output kind. -->
-              <div class="project-menu-group">Diagrams</div>
-              <button class="project-menu-item" id="btn-export-map-svg" title="Export the process map currently shown above (Process diagram or Flow diagram) as an SVG image -- opens in Figma, Lucidchart, browsers, image editors.">Process map SVG</button>
-              <button class="project-menu-item" id="btn-export-bpmn" disabled>BPMN 2.0 XML</button>
-              <button class="project-menu-item" id="btn-export-bpmn-step" disabled>Step BPMN</button>
-              <button class="project-menu-item" id="btn-export-bpmn-phase" disabled>Phase BPMN</button>
-              <div class="project-menu-group">Documents</div>
-              <button class="project-menu-item" id="btn-export-pdd" disabled>PDD (.docx)</button>
-              <button class="project-menu-item" id="btn-export-md" disabled>Markdown report (all loaded sessions)</button>
-              <div class="project-menu-group">Data</div>
-              <button class="project-menu-item" id="btn-export-step-csv" disabled>Step CSV</button>
-              <button class="project-menu-item" id="btn-export-xes" disabled>XES</button>
-              <button class="project-menu-item" id="btn-export-stats" disabled>stats.json</button>
-              <button class="project-menu-item" id="btn-export-promotions" disabled title="Draft an app-category rule for every app the loaded sessions could not classify.">App-category rule drafts</button>
-            </div>
-          </div>
-          <span class="flex-spacer"></span>
-          <div class="session-pills" id="aggregate-pills"></div>
-        </div>
-        <div class="alert" id="agg-version-spread" style="display:none"></div>
-
-        <div class="aggregate-grid">
-          <!-- R1 restack (APPROACHABILITY-REDESIGN-2026-07-03 §4/§5 R1): Compare's
-               job is differences, so comparative content is resident and merged/
-               pooled content is one Machine drawer. Resident order: findings feed
-               (topmost content block) -> outlier/taxonomy banners -> aligned
-               reading -> side-by-side (2-session only) -> drift (conditional) ->
-               merged map ONLY when template conformance is available. Everything
-               else moves into #agg-exploration-drawer below, unchanged inside. -->
-          <div class="panel panel-wide" id="agg-findings-panel" style="display:none">
-            <h3>Cross-session findings</h3>
-            <p class="meta" style="margin-top:0">Comparative claims across sessions of the <em>same process</em> — who completes a case in how many steps, and where the paths first part ways.</p>
-            <div id="agg-findings-content"></div>
-          </div>
-
-          <div class="alert" id="agg-outlier-banner" style="display:none"></div>
-          <div class="alert" id="agg-taxonomy-banner" style="display:none"></div>
-
-          <div class="panel panel-wide" id="agg-aligned-panel" style="display:none">
-            <div class="agg-panel-head">
-              <h3>Aligned reading</h3>
-              <span class="meta" id="agg-aligned-meta"></span>
-            </div>
-            <p class="meta" style="margin-top:0"><span class="bb-freq">n/N</span> = cases that include the step, split per worker/session. The consensus step backbone across every case in the loaded sessions — how the process reads before it is drawn. Steps off the backbone are listed as exceptions.</p>
-            <div id="agg-aligned-content"></div>
-          </div>
-
-          <div class="panel panel-wide" id="side-by-side-panel" style="display:none">
-            <div class="agg-panel-head">
-              <h3>Side-by-side comparison</h3>
-              <button id="btn-sxs-align" class="agg-toggle-btn" title="Align both timelines by wall-clock time, or by each session's first case start.">Align: by time</button>
-              <button id="btn-sxs-close" class="agg-toggle-btn" style="display:none" title="Close the side-by-side comparison.">Close ✕</button>
-            </div>
-            <p class="meta" style="margin-top:0">Two sessions' step timelines stacked for a direct visual comparison. Steps both sessions share are green; steps unique to one session are amber.</p>
-            <button id="btn-compare-sxs" class="primary">Compare side-by-side</button>
-            <div id="side-by-side-summary" class="meta"></div>
-            <div id="side-by-side-container"></div>
-          </div>
-
-          <div class="panel panel-wide" id="drift-panel" style="display:none">
-            <h3>Drift</h3>
-            <div id="drift-content"></div>
-          </div>
-
-          <!-- Resident mount for the merged map -- only populated (moved in from
-               the drawer) when computeConformance() finds a template match; see
-               aggregate-view.js renderAggregate(). Empty and display:none
-               otherwise, so it costs nothing when the map lives in the drawer. -->
-          <div id="agg-map-resident-mount" style="display:none"></div>
-        </div>
-
-        <!-- Machine mechanic (DISCLOSURE-MODEL.md): merged/pooled quantities are
-             exploration, not a comparison claim, so they collapse here by
-             default. State persists per analyst at localStorage pdt.aggExploreOpen
-             (same pattern as pdt.summaryOpen / pdt.analysis.*). Everything inside
-             keeps its existing ids, handlers, and behaviour -- only the
-             surrounding position changed. -->
-        <details class="advanced-yaml agg-exploration-drawer" id="agg-exploration-drawer">
-          <summary class="agg-exploration-summary">
-            <span class="agg-exploration-chevron" aria-hidden="true"></span>
-            <span>EXPLORATION — merged views</span>
-          </summary>
-          <div class="agg-exploration-body">
-            <p class="meta agg-exploration-hint">Merged and pooled across the loaded sessions — useful for exploring the corpus, but a merged quantity can't answer a comparison question. The findings feed above is the comparison.</p>
-            <label class="cb" id="agg-group-worker-wrap" style="display:none" title="Colour the activity and case charts by worker, so you can compare how different people ran the same process."><input type="checkbox" id="cb-agg-group-worker" /> Group by worker</label>
-            <div class="worker-legend" id="agg-worker-legend" style="display:none"></div>
-
-            <div class="aggregate-grid">
-              <!-- Resident mount point for the merged map when conformance is
-                   UNAVAILABLE (computeConformance() returned null) -- the map
-                   still needs the notation/level selectors here, same markup as
-                   the resident slot above. Exactly one of the two mounts holds
-                   the map panel at any time. -->
-              <div id="agg-map-drawer-mount"></div>
-
-              <div class="panel">
-                <h3>Activity frequency</h3>
-                <div id="activity-chart" class="chart-host"></div>
-              </div>
-
-              <div class="panel">
-                <h3>Case durations</h3>
-                <div id="case-chart" class="chart-host"></div>
-              </div>
-
-              <div class="panel panel-wide">
-                <div class="agg-panel-head">
-                  <h3>Path variations</h3>
-                  <div class="agg-level-switcher" id="variant-mode-switch" title="Compare the raw activity sequence, or the analyst's stepped view of the process.">
-                    <button class="agg-level-btn active" data-vmode="activity">By activity</button>
-                    <button class="agg-level-btn" data-vmode="step">By step</button>
-                  </div>
-                </div>
-                <p class="meta" style="margin-top:0">Every distinct activity sequence across the loaded sessions, ranked by how many sessions follow it. The bar shows relative frequency; amber-highlighted activities are positions where paths diverge.</p>
-                <div class="stats-table-host" id="variant-table-host">
-                  <table class="stats-table" id="variants">
-                    <thead><tr><th>freq</th><th>len</th><th>variant</th></tr></thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="panel panel-wide" id="agg-analysis-panel" style="display:none">
-                <h3>Analysis</h3>
-                <p class="meta" style="margin-top:0">Findings pooled across the loaded sessions — a step seen once per session gains real signal once recordings are combined. These are estimates — review before relying on them.</p>
-                <div id="agg-analysis-content"></div>
-              </div>
-
-              <div class="panel">
-                <h3>App outliers (&lt;5%)</h3>
-                <div class="stats-table-host">
-                  <table class="stats-table" id="outliers">
-                    <thead><tr><th>app</th><th>cases</th><th>%</th></tr></thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="panel">
-                <h3 title="How often a worker had to revisit the same activity inside a single case — often a sign of rework or fixing a mistake.">Repeated activities within a case</h3>
-                <p class="meta" style="margin-top:0">Activities a worker did more than once inside the same case. Frequent repeats often mean rework — re-checking, re-entering, or fixing something.</p>
-                <div class="stats-table-host">
-                  <table class="stats-table" id="rework">
-                    <thead><tr><th>activity</th><th>times repeated</th></tr></thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
-
-        <!-- The merged-map panel itself: a single DOM node reparented by
-             aggregate-view.js between #agg-map-resident-mount (conformance
-             available) and #agg-map-drawer-mount (conformance unavailable), so
-             the map-controller's captured #bpmn-host/#dfg-host element
-             references never go stale. Starts here (outside both mounts) and is
-             moved into place on first renderAggregate(). -->
-        <template id="agg-map-panel-template">
-          <div class="panel panel-wide" id="agg-map-panel">
-            <div class="panel-header">
-              <h3>Process map</h3>
-              <div class="panel-tabs">
-                <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
-                <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
-                <select id="map-level" class="map-status-select" title="Map detail level: by app category (needs category rules) or every field → screen → app → phase → case (built from your annotations). Default: one step per screen.">
-                  <option value="activity">By app category</option>
-                  <option value="element">Element — every field</option>
-                  <option value="screen">Screen — one per screen</option>
-                  <option value="app">App</option>
-                  <option value="phase">Phase</option>
-                  <option value="case">Case</option>
-                </select>
-              </div>
-              <span id="map-scope" class="map-scope" style="display:none"></span>
-              <div class="map-zoom" id="map-zoom" style="display:none">
-                <span class="map-zoom-pct" id="map-zoom-pct">100%</span>
-                <button class="icon-btn xs" id="btn-dfg-zoom-out" title="Zoom out">−</button>
-                <button class="icon-btn xs" id="btn-dfg-zoom-fit" title="Fit to view">fit</button>
-                <button class="icon-btn xs" id="btn-dfg-zoom-in" title="Zoom in">+</button>
-                <label class="cb" id="dfg-conformance-wrap" style="display:none" title="Colour Flow-diagram nodes by how they match the loaded Process Template: green matches a template step, amber is off-template."><input type="checkbox" id="cb-dfg-conformance" /> Conformance</label>
-                <span class="map-rare" id="hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
-              </div>
-            </div>
-            <div class="map-host" title="Scroll to zoom · drag to pan">
-              <div class="map-pane active" id="bpmn-host"></div>
-              <div class="map-pane" id="dfg-host" style="display:none"></div>
-              <div class="map-empty" id="map-empty">
-                <div class="empty-icon-sm">⌖</div>
-                <div>Click "Analyze all sessions" to discover a process map.</div>
-              </div>
-            </div>
-            <div id="dfg-conformance-legend" class="conformance-legend" style="display:none"></div>
-            <div class="resize-v" id="resize-map" title="Drag to resize the process map"></div>
-          </div>
-        </template>
-
-      </div>
-    </section>
-
-    <!-- ========= Process Template view ========= -->
-    <section class="view" id="view-canonical">
-      <div class="loaded" id="canonical-loaded">
-        <div class="template-explainer">
-          <h2>Process Template</h2>
-          <p>A reusable definition of an expected process — its steps, phases, and the case anchor (the field that identifies each ticket/order) — that future sessions can auto-match against instead of getting generic step suggestions.</p>
-          <details class="how-this-works">
-            <summary>▸ How this works</summary>
-            <p>A Process Template is a reusable definition of an expected process: its steps, phases, the UI patterns that identify each one — and the case anchor (the field that identifies each ticket/order) that splits a session into cases. When you load a template here, captured sessions can be auto-matched against it instead of getting generic step suggestions. Templates are how you turn "a recording of someone working" into "a recording of <em>this specific process</em>, with the steps named correctly."</p>
-            <p class="meta"><strong>The primary way to make one is as a byproduct of curation:</strong> open a session, curate its steps, then <em>Steps → Export as Process Template</em>. The export carries each step's match rules <em>and the confirmed case anchor (the field that identifies each ticket/order)</em>, so the next session of the same process arrives with its cases already identified and its steps auto-matched. The list below stays directly editable; the raw YAML and version compare live in the Machine layer at the bottom.</p>
-          </details>
-        </div>
-        <div class="actions-bar">
-          <button id="btn-new-canonical">+ New Process Template</button>
-          <button id="btn-open-canonical">Open Process Template...</button>
-          <button id="btn-save-canonical" disabled>Save changes</button>
-          <button id="btn-close-canonical" disabled>Close</button>
-          <button id="btn-delete-canonical" class="danger" disabled>Delete template</button>
-          <span class="flex-spacer"></span>
-          <span class="meta" id="canonical-meta"></span>
-        </div>
-        <div class="canonical-grid">
-          <div class="panel">
-            <h3>Template steps</h3>
-            <div id="canonical-step-list"></div>
-          </div>
-          <div class="panel">
-            <h3>Import steps from a session</h3>
-            <p class="meta" style="margin-top:0">Drafts template steps from a real recording: load a session, tick the steps you want, then add them to the template. Each becomes a step with a match rule derived from its interactions — linked to your App Library where a matching entry exists. For precise per-step rules, use <em>Match rules…</em> on each step instead.</p>
-            <button id="btn-load-exemplar">Load sample session...</button>
-            <div id="exemplar-events"></div>
-            <p class="meta" id="exemplar-match-rate"></p>
-            <div class="exemplar-promote-bar">
-              <span class="meta" id="exemplar-selected-count"></span>
-              <button id="btn-promote-from-exemplar" disabled>Add selected steps to template</button>
-            </div>
-            <p class="meta exemplar-promote-hint">Adds the ticked steps to the open Process Template as new steps. Existing steps aren't changed.</p>
-          </div>
-        </div>
-        <!-- §D3: the Machine layer — the raw template definition and its
-             version history, collapsed. The byproduct path (curate a
-             session, then Steps → Export as Process Template) is the
-             primary way templates are made; this drawer is for tuning
-             the machine, not the default workflow. -->
-        <details class="advanced-yaml advanced-yaml-strip" id="template-machine-drawer">
-          <summary>Machine layer: template definition (YAML) + version compare</summary>
-          <div id="canonical-advanced">
-            <p class="meta" style="margin-top:6px">Direct edit of the underlying definition — useful for fine-tuning match rules or the <code>case_anchor</code>. Usually you'll add steps via the editable list above, or from a sample session. Save validates the format before writing to disk.</p>
-            <textarea id="canonical-yaml" spellcheck="false"></textarea>
-          </div>
-          <div class="panel panel-wide template-compare" id="template-compare-panel" style="display:none">
-            <h3>Compare Process Template versions</h3>
-            <p class="meta">When you save a Process Template, every save is archived. Pick two versions to see what changed structurally — steps and phases added, removed, or renamed.</p>
-            <div class="row">
-              <label>Version A
-                <select id="tpl-cmp-a"></select>
-              </label>
-              <label>Version B
-                <select id="tpl-cmp-b"></select>
-              </label>
-              <button id="tpl-cmp-refresh" type="button" class="link-btn">Refresh versions</button>
-            </div>
-            <div id="tpl-cmp-output" class="summary">Pick two versions to compare.</div>
-          </div>
-        </details>
-      </div>
-    </section>
-
-    <!-- ========= Vocabularies view (form editor, no YAML) ========= -->
-    <section class="view" id="view-vocabularies">
-      <div class="loaded">
-        <div class="template-explainer">
-          <h2>App Library</h2>
-          <p>Each app you record gets one vocabulary file mapping its UI elements to meaningful names — optional, and worth building when you'll record the <em>same</em> process again.</p>
-          <details class="how-this-works">
-            <summary>▸ How this works</summary>
-            <p>Each app you record gets one vocabulary file that maps its UI elements (Save button, Search field, etc.) to meaningful names. The names roll into step names automatically on every future session that touches the app. Edit them as a form here - no YAML required.</p>
-            <p class="meta"><strong>This is optional.</strong> Reading a recording you've received needs nothing here — the Overview summary, findings, and step groups stand on their own. A vocabulary pays off when you'll record the <em>same</em> process again: name an app once and every later recording of it reads better. Start one from a recording you already have (no live app needed) with <em>Start from a recording…</em> below.</p>
-            <p class="meta">Underlying storage is YAML at <code>normalization/app_vocabularies/</code>. You can edit those files directly if you prefer, or use this form. Both write to the same place.</p>
-          </details>
-        </div>
-        <div class="actions-bar">
-          <button id="btn-vocab-new" class="primary">+ New vocabulary</button>
-          <button id="btn-vocab-bootstrap-session" title="Read every control a saved recording touched and start a vocabulary for one of its apps, with names pre-filled for you to review. Worth doing when you'll record this process again — never needed just to read a recording.">Start from a recording…</button>
-          <button id="btn-vocab-discover" title="Point at a prepared app window and auto-discover a stable-signature vocabulary skeleton from its live UI. On-device; nothing leaves the box.">Discover from window…</button>
-          <!-- Item 18: "Reload list" and "Open YAML in editor" are Machine-layer
-               verbs (re-read the folder from disk / edit the raw file directly),
-               tucked into the same "⋯ More" popup mechanism the session toolbar
-               uses -- the primary actions (New / Start from a recording / Discover)
-               stay resident. -->
-          <div class="project-menu" id="vocab-more-menu">
-            <button class="project-btn" id="btn-vocab-more-menu" title="More actions for the App Library">
-              <span>⋯ More</span><span class="project-menu-caret">▾</span>
-            </button>
-            <div class="project-menu-popup" id="vocab-more-popup" style="display:none">
-              <button class="project-menu-item" id="btn-vocab-reload">Reload list</button>
-              <button class="project-menu-item" id="btn-vocab-open-yaml" disabled>Open YAML in editor</button>
-            </div>
-          </div>
-          <span class="flex-spacer"></span>
-          <span class="meta" id="vocab-list-meta"></span>
-        </div>
-        <div class="vocab-grid">
-          <div class="panel vocab-list-panel">
-            <div class="editor-pane-title">Vocabularies on disk</div>
-            <div id="vocab-list"></div>
-          </div>
-          <div class="panel vocab-editor-panel">
-            <div id="vocab-editor"></div>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <!-- Bottom playback bar: a global transport for the session video.
-       Shown on the Session tab when a recording is loaded; mirrors and
-       drives the #video element. Hidden otherwise. -->
+       Shown when a recording is loaded; mirrors and drives the #video
+       element. Hidden otherwise. -->
   <div class="playback-bar hidden" id="playback-bar">
     <button class="pb-btn" id="pb-skip-back" title="Back 5s (Left arrow)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
@@ -894,9 +462,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <nav class="help-nav">
         <button class="help-nav-item active" data-section="start">Getting started</button>
         <button class="help-nav-item" data-section="session">Session view</button>
-        <button class="help-nav-item" data-section="stepsphases">Steps &amp; Phases</button>
-        <button class="help-nav-item" data-section="template">Process Templates</button>
-        <button class="help-nav-item" data-section="aggregate">Compare Sessions view</button>
+        <button class="help-nav-item" data-section="stepsphases">Steps</button>
         <button class="help-nav-item" data-section="capture">Capture workflow</button>
         <button class="help-nav-item" data-section="shortcuts">Shortcuts</button>
         <button class="help-nav-item" data-section="trouble">Troubleshooting</button>
@@ -911,7 +477,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Open</strong> the session in this viewer: Session view → <em>Open session folder...</em></li>
             <li><strong>Analyze</strong>: click <em>Analyze session</em>. Tick <em>Build process map</em> to also discover a BPMN diagram.</li>
             <li><strong>Annotate</strong>: rename markers, add timestamped notes. Edits save to <code>annotations.json</code>; raw events stay immutable.</li>
-            <li><strong>Compare across sessions</strong> (Tab 2) when you want statistics, path variations, and a combined process map.</li>
           </ol>
           <h3>What the viewer expects in a session folder</h3>
           <ul class="help-list">
@@ -954,27 +519,24 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         </section>
 
         <section class="help-section" data-section="stepsphases">
-          <h3>Three views of the same session</h3>
-          <p>At the top of every loaded session you'll see a <strong>View</strong> bar with three buttons. They show the same captured data at different levels of abstraction:</p>
+          <h3>Flow and Steps</h3>
+          <p>At the top of every loaded session you'll see a <strong>View</strong> bar. Flow and Steps show the same captured data at two levels of detail:</p>
           <ul class="help-list">
             <li><strong>Flow</strong>: raw events as they were captured. Use this to understand what actually happened, second-by-second. Video, timeline, screenshots, notes.</li>
             <li><strong>Steps</strong>: the same data grouped into logical actions. A "step" is what a process analyst would call one named thing the worker did. <em>Search customer in Salesforce</em> is one step, even if it took 14 clicks underneath.</li>
-            <li><strong>Phases</strong>: steps grouped into milestones. A "phase" is what an exec would call one chunk of the process. <em>Validate customer</em> is a phase that contains the Search step, the Credit check step, and the KYC step.</li>
           </ul>
           <h3>How steps get created</h3>
-          <p>You have three choices and you don't have to pick one:</p>
+          <p>There are two ways, and you can use both:</p>
           <ol class="help-steps">
             <li><strong>Auto-suggested</strong>: normalize.py walks the interaction stream and splits on idle gaps, app switches, and window changes. Cheap and works on any session. Quality depends on how clean the workflow was.</li>
-            <li><strong>Auto-matched</strong>: if you've loaded a Process Template, every captured interaction is tested against the template's match rules. Matched interactions roll up into steps that get the template's names. Much better quality, but only works for processes you've templated.</li>
-            <li><strong>Manually authored</strong>: click <em>+ Add manual step</em> in the Steps view and define one yourself. Useful for the long tail of processes that don't have a template yet.</li>
+            <li><strong>Manually authored</strong>: click <em>+ Add manual step</em> in the Steps view and define one yourself. Useful for anything the automatic guess missed.</li>
           </ol>
           <h3>What state means</h3>
           <p>Every step has a colored dot indicating where it came from:</p>
           <ul class="help-list">
             <li><span class="state-icon state-auto_suggested"></span> <strong>auto-suggested</strong> - an automatic guess from the interactions. Replaced on every re-analysis.</li>
-            <li><span class="state-icon state-auto_matched"></span> <strong>auto-matched</strong> - matched a Process Template. Replaced when you re-match against a newer template version.</li>
             <li><span class="state-icon state-manually_authored"></span> <strong>manually authored</strong> - you typed it. Survives re-normalization.</li>
-            <li><span class="state-icon state-edited"></span> <strong>edited</strong> - you modified an auto-suggested or auto-matched step. Survives re-normalization.</li>
+            <li><span class="state-icon state-edited"></span> <strong>edited</strong> - you modified an auto-suggested step. Survives re-normalization.</li>
             <li><span class="state-icon state-hidden"></span> <strong>hidden</strong> - you suppressed it as noise. It stays out of the list and survives re-normalization.</li>
           </ul>
           <h3>Cutting down step noise</h3>
@@ -991,78 +553,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Exception path</strong>: an error or workaround, not the happy path</li>
             <li><strong>Waste</strong>: shouldn't be needed (rework, duplicate effort, fixing someone else's mistake)</li>
             <li><strong>Automation candidate</strong>: this step could be replaced by a bot or integration</li>
-          </ul>
-          <h3>Building phases manually</h3>
-          <ol class="help-steps">
-            <li>Switch to <strong>Steps</strong> view.</li>
-            <li>Tick the checkbox on two or more step rows to multi-select them (or Ctrl+click the rows).</li>
-            <li>Switch to <strong>Phases</strong> view. The <em>Group selected steps into phase</em> button is now enabled.</li>
-            <li>Click it, give the phase a name. Done.</li>
-          </ol>
-        </section>
-
-        <section class="help-section" data-section="template">
-          <h3>What a Process Template is</h3>
-          <p>A Process Template is a YAML file that says: "<em>This is what Customer Onboarding looks like. It has three phases. The first phase has three steps. Here's how to recognize each step when you see it in a captured session.</em>"</p>
-          <p>The <strong>Process Template</strong> view is where you open, edit, and test templates — click <strong>More ▾</strong> at the top of the viewer, then <strong>Process Template</strong>. A sample template ships at <code>normalization/canonical/sample-customer-onboarding-v3.yaml</code>.</p>
-          <h3>Why bother</h3>
-          <p>Without a template, the viewer can only auto-suggest steps from interaction patterns. The names it picks are generic ("App: 4 actions"). With a template, every matched interaction gets the right name ("Search existing customer record"), groups into the right step, and the steps roll up into named phases. The PDD export, the step BPMN export, and the aggregate statistics all become hugely more useful.</p>
-          <h3>The minimal shape</h3>
-          <pre><code>canonical_process:
-  id: "customer-onboarding-v3"
-  name: "Customer Onboarding"
-  version: 7
-  phases:
-    - phase_id: "validate"
-      name: "Validate customer"
-      step_ids: ["check-crm", "credit-check"]
-  steps:
-    - step_id: "check-crm"
-      name: "Check existing customer record"
-      match:
-        - process_name: "chrome.exe"
-          window_title_regex: ".*Salesforce.*Search.*"
-          interaction:
-            control_type: "Edit"
-            automation_id: "searchInput"</code></pre>
-          <h3>Phases in a template</h3>
-          <p>A template's <code>phases</code> block groups its steps into milestones — the chunks an exec thinks in. Template phases drive the PDD export, the step CSV, and the phase-level BPMN. You don't have to hand-write the YAML: in the <strong>Template steps</strong> editor each step has a <em>Phase</em> dropdown — pick an existing phase or create one inline, and the <code>phases</code> block stays in sync. (This is separate from grouping one session's steps into phases, which you do in the Phases view.)</p>
-          <h3>Matching against a captured session</h3>
-          <p>From the Process Template tab, load the YAML, click <em>Load sample session</em>, and the match rate shows up. Aim for 80% or higher; below that you need to refine the match rules until they cover the real patterns the SME hit.</p>
-          <h3>Versioning + drift</h3>
-          <p>Templates have a <code>version</code> field. When you change a template and re-normalize old sessions, any step the analyst edited manually that now maps to a different template step gets a <strong>drift marker</strong> (you'll see a ⚠ icon in the Steps view). The aggregate Drift panel shows the trend across loaded sessions.</p>
-        </section>
-
-        <section class="help-section" data-section="aggregate">
-          <h3>Loading multiple sessions</h3>
-          <p><em>Open sessions...</em> lets you pick:</p>
-          <ul class="help-list">
-            <li>One or more individual session folders</li>
-            <li>An <em>engagement folder</em> containing many sessions - they auto-expand</li>
-          </ul>
-          <h3>Process map</h3>
-          <ul class="help-list">
-            <li><strong>Process diagram (BPMN)</strong> tab: the discovered process rendered as a standard BPMN diagram. Pan/zoom with mouse. Export the file (importable into Adonis, Bizagi, etc.) via the export button below.</li>
-            <li><strong>Flow diagram</strong> tab: a network view showing how often each activity is followed by each other activity. Node with a green border = where sessions started; orange border = where sessions ended; edge thickness reflects how often that transition happened. <strong>Hover any node to highlight the session paths (variants) that run through it</strong> — everything off those paths dims so you can see where work diverges. <strong>Click a node to drill into every loaded session containing that activity, at the matching timestamp.</strong></li>
-          </ul>
-          <h3>Statistics</h3>
-          <ul class="help-list">
-            <li><strong>Activity frequency</strong>: SVG bar chart, top 12 by frequency. Hover the value to see total time.</li>
-            <li><strong>Case durations</strong>: active duration (filled bar) with wall-clock as a thin overlay so you can spot heavy idle inside cases. Top 12 cases.</li>
-            <li><strong>Trace variants</strong>: distinct activity sequences ranked by frequency. Top 80.</li>
-            <li><strong>App outliers</strong>: apps appearing in &lt;5% of cases - exceptions or misuse.</li>
-            <li><strong>Repeated activities within a case</strong>: activities a worker did more than once inside the same case — often a sign of rework or fixing a mistake.</li>
-          </ul>
-          <h3>Filtering</h3>
-          <ul class="help-list">
-            <li><strong>Text filter</strong>: substring match across activity chart, case chart, variants, outliers, and rework.</li>
-            <li><strong>Date range</strong>: <em>From</em> / <em>To</em> date inputs filter the loaded sessions by their <code>started_at</code> field. The pills show "filtered from N" when a range is active.</li>
-          </ul>
-          <h3>Exports</h3>
-          <ul class="help-list">
-            <li><strong>BPMN 2.0 XML / XES / stats.json</strong>: copy the per-session artifact from the first loaded session that has it.</li>
-            <li><strong>Markdown report</strong>: a Confluence-friendly summary of the currently-filtered sessions (activity table, case table, top transitions). Use it as a paste-ready draft for a Process Definition Document.</li>
-            <li><strong>App-category rule drafts</strong>: writes a YAML draft with one rule candidate per app that appears as "Unclassified" in the loaded sessions. Refine the labels and patterns, then add them to the team's central category rules.</li>
           </ul>
         </section>
 
@@ -1088,26 +578,24 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <section class="help-section" data-section="shortcuts">
           <h3>Viewer keyboard shortcuts</h3>
           <table class="help-table">
-            <tr><td><span class="kbd">1</span> / <span class="kbd">2</span> / <span class="kbd">3</span></td><td>Session view / Compare Sessions view / App Library</td></tr>
             <tr><td><span class="kbd">Space</span></td><td>Play / pause video</td></tr>
             <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Scrub 5 seconds (hold <span class="kbd">Shift</span> for 10s)</td></tr>
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>
-            <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last step / phase / marker / note edit</td></tr>
+            <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last step / marker / note edit</td></tr>
             <tr><td><span class="kbd">Ctrl+Y</span> / <span class="kbd">Ctrl+Shift+Z</span></td><td>Redo</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
-          <p class="help-hint">Undo / redo capture every annotation edit (step / phase / marker / note). Stack is capped at 50 and resets when you switch sessions.</p>
+          <p class="help-hint">Undo / redo capture every annotation edit (step / marker / note). Stack is capped at 50 and resets when you switch sessions.</p>
           <h3>Click behaviors</h3>
           <ul class="help-list">
             <li>Any timeline band, marker, screenshot dot, or event row → seek the video</li>
             <li><strong>Right-click an activity band</strong> on the timeline → context menu: insert a Start/End marker at the clicked moment, scope view to the case under the cursor, jump to the case start / end. A faint <code>⋯</code> appears on hover to advertise the menu.</li>
-            <li>DFG node in aggregate → drill to first matching session at the activity timestamp</li>
             <li>Marker row in the sidebar → seek; <strong>double-click a Start marker</strong> → rename</li>
             <li>Recent session in the empty state → reload that session</li>
           </ul>
           <h3>Cancelling a long analysis</h3>
-          <p>Once an analysis kicks off the log host opens automatically. A red <strong>Cancel</strong> button in the log summary stops the in-flight Python child (graceful first, hard kill 500ms later). Works for single-session normalize, extended normalize, template match, and app vocabulary bootstrap. The aggregate <em>Analyze all</em> loop also has its own Cancel button.</p>
+          <p>Once an analysis kicks off the log host opens automatically. A red <strong>Cancel</strong> button in the log summary stops the in-flight Python child (graceful first, hard kill 500ms later). It works for <em>Analyze session</em>.</p>
         </section>
 
         <section class="help-section" data-section="trouble">
@@ -1128,20 +616,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <dt>Empty event table</dt>
             <dd>Check the type checkboxes (activity / marker / system) and clear the text filter.</dd>
 
-            <dt>Drill-down landed on a session but the wrong moment</dt>
-            <dd>The drill uses a best-effort match on app/title to find the first activity event matching the label. For exact precision, click directly on the timeline bands.</dd>
-
             <dt>Hotkey didn't register in capture</dt>
             <dd>Another app may have the same global shortcut. Enable <code>PDT_DEBUG=1</code> in the capture launch env and check <code>%APPDATA%\process-discovery-tracker\boot.log</code> for "hotkeys: start=false". Edit your <code>config.yaml</code> to use different keys.</dd>
 
             <dt>Citrix or remote-desktop session shows one band labelled "Citrix Workspace.exe"</dt>
             <dd>active-win cannot see inside Citrix windows from the local host. Either run the capture tracker inside the Citrix session, or accept that local capture will not classify inner apps and rely on markers + the OBS video for context.</dd>
-
-            <dt>Multi-machine shift review: timelines from different workers do not line up</dt>
-            <dd>Have each worker fire a sync marker (default Ctrl+Shift+Y in capture) at agreed moments with the same sync_id. The aggregate view uses these as alignment points.</dd>
-
-            <dt>Aggregate report or app-category rule draft exports nothing useful</dt>
-            <dd>Both work off analyzed sessions. Click "Analyze all sessions" first so every loaded session has stats.json. The rule draft needs at least one event classified as Unclassified - that means there is an app the team's category rules do not yet cover.</dd>
           </dl>
         </section>
       </div>

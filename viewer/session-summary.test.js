@@ -1,6 +1,6 @@
 /*
  * Unit tests for session-summary.js -- the pure derivations behind the
- * Session view summary panel and the Compare-Sessions outlier flag.
+ * Session view summary panel.
  *
  * Run with `npm test` (Node's built-in `node:test` runner).
  */
@@ -12,10 +12,8 @@ const assert = require("node:assert/strict");
 const {
   stepStateLabel,
   eventSpanMs,
-  percentile,
   computeSummary,
   detectMarkerProblems,
-  detectDurationOutliers,
 } = require("./session-summary.js");
 
 /* ---- stepStateLabel: four pipeline states collapse to two ---------- */
@@ -49,13 +47,6 @@ test("eventSpanMs is the first-to-last timestamp span", () => {
 test("eventSpanMs is 0 for an empty or missing list", () => {
   assert.equal(eventSpanMs([]), 0);
   assert.equal(eventSpanMs(undefined), 0);
-});
-
-/* ---- percentile ---------------------------------------------------- */
-
-test("percentile interpolates and handles the single-value case", () => {
-  assert.equal(percentile([10, 20, 30, 40], 0.5), 25);
-  assert.equal(percentile([42], 0.9), 42);
 });
 
 /* ---- computeSummary ------------------------------------------------ */
@@ -209,21 +200,4 @@ test("detectMarkerProblems handles nested cases without false flags", () => {
     marker("end", null, "2026-05-11T09:05:00Z", "m4"),
   ];
   assert.deepEqual(detectMarkerProblems(events), []);
-});
-
-/* ---- detectDurationOutliers ---------------------------------------- */
-
-test("detectDurationOutliers needs at least three sessions", () => {
-  assert.deepEqual(detectDurationOutliers([100, 5000]), []);
-});
-
-test("detectDurationOutliers raises no alarm on a uniform set", () => {
-  assert.deepEqual(detectDurationOutliers([1000, 1000, 1000, 1000]), []);
-});
-
-test("detectDurationOutliers flags a clear long outlier", () => {
-  const out = detectDurationOutliers([100000, 102000, 98000, 101000, 300000]);
-  assert.equal(out.length, 1);
-  assert.equal(out[0].index, 4);
-  assert.ok(out[0].ratio > 2.5);
 });

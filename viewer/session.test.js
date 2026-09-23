@@ -2,7 +2,7 @@
 /*
  * Regression test for the undo baseline (session.js).
  *
- * The bug: edit handlers (steps-view / phases-view) call
+ * The bug: edit handlers (steps-view) call
  * ensureAnnoShape(session.annotations) -- which returns the LIVE object -- and
  * mutate it in place before calling persistAnnotations. So by the time
  * saveAnnotationsWithUndo ran, session.annotations was ALREADY the post-edit

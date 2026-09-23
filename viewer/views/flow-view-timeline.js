@@ -649,7 +649,7 @@ function renderTimeline() {
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp, ev.data.app || "");
+          showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp);
         });
         host.appendChild(band);
       }

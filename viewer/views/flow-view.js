@@ -20,10 +20,9 @@ const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
-const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations, ensureAnnoShape } = require("../session.js");
+const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo } = require("../session.js");
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
-const { renderPhasesLevel } = require("./phases-view.js");
 const { renderOverviewLevel } = require("./overview-view.js");
 const SessionSummary = require("../session-summary.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
@@ -237,8 +236,6 @@ async function openSessionFlow() {
 
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
-const _btnClassify = document.getElementById("btn-classify-activities");
-if (_btnClassify) _btnClassify.addEventListener("click", () => showClassifyManager());
 
 /* Wire normalize button so the analysis-in-progress UI is visible:
    log host expands (already open by default in the HTML), Cancel
@@ -290,14 +287,9 @@ $("#btn-normalize").addEventListener("click", async () => {
   const mine = $("#cb-mine").checked;
   setAnalysisRunning(true);
   $("#normalize-log").textContent = "";
-  // If a Process Template was previously matched, re-use its path automatically.
-  const remembered = (State.getSession().annotations &&
-    State.getSession().annotations.matched_against &&
-    State.getSession().annotations.matched_against.template_path) || null;
   const r = await Ipc.runNormalizeExtended({
     sessionFolder: State.getSession().sessionFolder,
     mine,
-    canonical: remembered,
   });
   setAnalysisRunning(false);
   if (r.cancelled) {
@@ -310,52 +302,9 @@ $("#btn-normalize").addEventListener("click", async () => {
     toast("Analysis failed: " + r.error, "error");
     return;
   }
-  toast(remembered ? "Re-analyzed with template" : "Analysis complete", "success");
+  toast("Analysis complete", "success");
   await loadSessionIntoView(State.getSession().sessionFolder);
 });
-
-const btnMatchTemplate = $("#btn-match-template");
-if (btnMatchTemplate) {
-  btnMatchTemplate.addEventListener("click", async () => {
-    if (!State.getSession()) return;
-    const r = await Ipc.openCanonicalFile();
-    if (!r) return;
-    btnMatchTemplate.disabled = true;
-    $("#btn-normalize").disabled = true;
-    $("#log-host").style.display = "";
-    $("#normalize-log").textContent = "";
-    const mine = $("#cb-mine").checked;
-    const result = await Ipc.runNormalizeExtended({
-      sessionFolder: State.getSession().sessionFolder,
-      mine,
-      canonical: r.path,
-    });
-    btnMatchTemplate.disabled = false;
-    $("#btn-normalize").disabled = false;
-    if (!result || !result.ok) {
-      toast("Template match failed: " + ((result && result.error) || "unknown"), "error");
-      return;
-    }
-    // Reload FIRST: the normalize just rewrote annotations.json (matched
-    // steps, suggestions, drift). Saving the pre-normalize in-memory copy
-    // here used to clobber that file — on a raw session it wiped the
-    // freshly auto_matched steps entirely (caught by flywheel-smoke §D4).
-    await loadSessionIntoView(State.getSession().sessionFolder);
-    // Persist template path into the FRESH annotations so future
-    // re-analyses remember it (the pipeline writes only id + version).
-    try {
-      const a = State.getSession().annotations || {};
-      a.matched_against = a.matched_against || {};
-      a.matched_against.template_path = r.path;
-      await Ipc.saveAnnotations({
-        sessionFolder: State.getSession().sessionFolder,
-        annotations: a,
-      });
-      State.getSession().annotations = a;
-    } catch (_) {}
-    toast("Matched against Process Template", "success");
-  });
-}
 
 Ipc.onNormalizeLog((text) => {
   const pre = $("#normalize-log");
@@ -433,11 +382,8 @@ async function loadSessionIntoView(folder) {
   renderTimelineSummary();
   // Phase B+ surfaces
   State.setSelectedStepId(null);
-  State.setSelectedPhaseId(null);
   State.setMultiSelectedStepIds(new Set());
-  if ($("#btn-group-into-phase")) $("#btn-group-into-phase").disabled = true;
   renderStepsLevel();
-  renderPhasesLevel();
   // The Overview level (lab-phase §A5) is the default on load; it reads the
   // freshly-loaded analysis.json blocks and (R4) renders the Evidence modules
   // that the retired Analysis level used to own, so refreshing it here covers
@@ -550,7 +496,7 @@ function renderSessionPills() {
       pills.push({
         label: vocabs.length === 1 ? "vocab" : "vocabs",
         val: `${vocabs.length} · ${hits} hits`,
-        title: "App Library vocabularies applied: " + vocabs.map(v => v.id).join(", "),
+        title: "App vocabularies applied: " + vocabs.map(v => v.id).join(", "),
         cls: hits > 0 ? "ok" : "",
       });
     }
@@ -572,41 +518,6 @@ function renderSessionPills() {
   const onboarding = $("#onboarding-card");
   if (onboarding) {
     onboarding.style.display = State.getSession().stats ? "none" : "";
-  }
-
-  /* Prep-session CTA: when the manifest tags this as an app-vocab prep
-     capture, replace the generic onboarding with a one-button path to
-     bootstrap the vocabulary. The button below the toolbar is dedicated
-     to this so the analyst doesn't have to hunt for it. */
-  const prepCta = $("#prep-session-cta");
-  const isPrep = m.purpose === "app_prep" && m.prep_app;
-  if (prepCta) {
-    if (isPrep) {
-      prepCta.style.display = "";
-      const appName = m.prep_app
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, c => c.toUpperCase());
-      $("#prep-app-name").textContent = appName;
-      $("#prep-app-id").textContent = m.prep_app;
-      if (onboarding) onboarding.style.display = "none"; // CTA replaces generic onboarding
-    } else {
-      prepCta.style.display = "none";
-    }
-  }
-
-  // Update the Match button label to reflect a remembered template.
-  const btnMatch = $("#btn-match-template");
-  if (btnMatch) {
-    const tmpl = (State.getSession().annotations &&
-      State.getSession().annotations.matched_against &&
-      State.getSession().annotations.matched_against.template_path);
-    if (tmpl) {
-      btnMatch.textContent = "Change Process Template...";
-      btnMatch.title = "Currently matched against: " + tmpl;
-    } else {
-      btnMatch.textContent = "Match Process Template...";
-      btnMatch.title = "Pick a Process Template YAML and match this session against it.";
-    }
   }
 }
 
@@ -736,10 +647,6 @@ function renderSessionSummary() {
       '<span class="summary-link" data-go="steps">Steps</span> tab — ' +
       `${s.autoSteps} step${s.autoSteps === 1 ? " was" : "s were"} ` +
       "auto-detected and may need editing.</div>";
-  } else if (s.stepCount > 0 && s.phaseCount === 0) {
-    bannerHtml =
-      '<div class="summary-banner">Group your reviewed steps into ' +
-      '<span class="summary-link" data-go="phases">Phases</span> to organize the process.</div>';
   }
 
   let driftHtml = "";
@@ -763,28 +670,6 @@ function renderSessionSummary() {
       `${n} file${n === 1 ? "" : "s"} recorded in this session ${n === 1 ? "is" : "are"} ` +
       `missing — the session may have been copied incompletely: ${names}` +
       `${n > 6 ? ", …" : ""}.</div>`;
-  }
-
-  // C1a: warn when most activity is unclassified -- the application-level
-  // process map and the app lane stay near-empty until the taxonomy has rules
-  // for these apps. The Step/Phase maps work without taxonomy.
-  let taxonomyHtml = "";
-  {
-    const acts = (State.getSession() && State.getSession().stats
-      && State.getSession().stats.activity_stats) || [];
-    let tot = 0, uncl = 0;
-    for (const a of acts) {
-      const f = a.frequency || 0; tot += f;
-      if (/^Unclassified/i.test(a.activity_label || "")) uncl += f;
-    }
-    if (tot > 0 && uncl / tot > 0.5) {
-      const pct = Math.round((uncl / tot) * 100);
-      taxonomyHtml =
-        '<div class="summary-banner warn">⚠ ' + pct + '% of activity is unclassified, ' +
-        'so the application-level process map is mostly empty. Use “Classify activities…” ' +
-        'in the top bar to label your apps (or right-click an activity band below). ' +
-        'The Step and Phase process maps work without taxonomy.</div>';
-    }
   }
 
   const hint = (s.caseCount > 0 && s.stepCount > 0)
@@ -821,7 +706,7 @@ function renderSessionSummary() {
         `analyzed ${escapeHtml(analyzed)}</div>` +
       pillsHtml +
       `<div class="summary-tiles">${tilesHtml}</div>` +
-      activityHtml + casesHtml + driftHtml + integrityHtml + taxonomyHtml + problemsHtml + hint + bannerHtml +
+      activityHtml + casesHtml + driftHtml + integrityHtml + problemsHtml + hint + bannerHtml +
     '</div>';
 
   // Collapsible: remember the analyst's open/closed choice across sessions.
@@ -1044,157 +929,10 @@ function renderSelectionStats() {
 /* renderMinimap / syncMinimapViewport / the minimap + middle-drag-pan
    wiring and renderTimelineSummary live in flow-view-timeline.js. */
 
-/* C1a: classify the app under an activity band in place. Writes a
-   rule-scoped classification override (every window of this app -> the
-   chosen label) and re-analyzes, so the activity map + lane pick it up.
-   Same override mechanism the aggregate map's Reclassify uses. */
-async function classifyApp(app) {
-  if (!app || !State.getSession()) return;
-  const label = await promptModal({
-    title: "Classify this app",
-    message: 'Give every "' + app + '" window an activity label. Adds a taxonomy ' +
-      "rule for this session and re-analyzes.",
-    placeholder: "e.g. TAMBA — Ticket system",
-    okLabel: "Classify & re-analyze",
-  });
-  const clean = (label || "").trim();
-  if (!clean) return;
-  const override = {
-    override_id: cryptoRandomId(),
-    scope: "rule",
-    match: { app, title_regex: ".*" },
-    label: clean,
-    created_at: new Date().toISOString(),
-  };
-  try {
-    const r = await Ipc.addClassificationOverride({
-      sessionFolder: State.getSession().sessionFolder, override,
-    });
-    if (!r || !r.ok) { toast("Could not save the classification", "error"); return; }
-  } catch (e) {
-    toast("Could not save the classification: " + (e && e.message), "error");
-    return;
-  }
-  toast('Classified "' + app + '" — re-analyzing…', "success");
-  const btn = document.getElementById("btn-normalize");
-  if (btn) btn.click();
-}
-
-/* Phase 3: in-app classification manager. Lists every application observed in
-   the session and lets the analyst give each a meaningful activity label in
-   one place (a rule-scoped classification override -- every window of that app
-   -> the label). Saving re-analyzes so the map + lane pick the labels up. The
-   see-everything companion to the per-band classifyApp. Uses persistAnnotations
-   (in-memory + disk in one write) so the in-memory annotations stay consistent. */
-function showClassifyManager() {
-  if (!State.getSession()) return;
-  const prior = document.getElementById("classify-mgr-backdrop");
-  if (prior) prior.remove();
-
-  // Distinct apps from activity events, by frequency.
-  const counts = new Map();
-  for (const ev of (State.getSession().events || [])) {
-    if (ev.type !== "activity") continue;
-    const app = (ev.data && ev.data.app) || "";
-    if (app) counts.set(app, (counts.get(app) || 0) + 1);
-  }
-  const apps = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-
-  // Prefill from existing whole-app rule overrides.
-  const existing = {};
-  for (const o of ((State.getSession().annotations || {}).classification_overrides || [])) {
-    if (o && o.scope === "rule" && o.match && o.match.title_regex === ".*" && o.match.app) {
-      existing[o.match.app] = o.label || "";
-    }
-  }
-
-  const backdrop = document.createElement("div");
-  backdrop.id = "classify-mgr-backdrop";
-  backdrop.className = "modal-backdrop";
-  const rows = apps.map(([app, n]) =>
-    '<tr><td class="cm-app">' + escapeHtml(app) + '</td>' +
-    '<td class="cm-count">' + n + '</td>' +
-    '<td><input type="text" class="modal-input cm-label" data-app="' + escapeHtml(app) + '" ' +
-    'value="' + escapeHtml(existing[app] || "") + '" placeholder="e.g. TAMBA — Ticket system"></td></tr>'
-  ).join("");
-  backdrop.innerHTML =
-    '<div class="modal cm-modal">' +
-    '<header class="modal-header"><h2>Classify activities</h2>' +
-    '<button class="icon-btn modal-close" title="Close (Esc)">✕</button></header>' +
-    '<div class="modal-body">' +
-    '<p class="modal-msg">Give each application a meaningful label so the process map and timeline show real activities instead of “Unclassified”. This adds rules for this session and re-analyzes. Clear a label to remove it.</p>' +
-    (apps.length
-      ? '<table class="cm-table"><thead><tr><th>Application</th><th>Events</th><th>Activity label</th></tr></thead><tbody>' + rows + '</tbody></table>'
-      : '<p class="meta">No activity events in this session yet.</p>') +
-    '</div>' +
-    '<footer class="modal-footer"><button class="modal-cancel">Cancel</button>' +
-    '<button class="cm-promote" title="Write these labels into a shared taxonomy.yaml so they classify EVERY future session, not just this one. You pick the team taxonomy file.">Save to team taxonomy…</button>' +
-    '<button class="primary cm-save">Save & re-analyze</button></footer>' +
-    '</div>';
-  document.body.appendChild(backdrop);
-
-  function close() {
-    backdrop.remove();
-    document.removeEventListener("keydown", onKey, true);
-  }
-  function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
-  document.addEventListener("keydown", onKey, true);
-  backdrop.querySelector(".modal-close").addEventListener("click", close);
-  backdrop.querySelector(".modal-cancel").addEventListener("click", close);
-  backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) close(); });
-
-  backdrop.querySelector(".cm-save").addEventListener("click", async () => {
-    const anno = ensureAnnoShape(State.getSession().annotations);
-    anno.classification_overrides = anno.classification_overrides || [];
-    let changed = 0;
-    backdrop.querySelectorAll(".cm-label").forEach((inp) => {
-      const app = inp.getAttribute("data-app");
-      const label = (inp.value || "").trim();
-      if (label === (existing[app] || "")) return;
-      // Drop any prior whole-app rule override for this app, then re-add.
-      anno.classification_overrides = anno.classification_overrides.filter(
-        (o) => !(o && o.scope === "rule" && o.match
-          && o.match.title_regex === ".*" && o.match.app === app));
-      if (label) {
-        anno.classification_overrides.push({
-          override_id: cryptoRandomId(),
-          scope: "rule",
-          match: { app, title_regex: ".*" },
-          label,
-          created_at: new Date().toISOString(),
-        });
-      }
-      changed++;
-    });
-    if (!changed) { close(); return; }
-    await persistAnnotations(anno, "classify activities", ["timeline"]);
-    close();
-    toast(changed + " app" + (changed === 1 ? "" : "s") + " relabelled — re-analyzing…", "success");
-    const btn = document.getElementById("btn-normalize");
-    if (btn) btn.click();
-  });
-
-  backdrop.querySelector(".cm-promote").addEventListener("click", async () => {
-    const rules = [];
-    backdrop.querySelectorAll(".cm-label").forEach((inp) => {
-      const app = inp.getAttribute("data-app");
-      const label = (inp.value || "").trim();
-      if (app && label) rules.push({ label, match: { app } });
-    });
-    if (!rules.length) { toast("Enter at least one label to promote.", ""); return; }
-    const res = await Ipc.promoteTaxonomyRules({ rules });
-    if (!res || res.canceled) return;
-    if (!res.ok) { toast("Promote failed: " + (res.error || "unknown"), "error"); return; }
-    toast("Promoted " + res.added + " rule" + (res.added === 1 ? "" : "s") +
-      " to team taxonomy (" + res.total + " total)", "success");
-  });
-}
-
 /* Pop a tiny context menu at (x, y) offering to queue a synthetic marker
-   insert into annotations.json.marker_edits at timestamp `ts`. When `app` is
-   set (right-click on an activity band) the menu also offers Classify this
-   app. The edit only takes effect on the next normalization run. */
-function showMarkerInsertMenu(x, y, ts, app) {
+   insert into annotations.json.marker_edits at timestamp `ts`. The edit
+   only takes effect on the next normalization run. */
+function showMarkerInsertMenu(x, y, ts) {
   /* Tear down any prior menu */
   const prior = document.getElementById("tl-ctx-menu");
   if (prior) prior.remove();
@@ -1222,7 +960,6 @@ function showMarkerInsertMenu(x, y, ts, app) {
     menu.appendChild(item);
   }
 
-  if (app) addItem("Classify this app…", () => classifyApp(app));
   addItem("Insert Start marker here…", () => queueSyntheticMarker(ts, "start"));
   addItem("Insert End marker here",    () => queueSyntheticMarker(ts, "end"));
   addItem("Jump to step here",         () => {
@@ -1589,7 +1326,7 @@ if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("chang
   const drawer = document.querySelector(".event-table-host");
   if (!drawer) return;
   const layoutSel = "#session-layout-flow, #session-layout-overview, " +
-    "#session-layout-map, #session-layout-steps, #session-layout-phases";
+    "#session-layout-map, #session-layout-steps";
   let _frozen = null;
   let _snap = null;   // { el, h } captured BEFORE the drawer expands
   const snap = () => {

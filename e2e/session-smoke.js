@@ -10,8 +10,11 @@
  * demo session, then verifies:
  *   - zero PAGE ERRORs surfaced on the renderer console,
  *   - the session loaded (#session-loaded visible),
- *   - the 4 remaining Session-view levels (flow/steps/phases/map) render
- *     (R4 retired the Analysis level; its modules moved into the Overview),
+ *   - the Session-view levels flow/steps/map render (R4 retired the Analysis
+ *     level, its modules moved into the Overview; the BA-helper cut removed
+ *     Phases and the top tab row),
+ *   - the Session Export menu's "Map as SVG" and "Step map as BPMN" items
+ *     each write their file,
  *   - the map-overlay regression stays fixed: on the Map level the process-map
  *     host must NOT vertically overlap the raw-events host
  *     (#session-layout-map .map-host bottom <= .event-table-host top).
@@ -88,7 +91,6 @@ async function shot(page, name) {
 const LEVEL_HOST = {
   flow: "#session-layout-flow",
   steps: "#session-layout-steps",
-  phases: "#session-layout-phases",
   map: "#session-layout-map",
 };
 
@@ -152,9 +154,9 @@ const OVERLAP_PROBE = () => {
   }
   await wait(1500); // settle first render
 
-  // Cycle the 4 remaining Session-view levels; each must show its layout
-  // container. (R4 retired Analysis; there is no analysis view-mode button now.)
-  for (const lvl of ["flow", "steps", "phases", "map"]) {
+  // Cycle the Session-view levels; each must show its layout container.
+  // (R4 retired Analysis; the BA-helper cut retired Phases.)
+  for (const lvl of ["flow", "steps", "map"]) {
     const btn = await page.$('.view-mode-btn[data-level="' + lvl + '"]');
     if (!btn) {
       record("level '" + lvl + "' renders", false, "no view-mode-btn[data-level=" + lvl + "]");
@@ -177,9 +179,32 @@ const OVERLAP_PROBE = () => {
     if (!visible) await shot(page, "fail-level-" + lvl + ".png");
   }
 
+  // BA-helper cut (L1b): the app IS the Session view. No top tab row, no
+  // "More" views menu, no Phases level, no Compare / Template / App Library
+  // views, and none of their entry points; the Export menu offers the PDD and
+  // the two map exports.
+  const cut = await page.evaluate(() => {
+    const n = (sel) => document.querySelectorAll(sel).length;
+    const sessionView = document.getElementById("view-session");
+    return {
+      tabRow: n("nav.tabs") + n(".tab") + n("#btn-tabs-more-menu"),
+      otherViews: n("#view-aggregate") + n("#view-canonical") + n("#view-vocabularies"),
+      phases: n('.view-mode-btn[data-level="phases"]') + n("#session-layout-phases") + n("#btn-group-into-phase"),
+      entryPoints: n("#btn-match-template") + n("#btn-classify-activities") + n("#btn-save-vocab") +
+        n("#btn-steps-to-template") + n("#prep-session-cta"),
+      sessionViewShown: !!(sessionView && getComputedStyle(sessionView).display !== "none"),
+      exportItems: ["btn-session-pdd", "btn-session-map-svg", "btn-session-step-bpmn"]
+        .map((id) => !!document.getElementById(id)),
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("BA-helper cut: no tab row, no other views, no Phases; Export offers PDD + map SVG + step BPMN",
+    !!(cut && !cut.err && cut.tabRow === 0 && cut.otherViews === 0 && cut.phases === 0 &&
+      cut.entryPoints === 0 && cut.sessionViewShown && cut.exportItems.every(Boolean)),
+    JSON.stringify(cut));
+
   // Item 19: "Scope to playhead" is orphaned chrome on Overview (no visible
   // playhead there) but meaningful everywhere a timeline exists. We just
-  // cycled through flow/steps/phases/map (the loop above), so the button should
+  // cycled through flow/steps/map (the loop above), so the button should
   // be visible now (last level = map, not overview); switch back to Flow
   // (has it) then Overview (hides it) to check both ends.
   await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
@@ -637,6 +662,58 @@ const OVERLAP_PROBE = () => {
     !!(fb && !fb.err && fb.dfgVisible && fb.dfgHasMap && fb.tabFlipped), JSON.stringify(fb));
   record("the 'N nodes' status line hides on the live Flow diagram (no stale file count)",
     !!(fb && !fb.err && fb.statusHidden), JSON.stringify(fb));
+
+  // --- AD-11: the map exports live in the Session Export menu -----------------
+  // Pin the VERB: open the menu, click the item, and assert the written file
+  // (the OS save dialog is stubbed to a temp path, the shell reveal to a no-op).
+  async function exportViaMenu(itemId, outPath) {
+    await app.evaluate(({ dialog, shell }, p) => {
+      global.__pdtSaveDefault = null;
+      dialog.showSaveDialog = async (_w, opts) => {
+        global.__pdtSaveDefault = (opts && opts.defaultPath) || null;
+        return { canceled: false, filePath: p };
+      };
+      shell.showItemInFolder = () => {};
+    }, outPath);
+    await page.click("#btn-session-export-menu");
+    await page.click("#" + itemId);
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      if (fs.existsSync(outPath) && fs.statSync(outPath).size > 0) break;
+      await wait(250);
+    }
+    const suggested = await app.evaluate(() => global.__pdtSaveDefault).catch(() => null);
+    const text = fs.existsSync(outPath) ? fs.readFileSync(outPath, "utf-8") : "";
+    try { fs.unlinkSync(outPath); } catch (_) {}
+    return { bytes: text.length, head: text.slice(0, 200), text, suggested };
+  }
+  // Start from Overview: the verb opens the Map level (button state included)
+  // before it reads the diagram.
+  await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
+  await wait(600);
+  const svgOut = path.join(os.tmpdir(), "pdt-e2e-map-" + Date.now() + ".svg");
+  const svgRes = await exportViaMenu("btn-session-map-svg", svgOut);
+  const svgLanded = await page.evaluate(() => {
+    const layout = document.getElementById("session-layout-map");
+    const btn = document.querySelector('.view-mode-btn[data-level="map"]');
+    return !!(layout && getComputedStyle(layout).display !== "none" && btn && btn.classList.contains("active"));
+  }).catch(() => false);
+  const svgOk = svgRes.bytes > 0 && /<svg[\s>]/.test(svgRes.text) && /\.svg$/.test(svgRes.suggested || "") && svgLanded;
+  record("AD-11: Export > Map as SVG (from Overview) opens the Map and writes the shown map as an SVG file",
+    svgOk, "bytes=" + svgRes.bytes + " suggested=" + svgRes.suggested + " onMap=" + svgLanded + " head=" + JSON.stringify(svgRes.head.slice(0, 80)));
+  if (!svgOk) await shot(page, "fail-export-map-svg.png");
+  if (!FRESH) {
+    record("AD-11: Export > Step map as BPMN (skipped: session not re-normalized)", true,
+      "the export would analyze into the committed demo folder");
+  } else {
+    const bpmnOut = path.join(os.tmpdir(), "pdt-e2e-step-" + Date.now() + ".bpmn");
+    const bpmnRes = await exportViaMenu("btn-session-step-bpmn", bpmnOut);
+    const bpmnOk = bpmnRes.bytes > 0 && /<(?:[\w-]+:)?definitions[\s>]/.test(bpmnRes.text) &&
+      /<(?:[\w-]+:)?(?:task|userTask)[\s>]/.test(bpmnRes.text) && /\.bpmn$/.test(bpmnRes.suggested || "");
+    record("AD-11: Export > Step map as BPMN writes the step-level BPMN file",
+      bpmnOk, "bytes=" + bpmnRes.bytes + " suggested=" + bpmnRes.suggested + " head=" + JSON.stringify(bpmnRes.head.slice(0, 80)));
+    if (!bpmnOk) await shot(page, "fail-export-step-bpmn.png");
+  }
 
   // --- ADR-0019 Reference Maps round-trip pin ---------------------------------
   // A reference map is a decoupled, editable BPMN copy forked from the mined map.

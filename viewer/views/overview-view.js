@@ -3,7 +3,7 @@
  * spec §A5; the honesty redesign's buyer-first surface).
  *
  * The default level on session load. One column, top to bottom:
- *   1. case-quality badge   -- from analysis.case_quality (3 states).
+ *   1. case-quality badge   -- from analysis.case_quality (2 states).
  *   2. mark-runs line       -- ONLY when no runs are marked (no cases):
  *                              one instruction + a button that opens Flow
  *                              with the Markers panel (openMarkersInFlow,
@@ -52,17 +52,6 @@ function _badge(cq) {
       : "✓ " + (cq.case_count || 0) + " cases — marked by the worker";
     title = "The worker marked case starts/ends during recording · " +
       _pct(cq.coverage) + " of recorded actions fall inside a case";
-  } else if (cq.mode === "anchor") {
-    const a = cq.anchor || {};
-    cls = "ok";
-    text = oneCase
-      ? '✓ 1 case identified by "' + (a.field_value || a.field_property || "?") +
-        '" — case comparisons need at least 2'
-      : "✓ " + (cq.case_count || 0) + " cases" +
-        ' — identified by "' + (a.field_value || a.field_property || "?") + '"' +
-        " (" + _pct(cq.coverage) + " covered)";
-    title = "Cases were identified by the confirmed field (" +
-      (a.field_property || "?") + " = " + (a.field_value || "?") + ")";
   } else {
     cls = "warn";
     text = "⚠ No cases identified yet";
@@ -72,8 +61,8 @@ function _badge(cq) {
   }
   // Item 8: the case-state and the "case analysis on/locked" fact are the
   // SAME fact in two vocabularies — merge them. The tier-2 clause becomes the
-  // badge's subtitle rather than a second, duplicating chip. The three badge
-  // states (markers / anchor / unsegmented) are preserved.
+  // badge's subtitle rather than a second, duplicating chip. The two badge
+  // states (markers / unsegmented) are preserved.
   const subCls = cq.tier2_unlocked ? "ok" : "locked";
   const subText = cq.tier2_unlocked
     ? "Case analysis on"
@@ -375,38 +364,6 @@ function _toSayMore(analysis, anno) {
     "<ul>" + items.map((i) => "<li>" + escapeHtml(i) + "</li>").join("") + "</ul></div>";
 }
 
-/* ---- R4 (Task 3b): template-match offer ---------------------------------- */
-
-/* When the pipeline ALREADY computed a template match for this session
-   (stats.meta.canonical_process_id + match_rate), surface one offer line below
-   the fact strip. No match data → nothing renders (replace-pattern: absent, not
-   grayed). This never computes a new match; it only surfaces what the pipeline
-   produced. The button links to the existing re-match/Compare path
-   (#btn-match-template). */
-function _templateOffer(sess) {
-  const meta = ((sess.stats || {}).meta) || {};
-  const id = meta.canonical_process_id;
-  const rate = typeof meta.match_rate === "number" ? meta.match_rate : null;
-  if (!id || rate === null) return "";
-  const name = meta.canonical_process_name || id;
-  const pct = Math.round(rate * 100);
-  return '<div class="ov-template-offer" id="ov-template-offer">' +
-    '<span class="ov-template-offer-text">This session matches <strong>' +
-      escapeHtml(String(name)) + "</strong> (" + pct + "%).</span>" +
-    '<button type="button" class="ov-template-offer-btn" id="btn-ov-template-compare" ' +
-      'title="Re-check this session against the reference process and see where it differs">' +
-      "Compare against reference</button>" +
-    "</div>";
-}
-
-function _wireTemplateOffer(host) {
-  const btn = host.querySelector("#btn-ov-template-compare");
-  if (btn) btn.addEventListener("click", () => {
-    const mt = document.getElementById("btn-match-template");
-    if (mt) mt.click();
-  });
-}
-
 /* ---- R4 (Task 2): the Evidence modules (retired Analysis, in Overview) --- */
 
 function _evidenceSection() {
@@ -461,8 +418,6 @@ function renderOverviewLevel() {
   let html = _badge(cq);
   if (cq.mode === "unsegmented") html += _markRunsLine();
   html += _factStrip(facts);
-  // (Task 3b) the template-match offer line, below the fact strip.
-  html += _templateOffer(sess);
   html += _findingsFeed(findings, anno.memo_selection);
   // R4 (Task 2): the retired Analysis modules, as Evidence, BELOW the findings.
   html += _evidenceSection();
@@ -473,7 +428,6 @@ function renderOverviewLevel() {
   const markRuns = host.querySelector("#btn-ov-mark-runs");
   if (markRuns) markRuns.addEventListener("click", () => openMarkersInFlow());
   _wireFindings(host);
-  _wireTemplateOffer(host);
   // Fill the Evidence host with the analysis modules (own wiring + collapse
   // persistence). Kept after innerHTML so the modules render into the live host.
   renderEvidenceInto(host.querySelector("#overview-evidence"));

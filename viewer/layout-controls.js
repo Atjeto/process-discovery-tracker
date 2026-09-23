@@ -17,20 +17,14 @@
   const VIDEO_WIDTH_MIN = 240;
   const VIDEO_WIDTH_MAX = 1200;
   const VIDEO_WIDTH_DEFAULT = 600;
-  // Steps + Phases share one resizable mini-timeline strip height.
+  // The Steps mini-timeline strip height is resizable.
   const MINI_TIMELINE_HEIGHT_MIN = 56;
   const MINI_TIMELINE_HEIGHT_MAX = 260;
   const MINI_TIMELINE_HEIGHT_DEFAULT = 120;
-  // Aggregate-view process map -- drag-resizable so a small graph need
-  // not eat half the viewport.
-  const MAP_HEIGHT_MIN = 180;
-  const MAP_HEIGHT_MAX = 1000;
-  const MAP_HEIGHT_DEFAULT = 420;
 
   const LS_TIMELINE = "pdt.timelineHeight";
   const LS_VIDEO = "pdt.videoWidth";
   const LS_MINI_TIMELINE = "pdt.miniTimelineHeight";
-  const LS_MAP = "pdt.mapHeight";
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
@@ -58,11 +52,6 @@
     const v = clamp(Math.round(px), MINI_TIMELINE_HEIGHT_MIN, MINI_TIMELINE_HEIGHT_MAX);
     document.documentElement.style.setProperty("--mini-timeline-height", v + "px");
     writeNum(LS_MINI_TIMELINE, v);
-  }
-  function setMapHeight(px) {
-    const v = clamp(Math.round(px), MAP_HEIGHT_MIN, MAP_HEIGHT_MAX);
-    document.documentElement.style.setProperty("--map-height", v + "px");
-    writeNum(LS_MAP, v);
   }
 
   // ---- Drag-resize utility ----
@@ -94,38 +83,27 @@
   function initResize() {
     const tlHandle = document.getElementById("resize-timeline");
     const vidHandle = document.getElementById("resize-video");
-    const mapHandle = document.getElementById("resize-map");
     const stepsTlHandle = document.getElementById("resize-steps-timeline");
-    const phasesTlHandle = document.getElementById("resize-phases-timeline");
 
     // Restore persisted sizes
     setTimelineHeight(readNum(LS_TIMELINE, TIMELINE_HEIGHT_DEFAULT));
     setVideoWidth(readNum(LS_VIDEO, VIDEO_WIDTH_DEFAULT));
     setMiniTimelineHeight(readNum(LS_MINI_TIMELINE, MINI_TIMELINE_HEIGHT_DEFAULT));
-    setMapHeight(readNum(LS_MAP, MAP_HEIGHT_DEFAULT));
 
     makeDraggable(tlHandle,
       () => readNum(LS_TIMELINE, TIMELINE_HEIGHT_DEFAULT),
       (start, _dx, dy) => setTimelineHeight(start + dy));
 
-    // The aggregate process map: vertical drag, plus a pdt:mapresized
-    // event on release so the BPMN / DFG viewers can re-fit.
-    makeDraggable(mapHandle,
-      () => readNum(LS_MAP, MAP_HEIGHT_DEFAULT),
-      (start, _dx, dy) => setMapHeight(start + dy),
-      () => document.dispatchEvent(new Event("pdt:mapresized")));
-
     makeDraggable(vidHandle,
       () => readNum(LS_VIDEO, VIDEO_WIDTH_DEFAULT),
       (start, dx, _dy) => setVideoWidth(start + dx));
 
-    // Steps + Phases each have a handle below their strip; both drive
-    // the one shared --mini-timeline-height. The .timeline inside
-    // scales to fill via CSS calc(), so dragging needs no re-render.
+    // The Steps strip has a handle below it that drives
+    // --mini-timeline-height. The .timeline inside scales to fill via
+    // CSS calc(), so dragging needs no re-render.
     const miniStart = () => readNum(LS_MINI_TIMELINE, MINI_TIMELINE_HEIGHT_DEFAULT);
     const miniDelta = (start, _dx, dy) => setMiniTimelineHeight(start + dy);
     makeDraggable(stepsTlHandle, miniStart, miniDelta);
-    makeDraggable(phasesTlHandle, miniStart, miniDelta);
   }
 
   // ---- Video modes ----
@@ -189,5 +167,5 @@
     init();
   }
 
-  module.exports = { setTimelineHeight, setVideoWidth, setVideoMode, setMiniTimelineHeight, setMapHeight };
+  module.exports = { setTimelineHeight, setVideoWidth, setVideoMode, setMiniTimelineHeight };
 })();

@@ -27,10 +27,10 @@ test("subscribe + emit runs the callback", () => {
 
 test("the unsubscribe function stops further callbacks", () => {
   let n = 0;
-  const off = State.subscribe("phases", () => { n++; });
-  State.emit("phases");
+  const off = State.subscribe("markers", () => { n++; });
+  State.emit("markers");
   off();
-  State.emit("phases");
+  State.emit("markers");
   assert.equal(n, 1);
 });
 
@@ -54,17 +54,17 @@ test("batch defers emits until it ends, then fires each topic once", () => {
   /** @type {string[]} */
   const seen = [];
   const offS = State.subscribe("steps", () => seen.push("steps"));
-  const offP = State.subscribe("phases", () => seen.push("phases"));
+  const offM = State.subscribe("markers", () => seen.push("markers"));
   State.batch(() => {
     State.emit("steps");
-    State.emit("phases");
+    State.emit("markers");
     State.emit("steps");
     assert.deepEqual(seen, []);   // nothing has fired yet
   });
   assert.equal(seen.filter(x => x === "steps").length, 1);
-  assert.equal(seen.filter(x => x === "phases").length, 1);
+  assert.equal(seen.filter(x => x === "markers").length, 1);
   offS();
-  offP();
+  offM();
 });
 
 test("a throwing subscriber does not block the others", () => {

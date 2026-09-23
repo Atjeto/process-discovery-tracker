@@ -3,9 +3,8 @@
  * identity-line.js -- the one composed human identity line for a captured
  * control, plus the two small helpers it needs.
  *
- * Moved out of vocab-match.js (the App Library matcher) so the kept Steps
- * surface (step-editor.js) does not depend on the App Library. vocab-match.js
- * imports these from here instead of carrying its own copies.
+ * Its own module so the Steps surface (step-editor.js) can render the
+ * identity line without any App Library code.
  *
  * Pure module: no DOM, no IPC. Unit-tested in identity-line.test.js.
  */
@@ -91,4 +90,4 @@ function looksVolatileId(aid) {
   return /[-_]\d{2,}$/.test(s) || /^[a-z]+-\d+$/i.test(s) || /[0-9a-f]{8,}/i.test(s);
 }
 
-module.exports = { identityLine, looksVolatileId, _asData };
+module.exports = { identityLine };

@@ -49,7 +49,7 @@
       host.innerHTML = `
         <div class="empty-pane">
           <p><strong>No steps yet.</strong></p>
-          <p>Steps appear after you click <em>Analyze session</em>. If the session had interaction events recorded, you'll see auto-suggested steps here. If a Process Template was matched, you'll see auto-matched steps named after the template.</p>
+          <p>Steps appear after you click <em>Analyze session</em>. If the session had interaction events recorded, you'll see auto-suggested steps here.</p>
           <p>You can also build steps yourself with the <strong>+ Add step</strong> button above.</p>
         </div>`;
       return;
@@ -87,11 +87,11 @@
       // moved into the right-click context menu (steps-view.js
       // showStepContextMenu "Move up / Move down"), so 500-step lists aren't
       // multiplied by two always-present controls. The multi-select check
-      // stays (a genuine per-row act for merge / phase grouping).
+      // stays (a genuine per-row act for merge and bulk delete).
       const _nameTitle = (s.name ? s.name + " — " : "") + "double-click to rename";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
-        <span class="multi-check" title="Click to select for merge or phase grouping"></span>
+        <span class="multi-check" title="Click to select for merge or bulk delete"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
         ${driftTag}${flagBadges}${repeatBadge}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
@@ -305,25 +305,6 @@
         if (callbacks.onPickSplit && Number.isInteger(after)) callbacks.onPickSplit(after);
       });
     });
-    // G-8: right-click an interaction to add its element signature to an App
-    // Library vocabulary — kills the hand-copying of identifiers that manual
-    // vocabulary curation needs. The interaction list lives inside the
-    // collapsed "More" <details> now, but native <details> keeps its body in
-    // the DOM while closed (same guarantee analysis-view.js relies on), so
-    // these listeners still wire up and the row is still reachable -- just
-    // one click (the expansion) away from a right-click.
-    if (callbacks && callbacks.onAddInteractionToVocab) {
-      host.querySelectorAll(".step-interaction[data-idx]").forEach((li) => {
-        li.addEventListener("contextmenu", (e) => {
-          const idx = parseInt(li.dataset.idx, 10);
-          const ev = Number.isInteger(idx) ? resolvedInter[idx] : null;
-          if (!ev) return;
-          e.preventDefault();
-          e.stopPropagation();
-          callbacks.onAddInteractionToVocab(ev, step, e.clientX, e.clientY);
-        });
-      });
-    }
     document.getElementById("btn-step-merge").addEventListener("click", () =>
       callbacks.onMerge && callbacks.onMerge(step.step_id));
     const _mergeSelBtn = document.getElementById("btn-step-merge-selected");

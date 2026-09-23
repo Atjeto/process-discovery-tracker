@@ -111,15 +111,13 @@ test("a throwing onChange subscriber does not block the others", () => {
 
 /* ---- palette accessors ------------------------------------------- */
 
-test("app / step / phase palettes differ between the two themes", () => {
+test("app / step palettes differ between the two themes", () => {
   Theme.setTheme("light");
   const lightFallback = Theme.appColors().fallback;
   const lightStep = Theme.stepPalette();
-  const lightPhase = Theme.phasePalette();
   Theme.setTheme("dark");
   assert.notEqual(lightFallback, Theme.appColors().fallback);
   assert.notDeepEqual(lightStep, Theme.stepPalette());
-  assert.notDeepEqual(lightPhase, Theme.phasePalette());
 });
 
 test("appColors returns the expected { map, palette, fallback } shape", () => {

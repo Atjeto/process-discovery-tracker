@@ -2,11 +2,11 @@
 
 /*
  * session-summary.js -- pure derivations for the Session view's summary
- * panel (Phase A) and the Compare-Sessions outlier flag.
+ * panel (Phase A).
  *
  * No DOM, no requires: every function takes plain data and returns plain
- * data, so the rendering code (views/flow-view.js, views/aggregate-view.js,
- * step-editor.js) and the node:test suite share the same logic. Formatting
+ * data, so the rendering code (views/flow-view.js, step-editor.js) and the
+ * node:test suite share the same logic. Formatting
  * (durations, dates, HTML) is the caller's job -- this module only computes.
  */
 
@@ -42,17 +42,6 @@ function eventSpanMs(events) {
   const last = Date.parse(events[events.length - 1].timestamp);
   if (!isFinite(first) || !isFinite(last)) return 0;
   return Math.max(0, last - first);
-}
-
-/* Linear-interpolated percentile over an already-sorted numeric array. */
-function percentile(sorted, p) {
-  if (!sorted.length) return 0;
-  if (sorted.length === 1) return sorted[0];
-  const idx = (sorted.length - 1) * p;
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
 
 /* Build the data behind the session summary panel. Returns null when the
@@ -166,7 +155,6 @@ function computeSummary(session) {
     stepCount: meta.step_count || 0,
     autoSteps,
     confirmedSteps,
-    phaseCount: meta.phase_count || 0,
     matchedInteractions: meta.matched_interactions || 0,
     matchRate: typeof meta.match_rate === "number" ? meta.match_rate : null,
     hasTemplate: !!meta.canonical_process_id,
@@ -230,35 +218,10 @@ function detectMarkerProblems(events, opts) {
   return problems;
 }
 
-/* Flag sessions whose total duration is a statistical outlier among a
-   loaded set, using a Tukey-style fence around the median. Returns
-   `[{ index, durationMs, ratio }]` indexing back into `durations`.
-   Needs at least 3 sessions; returns [] when the spread is degenerate
-   (all-equal durations) so a uniform set raises no false alarm. */
-function detectDurationOutliers(durations) {
-  const list = Array.isArray(durations) ? durations : [];
-  const valid = list.filter((d) => typeof d === "number" && isFinite(d) && d > 0);
-  if (valid.length < 3) return [];
-  const sorted = valid.slice().sort((a, b) => a - b);
-  const median = percentile(sorted, 0.5);
-  const iqr = percentile(sorted, 0.75) - percentile(sorted, 0.25);
-  if (iqr <= 0 || median <= 0) return [];
-  const out = [];
-  list.forEach((d, index) => {
-    if (typeof d !== "number" || !isFinite(d) || d <= 0) return;
-    if (Math.abs(d - median) > 1.5 * iqr) {
-      out.push({ index, durationMs: d, ratio: d / median });
-    }
-  });
-  return out;
-}
-
 module.exports = {
   stepStateLabel,
   isAutoState,
   eventSpanMs,
-  percentile,
   computeSummary,
   detectMarkerProblems,
-  detectDurationOutliers,
 };
