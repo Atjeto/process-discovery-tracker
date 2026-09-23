@@ -77,12 +77,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="project-menu-popup" id="session-more-popup" style="display:none">
               <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
               <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
-              <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Also build the process maps (flowchart and process diagram) during analysis."/> Build process map</label>
+              <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Also write the process map as a BPMN file during analysis: the file Fork copies into an editable As-Is or To-Be map."/> Build process map</label>
             </div>
           </div>
-          <!-- Session facts chips ride the actions bar now (clutter pass: they
-               were a separate band below). Process-map status moved to where it
-               belongs — the Map panel header. -->
+          <!-- The one session-state call to action (Analyze to apply N marker
+               changes, renderSessionPills); the session facts are the Overview's
+               one-line summary. -->
           <div class="session-pills" id="session-pills"></div>
           <span class="flex-spacer"></span>
           <div class="project-menu" id="session-export-menu">
@@ -90,7 +90,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span>Export</span><span class="project-menu-caret">▾</span>
             </button>
             <div class="project-menu-popup" id="session-export-popup" style="display:none">
-              <button class="project-menu-item" id="btn-session-pdd" title="Generate a standard RPA Process Definition Document (.docx) for this session with the Flow diagram embedded as the As-Is process map.">PDD (.docx)</button>
+              <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx) for this session, with the process map as its As-Is map.">PDD (.docx)</button>
               <button class="project-menu-item" id="btn-session-map-svg" title="Save the process map shown on the Map level as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Map as SVG</button>
               <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the step-level process diagram as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Step map as BPMN</button>
             </div>
@@ -122,7 +122,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- View-mode bar: prominent, controls what the whole session view shows -->
         <div class="view-mode-bar">
           <span class="view-mode-label">View:</span>
-          <button class="view-mode-btn active" data-level="overview" title="What the recording measured: case quality, the key numbers, findings, and the PDD export (the default landing view)">
+          <button class="view-mode-btn active" data-level="overview" title="What is left to do, the recording in one line, the findings and the document sections (the default landing view)">
             <span class="view-mode-icon">◈</span> Overview
             <span class="view-mode-desc">facts &amp; findings</span>
           </button>
@@ -135,7 +135,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-desc">runs and steps</span>
             <span class="badge" id="steps-badge">0</span>
           </button>
-          <button class="view-mode-btn" data-level="map" title="The interactive process map (flowchart or process diagram) for this session, at the detail level chosen on the Detail slider (every field → screen → app → phase → case)">
+          <button class="view-mode-btn" data-level="map" title="The process map built from the runs' steps, and the editable As-Is and To-Be maps forked from it">
             <span class="view-mode-icon">◯</span> Map
             <span class="view-mode-desc">process diagram</span>
           </button>
@@ -145,24 +145,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <select id="case-scope-select"><option value="">All cases</option></select>
             <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">Scope to playhead</button>
           </label>
-          <!-- ADR-0024: the single grain control. A view-time roll-up notch
-               shared across Flow / Steps / Map — slide left for every field
-               (element), right for screen / app / phase / case. Default: one
-               step per screen. Sliding back undoes it with zero data mutation;
-               raw events are never re-segmented. -->
-          <label class="grain-control" id="grain-control" title="Detail: how much steps combine as you zoom out. element = every field · screen = one step per screen (default) · app · phase · case. A view-only control: it never re-analyzes; sliding back restores the detail.">
-            <span class="grain-label">Detail:</span>
-            <input type="range" id="grain-slider" class="grain-range" min="0" max="4" step="1" value="1" aria-label="Step detail level" />
-            <span class="grain-notch" id="grain-notch-lbl">screen</span>
-          </label>
           <span class="view-mode-help" id="view-mode-help"></span>
         </div>
 
-        <!-- Session summary: post-analysis orientation panel (Phase A), promoted
-             below the view-mode bar so the level switcher leads (clutter pass). -->
-        <details class="session-summary" id="session-summary" style="display:none"></details>
-
-        <!-- ========= OVERVIEW view (lab-phase §A5: badge → mark-runs line → facts → findings → Export PDD) ========= -->
+        <!-- ========= OVERVIEW view (the home: what is left → session summary → findings → evidence → document sections) ========= -->
         <div class="session-layout-overview" id="session-layout-overview">
           <div id="overview-content"></div>
         </div>
@@ -302,75 +288,35 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
         </div>
 
-        <!-- ========= MAP view (interactive process map: notation x level matrix
-             for this single session, bound to its data via
-             viewer/map-controller.js) ========= -->
+        <!-- ========= MAP view: the one process map, a Flow diagram built from
+             the runs' steps (viewer/map-controller.js), and the reference maps
+             forked from it (ADR-0019) ========= -->
         <div class="session-layout-map" id="session-layout-map" style="display:none">
           <div class="panel panel-wide map-panel">
             <div class="panel-header">
               <h3>Process map</h3>
-              <div class="panel-tabs">
-                <button class="panel-tab active" data-map="bpmn" title="BPMN process diagram (industry-standard notation; importable into Adonis, Bizagi, Camunda, etc.).">Process diagram</button>
-                <button class="panel-tab" data-map="dfg" title="Flow diagram showing how often each step is followed by each other step (also known as a Direct-Follows Graph).">Flow diagram</button>
-                <select id="session-map-level" class="map-status-select" title="Map detail level: every field → screen → app → case (built from your annotations). Synced with the Detail slider above. The by-app-category level moved into the Advanced views drawer below the map.">
-                  <!-- §B2: the activity-taxonomy cell left the default matrix (the
-                       Expert drawer below the map reaches it). The hidden option keeps
-                       the select showing an honest label while an expert cell is active. -->
-                  <option value="activity" hidden>By app category (advanced)</option>
-                  <option value="element">Element: every field</option>
-                  <option value="screen">Screen: one per screen</option>
-                  <option value="app">App</option>
-                  <option value="case">Case</option>
-                </select>
-              </div>
-              <span id="session-map-scope" class="map-scope" style="display:none"></span>
-              <!-- Mined-BPMN-file status, relocated here from the actions bar
-                   (clutter pass): node count + per-case picker + open/reveal of
-                   the process_map.bpmn artifact. Contextual to the Map view. -->
-              <span class="map-status" id="process-map-status" style="display:none" title="The mined BPMN process-map file on disk">
-                <span class="map-status-dot"></span>
-                <span class="map-status-detail" id="process-map-detail">-</span>
-                <select id="process-map-case-select" class="map-status-select" title="Aggregate model across all cases, or pick a single case" style="display:none"></select>
-                <button class="link-btn" id="btn-open-bpmn" title="Open the selected BPMN file in the system default app">Open</button>
-                <button class="link-btn" id="btn-reveal-bpmn" title="Show the BPMN file in File Explorer">Reveal in folder</button>
-              </span>
               <div class="map-zoom" id="session-map-zoom" style="display:none">
                 <span class="map-zoom-pct" id="session-map-zoom-pct">100%</span>
                 <button class="icon-btn xs" id="btn-session-map-zoom-out" title="Zoom out">−</button>
                 <button class="icon-btn xs" id="btn-session-map-zoom-fit" title="Fit to view">fit</button>
                 <button class="icon-btn xs" id="btn-session-map-zoom-in" title="Zoom in">+</button>
-                <span class="map-rare" id="session-hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="session-hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="session-rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
+                <span class="map-rare" id="session-hide-rare-wrap" style="display:none" title="Drag to thin the map: hide paths the runs took fewer times than the cutoff, so the usual flow stands out. At 1× every path shows."><span id="session-hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="session-rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
               </div>
               <div class="refmap-tools">
-                <button class="icon-btn xs" id="btn-fork-refmap" title="Fork the current Process diagram into a standalone, fully-editable reference map. Decoupled from analysis: re-analyze never changes it (ADR-0019).">⑂ Fork map</button>
-                <button class="icon-btn xs" id="btn-toggle-refmaps" title="Show this session's saved reference maps.">Reference maps <span class="refmap-count" id="refmap-count"></span></button>
+                <button class="icon-btn xs" id="btn-fork-refmap" title="Make a standalone, fully editable copy of the process map (from its BPMN file) to draw the As-Is or To-Be map. Decoupled from analysis: re-analyze never changes it (ADR-0019).">⑂ Fork map</button>
+                <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide this session's reference maps.">Reference maps <span class="refmap-count" id="refmap-count"></span></button>
               </div>
             </div>
             <div class="map-host" title="Scroll to zoom · drag to pan">
-              <div class="map-pane active" id="session-map-bpmn-host"></div>
-              <div class="map-pane" id="session-map-dfg-host" style="display:none"></div>
+              <div class="map-pane active" id="session-map-dfg-host"></div>
             </div>
-            <!-- §B2 Expert drawer: the off-contract cells cut from the default
-                 notation×level matrix (lab-phase §1 cargo-cult cuts). Files +
-                 CLI flags untouched; this is the explicit, labelled way back. -->
-            <details class="map-expert" id="map-expert-drawer">
-              <summary title="Extra views that need cleaner data than desktop recording can provide: useful for exploring, not as evidence.">Advanced views</summary>
-              <div class="map-expert-body">
-                <p class="map-expert-hint">These views use methods that need cleaner data than desktop recording can provide, so treat them as exploration, not evidence. The files are still exported for specialists.</p>
-                <div class="map-expert-cells">
-                  <button type="button" class="link-btn" id="btn-expert-activity-dfg" title="A flowchart with one box per activity category (Salesforce search, Outlook email, …): needs category rules for this team's apps.">Flowchart by app category</button>
-                  <button type="button" class="link-btn" id="btn-expert-activity-bpmn" title="A process model an algorithm generated from the recording (process_map.bpmn): a statistical best fit, not the flow as it was observed.">Auto-generated process model</button>
-                  <button type="button" class="link-btn" id="btn-expert-percase" title="Open the folder with one flowchart file per case (process_maps\&lt;case&gt;.bpmn).">One flowchart per case…</button>
-                </div>
-              </div>
-            </details>
             <div class="refmap-panel" id="refmap-panel" style="display:none">
               <div class="refmap-panel-head">
                 <h4>Reference maps</h4>
                 <span class="refmap-hint">Hand-edited, standalone copies: decoupled from analysis. Re-analyze never changes them.</span>
               </div>
               <ul class="refmap-list" id="refmap-list"></ul>
-              <div class="refmap-empty" id="refmap-empty">No reference maps yet. Open the <strong>Process diagram</strong> tab and click <strong>⑂ Fork map</strong>.</div>
+              <div class="refmap-empty" id="refmap-empty">No reference maps yet. Click <strong>⑂ Fork map</strong> to make an editable copy of the process map.</div>
             </div>
           </div>
         </div>
@@ -470,7 +416,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><code>manifest.json</code> - session metadata + OBS recording reference</li>
             <li><code>screenshots/</code> - event-triggered captures, optional</li>
             <li><code>obs/sync.json</code> - tracker↔OBS time offset, optional</li>
-            <li>After normalization: <code>events.xes</code>, <code>events.csv</code>, <code>stats.json</code>, <code>process_map.bpmn</code>, <code>dfg.json</code></li>
+            <li>After analysis: <code>stats.json</code>, <code>analysis.json</code> and <code>annotations.json</code>; with <em>Build process map</em> ticked, <code>process_map_step.bpmn</code> (the process map as BPMN, which Fork copies)</li>
           </ul>
         </section>
 

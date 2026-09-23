@@ -17,7 +17,12 @@
  *     each write their file,
  *   - the map-overlay regression stays fixed: on the Map level the process-map
  *     host must NOT vertically overlap the raw-events host
- *     (#session-layout-map .map-host bottom <= .event-table-host top).
+ *     (#session-layout-map .map-host bottom <= .event-table-host top),
+ *   - the one process map (built from the runs' steps) is one connected graph
+ *     read left to right, and Fork copies its step-level BPMN into an editable
+ *     reference map (round trip, labels, delete + undo, one-way leaf),
+ *   - the Detail slider (the view-time grain) is gone, and the session summary
+ *     shows on the Overview only.
  *
  * Robust by design: optional elements that are merely absent do not fail the
  * run; only genuine regressions (page errors, an un-rendered level, a
@@ -262,6 +267,23 @@ async function unreadableAnnotationsPin() {
     if (!visible) await shot(page, "fail-level-" + lvl + ".png");
   }
 
+  // The session summary is the Overview's one line: the old panel above every
+  // level is gone, and no other level shows the summary.
+  const summaryHome = await page.evaluate(() => {
+    const line = document.querySelector("#session-layout-overview #ov-summary .ov-summary-line");
+    const layouts = ["flow", "steps", "map"].map((l) => document.getElementById("session-layout-" + l));
+    return {
+      oldPanel: document.querySelectorAll("#session-summary, .session-summary").length,
+      inOverview: !!line,
+      outsideOverview: layouts.reduce((n, el) => n + (el ? el.querySelectorAll("#ov-summary").length : 0), 0),
+      text: line ? (line.textContent || "").trim() : null,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("the session summary is one line on the Overview only (no panel above the levels)",
+    !!(summaryHome && !summaryHome.err && summaryHome.oldPanel === 0 && summaryHome.inOverview &&
+      summaryHome.outsideOverview === 0 && /\b4 runs\b/.test(summaryHome.text || "")),
+    JSON.stringify(summaryHome));
+
   // BA-helper cut (L1b): the app IS the Session view. No top tab row, no
   // "More" views menu, no Phases level, no Compare / Template / App Library
   // views, and none of their entry points; the Export menu offers the PDD and
@@ -342,13 +364,8 @@ async function unreadableAnnotationsPin() {
 
   // NAV-AUDIT §A3 fix: a plain steps-lane band click SELECTS + SEEKS and does
   // NOT switch view; the Flow→Steps jump is the labeled "Open in Steps"
-  // right-click item. Enable the (default-off) steps lane at the element notch
-  // so bands carry a real step_id, then drive both paths.
-  await page.evaluate(() => {
-    const s = document.getElementById("grain-slider");
-    if (s) { s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); }  // element
-  });
-  await wait(500);
+  // right-click item. Enable the (default-off) steps lane (one band per step,
+  // each carrying its step_id), then drive both paths.
   await page.evaluate(() => {
     const T = require("./views/flow-view-timeline.js");
     T.setLaneToggle("steps", true);
@@ -372,6 +389,23 @@ async function unreadableAnnotationsPin() {
   record("§A3: steps-lane band click selects + seeks WITHOUT a view switch (stays on Flow)",
     !!(laneClick.ok && laneClick.stayedFlow && laneClick.selected && laneClick.highlighted),
     JSON.stringify(laneClick));
+  // Item 1: the steps lane shows the steps as they are (no roll-up by a grain
+  // notch): one band per visible step, named as the step is named.
+  const laneBands = await page.evaluate(() => {
+    const steps = ((require("./state.js").getSession().annotations || {}).steps || [])
+      .filter((st) => st && st.state !== "hidden" && st.time_range && st.time_range.start && st.time_range.end &&
+        Date.parse(st.time_range.end) > Date.parse(st.time_range.start));
+    const bands = [...document.querySelectorAll(".tl-step-band[data-step-id]")];
+    const byId = Object.fromEntries(steps.map((st) => [st.step_id, st]));
+    return {
+      steps: steps.length, bands: bands.length,
+      named: bands.every((b) => byId[b.dataset.stepId] && (b.textContent || "") === byId[b.dataset.stepId].name),
+      folded: bands.filter((b) => / steps\)/.test(b.title || "")).length,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("item 1: the Flow steps lane shows one band per step, named as the step (no roll-up)",
+    !!(laneBands && !laneBands.err && laneBands.steps > 0 && laneBands.bands === laneBands.steps &&
+      laneBands.named && laneBands.folded === 0), JSON.stringify(laneBands));
   // "Open in Steps" on a band of the LAST run: the Steps view opened on the
   // pattern run (run 1) before, so the arrival has to open another run to
   // reveal the step.
@@ -438,73 +472,31 @@ async function unreadableAnnotationsPin() {
   record("§A3: a return to Steps restores the same run and step (still open and selected)",
     revealed(returned), JSON.stringify(returned));
   if (!revealed(openLanded) || !revealed(returned)) await shot(page, "fail-open-in-steps.png");
-  // Restore: back to Flow, steps lane off, screen notch (leave the view as found).
+  // Restore: back to Flow, steps lane off (leave the view as found).
   await page.evaluate(() => {
     const T = require("./views/flow-view-timeline.js");
     T.setLaneToggle("steps", false);
-    const s = document.getElementById("grain-slider");
-    if (s) { s.value = "1"; s.dispatchEvent(new Event("input", { bubbles: true })); }
   });
   await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
   await wait(400);
 
-  // --- ADR-0024 grain control: the single view-time roll-up slider ---
-  // The slider exists; the Steps list reproduces the FINE count at the element
-  // notch (detail never destroyed) and CONSOLIDATES at the screen notch.
-  async function setGrainNotch(idx) {
-    // Move the shared grain slider and fire its input handler (renderer wiring).
-    await page.evaluate((i) => {
-      const s = document.getElementById("grain-slider");
-      if (!s) return;
-      s.value = String(i);
-      s.dispatchEvent(new Event("input", { bubbles: true }));
-    }, idx);
-    await wait(800);
-  }
-  const grainSliderExists = await page.$eval("#grain-slider", () => true).catch(() => false);
-  record("grain slider (#grain-slider) present", grainSliderExists,
-    grainSliderExists ? "" : "no #grain-slider in the view-mode bar");
+  // --- Item 1: the Detail slider and the grain are gone ---
+  // One drafting unit, no view-time roll-up: no slider in the view-mode bar and
+  // no grain in the viewer state.
+  const grainGone = await page.evaluate(() => ({
+    slider: document.querySelectorAll("#grain-slider, #grain-control, .grain-control, #grain-notch-lbl").length,
+    stateGrain: typeof require("./state.js").getGrain,
+  })).catch((e) => ({ err: e.message }));
+  record("item 1: the Detail slider is gone (no control, no grain in the state)",
+    !!(grainGone && !grainGone.err && grainGone.slider === 0 && grainGone.stateGrain === "undefined"),
+    JSON.stringify(grainGone));
 
   // R4: the Analysis modules now live in the Overview's Evidence host
   // (#overview-evidence). Navigating to Evidence = go to Overview (the default)
-  // and read #overview-evidence. This helper replaces every old
-  // "click data-level=analysis; read #analysis-content" navigation below.
+  // and read #overview-evidence.
   async function goEvidence() {
     const ob = await page.$('.view-mode-btn[data-level="overview"]');
     if (ob) { await ob.click().catch(() => {}); await wait(900); }
-  }
-
-  // BA helper L7a: the Steps level is the runs and their steps whatever the
-  // Detail slider says. The ADR-0028 case tree (the old screen-notch default)
-  // and the ADR-0024 roll-up rows are gone from Steps, so the same runs, the
-  // same open run and the same step rows show at the element and the screen
-  // notch. (This replaces the pin "element shows the fine count, screen
-  // consolidates to work items": the slider no longer changes Steps.)
-  async function goSteps() {
-    const sb = await page.$('.view-mode-btn[data-level="steps"]');
-    if (sb) { await sb.click().catch(() => {}); await wait(700); }
-  }
-  const stepsAtNotch = async (idx) => {
-    await goSteps();
-    await setGrainNotch(idx);
-    return page.evaluate(() => ({
-      runs: document.querySelectorAll("#step-list .run-group").length,
-      open: [...document.querySelectorAll("#step-list .run-group.open")].map((g) => g.dataset.caseId || g.dataset.group),
-      rows: [...document.querySelectorAll("#step-list .step-row")].map((r) => r.dataset.stepId),
-      removed: document.querySelectorAll(
-        "#step-list .wi-case-head, #step-list .wi-item-row, #step-list .grain-group-row, #step-list .backbone-row").length,
-    })).catch((e) => ({ err: e.message }));
-  };
-  const atElement = await stepsAtNotch(0);
-  const atScreen = await stepsAtNotch(1);
-  if (grainSliderExists) {
-    const same = !!(atElement && atScreen && !atElement.err && atElement.runs >= 2 && atElement.rows.length > 0 &&
-      atElement.removed === 0 && atScreen.removed === 0 &&
-      JSON.stringify(atElement) === JSON.stringify(atScreen));
-    record("Steps shows the same runs and steps at every Detail notch (no case tree, no roll-up rows)", same,
-      JSON.stringify({ element: atElement && { runs: atElement.runs, open: atElement.open, rows: (atElement.rows || []).length },
-        screen: atScreen && { runs: atScreen.runs, open: atScreen.open, rows: (atScreen.rows || []).length } }));
-    if (!same) await shot(page, "fail-steps-notch.png");
   }
 
   // R1 (approachability redesign, 2026-07-03): "Process efficiency" and the
@@ -529,29 +521,20 @@ async function unreadableAnnotationsPin() {
   record("(R1) 'Waste by step/screen' is not a resident module", !!(noResidentModules && !noResidentModules.hasWasteModule),
     JSON.stringify(noResidentModules));
 
-  // CI-4: this pin flaked on GitHub Actions only (hidden:true). It now waits for
-  // each observable state (the notch applied, the Overview shown with the time
-  // module rendered and open, the row's expand button visible, the row body
-  // unhidden) with a generous timeout instead of fixed sleeps, and clicks
-  // through a locator that re-resolves if a re-render replaced the row. A wait
-  // that times out is recorded in the result (`waitFailed`), never swallowed.
+  // Item 1: the "Where the time goes" judgment editor is always editable (it
+  // was element-notch-gated). CI-4: the pin waits for each observable state
+  // (the Overview shown with the time module rendered and open, the row's
+  // expand button visible, the row body unhidden) with a generous timeout
+  // instead of fixed sleeps, and clicks through a locator that re-resolves if
+  // a re-render replaced the row. A wait that times out is recorded in the
+  // result (`waitFailed`), never swallowed.
   const STATE_TIMEOUT = 15000;
-  async function tsJudgeExpansionAt(idx) {
+  async function tsJudgeExpansion() {
     const waits = [];
     const waitFor = (label, p) => p.catch((e) => {
-      logActionError("(R1) time row at notch " + idx + ": " + label, e);
+      logActionError("(R1) time row: " + label, e);
       waits.push(label + ": " + String(e.message).split("\n")[0]);
     });
-    await page.evaluate((i) => {
-      const s = document.getElementById("grain-slider");
-      if (!s) return;
-      s.value = String(i);
-      s.dispatchEvent(new Event("input", { bubbles: true }));
-    }, idx);
-    const notch = ["element", "screen", "app", "phase", "case"][idx];
-    await waitFor("notch applied", page.waitForFunction((n) =>
-      require("./state.js").getGrain() === n &&
-      (document.getElementById("grain-notch-lbl") || {}).textContent === n, notch, { timeout: STATE_TIMEOUT }));
     await waitFor("overview click", page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: STATE_TIMEOUT }));
     await waitFor("time module rendered", page.waitForSelector(
       '#overview-evidence .analysis-module[data-module="time"]', { state: "visible", timeout: STATE_TIMEOUT }));
@@ -573,29 +556,19 @@ async function unreadableAnnotationsPin() {
       return {
         rowPresent: !!row,
         hidden: body ? body.hidden : null,
-        hasEditor: !!(body && body.querySelector(".waste-row")),
+        hasEditor: !!(body && body.querySelector(".waste-row.waste-row-editable")),
         readOnlyNote: !!(body && /Detail slider/.test(body.textContent || "")),
       };
     }).catch((e) => ({ err: e.message }));
     if (waits.length) probe.waitFailed = waits;
     return probe;
   }
-  const tsAtElement = await tsJudgeExpansionAt(0);   // element notch
-  record("(R1) 'Where the time goes' row expand-in-place opens the judgment editor at the element notch",
-    !!(tsAtElement && !tsAtElement.err && tsAtElement.rowPresent && tsAtElement.hidden === false && tsAtElement.hasEditor),
-    JSON.stringify(tsAtElement));
-  if (!(tsAtElement && tsAtElement.hasEditor)) await shot(page, "fail-ts-judge-editor.png");
-
-  const tsAtScreen = await tsJudgeExpansionAt(1);   // screen notch (coarser)
-  // L5b: the expansion must really OPEN (hidden === false). The read-only
-  // note is in the row body's DOM while it is still hidden, so without this
-  // the check passed at 1024x768 although its expand click timed out.
-  record("(R1) the same row expansion is read-only (element-only) at a coarser detail level",
-    !!(tsAtScreen && !tsAtScreen.err && tsAtScreen.rowPresent && tsAtScreen.hidden === false &&
-      !tsAtScreen.hasEditor && tsAtScreen.readOnlyNote),
-    JSON.stringify(tsAtScreen));
-  if (!(tsAtScreen && tsAtScreen.readOnlyNote)) await shot(page, "fail-ts-readonly.png");
-  await setGrainNotch(1);   // leave at the default (screen) notch for the pins below
+  const tsJudge = await tsJudgeExpansion();
+  record("(R1) 'Where the time goes' row expand-in-place opens the judgment editor, always editable (no Detail slider gate)",
+    !!(tsJudge && !tsJudge.err && tsJudge.rowPresent && tsJudge.hidden === false && tsJudge.hasEditor &&
+      !tsJudge.readOnlyNote),
+    JSON.stringify(tsJudge));
+  if (!(tsJudge && tsJudge.hasEditor)) await shot(page, "fail-ts-judge-editor.png");
 
   // --- Automation candidates render as finding cards (R1 §5) ---
   // The ranked table is gone; candidates render via the SAME shared
@@ -622,6 +595,30 @@ async function unreadableAnnotationsPin() {
       autoCardsProbe.cardCount > 0 && autoCardsProbe.noOldTable),
     JSON.stringify(autoCardsProbe));
   if (!(autoCardsProbe && autoCardsProbe.cardCount > 0)) await shot(page, "fail-automation-cards.png");
+  // Item 4: a card leads with the pipeline's readable candidate label (the
+  // application by its readable name, no raw process token), and a candidate
+  // a finding on the same screen already states (its "repeated sequence") is
+  // not repeated as a card: one line says how many are in the findings.
+  const autoLabels = await page.evaluate(() => {
+    const a = require("./state.js").getSession().analysis || {};
+    const stated = new Set((a.findings || []).map((f) => f && f.evidence && f.evidence.segment_signature).filter(Boolean));
+    const scored = (a.automation_candidates || []).filter((c) => c.data_sufficiency === "multi_instance");
+    const expected = scored.filter((c) => !stated.has(c.segment_signature));
+    const claims = [...document.querySelectorAll("#overview-evidence .auto-cards .ov-finding-claim")]
+      .map((e) => (e.textContent || "").trim());
+    return {
+      scored: scored.length, expected: expected.length, cards: claims.length,
+      labelsLead: claims.length > 0 && claims.every((c, i) => !!expected[i] && c.startsWith(expected[i].label + ": ran ")),
+      rawToken: claims.some((c) => /\.exe\b/i.test(c)),
+      note: ((document.querySelector("#overview-evidence .auto-in-findings") || {}).textContent || "").trim(),
+      firstClaim: claims[0] || null,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("item 4: automation cards lead with the pipeline's readable label; candidates the findings state are not repeated",
+    !!(autoLabels && !autoLabels.err && autoLabels.expected >= 1 && autoLabels.scored > autoLabels.expected &&
+      autoLabels.cards === autoLabels.expected && autoLabels.labelsLead && !autoLabels.rawToken &&
+      /already in the findings above/.test(autoLabels.note)),
+    JSON.stringify(autoLabels));
 
   // Confirm/Dismiss must still work: expand the first card and click Confirm;
   // the SAME analysis_overrides automation_confirmed write path (unchanged).
@@ -757,22 +754,23 @@ async function unreadableAnnotationsPin() {
     if (!ok) await shot(page, "fail-map-overlap.png");
   }
 
-  // --- ADR-0024 map-connectivity regression pin ---
-  // The headline regression: at the default SCREEN grain the Flow diagram (DFG)
-  // fanned out into a per-case hairball because the screen key was the raw
-  // window title (which embeds the case value -- "Salesforce - Order #10900").
-  // The screen axis must group VALUE-FREE so the map is a clean connected chain:
-  // ONE weakly-connected component, ONE start, ONE reachable end. (Pre-fix this
-  // demo screen-grain DFG had 3+ distinct end nodes; the 10-session aggregate had
-  // 35.) We drive the live cytoscape graph (dfg-viewer exposes host.__cy).
-  if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(800); }
-  await setGrainNotch(1);   // screen notch (the default + the regressing one)
-  await page.click('#session-layout-map .panel-tab[data-map="dfg"]').catch((e) => console.log("dfg tab", e.message));
-  await wait(1400);
+  // --- The one map: the connectivity pin (moved from the screen grain) -------
+  // The Map shows one Flow diagram built from the runs' steps: a node per step
+  // (a drafted step's name, else its value-free process_label), an edge per two
+  // consecutive steps of a run. The headline regression this pins: node keys
+  // that carry case values (an order #, a record id) put every run on an island
+  // of its own, so the map fans out. On the demo (4 runs) the map must be ONE
+  // weakly-connected component with one entry step (no incoming path) and one
+  // final step (no outgoing path). The run endings are reported alongside: a
+  // run may end early (the demo's third run ends at the Excel step the other
+  // runs pass through), so "one final step" is a property of the graph, not a
+  // claim that every run ends in the same place. We drive the live cytoscape
+  // graph (dfg-viewer exposes host.__cy), at "All paths".
+  if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(1200); }
   const connProbe = await page.evaluate(() => {
     const host = document.getElementById("session-map-dfg-host");
     const cy = host && host.__cy;
-    if (!cy) return { rendered: false };
+    if (!cy) return { rendered: false, text: host ? (host.textContent || "").slice(0, 200) : null };
     const nodes = cy.nodes().map((n) => n.id());
     const edges = cy.edges().map((e) => ({ s: e.data("source"), t: e.data("target") }));
     const parent = {}; nodes.forEach((n) => (parent[n] = n));
@@ -799,58 +797,36 @@ async function unreadableAnnotationsPin() {
     const sinkRightmost = sinkIds.length === 1 && Math.abs(xOf(sinkIds[0]) - maxX) < 5;
     return {
       rendered: true, nodes: nodes.length, edges: edges.length, components,
-      sources: sourceIds.length, sinks: sinkIds.length,
+      sources: sourceIds.length, sinks: sinkIds.length, sourceIds, sinkIds,
+      runEndings: cy.nodes().filter((n) => n.data("role") === "end").map((n) => n.id()),
+      rareCutoff: (document.getElementById("session-hide-rare-lbl") || {}).textContent || null,
       leftToRight: srcLeftmost && sinkRightmost && bb.w >= bb.h,
       aspect: Math.round((bb.w / Math.max(1, bb.h)) * 10) / 10,
     };
   }).catch((e) => ({ err: e.message }));
   if (connProbe && connProbe.err) {
-    record("screen-grain Flow diagram is a connected chain", false, "probe error: " + connProbe.err);
+    record("the process map is one connected graph", false, "probe error: " + connProbe.err);
   } else if (!connProbe.rendered) {
-    record("screen-grain Flow diagram is a connected chain", true,
-      "skipped (no DFG rendered — empty session/state)");
+    record("the process map is one connected graph (1 component, 1 entry step, 1 final step)", false,
+      "no map drawn: " + JSON.stringify(connProbe));
+    await shot(page, "fail-map-connectivity.png");
   } else {
-    const ok = connProbe.components === 1 && connProbe.sources === 1 && connProbe.sinks === 1;
-    record("screen-grain Flow diagram is a connected chain (1 component, 1 start, 1 end)", ok,
-      "nodes=" + connProbe.nodes + " edges=" + connProbe.edges +
-      " components=" + connProbe.components + " sources=" + connProbe.sources +
-      " sinks=" + connProbe.sinks + " (the per-case fan-out would push sinks/components up)");
+    const ok = connProbe.components === 1 && connProbe.sources === 1 && connProbe.sinks === 1 &&
+      connProbe.rareCutoff === "All paths";
+    record("the process map is one connected graph (1 component, 1 entry step, 1 final step)", ok,
+      "nodes=" + connProbe.nodes + " edges=" + connProbe.edges + " components=" + connProbe.components +
+      " sources=" + JSON.stringify(connProbe.sourceIds) + " sinks=" + JSON.stringify(connProbe.sinkIds) +
+      " runEndings=" + JSON.stringify(connProbe.runEndings) + " (a value in the node key would split the runs into islands)");
     if (!ok) await shot(page, "fail-map-connectivity.png");
 
     // Layout readability: dagre LR (source leftmost, sink rightmost, wider-than-tall),
     // NOT the radial breadthfirst hub that appears when dagre isn't wired up.
-    record("screen-grain Flow diagram reads left-to-right (dagre LR, not a radial hub)",
+    record("the process map reads left-to-right (dagre LR, not a radial hub)",
       connProbe.leftToRight,
       "leftToRight=" + connProbe.leftToRight + " aspect(w/h)=" + connProbe.aspect +
       " (radial fallback would put aspect ~1 and break source-leftmost/sink-rightmost)");
     if (!connProbe.leftToRight) await shot(page, "fail-map-radial.png");
   }
-
-  // --- ADR-0024 grain on the Process diagram (BPMN) tab -----------------------
-  // The Process diagram is mined only at Element/Phase. Picking a COARSE grain
-  // (screen/app/case) on that tab must NOT dead-end on an empty message: the
-  // grain control auto-falls back to the live Flow diagram (which rolls up), so
-  // a grain change always yields a usable map. And the "N nodes / Open / Reveal"
-  // status line must reflect the file actually shown -- hidden on the Flow
-  // diagram, not a stale process_map.bpmn count.
-  await page.click('#session-layout-map .panel-tab[data-map="bpmn"]').catch(() => {});
-  await page.selectOption("#session-map-level", "element").catch(() => {});
-  await wait(700);
-  await page.selectOption("#session-map-level", "screen").catch(() => {});  // coarse -> fall back
-  await wait(900);
-  const fb = await page.evaluate(() => {
-    const dfg = document.getElementById("session-map-dfg-host");
-    const dfgVisible = dfg && getComputedStyle(dfg).display !== "none";
-    const dfgHasMap = dfg && !!(dfg.querySelector("svg") || dfg.querySelector("canvas"));
-    const dfgTab = document.querySelector('#session-layout-map .panel-tab[data-map="dfg"]');
-    const status = document.getElementById("process-map-status");
-    const statusHidden = !status || getComputedStyle(status).display === "none";
-    return { dfgVisible: !!dfgVisible, dfgHasMap, tabFlipped: !!(dfgTab && dfgTab.classList.contains("active")), statusHidden };
-  }).catch((e) => ({ err: e.message }));
-  record("grain on the Process diagram falls back to a usable Flow diagram (no dead end)",
-    !!(fb && !fb.err && fb.dfgVisible && fb.dfgHasMap && fb.tabFlipped), JSON.stringify(fb));
-  record("the 'N nodes' status line hides on the live Flow diagram (no stale file count)",
-    !!(fb && !fb.err && fb.statusHidden), JSON.stringify(fb));
 
   // --- AD-11: the map exports live in the Session Export menu -----------------
   // Pin the VERB: open the menu, click the item, and assert the written file
@@ -921,39 +897,37 @@ async function unreadableAnnotationsPin() {
       "no deps-Python for a temp copy; not forking into the committed demo folder");
   } else {
     const PROBE = "RT_PIN_EDIT"; // a label no mined node carries
-    const minedBpmn = path.join(SESSION, "process_map.bpmn");
-    const minedBefore = fs.existsSync(minedBpmn)
-      ? fs.statSync(minedBpmn).size + ":" + fs.readFileSync(minedBpmn, "utf-8").length : null;
+    // Fork copies the step-level BPMN the pipeline writes with --mine.
+    const stepBpmn = path.join(SESSION, "process_map_step.bpmn");
+    const stepXml = fs.existsSync(stepBpmn) ? fs.readFileSync(stepBpmn, "utf-8") : null;
+    const minedBefore = stepXml != null ? fs.statSync(stepBpmn).size + ":" + stepXml.length : null;
 
-    // Fork from the Process diagram (BPMN) at the Activity level. §B2 moved
-    // the activity-taxonomy cell into the Expert drawer — reach it the way a
-    // user now does (selector update only; the fork assertions are unchanged).
+    // Fork from the Map as it opens (the process map on screen): the copy is
+    // made from the file, and the editor opens on it.
     if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(700); }
-    await page.evaluate(() => {
-      const d = document.getElementById("map-expert-drawer");
-      if (d) d.open = true;
-    }).catch(() => {});
-    await page.click("#btn-expert-activity-bpmn").catch((e) => console.log("expert activity bpmn", e.message));
-    await wait(1400);
     await page.click("#btn-fork-refmap").catch((e) => console.log("fork", e.message));
     await wait(1600);
-    const forked = await page.evaluate(() => {
+    const forked = await page.evaluate((srcXml) => {
       const State = require("./state.js"), RM = require("./reference-maps.js");
       const s = State.getSession(), e = RM.list(s.annotations)[0] || null;
       const host = document.getElementById("refmap-editor-host");
+      const overlay = document.getElementById("refmap-editor-overlay");
       const palette = host && host.querySelector(".djs-palette");
       return {
         count: RM.list(s.annotations).length,
         fileOnDisk: e ? RM.fileExists(s.sessionFolder, e) : false,
+        copyOfStepBpmn: !!(e && srcXml != null && RM.readBpmn(s.sessionFolder, e) === srcXml),
+        sourceLevel: e && e.source ? e.source.level : null,
         hasHash: !!(e && e.forked_from_hash),
+        editorOpen: !!(overlay && overlay.style.display !== "none"),
         editorSvg: !!(host && host.querySelector("svg")),
         paletteVisible: palette ? getComputedStyle(palette).display !== "none" : false,
       };
-    }).catch((e) => ({ err: e.message }));
-    const forkOk = forked && !forked.err && forked.count === 1 &&
-      forked.fileOnDisk && forked.hasHash && forked.editorSvg && forked.paletteVisible;
-    record("reference map: Fork makes a decoupled editable copy", forkOk,
-      JSON.stringify(forked));
+    }, stepXml).catch((e) => ({ err: e.message }));
+    const forkOk = forked && !forked.err && forked.count === 1 && forked.fileOnDisk && forked.copyOfStepBpmn &&
+      forked.sourceLevel === "step" && forked.hasHash && forked.editorOpen && forked.editorSvg && forked.paletteVisible;
+    record("reference map: Fork copies the step-level BPMN (process_map_step.bpmn) into an editable copy and opens the editor",
+      forkOk, JSON.stringify(forked));
     if (!forkOk) await shot(page, "fail-refmap-fork.png");
 
     // Edit: a real, undoable bpmn-js label change fires the debounced disk save.
@@ -979,13 +953,25 @@ async function unreadableAnnotationsPin() {
       return !!(xml && xml.indexOf(probe) !== -1);
     }, PROBE).catch(() => false);
 
-    // Reload: close + reopen the editor (re-reads the blob) -> the edit survives.
+    // Reload: close + reopen the editor from the gallery row (re-reads the
+    // blob) -> the edit survives. The gallery is open after a fork; the reopen
+    // must really happen (the editor closes, then shows again), or the check
+    // would read the closed editor's diagram.
+    const overlayShown = () => page.evaluate(() => {
+      const o = document.getElementById("refmap-editor-overlay");
+      return !!(o && o.style.display !== "none");
+    });
     await page.click("#btn-refmap-editor-close", { timeout: 2500 }).catch(() => {});
     await wait(700);
-    await page.click("#btn-toggle-refmaps").catch(() => {});
-    await wait(300);
-    await page.click('#refmap-list [data-rm-act="edit"]').catch((e) => console.log("reopen", e.message));
+    const closedAfterEdit = !(await overlayShown());
+    const galleryShown = await page.evaluate(() => {
+      const p = document.getElementById("refmap-panel");
+      return !!(p && getComputedStyle(p).display !== "none");
+    });
+    if (!galleryShown) await page.click("#btn-toggle-refmaps").catch(() => {});
+    await page.click('#refmap-list [data-rm-act="edit"]', { timeout: 5000 }).catch((e) => console.log("reopen", e.message));
     await wait(1400);
+    const reopened = await overlayShown();
     const reloadedHasEdit = await page.evaluate(async (probe) => {
       let xml = null;
       try { xml = await require("./bpmn-viewer.js").exportXml(); } catch (_) {}
@@ -993,9 +979,10 @@ async function unreadableAnnotationsPin() {
     }, PROBE).catch(() => false);
     await page.click("#btn-refmap-editor-close", { timeout: 2500 }).catch(() => {});
     await wait(500);
-    const rtOk = edited.ok && savedToDisk && reloadedHasEdit;
+    const rtOk = edited.ok && savedToDisk && closedAfterEdit && reopened && reloadedHasEdit;
     record("reference map: Edit -> Save -> reload round-trips the edit", rtOk,
-      "edit=" + edited.ok + " savedToDisk=" + savedToDisk + " reloadedHasEdit=" + reloadedHasEdit +
+      "edit=" + edited.ok + " savedToDisk=" + savedToDisk + " closed=" + closedAfterEdit +
+      " reopenedFromGallery=" + reopened + " reloadedHasEdit=" + reloadedHasEdit +
       (edited.why ? " (" + edited.why + ")" : ""));
     if (!rtOk) await shot(page, "fail-refmap-roundtrip.png");
 
@@ -1016,24 +1003,17 @@ async function unreadableAnnotationsPin() {
       clipped.length ? "clipped: " + clipped.join(", ") : "all labels fit their buttons");
     if (clipped.length) await shot(page, "fail-refmap-labels.png");
 
-    // CI-3: the gallery stays clickable while Raw events is open, whatever the
-    // Session summary state. Opening Raw events used to freeze the Map layout
-    // at a fixed height, so the gallery opened later was squeezed and its
-    // buttons sat under the drawer's summary, which took the clicks. A trial
-    // click runs Playwright's full actionability check (visible, stable, and
-    // the button itself receives the pointer) without clicking. The drawer
-    // must really be open here (the map-overlay pin above opened it), or the
-    // check would prove nothing.
-    const galleryReach = {};
-    for (const summaryOpen of [false, true]) {
-      await page.evaluate((open) => {
-        const p = document.getElementById("session-summary");
-        if (p) p.open = open;
-      }, summaryOpen);
-      const state = await page.evaluate(() => ({
-        drawerOpen: !!(document.querySelector(".event-table-host") || {}).open,
-        summaryOpen: !!(document.getElementById("session-summary") || {}).open,
-      }));
+    // CI-3: the gallery stays clickable while Raw events is open. Opening Raw
+    // events used to freeze the Map layout at a fixed height, so the gallery
+    // opened later was squeezed and its buttons sat under the drawer's summary,
+    // which took the clicks. A trial click runs Playwright's full actionability
+    // check (visible, stable, and the button itself receives the pointer)
+    // without clicking. The drawer must really be open here (the map-overlay
+    // pin above opened it), or the check would prove nothing.
+    const galleryReach = await page.evaluate(() => ({
+      drawerOpen: !!(document.querySelector(".event-table-host") || {}).open,
+    }));
+    {
       const btns = page.locator("#refmap-list [data-rm-act]");
       const n = await btns.count();
       const blocked = [];
@@ -1043,15 +1023,29 @@ async function unreadableAnnotationsPin() {
         await b.click({ trial: true, timeout: 5000 })
           .catch((e) => { logActionError("CI-3 gallery " + act, e); blocked.push(act + ": " + String(e.message).split("\n")[0]); });
       }
-      galleryReach[summaryOpen ? "summaryOpen" : "summaryClosed"] = Object.assign(state, { buttons: n, blocked });
+      Object.assign(galleryReach, { buttons: n, blocked });
     }
-    const reachOk = ["summaryOpen", "summaryClosed"].every((k) => {
-      const r = galleryReach[k];
-      return r && r.drawerOpen && r.summaryOpen === (k === "summaryOpen") && r.buttons > 0 && r.blocked.length === 0;
-    });
-    record("CI-3: every reference-map gallery button is clickable with Raw events open, Session summary open or closed",
+    const reachOk = galleryReach.drawerOpen && galleryReach.buttons > 0 && galleryReach.blocked.length === 0;
+    record("CI-3: every reference-map gallery button is clickable with Raw events open",
       reachOk, JSON.stringify(galleryReach));
     if (!reachOk) await shot(page, "fail-refmap-gallery-reach.png");
+
+    // Item 2 fix: the "Reference maps" toggle is its own inverse: a shown
+    // gallery hides on a click and shows again on the next (it used to stay shown).
+    const galleryState = () => page.evaluate(() => {
+      const p = document.getElementById("refmap-panel");
+      const t = document.getElementById("btn-toggle-refmaps");
+      return { shown: !!(p && getComputedStyle(p).display !== "none"), expanded: t ? t.getAttribute("aria-expanded") : null };
+    });
+    const g0 = await galleryState();
+    await page.click("#btn-toggle-refmaps").catch((e) => console.log("toggle", e.message));
+    const g1 = await galleryState();
+    await page.click("#btn-toggle-refmaps").catch((e) => console.log("toggle", e.message));
+    const g2 = await galleryState();
+    record("item 2: the Reference maps toggle hides a shown gallery and shows it again",
+      !!(g0.shown && !g1.shown && g1.expanded === "false" && g2.shown && g2.expanded === "true"),
+      JSON.stringify({ before: g0, afterFirst: g1, afterSecond: g2 }));
+    if (!g2.shown) await page.click("#btn-toggle-refmaps").catch(() => {});   // leave it open, as found
 
     // Inverse: Delete drops the row but keeps the blob, so one Ctrl+Z restores a
     // WORKING entry that still carries the edit (the COHERENCE-AUDIT requirement).
@@ -1077,58 +1071,13 @@ async function unreadableAnnotationsPin() {
       JSON.stringify(delUndo));
     if (!invOk) await shot(page, "fail-refmap-undo.png");
 
-    // Decoupled leaf: the mined map on disk was never touched by any of the above.
-    const minedAfter = fs.existsSync(minedBpmn)
-      ? fs.statSync(minedBpmn).size + ":" + fs.readFileSync(minedBpmn, "utf-8").length : null;
-    record("reference map: the mined map is untouched (one-way leaf)",
+    // Decoupled leaf: the step-level BPMN on disk was never touched by any of the above.
+    const minedAfter = fs.existsSync(stepBpmn)
+      ? fs.statSync(stepBpmn).size + ":" + fs.readFileSync(stepBpmn, "utf-8").length : null;
+    record("reference map: the step-level BPMN it was forked from is untouched (one-way leaf)",
       minedBefore != null && minedBefore === minedAfter,
       "before=" + minedBefore + " after=" + minedAfter);
 
-    // --- G-1 pin: Fork from the DEFAULT map state -----------------------------
-    // The owner's real session: the Map opens on the Flow diagram at the screen
-    // detail level (no Process-diagram file), and Fork silently did nothing —
-    // while this suite forked only from a pre-selected, still-rendered BPMN cell
-    // and stayed green. Pin the real flow: from the default state, Fork must
-    // create a copy AND open the editor (it self-drives to the step-level
-    // Process diagram, the supported post-§B2 source).
-    await page.evaluate(() => {
-      // Reset to the default cell the way a fresh session presents it.
-      const dfgTab = document.querySelector('#session-layout-map .panel-tab[data-map="dfg"]');
-      if (dfgTab) dfgTab.click();
-      const lvl = document.getElementById("session-map-level");
-      if (lvl) { lvl.value = "screen"; lvl.dispatchEvent(new Event("change")); }
-    }).catch(() => {});
-    await wait(900);
-    const beforeDefaultFork = await page.evaluate(() => {
-      const State = require("./state.js"), RM = require("./reference-maps.js");
-      return RM.list(State.getSession().annotations).length;
-    }).catch(() => -1);
-    await page.click("#btn-fork-refmap").catch((e) => console.log("default-state fork", e.message));
-    await wait(2500);   // setMapCell("step") render + fork + editor open
-    const defFork = await page.evaluate(() => {
-      const State = require("./state.js"), RM = require("./reference-maps.js");
-      const s = State.getSession();
-      const maps = RM.list(s.annotations);
-      const e = maps[maps.length - 1] || null;
-      const overlay = document.getElementById("refmap-editor-overlay");
-      const host = document.getElementById("refmap-editor-host");
-      return {
-        count: maps.length,
-        fileOnDisk: e ? RM.fileExists(s.sessionFolder, e) : false,
-        sourceLevel: e && e.source ? e.source.level : null,
-        editorOpen: !!(overlay && overlay.style.display !== "none"),
-        editorSvg: !!(host && host.querySelector("svg")),
-      };
-    }).catch((e) => ({ err: e.message }));
-    const defForkOk = defFork && !defFork.err &&
-      defFork.count === beforeDefaultFork + 1 && defFork.fileOnDisk &&
-      defFork.editorOpen && defFork.editorSvg && defFork.sourceLevel === "step";
-    record("G-1: Fork from the DEFAULT map state creates a copy AND opens the editor",
-      defForkOk, "before=" + beforeDefaultFork + " " + JSON.stringify(defFork));
-    if (!defForkOk) await shot(page, "fail-refmap-default-fork.png");
-    else await shot(page, "g1-fork-default-state-editor.png");
-    await page.click("#btn-refmap-editor-close", { timeout: 2500 }).catch(() => {});
-    await wait(400);
   }
 
   // --- L5b: a timeline menu opened at the window's edge stays inside it ------
@@ -1204,7 +1153,8 @@ async function unreadableAnnotationsPin() {
     const cases = () => page.evaluate(() => ({
       analyzed: ((require("./state.js").getSession().analysis || {}).case_quality || {}).case_count,
       bands: document.querySelectorAll("#timeline .tl-case-band").length,
-      badge: ((document.querySelector("#overview-content .ov-badge-text") || {}).textContent || "").trim(),
+      runsLine: ((document.querySelector('#ov-summary [data-summary="runs"]') || {}).textContent || "").trim(),
+      stepsRuns: document.querySelectorAll("#step-list .run-group").length,
     }));
     const pinState = () => page.evaluate((label) => {
       const rows = [...document.querySelectorAll("#markers-list .marker-row")];
@@ -1281,7 +1231,11 @@ async function unreadableAnnotationsPin() {
     const appliedOk = !!(applied && before && applied.row && !applied.row.pending && applied.row.inserted &&
       applied.pendingBars === 0 && applied.cta === null &&
       applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&
-      new RegExp("\\b" + (before.analyzed + 1) + " cases\\b").test(applied.cases.badge));
+      // The Overview names the runs the Steps level lists (a start marker
+      // with no end nests the runs after it, so the run count need not be the
+      // case count); both follow the new analysis.
+      applied.cases.runsLine === applied.cases.stepsRuns + " runs" &&
+      before.runsLine === before.stepsRuns + " runs");
     record("item 6: its call to action runs Analyze; the marker becomes a real one and the case count goes up by one",
       appliedOk, JSON.stringify({ before: before && before.analyzed, applied, err }));
     if (!appliedOk) await shot(page, "fail-marker-applied.png");

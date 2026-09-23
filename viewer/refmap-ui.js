@@ -38,11 +38,14 @@ async function persist(label) {
 }
 
 /* ---- drift -------------------------------------------------------------- */
+/* The hash of the file a copy was forked from, as it is now. Only the
+   step-level BPMN is a fork source; a copy forked from another cell before
+   the map was reduced to one (the activity-level map) has no source the
+   viewer reads any more, so no drift is claimed for it. */
 function currentSourceHash(map) {
   const s = session();
-  if (!s || !map || !map.source) return null;
-  const p = _deps.sourceBpmnPath
-    ? _deps.sourceBpmnPath({ notation: "bpmn", level: map.source.level }) : null;
+  if (!s || !map || !map.source || map.source.level !== "step") return null;
+  const p = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
   return p ? RefStore.fileHash(p) : null;
 }
 function driftFor(map) { return RefStore.isStale(map, currentSourceHash(map)); }
@@ -131,11 +134,6 @@ async function onRowAction(act, id) {
     return;
   }
   if (act === "refork") {
-    const e = RefStore.find(s.annotations, id);
-    if (e && e.source && _deps.setMapCell) {
-      await _deps.setMapCell(e.source.level || "activity");
-      await new Promise((r) => setTimeout(r, 90));
-    }
     await onFork();
     return;
   }
@@ -152,54 +150,34 @@ async function onRowPdd(id, role) {
 }
 
 /* ---- fork --------------------------------------------------------------- */
-/* G-1: Fork must work from the DEFAULT map state. The Map opens on the Flow
-   diagram at the screen detail level — a cell with NO Process-diagram file —
-   and the old fork read whatever the bpmn singleton happened to hold (usually
-   nothing), silently doing nothing on a real session. Now: fork what is on
-   screen when the current cell IS a rendered Process diagram; otherwise drive
-   the map to the step-level Process diagram (the supported mined cell) and
-   fork that. When no Process-diagram source exists at all, fail LOUD with a
-   plain-language toast — never a silent no-op. */
+/* Fork copies the step-level BPMN the pipeline writes with --mine
+   (process_map_step.bpmn): the process map as a BPMN file bpmn-js can edit.
+   It is read from disk, so Fork works from any state of the Map level. The
+   copy needs what the map needs: while the Map shows its lock message, Fork
+   says so. When no file exists, it fails LOUD with a plain-language toast,
+   never a silent no-op. */
 async function onFork() {
   const s = session();
   if (!s || !s.sessionFolder) { toast("Open a session first.", "error"); return; }
   const fs = require("node:fs");
-  const state = _deps.getMapState ? _deps.getMapState() : {};
-  let level = (state && state.level) || "step";
-  let srcPath = (state && state.notation === "bpmn" && _deps.sourceBpmnPath)
-    ? _deps.sourceBpmnPath(state) : null;
+  const srcPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
+  if (!srcPath || !fs.existsSync(srcPath)) {
+    toast("Nothing to fork yet: this session has no process map file. " +
+      'Run Analyze with "Build process map" checked (under ⋯ More), then fork again.', "error");
+    return;
+  }
+  const cq = (s.analysis || {}).case_quality;
+  if (!cq || !cq.tier2_unlocked) {
+    toast("Nothing to fork yet: the process map is not shown for this session, " +
+      "and the Map level says why.", "error");
+    return;
+  }
   let xml = null;
-  if (srcPath && fs.existsSync(srcPath)) {
-    // The current cell is a real Process diagram — fork what's on screen.
-    try { xml = await PdtBpmn.exportXml(); } catch (_) { xml = null; }
+  try { xml = fs.readFileSync(srcPath, "utf-8"); } catch (e) {
+    toast("Could not read the process map file to fork: " + ((e && e.message) || e), "error");
+    return;
   }
-  if (!xml) {
-    const stepState = { notation: "bpmn", level: "step" };
-    const stepPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath(stepState) : null;
-    if (!stepPath || !fs.existsSync(stepPath)) {
-      toast("Nothing to fork yet: this session has no mined Process diagram. " +
-        'Run Analyze with "Build process map" checked (under ⋯ More), then fork again.', "error");
-      return;
-    }
-    const cq = (s.analysis || {}).case_quality;
-    if (!cq || !cq.tier2_unlocked) {
-      toast("Nothing to fork yet: the step-level Process diagram stays hidden " +
-        "until cases are confirmed. Mark the start of each run in Flow, then click Analyze session.", "error");
-      return;
-    }
-    // Drive the map to the step-level Process diagram and wait for the paint.
-    if (_deps.setMapCell) { try { await _deps.setMapCell("step"); } catch (_) {} }
-    try { xml = await PdtBpmn.exportXml(); } catch (_) { xml = null; }
-    if (!xml) {
-      toast("Could not read the Process diagram to fork: open the Map level's " +
-        "Process diagram tab, wait for it to draw, and try again.", "error");
-      return;
-    }
-    level = "step";
-    srcPath = stepPath;
-    toast("Forked from the step-level Process diagram.", "info");
-  }
-  const source = { notation: "bpmn", level, scope: null };
+  const source = { notation: "bpmn", level: "step", scope: null };
   const n = RefStore.list(s.annotations).length;
   const name = RefStore.cellLabel(source) + ", reference " + (n + 1);
   const entry = RefStore.fork({
@@ -207,9 +185,7 @@ async function onFork() {
     sourceBpmnPath: srcPath, name, kind: "reference", nowIso: new Date().toISOString(),
   });
   await persist("Fork reference map");
-  const panel = $("refmap-panel");
-  if (panel) panel.style.display = "";
-  refresh();
+  _showGallery(true);
   openEditor(entry.map_id);
 }
 
@@ -253,8 +229,7 @@ function closeEditor() {
   const overlay = $("refmap-editor-overlay");
   if (overlay) overlay.style.display = "none";
   _editingId = null;
-  // The singleton bpmn viewer now points at the (hidden) editor host; restore
-  // the live map by re-rendering the session map cell.
+  // Redraw the process map the overlay covered, so it is laid out at its size.
   try { _deps.renderLiveMap && _deps.renderLiveMap(); } catch (_) {}
   refresh();
 }
@@ -341,6 +316,18 @@ function svgToPng(svg, scale) {
   });
 }
 
+/* ---- gallery toggle ------------------------------------------------------ */
+/* Show or hide the reference-maps gallery (collapsed by default). The toggle
+   is its inverse: a click on a shown gallery hides it. */
+function _showGallery(show) {
+  const panel = $("refmap-panel");
+  if (!panel) return;
+  panel.style.display = show ? "" : "none";
+  const toggle = $("btn-toggle-refmaps");
+  if (toggle) toggle.setAttribute("aria-expanded", show ? "true" : "false");
+  if (show) refresh();
+}
+
 /* ---- init --------------------------------------------------------------- */
 function initRefmapUI(deps) {
   _deps = deps || {};
@@ -350,9 +337,7 @@ function initRefmapUI(deps) {
   if (toggle) toggle.addEventListener("click", () => {
     const panel = $("refmap-panel");
     if (!panel) return;
-    const show = panel.style.display === "none" || !panel.style.display;
-    panel.style.display = show ? "" : "none";
-    if (show) refresh();
+    _showGallery(panel.style.display === "none");
   });
   const closeBtn = $("btn-refmap-editor-close");
   if (closeBtn) closeBtn.addEventListener("click", () => closeEditor());
@@ -368,4 +353,4 @@ function initRefmapUI(deps) {
   });
 }
 
-module.exports = { initRefmapUI, refresh, renderPddMaps };
+module.exports = { initRefmapUI, refresh, renderPddMaps, showGallery: _showGallery };

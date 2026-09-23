@@ -33,44 +33,8 @@ const { $, escapeHtml, escapeAttr, formatDuration, toast } = require("../dom.js"
 const State = require("../state.js");
 const Session = require("../session.js");
 const { formModal } = require("../modals.js");
-const { processLabel, grainLabel } = require("../process-map-levels.js");
+const { processLabel } = require("../process-map-levels.js");
 const { findingCardHtml } = require("../finding-cards.js");
-
-/* ADR-0024: resolve, for the CURRENT grain notch, how to re-bucket the
-   step-grained analysis (Waste by step, Time study). Returns two maps built
-   from the session's steps: stepId -> grain label (exact) and process_label ->
-   grain label (majority, for the pre-aggregated time-study rows that carry no
-   step_id). At the element notch the analysis stays at the process_label grain
-   (the existing, editable behaviour), so callers skip regrouping there. */
-function _grainMaps(notch) {
-  const sess = State.getSession();
-  const anno = (sess && sess.annotations) || {};
-  const phaseName = {};
-  for (const ph of (anno.phases || [])) phaseName[ph.phase_id] = ph.name || "(phase)";
-  const interactionsById = {};
-  for (const ev of ((sess && sess.events) || [])) {
-    if (ev.type === "interaction" && ev.event_id) interactionsById[ev.event_id] = ev;
-  }
-  const ctx = { phaseName, interactionsById, caseLabel: (id) => id };
-  const byStepId = new Map();
-  const plCounts = new Map();   // process_label -> Map(grainLabel -> count)
-  for (const st of (anno.steps || [])) {
-    if (!st || st.state === "hidden") continue;
-    const label = grainLabel(st, notch, ctx);
-    if (st.step_id) byStepId.set(st.step_id, label);
-    const pl = st.process_label || processLabel(st.name || "") || "(step)";
-    if (!plCounts.has(pl)) plCounts.set(pl, new Map());
-    const m = plCounts.get(pl);
-    m.set(label, (m.get(label) || 0) + 1);
-  }
-  const byProcessLabel = new Map();
-  for (const [pl, m] of plCounts) {
-    let best = null, bn = -1;
-    for (const [l, n] of m) if (n > bn) { best = l; bn = n; }
-    byProcessLabel.set(pl, best);
-  }
-  return { byStepId, byProcessLabel };
-}
 
 function _fmt(ms) {
   return formatDuration(ms || 0);
@@ -243,13 +207,10 @@ function _caption(overrideCount) {
 
    `waste_types` for a group is the union across instances (any signal
    from any instance still surfaces). */
-function _groupWasteRows(waste, labelOf) {
+function _groupWasteRows(waste) {
   const groups = new Map();
   for (const w of (waste || [])) {
-    // ADR-0024: at a coarse grain notch `labelOf` re-buckets per-step waste rows
-    // by the notch's grain label (screen/app/phase/case); at the element notch
-    // it is absent and rows group by process_label (the editable default).
-    const pl = (labelOf && labelOf(w)) || _wasteRowProcessLabel(w) || w.name || "(step)";
+    const pl = _wasteRowProcessLabel(w) || w.name || "(step)";
     if (!groups.has(pl)) {
       groups.set(pl, {
         process_label: pl,
@@ -302,7 +263,7 @@ function _wasteInlineSummary(g) {
    original row markup (value/waste bar + waste-type tags) and the SAME
    click-to-edit affordance (`.waste-row-editable` -> `_editBnva`, wired in
    `_wireControls`) -- the write path and undo behavior are unchanged. */
-function _buildWasteRow(g, editable = true) {
+function _buildWasteRow(g) {
   const total = (g.va_ms || 0) + (g.bnva_ms || 0) + (g.nva_ms || 0);
   const seg = (ms, cls) => (!ms || total <= 0) ? "" :
     '<span class="waste-seg ' + cls + '" style="width:' +
@@ -311,15 +272,9 @@ function _buildWasteRow(g, editable = true) {
     .map((t) => '<span class="waste-tag">' + escapeHtml(t) + "</span>")
     .join("");
   const unjudged = !(g.bnva_ms || 0);
-  // ADR-0024: at a coarse grain the row is READ-ONLY (the business-required
-  // override is process_label-scoped and a coarse group spans many labels) --
-  // edit at the element notch.
-  const cls = editable ? "waste-row waste-row-editable" : "waste-row";
-  const title = editable
-    ? (g.instances > 1
-        ? "Click to set the business-required share across all " + g.instances + " instances"
-        : "Click to set the business-required share of this step")
-    : "Read-only at this detail level: set the Detail slider to element to adjust business-required time";
+  const title = g.instances > 1
+    ? "Click to set the business-required share across all " + g.instances + " instances"
+    : "Click to set the business-required share of this step";
   // Item 2: while nothing is judged, the bar would be all value-add green (a
   // measured-looking "all value-add" result). Replace it with a neutral,
   // judgment-free measured-time chip until the analyst sets the first split.
@@ -335,71 +290,22 @@ function _buildWasteRow(g, editable = true) {
     '<span><span class="swatch seg-bnva"></span>business-required</span>' +
     '<span><span class="swatch seg-nva"></span>waste</span>' +
   "</div>";
-  return legend + '<div class="' + cls + '" data-process-label="' +
+  return legend + '<div class="waste-row waste-row-editable" data-process-label="' +
       escapeAttr(g.process_label || "") +
       '" title="' + escapeAttr(title) + '">' +
     '<span class="waste-name" title="' + escapeAttr(g.process_label || "") + '">' +
       escapeHtml(g.process_label || "(step)") + "</span>" +
     barCell +
     '<span class="waste-tags">' + tags + "</span>" +
-    (editable ? '<span class="waste-edit">adjust</span>' : "") +
+    '<span class="waste-edit">adjust</span>' +
   "</div>";
-}
-
-/* The read-only message shown when a "Where the time goes" row is expanded
-   at a coarser-than-element detail level (the business-required override is
-   process_label-scoped, so it can only be set/read at the element notch). */
-function _wasteReadOnlyNote() {
-  return '<div class="analysis-note">Set the Detail slider to <strong>element</strong> ' +
-    "to judge this step's business-required time.</div>";
-}
-
-/* ADR-0024: merge the per-step-type time-study rows up to the grain notch.
-   `byProcessLabel` maps each step type to its (majority) grain label; rows
-   sharing a label fold into one — instances and active/waiting/switching sum,
-   mean is the instance-weighted mean, min/max are the extremes. The TOTAL time
-   summed across rows is unchanged (every row is still counted once), so the
-   study just re-itemises. Returns the original rows at the element notch. */
-function _regroupTimeStudy(ts, notch, maps) {
-  if (!notch || notch === "element" || !maps) return ts;
-  const groups = new Map();
-  for (const t of ts) {
-    const label = maps.byProcessLabel.get(t.name) || t.name || "(step)";
-    const c = t.cycle_ms || {};
-    const inst = t.instances || 0;
-    let g = groups.get(label);
-    if (!g) {
-      g = { name: label, instances: 0, _meanSum: 0,
-            _min: Infinity, _max: -Infinity, active_ms: 0, waiting_ms: 0, switching_ms: 0 };
-      groups.set(label, g);
-    }
-    g.instances += inst;
-    g._meanSum += (c.mean || 0) * inst;          // instance-weighted mean
-    if (c.min != null) g._min = Math.min(g._min, c.min);
-    if (c.max != null) g._max = Math.max(g._max, c.max);
-    g.active_ms += t.active_ms || 0;
-    g.waiting_ms += t.waiting_ms || 0;
-    g.switching_ms += t.switching_ms || 0;
-  }
-  return [...groups.values()].map((g) => ({
-    name: g.name,
-    instances: g.instances,
-    cycle_ms: {
-      mean: g.instances ? g._meanSum / g.instances : 0,
-      min: g._min === Infinity ? 0 : g._min,
-      max: g._max === -Infinity ? 0 : g._max,
-    },
-    active_ms: g.active_ms, waiting_ms: g.waiting_ms, switching_ms: g.switching_ms,
-  })).sort((a, b) => (b.active_ms + b.waiting_ms) - (a.active_ms + a.waiting_ms));
 }
 
 /* Honesty gate (lab-phase §A5, relocated by §B1): distribution statistics
    (mean/stdev/percentiles) at tiny N are cargo-cult precision -- a "p95"
    over 3 instances is noise wearing a lab coat. The summary-stat line
-   renders only when at least one row has `instances >= 10` (and only at
-   the element notch, where stdev/percentiles exist in the data -- the
-   coarse-grain regroup can't derive them); below that each row shows what
-   was actually measured: the instances themselves, as dots. */
+   renders only when at least one row has `instances >= 10`; below that each
+   row shows what was actually measured: the instances themselves, as dots. */
 const TIME_STUDY_DISTRIBUTION_MIN_N = 10;
 
 /* ===== §B1: "Where the time goes" — the instance strip ================= */
@@ -420,21 +326,17 @@ function _stepDurMs(st) {
 }
 
 /* Resolve each study row's INSTANCES (the individual annotated steps behind
-   the aggregate row) so the strip draws one clickable dot per instance. At
-   the element notch rows are keyed by the step-group label; at a coarse
-   notch the rows were regrouped by grain label, so match via maps.byStepId.
-   A row whose steps can't be resolved (e.g. stale analysis.json against
-   edited steps) just renders without dots -- nothing is fabricated. */
-function _instancesByRowLabel(notch, maps) {
+   the aggregate row) so the strip draws one clickable dot per instance. Rows
+   are keyed by the step-group label. A row whose steps can't be resolved
+   (e.g. stale analysis.json against edited steps) just renders without
+   dots: nothing is fabricated. */
+function _instancesByRowLabel() {
   const sess = State.getSession();
   const steps = (((sess && sess.annotations) || {}).steps || [])
     .filter((s) => s && s.state !== "hidden");
-  const coarse = (notch && notch !== "element" && maps);
   const byLabel = new Map();
   for (const st of steps) {
-    const label = coarse
-      ? (st.step_id && maps.byStepId.get(st.step_id))
-      : _studyStepLabel(st);
+    const label = _studyStepLabel(st);
     if (!label) continue;
     if (!byLabel.has(label)) byLabel.set(label, []);
     byLabel.get(label).push(st);
@@ -445,18 +347,16 @@ function _instancesByRowLabel(notch, maps) {
 /* step_id -> step for the dot click handlers (rebuilt every render). */
 let _tsDotSteps = new Map();
 
-function _timeStudySection(ts, notch, maps, wasteByProcessLabel) {
+function _timeStudySection(ts, wasteByProcessLabel) {
   if (!ts.length) return null;
-  const regroup = (notch && notch !== "element" && maps);
-  const study = _regroupTimeStudy(ts, notch, maps);
+  const study = ts;
   const maxN = study.reduce((m, t) => Math.max(m, t.instances || 0), 0);
-  const distribution = !regroup && maxN >= TIME_STUDY_DISTRIBUTION_MIN_N;
-  const instancesOf = _instancesByRowLabel(notch, maps);
+  const distribution = maxN >= TIME_STUDY_DISTRIBUTION_MIN_N;
+  const instancesOf = _instancesByRowLabel();
   _tsDotSteps = new Map();
-  // Item 2 (relocated): at the element notch, a row's judgment editor is the
-  // waste group sharing its process_label -- at that notch `t.name` IS the
-  // process_label (analysis_common.step_group_label), so the join is exact.
-  const canJudge = !regroup;
+  // Item 2 (relocated): a row's judgment editor is the waste group sharing
+  // its process_label: `t.name` IS the process_label
+  // (analysis_common.step_group_label), so the join is exact.
   const wasteFor = (name) => (wasteByProcessLabel && wasteByProcessLabel.get(name)) || null;
 
   // Shared horizontal time axis: 0 .. the longest single instance anywhere,
@@ -506,10 +406,8 @@ function _timeStudySection(ts, notch, maps, wasteByProcessLabel) {
     // show it inline on the row line ("36.0s measured · 20s business-required");
     // the click target for editing lives in the expansion, not the row itself.
     const g = wasteFor(t.name);
-    const judgment = canJudge ? _wasteInlineSummary(g) : "";
-    const judgmentBody = canJudge
-      ? (g ? _buildWasteRow(g, true) : "")
-      : _wasteReadOnlyNote();
+    const judgment = _wasteInlineSummary(g);
+    const judgmentBody = g ? _buildWasteRow(g) : "";
     const expand = '<button type="button" class="ts-judge-expand" data-act="ts-expand" ' +
       'aria-expanded="false" title="Set business-required time for this step">▸</button>';
     return '<div class="ts-row" data-process-label="' + escapeAttr(t.name || "") + '">' +
@@ -565,37 +463,51 @@ function _decisionCell(a) {
     btn(true, "Confirm") + btn(false, "Dismiss") + "</div>";
 }
 
-/* Item 6: the full step chain, printed once, behind the card's expand-in-place
-   (the evidence line) -- never repeated in the claim sentence. */
-function _stepChainHtml(a) {
-  const allSteps = a.step_labels || [];
-  if (!allSteps.length) return '<span class="score-na">no labelled steps</span>';
-  const steps = allSteps.slice(0, 4);
-  const moreSteps = allSteps.length - steps.length;
-  const fullChain = allSteps.join(" → ");
-  return '<div class="auto-sequence" title="' + escapeAttr(fullChain) + '">' +
-    steps.map(escapeHtml).join('<span class="auto-arrow"> → </span>') +
-    (moreSteps > 0 ? ' <span class="auto-more">+' + moreSteps + " more</span>" : "") +
-  "</div>";
+/* The claim sentence for one candidate's finding card: the pipeline's
+   readable label (its steps, then "in <application>", the application by its
+   readable name, 43d307b) and the measured repeats, e.g. "va01: Check
+   document → va01: Create sales order in SAP GUI: ran 5 times, 46s in total,
+   9s on average". The label already carries the step sequence, so the card
+   does not print the chain again. */
+function _candidateClaim(a) {
+  const labels = (a.step_labels || []).filter((x) => String(x || "").trim());
+  const what = String(a.label || "").trim() || labels.join(" → ") || "Step sequence";
+  const n = a.instance_count || 0;
+  return what + ": ran " + n + (n === 1 ? " time, " : " times, ") +
+    _fmt(a.total_elapsed_ms) + " in total, " + _fmt(a.mean_elapsed_ms) + " on average";
 }
 
-/* The claim sentence for one candidate's finding card, e.g. "chrome ·
-   6-step sequence — ran 4×, 1m7s total, mean 16.8s". */
-function _candidateClaim(a) {
-  const app = String(a.app || "").replace(/\.exe$/i, "") || "segment";
-  const n = (a.step_labels || []).length;
-  const size = n ? n + "-step sequence" : "sequence";
-  const runs = (a.instance_count || 0) + "×";
-  return app + " · " + size + ": ran " + runs + ", " +
-    _fmt(a.total_elapsed_ms) + " total, mean " + _fmt(a.mean_elapsed_ms);
+/* The segment signatures the findings feed already states: a "repeated
+   sequences" finding carries its candidate's signature in its evidence. The
+   Overview shows each candidate once, as the PDD does (its section 5.3 lists
+   only the candidates section 1 does not already describe). */
+function _statedSignatures(findings) {
+  const out = new Set();
+  for (const f of (findings || [])) {
+    const sig = f && f.evidence && f.evidence.segment_signature;
+    if (sig) out.add(sig);
+  }
+  return out;
+}
+
+/* The one line for the candidates the findings above already state. */
+function _inFindingsSentence(covered, total) {
+  const one = covered === 1;
+  const lead = covered === total
+    ? (one ? "This candidate is" : "All " + covered + " candidates are")
+    : covered + (one ? " more candidate is" : " more candidates are");
+  return lead + " already in the findings above, as " + (one ? "a repeated sequence" : "repeated sequences") +
+    ", so " + (one ? "it is" : "they are") + " not listed again here.";
 }
 
 /* R1 (§4/§5): the ranked table is replaced by finding-card presentation,
    reusing the SAME shared card component the Overview findings feed uses
-   (finding-cards.js) -- one card per candidate, in the existing rank order.
+   (finding-cards.js): one card per candidate, in the existing rank order.
    Detection + scoring (Python) and the Confirm/Dismiss write path are
-   unchanged; only the presentation moved from a table row to a card. */
-function _automationSection(auto) {
+   unchanged; only the presentation moved from a table row to a card. A
+   candidate the findings feed already states (`stated`, its signature) is
+   not repeated here: one line says how many are in the findings. */
+function _automationSection(auto, stated) {
   if (!auto.length) return null;
   const scored = auto.filter((a) => a.data_sufficiency === "multi_instance");
   const lonely = auto.length - scored.length;
@@ -619,24 +531,25 @@ function _automationSection(auto) {
     };
   }
   // Card order = existing rank order (unchanged from the table).
+  const covered = scored.filter((a) => stated && a.segment_signature && stated.has(a.segment_signature)).length;
   const cards = scored.map((a, i) => {
+    if (stated && a.segment_signature && stated.has(a.segment_signature)) return "";
     const rank = (a.rank === null || a.rank === undefined) ? (i + 1) : a.rank;
     const f = {
       id: "automation-" + (a.segment_signature || i),
       tier: 1,
       claim: _candidateClaim(a),
-      evidence: {
-        instances: a.instance_count || 0,
-        mean_ms: a.mean_elapsed_ms,
-      },
     };
     const cardHtml = findingCardHtml(f, {
       screenshots: false,
-      detailHtml: () => _stepChainHtml(a) + _decisionCell(a),
+      detailHtml: () => _decisionCell(a),
     });
     // Rank prefix stays visible on the card (the existing priority order).
     return '<div class="auto-card" data-rank="' + escapeAttr(String(rank)) + '">' + cardHtml + "</div>";
   }).join("");
+  const inFindings = covered
+    ? '<div class="analysis-note auto-in-findings">' + escapeHtml(_inFindingsSentence(covered, scored.length)) + "</div>"
+    : "";
   const tail = lonely
     ? '<div class="analysis-note">' + lonely + " more segment" +
       (lonely === 1 ? "" : "s") + " occurred only once and " +
@@ -647,7 +560,7 @@ function _automationSection(auto) {
     title: "Automation candidates",
     takeaway: scored.length + " candidate" + (scored.length === 1 ? "" : "s") +
       " ranked by automation priority",
-    body: lead + '<div class="auto-cards">' + cards + "</div>" + tail,
+    body: lead + (cards ? '<div class="auto-cards">' + cards + "</div>" : "") + inFindings + tail,
   };
 }
 
@@ -851,12 +764,7 @@ function _wireControls(host, analysis) {
 
    Reads the loaded session's analysis.json sidecar (session.analysis) merged
    with annotations.json corrections; renders an empty note when unanalyzed.
-
-   DETAIL SLIDER (R4 decision): the "Where the time goes" judgment editor is
-   element-notch-gated. The Detail slider lives in the always-visible view-mode
-   bar (not inside any level), so it is fully usable while the Overview shows —
-   sliding it to `element` opens the judgment editor here exactly as it did on
-   the retired Analysis level. No per-module local detail toggle is needed. */
+   Every "Where the time goes" row opens its judgment editor. */
 function renderEvidenceInto(host) {
   if (!host) return;
   const session = State.getSession();
@@ -870,19 +778,12 @@ function renderEvidenceInto(host) {
   const overrides = (session.annotations &&
     session.annotations.analysis_overrides) || [];
   const analysis = applyAnalysisOverrides(raw, overrides);
-  // ADR-0024: the step-grained itemisation ("Where the time goes") follows the
-  // current grain notch. Build the regroup maps once (skipped at the element
-  // notch, which keeps the editable default).
-  const notch = State.getGrain();
-  const maps = (notch && notch !== "element") ? _grainMaps(notch) : null;
   // R1: "Process efficiency" and the "Waste by step/screen" resident module are
-  // gone (§4 of the redesign) -- the judgment editor relocates into the
+  // gone (§4 of the redesign): the judgment editor relocates into the
   // "Where the time goes" row expansion (item 2 relocated). Build the
-  // process_label -> waste group map once, at the element notch only (the
-  // override is process_label-scoped, so it only makes sense to judge there).
-  const wasteByProcessLabel = (notch === "element" || !notch)
-    ? new Map(_groupWasteRows(analysis.waste_classification || []).map((g) => [g.process_label, g]))
-    : null;
+  // process_label -> waste group map once (the override is process_label-scoped).
+  const wasteByProcessLabel =
+    new Map(_groupWasteRows(analysis.waste_classification || []).map((g) => [g.process_label, g]));
   // Item 21: each section renders inside a uniform collapsible module (title +
   // one-line takeaway + chevron), collapse state persisted per analyst. The
   // section builders return { title, takeaway, body, gated } (null = no data).
@@ -891,8 +792,9 @@ function renderEvidenceInto(host) {
   // retains the body in the DOM).
   host.innerHTML =
     _caption(overrides.length) +
-    _moduleShell("time", _timeStudySection(analysis.time_study || [], notch, maps, wasteByProcessLabel)) +
-    _moduleShell("automation", _automationSection(analysis.automation_candidates || []));
+    _moduleShell("time", _timeStudySection(analysis.time_study || [], wasteByProcessLabel)) +
+    _moduleShell("automation", _automationSection(analysis.automation_candidates || [],
+      _statedSignatures(raw.findings)));
   _wireControls(host, analysis);
   _wireModulePersistence(host);
 }

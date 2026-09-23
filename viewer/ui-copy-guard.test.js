@@ -32,7 +32,6 @@ const BANNED_COPY = [
   { re: /\btier[\s-][123]\b/i, term: "Tier 1/2/3", instead: "say what it means (“needs confirmed cases” / “measured”)" },
   { re: /inductive[- ]miner/i, term: "inductive-miner", instead: "“auto-generated process model”" },
   { re: /taxonomy-classified/i, term: "taxonomy-classified", instead: "“by app category”" },
-  // space-separated only: the slider's grain-notch CSS class/id are code, not copy
   { re: /grain notch/i, term: "grain notch", instead: "“detail level”" },
   { re: /\bvalue-free\b/i, term: "value-free", instead: "“with ticket/order values stripped out”" },
   { re: /cargo[- ]cult/i, term: "cargo-cult", instead: "keep in code comments/docs only" },
@@ -58,10 +57,9 @@ const BANNED_CAPTURE_ONLY = [
    justification next to each entry. An entry must name a GENUINE false
    positive (an internal value that never renders), not user-facing copy. */
 const ALLOW = {
-  // Machine values, never rendered: renderer.js and overview-view.js compare
-  // analysis.case_quality.mode === "unsegmented". The rendered copy says
-  // "no cases identified yet".
-  "viewer/renderer.js": ["unsegmented"],
+  // Machine values, never rendered: overview-view.js compares
+  // analysis.case_quality.mode === "unsegmented" (the Overview and the Map
+  // lock message). The rendered copy says "no runs marked".
   "viewer/views/overview-view.js": ["unsegmented"],
 };
 
@@ -244,12 +242,7 @@ function htmlReadable(src) {
 
 /* Allowlist: file -> literal texts excused, each with its reason. Only a
    string this lane may not edit belongs here, never new copy. */
-const DASH_ALLOW = {
-  // viewer/map-controller.js is a guarded map file that the next map lane
-  // replaces wholesale (BA-helper cycle, 2026-09-23); its one dashed empty-
-  // state string is reported to that lane rather than edited here.
-  "viewer/map-controller.js": ['" \u2014 it has a single '],
-};
+const DASH_ALLOW = {};
 
 function dashOffenders(dirs) {
   const offenders = [];

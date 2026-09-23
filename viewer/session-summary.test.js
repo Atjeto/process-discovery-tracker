@@ -1,6 +1,6 @@
 /*
- * Unit tests for session-summary.js -- the pure derivations behind the
- * Session view summary panel.
+ * Unit tests for session-summary.js: the pure derivations behind the
+ * Overview's one-line session summary.
  *
  * Run with `npm test` (Node's built-in `node:test` runner).
  */
@@ -9,30 +9,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const {
-  stepStateLabel,
-  eventSpanMs,
-  computeSummary,
-  detectMarkerProblems,
-} = require("./session-summary.js");
-
-/* ---- stepStateLabel: four pipeline states collapse to two ---------- */
-
-test("stepStateLabel collapses auto states to 'Auto-detected'", () => {
-  assert.equal(stepStateLabel("auto_suggested"), "Auto-detected");
-  assert.equal(stepStateLabel("auto_matched"), "Auto-detected");
-});
-
-test("stepStateLabel collapses human states to 'Confirmed'", () => {
-  assert.equal(stepStateLabel("manually_authored"), "Confirmed");
-  assert.equal(stepStateLabel("edited"), "Confirmed");
-});
-
-test("stepStateLabel keeps 'hidden' distinct and is safe on junk", () => {
-  assert.equal(stepStateLabel("hidden"), "Hidden");
-  // Item 8 (no em or en dash in rendered copy): the empty placeholder is a plain hyphen.
-  assert.equal(stepStateLabel(undefined), "-");
-});
+const SessionSummary = require("./session-summary.js");
+const { eventSpanMs, computeSummary, detectMarkerProblems } = SessionSummary;
 
 /* ---- eventSpanMs --------------------------------------------------- */
 
@@ -93,38 +71,13 @@ test("computeSummary returns null for an unanalyzed session", () => {
   assert.equal(computeSummary({ stats: {} }), null);
 });
 
-test("computeSummary derives counts, duration and step split", () => {
+test("computeSummary derives the recording's name, worker, duration and analysis time", () => {
   const s = computeSummary(sampleSession());
   assert.equal(s.engagement, "eng-x");
+  assert.equal(s.engagementName, null);
   assert.equal(s.worker, "w-meta");           // meta.worker_id wins over config
   assert.equal(s.durationMs, 8000);           // 09:00:00 -> 09:00:08
-  assert.equal(s.caseCount, 2);
-  assert.equal(s.eventCount, 12);
-  assert.equal(s.interactionCount, 4);
-  assert.equal(s.stepCount, 3);
-  assert.equal(s.autoSteps, 2);
-  assert.equal(s.confirmedSteps, 1);
-});
-
-test("computeSummary counts app switches and the longest stretch", () => {
-  const s = computeSummary(sampleSession());
-  assert.equal(s.appSwitches, 2);             // a -> b -> a
-  assert.equal(s.longestStretch.app, "a.exe");
-  assert.equal(s.longestStretch.ms, 3000);
-});
-
-test("computeSummary ranks activities by time share", () => {
-  const s = computeSummary(sampleSession());
-  assert.equal(s.topActivities[0].label, "CRM");
-  assert.equal(s.topActivities[0].pct, 0.75);
-  assert.equal(s.topActivities[1].pct, 0.25);
-});
-
-test("computeSummary picks top-level cases, longest first", () => {
-  const s = computeSummary(sampleSession());
-  assert.equal(s.topCases.length, 2);         // sub-case excluded
-  assert.equal(s.topCases[0].label, "Order 2");
-  assert.equal(s.topCases[0].ms, 9000);
+  assert.equal(s.analyzedAt, "2026-05-17T10:00:00Z");
 });
 
 test("computeSummary falls back to manifest worker when meta lacks one", () => {
@@ -133,22 +86,22 @@ test("computeSummary falls back to manifest worker when meta lacks one", () => {
   assert.equal(computeSummary(sess).worker, "w-cfg");
 });
 
-test("computeSummary passes through canonical drift when present", () => {
-  assert.equal(computeSummary(sampleSession()).canonicalDrift, null);
+test("computeSummary prefers the project name the operator typed", () => {
   const sess = sampleSession();
-  sess.stats.meta.canonical_drift = {
-    warning: true, current_rate: 0.3, previous_rate: 0.9,
-  };
-  const s = computeSummary(sess);
-  assert.equal(s.canonicalDrift.warning, true);
-  assert.equal(s.canonicalDrift.previous_rate, 0.9);
+  sess.manifest.engagement_name = "Order intake";
+  assert.equal(computeSummary(sess).engagementName, "Order intake");
 });
 
-test("computeSummary surfaces the analysis-layer efficiency ratio", () => {
-  assert.equal(computeSummary(sampleSession()).efficiencyRatio, null);
-  const sess = sampleSession();
-  sess.analysis = { efficiency: { process_efficiency_ratio: 0.62 } };
-  assert.equal(computeSummary(sess).efficiencyRatio, 0.62);
+test("the removed summary panel's helpers and fields are gone", () => {
+  // The one-line summary replaced the panel: no state collapse helpers, no
+  // step split read from the stats snapshot, no template fields.
+  assert.equal(SessionSummary.stepStateLabel, undefined);
+  assert.equal(SessionSummary.isAutoState, undefined);
+  const s = computeSummary(sampleSession());
+  for (const k of ["confirmedSteps", "autoSteps", "hasTemplate", "canonicalDrift", "matchRate",
+    "topActivities", "topCases", "vocabCoverage", "efficiencyRatio"]) {
+    assert.ok(!(k in s), k);
+  }
 });
 
 /* ---- detectMarkerProblems ------------------------------------------ */

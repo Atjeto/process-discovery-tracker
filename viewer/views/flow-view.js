@@ -26,7 +26,6 @@ const { caseScopeOptionsHtml } = require("../case-scope.js");
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderOverviewLevel } = require("./overview-view.js");
-const SessionSummary = require("../session-summary.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
 const {
@@ -180,22 +179,6 @@ function scopeToMarkerAtPlayhead() {
   if (btn) btn.addEventListener("click", scopeToMarkerAtPlayhead);
 })();
 
-function uniqueCaseIds(steps) {
-  const seen = new Map();
-  for (const s of (steps || [])) {
-    if (s.case_id && !seen.has(s.case_id)) seen.set(s.case_id, s.case_id);
-  }
-  return Array.from(seen.values());
-}
-
-function syncCaseDropdown(selectEl, cases, currentValue) {
-  if (!selectEl) return;
-  const want = ['<option value="">All cases</option>']
-    .concat(cases.map(c => `<option value="${c}"${c === currentValue ? " selected" : ""}>${c}</option>`))
-    .join("");
-  if (selectEl.innerHTML !== want) selectEl.innerHTML = want;
-}
-
 /* The markers side-panel + its filter box and marker-edit resolution live in
    flow-view-markers.js (god-file split). effectiveLabel and renderMarkersList
    are destructured at the top here; the marker-INSERT surfaces stay below. */
@@ -322,7 +305,6 @@ async function loadSessionIntoView(folder) {
   pushRecent(folder, recentLabel);
 
   renderSessionPills();
-  renderSessionSummary();
   // Wire video. Toggle the no-video card explicitly since the
   // sibling-selector CSS only fires when [src] is present.
   const video = $("#video");
@@ -369,12 +351,8 @@ async function loadSessionIntoView(folder) {
   // The Overview level (lab-phase §A5) is the default on load; it reads the
   // freshly-loaded analysis.json blocks and (R4) renders the Evidence modules
   // that the retired Analysis level used to own, so refreshing it here covers
-  // both the findings surface and the Evidence modules.
+  // the what-is-left line, the session summary, the findings and the Evidence.
   renderOverviewLevel();
-  // The map's "N nodes / Open / Reveal" status line is now driven by the map
-  // controller's onRender (renderer._syncMapStatus), so it always reflects the
-  // file actually displayed at the current grain -- no stale process_map.bpmn
-  // count set here on load.
   // Refresh case-scope dropdown -- clear scope if the new session no
   // longer contains the previously-selected case.
   populateCaseScope();
@@ -411,14 +389,6 @@ function renderAnnotationsErrorBanner() {
   el.style.display = html ? "" : "none";
 }
 
-/* The "N nodes / Open / Reveal" status line + per-case picker used to live here
-   (updateProcessMapStatus, pinned to the activity-level process_map.bpmn). It is
-   now driven by the map controller's onRender (renderer._syncMapStatus), which
-   reports the file ACTUALLY rendered at the current grain, so the count can
-   never drift from the displayed map and the line hides on the live Flow
-   diagram. The Open / Reveal handlers below read the dataset.bpmnPath that
-   _syncMapStatus sets. */
-
 /* Wire the video element's listeners ONCE. loadSessionIntoView runs on every
    session load; adding these there re-bound a new loadedmetadata arrow each
    time (timeupdate dedups by reference, loadedmetadata did not) -> a listener
@@ -431,78 +401,11 @@ function renderAnnotationsErrorBanner() {
     setVideoOverlay(`${formatDuration(video.duration * 1000)} loaded`));
 })();
 
-(function wireProcessMapButtons() {
-  const open = document.getElementById("btn-open-bpmn");
-  const reveal = document.getElementById("btn-reveal-bpmn");
-  function currentBpmnPath() {
-    const wrap = document.getElementById("process-map-status");
-    return wrap && wrap.dataset.bpmnPath;
-  }
-  if (open) open.addEventListener("click", async () => {
-    const p = currentBpmnPath();
-    if (!p) return;
-    // Use the dedicated diagram sink (not the screenshot image sink, which
-    // always refused .bpmn and returned an object that rendered as
-    // "[object Object]"). openDiagram resolves to a string error or null.
-    const err = await Ipc.openDiagram(p);
-    if (err) toast("Could not open: " + err, "error");
-  });
-  if (reveal) reveal.addEventListener("click", () => {
-    const p = currentBpmnPath();
-    if (p) Ipc.revealFile(p);
-  });
-})();
-
-/* Item 9: the session chip row (events / status / video / analyzed / vocabs)
-   is STATIC session metadata, not something that changes while the analyst
-   works — so it no longer rides the toolbar as a resident row. renderSessionPills
-   computes it and stashes it here; renderSessionSummary folds it into the
-   collapsed SESSION SUMMARY band (a one-line summary when collapsed, the chip
-   row when expanded). The one genuinely dynamic chip — pending marker edits —
-   is surfaced separately so it stays visible. */
-let _sessionPills = [];
-
-function _sessionPillsHtml(pills) {
-  return pills.map((p) =>
-    '<div class="pill' + (p.cls ? " " + p.cls : "") + '"' +
-    (p.title ? ' title="' + escapeHtml(p.title) + '"' : "") + '><span class="dot"></span>' +
-    '<span class="lbl">' + escapeHtml(p.label) + '</span>' + escapeHtml(String(p.val)) + '</div>'
-  ).join("");
-}
-
+/* The actions bar's one session-state call to action (item 6) and the
+   first-run guidance card. The session facts that used to ride here as chips
+   are the Overview's one-line session summary (overview-view.js). */
 function renderSessionPills() {
   if (!State.getSession()) return;
-  const m = State.getSession().manifest || {};
-  const pills = [];
-  pills.push({ label: "events", val: State.getSession().events.length, cls: "ok" });
-  pills.push({ label: "status", val: m.status || "?",
-    cls: m.status === "recovered" ? "warn" : (m.status === "closed" ? "ok" : "") });
-  if (m.obs && m.obs.recording_path) pills.push({ label: "video", val: "OBS linked", cls: "ok" });
-  else pills.push({ label: "video", val: "no recording" });
-  if (State.getSession().stats) {
-    pills.push({ label: "analyzed", val: "✓", cls: "ok" });
-    const meta = State.getSession().stats.meta || {};
-    if (meta.taxonomy_version) {
-      pills.push({ label: "taxonomy", val: meta.taxonomy_version });
-    }
-    const vocabs = meta.app_vocabularies || [];
-    if (vocabs.length) {
-      const hits = meta.app_vocabulary_matches || 0;
-      // Clutter pass: show count + hits, not the full app-name list (which ran
-      // very wide on the facts row). The full list lives in the title tooltip.
-      pills.push({
-        label: vocabs.length === 1 ? "vocab" : "vocabs",
-        val: `${vocabs.length} · ${hits} hits`,
-        title: "App vocabularies applied: " + vocabs.map(v => v.id).join(", "),
-        cls: hits > 0 ? "ok" : "",
-      });
-    }
-  } else {
-    pills.push({ label: "analyzed", val: "no", cls: "warn" });
-  }
-  // Stash for the summary band (item 9). The toolbar chip row is retired:
-  // the static metadata lives in SESSION SUMMARY now.
-  _sessionPills = pills;
   // Item 6: marker changes that wait for an analysis (marker-edits.js). They
   // already show in the Markers list and on the timeline as pending; this is
   // the ONE call to action that applies them, on the actions bar so it is
@@ -528,213 +431,6 @@ function renderSessionPills() {
   if (onboarding) {
     onboarding.style.display = State.getSession().stats ? "none" : "";
   }
-}
-
-/* Phase A: the post-analysis orientation panel. Sits above the
-   view-mode bar and answers "what happened here" before the analyst
-   scrolls the timeline. Hidden until the session has a stats.json
-   (the onboarding card covers the unanalyzed state). All derivations
-   are pure functions in session-summary.js; this only renders. */
-function renderSessionSummary() {
-  const panel = $("#session-summary");
-  if (!panel) return;
-  const session = State.getSession();
-  const s = SessionSummary.computeSummary(session);
-  if (!s) { panel.style.display = "none"; panel.innerHTML = ""; return; }
-  panel.style.display = "";
-
-  const pct = (f) => Math.round(f * 100) + "%";
-  const analyzed = s.analyzedAt ? new Date(s.analyzedAt).toLocaleString() : "-";
-
-  const tiles = [
-    { label: "Cases", value: s.caseCount, sub: "" },
-    { label: "Events", value: s.eventCount,
-      sub: `${s.activityCount} activities · ${s.interactionCount} interactions` },
-    { label: "Steps", value: s.stepCount,
-      sub: `${s.autoSteps} to review · ${s.confirmedSteps} confirmed` },
-  ];
-  // Honesty gate (lab-phase §A5, same condition as the Analysis view's
-  // efficiency block): while bnva_ms is the heuristic 0 everywhere, the
-  // ratio is an artifact of that default (typically a fact-shaped "100%"),
-  // so the summary tile is withheld until an analyst has judged
-  // business-required time on at least one step type.
-  const _hasBnva = ((State.getSession().annotations || {}).analysis_overrides || [])
-    .some((ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
-  if (s.efficiencyRatio != null && _hasBnva) {
-    tiles.push({ label: "Efficiency", value: pct(s.efficiencyRatio),
-      sub: "value-add share (default estimate)" });
-  }
-  if (s.vocabCoverage) {
-    tiles.push({ label: "Vocab coverage", value: s.vocabCoverage.overallPct + "%",
-      sub: s.vocabCoverage.apps
-        .map((a) => appLabel(a.app) + " " + Math.round(a.pct) + "%").join(" · ") });
-  }
-  const tilesHtml = tiles.map((t) =>
-    '<div class="summary-tile">' +
-      `<span class="t-label">${escapeHtml(t.label)}</span>` +
-      `<span class="t-value">${escapeHtml(String(t.value))}</span>` +
-      (t.sub ? `<span class="t-sub">${escapeHtml(t.sub)}</span>` : "") +
-    "</div>"
-  ).join("");
-
-  let activityHtml = "";
-  if (s.topActivities.length) {
-    const bars = s.topActivities.map((a) =>
-      '<div class="summary-bar-row">' +
-        `<span class="b-name" title="${escapeHtml(a.label)}">${escapeHtml(a.label)}</span>` +
-        '<span class="summary-bar-track">' +
-          `<span class="summary-bar-fill" style="width:${(a.pct * 100).toFixed(1)}%"></span>` +
-        "</span>" +
-        `<span class="b-value">${pct(a.pct)} · ${escapeHtml(formatDuration(a.ms))}</span>` +
-      "</div>"
-    ).join("");
-    const stretch = s.longestStretch.app
-      ? `${appLabel(s.longestStretch.app)} ${formatDuration(s.longestStretch.ms)}`
-      : "-";
-    const metaLine =
-      `${s.appSwitches} app switch${s.appSwitches === 1 ? "" : "es"} · ` +
-      `longest single-app stretch: ${stretch}`;
-    activityHtml =
-      '<div class="summary-section">' +
-        '<div class="summary-section-title">Where the time went</div>' +
-        `<div class="summary-bars">${bars}</div>` +
-        `<div class="summary-meta-line">${escapeHtml(metaLine)}</div>` +
-      "</div>";
-  }
-
-  let casesHtml = "";
-  if (s.topCases.length) {
-    const line = s.topCases
-      .map((c) => `${escapeHtml(c.label)} (${escapeHtml(formatDuration(c.ms))})`)
-      .join(" · ");
-    casesHtml =
-      '<div class="summary-section">' +
-        '<div class="summary-section-title">Longest cases</div>' +
-        `<div class="summary-meta-line">${line}</div>` +
-      "</div>";
-  }
-
-  const problems = SessionSummary.detectMarkerProblems((session && session.events) || []);
-  let problemsHtml = "";
-  if (problems.length) {
-    const rows = problems.map((p) => {
-      const time = (p.timestamp || "").slice(11, 19);
-      let text = "";
-      let fix = "";
-      if (p.kind === "dangling_start") {
-        text = `Start ${p.label ? '"' + escapeHtml(p.label) + '"' : "(unlabeled)"} ` +
-               `at ${time} has no matching End.`;
-        fix = '<button class="summary-fix" data-fix="close-start">Close at session end</button>';
-      } else if (p.kind === "orphan_end") {
-        text = `End marker at ${time} has no open Start to close.`;
-        if (p.eventId) {
-          fix = '<button class="summary-fix" data-fix="delete-end" ' +
-                `data-event-id="${escapeHtml(p.eventId)}">Remove this marker</button>`;
-        }
-      } else if (p.kind === "short_case") {
-        const secs = Math.round((p.durationMs || 0) / 1000);
-        text = `Case ${p.label ? '"' + escapeHtml(p.label) + '"' : "(unlabeled)"} ` +
-               `at ${time} is only ${secs}s long (accidental?)`;
-      }
-      return `<div class="summary-problem"><span class="p-text">⚠ ${text}</span>${fix}</div>`;
-    }).join("");
-    problemsHtml =
-      '<div class="summary-section">' +
-        `<div class="summary-section-title">Marker problems (${problems.length})</div>` +
-        `<div class="summary-problems">${rows}</div>` +
-      "</div>";
-  }
-
-  let bannerHtml = "";
-  if (s.stepCount > 0 && s.confirmedSteps === 0 && s.autoSteps > 0) {
-    bannerHtml =
-      '<div class="summary-banner">Review the ' +
-      '<span class="summary-link" data-go="steps">Steps</span> tab: ' +
-      `${s.autoSteps} step${s.autoSteps === 1 ? " was" : "s were"} ` +
-      "auto-detected and may need editing.</div>";
-  }
-
-  /* B5: flag files that did not survive the copy from the capture box. */
-  let integrityHtml = "";
-  const _integ = State.getSession() && State.getSession().integrity;
-  if (_integ && _integ.missing && _integ.missing.length) {
-    const n = _integ.missing.length;
-    const names = _integ.missing.slice(0, 6).map(escapeHtml).join(", ");
-    integrityHtml =
-      '<div class="summary-banner warn">⚠ ' +
-      `${n} file${n === 1 ? "" : "s"} recorded in this session ${n === 1 ? "is" : "are"} ` +
-      `missing (the session may have been copied incompletely): ${names}` +
-      `${n > 6 ? ", …" : ""}.</div>`;
-  }
-
-  const hint = (s.caseCount > 0 && s.stepCount > 0)
-    ? '<div class="summary-hint">Cases are time ranges marked during recording. ' +
-      "Steps are logical actions identified during analysis. The two are independent.</div>"
-    : "";
-
-  // D4: lead with the project name the operator typed at setup; keep the
-  // engagement id alongside it for reference when a name is present.
-  const engLabel = s.engagementName || s.engagement;
-  // Item 9: the static session-metadata chips fold into this band. The teaser
-  // carries a compact text summary of them so a collapsed band still states
-  // the metadata; the full chip row shows inside the expanded body.
-  const pillsHtml = _sessionPills.length
-    ? `<div class="summary-section"><div class="summary-section-title">Session</div>` +
-      `<div class="session-pills summary-pills">${_sessionPillsHtml(_sessionPills)}</div></div>`
-    : "";
-  const pillTeaser = _sessionPills
-    .map((p) => `${p.label} ${p.val}`).join(" · ");
-  const teaser = `${engLabel} · ${formatDuration(s.durationMs)} · ` +
-    `${s.caseCount} case${s.caseCount === 1 ? "" : "s"}` +
-    (pillTeaser ? ` · ${pillTeaser}` : "");
-
-  panel.innerHTML =
-    '<summary><span class="summary-label">Session summary</span>' +
-      `<span class="summary-teaser">${escapeHtml(teaser)}</span></summary>` +
-    '<div class="summary-body">' +
-      '<div class="summary-head">Engagement ' +
-        `<strong>${escapeHtml(engLabel)}</strong>` +
-        (s.engagementName ? ` <span class="meta">(${escapeHtml(s.engagement)})</span>` : "") +
-        ` · worker ` +
-        `<strong>${escapeHtml(s.worker)}</strong> · ` +
-        `<strong>${escapeHtml(formatDuration(s.durationMs))}</strong> · ` +
-        `analyzed ${escapeHtml(analyzed)}</div>` +
-      pillsHtml +
-      `<div class="summary-tiles">${tilesHtml}</div>` +
-      activityHtml + casesHtml + integrityHtml + problemsHtml + hint + bannerHtml +
-    '</div>';
-
-  // Collapsible: remember the analyst's open/closed choice across sessions.
-  try { panel.open = localStorage.getItem("pdt.summaryOpen") !== "0"; }
-  catch (_) { panel.open = true; }
-  if (!panel._pdtToggleWired) {
-    panel._pdtToggleWired = true;
-    panel.addEventListener("toggle", () => {
-      try { localStorage.setItem("pdt.summaryOpen", panel.open ? "1" : "0"); }
-      catch (_) {}
-    });
-  }
-
-  panel.querySelectorAll(".summary-fix").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      let saved = false;
-      if (btn.dataset.fix === "close-start") {
-        const evs = (State.getSession() && State.getSession().events) || [];
-        if (evs.length) saved = await queueSyntheticMarker(evs[evs.length - 1].timestamp, "end");
-      } else if (btn.dataset.fix === "delete-end") {
-        saved = await queueMarkerDelete(btn.dataset.eventId);
-      }
-      if (saved) btn.textContent = "Done (pending): analyze to apply";
-      else btn.disabled = false;
-    });
-  });
-  panel.querySelectorAll(".summary-link[data-go]").forEach((link) => {
-    link.addEventListener("click", () => {
-      const b = document.querySelector(`.view-mode-btn[data-level="${link.dataset.go}"]`);
-      if (b) b.click();
-    });
-  });
 }
 
 /* Queue a marker deletion into annotations.json.marker_edits. Mirrors
@@ -1445,4 +1141,6 @@ module.exports = {
   renderAnnotations, renderSessionPills,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
+  // The Overview's marker-problem fixes (overview-view.js).
+  queueSyntheticMarker, queueMarkerDelete,
 };

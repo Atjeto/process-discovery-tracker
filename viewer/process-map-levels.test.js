@@ -1,8 +1,8 @@
 "use strict";
 
 /*
- * Unit tests for process-map-levels.js -- the step/phase DFG builder
- * (ADR-0010 C1b). Run with `npm test` (node:test).
+ * Unit tests for process-map-levels.js: the one process map, built from the
+ * runs' steps. Run with `npm test` (node:test).
  */
 
 const test = require("node:test");
@@ -10,8 +10,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
-  buildAnnotationDfg, dropRareEdges, processLabel,
-  rollUpSteps, resolveStepGrainKeys, screenType, GRAIN_NOTCHES, DEFAULT_GRAIN,
+  buildAnnotationDfg, mapNodeLabel, dropRareEdges, processLabel,
+  resolveStepGrainKeys, screenType,
 } = require("./process-map-levels.js");
 
 const GOLDEN = JSON.parse(fs.readFileSync(
@@ -19,25 +19,32 @@ const GOLDEN = JSON.parse(fs.readFileSync(
 const SCREEN_GOLDEN = JSON.parse(fs.readFileSync(
   path.join(__dirname, "..", "shared", "screen-label-golden.json"), "utf8"));
 
-function step(id, name, caseId, startMs, phaseId) {
+// An em dash, built from its code so this file itself carries none.
+const EM = String.fromCharCode(0x2014);
+
+function step(id, name, caseId, startMs) {
   return {
-    step_id: id, name, case_id: caseId, phase_id: phaseId || null,
+    step_id: id, name, case_id: caseId,
     state: "edited",
     time_range: { start: new Date(startMs).toISOString(), end: new Date(startMs + 1000).toISOString() },
   };
 }
 
-function sess(steps, phases) {
-  return { annotations: { steps, phases: phases || [] } };
+/* A drafted step (contract C1): it carries a draft_key, and its name is the
+   drafted name (or the analyst's rename). */
+function draft(id, name, caseId, startMs, state) {
+  return Object.assign(step(id, name, caseId, startMs), {
+    state: state || "auto_suggested",
+    draft_key: "app|" + name + "|Button:save",
+  });
 }
 
-test("step level: one case yields a linear chain of step-name edges", () => {
-  const s = sess([
+test("one run yields a linear chain of step-name edges", () => {
+  const dfg = buildAnnotationDfg([[
     step("a", "Open ticket", "c1", 1000),
     step("b", "Look up serial", "c1", 2000),
     step("c", "Write resolution", "c1", 3000),
-  ]);
-  const dfg = buildAnnotationDfg([s], "step");
+  ]]);
   assert.equal(dfg.edges.length, 2);
   assert.deepEqual(dfg.start_activities, { "Open ticket": 1 });
   assert.deepEqual(dfg.end_activities, { "Write resolution": 1 });
@@ -46,45 +53,57 @@ test("step level: one case yields a linear chain of step-name edges", () => {
   assert.equal(e0.target, "Look up serial");
 });
 
-test("step level: repeated cases give edges a frequency > 1", () => {
-  // two tickets, same 2-step shape -> the A->B edge has frequency 2
-  const s = sess([
-    step("a1", "Search", "c1", 1000),
-    step("b1", "Resolve", "c1", 2000),
-    step("a2", "Search", "c2", 3000),
-    step("b2", "Resolve", "c2", 4000),
+test("repeated runs give edges a frequency > 1", () => {
+  // two runs, same 2-step shape -> the A->B edge has frequency 2
+  const dfg = buildAnnotationDfg([
+    [step("a1", "Search", "c1", 1000), step("b1", "Resolve", "c1", 2000)],
+    [step("a2", "Search", "c2", 3000), step("b2", "Resolve", "c2", 4000)],
   ]);
-  const dfg = buildAnnotationDfg([s], "step");
   const edge = dfg.edges.find((e) => e.source === "Search" && e.target === "Resolve");
   assert.equal(edge.frequency, 2);
   assert.equal(dfg.start_activities["Search"], 2);
   assert.equal(dfg.end_activities["Resolve"], 2);
 });
 
+test("edges join consecutive steps WITHIN a run, never across runs", () => {
+  // Run 1 ends on Resolve and run 2 starts on Search: no Resolve->Search edge.
+  const dfg = buildAnnotationDfg([
+    [step("a1", "Search", "c1", 1000), step("b1", "Resolve", "c1", 2000)],
+    [step("a2", "Search", "c2", 3000), step("b2", "Resolve", "c2", 4000)],
+  ]);
+  assert.equal(dfg.edges.length, 1);
+  assert.ok(!dfg.edges.some((e) => e.source === "Resolve" && e.target === "Search"));
+});
+
+test("a run's steps are ordered by start time (as the Steps list shows them)", () => {
+  const dfg = buildAnnotationDfg([[
+    step("b", "Resolve", "c1", 2000),
+    step("a", "Search", "c1", 1000),
+  ]]);
+  assert.deepEqual(dfg.start_activities, { "Search": 1 });
+  assert.equal(dfg.edges[0].source, "Search");
+});
+
 test("§B2: edges accumulate transition time across traversals (total_ms)", () => {
   // Per traversal the edge carries entering(source) -> entering(target).
-  // c1: Search@1s -> Resolve@2s (1000ms); c2: Search@3s -> Resolve@7s (4000ms).
-  const s = sess([
-    step("a1", "Search", "c1", 1000),
-    step("b1", "Resolve", "c1", 2000),
-    step("a2", "Search", "c2", 3000),
-    step("b2", "Resolve", "c2", 7000),
+  // run 1: Search@1s -> Resolve@2s (1000ms); run 2: Search@3s -> Resolve@7s (4000ms).
+  const dfg = buildAnnotationDfg([
+    [step("a1", "Search", "c1", 1000), step("b1", "Resolve", "c1", 2000)],
+    [step("a2", "Search", "c2", 3000), step("b2", "Resolve", "c2", 7000)],
   ]);
-  const dfg = buildAnnotationDfg([s], "step");
   const edge = dfg.edges.find((e) => e.source === "Search" && e.target === "Resolve");
   assert.equal(edge.frequency, 2);
   assert.equal(edge.total_ms, 1000 + 4000);
 });
 
-test("§B2: a consecutive same-label run contributes its FULL dwell to the outgoing edge", () => {
-  // Two Search steps collapse to one node; the edge to Resolve carries the
+test("§B2: a consecutive same-node run contributes its FULL dwell to the outgoing edge", () => {
+  // Two Search steps collapse to one visit; the edge to Resolve carries the
   // time from entering the FIRST Search to entering Resolve.
-  const s = sess([
+  const dfg = buildAnnotationDfg([[
     step("a1", "Search", "c1", 1000),
     step("a2", "Search", "c1", 4000),     // same node (consecutive duplicate)
     step("b1", "Resolve", "c1", 9000),
-  ]);
-  const dfg = buildAnnotationDfg([s], "step");
+  ]]);
   assert.equal(dfg.edges.length, 1);
   assert.equal(dfg.edges[0].frequency, 1);
   assert.equal(dfg.edges[0].total_ms, 8000);
@@ -96,8 +115,7 @@ test("§B2: a missing timestamp contributes 0 to total_ms, never a guess", () =>
     step("b", "Resolve", "c1", 2000),
   ];
   delete steps[1].time_range;            // hand-authored step, no times
-  const dfg = buildAnnotationDfg([sess(steps)], "step");
-  const edge = dfg.edges[0];
+  const edge = buildAnnotationDfg([steps]).edges[0];
   assert.equal(edge.frequency, 1);
   assert.equal(edge.total_ms, 0);
 });
@@ -118,243 +136,114 @@ test("§B2: dropRareEdges preserves the time weight on surviving edges", () => {
   assert.equal(r.dfg.edges.find((e) => e.target === "B").total_ms, 60000);
 });
 
-test("phase level: collapses consecutive steps in the same phase to one node", () => {
-  const s = sess([
-    step("a", "s1", "c1", 1000, "p1"),
-    step("b", "s2", "c1", 2000, "p1"),   // same phase as a -> collapses
-    step("c", "s3", "c1", 3000, "p2"),
-  ], [
-    { phase_id: "p1", name: "Validate" },
-    { phase_id: "p2", name: "Resolve" },
-  ]);
-  const dfg = buildAnnotationDfg([s], "phase");
-  // Validate -> Resolve, single edge (the two p1 steps collapsed)
-  assert.equal(dfg.edges.length, 1);
-  assert.equal(dfg.edges[0].source, "Validate");
-  assert.equal(dfg.edges[0].target, "Resolve");
-});
-
 test("hidden steps are excluded", () => {
   const steps = [
     step("a", "Keep", "c1", 1000),
     step("b", "Drop", "c1", 2000),
   ];
   steps[1].state = "hidden";
-  const dfg = buildAnnotationDfg([sess(steps)], "step");
+  const dfg = buildAnnotationDfg([steps]);
   // only one node, no edges
   assert.equal(dfg.edges.length, 0);
   assert.deepEqual(dfg.start_activities, { "Keep": 1 });
   assert.deepEqual(dfg.end_activities, { "Keep": 1 });
 });
 
-test("no steps yields an empty graph", () => {
-  const dfg = buildAnnotationDfg([sess([])], "step");
-  assert.deepEqual(dfg.edges, []);
-  assert.deepEqual(dfg.start_activities, {});
+test("no runs, or runs without steps, yield an empty graph", () => {
+  for (const runs of [[], [[]], undefined]) {
+    const dfg = buildAnnotationDfg(runs);
+    assert.deepEqual(dfg.edges, []);
+    assert.deepEqual(dfg.start_activities, {});
+    assert.deepEqual(dfg.end_activities, {});
+  }
 });
 
-test("step level: value-laden names collapse to one node per step type (live)", () => {
-  // Each case's order # / customer id makes the raw name unique; without
-  // stripping the step-level DFG explodes into one node per instance. The
-  // viewer strips the values live (processLabel) so the flow collapses
-  // without a re-analyze.
-  const s = sess([
-    step("a1", "Salesforce: Search — CUST-10101", "c1", 1000),
-    step("b1", "Salesforce: Enter 25 in Quantity", "c1", 2000),
-    step("a2", "Salesforce: Search — CUST-10102", "c2", 3000),
-    step("b2", "Salesforce: Enter 30 in Quantity", "c2", 4000),
+/* ---- The node key rule ------------------------------------------------- */
+
+test("node rule: a drafted step is its own name, which the value rules would cut", () => {
+  // processLabel's value-tail rule cuts a window-derived screen label down to
+  // the app ("Salesforce - Order: Save order" -> "Salesforce"). A drafted name
+  // is value-free by construction, so the map keeps it whole: two different
+  // drafted Salesforce steps are two nodes, not one "Salesforce" blob.
+  assert.equal(processLabel("Salesforce - Order: Save order"), "Salesforce", "precondition: the rule would cut it");
+  const dfg = buildAnnotationDfg([[
+    draft("a", "Salesforce - Account lookup: Search", "c1", 1000),
+    draft("b", "Salesforce - Order: Save order", "c1", 2000),
+  ]]);
+  assert.equal(dfg.edges.length, 1);
+  assert.equal(dfg.edges[0].source, "Salesforce - Account lookup: Search");
+  assert.equal(dfg.edges[0].target, "Salesforce - Order: Save order");
+});
+
+test("node rule: a drafted step's name wins in every state, over a stale process_label", () => {
+  // An edited draft (renamed after the last analysis) still carries the
+  // process_label the pipeline stamped; the map shows the name the analyst
+  // gave, which is what the next analysis stamps (43d307b).
+  for (const state of ["auto_suggested", "confirmed", "edited"]) {
+    const s = draft("a", "Look up the customer", "c1", 1000, state);
+    s.process_label = "Salesforce";
+    assert.equal(mapNodeLabel(s), "Look up the customer", state);
+  }
+});
+
+test("node rule: a step without a draft_key groups by its process_label", () => {
+  const stamped = step("a", "raw name, Value-1", "c1", 1000);
+  stamped.process_label = "Canonical step";
+  assert.equal(mapNodeLabel(stamped), "Canonical step", "the stamped label wins");
+  // Unstamped: the shared value rules, live, so repeated work collapses.
+  assert.equal(mapNodeLabel(step("b", "Salesforce: Search " + EM + " CUST-10101", "c1", 1000)), "Salesforce: Search");
+  assert.equal(mapNodeLabel(step("c", "Salesforce: Fill Customer ID field", "c1", 1000)),
+    "Salesforce: Fill Customer ID field", "a value-free name is left as it is");
+  assert.equal(mapNodeLabel({ state: "manually_authored" }), "(unnamed step)");
+});
+
+test("node rule: value-laden hand-made names collapse to one node per step type across runs", () => {
+  const dfg = buildAnnotationDfg([
+    [step("a1", "Salesforce: Search " + EM + " CUST-10101", "c1", 1000), step("b1", "Salesforce: Enter 25 in Quantity", "c1", 2000)],
+    [step("a2", "Salesforce: Search " + EM + " CUST-10102", "c2", 3000), step("b2", "Salesforce: Enter 30 in Quantity", "c2", 4000)],
   ]);
-  const dfg = buildAnnotationDfg([s], "step");
   const edge = dfg.edges.find((e) => e.source === "Salesforce: Search");
   assert.equal(edge.target, "Salesforce: Enter Quantity");
-  assert.equal(edge.frequency, 2);          // both cases share the transition
-  assert.equal(dfg.start_activities["Salesforce: Search"], 2);
-  assert.equal(Object.keys(dfg.start_activities).length, 1);
+  assert.equal(edge.frequency, 2);          // both runs share the transition
+  assert.deepEqual(Object.keys(dfg.start_activities), ["Salesforce: Search"]);
 });
 
-test("step level: a persisted process_label wins over the live strip", () => {
-  const steps = [step("a", "raw name — Value-1", "c1", 1000)];
-  steps[0].process_label = "Canonical step";
-  const dfg = buildAnnotationDfg([sess(steps)], "step");
-  assert.deepEqual(dfg.start_activities, { "Canonical step": 1 });
-});
-
-test("step level: value-free names are left untouched", () => {
-  const dfg = buildAnnotationDfg(
-    [sess([step("a", "Salesforce: Fill Customer ID field", "c1", 1000)])], "step");
-  assert.deepEqual(dfg.start_activities, { "Salesforce: Fill Customer ID field": 1 });
-});
-
-test("step level: a phase filter scopes the map to that phase's steps (drill-down)", () => {
-  const s = sess([
-    step("a", "Search", "c1", 1000, "p1"),
-    step("b", "Validate", "c1", 2000, "p1"),
-    step("c", "Resolve", "c1", 3000, "p2"),
-  ], [
-    { phase_id: "p1", name: "Intake" },
-    { phase_id: "p2", name: "Closeout" },
+test("the same drafted step in several runs is one node (runs join into one graph)", () => {
+  // Three runs of drafted steps; run 2 takes a detour and run 3 ends early.
+  // Every run shares its first steps, so the map is one connected graph.
+  const names = ["Account lookup: Search", "Order: Save order", "Tracker: Save workbook", "Confirmation: Send"];
+  const run = (cid, t0, seq) => seq.map((i, k) => draft(cid + k, names[i], cid, t0 + k * 1000));
+  const dfg = buildAnnotationDfg([
+    run("r1", 1000, [0, 1, 2, 3]),
+    run("r2", 20000, [0, 1, 2, 1, 2, 3]),
+    run("r3", 40000, [0, 1, 2]),
   ]);
-  // Unscoped: Search -> Validate -> Resolve (2 edges across both phases).
-  assert.equal(buildAnnotationDfg([s], "step").edges.length, 2);
-  // Scoped to "Intake": only its two steps remain -> one edge.
-  const scoped = buildAnnotationDfg([s], "step", { phaseName: "Intake" });
-  assert.equal(scoped.edges.length, 1);
-  assert.equal(scoped.edges[0].source, "Search");
-  assert.equal(scoped.edges[0].target, "Validate");
-  assert.deepEqual(scoped.start_activities, { "Search": 1 });
-  assert.deepEqual(scoped.end_activities, { "Validate": 1 });
+  const nodes = new Set();
+  for (const e of dfg.edges) { nodes.add(e.source); nodes.add(e.target); }
+  assert.equal(nodes.size, 4);
+  assert.deepEqual(dfg.start_activities, { "Account lookup: Search": 3 });
+  assert.deepEqual(dfg.end_activities, { "Confirmation: Send": 2, "Tracker: Save workbook": 1 });
+  // A frequency counts traversals: run 2 takes Order -> Tracker twice (its detour).
+  assert.equal(dfg.edges.find((e) => e.source === "Order: Save order" && e.target === "Tracker: Save workbook").frequency, 4);
 });
 
-test("step level: an unphased filter scopes to steps with no phase", () => {
-  const s = sess([
-    step("a", "Open", "c1", 1000, "p1"),
-    step("b", "Loose A", "c1", 2000),       // no phase
-    step("c", "Loose B", "c1", 3000),       // no phase
-  ], [{ phase_id: "p1", name: "Intake" }]);
-  const scoped = buildAnnotationDfg([s], "step", { phaseName: "(unphased)" });
-  assert.equal(scoped.edges.length, 1);
-  assert.equal(scoped.edges[0].source, "Loose A");
-  assert.equal(scoped.edges[0].target, "Loose B");
-});
+/* ---- Shared value rules (the Steps level uses these too) ---------------- */
 
 test("processLabel matches the cross-language golden (Python twin must agree)", () => {
   // The same golden is asserted in normalization/test/test_process_label.py;
-  // if these diverge, the live DFG and the mined BPMN/stats collapse differently.
+  // if these diverge, the live map and the stats collapse differently.
   for (const [name, expected] of GOLDEN.cases) {
     assert.equal(processLabel(name), expected, JSON.stringify(name));
   }
 });
 
 test("screenType matches the cross-language screen-label golden (Python twin must agree)", () => {
-  // The same golden is asserted in normalization/test/test_screen_label.py; if
-  // these diverge, one logical screen splits per record and the screen-grain
-  // map fans out into a per-case hairball.
+  // The same golden is asserted in normalization/test/test_screen_label.py.
   for (const [name, expected] of SCREEN_GOLDEN.cases) {
     assert.equal(screenType(name), expected, JSON.stringify(name));
   }
 });
 
-/* ===== ADR-0024: view-time grain roll-up ============================== */
-
-// A step carrying grain_keys (the stamped containment keys).
-function gstep(id, name, caseId, startMs, grainKeys, phaseId) {
-  return {
-    step_id: id, name, case_id: caseId, phase_id: phaseId || null,
-    state: "auto_suggested", grain_keys: grainKeys,
-    process_label: processLabel(name),
-    time_range: { start: new Date(startMs).toISOString(), end: new Date(startMs + 1000).toISOString() },
-  };
-}
-
-// The committed Outlook corpus shape: 3 drafts (cases), 3 fields each, all on
-// the vocab "compose" screen in OUTLOOK. The acceptance: element=9, screen=3.
-function outlookCorpusSteps() {
-  const steps = [];
-  let t = 1000;
-  ["c1", "c2", "c3"].forEach((cid) => {
-    steps.push(gstep(cid + "-to", "Untitled: Enter " + cid + "@x in To (recipients)", cid, t += 1000, { element: "4117", screen: "compose", app: "OUTLOOK" }));
-    steps.push(gstep(cid + "-cc", "Untitled: Enter records in Cc", cid, t += 1000, { element: "4126", screen: "compose", app: "OUTLOOK" }));
-    steps.push(gstep(cid + "-su", "Untitled: Enter Order " + cid + " in Subject", cid, t += 1000, { element: "4101", screen: "compose", app: "OUTLOOK" }));
-  });
-  return steps;
-}
-
-test("rollUpSteps: element notch reproduces the fine count (detail never destroyed)", () => {
-  const steps = outlookCorpusSteps();
-  assert.equal(rollUpSteps(steps, "element").length, 9);   // every step shown
-});
-
-test("rollUpSteps: screen notch lands the sensible 'one step per screen' count", () => {
-  const steps = outlookCorpusSteps();
-  // 3 drafts, each To/Cc/Subject all on the 'compose' screen -> 1 per case -> 3.
-  const groups = rollUpSteps(steps, "screen");
-  assert.equal(groups.length, 3);
-  for (const g of groups) {
-    assert.equal(g.label, "compose");
-    assert.equal(g.count, 3);                              // 3 fine steps folded
-    assert.deepEqual(g.step_ids.length, 3);
-  }
-});
-
-test("rollUpSteps: app and case notches both collapse the corpus to 3", () => {
-  const steps = outlookCorpusSteps();
-  assert.equal(rollUpSteps(steps, "app").length, 3);
-  assert.equal(rollUpSteps(steps, "case").length, 3);
-});
-
-test("rollUpSteps: phase notch folds unphased runs per case", () => {
-  const steps = outlookCorpusSteps();             // all unphased
-  const g = rollUpSteps(steps, "phase");
-  assert.equal(g.length, 3);                      // one '(unphased)' run per case
-  assert.equal(g[0].label, "(unphased)");
-});
-
-test("rollUpSteps: collapse is run-based — a screen revisited after another screen is two groups", () => {
-  // Same screen S1, then S2, then S1 again, all one case: 3 runs, not 2.
-  const steps = [
-    gstep("a", "x", "c1", 1000, { element: "e1", screen: "S1", app: "A" }),
-    gstep("b", "y", "c1", 2000, { element: "e2", screen: "S2", app: "A" }),
-    gstep("c", "z", "c1", 3000, { element: "e3", screen: "S1", app: "A" }),
-  ];
-  assert.equal(rollUpSteps(steps, "screen").length, 3);
-});
-
-test("rollUpSteps: hidden steps are excluded", () => {
-  const steps = outlookCorpusSteps();
-  steps[0].state = "hidden";
-  assert.equal(rollUpSteps(steps, "element").length, 8);
-});
-
-test("rollUpSteps: falls back to resolving grain_keys from events when absent", () => {
-  // No grain_keys on the steps -> resolve from the interaction map (old session).
-  const evs = {
-    "i1": { event_id: "i1", data: { kind: "value_changed", automation_id: "4117", screen_id: "compose", process_name: "OUTLOOK.exe" } },
-    "i2": { event_id: "i2", data: { kind: "value_changed", automation_id: "4126", screen_id: "compose", process_name: "OUTLOOK.exe" } },
-  };
-  const steps = [
-    { step_id: "a", case_id: "c1", state: "auto_suggested", name: "To", time_range: { start: new Date(1000).toISOString(), end: new Date(2000).toISOString() }, evidence: { interaction_event_ids: ["i1"] } },
-    { step_id: "b", case_id: "c1", state: "auto_suggested", name: "Cc", time_range: { start: new Date(2000).toISOString(), end: new Date(3000).toISOString() }, evidence: { interaction_event_ids: ["i2"] } },
-  ];
-  const ctx = { interactionsById: evs };
-  assert.equal(rollUpSteps(steps, "screen", ctx).length, 1);   // both 'compose'
-  assert.equal(rollUpSteps(steps, "element", ctx).length, 2);  // distinct fields
-});
-
-test("resolveStepGrainKeys mirrors the Python rules (typed field wins over nav)", () => {
-  const evs = {
-    "tab": { event_id: "tab", data: { kind: "selection_changed", name: "Message", process_name: "OUTLOOK.exe" } },
-    "to": { event_id: "to", data: { kind: "value_changed", automation_id: "4117", name: "To", screen_id: "compose", process_name: "OUTLOOK.exe" } },
-  };
-  const step = { evidence: { interaction_event_ids: ["tab", "to"] } };
-  const k = resolveStepGrainKeys(step, evs);
-  assert.equal(k.element, "4117");      // typed field beats the Message tab
-  assert.equal(k.screen, "compose");
-  assert.equal(k.app, "OUTLOOK");
-});
-
-test("buildAnnotationDfg: screen notch collapses the corpus to a single screen node", () => {
-  const dfg = buildAnnotationDfg([{ annotations: { steps: outlookCorpusSteps() } }], "screen");
-  // All steps on 'compose' -> one node, no edges; start/end count the 3 cases.
-  assert.equal(dfg.edges.length, 0);
-  assert.deepEqual(dfg.start_activities, { compose: 3 });
-  assert.deepEqual(dfg.end_activities, { compose: 3 });
-});
-
-test("buildAnnotationDfg: 'step' and 'element' notches are equivalent (back-compat)", () => {
-  const s = [{ annotations: { steps: outlookCorpusSteps() } }];
-  assert.deepEqual(buildAnnotationDfg(s, "step"), buildAnnotationDfg(s, "element"));
-});
-
-test("GRAIN_NOTCHES ladder + default are exported", () => {
-  assert.deepEqual(GRAIN_NOTCHES, ["element", "screen", "app", "phase", "case"]);
-  assert.equal(DEFAULT_GRAIN, "screen");
-});
-
-/* ADR-0024 regression: a window-title screen key embeds the case value
- * ("Salesforce - Order #10900"), so grouping on the raw title made the same
- * logical screen a distinct node PER CASE -- the default screen-grain map fanned
- * out into a per-case hairball. screenType strips the embedded record values so
- * the screen axis collapses value-free, like process_label. */
 test("screenType strips embedded record values but keeps the screen name", () => {
   assert.equal(screenType("Salesforce - Order #10900"), "Salesforce - Order");
   assert.equal(screenType("Salesforce - Order #11412"), "Salesforce - Order");
@@ -365,40 +254,25 @@ test("screenType strips embedded record values but keeps the screen name", () =>
   // Short transaction codes survive (digit-run threshold is 3+).
   assert.equal(screenType("va01"), "va01");
   // Id-like tokens (CUST-10852) are stripped.
-  assert.equal(screenType("Search — CUST-10852"), "Search");
+  assert.equal(screenType("Search " + EM + " CUST-10852"), "Search");
   // A blank / all-value title never collapses to "".
   assert.equal(screenType(""), "");
   assert.ok(screenType("#10900").length > 0);
 });
 
-test("screen notch collapses per-case window titles to ONE value-free node (no fan-out)", () => {
-  // Two cases on the SAME 3 logical screens, each title carrying its order #.
-  const mk = (id, scr, cid, t) => ({
-    step_id: id, case_id: cid, state: "auto_suggested",
-    grain_keys: { element: "f", screen: scr, app: "chrome" },
-    time_range: { start: new Date(t).toISOString(), end: new Date(t + 100).toISOString() },
-  });
-  const steps = [
-    mk("a1", "Salesforce - Account lookup", "c1", 1000),
-    mk("a2", "Salesforce - Order #10900", "c1", 2000),
-    mk("a3", "Outlook - Order #10900 confirmation", "c1", 3000),
-    mk("b1", "Salesforce - Account lookup", "c2", 4000),
-    mk("b2", "Salesforce - Order #10901", "c2", 5000),
-    mk("b3", "Outlook - Order #10901 confirmation", "c2", 6000),
-  ];
-  const dfg = buildAnnotationDfg([{ annotations: { steps } }], "screen");
-  const nodes = new Set();
-  for (const e of dfg.edges) { nodes.add(e.source); nodes.add(e.target); }
-  // 3 logical screens, not 5 (the two #-suffixed titles per case would otherwise
-  // each be their own node). One linear chain, one start, one end.
-  assert.equal(nodes.size, 3);
-  assert.deepEqual(Object.keys(dfg.start_activities), ["Salesforce - Account lookup"]);
-  assert.deepEqual(Object.keys(dfg.end_activities), ["Outlook - Order confirmation"]);
-  // The shared transition is frequency 2 (both cases follow the same path).
-  const e = dfg.edges.find((x) => x.source === "Salesforce - Account lookup");
-  assert.equal(e.target, "Salesforce - Order");
-  assert.equal(e.frequency, 2);
+test("resolveStepGrainKeys mirrors the Python rules (typed field wins over nav)", () => {
+  const evs = {
+    "tab": { event_id: "tab", data: { kind: "selection_changed", name: "Message", process_name: "OUTLOOK.exe" } },
+    "to": { event_id: "to", data: { kind: "value_changed", automation_id: "4117", name: "To", screen_id: "compose", process_name: "OUTLOOK.exe" } },
+  };
+  const s = { evidence: { interaction_event_ids: ["tab", "to"] } };
+  const k = resolveStepGrainKeys(s, evs);
+  assert.equal(k.element, "4117");      // typed field beats the Message tab
+  assert.equal(k.screen, "compose");
+  assert.equal(k.app, "OUTLOOK");
 });
+
+/* ---- The rare-path slider ------------------------------------------------ */
 
 test("dropRareEdges hides one-off paths but keeps the dominant flow", () => {
   const dfg = {

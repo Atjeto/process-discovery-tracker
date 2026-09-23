@@ -110,35 +110,6 @@ function validateScreenshotOpen(p, roots = _knownSessionRoots) {
   return { ok: false, error: "Path is outside the active session's screenshots folder." };
 }
 
-/* Diagram files the "Open" affordance is allowed to launch. The mined maps are
-   process_map.bpmn at the session root and process_maps/*.bpmn -- both under a
-   known session root. Kept separate from the image sink so the screenshot
-   guard never has to allow an executable-adjacent extension, and so the BPMN
-   button stops misusing the image sink (which always refused .bpmn). */
-const _ALLOWED_DIAGRAM_EXTS = new Set([".bpmn"]);
-
-/* Validate a renderer-supplied diagram path before shell.openPath(). Returns
-   { ok: true, path } when SAFE (non-empty string, no `..` segment, a .bpmn
-   extension, resolves under a known session root), else { ok: false, error }.
-   Mirrors validateScreenshotOpen but confines to the session ROOT (not the
-   screenshots/ subdir) since maps live at the root and under process_maps/. */
-function validateDiagramOpen(p, roots = _knownSessionRoots) {
-  if (typeof p !== "string" || !p) return { ok: false, error: "Path must be a non-empty string." };
-  const segments = p.split(/[\\/]+/);
-  if (segments.some((s) => s === "..")) return { ok: false, error: "Path traversal is not allowed." };
-  const resolved = path.resolve(p);
-  const ext = path.extname(resolved).toLowerCase();
-  if (!_ALLOWED_DIAGRAM_EXTS.has(ext)) return { ok: false, error: `Not an allowed diagram type: ${ext || "(none)"}` };
-  for (const root of roots) {
-    const base = path.resolve(root);
-    const rel = path.relative(base, resolved);
-    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
-      return { ok: true, path: resolved };
-    }
-  }
-  return { ok: false, error: "Path is outside the active session folder." };
-}
-
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -233,19 +204,6 @@ ipcMain.handle("viewer:openExternal", (_e, p) => {
   return shell.openPath(v.path);
 });
 
-/* Open a mined diagram (.bpmn) through its OWN guarded sink. Returns a string
-   error (or null on success) so the renderer can `toast("..." + err)` without
-   the [object Object] the screenshot sink produced when it refused .bpmn. */
-ipcMain.handle("viewer:openDiagram", async (_e, p) => {
-  const v = validateDiagramOpen(p);
-  if (!v.ok) {
-    console.warn("[viewer:openDiagram] refused to open path:", v.error, JSON.stringify(p));
-    return v.error;
-  }
-  const r = await shell.openPath(v.path);   // "" on success, else an error string
-  return r || null;
-});
-
 /* --- Session loading ---------------------------------------------- */
 
 function loadSessionData(sessionFolder) {
@@ -280,7 +238,6 @@ function loadSessionData(sessionFolder) {
   }
 
   const stats = loadOptionalJson(path.join(sessionFolder, "stats.json"));
-  const dfg = loadOptionalJson(path.join(sessionFolder, "dfg.json"));
   // RP-04: an annotations.json that exists but cannot be read is reported
   // (annotationsError, shown as a banner naming the file and its backups),
   // never treated as absent; the writers below refuse to replace it.
@@ -325,7 +282,6 @@ function loadSessionData(sessionFolder) {
     manifest,
     events,
     stats,
-    dfg,
     analysis,
     annotations,
     annotationsError,
@@ -607,4 +563,4 @@ app.on("activate", () => {
 /* Exported for unit tests (the security helper is pure and validated in
    isolation). Importing this module under plain node is made safe by the
    Electron shim near the top. */
-module.exports = { validateScreenshotOpen, validateDiagramOpen, _knownSessionRoots, loadSessionData };
+module.exports = { validateScreenshotOpen, _knownSessionRoots, loadSessionData };

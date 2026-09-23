@@ -172,13 +172,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .cb { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-2);
   font-size: 12px; user-select: none; cursor: pointer; }
 
-/* Inline status (e.g., process map result line in actions bar) */
-.map-status { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
-  background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  font-size: 11px; color: var(--fg-2); font-family: var(--font-mono); }
-.map-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.map-status-label { color: var(--fg-3); }
-.map-status-detail { color: var(--fg); }
+/* A compact select (the reference-map gallery and editor). */
 .map-status-select {
   background: var(--bg-3); color: var(--fg);
   border: 1px solid var(--rule); border-radius: 3px;
@@ -277,18 +271,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .actions-bar input[type=search] { min-width: 220px; max-width: 360px; flex: 0 1 auto; }
 .actions-bar input[type=search]::-webkit-search-cancel-button { filter: invert(0.5); }
 .session-pills { display: flex; gap: 6px; flex-wrap: wrap; }
-/* Facts row: process-map status (left) + session chips (right) -- merged from
-   what used to be three separate stacked metadata rows above the view bar. */
 /* Demoted keyboard-shortcut hint: a quiet hover affordance, not a permanent
    wall of single-key shortcuts that analysts won't use (clutter pass). */
 .kbd-hint { cursor: help; border-bottom: 1px dotted var(--fg-4); color: var(--fg-3); }
-.pill { padding: 3px 10px; background: var(--bg-3); border: 1px solid var(--rule);
-  border-radius: 12px; font-size: 11px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; }
-.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); }
-.pill.ok .dot { background: var(--accent); }
-.pill.warn .dot { background: var(--warn); }
-.pill.bad .dot { background: var(--bad); }
-.pill .lbl { color: var(--fg-3); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
 
 /* ===== Session view -- full-width timeline + lower video|annotations row ===== */
 /* flex:1 so the layout fills the viewport, but no min-height:0 -- that
@@ -620,26 +605,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .panel-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px;
   flex-wrap: wrap; }
 .panel-header h3 { margin: 0; }
-.panel-tabs { display: flex; gap: 2px; background: var(--bg-3); padding: 3px;
-  border-radius: 4px; border: 1px solid var(--rule); flex-shrink: 0; }
-.panel-tab { background: transparent; border: 1px solid transparent; padding: 4px 12px;
-  font-size: 11px; color: var(--fg-3); border-radius: 3px; }
-/* Item 12: the active notation tab reads as data (accent fill), matching the
-   .view-mode-btn.active treatment other selected controls use -- previously
-   --bg-1 on the --bg-3 trough read as *disabled*, not selected. */
-.panel-tab.active { background: var(--accent); color: var(--accent-text); font-weight: 500; }
-.panel-tab:hover { color: var(--fg-2); }
-.panel-tab.active:hover { color: var(--accent-text); }
-/* Drill-down scope chip (sits between the tabs and the zoom controls). */
-.map-scope { display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--fg-2); }
-.map-scope-lbl { padding: 2px 8px; background: var(--bg-3); border: 1px solid var(--rule);
-  border-radius: 10px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; }
-.map-scope-clear { background: transparent; border: 1px solid var(--rule); color: var(--fg-3);
-  border-radius: 6px; padding: 1px 7px; font-size: 10px; cursor: pointer; }
-.map-scope-clear:hover { color: var(--fg); border-color: var(--accent); }
-
 /* DFG zoom controls */
 .map-zoom { display: flex; align-items: center; gap: 4px; margin-left: auto;
   color: var(--fg-3); font-size: 10px; flex-shrink: 0; white-space: nowrap; }
@@ -681,38 +646,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   color: var(--fg-2); font-family: var(--font-mono); font-size: 10px;
   box-shadow: var(--shadow); white-space: nowrap;
 }
-/* §B2: the Expert drawer — the off-contract map cells (activity taxonomy,
-   inductive BPMN, per-case BPMNs) removed from the default matrix. */
-.map-expert { margin-top: 6px; font-size: 12px; }
-.map-expert > summary {
-  cursor: pointer; color: var(--fg-4); font-size: 11px;
-  text-transform: uppercase; letter-spacing: 0.3px;
-}
-.map-expert > summary:hover { color: var(--fg-2); }
-.map-expert-body { padding: 6px 0 2px 14px; }
-.map-expert-hint { color: var(--fg-3); font-size: 11px; margin: 0 0 6px; }
-.map-expert-cells { display: flex; gap: 14px; flex-wrap: wrap; }
 .bpmn-warning { position: absolute; bottom: 8px; right: 8px; padding: 4px 10px;
   background: var(--warn); color: var(--bg); font-size: 11px; border-radius: 3px; }
-/* The BPMN map uses the bpmn-js Modeler so its boxes can be DRAGGED to
-   reorganize the layout (the read-only Viewer can't move elements). Hide the
-   editor chrome -- the palette (create) and the context pad (append/delete) --
-   so it stays a move-only layout tool, not a full diagram editor. Keyboard is
-   left unbound (bpmn-viewer.js passes no keyboard config), so there's no
-   accidental delete. Drag = move a box; click = drill to the source. */
-.map-host .djs-palette,
-.map-host .djs-context-pad { display: none !important; }
-/* bpmn-js paints EXTERNAL labels (start/end-event and gateway NAMES, which float
-   on the canvas rather than inside a box) with a near-black fill -- invisible on
-   the dark canvas. Internal task labels sit on white task boxes and must stay
-   dark. An external label renders as its own group whose data-element-id ends in
-   "_label" (the shape itself has no such suffix), so key the override on that to
-   recolour only the floating labels. */
-:root[data-theme="dark"] #session-map-bpmn-host g[data-element-id$="_label"] text,
-:root[data-theme="dark"] #session-map-bpmn-host g[data-element-id$="_label"] tspan {
-  fill: var(--fg) !important;
-}
-
 /* ===== Toast ===== */
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(60px);
   padding: 10px 18px; background: var(--bg-2); color: var(--fg);
@@ -822,7 +757,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 
 /* ===== View-mode bar (compact toolbar, not a hero block) ===== */
 .view-mode-bar {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 4px 10px; margin: 0 0 10px;
   background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius-sm);
 }
@@ -849,12 +784,18 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
    already explains. Keep markup so renderer/HTML doesn't need editing. */
 .view-mode-btn .view-mode-desc { display: none; }
 .view-mode-btn .badge { position: static; margin-left: 4px; }
+/* Item 7: the per-view hint is one line. It sits in the room the bar has left;
+   when that is too narrow for the line (a 1024 px window), it wraps onto a row
+   of its own under the view buttons instead of standing as a tall column. */
 .view-mode-help {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
   font-size: 11px; color: var(--fg-3);
-  max-width: 420px; text-align: right;
+  flex: 1 1 auto; min-width: 0; text-align: right;
 }
-.view-mode-help-text { font-style: italic; }
+.view-mode-help-text {
+  font-style: italic; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
 .view-mode-help-x {
   flex-shrink: 0; background: transparent; border: 0; cursor: pointer;
   color: var(--fg-4); font-size: 14px; line-height: 1; padding: 0 2px;
@@ -897,10 +838,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   flex: 1;
 }
 .session-layout-map .map-host {
-  /* NAV-AUDIT §E2/§7a: the Advanced views drawer opening must not steal the
-     map's height. The flex cascade can't be pinned here (an ancestor sets
-     min-height:0), so the drawer's toggle handler in renderer.js freezes this
-     host's pixel height on open and releases it on close — see _wireMapExpertDrawer. */
   flex: 1; min-height: 360px; height: auto;
 }
 
@@ -920,33 +857,35 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   display: flex; flex-direction: column; gap: 14px;
   max-width: 980px; width: 100%; margin: 0 auto;
 }
-.ov-badge-row { display: flex; align-items: center; gap: 10px; }
-.ov-badge {
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 6px 14px; font-size: 13px; font-weight: 600;
-  border-radius: var(--radius-sm); border: 1px solid var(--rule);
-  background: var(--bg-2); box-shadow: var(--shadow);
+/* The "What is left" line, first on the home: the path's stages, done or not,
+   and one button for the next act. */
+.ov-next {
+  display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap;
+  background: var(--accent-muted); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 10px 14px;
 }
-.ov-badge.ok { color: var(--va); border-color: var(--va); }
-.ov-badge.warn { color: var(--warn); border-color: var(--warn); }
-.ov-badge-text { min-width: 0; }
-/* Item 8: the "case analysis on/locked" fact folded in as the badge's
-   subtitle (was a second, duplicating chip). */
-.ov-badge-sub {
-  flex: 0 0 auto; font-size: 10px; font-weight: 600;
-  font-family: var(--font-mono); letter-spacing: 0.4px; text-transform: uppercase;
-  padding: 2px 8px; border-radius: var(--radius-sm);
-  border: 1px solid var(--rule); background: var(--bg-3);
+.ov-next-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-2);
 }
-.ov-badge-sub.ok { color: var(--va); border-color: var(--va); }
-.ov-badge-sub.locked { color: var(--fg-3); border-style: dashed; }
-.ov-tier2 {
-  font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.4px;
-  text-transform: uppercase; padding: 3px 8px; border-radius: var(--radius-sm);
-  border: 1px solid var(--rule); color: var(--fg-3); background: var(--bg-2);
+.ov-next-stages {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-width: 0;
 }
-.ov-tier2.ok { color: var(--va); border-color: var(--va); }
-.ov-tier2.locked { color: var(--fg-3); border-style: dashed; }
+.ov-next-stage {
+  font-size: 12px; color: var(--fg-3); padding: 2px 8px; white-space: nowrap;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+}
+.ov-next-stage.done { color: var(--va); }
+.ov-next-stage.next { color: var(--fg); font-weight: 600; border-color: var(--accent); background: var(--bg-2); }
+.ov-next-mark { margin-right: 4px; }
+.ov-next > button { flex: 0 0 auto; }
+.ov-next-say { flex-basis: 100%; font-size: 13px; color: var(--fg); line-height: 1.5; }
+/* The session summary: one line, plus warning lines only when needed. */
+.ov-summary { display: flex; flex-direction: column; gap: 6px; padding: 0 2px; }
+.ov-summary-line { font-size: 12px; color: var(--fg-2); line-height: 1.5; }
+.ov-summary-name { color: var(--fg); font-weight: 600; }
+.ov-summary-warn { display: flex; flex-direction: column; gap: 6px; }
 .ov-section {
   background: var(--bg-2); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 12px 14px;
@@ -955,38 +894,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px;
 }
-/* AD-14: the mark-runs line, shown when no runs are marked (no cases): one
-   instruction + a button that opens Flow with the Markers panel. */
-.ov-mark-runs {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: var(--accent-muted); border: 1px solid var(--accent);
-  border-radius: var(--radius); padding: 10px 14px;
-}
-.ov-mark-runs-text { flex: 1 1 320px; min-width: 0; font-size: 13px; color: var(--fg); line-height: 1.5; }
-.ov-mark-runs button { flex: 0 0 auto; }
-/* Fact strip — 6 measured tiles. */
-.ov-facts {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-}
-.ov-tile {
-  background: var(--bg-2); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 12px; min-width: 0;
-}
-.ov-tile-value {
-  font-size: 20px; font-weight: 700; color: var(--fg);
-  font-family: var(--font-mono); line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.ov-tile-label {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
-  text-transform: uppercase; color: var(--fg-3); margin-top: 4px;
-}
-.ov-tile-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* C12 (RP-10): a stage that could not run reads as missing, not as zero. */
-.ov-tile-not-run { box-shadow: none; border: 1px dashed var(--rule); }
-.ov-tile-not-run .ov-tile-value { color: var(--fg-3); }
 .analysis-note.ov-stage-not-run { border-left: 3px solid var(--warn); padding: 4px 0 4px 8px;
   margin-top: 6px; font-style: normal; color: var(--fg-2); }
 .ov-stage-detail { margin-top: 4px; font-size: 11px; color: var(--fg-3);
@@ -1062,11 +969,16 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .ov-saymore { border-left: 3px solid var(--accent-2); }
 .ov-saymore ul { margin: 0; padding-left: 18px; }
 .ov-saymore li { font-size: 12px; color: var(--fg-2); line-height: 1.55; margin-bottom: 4px; }
-/* Export bar. */
-.ov-export-bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 4px 2px 18px;
-}
+/* Document sections (contract C6): the Evidence modules' disclosure
+   (.analysis-module) around a grid of the PDD's document fields. */
+.ov-doc { margin-bottom: 18px; }
+.ov-doc-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 16px; }
+.ov-doc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ov-doc-label { font-size: 12px; font-weight: 600; color: var(--fg); }
+.ov-doc-optional { font-size: 11px; font-weight: 400; color: var(--fg-3); }
+.ov-doc-where { font-size: 11px; color: var(--fg-3); }
+.ov-doc-input { width: 100%; box-sizing: border-box; font-family: var(--font-ui); font-size: 13px; }
+textarea.ov-doc-input { min-height: 64px; }
 
 /* ===== Analysis view (Cluster N / ADR-0008) ===== */
 .session-layout-analysis {
@@ -1230,16 +1142,6 @@ details.analysis-module { padding: 0; }
   background: var(--accent-muted); border-color: var(--accent);
   color: var(--fg); font-weight: 600;
 }
-/* Segment-grain automation candidates (ADR-0016): a row's primary text
-   is the segment label; below it, a small chain of step labels carries
-   the "what does the segment actually do" detail. */
-.auto-sequence {
-  font-size: 11px; color: var(--fg-3); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 480px;
-}
-.auto-arrow { color: var(--fg-4); padding: 0 2px; }
-.auto-more { color: var(--fg-4); font-style: italic; }
 /* Automation-candidate finding cards (R1 §5): reuses .ov-finding chrome
    (finding-cards.js); .auto-card only adds spacing between cards, and
    restates the existing rank order as a small gutter number. */
@@ -1351,22 +1253,6 @@ details.analysis-module { padding: 0; }
 }
 .case-scope select:hover { border-color: var(--fg-4); }
 .case-scope.scoped select { border-color: var(--accent); color: var(--fg); }
-
-/* ADR-0024: the single grain control in the view-mode bar (slider + notch
-   label). A view-time roll-up — element ⊂ screen ⊂ app ⊂ phase ⊂ case. */
-.grain-control {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--fg-3);
-}
-.grain-label {
-  font-family: var(--font-mono); letter-spacing: 0.5px;
-  text-transform: uppercase; font-size: 10px; color: var(--fg-4);
-}
-.grain-range { width: 92px; accent-color: var(--accent); cursor: pointer; }
-.grain-notch {
-  font-family: var(--font-mono); font-size: 10px; color: var(--fg-2);
-  min-width: 46px; text-align: left;
-}
 
 /* Flow timeline activity bands dimmed when out of the scoped case. */
 .tl-activity.out-of-scope { opacity: 0.15; filter: grayscale(0.4); }
@@ -1789,66 +1675,8 @@ details.analysis-module { padding: 0; }
   color: var(--fg-2); font-size: 12px; line-height: 1.6;
 }
 
-/* ===== Session summary (post-analysis orientation, Phase A) ===== */
-.session-summary {
-  /* flex:0 0 auto -- hold natural height like the event-table / log
-     <details> panels. Without it this shrinkable panel is the only
-     give in the scrolling session column and gets squeezed flat. */
-  margin: 0 0 14px; overflow: hidden; flex: 0 0 auto;
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: var(--radius);
-}
-.session-summary > summary { cursor: pointer; padding: 10px 18px; }
-.session-summary > summary:hover { background: var(--bg-3); }
-.session-summary[open] > summary { border-bottom: 1px solid var(--rule); }
-.summary-label {
-  color: var(--fg-3); font-size: 11px; letter-spacing: 1px;
-  text-transform: uppercase; font-family: var(--font-mono);
-}
-.session-summary[open] .summary-label { color: var(--accent); }
-.summary-teaser { color: var(--fg-3); font-size: 12px; margin-left: 10px; }
-.session-summary[open] .summary-teaser { display: none; }
-.summary-body { padding: 14px 18px; }
-.summary-head { color: var(--fg-2); font-size: 12px; margin-bottom: 12px; }
-.summary-head strong { color: var(--fg); }
-.summary-tiles { display: flex; flex-wrap: wrap; gap: 10px; }
-.summary-tile {
-  flex: 1 1 auto; min-width: 120px; padding: 8px 12px;
-  background: var(--bg-3); border-radius: var(--radius-sm);
-}
-.summary-tile .t-label {
-  display: block; color: var(--fg-3); font-size: 10px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.4px;
-}
-.summary-tile .t-value { color: var(--fg); font-size: 20px; font-weight: 700;
-  font-family: var(--font-mono); line-height: 1.2; }
-.summary-tile .t-sub { display: block; color: var(--fg-3); font-size: 11px; }
-/* Item 9: the demoted session chip row, now inside the summary band. */
-.summary-pills { margin-top: 2px; }
-.summary-section { margin-top: 14px; }
-.summary-section-title {
-  color: var(--fg-3); font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.4px; margin-bottom: 6px;
-}
-.summary-bars { display: flex; flex-direction: column; gap: 4px; }
-.summary-bar-row {
-  display: grid; grid-template-columns: 170px 1fr 130px;
-  gap: 10px; align-items: center; font-size: 12px;
-}
-.summary-bar-row .b-name {
-  color: var(--fg-2); white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-}
-.summary-bar-track {
-  height: 8px; background: var(--bg-3);
-  border-radius: 2px; overflow: hidden;
-}
-.summary-bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
-.summary-bar-row .b-value {
-  color: var(--fg-3); text-align: right; font-family: var(--font-mono);
-}
-.summary-meta-line { color: var(--fg-3); font-size: 11px; margin-top: 6px; }
-.summary-problems { display: flex; flex-direction: column; gap: 6px; }
+/* Warning lines (the Overview's session summary) and small fix buttons (also
+   the timeline selection card). */
 .summary-problem {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 10px; font-size: 12px; color: var(--fg-2);
@@ -1857,24 +1685,10 @@ details.analysis-module { padding: 0; }
 }
 .summary-problem .p-text { flex: 1; }
 .summary-fix { flex: 0 0 auto; padding: 3px 10px; font-size: 11px; }
-.summary-hint {
-  color: var(--fg-3); font-size: 11px; margin-top: 10px; line-height: 1.5;
-}
-.summary-banner {
-  margin-top: 10px; padding: 8px 12px; font-size: 12px; color: var(--fg-2);
-  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
-  border-left: 3px solid var(--accent-2); border-radius: 0 3px 3px 0;
-}
-.summary-banner.warn {
-  background: color-mix(in srgb, var(--warn) 14%, transparent);
-  border-left-color: var(--warn);
-}
-.summary-link { color: var(--accent); cursor: pointer; text-decoration: none; }
-.summary-link:hover { text-decoration: underline; }
 
 /* RP-04: annotations.json exists but cannot be read. Persistent (not a toast)
    because nothing is saved until the analyst restores a backup. Same shape as
-   .summary-banner, in the error colour. */
+   .summary-problem, in the error colour. */
 .anno-error-banner {
   flex: 0 0 auto; margin: 6px 0 12px; padding: 10px 14px;
   font-size: 12px; line-height: 1.5; color: var(--fg);

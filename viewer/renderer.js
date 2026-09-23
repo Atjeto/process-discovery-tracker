@@ -19,7 +19,6 @@ const TimelineCore = require("./timeline/timeline-core.js");
 const State = require("./state.js");
 const PdtTheme = require("./theme.js");
 const PdtDfg = require("./dfg-viewer.js");
-const PdtBpmn = require("./bpmn-viewer.js");
 const PdtSteps = require("./step-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
@@ -29,9 +28,10 @@ const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecen
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead } = require("./views/flow-view.js");
-const { renderOverviewLevel, openMarkersInFlow, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON } = require("./views/overview-view.js");
+const { renderOverviewLevel, openMarkersInFlow, mapLockHtml } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
-const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
+const { buildAnnotationDfg } = require("./process-map-levels.js");
+const RunsModel = require("./runs-model.js");
 const RefmapUI = require("./refmap-ui.js");
 const { pddExportOutcome } = require("./normalize-result.js");
 
@@ -87,51 +87,11 @@ $$(".view-mode-btn").forEach((btn) => {
   if (playheadBtn) playheadBtn.style.display = (State.getLevel() === "overview") ? "none" : "";
 })();
 
-/* ADR-0024: the single grain control. The slider notch (and the synced map
-   level select) set the shared view-time grain; Steps / Flow / Map all roll up
-   to it with no re-normalization. "activity" on the map select is a map-only
-   taxonomy escape hatch and does not move the grain. */
-const _GRAIN_NOTCHES = ["element", "screen", "app", "phase", "case"];
-function _applyGrain(notch, opts = {}) {
-  if (!_GRAIN_NOTCHES.includes(notch)) return;
-  State.setGrain(notch);
-  const slider = document.getElementById("grain-slider");
-  if (slider) slider.value = String(_GRAIN_NOTCHES.indexOf(notch));
-  const lbl = document.getElementById("grain-notch-lbl");
-  if (lbl) lbl.textContent = notch;
-  const sel = document.getElementById("session-map-level");
-  if (sel && sel.value !== notch) sel.value = notch;
-  // The map's grain is the controller's level. The controller's own select
-  // listener already moved it when the change came FROM the select.
-  if (!opts.fromMapCtrl && _sessionMapCtrl) _sessionMapCtrl.setLevel(notch);
-  State.emit("grain");           // Steps + Flow re-render to the new grain
-}
-(() => {
-  const slider = document.getElementById("grain-slider");
-  if (slider) {
-    // Reflect the persisted default on boot.
-    slider.value = String(Math.max(0, _GRAIN_NOTCHES.indexOf(State.getGrain())));
-    slider.addEventListener("input", (e) => {
-      const i = parseInt(e.target.value, 10) || 0;
-      _applyGrain(_GRAIN_NOTCHES[Math.max(0, Math.min(4, i))]);
-    });
-  }
-  const sel = document.getElementById("session-map-level");
-  if (sel) {
-    sel.value = State.getGrain();   // default the map select to the grain
-    sel.addEventListener("change", () => {
-      // "activity" is map-only; a grain notch syncs the shared grain. The map
-      // controller's own listener already re-rendered the map, so skip its setLevel.
-      if (sel.value !== "activity") _applyGrain(sel.value, { fromMapCtrl: true });
-    });
-  }
-})();
-
 const VIEW_MODE_HELP = {
-  overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the PDD export.",
+  overview: "Overview: what is left to do, the recording in one line, the findings, and the document sections for the PDD.",
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
   steps:  "Steps view: each run's drafted steps. Confirm the pattern run first: fix its step boundaries, name its steps, then click Confirm run.",
-  map:    "Map view: the Process diagram (BPMN) or Flow diagram for this session, at the chosen detail level (element … case) or by app category.",
+  map:    "Map view: the process map built from the runs' steps. Fork it to draw the As-Is or To-Be map for the PDD.",
 };
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
@@ -202,212 +162,43 @@ function _viewportApplyToMode(mode, snap) {
 
 /* ============ Map level (Session view) ============================ */
 
-/* The Session view's "Map" level renders the interactive process-map UI,
-   bound to a single-session data source via map-controller.js. Lazily
-   created on first render so its querySelector
-   lookups land after the DOM is ready. State (notation × level × scope ×
-   rare-cutoff) lives in the controller and persists across session switches. */
+/* The Map level shows the one process map: a Flow diagram built from the
+   runs' steps (process-map-levels.buildAnnotationDfg), bound to the loaded
+   session through map-controller.js. Created on first render so its lookups
+   land after the DOM is ready; the rare-path cutoff lives in the controller
+   and persists across session switches. */
 let _sessionMapCtrl = null;
 
-function _sessionBpmnFile(level) {
-  // The observed-flow BPMN is pre-mined only at the step (=element) and phase
-  // grains (ADR-0012); the screen/app/case notches have no Process-diagram file
-  // and fall back to the Flow diagram. "activity" uses the taxonomy BPMN.
-  return (level === "step" || level === "element") ? "process_map_step.bpmn"
-       : level === "phase" ? "process_map_phase.bpmn"
-       : level === "activity" ? "process_map.bpmn"
-       : null;   // screen / app / case -> no Process diagram (use Flow diagram)
+/* The step-level BPMN the pipeline writes with --mine: the source Fork copies
+   into an editable reference map (ADR-0019). */
+function _stepBpmnPath() {
+  const sess = State.getSession();
+  return (sess && sess.sessionFolder) ? path.join(sess.sessionFolder, "process_map_step.bpmn") : null;
 }
 
-/* Activity labels emitted inside every step whose value-free label matches
-   `stepLabel` in the current session -- the children the activity Flow diagram
-   is scoped to when a step node is drilled. */
-function _sessionActivityLabelsForStep(stepLabel) {
+/* The map's data: the lock message while the runs cannot be drawn
+   (overview-view.mapLockHtml owns the sentences and the mark-runs verb),
+   else the graph of every run's visible steps, the runs as the Steps level
+   builds them. */
+function _sessionMapData() {
   const sess = State.getSession();
-  const labels = new Set();
-  if (!sess) return labels;
-  const steps = ((sess.annotations || {}).steps || []).filter((st) => st && st.state !== "hidden");
-  const events = sess.events || [];
-  for (const st of steps) {
-    const lbl = st.process_label || processLabel(st.name) || "(unnamed)";
-    if (lbl !== stepLabel) continue;
-    const tr = st.time_range || {};
-    const a = tr.start ? new Date(tr.start).getTime() : NaN;
-    const b = tr.end ? new Date(tr.end).getTime() : NaN;
-    if (!isFinite(a) || !isFinite(b)) continue;
-    for (const ev of events) {
-      if (ev.type !== "activity") continue;
-      const t = new Date(ev.timestamp).getTime();
-      if (isFinite(t) && t >= a && t <= b) {
-        const al = (ev.data || {}).activity_label;
-        if (al) labels.add(al);
-      }
-    }
-  }
-  return labels;
-}
-
-/* DataSource: resolve the (notation × level × scope) cell for the controller.
-   Pulls from State.getSession() so it always sees the current session. */
-function _sessionMapDataSource({ notation, level, scope }) {
-  const sess = State.getSession();
-  if (!sess) return { emptyMessage: "Open a session to see its process map." };
-  // Generic post-analyze hint we attach to most empty messages so a user who
-  // ran Analyze with "Build process map" unchecked understands why nothing
-  // shows -- the checkbox lives in the "⋯ More" menu under the actions bar.
-  const mineHint = ' (Map files are produced by Analyze with "Build process map" checked, under ⋯ More.)';
-  if (notation === "bpmn") {
-    const file = _sessionBpmnFile(level);
-    // ADR-0024: the screen/app/case notches have no pre-mined Process diagram —
-    // guide to the Flow diagram rather than render a dead/empty BPMN host.
-    if (!file) {
-      return {
-        emptyMessage: 'The Process diagram (BPMN) is built at the Element and Phase detail levels. ' +
-          'For the ' + level + ' level, switch to the Flow diagram tab above: it regroups live.',
-      };
-    }
-    // §B2 honesty gate: the step-grain observed BPMN draws CASE flow (one
-    // trace per case), so it is Tier-2 — it renders only when
-    // case_quality.tier2_unlocked. Below the gate the section is REPLACED
-    // by the one-line state + the mark-runs call to action (the §1 replace
-    // pattern), never rendered with fact-level authority.
-    if (level === "step" || level === "element") {
-      const cq = (sess.analysis || {}).case_quality;
-      if (!cq || !cq.tier2_unlocked) {
-        return { emptyMessage: _stepBpmnLockedMessage(cq) };
-      }
-    }
-    const bpmnPath = sess.sessionFolder ? path.join(sess.sessionFolder, file) : null;
-    if (!bpmnPath || !fs.existsSync(bpmnPath)) {
-      return {
-        emptyMessage: level === "activity"
-          ? 'No process map BPMN yet: click "Analyze session".' + mineHint
-          : 'No ' + level + '-level Process diagram yet: Analyze a session that has ' +
-            (level === "phase" ? "phases" : "steps") +
-            ' (mined from your annotations).' + mineHint,
-      };
-    }
-    return { bpmnPath };
-  }
-  // notation === "dfg"
-  if (level === "activity") {
-    const dfg = sess.dfg;
-    if (!dfg || !dfg.edges || !dfg.edges.length) {
-      return {
-        dfg,
-        emptyMessage: 'No category-level Flow diagram yet. It needs app category rules for the apps in this session. The detail levels (element … case) build their flow from your annotations and need no categories.',
-      };
-    }
-    return { dfg };
-  }
-  // element / screen / app / phase / case — the grain ladder (ADR-0024), rolled
-  // up live from the annotations. Phase drill-scope still applies on the
-  // element notch (a phase node descends to its steps).
-  const phaseFilter = (scope && scope.level === "step")
-    ? { phaseName: scope.phaseName } : null;
+  if (!sess) return { emptyMessage: escapeHtml("Open a session to see its process map.") };
+  const lock = mapLockHtml(sess.analysis);
+  if (lock) return { emptyMessage: lock };
+  const runs = RunsModel.buildRuns(sess.stats, (sess.annotations && sess.annotations.steps) || []).runs;
   return {
-    dfg: buildAnnotationDfg([sess], level, phaseFilter, _sessionGrainCtx(sess)),
-    // §B2: the default map is TIME-weighted — edge thickness/labels carry
-    // accumulated transition time; the traversal count stays in the tooltip.
+    dfg: buildAnnotationDfg(runs.map((r) => r.visible)),
+    // §B2: the map is TIME-weighted: edge thickness and labels carry the
+    // time that flowed along each path; the traversal count stays in the tooltip.
     edgeWeight: "time",
-    emptyMessage: 'Nothing to draw at the ' + level + ' level yet: add steps to this ' +
-      'session in the Steps view (the map groups them at the chosen detail level).',
+    emptyMessage: escapeHtml("No steps to draw yet: the runs have no visible steps. Add or unhide steps in the Steps view."),
   };
-}
-
-/* §B2 + AD-14: the replace-pattern lock message for the step-grain Process
-   diagram. One honest line on WHY it is withheld, then the same mark-runs
-   instruction and button the Overview shows (overview-view.js owns the
-   sentence and the verb). HTML: the button is handled by the delegated
-   listener installed on the BPMN host in _ensureSessionMapCtrl (innerHTML
-   rewrites keep delegation alive). */
-function _stepBpmnLockedMessage(cq) {
-  const lead = "The step-level Process diagram is not shown because it draws how cases flow. ";
-  if (!cq) return lead + "This session has not been analyzed yet, so run Analyze once.";
-  const why = cq.mode === "unsegmented"
-    ? NO_RUNS_MARKED
-    : ((cq.case_count || 0) < 2
-        ? "Only one case was identified, and case comparisons need at least 2."
-        : "The identified cases cover only " + Math.round((cq.coverage || 0) * 100) +
-          "% of the recording, below the 70% needed to trust them.");
-  return escapeHtml(lead + why + " " + MARK_RUNS_INSTRUCTION) +
-    ' <button type="button" class="link-btn" data-map-cta="mark-runs">' +
-    escapeHtml(MARK_RUNS_BUTTON) + "</button>";
-}
-
-/* Resolver context for the grain roll-up: a stable case label and the
-   interaction map (the view-time fallback for sessions analyzed before
-   grain_keys were stamped). Lazy-require flow-view to dodge the load cycle. */
-function _sessionGrainCtx(sess) {
-  let caseLabel = (id) => id;
-  try {
-    const cases = require("./views/flow-view.js").deriveCases(sess) || [];
-    const m = {};
-    cases.forEach((c, i) => { m[c.id] = (c.label && c.label !== c.id) ? c.label : ("Case " + (i + 1)); });
-    caseLabel = (id) => m[id] || "Case ?";
-  } catch (_) { /* fall back to the raw id */ }
-  const interactionsById = {};
-  for (const ev of (sess.events || [])) {
-    if (ev.type === "interaction" && ev.event_id) interactionsById[ev.event_id] = ev;
-  }
-  // ADR-0028 §3: a work item's analyst name flows down to its member fragments
-  // on the map's screen level (the same seam the Steps roll-up + timeline use).
-  const groupName = require("./work-items.js")
-    .groupNameResolver((sess.annotations && sess.annotations.group_annotations) || []);
-  return { caseLabel, interactionsById, groupName };
-}
-
-/* Activity-node click in the Session-view map: seek the Flow timeline to the
-   first matching event and switch to the Flow level. */
-function _sessionOnActivityNodeClick(label /*, ev */) {
-  const sess = State.getSession();
-  if (!sess || !sess.events || !label) return;
-  const want = String(label).toLowerCase();
-  const target = sess.events.find((e) =>
-    e.type === "activity" &&
-    (((e.data || {}).activity_label || "").toLowerCase() === want));
-  if (target && target.timestamp) {
-    applyLevel("flow");
-    setTimeout(() => seekToTimestamp(target.timestamp), 0);
-  }
-}
-
-// BPMN node-count (mirror of flow-view.countBpmnNodes; inlined to avoid the
-// renderer<->flow-view load cycle).
-const _BPMN_NODE_RE = /<(?:[\w-]+:)?(task|userTask|serviceTask|manualTask|scriptTask|sendTask|receiveTask|businessRuleTask|callActivity|subProcess|startEvent|endEvent|intermediateThrowEvent|intermediateCatchEvent|exclusiveGateway|parallelGateway|inclusiveGateway|eventBasedGateway|complexGateway)\b/g;
-
-/* Keep the "N nodes · Open · Reveal" status line honest: it describes the file
-   ACTUALLY on screen (the controller's currently rendered BPMN), not always the
-   activity-level process_map.bpmn. Hidden on the Flow diagram and on the coarse
-   grains (screen/app/case), which have no file on disk. Driven by the map
-   controller's onRender so it can never drift from what's displayed. */
-function _syncMapStatus({ notation, level, bpmnPath } = {}) {
-  const wrap = document.getElementById("process-map-status");
-  if (!wrap) return;
-  const detail = document.getElementById("process-map-detail");
-  // The per-case picker is retired: it only re-pointed Open/Reveal, never
-  // re-rendered the map, and confused the status line. Keep it hidden.
-  const caseSel = document.getElementById("process-map-case-select");
-  if (caseSel) caseSel.style.display = "none";
-  if (notation !== "bpmn" || !bpmnPath) {
-    wrap.style.display = "none";    // a live DFG / coarse grain has no file
-    return;
-  }
-  let n = 0;
-  try { n = (fs.readFileSync(bpmnPath, "utf8").match(_BPMN_NODE_RE) || []).length; } catch (_) {}
-  if (detail) detail.textContent = n + (n === 1 ? " node" : " nodes");
-  wrap.dataset.bpmnPath = bpmnPath;   // Open/Reveal now target the displayed file
-  wrap.style.display = "";
 }
 
 function _ensureSessionMapCtrl() {
   if (_sessionMapCtrl) return _sessionMapCtrl;
   _sessionMapCtrl = createMapController({
-    hostBpmn: document.getElementById("session-map-bpmn-host"),
     hostDfg: document.getElementById("session-map-dfg-host"),
-    notationTabs: Array.from(document.querySelectorAll("#session-layout-map .panel-tab[data-map]")),
-    levelSelect: document.getElementById("session-map-level"),
-    scopeChip: document.getElementById("session-map-scope"),
     zoomControls: {
       in: document.getElementById("btn-session-map-zoom-in"),
       out: document.getElementById("btn-session-map-zoom-out"),
@@ -420,89 +211,22 @@ function _ensureSessionMapCtrl() {
       range: document.getElementById("session-rng-rare"),
       label: document.getElementById("session-hide-rare-lbl"),
     },
-    dataSource: _sessionMapDataSource,
-    activityLabelsForStep: _sessionActivityLabelsForStep,
-    onActivityNodeClick: _sessionOnActivityNodeClick,
-    onRender: _syncMapStatus,   // keep the "N nodes / Open / Reveal" line tied to the displayed file
-    // ADR-0024: the Map opens at the shared grain notch (default "screen"). That
-    // notch has no pre-mined BPMN, so default to the Flow diagram, which rolls
-    // up live — the Process diagram (Element/Phase) stays one tab away.
-    initialNotation: "dfg",
-    initialLevel: State.getGrain(),
+    dataSource: _sessionMapData,
   });
-  // §B2 + AD-14: the lock-state CTA inside the BPMN host ("Mark runs in
-  // Flow", the same verb as the Overview's button). Delegated once, so
-  // innerHTML rewrites keep it alive.
-  const bpmnHost = document.getElementById("session-map-bpmn-host");
-  if (bpmnHost) {
-    bpmnHost.addEventListener("click", (e) => {
+  // The lock message's call to action ("Mark runs in Flow", the same verb as
+  // the Overview's). Delegated once, so innerHTML rewrites keep it alive.
+  const host = document.getElementById("session-map-dfg-host");
+  if (host) {
+    host.addEventListener("click", (e) => {
       if (e.target.closest('[data-map-cta="mark-runs"]')) openMarkersInFlow();
     });
   }
-  _wireMapExpertDrawer();
   return _sessionMapCtrl;
 }
 
-/* §B2: the Expert drawer — the off-contract cells removed from the default
-   notation×level matrix (lab-phase §1 cargo-cult cuts): the activity-taxonomy
-   level (both notations; the BPMN there IS the inductive-miner output) and
-   the per-case BPMN files. The files + CLI flags are untouched; the drawer
-   is the explicit, labelled way back in. */
-function _wireMapExpertDrawer() {
-  const dfgBtn = document.getElementById("btn-expert-activity-dfg");
-  const bpmnBtn = document.getElementById("btn-expert-activity-bpmn");
-  const perCase = document.getElementById("btn-expert-percase");
-  if (dfgBtn) dfgBtn.addEventListener("click", () => {
-    _ensureSessionMapCtrl().setState({ notation: "dfg", level: "activity" });
-  });
-  if (bpmnBtn) bpmnBtn.addEventListener("click", () => {
-    _ensureSessionMapCtrl().setState({ notation: "bpmn", level: "activity" });
-  });
-  if (perCase) perCase.addEventListener("click", async () => {
-    const sess = State.getSession();
-    const dir = sess && sess.sessionFolder
-      ? path.join(sess.sessionFolder, "process_maps") : null;
-    if (dir && fs.existsSync(dir)) await Ipc.revealFile(dir);
-    else toast("No per-case BPMNs on disk yet: Analyze with \"Build process map\" checked (needs 2+ cases).", "error");
-  });
-
-  // NAV-AUDIT §E2/§7a: keep the drawer LOCAL — opening it must grow the page
-  // downward, not steal the map's height. The map host is a flex child that
-  // otherwise gives up its grow-share to the opening drawer (546→499px). The
-  // flex cascade can't be fixed by min-height here (an ancestor pins
-  // min-height:0), so freeze the host at its CLOSED height and release it on
-  // close. The height must be captured BEFORE the drawer expands (the `toggle`
-  // event fires too late — the host has already reflowed), so snapshot it on the
-  // summary's click in the capture phase; the `toggle` handler then applies the
-  // freeze on open and clears it on close. The frozen host + drawer content
-  // overflow the panel, so the Session view (overflow:auto) scrolls and the
-  // drawer's own summary stays put under the cursor.
-  const drawer = document.getElementById("map-expert-drawer");
-  const mapHost = document.querySelector("#session-layout-map .map-host");
-  if (drawer && mapHost) {
-    let _closedHostH = 0;
-    const snap = () => {
-      if (!drawer.open) _closedHostH = Math.round(mapHost.getBoundingClientRect().height);
-    };
-    const summary = drawer.querySelector("summary");
-    if (summary) summary.addEventListener("click", snap, true);
-    drawer.addEventListener("toggle", () => {
-      if (drawer.open) {
-        const h = _closedHostH || Math.round(mapHost.getBoundingClientRect().height);
-        if (h > 0) { mapHost.style.height = h + "px"; mapHost.style.flex = "0 0 auto"; }
-      } else {
-        mapHost.style.height = "";
-        mapHost.style.flex = "";
-        try { _sessionMapCtrl && _sessionMapCtrl.refit(); } catch (_) {}
-      }
-    });
-  }
-}
-
 function renderMapLevel() {
-  // Cheap to call when the Map level isn't visible: the controller's tabs and
-  // hosts are hidden anyway. We early-return mainly to skip BPMN's async render
-  // when nothing's on screen.
+  // Cheap to call when the Map level isn't visible: its host is hidden anyway.
+  // We early-return mainly to skip the layout when nothing's on screen.
   if (State.getLevel() !== "map") return;
   _ensureSessionMapCtrl().render();
   try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
@@ -520,20 +244,13 @@ State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
 // Item 6: the actions bar's "Analyze to apply N marker changes" call to action.
 State.subscribe("markers",  renderSessionPills);
-// Lab-phase §A5 + R4: the Overview renders the analysis-backed badge / facts /
-// findings AND (R4) the Evidence modules retired from the Analysis level -- so
-// it follows markers, analysis, steps, and grain (the time-goes itemisation
-// notch).
+// Lab-phase §A5 + R4: the Overview renders the what-is-left line, the
+// findings AND (R4) the Evidence modules retired from the Analysis level, so
+// it follows markers, analysis and steps.
 State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
 State.subscribe("steps",    renderMapLevel);
-// ADR-0024: a grain change re-renders the Flow timeline to the new notch (the
-// Map is moved by mapCtrl.setLevel, so it isn't subscribed here to avoid a
-// double render). The Steps level shows the runs and their steps whatever the
-// notch, so it does not follow the grain.
-State.subscribe("grain",    renderTimeline);
-State.subscribe("grain",    renderOverviewLevel);
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
@@ -614,16 +331,9 @@ function applyLevel(name) {
    shortcuts for the active view. Dismissable; state persisted to
    localStorage so the analyst doesn't have to dismiss every launch. */
 const SHORTCUTS_OVERLAY_KEY = "pdt.shortcutsOverlayHidden";
+/* The Map has no card: it sat over the diagram, and its gestures (scroll to
+   zoom, drag to pan) are the map host's tooltip. */
 const VIEW_SHORTCUTS = {
-  map: [
-    // NAV-AUDIT §E1: at the phase/element grains a node click drills one level
-    // in; at screen/app/case (no deeper in-map level) it selects the node and
-    // reveals its info. "Select · drill in" is honest for both, and never
-    // implies a drill the default (screen) surface can't do.
-    ["Click node", "Select · drill in"],
-    ["Scroll",     "Zoom map"],
-    ["Drag",       "Pan map"],
-  ],
   flow: [
     ["Space", "Play / pause video"],
     ["← →",  "Scrub 5s"],
@@ -764,9 +474,10 @@ async function exportArtifact(kind) {
   let mapImgPath = null, tobeImgPath = null;
   if (kind === "pdd") {
     opts.pddOut = tmpPath;
-    // Embed the currently-rendered Flow (DFG) as the PDD's As-Is process map.
-    // cytoscape rasterises cleanly; if no map is on screen we skip it and the
-    // PDD falls back to its placeholder.
+    // Embed the process map on screen as the PDD's As-Is map. cytoscape
+    // rasterises cleanly; when the Map shows a message instead (locked, no
+    // steps) there is no graph (map-controller clears it), so the embed is
+    // skipped and the PDD keeps its placeholder.
     try {
       const dataUrl = (PdtDfg && PdtDfg.exportPng) ? PdtDfg.exportPng() : null;
       const comma = dataUrl ? dataUrl.indexOf("base64,") : -1;
@@ -839,33 +550,25 @@ async function exportArtifact(kind) {
 }
 
 /* AD-11: the Session Export menu carries the two map exports. "Step map as
-   BPMN" copies the step-level Process diagram file the pipeline writes;
-   "Map as SVG" is exportMapSvg below. */
+   BPMN" copies the step-level BPMN file the pipeline writes; "Map as SVG" is
+   exportMapSvg below. */
 if ($("#btn-session-step-bpmn")) $("#btn-session-step-bpmn").addEventListener("click", () => exportArtifact("step-bpmn"));
 if ($("#btn-session-map-svg"))   $("#btn-session-map-svg").addEventListener("click", () => exportMapSvg());
 
-/* ADR-0019: Reference Maps surface — fork / gallery / editor + the PDD image
-   bridge. Wired once at boot; reads the live session map via the controller. */
+/* ADR-0019: Reference Maps surface: fork, gallery, editor and the PDD image
+   bridge. Wired once at boot. Fork copies the step-level BPMN file. */
 RefmapUI.initRefmapUI({
-  getMapState: () => _ensureSessionMapCtrl().getState(),
   renderLiveMap: () => _ensureSessionMapCtrl().render(),
-  setMapCell: (level) => _ensureSessionMapCtrl().setState({ notation: "bpmn", level }),
-  sourceBpmnPath: (state) => {
-    const f = _sessionBpmnFile(state && state.level);
-    const sf = State.getSession() && State.getSession().sessionFolder;
-    return (f && sf) ? path.join(sf, f) : null;
-  },
+  sourceBpmnPath: () => _stepBpmnPath(),
 });
 
 /* ============ Exports ============================================= */
 
-/* AD-11: "Map as SVG" saves the map the Map level shows (the Process diagram
-   or the Flow diagram, at its current detail level) as an SVG image, the
-   format Figma / Lucidchart / browsers all import. From another level it
-   opens the Map first and lets the diagram draw (the same settle the PDD
-   export uses), then reads the renderer of the active notation. A cell that
-   shows a message instead of a diagram (locked, or not built at this detail
-   level) exports nothing and says so. */
+/* AD-11: "Map as SVG" saves the process map the Map level shows as an SVG
+   image, the format Figma / Lucidchart / browsers all import. From another
+   level it opens the Map first and lets the diagram draw (the same settle the
+   PDD export uses). A Map that shows a message instead of a diagram (locked,
+   no steps) exports nothing and says so. */
 async function exportMapSvg() {
   if (!State.getSession()) { toast("Open a session first.", "error"); return; }
   if (State.getLevel() !== "map") {
@@ -874,37 +577,26 @@ async function exportMapSvg() {
     if (mapBtn) mapBtn.click(); else applyLevel("map");
     await new Promise((r) => setTimeout(r, 900));
   }
-  const ctrl = _ensureSessionMapCtrl();
-  let which = "dfg";
-  const drawn = () => {
-    which = ctrl.getState().notation === "dfg" ? "dfg" : "bpmn";
-    const host = document.getElementById(which === "dfg" ? "session-map-dfg-host" : "session-map-bpmn-host");
-    return !!(host && host.querySelector(which === "dfg" ? "canvas" : ".djs-container"));
-  };
-  // bpmn-js imports asynchronously: give a Process diagram a bounded moment.
-  for (let i = 0; i < 30 && !drawn(); i++) await new Promise((r) => setTimeout(r, 100));
-  let svg = null;
-  if (drawn()) svg = which === "dfg" ? PdtDfg.exportSvg() : await PdtBpmn.exportSvg();
+  _ensureSessionMapCtrl();
+  const host = document.getElementById("session-map-dfg-host");
+  const svg = (host && host.querySelector("canvas")) ? PdtDfg.exportSvg() : null;
   if (!svg) {
-    toast("No process map is drawn on the Map level to export. Analyze the session, or pick a view of the map that shows a diagram.", "error");
+    toast("No process map is drawn on the Map level to export: the Map says why.", "error");
     return;
   }
-  const r = await Ipc.saveSvgFile({
-    content: svg,
-    suggestedName: (which === "dfg" ? "flow-diagram" : "process-diagram") + ".svg",
-  });
+  const r = await Ipc.saveSvgFile({ content: svg, suggestedName: "process-map.svg" });
   if (r && r.ok) toast("Process map exported to " + r.path, "success");
   else if (r && r.error) toast("Export failed: " + r.error, "error");
 }
 
 /* PDD export from Session view -- new in v0.18.1. The PDD's As-Is process
-   map (section 3.3) is rasterised from the currently-rendered Flow diagram;
-   to embed THIS session's map (not a blank canvas), pre-render the
-   Session-view Map controller's Flow tab and let cytoscape settle before
-   invoking the shared exportArtifact("pdd") path. Item 7: the Map shows
-   while the map is drawn (with the level bar saying so), and afterwards the
-   analyst is returned to the level they started from (the Overview when
-   they used its Export PDD button), unless they moved on meanwhile. */
+   map is rasterised from the process map on the Map level; to embed THIS
+   session's map (not a blank canvas), the Map level is shown (which draws
+   it) and cytoscape settles before the shared exportArtifact("pdd") path
+   runs. Item 7: the Map shows while the map is drawn (with the level bar
+   saying so), and afterwards the analyst is returned to the level they
+   started from (the Overview when its what-is-left line started the
+   export), unless they moved on meanwhile. */
 if ($("#btn-session-pdd")) {
   $("#btn-session-pdd").addEventListener("click", async () => {
     if (!State.getSession()) { toast("Open a session first.", "error"); return; }
@@ -912,11 +604,8 @@ if ($("#btn-session-pdd")) {
     toast("Preparing PDD: drawing the process map...", "info");
     selectLevel("map");
     try {
-      const ctrl = _ensureSessionMapCtrl();
-      ctrl.setState({ notation: "dfg" });
       // Let cytoscape paint + layout settle so PdtDfg.exportPng() captures the
-      // rendered diagram and not a blank canvas. 900ms matches the post-tab-
-      // switch timing used elsewhere in the controller.
+      // rendered diagram and not a blank canvas.
       await new Promise((r) => setTimeout(r, 900));
       await exportArtifact("pdd");
     } finally {

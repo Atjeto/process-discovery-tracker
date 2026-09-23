@@ -108,12 +108,6 @@ function openExternal(filePath) {
   return ipcRenderer.invoke("viewer:openExternal", filePath);
 }
 
-/** Open a mined diagram (.bpmn) via its guarded sink. Resolves to a string
- *  error or null on success. @param {string} filePath @returns {Promise<?string>} */
-function openDiagram(filePath) {
-  return ipcRenderer.invoke("viewer:openDiagram", filePath);
-}
-
 /* ---- External video ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -144,7 +138,7 @@ module.exports = {
   saveAnnotations,
   rememberStepName, readRememberedNames, forgetStepName,
   readProcesses, saveProcess, undoSaveProcess,
-  exportFile, saveSvgFile, revealFile, openExternal, openDiagram,
+  exportFile, saveSvgFile, revealFile, openExternal,
   attachExternalVideo, saveExternalVideoSync,
   onNormalizeLog, onOpenInitialSession,
 };

@@ -27,13 +27,6 @@
 
   const PdtTheme = require("./theme.js");
 
-  /* H3 conformance-overlay colours. Fixed semantic hexes (not theme
-     tokens) so "matches the template" / "off-template" read the same in
-     both themes; chosen to sit legibly on the light and dark DFG
-     backgrounds alike. */
-  const CONF_GREEN = "#4f9d5b";
-  const CONF_AMBER = "#cf9233";
-
   /* Persist a dragged DFG layout so it survives a re-render (tab/level switch)
      and a re-open, keyed by the exact node set: a different graph gets a fresh
      dagre layout and a changed node set self-heals (only matching nodes are
@@ -80,9 +73,6 @@
       return;
     }
     const onNodeClick = opts.onNodeClick;
-    /* H3: when a conformance map is supplied, every node is coloured
-       green (matches a canonical step) or amber (off-template). */
-    const conformance = opts.conformance || null;
     const nodes = new Set();
     for (const e of dfg.edges) { nodes.add(e.source); nodes.add(e.target); }
     // reduce, not Math.max(...spread): a large DFG (thousands of edges) would
@@ -90,8 +80,8 @@
     const maxFreq = dfg.edges.reduce((m, e) => Math.max(m, e.frequency || 1), 1);
     /* §B2 time-weighted edges: when the caller asks for edgeWeight "time"
        AND the edges carry measured `total_ms`, thickness + label encode
-       accumulated transition TIME (the default session/aggregate grain
-       maps); the traversal count stays one hover away in the edge tooltip.
+       accumulated transition TIME (the process map); the traversal count
+       stays one hover away in the edge tooltip.
        With no measurable time anywhere the map degrades honestly to the
        count weighting rather than rendering uniform noodles. */
     const maxMs = dfg.edges.reduce((m, e) => Math.max(m, e.total_ms || 0), 0);
@@ -105,7 +95,6 @@
           id: n,
           label: n,
           role: isStart ? "start" : isEnd ? "end" : "activity",
-          conf: conformance ? (conformance[n] || "amber") : null,
         },
       });
     }
@@ -173,16 +162,6 @@
             "border-width": 1.5,
           },
         },
-        // H3 conformance overlay -- listed after role styles so the
-        // conformance border wins when a map is supplied.
-        {
-          selector: 'node[conf = "green"]',
-          style: { "border-color": CONF_GREEN, "border-width": 3 },
-        },
-        {
-          selector: 'node[conf = "amber"]',
-          style: { "border-color": CONF_AMBER, "border-width": 3 },
-        },
         {
           selector: "edge",
           style: {
@@ -203,20 +182,6 @@
         {
           selector: "edge:selected, node:selected",
           style: { "line-color": tok.accent, "border-color": tok.accent },
-        },
-        // Variant overlay (Phase E): hovering a node highlights the
-        // session paths through it and dims everything else.
-        {
-          selector: ".vh-dim",
-          style: { opacity: 0.12 },
-        },
-        {
-          selector: "node.vh-on",
-          style: { "border-color": tok.accent3, "border-width": 2.5 },
-        },
-        {
-          selector: "edge.vh-on",
-          style: { "line-color": tok.accent3, "target-arrow-color": tok.accent3 },
         },
       ],
       layout: dagreRegistered
@@ -274,53 +239,19 @@
     // Any pan/zoom invalidates the anchored position — just hide it.
     cy.on("pan zoom", () => { tip.style.display = "none"; });
 
-    // Variant overlay (Phase E). Pre-index, for every activity, the set
-    // of node ids and edge ids on variants passing through it. On node
-    // hover, dim everything outside that union.
-    const variants = opts.variants || [];
-    if (variants.length) {
-      const nodeIndex = new Map();  // activity -> Set(node ids)
-      const edgeIndex = new Map();  // activity -> Set(edge ids)
-      for (const v of variants) {
-        const seq = v.variant || [];
-        const vNodes = new Set(seq);
-        const vEdges = new Set();
-        for (let i = 0; i < seq.length - 1; i++) {
-          vEdges.add(seq[i] + "__" + seq[i + 1]);
-        }
-        for (const act of seq) {
-          if (!nodeIndex.has(act)) nodeIndex.set(act, new Set());
-          if (!edgeIndex.has(act)) edgeIndex.set(act, new Set());
-          for (const n of vNodes) nodeIndex.get(act).add(n);
-          for (const e of vEdges) edgeIndex.get(act).add(e);
-        }
-      }
-      cy.on("mouseover", "node", (e) => {
-        const act = e.target.data("id");
-        const keepNodes = nodeIndex.get(act);
-        const keepEdges = edgeIndex.get(act);
-        if (!keepNodes) return;  // activity not on any variant
-        cy.elements().addClass("vh-dim");
-        cy.nodes().forEach((n) => {
-          if (keepNodes.has(n.data("id"))) {
-            n.removeClass("vh-dim").addClass("vh-on");
-          }
-        });
-        cy.edges().forEach((ed) => {
-          if (keepEdges.has(ed.data("id"))) {
-            ed.removeClass("vh-dim").addClass("vh-on");
-          }
-        });
-      });
-      cy.on("mouseout", "node", () => {
-        cy.elements().removeClass("vh-dim vh-on");
-      });
-    }
     setTimeout(() => {
       _restoreLayout(cy);   // re-apply any saved drags over the fresh dagre layout
       try { cy.fit(undefined, 24); } catch (_) {}
       if (opts.onZoomChange && cy) opts.onZoomChange(cy.zoom());
     }, 50);
+  }
+
+  /* Take the drawn graph down (the host then shows a message instead), so no
+     export can read a map that is no longer on screen. */
+  function clear() {
+    _hideNodeTip();
+    if (cy) { try { cy.destroy(); } catch (_) {} cy = null; }
+    if (_host) { try { delete _host.__cy; } catch (_) {} }
   }
 
   function fit() { if (cy) { try { cy.fit(undefined, 24); } catch (_) {} } }
@@ -338,8 +269,7 @@
   function getZoom() { return cy ? cy.zoom() : 1; }
 
   /* ---- Node select + info reveal (NAV-AUDIT §E1) --------------------------
-     At a grain notch with no deeper in-map destination (screen / app / case)
-     a node click is a SELECT + REVEAL, not a drill and never a view change:
+     A node click on the process map is a SELECT + REVEAL, never a view change:
      the node is selected (the accent `node:selected` style) and a small info
      tip — label, role, and how many times the flow enters/leaves it — is shown
      beside it. Built from the graph the viewer already has (no new data), and
@@ -459,5 +389,5 @@
     }
   }
 
-  module.exports = { render, fit, zoomIn, zoomOut, getZoom, selectNode, exportSvg, exportPng };
+  module.exports = { render, clear, fit, zoomIn, zoomOut, getZoom, selectNode, exportSvg, exportPng };
 })();

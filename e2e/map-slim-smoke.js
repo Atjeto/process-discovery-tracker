@@ -1,23 +1,28 @@
 "use strict";
 /*
- * Map-slimming e2e smoke (lab-phase spec §B2/§B5) — the Phase B merge gate.
+ * Map e2e smoke: the Map level's one process map (BA-helper cycle).
  *
- * Launches the REAL viewer twice and asserts the slimmed map surface:
- *   (a) the DEFAULT session map is the screen-grain Flow diagram with
- *       TIME-weighted edges (labels read as durations; every edge still
- *       carries the traversal count for the tooltip);
- *   (b) hovering an edge shows the tooltip with the traversal count
- *       (the count stays one hover away in time mode);
- *   (c) on the marked demo (Tier 2 unlocked) the element-grain Process
- *       diagram (observed step BPMN) RENDERS;
- *   (d) the Expert drawer opens and reaches the off-contract activity
- *       cells; the activity level is NOT a visible option of the default
- *       grain select (it left the matrix);
- *   (e) on a marker-STRIPPED re-normalized copy the step BPMN is LOCKED:
- *       the replace-pattern line renders instead (withheld + why + the
- *       mark-runs instruction), and its button opens Flow with the Markers
- *       panel (the same verb as the Overview mark-runs line);
- *   (f) zero PAGE ERRORs across both launches.
+ * Launches the REAL viewer three times on re-normalized TEMP copies of the
+ * demo and asserts:
+ *   (a) the Map shows ONE diagram: the Flow diagram built from the runs'
+ *       steps, a node per drafted step name (the node rule), time-weighted
+ *       edges, and only its own controls (zoom, the rare-path slider, Fork,
+ *       Reference maps): no notation tabs, level select, drill scope, file
+ *       status line, Advanced views drawer or BPMN view;
+ *   (b) hovering an edge shows the traversal count (and hides on mouseout);
+ *   (c) the rare-path slider thins the map, and "All paths" brings it back;
+ *   (d) the map follows the steps live: a step taken out of its run's list
+ *       (hidden) leaves the map, and comes back with it;
+ *   (e) the reference-maps gallery is collapsed until asked for;
+ *   (e2) the node rule on a renamed draft: renamed in Steps to a name the
+ *       value rules would cut, the step stays ONE node across the runs (its
+ *       name), never an extra node of the cut name;
+ *   (f) on a marker-STRIPPED copy the map is withheld: the lock message says
+ *       why (no runs marked) with the mark-runs instruction, its button lands
+ *       on Flow with the Markers panel, and Fork says why it makes no copy;
+ *   (g) on a copy whose run check failed, the lock says the check could not
+ *       run (never "not analyzed yet"), and so does the Overview;
+ *   (h) zero PAGE ERRORs across the launches.
  *
  * Screenshots land in this dir (gitignored): map-slim-default.png /
  * map-slim-locked.png. Re-normalizes into TEMP copies (the committed demo
@@ -86,6 +91,16 @@ function normalize(sessionDir) {
   return false;
 }
 
+/* A normalized copy whose run check "failed" the way contract C12 records it:
+   case_quality null and one stage_errors entry naming the stage. */
+function seedFailedRunCheck(sessionDir) {
+  const p = path.join(sessionDir, "analysis.json");
+  const a = JSON.parse(fs.readFileSync(p, "utf-8"));
+  a.case_quality = null;
+  a.stage_errors = (a.stage_errors || []).concat([{ stage: "case_quality", error: "TypeError: seeded by the e2e" }]);
+  fs.writeFileSync(p, JSON.stringify(a, null, 2));
+}
+
 async function launch(sessionDir, pageErrors) {
   // RP-36: a throwaway profile per launch, never the developer's UI state.
   const { app, close } = await launchViewer(electron, {
@@ -113,17 +128,45 @@ async function openMapLevel(page) {
   if (btn) { await btn.click().catch(() => {}); await wait(1500); }
 }
 
+/* The live map (cytoscape on the host) as plain data. */
+const mapProbe = () => {
+  const host = document.getElementById("session-map-dfg-host");
+  const cy = host && host.__cy;
+  if (!cy) return { drawn: false, text: host ? (host.textContent || "").trim() : null };
+  return {
+    drawn: true,
+    nodes: cy.nodes().map((n) => n.id()).sort(),
+    edges: cy.edges().map((e) => ({ label: e.data("edgeLabel"), freq: e.data("freq"), totalMs: e.data("totalMs") })),
+    rare: (document.getElementById("session-hide-rare-lbl") || {}).textContent || null,
+  };
+};
+
+/* The lock message the Map shows instead of the map. */
+const lockProbe = () => {
+  const host = document.getElementById("session-map-dfg-host");
+  const empty = host && host.querySelector(".map-empty-inline");
+  const zoom = document.getElementById("session-map-zoom");
+  return {
+    drawn: !!(host && host.__cy),
+    text: empty ? (empty.textContent || "").trim() : null,
+    cta: !!(empty && empty.querySelector('[data-map-cta="mark-runs"]')),
+    zoomHidden: !!(zoom && getComputedStyle(zoom).display === "none"),
+  };
+};
+
 (async () => {
   const SESSION_MARKED = makeTempSession({ stripMarkers: false });
   const SESSION_STRIPPED = makeTempSession({ stripMarkers: true });
-  if (!normalize(SESSION_MARKED) || !normalize(SESSION_STRIPPED)) {
+  const SESSION_FAILED = makeTempSession({ stripMarkers: false });
+  if (!normalize(SESSION_MARKED) || !normalize(SESSION_STRIPPED) || !normalize(SESSION_FAILED)) {
     record("re-normalize temp sessions (prerequisite)", false, "no deps-bearing Python");
     process.exit(1);
   }
+  seedFailedRunCheck(SESSION_FAILED);
 
   const pageErrors = [];
 
-  // ================= Launch 1: the marked demo ============================
+  // ================= Launch 1: the marked demo (4 runs) ====================
   let page, close;
   try {
     ({ page, close } = await launch(SESSION_MARKED, pageErrors));
@@ -134,33 +177,40 @@ async function openMapLevel(page) {
 
   await openMapLevel(page);
 
-  // (a) Default = screen-grain Flow diagram, TIME-weighted edges.
-  const def = await page.evaluate(() => {
-    const dfgTab = document.querySelector('#session-layout-map .panel-tab[data-map="dfg"]');
-    const levelSel = document.getElementById("session-map-level");
-    const host = document.getElementById("session-map-dfg-host");
-    const cy = host && host.__cy;
-    if (!cy) return { rendered: false, dfgTabActive: !!(dfgTab && dfgTab.classList.contains("active")), level: levelSel && levelSel.value };
-    const edges = cy.edges().map((e) => ({
-      label: e.data("edgeLabel"), freq: e.data("freq"), totalMs: e.data("totalMs"),
-    }));
+  // (a) One diagram: the Flow diagram of the runs' steps. The node rule: a
+  // drafted step is its own name, so the nodes are exactly the drafted names
+  // of the runs' visible steps (the value rules would cut "Salesforce - Order:
+  // Save order" down to "Salesforce" and merge different steps into one node).
+  const drawnMap = await page.evaluate(mapProbe).catch((e) => ({ err: e.message }));
+  const def = await page.evaluate((m) => {
+    const s = require("./state.js").getSession();
+    const RunsModel = require("./runs-model.js");
+    const runs = RunsModel.buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+    const names = [...new Set(runs.flatMap((r) => r.visible).map((st) => st.name.trim()))].sort();
+    const drafted = runs.flatMap((r) => r.visible).every((st) => !!st.draft_key);
     const durationRe = /^(<1s|\d+s|\d+m( \d{2}s)?|\d+h \d{2}m)$/;
     return {
-      rendered: true,
-      dfgTabActive: !!(dfgTab && dfgTab.classList.contains("active")),
-      level: levelSel ? levelSel.value : null,
-      edgeCount: edges.length,
-      allDurationLabels: edges.length > 0 && edges.every((e) => durationRe.test(String(e.label || ""))),
-      allCarryCount: edges.every((e) => typeof e.freq === "number" && e.freq >= 1),
-      anyMeasuredTime: edges.some((e) => (e.totalMs || 0) > 0),
-      sampleLabels: edges.slice(0, 4).map((e) => e.label),
+      drawn: m.drawn, nodes: m.nodes, names, drafted,
+      nodesAreNames: m.drawn && JSON.stringify(m.nodes) === JSON.stringify(names),
+      timeLabels: m.drawn && m.edges.length > 0 && m.edges.every((e) => durationRe.test(String(e.label || ""))),
+      countsKept: m.drawn && m.edges.every((e) => typeof e.freq === "number" && e.freq >= 1),
+      anyTime: m.drawn && m.edges.some((e) => (e.totalMs || 0) > 0),
+      removed: document.querySelectorAll("#session-layout-map .panel-tab, #session-map-level, #session-map-scope, " +
+        "#process-map-status, #map-expert-drawer, #session-map-bpmn-host, #btn-expert-activity-dfg, " +
+        "#btn-expert-activity-bpmn, #btn-expert-percase").length,
+      controls: ["btn-session-map-zoom-out", "btn-session-map-zoom-fit", "btn-session-map-zoom-in",
+        "session-rng-rare", "btn-fork-refmap", "btn-toggle-refmaps"].filter((id) => !document.getElementById(id)),
+      hosts: document.querySelectorAll("#session-layout-map .map-host .map-pane").length,
     };
-  }).catch((e) => ({ err: e.message }));
-  record("(a) default map = screen-grain Flow diagram with time-weighted edges",
-    !!(def && !def.err && def.rendered && def.dfgTabActive && def.level === "screen" &&
-       def.allDurationLabels && def.allCarryCount && def.anyMeasuredTime),
-    JSON.stringify(def));
-  if (!(def && def.rendered && def.allDurationLabels)) await shot(page, "fail-map-slim-default.png");
+  }, drawnMap).catch((e) => ({ err: e.message }));
+  record("(a) the Map shows one diagram: the Flow diagram of the runs' steps, a node per drafted step name, time-weighted edges",
+    !!(def && !def.err && def.drawn && def.drafted && def.nodesAreNames && def.timeLabels && def.countsKept && def.anyTime),
+    JSON.stringify(def && { nodes: def.nodes, nodesAreNames: def.nodesAreNames, drafted: def.drafted,
+      timeLabels: def.timeLabels, anyTime: def.anyTime, err: def.err }));
+  record("(a2) only the map's own controls: no notation tabs, level select, drill scope, file status line, Advanced views or BPMN view",
+    !!(def && !def.err && def.removed === 0 && def.controls.length === 0 && def.hosts === 1),
+    JSON.stringify(def && { removed: def.removed, missingControls: def.controls, hosts: def.hosts }));
+  if (!(def && def.drawn)) await shot(page, "fail-map-slim-default.png");
 
   // (b) Edge tooltip keeps the traversal count readable in time mode.
   const tip = await page.evaluate(() => {
@@ -180,72 +230,98 @@ async function openMapLevel(page) {
 
   await shot(page, "map-slim-default.png");
 
-  // (c) Tier 2 unlocked (markers): the element-grain observed step BPMN renders.
-  await page.selectOption("#session-map-level", "element").catch(() => {});
-  await wait(600);
-  await page.click('#session-layout-map .panel-tab[data-map="bpmn"]').catch(() => {});
-  await wait(1500);
-  const unlocked = await page.evaluate(() => {
-    const host = document.getElementById("session-map-bpmn-host");
-    return {
-      shapes: host ? host.querySelectorAll(".djs-element[data-element-id]").length : 0,
-      lockText: host ? /is not shown/i.test(host.textContent || "") : null,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("(c) marked demo: element-grain Process diagram (step BPMN) renders unlocked",
-    !!(unlocked && !unlocked.err && unlocked.shapes > 0 && unlocked.lockText === false),
-    JSON.stringify(unlocked));
-  if (!(unlocked && unlocked.shapes > 0)) await shot(page, "fail-map-slim-unlocked.png");
+  // (c) The rare-path slider: a cutoff above 1 hides the paths the runs took
+  // fewer times; "All paths" brings every edge back.
+  const setRare = (v) => page.evaluate((val) => {
+    const r = document.getElementById("session-rng-rare");
+    r.value = String(val);
+    r.dispatchEvent(new Event("input", { bubbles: true }));
+  }, v);
+  const rare = {};
+  try {
+    rare.all = await page.evaluate(mapProbe);
+    rare.max = await page.evaluate(() => Number((document.getElementById("session-rng-rare") || {}).max));
+    await setRare(rare.max);
+    await wait(700);
+    rare.thin = await page.evaluate(mapProbe);
+    await setRare(1);
+    await wait(700);
+    rare.back = await page.evaluate(mapProbe);
+  } catch (e) { rare.err = e.message; }
+  record("(c) the rare-path slider thins the map; 'All paths' brings every edge back",
+    !!(!rare.err && rare.max > 1 && rare.thin.drawn && rare.thin.edges.length < rare.all.edges.length &&
+      /hidden/.test(rare.thin.rare || "") && rare.back.edges.length === rare.all.edges.length &&
+      rare.back.rare === "All paths"),
+    JSON.stringify({ max: rare.max, all: rare.all && rare.all.edges.length, thin: rare.thin && rare.thin.edges.length,
+      thinLabel: rare.thin && rare.thin.rare, back: rare.back && rare.back.edges.length, err: rare.err }));
 
-  // (d) Expert drawer reaches the off-contract cells; activity left the select.
-  const selectSlim = await page.evaluate(() => {
-    const sel = document.getElementById("session-map-level");
-    const opts = sel ? [...sel.options] : [];
-    const activity = opts.find((o) => o.value === "activity");
-    return {
-      hasActivityOption: !!activity,
-      activityHidden: activity ? activity.hidden : null,
-      visibleValues: opts.filter((o) => !o.hidden).map((o) => o.value),
-    };
+  // (d) The map follows the step list live: the one step on "Notepad -
+  // Internal mappings.txt" (run 2's detour) taken out of the list (hidden)
+  // leaves the map; back in the list, it is back on the map.
+  const live = await page.evaluate(async () => {
+    const State = require("./state.js");
+    const s = State.getSession();
+    const target = ((s.annotations || {}).steps || []).filter((st) => /^Notepad/.test(st.name || ""));
+    const host = document.getElementById("session-map-dfg-host");
+    const has = () => !!(host.__cy && host.__cy.nodes().some((n) => /^Notepad/.test(n.id())));
+    const before = has();
+    const states = target.map((st) => st.state);
+    target.forEach((st) => { st.state = "hidden"; });
+    State.emit("steps");
+    await new Promise((r) => setTimeout(r, 500));
+    const hiddenOff = !has();
+    target.forEach((st, i) => { st.state = states[i]; });
+    State.emit("steps");
+    await new Promise((r) => setTimeout(r, 500));
+    return { steps: target.length, before, hiddenOff, back: has() };
   }).catch((e) => ({ err: e.message }));
-  record("(d1) activity-taxonomy level is out of the default grain select",
-    !!(selectSlim && !selectSlim.err && selectSlim.activityHidden === true &&
-       !selectSlim.visibleValues.includes("activity")),
-    JSON.stringify(selectSlim));
+  record("(d) the map follows the steps live: a hidden step leaves the map and comes back with it",
+    !!(live && !live.err && live.steps >= 1 && live.before && live.hiddenOff && live.back), JSON.stringify(live));
 
-  const drawer = await page.evaluate(() => {
-    const d = document.getElementById("map-expert-drawer");
-    if (!d) return { present: false };
-    d.open = true;
-    return {
-      present: true,
-      open: d.open,
-      cells: ["btn-expert-activity-dfg", "btn-expert-activity-bpmn", "btn-expert-percase"]
-        .map((id) => !!document.getElementById(id)),
-    };
+  // (e) The reference-maps gallery is collapsed until asked for.
+  const gallery = await page.evaluate(() => {
+    const p = document.getElementById("refmap-panel");
+    const t = document.getElementById("btn-toggle-refmaps");
+    return { hidden: !!(p && getComputedStyle(p).display === "none"), expanded: t ? t.getAttribute("aria-expanded") : null };
   }).catch((e) => ({ err: e.message }));
-  record("(d2) Expert drawer opens with the three off-contract cells",
-    !!(drawer && !drawer.err && drawer.present && drawer.open &&
-       drawer.cells.every(Boolean)),
-    JSON.stringify(drawer));
+  record("(e) the reference-maps gallery is collapsed by default",
+    !!(gallery && !gallery.err && gallery.hidden && gallery.expanded === "false"), JSON.stringify(gallery));
 
-  await page.click("#btn-expert-activity-bpmn").catch((e) => console.log("expert cell", e.message));
-  await wait(1500);
-  const expertBpmn = await page.evaluate(() => {
-    const host = document.getElementById("session-map-bpmn-host");
-    const sel = document.getElementById("session-map-level");
-    return {
-      shapes: host ? host.querySelectorAll(".djs-element[data-element-id]").length : 0,
-      level: sel ? sel.value : null,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("(d3) Expert cell renders the inductive activity BPMN (process_map.bpmn)",
-    !!(expertBpmn && !expertBpmn.err && expertBpmn.shapes > 0 && expertBpmn.level === "activity"),
-    JSON.stringify(expertBpmn));
+  // (e2) The node rule where it matters: a draft renamed in Steps (the step
+  // detail form, the analyst's verb) to a name the value rules cut down to
+  // "Salesforce". The rename also names the same-key drafts of runs 2 to 4
+  // (C4), so all four runs start on the one renamed step: one node, the name.
+  const RENAMED = "Salesforce - Account lookup: Look up the customer";
+  const renamed = {};
+  try {
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: 20000 });
+    await page.waitForSelector("#step-list .run-group.open .step-row", { state: "visible", timeout: 20000 });
+    await page.locator("#step-list .run-group.open .step-row", { hasText: "Salesforce - Account lookup: Search" })
+      .first().click({ timeout: 20000 });
+    await page.locator("#step-name").fill(RENAMED, { timeout: 20000 });
+    await page.locator("#btn-step-save").click({ timeout: 20000 });
+    await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")]
+      .some((e) => e.textContent.trim() === n), RENAMED, { timeout: 20000 });
+    renamed.stamped = await page.evaluate((n) => {
+      const st = ((require("./state.js").getSession().annotations || {}).steps || []).filter((x) => x.name === n);
+      return st.map((x) => x.state + ":" + x.process_label);
+    }, RENAMED);
+    await openMapLevel(page);
+    renamed.map = await page.evaluate(mapProbe);
+    renamed.starts = await page.evaluate(() => {
+      const cy = document.getElementById("session-map-dfg-host").__cy;
+      return cy ? cy.nodes().filter((n) => n.data("role") === "start").map((n) => n.id()) : null;
+    });
+  } catch (e) { renamed.err = String(e.message).split("\n")[0]; }
+  const rn = renamed.map || {};
+  record("(e2) node rule: a draft renamed to a name the value rules would cut stays one node (its name) across the runs",
+    !!(!renamed.err && rn.drawn && rn.nodes.includes(RENAMED) && !rn.nodes.includes("Salesforce") &&
+      !rn.nodes.includes("Salesforce - Account lookup: Search") && JSON.stringify(renamed.starts) === JSON.stringify([RENAMED])),
+    JSON.stringify({ stamped: renamed.stamped, nodes: rn.nodes, starts: renamed.starts, err: renamed.err }));
 
   await close();
 
-  // ================= Launch 2: the marker-stripped copy ====================
+  // ================= Launch 2: the marker-stripped copy (no runs) ==========
   let page2, close2;
   try {
     ({ page: page2, close: close2 } = await launch(SESSION_STRIPPED, pageErrors));
@@ -253,38 +329,31 @@ async function openMapLevel(page) {
     console.error("FATAL: could not launch viewer (stripped):", e && e.stack ? e.stack : e);
     process.exit(2);
   }
-
   await openMapLevel(page2);
-  // Element grain on the Flow diagram, then EXPLICITLY ask for the Process
-  // diagram — the §1 replace-pattern must show (no silent fallback).
-  await page2.selectOption("#session-map-level", "element").catch(() => {});
-  await wait(600);
-  await page2.click('#session-layout-map .panel-tab[data-map="bpmn"]').catch(() => {});
-  await wait(1200);
-  const locked = await page2.evaluate(() => {
-    const host = document.getElementById("session-map-bpmn-host");
-    const empty = host && host.querySelector(".map-empty-inline");
-    const text = empty ? (empty.textContent || "") : "";
-    return {
-      hasLockLine: /is not shown/i.test(text) && /draws how cases\s+flow/i.test(text),
-      explainsWhy: /no runs marked|cover only|not been analyzed/i.test(text),
-      instruction: /start marker at the beginning of each run/i.test(text),
-      ctaPresent: !!(empty && empty.querySelector('[data-map-cta="mark-runs"]')),
-      shapes: host ? host.querySelectorAll(".djs-element[data-element-id]").length : 0,
-      text: text.slice(0, 220),
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("(e) stripped session: step BPMN locked: replace-pattern line + mark-runs instruction, no diagram",
-    !!(locked && !locked.err && locked.hasLockLine && locked.explainsWhy && locked.instruction &&
-       locked.ctaPresent && locked.shapes === 0),
+  const locked = await page2.evaluate(lockProbe).catch((e) => ({ err: e.message }));
+  record("(f) no runs marked: the map is withheld with the lock message (why + the mark-runs instruction + its button)",
+    !!(locked && !locked.err && !locked.drawn && locked.zoomHidden &&
+      /^The process map is not shown because it draws how the runs flow\./.test(locked.text || "") &&
+      /This recording has no runs marked\./.test(locked.text || "") &&
+      /start marker at the beginning of each run/i.test(locked.text || "") && locked.cta),
     JSON.stringify(locked));
-  if (!(locked && locked.hasLockLine)) await shot(page2, "fail-map-slim-locked.png");
-
+  if (!(locked && locked.cta)) await shot(page2, "fail-map-slim-locked.png");
   await shot(page2, "map-slim-locked.png");
 
-  // The CTA is the gate's call to action: it must land on Flow with the
-  // Markers panel showing (where a start marker is added).
-  await page2.click('#session-map-bpmn-host [data-map-cta="mark-runs"]').catch((e) => console.log("cta", e.message));
+  // Fork on a withheld map makes no copy and says why.
+  await page2.click("#btn-fork-refmap").catch((e) => console.log("fork", e.message));
+  await wait(700);
+  const forkLocked = await page2.evaluate(() => ({
+    toast: ((document.getElementById("toast") || {}).textContent || "").trim(),
+    maps: ((require("./state.js").getSession().annotations || {}).reference_maps || []).length,
+    editor: getComputedStyle(document.getElementById("refmap-editor-overlay")).display !== "none",
+  })).catch((e) => ({ err: e.message }));
+  record("(f2) Fork on a withheld map makes no copy and says why",
+    !!(forkLocked && !forkLocked.err && /^Nothing to fork yet/.test(forkLocked.toast) && forkLocked.maps === 0 &&
+      !forkLocked.editor), JSON.stringify(forkLocked));
+
+  // The lock's call to action lands on Flow with the Markers panel showing.
+  await page2.click('#session-map-dfg-host [data-map-cta="mark-runs"]').catch((e) => console.log("cta", e.message));
   await wait(900);
   const ctaLanded = await page2.evaluate(() => {
     const flow = document.getElementById("session-layout-flow");
@@ -294,13 +363,34 @@ async function openMapLevel(page) {
       tab && tab.classList.contains("active") &&
       panel && getComputedStyle(panel).display !== "none");
   }).catch(() => false);
-  record("(e2) the lock CTA lands on Flow with the Markers panel showing",
+  record("(f3) the lock's button lands on Flow with the Markers panel showing",
     !!ctaLanded, ctaLanded ? "" : "Flow + Markers panel did not show");
 
   await close2();
 
-  // (f) Zero page errors across both launches.
-  record("(f) zero PAGE ERRORs", pageErrors.length === 0,
+  // ================= Launch 3: a copy whose run check failed ================
+  let page3, close3;
+  try {
+    ({ page: page3, close: close3 } = await launch(SESSION_FAILED, pageErrors));
+  } catch (e) {
+    console.error("FATAL: could not launch viewer (failed check):", e && e.stack ? e.stack : e);
+    process.exit(2);
+  }
+  const overviewSays = await page3.evaluate(() =>
+    ((document.getElementById("ov-summary") || {}).textContent || "").trim()).catch(() => "");
+  await openMapLevel(page3);
+  const failed = await page3.evaluate(lockProbe).catch((e) => ({ err: e.message }));
+  record("(g) a failed run check: the Map says the check could not run (never 'not analyzed yet'), and so does the Overview",
+    !!(failed && !failed.err && !failed.drawn &&
+      /The run check could not run on this recording/.test(failed.text || "") &&
+      /Technical detail: TypeError: seeded by the e2e/.test(failed.text || "") &&
+      !/not been analyzed/i.test(failed.text || "") &&
+      /The run check could not run on this recording/.test(overviewSays)),
+    JSON.stringify({ map: failed, overview: overviewSays.slice(0, 200) }));
+  await close3();
+
+  // (h) Zero page errors across the launches.
+  record("(h) zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.length + " error(s): " + pageErrors.slice(0, 5).join(" | ") : "");
 
   const pass = results.filter((r) => r.ok).length;

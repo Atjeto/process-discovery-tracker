@@ -1,40 +1,44 @@
 "use strict";
 /*
- * Overview-level e2e smoke (lab-phase spec §A6) — the Phase A merge gate.
+ * Overview e2e smoke: the home of a loaded session (BA-helper cycle).
  *
- * Launches the REAL viewer twice and asserts the honesty redesign's
- * landing surface end-to-end:
+ * Launches the REAL viewer twice and asserts the Overview end to end:
  *   (a) the DEFAULT level is Overview (#session-layout-overview visible,
- *       its view-mode button active, the Flow layout hidden) — no clicks;
- *   (a2) the Overview is laid out at its full height with the Session
- *       summary open (the view scrolls; L5b small-screen fix);
- *   (b) the case-quality badge renders the markers state on the demo
- *       session ("✓ Markers — N cases" + Tier 2 unlocked);
- *   (c) the fact strip renders 6 non-empty tiles (and none is clipped:
- *       scrollWidth must not exceed clientWidth; labels have drifted
- *       before, see e1f5680);
- *   (d) on a marker-STRIPPED re-normalized temp copy the mark-runs line
- *       renders (the no-runs call to action), and its button opens Flow
- *       with the Markers panel showing;
- *   (e) the "Export PDD" button writes a .docx through the Session menu's
- *       PDD export path;
+ *       its view-mode button active, the Flow layout hidden), laid out at its
+ *       full height (the Session view scrolls; L5b small-screen fix);
+ *   (b) the home leads with the "What is left" line (one button) and the
+ *       one-line session summary; the fact tiles, the badge, the separate
+ *       mark-runs line and the export bar are gone, and the run count is
+ *       said once;
+ *   (c) the findings feed (include in PDD, methodology once per group,
+ *       expand-in-place evidence) and the Evidence modules;
+ *   (d) the analyst path, walked on the demo: every next act lands where it
+ *       says (the pattern run open in Steps, each other run open in Steps,
+ *       the document sections open on their first empty field, the Map), a
+ *       done stage shows done, a document field saves undoably, and the last
+ *       act exports the PDD, whose word/document.xml carries the Purpose the
+ *       analyst wrote (contract C6, end to end) and the As-Is and To-Be maps
+ *       chosen in the reference-map gallery;
+ *   (e) on a marker-STRIPPED re-normalized copy the line says no runs are
+ *       marked, and its button opens Flow with the Markers panel showing;
  *   (f) zero PAGE ERRORs across both launches.
  *
  * Screenshots of BOTH Overview states land in this dir (gitignored):
  *   overview-markers-state.png / overview-unsegmented-state.png.
  *
- * Like session-smoke.js it re-normalizes into TEMP copies so the
- * committed demo is never regenerated in place, and reuses the viewer's
- * own Electron. Unlike session-smoke, a missing deps-bearing Python is a
- * HARD FAIL here — every assertion depends on current pipeline output.
+ * Like session-smoke.js it re-normalizes into TEMP copies so the committed
+ * demo is never regenerated in place, and reuses the viewer's own Electron.
+ * Unlike session-smoke, a missing deps-bearing Python is a HARD FAIL here:
+ * every assertion depends on current pipeline output.
  */
 
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const zlib = require("zlib");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
-const { launchViewer } = require("./throwaway-profile.js");
+const { launchViewer, logActionError } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -117,6 +121,36 @@ async function shot(page, name) {
     .catch((e) => console.log("shot fail", name, e.message));
 }
 
+/* One entry of a .zip (a .docx is one), read with Node's zlib: the central
+   directory names each entry and where its local header sits; the data is
+   stored (method 0) or deflated (method 8). Returns the text, or null when
+   the entry is absent. */
+function readZipEntry(buf, name) {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("not a zip: no end of central directory");
+  const count = buf.readUInt16LE(eocd + 10);
+  let p = buf.readUInt32LE(eocd + 16);
+  for (let k = 0; k < count; k++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error("not a zip: bad central directory entry");
+    const method = buf.readUInt16LE(p + 10);
+    const csize = buf.readUInt32LE(p + 20);
+    const nlen = buf.readUInt16LE(p + 28), xlen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32);
+    const local = buf.readUInt32LE(p + 42);
+    if (buf.toString("utf8", p + 46, p + 46 + nlen) === name) {
+      const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+      const data = buf.subarray(start, start + csize);
+      return (method === 0 ? data : zlib.inflateRawSync(data)).toString("utf8");
+    }
+    p += 46 + nlen + xlen + clen;
+  }
+  return null;
+}
+
+const T = 20000;   // the bound on every wait for an observable state
+
 (async () => {
   // ---- Prepare both sessions (hard prerequisite) --------------------------
   const SESSION_MARKED = makeTempSession({ stripMarkers: false });
@@ -125,10 +159,12 @@ async function shot(page, name) {
     record("re-normalize temp sessions (prerequisite)", false, "no deps-bearing Python");
     process.exit(1);
   }
+  const ANNO = path.join(SESSION_MARKED, "annotations.json");
+  const readAnno = () => JSON.parse(fs.readFileSync(ANNO, "utf-8"));
 
   const pageErrors = [];
 
-  // ================= Launch 1: the marked demo (markers state) ============
+  // ================= Launch 1: the marked demo (4 runs) ====================
   let app, page, close;
   try {
     ({ app, page, close } = await launch(SESSION_MARKED, pageErrors));
@@ -137,7 +173,7 @@ async function shot(page, name) {
     process.exit(2);
   }
 
-  // (a) Default level is Overview — asserted with ZERO clicks.
+  // (a) Default level is Overview, asserted with ZERO clicks.
   const def = await page.evaluate(() => {
     const vis = (sel) => {
       const el = document.querySelector(sel);
@@ -159,77 +195,52 @@ async function shot(page, name) {
     JSON.stringify(def));
 
   // (a2) L5b: the Overview is laid out at its full height and the Session view
-  // scrolls. It was the one level with a scroll box of its own and
-  // min-height:0, so the Session summary (open on a fresh profile) squeezed it
-  // to a 24 px sliver at 1366x768, to nothing at 1024x768 (the CI runner's
-  // screen: the "CI-only" click timeouts), and even at 1500x950 to a box far
-  // shorter than its content. Pinned at every window size: with the Session
-  // summary open, the Overview's box holds all of its content.
+  // scrolls, at every window size (it used to be squeezed by the panel above).
   const fullHeight = await page.evaluate(() => {
     const ov = document.getElementById("session-layout-overview");
-    const sum = document.getElementById("session-summary");
     const view = document.getElementById("view-session");
-    return {
-      summaryOpen: !!(sum && sum.open && getComputedStyle(sum).display !== "none"),
-      boxH: ov.clientHeight, contentH: ov.scrollHeight,
-      viewScrolls: view.scrollHeight > view.clientHeight,
-    };
+    return { boxH: ov.clientHeight, contentH: ov.scrollHeight, viewScrolls: view.scrollHeight > view.clientHeight };
   }).catch((e) => ({ err: e.message }));
-  record("(a2) the Overview is laid out at its full height, so the open Session summary cannot squeeze it (the Session view scrolls instead)",
-    !!(fullHeight && !fullHeight.err && fullHeight.summaryOpen && fullHeight.contentH > 300 &&
-      fullHeight.contentH <= fullHeight.boxH + 1),
+  record("(a2) the Overview is laid out at its full height (the Session view scrolls instead)",
+    !!(fullHeight && !fullHeight.err && fullHeight.contentH > 300 && fullHeight.contentH <= fullHeight.boxH + 1),
     JSON.stringify(fullHeight));
 
-  // (b) Case-quality badge: markers state on the 4-case demo. Item 8 merged
-  // the duplicate "case analysis on" chip INTO the badge as its subtitle
-  // (.ov-badge-sub), so the "one fact, one place" merge is pinned here — the
-  // separate .ov-tier2 chip must be gone.
-  const badge = await page.evaluate(() => {
-    const b = document.querySelector("#overview-content .ov-badge");
-    const main = b && b.querySelector(".ov-badge-text");
-    const sub = b && b.querySelector(".ov-badge-sub");
+  // (b) The home: the what-is-left line first (one button), the one-line
+  // summary next; the removed surfaces are gone and nothing is said twice.
+  const home = await page.evaluate(() => {
+    const host = document.getElementById("overview-content");
+    const kids = [...host.children].map((c) => c.id || c.className);
+    const line = document.getElementById("ov-next");
+    const stages = line ? [...line.querySelectorAll(".ov-next-stage")].map((li) =>
+      li.dataset.stage + ":" + (li.classList.contains("done") ? "done" : li.classList.contains("next") ? "next" : "-")) : [];
+    const text = host.textContent || "";
+    const sum = document.querySelector("#ov-summary .ov-summary-line");
     return {
-      text: main ? (main.textContent || "").trim() : (b ? (b.textContent || "").trim() : null),
-      ok: !!(b && b.classList.contains("ok")),
-      sub: sub ? (sub.textContent || "").trim() : null,
-      legacyTier2: document.querySelectorAll("#overview-content .ov-tier2").length,
+      first: kids[0], second: kids[1],
+      next: line ? line.dataset.next : null,
+      buttons: line ? line.querySelectorAll("button").length : 0,
+      button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
+      stages,
+      summary: sum ? (sum.textContent || "").trim() : null,
+      summaryH: sum ? Math.round(sum.getBoundingClientRect().height) : null,
+      removed: document.querySelectorAll(".ov-tile, .ov-facts, .ov-badge, #ov-mark-runs, .ov-export-bar, " +
+        "#btn-ov-export-pdd, #session-summary, .ov-tier2").length,
+      runsSaid: (text.match(/\b4 runs\b/g) || []).length,
+      casesSaid: (text.match(/\b4 cases\b/g) || []).length,
     };
   }).catch((e) => ({ err: e.message }));
-  const badgeOk = !!(badge && !badge.err && badge.ok &&
-    /✓ \d+ cases?, marked by the worker/.test(badge.text || "") &&   // item 8: no dash in the copy
-    /case analysis on/i.test(badge.sub || "") &&
-    badge.legacyTier2 === 0);
-  record("(b) badge shows the worker-marked state + case analysis on as its subtitle (item 8 merge)",
-    badgeOk, JSON.stringify(badge));
+  record("(b) the home leads with the What is left line (runs done, next: the pattern run, one button), then the one-line summary",
+    !!(home && !home.err && home.first === "ov-next" && home.second === "ov-summary" && home.next === "pattern" &&
+      home.buttons === 1 && home.button === "Confirm Run 1 in Steps" &&
+      home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,map:-,export:-"),
+    JSON.stringify(home));
+  record("(b2) the fact tiles, the badge, the mark-runs line and the export bar are gone; the summary is one line and the run count is said once",
+    !!(home && !home.err && home.removed === 0 && home.summaryH > 0 && home.summaryH < 40 &&
+      home.runsSaid === 1 && home.casesSaid === 0 && /^demo-order-processing · recorded by demo-worker · /.test(home.summary || "")),
+    JSON.stringify(home && { removed: home.removed, summary: home.summary, summaryH: home.summaryH,
+      runsSaid: home.runsSaid, casesSaid: home.casesSaid }));
 
-  // (c) Fact strip: 6 tiles, every value non-empty, no clipped labels.
-  const tiles = await page.evaluate(() => {
-    const els = [...document.querySelectorAll("#overview-content .ov-tile")];
-    const clipped = [];
-    els.forEach((tile) => {
-      tile.querySelectorAll(".ov-tile-value, .ov-tile-label, .ov-tile-sub").forEach((el) => {
-        if ((el.textContent || "").trim() && el.scrollWidth > el.clientWidth + 2) {
-          clipped.push((el.textContent || "").trim() + " (" + el.clientWidth + "<" + el.scrollWidth + ")");
-        }
-      });
-    });
-    return {
-      count: els.length,
-      values: els.map((t) => {
-        const v = t.querySelector(".ov-tile-value");
-        return v ? (v.textContent || "").trim() : "";
-      }),
-      clipped,
-    };
-  }).catch((e) => ({ err: e.message }));
-  const tilesOk = !!(tiles && !tiles.err && tiles.count === 6 &&
-    tiles.values.every((v) => v.length > 0));
-  record("(c) fact strip renders 6 non-empty tiles", tilesOk, JSON.stringify(tiles && tiles.values));
-  record("(c2) no fact-strip label is clipped (scrollWidth <= clientWidth)",
-    !!(tiles && !tiles.err && tiles.clipped.length === 0),
-    tiles && tiles.clipped && tiles.clipped.length ? "clipped: " + tiles.clipped.join(", ") : "all fit");
-
-  // R4: the Evidence modules (retired Analysis) render below the findings feed.
+  // (c) R4: the Evidence modules (retired Analysis) render below the findings.
   const evidence = await page.evaluate(() => {
     const host = document.querySelector("#overview-content #overview-evidence");
     if (!host) return { present: false };
@@ -246,10 +257,8 @@ async function shot(page, name) {
   // Findings feed sanity on the demo (claims + an "include in PDD" checkbox on
   // every card; the checkbox still writes annotations.memo_selection).
   const feed = await page.evaluate(() => {
-    // R4: the Evidence host below the feed reuses the .ov-finding component for
-    // automation candidate cards (no PDD checkbox). Scope the findings-feed
-    // count to cards OUTSIDE #overview-evidence so the "every finding has a PDD
-    // checkbox" invariant still holds exactly (never weakened).
+    // The Evidence host below the feed reuses the .ov-finding component for
+    // automation candidate cards (no PDD checkbox): count the feed only.
     const inFeed = (el) => el.closest("#overview-evidence") === null;
     const findings = [...document.querySelectorAll("#overview-content .ov-finding")].filter(inFeed);
     const pddChecks = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed);
@@ -265,9 +274,9 @@ async function shot(page, name) {
     !!(feed && !feed.err && feed.findings > 0 && feed.pddChecks === feed.findings && feed.allSayPdd),
     JSON.stringify(feed));
 
-  // AD-13: ticking "include in PDD" still writes annotations.memo_selection
-  // (the PDD's findings section reads that key). Tick the first unticked box,
-  // read the saved annotations.json, then untick to leave the session as found.
+  // AD-13: ticking "include in PDD" writes annotations.memo_selection (the
+  // PDD's findings section reads that key). Tick the first unticked box, read
+  // the saved annotations.json, then untick to leave the session as found.
   const tick = await page.evaluate(async () => {
     const inFeed = (el) => el.closest("#overview-evidence") === null;
     const box = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed)
@@ -280,9 +289,7 @@ async function shot(page, name) {
   }).catch((e) => ({ err: e.message }));
   await wait(800);
   let savedSel = null;
-  try {
-    savedSel = JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "annotations.json"), "utf-8")).memo_selection;
-  } catch (e) { savedSel = "read error: " + e.message; }
+  try { savedSel = readAnno().memo_selection; } catch (e) { savedSel = "read error: " + e.message; }
   record("AD-13: ticking 'include in PDD' saves the finding id to annotations.memo_selection",
     !!(tick && !tick.err && Array.isArray(savedSel) && savedSel.includes(tick.fid)),
     JSON.stringify({ tick, savedSel }));
@@ -293,10 +300,8 @@ async function shot(page, name) {
   }, tick && tick.fid).catch(() => {});
   await wait(500);
 
-  // Item 4a (ADD pin d): the "how this was measured" methodology sentence
-  // renders AT MOST ONCE per detector group. The demo has 3 `repetition`
-  // findings that used to repeat the same sentence 3×; now each detector
-  // group carries a single ⓘ methodology disclosure.
+  // Item 4a: the "how this was measured" methodology sentence renders AT MOST
+  // ONCE per detector group.
   const method = await page.evaluate(() => {
     const groups = [...document.querySelectorAll("#overview-content .ov-finding-group")];
     const perGroup = groups.map((g) => ({
@@ -306,28 +311,22 @@ async function shot(page, name) {
     }));
     return {
       groups: groups.length,
-      // per-card methodology notes must NOT exist (moved to the group ⓘ)
       perCardNotes: document.querySelectorAll("#overview-content .ov-finding .ov-finding-note").length,
-      // no detector group renders its methodology sentence more than once
       maxMethodPerGroup: perGroup.reduce((m, g) => Math.max(m, g.methodEls), 0),
-      // the multi-finding repetition group exists and has one methodology
       repetition: perGroup.find((g) => g.det === "repetition") || null,
     };
   }).catch((e) => ({ err: e.message }));
-  const methodOk = !!(method && !method.err && method.groups > 0 &&
-    method.maxMethodPerGroup <= 1 && method.perCardNotes === 0 &&
-    method.repetition && method.repetition.cards >= 2);
-  record("(d) methodology sentence renders at most once per detector group",
-    methodOk, JSON.stringify(method));
+  record("(c) methodology sentence renders at most once per detector group",
+    !!(method && !method.err && method.groups > 0 && method.maxMethodPerGroup <= 1 &&
+      method.perCardNotes === 0 && method.repetition && method.repetition.cards >= 2),
+    JSON.stringify(method));
 
   // Item 4b + 5: a finding card is resident claim + expand chevron; the
   // evidence body (with the screenshot chip, not a raw path) is one click in.
-  // The screen_time_sink finding carries a screenshot ref → a chip, not text.
   const cardStruct = await page.evaluate(() => {
     const shotChips = document.querySelectorAll('#overview-content [data-act="shot"]');
     const rawPathLeak = /screenshots\/shot_\d+\.png/.test(
       (document.querySelector("#overview-content") || {}).textContent || "");
-    // Expand the first card that has a body, confirm the body reveals inline.
     const card = [...document.querySelectorAll("#overview-content .ov-finding")]
       .find((c) => c.querySelector(".ov-finding-body"));
     let expandedOk = null;
@@ -345,40 +344,221 @@ async function shot(page, name) {
       cardStruct.rawPathLeak === false && cardStruct.expandedOk === true),
     JSON.stringify(cardStruct));
 
-  // BA-helper cut: the Overview no longer carries the next-act rail, the data
-  // sharing select, Copy for AI review, the memo export or the ROI module; and
-  // on this marked demo the mark-runs line must not show.
+  // BA-helper cut: no next-act rail, data sharing select, Copy for AI review,
+  // memo export or ROI module.
   const cutSurfaces = await page.evaluate(() => ({
     rail: document.querySelectorAll("#ov-rail").length,
     sharingSelect: document.querySelectorAll("#ov-posture-select").length,
     copyForAi: document.querySelectorAll("#btn-ov-copy-llm").length,
     memoExport: document.querySelectorAll("#btn-ov-export-memo").length,
     roiModule: document.querySelectorAll('#overview-evidence .analysis-module[data-module="roi"]').length,
-    markRuns: document.querySelectorAll("#ov-mark-runs").length,
-    exportPdd: document.querySelectorAll("#btn-ov-export-pdd").length,
   })).catch((e) => ({ err: e.message }));
-  record("cut Overview surfaces are gone; Export PDD present; no mark-runs line on a marked session",
-    !!(cutSurfaces && !cutSurfaces.err && cutSurfaces.rail === 0 && cutSurfaces.sharingSelect === 0 &&
-      cutSurfaces.copyForAi === 0 && cutSurfaces.memoExport === 0 && cutSurfaces.roiModule === 0 &&
-      cutSurfaces.markRuns === 0 && cutSurfaces.exportPdd === 1),
+  record("cut Overview surfaces are gone (next-act rail, data sharing, Copy for AI review, memo export, ROI)",
+    !!(cutSurfaces && !cutSurfaces.err && Object.values(cutSurfaces).every((n) => n === 0)),
     JSON.stringify(cutSurfaces));
 
   await shot(page, "overview-markers-state.png");
 
-  // (e) AD-13: "Export PDD" runs the Session menu's PDD export (#btn-session-pdd).
-  // Stub the save dialog to a temp path and the shell reveal (no Explorer
-  // window in a gate), click the Overview button, poll for a real .docx (a
-  // zip: "PK" magic). Item 7: the shared path shows the Map while it draws
-  // the map image, then returns the analyst to the Overview, and the level
-  // bar must say what is shown (it used to leave the Overview button lit
-  // while the Map showed). Previously this check asserted "lands on Map".
+  // ==== (d) The analyst path, walked: each next act lands where it says ======
+  const lineState = () => page.evaluate(() => {
+    const line = document.getElementById("ov-next");
+    return line ? {
+      next: line.dataset.next,
+      button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
+      done: [...line.querySelectorAll(".ov-next-stage.done")].map((li) => li.dataset.stage),
+    } : null;
+  });
+  const goOverview = async () => {
+    await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: T });
+    await page.waitForSelector("#ov-next", { state: "visible", timeout: T });
+  };
+  const stepsLanding = () => page.evaluate(() => {
+    const layout = document.getElementById("session-layout-steps");
+    const open = [...document.querySelectorAll("#step-list .run-group.open")];
+    const g = open[0];
+    const sel = require("./state.js").getSelectedStepId();
+    const row = g && sel ? [...g.querySelectorAll(".step-row")].find((r) => r.dataset.stepId === sel) : null;
+    return {
+      onSteps: !!(layout && getComputedStyle(layout).display !== "none") &&
+        !!(document.querySelector('.view-mode-btn[data-level="steps"].active')),
+      openRuns: open.length,
+      openTitle: g ? ((g.querySelector(".run-title") || {}).textContent || "").trim() : null,
+      openIsPattern: !!(g && g.classList.contains("pattern")),
+      selectedInOpenRun: !!(row && row.classList.contains("selected")),
+    };
+  });
+  const walk = { landings: {} };
+  try {
+    // 1. The pattern run: the button opens Steps on Run 1 (the pattern).
+    await page.locator("#btn-ov-next").click({ timeout: T });
+    await page.waitForSelector("#step-list .run-group.open", { state: "visible", timeout: T });
+    walk.landings.pattern = await stepsLanding();
+    await page.locator('#step-list .run-group.open [data-act="confirm-run"]').click({ timeout: T });
+    await page.waitForFunction(() => /Confirmed/.test(((document.querySelector("#step-list .run-group.open .run-status")
+      || {}).textContent) || ""), null, { timeout: T });
+    await goOverview();
+    walk.afterPattern = await lineState();
+    // 2. The other runs: each click opens the first run still drafted.
+    walk.landings.review = [];
+    for (let i = 0; i < 3; i++) {
+      const before = await lineState();
+      if (!before || before.next !== "review") break;
+      await page.locator("#btn-ov-next").click({ timeout: T });
+      await page.waitForSelector("#step-list .run-group.open", { state: "visible", timeout: T });
+      const landed = Object.assign(await stepsLanding(), { button: before.button });
+      walk.landings.review.push(landed);
+      await page.locator('#step-list .run-group.open [data-act="confirm-run"]').click({ timeout: T });
+      await page.waitForFunction(() => /Confirmed/.test(((document.querySelector("#step-list .run-group.open .run-status")
+        || {}).textContent) || ""), null, { timeout: T });
+      await goOverview();
+    }
+    walk.afterReview = await lineState();
+    // 3. The document sections: the button opens the panel on its first
+    // empty field, with the cursor in it.
+    await page.locator("#btn-ov-next").click({ timeout: T });
+    await page.waitForFunction(() => {
+      const d = document.getElementById("ov-doc");
+      return !!(d && d.open && document.activeElement && document.activeElement.dataset.doc);
+    }, null, { timeout: T });
+    walk.landings.document = await page.evaluate(() => ({
+      open: document.getElementById("ov-doc").open,
+      focused: document.activeElement.dataset.doc,
+      status: (document.getElementById("ov-doc-status") || {}).textContent,
+    }));
+  } catch (e) {
+    logActionError("(d) path walk", e);
+    walk.err = String(e.message).split("\n")[0];
+  }
+  const L = walk.landings;
+  record("(d1) 'Confirm Run 1 in Steps' lands on Steps with the pattern run open and its first step selected",
+    !!(L.pattern && L.pattern.onSteps && L.pattern.openRuns === 1 && L.pattern.openTitle === "Run 1" &&
+      L.pattern.openIsPattern && L.pattern.selectedInOpenRun),
+    JSON.stringify({ landing: L.pattern, err: walk.err }));
+  record("(d2) a confirmed pattern run shows done; the next act is the first run still drafted",
+    !!(walk.afterPattern && walk.afterPattern.next === "review" && walk.afterPattern.done.includes("pattern") &&
+      walk.afterPattern.button === "Review Run 2 in Steps"),
+    JSON.stringify(walk.afterPattern));
+  const reviewOk = Array.isArray(L.review) && L.review.length === 3 && L.review.every((l, i) =>
+    l.onSteps && l.openRuns === 1 && l.openTitle === "Run " + (i + 2) && !l.openIsPattern &&
+    l.selectedInOpenRun && l.button === "Review Run " + (i + 2) + " in Steps");
+  record("(d3) 'Review Run N in Steps' lands on Steps with that run open, for runs 2 to 4; then the review shows done",
+    !!(reviewOk && walk.afterReview && walk.afterReview.next === "document" && walk.afterReview.done.includes("review")),
+    JSON.stringify({ review: L.review, after: walk.afterReview }));
+  record("(d4) 'Fill the document sections' opens the collapsed panel with the cursor in its first empty field",
+    !!(L.document && L.document.open && L.document.focused === "title" && L.document.status === "0 of 6 filled"),
+    JSON.stringify(L.document));
+
+  // 4. A document field saves through the one write path, undoably.
+  const PURPOSE = "E2E purpose: settle the monthly supplier invoices";
+  const docProbe = {};
+  try {
+    const purpose = page.locator('#ov-doc [data-doc="purpose"]');
+    await purpose.fill(PURPOSE, { timeout: T });
+    await purpose.press("Tab");                          // change fires on leaving the field
+    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "1 of 6 filled",
+      null, { timeout: T });
+    docProbe.saved = (readAnno().document || {}).purpose;
+    // Undo: Ctrl+Z outside a field is the app's undo.
+    await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction(() => {
+      const t = document.querySelector('#ov-doc [data-doc="purpose"]');
+      return !!(t && t.value === "");
+    }, null, { timeout: T });
+    // The Purpose is gone from disk again (the document had no Purpose before).
+    docProbe.afterUndoOnDisk = (readAnno().document || {}).purpose || "";
+    docProbe.panelStayedOpen = await page.evaluate(() => document.getElementById("ov-doc").open);
+    // Write every section again (Purpose, then the other five).
+    const values = {
+      title: "E2E order intake", purpose: PURPOSE, scope: "From the order e-mail to the order confirmation",
+      contacts: "Process owner: E2E Owner", business_rules: "Orders above the credit limit need a check",
+      exceptions: "A blocked customer stops the run",
+    };
+    for (const [k, v] of Object.entries(values)) {
+      const el = page.locator('#ov-doc [data-doc="' + k + '"]');
+      await el.fill(v, { timeout: T });
+      await el.press("Tab");
+    }
+    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "6 of 6 filled",
+      null, { timeout: T });
+    docProbe.onDisk = readAnno().document || {};
+    docProbe.line = await lineState();
+  } catch (e) {
+    logActionError("(d5) document fields", e);
+    docProbe.err = String(e.message).split("\n")[0];
+  }
+  record("(d5) a document field saves to annotations.document (contract C6), and Ctrl+Z takes it back",
+    !!(!docProbe.err && docProbe.saved === PURPOSE && docProbe.afterUndoOnDisk === "" && docProbe.panelStayedOpen),
+    JSON.stringify({ saved: docProbe.saved, afterUndoOnDisk: docProbe.afterUndoOnDisk,
+      panelStayedOpen: docProbe.panelStayedOpen, err: docProbe.err }));
+  record("(d6) with the six sections written the document stage shows done; the next act is the As-Is map",
+    !!(docProbe.line && docProbe.line.next === "map" && docProbe.line.done.includes("document") &&
+      docProbe.onDisk && docProbe.onDisk.purpose === PURPOSE && docProbe.onDisk.notes === ""),
+    JSON.stringify({ line: docProbe.line, onDisk: docProbe.onDisk }));
+
+  // 5. The As-Is map: the button lands on the Map; Fork, choose the copy as
+  // the PDD's As-Is map, and the stage shows done.
+  const mapProbe = {};
+  try {
+    await page.locator("#btn-ov-next").click({ timeout: T });
+    await page.waitForSelector("#session-layout-map", { state: "visible", timeout: T });
+    mapProbe.landed = await page.evaluate(() => ({
+      onMap: !!document.querySelector('.view-mode-btn[data-level="map"].active'),
+      mapDrawn: !!((document.getElementById("session-map-dfg-host") || {}).__cy),
+      fork: !!document.getElementById("btn-fork-refmap"),
+    }));
+    await page.locator("#btn-fork-refmap").click({ timeout: T });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: T });
+    await page.locator("#refmap-editor-pdd").selectOption("as_is", { timeout: T });
+    await wait(500);
+    await page.locator("#btn-refmap-editor-close").click({ timeout: T });
+    // A second copy, chosen as the PDD's To-Be map (the gallery is open after
+    // the fork): Duplicate, then the copy's PDD select.
+    await page.locator('#refmap-list [data-rm-act="dup"]').first().click({ timeout: T });
+    await page.waitForFunction(() => document.querySelectorAll("#refmap-list .refmap-row").length === 2, null, { timeout: T });
+    await page.locator("#refmap-list .refmap-row").nth(1).locator("[data-rm-pdd]").selectOption("to_be", { timeout: T });
+    await wait(500);
+    mapProbe.roles = (readAnno().reference_maps || []).map((m) => m && m.pdd_role);
+    await goOverview();
+    mapProbe.line = await lineState();
+    mapProbe.asIs = (readAnno().reference_maps || []).filter((m) => m && m.pdd_role === "as_is").length;
+  } catch (e) {
+    logActionError("(d7) As-Is map", e);
+    mapProbe.err = String(e.message).split("\n")[0];
+  }
+  record("(d7) 'Finish the As-Is map in Map' lands on the Map; a fork chosen as the PDD's As-Is map shows the stage done",
+    !!(!mapProbe.err && mapProbe.landed && mapProbe.landed.onMap && mapProbe.landed.mapDrawn && mapProbe.landed.fork &&
+      mapProbe.asIs === 1 && JSON.stringify(mapProbe.roles) === '["as_is","to_be"]' &&
+      mapProbe.line && mapProbe.line.next === "export" && mapProbe.line.done.includes("map") &&
+      mapProbe.line.button === "Export PDD"),
+    JSON.stringify(mapProbe));
+
+  // The export renders the maps chosen for the PDD off screen; record what it
+  // handed over (the As-Is and To-Be images), so the embed is pinned too.
+  await page.evaluate(() => {
+    const RefmapUI = require("./refmap-ui.js");
+    const orig = RefmapUI.renderPddMaps;
+    RefmapUI.renderPddMaps = async () => {
+      const out = await orig();
+      window.__pddMaps = { asis: !!(out && out.asis), tobe: !!(out && out.tobe) };
+      return out;
+    };
+  }).catch((e) => console.log("spy", e.message));
+
+  // 6. The last act: Export PDD. It runs the Session menu's PDD export
+  // (#btn-session-pdd). Stub the save dialog to a temp path and the shell
+  // reveal (no Explorer window in a gate), poll for a real .docx (a zip: "PK"
+  // magic). Item 7: the shared path shows the Map while it draws the map
+  // image, then returns the analyst to the Overview with the level bar in
+  // sync. Contract C6 end to end: the document carries the Purpose written
+  // above, in place of the placeholder.
   const pddOut = path.join(os.tmpdir(), "pdt-ov-e2e-" + Date.now() + ".docx");
   await app.evaluate(({ dialog, shell }, p) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: p });
     shell.showItemInFolder = () => {};
   }, pddOut).catch((e) => console.log("stub dialog", e.message));
-  await page.click("#btn-ov-export-pdd").catch((e) => console.log("export click", e.message));
-  let pddOk = false, pddDetail = "";
+  await page.click("#btn-ov-next").catch((e) => console.log("export click", e.message));
+  let pddOk = false, pddDetail = "", docXml = null;
   const deadline = Date.now() + 180000;
   while (Date.now() < deadline) {
     if (fs.existsSync(pddOut)) {
@@ -386,14 +566,13 @@ async function shot(page, name) {
       if (buf.length > 1000 && buf[0] === 0x50 && buf[1] === 0x4b) {
         pddOk = true;
         pddDetail = buf.length + " bytes, zip (docx) magic";
+        try { docXml = readZipEntry(buf, "word/document.xml"); } catch (e) { pddDetail += "; unzip failed: " + e.message; }
         break;
       }
     }
     await wait(500);
   }
   if (!pddOk) pddDetail = "no .docx at the stubbed save path after 180s";
-  // The return to the Overview happens right after the file is handed over;
-  // wait for that state (bounded) instead of a fixed sleep.
   const levelProbe = () => {
     const shown = ["overview", "flow", "steps", "map"].filter((l) => {
       const el = document.getElementById("session-layout-" + l);
@@ -409,9 +588,25 @@ async function shot(page, name) {
   const after = await page.evaluate(levelProbe).catch((e) => ({ err: e.message }));
   const backInSync = !!(after && !after.err && after.level === "overview" &&
     JSON.stringify(after.shown) === '["overview"]' && JSON.stringify(after.lit) === '["overview"]');
-  record("(e) Export PDD writes a .docx through the Session menu's PDD path, then returns to the Overview with the level bar in sync",
+  record("(d8) 'Export PDD' writes a .docx through the Session menu's PDD path, then returns to the Overview with the level bar in sync",
     pddOk && backInSync, pddDetail + " after=" + JSON.stringify(after));
   if (!(pddOk && backInSync)) await shot(page, "fail-overview-pdd.png");
+  const handed = await page.evaluate(() => window.__pddMaps || null).catch(() => null);
+  const docChecks = {
+    handed,
+    asIsEmbedded: !!(docXml && docXml.includes("The As-is process map, as exported from the viewer.")),
+    toBeEmbedded: !!(docXml && docXml.includes("5.4 Proposed to-be process")),
+    purpose: !!(docXml && docXml.includes(PURPOSE)),
+    title: !!(docXml && docXml.includes("E2E order intake")),
+    purposePlaceholderGone: !!(docXml && !docXml.includes("the business need this process serves")),
+    keptAfterExport: (readAnno().document || {}).purpose === PURPOSE,
+  };
+  record("(d9) contract C6 end to end: the exported PDD (word/document.xml) carries the Purpose written on the Overview, in place of its placeholder",
+    !!(docChecks.purpose && docChecks.title && docChecks.purposePlaceholderGone && docChecks.keptAfterExport),
+    JSON.stringify(Object.assign({ xmlBytes: docXml ? docXml.length : 0 }, docChecks)));
+  record("(d10) the reference maps chosen as the PDD's As-Is and To-Be maps are embedded in the export",
+    !!(handed && handed.asis && handed.tobe && docChecks.asIsEmbedded && docChecks.toBeEmbedded),
+    JSON.stringify({ handed, asIsEmbedded: docChecks.asIsEmbedded, toBeEmbedded: docChecks.toBeEmbedded }));
   try { fs.unlinkSync(pddOut); } catch (_) {}
 
   await close();
@@ -425,35 +620,32 @@ async function shot(page, name) {
     process.exit(2);
   }
 
-  // (d) AD-14: unsegmented badge + the one-line mark-runs instruction.
+  // (e) AD-14: with no runs the line's next act is marking runs, with the
+  // one-line instruction and the button.
   const markRuns = await page2.evaluate(() => {
-    const badge = document.querySelector("#overview-content .ov-badge");
-    const line = document.querySelector("#overview-content #ov-mark-runs");
+    const line = document.getElementById("ov-next");
     return {
-      badgeText: badge ? (badge.textContent || "").trim() : null,
-      badgeWarn: !!(badge && badge.classList.contains("warn")),
+      next: line ? line.dataset.next : null,
       lineText: line ? (line.textContent || "").trim() : null,
-      button: !!document.querySelector("#overview-content #btn-ov-mark-runs"),
-      heroRows: document.querySelectorAll("#overview-content .ov-hero-row").length,
+      button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
+      badges: document.querySelectorAll("#overview-content .ov-badge, #ov-mark-runs").length,
     };
   }).catch((e) => ({ err: e.message }));
-  const markRunsOk = !!(markRuns && !markRuns.err && markRuns.badgeWarn &&
-    /No cases identified yet/.test(markRuns.badgeText || "") &&
-    /no runs marked/i.test(markRuns.lineText || "") && /start marker/i.test(markRuns.lineText || "") &&
-    markRuns.button && markRuns.heroRows === 0);
-  record("(d) marker-stripped session: no-cases badge + the mark-runs instruction (no anchor hero)",
-    markRunsOk, JSON.stringify(markRuns));
-  if (!markRunsOk) await shot(page2, "fail-overview-mark-runs.png");
+  record("(e) marker-stripped session: the What is left line says no runs are marked, with the instruction and 'Mark runs in Flow'",
+    !!(markRuns && !markRuns.err && markRuns.next === "runs" && /no runs marked/i.test(markRuns.lineText || "") &&
+      /start marker/i.test(markRuns.lineText || "") && markRuns.button === "Mark runs in Flow" && markRuns.badges === 0),
+    JSON.stringify(markRuns));
+  if (!(markRuns && markRuns.next === "runs")) await shot(page2, "fail-overview-mark-runs.png");
 
   await shot(page2, "overview-unsegmented-state.png");
 
-  // (d2) The instruction's button LANDS: Flow shows, with the Markers panel
-  // (pre-state: the Notes tab is the active annotation tab).
+  // (e2) The button LANDS: Flow shows, with the Markers panel (pre-state: the
+  // Notes tab is the active annotation tab).
   const markersTabBefore = await page2.evaluate(() => {
     const t = document.querySelector('.anno-tab[data-anno="markers"]');
     return !!(t && t.classList.contains("active"));
   }).catch(() => null);
-  await page2.click("#btn-ov-mark-runs").catch((e) => console.log("mark-runs click", e.message));
+  await page2.click("#btn-ov-next").catch((e) => console.log("mark-runs click", e.message));
   await wait(700);
   const landed = await page2.evaluate(() => {
     const flow = document.querySelector("#session-layout-flow");
@@ -465,10 +657,9 @@ async function shot(page, name) {
       markersTabActive: !!(tab && tab.classList.contains("active")),
       markersPanelVisible: !!(panel && getComputedStyle(panel).display !== "none"),
       panelOnScreen: !!(r && r.height > 0 && r.top < window.innerHeight && r.bottom > 0),
-      emptyHint: ((document.querySelector("#markers-list") || {}).textContent || "").trim().slice(0, 120),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(d2) 'Mark runs in Flow' lands on Flow with the Markers panel showing on screen",
+  record("(e2) 'Mark runs in Flow' lands on Flow with the Markers panel showing on screen",
     !!(landed && !landed.err && markersTabBefore === false && landed.flowVisible &&
       landed.markersTabActive && landed.markersPanelVisible && landed.panelOnScreen),
     JSON.stringify({ markersTabBefore, landed }));
