@@ -97,6 +97,17 @@ a new sentence. RULE: state the owner's rule as intent, not as a character list:
 "no dash punctuation of any kind (em, en, or ASCII stand-ins such as ' -- ' between
 clauses); use a colon, comma, parentheses or a new sentence".
 
+### BH9: a third spend-limit kill hit both UI lanes mid-flight (environment, LUX-A + LUX-B)
+Both lanes died with HTTP 429 around 14:10 while working in parallel (A in the main
+checkout, B in the map-track worktree). The tree check found A's overview-view.js
+unparseable (a second `const title` in the summary-line function from P3.9) and
+B's session-smoke.js partly edited, every other file parsing. Both agents were
+resumed with their inventories and the defect named. RULE (extends BH3/BH7): the
+tree check after a kill runs `node --check` (or the language's parse check) on
+every touched file, and a loop that pipes it through `head` must test the check's
+own exit status, not the pipe's (the coordinator's first loop printed "ok" for the
+broken file).
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
