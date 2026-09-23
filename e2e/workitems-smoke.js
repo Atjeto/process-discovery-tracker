@@ -27,6 +27,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
+const { launchViewer } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -101,11 +102,13 @@ function seedSession() {
     process.exit(2);
   }
 
-  let app;
+  let app, viewer;
   try {
-    app = await electron.launch({
+    // RP-36: a throwaway profile, never the developer's persisted UI state.
+    viewer = await launchViewer(electron, {
       executablePath: electronPath, args: [".", "--session=" + tmp], cwd: VIEWER,
     });
+    app = viewer.app;
   } catch (e) {
     console.error("FATAL: could not launch viewer Electron:", e && e.stack ? e.stack : e);
     process.exit(2);
@@ -127,7 +130,7 @@ function seedSession() {
   record("Steps default renders the case tree (cases, not the ADR-0024 step roll-up)",
     tree.cases >= 4 && !tree.hasStepRow,
     "cases=" + tree.cases + " hasStepRow=" + tree.hasStepRow);
-  if (tree.cases < 4) { await shot(page, "fail-wi-tree.png"); await app.close().catch(() => {}); process.exit(1); }
+  if (tree.cases < 4) { await shot(page, "fail-wi-tree.png"); await viewer.close(); process.exit(1); }
 
   // Expand every case, then look for a multi-visit work item.
   const caseN = tree.cases;
@@ -214,7 +217,7 @@ function seedSession() {
 
   record("zero PAGE ERRORs", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 
-  await app.close().catch(() => {});
+  await viewer.close();
   const passed = results.filter((r) => r.ok).length;
   console.log(`\n[workitems-e2e] ${passed}/${results.length} checks passed, ${results.length - passed} failed`);
   if (passed !== results.length) {

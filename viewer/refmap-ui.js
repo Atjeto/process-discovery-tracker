@@ -99,7 +99,7 @@ function rowHtml(m, s) {
         '<span class="refmap-row-name">' + esc(m.name) + "</span>" +
         (m.pdd_role && !missing ? '<span class="refmap-pdd-chip">in PDD · ' + (m.pdd_role === "as_is" ? "As-Is" : "To-Be") + "</span>" : "") +
         (stale ? '<span class="refmap-drift-chip" title="The mined map this was forked from has since changed. This copy is unchanged.">source changed</span>' : "") +
-        (missing ? '<span class="refmap-missing-chip" title="The .bpmn file for this entry is gone — remove the stale entry or re-fork.">⚠ file missing</span>' : "") +
+        (missing ? '<span class="refmap-missing-chip" title="The .bpmn file for this entry is gone: remove the stale entry or re-fork.">⚠ file missing</span>' : "") +
       "</div>" +
       '<div class="refmap-row-meta">forked from ' + esc(cell) + (date ? " · " + esc(date) : "") +
         " · hand-edited, not updated by analysis</div>" +
@@ -177,7 +177,7 @@ async function onFork() {
     const stepState = { notation: "bpmn", level: "step" };
     const stepPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath(stepState) : null;
     if (!stepPath || !fs.existsSync(stepPath)) {
-      toast("Nothing to fork yet — this session has no mined Process diagram. " +
+      toast("Nothing to fork yet: this session has no mined Process diagram. " +
         'Run Analyze with "Build process map" checked (under ⋯ More), then fork again.', "error");
       return;
     }
@@ -191,7 +191,7 @@ async function onFork() {
     if (_deps.setMapCell) { try { await _deps.setMapCell("step"); } catch (_) {} }
     try { xml = await PdtBpmn.exportXml(); } catch (_) { xml = null; }
     if (!xml) {
-      toast("Could not read the Process diagram to fork — open the Map level's " +
+      toast("Could not read the Process diagram to fork: open the Map level's " +
         "Process diagram tab, wait for it to draw, and try again.", "error");
       return;
     }
@@ -201,7 +201,7 @@ async function onFork() {
   }
   const source = { notation: "bpmn", level, scope: null };
   const n = RefStore.list(s.annotations).length;
-  const name = RefStore.cellLabel(source) + " — reference " + (n + 1);
+  const name = RefStore.cellLabel(source) + ", reference " + (n + 1);
   const entry = RefStore.fork({
     sessionFolder: s.sessionFolder, anno: s.annotations, xml, source,
     sourceBpmnPath: srcPath, name, kind: "reference", nowIso: new Date().toISOString(),
@@ -225,7 +225,7 @@ async function openEditor(id) {
   const e = RefStore.find(s.annotations, id);
   if (!e) return;
   if (!RefStore.fileExists(s.sessionFolder, e)) {
-    toast("This reference map's .bpmn file is missing — remove the entry or re-fork.", "error");
+    toast("This reference map's .bpmn file is missing: remove the entry or re-fork.", "error");
     return;
   }
   _editingId = id;

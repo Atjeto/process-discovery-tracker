@@ -32,6 +32,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
+const { launchViewer } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -119,14 +120,96 @@ const OVERLAP_PROBE = () => {
   return { mapHost, rawHost, overlap };
 };
 
-(async () => {
-  let app;
+/* RP-04: an annotations.json that exists but cannot be read is an error the
+   analyst sees, never an empty session, and nothing may write over it. A
+   second launch on a temp copy (events + manifest from the demo, read only)
+   whose annotations.json is cut off mid-write, the way a crash or a cancelled
+   save leaves it, next to one good backup. Pins the whole chain: main's load
+   report, the banner, the refused save (the real "Save note" verb), the
+   refused Analyze, and the files byte for byte. */
+async function unreadableAnnotationsPin() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-unreadable-"));
+  for (const f of ["events.jsonl", "manifest.json"]) fs.copyFileSync(path.join(SRC_SESSION, f), path.join(dir, f));
+  const good = fs.readFileSync(path.join(SRC_SESSION, "annotations.json"), "utf-8");
+  const truncated = good.slice(0, Math.floor(good.length / 2));
+  fs.writeFileSync(path.join(dir, "annotations.json"), truncated);
+  fs.writeFileSync(path.join(dir, "annotations.json.2"), good);
+  const files = () => fs.readdirSync(dir).filter((n) => n.startsWith("annotations.json")).sort();
+  const filesBefore = files();
+  const untouched = () =>
+    fs.readFileSync(path.join(dir, "annotations.json"), "utf-8") === truncated &&
+    fs.readFileSync(path.join(dir, "annotations.json.2"), "utf-8") === good &&
+    JSON.stringify(files()) === JSON.stringify(filesBefore);
+
+  let v;
   try {
-    app = await electron.launch({
+    v = await launchViewer(electron, { executablePath: electronPath, args: [".", "--session=" + dir], cwd: VIEWER });
+  } catch (e) {
+    record("RP-04: unreadable annotations.json launch", false, "could not launch: " + e.message);
+    return;
+  }
+  const p = await v.app.firstWindow();
+  const errs = [];
+  p.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+  p.on("pageerror", (e) => errs.push(String(e && e.message ? e.message : e)));
+  const T = 20000;
+  const banner = await p.waitForSelector("#annotations-error-banner", { state: "visible", timeout: T })
+    .then(() => p.$eval("#annotations-error-banner", (el) => (el.textContent || "").trim()))
+    .catch((e) => "NO BANNER: " + String(e.message).split("\n")[0]);
+  record("RP-04: an unreadable annotations.json loads as an error banner naming the file and its backups",
+    /annotations\.json in this session folder cannot be read/.test(banner) && /annotations\.json\.2/.test(banner),
+    banner.slice(0, 260));
+
+  // The real verb: pin a note on the Flow level. The save must be refused with
+  // an error toast, and no file may change (no write, no backup rotation).
+  const toastText = () => p.$eval("#toast", (el) => el.className.includes("error") ? (el.textContent || "") : "");
+  let saveMsg = "";
+  try {
+    await p.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+    await p.locator("#anno-note").fill("RP-04 probe note", { timeout: T });
+    await p.locator("#btn-save-note").click({ timeout: T });
+    await p.waitForFunction(() => /was not saved/.test((document.getElementById("toast") || {}).textContent || ""),
+      null, { timeout: T });
+    saveMsg = await toastText();
+  } catch (e) { saveMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
+  const afterSave = untouched();
+  record("RP-04: an edit on that session is refused with an error naming the problem; annotations.json and its backups are untouched",
+    /was not saved/.test(saveMsg) && /cannot be read/.test(saveMsg) && afterSave,
+    "toast=" + JSON.stringify(saveMsg.slice(0, 200)) + " filesUntouched=" + afterSave);
+
+  // Analyze rewrites annotations.json, so it is refused the same way.
+  let analyzeMsg = "";
+  try {
+    await p.locator("#btn-normalize").click({ timeout: T });
+    await p.waitForFunction(() => /Analysis stopped, nothing was changed/.test(
+      (document.getElementById("normalize-log") || {}).textContent || ""), null, { timeout: 60000 });
+    analyzeMsg = await p.$eval("#normalize-log", (el) => el.textContent || "");
+  } catch (e) { analyzeMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
+  const afterAnalyze = untouched();
+  record("RP-04: Analyze on that session is refused with the reason; annotations.json is untouched",
+    /Analysis stopped, nothing was changed: .*annotations\.json in this session folder cannot be read/.test(analyzeMsg) && afterAnalyze,
+    "log=" + JSON.stringify(analyzeMsg.slice(-220)) + " filesUntouched=" + afterAnalyze);
+
+  // The refused save logs one console error by design ("[session]
+  // annotations.json not saved"); anything else is a real page error.
+  const unexpected = errs.filter((t) => !/\[session\] annotations\.json not saved/.test(t));
+  record("RP-04 launch: no page errors besides the expected save refusal", unexpected.length === 0,
+    unexpected.length ? unexpected.slice(0, 3).join(" | ") : errs.length + " expected refusal line(s)");
+  if (!(afterSave && afterAnalyze)) await shot(p, "fail-rp04-unreadable.png");
+  await v.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+(async () => {
+  let app, viewer;
+  try {
+    // RP-36: a throwaway profile, never the developer's persisted UI state.
+    viewer = await launchViewer(electron, {
       executablePath: electronPath,
       args: [".", "--session=" + SESSION],
       cwd: VIEWER,
     });
+    app = viewer.app;
   } catch (e) {
     console.error("FATAL: could not launch viewer Electron:", e && e.stack ? e.stack : e);
     process.exit(2);
@@ -407,17 +490,42 @@ const OVERLAP_PROBE = () => {
   record("(R1) 'Waste by step/screen' is not a resident module", !!(noResidentModules && !noResidentModules.hasWasteModule),
     JSON.stringify(noResidentModules));
 
+  // CI-4: this pin flaked on GitHub Actions only (hidden:true). It now waits for
+  // each observable state (the notch applied, the Overview shown with the time
+  // module rendered and open, the row's expand button visible, the row body
+  // unhidden) with a generous timeout instead of fixed sleeps, and clicks
+  // through a locator that re-resolves if a re-render replaced the row. A wait
+  // that times out is recorded in the result (`waitFailed`), never swallowed.
+  const STATE_TIMEOUT = 15000;
   async function tsJudgeExpansionAt(idx) {
-    await setGrainNotch(idx);
-    await goEvidence();
+    const waits = [];
+    const waitFor = (label, p) => p.catch((e) => { waits.push(label + ": " + String(e.message).split("\n")[0]); });
+    await page.evaluate((i) => {
+      const s = document.getElementById("grain-slider");
+      if (!s) return;
+      s.value = String(i);
+      s.dispatchEvent(new Event("input", { bubbles: true }));
+    }, idx);
+    const notch = ["element", "screen", "app", "phase", "case"][idx];
+    await waitFor("notch applied", page.waitForFunction((n) =>
+      require("./state.js").getGrain() === n &&
+      (document.getElementById("grain-notch-lbl") || {}).textContent === n, notch, { timeout: STATE_TIMEOUT }));
+    await waitFor("overview click", page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: STATE_TIMEOUT }));
+    await waitFor("time module rendered", page.waitForSelector(
+      '#overview-evidence .analysis-module[data-module="time"]', { state: "visible", timeout: STATE_TIMEOUT }));
     await page.evaluate(() => {
       const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
       if (mod && !mod.open) mod.open = true;
     });
-    await wait(300);
-    const expandBtn = await page.$("#overview-evidence .ts-judge-expand");
-    if (expandBtn) { await expandBtn.click().catch(() => {}); await wait(300); }
-    return page.evaluate(() => {
+    const expand = page.locator("#overview-evidence .ts-row").first().locator(".ts-judge-expand");
+    await waitFor("expand visible", expand.waitFor({ state: "visible", timeout: STATE_TIMEOUT }));
+    await waitFor("expand click", expand.click({ timeout: STATE_TIMEOUT }));
+    await waitFor("row body shown", page.waitForFunction(() => {
+      const row = document.querySelector("#overview-evidence .ts-row");
+      const body = row && row.querySelector(".ts-judge-body");
+      return !!(body && !body.hidden);
+    }, null, { timeout: STATE_TIMEOUT }));
+    const probe = await page.evaluate(() => {
       const row = document.querySelector("#overview-evidence .ts-row");
       const body = row && row.querySelector(".ts-judge-body");
       return {
@@ -427,6 +535,8 @@ const OVERLAP_PROBE = () => {
         readOnlyNote: !!(body && /Detail slider/.test(body.textContent || "")),
       };
     }).catch((e) => ({ err: e.message }));
+    if (waits.length) probe.waitFailed = waits;
+    return probe;
   }
   const tsAtElement = await tsJudgeExpansionAt(0);   // element notch
   record("(R1) 'Where the time goes' row expand-in-place opens the judgment editor at the element notch",
@@ -469,16 +579,48 @@ const OVERLAP_PROBE = () => {
 
   // Confirm/Dismiss must still work: expand the first card and click Confirm;
   // the SAME analysis_overrides automation_confirmed write path (unchanged).
-  const firstCard = await page.$("#overview-evidence .auto-cards .ov-finding");
-  if (firstCard) { await firstCard.click().catch(() => {}); await wait(300); }
-  const confirmBtn = await page.$('#overview-evidence .auto-cards .ov-finding .auto-btn[data-confirm="true"]');
-  if (confirmBtn) { await confirmBtn.click().catch(() => {}); await wait(900); }
-  const confirmActive = await page.evaluate(() =>
-    !!document.querySelector('#overview-evidence .auto-cards .ov-finding .auto-btn[data-confirm="true"].active')
-  ).catch(() => false);
+  // CI-4: this pin flaked on GitHub Actions only (active=false after a fixed
+  // 900 ms sleep). It now waits for each observable state with a generous
+  // timeout: the card body open (Confirm visible), the Confirm button active
+  // for THIS card's segment, and the decision written to annotations.json
+  // (the "persists" half of the check's name, which the old version never
+  // read back). A failed wait is recorded as the reason, never swallowed.
+  const confirmRes = { found: false };
+  try {
+    const card = page.locator("#overview-evidence .auto-cards .ov-finding").first();
+    const confirmLoc = card.locator('.auto-btn[data-confirm="true"]');
+    confirmRes.found = (await confirmLoc.count()) > 0;
+    if (confirmRes.found) {
+      const sig = await card.locator(".auto-decision").getAttribute("data-segment-signature");
+      confirmRes.signature = sig;
+      confirmRes.activeBefore = await confirmLoc.evaluate((b) => b.classList.contains("active"));
+      await card.click({ timeout: STATE_TIMEOUT });               // expand in place
+      await confirmLoc.waitFor({ state: "visible", timeout: STATE_TIMEOUT });
+      await confirmLoc.click({ timeout: STATE_TIMEOUT });
+      await page.waitForFunction((s) =>
+        [...document.querySelectorAll("#overview-evidence .auto-cards .auto-decision")].some((d) =>
+          d.dataset.segmentSignature === s && d.querySelector('.auto-btn[data-confirm="true"].active')),
+      sig, { timeout: STATE_TIMEOUT });
+      confirmRes.active = true;
+      const annoPath = path.join(SESSION, "annotations.json");
+      const deadline = Date.now() + STATE_TIMEOUT;
+      while (Date.now() < deadline && !confirmRes.persisted) {
+        try {
+          const a = JSON.parse(fs.readFileSync(annoPath, "utf-8"));
+          confirmRes.persisted = (a.analysis_overrides || []).some((o) =>
+            o && o.segment_signature === sig && o.automation_confirmed === true);
+        } catch (_) { /* mid-write; read again */ }
+        if (!confirmRes.persisted) await wait(200);
+      }
+    }
+  } catch (e) {
+    confirmRes.error = String(e.message).split("\n")[0];
+  }
+  const confirmOk = !!(confirmRes.found && confirmRes.activeBefore === false &&
+    confirmRes.active && confirmRes.persisted);
   record("(R1) a finding card's Confirm button works (activates + persists the decision)",
-    !!(confirmBtn && confirmActive), "confirmBtnFound=" + !!confirmBtn + " active=" + confirmActive);
-  if (!(confirmBtn && confirmActive)) await shot(page, "fail-automation-confirm.png");
+    confirmOk, JSON.stringify(confirmRes));
+  if (!confirmOk) await shot(page, "fail-automation-confirm.png");
 
   // Item 21: the Evidence module collapse persists per analyst (localStorage,
   // pdt.analysis.* keys — the module keys are unchanged by the R4 relocation).
@@ -827,6 +969,43 @@ const OVERLAP_PROBE = () => {
       clipped.length ? "clipped: " + clipped.join(", ") : "all labels fit their buttons");
     if (clipped.length) await shot(page, "fail-refmap-labels.png");
 
+    // CI-3: the gallery stays clickable while Raw events is open, whatever the
+    // Session summary state. Opening Raw events used to freeze the Map layout
+    // at a fixed height, so the gallery opened later was squeezed and its
+    // buttons sat under the drawer's summary, which took the clicks. A trial
+    // click runs Playwright's full actionability check (visible, stable, and
+    // the button itself receives the pointer) without clicking. The drawer
+    // must really be open here (the map-overlay pin above opened it), or the
+    // check would prove nothing.
+    const galleryReach = {};
+    for (const summaryOpen of [false, true]) {
+      await page.evaluate((open) => {
+        const p = document.getElementById("session-summary");
+        if (p) p.open = open;
+      }, summaryOpen);
+      const state = await page.evaluate(() => ({
+        drawerOpen: !!(document.querySelector(".event-table-host") || {}).open,
+        summaryOpen: !!(document.getElementById("session-summary") || {}).open,
+      }));
+      const btns = page.locator("#refmap-list [data-rm-act]");
+      const n = await btns.count();
+      const blocked = [];
+      for (let i = 0; i < n; i++) {
+        const b = btns.nth(i);
+        const act = await b.getAttribute("data-rm-act");
+        await b.click({ trial: true, timeout: 5000 })
+          .catch((e) => blocked.push(act + ": " + String(e.message).split("\n")[0]));
+      }
+      galleryReach[summaryOpen ? "summaryOpen" : "summaryClosed"] = Object.assign(state, { buttons: n, blocked });
+    }
+    const reachOk = ["summaryOpen", "summaryClosed"].every((k) => {
+      const r = galleryReach[k];
+      return r && r.drawerOpen && r.summaryOpen === (k === "summaryOpen") && r.buttons > 0 && r.blocked.length === 0;
+    });
+    record("CI-3: every reference-map gallery button is clickable with Raw events open, Session summary open or closed",
+      reachOk, JSON.stringify(galleryReach));
+    if (!reachOk) await shot(page, "fail-refmap-gallery-reach.png");
+
     // Inverse: Delete drops the row but keeps the blob, so one Ctrl+Z restores a
     // WORKING entry that still carries the edit (the COHERENCE-AUDIT requirement).
     const delUndo = await page.evaluate(async (probe) => {
@@ -905,12 +1084,103 @@ const OVERLAP_PROBE = () => {
     await wait(400);
   }
 
+  // --- Item 6: an inserted marker shows at once as pending, with one call to
+  // action that runs Analyze; after it the marker is a real one and the case
+  // count follows. Runs Analyze into the session folder, so FRESH only.
+  if (!FRESH) {
+    record("item 6: pending marker insert (skipped: session not re-normalized)", true,
+      "Analyze would write into the committed demo folder");
+  } else {
+    await markerInsertPin();
+  }
+
+  async function markerInsertPin() {
+    const T = 20000;
+    const LABEL = "E2E pending run";
+    const INSERT_AT = "2026-05-14T09:01:20.000Z";   // the gap between the demo's first two runs
+    const cases = () => page.evaluate(() => ({
+      analyzed: ((require("./state.js").getSession().analysis || {}).case_quality || {}).case_count,
+      bands: document.querySelectorAll("#timeline .tl-case-band").length,
+      badge: ((document.querySelector("#overview-content .ov-badge-text") || {}).textContent || "").trim(),
+    }));
+    const pinState = () => page.evaluate((label) => {
+      const rows = [...document.querySelectorAll("#markers-list .marker-row")];
+      const row = rows.find((r) => (r.textContent || "").includes(label));
+      const panel = document.querySelector('.anno-panel[data-panel="markers"]');
+      const cta = document.getElementById("btn-apply-marker-edits");
+      return {
+        row: row ? { pending: row.classList.contains("pending"), inserted: row.classList.contains("inserted"),
+          text: (row.textContent || "").replace(/\s+/g, " ").trim() } : null,
+        markersPanelShown: !!(panel && getComputedStyle(panel).display !== "none"),
+        pendingBars: document.querySelectorAll("#timeline .tl-marker-pending").length,
+        pendingLabel: [...document.querySelectorAll("#timeline .tl-marker-label-pending")]
+          .map((l) => l.textContent).find((t) => t.includes(label)) || null,
+        cta: cta ? (cta.textContent || "").trim() : null,
+      };
+    }, LABEL);
+    let before = null, pending = null, applied = null, onDisk = false, err = null;
+    try {
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+      await page.waitForSelector("#timeline .tl-band", { state: "visible", timeout: T });
+      before = await cases();
+      // Right-click the timeline at INSERT_AT: the real contextmenu handler
+      // opens the real insert menu; its item and the label prompt are clicked.
+      await page.evaluate((iso) => {
+        const tl = document.getElementById("timeline");
+        const evs = require("./state.js").getSession().events;
+        const first = new Date(evs[0].timestamp).getTime();
+        const last = new Date(evs[evs.length - 1].timestamp).getTime();
+        const r = tl.getBoundingClientRect();
+        const x = r.left + ((new Date(iso).getTime() - first) / (last - first)) * r.width;
+        tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: r.top + 4 }));
+      }, INSERT_AT);
+      await page.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
+      await page.locator(".modal-prompt .modal-input").fill(LABEL, { timeout: T });
+      await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
+      await page.waitForFunction((label) => [...document.querySelectorAll("#markers-list .marker-row.pending")]
+        .some((r) => (r.textContent || "").includes(label)), LABEL, { timeout: T });
+      pending = Object.assign(await pinState(), { cases: await cases() });
+      // Saved as an insert edit near INSERT_AT (the right-click x maps to a
+      // time through the timeline's pixel width, so allow 2 s either way).
+      const a = JSON.parse(fs.readFileSync(path.join(SESSION, "annotations.json"), "utf-8"));
+      onDisk = (a.marker_edits || []).some((e) => e && e.op === "insert" && e.marker_type === "start" &&
+        e.label === LABEL && Math.abs(Date.parse(e.timestamp) - Date.parse(INSERT_AT)) <= 2000);
+    } catch (e) { err = String(e.message).split("\n")[0]; }
+    const pendingOk = !!(pending && pending.row && pending.row.pending && pending.row.inserted &&
+      pending.markersPanelShown && pending.pendingBars >= 1 && pending.pendingLabel === LABEL + " (pending)" &&
+      pending.cta === "Analyze to apply 1 marker change" && onDisk &&
+      pending.cases.analyzed === before.analyzed && pending.cases.bands === before.bands);
+    record("item 6: a Start marker inserted from the timeline menu shows at once as pending (list + timeline + one call to action), before any Analyze",
+      pendingOk, JSON.stringify({ before, pending, onDisk, err }));
+    if (!pendingOk) await shot(page, "fail-marker-pending.png");
+
+    // The call to action runs Analyze (with its usual re-analyze confirmation).
+    try {
+      await page.locator("#btn-apply-marker-edits").click({ timeout: T });
+      await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+      await page.waitForFunction((label) => !document.getElementById("btn-apply-marker-edits") &&
+        [...document.querySelectorAll("#markers-list .marker-row")]
+          .some((r) => (r.textContent || "").includes(label) && !r.classList.contains("pending")),
+      LABEL, { timeout: 120000 });
+      applied = Object.assign(await pinState(), { cases: await cases() });
+    } catch (e) { err = String(e.message).split("\n")[0]; }
+    const appliedOk = !!(applied && before && applied.row && !applied.row.pending && applied.row.inserted &&
+      applied.pendingBars === 0 && applied.cta === null &&
+      applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&
+      new RegExp("\\b" + (before.analyzed + 1) + " cases\\b").test(applied.cases.badge));
+    record("item 6: its call to action runs Analyze; the marker becomes a real one and the case count goes up by one",
+      appliedOk, JSON.stringify({ before: before && before.analyzed, applied, err }));
+    if (!appliedOk) await shot(page, "fail-marker-applied.png");
+  }
+
   // Page errors gate (checked last so we capture errors from every interaction).
   record("zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.length + " error(s): " + pageErrors.slice(0, 5).join(" | ") : "");
   if (pageErrors.length) await shot(page, "fail-page-errors.png");
 
-  await app.close().catch(() => {});
+  await viewer.close();
+
+  await unreadableAnnotationsPin();
 
   // Summary + exit code.
   const pass = results.filter((r) => r.ok).length;

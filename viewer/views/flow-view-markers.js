@@ -1,15 +1,15 @@
 /*
  * flow-view-markers.js -- the Flow level's marker side-panel:
- *   - marker-edit resolution (effective label / timestamp / deleted state
- *     over annotations.json.marker_edits),
- *   - the side-panel markers list,
- *   - the per-marker adjust / delete / rename actions.
+ *   - the markers list: captured markers with annotations.marker_edits laid
+ *     over them (marker-edits.js), including markers the analyst inserted,
+ *     each change shown at once and tagged "pending" until an Analyze
+ *     applies it (the call to action lives on the actions bar, flow-view.js),
+ *   - the per-marker move / delete / rename actions, for captured and
+ *     inserted markers alike.
  *
  * Extracted from flow-view.js (god-file split). Requires flow-view-video.js
  * for seekToTimestamp / videoStartTs (one-way), and never require()s
- * flow-view.js back. flow-view.js and flow-view-timeline.js consume
- * effectiveLabel (the timeline marker labels) and renderMarkersList
- * (session load).
+ * flow-view.js back. flow-view.js consumes renderMarkersList (session load).
  *
  * The marker-INSERT surfaces (showMarkerInsertMenu, queueSyntheticMarker,
  * queueMarkerDelete) stay in flow-view.js with their timeline-right-click /
@@ -23,62 +23,38 @@ const { $, escapeHtml, cryptoRandomId, toast } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { persistAnnotations } = require("../session.js");
 const { seekToTimestamp, videoStartTs } = require("./flow-view-video.js");
+const MarkerEdits = require("../marker-edits.js");
 
-/* ============ Marker-edit resolution ============================== */
-
-function getMarkerEdit(eventId) {
-  /* Returns the latest pending edit (e.g. rename) for a given marker
-     event_id, or null. Edits live in annotations.json under marker_edits. */
-  const edits = (State.getSession().annotations && State.getSession().annotations.marker_edits) || [];
-  let latest = null;
-  for (const e of edits) {
-    if (e.event_id === eventId) latest = e; // last write wins
-  }
-  return latest;
-}
-
+/* The label shown for one captured marker event (renames applied). */
 function effectiveLabel(markerEvent) {
-  const edit = getMarkerEdit(markerEvent.event_id);
-  if (edit && edit.field === "label") return edit.value;
-  return markerEvent.data.label;
-}
-
-function isDeletedMarker(eventId) {
-  const edits = (State.getSession().annotations && State.getSession().annotations.marker_edits) || [];
-  return edits.some((e) => e.event_id === eventId && e.op === "delete");
-}
-
-function effectiveTimestamp(markerEvent) {
-  const edits = (State.getSession().annotations && State.getSession().annotations.marker_edits) || [];
-  let latest = null;
-  for (const e of edits) {
-    if (e.event_id === markerEvent.event_id && e.field === "timestamp") latest = e.value;
-  }
-  return latest || markerEvent.timestamp;
+  const view = MarkerEdits.sessionMarkerView(State.getSession());
+  const row = view.find((m) => m.eventId === markerEvent.event_id);
+  return row ? row.label : ((markerEvent.data || {}).label || null);
 }
 
 /* ============ Markers list + per-marker edits ===================== */
 
+const APPLY_NOTE = "it applies to the cases when you analyze the session";
+
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
-  const sess = State.getSession();
-  const allMarkers = (sess.events || []).filter((e) => e.type === "marker");
-  if (!allMarkers.length) {
+  const all = MarkerEdits.sessionMarkerView(State.getSession());
+  if (!all.length) {
     host.innerHTML = '<p class="hint">No markers yet. To mark a run, right-click the timeline at its first moment and choose Insert Start marker here.</p>';
     return;
   }
   const f = State.getListFilters().marker;
   const query = (f.text || "").toLowerCase();
   const markers = query
-    ? allMarkers.filter(m => (effectiveLabel(m) || "").toLowerCase().includes(query)
-        || (m.data.reason || "").toLowerCase().includes(query))
-    : allMarkers;
+    ? all.filter((m) => (m.label || "").toLowerCase().includes(query)
+        || (m.reason || "").toLowerCase().includes(query))
+    : all;
   const meta = $("#marker-filter-meta");
   if (meta) {
-    meta.textContent = markers.length === allMarkers.length
-      ? `${allMarkers.length} markers`
-      : `${markers.length} of ${allMarkers.length}`;
+    meta.textContent = markers.length === all.length
+      ? `${all.length} markers`
+      : `${markers.length} of ${all.length}`;
   }
   if (!markers.length) {
     host.innerHTML = '<p class="hint">No markers match the filter.</p>';
@@ -86,58 +62,67 @@ function renderMarkersList() {
   }
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "Double-click a Start to rename. Use the row buttons to adjust the timestamp or delete. Edits save to annotations.json; re-run normalization to apply downstream.";
+  hint.textContent = "Double-click a Start to rename it. Use the row buttons to move a marker to the video time or to delete it. " +
+    "A change shows here at once, marked pending; " + APPLY_NOTE + ".";
   host.appendChild(hint);
 
-  // Story order: by effective (possibly adjusted) timestamp.
-  const ordered = markers.slice().sort((a, b) =>
-    new Date(effectiveTimestamp(a)).getTime() - new Date(effectiveTimestamp(b)).getTime());
-
+  // Story order: by the time shown (moves applied).
   let depth = 0;
-  for (const m of ordered) {
+  for (const m of markers) {
     const row = document.createElement("div");
-    const deleted = isDeletedMarker(m.event_id);
-    row.className = "marker-row " + m.data.marker_type + (deleted ? " deleted" : "");
-    if (m.data.marker_type === "end") depth = Math.max(0, depth - 1);
-    const lbl = effectiveLabel(m) || "(unlabeled)";
-    const editedNote = (getMarkerEdit(m.event_id) || effectiveTimestamp(m) !== m.timestamp)
-      ? ' <span class="meta">· edited</span>' : '';
-    const deletedNote = deleted ? ' <span class="meta bad">· deleted</span>' : '';
+    row.className = "marker-row " + m.markerType + (m.deleted ? " deleted" : "") +
+      (m.pending ? " pending" : "") + (m.inserted ? " inserted" : "");
+    row.dataset.markerKey = m.key;
+    if (m.markerType === "end" && !m.deleted) depth = Math.max(0, depth - 1);
+    const lbl = m.label || "(unlabeled)";
+    const notes =
+      (m.inserted ? ' <span class="meta">· added</span>' : (m.edited ? ' <span class="meta">· edited</span>' : "")) +
+      (m.deleted ? ' <span class="meta bad">· deleted</span>' : "") +
+      (m.pending ? ' <span class="meta pending-tag" title="Not applied yet: analyze the session to apply this change">· pending</span>' : "");
     row.innerHTML =
-      '<span class="ts">' + escapeHtml(effectiveTimestamp(m).slice(11, 19)) + '</span>' +
-      '<span class="dir">' + (m.data.marker_type === "start" ? "▶" : "■") + '</span>' +
+      '<span class="ts">' + escapeHtml(String(m.timestamp || "").slice(11, 19)) + '</span>' +
+      '<span class="dir">' + (m.markerType === "start" ? "▶" : "■") + '</span>' +
       '<span class="lbl">' + escapeHtml(lbl) +
-        (m.data.reason ? ' <span class="meta">(' + escapeHtml(m.data.reason) + ')</span>' : '') +
-        editedNote + deletedNote +
+        (m.reason ? ' <span class="meta">(' + escapeHtml(m.reason) + ')</span>' : '') +
+        notes +
       '</span>' +
       '<span class="depth">L' + depth + '</span>' +
       '<span class="marker-actions">' +
-        '<button class="icon-btn xs" data-act="adjust" title="Adjust to current video time">◷</button>' +
-        '<button class="icon-btn xs" data-act="delete" title="Delete marker (from normalization)">✕</button>' +
+        '<button class="icon-btn xs" data-act="adjust" title="Move to the current video time">◷</button>' +
+        '<button class="icon-btn xs" data-act="delete" title="Delete marker (from the analysis)">✕</button>' +
       '</span>';
-    if (m.data.marker_type === "start") depth += 1;
+    if (m.markerType === "start" && !m.deleted) depth += 1;
     row.addEventListener("click", (e) => {
       if (e.target.closest(".marker-actions")) return;
-      seekToTimestamp(effectiveTimestamp(m));
+      seekToTimestamp(m.timestamp);
     });
-    if (m.data.marker_type === "start") {
+    if (m.markerType === "start") {
       row.addEventListener("dblclick", async (e) => {
         if (e.target.closest(".marker-actions")) return;
-        const current = effectiveLabel(m) || "";
+        const current = m.label || "";
         const next = await promptModal({ title: "Rename marker", message: "New label", defaultValue: current, okLabel: "Rename" });
         if (next == null || next.trim() === "" || next === current) return;
         await renameMarker(m, next.trim());
       });
     }
-    row.querySelector('[data-act="adjust"]').addEventListener("click", () =>
-      adjustMarkerToVideoTime(m));
-    row.querySelector('[data-act="delete"]').addEventListener("click", () =>
-      deleteMarker(m));
+    row.querySelector('[data-act="adjust"]').addEventListener("click", () => adjustMarkerToVideoTime(m));
+    row.querySelector('[data-act="delete"]').addEventListener("click", () => deleteMarker(m));
     host.appendChild(row);
   }
 }
 
-async function adjustMarkerToVideoTime(markerEvent) {
+function _annotations() {
+  const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
+  anno.marker_edits = anno.marker_edits || [];
+  return anno;
+}
+
+/* The insert edit behind an inserted marker row (its id is the row's editId). */
+function _insertEdit(anno, m) {
+  return m.editId ? anno.marker_edits.find((e) => e && e.op === "insert" && e.id === m.editId) || null : null;
+}
+
+async function adjustMarkerToVideoTime(m) {
   if (!State.getSession()) return;
   const video = $("#video");
   const obsStartTs = videoStartTs();
@@ -145,58 +130,75 @@ async function adjustMarkerToVideoTime(markerEvent) {
   if (obsStartTs && video && video.src) {
     newTs = new Date(new Date(obsStartTs).getTime() + (video.currentTime || 0) * 1000).toISOString();
   } else {
-    const input = await promptModal({ title: "Adjust marker timestamp", message: "New ISO 8601 timestamp", detail: "e.g., 2026-05-14T09:23:11.482Z", defaultValue: effectiveTimestamp(markerEvent), okLabel: "Save" });
+    const input = await promptModal({ title: "Move marker", message: "New time (ISO 8601)", detail: "For example: 2026-05-14T09:23:11.482Z", defaultValue: m.timestamp, okLabel: "Save" });
     if (!input) return;
     newTs = input.trim();
   }
-  const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
-  anno.marker_edits = anno.marker_edits || [];
-  anno.marker_edits.push({
-    id: cryptoRandomId(),
-    event_id: markerEvent.event_id,
-    field: "timestamp",
-    value: newTs,
-    previous: markerEvent.timestamp,
-    ts: new Date().toISOString(),
-  });
-  await persistAnnotations(anno, 'adjust marker timestamp', ["markers", "timeline"]);
-  toast("Marker timestamp adjusted", "success");
+  const anno = _annotations();
+  const now = new Date().toISOString();
+  if (m.inserted) {
+    // An inserted marker IS its insert edit: move the edit itself.
+    const e = _insertEdit(anno, m);
+    if (!e) { toast("This added marker could not be found in the session's changes.", "error"); return; }
+    e.timestamp = newTs;
+    e.ts = now;
+  } else {
+    anno.marker_edits.push({
+      id: cryptoRandomId(), event_id: m.eventId, field: "timestamp",
+      value: newTs, previous: m.timestamp, ts: now,
+    });
+  }
+  await persistAnnotations(anno, 'move marker', ["markers", "timeline"]);
+  toast("Marker moved; " + APPLY_NOTE + ".", "success");
 }
 
-async function deleteMarker(markerEvent) {
+async function deleteMarker(m) {
   if (!State.getSession()) return;
   const ok = await confirmModal({
     title: "Delete marker?",
-    message: `Delete this ${markerEvent.data.marker_type} marker from normalization output?`,
-    detail: "Raw events.jsonl is not touched; the delete is recorded in annotations.json. Ctrl+Z will restore it.",
+    message: m.inserted
+      ? `Remove this added ${m.markerType} marker?`
+      : `Delete this ${m.markerType} marker from the analysis?`,
+    detail: "The recording itself is not changed; the change is saved with the session and " +
+      APPLY_NOTE + ". Ctrl+Z restores it.",
     okLabel: "Delete",
     danger: true,
   });
   if (!ok) return;
-  const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
-  anno.marker_edits = anno.marker_edits || [];
-  anno.marker_edits.push({
-    id: cryptoRandomId(),
-    event_id: markerEvent.event_id,
-    op: "delete",
-    ts: new Date().toISOString(),
-  });
+  const anno = _annotations();
+  const now = new Date().toISOString();
+  if (m.inserted) {
+    const e = _insertEdit(anno, m);
+    if (!e) { toast("This added marker could not be found in the session's changes.", "error"); return; }
+    anno.marker_edits = anno.marker_edits.filter((x) => x !== e);
+    // An insert the last analysis already applied needs one more Analyze to
+    // take it out again: a delete of its marker id keeps that change pending
+    // (the pipeline ignores a delete whose marker no longer exists).
+    if (!MarkerEdits.isPendingEdit(e, MarkerEdits.lastAnalysisMs(State.getSession()))) {
+      anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.key, op: "delete", ts: now });
+    }
+  } else {
+    anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.eventId, op: "delete", ts: now });
+  }
   await persistAnnotations(anno, 'delete marker', ["markers", "timeline"]);
-  toast("Marker marked for deletion (re-run normalization)", "success");
+  toast("Marker deleted; " + APPLY_NOTE + ".", "success");
 }
 
-async function renameMarker(markerEvent, newLabel) {
+async function renameMarker(m, newLabel) {
   if (!State.getSession()) return;
-  const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
-  anno.marker_edits = anno.marker_edits || [];
-  anno.marker_edits.push({
-    id: cryptoRandomId(),
-    event_id: markerEvent.event_id,
-    field: "label",
-    value: newLabel,
-    previous: markerEvent.data.label,
-    ts: new Date().toISOString(),
-  });
+  const anno = _annotations();
+  const now = new Date().toISOString();
+  if (m.inserted) {
+    const e = _insertEdit(anno, m);
+    if (!e) { toast("This added marker could not be found in the session's changes.", "error"); return; }
+    e.label = newLabel;
+    e.ts = now;
+  } else {
+    anno.marker_edits.push({
+      id: cryptoRandomId(), event_id: m.eventId, field: "label",
+      value: newLabel, previous: m.label, ts: now,
+    });
+  }
   // Route through persistAnnotations like the other marker edits so the
   // rename lands on the undo stack (Ctrl+Z reverts it) and refreshes the
   // _baseline -- a raw saveAnnotations bypassed undo and left a stale
@@ -204,7 +206,7 @@ async function renameMarker(markerEvent, newLabel) {
   // The "markers"/"timeline" topics re-render the side panel and the
   // marker labels on the timeline.
   await persistAnnotations(anno, 'rename marker', ["markers", "timeline"]);
-  toast("Marker renamed (re-run normalization to apply downstream)", "success");
+  toast("Marker renamed; " + APPLY_NOTE + ".", "success");
 }
 
 /* The marker-list filter box (debounced) re-renders the list in place.

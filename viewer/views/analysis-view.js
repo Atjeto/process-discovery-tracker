@@ -221,12 +221,12 @@ function _wireModulePersistence(host) {
 /* ============ Sections ============================================ */
 
 function _caption(overrideCount) {
-  let html = '<div class="analysis-caption">Estimates — these figures ' +
+  let html = '<div class="analysis-caption">Estimates: these figures ' +
     "come from rules of thumb set before any real recording data existed. " +
     "Review them before relying on them.";
   if (overrideCount > 0) {
     html += " <strong>" + overrideCount + " analyst correction" +
-      (overrideCount === 1 ? "" : "s") + "</strong> applied in this view — " +
+      (overrideCount === 1 ? "" : "s") + "</strong> applied in this view: " +
       "run Analyze again to bake them into analysis.json and the PDD export.";
   }
   return html + "</div>";
@@ -319,12 +319,12 @@ function _buildWasteRow(g, editable = true) {
     ? (g.instances > 1
         ? "Click to set the business-required share across all " + g.instances + " instances"
         : "Click to set the business-required share of this step")
-    : "Read-only at this detail level — set the Detail slider to element to adjust business-required time";
+    : "Read-only at this detail level: set the Detail slider to element to adjust business-required time";
   // Item 2: while nothing is judged, the bar would be all value-add green (a
   // measured-looking "all value-add" result). Replace it with a neutral,
   // judgment-free measured-time chip until the analyst sets the first split.
   const barCell = unjudged
-    ? '<span class="waste-bar waste-bar-unjudged" title="Not judged yet — click to split into value-add / business-required / waste">' +
+    ? '<span class="waste-bar waste-bar-unjudged" title="Not judged yet: click to split into value-add / business-required / waste">' +
         escapeHtml(_fmt(total)) + " measured · not judged</span>"
     : '<span class="waste-bar">' +
         seg(g.va_ms, "seg-va") + seg(g.bnva_ms, "seg-bnva") +
@@ -489,7 +489,7 @@ function _timeStudySection(ts, notch, maps, wasteByProcessLabel) {
       return '<button type="button" class="ts-dot" style="left:' + x.toFixed(2) + '%"' +
         (st.step_id ? ' data-step-id="' + escapeAttr(st.step_id) + '"' : "") +
         ' title="' + escapeAttr(_fmt(ms) +
-          (canJump ? " — click to open this instance on the Flow timeline" : "")) +
+          (canJump ? ": click to open this instance on the Flow timeline" : "")) +
         '"' + (canJump ? "" : " disabled") + "></button>";
     }).join("");
     const breakdown = "active " + _fmt(t.active_ms) + " · waiting " + _fmt(t.waiting_ms) +
@@ -499,7 +499,7 @@ function _timeStudySection(ts, notch, maps, wasteByProcessLabel) {
         " · stdev " + escapeHtml(_fmt(c.stdev)) +
         " · p50 " + escapeHtml(_fmt(c.p50)) +
         " · p95 " + escapeHtml(_fmt(c.p95)) +
-        " · range " + escapeHtml(_fmt(c.min)) + "–" + escapeHtml(_fmt(c.max)) + "</div>"
+        " · range " + escapeHtml(_fmt(c.min)) + "-" + escapeHtml(_fmt(c.max)) + "</div>"
       : "";
     // Item 2 (relocated): the judgment editor lives one click behind this row
     // (expand-in-place, Evidence mechanic). Rows that already carry a judgment
@@ -514,7 +514,7 @@ function _timeStudySection(ts, notch, maps, wasteByProcessLabel) {
       'aria-expanded="false" title="Set business-required time for this step">▸</button>';
     return '<div class="ts-row" data-process-label="' + escapeAttr(t.name || "") + '">' +
       '<div class="ts-row-line">' +
-        '<span class="ts-name" title="' + escapeAttr((t.name || "(step)") + " — " + breakdown) + '">' +
+        '<span class="ts-name" title="' + escapeAttr((t.name || "(step)") + " - " + breakdown) + '">' +
           escapeHtml(t.name || "(step)") + "</span>" +
         '<span class="ts-n">' + (t.instances || 0) + "×</span>" +
         '<span class="ts-total">' + escapeHtml(_fmt(total)) + "</span>" +
@@ -530,7 +530,7 @@ function _timeStudySection(ts, notch, maps, wasteByProcessLabel) {
   const gateNote = distribution ? "" :
     '<div class="analysis-caption">Summary statistics (mean/stdev/percentiles) ' +
     "render once a step type reaches " + TIME_STUDY_DISTRIBUTION_MIN_N +
-    " instances — below that the strip shows exactly what was measured: " +
+    " instances. Below that, the strip shows exactly what was measured: " +
     "one dot per observed instance.</div>";
   const axis = '<div class="ts-axis"><span class="ts-axis-lbl">per-instance ' +
     'duration</span><span>0s</span><span class="ts-axis-line"></span><span>' +
@@ -586,7 +586,7 @@ function _candidateClaim(a) {
   const n = (a.step_labels || []).length;
   const size = n ? n + "-step sequence" : "sequence";
   const runs = (a.instance_count || 0) + "×";
-  return app + " · " + size + " — ran " + runs + ", " +
+  return app + " · " + size + ": ran " + runs + ", " +
     _fmt(a.total_elapsed_ms) + " total, mean " + _fmt(a.mean_elapsed_ms);
 }
 
@@ -601,20 +601,20 @@ function _automationSection(auto) {
   const lonely = auto.length - scored.length;
   const lead = '<div class="analysis-caption">' +
     "A candidate is a contiguous run of work in one application within one " +
-    "case — e.g. a CRM lookup → copy → paste sequence. Single clicks or " +
+    "case, for example a CRM lookup → copy → paste sequence. Single clicks or " +
     "keystrokes are not surfaced (a hybrid where a robot clicks one button " +
     "inside a manual flow is worse than fully manual). Ranked by automation " +
-    "priority — frequency × mean time × automatable share." +
+    "priority: frequency × mean time × automatable share." +
     "</div>";
   if (!scored.length) {
     const note = lonely
-      ? "All detected segments occurred only once in this capture — "
+      ? "All detected segments occurred only once in this capture: "
         + "automation candidacy needs the same segment seen across 2+ cases. "
         + "Load more sessions or analyze a longer recording."
       : "No multi-instance segments detected.";
     return {
       title: "Automation candidates",
-      takeaway: "None ranked yet — needs a sequence seen across 2+ cases",
+      takeaway: "None ranked yet: needs a sequence seen across 2+ cases",
       body: lead + '<div class="analysis-note">' + escapeHtml(note) + "</div>",
     };
   }
@@ -717,11 +717,11 @@ async function _editBnva(group) {
     ? '"' + (group.process_label || "step") + '" runs ' + _fmt(totalElapsed) +
       " across " + n + " instances (avg " + _fmt(Math.round(avgElapsed)) +
       "). By default all active time counts as value-add. Enter the " +
-      "business-required minutes per instance — applied to every instance " +
+      "business-required minutes per instance: applied to every instance " +
       "(clamped to each one's available active time); measured waste is unaffected."
     : '"' + (group.process_label || "step") + '" runs ' + _fmt(totalElapsed) +
       ". By default all active time counts as value-add. Enter the part " +
-      "that is business-required — necessary, but not adding value. The rest " +
+      "that is business-required: necessary, but not adding value. The rest " +
       "stays value-add; measured waste is unaffected.";
   const hint = n > 1
     ? "Up to " + (Math.round(maxBnvaMin * 100) / 100) +

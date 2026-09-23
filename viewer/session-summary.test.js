@@ -30,7 +30,8 @@ test("stepStateLabel collapses human states to 'Confirmed'", () => {
 
 test("stepStateLabel keeps 'hidden' distinct and is safe on junk", () => {
   assert.equal(stepStateLabel("hidden"), "Hidden");
-  assert.equal(stepStateLabel(undefined), "—");
+  // Item 8 (no em or en dash in rendered copy): the empty placeholder is a plain hyphen.
+  assert.equal(stepStateLabel(undefined), "-");
 });
 
 /* ---- eventSpanMs --------------------------------------------------- */

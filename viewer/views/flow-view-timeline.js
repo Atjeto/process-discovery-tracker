@@ -9,8 +9,9 @@
  * persistence, the timeline summary line, and the zoom / middle-drag-pan /
  * scroll-persist wiring. Self-wires its DOM controls at require() time.
  *
- * Requires the sibling Flow modules one-way (apps / video / markers /
- * screenshots) for the values the lanes render; cross-surface glue that lives
+ * Requires the sibling Flow modules one-way (apps / video / screenshots) and
+ * marker-edits.js (the markers with the analyst's changes laid over them) for
+ * the values the lanes render; cross-surface glue that lives
  * back in flow-view.js -- currentScopeRange (case scope), showMarkerInsertMenu
  * / showCaseContextMenu (the timeline context menus), activateAnnoTab -- is
  * injected via initTimeline() so this module never require()s flow-view.js.
@@ -25,7 +26,7 @@ const State = require("../state.js");
 const { $, formatDuration } = require("../dom.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
-const { effectiveLabel } = require("./flow-view-markers.js");
+const MarkerEdits = require("../marker-edits.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
 const { rollUpSteps } = require("../process-map-levels.js");
 
@@ -302,7 +303,7 @@ function _showStepBandMenu(x, y, stepId, ts) {
     item.style.cssText = "padding:6px 14px;cursor:pointer;";
     item.addEventListener("mouseenter", () => item.style.background = "var(--accent)");
     item.addEventListener("mouseleave", () => item.style.background = "");
-    item.addEventListener("click", () => { menu.remove(); handler(); });
+    item.addEventListener("click", () => { close(); handler(); });
     menu.appendChild(item);
   }
   addItem("Open in Steps", () => {
@@ -318,11 +319,17 @@ function _showStepBandMenu(x, y, stepId, ts) {
     if (ts) seekToTimestamp(ts);
   });
   document.body.appendChild(menu);
-  const dismiss = (e) => {
-    if (e.type === "keydown" && e.key !== "Escape") return;
+  // A press ON the menu is a choice, not a dismissal (see showMarkerInsertMenu
+  // in flow-view.js: closing on the item's own mousedown swallowed the click).
+  function close() {
     menu.remove();
     document.removeEventListener("mousedown", dismiss, true);
     document.removeEventListener("keydown", dismiss, true);
+  }
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    if (e.type === "mousedown" && menu.contains(e.target)) return;
+    close();
   };
   setTimeout(() => {
     document.addEventListener("mousedown", dismiss, true);
@@ -470,7 +477,11 @@ function renderTimeline() {
 
   // Case bands render as a labelled header ABOVE the activity lane;
   // layoutCaseLanes assigns each case a non-overlapping lane (sweep-line).
-  const caseLanes = layoutCaseLanes(evs, first, last);
+  // The bands follow the markers the LAST ANALYSIS used (captured markers
+  // with the applied marker changes, marker-edits.js), so a pending insert
+  // shows as a pending marker bar, and becomes a case band once analyzed.
+  const markerRows = MarkerEdits.sessionMarkerView(State.getSession());
+  const caseLanes = layoutCaseLanes(MarkerEdits.appliedMarkerEvents(markerRows), first, last);
 
   // Resolved lane heights. A height of 0 hides the lane: the core skips its
   // render and (with gapBefore) collapses the spacing. These mirror the
@@ -675,7 +686,7 @@ function renderTimeline() {
           band.style.top = activityTop + "px";
           band.style.height = activityH + "px";
           band.title = (idleAtDesk
-            ? "Idle (still at desk — recent mouse/keyboard activity), "
+            ? "Idle (still at desk: recent mouse/keyboard activity), "
             : "Idle (away), ") + formatDuration(endT - idleStart);
           host.appendChild(band);
           idleStart = null;
@@ -683,29 +694,35 @@ function renderTimeline() {
         }
       }
 
-      // Marker bars (rendered above bands)
-      for (const ev of (lanes.markers ? evs : [])) {
-        if (ev.type !== "marker") continue;
-        const t = new Date(ev.timestamp).getTime();
+      // Marker bars (rendered above bands): the captured markers with the
+      // analyst's marker changes laid over them (marker-edits.js). A change
+      // that waits for Analyze is ALWAYS drawn, dashed and labelled pending,
+      // even with the Marker bars lane off: it is the immediate feedback for
+      // an insert / move / delete. Applied markers follow the lane toggle.
+      for (const m of markerRows) {
+        if (m.deleted && !m.pending) continue;          // an analyzed delete: gone
+        if (!m.pending && !lanes.markers) continue;
+        const t = new Date(m.timestamp).getTime();
+        if (!isFinite(t)) continue;
         const x = ((t - first) / span) * 100;
         const bar = document.createElement("div");
-        bar.className = "tl-marker";
+        bar.className = "tl-marker" + (m.pending ? " tl-marker-pending" : "") +
+          (m.pending && m.deleted ? " tl-marker-pending-delete" : "");
+        bar.dataset.markerKey = m.key;
         bar.style.left = x + "%";
         bar.style.height = activityH + "px";
         bar.style.top = activityTop + "px";
-        bar.title = ev.data.marker_type + ": " + (ev.data.label || "") +
-          (ev.data.reason ? " (" + ev.data.reason + ")" : "");
+        bar.title = m.markerType + ": " + (m.label || "") + (m.reason ? " (" + m.reason + ")" : "") +
+          (m.pending ? "\nPending: " + (m.deleted ? "deleted" : m.inserted ? "added" : "changed") +
+            ", not applied yet. Analyze the session to apply it." : "");
         host.appendChild(bar);
-        if (ev.data.marker_type === "start") {
-          const label = effectiveLabel(ev);
-          if (label) {
-            const lbl = document.createElement("div");
-            lbl.className = "tl-marker-label";
-            lbl.style.left = "calc(" + x + "% + 4px)";
-            lbl.style.top = (activityTop + 2) + "px";
-            lbl.textContent = label;
-            host.appendChild(lbl);
-          }
+        if (m.markerType === "start" && m.label && !m.deleted) {
+          const lbl = document.createElement("div");
+          lbl.className = "tl-marker-label" + (m.pending ? " tl-marker-label-pending" : "");
+          lbl.style.left = "calc(" + x + "% + 4px)";
+          lbl.style.top = (activityTop + 2) + "px";
+          lbl.textContent = m.label + (m.pending ? " (pending)" : "");
+          host.appendChild(lbl);
         }
       }
     },
@@ -825,7 +842,7 @@ function renderTimeline() {
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = titlesLaneTop + "px";
-        band.title = (r.app || "") + " — " + (r.title || "(untitled)");
+        band.title = (r.app || "") + " - " + (r.title || "(untitled)");
         const renderedPx = (w / 100) * hostW;
         if (renderedPx >= minLabelPx) {
           band.textContent = r.title || (r.app || "").replace(/\.exe$/i, "");
@@ -860,7 +877,7 @@ function renderTimeline() {
         // At a coarse grain a band folds several steps — show the count.
         const foldNote = (s.count > 1) ? " (" + s.count + " steps)" : "";
         band.textContent = lbl;
-        band.title = lbl + foldNote + " — " + formatDuration(sEnd - sStart) +
+        band.title = lbl + foldNote + " - " + formatDuration(sEnd - sStart) +
           "\nClick: select + seek · Right-click: Open in Steps";
         if (s.step_id) band.dataset.stepId = s.step_id;
         if (s.step_id && s.step_id === State.getSelectedStepId()) {

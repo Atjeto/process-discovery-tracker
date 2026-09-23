@@ -488,7 +488,7 @@ async function tick() {
     }
     timer.textContent = fmtTimer(s.elapsedMs);
     now.textContent = (s.currentApp || "") +
-      (s.currentTitle ? " — " + s.currentTitle.slice(0, 80) : "");
+      (s.currentTitle ? " - " + s.currentTitle.slice(0, 80) : "");
     btnEndMarker.disabled = !s.markerDepth;
     btnPause.disabled = false;
     btnShot.disabled = !s.screenshotsEnabled;

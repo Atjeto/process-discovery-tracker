@@ -20,7 +20,9 @@ const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
-const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo } = require("../session.js");
+const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
+const MarkerEdits = require("../marker-edits.js");
+const { caseScopeOptionsHtml } = require("../case-scope.js");
 const { pushRecent } = require("../recent.js");
 const { renderStepsLevel } = require("./steps-view.js");
 const { renderOverviewLevel } = require("./overview-view.js");
@@ -125,40 +127,12 @@ function currentScopeRange() {
 function populateCaseScope() {
   const sel = document.getElementById("case-scope-select");
   if (!sel) return;
-  const cases = State.getSession() ? deriveCases(State.getSession()) : [];
-  // P2.8: dedup duplicate labels with a [H:MM:SS] timecode suffix so
-  // analysts can tell "Send email" #2 from "Send email" #5 etc.
-  const labelCounts = {};
-  for (const c of cases) {
-    const k = c.label || c.id;
-    labelCounts[k] = (labelCounts[k] || 0) + 1;
-  }
-  function timecode(ms) {
-    if (!ms) return "";
-    const s = Math.floor(ms / 1000);
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const ss = s % 60;
-    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(ss).padStart(2, "0");
-  }
-  const opts = ['<option value="">All cases</option>']
-    .concat(cases.map(c => {
-      const baseLabel = c.label && c.label !== c.id ? c.label : c.id;
-      const needsSuffix = labelCounts[baseLabel] > 1;
-      const offsetMs = c.startMs && State.getSession().events.length
-        ? c.startMs - new Date(State.getSession().events[0].timestamp).getTime()
-        : 0;
-      const label = needsSuffix
-        ? `${baseLabel} [${timecode(offsetMs)}]`
-        : baseLabel;
-      return `<option value="${c.id}"${c.id === State.getCaseScope() ? " selected" : ""}>${escapeHtml(label)}</option>`;
-    }));
-  // Cases are derived from analyzed steps. An unanalyzed session has
-  // none -- spell that out rather than showing a lone "All cases".
-  if (!cases.length) {
-    opts.push('<option value="" disabled>(no cases yet — click Analyze session first)</option>');
-  }
-  sel.innerHTML = opts.join("");
+  const sess = State.getSession();
+  const cases = sess ? deriveCases(sess) : [];
+  const evs = (sess && sess.events) || [];
+  // P2.8 duplicate-label suffixes + RP-34 escaping: case-scope.js (pure).
+  sel.innerHTML = caseScopeOptionsHtml(cases, State.getCaseScope(),
+    evs.length ? new Date(evs[0].timestamp).getTime() : NaN);
   // Wrapper picks up the visual cue that scoping is active.
   const wrap = sel.closest(".case-scope");
   if (wrap) wrap.classList.toggle("scoped", !!State.getCaseScope());
@@ -264,7 +238,10 @@ if (btnCancelNormalize) {
   });
 }
 
-$("#btn-normalize").addEventListener("click", async () => {
+/* Analyze: re-run normalization for the loaded session and reload it. The
+   Analyze button and the pending-marker-changes call to action (item 6,
+   renderSessionPills) both run this. */
+async function runAnalyze() {
   if (!State.getSession()) return;
   /* H7: a re-analysis regenerates auto-detected steps and clears the
      undo stack. Warn before that happens -- but only when the session
@@ -298,13 +275,17 @@ $("#btn-normalize").addEventListener("click", async () => {
     return;
   }
   if (!r.ok) {
+    // r.error is the full sentence from main.js: for a failed normalize run
+    // it carries the pipeline's "[normalize] ERROR:" line (C13 exit code 2:
+    // annotations.json unreadable, nothing written).
     $("#normalize-log").textContent += "\nERROR: " + r.error;
-    toast("Analysis failed: " + r.error, "error");
+    toast(r.error, "error");
     return;
   }
   toast("Analysis complete", "success");
   await loadSessionIntoView(State.getSession().sessionFolder);
-});
+}
+$("#btn-normalize").addEventListener("click", runAnalyze);
 
 Ipc.onNormalizeLog((text) => {
   const pre = $("#normalize-log");
@@ -331,6 +312,7 @@ async function loadSessionIntoView(folder) {
   $("#session-empty").style.display = "none";
   $("#session-loaded").style.display = "";
   $("#btn-normalize").disabled = false;
+  renderAnnotationsErrorBanner();
   /* B1: a worker-given manifest label (set in the capture post-session
      summary) names the Recents entry; else fall back to engagement. */
   const _m = State.getSession().manifest || {};
@@ -412,6 +394,23 @@ async function loadSessionIntoView(folder) {
   renderShortcutsOverlay();
 }
 
+/* RP-04: an annotations.json that exists but cannot be read is an error the
+   analyst must see, never an empty session. main.js reports it as
+   session.annotationsError ({ file, reason, backups, message }); this
+   persistent banner names the file, what it means, and the backups to
+   restore. Saves and Analyze are refused in main while it lasts. */
+function annotationsErrorBannerHtml(err) {
+  if (!err || !err.message) return "";
+  return '<strong>The annotations for this session cannot be read.</strong> ' + escapeHtml(err.message);
+}
+function renderAnnotationsErrorBanner() {
+  const el = document.getElementById("annotations-error-banner");
+  if (!el) return;
+  const html = annotationsErrorBannerHtml(State.getSession() && State.getSession().annotationsError);
+  el.innerHTML = html;
+  el.style.display = html ? "" : "none";
+}
+
 /* The "N nodes / Open / Reveal" status line + per-case picker used to live here
    (updateProcessMapStatus, pinned to the activity-level process_map.bpmn). It is
    now driven by the map controller's onRender (renderer._syncMapStatus), which
@@ -472,6 +471,7 @@ function _sessionPillsHtml(pills) {
 }
 
 function renderSessionPills() {
+  if (!State.getSession()) return;
   const m = State.getSession().manifest || {};
   const pills = [];
   pills.push({ label: "events", val: State.getSession().events.length, cls: "ok" });
@@ -484,9 +484,6 @@ function renderSessionPills() {
     const meta = State.getSession().stats.meta || {};
     if (meta.taxonomy_version) {
       pills.push({ label: "taxonomy", val: meta.taxonomy_version });
-    }
-    if (meta.canonical_process_id) {
-      pills.push({ label: "template", val: meta.canonical_process_id, cls: "ok" });
     }
     const vocabs = meta.app_vocabularies || [];
     if (vocabs.length) {
@@ -503,16 +500,28 @@ function renderSessionPills() {
   } else {
     pills.push({ label: "analyzed", val: "no", cls: "warn" });
   }
-  const editCount = ((State.getSession().annotations || {}).marker_edits || []).length;
-  if (editCount > 0) pills.push({ label: "edits", val: editCount, cls: "warn" });
   // Stash for the summary band (item 9). The toolbar chip row is retired:
-  // the static metadata lives in SESSION SUMMARY now. Only the dynamic
-  // "pending edits" chip stays on the toolbar so an in-progress edit is
-  // never hidden behind a collapsed band.
+  // the static metadata lives in SESSION SUMMARY now.
   _sessionPills = pills;
-  const dynamic = pills.filter((p) => p.label === "edits");
+  // Item 6: marker changes that wait for an analysis (marker-edits.js). They
+  // already show in the Markers list and on the timeline as pending; this is
+  // the ONE call to action that applies them, on the actions bar so it is
+  // visible from every level. It disappears once an analysis applied them.
+  const sess = State.getSession();
+  const pending = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits,
+    MarkerEdits.lastAnalysisMs(sess));
   const toolbar = $("#session-pills");
-  if (toolbar) toolbar.innerHTML = _sessionPillsHtml(dynamic);
+  if (toolbar) {
+    toolbar.innerHTML = pending > 0
+      ? '<button type="button" class="pending-cta" id="btn-apply-marker-edits" title="' +
+        escapeHtml("Your marker changes already show on the timeline and in the Markers list. " +
+          "The cases, steps and map use them after the session is analyzed.") + '">' +
+        escapeHtml("Analyze to apply " + pending + " marker change" + (pending === 1 ? "" : "s")) +
+        "</button>"
+      : "";
+    const cta = toolbar.querySelector("#btn-apply-marker-edits");
+    if (cta) cta.addEventListener("click", () => runAnalyze());
+  }
 
   // Show onboarding card until the session is analyzed.
   const onboarding = $("#onboarding-card");
@@ -535,7 +544,7 @@ function renderSessionSummary() {
   panel.style.display = "";
 
   const pct = (f) => Math.round(f * 100) + "%";
-  const analyzed = s.analyzedAt ? new Date(s.analyzedAt).toLocaleString() : "—";
+  const analyzed = s.analyzedAt ? new Date(s.analyzedAt).toLocaleString() : "-";
 
   const tiles = [
     { label: "Cases", value: s.caseCount, sub: "" },
@@ -554,10 +563,6 @@ function renderSessionSummary() {
   if (s.efficiencyRatio != null && _hasBnva) {
     tiles.push({ label: "Efficiency", value: pct(s.efficiencyRatio),
       sub: "value-add share (default estimate)" });
-  }
-  if (s.hasTemplate || s.matchedInteractions > 0) {
-    tiles.push({ label: "Template match", value: pct(s.matchRate || 0),
-      sub: `${s.matchedInteractions} interactions` });
   }
   if (s.vocabCoverage) {
     tiles.push({ label: "Vocab coverage", value: s.vocabCoverage.overallPct + "%",
@@ -585,7 +590,7 @@ function renderSessionSummary() {
     ).join("");
     const stretch = s.longestStretch.app
       ? `${appLabel(s.longestStretch.app)} ${formatDuration(s.longestStretch.ms)}`
-      : "—";
+      : "-";
     const metaLine =
       `${s.appSwitches} app switch${s.appSwitches === 1 ? "" : "es"} · ` +
       `longest single-app stretch: ${stretch}`;
@@ -629,7 +634,7 @@ function renderSessionSummary() {
       } else if (p.kind === "short_case") {
         const secs = Math.round((p.durationMs || 0) / 1000);
         text = `Case ${p.label ? '"' + escapeHtml(p.label) + '"' : "(unlabeled)"} ` +
-               `at ${time} is only ${secs}s long — accidental?`;
+               `at ${time} is only ${secs}s long (accidental?)`;
       }
       return `<div class="summary-problem"><span class="p-text">⚠ ${text}</span>${fix}</div>`;
     }).join("");
@@ -644,19 +649,9 @@ function renderSessionSummary() {
   if (s.stepCount > 0 && s.confirmedSteps === 0 && s.autoSteps > 0) {
     bannerHtml =
       '<div class="summary-banner">Review the ' +
-      '<span class="summary-link" data-go="steps">Steps</span> tab — ' +
+      '<span class="summary-link" data-go="steps">Steps</span> tab: ' +
       `${s.autoSteps} step${s.autoSteps === 1 ? " was" : "s were"} ` +
       "auto-detected and may need editing.</div>";
-  }
-
-  let driftHtml = "";
-  if (s.canonicalDrift && s.canonicalDrift.warning) {
-    const cur = Math.round((s.canonicalDrift.current_rate || 0) * 100);
-    const prev = Math.round((s.canonicalDrift.previous_rate || 0) * 100);
-    driftHtml =
-      '<div class="summary-banner warn">⚠ Canonical match rate dropped from ' +
-      `${prev}% to ${cur}% since the last analysis — the target application ` +
-      "may have changed its fields.</div>";
   }
 
   /* B5: flag files that did not survive the copy from the capture box. */
@@ -668,13 +663,13 @@ function renderSessionSummary() {
     integrityHtml =
       '<div class="summary-banner warn">⚠ ' +
       `${n} file${n === 1 ? "" : "s"} recorded in this session ${n === 1 ? "is" : "are"} ` +
-      `missing — the session may have been copied incompletely: ${names}` +
+      `missing (the session may have been copied incompletely): ${names}` +
       `${n > 6 ? ", …" : ""}.</div>`;
   }
 
   const hint = (s.caseCount > 0 && s.stepCount > 0)
     ? '<div class="summary-hint">Cases are time ranges marked during recording. ' +
-      "Steps are logical actions identified during analysis — the two are independent.</div>"
+      "Steps are logical actions identified during analysis. The two are independent.</div>"
     : "";
 
   // D4: lead with the project name the operator typed at setup; keep the
@@ -706,7 +701,7 @@ function renderSessionSummary() {
         `analyzed ${escapeHtml(analyzed)}</div>` +
       pillsHtml +
       `<div class="summary-tiles">${tilesHtml}</div>` +
-      activityHtml + casesHtml + driftHtml + integrityHtml + problemsHtml + hint + bannerHtml +
+      activityHtml + casesHtml + integrityHtml + problemsHtml + hint + bannerHtml +
     '</div>';
 
   // Collapsible: remember the analyst's open/closed choice across sessions.
@@ -723,13 +718,15 @@ function renderSessionSummary() {
   panel.querySelectorAll(".summary-fix").forEach((btn) => {
     btn.addEventListener("click", async () => {
       btn.disabled = true;
+      let saved = false;
       if (btn.dataset.fix === "close-start") {
         const evs = (State.getSession() && State.getSession().events) || [];
-        if (evs.length) await queueSyntheticMarker(evs[evs.length - 1].timestamp, "end");
+        if (evs.length) saved = await queueSyntheticMarker(evs[evs.length - 1].timestamp, "end");
       } else if (btn.dataset.fix === "delete-end") {
-        await queueMarkerDelete(btn.dataset.eventId);
+        saved = await queueMarkerDelete(btn.dataset.eventId);
       }
-      btn.textContent = "Queued — re-analyze to apply";
+      if (saved) btn.textContent = "Done (pending): analyze to apply";
+      else btn.disabled = false;
     });
   });
   panel.querySelectorAll(".summary-link[data-go]").forEach((link) => {
@@ -741,9 +738,11 @@ function renderSessionSummary() {
 }
 
 /* Queue a marker deletion into annotations.json.marker_edits. Mirrors
-   queueSyntheticMarker; the edit applies on the next normalization. */
+   queueSyntheticMarker; the edit applies on the next normalization, and
+   shows at once as pending (item 6). Resolves true when it was saved (a
+   failed save has already been shown to the analyst by session.js). */
 async function queueMarkerDelete(eventId) {
-  if (!State.getSession() || !eventId) return;
+  if (!State.getSession() || !eventId) return false;
   const a = State.getSession().annotations || {};
   if (!Array.isArray(a.marker_edits)) a.marker_edits = [];
   a.marker_edits.push({
@@ -753,11 +752,12 @@ async function queueMarkerDelete(eventId) {
     ts: new Date().toISOString(),
   });
   try {
-    await saveAnnotationsWithUndo(a, "delete marker");
-    toast("Marker removal queued — re-run normalization to apply", "success");
-  } catch (err) {
-    toast("Failed to save annotation: " + (err && err.message), "error");
+    await persistAnnotations(a, "delete marker", ["markers", "timeline"]);
+  } catch (_) {
+    return false;
   }
+  toast("Marker deleted (pending): analyze the session to apply it.", "success");
+  return true;
 }
 
 /* ============ Timeline ============================================ */
@@ -779,7 +779,7 @@ async function addStepAtPlayhead() {
   if (!State.getSession()) return;
   const video = $("#video");
   const tsISO = video ? videoTimeToSessionTs(video.currentTime) : null;
-  if (!tsISO) { toast("No video timing — can't place a step at the playhead", "error"); return; }
+  if (!tsISO) { toast("No video timing: can't place a step at the playhead", "error"); return; }
   setLaneToggle("steps", true);
   const cb = document.querySelector('#lanes-popup input[data-lane="steps"]');
   if (cb) cb.checked = true;
@@ -954,7 +954,7 @@ function showMarkerInsertMenu(x, y, ts) {
     item.addEventListener("mouseenter", () => item.style.background = "var(--accent)");
     item.addEventListener("mouseleave", () => item.style.background = "");
     item.addEventListener("click", async () => {
-      menu.remove();
+      close();
       await handler();
     });
     menu.appendChild(item);
@@ -973,12 +973,19 @@ function showMarkerInsertMenu(x, y, ts) {
   });
 
   document.body.appendChild(menu);
-  /* Dismiss on outside click / escape */
-  const dismiss = (e) => {
-    if (e.type === "keydown" && e.key !== "Escape") return;
+  /* Dismiss on outside click / escape. A press ON the menu is a choice, not a
+     dismissal: removing the menu on its own item's mousedown swallowed the
+     click, so "Insert Start marker here" never ran for a real mouse (item 6;
+     only synthetic click events, which have no mousedown, got through). */
+  function close() {
     menu.remove();
     document.removeEventListener("mousedown", dismiss, true);
     document.removeEventListener("keydown", dismiss, true);
+  }
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    if (e.type === "mousedown" && menu.contains(e.target)) return;
+    close();
   };
   /* Defer to avoid immediately catching the right-click's own mousedown */
   setTimeout(() => {
@@ -1011,18 +1018,21 @@ document.addEventListener("contextmenu", (e) => {
   showMarkerInsertMenu(e.clientX, e.clientY, new Date(ts).toISOString());
 });
 
+/* Item 6: an inserted marker shows AT ONCE, marked pending, in the Markers
+   list (brought forward) and on the timeline, and the actions bar offers the
+   one call to action that applies it (Analyze). Resolves true when saved. */
 async function queueSyntheticMarker(ts, markerType) {
-  if (!State.getSession()) return;
+  if (!State.getSession()) return false;
   let label = null;
   if (markerType === "start") {
     label = await promptModal({
       title: "Insert Start marker",
       message: "Label for the new Start marker",
-      detail: "Queued in annotations.json; re-run Analyze to apply.",
-      placeholder: "e.g. Send email",
+      detail: "It shows at once as pending, and applies to the cases when you analyze the session.",
+      placeholder: "For example: Send email",
       okLabel: "Insert",
     });
-    if (label === null) return;     // cancelled
+    if (label === null) return false;     // cancelled
     label = (label || "").trim();
     if (!label) label = null;
   }
@@ -1037,14 +1047,13 @@ async function queueSyntheticMarker(ts, markerType) {
     ts: new Date().toISOString(),
   });
   try {
-    await saveAnnotationsWithUndo(a, `insert ${markerType} marker`);
-    toast(
-      `${markerType === "start" ? "Start" : "End"} marker queued — re-run normalization to apply`,
-      "success",
-    );
-  } catch (err) {
-    toast("Failed to save annotation: " + (err && err.message), "error");
+    await persistAnnotations(a, `insert ${markerType} marker`, ["markers", "timeline"]);
+  } catch (_) {
+    return false;
   }
+  activateAnnoTab("markers");
+  toast(`${markerType === "start" ? "Start" : "End"} marker added (pending): analyze the session to apply it.`, "success");
+  return true;
 }
 
 /* G4: turn the current timeline range selection into a case — queue a
@@ -1058,8 +1067,8 @@ async function queueCaseFromSelection() {
   let label = await promptModal({
     title: "Insert case from selection",
     message: "Label for the new case",
-    detail: "Queues Start and End markers in annotations.json; re-run Analyze to apply.",
-    placeholder: "e.g. Order entry",
+    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the cases when you analyze the session.",
+    placeholder: "For example: Order entry",
     okLabel: "Insert case",
   });
   if (label === null) return;     // cancelled
@@ -1087,11 +1096,12 @@ async function queueCaseFromSelection() {
     ts: editedAt,
   });
   try {
-    await saveAnnotationsWithUndo(a, "insert case from selection");
-    toast("Case queued — re-run normalization to apply", "success");
-  } catch (err) {
-    toast("Failed to save annotation: " + (err && err.message), "error");
+    await persistAnnotations(a, "insert case from selection", ["markers", "timeline"]);
+  } catch (_) {
+    return;   // already shown to the analyst by session.js
   }
+  activateAnnoTab("markers");
+  toast("Case markers added (pending): analyze the session to apply them.", "success");
 }
 
 /* H6: mark the current timeline range as excluded from analysis. The
@@ -1119,7 +1129,7 @@ async function queueExcludeRange() {
   try {
     await saveAnnotationsWithUndo(a, "exclude range from analysis");
     State.getSession().annotations = a;
-    toast("Range excluded — re-run normalization to apply", "success");
+    toast("Range excluded: re-run normalization to apply", "success");
     clearSelectionRange();
   } catch (err) {
     toast("Failed to save annotation: " + (err && err.message), "error");
@@ -1321,7 +1331,18 @@ if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("chang
    grows the page (the Session view's overflow:auto scrolls) and the toggle
    stays put; release on close so tall monitors still fill. Steps already
    measured 0 (its layout has no growable sibling to steal from), and the freeze
-   is a no-op there. */
+   is a no-op there.
+
+   CI-3: the freeze is a flex BASIS (flex: 0 0 <closed height>), never a fixed
+   `height`. A fixed height also froze the layout against its OWN later growth:
+   with the drawer open, opening the Map's reference-map gallery (or its
+   Advanced views drawer) squeezed the gallery to a sliver and let its Edit
+   buttons spill under this drawer's summary, which then took their clicks. A
+   basis keeps the closed height as the starting size, and the layouts'
+   automatic minimum size (they deliberately have no min-height:0, see
+   styles.css) still grows them to fit new content, pushing this drawer down.
+   The Overview layout scrolls internally (min-height:0), so it stays at the
+   basis exactly, as before. */
 (function wireRawEventsLocality() {
   const drawer = document.querySelector(".event-table-host");
   if (!drawer) return;
@@ -1343,12 +1364,10 @@ if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("chang
     if (drawer.open) {
       const s = _snap;
       if (s && s.el && s.h > 0) {
-        s.el.style.height = s.h + "px";
-        s.el.style.flex = "0 0 auto";
+        s.el.style.flex = "0 0 " + s.h + "px";
         _frozen = s.el;
       }
     } else if (_frozen) {
-      _frozen.style.height = "";
       _frozen.style.flex = "";
       _frozen = null;
     }

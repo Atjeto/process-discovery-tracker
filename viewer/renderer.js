@@ -33,6 +33,7 @@ const { renderOverviewLevel, openMarkersInFlow, NO_RUNS_MARKED, MARK_RUNS_INSTRU
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
 const RefmapUI = require("./refmap-ui.js");
+const { pddExportOutcome } = require("./normalize-result.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
 
@@ -66,11 +67,16 @@ initRecent({ onOpenSession: (folder) => loadSessionIntoView(folder) });
    strip is visible" approach because users couldn't find the cramped
    editor inside the narrow annotations panel. */
 
+/* Show a level AND mark its view-mode button active, so the level bar always
+   names what is on screen. Code that switches level on the analyst's behalf
+   uses this, never applyLevel alone (item 7: the PDD export used to leave
+   the Overview button lit while the Map showed). */
+function selectLevel(name) {
+  $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.level === name));
+  applyLevel(name);
+}
 $$(".view-mode-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    $$(".view-mode-btn").forEach((b) => b.classList.toggle("active", b === btn));
-    applyLevel(btn.dataset.level);
-  });
+  btn.addEventListener("click", () => selectLevel(btn.dataset.level));
 });
 // Item 19: Overview is the default level on boot (State.getLevel() ===
 // "overview" before any session loads) -- set the playhead-button visibility
@@ -124,7 +130,7 @@ function _applyGrain(notch, opts = {}) {
 const VIEW_MODE_HELP = {
   overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the PDD export.",
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
-  steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Detail slider to roll them up by screen / app / phase / case.",
+  steps:  "Steps view: rename, split, merge, or flag the logical actions captured, or use the Detail slider to roll them up by screen / app / phase / case.",
   map:    "Map view: the Process diagram (BPMN) or Flow diagram for this session, at the chosen detail level (element … case) or by app category.",
 };
 
@@ -249,7 +255,7 @@ function _sessionMapDataSource({ notation, level, scope }) {
   // Generic post-analyze hint we attach to most empty messages so a user who
   // ran Analyze with "Build process map" unchecked understands why nothing
   // shows -- the checkbox lives in the "⋯ More" menu under the actions bar.
-  const mineHint = ' (Map files are produced by Analyze with "Build process map" checked — under ⋯ More.)';
+  const mineHint = ' (Map files are produced by Analyze with "Build process map" checked, under ⋯ More.)';
   if (notation === "bpmn") {
     const file = _sessionBpmnFile(level);
     // ADR-0024: the screen/app/case notches have no pre-mined Process diagram —
@@ -257,7 +263,7 @@ function _sessionMapDataSource({ notation, level, scope }) {
     if (!file) {
       return {
         emptyMessage: 'The Process diagram (BPMN) is built at the Element and Phase detail levels. ' +
-          'For the ' + level + ' level, switch to the Flow diagram tab above — it regroups live.',
+          'For the ' + level + ' level, switch to the Flow diagram tab above: it regroups live.',
       };
     }
     // §B2 honesty gate: the step-grain observed BPMN draws CASE flow (one
@@ -275,8 +281,8 @@ function _sessionMapDataSource({ notation, level, scope }) {
     if (!bpmnPath || !fs.existsSync(bpmnPath)) {
       return {
         emptyMessage: level === "activity"
-          ? 'No process map BPMN yet — click "Analyze session".' + mineHint
-          : 'No ' + level + '-level Process diagram yet — Analyze a session that has ' +
+          ? 'No process map BPMN yet: click "Analyze session".' + mineHint
+          : 'No ' + level + '-level Process diagram yet: Analyze a session that has ' +
             (level === "phase" ? "phases" : "steps") +
             ' (mined from your annotations).' + mineHint,
       };
@@ -304,7 +310,7 @@ function _sessionMapDataSource({ notation, level, scope }) {
     // §B2: the default map is TIME-weighted — edge thickness/labels carry
     // accumulated transition time; the traversal count stays in the tooltip.
     edgeWeight: "time",
-    emptyMessage: 'Nothing to draw at the ' + level + ' level yet — add steps to this ' +
+    emptyMessage: 'Nothing to draw at the ' + level + ' level yet: add steps to this ' +
       'session in the Steps view (the map groups them at the chosen detail level).',
   };
 }
@@ -457,7 +463,7 @@ function _wireMapExpertDrawer() {
     const dir = sess && sess.sessionFolder
       ? path.join(sess.sessionFolder, "process_maps") : null;
     if (dir && fs.existsSync(dir)) await Ipc.revealFile(dir);
-    else toast("No per-case BPMNs on disk yet — Analyze with \"Build process map\" checked (needs 2+ cases).", "error");
+    else toast("No per-case BPMNs on disk yet: Analyze with \"Build process map\" checked (needs 2+ cases).", "error");
   });
 
   // NAV-AUDIT §E2/§7a: keep the drawer LOCAL — opening it must grow the page
@@ -512,6 +518,8 @@ const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, s
 State.subscribe("steps",    renderStepsLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
+// Item 6: the actions bar's "Analyze to apply N marker changes" call to action.
+State.subscribe("markers",  renderSessionPills);
 // Lab-phase §A5 + R4: the Overview renders the analysis-backed badge / facts /
 // findings AND (R4) the Evidence modules retired from the Analysis level -- so
 // it follows markers, analysis, steps, and grain (the time-goes itemisation
@@ -720,14 +728,14 @@ async function exportArtifact(kind) {
 
   // Step BPMN export = the OBSERVED-FLOW map the viewer already shows
   // (process_map_step.bpmn, mined from the annotations by bpmn_observed.py
-  // under --mine). The --step-bpmn-out route is the template-derived
-  // bpmn_step, so export the session-folder observed file instead (mining it
-  // first if it is not there yet).
+  // under --mine), exported from the session folder (mining it first if it
+  // is not there yet).
   if (kind === "step-bpmn") {
     const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
     if (!fs.existsSync(sourcePath)) {
       const r = await Ipc.runNormalizeExtended({ sessionFolder: target.sessionFolder, mine: true });
-      if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
+      // r.error is the full sentence from main.js (C13: the pipeline's reason).
+      if (!r || !r.ok) { toast((r && r.error) || "Export failed: the analysis did not answer.", "error"); return; }
     }
     if (!fs.existsSync(sourcePath)) {
       toast("No step-level flow to export. Analyze a session that has steps first.", "error");
@@ -745,6 +753,12 @@ async function exportArtifact(kind) {
   const os = require("os");
   const ext = "docx";
   const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + "." + ext);
+  // RP-09: nothing may sit at the temp path before the run, so a document
+  // found there afterwards can only be THIS run's (pddExportOutcome below).
+  try { fs.unlinkSync(tmpPath); }
+  catch (e) {
+    if (e.code !== "ENOENT") { toast("Export failed: could not prepare " + tmpPath + ": " + e.message, "error"); return; }
+  }
   const opts = { sessionFolder: target.sessionFolder, mine: false };
   let mapImgPath = null, tobeImgPath = null;
   if (kind === "pdd") {
@@ -797,9 +811,25 @@ async function exportArtifact(kind) {
   const r = await Ipc.runNormalizeExtended(opts);
   if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
   if (tobeImgPath) { try { fs.unlinkSync(tobeImgPath); } catch (_) {} }
-  if (!r || !r.ok) { toast("Export failed: " + ((r && r.error) || "unknown"), "error"); return; }
+  // RP-09 / C13: a non-zero exit (3 = the export failed) is a failure with
+  // the pipeline's reason, and so is a "success" that wrote no document. The
+  // analyst is offered the file only when this run wrote it.
+  let doc = { exists: false, size: 0 };
+  try { const st = fs.statSync(tmpPath); doc = { exists: st.isFile(), size: st.size }; }
+  catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read the exported PDD:", e); }
+  const outcome = pddExportOutcome(r, doc);
+  if (!outcome.ok) {
+    toast(outcome.message, "error");
+    try { fs.unlinkSync(tmpPath); } catch (_) { /* absent, or a partial file the OS will clean from temp */ }
+    return;
+  }
   const suggested = "process." + kind + "." + ext;
-  const out = await Ipc.exportFile({ sourcePath: tmpPath, suggestedName: suggested });
+  let out = null;
+  try {
+    out = await Ipc.exportFile({ sourcePath: tmpPath, suggestedName: suggested });
+  } catch (e) {
+    toast("Export failed: the document could not be saved: " + ((e && e.message) || e), "error");
+  }
   if (out) {
     await Ipc.revealFile(out);
     toast("Exported: " + path.basename(out), "success");
@@ -870,21 +900,27 @@ async function exportMapSvg() {
    map (section 3.3) is rasterised from the currently-rendered Flow diagram;
    to embed THIS session's map (not a blank canvas), pre-render the
    Session-view Map controller's Flow tab and let cytoscape settle before
-   invoking the shared exportArtifact("pdd") path. Leaves the user on Map
-   level + Flow tab after the export -- reasonable context for "you just
-   exported this." */
+   invoking the shared exportArtifact("pdd") path. Item 7: the Map shows
+   while the map is drawn (with the level bar saying so), and afterwards the
+   analyst is returned to the level they started from (the Overview when
+   they used its Export PDD button), unless they moved on meanwhile. */
 if ($("#btn-session-pdd")) {
   $("#btn-session-pdd").addEventListener("click", async () => {
     if (!State.getSession()) { toast("Open a session first.", "error"); return; }
-    toast("Preparing PDD — rendering process map…", "info");
-    applyLevel("map");
-    const ctrl = _ensureSessionMapCtrl();
-    ctrl.setState({ notation: "dfg" });
-    // Let cytoscape paint + layout settle so PdtDfg.exportPng() captures the
-    // rendered diagram and not a blank canvas. 900ms matches the post-tab-
-    // switch timing used elsewhere in the controller.
-    await new Promise((r) => setTimeout(r, 900));
-    await exportArtifact("pdd");
+    const from = State.getLevel();
+    toast("Preparing PDD: drawing the process map...", "info");
+    selectLevel("map");
+    try {
+      const ctrl = _ensureSessionMapCtrl();
+      ctrl.setState({ notation: "dfg" });
+      // Let cytoscape paint + layout settle so PdtDfg.exportPng() captures the
+      // rendered diagram and not a blank canvas. 900ms matches the post-tab-
+      // switch timing used elsewhere in the controller.
+      await new Promise((r) => setTimeout(r, 900));
+      await exportArtifact("pdd");
+    } finally {
+      if (from !== "map" && State.getLevel() === "map") selectLevel(from);
+    }
   });
 }
 

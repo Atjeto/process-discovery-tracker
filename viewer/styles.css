@@ -550,6 +550,16 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .markers-list .marker-row:hover .marker-actions { opacity: 1; }
 .markers-list .marker-row.deleted { opacity: 0.45; text-decoration: line-through; }
 .markers-list .marker-row.deleted .meta.bad { text-decoration: none; color: var(--bad); }
+/* Item 6: a change that waits for Analyze. */
+.markers-list .marker-row.pending { box-shadow: inset 3px 0 0 var(--warn); }
+.markers-list .marker-row .pending-tag { color: var(--fg); font-weight: 600; text-decoration: none; }
+/* Item 6: the one call to action that applies pending marker changes (the
+   actions bar's #session-pills slot). */
+.pending-cta {
+  border: 1px solid var(--warn); color: var(--fg); font-weight: 600;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+.pending-cta:hover { background: color-mix(in srgb, var(--warn) 28%, transparent); }
 
 .icon-btn.xs { width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 1; }
 
@@ -966,6 +976,13 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-tile-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* C12 (RP-10): a stage that could not run reads as missing, not as zero. */
+.ov-tile-not-run { box-shadow: none; border: 1px dashed var(--rule); }
+.ov-tile-not-run .ov-tile-value { color: var(--fg-3); }
+.analysis-note.ov-stage-not-run { border-left: 3px solid var(--warn); padding: 4px 0 4px 8px;
+  margin-top: 6px; font-style: normal; color: var(--fg-2); }
+.ov-stage-detail { margin-top: 4px; font-size: 11px; color: var(--fg-3);
+  font-family: var(--font-mono); overflow-wrap: anywhere; }
 /* R4 (Task 2): the Evidence section — the retired Analysis modules, below the
    findings feed. The modules keep their own .analysis-module styling. */
 .ov-evidence-section #overview-evidence { display: flex; flex-direction: column; gap: 10px; }
@@ -1698,8 +1715,6 @@ details.analysis-module { padding: 0; }
 .step-detail-more-chevron::before { content: "▸"; }
 .step-detail-more[open] .step-detail-more-chevron::before { content: "▾"; }
 .step-detail-more-body { padding-top: 4px; }
-.drift-indicator { color: var(--warn); margin-left: 4px; }
-.drift-note { color: var(--warn); font-size: 11px; }
 /* A3: analyst flag badges in the step list. Marking a step visibly shows
    here (and waste also strikes the name). Hues are theme-neutral. */
 .step-flag {
@@ -1916,6 +1931,18 @@ details.analysis-module { padding: 0; }
 .summary-link { color: var(--accent); cursor: pointer; text-decoration: none; }
 .summary-link:hover { text-decoration: underline; }
 
+/* RP-04: annotations.json exists but cannot be read. Persistent (not a toast)
+   because nothing is saved until the analyst restores a backup. Same shape as
+   .summary-banner, in the error colour. */
+.anno-error-banner {
+  flex: 0 0 auto; margin: 6px 0 12px; padding: 10px 14px;
+  font-size: 12px; line-height: 1.5; color: var(--fg);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  border-left: 3px solid var(--bad); border-radius: 0 3px 3px 0;
+  overflow-wrap: anywhere;
+}
+.anno-error-banner strong { color: var(--bad); margin-right: 4px; }
+
 /* ===== Multi-select feedback on step rows ===== */
 .step-row .multi-check {
   flex: 0 0 14px; width: 14px; height: 14px;
@@ -2127,6 +2154,19 @@ button.danger:disabled {
   white-space: nowrap; z-index: 6;
   font-family: var(--font-mono); letter-spacing: 0.3px;
   pointer-events: none;
+}
+/* Item 6: a marker change that waits for Analyze (marker-edits.js): dashed,
+   in the warning colour (a pending delete in the error colour), and drawn
+   even with the Marker bars lane off. The label keeps the high-contrast
+   fg-on-bg pair and gains a dashed outline. */
+.tl-marker.tl-marker-pending {
+  width: 0; background: transparent; box-shadow: none;
+  border-left: 2px dashed var(--warn);
+}
+.tl-marker.tl-marker-pending-delete { border-left-color: var(--bad); }
+.tl-marker-label.tl-marker-label-pending {
+  background: var(--bg); color: var(--fg);
+  box-shadow: none; outline: 1px dashed var(--warn);
 }
 /* Legend: per-app swatches + element entries */
 .legend { display: flex; gap: 12px; padding: 6px 4px 0;

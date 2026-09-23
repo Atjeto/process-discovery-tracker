@@ -30,6 +30,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
+const { launchViewer } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -86,7 +87,8 @@ function normalize(sessionDir) {
 }
 
 async function launch(sessionDir, pageErrors) {
-  const app = await electron.launch({
+  // RP-36: a throwaway profile per launch, never the developer's UI state.
+  const { app, close } = await launchViewer(electron, {
     executablePath: electronPath,
     args: [".", "--session=" + sessionDir],
     cwd: VIEWER,
@@ -99,7 +101,7 @@ async function launch(sessionDir, pageErrors) {
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setContentSize(1500, 950)).catch(() => {});
   await wait(1500);
-  return { app, page };
+  return { app, page, close };
 }
 
 async function shot(page, name) {
@@ -123,9 +125,9 @@ async function openMapLevel(page) {
   const pageErrors = [];
 
   // ================= Launch 1: the marked demo ============================
-  let app, page;
+  let page, close;
   try {
-    ({ app, page } = await launch(SESSION_MARKED, pageErrors));
+    ({ page, close } = await launch(SESSION_MARKED, pageErrors));
   } catch (e) {
     console.error("FATAL: could not launch viewer:", e && e.stack ? e.stack : e);
     process.exit(2);
@@ -242,12 +244,12 @@ async function openMapLevel(page) {
     !!(expertBpmn && !expertBpmn.err && expertBpmn.shapes > 0 && expertBpmn.level === "activity"),
     JSON.stringify(expertBpmn));
 
-  await app.close().catch(() => {});
+  await close();
 
   // ================= Launch 2: the marker-stripped copy ====================
-  let app2, page2;
+  let page2, close2;
   try {
-    ({ app: app2, page: page2 } = await launch(SESSION_STRIPPED, pageErrors));
+    ({ page: page2, close: close2 } = await launch(SESSION_STRIPPED, pageErrors));
   } catch (e) {
     console.error("FATAL: could not launch viewer (stripped):", e && e.stack ? e.stack : e);
     process.exit(2);
@@ -296,7 +298,7 @@ async function openMapLevel(page) {
   record("(e2) the lock CTA lands on Flow with the Markers panel showing",
     !!ctaLanded, ctaLanded ? "" : "Flow + Markers panel did not show");
 
-  await app2.close().catch(() => {});
+  await close2();
 
   // (f) Zero page errors across both launches.
   record("(f) zero PAGE ERRORs", pageErrors.length === 0,

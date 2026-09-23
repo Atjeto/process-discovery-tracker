@@ -97,6 +97,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
         </div>
 
+        <!-- RP-04: shown when annotations.json exists but cannot be read (never
+             treated as an empty session); names the file and its backups. -->
+        <div class="anno-error-banner" id="annotations-error-banner" role="alert" style="display:none"></div>
+
         <!-- First-run guidance: visible until the session has been analyzed -->
         <div class="onboarding-card" id="onboarding-card" style="display:none">
           <div class="onboarding-step">
@@ -146,7 +150,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                (element), right for screen / app / phase / case. Default: one
                step per screen. Sliding back undoes it with zero data mutation;
                raw events are never re-segmented. -->
-          <label class="grain-control" id="grain-control" title="Detail — how much steps combine as you zoom out. element = every field · screen = one step per screen (default) · app · phase · case. A view-only control: it never re-analyzes; sliding back restores the detail.">
+          <label class="grain-control" id="grain-control" title="Detail: how much steps combine as you zoom out. element = every field · screen = one step per screen (default) · app · phase · case. A view-only control: it never re-analyzes; sliding back restores the detail.">
             <span class="grain-label">Detail:</span>
             <input type="range" id="grain-slider" class="grain-range" min="0" max="4" step="1" value="1" aria-label="Step detail level" />
             <span class="grain-notch" id="grain-notch-lbl">screen</span>
@@ -269,7 +273,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="meta" id="steps-summary"></span>
             <span class="meta" id="steps-legend" style="display:none"></span>
             <span class="flex-spacer"></span>
-            <span class="reading-toggle" id="step-align-toggle" style="display:none" title="Flat: the chronological step list. Aligned: the consensus backbone across the detected cases (tickets) — curate one step and apply it to every case.">
+            <span class="reading-toggle" id="step-align-toggle" style="display:none" title="Flat: the chronological step list. Aligned: the consensus backbone across the detected cases (tickets): curate one step and apply it to every case.">
               <span class="reading-toggle-label">Reading:</span>
               <span class="seg-toggle">
                 <button type="button" data-mode="flat" class="active">Flat</button>
@@ -331,8 +335,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                        Expert drawer below the map reaches it). The hidden option keeps
                        the select showing an honest label while an expert cell is active. -->
                   <option value="activity" hidden>By app category (advanced)</option>
-                  <option value="element">Element — every field</option>
-                  <option value="screen">Screen — one per screen</option>
+                  <option value="element">Element: every field</option>
+                  <option value="screen">Screen: one per screen</option>
                   <option value="app">App</option>
                   <option value="case">Case</option>
                 </select>
@@ -343,7 +347,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                    the process_map.bpmn artifact. Contextual to the Map view. -->
               <span class="map-status" id="process-map-status" style="display:none" title="The mined BPMN process-map file on disk">
                 <span class="map-status-dot"></span>
-                <span class="map-status-detail" id="process-map-detail">—</span>
+                <span class="map-status-detail" id="process-map-detail">-</span>
                 <select id="process-map-case-select" class="map-status-select" title="Aggregate model across all cases, or pick a single case" style="display:none"></select>
                 <button class="link-btn" id="btn-open-bpmn" title="Open the selected BPMN file in the system default app">Open</button>
                 <button class="link-btn" id="btn-reveal-bpmn" title="Show the BPMN file in File Explorer">Reveal in folder</button>
@@ -356,7 +360,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <span class="map-rare" id="session-hide-rare-wrap" style="display:none" title="Drag to thin the Flow diagram: hide paths seen fewer times than the cutoff, so the dominant flow stands out on a long, dense recording. At 1× every path shows."><span id="session-hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="session-rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
               </div>
               <div class="refmap-tools">
-                <button class="icon-btn xs" id="btn-fork-refmap" title="Fork the current Process diagram into a standalone, fully-editable reference map. Decoupled from analysis — re-analyze never changes it (ADR-0019).">⑂ Fork map</button>
+                <button class="icon-btn xs" id="btn-fork-refmap" title="Fork the current Process diagram into a standalone, fully-editable reference map. Decoupled from analysis: re-analyze never changes it (ADR-0019).">⑂ Fork map</button>
                 <button class="icon-btn xs" id="btn-toggle-refmaps" title="Show this session's saved reference maps.">Reference maps <span class="refmap-count" id="refmap-count"></span></button>
               </div>
             </div>
@@ -368,12 +372,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                  notation×level matrix (lab-phase §1 cargo-cult cuts). Files +
                  CLI flags untouched; this is the explicit, labelled way back. -->
             <details class="map-expert" id="map-expert-drawer">
-              <summary title="Extra views that need cleaner data than desktop recording can provide — useful for exploring, not as evidence.">Advanced views</summary>
+              <summary title="Extra views that need cleaner data than desktop recording can provide: useful for exploring, not as evidence.">Advanced views</summary>
               <div class="map-expert-body">
                 <p class="map-expert-hint">These views use methods that need cleaner data than desktop recording can provide, so treat them as exploration, not evidence. The files are still exported for specialists.</p>
                 <div class="map-expert-cells">
-                  <button type="button" class="link-btn" id="btn-expert-activity-dfg" title="A flowchart with one box per activity category (Salesforce search, Outlook email, …) — needs category rules for this team's apps.">Flowchart by app category</button>
-                  <button type="button" class="link-btn" id="btn-expert-activity-bpmn" title="A process model an algorithm generated from the recording (process_map.bpmn) — a statistical best fit, not the flow as it was observed.">Auto-generated process model</button>
+                  <button type="button" class="link-btn" id="btn-expert-activity-dfg" title="A flowchart with one box per activity category (Salesforce search, Outlook email, …): needs category rules for this team's apps.">Flowchart by app category</button>
+                  <button type="button" class="link-btn" id="btn-expert-activity-bpmn" title="A process model an algorithm generated from the recording (process_map.bpmn): a statistical best fit, not the flow as it was observed.">Auto-generated process model</button>
                   <button type="button" class="link-btn" id="btn-expert-percase" title="Open the folder with one flowchart file per case (process_maps\&lt;case&gt;.bpmn).">One flowchart per case…</button>
                 </div>
               </div>
@@ -381,7 +385,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="refmap-panel" id="refmap-panel" style="display:none">
               <div class="refmap-panel-head">
                 <h4>Reference maps</h4>
-                <span class="refmap-hint">Hand-edited, standalone copies — decoupled from analysis. Re-analyze never changes them.</span>
+                <span class="refmap-hint">Hand-edited, standalone copies: decoupled from analysis. Re-analyze never changes them.</span>
               </div>
               <ul class="refmap-list" id="refmap-list"></ul>
               <div class="refmap-empty" id="refmap-empty">No reference maps yet. Open the <strong>Process diagram</strong> tab and click <strong>⑂ Fork map</strong>.</div>
@@ -493,7 +497,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <ul class="help-list">
             <li><strong>Video pane</strong> (top left): OBS recording if linked in the manifest. Standard HTML5 controls; click any timeline event to seek.</li>
             <li><strong>Minimap</strong> (above the timeline): 30-px strip showing the whole session compressed. Click anywhere to jump; drag the highlighted viewport to scroll. Stays in sync as you zoom.</li>
-            <li><strong>Timeline</strong> (top right): activity bands (per-app colour), idle gaps (grey), marker bars, screenshot dots (hover for a thumbnail preview), event-density histogram, optional per-step bands and numbered note dots beneath. Right-click an activity band for the context menu (insert markers / scope to case). <strong>Shift-drag</strong> across the background to select a time range — a stats card pops above the legend with duration, event count, marker count, screenshot count, and top apps in the range. Esc clears the selection.</li>
+            <li><strong>Timeline</strong> (top right): activity bands (per-app colour), idle gaps (grey), marker bars, screenshot dots (hover for a thumbnail preview), event-density histogram, optional per-step bands and numbered note dots beneath. Right-click an activity band for the context menu (insert markers / scope to case). <strong>Shift-drag</strong> across the background to select a time range: a stats card pops above the legend with duration, event count, marker count, screenshot count, and top apps in the range. Esc clears the selection.</li>
             <li><strong>Snap-to-event</strong>: clicking the timeline background snaps to the nearest event within ~10px tolerance; click in genuine empty space to seek to the literal point.</li>
             <li><strong>Persistent zoom + scroll</strong>: each session remembers its zoom factor and scroll position in localStorage. Reopening a session restores where you were.</li>
             <li><strong>Annotations</strong> (right column) with three sub-tabs:
@@ -507,15 +511,16 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </ul>
           <h3>Working with markers</h3>
           <p>Markers bracket business activities. Captured markers are immutable in <code>events.jsonl</code>; edits live in <code>annotations.json</code> and are layered in by re-normalization (§9.3).</p>
-          <p><strong>Markers are not cases.</strong> During capture the worker places markers — a start, an end, and a label. <em>Cases</em> (the individual runs through the process) are never recorded directly: they're derived from the marker stream during normalization, with nested markers forming a case tree. That's why editing a marker reshapes the cases, and why there is no "mark a case" action while recording — you mark markers, and the pipeline computes the cases from them.</p>
+          <p><strong>Markers are not cases.</strong> During capture the worker places markers: a start, an end, and a label. <em>Cases</em> (the individual runs through the process) are never recorded directly: they're derived from the marker stream during normalization, with nested markers forming a case tree. That's why editing a marker reshapes the cases, and why there is no "mark a case" action while recording: you mark markers, and the pipeline computes the cases from them.</p>
           <p>From the <em>Markers</em> sub-tab on the right:</p>
           <ul class="help-list">
             <li><strong>Rename</strong>: double-click a Start marker row, type the new label, press Enter.</li>
             <li><strong>Adjust timestamp</strong>: hover a row, click the clock icon. Sets the marker's timestamp to the current video time (or prompts for an ISO timestamp if there is no video).</li>
             <li><strong>Delete</strong>: hover a row, click the X icon. The marker is dropped from the normalized stream; raw events stay untouched.</li>
           </ul>
-          <p>After any edit, click <em>Analyze session</em> again to push the change into XES, CSV, and statistics.</p>
-          <p class="help-hint">Boundary adjustment + delete give you everything needed to merge or split cases in practice. To merge two adjacent same-label cases, delete the inner End and the following Start. To split a long case, adjust its End earlier and (with a future UI) insert a new Start - for now you can edit annotations.json directly until that lands.</p>
+          <p>To add a marker, right-click the Flow timeline at that moment and choose <em>Insert Start marker here</em> or <em>Insert End marker here</em>.</p>
+          <p>Every marker change shows at once in the list and on the timeline, marked <em>pending</em>. Click <em>Analyze to apply</em> on the actions bar (or <em>Analyze session</em>) to apply it to the cases, steps, statistics and exports.</p>
+          <p class="help-hint">Moving, inserting and deleting markers is enough to merge or split cases. To merge two adjacent same-label cases, delete the inner End and the following Start. To split a long case, move its End earlier and insert a new Start after it.</p>
         </section>
 
         <section class="help-section" data-section="stepsphases">
@@ -529,7 +534,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>There are two ways, and you can use both:</p>
           <ol class="help-steps">
             <li><strong>Auto-suggested</strong>: normalize.py walks the interaction stream and splits on idle gaps, app switches, and window changes. Cheap and works on any session. Quality depends on how clean the workflow was.</li>
-            <li><strong>Manually authored</strong>: click <em>+ Add manual step</em> in the Steps view and define one yourself. Useful for anything the automatic guess missed.</li>
+            <li><strong>Manually authored</strong>: click <em>+ Add step</em> in the Steps view and define one yourself. Useful for anything the automatic guess missed.</li>
           </ol>
           <h3>What state means</h3>
           <p>Every step has a colored dot indicating where it came from:</p>
@@ -542,18 +547,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Cutting down step noise</h3>
           <p>A session captured with a screen recorder or other background app open can produce dozens of irrelevant steps ("OBS: 12 interactions"). Three tools handle this:</p>
           <ul class="help-list">
-            <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process — they're left out of step suggestion entirely, and the session re-analyzes. The choice is saved per session, so re-analyze keeps them out.</li>
+            <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process (they're left out of step suggestion entirely), and the session re-analyzes. The choice is saved per session, so re-analyze keeps them out.</li>
             <li><strong>Delete selected</strong>: tick (or Ctrl+click) two or more steps, then delete them all in one go (Ctrl+Z restores).</li>
-            <li><strong>Hide as noise</strong> (step editor): suppress a single step. Unlike delete, hidden steps survive re-normalization — a re-analyze won't bring them back. Reveal them via the hidden filter chip.</li>
+            <li><strong>Hide as noise</strong> (step editor): suppress a single step. Unlike delete, hidden steps survive re-normalization: a re-analyze won't bring them back. Reveal them via the hidden filter chip.</li>
           </ul>
           <h3>Flags</h3>
-          <p>Each step can be tagged. These don't change the data but they show up in exports and statistics:</p>
-          <ul class="help-list">
-            <li><strong>Conditional</strong>: the step happens only sometimes (branching path)</li>
-            <li><strong>Exception path</strong>: an error or workaround, not the happy path</li>
-            <li><strong>Waste</strong>: shouldn't be needed (rework, duplicate effort, fixing someone else's mistake)</li>
-            <li><strong>Automation candidate</strong>: this step could be replaced by a bot or integration</li>
-          </ul>
+          <p>A step can be flagged as <strong>Waste</strong>: it shouldn't be needed (rework, duplicate effort, fixing someone else's mistake). The flag doesn't change the data, but it shows up in exports and statistics.</p>
+          <p class="help-hint">Branches, exception paths and automation candidates are not flags: they come from the recorded runs (the map's branches, the runs that differ, and step sequences that repeat).</p>
         </section>
 
         <section class="help-section" data-section="capture">
@@ -562,15 +562,15 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>(One-time) Launch OBS with WebSocket enabled (<em>Tools → WebSocket Server Settings → Enable</em>, port 4455).</li>
             <li>(Optional) Set <code>PDT_CONFIG=path\to\your-config.yaml</code> to load engagement-specific labels, hotkeys, OBS settings. See <code>capture/sample-config.yaml</code>.</li>
             <li>Launch the capture tray app (<code>npm start</code> in capture/).</li>
-            <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the start hotkey - the session auto-starts.</li>
+            <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the run hotkey: the session auto-starts.</li>
             <li>Show the status window (tray menu) for the live dashboard.</li>
-            <li>Fire markers as the SME walks through processes. End the session when done.</li>
+            <li>Press the run hotkey at the start of each run as the SME walks through the process. End the session when done.</li>
           </ol>
           <h3>Default hotkeys</h3>
           <table class="help-table">
-            <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Open the Start-marker label picker. Auto-starts a session if none running.</td></tr>
-            <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>Fire End marker - closes innermost open.</td></tr>
-            <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Manual screenshot - annotated as <code>screenshot_manual</code>.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Start the next run (Run 1, Run 2, ...). Ends the previous run first. Starts the session if none is running.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>End the current run.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Manual screenshot, annotated as <code>screenshot_manual</code>.</td></tr>
           </table>
           <p class="help-hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>.</p>
         </section>
@@ -632,7 +632,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 <div class="refmap-editor-overlay" id="refmap-editor-overlay" style="display:none" role="dialog" aria-label="Reference map editor">
   <div class="refmap-editor-frame">
     <div class="refmap-editor-bar">
-      <span class="refmap-badge" id="refmap-editor-badge" title="This is a standalone copy. Edits stay in this map and never change the mined map or the analysis.">⑂ Reference copy — decoupled from analysis</span>
+      <span class="refmap-badge" id="refmap-editor-badge" title="This is a standalone copy. Edits stay in this map and never change the mined map or the analysis.">⑂ Reference copy: decoupled from analysis</span>
       <input class="refmap-name-input" id="refmap-editor-name" placeholder="Reference map name" />
       <label class="refmap-bar-lbl">Type
         <select class="map-status-select" id="refmap-editor-kind">

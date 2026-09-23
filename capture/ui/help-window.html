@@ -58,7 +58,7 @@
   .footer { color: var(--fg-3); font-size: 11px; text-align: center; }
 </style></head><body>
 
-<h1>Process Discovery Tracker — Help</h1>
+<h1>Process Discovery Tracker: Help</h1>
 <div class="sub">Capture side · v{{VERSION}}</div>
 
 <h2>What this app does</h2>
@@ -81,9 +81,9 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">E</span></td>
       <td>End the current run.</td></tr>
   <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span></td>
-      <td>Manual screenshot — annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
+      <td>Manual screenshot: annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
 </table>
-<p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>. The three are also surfaced in the <strong>hotkey overlay</strong> — a small click-through corner widget that stays visible across windows. Toggle from the tray (<em>Show / hide hotkey overlay</em>); visibility persists across launches.</p>
+<p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>. The three are also surfaced in the <strong>hotkey overlay</strong>: a small click-through corner widget that stays visible across windows. Toggle from the tray (<em>Show / hide hotkey overlay</em>); visibility persists across launches.</p>
 
 <h2>Runs</h2>
 <p>A run is one pass through the process, from start to finish. Press the run hotkey at the start of each run: the app ends the previous run (if it is still open) and starts the next one, named Run 1, Run 2, and so on. Runs never overlap. Press the end hotkey when a run is finished, or simply start the next one. Ending the session also ends the open run.</p>
@@ -99,7 +99,7 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li>Counters (events / runs / screenshots / interactions)</li>
   <li>Recent-events feed</li>
   <li><em>Start next run</em> and <em>End run</em> buttons, plus named-run buttons when task shortcuts are set up</li>
-  <li>Inline end-session confirm — no browser dialog</li>
+  <li>Inline end-session confirm: no browser dialog</li>
   <li>When the session ends: a one-screen summary (runs recorded, duration, interactions, screenshots) with a <em>Done</em> button</li>
 </ul>
 
@@ -109,9 +109,9 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <h2>Multi-monitor screenshot</h2>
 <p>By default, screenshots follow the foreground display rather than always capturing the primary monitor. Override via <code>screenshots.display</code> in your config:</p>
 <ul>
-  <li><code>active</code> (default) — picks the display containing the focused window</li>
-  <li><code>primary</code> — legacy behaviour, always the primary display</li>
-  <li><code>all</code> — captures every display, emits one screenshot event per file with a <code>_d&lt;displayId&gt;.jpg</code> suffix</li>
+  <li><code>active</code> (default): picks the display containing the focused window</li>
+  <li><code>primary</code>: legacy behaviour, always the primary display</li>
+  <li><code>all</code>: captures every display, emits one screenshot event per file with a <code>_d&lt;displayId&gt;.jpg</code> suffix</li>
 </ul>
 
 <h2>Tray menu (when a session is running)</h2>
@@ -119,22 +119,22 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li><strong>Start next run</strong>: same as the run hotkey</li>
   <li><strong>Start a named run</strong>: submenu of <code>process_labels</code> entries (hidden when none configured)</li>
   <li><strong>End run</strong>: ends the current run</li>
-  <li><strong>Manual screenshot</strong> — capture regardless of trigger config</li>
+  <li><strong>Manual screenshot</strong>: capture regardless of trigger config</li>
   <li><strong>Pause / Resume polling</strong></li>
   <li><strong>End capture session</strong>: ends the open run, finalizes the manifest, stops OBS recording, then shows the session summary</li>
-  <li><strong>Live status → Show / Hide Live Session window</strong> — toggle the always-on-top dashboard</li>
-  <li><strong>Storage → Open sessions folder</strong> — jump to <code>%APPDATA%\process-discovery-tracker\sessions\</code></li>
-  <li><strong>Settings…</strong> — hotkeys, OBS, screenshots, storage limits (persists across sessions)</li>
-  <li><strong>Profile…</strong> — worker identity stamped onto every recording</li>
+  <li><strong>Live status → Show / Hide Live Session window</strong>: toggle the always-on-top dashboard</li>
+  <li><strong>Storage → Open sessions folder</strong>: jump to <code>%APPDATA%\process-discovery-tracker\sessions\</code></li>
+  <li><strong>Settings…</strong>: hotkeys, OBS, screenshots, storage limits (persists across sessions)</li>
+  <li><strong>Profile…</strong>: worker identity stamped onto every recording</li>
 </ul>
 
 <h2>Configuration</h2>
 <p>Configuration is split into three places, by lifetime:</p>
 <ul>
-  <li><strong>Settings</strong> (tray → <em>Settings…</em>) — persistent across sessions: hotkeys, OBS, screenshots, storage / recording limits. Stored at <code>userData/user-config.json</code> and merged over any per-session YAML.</li>
-  <li><strong>Profile</strong> (tray → <em>Profile…</em>) — worker identity (id, display name, role, team). Stamped onto every recording's manifest.</li>
-  <li><strong>Session setup</strong> (tray → <em>Session setup…</em>) — per-engagement: project code/name and task shortcuts. Stored at <code>userData/quick-config.yaml</code>.</li>
-  <li><strong>Manual YAML</strong> (advanced) — set <code>PDT_CONFIG=path\to\config.yaml</code> before launch for the full schema (process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, engagement metadata). See <code>capture/sample-config.yaml</code> in the repo. Settings / Profile still layer on top.</li>
+  <li><strong>Settings</strong> (tray → <em>Settings…</em>), persistent across sessions: hotkeys, OBS, screenshots, storage / recording limits. Stored at <code>userData/user-config.json</code> and merged over any per-session YAML.</li>
+  <li><strong>Profile</strong> (tray → <em>Profile…</em>): worker identity (id, display name, role, team). Stamped onto every recording's manifest.</li>
+  <li><strong>Session setup</strong> (tray → <em>Session setup…</em>), per engagement: project code/name and task shortcuts. Stored at <code>userData/quick-config.yaml</code>.</li>
+  <li><strong>Manual YAML</strong> (advanced): set <code>PDT_CONFIG=path\to\config.yaml</code> before launch for the full schema (process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, engagement metadata). See <code>capture/sample-config.yaml</code> in the repo. Settings / Profile still layer on top.</li>
 </ul>
 
 <h2>OBS recording: first-time setup (5 minutes)</h2>
@@ -143,14 +143,14 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
   <li><strong>Install OBS Studio</strong> from <code>obsproject.com</code> (version 28 or later). One-time.</li>
   <li><strong>Open OBS</strong> and go to <em>Tools → WebSocket Server Settings</em>.</li>
   <li><strong>Tick "Enable WebSocket server"</strong>. Leave the port at <code>4455</code>. Leave authentication disabled for ease of use on internal machines (or set a password and copy it into your config's <code>obs.websocket_password</code> field). Click OK. OBS doesn't need a restart.</li>
-  <li><strong>Leave OBS running</strong> when you start a capture session. The tracker connects automatically, creates a scene named "Process Discovery — Default" the first time, starts recording on session start, and stops on session end.</li>
+  <li><strong>Leave OBS running</strong> when you start a capture session. The tracker connects automatically, creates a scene named "Process Discovery -- Default" the first time, starts recording on session start, and stops on session end.</li>
 </ol>
-<p>You don't need to click record in OBS yourself. The capture app does it. You also don't need to leave OBS in the foreground — minimize it after step 4 and you'll never need to look at it again unless you want to verify the recording.</p>
+<p>You don't need to click record in OBS yourself. The capture app does it. You also don't need to leave OBS in the foreground: minimize it after step 4 and you'll never need to look at it again unless you want to verify the recording.</p>
 <h2>OBS integration details</h2>
 <ul>
   <li>Connection: <code>ws://127.0.0.1:4455</code> (localhost only). No network exposure.</li>
   <li>Set <code>obs.required: true</code> in your per-session config to fail fast when OBS isn't reachable. Default is <code>false</code> so capture can run without OBS for ad-hoc testing.</li>
-  <li>First connection auto-creates a scene per config (default: "Process Discovery — Default") with a timestamp overlay browser source. The burned-in clock helps you verify sync if anything ever drifts.</li>
+  <li>First connection auto-creates a scene per config (default: "Process Discovery -- Default") with a timestamp overlay browser source. The burned-in clock helps you verify sync if anything ever drifts.</li>
   <li>The recording's start timestamp and tracker↔OBS offset are written to <code>obs/sync.json</code> so the viewer can map any tracker event to a video seek position.</li>
   <li>Where the video lands depends on OBS's own <em>Settings → Output → Recording Path</em>. The session's <code>manifest.json</code> records the absolute path so the analyst's viewer can find it after you move the session folder.</li>
 </ul>
@@ -158,11 +158,11 @@ Optionally drives OBS to record the screen and writes a clock-sync file so the a
 <h2>Output</h2>
 <p>Each session writes a self-contained folder under <code>%APPDATA%\process-discovery-tracker\sessions\&lt;engagement&gt;\&lt;YYYYMMDD-HHMMSS&gt;\</code>:</p>
 <ul>
-  <li><code>events.jsonl</code> — one JSON event per line, append-only, the durable artifact</li>
-  <li><code>manifest.json</code> — session metadata, status, OBS reference</li>
-  <li><code>config.yaml</code> — snapshot of the config used</li>
-  <li><code>screenshots/</code> — event-triggered captures</li>
-  <li><code>obs/sync.json</code> — clock-sync data (if OBS was connected)</li>
+  <li><code>events.jsonl</code>: one JSON event per line, append-only, the durable artifact</li>
+  <li><code>manifest.json</code>: session metadata, status, OBS reference</li>
+  <li><code>config.yaml</code>: snapshot of the config used</li>
+  <li><code>screenshots/</code>: event-triggered captures</li>
+  <li><code>obs/sync.json</code>: clock-sync data (if OBS was connected)</li>
 </ul>
 
 <h2>Citrix and remote desktop notes</h2>

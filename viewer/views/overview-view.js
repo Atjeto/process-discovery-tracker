@@ -32,12 +32,32 @@
 const State = require("../state.js");
 const { escapeHtml, escapeAttr, formatDuration, toast } = require("../dom.js");
 const { saveAnnotationsWithUndo } = require("../session.js");
-const { seekToTimestamp, jumpToStepInFlow } = require("./flow-view-video.js");
 const { findingCardHtml } = require("../finding-cards.js");
 const { renderEvidenceInto } = require("./analysis-view.js");
+// flow-view-video.js wires DOM controls at require() time; it is required
+// lazily in the click handlers so this module (and its pure section
+// builders) load under the node:test runner.
+function _video() { return require("./flow-view-video.js"); }
 
 function _fmt(ms) { return formatDuration(ms || 0); }
 function _pct(x) { return Math.round((x || 0) * 100) + "%"; }
+
+/* ---- Stage failures (contract C12, RP-10) -------------------------------- */
+
+/* A pipeline stage that failed is named in analysis.stage_errors
+   ([{ stage, error }]) and its output key is null. The Overview says the
+   check could not run; it never renders that as a measured negative (zero
+   tiles, "nothing stood out"). */
+const STAGE_NOT_RUN = "This check could not run on this recording";
+function _stageError(analysis, stage) {
+  const list = (analysis && Array.isArray(analysis.stage_errors)) ? analysis.stage_errors : [];
+  return list.find((e) => e && e.stage === stage) || null;
+}
+function _technicalDetail(err) {
+  return err && err.error
+    ? '<div class="ov-stage-detail">Technical detail: ' + escapeHtml(err.error) + "</div>"
+    : "";
+}
 
 /* ---- 1. Case-quality badge -------------------------------------------- */
 
@@ -48,8 +68,8 @@ function _badge(cq) {
     cls = "ok";
     // G-3: one case never unlocks comparisons — say so on the badge itself.
     text = oneCase
-      ? "✓ 1 case marked — case comparisons need at least 2"
-      : "✓ " + (cq.case_count || 0) + " cases — marked by the worker";
+      ? "✓ 1 case marked, but case comparisons need at least 2"
+      : "✓ " + (cq.case_count || 0) + " cases, marked by the worker";
     title = "The worker marked case starts/ends during recording · " +
       _pct(cq.coverage) + " of recorded actions fall inside a case";
   } else {
@@ -110,8 +130,28 @@ function _markRunsLine() {
 
 /* ---- 3. Fact strip ------------------------------------------------------ */
 
-function _factStrip(facts) {
+const _FACT_LABELS = ["Active time", "Idle time", "Top app", "App switches", "Longest stretch", "Re-typed values"];
+
+/* C12: the facts stage failed (facts is null). Same six tiles, each saying it
+   could not be measured, so no tile can be read as a measured zero. */
+function _factStripNotRun(err) {
+  const tip = STAGE_NOT_RUN + ", so this number could not be measured. It is not zero.";
+  return '<div class="ov-facts ov-facts-not-run">' + _FACT_LABELS.map((l) =>
+    '<div class="ov-tile ov-tile-not-run" title="' + escapeAttr(tip) + '">' +
+      '<div class="ov-tile-value">-</div>' +
+      '<div class="ov-tile-label">' + escapeHtml(l) + "</div>" +
+      '<div class="ov-tile-sub">could not be measured</div>' +
+    "</div>").join("") + "</div>" +
+    '<div class="analysis-note ov-stage-not-run">' + escapeHtml(STAGE_NOT_RUN +
+      ": the measured facts are missing, not zero. Run Analyze again; if it still " +
+      "fails, the analysis log names the problem.") + "</div>" + _technicalDetail(err);
+}
+
+function _factStrip(facts, analysis) {
+  if (facts == null) return _factStripNotRun(_stageError(analysis, "facts"));
   const top = (facts.top_apps || [])[0] || {};
+  // C12: repeated_sequence_count is null when its stage (motifs) failed.
+  const seqsKnown = facts.repeated_sequence_count != null;
   const seqs = facts.repeated_sequence_count || 0;
   // G-2 honesty rule: an old recording can carry NO app-time signal at all
   // (facts.app_time_source === "none") — those tiles must say so, never
@@ -125,7 +165,7 @@ function _factStrip(facts) {
   const estSub = "estimated from clicks and typing";
   const tiles = [
     noAppSignal
-      ? { v: "—", l: "Active time", s: naSub, t: naTip }
+      ? { v: "-", l: "Active time", s: naSub, t: naTip }
       : { v: _fmt(facts.active_ms), l: "Active time",
           s: derived ? estSub
             : (facts.session_span_ms ? "of " + _fmt(facts.session_span_ms) + " recorded" : ""),
@@ -134,17 +174,17 @@ function _factStrip(facts) {
       s: facts.idle_ms ? "" : "no idle time recorded",
       t: "Stretches with no mouse or keyboard input, as flagged by the recorder" },
     noAppSignal
-      ? { v: "—", l: "Top app", s: naSub, t: naTip }
-      : { v: top.app ? escapeHtml(top.app) : "—", l: "Top app",
+      ? { v: "-", l: "Top app", s: naSub, t: naTip }
+      : { v: top.app ? escapeHtml(top.app) : "-", l: "Top app",
           s: top.app ? _pct(top.share) + " of active time" : "",
           t: "The app with the largest share of measured active time" },
     noAppSignal
-      ? { v: "—", l: "App switches", s: naSub, t: naTip }
+      ? { v: "-", l: "App switches", s: naSub, t: naTip }
       : { v: String(facts.app_switches || 0), l: "App switches",
           s: (facts.switches_per_hour || 0) + "/h" + (derived ? " · " + estSub : ""),
           t: "How often a different app came to the front" },
     noAppSignal
-      ? { v: "—", l: "Longest stretch", s: naSub, t: naTip }
+      ? { v: "-", l: "Longest stretch", s: naSub, t: naTip }
       : { v: _fmt(facts.longest_focus_ms), l: "Longest stretch",
           s: derived ? estSub : "unbroken in one app",
           t: "The longest unbroken stretch of work in a single app" },
@@ -156,8 +196,10 @@ function _factStrip(facts) {
     // separate measurement rather than a qualifier on the headline number.
     { v: String(facts.rekey_count || 0),
       l: "Re-typed value" + (facts.rekey_count === 1 ? "" : "s"),
-      s: seqs + " repeated sequence" + (seqs === 1 ? "" : "s"),
-      t: "Values typed into more than one app — a sign the same data is re-entered by hand. " +
+      s: seqsKnown
+        ? seqs + " repeated sequence" + (seqs === 1 ? "" : "s")
+        : "repeated sequences could not be measured",
+      t: "Values typed into more than one app: a sign the same data is re-entered by hand. " +
          "Subtitle: how many step sequences repeat across the recording (a separate measurement)." },
   ];
   return '<div class="ov-facts">' + tiles.map((t) =>
@@ -207,10 +249,19 @@ function _detectorHeading(det) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function _findingsFeed(findings, memoSelection) {
+function _findingsFeed(findings, memoSelection, analysis) {
+  if (findings == null) {
+    // C12: the findings stage failed. "Nothing stood out" would be a measured
+    // negative the recording never supported.
+    return '<div class="ov-section"><div class="ov-section-title">Findings</div>' +
+      '<div class="analysis-note ov-stage-not-run">' + escapeHtml(STAGE_NOT_RUN +
+        ", so it cannot say whether anything stood out. Run Analyze again; if it " +
+        "still fails, the analysis log names the problem.") + "</div>" +
+      _technicalDetail(_stageError(analysis, "findings")) + "</div>";
+  }
   if (!findings.length) {
     return '<div class="ov-section"><div class="ov-section-title">Findings</div>' +
-      '<div class="analysis-note">Nothing stood out — the automatic checks ' +
+      '<div class="analysis-note">Nothing stood out: the automatic checks ' +
       "found nothing worth reporting on this recording.</div></div>";
   }
   // §D2: the card itself is the shared finding-card component, so the
@@ -248,7 +299,7 @@ function _findingsFeed(findings, memoSelection) {
         info +
       "</div>" + cards + "</div>";
   }).join("");
-  return '<div class="ov-section"><div class="ov-section-title">Findings — ' +
+  return '<div class="ov-section"><div class="ov-section-title">Findings: ' +
     "measured from the recording; review before sharing</div>" + groups + "</div>";
 }
 
@@ -300,10 +351,10 @@ function _wireFindings(host) {
     if (show) show.addEventListener("click", () => {
       const target = _timelineTarget(f);
       if (!target) return;
-      if (target.step) { jumpToStepInFlow(target.step); return; }
+      if (target.step) { _video().jumpToStepInFlow(target.step); return; }
       const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
       if (flowBtn) flowBtn.click();
-      setTimeout(() => seekToTimestamp(target.ts), 0);
+      setTimeout(() => _video().seekToTimestamp(target.ts), 0);
     });
     // Screenshot chip -> the security-hardened open path (reused, never
     // weakened): openScreenshot validates the session-relative image path.
@@ -333,12 +384,14 @@ function _wireFindings(host) {
 
 function _toSayMore(analysis, anno) {
   const items = [];
-  const cq = analysis.case_quality || {};
-  if (!cq.tier2_unlocked) {
+  // C12: a failed case check or facts stage says nothing about cases or idle
+  // time, so neither gap is claimed from a null block.
+  const cq = analysis.case_quality;
+  if (cq && !cq.tier2_unlocked) {
     if (cq.mode && cq.mode !== "unsegmented" && (cq.case_count || 0) >= 1) {
       // G-3: cases exist, just not enough of them to compare.
       items.push("Only " + (cq.case_count || 0) + " case" +
-        ((cq.case_count || 0) === 1 ? " was" : "s were") + " identified — " +
+        ((cq.case_count || 0) === 1 ? " was" : "s were") + " identified: " +
         "case comparisons need at least 2, so capturing or marking one more " +
         "case would unlock how long each case takes and the paths taken.");
     } else {
@@ -347,8 +400,8 @@ function _toSayMore(analysis, anno) {
         "case-by-case comparison.");
     }
   }
-  if (!((analysis.facts || {}).idle_ms)) {
-    items.push("No idle time was measured — time spent waiting inside an " +
+  if (analysis.facts && !analysis.facts.idle_ms) {
+    items.push("No idle time was measured: time spent waiting inside an " +
       "app without typing or clicking is invisible to this recording.");
   }
   const hasBnva = ((anno || {}).analysis_overrides || []).some(
@@ -371,7 +424,7 @@ function _evidenceSection() {
   // renderEvidenceInto() fills #overview-evidence with the two collapsible
   // modules (time / automation), each with its own collapse persistence.
   return '<div class="ov-section ov-evidence-section">' +
-    '<div class="ov-section-title">Evidence — the measured detail behind the findings</div>' +
+    '<div class="ov-section-title">Evidence: the measured detail behind the findings</div>' +
     '<div id="overview-evidence"></div></div>';
 }
 
@@ -397,33 +450,50 @@ function _exportPdd() {
 
 /* ---- Render -------------------------------------------------------------- */
 
+/* C12: the case check failed (case_quality is null). Said on the badge, so it
+   is not mistaken for "not analyzed yet" or for "no cases". */
+function _badgeNotRun(err) {
+  return '<div class="ov-badge-row">' +
+    '<span class="ov-badge warn" title="' + escapeAttr(STAGE_NOT_RUN + ", so the cases in it are not known.") + '">' +
+    '<span class="ov-badge-text">' + escapeHtml("The case check could not run on this recording") + "</span>" +
+    "</span></div>" + _technicalDetail(err);
+}
+
+/* Whether analysis.json carries the Overview's blocks at all: the case check
+   ran, or it is named as a failed stage (C12). */
+function _hasOverview(analysis) {
+  return !!(analysis && (analysis.case_quality || _stageError(analysis, "case_quality")));
+}
+
+/* The Overview HTML for one analysis.json + annotations. Pure (no DOM, no
+   State), so the unit tests render fixture analyses through the same code. */
+function overviewHtml(analysis, anno) {
+  if (!_hasOverview(analysis)) {
+    return '<div class="analysis-empty">No analysis yet: click ' +
+      "<strong>Analyze session</strong> above to compute the measured facts, " +
+      "case quality and findings this Overview renders. (Sessions analyzed " +
+      "before this version need one re-analyze.)</div>";
+  }
+  anno = anno || {};
+  const cq = analysis.case_quality;
+  let html = cq ? _badge(cq) : _badgeNotRun(_stageError(analysis, "case_quality"));
+  if (cq && cq.mode === "unsegmented") html += _markRunsLine();
+  html += _factStrip(analysis.facts, analysis);
+  html += _findingsFeed(analysis.findings, anno.memo_selection, analysis);
+  // R4 (Task 2): the retired Analysis modules, as Evidence, BELOW the findings.
+  html += _evidenceSection();
+  html += _toSayMore(analysis, anno);
+  html += _exportBar();
+  return html;
+}
+
 function renderOverviewLevel() {
   const host = document.getElementById("overview-content");
   if (!host) return;
   const sess = State.getSession();
   if (!sess) { host.innerHTML = ""; return; }
-  const analysis = sess.analysis;
-  const cq = analysis && analysis.case_quality;
-  if (!cq) {
-    host.innerHTML = '<div class="analysis-empty">No analysis yet — click ' +
-      "<strong>Analyze session</strong> above to compute the measured facts, " +
-      "case quality and findings this Overview renders. (Sessions analyzed " +
-      "before this version need one re-analyze.)</div>";
-    return;
-  }
-  const anno = sess.annotations || {};
-  const facts = analysis.facts || {};
-  const findings = analysis.findings || [];
-
-  let html = _badge(cq);
-  if (cq.mode === "unsegmented") html += _markRunsLine();
-  html += _factStrip(facts);
-  html += _findingsFeed(findings, anno.memo_selection);
-  // R4 (Task 2): the retired Analysis modules, as Evidence, BELOW the findings.
-  html += _evidenceSection();
-  html += _toSayMore(analysis, anno);
-  html += _exportBar();
-  host.innerHTML = html;
+  host.innerHTML = overviewHtml(sess.analysis, sess.annotations);
+  if (!_hasOverview(sess.analysis)) return;   // the "not analyzed yet" note has nothing to wire
 
   const markRuns = host.querySelector("#btn-ov-mark-runs");
   if (markRuns) markRuns.addEventListener("click", () => openMarkersInFlow());
@@ -436,7 +506,7 @@ function renderOverviewLevel() {
 }
 
 module.exports = {
-  renderOverviewLevel, openMarkersInFlow,
-  NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON,
+  renderOverviewLevel, openMarkersInFlow, overviewHtml,
+  NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN,
 };
 

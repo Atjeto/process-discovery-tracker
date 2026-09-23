@@ -5,9 +5,9 @@
  * re-altituded by the disclosure pass DISCLOSURE-MODEL rule 1).
  *
  * One card = one detector claim + its measured evidence. Extracted from
- * overview-view.js so the Overview findings feed and the Compare
- * surface's cross-session divergence feed render the SAME component
- * (same .ov-finding markup + styles) -- the two feeds cannot drift
+ * overview-view.js so the Overview findings feed and the Evidence
+ * modules' automation candidates (analysis-view.js) render the SAME
+ * component (same .ov-finding markup + styles) -- the two cannot drift
  * apart visually or in what a "finding" looks like.
  *
  * Disclosure altitude (DISCLOSURE-MODEL rule 1: "lead with the sentence"):
@@ -20,17 +20,17 @@
  * The card is a pure string builder (no DOM, no State); callers wire the
  * expand toggle + the action clicks. Action affordances are opt-in --
  *   opts.timelineTarget(f)  truthy => the "Show on timeline" button
- *                           (Overview only; a cross-session finding has
- *                           no single timeline to jump).
+ *                           (the Overview findings feed only).
  *   opts.memoSelection      a Set of finding ids => the "include in
  *                           PDD" checkbox, pre-checked from the set
  *                           (annotations.memo_selection feeds the PDD).
  *   opts.detailHtml(f)      extra pre-built HTML inserted after the
- *                           evidence numbers (Compare uses it for the
- *                           per-worker breakdown line).
- *   opts.screenshots        false => omit the screenshot chip(s) (a
- *                           surface with no screenshots to open, e.g.
- *                           Compare). Default: render them as chips.
+ *                           evidence numbers (the automation candidates
+ *                           use it for the step chain and Confirm/Dismiss).
+ *   opts.screenshots        false => omit the screenshot chip(s) (a card
+ *                           with no screenshots to open, e.g. an
+ *                           automation candidate). Default: render them
+ *                           as chips.
  *   opts.omitMethodology    true => drop the per-card methodology note
  *                           (the caller renders it once per detector
  *                           group instead -- DISCLOSURE-MODEL rule 3).
@@ -105,8 +105,8 @@ function findingCardHtml(f, opts) {
   return '<div class="ov-finding" data-fid="' + escapeAttr(f.id || "") + '">' +
     '<div class="ov-finding-head">' +
       '<span class="ov-finding-tier t' + (f.tier || 1) + '" title="' +
-        (f.tier === 2 ? "Based on the identified cases — needs confirmed cases to be reliable"
-                      : "Measured directly from the recording — no case identification needed") +
+        (f.tier === 2 ? "Based on the identified cases: needs confirmed cases to be reliable"
+                      : "Measured directly from the recording: no case identification needed") +
         '">' + (f.tier === 2 ? "case-based" : "measured") + "</span>" +
       '<span class="ov-finding-claim">' + escapeHtml(f.claim || "") + "</span>" +
       chevron +

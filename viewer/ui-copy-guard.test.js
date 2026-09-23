@@ -48,8 +48,8 @@ const BANNED_COPY = [
 
 /* "anchor" is banned only in WORKER-facing copy (the capture app): a worker
    is told about "the field that identifies the ticket/order". The analyst-
-   side Machine surfaces (Markers panel, Template view) may keep the term
-   with a plain-words tooltip, so viewer files are exempt. */
+   side viewer may keep the term with a plain-words tooltip, so viewer files
+   are exempt. */
 const BANNED_CAPTURE_ONLY = [
   { re: /\banchor/i, term: "anchor", instead: "“the field that identifies the ticket/order”" },
 ];
@@ -132,4 +132,173 @@ test("UI copy guard: no internal vocabulary in capture window strings", () => {
     "§UI copy style guide):\n  " + offenders.join("\n  "));
 });
 
-module.exports = { BANNED_COPY, BANNED_CAPTURE_ONLY };
+/* ---- The owner's standing rule: no em dash, no en dash ------------------
+   Nothing a person reads may contain an em dash (U+2014) or an en dash
+   (U+2013); use a colon, a comma, parentheses or a plain hyphen instead.
+
+   Scope: every string literal in the viewer and capture app .js files, the
+   text of their .html files, and their .css outside comments (a `content:`
+   value renders). Code comments are NOT in scope, so the JS scan uses a small
+   tokenizer instead of the line-wise extraction above: it tracks comments,
+   quoted strings, template literals (with ${} nesting) and regex literals,
+   so a dash in a trailing `// comment` or a block comment is never flagged
+   while one in any string is. HTML: comments are removed, and inline
+   <script> / <style> bodies go through the JS / CSS rules. Known gap: a
+   regex literal is told from a division by the token before the slash (the
+   usual heuristic), which is right for this codebase but is not a parser. */
+const DASH_RE = /[\u2013\u2014]/;
+
+/* The text of every string literal in a JS source, each as { text, line }. */
+function jsStringLiterals(src) {
+  const out = [];
+  const n = src.length;
+  const tpl = [];            // brace depth at each open template ${ } expression
+  let i = 0, line = 1, depth = 0;
+  let prev = "", prevWord = "";
+  const REGEX_AFTER_WORD = new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete",
+    "void", "throw", "case", "do", "else", "yield", "await"]);
+  const step = () => { if (src[i] === "\n") line++; i++; };
+  function readQuoted(q) {
+    const at = line; let s = ""; step();
+    while (i < n && src[i] !== q && src[i] !== "\n") {
+      if (src[i] === "\\") { s += src[i]; step(); if (i < n) { s += src[i]; step(); } continue; }
+      s += src[i]; step();
+    }
+    if (src[i] === q) step();
+    out.push({ text: s, line: at });
+  }
+  function readTemplateChunk() {   // from just after ` or after the } closing ${ }
+    const at = line; let s = "";
+    while (i < n) {
+      if (src[i] === "\\") { s += src[i]; step(); if (i < n) { s += src[i]; step(); } continue; }
+      if (src[i] === "`") { step(); out.push({ text: s, line: at }); prev = "`"; prevWord = ""; return; }
+      if (src[i] === "$" && src[i + 1] === "{") {
+        step(); step(); out.push({ text: s, line: at }); tpl.push(depth); prev = "{"; prevWord = ""; return;
+      }
+      s += src[i]; step();
+    }
+    out.push({ text: s, line: at });
+  }
+  function regexAllowed() {
+    if (!prev) return true;
+    if (/[\w$]/.test(prev)) return REGEX_AFTER_WORD.has(prevWord);
+    return !/[)\]}]/.test(prev);   // after ) ] } a slash divides
+  }
+  function skipRegex() {
+    let inClass = false; step();
+    while (i < n && src[i] !== "\n") {
+      const c = src[i];
+      if (c === "\\") { step(); step(); continue; }
+      if (inClass) { if (c === "]") inClass = false; }
+      else if (c === "[") inClass = true;
+      else if (c === "/") { step(); while (i < n && /[a-z]/i.test(src[i])) step(); return; }
+      step();
+    }
+  }
+  while (i < n) {
+    const c = src[i], d = src[i + 1];
+    if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") step(); continue; }
+    if (c === "/" && d === "*") { step(); step(); while (i < n && !(src[i] === "*" && src[i + 1] === "/")) step(); step(); step(); continue; }
+    if (c === '"' || c === "'") { readQuoted(c); prev = c; prevWord = ""; continue; }
+    if (c === "`") { step(); readTemplateChunk(); continue; }
+    if (c === "/" && regexAllowed()) { skipRegex(); prev = "/"; prevWord = ""; continue; }
+    if (c === "}" && tpl.length && tpl[tpl.length - 1] === depth) { tpl.pop(); step(); readTemplateChunk(); continue; }
+    if (c === "{") depth++;
+    else if (c === "}") depth--;
+    if (/\s/.test(c)) { step(); continue; }
+    if (/[\w$]/.test(c)) {
+      let w = "";
+      while (i < n && /[\w$]/.test(src[i])) { w += src[i]; step(); }
+      prev = w[w.length - 1]; prevWord = w; continue;
+    }
+    prev = c; prevWord = ""; step();
+  }
+  return out;
+}
+
+/* CSS text outside comments, as { text, line } per line. */
+function cssText(src, lineOffset = 0) {
+  const noComments = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+  return noComments.split("\n").map((text, k) => ({ text, line: lineOffset + k + 1 }));
+}
+
+/* HTML: text with comments removed (lines kept); <script> and <style> bodies
+   through the JS and CSS rules. */
+function htmlReadable(src) {
+  const out = [];
+  const blanked = src.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
+  const lineAt = (idx) => blanked.slice(0, idx).split("\n").length;
+  const rest = blanked.replace(/<(script|style)\b[^>]*>([\s\S]*?)<\/\1>/gi, (m, tag, body, idx) => {
+    const bodyStart = idx + m.indexOf(body);
+    const first = lineAt(bodyStart) - 1;
+    if (tag.toLowerCase() === "script") {
+      for (const lit of jsStringLiterals(body)) out.push({ text: lit.text, line: first + lit.line });
+    } else {
+      out.push(...cssText(body, first));
+    }
+    return m.replace(/[^\n]/g, " ");
+  });
+  rest.split("\n").forEach((text, k) => out.push({ text, line: k + 1 }));
+  return out.sort((a, b) => a.line - b.line);
+}
+
+/* Allowlist: file -> literal texts excused, each with its reason. Only a
+   string this lane may not edit belongs here, never new copy. */
+const DASH_ALLOW = {
+  // viewer/map-controller.js is a guarded map file that the next map lane
+  // replaces wholesale (BA-helper cycle, 2026-09-23); its one dashed empty-
+  // state string is reported to that lane rather than edited here.
+  "viewer/map-controller.js": ['" \u2014 it has a single '],
+};
+
+function dashOffenders(dirs) {
+  const offenders = [];
+  for (const dir of dirs) {
+    for (const file of appFiles(dir, [".js", ".html", ".css"])) {
+      const rel = path.relative(REPO, file).replace(/\\/g, "/");
+      const src = fs.readFileSync(file, "utf8");
+      const pieces = file.endsWith(".html") ? htmlReadable(src)
+        : file.endsWith(".css") ? cssText(src) : jsStringLiterals(src);
+      for (const p of pieces) {
+        if (!DASH_RE.test(p.text)) continue;
+        if ((DASH_ALLOW[rel] || []).includes(p.text)) continue;
+        offenders.push(rel + ":" + p.line + ": " + JSON.stringify(p.text.trim().slice(0, 90)));
+      }
+    }
+  }
+  return offenders;
+}
+
+test("the dash scanner flags strings but never comments (tokenizer control)", () => {
+  // The fixtures spell the dashes as \u escapes so this file itself carries
+  // none; at run time `src` holds the real characters.
+  const EM = "\u2014", EN = "\u2013";
+  const src = [
+    "// a comment " + EM + " never flagged",
+    "/* block " + EM + " never flagged */",
+    "const a = x / 2; // trailing " + EM + " comment with it's quote",
+    'const b = "string ' + EM + ' flagged";',
+    "const re = /[\"']" + EM + "/g; // a regex literal is not a string",
+    "const c = `template ${ fn('inner " + EN + " flagged') } tail " + EM + " flagged`;",
+    "const d = { k: 'plain' }; const e = y / z / w;",
+  ].join("\n");
+  const flagged = jsStringLiterals(src).filter((l) => DASH_RE.test(l.text)).map((l) => [l.line, l.text]);
+  assert.deepStrictEqual(flagged, [
+    [4, "string " + EM + " flagged"],
+    [6, "inner " + EN + " flagged"],
+    [6, " tail " + EM + " flagged"],
+  ]);
+  const html = htmlReadable("<p>Text " + EM + " flagged</p>\n<!-- comment " + EM + " not -->\n" +
+    "<style>/* css " + EM + " not */ .x::before { content: \"" + EN + "\"; }</style>\n" +
+    "<script>// js " + EM + " not\nconst s = \"js " + EM + " flagged\";</script>");
+  assert.deepStrictEqual(html.filter((p) => DASH_RE.test(p.text)).map((p) => p.line), [1, 3, 5]);
+});
+
+test("UI copy guard: no em dash or en dash in viewer or capture user-facing strings", () => {
+  const offenders = dashOffenders([VIEWER, path.join(REPO, "capture")]);
+  assert.deepStrictEqual(offenders, [],
+    "Em dash (U+2014) or en dash (U+2013) in text a person reads. Use a colon, a comma, " +
+    "parentheses or a plain hyphen instead:\n  " + offenders.join("\n  "));
+});
+
+module.exports = { BANNED_COPY, BANNED_CAPTURE_ONLY, DASH_RE, jsStringLiterals };

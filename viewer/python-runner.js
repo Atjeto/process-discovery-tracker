@@ -69,7 +69,7 @@ function resolveDefaultTaxonomy() {
 function runNormalize(opts) {
   const {
     sessionFolder, taxonomyPath, mine, onLog, onProc,
-    pddOut, pddMapImage, pddTobeImage, stepBpmnOut,
+    pddOut, pddMapImage, pddTobeImage,
   } = opts || {};
   /* onProc(child) fires once with the spawned process handle so the
      caller can install a cancel button. We DON'T expose the promise
@@ -86,7 +86,6 @@ function runNormalize(opts) {
     if (pddOut) args.push("--pdd-out", pddOut);
     if (pddMapImage) args.push("--pdd-map-image", pddMapImage);
     if (pddTobeImage) args.push("--pdd-tobe-image", pddTobeImage);
-    if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
 
     const proc = spawn(python, args, {
       cwd: path.dirname(script),
@@ -123,13 +122,22 @@ function runNormalize(opts) {
       if (onLog) onLog(text);
     });
     proc.on("error", (e) => reject(new Error(`failed to spawn python: ${e.message}`)));
-    proc.on("close", (code) => {
+    proc.on("close", (code, signal) => {
       if (cancelled) {
         resolve({ cancelled: true, stdout, stderr });
         return;
       }
       if (code !== 0) {
-        reject(new Error(`normalize.py exited ${code}: ${stderr}`));
+        // Contract C13: any non-zero exit is a failure. The exit code and the
+        // full stderr ride on the error so the caller can show the pipeline's
+        // "[normalize] ERROR:" line (normalize-result.js), not a stack dump.
+        const err = new Error(code === null
+          ? `normalize.py was stopped (${signal || "no exit code"})`
+          : `normalize.py exited ${code}`);
+        err.exitCode = code;
+        err.signal = signal || null;
+        err.stderr = stderr;
+        reject(err);
         return;
       }
       /* The final JSON summary is the trailing block of stdout. */

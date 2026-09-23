@@ -28,6 +28,8 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
   ? _electron
   : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
 const { runNormalize } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}) };
+const AnnoStore = require("./annotations-store.js");
+const { resultFromRunnerError } = require("./normalize-result.js");
 
 let mainWindow = null;
 
@@ -266,7 +268,13 @@ function loadSessionData(sessionFolder) {
 
   const stats = loadOptionalJson(path.join(sessionFolder, "stats.json"));
   const dfg = loadOptionalJson(path.join(sessionFolder, "dfg.json"));
-  const annotations = loadOptionalJson(path.join(sessionFolder, "annotations.json"));
+  // RP-04: an annotations.json that exists but cannot be read is reported
+  // (annotationsError, shown as a banner naming the file and its backups),
+  // never treated as absent; the writers below refuse to replace it.
+  const annoRead = AnnoStore.readAnnotationsFile(sessionFolder);
+  const annotations = annoRead.status === "ok" ? annoRead.annotations : null;
+  const annotationsError = AnnoStore.annotationsLoadError(annoRead, sessionFolder);
+  if (annotationsError) console.warn("[viewer:loadSession] " + annotationsError.message);
   const obsSync = loadOptionalJson(path.join(sessionFolder, "obs", "sync.json"));
   const analysis = loadOptionalJson(path.join(sessionFolder, "analysis.json"));
 
@@ -307,6 +315,7 @@ function loadSessionData(sessionFolder) {
     dfg,
     analysis,
     annotations,
+    annotationsError,
     obsSync,
     recordingPath,
     recordingAvailable,
@@ -324,11 +333,11 @@ function loadOptionalJson(p) {
    guidance for the analyst. The original technical line is kept below
    the translation so an engineer can still read it. */
 const PIPELINE_ERROR_TRANSLATIONS = [
-  [/KeyError: ['"]timestamp['"]/, "Some events are missing timestamps — the capture may have been interrupted."],
-  [/KeyError: ['"]case_ids['"]/, "Case assignment failed — check that Start/End markers are present in the session."],
-  [/InductiveMiner|inductive_miner/, "Process-map mining ran into trouble — try adding noisy apps to the ignored list to cut complexity."],
-  [/FileNotFoundError.*events\.jsonl/, "The events file is missing — was the session folder copied completely?"],
-  [/yaml\.scanner\.ScannerError|yaml\.parser\.ParserError/, "A YAML file has a syntax error — check its indentation."],
+  [/KeyError: ['"]timestamp['"]/, "Some events are missing timestamps: the capture may have been interrupted."],
+  [/KeyError: ['"]case_ids['"]/, "Case assignment failed: check that Start/End markers are present in the session."],
+  [/InductiveMiner|inductive_miner/, "Process-map mining ran into trouble: try adding noisy apps to the ignored list to cut complexity."],
+  [/FileNotFoundError.*events\.jsonl/, "The events file is missing: was the session folder copied completely?"],
+  [/yaml\.scanner\.ScannerError|yaml\.parser\.ParserError/, "A YAML file has a syntax error: check its indentation."],
   [/ModuleNotFoundError|ImportError/, "A Python package the pipeline needs is missing from the bundled runtime."],
 ];
 function translatePipelineError(text) {
@@ -341,19 +350,34 @@ function translatePipelineError(text) {
   return text;
 }
 
+/* Result contract for the renderer: { ok: true, ...runner result } on
+   success; { ok: false, error } on failure, where `error` is the full sentence
+   to show the analyst (for a non-zero normalize.py exit it carries the
+   pipeline's "[normalize] ERROR:" line, see normalize-result.js), plus `code`
+   (the exit code, or null) and `cancelled` when the analyst cancelled. */
 ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
+  let root;
   try {
-    const root = path.resolve(opts.sessionFolder);
+    root = path.resolve(opts.sessionFolder);
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
-      throw new Error("Not a session folder; refusing to normalize.");
+      return { ok: false, code: null, error: "Analysis could not start: this is not a session folder (no manifest.json)." };
     }
+    // RP-04: normalize.py rewrites annotations.json. Never launch it over an
+    // unreadable one (the pipeline's own check is C13 exit code 2; this guard
+    // also covers a pipeline that predates it).
+    AnnoStore.assertWritable(root);
+  } catch (e) {
+    return { ok: false, code: e.code === "ANNOTATIONS_UNREADABLE" ? 2 : null,
+      error: e.code === "ANNOTATIONS_UNREADABLE" ? "Analysis stopped, nothing was changed: " + e.message
+        : "Analysis could not start: " + e.message };
+  }
+  try {
     const result = await runNormalize({
       sessionFolder: root,
       mine: !!opts.mine,
       pddOut: opts.pddOut || null,
       pddMapImage: opts.pddMapImage || null,
       pddTobeImage: opts.pddTobeImage || null,
-      stepBpmnOut: opts.stepBpmnOut || null,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
     });
@@ -364,7 +388,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
     return { ok: true, ...result };
   } catch (e) {
     _normalizeHandle = null;
-    return { ok: false, error: e.message };
+    return resultFromRunnerError(e);
   }
 });
 
@@ -391,24 +415,23 @@ ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder }) => {
 
 ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, offsetMs }) => {
   /* Write to annotations.json under external_video; preserve all other
-     annotation state. */
+     annotation state. A read-modify-write: RP-04 refuses it when the current
+     file exists but cannot be read (it used to start from {} and replace the
+     analyst's work), and writes through the same backup + atomic path as
+     every other save. */
   try {
     const root = path.resolve(sessionFolder);
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
       return { ok: false, error: "Not a session folder" };
     }
-    const annoPath = path.join(root, "annotations.json");
-    let anno = {};
-    if (fs.existsSync(annoPath)) {
-      try { anno = JSON.parse(fs.readFileSync(annoPath, "utf-8")) || {}; }
-      catch (_) { anno = {}; }
-    }
+    const current = AnnoStore.assertWritable(root);
+    const anno = current.status === "ok" ? current.annotations : {};
     anno.external_video = {
       path: videoPath,
       offset_ms: offsetMs || 0,
       attached_at: new Date().toISOString(),
     };
-    fs.writeFileSync(annoPath, JSON.stringify(anno, null, 2));
+    AnnoStore.writeAnnotationsFile(root, anno);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -417,41 +440,33 @@ ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, 
 
 /* --- Annotations write-back --------------------------------------- */
 
-/* H8: rotate annotations.json into numbered backups before each write.
-   annotations.json -> .2 -> .3 -> .4 -> .5; five versions are kept.
-   Recovery is manual -- the analyst copies a .N file back over
-   annotations.json -- this is just a safety net against a corrupt
-   write or a regretted bulk edit. */
-const ANNOTATION_BACKUP_DEPTH = 5;
-function rotateAnnotationBackups(root) {
-  try {
-    for (let i = ANNOTATION_BACKUP_DEPTH - 1; i >= 1; i--) {
-      const from = i === 1 ? "annotations.json" : `annotations.json.${i}`;
-      const to = `annotations.json.${i + 1}`;
-      const fromPath = path.join(root, from);
-      if (fs.existsSync(fromPath)) {
-        fs.renameSync(fromPath, path.join(root, to));
-      }
-    }
-  } catch (_e) {
-    /* A failed rotation must not block the actual save -- worst case
-       the analyst loses one backup generation. */
-  }
-}
+/* H8 + RP-04: every save keeps five versions (annotations.json.2 newest to
+   .5 oldest) by COPYING the current file, then writes the new content to a
+   temp file and renames it over annotations.json, so a failed write leaves
+   the previous file in place (annotations-store.js). Recovery is manual: the
+   analyst copies a .N file back over annotations.json.
 
+   Result contract: { ok: true, path, backupError } or { ok: false, code,
+   error } (code "ANNOTATIONS_UNREADABLE" when the current file cannot be
+   read and was therefore left untouched). Never throws across IPC, so the
+   renderer always gets a readable reason (session.js surfaces it). */
 ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) => {
   /* Anchor the write to an absolute session folder; reject if the
      resolved path doesn't contain a manifest (i.e. is not actually a
      session folder). Prevents accidental writes to arbitrary paths
      via a manipulated IPC payload. */
-  const root = path.resolve(sessionFolder);
-  if (!fs.existsSync(path.join(root, "manifest.json"))) {
-    throw new Error("Refusing to write annotations: not a session folder");
+  try {
+    const root = path.resolve(String(sessionFolder || ""));
+    if (!sessionFolder || !fs.existsSync(path.join(root, "manifest.json"))) {
+      return { ok: false, code: null, error: "Refusing to write annotations: not a session folder." };
+    }
+    const r = AnnoStore.writeAnnotationsFile(root, annotations);
+    if (r.backupError) console.warn("[viewer:saveAnnotations] saved, but the backup copy failed: " + r.backupError);
+    return { ok: true, path: r.path, backupError: r.backupError };
+  } catch (e) {
+    console.error("[viewer:saveAnnotations] not saved:", e && e.message);
+    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e) };
   }
-  const annoPath = path.join(root, "annotations.json");
-  rotateAnnotationBackups(root);
-  fs.writeFileSync(annoPath, JSON.stringify(annotations, null, 2));
-  return annoPath;
 });
 
 /* --- App lifecycle ----------------------------------------------- */
@@ -472,4 +487,4 @@ app.on("activate", () => {
 /* Exported for unit tests (the security helper is pure and validated in
    isolation). Importing this module under plain node is made safe by the
    Electron shim near the top. */
-module.exports = { validateScreenshotOpen, validateDiagramOpen, _knownSessionRoots };
+module.exports = { validateScreenshotOpen, validateDiagramOpen, _knownSessionRoots, loadSessionData };

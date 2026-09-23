@@ -25,7 +25,7 @@ function stepStateLabel(state) {
     case "hidden":
       return "Hidden";
     default:
-      return state || "—";
+      return state || "-";
   }
 }
 
@@ -135,7 +135,7 @@ function computeSummary(session) {
     : null;
 
   return {
-    engagement: manifest.engagement_id || "—",
+    engagement: manifest.engagement_id || "-",
     /* D4: the analyst-entered project name. Prefer the top-level field (new
        sessions) and fall back to the config snapshot (sessions captured before
        the field was lifted out of config). Null when never set. */

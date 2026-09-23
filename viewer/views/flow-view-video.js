@@ -150,7 +150,7 @@ function watchStep(step) {
   }
   const startTs = videoStartTs();
   if (!startTs) {
-    toast("Cannot line the video up with the timeline — no video start time.", "error");
+    toast("Cannot line the video up with the timeline: no video start time.", "error");
     return;
   }
   // Make sure the video is on screen.
@@ -227,7 +227,7 @@ function startVideoSync() {
     return;
   }
   if (!session.manifest || !session.manifest.started_at) {
-    toast("Session has no start time — cannot compute a video offset.", "error");
+    toast("Session has no start time: cannot compute a video offset.", "error");
     return;
   }
   cancelVideoSync();
@@ -244,7 +244,7 @@ function startVideoSync() {
     _videoSync.step = 2;
     const tl = document.getElementById("timeline");
     if (tl) tl.classList.add("video-sync-target");
-    _videoSyncCard("Step 2 of 2 — click the matching moment on the timeline below.");
+    _videoSyncCard("Step 2 of 2: click the matching moment on the timeline below.");
   }
   // The timeline's normal click (seek) is suppressed for the whole sync;
   // a step-2 click also sets the sync point.
@@ -270,7 +270,7 @@ function startVideoSync() {
   const tl = document.getElementById("timeline");
   if (tl) tl.addEventListener("click", onTimelineClick, true);
   document.addEventListener("keydown", onKey, true);
-  _videoSyncCard("Step 1 of 2 — pause the video at a recognizable moment, then click Mark frame.",
+  _videoSyncCard("Step 1 of 2: pause the video at a recognizable moment, then click Mark frame.",
     "Mark frame", markFrame);
 }
 async function applyVideoSync(offsetMs) {
@@ -286,7 +286,7 @@ async function applyVideoSync(offsetMs) {
     toast("Could not save the video sync: " + ((r && r.error) || "unknown"), "error");
     return;
   }
-  toast("Video re-synced — reloading session", "success");
+  toast("Video re-synced: reloading session", "success");
   await loadSessionIntoView(session.sessionFolder);
 }
 /* Wall-clock ms at a clicked x on the Flow timeline. #timeline spans the

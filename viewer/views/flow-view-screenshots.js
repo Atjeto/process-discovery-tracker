@@ -148,9 +148,9 @@ function openScreenshotGallery() {
       '</div>' +
       '<div class="screenshot-gallery-body"><img id="gallery-img" alt="screenshot" /></div>' +
       '<div class="screenshot-gallery-footer">' +
-        '<span class="pos" id="gallery-pos">—</span>' +
-        '<span class="ts" id="gallery-ts">—</span>' +
-        '<span class="reason" id="gallery-reason">—</span>' +
+        '<span class="pos" id="gallery-pos">-</span>' +
+        '<span class="ts" id="gallery-ts">-</span>' +
+        '<span class="reason" id="gallery-reason">-</span>' +
         '<span class="flex-spacer" style="flex:1"></span>' +
         '<span style="color:var(--fg-3);font-size:10px">← / → step · Space play · Esc close · click image to seek video</span>' +
       '</div>';
@@ -210,7 +210,7 @@ function _galleryRenderFrame() {
   if (entry.similar > 0) {
     const exp = document.createElement("span");
     exp.className = "gallery-similar";
-    exp.textContent = ` (+${entry.similar} near-duplicate${entry.similar === 1 ? "" : "s"} — show)`;
+    exp.textContent = ` (+${entry.similar} near-duplicate${entry.similar === 1 ? "" : "s"}, show)`;
     exp.title = "Show the near-identical frames folded into this one";
     exp.addEventListener("click", () => {
       _galleryState.expanded.add(entry.groupKey);

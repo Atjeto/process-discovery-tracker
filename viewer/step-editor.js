@@ -65,7 +65,6 @@
         (s.state === "hidden" ? " step-hidden" : "") +
         (s.flags && s.flags.waste ? " step-flag-waste" : "");
       row.dataset.stepId = s.step_id;
-      const driftTag = s.drift ? '<span class="drift-indicator" title="Canonical drift detected">⚠</span>' : "";
       // A3: analyst flag badges -- marking a step now visibly shows in the list.
       const _f = s.flags || {};
       // Only the value-add judgment is a genuine PER-STEP property. Exception
@@ -74,12 +73,12 @@
       // come from the observed variants, automation candidacy from coherent
       // segments (ADR-0016), conditionality from the map's branch frequency.
       const flagBadges =
-        (_f.waste ? '<span class="step-flag flag-waste" title="Waste — should not be needed">W</span>' : "");
+        (_f.waste ? '<span class="step-flag flag-waste" title="Waste: should not be needed">W</span>' : "");
       // P0.3: repeat badge -- shown only when the repetition discriminates
       // (the step recurs in some, not all, cases). A legible "N×" label; a
       // step in every case is the uniform backbone and carries no badge.
       const repeatBadge = s._repeatDiscriminating
-        ? `<span class="step-repeat" title="Appears in ${s._repeat} of ${s._repeatCaseCount} cases (not all) — edit one, then Apply to repeats">${s._repeat}×</span>`
+        ? `<span class="step-repeat" title="Appears in ${s._repeat} of ${s._repeatCaseCount} cases (not all): edit one, then Apply to repeats">${s._repeat}×</span>`
         : "";
       // R1 (Steps chrome diet): a truncated name (the list ellipsizes) must be
       // readable on hover, so the title shows the FULL name; the rename hint
@@ -88,12 +87,12 @@
       // showStepContextMenu "Move up / Move down"), so 500-step lists aren't
       // multiplied by two always-present controls. The multi-select check
       // stays (a genuine per-row act for merge and bulk delete).
-      const _nameTitle = (s.name ? s.name + " — " : "") + "double-click to rename";
+      const _nameTitle = (s.name ? s.name + " - " : "") + "double-click to rename";
       row.innerHTML = `
         <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
         <span class="multi-check" title="Click to select for merge or bulk delete"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${driftTag}${flagBadges}${repeatBadge}
+        ${flagBadges}${repeatBadge}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
       `;
       row.addEventListener("click", (e) => {
@@ -173,7 +172,7 @@
      primary one-click acts that already existed (Hide/Unhide, the Waste flag,
      the name edit) -- nothing else. Everything else the panel used to show at
      equal weight (description, interaction evidence, screenshot count,
-     classification/canonical + drift detail, split/merge/jump/watch/
+     classification detail, split/merge/jump/watch/
      propagate/delete) moves behind ONE native <details> expansion ("More ▸"),
      collapsed by default and NOT persisted per step -- renderStepDetail is
      called fresh on every selection change, so a re-render always starts
@@ -187,16 +186,16 @@
       host.innerHTML = `
         <div class="empty-pane">
           <p>Pick a step on the left to see its details, rename it, or flag it.</p>
-          <p class="meta">Each step has a name, an optional description, a list of UI interactions that made it up, and a <strong>Waste</strong> flag — mark a step as waste when it shouldn't be needed (rework, duplicate effort, copy-paste between systems); it feeds the value-add / efficiency analysis.</p>
-          <p class="meta">Process variations / exception paths come from the observed <em>variants</em>, automation candidacy from coherent <em>segments</em> (Analysis), and conditionality from the map's branch frequency — none are per-step toggles.</p>
+          <p class="meta">Each step has a name, an optional description, a list of UI interactions that made it up, and a <strong>Waste</strong> flag: mark a step as waste when it shouldn't be needed (rework, duplicate effort, copy-paste between systems); it feeds the value-add / efficiency analysis.</p>
+          <p class="meta">Process variations / exception paths come from the observed <em>variants</em>, automation candidacy from coherent <em>segments</em> (Analysis), and conditionality from the map's branch frequency. None are per-step toggles.</p>
         </div>`;
       return;
     }
     const flags = step.flags || {};
     const _tr = step.time_range || {};
-    const _dur = stepDuration(_tr) || "—";
-    const _start = _tr.start ? escapeHtml(localTime(_tr.start)) : "—";
-    const _end = _tr.end ? escapeHtml(localTime(_tr.end)) : "—";
+    const _dur = stepDuration(_tr) || "-";
+    const _start = _tr.start ? escapeHtml(localTime(_tr.start)) : "-";
+    const _end = _tr.end ? escapeHtml(localTime(_tr.end)) : "-";
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
     const resolvedInter = interIds.map((id) => interMap[id]).filter(Boolean);
@@ -259,8 +258,6 @@
           <div class="evidence">
             ${interListHtml}
             <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
-            ${step.canonical_step_id ? `<p class="meta" title="The reference-process step this was matched to">Reference id: <code>${escapeHtml(step.canonical_step_id)}</code></p>` : ""}
-            ${step.drift ? `<p class="drift-note">⚠ Reference drift: was <code>${escapeHtml(step.drift.previous_canonical_step_id || "")}</code> → now <code>${escapeHtml(step.drift.new_canonical_step_id || "")}</code></p>` : ""}
           </div>
           <div class="actions">
             ${propagateBtn}
@@ -409,7 +406,7 @@
       let value = String(d.value || "").trim();
       if (value.length > 300) value = value.slice(0, 299) + "…";
       const n = d._coalesced_count || 0;
-      const keys = n > 1 ? ` — ${n} keystrokes` : "";
+      const keys = n > 1 ? ` - ${n} keystrokes` : "";
       return value
         ? `Typed "${value}" into ${field}${keys}`
         : `Cleared ${field}${keys}`;
@@ -543,7 +540,7 @@
       host.innerHTML = `
         <div class="empty-pane">
           <p><strong>No aligned reading yet.</strong></p>
-          <p>The aligned reading lines up the repeating work across the session's cases (tickets). It needs the session split into 2+ cases — detect a case key first, then the consensus steps appear here.</p>
+          <p>The aligned reading lines up the repeating work across the session's cases (tickets). It needs the session split into 2+ cases: detect a case key first, then the consensus steps appear here.</p>
         </div>`;
       return;
     }
@@ -569,7 +566,7 @@
       const sec = document.createElement("div");
       sec.className = "bb-exceptions";
       sec.innerHTML =
-        `<div class="bb-exc-head" title="Steps a single case has that the consensus backbone does not — an exception ticket's extra work. Edit each one in place.">` +
+        `<div class="bb-exc-head" title="Steps a single case has that the consensus backbone does not: an exception ticket's extra work. Edit each one in place.">` +
           `Exceptions · ${exceptions.length}</div>`;
       const exFrag = document.createDocumentFragment();
       exceptions.forEach((ex) => {
@@ -601,7 +598,7 @@
       host.innerHTML = `
         <div class="empty-pane">
           <p>Pick a step in the consensus backbone to see its instances across cases, then curate one name + flags and apply to all.</p>
-          <p class="meta">Steps below the backbone are <strong>exceptions</strong> — one case's extra work. Select an exception to edit it in place.</p>
+          <p class="meta">Steps below the backbone are <strong>exceptions</strong>: one case's extra work. Select an exception to edit it in place.</p>
         </div>`;
       return;
     }
@@ -630,9 +627,9 @@
       <div class="flags">
         <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Feeds the value-add / waste analysis."><input type="checkbox" id="bb-flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
-      <p class="meta">Exception paths come from the observed variants, automation candidacy from coherent segments (Analysis), and conditionality from the map's branch frequency — none are per-step toggles (ADR-0027).</p>
+      <p class="meta">Exception paths come from the observed variants, automation candidacy from coherent segments (Analysis), and conditionality from the map's branch frequency. None are per-step toggles (ADR-0027).</p>
       <div class="actions">
-        <button id="btn-bb-apply" class="primary" title="Apply this name, description and flags to all ${instances.length} aligned instance(s) across cases — one edit, one Ctrl+Z.">Apply to all ${instances.length} instances</button>
+        <button id="btn-bb-apply" class="primary" title="Apply this name, description and flags to all ${instances.length} aligned instance(s) across cases: one edit, one Ctrl+Z.">Apply to all ${instances.length} instances</button>
       </div>` : "";
     host.innerHTML = `
       <div class="bb-detail-head">
@@ -640,8 +637,8 @@
         <div class="bb-detail-freq${partial ? " partial" : ""}">Seen in ${entry.frequency} of ${caseCount} cases</div>
       </div>
       <p class="meta">${partial
-        ? "Not in every case — review whether it belongs in the consensus before applying."
-        : "In every case — the consensus backbone for this process."}</p>
+        ? "Not in every case: review whether it belongs in the consensus before applying."
+        : "In every case: the consensus backbone for this process."}</p>
       ${curateHtml}
       <div class="bb-instances">
         <div class="bb-instances-title">Aligned instances (${instances.length})</div>

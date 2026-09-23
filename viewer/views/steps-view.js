@@ -14,7 +14,7 @@
 const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
-const Ipc = require("../ipc.js");
+const Session = require("../session.js");
 const PdtSteps = require("../step-editor.js");
 const PdtAlign = require("../step-alignment.js");
 const { rollUpSteps, screenType, resolveStepGrainKeys } = require("../process-map-levels.js");
@@ -55,15 +55,6 @@ function getSpan() {
   };
 }
 
-function decorateDrift(steps) {
-  const drifts = (State.getSession().annotations && State.getSession().annotations.drift_markers) || [];
-  const byStep = {};
-  for (const d of drifts) {
-    byStep[d.step_id] = d;
-  }
-  return (steps || []).map(s => byStep[s.step_id] ? { ...s, drift: byStep[s.step_id] } : s);
-}
-
 /* Decision 1: tag each step with how many cases (tickets) it recurs in, so
    the detail can offer "apply to all". `_repeat` is the case span and drives
    the propagate action. P0.3: the LIST badge is shown only when the repetition
@@ -102,10 +93,10 @@ function renderStepsLevel() {
   for (const ev of (State.getSession().events || [])) {
     if (ev.type === "interaction") interactionsById[ev.event_id] = ev;
   }
-  // Decorate with drift markers, then intra-session repeat counts (a step that
-  // recurs across anchor-detected cases is the high-value "curate once" target).
+  // Decorate with intra-session repeat counts (a step that recurs across
+  // anchor-detected cases is the high-value "curate once" target).
   const allSteps = decorateRepeats(
-    decorateDrift((State.getSession().annotations && State.getSession().annotations.steps) || []),
+    (State.getSession().annotations && State.getSession().annotations.steps) || [],
     interactionsById);
 
   // Consume a pending step-jump request from a Flow seek: focus on the
@@ -226,7 +217,7 @@ function renderStepsLevel() {
     if (legendEl) {
       const anyRepeat = allSteps.some(s => s._repeatDiscriminating);
       legendEl.innerHTML = anyRepeat
-        ? '<span class="step-repeat">N×</span> = recurs in some (not all) cases — curate one, then "Apply to repeats"'
+        ? '<span class="step-repeat">N×</span> = recurs in some (not all) cases: curate one, then "Apply to repeats"'
         : "";
       legendEl.style.display = anyRepeat ? "" : "none";
     }
@@ -323,7 +314,7 @@ function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById, no
       : ' <span class="grain-legend-hint">Set the Detail slider to ' +
         '<strong>element</strong> to edit individual steps.</span>';
     legendEl.innerHTML = 'Grouped by <strong>' + escapeHtml(grain) +
-      '</strong> — each row folds a run of consecutive steps on the same ' +
+      '</strong>: each row folds a run of consecutive steps on the same ' +
       escapeHtml(grain) + '.' + cta;
     legendEl.style.display = "";
   }
@@ -381,7 +372,7 @@ function renderCaseTree(wi, allSteps, interactionsById) {
   // Legend: name the active reading + the inverse (element to edit fragments).
   const legendEl = $("#steps-legend");
   if (legendEl) {
-    legendEl.innerHTML = 'Grouped by <strong>ticket → screen</strong> — each row is ' +
+    legendEl.innerHTML = 'Grouped by <strong>ticket → screen</strong>: each row is ' +
       'one screen visit for a ticket, its bounces merged back together. ' +
       '<span class="grain-legend-hint">Set the Detail slider to <strong>element</strong> ' +
       'to edit individual fragments.</span>';
@@ -439,7 +430,7 @@ function renderCaseTree(wi, allSteps, interactionsById) {
 
   const list = $("#step-list");
   if (list) {
-    list.innerHTML = rowsHtml || '<div class="empty-hint">No work items — no cases with steps.</div>';
+    list.innerHTML = rowsHtml || '<div class="empty-hint">No work items: no cases with steps.</div>';
     list.querySelectorAll(".wi-case-head").forEach((h) => {
       h.addEventListener("click", () => {
         const ck = h.dataset.caseKey;
@@ -490,7 +481,7 @@ function renderWorkItemDetail(host, item, allSteps, interactionsById) {
     host.innerHTML =
       '<div class="empty-pane">' +
         "<p>Pick a work item on the left to name it, note it, or flag it.</p>" +
-        '<p class="meta">A work item is one <strong>screen visit for a ticket</strong> — ' +
+        '<p class="meta">A work item is one <strong>screen visit for a ticket</strong>: ' +
         "every time you bounced into that screen while working the ticket, merged into " +
         "one thing to read and annotate. Naming it flows down to its fragments on the " +
         "timeline and the map.</p>" +
@@ -529,7 +520,7 @@ function renderWorkItemDetail(host, item, allSteps, interactionsById) {
     "</div>" +
     '<details class="step-detail-more">' +
       '<summary class="step-detail-more-head">' +
-        '<span class="step-detail-more-title">More — ' + item.fragment_count + " fragment" + (item.fragment_count === 1 ? "" : "s") + "</span>" +
+        '<span class="step-detail-more-title">More: ' + item.fragment_count + " fragment" + (item.fragment_count === 1 ? "" : "s") + "</span>" +
         '<span class="step-detail-more-chevron" aria-hidden="true"></span>' +
       "</summary>" +
       '<div class="step-detail-more-body"><div class="wi-members">' + membersHtml + "</div></div>" +
@@ -625,7 +616,7 @@ function stepAppScreenFact(step, interactionsById) {
     : resolveStepGrainKeys(step, interactionsById || {});
   const app = (keys.app || "").trim();
   const screen = screenType(keys.screen || "").trim();
-  if (app && screen && screen !== "(screen)") return app + " — " + screen;
+  if (app && screen && screen !== "(screen)") return app + " - " + screen;
   return app || (screen && screen !== "(screen)" ? screen : "");
 }
 
@@ -693,7 +684,7 @@ function renderAlignedReading(interactionsById) {
   // P0.4 discipline: an on-screen key for the frequency-pill encoding.
   const legendEl = $("#steps-legend");
   if (legendEl) {
-    legendEl.innerHTML = '<span class="bb-freq">n/N</span> = cases (tickets) that include this step — curate one, then Apply to all instances';
+    legendEl.innerHTML = '<span class="bb-freq">n/N</span> = cases (tickets) that include this step: curate one, then Apply to all instances';
     legendEl.style.display = "";
   }
 
@@ -854,7 +845,7 @@ async function toggleStepHidden(stepId) {
     step.state = "hidden";
     if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
     await persistAnnotations(anno, "hide step");
-    toast("Step hidden — reveal via the hidden filter chip", "success");
+    toast("Step hidden: reveal via the hidden filter chip", "success");
   }
 }
 
@@ -1098,7 +1089,7 @@ async function reorderStep(stepId, delta) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const f = State.getListFilters().step;
-  const visible = decorateDrift(anno.steps)
+  const visible = (anno.steps || [])
     .filter(s => stepMatchesFilter(s, f, State.getCaseScope()));
   const vIdx = visible.findIndex(s => s.step_id === stepId);
   const neighbour = visible[vIdx + delta];
@@ -1224,7 +1215,7 @@ function openIgnoredAppsDialog() {
   if (!State.getSession()) { toast("Open a session first.", ""); return; }
   const apps = distinctSessionApps();
   if (!apps.length) {
-    toast("No interaction data in this session — nothing to filter.", "");
+    toast("No interaction data in this session: nothing to filter.", "");
     return;
   }
   const anno = ensureAnnoShape(State.getSession().annotations);
@@ -1237,7 +1228,7 @@ function openIgnoredAppsDialog() {
       '<header class="modal-header"><h2>Ignored apps</h2>' +
         '<button class="icon-btn modal-close" id="ia-close" title="Close">✕</button></header>' +
       '<div class="modal-body">' +
-        '<p class="meta" style="margin-top:0">Apps you tick here are left out of step suggestions — useful for OBS, the tracker itself, or anything that isn\'t part of the process you\'re mapping. Saving re-analyzes the session.</p>' +
+        '<p class="meta" style="margin-top:0">Apps you tick here are left out of step suggestions: useful for OBS, the tracker itself, or anything that isn\'t part of the process you\'re mapping. Saving re-analyzes the session.</p>' +
         '<div id="ia-list" style="margin-top:10px"></div>' +
       '</div>' +
       '<div class="modal-footer">' +
@@ -1267,15 +1258,18 @@ function openIgnoredAppsDialog() {
       .filter(cb => cb.checked)
       .map(cb => cb.dataset.proc);
     anno.step_filters.ignored_processes = picked;
-    // Settings change -- write directly (not via the undo stack).
-    await Ipc.saveAnnotations({
-      sessionFolder: State.getSession().sessionFolder,
-      annotations: anno,
-    });
+    // Settings change -- written directly (not via the undo stack), through
+    // the one write path (RP-04): a failed save has already been shown as an
+    // error, so keep the dialog open and do not re-analyze.
+    try {
+      await Session.saveAnnotationsDirect(anno, "ignored apps");
+    } catch (_) {
+      return;
+    }
     close();
     toast(picked.length
-      ? "Ignoring " + picked.length + " app(s) — re-analyzing..."
-      : "No apps ignored — re-analyzing...", "success");
+      ? "Ignoring " + picked.length + " app(s): re-analyzing..."
+      : "No apps ignored: re-analyzing...", "success");
     // Re-analyze so the step list reflects the new denylist.
     const normBtn = $("#btn-normalize");
     if (normBtn) normBtn.click();
@@ -1436,7 +1430,7 @@ function showStepContextMenu(stepId, x, y) {
   // neighbour, so no menu item is a no-op. reorderStep persists but does not
   // re-render, so re-render after it (mirrors the other mutating items).
   const _f = State.getListFilters().step;
-  const _visible = decorateDrift((anno.steps || []))
+  const _visible = (anno.steps || [])
     .filter(s => stepMatchesFilter(s, _f, State.getCaseScope()));
   const _vIdx = _visible.findIndex(s => s.step_id === stepId);
   if (_vIdx > 0) {

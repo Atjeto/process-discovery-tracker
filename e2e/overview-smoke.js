@@ -32,6 +32,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
+const { launchViewer } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -93,7 +94,8 @@ function normalize(sessionDir) {
 }
 
 async function launch(sessionDir, pageErrors) {
-  const app = await electron.launch({
+  // RP-36: a throwaway profile per launch, never the developer's UI state.
+  const { app, close } = await launchViewer(electron, {
     executablePath: electronPath,
     args: [".", "--session=" + sessionDir],
     cwd: VIEWER,
@@ -106,7 +108,7 @@ async function launch(sessionDir, pageErrors) {
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setContentSize(1500, 950)).catch(() => {});
   await wait(1500);
-  return { app, page };
+  return { app, page, close };
 }
 
 async function shot(page, name) {
@@ -126,9 +128,9 @@ async function shot(page, name) {
   const pageErrors = [];
 
   // ================= Launch 1: the marked demo (markers state) ============
-  let app, page;
+  let app, page, close;
   try {
-    ({ app, page } = await launch(SESSION_MARKED, pageErrors));
+    ({ app, page, close } = await launch(SESSION_MARKED, pageErrors));
   } catch (e) {
     console.error("FATAL: could not launch viewer:", e && e.stack ? e.stack : e);
     process.exit(2);
@@ -171,7 +173,7 @@ async function shot(page, name) {
     };
   }).catch((e) => ({ err: e.message }));
   const badgeOk = !!(badge && !badge.err && badge.ok &&
-    /✓ \d+ cases? — marked by the worker/.test(badge.text || "") &&
+    /✓ \d+ cases?, marked by the worker/.test(badge.text || "") &&   // item 8: no dash in the copy
     /case analysis on/i.test(badge.sub || "") &&
     badge.legacyTier2 === 0);
   record("(b) badge shows the worker-marked state + case analysis on as its subtitle (item 8 merge)",
@@ -343,8 +345,10 @@ async function shot(page, name) {
   // (e) AD-13: "Export PDD" runs the Session menu's PDD export (#btn-session-pdd).
   // Stub the save dialog to a temp path and the shell reveal (no Explorer
   // window in a gate), click the Overview button, poll for a real .docx (a
-  // zip: "PK" magic). The shared path renders the map first, so the viewer
-  // lands on the Map level: that pins "same path", not a second export.
+  // zip: "PK" magic). Item 7: the shared path shows the Map while it draws
+  // the map image, then returns the analyst to the Overview, and the level
+  // bar must say what is shown (it used to leave the Overview button lit
+  // while the Map showed). Previously this check asserted "lands on Map".
   const pddOut = path.join(os.tmpdir(), "pdt-ov-e2e-" + Date.now() + ".docx");
   await app.evaluate(({ dialog, shell }, p) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: p });
@@ -365,21 +369,34 @@ async function shot(page, name) {
     await wait(500);
   }
   if (!pddOk) pddDetail = "no .docx at the stubbed save path after 180s";
-  const onMap = await page.evaluate(() => {
-    const el = document.querySelector("#session-layout-map");
-    return !!(el && getComputedStyle(el).display !== "none");
-  }).catch(() => false);
-  record("(e) Export PDD writes a .docx through the Session menu's PDD path (lands on Map)",
-    pddOk && onMap, pddDetail + " onMap=" + onMap);
-  if (!pddOk) await shot(page, "fail-overview-pdd.png");
+  // The return to the Overview happens right after the file is handed over;
+  // wait for that state (bounded) instead of a fixed sleep.
+  const levelProbe = () => {
+    const shown = ["overview", "flow", "steps", "map"].filter((l) => {
+      const el = document.getElementById("session-layout-" + l);
+      return el && getComputedStyle(el).display !== "none";
+    });
+    const lit = [...document.querySelectorAll(".view-mode-btn.active")].map((b) => b.dataset.level);
+    return { shown, lit, level: require("./state.js").getLevel() };
+  };
+  await page.waitForFunction(() => {
+    const el = document.getElementById("session-layout-overview");
+    return el && getComputedStyle(el).display !== "none";
+  }, null, { timeout: 30000 }).catch(() => {});
+  const after = await page.evaluate(levelProbe).catch((e) => ({ err: e.message }));
+  const backInSync = !!(after && !after.err && after.level === "overview" &&
+    JSON.stringify(after.shown) === '["overview"]' && JSON.stringify(after.lit) === '["overview"]');
+  record("(e) Export PDD writes a .docx through the Session menu's PDD path, then returns to the Overview with the level bar in sync",
+    pddOk && backInSync, pddDetail + " after=" + JSON.stringify(after));
+  if (!(pddOk && backInSync)) await shot(page, "fail-overview-pdd.png");
   try { fs.unlinkSync(pddOut); } catch (_) {}
 
-  await app.close().catch(() => {});
+  await close();
 
   // ================= Launch 2: the marker-stripped copy (no runs marked) ==
-  let app2, page2;
+  let page2, close2;
   try {
-    ({ app: app2, page: page2 } = await launch(SESSION_STRIPPED, pageErrors));
+    ({ page: page2, close: close2 } = await launch(SESSION_STRIPPED, pageErrors));
   } catch (e) {
     console.error("FATAL: could not launch viewer (stripped):", e && e.stack ? e.stack : e);
     process.exit(2);
@@ -448,7 +465,7 @@ async function shot(page, name) {
   record("levels still switch from the new default (Flow renders)", flowStillWorks,
     flowStillWorks ? "" : "#session-layout-flow did not show after click");
 
-  await app2.close().catch(() => {});
+  await close2();
 
   // (f) Zero page errors across both launches.
   record("(f) zero PAGE ERRORs", pageErrors.length === 0,
