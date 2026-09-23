@@ -347,6 +347,57 @@ def test_a_step_shows_its_description_fields_and_waste_flag():
                                   "Flagged as waste."]
 
 
+def test_a_step_description_shows_only_when_the_analyst_wrote_it():
+    """A draft's description is the narration the drafting generates from its
+    interactions ("Clicked Save."), which repeats the step's fields table. It
+    is left out when it equals that narration, recomputed with the same
+    function; a description the analyst wrote, or edited, is shown. Without
+    the events the narration cannot be recomputed, so it is shown."""
+    if not _HAVE_DOCX:
+        return
+    from step_suggest import _default_step_description
+    manifest, annotations, stats, analysis, events = _session()
+    by_id = {e["event_id"]: e for e in events}
+    steps = {st["step_id"]: st for st in annotations["steps"]}
+
+    def narration(sid):
+        return _default_step_description(
+            [by_id[eid] for eid in steps[sid]["evidence"]["interaction_event_ids"]])
+    assert narration("a2") == "Clicked Save."
+    assert narration("a3").startswith('Entered "customer@example.com" into To.')
+    steps["a2"]["description"] = narration("a2")                   # generated
+    steps["a3"]["description"] = narration("a3") + " Ana: then I send it."  # edited
+    body = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                    "4.5 Detailed process steps")
+    assert body[body.index("1. Look up the order") + 1] == "Search the order by its number."
+    assert body[body.index("2. CRM - Orders: Save") + 1] == "3. Mail - Compose: Send"
+    assert "Clicked Save." not in body
+    assert body[body.index("3. Mail - Compose: Send") + 1] == (
+        narration("a3") + " Ana: then I send it.")
+    no_events = _section(_blocks_of(manifest, annotations, stats, analysis, None),
+                         "4.5 Detailed process steps")
+    assert no_events[no_events.index("2. CRM - Orders: Save") + 1] == "Clicked Save."
+
+
+def test_document_notes_render_as_a_last_section_only_when_written():
+    """C6 `document.notes` becomes a final "7. Notes" section; an empty or
+    blank field adds nothing (no heading, no placeholder)."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    for blank in ("", "  \n  "):
+        annotations["document"] = {"notes": blank}
+        blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+        assert _numbered(blocks) == OUTLINE, repr(blank)
+        assert "Notes" not in [t for k, t in blocks if k.startswith("Heading")]
+    annotations["document"] = {
+        "notes": "Ask Ana about the credit block.\n\nThe log step is skipped on Fridays."}
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert _numbered(blocks) == OUTLINE + ["7. Notes"]
+    assert _section(blocks, "7. Notes")[:2] == [
+        "Ask Ana about the credit block.", "The log step is skipped on Fridays."]
+
+
 def test_input_data_lists_each_field_once_with_its_step():
     if not _HAVE_DOCX:
         return

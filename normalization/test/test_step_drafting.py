@@ -256,6 +256,56 @@ def test_the_vocab_screen_id_and_meaningful_name_win():
     assert step["name"] == "va01: Create sales order"
 
 
+def test_a_record_value_in_the_commit_control_stays_out_of_the_name_and_key():
+    """A commit control identified by a record value (a list link whose text
+    is the incident number, an automation_id with the record in it) used to
+    put the value into the draft name and the draft_key, so every run got a
+    key of its own. The shared screen-label value rules now strip it, and a
+    rung that is nothing but a value falls through to the next rung: two runs
+    that open different records share one key and one value-free name."""
+    window = "Incidents | ServiceNow"
+    screen_key = "chrome|Incidents | ServiceNow|"
+    variants = {
+        "the link text is the record": (
+            {"aid": "", "name": "INC0010010"}, {"aid": "", "name": "INC0010011"},
+            screen_key + "Hyperlink:?", window + ": Hyperlink", "?"),
+        "the link name embeds the record": (
+            {"aid": "", "name": "Open record: INC0010010"},
+            {"aid": "", "name": "Open record: INC0010011"},
+            screen_key + "Hyperlink:Open record", window + ": Open record", "name"),
+        "the automation_id embeds the record": (
+            {"aid": "incident-INC0010010", "name": "INC0010010"},
+            {"aid": "incident-INC0010011", "name": "INC0010011"},
+            screen_key + "Hyperlink:incident", window + ": Hyperlink", "automation_id"),
+        "all-value rungs fall through to the class name": (
+            {"aid": "INC0010010", "name": "INC0010010", "cls": "linked formlink"},
+            {"aid": "INC0010011", "name": "INC0010011", "cls": "linked formlink"},
+            screen_key + "Hyperlink:linked formlink", window + ": Hyperlink", "class_name"),
+    }
+    for label, (first, second, key, name, rung) in variants.items():
+        events = [
+            _ev("a1", 1, "value_changed", aid="q", name="Search", value="printer",
+                window=window, proc="chrome.exe", case="run-1"),
+            _ev("a2", 2, "invoked", ct="Hyperlink", window=window, proc="chrome.exe",
+                case="run-1", **first),
+            _ev("b1", 11, "value_changed", aid="q", name="Search", value="scanner",
+                window=window, proc="chrome.exe", case="run-2"),
+            _ev("b2", 12, "invoked", ct="Hyperlink", window=window, proc="chrome.exe",
+                case="run-2", **second),
+        ]
+        drafts = auto_suggest_steps(events)
+        merged = _merge_steps([], drafts)
+        assert [d["case_id"] for d in merged] == ["run-1", "run-2"], label
+        assert [d["draft_key"] for d in merged] == [key, key], label
+        assert [d["name"] for d in merged] == [name, name], label
+        for d in merged:
+            for field in ("name", "draft_key", "suggestion_reason", "process_label"):
+                assert "INC00100" not in d[field], (label, field)
+        by_id = {e["event_id"]: e for e in events}
+        identity = draft_summary(drafts, {}, by_id)["commit_identity"]
+        assert identity[rung] == 2, (label, identity)
+
+
 def test_names_keys_and_reasons_never_carry_a_typed_value():
     """The old names embedded the value ("Find - <value>", "Enter <value> in
     Customer"). The typed value below reaches the step (its description
@@ -290,20 +340,35 @@ def test_a_remembered_name_replaces_the_default_and_sets_name_source():
     assert steps[0]["draft_key"] == "crm|CRM - Orders|Button:find"
 
 
-def test_a_draft_is_its_own_process_label_even_with_a_dash_in_the_screen():
+def test_a_step_with_a_draft_key_is_its_own_process_label_in_every_state():
     """The rule-based strip would cut "Salesforce - Order: Save order" at its
-    " - " to "Salesforce"; a drafted or confirmed name is value-free already.
-    An edited step keeps the rule-based strip."""
+    " - " to "Salesforce". A step that carries a draft_key is its own label in
+    every state: a draft, a confirmed draft, an edited draft whose name is
+    still the drafted one (it used to get "Salesforce", so it split from its
+    identical drafts in the step map and the repeat counts), an edited draft
+    the analyst renamed (the analyst's name for that key, C4) and a hidden
+    draft. A step without a draft_key keeps the rule-based strip."""
     events = [_ev("e1", 1, "invoked", ct="Button", aid="save", name="Save order",
                   window="Salesforce - Order #10900", proc="chrome.exe")]
     draft = _merge_steps([], auto_suggest_steps(events))[0]
     assert draft["name"] == "Salesforce - Order: Save order"
     assert draft["process_label"] == "Salesforce - Order: Save order"
-    confirmed = dict(draft, state="confirmed")
-    edited = dict(draft, state="edited", name="Save the order - ORD-1")
-    out = {s["state"]: s for s in _merge_steps([confirmed, edited], [])}
-    assert out["confirmed"]["process_label"] == "Salesforce - Order: Save order"
-    assert out["edited"]["process_label"] == "Save the order"
+    kept = [
+        dict(draft, step_id="confirmed", state="confirmed"),
+        dict(draft, step_id="edited", state="edited"),     # only the description changed
+        dict(draft, step_id="renamed", state="edited", name="Save the order - ORD-1"),
+        dict(draft, step_id="hidden", state="hidden"),
+        {"step_id": "manual", "state": "manually_authored",
+         "name": "Save the order - ORD-1"},                  # no draft_key
+    ]
+    labels = {s["step_id"]: s["process_label"] for s in _merge_steps(kept, [])}
+    assert labels == {
+        "confirmed": "Salesforce - Order: Save order",
+        "edited": "Salesforce - Order: Save order",
+        "renamed": "Save the order - ORD-1",
+        "hidden": "Salesforce - Order: Save order",
+        "manual": "Save the order",
+    }
 
 
 def test_screenshots_inside_the_time_range_are_attached():

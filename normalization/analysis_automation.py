@@ -64,6 +64,7 @@ def score_automation(
     events: list[dict[str, Any]] | None = None,
     segments: dict | None = None,
     annotations: dict[str, Any] | None = None,
+    app_names: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return the segment-level automation candidates for this session.
 
@@ -73,9 +74,12 @@ def score_automation(
     here; segments in *this* module's sense are coherent automation
     units detected from the event stream. (The two have unfortunately
     similar names -- see ADR-0016.)
+
+    `app_names` (stats.json meta.app_names) names the application in each
+    candidate's `label`.
     """
     events = events or []
-    segs = detect_segments(events, steps or [])
+    segs = detect_segments(events, steps or [], app_names=app_names)
     groups = group_segments(segs)
 
     out: list[dict[str, Any]] = []

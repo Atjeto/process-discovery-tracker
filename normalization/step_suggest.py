@@ -220,17 +220,31 @@ def _commit_part(data: dict[str, Any]) -> tuple[str, str]:
     """(commit part of the draft_key, identity rung) for a commit interaction.
     The part is "<control_type>:<identity>", identity = the automation_id,
     else the name, else the class_name, else "?"; the rung names the field
-    that identified it ("?" when none did)."""
-    rung, ident = _first_text(data, ("automation_id", "name", "class_name"))
+    that identified it ("?" when none did). Each rung is taken value-free
+    (_value_free): a link named "INC0010010" or an automation_id
+    "incident-INC0010010" must not give every run a key of its own, so a rung
+    that is nothing but a record value falls through to the next one."""
     _f, ct = _first_text(data, ("control_type",))
-    return f"{ct or '?'}:{ident or '?'}", rung or "?"
+    for rung in ("automation_id", "name", "class_name"):
+        _f, text = _first_text(data, (rung,))
+        ident = _value_free(text)
+        if ident:
+            return f"{ct or '?'}:{ident}", rung
+    return f"{ct or '?'}:?", "?"
 
 
 def _commit_label(data: dict[str, Any]) -> str:
     """The commit's words in a default name: the vocab meaningful_name, else
-    the control's name, else its control type."""
-    _f, label = _first_text(data, ("meaningful_name", "name", "control_type"))
-    return label or "?"
+    the control's name, else its control type. The two names are taken
+    value-free like the identity (_commit_part), so a draft name never
+    carries the record a link opened."""
+    for field in ("meaningful_name", "name"):
+        _f, text = _first_text(data, (field,))
+        label = _value_free(text)
+        if label:
+            return label
+    _f, ct = _first_text(data, ("control_type",))
+    return ct or "?"
 
 
 def _screenshot_index(events: list[dict[str, Any]]) -> tuple[list[datetime], list[str]]:
@@ -796,16 +810,18 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
 
 
 def _step_process_label(step: dict) -> str:
-    """The value-free grouping label stamped on a step. A drafted name (on a
-    draft, or on a draft the analyst confirmed unchanged) is value-free by
-    construction (C1), so it is its own label: the rule-based strip is for
-    names that embed case values, and its value-tail rule would cut a
-    window-derived screen label such as "Salesforce - Order: Save order" down
-    to "Salesforce". Every other step (edited, hand-authored, pre-draft
+    """The value-free grouping label stamped on a step. A step that carries a
+    draft_key is its own label, whatever its state (a draft, or a draft the
+    analyst confirmed, edited, renamed or hid): a drafted name is value-free
+    by construction (C1), and an analyst's rename is the name chosen for every
+    step with that key (C4). The rule-based strip is for names that embed case
+    values; its value-tail rule would cut a window-derived screen label such as
+    "Salesforce - Order: Save order" down to "Salesforce", so an edited draft
+    that kept its drafted name split from its identical drafts in the step map
+    and the repeat counts. A step without a draft_key (hand-authored, pre-draft
     legacy) keeps the rule-based strip."""
     name = step.get("name")
-    if (step.get("draft_key") and step.get("state") in ("auto_suggested", "confirmed")
-            and isinstance(name, str)):
+    if step.get("draft_key") and isinstance(name, str):
         return name.strip()
     return process_label(step.get("name") or "")
 
@@ -926,6 +942,19 @@ def screen_label(name: str) -> str:
         s = rx.sub(repl, s)
     s = _SCREEN_END_TRIM.sub("", s).strip()
     return s or (name or "").strip()
+
+
+def _value_free(text: str) -> str:
+    """`text` with the shared screen-label value rules applied (the rules and
+    the end trim of screen_label), or "" when nothing but values remains.
+    screen_label never blanks, it falls back to the raw text; a commit
+    control's identity or label must not (C1 draft_key, draft name), so this
+    is the one local rule on top of the shared ones: an all-value string
+    blanks, and the caller moves on to its next rung."""
+    s = (text or "").strip()
+    for rx, repl in _SCREEN_RULES:
+        s = rx.sub(repl, s)
+    return _SCREEN_END_TRIM.sub("", s).strip()
 
 
 def process_label(name: str) -> str:

@@ -158,7 +158,9 @@ def test_segments_with_same_pattern_share_signature():
     assert len(g["instances"]) == 2
 
 
-def test_segment_label_renders_the_app_and_step_chain():
+def test_segment_label_renders_the_step_chain_and_the_app():
+    """Without a readable-name map the app is the executable name,
+    capitalized (app_names.display_name)."""
     events = [
         _interaction("i1", 0, "salesforce.exe", "c1"),
         _interaction("i2", 1, "salesforce.exe", "c1"),
@@ -170,9 +172,42 @@ def test_segment_label_renders_the_app_and_step_chain():
         _step("s3", "Paste", ["i3"]),
     ]
     segs = detect_segments(events, steps)
-    assert segs[0]["label"].startswith("salesforce")
-    assert "Search" in segs[0]["label"]
-    assert "Paste" in segs[0]["label"]
+    assert segs[0]["label"] == "Search → Copy → Paste in Salesforce"
+
+
+def test_candidate_labels_use_the_readable_app_name_and_no_dash():
+    """The labels opened with the raw process token and an em dash ("sapgui",
+    the dash, then the step chain). They now name the application the way
+    the rest of the deliverable does (stats.json meta.app_names), after the
+    step chain, with no em or en dash, in the segments, their groups, the
+    scored candidates and the analysis.json the pipeline writes."""
+    from analysis import run_analysis
+    from analysis_automation import score_automation
+    events, steps = [], []
+    for case, t0 in (("c1", 0), ("c2", 100)):
+        for n, label in enumerate(("va01: Check document", "va01: Create sales order")):
+            eid = f"{case}-i{n}"
+            events.append(_interaction(eid, t0 + n, "SAPGUI.exe", case))
+            steps.append(_step(f"{case}-s{n}", label, [eid], start=t0 + n, end=t0 + n))
+    names = {"SAPGUI.exe": "SAP GUI"}
+    want = "va01: Check document → va01: Create sales order in SAP GUI"
+    segs = detect_segments(events, steps, app_names=names)
+    assert [s["label"] for s in segs] == [want, want]
+    assert [g["label"] for g in group_segments(segs).values()] == [want]
+    assert [c["label"] for c in score_automation(steps, events, app_names=names)] == [want]
+    result = run_analysis(events, steps, stats={"meta": {"app_names": names}})
+    assert [c["label"] for c in result["automation_candidates"]] == [want]
+    assert [s["label"] for s in result["segments"]] == [want, want]
+    for text in (want, *(s["label"] for s in result["segments"])):
+        assert chr(0x2014) not in text and chr(0x2013) not in text
+
+
+def test_a_long_step_chain_is_cut_after_five_steps():
+    events = [_interaction(f"i{n}", n, "crm.exe", "c1") for n in range(7)]
+    steps = [_step(f"s{n}", f"Step {n}", [f"i{n}"]) for n in range(7)]
+    segs = detect_segments(events, steps, app_names={"crm.exe": "Contoso CRM"})
+    assert segs[0]["label"] == (
+        "Step 0 → Step 1 → Step 2 → Step 3 → Step 4 → … (+2 more) in Contoso CRM")
 
 
 def test_no_case_id_segments_are_still_detected():

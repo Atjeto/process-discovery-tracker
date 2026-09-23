@@ -30,6 +30,7 @@ import hashlib
 from typing import Any
 
 from _dt import parse_ts_or_none as parse_ts
+from app_names import display_name
 
 
 # The maximum gap inside one segment. A pause longer than this ends the
@@ -92,21 +93,25 @@ def _segment_signature(app: str, step_labels: tuple[str, ...]) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
-def _segment_label(app: str, step_labels: tuple[str, ...]) -> str:
-    """A human-readable narrative label: 'app — step1 → step2 → step3'.
-    Truncates the step list when it gets long, to keep table rows
-    readable without losing the head-of-flow detail."""
-    head = " → ".join(step_labels[:5])
-    tail = "" if len(step_labels) <= 5 else f" → … (+{len(step_labels) - 5} more)"
-    app_pretty = app.replace(".exe", "")
+def _segment_label(app: str, step_labels: tuple[str, ...],
+                   app_names: dict[str, str] | None = None) -> str:
+    """A human-readable narrative label: 'step1 → step2 → step3 in <App>',
+    the application by its readable name (stats.json meta.app_names, through
+    app_names.display_name), never the process token, and no em or en dash.
+    Truncates the step list after five steps, to keep rows readable without
+    losing the head-of-flow detail."""
+    app_pretty = display_name(app, app_names) or app
     if not step_labels:
         return app_pretty
-    return f"{app_pretty} — {head}{tail}"
+    head = " → ".join(step_labels[:5])
+    tail = "" if len(step_labels) <= 5 else f" → … (+{len(step_labels) - 5} more)"
+    return f"{head}{tail} in {app_pretty}"
 
 
 def detect_segments(
     events: list[dict[str, Any]],
     steps: list[dict[str, Any]],
+    app_names: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return a list of coherent segments across the session.
 
@@ -120,6 +125,9 @@ def detect_segments(
     Segments shorter than MIN_SEGMENT_MS that cover < 2 distinct steps
     are dropped -- they are too small to be an automation candidate on
     their own.
+
+    `app_names` is stats.json `meta.app_names` (app_names.build_app_names);
+    it only names the application in each segment's `label`.
     """
     step_by_eid = _step_index(steps)
     interactions = [e for e in events if e.get("type") == "interaction"]
@@ -157,7 +165,7 @@ def detect_segments(
             "interaction_count": len(cur_eids),
             "step_ids": [s.get("step_id") for s in cur_steps if s.get("step_id")],
             "step_labels": list(step_labels),
-            "label": _segment_label(cur_app or "", step_labels),
+            "label": _segment_label(cur_app or "", step_labels, app_names),
         })
 
     for ev in interactions:

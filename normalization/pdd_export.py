@@ -7,7 +7,8 @@ or application work, so its wording is tool-neutral. It is built around:
     analyst confirmed as the reference; its steps, in time order, are the
     detailed process description (4.5);
   * the analyst's document sections (annotations.document, contract C6):
-    title, purpose, scope, contacts, business rules, exceptions;
+    title, purpose, scope, contacts, business rules, exceptions, and notes
+    (a last section 7, only when written);
   * the measured timings of every run, in one table (4.4);
   * the differences between the runs, each aligned to the pattern run (6.1).
 
@@ -45,7 +46,7 @@ from facts import _NOISE_VALUES
 from findings import _fmt_ms as _fmt_duration
 from memo_export import (COULD_NOT_RUN as _COULD_NOT_RUN, build_memo_model,
                          failed_stages, run_rows, write_memo_into_docx)
-from step_suggest import process_label
+from step_suggest import _default_step_description, process_label
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ def write_pdd(
     _write_automation(doc, s, model)                  # 5.1 to 5.3
     _write_tobe_map(doc, tobe_map_image)              # 5.4
     _write_exceptions(doc, s)                         # 6.
+    _write_notes(doc, s)                              # 7., only when written
     _write_footer(doc)
     doc.save(str(out_path))
 
@@ -184,6 +186,18 @@ class _Session:
 
     def run_steps(self, index) -> list:
         return self.steps_by_run.get(self.runs[index]["case_id"], [])
+
+    def drafted_description(self, step) -> str | None:
+        """The narration the drafting writes for this step's interactions,
+        recomputed with the same function (step_suggest's
+        _default_step_description), or None when it cannot be recomputed: no
+        events given to the export, a step without interactions, or an
+        interaction missing from the events."""
+        ids = (step.get("evidence") or {}).get("interaction_event_ids") or []
+        datas = [self.interactions.get(eid) for eid in ids]
+        if not self.have_events or not ids or any(d is None for d in datas):
+            return None
+        return _default_step_description([{"data": d} for d in datas])
 
     def fields_of(self, step) -> list[tuple[str, str]]:
         """The (field, value) pairs entered in this step, in the order first
@@ -530,7 +544,13 @@ def _write_step(doc, s, step, number):
     doc.add_heading(f"{number}. {_step_name(step)}", level=3)
     desc = step.get("description")
     if isinstance(desc, str) and desc.strip():
-        _text(doc, desc)
+        # A description is shown when the analyst wrote it (C7). A draft's
+        # description is the drafting's generated narration of its
+        # interactions; the fields table and the screenshots below already
+        # carry that, so a description that still equals it is left out.
+        drafted = s.drafted_description(step)
+        if drafted is None or desc.strip() != drafted.strip():
+            _text(doc, desc)
     fields = s.fields_of(step)
     if fields:
         doc.add_paragraph("Fields entered in this run:")
@@ -796,6 +816,19 @@ def _write_rework(doc, s):
     doc.add_paragraph("Steps done more than once within one run:")
     for line in lines:
         doc.add_paragraph(line, style="List Bullet")
+
+
+# ---- 7. Notes -----------------------------------------------------------------
+
+def _write_notes(doc, s):
+    """7: the analyst's notes (C6 `document.notes`) as the last section. An
+    empty field adds nothing, no heading and no placeholder: notes are
+    optional, so their absence is not a gap in the document."""
+    notes = s.field("notes")
+    if not notes:
+        return
+    doc.add_heading("7. Notes", level=1)
+    _text(doc, notes)
 
 
 # ---- footer & formatting ------------------------------------------------------

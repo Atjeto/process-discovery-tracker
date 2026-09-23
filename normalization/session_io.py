@@ -142,22 +142,29 @@ def _unreadable_message(path: Path, reason: str) -> str:
 
 
 def write_annotations(session_folder: Path, anno: dict) -> None:
-    """Write annotations.json atomically (RP-04): the JSON goes to a temp file
-    in the same folder, which then replaces annotations.json in one step, so a
-    crash or a cancelled run never leaves a truncated file behind."""
+    """Write annotations.json atomically (RP-04), through write_json_atomic,
+    so a crash or a cancelled run never leaves a truncated file behind."""
     anno["last_modified"] = datetime.now(timezone.utc).isoformat()
-    target = session_folder / "annotations.json"
-    fd, tmp_name = tempfile.mkstemp(dir=session_folder,
-                                    prefix="annotations.json.", suffix=".tmp")
+    write_json_atomic(session_folder / "annotations.json", anno)
+
+
+def write_json_atomic(target: Path, obj: Any) -> None:
+    """Write `obj` as JSON to `target` atomically: the JSON goes to a temp file
+    in the same folder, which then replaces `target` in one step. A write that
+    fails part-way leaves `target` exactly as it was and no temp file behind,
+    and the error is re-raised."""
+    target = Path(target)
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent,
+                                    prefix=target.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(anno, f, indent=2)
+            json.dump(obj, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_name, target)
     except BaseException:
         # The temp file is ours and incomplete; remove it, then re-raise so
-        # the failure still stops the run. annotations.json is untouched.
+        # the failure still stops the run. The target is untouched.
         try:
             os.unlink(tmp_name)
         except FileNotFoundError:

@@ -67,6 +67,9 @@ def run_analysis(
         return result
 
     seg = segment_steps(steps, events)
+    # The readable application names (stats.json meta.app_names) the
+    # segment and candidate labels use instead of the process token.
+    app_names = ((stats or {}).get("meta") or {}).get("app_names")
     stage_errors: list[dict[str, str]] = []
 
     def _stage(key: str, compute) -> None:
@@ -80,9 +83,10 @@ def run_analysis(
     _stage("waste_classification",
            lambda: classify_waste(steps, events, stats or {}, seg, annotations))
     _stage("time_study", lambda: compute_time_study(steps, events, seg))
-    _stage("segments", lambda: detect_segments(events, steps))
+    _stage("segments", lambda: detect_segments(events, steps, app_names=app_names))
     _stage("automation_candidates",
-           lambda: score_automation(steps, events, seg, annotations))
+           lambda: score_automation(steps, events, seg, annotations,
+                                    app_names=app_names))
     if result["waste_classification"] is None:
         # The ratio is computed from the waste split; without it the check
         # cannot run at all.
