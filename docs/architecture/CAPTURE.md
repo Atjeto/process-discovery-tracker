@@ -23,10 +23,26 @@ Output: one session folder under
 |---|---|---|
 | Foreground window | `active-win` polled every 5 s | `activity` events |
 | UI interactions | C# UI Automation recorder sidecar | `interaction` events |
-| Process boundaries | Start/End hotkeys; optional auto-end on idle | `marker` events |
-| Lifecycle | session start/end, idle, OBS, recorder health | `system` events |
+| Runs | The one **run hotkey**, pressed once per run; optional auto-end on idle | `marker` events (`start` / `end`) |
+| Lifecycle | session start/end, idle, OBS, recorder health, dropped-batch loss | `system` events |
 | Screen | Electron `desktopCapturer` (app-switch / marker / idle / manual) | screenshots |
 | Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | external recording + `obs/sync.json` |
+
+**One-hotkey runs.** The scenario ([ADR-0029](../adr/0029-ba-helper-refocus.md))
+is: the worker performs the business process a few times, bracketing each
+run with one hotkey (`config.hotkeys.start_picker`, default
+`Control+Shift+S`). Pressing it: starts the session if none is running;
+ends whatever run is still open (`reason: "auto_close_for_sibling"`, so
+runs never nest); and starts the next one, auto-named `"Run N"` (or a
+configured task-shortcut label, `config.process_labels`, offered as named
+buttons in the Live Session window and a tray submenu). A second hotkey,
+`end_innermost` (default `Control+Shift+E`), ends the current run without
+starting another (useful to end the last run before stopping), though it
+does not have to be pressed: stopping the session ends any still-open run
+by itself (see *Close-based stop* below). The guidance line on the
+operator panel (`capture-guidance.js`) always names the real configured
+key, never a hardcoded default, and reads "press &lt;key&gt; at the start
+of each run" while recording.
 
 Events are appended to `events.jsonl` through a small batching queue: high-volume
 events (activity polls, interactions) flush on a 500 ms timer, while `marker` and
@@ -46,28 +62,37 @@ suppressed.
 v0.5.0 remediation ([ADR-0005](../adr/0005-capture-architecture-remediation.md))
 extracted four cross-cutting modules out of it; it remains the largest file — it
 holds the tray menu, global hotkeys, the session lifecycle, the idle monitor, the
-screenshot triggers, the label picker, and the `pdt:*` IPC handlers.
+screenshot triggers, and the `pdt:*` IPC handlers. The free-text label picker
+that used to prompt the worker for a marker's name at fire time is gone
+([ADR-0029](../adr/0029-ba-helper-refocus.md)): a run is named from a
+configured task shortcut (`config.process_labels`) or auto-numbered
+("Run N").
 
 **Core / cross-cutting:**
 
 | File | Role |
 |---|---|
-| `main.js` | Electron main process — tray menu, global hotkeys, session lifecycle, idle monitor, screenshot triggers, label picker, IPC handlers. |
+| `main.js` | Electron main process: tray menu, global hotkeys, session lifecycle, idle monitor, screenshot triggers, IPC handlers. |
 | `boot-log.js` | `bootLog()` — diagnostic log, opt-in via the `PDT_DEBUG=1` environment variable. |
 | `notify.js` | `notifyUser()` — native OS toast for failures the operator must see (recorder dead, OBS dropped, screenshots failing); also `trayIconImage()`. |
 | `session-storage.js` | Session disk-usage accounting and the delete / prune-by-age flows. |
 | `window-manager.js` | Shared singleton-window helper — `createWindowManager()` exposing `show` / `toggle` / `isOpen` / `get`, keyed per window. |
-| `tracker.js` | The 5-second active-window polling loop; event-append, `_seq` stamping, live counters, and uncaptured-app detection. |
-| `session.js` | Session-folder creation, `manifest.json` I/O, orphan detection / recovery. |
+| `capture-guidance.js` | Pure module (no DOM/Electron/IPC): the operator panel's single status-driven guidance line ("Recording: press &lt;key&gt; at the start of each run.") from a `pdt:status` snapshot and the configured run hotkey. Injected into `ui/operator-panel.html`. |
+| `tracker.js` | The 5-second active-window polling loop; run/marker bookkeeping (`startRun`, one-hotkey close-then-open, `endOpenRuns`), event-append, `_seq` stamping, live counters, dropped-batch loss accounting (`events_dropped`, RP-21), and uncaptured-app detection. |
+| `session.js` | Session-folder creation, `manifest.json` I/O (fixed `purpose: "process"`), orphan detection / recovery. |
 | `events.js` | Event-envelope factories — `activityEvent`, `markerEvent`, `systemEvent`, `interactionEvent`. |
 | `config.js` | Loads + deep-merges per-session YAML over `DEFAULTS` — the single source of default values. |
-| `recorder.js` | Spawns and supervises the C# `recorder.exe` sidecar; parses its NDJSON output; auto-restarts on crash; runs a stdout-quiet liveness watchdog. |
+| `user-config.js` | The persistent `userData/user-config.json` overlay (Settings / Profile / a `"once"` consent acknowledgement) shared by the top-level windows. |
+| `recorder.js` | Spawns the C# `recorder.exe` sidecar (`spawnRecorder`); parses its NDJSON output; runs a stdout-quiet liveness watchdog; **`superviseRecorder`** owns per-session crash supervision (below). |
 | `dead-man.js` | §E2 dead-man monitor (pure, injectable clock): no interaction event AND no `recorder_health` heartbeat for >2 min during an active session ⇒ main.js flips the tray to a warning icon, fires an OS notification, and lands a durable `recorder_silent` system event (`recorder_silent_end` on recovery). |
 | `readiness.js` | §E1 pre-pilot readiness probe — free disk on the session target + the recorder's self-extract drive, recorder starts + UIA answers, per-running-app trust tier (rich/basic/minimal/wall) from a short snapshot probe of each visible window. Tray item **Run readiness check…** (idle-only) and the `--readiness` CLI both write `readiness-report.json` into the sessions base dir; CLI exit codes 0 ready / 2 not ready / 3 crashed. |
 | `obs.js` | OBS WebSocket integration — scene bootstrap, start/stop recording, clock-offset sync. |
 | `screenshots.js` | Desktop capture via `desktopCapturer`; multi-monitor handling. |
 | `log.js` | Per-session `capture.log` writer. |
-| `self-annotation/` | §E3 worker close-out (ported from the ML branch, heuristic-templated, **no LLM**): `observe.js` derives measured facts from `events.jsonl` (focus stretches, switch pairs, re-keyed values, markers); `wizard.js` turns them into ≤5 observed-value questions; `wizard-window.{js,html}` shows the questions then the read-only review pane with **Submit session**; `persist.js` (electron-free) appends `self_annotations[]` to `annotations.json`, stamps `manifest.worker_review`, and refreshes `session-integrity.json` after each write. |
+
+The worker close-out wizard (`self-annotation/`: observed-value questions,
+`manifest.worker_review`) is gone ([ADR-0029](../adr/0029-ba-helper-refocus.md)):
+session end now shows only the one-screen end summary (below), unauthored.
 
 **Windows.** Each window module builds a `BrowserWindow` and loads its markup from
 a sibling file in `capture/ui/` — the HTML was extracted from the JS modules in
@@ -75,7 +100,7 @@ v0.5.0 (C8):
 
 | Module | `ui/` file | Window |
 |---|---|---|
-| `operator-panel.js` | `operator-panel.html` | The **Live Session** window — recording indicator, timer, open-marker stack, counters, recent-events feed, inline marker firing, quick actions, and the post-session summary. |
+| `operator-panel.js` | `operator-panel.html` | The **Live Session** window, trimmed to the path: recording indicator, timer, open-marker stack, counters, recent-events feed, inline marker firing, named-run task shortcuts, the guidance line (`capture-guidance.js`), and the one-screen end summary. |
 | `hotkey-overlay.js` | `hotkey-overlay.html` | Always-on-top click-through corner widget showing the primary hotkeys. |
 | `settings-window.js` | `settings.html` | Top-level **Settings…** — persistent settings split by concern (Hotkeys / Video-OBS / Screenshots / Storage). Subsumes the former standalone OBS-settings dialog (v0.17.0). Writes the `userData/user-config.json` overlay. |
 | `profile-window.js` | `profile.html` | Top-level **Profile…** — worker identity (id, display name, role, team), stamped onto every recording's manifest. Persists to the user-config overlay. |
@@ -108,23 +133,25 @@ from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
   interactions); the recorder emits
   `ready`, `interaction`, `stats`, and `warning` lines. The `stats` line carries
   throughput counters plus an `errors` count and a `last_error` snapshot.
-- **In-app vocabulary discovery — the `snapshot` command (§11e / [ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)).**
+- **The `snapshot` command (§11e / [ADR-0025](../adr/0025-in-app-vocabulary-discovery.md), narrowed by [ADR-0029](../adr/0029-ba-helper-refocus.md)).**
   `{cmd:"snapshot", target:"foreground"|<hwnd>, passes:2}` walks the target
   window's UIA subtree **once per pass** (reusing the same `ControlView` walk
   and the ADR-0023 identity/framework/confidence ladder) and streams **every
   identifiable control** as a `snapshot_control` line, then a `snapshot_done`
-  per pass — instead of waiting for interaction events. Two passes ≥1s apart let
-  the analyst-side picker (`normalization/signature_pick.py`) diff the controls
-  and demote a *volatile* `automation_id` (Salesforce Lightning regenerates
-  `input-378` → `input-411` per render) in favour of the stable accessible
-  label. The walk is bounded (~2000 controls), skips pure decoration (no
-  `automation_id`/`name`/`class_name`), and wakes a Chromium renderer's lazily-
-  built accessibility tree first (a browser window is UIA-dark until queried).
-  These lines are **transient** — consumed by the viewer's App Library "Discover
-  from window" flow, never written to `events.jsonl`. The pure traversal
-  (`SnapshotWalker` over the `ISnapshotElement` seam) is unit-tested with a
-  synthetic tree in `Recorder.Tests`; the live `AutomationElement` adapter is
-  the thin UIA seam. See `Snapshotter.cs`.
+  per pass, instead of waiting for interaction events. The walk is bounded
+  (~2000 controls), skips pure decoration (no `automation_id`/`name`/
+  `class_name`), and wakes a Chromium renderer's lazily-built accessibility
+  tree first (a browser window is UIA-dark until queried). These lines are
+  **transient**: never written to `events.jsonl`. Before ADR-0029 two
+  passes ≥1s apart let the analyst-side volatility picker
+  (`normalization/signature_pick.py`) diff the controls for the viewer's App
+  Library "Discover from window" flow; that flow and the picker are cut
+  (light vocab, a remembered-names store keyed by a drafted step's
+  `draft_key`, replaced it), so the recorder still answers a `snapshot`
+  command the same way but nothing in the current viewer sends one. The
+  pure traversal (`SnapshotWalker` over the `ISnapshotElement` seam) is
+  unit-tested with a synthetic tree in `Recorder.Tests`; the live
+  `AutomationElement` adapter is the thin UIA seam. See `Snapshotter.cs`.
 - `UiaSubscriber.cs` — subscribes to UI Automation events (invoke, selection,
   toggle, value), filters noise (drops `focus_changed` / `text_changed`, coalesces
   rapid `value_changed` within a configurable debounce window, drops low-signal
@@ -229,39 +256,76 @@ notification.
   (`status: active`); `tracker.js` begins polling; the recorder sidecar and
   (if configured) OBS start. Firing the first marker auto-starts a session; an
   explicit green **Start** button also exists.
-- **End** — polling, recorder, and OBS stop; `manifest.json` is updated
-  (`status: closed`, `ended_at`); a `session-integrity.json` file manifest is
-  written so the viewer can detect an incomplete copy; and the Live Session
-  window shows a post-session summary with an optional field to label the
-  session. For ordinary process captures (not `app_prep`, not the quit /
-  failed-start paths) the **worker close-out wizard** then opens (§E3,
-  `self-annotation/`): ≤5 observed-value questions appended to
-  `annotations.json self_annotations[]`, then a read-only review pane whose
-  **Submit session** stamps `manifest.worker_review` — the worker's explicit
-  hand-off consent. Its writes re-refresh `session-integrity.json` so the
-  late files stay declared.
+- **End**: polling stops; the tracker ends any run still open
+  (`endOpenRuns()`, no explicit End-run hotkey needed for the last one)
+  before firing `session_end`, so a run is never left dangling by a worker
+  who just closes the session; the recorder and OBS stop; `manifest.json`
+  is updated (`status: closed`, `ended_at`); a `session-integrity.json`
+  file manifest is written so the viewer can detect an incomplete copy;
+  and the Live Session window shows the **one-screen end summary**
+  (`showEndSummary`: runs, duration, interactions, screenshots) with an
+  optional field to label the session. The worker close-out wizard's
+  observed-value questions are gone ([ADR-0029](../adr/0029-ba-helper-refocus.md));
+  the end summary is the only thing the worker sees at session end, and it
+  asks nothing.
 - **Crash recovery** — on next launch, `session.js` finds sessions still marked
   `active` with no `ended_at`, marks them `recovered`; the normalization layer
   reconciles any markers left open.
 
-### App-vocabulary prep sessions
+App-vocabulary prep sessions (a separate `"app_prep"` session `purpose`,
+filed under `engagement_id: "vocab-prep"`, to bootstrap an App Vocabulary
+from a throwaway walkthrough) are gone with the in-app vocabulary discovery
+flow they fed. `manifest.json.purpose` is now always `"process"`; there is
+no `startAppPrepSession()` and no `manifest.prep_app`.
 
-A session carries a `purpose`: ordinary process capture (`"process"`, the default)
-or `"app_prep"`. `startAppPrepSession()` (tray → **Start app vocabulary prep
-session…**) prompts for an app name and starts an `app_prep` session — filed under
-`engagement_id: "vocab-prep"` so it doesn't pollute a real engagement's captures. It
-**skips** the pre-flight engagement/folder validation and fires a starter marker so
-the analyst gets clear timeline boundaries; the target app name is recorded as
-`manifest.prep_app` for downstream auto-naming. The point is a focused, throwaway
-walkthrough of one application purely to bootstrap its App Vocabulary
-([ADR-0002](../adr/0002-app-vocabularies.md)), kept apart from process recordings.
+## Reliability
+
+Capture runs unattended on a machine the analyst does not control, so
+several behaviors exist purely to make a recording trustworthy rather than
+silently thin or lost:
+
+- **Per-session recorder supervision (RP-20).** `recorder.superviseRecorder`
+  owns one restart budget per session: it spawns the sidecar, and on a
+  crash (non-zero/signalled exit, or a spawn failure) re-spawns it after a
+  delay, up to `interactions.max_restarts_per_session` (default 3) times.
+  A successful re-spawn never refills the budget (before this fix, `main.js`
+  reset the restart count on every successful spawn, including
+  auto-restarts), so the cap was never reached and a crash-looping recorder
+  restarted forever with no `recorder_dead_permanent` ever firing.
+- **Dropped-batch accounting (RP-21).** `tracker.js`'s write queue flushes
+  markers and system events synchronously (durability-critical) but defers
+  activity/interaction events on a 500 ms timer. If a deferred flush fails
+  and the batch held no critical event, the batch is dropped rather than
+  retried. The loss is folded into a pending record and queued as a
+  durable `events_dropped` system event ahead of the next event, instead of
+  only a `boot.log` line. `getStatus().droppedEventCount` and
+  `writeErrorCount` surface the running totals to the tray/status window.
+- **Spawn-error handling (RP-22).** `recorder.js` listens for the child
+  process's `'error'` event, not just `'exit'`: a spawn failure (a blocked
+  path, an execution policy) used to be an uncaught exception with no
+  `recorder_died` and no restart, while `events.jsonl` already recorded
+  `recorder_start`. It now reports through the same exit/restart path as a
+  crash.
+- **Close-based stop (RP-23).** `recorder.js`'s `stop()` waits for the
+  child's `'close'` event, not `'exit'`: `'close'` fires only after the
+  stdio streams have fully drained, so the last typed values the sidecar
+  flushes on shutdown are never dropped by the caller moving on too early.
+- **Liveness watchdog.** The sidecar emits a `stats` line every 30 s
+  regardless of UI activity; if stdout falls silent past 90 s the sidecar
+  is presumed hung, killed, and recovered through the normal restart path
+  (distinct from §E2's dead-man monitor, which watches for silence on the
+  *interaction* signal during an active session, not the process's own
+  liveness).
 
 ## IPC surface
 
-The tray/main process exposes `pdt:*` IPC handlers consumed by the utility windows:
-`pdt:status`, `pdt:fireStart`, `pdt:fireEnd`, `pdt:fireSync`, `pdt:manualScreenshot`,
-`pdt:startSession`, `pdt:endSession`, `pdt:togglePause`, `pdt:obsGet/Save/Test`,
-`pdt:sessionConfigGet/Save`.
+The tray/main process exposes `pdt:*` IPC handlers consumed by the utility
+windows: `pdt:status`, `pdt:fireStart`, `pdt:fireEnd`, `pdt:setSessionLabel`,
+`pdt:manualScreenshot`, `pdt:startSession`, `pdt:endSession`,
+`pdt:togglePause`, `pdt:obsTest`, `pdt:sessionConfigGet/Save`,
+`pdt:profileGet/Save`, `pdt:settingsGet/Save`, `pdt:welcomeAction`.
+`pdt:fireSync` (cross-machine sync markers) is gone with the feature
+([ADR-0029](../adr/0029-ba-helper-refocus.md)).
 
 ## Configuration
 
@@ -282,8 +346,8 @@ variant at registration.
 | `idle_threshold_seconds` | `60` | OS-idle threshold before an `idle_start` is logged. |
 | `taxonomy_version` | `"v0"` | Taxonomy generation stamped into `stats.json.meta`. |
 | `storage_warn_gb` | `50` | Total stored-sessions size that triggers a cleanup-reminder toast (read in `main.js`). |
-| `process_labels` | `[]` | Start-marker label list offered in the picker. |
-| `obs` / `hotkeys` | … | OBS WebSocket config + the four global-hotkey bindings. |
+| `process_labels` | `[]` | Task-shortcut names: shown as named-run buttons in the Live Session window and a "Start a named run" tray submenu, each starting a run with that name via the one run hotkey instead of an auto-numbered "Run N". |
+| `obs` / `hotkeys` | … | OBS WebSocket config + the three global-hotkey bindings (`start_picker` / `end_innermost` / `manual_screenshot`; the cross-machine sync-marker hotkey is gone with the feature). |
 | `screenshots.enabled` / `.quality` / `.on_app_switch` / `.on_marker_fire` / `.on_idle_resume_minutes` / `.display` | `true` / `60` / `true` / `true` / `5` / `"active"` | Screenshot triggers, JPEG quality, and multi-monitor selection (`active` / `primary` / `all`). |
 | `interactions.enabled` / `.required` / `.auto_restart` / `.max_restarts_per_session` | `true` / `false` / `true` / `3` | Recorder-sidecar lifecycle. |
 | `interactions.exclude_processes` | `[]` | Extra process names (exe, `.exe`-insensitive) to drop from the analysis. Applied by normalization (`process_filter`) on the derived stream — unioned with PDT's own self-exclusion and the analyst's `step_filters.ignored_processes` / `ignored_window_titles`. (PDT's own windows are excluded automatically; this is for additional apps.) |

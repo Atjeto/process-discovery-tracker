@@ -145,33 +145,42 @@ a review of the differences; a second session of the same process costs a review
 The old versions failed on their editing screens, not on their engines. Keep the
 engines, drop the workbenches.
 
-**Light vocab: "name it once".**
-- When the analyst names a step, the app derives the signature of the step's
-  defining control and screen automatically, using the existing derivation
-  (`viewer/canonical-author.js` `signatureFromInteraction`, the volatility
-  picker `normalization/signature_pick.py`), and stores it in the per-app
-  vocabulary files the pipeline already matches (`normalization/app_vocab.py`).
-- In later sessions, drafts that match arrive named.
+**Light vocab: "name it once".** (Revised in implementation: see AD-7 in
+"Implementation notes" below.)
+- When the analyst renames a drafted step, the app stores the name keyed by
+  that step's `draft_key` (a value-free identity the drafting rule already
+  computes: `"<app>|<screen>|<commit>"`), in a remembered-names store
+  (`<viewer userData>/pdt-library/remembered-names.json`), not in a per-app
+  vocabulary YAML file. Step names are not control vocab entries; an exact
+  `draft_key` lookup is simpler and cannot drift the way a re-derived
+  signature can.
+- In later sessions, drafts whose `draft_key` matches arrive named (the
+  pipeline reads the store via the `--names` flag on every Analyze).
 - UI: a small list of remembered names to rename or forget one. No workbench,
   no YAML, no signature fields, no coverage or dead-rule lists, no discovery.
 
-**Light template: "run 1 is the pattern".**
+**Light template: "run 1 is the pattern".** (Revised in implementation: see
+AD-8 in "Implementation notes" below.)
 - Within a session: confirmed run 1 is aligned against runs 2..N with the
   existing alignment engine (`viewer/step-alignment.js` `alignCases`: backbone,
   gaps, exceptions). Names, notes, and flags carry over; steps that do not align
   are shown as differences.
-- Across sessions: "Save as this process" (today's "Save as reference for this
-  process") stores run 1's confirmed pattern; the pipeline's canonical matching
-  (`normalization/canonical_match.py`) drafts the next session of the same
-  process from it.
+- Across sessions: "Save as this process" stores run 1's confirmed pattern
+  (its steps' `draft_key`s, names, descriptions, and waste flags) in a
+  saved-process store (`<viewer userData>/pdt-library/processes.json`). On
+  opening a session with no confirmed pattern run, the **viewer** matches it
+  against saved processes by `draft_key` overlap and offers the closest one
+  as the comparison pattern; the pipeline never reads this file. Canonical
+  matching (`normalization/canonical_match.py`) is cut, not reused.
 - UI: the save action and the differences view. No template editor, no YAML
   drawer, no version compare, no import-from-session panel.
 
 **One engine per job (intended design, confirmed in P1):** within a session,
-names propagate by alignment in the viewer; across sessions, by the pipeline's
-vocab and template matching at draft time. The viewer-side advisory matcher
-(`viewer/vocab-match.js`) is then no longer needed, which also removes the JS vs
-Python regex drift (RP-17).
+names propagate by alignment in the viewer; across sessions, light vocab
+propagates through the pipeline's `--names` flag at draft time, and light
+template propagates through viewer-side matching only. The viewer-side
+advisory vocab matcher (`viewer/vocab-match.js`) is then no longer needed,
+which also removes the JS vs Python regex drift (RP-17).
 
 ## 7. Transcript (bonus, P6)
 
@@ -365,3 +374,38 @@ them, never left red. Every phase ends with the owner's go.
 - Every new verb ships with its inverse and a real-run check (COHERENCE-AUDIT).
 - Suggest, never mutate; raw data immutable; honesty rules unchanged.
 - Probe the load-bearing assumption first (P1), before building on it.
+
+## Implementation notes (2026-09-23)
+
+Decisions made while implementing this plan, autonomously (the owner was
+asleep; see `.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md`
+for the full record and reasoning). Consolidated as the release documentation
+in [ADR-0029](../adr/0029-ba-helper-refocus.md), which this section points to
+rather than duplicates.
+
+- **AD-7.** Light vocab is a remembered-names store keyed by a drafted
+  step's `draft_key`, not app-vocab YAML entries (revises section 6).
+- **AD-8.** Light template is a saved-process store matched in the viewer
+  by `draft_key` overlap; `canonical_match.py`, the Process Template editor,
+  and `viewer/canonical-author.js` are cut, not reused (revises section 6).
+- **AD-9.** The detail (grain) slider, the map matrix and its expert
+  drawer, and activity-level mining (XES/CSV) are cut together with the map
+  lane that replaces them.
+- **AD-10.** "Save as reference for this process" and "Match Process
+  Template" are cut with the template engine; "Save as this process" (AD-8)
+  replaces them.
+- **AD-11.** Map SVG / step-BPMN export moves from the cut Compare view
+  into the Session Export menu.
+- **AD-12.** The Markdown session report and starred screenshots were
+  planned to go with the HTML findings report; in the PDD rework (P4/L10)
+  starred screenshots ended up embedded in the PDD's findings section
+  instead of being cut (see [shared/SCHEMA.md](../../shared/SCHEMA.md)).
+- **AD-13.** The Overview CTA becomes "Export PDD"; "include in memo"
+  becomes "include in PDD" (`memo_selection` keeps feeding the PDD's
+  section 1, since the memo itself is cut and the PDD is the deliverable).
+- **AD-14.** A session with no run markers shows an instruction to mark
+  runs in Flow, replacing the anchor hero and the anchor-based lock copy
+  (anchors are cut).
+- **AD-15.** Canonical matching is cut with its drift markers and
+  `--canonical`; activity classification and `--taxonomy` stay until open
+  question Q4 is settled.

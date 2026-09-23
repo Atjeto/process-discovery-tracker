@@ -1,6 +1,7 @@
 # ADR-0024: Step grain is a view-time roll-up over the UI-containment hierarchy (§11b, reframed)
 
 **Status:** Accepted — built out 2026-05-31 (P1–P4, see *Build-out* below); shipped behind the in-app **Grain** slider (default notch = screen). Supersedes the standing §11b recommendation to *flip a global default* ([SEGMENTATION-CALIBRATION-FINDINGS.md](../To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)).
+**Note (2026-09-23):** Narrowed by [ADR-0029](0029-ba-helper-refocus.md): the in-app Grain slider and the multi-notch view are cut. The `grain_keys` data model (`element` / `screen` / `app`, stamped on every step) stays; the drafting rule's screen component is built on it.
 **Date:** 2026-05-30
 **Deciders:** Project owner (steered the reframing), analyst (process-discovery lead)
 **Related:** [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (the notation × level matrix this generalises), [ADR-0013](0013-value-free-grouping-and-map-readability.md) (the `process_label` grouping key + the consecutive-duplicate collapse this reuses), [ADR-0007](0007-activity-event-granularity.md) (activity granularity), [ADR-0011](0011-platform-recognition-layer.md) (the recognition `screen` axis a web grain leans on), [ADR-0002](0002-app-vocabularies.md) (the vocab `screen` field used as the natural step boundary). Evidence: the §11b real corpus ([corpus/README.md](../../corpus/README.md)). Knob: `step_split_on_element` (`normalization/pipeline_config.py`).

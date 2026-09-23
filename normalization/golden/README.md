@@ -22,15 +22,18 @@ are theme-fragile. The projection diffs cleanly and survives benign churn. See
 - The reference input is normalized in a **temp copy**, so the committed
   `sessions/example-aggregate/` demo data is never regenerated in place.
 
-## Day-one finding (a real §11b signal, recorded here)
+## History: the pre-drafting-rule over-segmentation finding
 
-The committed demo `annotations.json` for `sess-2026-0514-0900` has **21**
-auto-suggested steps (generated 2026-05-17); a fresh `--mine` on the same
-`events.jsonl` produces **64** — the current auto-suggester segments the same 4-case
-session ~3× finer. This is the over-segmentation ("308-step") class in miniature, and
-it confirms the demo artifacts predate recent pipeline evolution. The gate **pins the
-current 64-step behavior**; §11b calibration will judge whether ~16 steps/case is the
-right granularity and re-baseline the golden when it improves.
+Before [ADR-0029](../../docs/adr/0029-ba-helper-refocus.md), this section
+recorded a day-one over-segmentation finding against the old free-running
+step auto-suggester (the "308-step" class): the committed demo's
+hand-curated step counts were much lower than what a fresh `--mine`
+produced. That auto-suggester is gone. Steps are now produced by the
+drafting rule (contract C1, `step_suggest.auto_suggest_steps`): one step per
+screen visit, ending at its commit action. This is a fixed rule, not a
+tunable segmenter, so there is no calibration knob left to re-baseline
+against. The golden here pins whatever the drafting rule currently produces; regenerate
+it (`--update`, below) whenever a change to the rule is intentional.
 
 ## CI
 

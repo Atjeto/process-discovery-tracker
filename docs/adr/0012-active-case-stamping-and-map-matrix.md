@@ -2,6 +2,7 @@
 
 **Status:** Accepted — shipped in v0.15.0 (2026-05-23); empty-value anchor guard
 + observed-flow export + recognition-driven anchors added 2026-05-23 (unreleased)
+**Note (2026-09-23):** Narrowed by [ADR-0029](0029-ba-helper-refocus.md): anchor-based case detection and the notation by level map matrix are cut. Marker-based active-case stamping stays.
 **Date:** 2026-05-23
 **Deciders:** Rasha (analyst/owner)
 **Related:** [ADR-0009](./0009-normalization-redesign-v013.md) (anchor detection),

@@ -13,6 +13,8 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   obs/               # OBS recording reference and sync data
   derived_maps/      # analyst-authored reference maps — standalone editable .bpmn copies (ADR-0019)
   session-integrity.json  # file manifest (name + size) written at session end
+  transcript/        # a copy of an imported meeting transcript (contract C8), if any
+  transcript.json    # the parsed, aligned form of the imported transcript, if any
   # + normalization outputs (events.xes/csv, stats.json, analysis.json,
   #   process_map*.bpmn, dfg.json) — see "Post-normalization artifacts" below
 ```
@@ -82,7 +84,7 @@ End markers carry `null` label by convention; they close the innermost open Star
 }
 ```
 
-Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `sync_marker`, `recorder_start`, `recorder_stop`, `recorder_died`, `recorder_dead_permanent`, `recorder_health`, `recorder_silent`, `recorder_silent_end`, `uncaptured_app`.
+Available `kind` values: `session_start`, `session_end`, `paused`, `resumed`, `idle_start`, `idle_end`, `auto_end_idle`, `screenshot`, `screenshot_manual`, `obs_recording_start`, `obs_recording_stop`, `events_dropped`, `recorder_start`, `recorder_stop`, `recorder_died`, `recorder_dead_permanent`, `recorder_health`, `recorder_silent`, `recorder_silent_end`, `uncaptured_app`. (`sync_marker`, for cross-machine correlation, is gone: the BA-helper scenario is single-worker, single-machine per session, so there is nothing to correlate; [ADR-0029](../docs/adr/0029-ba-helper-refocus.md).)
 
 Kind-specific payloads:
 
@@ -93,7 +95,7 @@ Kind-specific payloads:
 | `auto_end_idle` | `{ idle_seconds }` (fired after auto-closing all open markers, §3.3) |
 | `screenshot` / `screenshot_manual` | `{ path: "screenshots/<file>.jpg" }` (relative to session folder) |
 | `obs_recording_start` / `obs_recording_stop` | (empty; full OBS sync details live in `obs/sync.json` and `manifest.json.obs`) |
-| `sync_marker` | `{ sync_id }` -- shared identifier across machines for cross-machine timeline alignment in shift reviews |
+| `events_dropped` | `{ dropped_interactions, dropped_activities, first_dropped_ts, last_dropped_ts, failed_writes, last_error }` (RP-21): a non-critical write batch (activity/interaction events, no marker or system event inside it) failed and was dropped rather than retried. The tracker folds every drop in one loss stretch into a single pending record and queues it as this durable event ahead of the next event it appends, so the gap is counted and visible on the session timeline instead of only a boot-log line. `dropped_interactions` / `dropped_activities` split the count by event type; `failed_writes` is how many flush attempts failed during the stretch; `last_error` is the most recent write error's message. |
 | `recorder_start` / `recorder_stop` / `recorder_dead_permanent` | (empty) |
 | `recorder_died` | `{ code, signal, restart_count }` |
 | `recorder_health` | `{ queued, emitted_total, dropped_total, errors, last_error? }` -- a periodic snapshot of the C# recorder's stats line (~every 30s). `last_error` (`{ kind, pid, process_name, control_type, message }`) is present only after a recorder-side failure. |
@@ -146,7 +148,7 @@ When an App Vocabulary (ADR-0002) matches an interaction, normalize.py adds:
 | `meaningful_name` | string | Analyst-curated name for this interaction (e.g. "Run customer search") |
 | `screen_id` | string | Named screen the interaction belongs to, if the vocab defines screens. Set when the interaction's control matches a vocab signature carrying a `screen`, **or** (ADR-0024 §6b) when its `window_title` matches a vocab screen's `window_title_regex` — so every interaction on one form shares one value-free screen even if its specific control isn't in the vocab (a screen tag only; not counted as a vocab name match). |
 | `vocab_flags` | object | Default flags from the vocab; only `waste` rolls up onto the containing step (ADR-0027 — other keys are ignored) |
-| `vocab_semantics` | object | The matched entry's **semantic fields** (lab-phase §C1, all optional in the vocab YAML): `verb` (enter/select/click/submit/toggle/open — auto-derived at discovery from control type × event kind), `object` + `means` (human/LLM-authored meaning), `completion` (bool — closes a step in step_suggest), `case_id_source` (bool — small anchor_suggest scoring bonus, never a gate), `carries_value` (bool — admits the field's typed values into the rekey detector at a relaxed minimum length). Present only when the entry carries at least one of them — a pre-C1 vocab produces exactly the pre-C1 event shape. |
+| `vocab_semantics` | object | The matched entry's **semantic fields** (lab-phase §C1, all optional in the vocab YAML): `verb` (enter/select/click/submit/toggle/open, auto-derived at discovery from control type × event kind), `object` + `means` (human/LLM-authored meaning), `completion` (bool, true when the drafting rule ends a step at this interaction, contract C1(a)), `case_id_source` (bool, authored metadata only: its one consumer, the anchor-candidate detector, was cut in [ADR-0029](../docs/adr/0029-ba-helper-refocus.md)), `carries_value` (bool, admitting the field's typed values into the rekey detector at a relaxed minimum length). Present only when the entry carries at least one of them (a pre-C1 vocab produces exactly the pre-C1 event shape). |
 | `vocab_source` | object | `{ vocab_id, vocab_version }` for traceability |
 
 These fields are additive; the raw `name`, `control_type`, etc. always remain.
@@ -167,11 +169,15 @@ The **raw `events.jsonl` is never rewritten** — masking applies only to the
 in-memory copy that produces the derived artifacts. Which rule-set ran is
 recorded in the `pii_masking` annotations key (below).
 
-### Recorder snapshot messages (transient — ADR-0025)
+### Recorder snapshot messages (transient, ADR-0025, narrowed by ADR-0029)
 
-The recorder's `snapshot` stdio command (in-app vocabulary discovery) streams two
-message types that are **never persisted to `events.jsonl`** — they are consumed
-live by the viewer's App Library "Discover from window" flow and discarded. They
+The recorder's `snapshot` stdio command streams two message types that are
+**never persisted to `events.jsonl`**. Before [ADR-0029](../docs/adr/0029-ba-helper-refocus.md)
+they were consumed live by the viewer's App Library "Discover from window"
+flow; that in-app vocabulary discovery flow is cut (light vocab, a
+remembered-names store keyed by `draft_key`, replaced it), so the recorder
+still answers a `snapshot` command the same way but nothing in the current
+viewer sends one. They
 share the `{ v: 1, type, ts, data }` envelope of the other recorder stdio lines
 (`ready` / `stats` / `warning`).
 
@@ -211,76 +217,117 @@ Analyst-authored edits and notes. Sidecar to `events.jsonl`; raw events are neve
   "version": 1,
   "session_id": "uuid",
   "steps": [],
-  "phases": [],
   "annotations": [],
   "marker_edits": [],
-  "marker_suggestions": [],
-  "marker_suggestions_dismissed": [],
-  "anchor_candidates": [],
-  "anchor_candidates_dismissed": [],
-  "case_anchor_override": null,
+  "pattern_run": null,
+  "document": null,
   "classification_overrides": [],
   "analysis_overrides": [],
-  "roi_inputs": null,
   "excluded_ranges": [],
   "notes": [],
-  "drift_markers": [],
   "starred_screenshots": [],
   "memo_selection": [],
-  "self_annotations": [],
-  "group_annotations": [],
-  "matched_against": null,
+  "reference_maps": [],
+  "external_video": null,
+  "calibration": null,
   "last_modified": null,
-  "last_modified_by": null,
-  "calibration": null
+  "last_modified_by": null
 }
 ```
 
-`notes` and `marker_edits` retain the v0 shapes below. The new top-level keys (`steps`, `phases`, `annotations`, `matched_against`, `drift_markers`, `classification_overrides`, `analysis_overrides`, `excluded_ranges`, `marker_suggestions`, `marker_suggestions_dismissed`, `anchor_candidates`, `anchor_candidates_dismissed`, `case_anchor_override`, `roi_inputs`, `calibration`, `version`, `session_id`, `last_modified`, `last_modified_by`, `starred_screenshots`, `memo_selection`, `self_annotations`, `group_annotations`) are additive; missing files are treated as empty.
+`notes` and `marker_edits` retain the v0 shapes below. Every top-level key is
+additive; a missing file, or a missing key inside one, is treated as empty /
+absent. `external_video` *(optional object; pre-dates this cycle)* is the
+attached video's `{ path, offset_ms, attached_at }`, written by the viewer's
+Attach-video flow; `offset_ms` is the sync offset between the video's own
+clock and the session's (contract C8 reads it as the transcript's `"video"`
+clock).
 
-**`self_annotations`** *(optional array; lab-phase spec §E3)* — the worker's own answers from the capture app's close-out wizard, written **on the worker's machine at session end** (the one annotations.json key the capture side authors; everything else is analyst-side). Each entry:
+**`pattern_run`** *(optional object; contract C3, viewer-written)*: the run
+the analyst has confirmed as the reference, and the P1 draft-quality probe
+instrument:
 
 ```json
-{
-  "self_annotation_id": "sa-x1y2z3a4",
-  "template_key": "longest_segment" | "top_activity_cluster" | "anomaly" |
-                  "ambiguous_case_boundary" | "high_frequency_motif" |
-                  "app_switching" | "high_retypes",
-  "question": "the exact observed-value question shown",
-  "answer": "the worker's free-text answer (may be empty if only the flag was set)",
-  "is_exception": false,
-  "observed": { "...the measured values the question referenced..." },
-  "manually_authored": true,
-  "created_at": "ISO 8601"
+"pattern_run": {
+  "case_id": "<case_id of the run used as the pattern>",
+  "confirmed_at": "ISO 8601 or null",
+  "draft_fixes": { "merge": 0, "split": 0, "add": 0, "drop": 0 }
 }
 ```
 
-Questions are heuristic-templated from observed values only (durations, counts, labels measured in `events.jsonl` — no inference, no LLM); `manually_authored: true` means re-normalization preserves the entries verbatim, like any analyst edit. The pipeline treats the key as opaque and round-trips it.
+- The default pattern run is the first run by start time with at least one
+  step; the analyst can pick another. "Confirm run" converts that run's
+  remaining `auto_suggested` steps to `confirmed`. A run is confirmed once
+  every one of its non-hidden steps is in an analyst state (`confirmed`,
+  `edited`, `manually_authored`).
+- `draft_fixes` counts the boundary fixes made to the pattern run's drafts
+  while confirming it (merge, split, add, drop: renames are not counted).
+  This is the structure-only number the
+  [P1 draft-probe runbook](../docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md) reports.
+- The pipeline preserves this key verbatim and never regenerates it.
 
-**`group_annotations`** *(optional array; [ADR-0028](../docs/adr/0028-case-screen-work-items.md))* — analyst annotations attached to a **case-scoped screen visit** (the R3 "work item": a case's fragments merged non-consecutively across app bounces, computed at *view time* in the viewer on the ADR-0024 grain ladder). Each entry is keyed by the composite `(case_id, screen_key)`:
+**`document`** *(optional object; contract C6, viewer-written)*: the PDD's
+document-level sections, as fields that survive re-export instead of being
+written into the exported `.docx` by hand:
 
 ```json
-{
-  "case_id": "7d7bd6ed-… | null",
-  "screen_key": "scr:TAMBA",
-  "name": "Investigate serial in TAMBA",
-  "notes": "half of this is re-keying the serial",
-  "waste": false,
-  "hidden": false,
-  "manually_authored": true
-}
+"document": { "title": "", "purpose": "", "scope": "", "contacts": "",
+              "business_rules": "", "exceptions": "", "notes": "" }
 ```
 
-- `case_id` is the step's `case_id` (or `null` for the Unassigned pseudo-case); `screen_key` is the exact value-free `grainKey(step,"screen")` (e.g. `"scr:TAMBA"`) — stable across re-analyze because the raw steps and the screen-strip rules are unchanged.
-- `name` / `notes` / `waste` / `hidden` are all optional; an entry with none of them is pruned by the viewer, so the array holds only real annotations.
-- **Viewer-written, pipeline-preserved-not-consumed.** `manually_authored: true`; re-normalization round-trips the key verbatim (like `self_annotations`) — nothing under `normalization/` reads or regenerates it. The raw `steps[]` array and every other annotation key keep their exact shape; this key is purely additive.
-- **Render-time flow-down:** wherever a member fragment shows a name at the screen grain (the Steps case tree, the timeline step lane, the map's screen level), a named work item's `name` replaces the value-free screen label. **Not yet read by the Python-side PDD/memo export** (the R3 follow-up, ADR-0028 §4).
+Plain multi-line strings. The PDD renders each non-empty field in place of
+the matching placeholder; an empty field keeps the export's default
+placeholder text. The pipeline preserves this key verbatim.
 
-**`memo_selection`** *(optional string array; lab-phase spec §A4/§A5)* — the `findings[].id` values the analyst ticked "include in memo" on in the viewer's Overview level. `memo_export` renders exactly these findings when the list is non-empty (falling back to the top findings in feed order when empty or when no listed id matches the regenerated findings). Analyst-owned; never written by the pipeline.
+**`memo_selection`** *(optional string array; lab-phase spec §A4/§A5)*: the
+`findings[].id` values the analyst ticked "include in PDD" on in the
+viewer's Overview level (before this cycle, "include in memo"; the standalone
+memo export is cut, and this list now feeds the PDD's findings section
+instead: see `memo_export.build_memo_model`). Falls back to the top
+findings in feed order when empty or when no listed id matches the
+regenerated findings. Analyst-owned; never written by the pipeline.
 
-**`calibration`** *(optional object; absent = pipeline defaults)* — the segmentation-tuning surface a Process Template or analyst can set per session to control how the auto-suggester splits steps (the over-segmentation / "308-step" knobs). Read by `normalize.py` (`_calibration`); missing keys fall back to the prior hardcoded defaults, so an absent or empty block reproduces the default pipeline output exactly. Recognised keys: `coalesce_idle_ms` (1500), `step_split_idle_ms` (10000), `step_max_interactions` (60), `step_min_interactions` (2), `step_max_idle_ms` (5000), `step_split_on_element` (true), `filter_browser_chrome` (true). Unknown keys are ignored. `starred_screenshots` is an array of screenshot paths (the `data.path` of `screenshot` / `screenshot_manual` events) the analyst flagged for inclusion in the HTML findings report.
+**`starred_screenshots`** *(optional array; unchanged shape)*: screenshot
+paths (the `data.path` of `screenshot` / `screenshot_manual` events) the
+analyst flagged as evidence. Before this cycle they fed the HTML findings
+report (cut); they now embed inline as evidence figures in the PDD's
+findings section.
 
-The viewer keeps up to four rotating backups of this file — `annotations.json.2` (most recent) through `annotations.json.5` (oldest); each save shifts the previous versions down one slot. It is a safety net against a regretted bulk edit or a corrupt write; recovery is a manual file copy of a `.N` file back over `annotations.json`.
+**`calibration`** *(optional object; absent = pipeline defaults)*: the
+segmentation-tuning surface an analyst can set per session. The drafting
+rule (contract C1) replaced the old step auto-suggester, and most of the
+old segmenter's knobs no longer apply: `step_split_idle_ms`,
+`step_max_interactions`, `step_min_interactions`, `step_max_idle_ms`, and
+`step_split_on_element` are still read (an old session's block loads without
+error) but **ignored**, like any unknown key. Only two knobs still do
+anything: `coalesce_idle_ms` (1500, the typing-burst coalescing window) and
+`filter_browser_chrome` (`true`, drop the browser's own address bar / tabs /
+toolbar before drafting). An absent or empty block reproduces the default
+pipeline output exactly.
+
+The viewer keeps up to four rotating backups of this file: `annotations.json.2` (most recent) through `annotations.json.5` (oldest); each save shifts the previous versions down one slot. It is a safety net against a regretted bulk edit or a corrupt write; recovery is a manual file copy of a `.N` file back over `annotations.json`.
+
+### Legacy keys (contract C10)
+
+[ADR-0029](../docs/adr/0029-ba-helper-refocus.md) cut the features behind the
+keys below. Re-normalization keeps round-tripping every one of them
+verbatim: `pipeline_stages._init_existing_anno` never seeds or regenerates
+them, so an old `annotations.json` loads without error and nothing under
+`normalization/` writes, reads, or deletes them. The viewer ignores them.
+Detail on the pre-cut shape of each is kept in git history (the doc
+revision before ADR-0029), not repeated here.
+
+| Key | Was | Cut because |
+|---|---|---|
+| `phases[]` | Analyst-authored phase groupings of steps | Phases are cut (ADR-0029 D4/D6) |
+| `drift_markers[]` | Flags when a step's canonical assignment would now resolve differently | Canonical / Process Template matching is cut (ADR-0029 AD-8) |
+| `marker_suggestions[]`, `marker_suggestions_dismissed[]` | Suggested-marker candidates ([ADR-0017](../docs/adr/0017-suggested-markers.md)) | The detector is cut; a missed run marker is added by hand |
+| `anchor_candidates[]`, `anchor_candidates_dismissed[]`, `case_anchor_override` | Anchor-candidate suggestions and the accepted override ([ADR-0018](../docs/adr/0018-anchor-candidates.md), [ADR-0012](../docs/adr/0012-active-case-stamping-and-map-matrix.md)) | Anchor-based case detection is cut; case detection is markers only |
+| `roi_inputs` | The analyst's EUR-ROI assumptions (§11c, [ADR-0016](../docs/adr/0016-segment-level-automation-candidacy.md) lineage) | The business-case formula stays in the owner's QB app (ADR-0029 D3) |
+| `pii_masking`, `pii_masking_config` | The structural-PII-masking report and the analyst's masking config (§11f) | No privacy masking for internal use; password redaction at capture stays (ADR-0029 D7) |
+| `group_annotations[]` | Name / note / waste / hidden on a case-scoped screen visit ([ADR-0028](../docs/adr/0028-case-screen-work-items.md)) | The runs-and-steps view (`pattern_run`, contract C3) replaces the work-item case tree |
+| `self_annotations[]` | The worker's answers to the close-out wizard's observed-value questions (lab-phase spec §E3) | The wizard's observed-value questions are cut; the end summary is unauthored |
+| `matched_against` | Which Process Template a session was matched against | Process Template matching is cut; saved-process matching (contract C5) is viewer-side and does not write this key |
 
 Legacy entries inside the two original arrays:
 
@@ -361,103 +408,6 @@ A per-`step_id` override (the most specific) wins over a `process_label` one
 for waste. Raw `events.jsonl` and `analysis.json` are never edited by hand;
 the next `normalize` run bakes the overrides into a fresh `analysis.json`.
 
-### ROI inputs (`roi_inputs`)
-
-*(Optional object; absent = time-savings only, monetary `needs_input`.)* The
-analyst-supplied commercial assumptions that turn the detected automation
-candidates into a €-ROI band (consumed by `analysis_roi.compute_roi`, surfaced
-in `analysis.json` `roi` and the PDD §4.4). Every field is optional and has a
-sensible default, so an absent or empty block still yields the hours-saved band
-with monetary figures left null and `needs_input: true` — the methodology is
-explicit that a labour rate is **never fabricated**.
-
-```json
-{
-  "roi_inputs": {
-    "currency": "EUR",
-    "loaded_cost_per_hour": 36.0,
-    "realism_factors": { "conservative": 0.5, "expected": 0.7, "optimistic": 0.9 },
-    "automatable_fraction": 0.7,
-    "annual_volume": 1000,
-    "automation_cost": 15000,
-    "amortization_years": 3.0,
-    "annual_volume_overrides":       { "<segment_signature>": 2000 },
-    "automation_cost_overrides":     { "<segment_signature>": 20000 },
-    "automatable_fraction_overrides":{ "<segment_signature>": 0.9 }
-  }
-}
-```
-
-- **`currency`** — display currency code (default `"EUR"`).
-- **`loaded_cost_per_hour`** — fully-loaded operator cost per hour. **Absent →
-  monetary figures are null and `needs_input: true`.** Cost per ms =
-  `loaded_cost_per_hour / 3_600_000`.
-- **`realism_factors`** — the three band multipliers (defaults `0.5 / 0.7 /
-  0.9`); a partial override keeps the other bands at default.
-- **`automatable_fraction`** — share of a segment's manual time a robot
-  realistically removes (default `0.7`).
-- **`annual_volume`** — how many times the process runs per year, applied to
-  every candidate. **Absent → each candidate falls back to its observed
-  `instance_count` as a conservative floor**, flagged `volume_basis:
-  "observed"` (one session is not a year).
-- **`automation_cost`** — one-off build cost; amortized over
-  **`amortization_years`** (default `3.0`) for `net_annual` and `payback_months`.
-- **`*_overrides`** — per-segment maps keyed by `segment_signature` that win
-  over the flat defaults for that one candidate.
-
-Unknown keys are ignored; a malformed value falls back to its default rather
-than failing the run. `roi_inputs` is read on every `normalize` run; raw
-`events.jsonl` and `analysis.json` are never edited by hand.
-
-### PII masking (`pii_masking` — auto, Python-owned)
-
-*(Auto-regenerated every `normalize` run; do not hand-edit.)* The record of which
-structural-PII-masking rule-set ran (`normalization/pii_masking.py`, §11f). Masking
-redacts sensitive UIA field **values** (password, SSN, card, CVV, PIN, secret/token,
-IBAN, routing/account number) in the **derived** stream only — raw `events.jsonl` is
-never rewritten. This block is the audit trail, not a control.
-
-```json
-{
-  "pii_masking": {
-    "ruleset_id": "default",
-    "ruleset_version": 1,
-    "enabled": true,
-    "applied": true,
-    "scanned_interactions": 118,
-    "masked_value_count": 3,
-    "rules_fired": { "password": 2, "ssn": 1 },
-    "custom_rule_count": 0
-  }
-}
-```
-
-`ruleset_version` bumps when the default rules change (same contract as
-`marker_suggest.heuristic_version`). `scanned_interactions` is how many
-interaction events had a `data` dict to inspect; `masked_value_count` is how many
-had a value redacted; `rules_fired` is the per-category count.
-
-### PII masking config (`pii_masking_config` — optional, analyst-owned)
-
-*(Optional object; absent = mask with the default rule-set.)* The analyst's control
-over masking — distinct from the auto `pii_masking` report so single-writer
-ownership stays clean (Python owns the report; the analyst owns the config).
-
-```json
-{
-  "pii_masking_config": {
-    "enabled": true,
-    "custom_rules": [ { "id": "badge", "pattern": "\\bbadge\\b" } ]
-  }
-}
-```
-
-- **`enabled`** — set `false` to turn masking off entirely (the report then carries
-  `enabled: false`, `applied: false`). Default `true` (privacy by default).
-- **`custom_rules`** — extra `{ id, pattern }` rules appended to the defaults; the
-  `pattern` is a case-insensitive regex matched against the field's tokenized
-  name / automation_id / control_type. A malformed regex is skipped, not fatal.
-
 ### Excluded range (`excluded_ranges[]`)
 
 Time spans the analyst marked as out-of-scope from the viewer's timeline range selection — a lunch break, an unrelated detour, anything that shouldn't count in a long passive recording. Step suggestion and `stats.json` skip every event whose `timestamp` falls inside an excluded range on the next normalization run; the raw `events.jsonl`, `events.csv`, and the process maps (`dfg.json`, `process_map.bpmn`) are untouched.
@@ -471,145 +421,6 @@ Time spans the analyst marked as out-of-scope from the viewer's timeline range s
 ```
 
 `start` and `end` are inclusive ISO 8601 bounds. `reason` is free text — `"manual"` for a range the analyst selected by hand. A malformed entry (missing `start` or `end`, or `end` earlier than `start`) is ignored rather than failing the run.
-
-### Marker suggestion (`marker_suggestions[]`)
-
-Candidate case-boundary markers produced by the change-point detector in `normalization/marker_suggest.py` ([ADR-0017](../docs/adr/0017-suggested-markers.md)). When a long passive capture lacks Start/End markers, `assign_case_ids` collapses everything into one default case and downstream analysis is meaningless. The detector scans the **uncased** stretches of the event stream (events with no `case_ids` stamped on them), scores four signals (idle gap, return to a "home" app, transaction-ID-like value typed, app-cluster boundary), and emits paired Start/End suggestions for any boundary above the score threshold. The viewer renders them as dashed `.tl-marker.tl-suggested` bars on the Flow timeline and offers Accept / Dismiss in the markers side-panel.
-
-Suggestions are **regenerated on every normalize run** — the analyst owns the dismiss-set and the accepted-edits (both of which DO survive), not the suggestions themselves. The same posture `step_suggest._merge_steps` takes with `auto_suggested` steps.
-
-```json
-{
-  "marker_suggestions": [
-    {
-      "suggestion_id": "uuid",
-      "signature": "12-hex-chars",
-      "marker_type": "start" | "end",
-      "timestamp": "<ISO>",
-      "label": "string or null",
-      "score": 0.5..1.0,
-      "reason": "idle_gap" | "home_app_return" | "transaction_id_typed" | "app_cluster_boundary",
-      "evidence": {
-        "near_event_ids": ["<event_id>", "..."],
-        "before_app": "outlook.exe",
-        "after_app": "salesforce.exe",
-        "idle_ms_before": 0
-      },
-      "created_at": "<ISO>",
-      "heuristic_version": 1
-    }
-  ]
-}
-```
-
-- **`signature`** — stable 12-char blake2b hex over `(marker_type, ts bucketed to 5 s, before_app, after_app, reason)`. This is the identity that survives re-normalize even if `score` drifts slightly; it's the key the dismiss-set and the Accept path (`derived_from_signature` on the resulting `marker_edits[]` op:insert) match on. Mirrors the `segment_signature` pattern from [ADR-0016](../docs/adr/0016-segment-level-automation-candidacy.md).
-- **`marker_type`** — `start` or `end`. Suggestions are emitted in pairs (one Start, one End), but each pair entry is independent so the analyst can accept one and reject the other.
-- **`label`** — proposed name. Non-null for `reason == "transaction_id_typed"` (carries the typed value, e.g. `"ABC-12345"`); null otherwise.
-- **`score`** — combined `[0.0, 1.0]` heuristic score. The viewer maps `score >= 0.75` to a slightly higher-opacity tier — the only confidence signal a 2 px dashed line can carry.
-- **`reason`** — which signal dominated. Used to render the chip in the markers side-panel (e.g. `[idle gap]`, `[txn id: ABC-12345]`).
-- **`heuristic_version`** — bumps when the detector algorithm changes meaningfully. The contract for breaking recalibration: a suggestion under v2 may legitimately re-surface a boundary that was dismissed under v1.
-
-The detector's **guards** drop any suggestion whose timestamp would fall inside an `excluded_range`, inside an existing case's `(start_ts, end_ts)` window, within 5 s of a real Start (captured or `marker_edits[]` `op:"insert"`), or whose proposed case would contain fewer than `min_case_interactions=5` interactions. Ends pair to their Start and clear the excluded/inside-case guards; the 5 s guard does *not* apply to Ends — an End landing right before a real Start is a clean case-to-case handoff.
-
-### Marker-suggestion dismissal (`marker_suggestions_dismissed[]`)
-
-Signatures the analyst has Dismissed. The detector's merge consults this set on every re-normalize and drops any fresh suggestion whose signature matches — so a dismissed boundary stays dismissed across an arbitrary number of re-normalizes. A separate block (rather than a `state: "dismissed"` row in `marker_suggestions[]`) keeps the live "things to render" array trivially clean — every entry the viewer reads is actionable. Matches the `analysis_overrides[]` precedent at [§Analysis override](#analysis-override-analysis_overrides) which records analyst verdicts keyed by a stable identity.
-
-```json
-{
-  "marker_suggestions_dismissed": [
-    {
-      "signature": "12-hex-chars",
-      "dismissed_at": "<ISO>",
-      "marker_type": "start" | "end",
-      "approximate_timestamp": "<ISO>"
-    }
-  ]
-}
-```
-
-The `signature` alone is what the merge matches; `marker_type` and `approximate_timestamp` are kept for human inspection of the JSON (debug / audit) and are not consulted by the merge.
-
-### Anchor candidate (`anchor_candidates[]`)
-
-Candidate case anchors produced by `normalization/anchor_suggest.py` ([ADR-0018](../docs/adr/0018-anchor-candidates.md)). For a session captured without markers or a Process Template, the detector pattern-mines `value_changed` / `text_changed` events to find fields whose typing would naturally segment the work into cases (a "customer ID" search box, a serial-number entry, an order-number cell). Each candidate is rendered in the viewer as a "Looks like a case anchor — `<field>` typed N distinct values, splits into M cases. Use this anchor?" row; the analyst Accepts to write a `case_anchor_override` (below) or Dismisses to suppress the signature on future re-normalizes.
-
-The detector **simulates** what `detect_cases_from_anchors` would produce if each candidate field were the anchor, then scores the resulting case structure on four signals (coverage, balance, label diversity, focus). The top 5 are kept.
-
-```json
-{
-  "anchor_candidates": [
-    {
-      "candidate_id": "uuid",
-      "signature": "12-hex-chars",
-      "anchor_config": {
-        "field": "automation_id",
-        "equals": "customer-id-field",
-        "case_label_from": "value"
-      },
-      "display": {
-        "field_property": "automation_id",
-        "field_value": "customer-id-field",
-        "window_title_hint": "Salesforce - Account lookup",
-        "sample_values": ["CUST-11255", "CUST-11256", "CUST-11257"]
-      },
-      "metrics": {
-        "fire_count": 3,
-        "distinct_labels": 3,
-        "case_count": 3,
-        "mean_case_interactions": 27.67,
-        "case_size_cv": 0.034,
-        "coverage": 0.988
-      },
-      "score": 0.935,
-      "created_at": "<ISO>",
-      "heuristic_version": 1
-    }
-  ]
-}
-```
-
-- **`signature`** — 12-char blake2b over `(field_property, field_value, window_title)`. Stable across re-runs; what the dismiss-set and `case_anchor_override._accepted_signature` match on.
-- **`anchor_config`** — the **exact** `case_anchor` block `case_assignment.detect_cases_from_anchors` expects. On Accept the viewer copies this verbatim into `case_anchor_override` and adds the audit fields.
-- **`display`** — UI-only fields the detector pre-computes so the viewer doesn't re-derive them. `window_title_hint` is the most common window-title across the fires (an "Order entry" / "Customer view" hint to disambiguate two fields with the same `name`).
-- **`metrics`** — the four scoring inputs: `coverage` is the fraction of interactions caught by the simulated cases; `case_size_cv` is the coefficient of variation of case interaction counts (lower = more balanced); `distinct_labels` should match `case_count` for a good anchor (one unique label per case).
-- **`score`** — `0..1` weighted blend of `coverage`, `1 - case_size_cv`, `distinct_labels / fire_count`, and `1 / log2(case_count + 1)`. Sorted descending; the viewer renders strongest-first.
-
-Like `marker_suggestions[]`, `anchor_candidates[]` is regenerated wholesale every normalize. The analyst owns the dismiss-list and the override.
-
-### Anchor-candidate dismissal (`anchor_candidates_dismissed[]`)
-
-Signatures the analyst has Dismissed. Consulted by `anchor_suggest.merge_anchor_candidates` on every re-normalize; a dismissed candidate stays dismissed.
-
-```json
-{
-  "anchor_candidates_dismissed": [
-    { "signature": "12-hex-chars", "dismissed_at": "<ISO>" }
-  ]
-}
-```
-
-### Case-anchor override (`case_anchor_override`)
-
-The session-level anchor the analyst Accepted. When set AND no Process Template `case_anchor` is in play (the template wins when both exist), `normalize.py` feeds this directly to `detect_cases_from_anchors` and `stamp_anchor_cases`, so the session gets case-stamped without needing a template.
-
-```json
-{
-  "case_anchor_override": {
-    "field": "automation_id",
-    "equals": "customer-id-field",
-    "case_label_from": "value",
-    "_accepted_signature": "12-hex-chars",
-    "_accepted_at": "<ISO>"
-  }
-}
-```
-
-The non-`_`-prefixed keys are the standard `case_anchor` shape (see `normalization/canonical/sample-anchor-based.yaml` for the full vocab — `field` + one of `equals`/`contains`/`starts_with`/`matches`, OR a `recognized` category). The `_accepted_*` audit fields are stripped by `anchor_suggest.coerce_anchor_override` before the config reaches `detect_cases_from_anchors`. `_accepted_signature` ties the override back to the candidate it came from so `merge_anchor_candidates` can drop the now-accepted candidate from the live list.
-
-`null` (the default) means "no override set" — the pipeline falls back to marker mode.
-
-**The flywheel (lab-phase §D3):** the viewer's "Export as Process Template" copies an accepted override into the exported template's `canonical_process.case_anchor` (audit fields stripped — `canonical-author.anchorFromOverride`, the JS twin of `coerce_anchor_override`). A later session matched against that template is case-stamped by the **inherited** anchor (template precedence above), so it needs no `case_anchor_override` of its own.
 
 ### Reference maps (`reference_maps[]`)
 
@@ -651,9 +462,12 @@ Analyst-authored, **decoupled** editable BPMN copies forked from a mined map cel
   "case_id": "uuid or null",
   "name": "string",
   "process_label": "string -- name with case values stripped, the value-free grouping key (ADR-0013)",
+  "draft_key": "string, absent on a hand-authored step: value-free identity \"<app>|<screen>|<commit>\" (contract C1)",
+  "name_source": "remembered|draft, absent on a hand-authored step",
+  "end_reason": "commit|screen_change|run_end, absent on a hand-authored step",
   "grain_keys": {
     "element": "string -- the field/control the step acted on (automation_id|name)",
-    "screen":  "string -- vocab screen_id, else window_title (the form/page). At view time the screen grain value-frees this (shared/screen-label-patterns.json -> screenType / screen_label) so one logical screen is one node across cases (ADR-0024 §6a/§6b)",
+    "screen":  "string, vocab screen_id, else the value-free window-title-derived screen label (shared/screen-label-patterns.json -> screenType / screen_label), so one logical screen is one node across cases (ADR-0024 §6a/§6b)",
     "app":     "string -- process_name (.exe stripped)"
   },
   "description": "string",
@@ -664,13 +478,13 @@ Analyst-authored, **decoupled** editable BPMN copies forked from a mined map cel
     "video_timecode_range": [0, 0],
     "manual_notes": "string"
   },
-  "state": "auto_suggested|auto_matched|manually_authored|edited",
-  "suggestion_reason": "string -- auto_suggested steps only",
-  "canonical_step_id": "uuid or null",
+  "state": "auto_suggested|manually_authored|edited|confirmed|hidden",
+  "suggestion_reason": "string, auto_suggested steps only, the C1 draft reason",
+  "canonical_step_id": null,
   "flags": {
     "waste": false
   },
-  "phase_id": "uuid or null"
+  "phase_id": null
 }
 ```
 
@@ -682,50 +496,56 @@ derived from the observed trace variants, automation candidacy from coherent seg
 from the map's branch frequency. Older `annotations.json` may still carry the legacy keys;
 they are ignored.
 
-`grain_keys` are the **UI-containment keys** the view-time grain roll-up groups
-on ([ADR-0024](../docs/adr/0024-step-grain-as-view-time-rollup.md)): a node/step
-at a chosen notch is a run of consecutive steps within a case that share the
-notch's key. The ladder is `element ⊂ screen ⊂ app ⊂ phase ⊂ case`; the
-`phase`/`case` notches read the step's existing `phase_id` / `case_id`, so only
-`element` / `screen` / `app` are stamped here. Recomputed every analyze (like
-`process_label`) so they track the current evidence; a step with no interactions
-(a hand-authored step) carries `(element)` / `(screen)` / `(app)` placeholders,
-which the viewer's view-time resolver refines from the step's evidence. Raw
-`events.jsonl` is untouched — segmentation stays at the finest grain and the
-roll-up is a *view*, never a re-normalization. Absent on sessions analyzed before
-this field existed; the viewer resolves them at view time.
+`canonical_step_id` and `phase_id` are always `null` now: canonical / Process
+Template matching and phases are both cut ([ADR-0029](../docs/adr/0029-ba-helper-refocus.md)).
+The two fields stay in the shape so old tooling that reads them keeps working;
+nothing sets them anymore. `phases[]` as a top-level array is gone too (see
+the legacy-keys table above).
 
-### Phase entity (`phases[]`)
+**Drafted steps (contract C1).** `normalization/step_suggest.py`'s
+`auto_suggest_steps` (the drafting rule) replaced the earlier free-running
+step auto-suggester. Within one run (case), it walks interactions in time
+order; a step is a run of consecutive interactions on one screen, ending at
+(a) a commit interaction, inclusive: `kind == "invoked"` on a `Button` /
+`SplitButton` / `MenuItem` / `Hyperlink`, or any interaction whose vocab
+semantics carry `completion: true`; or (b) the first interaction on a
+different screen, exclusive; or (c) the end of the run. Every drafted step
+carries three additional fields:
 
-```json
-{
-  "phase_id": "uuid",
-  "session_id": "uuid",
-  "case_id": "uuid",
-  "name": "Validate customer",
-  "description": "",
-  "step_ids": ["uuid", "uuid"],
-  "state": "manually_authored|auto_matched|edited",
-  "canonical_phase_id": "uuid or null"
-}
-```
+- **`draft_key`**: `"<app>|<screen>|<commit>"`, value-free by construction.
+  `app` is `process_name` lowercased with `.exe` stripped; `screen` is the
+  vocab `screen_id` when present, else the value-free screen label; `commit`
+  is `"<control_type>:<identity>"` of the commit interaction (identity =
+  automation_id, else name, else class_name, else `"?"`, each taken
+  value-free), or the literal `"(visit)"` when the step did not end on a
+  commit. `draft_key` is the identity light vocab (contract C4) and light
+  template (contract C5) match on.
+- **`name_source`**: `"remembered"` when the name came from the
+  remembered-names store (C4), else `"draft"`.
+- **`end_reason`**: `"commit"`, `"screen_change"`, or `"run_end"` (the three
+  ways the rule ends a step, (a)/(b)/(c) above).
 
-Phases derive their `time_range` from the union of contained steps (not stored).
+The default drafted name (when not remembered) is `"<screen label>: <commit
+label>"`, or just `"<screen label>"` for a `"(visit)"` step; the commit
+label is the interaction's vocab `meaningful_name`, else its `name`, else
+its `control_type`. Names never embed a typed value. A hand-authored step
+(`manually_authored`, or any step normalized before this cycle) carries none
+of `draft_key` / `name_source` / `end_reason`.
 
-### Drift marker (`drift_markers[]`)
+`grain_keys` are the **UI-containment keys** drafting and the map read
+(`element` ⊂ `screen` ⊂ `app`; [ADR-0024](../docs/adr/0024-step-grain-as-view-time-rollup.md)).
+Before [ADR-0029](../docs/adr/0029-ba-helper-refocus.md) they also drove an
+in-app **Grain** slider with `phase` and `case` notches; the slider (and the
+notation × level map matrix it fed) is cut, but the three keys stay,
+recomputed every analyze (like `process_label`) so they track the current
+evidence. The drafting rule's `screen` component (contract C1) is the same
+value-free label the `screen` grain key uses. A step with no interactions
+(a hand-authored step) carries `(element)` / `(screen)` / `(app)`
+placeholders. Raw `events.jsonl` is untouched; these keys live on the step
+(the annotation sidecar) only.
 
-```json
-{
-  "marker_id": "uuid",
-  "kind": "canonical_drift",
-  "step_id": "uuid",
-  "previous_canonical_step_id": "uuid or null",
-  "new_canonical_step_id": "uuid or null",
-  "ts": "iso"
-}
-```
-
-Supported edits:
+`marker_edits[]` entries (the shape is under "Legacy entries inside the two
+original arrays" above) support:
 
 - `field: "label"` - rename a marker
 - `field: "timestamp"` - shift a marker's timestamp
@@ -744,8 +564,7 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
   "label": "analyst-given session name (optional; absent until set)",
-  "purpose": "process" | "app_prep",
-  "prep_app": "app name being curated (app_prep sessions only; null otherwise)",
+  "purpose": "process",
   "config": { ...snapshot of session config... },
   "obs": {
     "recording_path": null,
@@ -762,12 +581,6 @@ Last-write-wins per `(event_id, field|op)`. Order of edits within the array does
     "version": 1,
     "worker_id": "alice",
     "acknowledged_at": "ISO 8601 or null"
-  },
-  "worker_review": {
-    "submitted": true,
-    "submitted_at": "ISO 8601",
-    "questions_asked": 4,
-    "questions_answered": 3
   },
   "recovered": false
 }
@@ -804,19 +617,22 @@ existed carry the name inside `config.engagement_name`, and consumers fall back
 to that. Display precedence is `label` (a post-session rename) → `engagement_name`
 → the engagement-folder name.
 
-`purpose` is `"process"` for an ordinary business-process capture (the default) or
-`"app_prep"` for an App-Vocabulary curation session; `prep_app` names the app being
-curated on an `app_prep` session (`null` otherwise). App-prep sessions are filed
-under `engagement_id: "vocab-prep"` so they don't pollute a real engagement's
-captures — see [CAPTURE.md](../docs/architecture/CAPTURE.md).
+`purpose` is always `"process"` now: every capture is an ordinary
+business-process recording. The field is kept so the manifest shape stays
+stable; nothing writes any other value. Before [ADR-0029](../docs/adr/0029-ba-helper-refocus.md)
+a session could also be `"app_prep"` (an App-Vocabulary curation walkthrough,
+with a `prep_app` field naming the app being curated, filed under
+`engagement_id: "vocab-prep"`); app-prep sessions are cut along with the
+in-app vocabulary discovery flow they fed, and `prep_app` is no longer
+written. A manifest from before this cycle may still carry `purpose:
+"app_prep"` and `prep_app`; nothing reads them.
 
-`worker_review` *(optional; lab-phase spec §E3)* is the worker's explicit
-"Submit session" from the close-out wizard's read-only review pane — worker
-agency as the consent feature. **Absent = the worker never submitted** (they
-closed the wizard without the button, or the session predates the feature);
-the recording itself is unaffected either way. `questions_asked` /
-`questions_answered` count the wizard's observed-value questions (answers live
-in `annotations.json self_annotations[]`).
+`worker_review` is gone: the worker close-out wizard's observed-value
+questions (self-annotation §E3) are cut along with it (see
+[CAPTURE.md](../docs/architecture/CAPTURE.md) for what the session end
+screen shows instead). A manifest from before this cycle may still carry a
+`worker_review` block; nothing reads it, and the answers it referenced
+(`annotations.json self_annotations[]`) are a legacy key (contract C10).
 
 ## session-integrity.json
 
@@ -837,6 +653,63 @@ completely from the worker's machine.
 `name` is the path relative to the session folder, forward slashes; the file
 lists itself excluded. The viewer's session loader compares this against the
 files actually present and surfaces any that are missing.
+
+## transcript.json (contract C8)
+
+Written by `normalization/transcript_import.py`, standard library only, when
+a Teams meeting transcript (`.vtt` or `.docx`) has been imported. Absent on
+a session with no imported transcript. `events.jsonl` and `annotations.json`
+are only read by the importer, never written; the original transcript file
+is copied byte-for-byte to `transcript/<original name>` and never modified.
+
+```json
+{ "version": 1, "source_file": "transcript/meeting.vtt", "format": "vtt",
+  "clock": "video", "offset_ms": null,
+  "segments": [ { "id": "t0001", "start_s": 12.34, "end_s": 15.0,
+                  "speaker": "Ana", "text": "now I look up the customer" } ] }
+```
+
+- **`format`**: `"vtt"` or `"docx"`, from the source file's extension.
+- **`clock`**: `"video"` when `annotations.json` has an `external_video`
+  entry with a `path` (the same check the viewer makes before it plays an
+  attached video); otherwise `"own"`.
+- **`offset_ms`**: always `null` when the importer writes this file. With
+  `clock: "video"`, a segment's wall time is session start +
+  `external_video.offset_ms` + `start_s`, so no separate offset is needed.
+  With `clock: "own"` (no video), the viewer sets `offset_ms` by syncing one
+  transcript sentence to one moment; until then the transcript has no wall
+  clock of its own.
+- **`segments[]`**: `start_s` / `end_s` are seconds from the transcript's
+  own start, to the millisecond. `speaker` is `null` when the source line
+  carried no speaker tag (never guessed from a "Name: text" pattern).
+
+A re-import replaces `transcript.json` entirely, including `offset_ms`; a
+copy already in `transcript/` with the same name is replaced, any other
+prior import's copy is left alone. Supported source layouts (WebVTT with
+`<v Name>` voice tags, WebVTT Graph-export variants, Word "timing, speaker,
+text," and Word "Name 0:03" then text) are documented in the module
+docstring; a layout the parser does not recognize fails loudly (exit code 2
+below), never a silent guess.
+
+`normalization/transcript_import.py` has its own CLI, separate from
+`normalize.py`:
+
+```
+python transcript_import.py <session_folder> <transcript_file>
+```
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Imported. One summary line on stdout (segment count, speakers, duration, clock), UTF-8. |
+| 1 | Bad arguments (not exactly two), or the folder is not a session folder (no `events.jsonl`). |
+| 2 | The transcript file cannot be read, or its layout is not one of the supported ones. Nothing was written. |
+| 3 | The session folder cannot be used: `annotations.json` exists but cannot be read (so the clock cannot be chosen), or the output write failed. The previous transcript, if any, is kept. |
+
+Errors go to stderr as one line starting `[transcript] ERROR:`. The reusable
+entry point `transcript_import.parse(path)` returns `{"format", "segments"}`
+and raises `TranscriptError` with a one-line reason; it writes nothing, so
+the viewer can preview a transcript before committing to write it into the
+session.
 
 ## analysis.json
 
@@ -909,32 +782,7 @@ step-less session too (the classic step-grained blocks stay empty there).
     "total_elapsed_ms": 0,
     "per_step": [ { "step_id": "uuid", "ratio": 0.0 } ]
   },
-  "roi": {
-    "currency": "EUR",
-    "needs_input": false,
-    "inputs_used": { "loaded_cost_per_hour": 36.0, "realism_factors": {...},
-                     "automatable_fraction": 0.7, "annual_volume": 1000,
-                     "automation_cost": null, "amortization_years": 3.0 },
-    "candidates": [
-      { "segment_signature": "12-hex-chars", "label": "string",
-        "instance_count": 4, "mean_elapsed_ms": 33500,
-        "automatable_fraction": 0.7, "annual_volume": 1000,
-        "volume_basis": "annotated | default | observed",
-        "automation_cost": null, "amortization_years": 3.0,
-        "bands": {
-          "conservative": { "realism_factor": 0.5, "saved_ms_per_instance": 0,
-            "saved_hours_per_year": 0.0, "gross_annual": 0.0,
-            "net_annual": 0.0, "payback_months": null },
-          "expected":     { "...": "..." },
-          "optimistic":   { "...": "..." }
-        },
-        "expected_saved_hours_per_year": 0.0,
-        "expected_net_annual": 0.0,
-        "expected_payback_months": null,
-        "needs_input": false }
-    ],
-    "totals": { "saved_hours_per_year": 0.0, "net_annual": 0.0, "gross_annual": 0.0 }
-  },
+  "stage_errors": [],
   "case_quality": {
     "mode": "markers | anchor | unsegmented",
     "case_count": 0,
@@ -1009,33 +857,41 @@ same pattern repeated four times in one session is one row with
 `instance_count: 4`. A pattern with one instance is reported with
 `data_sufficiency: "single_instance"` — one observation cannot judge
 repeatability. Candidates are ordered by **automation priority**:
-`rank_score = instance_count × mean_elapsed_ms × automatable_fraction`
-(the same `automatable_fraction` the €-ROI layer resolves from `roi_inputs`,
-per-segment override aware). `rank` is the 1-based position among
-multi-instance candidates (single-instance rows get `rank: null`); the order
-feeds both the `roi` band and the PDD §4.3 focus list. `rank_score` is `0`
-for single-instance patterns (no repeatability signal). `automation_confirmed` carries the analyst's verdict, written
-to `analysis_overrides[]` keyed by `segment_signature`. The previous per-step
+`rank_score = instance_count × mean_elapsed_ms × automatable_fraction`, where
+`automatable_fraction` is a flat `0.7` (`analysis_automation.AUTOMATABLE_FRACTION`):
+the per-segment analyst overrides this used to read from `roi_inputs` are
+gone with the ROI layer. `rank` is the 1-based position among multi-instance
+candidates (single-instance rows get `rank: null`); the order feeds the PDD's
+automation-candidates focus list. `rank_score` is `0` for single-instance
+patterns (no repeatability signal). `automation_confirmed` carries the
+analyst's verdict, written to `analysis_overrides[]` keyed by
+`segment_signature`. `estimated_savings_ms` is always `null` now: it needed an
+analyst-supplied instances-per-day and a labour rate, which the cut EUR-ROI
+layer (`analysis_roi.py`) used to supply (see the legacy-keys table above);
+the business-case formula now lives in the owner's QB app
+([ADR-0029](../docs/adr/0029-ba-helper-refocus.md) D3). The previous per-step
 shape (`step_id`, `scores.repetitiveness`, `scores.rule_based`,
 `sequence_signature`) was retired in `meta.heuristic_version: 2`.
 
-`roi` is the **€-ROI band** over the automation candidates
-(`analysis_roi.compute_roi`). Per **multi-instance** candidate it projects the
-observed `mean_elapsed_ms` to an annual saving: `T_saved = mean_elapsed_ms ×
-automatable_fraction × realism`, `gross_annual = annual_volume × T_saved ×
-(loaded_cost_per_hour / 3_600_000)`, `net_annual = gross_annual −
-automation_cost / amortization_years`, `payback_months = automation_cost /
-(net_annual / 12)` (null when `net_annual ≤ 0` or no automation cost). The
-estimate is a **conservative / expected / optimistic** band driven by three
-realism factors. The **hours-saved** band is always emitted; **monetary** fields
-are null with `needs_input: true` when no `loaded_cost_per_hour` is supplied — a
-labour rate is never fabricated. When no annual volume is given, `annual_volume`
-falls back to the observed `instance_count` as a conservative floor with
-`volume_basis: "observed"`. Single-instance candidates are skipped (no
-repeatability). `roi` reads the optional `roi_inputs` annotations block (below)
-and is regenerated on every `normalize` run; it also backfills each candidate's
-`estimated_savings_ms` (long null) from the expected band, but only when a real
-annual volume basis exists (not the observed floor).
+**`stage_errors`** (contract C12, RP-10): always present, empty when every
+analysis stage ran. Each entry is `{ "stage": "facts", "error": "KeyError:
+'duration_ms'" }`. When a stage fails, its own output key is written `null`
+(never `[]` or a zero-filled shape, which would read as a measured "nothing
+found"), and one entry here names it:
+
+```json
+"stage_errors": [ { "stage": "facts", "error": "KeyError: 'duration_ms'" } ]
+```
+
+The stages that can fail independently: `step_analysis` (the classic
+waste/time-study/segments/automation/efficiency block, all five keys go
+`null` together on failure), `case_quality`, `motifs` (the repeated-sequence
+input to `facts`), `facts`, and `findings`, which does not even attempt to
+run when `step_analysis`, `motifs`, `facts`, or the segment/automation stages
+failed, since its detectors read all of them and a partial run would silently
+under-report. Every renderer (Overview, PDD) must show a failed stage as
+"this check could not run on this recording," never as a measured negative
+("nothing stood out", zeros).
 
 ## Invariants
 
@@ -1054,14 +910,44 @@ The normalization layer writes the following alongside `events.jsonl`:
 | `events.csv` | Flat CSV of activity events |
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
 | `process_map.bpmn` | Activity-level BPMN 2.0 XML from PM4Py inductive miner (with `--mine`) |
-| `process_map_step.bpmn` / `process_map_phase.bpmn` | Observed-flow Step/Phase BPMN mined from the annotations — no Process Template needed (with `--mine`; [ADR-0012](../docs/adr/0012-active-case-stamping-and-map-matrix.md)) |
+| `process_map_step.bpmn` | Observed-flow Step BPMN mined from the annotations, needing no Process Template (with `--mine`; [ADR-0012](../docs/adr/0012-active-case-stamping-and-map-matrix.md)). No phase-level counterpart: phases are cut ([ADR-0029](../docs/adr/0029-ba-helper-refocus.md)). |
 | `process_maps/<case_id>.bpmn` | Per-case BPMN maps (with `--mine`) |
 | `dfg.json` | Directly-Follows Graph as `{ edges, start_activities, end_activities }` (with `--mine`) |
-| `analysis.json` | Heuristic IE findings: `{ meta, waste_classification, time_study, automation_candidates, efficiency }` (when the session has steps — ADR-0008) |
-| `annotations.json` | Analyst-authored notes + future marker edits |
+| `analysis.json` | Heuristic IE/CI findings: `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings }` (when the session has steps, ADR-0008; `case_quality` / `facts` / `findings` write even for a step-less session) |
+| `annotations.json` | Analyst-authored notes + marker edits |
+| `transcript.json` | A parsed, aligned meeting transcript (contract C8), when one was imported. See "Transcript (transcript.json)" below. |
 | `obs/sync.json` | `{ tracker_session_start_ts, obs_recording_start_ts, offset_ms, recording_path }` |
 | `normalize.log` | Rolling log of warnings and info from normalization (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 | `capture.log` | Per-session log written by the capture app for high-signal events |
+
+As of this doc revision, `events.xes`, `events.csv`, the activity-level
+`process_map.bpmn`, `dfg.json`, and the per-case maps are still produced
+exactly as described above. [ADR-0029](../docs/adr/0029-ba-helper-refocus.md)'s
+plan schedules their removal for a later phase, alongside the equivalent
+CLI flags; check `normalization/normalize.py`'s argument parser (contract
+C11, [NORMALIZATION.md](../docs/architecture/NORMALIZATION.md)) for whether
+that has landed by the time you read this.
+
+## `normalize.py` exit codes (contract C13)
+
+```
+python normalize.py <session_folder> [--taxonomy path/to/taxonomy.yaml] [--mine]
+    [--pdd-out path.docx] [--pdd-map-image path.png] [--pdd-tobe-image path.png]
+    [--names remembered-names.json]
+```
+
+| Code | Meaning |
+|---|---|
+| 0 | Success. |
+| 1 | Usage error (bad arguments), or the folder is not a session folder. |
+| 2 | `annotations.json` exists but cannot be parsed; nothing was written. |
+| 3 | A requested export (`--pdd-out`) failed; the analysis outputs (stats, analysis, mining) were already written, the export was not. |
+
+Every error (codes 1 to 3) is reported as one stderr line starting
+`[normalize] ERROR:`; an unexpected crash also exits 1, with a Python
+traceback. The viewer treats any non-zero exit as a failure and never opens
+a stale export file. Full CLI flag reference: contract C11,
+[NORMALIZATION.md](../docs/architecture/NORMALIZATION.md).
 
 ---
 
@@ -1103,60 +989,17 @@ After normalization, every activity / interaction event carries `case_ids: [inne
 
 The XES export emits one trace per *top-level* case (the last entry in each event's `case_ids`). Child cases become trace attributes or sub-traces depending on the analysis target.
 
-## Anchor-based case detection ([ADR-0012](../docs/adr/0012-active-case-stamping-and-map-matrix.md))
+## Anchor-based case detection (legacy, cut by ADR-0029)
 
-When the canonical set names a `case_anchor` field (e.g. the serial-search box), normalization can detect cases from **anchor fires** instead of (or alongside) markers. The anchor field is matched either by a **recognised** platform category (`recognized`, [ADR-0011](../docs/adr/0011-platform-recognition-layer.md) — portable across engagements) or by an explicit `automation_id` / value rule (the per-engagement fallback; ADR-0012 #7). A case is named by its anchor value and is **stable per label** — `case_id = uuid5(label)`, so re-searching the same serial *resumes* that case rather than opening a new one. The most-recently-fired anchor is the **active case**, stamped onto every following interaction; because work interleaves (search A → … → search B → … → search A again), each case owns a list of *disjoint active segments* rather than one contiguous range. A degenerate-case guard drops slivers (below `min_case_interactions` / `min_case_duration_ms`) and an empty-label guard ignores a focus on an empty anchor box. This supersedes the older gap-based open/close-on-pause splitting: a pause is just a pause; the case resumes on the next anchor.
-
-### `case_anchor` block — schema
-
-The `case_anchor` block lives under `canonical_process` in the canonical YAML.
-
-```yaml
-canonical_process:
-  id: "..."
-  case_anchor:
-    # === at least ONE of these matchers ===
-    recognized: "search"            # ADR-0011 platform category (str or list); the portable matcher
-    field: "automation_id"          # name of a property on the interaction's data
-    equals: "txtSerialNumber"       # operator (one of equals / contains / starts_with / matches)
-
-    # === optional refinements ===
-    case_label_from: "value"        # which property on the anchor event names the case (default "value")
-    min_case_interactions: 2        # discard cases below this (default 2)
-    min_case_duration_ms: 1000      # discard cases shorter than this (default 1000)
-```
-
-| Field | Type | Meaning |
-|---|---|---|
-| `recognized` | string \| list[string] | Match by ADR-0011 category. The **portable** anchor: keys on a documented platform/framework signature (e.g. `search`, `grid_cell`), so the same template recognises the case-key field across engagements. |
-| `field` | **string** (the property NAME) | Match by an explicit data property — for bespoke fields with no recognised category. **NOT a dict** — `field: "automation_id"`, then `equals: "txtSerialNumber"` (the operator is a sibling key, not a sub-key). |
-| `equals` / `contains` / `starts_with` / `matches` | string | Operator applied to the value of `field`. Pick one. `matches` is a regex. |
-| `case_label_from` | string | Which event-data property names the case (default `value`). A typed serial becomes the case label. |
-| `min_case_interactions` | int | Drop cases with fewer interactions than this (degenerate guard). |
-| `min_case_duration_ms` | int | Drop cases shorter than this in ms (degenerate guard). |
-
-When both `recognized` and the explicit `field` rule are present they are **AND-ed** ("a recognised text/search field *whose name matches* /serial/i"), which generalises a bespoke field without naming its automation_id.
-
-A common mistake is to write `field` as a dict, like a match spec:
-
-```yaml
-# WRONG -- field is the property NAME, not a match spec
-case_anchor:
-  field:
-    process_name: "chrome.exe"
-    name: "Customer name:"
-```
-
-The pipeline now warns on this (`case_anchor.field must be a string ... -- treating as no-match`) and continues with zero anchor cases rather than crashing. The correct shape is:
-
-```yaml
-# RIGHT -- field is the name, operator is a sibling key
-case_anchor:
-  field: "name"
-  equals: "Customer name:"
-```
-
-A worked example is in [`normalization/canonical/sample-anchor-based.yaml`](../normalization/canonical/sample-anchor-based.yaml).
+Before [ADR-0029](../docs/adr/0029-ba-helper-refocus.md), normalization
+could detect cases from a named `case_anchor` field firing (a serial-search
+box) instead of, or alongside, markers ([ADR-0012](../docs/adr/0012-active-case-stamping-and-map-matrix.md)).
+`case_assignment.py` no longer has this code path at all: `--canonical` is
+gone (contract C11), so there is no canonical YAML to carry a `case_anchor`
+block, and `case_anchor_override` is a legacy annotations key (contract
+C10, see the table above). Case detection is markers only now. The
+`normalization/canonical/` directory this fed (canonical YAML sets,
+including the worked anchor example) is deleted, not merely unreferenced.
 
 ## Step states — the lifecycle
 
@@ -1164,14 +1007,21 @@ Each step's `state` field describes how the step got into `annotations.json`:
 
 | State | Set by | Survives re-normalization? |
 |---|---|---|
-| `auto_suggested` | The rule-based step suggester ([step_suggest.py](../normalization/step_suggest.py)). Best-guess grouping of adjacent interactions. | No — replaced by the next run's suggestions. |
-| `auto_matched` | The canonical step matcher ([canonical_match.py](../normalization/canonical_match.py)) when a canonical step set is provided via `--canonical`. | No — replaced when re-matched. |
-| `manually_authored` | The analyst clicked "New step" in the viewer's step editor. | Yes — `_merge_steps()` preserves it across runs. |
-| `edited` | The analyst modified an `auto_suggested` or `auto_matched` step. | Yes — same. |
+| `auto_suggested` | The drafting rule ([step_suggest.py](../normalization/step_suggest.py) `auto_suggest_steps`, contract C1). One drafted step per screen visit, ending at its commit action. | No: replaced by the next run's drafts. |
+| `confirmed` | The analyst confirmed the step's run as the pattern run without changing this step (contract C3, "Confirm run"). | Yes: preserved exactly like `edited`. |
+| `manually_authored` | The analyst added a step by hand. | Yes: `_merge_steps()` preserves it across runs. |
+| `edited` | The analyst modified a drafted step (renamed, merged, split, or otherwise changed it). | Yes, same. |
+| `hidden` | The analyst hid the step. | Yes: a re-analyze does not resurrect a hidden step as a fresh draft. |
 
-The merge order in [`_merge_steps`](../normalization/step_suggest.py) is: `manually_authored + edited + fresh_auto_*`. This is why corrections survive re-normalization without re-doing work.
-
-`drift_markers[]` record when a previously `edited`/`manually_authored` step's `canonical_step_id` would now resolve differently against the current canonical version — a signal that the canonical set has shifted under the analyst's prior assignment. Recorded automatically; reviewed manually.
+`auto_matched` (the canonical step matcher, `--canonical`) is gone with
+canonical/Process Template matching ([ADR-0029](../docs/adr/0029-ba-helper-refocus.md)
+AD-8). The merge order in [`_merge_steps`](../normalization/step_suggest.py)
+is: `manually_authored + edited + confirmed + hidden`, then the fresh
+`auto_suggested` drafts that do not overlap one of those. This is why
+corrections, confirmations, and hides survive re-normalization without
+re-doing work. `drift_markers[]`, which used to flag a canonical-assignment
+change under a preserved step, is a legacy key (contract C10): canonical
+matching is gone, so nothing can drift against it anymore.
 
 ## Interaction enrichment — when each field is present
 
@@ -1204,14 +1054,19 @@ The **recognition layer** ([ADR-0011](../docs/adr/0011-platform-recognition-laye
 | `raw_event_count` | Total lines successfully parsed from `events.jsonl`. |
 | `dropped_jsonl_lines` | Lines that failed `json.loads`. Zero is the expected value. Non-zero is investigable; see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md). |
 | `collapsed_activity_count` | Activity events remaining after §7.1 step 7 collapse. |
-| `interaction_count` / `matched_interactions` / `match_rate` | How many interactions did we have, how many did the canonical matcher claim, what's the ratio. |
+| `interaction_count` | How many interaction events the session has. |
 | `case_count` | Top-level + nested cases combined. |
 | `marker_edits_applied` | Edits from `annotations.json.marker_edits` that took effect this run. |
-| `step_count` / `step_state_breakdown` | Total steps and counts per state (`auto_suggested`, `auto_matched`, `manually_authored`, `edited`). The breakdown is the cheapest health-check for analyst engagement. |
-| `canonical_process_id` / `canonical_version` | Pinned canonical set, if `--canonical` was used. |
-| `drift_count` / `phase_count` | Total drift markers and phases in `annotations.json` after this run. |
+| `step_count` / `step_state_breakdown` | Total steps and counts per state: `auto_suggested`, `manually_authored`, `edited`, `confirmed`, `hidden`. The breakdown is the cheapest health-check for analyst engagement, and `confirmed` / `hidden` are new in this cycle (`auto_matched` is gone with canonical matching). |
+| `draft_summary` | The step-drafting rule's own structure-only numbers (contract C1's probe instrument), counted on the fresh drafts before the merge with the analyst's steps: `{ runs, steps_per_run, out_of_run_steps, end_reason: {commit, screen_change, run_end}, name_source: {remembered, draft}, commit_identity: {automation_id, name, class_name, "?"} }`. This is what the [P1 draft-probe runbook](../docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md) reads to report draft quality. New in this cycle; `null` on a session with no runs. |
 | `app_vocabularies` / `app_vocabulary_matches` / `app_vocabulary_hits_by_id` | Vocabularies loaded, interactions matched, per-vocab hit counts. |
 | `vocab_coverage` | Per-app `{ total_interactions, enriched, coverage_pct }` — how much of each app's interaction stream a loaded App Vocabulary could name. The session summary panel surfaces it. |
+| `app_names` | `{ executable as recorded: readable name }` for every application in the recording (`normalization/app_names.py`, deliverable-audit gap 3), the most specific readable name the recording itself supports: an app vocabulary's name, else a window-title segment naming the executable as a word, else the capitalized executable name. Never a fabricated product name. The findings claims, the findings fact strip, and the PDD read display names through this map instead of a raw executable token. New in this cycle. |
+
+`canonical_process_id`, `canonical_version`, `drift_count`, `phase_count`,
+`matched_interactions`, and `match_rate` are gone: canonical / Process
+Template matching and phases are both cut
+([ADR-0029](../docs/adr/0029-ba-helper-refocus.md)).
 
 ## When the schema changes
 

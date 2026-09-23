@@ -1,6 +1,7 @@
 # ADR-0017: Suggested markers — change-point detection for unbracketed sessions
 
 **Status:** Accepted — implemented 2026-05-28 (`normalization/marker_suggest.py`, the markers lane in `viewer/views/flow-view.js`, `shared/SCHEMA.md` §`marker_suggestions`)
+**Note (2026-09-23):** Superseded by [ADR-0029](0029-ba-helper-refocus.md): `marker_suggest.py` and this detector are cut. A missed run marker is now added by hand in Flow.
 **Date:** 2026-05-28
 **Deciders:** Project owner, analyst (process-discovery lead)
 **Related:** [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (anchor-based case detection — the *other* path to derive cases without markers), [ADR-0016](0016-segment-level-automation-candidacy.md) (the segment-signature precedent for stable identity), [ML Integration Recommendation](../To-Do/) Phase 0 item #2.

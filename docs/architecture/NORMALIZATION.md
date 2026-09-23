@@ -6,151 +6,180 @@
 ## Purpose & entry point
 
 Normalization is the **analyst-side Python pipeline** that turns a raw
-`events.jsonl` into an analyzable, mineable dataset. It is a CLI:
+`events.jsonl` into an analyzable, mineable dataset, and, when asked, a PDD.
+It is a CLI (contract C11):
 
 ```
-python normalize.py <session_folder> --taxonomy <taxonomy.yaml> [--mine] [--canonical <canonical.yaml>]
+python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
+    [--pdd-out <path.docx>] [--pdd-map-image <path.png>] [--pdd-tobe-image <path.png>]
+    [--names <remembered-names.json>]
 ```
+
+`--taxonomy` stays for now (whether drafting or analysis still need activity
+classification is an open question, [ADR-0029](../adr/0029-ba-helper-refocus.md)
+Q4). `--names` is new: the viewer's remembered-names store (contract C4), so
+a drafted step whose `draft_key` the analyst has already named once takes
+that name again. Flags removed with the features behind them: `--canonical`,
+`--phase-bpmn-out`, `--step-csv-out`, `--memo-out`, `--bootstrap-vocab-out`,
+`--vocab-id`, `--vocab-name`, `--bootstrap-vocabs-json`, and `--step-bpmn-out`
+(it only ever rendered a template's steps; the step-level map BPMN the
+viewer exports is `process_map_step.bpmn`, written by `--mine`). Exit codes
+are contract C13, documented in [shared/SCHEMA.md](../../shared/SCHEMA.md).
+The transcript importer (below) has its own, separate CLI entry point.
 
 It is invoked either directly by an analyst or — far more often — by the Viewer,
 which spawns it via [`viewer/python-runner.js`](../../viewer/python-runner.js) using
-a bundled Python 3.12 embeddable distribution.
+a bundled Python embeddable distribution.
 
 ## Pipeline stages
 
-`normalize.py` orchestrates these stages in order:
+`normalize()` (`normalize.py`) is a thin orchestrator over the named stage
+helpers in `pipeline_stages.py`, in this order:
 
-1. **Load & validate** — parse `events.jsonl`, defensively sort by timestamp,
-   count dropped/malformed lines. A keystroke-coalescing pass (`coalesce.py`,
-   `coalesce_typing_bursts`) then folds per-keystroke `value_changed` bursts on one
-   control into a single final-value event before later stages see them (v0.13 §1).
-2. **Apply marker edits** — replay `annotations.json.marker_edits`
-   (rename / re-time / delete / insert) onto the marker stream.
-2b. **Structural PII masking** ([§11f](../To-Do/PDT-ROADMAP-CODEBASE-FIT.md), `pii_masking.py`) —
-   redact sensitive UIA field **values** (password / SSN / card / CVV / PIN /
-   secret / IBAN / routing / account, matched by field name·automation_id·control_type)
-   in the **derived** stream only, replacing each with a one-way, join-preserving
-   `«category#hash»` token. Raw `events.jsonl` is never rewritten; the rule-set that
-   ran is recorded in the `pii_masking` annotations key, and the analyst-owned
-   `pii_masking_config` can disable it or add rules. Runs right after coalesce so
-   every later stage (case assignment, steps, stats, analysis, maps) sees only the
-   masked values.
-3. **Case assignment** — two mechanisms. **Marker-based:** walk the Start/End
-   marker stream, build the case tree, stamp every activity/interaction with its
-   `case_ids` stack. **Anchor-based** ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)):
-   when the canonical set names a `case_anchor` field, cases are detected from
-   anchor fires instead — a case is named by its anchor value and is *stable per
-   label* (`case_id = uuid5(label)`, so re-searching the same serial **resumes**
-   that case rather than opening a new one), the most-recently-fired anchor is the
-   active case, and stamping follows each case's disjoint active segments. A
-   degenerate-case guard drops slivers and an empty-label guard ignores a focus on
-   an empty anchor box (`detect_cases_from_anchors` / `stamp_anchor_cases`). The
-   `case_anchor` field is named either by a **recognised** category (`recognized`,
-   [ADR-0011](../adr/0011-platform-recognition-layer.md) — portable across
-   engagements) or by an explicit `automation_id` / value rule (the per-engagement
-   fallback; ADR-0012 #7). **Anchor precedence is `template > override > markers`:**
-   the engagement-level Process Template's `case_anchor` wins; absent that, the
-   session-level `annotations.json.case_anchor_override` (the analyst's accepted
-   anchor candidate, [ADR-0018](../adr/0018-anchor-candidates.md)) is consulted via
-   `coerce_anchor_override`; absent both, the pipeline falls back to marker mode.
-4. **Collapse** — merge adjacent identical activity events (same app/title/label/case).
-5. **Interaction enrichment** — apply App Vocabularies to add `meaningful_name`,
-   `screen_id`, and `vocab_flags`.
-6. **Step suggestion** — group consecutive interactions into `auto_suggested` steps
-   (the step-noise denylist in `step_filters.ignored_processes` is applied first;
-   the browser-chrome noise filter uses the shared recognition layer —
-   [ADR-0011](../adr/0011-platform-recognition-layer.md)). Each step is stamped
-   with a value-free **`process_label`** — its name with case values stripped
-   (`Search — CUST-10900` → `Search`) — so repeated work collapses to one
-   node/row downstream ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)).
-7. **Boundary suggestion (unbracketed-session recovery)** — best-effort, runs
-   right after case assignment. Two hand-rolled detectors close the "worker forgot
-   to fire markers, no Process Template" failure mode where everything collapses
-   into one default case (Phase 0 of the ML integration recommendation):
-   - **Suggested markers** (`marker_suggest.suggest_markers` /
-     `merge_marker_suggestions`, [ADR-0017](../adr/0017-suggested-markers.md)) — a
-     change-point detector scores four signals (idle gap, return to a "home" app,
-     transaction-ID-like value typed, app-cluster boundary) over the **uncased**
-     stretches and emits paired Start/End candidates into
-     `annotations.json.marker_suggestions[]`. Signature-keyed; the merge drops any
-     boundary in `marker_suggestions_dismissed[]` or already accepted as a
-     `marker_edits[]` op:insert, so dismissals/accepts survive re-normalize.
-   - **Anchor candidates** (`anchor_suggest.suggest_anchors` /
-     `merge_anchor_candidates`, [ADR-0018](../adr/0018-anchor-candidates.md)) —
-     pattern-mines `value_changed` / `text_changed` fields, *simulates*
-     `detect_cases_from_anchors` for each, scores the resulting case structure
-     (coverage / balance / diversity / focus), and writes the top candidates into
-     `anchor_candidates[]`. The analyst's Accept writes a `case_anchor_override`
-     that stage 3 consults on the next run.
-   Both honour the suggest-don't-mutate invariant: detection lives in
-   `annotations.json`, raw `events.jsonl` is untouched, and a detector edge case is
-   caught and never blocks the pipeline.
-8. **Canonical matching** — with `--canonical`, match interactions against a
-   canonical step set, producing `auto_matched` steps.
-9. **Step merge** — `_merge_steps()` (in `step_suggest.py`) keeps
-   `manually_authored + edited` steps and replaces only the `auto_*` set. A fresh
-   auto step **inherits** the prior step's `step_id` and curated `phase_id` /
-   `canonical_step_id` when it re-covers the same interactions
-   (`_inherit_step_identity`), so a grouping or curation applied to a regenerated
-   step is not silently lost on re-analyze (see [DATA-MODEL.md](./DATA-MODEL.md)).
-10. **Drift detection** — flag steps whose canonical assignment would now resolve
-   differently; record `drift_markers`.
-11. **Statistics** — compute activity, case, variant, outlier, and rework stats.
-12. **Export** — write `events.xes`, `events.csv`, `stats.json`, and the updated
-    `annotations.json`.
-13. **Analysis layer** — when the session has steps, compute the heuristic
-    waste / time-study / automation / efficiency findings and write
-    `analysis.json` ([ADR-0008](../adr/0008-build-the-analysis-layer.md)).
-14. **Mining** — with `--mine`, run PM4Py to produce the activity-level
-    `process_map.bpmn` and `dfg.json`, **and** the observed-flow
-    `process_map_step.bpmn` / `process_map_phase.bpmn` (mined from the
-    annotations via `bpmn_observed.py`) plus per-case BPMNs under `process_maps/`.
+0. **Exclude self / ignored processes**: before anything else, drop PDT's
+   own interactions (the operator panel, dialogs) and any analyst-excluded
+   process or window from the *derived* stream (`process_filter.py`), so
+   self-capture noise never mines into phantom steps. Raw `events.jsonl` is
+   untouched; re-analyzing an existing session cleans it.
+1. **Coalesce + marker edits** (`_run_coalesce`): a keystroke-coalescing
+   pass (`coalesce.py`, `coalesce_typing_bursts`) folds per-keystroke
+   `value_changed` bursts on one control into a single final-value event
+   (v0.13 §1), then replays `annotations.json.marker_edits` (rename /
+   re-time / delete / insert) onto the marker stream (`marker_edits.py`).
+2. **Case assignment + app-vocab enrichment** (`_run_case_assignment`):
+   walk the Start/End marker stream, build the case tree, stamp every
+   activity/interaction with its `case_ids` stack (`case_assignment.py`
+   `assign_case_ids`; deterministic ids seeded from the session, contract
+   C9 / RP-01). Anchor-based case detection is gone: `case_assignment.py`
+   has no anchor code path anymore, so a session with no fired run markers
+   has no cases at all (a Flow instruction tells the analyst to mark runs).
+   Loaded App Vocabularies then enrich matching interactions
+   (`meaningful_name` / `screen_id` / `vocab_flags`), and
+   `app_names.build_app_names` derives a readable name per executable for
+   this recording (stats.json `meta.app_names`, deliverable-audit gap 3).
+3. **Step drafting** (`_run_step_segmentation`): the drafting rule
+   (contract C1, `step_suggest.auto_suggest_steps`) replaces the earlier
+   free-running step auto-suggester. Within one run, walk interactions in
+   time order; a step is a run of consecutive interactions on one screen,
+   ending at (a) a commit interaction, inclusive (a button / split button /
+   menu item / link invocation, or a vocab entry with `completion: true`);
+   (b) the first interaction on a different screen, exclusive; or (c) the
+   end of the run. Every drafted step carries a value-free `draft_key`
+   (`"<app>|<screen>|<commit>"`), `name_source` (`remembered` when the
+   `--names` store has that key, else `draft`), and `end_reason` (`commit`
+   / `screen_change` / `run_end`). `draft_summary()` computes the P1
+   draft-quality probe numbers on the fresh drafts (before the merge
+   below); `_merge_steps()` then keeps every analyst-owned step
+   (`manually_authored` / `edited` / `confirmed` / `hidden`) and replaces
+   only the `auto_suggested` set, dropping a fresh draft that overlaps an
+   analyst-owned step and inheriting `step_id` / `grain_keys` where a fresh
+   step re-covers the same interactions. `restamp_preserved_case_ids`
+   (contract C9) then moves a preserved step to whichever run now contains
+   it, if its own run was removed. The merged steps are written back to
+   `annotations.json` here (not deferred to the final export step).
+4. **Classification** (`_run_classification`): taxonomy classification
+   (`classification.py`) plus the analyst's `classification_overrides[]`
+   (applied last, before collapse), then two collapses: `collapse_adjacent`
+   (the per-window rows `events.csv` keeps) and
+   `collapse_activity_occurrences` (the coarser event-log rows the process
+   maps mine, so a directly-follows self-loop cannot appear).
+5. **Event-log export** (`_run_event_log_export`): build the PM4Py event
+   log and write `events.xes` + `events.csv`.
+6. **Statistics** (`_run_stats`): compute activity / case / step / variant
+   / outlier / rework stats and write `stats.json`, including the
+   `step_state_breakdown` (now `auto_suggested` / `manually_authored` /
+   `edited` / `confirmed` / `hidden`), `draft_summary`, and `app_names`
+   meta fields.
+7. **Analysis layer** (`_run_analysis`): when the session has steps,
+   compute the heuristic waste / time-study / segment / automation-candidate
+   / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md),
+   [ADR-0016](../adr/0016-segment-level-automation-candidacy.md)); always
+   compute the case-boundary-free Tier-1 blocks (`case_quality`, `facts`,
+   `findings`). A stage that fails leaves its own output key `null` and
+   records one entry in `analysis.json.stage_errors` (contract C12); the
+   findings stage does not even attempt to run if one of its own inputs
+   failed. There is no ROI stage anymore: the business-case formula lives
+   in the owner's QB app ([ADR-0029](../adr/0029-ba-helper-refocus.md) D3).
+8. **Mining + PDD export** (`_run_mining_exports`): with `--mine`, the DFG
+   (`dfg.json`), the aggregate activity-level `process_map.bpmn` (PM4Py
+   inductive miner), the observed-flow step BPMN
+   (`process_map_step.bpmn`, via `bpmn_observed.py`, with no phase-level
+   counterpart anymore), and per-case BPMNs under `process_maps/`. With
+   `--pdd-out`: render the PDD (`pdd_export.write_pdd`), built around the
+   analyst's confirmed pattern run (contract C3) and document sections
+   (contract C6); a failure here raises after every analysis output is
+   already written (contract C13 exit code 3).
+
+Boundary suggestion (suggested markers, [ADR-0017](../adr/0017-suggested-markers.md))
+and anchor candidates ([ADR-0018](../adr/0018-anchor-candidates.md)), the
+unbracketed-session recovery detectors that used to run right after case
+assignment, are gone (`marker_suggest.py` and `anchor_suggest.py` are
+deleted). A missed run marker is now added by hand in Flow. Canonical
+matching (`canonical_match.py`, stage "8" in the pre-[ADR-0029](../adr/0029-ba-helper-refocus.md)
+version of this doc) and drift detection (`phase_reconcile.py`'s
+`_compute_drift_markers`) are gone with it; both files are deleted.
 
 ## Module map (`normalization/`)
 
 | File | Role |
 |---|---|
-| `normalize.py` | CLI entry point; a **thin orchestrator** that loads the session, runs the PII-masking stage inline, then calls the `_run_*` stages from `pipeline_stages.py` in order. The pipeline logic is decomposed (Wave 0 / F4 and after) into the five focused sibling modules below; `normalize.py` re-imports the names that `normalize.X` / `from normalize import X` and the tests still reference so those resolve unchanged. |
-| `session_io.py` | Session-folder I/O: `load_events` (+ `_coerce_event_shape` defensive shaping), `load_manifest`, `load_annotations`, `write_annotations`, and the optional screenshot aHash pass (`compute_screenshot_hashes`). Pure I/O, no pipeline logic. |
+| `normalize.py` | CLI entry point; a **thin orchestrator** that loads the session, runs the self/ignored-process filter inline, then calls the `_run_*` stages from `pipeline_stages.py` in order. `normalize.py` re-imports the names that `normalize.X` / `from normalize import X` and the tests still reference so those resolve unchanged. |
+| `session_io.py` | Session-folder I/O: `load_events` (+ `_coerce_event_shape` defensive shaping), `load_manifest`, `load_annotations` / `write_annotations` (atomic, via `write_json_atomic`; raises `AnnotationsUnreadable`, contract C13 exit code 2), and the optional screenshot aHash pass (`compute_screenshot_hashes`). Pure I/O, no pipeline logic. |
 | `marker_edits.py` | `apply_marker_edits` — replays `annotations.json.marker_edits` (rename / re-time / delete / synthetic insert) onto a **derived** event stream; raw `events.jsonl` untouched (§9.3 b). |
-| `phase_reconcile.py` | Keeps regenerated `auto_*` annotations consistent with preserved `manually_authored`/`edited` ones on re-analyze: `_merge_phases`, `reconcile_phase_membership` (the dual phase↔step membership, CR M-4), and `_compute_drift_markers` (canonical-drift flags). |
-| `pipeline_config.py` | Per-session config read from `annotations.json`: the step denylist (`_step_ignored_processes`), excluded ranges (`_excluded_ranges`), and the F3 calibration surface (`_DEFAULT_CALIBRATION` / `_calibration` / `_step_calibration_kwargs`). |
-| `pipeline_stages.py` | The named pipeline stage helpers (`_run_coalesce` / `_run_case_assignment` / `_run_suggestions` / `_run_step_segmentation` / `_run_classification` / `_run_event_log_export` / `_run_stats` / `_run_analysis` / `_run_mining_exports` + `_init_existing_anno`). Each is the verbatim body of one stage; `normalize()` is now a thin orchestrator threading shared state between them. Heavy optional deps (pm4py, analysis, bpmn_*, pdd_export) stay function-local. |
-| `case_assignment.py` | Marker-based case tree + `case_ids` stamping, **and** anchor-based active-case detection/stamping (`detect_cases_from_anchors` / `stamp_anchor_cases` — [ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)). |
+| `process_filter.py` | `filter_excluded`, which drops PDT's own interactions and any analyst-excluded process/window from the derived stream, before coalesce/case-assignment. |
+| `pipeline_config.py` | Per-session config read from `annotations.json`: the step denylist (`_step_ignored_processes`), excluded ranges (`_excluded_ranges`), and the calibration surface (`_DEFAULT_CALIBRATION` / `_calibration` / `_step_calibration_kwargs`): only `coalesce_idle_ms` and `filter_browser_chrome` still do anything, and the old segmenter's other knobs are read and ignored (`_IGNORED_CALIBRATION_KEYS`). |
+| `pipeline_stages.py` | The named pipeline stage helpers (`_run_coalesce` / `_run_case_assignment` / `_run_step_segmentation` / `_run_classification` / `_run_event_log_export` / `_run_stats` / `_run_analysis` / `_run_mining_exports` + `_init_existing_anno`). Each is one stage; `normalize()` is a thin orchestrator threading shared state between them. Heavy optional deps (pm4py, analysis, bpmn_observed, pdd_export) stay function-local. |
+| `case_assignment.py` | Marker-based case tree + `case_ids` stamping (`assign_case_ids` / `collect_cases`), with deterministic case ids seeded from the session (contract C9 / RP-01). No anchor-based case detection anymore ([ADR-0029](../adr/0029-ba-helper-refocus.md)). |
 | `recognition.py` | Classifies an interaction into a semantic *category* from documented platform/framework signatures, loaded from `shared/recognition-patterns.json` (shared with the viewer). `recognize()` / `is_browser_chrome()` ([ADR-0011](../adr/0011-platform-recognition-layer.md)). |
 | `classification.py` | Rule-based activity classification against the taxonomy; an unmatched activity falls back to a **semantic** label from the dominant recognised interaction category (`Form entry -- chrome.exe`) rather than `Unclassified -- app`. |
 | `classification_overrides.py` | Applies the analyst's reclassification corrections (`annotations.json.classification_overrides`) during normalization — instance + rule scope, after taxonomy classification (design §6.1 / §7.2). |
-| `step_suggest.py` | Heuristic `auto_suggested` step grouping; stamps the value-free `process_label` and the `grain_keys` (`element`/`screen`/`app`) the view-time grain ladder rolls up (ADR-0024); the step-name prefix is value-freed via `screen_label` (shared `screen-label-patterns.json`, §6a); owns `_merge_steps()` and `_inherit_step_identity()` (step-identity inheritance across re-analyze). |
-| `marker_suggest.py` | Change-point detector for unbracketed sessions — scores idle-gap / home-app-return / transaction-ID-typed / app-cluster signals over the uncased stretches and emits paired Start/End suggestions; `suggest_markers` + signature-keyed `merge_marker_suggestions`. Hand-rolled, pandas + stdlib only ([ADR-0017](../adr/0017-suggested-markers.md)). |
-| `anchor_suggest.py` | Pattern-mines `value_changed`/`text_changed` fields, simulates `detect_cases_from_anchors` per candidate, and ranks the fields that best segment the session into cases; `suggest_anchors` + `merge_anchor_candidates` + `coerce_anchor_override` (validates/strips the analyst's accepted override before it reaches case assignment). Stdlib only ([ADR-0018](../adr/0018-anchor-candidates.md)). |
-| `canonical_match.py` | Matches interactions to a canonical step set (`auto_matched`). |
-| `app_vocab.py` | Loads and applies App Vocabularies to enrich interactions. Also authors starter vocabs: `bootstrap_from_session` (interacted-only) and `bootstrap_from_snapshot` (full live-window control set via the volatility picker — [ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)). |
-| `discover_vocab.py` | Point-and-learn discovery entry point ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)) — spawned by the viewer's "Discover from window"; runs `signature_pick` over a two-pass window snapshot, then `app_vocab.bootstrap_from_snapshot`, emitting a stable-signature vocab skeleton for the editor. On-device; discovery-provenance fields stripped from the persisted YAML. |
-| `signature_pick.py` | **Volatility-diff signature picker** (the ADR-0025 clever core). Joins a two-pass window snapshot's controls by a stability-independent key (role + label + ancestry + bounds bucket — never the candidate id), marks an `automation_id` volatile when it changed across passes *or* matches a per-render pattern (`^input-\d+$`, bare GUID, …), then picks the most-stable signature down the ADR-0023 ladder, skipping volatile fields — reproducing the analyst's hand-judged Office-idMso / ServiceNow-id / Salesforce-label calls. Pure-Python (no pandas/yaml). |
-| `coalesce.py` | Folds a burst of per-keystroke `value_changed` events on one control into a single final-value event (`coalesce_typing_bursts`, v0.13 §1) — runs early (stage 1) so later stages never see partial typed values. |
-| `pii_masking.py` | Structural PII masking (§11f) — `mask_events` redacts sensitive field **values** in the derived stream (raw `events.jsonl` untouched) with a one-way, join-preserving `«category#hash»` token; default rule-set + analyst `pii_masking_config`. Runs right after coalesce. stdlib-only. |
+| `step_suggest.py` | **The drafting rule** (contract C1, `auto_suggest_steps`): one step per screen visit, ending at its commit action; stamps `draft_key` / `name_source` / `end_reason`, the value-free `process_label`, and the `grain_keys` (`element`/`screen`/`app`, [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md), narrowed); the step-name prefix and `draft_key`'s screen component are value-freed via `screen_label` (shared `screen-label-patterns.json`, §6a). Owns `_merge_steps()` (keeps `manually_authored`/`edited`/`confirmed`/`hidden`, replaces `auto_suggested`), `_inherit_step_identity()`, `restamp_preserved_case_ids` (C9), `draft_summary()` (the P1 probe numbers), and `load_remembered_names()` (reads the `--names` store, C4). |
+| `app_vocab.py` | Loads and applies App Vocabularies to enrich interactions (unchanged matching engine). The bootstrap/discovery authoring functions it used to expose are gone with point-and-learn discovery ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md), superseded). |
+| `app_names.py` | **New.** `build_app_names` derives a readable display name per executable in the recording (an app vocabulary's name, else a window-title word match, else the capitalized executable name (never a fabricated product name); `display_name` looks one up. Feeds stats.json `meta.app_names`, the findings claims, the findings fact strip, and the PDD (deliverable-audit gap 3). Pure stdlib. |
+| `coalesce.py` | Folds a burst of per-keystroke `value_changed` events on one control into a single final-value event (`coalesce_typing_bursts`, v0.13 §1). Runs first so later stages never see partial typed values. |
 | `stats_compute.py` | Builds `stats.json` (activity / case / **step** / variant / outlier / rework / meta); `step_stats` + `step_variants` group by `process_label` so they don't fragment per instance. |
-| `analysis*.py` | Analysis layer — `analysis.py` orchestrates `analysis_waste` / `_time_study` / `_automation` / `_efficiency` / `analysis_roi` over the `analysis_common` per-step segmentation. Time-study + automation group steps by `step_group_key` (`canonical_step_id → process_label → step_id`) so repeated work collapses to one row ([ADR-0008](../adr/0008-build-the-analysis-layer.md), [ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)); `score_automation` ranks candidates by priority. Writes `analysis.json`. |
-| `analysis_roi.py` | **€-ROI layer** (§11c) — projects each multi-instance automation candidate into a conservative / expected / optimistic savings band (hours/yr, or € net/yr once `roi_inputs` sets a labour rate); the headline total is a pure, order-insensitive sum over candidates, so it is **grain-invariant** (the view-time grain slider cannot move it). |
-| `xes_export.py` | Emits `events.xes` (IEEE 1849-2016), one trace per top-level case. |
-| `step_csv.py` | Flat CSV of step entities for pivot analysis. |
+| `case_quality.py`, `motifs.py`, `facts.py`, `findings.py` | The Tier-1 measured blocks in `analysis.json`: `case_quality` (the Tier-2 gatekeeper), `motifs`/`find_bounces` (repeated-sequence + app-bounce mining feeding `facts`), `facts` (direct measurements, no heuristics), `findings` (the detector library's templated claims + evidence, `app_names`-aware). All additive; kept in full. |
+| `analysis*.py` | Analysis layer: `analysis.py` orchestrates `analysis_waste` / `_time_study` (`analysis_segments`, `analysis_time_study`) / `_automation` (`analysis_automation`, a flat `AUTOMATABLE_FRACTION = 0.7` now that the per-segment `roi_inputs` override is gone) / `_efficiency` (`analysis_efficiency`) over the `analysis_common` per-step segmentation. Time-study + automation group steps by `step_group_key` (`canonical_step_id → process_label → step_id`) so repeated work collapses to one row ([ADR-0008](../adr/0008-build-the-analysis-layer.md), [ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)); `score_automation` ranks candidates by priority. Writes `analysis.json`, including `stage_errors` (contract C12). No ROI stage: `analysis_roi.py` is deleted ([ADR-0029](../adr/0029-ba-helper-refocus.md) D3). |
+| `xes_export.py` | Emits `events.xes` (IEEE 1849-2016), one trace per top-level case. Still produced; its eventual removal (activity-level mining cut) is a later, not-yet-landed phase. |
 | `mining.py` | PM4Py wrappers — inductive / heuristics miners, DFG. |
-| `bpmn_observed.py` | **Observed-flow** Step/Phase BPMN, mined from the analyst's annotations (one trace per case over step/phase labels → PM4Py → BPMN with a pure-Python layout). Needs no Process Template ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)). |
-| `bpmn_step.py` / `bpmn_phase.py` | Template-derived Step/Phase BPMN (needs `--canonical`); the viewer + exports prefer the observed-flow file above when there is no template. |
-| `pdd_export.py` | Process-definition `.docx` export. |
+| `bpmn_observed.py` | **Observed-flow** Step BPMN, mined from the analyst's annotations (one trace per case over step labels → PM4Py → BPMN with a pure-Python layout). Needs no Process Template ([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md), narrowed). No phase-level counterpart anymore (phases are cut). |
+| `pdd_export.py` | The PDD `.docx` export, tool-neutral wording. Built around the confirmed **pattern run** (contract C3, the detailed step-by-step section), the analyst's **document sections** (contract C6), one measured timings table, and the differences between runs, each aligned to the pattern run. Section 1 (findings) is rendered from `memo_export`'s model. Honesty rules kept: hidden steps never appear (RP-06), a failed analysis stage says so (C12), applications show readable names (`app_names`, DA gap 3). |
+| `memo_export.py` | The findings-content **model**, not an export of its own anymore: `build_memo_model` / `write_memo_into_docx` compute the Tier-1 facts + findings + (gated) Tier-2 case-based numbers that `pdd_export` renders into the PDD's section 1, with the analyst's `memo_selection[]` picking which findings show. The standalone findings-memo `.docx` and its `--memo-out` flag are gone ([ADR-0029](../adr/0029-ba-helper-refocus.md)). |
+| `transcript_import.py` | **New** (contract C8). Parses a Teams `.vtt` or `.docx` transcript into timestamped, speaker-tagged segments (stdlib only: `zipfile` + `xml.etree` for `.docx`), copies the source file into `transcript/`, and writes `transcript.json`. Its own CLI entry point (not a `normalize.py` flag); exit codes documented in [shared/SCHEMA.md](../../shared/SCHEMA.md). |
 | `log_setup.py` | Configures the rolling `normalize.log`. |
 
-## Canonical sets & App Vocabularies
+Deleted with the features they served ([ADR-0029](../adr/0029-ba-helper-refocus.md)):
+`marker_suggest.py` (suggested markers), `anchor_suggest.py` (anchor
+candidates), `canonical_match.py` (canonical step matching), `phase_reconcile.py`
+(phase membership + canonical-drift markers, since both phases and
+canonical matching are gone), `discover_vocab.py` + `signature_pick.py` (point-and-learn
+vocabulary discovery), `pii_masking.py` (structural PII masking),
+`analysis_roi.py` (the EUR-ROI layer), `step_csv.py` (`--step-csv-out`), and
+`bpmn_step.py` / `bpmn_phase.py` (template-derived BPMN, needed `--canonical`).
 
-Two external YAML layers shape the output beyond the raw heuristics:
+## App Vocabularies, light vocab, and light template
 
-- **Canonical step sets** (`--canonical`) — a reference definition of "the right
-  process steps". Matching interactions against it produces `auto_matched` steps
-  and a `match_rate`; drift detection watches for the canonical set shifting under
-  prior analyst assignments.
-- **App Vocabularies** (`normalization/app_vocabularies/*.yaml`) — per-application
-  dictionaries mapping raw UIA fields to human-readable `meaningful_name` /
-  `screen_id` / default `vocab_flags`. Rationale: [ADR-0002](../adr/0002-app-vocabularies.md).
+**App Vocabularies** (`normalization/app_vocabularies/*.yaml`) are unchanged:
+per-application dictionaries mapping raw UIA fields to human-readable
+`meaningful_name` / `screen_id` / default `vocab_flags`, loaded and matched
+by `app_vocab.py`. Rationale: [ADR-0002](../adr/0002-app-vocabularies.md).
+Authoring one by hand, or bootstrapping one from a session or a live window
+snapshot, is a workbench flow the viewer no longer has
+([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md), superseded); the
+shipped vocabularies (`normalization/app_vocabularies/`) still load and
+match exactly as before.
+
+**Canonical step sets** (`--canonical`, "the right process steps" matched
+against a reference definition) are gone entirely: no CLI flag, no
+`canonical_match.py`, no `normalization/canonical/` directory.
+
+Two lighter mechanisms replace what canonical sets and vocabulary discovery
+used to do, both viewer-side (contracts C4 / C5, [ADR-0029](../adr/0029-ba-helper-refocus.md)
+AD-7 / AD-8): a **remembered-names store**, keyed by a drafted step's
+`draft_key`, that `--names` feeds back into drafting (step 3 above); and a
+**saved-process store** the viewer matches a session against by `draft_key`
+overlap, with no pipeline involvement at all (`normalize.py` never reads
+it). See [shared/SCHEMA.md](../../shared/SCHEMA.md) for both shapes.
 
 ## Recognition layer
 
@@ -166,10 +195,13 @@ above. Rationale and grounding: [ADR-0011](../adr/0011-platform-recognition-laye
 ## Outputs
 
 All written back into the same session folder:
-`events.xes`, `events.csv`, `stats.json`, `analysis.json` (when the session has
-steps), `process_map.bpmn` + `dfg.json` + the observed-flow
-`process_map_step.bpmn` / `process_map_phase.bpmn` + per-case `process_maps/`
-(with `--mine`), an updated `annotations.json`, and `normalize.log`. Re-running is
+`events.xes`, `events.csv`, `stats.json`, `analysis.json` (case-based blocks
+always; the step-grained blocks once the session has steps),
+`process_map.bpmn` + `dfg.json` + the observed-flow `process_map_step.bpmn`
+(no phase-level counterpart) + per-case `process_maps/` (with `--mine`), the
+PDD `.docx` (with `--pdd-out`), an updated `annotations.json`, and
+`normalize.log`. `transcript_import.py` additionally writes `transcript.json`
+and a copy of the source file, from its own CLI. Re-running is
 non-destructive — `stats.json.meta.normalization_run_at` lets consumers detect
 stale derivatives. Field-level detail is in
 [`shared/SCHEMA.md`](../../shared/SCHEMA.md) → "Post-normalization artifacts".

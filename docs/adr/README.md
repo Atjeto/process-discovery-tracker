@@ -26,26 +26,27 @@ distinct branch — see [CONTRIBUTING](../../CONTRIBUTING.md)).
 | 0006 | Sequencing the improvements backlog | Accepted |
 | 0007 | Activity-event granularity — title in the run key | Accepted |
 | 0008 | Build the analysis layer now | Accepted |
-| 0009 | Normalization redesign (v0.13) | Superseded in part |
+| 0009 | Normalization redesign (v0.13) | Superseded in part (canonical/template matching further cut by ADR-0029) |
 | 0010 | UX overhaul — viewer interaction model + recorder usability | Accepted |
 | 0011 | Platform/framework recognition layer | Accepted |
-| 0012 | Active-case stamping & the notation × level map matrix | Accepted |
+| 0012 | Active-case stamping & the notation × level map matrix | Narrowed by ADR-0029 (anchor-based case detection and the map matrix cut; marker-based stamping stays) |
 | 0013 | Value-free step grouping (`process_label`) & map readability | Accepted |
 | 0014 | Distribution model — GitHub Releases + electron-packager | Accepted |
 | 0015 | Intra-session repetition alignment — curate one, propagate | Accepted |
-| 0016 | Segment-level automation candidacy | Accepted |
-| 0017 | Suggested markers — change-point detection | Accepted |
-| 0018 | Anchor candidates — transaction-ID auto-extraction | Accepted |
+| 0016 | Segment-level automation candidacy | Narrowed by ADR-0029 (the EUR-ROI extension cut; segment-grain candidacy stays) |
+| 0017 | Suggested markers: change-point detection | Superseded by ADR-0029 (cut) |
+| 0018 | Anchor candidates: transaction-ID auto-extraction | Superseded by ADR-0029 (cut) |
 | 0019 | Reference Maps — decoupled, editable BPMN copies | Accepted |
 | 0020 | — | **Gap (never reuse)** |
 | 0021 | — | **Gap (never reuse)** |
 | 0022 | — | **Gap (never reuse)** |
 | 0023 | Recorder capture-confidence model + OCR last resort (§11e) | Accepted |
-| 0024 | Step grain as a view-time roll-up (§11b, reframed) | Accepted |
-| 0025 | In-app vocabulary discovery — "point-and-learn" | Accepted |
+| 0024 | Step grain as a view-time roll-up (§11b, reframed) | Narrowed by ADR-0029 (the grain slider cut; the `grain_keys` data model stays) |
+| 0025 | In-app vocabulary discovery ("point-and-learn") | Superseded by ADR-0029 (cut; light vocab replaces it) |
 | 0026 | Ship unsigned by design; services-boutique scope | Accepted |
 | 0027 | Retire the per-step path/segment flags — keep only `waste` | Accepted |
-| 0028 | Case-scoped screen visit — the analyst-facing unit of work | Accepted |
+| 0028 | Case-scoped screen visit: the analyst-facing unit of work | Superseded by ADR-0029 (cut; the runs-and-steps view replaces it) |
+| 0029 | BA-helper refocus | Accepted |
 
 ## Why 0020–0022 are dead gaps
 
@@ -54,4 +55,4 @@ pluggable storage backend, calibration config), but that work shipped as direct 
 + the Fit Analysis, never as standalone ADRs. 0019 was later (re)used for Reference Maps;
 the numbering drifted **once** because "reserved" lived only in prose. 0020–0022 are now
 permanent dead gaps under the `max+1` rule, and this registry + its CI guard exist so the
-drift can't recur. **The next ADR is 0029.**
+drift can't recur. **The next ADR is 0030.**

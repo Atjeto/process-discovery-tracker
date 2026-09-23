@@ -4,6 +4,96 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]: working title 2.0.0, the BA-helper refocus
+
+Draft notes for everything landed so far in the BA-helper refocus; a later
+release pass finalizes the version number and date. The app is refocused
+from a product for a buyer into a tool for the owner's own work as a
+process manager / business analyst: record a process a few times with a
+single run hotkey, confirm the recorder's drafted steps for one run, and
+get a process map and a tool-neutral PDD. The complete prior product is
+preserved on the `product-edition` branch, tagged `product-edition-v1.5.0`,
+not deleted. Full rationale and the complete list of what changed:
+[ADR-0029](docs/adr/0029-ba-helper-refocus.md).
+
+### Added
+
+- **The recorder drafts a session's steps**, one step per screen visit
+  ending at its commit action (a button, menu command, or link); the
+  analyst confirms a run instead of authoring every step by hand, then
+  reviews how the other runs differ.
+- **Names are remembered**: naming a drafted step once applies that name to
+  every future draft of the same control and screen, within the session
+  and across later sessions.
+- **Saved processes**: a confirmed run's pattern can be saved and matched
+  against a later session of the same process, so it opens already
+  drafted and named.
+- **Meeting transcript import**: a Teams `.vtt` or `.docx` transcript is
+  parsed into timestamped, speaker-tagged segments and aligned to the
+  session; nothing in the app interprets what was said.
+- **Readable application names**: exports and findings show "Microsoft
+  Excel" or a recording's own window-title wording instead of a raw
+  executable name like `EXCEL.EXE`.
+- **Runs, not markers**: the capture app's tray, hotkey guidance, and Live
+  Session window speak of starting and ending runs. One hotkey starts the
+  next run (auto-ending whichever run is still open); stopping the
+  session ends the last open run on its own. A one-screen end summary
+  (run count, duration, interaction count) replaces the previous
+  multi-question close-out.
+- **A durable record of dropped events**: a write batch that could not be
+  saved is now counted and recorded on the session timeline instead of
+  only appearing in a local log file.
+
+### Changed
+
+- **The PDD is tool-neutral** and is built around the run the analyst
+  confirmed: that run's steps, in order, are the detailed process
+  description; the differences between it and the other runs are the
+  observed variations; one table holds every run's measured timings; and
+  the analyst's own purpose / scope / contacts / business-rules /
+  exceptions / notes fill the document's front matter and survive a
+  re-export.
+- **The findings memo's content now renders inside the PDD** (as its
+  opening section) instead of as a separate document.
+- **Case identity is stable across re-analysis**: a confirmed or edited
+  step no longer loses its place after a re-analyze.
+- **A failed export or analysis stage is reported honestly**: the viewer
+  no longer opens a stale document after a failed export, and a stage
+  that could not run says so instead of rendering as a measured zero.
+- **The recorder sidecar is supervised per session**: a crash-looping
+  recorder now reaches its restart limit and reports itself dead instead
+  of restarting forever unnoticed; a spawn failure is now reported and
+  retried the same way a crash is.
+
+### Removed
+
+Preserved in full on the `product-edition` branch.
+
+- **Case detection from anything other than run markers.** Suggested
+  markers and anchor-candidate detection (for a recording with no fired
+  markers) are cut; a missed run marker is now added by hand.
+- **Canonical step sets and the Process Template workbench**, replaced by
+  saved processes (above).
+- **The in-app vocabulary discovery workbench** ("Discover from window"
+  and the App Library match workbench), replaced by remembered names
+  (above); the shipped application vocabularies still enrich control
+  names as before.
+- **Structural PII masking and the data-posture setting.** For internal
+  use, real example values make a better PDD; password redaction at
+  capture time is unchanged.
+- **The in-app EUR-ROI module and the PDD's ROI table.** The business-case
+  formula now lives in the owner's own project-management tool; PDT
+  exports the measured inputs it needs in a later release.
+- **Phases**, the phase-level process map, and the map's detail (grain)
+  slider and notation-by-level matrix.
+- **Compare Sessions**, the case-by-screen work-item view, cross-machine
+  sync markers, app-vocabulary prep sessions, the worker close-out
+  wizard's observed-value questions, and the per-marker label picker.
+- **Team taxonomy, the project layer, the command palette, and "Copy for
+  LLM."** No AI ships inside the product.
+- **The standalone findings memo document and the HTML findings report**;
+  their content now serves the PDD instead (see Changed, above).
+
 ## [1.5.0] - 2026-07-03 — approachability redesign
 
 The largest usability cycle since 1.0. Trigger: the owner "struggled for months

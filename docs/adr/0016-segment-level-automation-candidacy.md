@@ -1,6 +1,7 @@
 # ADR-0016: Segment-level automation candidacy — coherent stretches, not atomic clicks
 
 **Status:** Accepted — implemented 2026-05-28 (`normalization/analysis_segments.py`, `normalization/analysis_automation.py`, the Analysis & Compare-Sessions views, PDD §4)
+**Note (2026-09-23):** Narrowed by [ADR-0029](0029-ba-helper-refocus.md): the EUR-ROI extension (`analysis_roi.py`, the `roi` key in `analysis.json`, and `roi_inputs`) is cut. Segment-grain automation candidacy itself stays.
 **Date:** 2026-05-28
 **Deciders:** Project owner, analyst (process-discovery lead)
 **Supersedes:** the per-step automation-candidacy mechanism of [ADR-0008](0008-build-the-analysis-layer.md)

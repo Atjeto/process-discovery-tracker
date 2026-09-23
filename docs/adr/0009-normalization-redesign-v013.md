@@ -1,6 +1,7 @@
 # ADR-0009: Normalization Redesign (v0.13)
 
 **Status:** Superseded in part / redirected (2026-05-22) — see the note below; the replacement direction is now formalized in [ADR-0015](0015-intra-session-repetition-alignment.md)
+**Note (2026-09-23):** The canonical and Process Template matching this ADR's Issue 5 extended is fully cut by [ADR-0029](0029-ba-helper-refocus.md); see that ADR's "What was cut" section.
 **Date:** 2026-05-19
 **Deciders:** Analyst (process-discovery lead)
 **Input:** SPEC-v0.13-normalization-redesign.md

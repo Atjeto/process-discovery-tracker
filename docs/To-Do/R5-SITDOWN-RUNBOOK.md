@@ -1,5 +1,11 @@
 # R5 sit-down runbook — three real sessions to three timed memos
 
+> **Superseded (2026-09-23) by [ADR-0029](../adr/0029-ba-helper-refocus.md):** the
+> approachability-redesign surfaces this runbook ledgers (the memo export, the App
+> Library workbench, Compare Sessions, and others) are cut or reworked. Its
+> replacements are [P1-DRAFT-PROBE-RUNBOOK.md](P1-DRAFT-PROBE-RUNBOOK.md) and
+> [P5-REAL-SESSION-GATE.md](P5-REAL-SESSION-GATE.md). Kept for history, not deleted.
+
 This is the R5 instrument: the owner's keyboard protocol to extract empirical proof from three real captures. Closes R5 when three completed ledgers exist + the pruning pass executes.
 
 ## Preconditions (stop if any is unmet)

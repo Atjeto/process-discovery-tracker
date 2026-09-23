@@ -1,6 +1,7 @@
 # ADR-0028: The case-scoped screen visit is the analyst-facing unit of work
 
 **Status:** Accepted (direction pre-approved by [APPROACHABILITY-REDESIGN-2026-07-03](../To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md) §5 R3; owner real-session validation pending)
+**Note (2026-09-23):** Superseded by [ADR-0029](0029-ba-helper-refocus.md): `group_annotations[]` and the case by screen work-item view are cut. The runs-and-steps view (confirm the pattern run, then a differences view for the other runs) replaces it.
 **Date:** 2026-07-03
 **Deciders:** Project owner (approachability critique), analyst (process-discovery lead)
 **Related:** [ADR-0024](0024-step-grain-as-view-time-rollup.md) (the containment ladder + the view-time roll-up this extends), [ADR-0009](0009-normalization-redesign-v013.md) (why fragment-tuning at normalize time is banned — "model mismatch, not a tuning bug"), [ADR-0013](0013-value-free-grouping-and-map-readability.md) (the value-free `screen_label` / `screenType` key this reuses), [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (anchor/marker case stamping), [ADR-0015](0015-intra-session-repetition-alignment.md) (curate-one-propagate, the cross-case sibling of this cross-bounce merge).

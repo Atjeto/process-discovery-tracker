@@ -22,12 +22,16 @@ Every interaction entry may also carry record semantics; a vocab without them
 | `object` | free text (the business object, e.g. `customer record`) | human / LLM-suggested (always analyst-reviewed) | authoring/export context |
 | `means` | free text (what using the control means in the process) | human / LLM-suggested | authoring/export context |
 | `completion` | bool | **auto-heuristic** — Button + save/submit/send/OK label | `step_suggest` ends a step when the control is invoked |
-| `case_id_source` | bool | analyst judgment (never auto) | `anchor_suggest` adds a small scoring **bonus** (never a gate) |
+| `case_id_source` | bool | analyst judgment (never auto) | authored metadata only; its one consumer (the anchor-candidate detector) was cut ([ADR-0029](../../docs/adr/0029-ba-helper-refocus.md)) |
 | `carries_value` | bool | **auto** — value-holding control role / observed typing | `facts.rekey_details` admits the field's values at a relaxed min length |
 
-Discovery (`Discover from window…` / `bootstrap_from_snapshot`) pre-fills the
-auto columns on every row, so the App Library pass is a review checklist, not
-authoring into blank boxes.
+Point-and-learn discovery ("Discover from window…", the volatility-diff
+picker, and `app_vocab`'s bootstrap functions) is cut
+([ADR-0025](../../docs/adr/0025-in-app-vocabulary-discovery.md), superseded
+by [ADR-0029](../../docs/adr/0029-ba-helper-refocus.md)): there is no more
+tool that pre-fills a vocab entry from a live window. Loading and matching
+(below) are unchanged; authoring a new entry is by hand now (see "Author
+your own").
 
 ## Shipped vocabularies (§11d)
 
@@ -58,20 +62,23 @@ order-to-cash demo and should be retuned to your system before a real engagement
 
 ## Author your own
 
-1. Capture a session of the target app.
-2. Bootstrap a starter (signatures with empty names + `seen_count` hints):
+There is no bootstrap or discovery tool anymore ([ADR-0029](../../docs/adr/0029-ba-helper-refocus.md));
+write the YAML by hand, following the shape of any file in this folder:
 
-   ```
-   python normalize.py <session_folder> --bootstrap-vocab-out myapp.yaml \
-       --vocab-id myapp --vocab-name "My App"
-   ```
-
-3. Fill in each `name:` with a plain-English action, group controls into
-   `screens`, drop the `seen_count` comments, and set `flags: { waste: true }`
-   where useful (`waste` is the only flag that rolls up onto a step —
-   [ADR-0027](../../docs/adr/0027-retire-per-step-path-flags.md); any other flag
-   keys are ignored).
-4. Drop the file here and re-normalize — `stats.json.meta` reports
+1. Capture a session of the target app, and use the structure-only
+   `scripts/inspect-events.js` to see the `control_type` / `automation_id` /
+   `name` / `class_name` a control was captured with (never inspect a real
+   capture directly: see CLAUDE.md's *Environment* section).
+2. Write a `scope` (process name + window-title regex) and one `signature`
+   entry per control you want named, each `name:` a plain-English action;
+   group controls into `screens` where useful, and set
+   `flags: { waste: true }` where it applies (`waste` is the only flag that
+   rolls up onto a step, per [ADR-0027](../../docs/adr/0027-retire-per-step-path-flags.md);
+   any other flag keys are ignored).
+3. Drop the file here and re-normalize: `stats.json.meta` reports
    `app_vocabulary_matches` and per-app `vocab_coverage`.
 
-Or edit any of these as a form in the viewer's **App Library** tab.
+For a single step the analyst names once in the viewer, light vocab (a
+remembered-names store keyed by the step's `draft_key`, contract C4) is
+usually simpler than hand-editing a vocab file; a vocab file is for naming a
+control's identity itself, reusable across every session of that app.

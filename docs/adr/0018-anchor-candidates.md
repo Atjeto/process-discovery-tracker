@@ -1,6 +1,7 @@
 # ADR-0018: Anchor candidates — transaction-ID auto-extraction for unbracketed sessions
 
 **Status:** Accepted — implemented 2026-05-28 (`normalization/anchor_suggest.py`, the anchor-candidates panel in `viewer/views/flow-view.js`, `shared/SCHEMA.md` §`anchor_candidates`)
+**Note (2026-09-23):** Superseded by [ADR-0029](0029-ba-helper-refocus.md): `anchor_suggest.py` and anchor-based case detection are cut. Case detection is markers only now.
 **Date:** 2026-05-28
 **Deciders:** Project owner, analyst (process-discovery lead)
 **Related:** [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (the anchor mechanism this feature feeds), [ADR-0016](0016-segment-level-automation-candidacy.md) (the segment-signature precedent), [ADR-0017](0017-suggested-markers.md) (the companion change-point detector for the OTHER path to bracket unbracketed work), [ML Integration Recommendation](../To-Do/) Phase 0 item #5.
