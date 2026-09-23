@@ -1,10 +1,4 @@
 {
-  "dfg": {
-    "edges": 3,
-    "end_activities": 1,
-    "nodes": 4,
-    "start_activities": 1
-  },
   "meta": {
     "app_vocabulary_matches": 21,
     "case_count": 3,
@@ -23,6 +17,20 @@
     }
   },
   "session": "sess-2026-0513-1130",
+  "step_bpmn": {
+    "endEvent": 1,
+    "startEvent": 1,
+    "task": 7,
+    "task_names": [
+      "Excel - Order Tracking.xlsx: Save workbook",
+      "Outlook - Order confirmation: Send",
+      "Salesforce - Account lookup: Open customer record",
+      "Salesforce - Account lookup: Search",
+      "Salesforce - Order: Save order",
+      "va01: Check document",
+      "va01: Create sales order"
+    ]
+  },
   "steps": {
     "count": 21,
     "process_labels": [

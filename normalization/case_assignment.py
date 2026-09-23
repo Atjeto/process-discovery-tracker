@@ -1,8 +1,9 @@
 """Case-ID assignment from markers (§5.2).
 
-Walks the marker stream, builds the case tree, and stamps every
-activity event with its `case_ids` list (innermost first). Activity
-events captured outside any open marker get an empty list.
+Walks the marker stream and stamps every activity event with its
+`case_ids` list: the open run's case id (runs never nest, see
+assign_case_ids). Activity events captured outside any open marker get
+an empty list.
 
 Raw marker events carry no case_id at capture time -- the capture
 layer writes start/end + label; case identity is fully derived here.
@@ -53,7 +54,8 @@ def assign_case_ids(
     """Return a new event list with `case_ids` stamped on activity events.
 
     Markers and system events pass through untouched (markers also get
-    `case_id` and `parent_case_id` for downstream reference).
+    `case_id` and `parent_case_id` for downstream reference; a start marker
+    also gets `ends_case_id`, the run it ended, or None).
 
     `session_id` seeds the deterministic case ids (see marker_case_id). The
     start marker's event id alone is already unique within one recording, so
@@ -84,11 +86,19 @@ def assign_case_ids(
                 start_seen[eid] = start_seen.get(eid, 0) + 1
                 seed = eid if start_seen[eid] == 1 else f"{eid}#{start_seen[eid]}"
                 case_id = marker_case_id(session_id, seed)
-                parent = stack[-1]["case_id"] if stack else None
+                # Runs never nest. A Start that arrives while a run is open
+                # ends that run first, as the capture app's one-key run hotkey
+                # does (it writes an End with reason auto_close_for_sibling,
+                # then the Start). Nesting is no longer supported because a run
+                # is one pass through the process: a Start inserted in the
+                # viewer while a run was open used to nest every later run
+                # inside that run. No End marker is invented; the Start names
+                # the run it ended (ends_case_id) and collect_cases ends it here.
+                ended = stack.pop()["case_id"] if stack else None
                 stack.append({
                     "case_id": case_id,
                     "label": label,
-                    "parent_case_id": parent,
+                    "parent_case_id": None,
                     "start_ts": ev["timestamp"],
                 })
                 # Annotate the event itself with assigned IDs
@@ -96,7 +106,8 @@ def assign_case_ids(
                 new_ev["data"] = {
                     **data,
                     "case_id": case_id,
-                    "parent_case_id": parent,
+                    "parent_case_id": None,
+                    "ends_case_id": ended,
                 }
                 out.append(new_ev)
             elif mtype == "end":
@@ -125,7 +136,9 @@ def assign_case_ids(
 
 
 def collect_cases(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Build a case-id -> {label, parent_case_id, start_ts, end_ts, activities} map."""
+    """Build a case-id -> {label, parent_case_id, start_ts, end_ts, activities} map.
+    A run that the next Start ended (runs never nest) ends at that Start, with
+    the capture app's reason for it, auto_close_for_sibling."""
     cases: dict[str, dict[str, Any]] = {}
     for ev in events:
         if ev.get("type") != "marker":
@@ -136,6 +149,10 @@ def collect_cases(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         if not case_id:
             continue
         if mtype == "start":
+            ended = data.get("ends_case_id")
+            if ended in cases and cases[ended]["end_ts"] is None:
+                cases[ended]["end_ts"] = ev["timestamp"]
+                cases[ended]["end_reason"] = "auto_close_for_sibling"
             cases[case_id] = {
                 "case_id": case_id,
                 "label": data.get("label"),

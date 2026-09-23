@@ -1,36 +1,22 @@
 """Process mining + BPMN export (§8).
 
-Wraps PM4Py's discovery algorithms. Inductive miner is the default;
-heuristics miner is exposed for noisier shift-review data. DFG is
-the first-pass exploration view.
+Wraps PM4Py's inductive miner and serializes its BPMN with a pure-Python
+layout. The step-level observed-flow BPMN (bpmn_observed.py) is the only
+caller.
 """
 
 from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from typing import Any
 
 import pm4py
-from pm4py.objects.bpmn.obj import BPMN
 from pm4py.objects.log.obj import EventLog
 
 
 def discover_inductive(log: EventLog, noise_threshold: float = 0.2):
     """Inductive miner with noise filtering. Returns a BPMN object."""
     return pm4py.discover_bpmn_inductive(log, noise_threshold=noise_threshold)
-
-
-def discover_heuristics(log: EventLog, dependency_threshold: float = 0.5):
-    """Heuristics miner -- returns a heuristic net. More tolerant of
-    unusual sequences than inductive."""
-    return pm4py.discover_heuristics_net(log, dependency_threshold=dependency_threshold)
-
-
-def discover_dfg(log: EventLog):
-    """Directly-Follows Graph -- returns (dfg, start_activities, end_activities).
-    Useful as a first-pass exploration before formal mining."""
-    return pm4py.discover_directly_follows_graph(log)
 
 
 # Map PM4Py BPMN node classes -> BPMN 2.0 XML element local-names.
@@ -269,8 +255,11 @@ def export_bpmn(bpmn_obj, out_path: str) -> None:
         incoming[tid].append(fid)
 
     for n in nodes:
-        cls = type(n).__name__
-        tag = _NODE_TAG.get(cls, "task")
+        # A pm4py subclass takes the element of its nearest mapped base class:
+        # the miner ends its model with a NormalEndEvent (an EndEvent), which an
+        # exact class-name lookup wrote as a task named "end".
+        tag = next((_NODE_TAG[k.__name__] for k in type(n).__mro__
+                    if k.__name__ in _NODE_TAG), "task")
         nid = node_id[id(n)]
         attrs = {"id": nid}
         name = n.get_name() if hasattr(n, "get_name") else ""
@@ -330,16 +319,3 @@ def export_bpmn(bpmn_obj, out_path: str) -> None:
     if hasattr(ET, "indent"):
         ET.indent(tree, space="  ")
     tree.write(out_path, xml_declaration=True, encoding="utf-8")
-
-
-def dfg_to_dict(dfg, starts, ends) -> dict[str, Any]:
-    """Convert a PM4Py DFG to a JSON-serializable dict for the viewer."""
-    edges = [
-        {"source": s, "target": t, "frequency": int(c)}
-        for (s, t), c in dfg.items()
-    ]
-    return {
-        "edges": edges,
-        "start_activities": {k: int(v) for k, v in starts.items()},
-        "end_activities": {k: int(v) for k, v in ends.items()},
-    }

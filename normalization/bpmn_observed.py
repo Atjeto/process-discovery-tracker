@@ -1,15 +1,14 @@
 """Observed-flow step BPMN.
 
-The activity-level `process_map.bpmn` is mined from the real event log. This
-module does the same one level up: it mines the ACTUAL annotated step flow --
-one trace per case, labelled by step name -- into a BPMN with branches/loops.
+This module mines the ACTUAL annotated step flow (one trace per case,
+labelled by step name) into a BPMN with branches/loops: process_map_step.bpmn.
 It is the Process-diagram counterpart of the step Flow diagram
 (viewer/process-map-levels.js `buildAnnotationDfg`), and the two share the
 same trace logic so they agree.
 
 No Process Template is required. The model comes purely from the annotations, mined with the
-same PM4Py inductive miner + pure-Python BPMNDI layout used for the activity
-map (`mining.discover_inductive` + `mining.export_bpmn`).
+PM4Py inductive miner + pure-Python BPMNDI layout in mining.py
+(`mining.discover_inductive` + `mining.export_bpmn`).
 """
 
 from __future__ import annotations
@@ -33,9 +32,6 @@ def _start_key(step: dict[str, Any]) -> float:
         return 0.0
 
 
-_NOCASE = "__nocase__"
-
-
 def _step_label(s: dict[str, Any]) -> str:
     """The node label for a step. Value-FREE (so repeated work collapses to one
     node, not one per case) -- falls back to name for steps from a
@@ -43,16 +39,19 @@ def _step_label(s: dict[str, Any]) -> str:
     return s.get("process_label") or s.get("name") or "(unnamed)"
 
 
-def _visible_steps(anno: dict[str, Any]) -> list[dict[str, Any]]:
-    return [s for s in (anno.get("steps") or []) if s and s.get("state") != "hidden"]
+def _run_steps(anno: dict[str, Any]) -> list[dict[str, Any]]:
+    """The visible steps that belong to a run (they carry a case_id). A step
+    outside every run (out-of-window work, or the now-excluded self-capture
+    noise) is left out of the model: the viewer's map shows the runs only, and
+    its Fork copies this model."""
+    return [s for s in (anno.get("steps") or [])
+            if s and s.get("state") != "hidden" and s.get("case_id")]
 
 
 def real_case_count(anno: dict[str, Any]) -> int:
-    """How many ANCHORED cases the visible steps belong to. The synthetic
-    `__nocase__` bucket (orphan steps with no case_id -- out-of-window work, or
-    the now-excluded self-capture noise) is NOT a real case and must not inflate
-    this, or a single-case session is wrongly mined into a flower model."""
-    return len({s.get("case_id") for s in _visible_steps(anno) if s.get("case_id")})
+    """How many runs the visible steps belong to. Steps outside every run are
+    not counted, so they can never tip a one-run session into the miner."""
+    return len({s.get("case_id") for s in _run_steps(anno)})
 
 
 def _collapse(labels):
@@ -66,14 +65,14 @@ def _collapse(labels):
 
 def build_annotation_log(anno: dict[str, Any]) -> EventLog:
     """One trace per case, events labelled by step name, time-ordered,
-    consecutive duplicates collapsed.
+    consecutive duplicates collapsed. Steps outside every run are left out.
 
     Mirrors `buildAnnotationDfg` so the observed-flow BPMN and the Flow-diagram
     DFG describe the same flow.
     """
     by_case: dict[str, list[dict[str, Any]]] = {}
-    for s in _visible_steps(anno):
-        by_case.setdefault(s.get("case_id") or _NOCASE, []).append(s)
+    for s in _run_steps(anno):
+        by_case.setdefault(s["case_id"], []).append(s)
 
     log = EventLog()
     for cid, case_steps in by_case.items():
@@ -102,12 +101,10 @@ def build_annotation_log(anno: dict[str, Any]) -> EventLog:
 
 
 def session_sequence(anno: dict[str, Any]) -> list[str]:
-    """The WHOLE session as one observed path: every visible step's label,
-    time-ordered across all cases, consecutive duplicates collapsed. Used when
-    there is at most one real case, so a handful of un-cased orphan steps render
-    as part of the single chain instead of a second trace that tips the model
-    into the inductive miner. Pure."""
-    steps = sorted(_visible_steps(anno), key=_start_key)
+    """The run's observed path: the labels of the visible steps in a run,
+    time-ordered, consecutive duplicates collapsed. Used when there is at most
+    one run; the steps outside every run are left out. Pure."""
+    steps = sorted(_run_steps(anno), key=_start_key)
     return _collapse(_step_label(s) for s in steps)
 
 
@@ -144,18 +141,19 @@ def write_observed_bpmn(
     """Mine the observed step flow into BPMN and write it (with layout).
 
     Returns True if a model was written, False when there is nothing to mine
-    (no non-hidden steps / no traces).
+    (no visible step in a run).
 
-    A session with at most ONE real (anchored) case is rendered as a literal
-    sequence rather than mined: with one observed path there is nothing to
-    generalise, and the inductive miner would otherwise turn repeated/uncollapsed
-    labels into spurious branch/loop gateways and smear them across the diagram
-    -- the "flower model". Critically, the case count is REAL cases only: orphan
-    steps with no case_id (out-of-window work, or self-capture noise) pool into a
-    synthetic __nocase__ trace, and counting that as a case used to tip a
-    single-case session into the miner and explode the map into branches. The
-    miner runs only with 2+ real cases, where cross-case variation is a genuine
-    basis for branches.
+    Only the runs are modelled: a step outside every run (no case_id) is left
+    out, because the viewer's map shows the runs only and its Fork copies this
+    file. Such steps used to pool into a synthetic trace of their own, which
+    also tipped a one-run session into the miner.
+
+    A session with at most ONE run is rendered as a literal sequence rather
+    than mined: with one observed path there is nothing to generalise, and the
+    inductive miner would otherwise turn repeated/uncollapsed labels into
+    spurious branch/loop gateways and smear them across the diagram (the
+    "flower model"). The miner runs only with 2+ runs, where variation between
+    runs is a genuine basis for branches.
     """
     import mining  # local import: PM4Py is only needed when --mine is on
 
@@ -163,8 +161,8 @@ def write_observed_bpmn(
     if len(log) == 0:
         return False
     if real_case_count(anno) <= 1:
-        # <=1 real case: one observed path. Linearise ALL visible steps in time
-        # order (orphans fold into the single chain) instead of mining.
+        # One run: one observed path. Linearise its steps in time order
+        # instead of mining.
         bpmn = _linear_bpmn(session_sequence(anno))
     else:
         bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)

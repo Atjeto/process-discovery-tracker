@@ -3,8 +3,8 @@
 NON-DESTRUCTIVE re-normalize invariant: analyst blocks are preserved and the
 lists the pipeline appends to are seeded.
 
-pipeline_stages imports xes_export (pandas + pm4py) at module top, so this
-SKIPS loudly under bare pytest and runs where the deps exist:
+This module SKIPS loudly under bare pytest (no pandas/pm4py) and runs where
+the deps exist:
     viewer/python/python.exe normalization/test/test_pipeline_stages.py
     pytest (CI env with requirements.txt installed)
 """

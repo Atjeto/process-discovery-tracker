@@ -8,9 +8,8 @@ Pipeline:
     2. Assign case_ids via marker stream walk
     3. Apply taxonomy classification rules
     4. Collapse adjacent identical events
-    5. Write events.xes + events.csv
-    6. (optional --mine) Run PM4Py inductive miner, write process_map.bpmn
-    7. Compute statistics, write stats.json
+    5. (optional --mine) Mine the drafted steps, write process_map_step.bpmn
+    6. Compute statistics, write stats.json
 
 Output goes into <session_folder>/ alongside the raw data. Re-runnable
 against an updated taxonomy without recapture (§6.3) -- raw events.jsonl
@@ -82,7 +81,7 @@ from pipeline_config import (
 # resolves unchanged.
 from pipeline_stages import (
     _run_coalesce, _run_case_assignment, _init_existing_anno,
-    _run_step_segmentation, _run_classification, _run_event_log_export,
+    _run_step_segmentation, _run_classification,
     _run_stats, _run_analysis, _run_mining_exports, ExportFailed,
 )
 
@@ -151,10 +150,6 @@ def normalize(
     classified, collapsed, log_events, taxonomy, taxonomy_report = (
         _run_classification(with_cases, annotations, taxonomy_path))
 
-    # Build the PM4Py event log + write events.xes / events.csv.
-    log, xes_path, csv_path = _run_event_log_export(
-        log_events, collapsed, cases, worker_id, session_folder)
-
     # Statistics summary + stats.json.
     summary, stats_path = _run_stats(
         session_folder, log_events, cases, existing_anno, taxonomy,
@@ -169,10 +164,10 @@ def normalize(
         session_folder, classified, existing_anno, summary, manifest,
         cases=cases)
 
-    # Mining (DFG / BPMN variants) + the requested PDD export. A failed PDD
+    # The step-level BPMN (--mine) + the requested PDD export. A failed PDD
     # export raises ExportFailed after every analysis output is written.
     _run_mining_exports(
-        session_folder, log, existing_anno, mine, summary, manifest,
+        session_folder, existing_anno, mine, summary, manifest,
         analysis_result, pdd_out, pdd_map_image, pdd_tobe_image,
         events=classified)
 
@@ -182,8 +177,6 @@ def normalize(
         "events_out": sum(1 for e in collapsed if e.get("type") == "activity"),
         "cases": len(cases),
         "outputs": {
-            "xes": str(xes_path),
-            "csv": str(csv_path),
             "stats": str(stats_path),
         },
     }
@@ -206,14 +199,16 @@ class _ArgumentParser(argparse.ArgumentParser):
 
 def main():
     parser = _ArgumentParser(
-        description="Normalize a captured process-discovery session into XES + CSV + stats."
+        description="Normalize a captured process-discovery session into drafted steps, "
+                    "stats and analysis."
     )
     parser.add_argument("session_folder", type=Path, nargs="?",
                         help="Path to the session folder.")
     parser.add_argument("--taxonomy", type=str, default=None,
                         help="Path to taxonomy.yaml. Falls back to no classification.")
     parser.add_argument("--mine", action="store_true",
-                        help="Run PM4Py inductive miner and emit process_map.bpmn + dfg.json.")
+                        help="Mine the drafted steps into the step-level BPMN, "
+                             "process_map_step.bpmn. Without this flag no BPMN is written.")
     parser.add_argument("--pdd-out", type=str, default=None,
                         help="Write PDD .docx to this path.")
     parser.add_argument("--pdd-map-image", type=str, default=None,

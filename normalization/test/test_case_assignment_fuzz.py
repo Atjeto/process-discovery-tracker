@@ -12,7 +12,7 @@ finding here with a named regression test in `test_case_assignment.py`.
 
 Two regimes, per the robustness-vs-calibration distinction:
   * **well-formed** (strict): every event preserved, each activity stamped
-    with the case-id depth the replayed marker stack predicts, and
+    with the case-id depth the replayed markers predict (runs never nest), and
     collect_cases neither losing nor inventing a case.
   * **adversarial**: corrupt/truncated/hand-edited logs (bad timestamps,
     missing or null `data`, dropped type). Assert only *robustness*: never
@@ -60,7 +60,7 @@ def _compact(events: list[dict]) -> str:
     return repr(rows)
 
 
-# --- Marker-based case nesting (assign_case_ids + collect_cases) ---
+# --- Marker-based runs (assign_case_ids + collect_cases) ---
 
 
 def _gen_markers(rng: Random) -> list[dict]:
@@ -88,13 +88,14 @@ def _gen_markers(rng: Random) -> list[dict]:
 
 
 def _expected_depths(events: list[dict]) -> list[int]:
-    """Replay the marker stack to predict each activity's case-id depth."""
+    """Replay the markers to predict each activity's case-id depth. Runs never
+    nest: a start ends the open run first, so the depth is 0 or 1."""
     depths, depth = [], 0
     for ev in events:
         if ev["type"] == "marker":
             mt = ev["data"].get("marker_type")
             if mt == "start":
-                depth += 1
+                depth = 1
             elif mt == "end" and depth > 0:
                 depth -= 1
         elif ev["type"] == "activity":
@@ -104,8 +105,8 @@ def _expected_depths(events: list[dict]) -> list[int]:
 
 def test_fuzz_marker_case_assignment():
     """3000 marker streams: assign_case_ids must preserve every event, stamp
-    activities with the correct nesting depth (innermost first), and never
-    crash on an unbalanced stream (a stray end / a marker left open)."""
+    activities with the open run's case id (runs never nest), and never crash
+    on an unbalanced stream (a stray end / a marker left open)."""
     for i in range(MARKER_ITERS):
         seed = BASE + 2_000_000 + i
         rng = Random(seed)
@@ -128,6 +129,9 @@ def test_fuzz_marker_case_assignment():
             started = sum(1 for e in events
                           if e["type"] == "marker" and e["data"].get("marker_type") == "start")
             assert len(cases) == started, "collect_cases lost or invented a case"
+            # Runs never nest: every run but the last one started has an end.
+            assert all(c["end_ts"] for c in list(cases.values())[:-1]), \
+                "a run was left open under a later run"
             real_ids = {e["event_id"] for e in out if e["type"] == "activity"}
             for c in cases.values():
                 for aid in c.get("activity_event_ids", []):

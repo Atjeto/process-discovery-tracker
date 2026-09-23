@@ -8,12 +8,13 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
 
 # pm4py lives only in the viewer's bundled Python, not the bare dev Python.
-# Skip cleanly there (mirrors how mining/xes_export stay untested on bare Python);
+# Skip cleanly there (mirrors how mining stays untested on bare Python);
 # this runs under the bundled interpreter and CI where pm4py is present.
 pytest.importorskip("pm4py")
 
@@ -157,12 +158,13 @@ def test_single_case_linear_renders_without_gateways():
 def test_real_case_count_ignores_the_nocase_orphan_bucket():
     anno = {"steps": [
         _step("A", "Search",  "2026-05-18T09:00:00Z"),
-        _step(None, "Orphan", "2026-05-18T09:00:10Z"),   # no case_id -> __nocase__
-        _step("", "Blank",    "2026-05-18T09:00:20Z"),   # empty case_id -> orphan too
+        _step(None, "Orphan", "2026-05-18T09:00:10Z"),   # no case_id: outside every run
+        _step("", "Blank",    "2026-05-18T09:00:20Z"),   # empty case_id: outside too
     ]}
     assert real_case_count(anno) == 1                    # only "A" is a real case
-    # session_sequence folds every visible step into one time-ordered chain.
-    assert session_sequence(anno) == ["Search", "Orphan", "Blank"]
+    # session_sequence is the one run's chain; the steps outside every run are
+    # left out, as in the viewer's map, which shows the runs only.
+    assert session_sequence(anno) == ["Search"]
 
 
 def test_single_real_case_with_orphans_renders_linear_not_a_flower():
@@ -170,7 +172,8 @@ def test_single_real_case_with_orphans_renders_linear_not_a_flower():
     case_id -- out-of-window work / self-capture noise) pooled into a synthetic
     __nocase__ trace, making len(log)==2 so the inductive miner ran and smeared a
     gateway 'flower model' across the map. With one REAL case it must render as a
-    single linear chain, orphans folded in by time order."""
+    single linear chain of that run; the orphans are left out, as in the
+    viewer's map, which shows the runs only."""
     anno = {"steps": [
         _step("A", "Search",  "2026-05-18T09:00:00Z"),
         _step("A", "Open",    "2026-05-18T09:00:10Z"),
@@ -183,5 +186,85 @@ def test_single_real_case_with_orphans_renders_linear_not_a_flower():
         assert write_observed_bpmn(anno, out) is True
         xml = Path(out).read_text(encoding="utf-8")
     assert "Gateway" not in xml                          # no flower model
-    for name in ("Search", "Open", "Resolve", "Stray 1", "Stray 2"):
-        assert name in xml                               # orphans fold into the chain
+    for name in ("Search", "Open", "Resolve"):
+        assert name in xml
+    for name in ("Stray 1", "Stray 2"):
+        assert name not in xml                           # outside every run: left out
+
+
+def test_steps_outside_every_run_are_left_out_of_the_mined_map():
+    """The step BPMN is the source the viewer forks, and the viewer's map shows
+    the runs only. With two runs the model is mined; steps outside every run
+    (no case_id) must neither form a trace of their own nor reach the model."""
+    anno = _two_case_anno()
+    anno["steps"] += [
+        _step(None, "Stray", "2026-05-18T09:20:00Z"),
+        _step("", "Blank",   "2026-05-18T09:20:10Z"),
+    ]
+    assert sorted(t.attributes["case:id"] for t in build_annotation_log(anno)) == ["A", "B"]
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "process_map_step.bpmn")
+        assert write_observed_bpmn(anno, out) is True
+        xml = Path(out).read_text(encoding="utf-8")
+    for name in ("Search", "Open ticket", "Escalate", "Resolve"):
+        assert name in xml
+    assert "Stray" not in xml and "Blank" not in xml
+
+
+def test_no_step_bpmn_when_no_step_is_in_a_run():
+    """Without a run the viewer's map has nothing to show, so no step BPMN is
+    written; the steps outside the runs are not chained into one."""
+    anno = {"steps": [
+        _step(None, "Search", "2026-05-18T09:00:00Z"),
+        _step("", "Resolve",  "2026-05-18T09:00:10Z"),
+    ]}
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "process_map_step.bpmn")
+        assert write_observed_bpmn(anno, out) is False
+        assert not os.path.exists(out)
+
+
+_BPMN = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
+
+
+def _process_elements(path):
+    """(tag, name) of every element of the file's process, flows excluded."""
+    process = ET.parse(path).getroot().find(f"{_BPMN}process")
+    return [(el.tag.split("}", 1)[-1], el.get("name")) for el in process
+            if el.tag != f"{_BPMN}sequenceFlow"]
+
+
+def test_a_mined_step_bpmn_ends_in_an_end_event_not_a_task():
+    """With two runs the model is mined, and pm4py ends it with a
+    NormalEndEvent, a subclass of EndEvent that the tag map did not list: the
+    end was written as a task box named "end", which the analyst saw in the
+    forked map editor. It must be a real end event."""
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "process_map_step.bpmn")
+        assert write_observed_bpmn(_two_case_anno(), out) is True
+        elements = _process_elements(out)
+    assert any(tag.endswith("Gateway") for tag, _name in elements)   # it was mined
+    assert [tag for tag, _name in elements].count("endEvent") == 1
+    assert [tag for tag, _name in elements].count("startEvent") == 1
+    assert ("task", "end") not in elements and ("task", "start") not in elements
+
+
+def test_every_pm4py_start_and_end_event_variant_gets_its_event_element():
+    """pm4py also has NormalStartEvent and other subclasses of StartEvent and
+    EndEvent; each is written as its base class's element, never as a task."""
+    import mining
+    from pm4py.objects.bpmn.obj import BPMN
+    bpmn = BPMN()
+    start = BPMN.NormalStartEvent(name="start")
+    task = BPMN.Task(name="Search")
+    end = BPMN.MessageEndEvent(name="end")
+    for node in (start, task, end):
+        bpmn.add_node(node)
+    bpmn.add_flow(BPMN.Flow(start, task))
+    bpmn.add_flow(BPMN.Flow(task, end))
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "variants.bpmn")
+        mining.export_bpmn(bpmn, out)
+        elements = _process_elements(out)
+    assert sorted(elements) == [("endEvent", "end"), ("startEvent", "start"),
+                                ("task", "Search")]

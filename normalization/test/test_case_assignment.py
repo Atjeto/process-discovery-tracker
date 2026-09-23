@@ -126,3 +126,73 @@ def test_a_repeated_start_marker_line_stays_a_separate_run():
     cases = collect_cases(out)
     assert len(cases) == 2
     assert assign_case_ids(events, session_id="s") == out   # still deterministic
+
+
+# --- Runs never nest: a Start while a run is open ends that run first --------
+
+
+def _marker(eid, t, mtype, label=None, reason=None):
+    data = {"marker_type": mtype, "label": label}
+    if reason:
+        data["reason"] = reason
+    return {"event_id": eid, "type": "marker", "timestamp": _iso(t), "data": data}
+
+
+def _activity(eid, t):
+    return {"event_id": eid, "type": "activity", "timestamp": _iso(t),
+            "data": {"app": "crm.exe", "duration_ms": 1000}}
+
+
+def test_a_start_while_a_run_is_open_ends_that_run_first():
+    """The capture app's run hotkey ends the open run (an End with reason
+    auto_close_for_sibling) before it starts the next one. A Start that
+    arrives while a run is open ends that run the same way; an End marker
+    still ends the open run, and work after it is outside every run."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    t = [base + timedelta(seconds=k) for k in range(6)]
+    events = [
+        _marker("s1", t[0], "start", "Run 1"),
+        _activity("a1", t[1]),
+        _marker("s2", t[2], "start", "Run 2"),      # run 1 is still open
+        _activity("a2", t[3]),
+        _marker("e2", t[4], "end", reason="done"),
+        _activity("a3", t[5]),
+    ]
+    out = assign_case_ids(events, session_id="s")
+    assert len(out) == len(events), "no marker may be invented"
+    cases = collect_cases(out)
+    by_label = {c["label"]: c for c in cases.values()}
+    run1, run2 = by_label["Run 1"], by_label["Run 2"]
+    stamped = {e["event_id"]: e["data"]["case_ids"] for e in out if e["type"] == "activity"}
+    assert stamped == {"a1": [run1["case_id"]], "a2": [run2["case_id"]], "a3": []}
+    assert run1["parent_case_id"] is None and run2["parent_case_id"] is None
+    assert (run1["end_ts"], run1["end_reason"]) == (_iso(t[2]), "auto_close_for_sibling")
+    assert (run2["end_ts"], run2["end_reason"]) == (_iso(t[4]), "done")
+
+
+def test_a_start_inserted_inside_a_run_splits_it_instead_of_nesting_later_runs():
+    """A Start added in the viewer (marker_edits op:insert) inside run 1 of a
+    three-run recording used to nest every later run inside run 1. It now
+    splits run 1, and all four runs are top-level runs with an end."""
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    events = []
+    for n in range(3):
+        t0 = base + timedelta(minutes=10 * n)
+        events += [
+            _marker(f"s{n}", t0, "start", f"Run {n + 1}"),
+            _activity(f"a{n}-1", t0 + timedelta(seconds=10)),
+            _activity(f"a{n}-2", t0 + timedelta(seconds=30)),
+            _marker(f"e{n}", t0 + timedelta(seconds=40), "end"),
+        ]
+    for i, e in enumerate(events):
+        e["_seq"] = i
+    annotations = {"marker_edits": [
+        {"id": "split", "op": "insert", "marker_type": "start", "label": "Inserted",
+         "timestamp": _iso(base + timedelta(seconds=20))},
+    ]}
+    edited, applied = apply_marker_edits(events, annotations)
+    assert applied == 1
+    cases = collect_cases(assign_case_ids(edited, session_id="s"))
+    assert sorted(c["label"] for c in cases.values()) == ["Inserted", "Run 1", "Run 2", "Run 3"]
+    assert all(c["parent_case_id"] is None for c in cases.values()), "a run was nested"
+    assert all(c["end_ts"] for c in cases.values()), "a run was left without an end"

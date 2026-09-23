@@ -9,15 +9,14 @@ each stage keeps its original best-effort try/except exactly where it was.
 
 normalize.py imports every `_run_*` / `_init_existing_anno` name below and calls
 them from its (now thin) orchestrator, so `normalize.X` resolves unchanged.
-The heavier optional deps (analysis, mining, pm4py, bpmn_observed, pdd_export)
-stay as function-local imports exactly as before, so they are only paid for
-when that stage/export actually runs.
+The heavier optional deps (analysis, bpmn_observed, which imports mining and
+pm4py, and pdd_export) stay as function-local imports, so they are only paid
+for when that stage/export actually runs.
 """
 from __future__ import annotations
 
 import json
 import logging
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,7 +36,6 @@ from classification import (
     load_taxonomy,
 )
 from classification_overrides import apply_classification_overrides
-from xes_export import build_event_log, export_xes, export_csv
 from step_suggest import (
     auto_suggest_steps, _merge_steps, restamp_preserved_case_ids,
     draft_summary, load_remembered_names,
@@ -193,37 +191,13 @@ def _run_classification(
     print(f"[normalize] collapsed: {sum(1 for e in classified if e.get('type') == 'activity')} -> "
           f"{sum(1 for e in collapsed if e.get('type') == 'activity')} activity events")
 
-    # events.csv keeps the per-window rows (`collapsed`); the process-mining
-    # event log collapses further -- one row per activity occurrence -- so the
-    # DFG/BPMN cannot contain a directly-follows self-loop. See design §7.1.
+    # `collapsed` keeps the per-window rows (the collapsed_activity_count in
+    # stats.json meta); the statistics read `log_events`, which collapses
+    # further to one row per activity occurrence. See design §7.1.
     log_events = collapse_activity_occurrences(classified)
     print(f"[normalize] event-log occurrences: "
           f"{sum(1 for e in log_events if e.get('type') == 'activity')} activity events")
     return classified, collapsed, log_events, taxonomy, taxonomy_report
-
-
-def _run_event_log_export(
-    log_events: list[dict[str, Any]],
-    collapsed: list[dict[str, Any]],
-    cases: list[dict[str, Any]],
-    worker_id: str,
-    session_folder: Path,
-) -> tuple[Any, Path, Path]:
-    """Build the PM4Py event log and write events.xes / events.csv. Returns
-    (log, xes_path, csv_path)."""
-    log = build_event_log(log_events, cases, worker_id=worker_id)
-    print(f"[normalize] event log: {len(log)} traces")
-
-    xes_path = session_folder / "events.xes"
-    csv_path = session_folder / "events.csv"
-    try:
-        export_xes(log, str(xes_path))
-        print(f"[normalize] wrote {xes_path}")
-    except Exception as e:
-        print(f"[normalize] WARNING: XES export failed: {e}")
-    export_csv(collapsed, cases, str(csv_path))
-    print(f"[normalize] wrote {csv_path}")
-    return log, xes_path, csv_path
 
 
 def _visible_steps(existing_anno: dict) -> list[dict[str, Any]]:
@@ -446,7 +420,6 @@ def _run_analysis(
 
 def _run_mining_exports(
     session_folder: Path,
-    log: Any,
     existing_anno: dict,
     mine: bool,
     summary: dict,
@@ -457,34 +430,12 @@ def _run_mining_exports(
     pdd_tobe_image: str | None = None,
     events: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Mining (DFG / aggregate BPMN / observed-flow BPMN / per-case BPMN) plus
-    the requested PDD export. Each mining output keeps its own best-effort
-    try/except. A requested PDD export that fails raises ExportFailed (C13
-    exit code 3); it runs last, so every analysis output is already written.
-    `events` is the derived event stream the PDD reads the entered fields
-    from."""
+    """The step-level observed-flow BPMN (when `mine` is set) plus the
+    requested PDD export. The BPMN keeps its best-effort try/except. A
+    requested PDD export that fails raises ExportFailed (C13 exit code 3); it
+    runs last, so every analysis output is already written. `events` is the
+    derived event stream the PDD reads the entered fields from."""
     if mine:
-        import mining as mining_mod
-        from pm4py.objects.log.obj import EventLog
-        # DFG first - pure data, no Graphviz needed. Always emit if possible.
-        try:
-            dfg, starts, ends = mining_mod.discover_dfg(log)
-            dfg_path = session_folder / "dfg.json"
-            with open(dfg_path, "w", encoding="utf-8") as f:
-                json.dump(mining_mod.dfg_to_dict(dfg, starts, ends), f, indent=2)
-            print(f"[normalize] wrote {dfg_path}")
-        except Exception as e:
-            print(f"[normalize] WARNING: DFG mining failed: {e}")
-        # Aggregate BPMN: one model fitting ALL traces together. Right
-        # answer when every case in the session is an instance of the
-        # same underlying process.
-        try:
-            bpmn = mining_mod.discover_inductive(log, noise_threshold=0.2)
-            bpmn_path = session_folder / "process_map.bpmn"
-            mining_mod.export_bpmn(bpmn, str(bpmn_path))
-            print(f"[normalize] wrote {bpmn_path}")
-        except Exception as e:
-            print(f"[normalize] WARNING: BPMN mining failed: {e}")
         # Step observed-flow BPMN: the ACTUAL annotated step flow mined into
         # BPMN (the Process-diagram counterpart of the step Flow diagram).
         # Built from annotations -- no Process Template needed.
@@ -498,36 +449,6 @@ def _run_mining_exports(
                     print(f"[normalize] wrote {session_folder / 'process_map_step.bpmn'}")
         except Exception as e:
             print(f"[normalize] WARNING: step BPMN failed: {e}")
-        # Per-case BPMN: one model per individual case. Right answer
-        # when the session contains MIXED processes (the aggregate would
-        # mash them into one nonsense model), or for instance-to-instance
-        # comparison. Output dir: process_maps/<case_id>.bpmn next to
-        # the session folder so the analyst can see all of them at a
-        # glance without cluttering the top level.
-        if len(log) > 1:
-            per_case_dir = session_folder / "process_maps"
-            per_case_dir.mkdir(exist_ok=True)
-            wrote = 0
-            for trace in log:
-                case_id = (trace.attributes.get("case:id")
-                           or trace.attributes.get("concept:name")
-                           or f"case_{wrote}")
-                safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(case_id))[:80]
-                if len(trace) < 2:
-                    # PM4Py's inductive miner needs at least 2 events to
-                    # produce a meaningful model; single-event traces
-                    # collapse to a degenerate task.
-                    continue
-                try:
-                    sub_log = EventLog([trace])
-                    case_bpmn = mining_mod.discover_inductive(sub_log, noise_threshold=0.2)
-                    case_path = per_case_dir / f"{safe}.bpmn"
-                    mining_mod.export_bpmn(case_bpmn, str(case_path))
-                    wrote += 1
-                except Exception as e:
-                    print(f"[normalize] WARNING: per-case BPMN failed for {case_id}: {e}")
-            if wrote:
-                print(f"[normalize] wrote {wrote} per-case BPMNs to {per_case_dir}")
 
     # The requested PDD export (RP-09): a failure is never a warning, because
     # the viewer trusts the exit code and would otherwise open the previous PDD.

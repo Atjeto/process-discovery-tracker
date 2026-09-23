@@ -6,8 +6,9 @@ unit suites can't be — it catches "the map/segmentation silently changed" acro
 whole session, which is exactly the class of bug that ships past green unit tests.
 
 Why a projection (not the full artifacts): a curated set of stable scalars + the
-distinct process-label set + DFG shape diffs cleanly and survives benign churn;
-full-artifact verbatim drifts on every timestamp, and pixel diffs are theme-fragile.
+distinct process-label set + the step-level BPMN's tasks and start/end events diffs
+cleanly and survives benign churn; full-artifact verbatim drifts on every timestamp,
+and pixel diffs are theme-fragile.
 (See PDT-ROADMAP-CODEBASE-FIT.md §11.)
 
 The reference input is copied to a temp dir and normalized THERE, so the committed
@@ -31,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
@@ -71,6 +73,17 @@ _META_FIELDS = [
     "app_vocabulary_matches",
 ]
 
+_BPMN_NS = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
+
+# The step BPMN elements whose count the golden pins. Only what the recorded
+# steps decide is pinned: the tasks (one per distinct step label, their names
+# pinned too) and the one start and one end event. Gateway and sequence-flow
+# counts are left out on purpose: they come from pm4py's inductive miner,
+# which CI installs unpinned (2.7.11 or newer) while the app bundles 2.7.22.2,
+# so they may move with the miner version. The map's shape is pinned by the
+# viewer e2e connectivity check instead.
+_PINNED_BPMN_ELEMENTS = ("task", "startEvent", "endEvent")
+
 
 def _session_src(name: str) -> str:
     return os.path.join(REPO_ROOT, "sessions", "example-aggregate", name)
@@ -106,28 +119,40 @@ def build_projection(session_name: str) -> dict:
 
         stats = _read_json(os.path.join(tmp, "stats.json")) or {}
         anno = _read_json(os.path.join(tmp, "annotations.json")) or {}
-        dfg = _read_json(os.path.join(tmp, "dfg.json")) or {}
+        step_bpmn = _step_bpmn_projection(os.path.join(tmp, "process_map_step.bpmn"))
 
     meta = stats.get("meta", {})
     steps = anno.get("steps") or []
     labels = sorted({(s.get("process_label") or "").strip() for s in steps if s.get("process_label")})
 
-    # dfg.json has no explicit node list — nodes are the distinct edge endpoints.
-    edges = dfg.get("edges") or []
-    nodes = {e.get("source") for e in edges} | {e.get("target") for e in edges}
-    nodes.discard(None)
-
     return {
         "session": session_name,
         "meta": {k: meta.get(k) for k in _META_FIELDS},
         "steps": {"count": len(steps), "process_labels": labels},
-        "dfg": {
-            "nodes": len(nodes),
-            "edges": len(edges),
-            "start_activities": len(dfg.get("start_activities") or {}),
-            "end_activities": len(dfg.get("end_activities") or {}),
-        },
+        "step_bpmn": step_bpmn,
     }
+
+
+def _step_bpmn_projection(path: str) -> dict | None:
+    """The pinned part of the step BPMN (see _PINNED_BPMN_ELEMENTS): how many
+    tasks, start events and end events its process holds, and the sorted task
+    names; None when the file is missing or unreadable. No ids or layout: pm4py
+    hands back the mined nodes in a run-dependent order, so element ids and
+    coordinates change from run to run."""
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    counts = dict.fromkeys(_PINNED_BPMN_ELEMENTS, 0)
+    task_names: list[str] = []
+    for process in root.findall(f"{_BPMN_NS}process"):
+        for element in process:
+            tag = element.tag.split("}", 1)[-1]
+            if tag in counts:
+                counts[tag] += 1
+            if tag == "task":
+                task_names.append(element.get("name") or "")
+    return {**counts, "task_names": sorted(task_names)}
 
 
 def _read_json(path: str):
@@ -179,12 +204,13 @@ def check_all(update: bool = False) -> int:
     failures = 0
     for name in REFERENCE_SESSIONS:
         proj = build_projection(name)
+        bpmn = proj["step_bpmn"] or {}
         if update:
             with open(_golden_path(name), "w", encoding="utf-8") as f:
                 json.dump(proj, f, indent=2, sort_keys=True)
                 f.write("\n")
             print(f"[golden] wrote {name}: {proj['meta']['case_count']} cases, "
-                  f"{proj['steps']['count']} steps, {proj['dfg']['nodes']}/{proj['dfg']['edges']} dfg")
+                  f"{proj['steps']['count']} steps, {bpmn.get('task', 0)} step BPMN tasks")
             continue
         golden = load_golden(name)
         if golden is None:
@@ -199,7 +225,7 @@ def check_all(update: bool = False) -> int:
                 print(f"    {m}")
         else:
             print(f"[golden] OK {name}: {proj['meta']['case_count']} cases, "
-                  f"{proj['steps']['count']} steps, {proj['dfg']['nodes']}/{proj['dfg']['edges']} dfg")
+                  f"{proj['steps']['count']} steps, {bpmn.get('task', 0)} step BPMN tasks")
     return 1 if failures else 0
 
 
