@@ -16,10 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from classification import (
-    collapse_activity_occurrences, classify_events, upsert_taxonomy_rules,
-    load_taxonomy,
-)
+from classification import collapse_activity_occurrences, classify_events
 
 
 def _activity(label, title, dur, case_ids=("c1",)):
@@ -245,50 +242,6 @@ def test_timestampless_activity_keeps_unclassified():
     out, _ = classify_events(events, {"rules": []})
     act = next(e for e in out if e["type"] == "activity")
     assert act["data"]["activity_label"] == "Unclassified -- x.exe"
-
-
-# --- Team-wide taxonomy promotion (direct write to taxonomy.yaml) ------
-
-def test_upsert_taxonomy_rules_adds_and_dedupes():
-    import os
-    import tempfile
-    fd, path = tempfile.mkstemp(suffix=".yaml")
-    os.close(fd)
-    try:
-        added = upsert_taxonomy_rules(path, [
-            {"label": "CRM", "match": {"app": "chrome.exe", "title_regex": "Salesforce"}},
-            {"label": "Mail", "match": {"title_regex": "Inbox"}},
-        ])
-        assert added == 2
-        # Re-promoting the same rule is a no-op (no duplicate rows).
-        again = upsert_taxonomy_rules(path, [
-            {"label": "CRM", "match": {"app": "chrome.exe", "title_regex": "Salesforce"}},
-        ])
-        assert again == 0
-        doc = load_taxonomy(path)
-        assert [r["label"] for r in doc["rules"]] == ["CRM", "Mail"]
-        # The promoted rule classifies a future session's matching activity.
-        out, _ = classify_events(
-            [{"type": "activity", "data": {"app": "chrome.exe", "title": "Salesforce - Home"}}],
-            doc,
-        )
-        assert out[0]["data"]["activity_label"] == "CRM"
-    finally:
-        os.remove(path)
-
-
-def test_upsert_taxonomy_rules_creates_missing_file():
-    import os
-    import shutil
-    import tempfile
-    d = tempfile.mkdtemp()
-    path = os.path.join(d, "team-taxonomy.yaml")
-    try:
-        added = upsert_taxonomy_rules(path, [{"label": "X", "match": {"app": "x.exe"}}])
-        assert added == 1
-        assert load_taxonomy(path)["rules"][0]["label"] == "X"
-    finally:
-        shutil.rmtree(d)
 
 
 if __name__ == "__main__":

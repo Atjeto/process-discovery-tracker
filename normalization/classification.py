@@ -26,41 +26,6 @@ def load_taxonomy(taxonomy_path: str) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def upsert_taxonomy_rules(taxonomy_path: str, rules: list[dict[str, Any]]) -> int:
-    """Promote analyst rules into the SHARED taxonomy YAML so they classify
-    every future session team-wide -- the direct-write companion to the
-    viewer's hand-merged "promote to taxonomy" export. Loads the file, appends
-    each rule not already present (matched by label + app + title_regex), and
-    writes it back, preserving the file's other keys. Returns the count added;
-    a missing file is created with a `rules:` list. Each rule is
-    `{label, match: {app?, title_regex?}}`."""
-    try:
-        doc = load_taxonomy(taxonomy_path)
-    except FileNotFoundError:
-        doc = {}
-    rules_list = doc.get("rules") or []
-
-    def _key(r: dict[str, Any]) -> tuple:
-        m = r.get("match") or {}
-        return (r.get("label"), m.get("app"), m.get("title_regex"))
-
-    present = {_key(r) for r in rules_list}
-    added = 0
-    for r in rules or []:
-        if not r.get("label"):
-            continue
-        k = _key(r)
-        if k in present:
-            continue
-        rules_list.append({"label": r["label"], "match": dict(r.get("match") or {})})
-        present.add(k)
-        added += 1
-    doc["rules"] = rules_list
-    with open(taxonomy_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(doc, f, sort_keys=False, allow_unicode=True)
-    return added
-
-
 # ADR-0011 follow-up 3: when the window-title taxonomy does not match an
 # activity, lead with FRAMEWORK RECOGNITION of the interactions inside that
 # activity's window. The dominant semantic category becomes a real label
@@ -128,7 +93,7 @@ def _as_dict(x: Any) -> dict:
     """A dict view of `x`, or {} when it isn't one. A malformed taxonomy.yaml
     or an odd capture can put a non-dict where a dict is expected; guarding
     degrades (no rule / no label) instead of crashing the whole run -- the same
-    posture as load_canonical / load_vocabularies."""
+    posture as load_vocabularies."""
     return x if isinstance(x, dict) else {}
 
 

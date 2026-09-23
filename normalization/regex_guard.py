@@ -1,9 +1,8 @@
 """ReDoS guard for AUTHORED regexes run against untrusted strings.
 
-App-vocabulary ``window_title_regex`` and Process-Template ``matches`` /
-``window_title_regex`` patterns are authored (analyst-written, or imported from
-a shared template) and then matched against UNTRUSTED window titles and field
-values captured from third-party apps. A carelessly- or maliciously-authored
+App-vocabulary ``window_title_regex`` patterns are authored (analyst-written,
+or shipped with a vocabulary) and then matched against UNTRUSTED window titles
+captured from third-party apps. A carelessly- or maliciously-authored
 pattern with a *nested unbounded quantifier* -- ``(a+)+``, ``(.*)*``,
 ``(\\d+){2,}`` -- triggers catastrophic backtracking; a 28-character title was
 measured taking ~24s.

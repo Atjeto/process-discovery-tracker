@@ -1,5 +1,4 @@
-"""Auto-suggest steps from interaction events when no canonical set
-exists or no canonical match fires. See annotation-model.md §4.1.
+"""Auto-suggest steps from interaction events. See annotation-model.md §4.1.
 """
 
 from __future__ import annotations
@@ -69,9 +68,10 @@ _COMPLETION_WORDS = frozenset(
     "search submit save apply ok close confirm send next finish done".split()
 )
 
-# G-4 label hygiene: a PII-masked value token («password#3f9a1c0e», see
-# pii_masking) must never render raw in a user-facing step name/description,
-# and literal junk an old recorder emits as a "value" must not leak in either.
+# G-4 label hygiene: a PII-masked value token («password#3f9a1c0e», written by
+# the former structural masking stage) must never render raw in a user-facing
+# step name/description, and literal junk an old recorder emits as a "value"
+# must not leak in either.
 _MASKED_VALUE_RE = re.compile(r"^«[^»]*»$")
 _NOISE_VALUES = frozenset({"null", "(null)", "undefined", "(undefined)"})
 MASKED_VALUE_DISPLAY = "(masked value)"
@@ -671,16 +671,9 @@ def drop_overlapping_auto_steps(
 
 
 def _inherit_step_identity(fresh: list, existing: list, preserved: list) -> list:
-    """Carry a prior step's IDENTITY and curated links onto the fresh auto
-    step that re-covers the same interactions, so a re-analyze does not orphan
-    relationships keyed on `step_id`.
-
-    A curated step->phase grouping is stored as `phase.step_ids` (and a
-    `phase_id` stamp on the step), but an auto_suggested step keeps its state
-    when grouped -- so on re-analyze it would be replaced by a fresh step with
-    a NEW uuid4 id, leaving the preserved phase's `step_ids` dangling and the
-    grouping silently lost. Re-using the prior id (and carrying its `phase_id`
-    / `canonical_step_id`) keeps those links intact.
+    """Carry a prior step's IDENTITY onto the fresh auto step that re-covers
+    the same interactions, so a re-analyze does not orphan relationships keyed
+    on `step_id`: without it the regenerated step would get a NEW uuid4 id.
 
     Matching is by interaction_event_id overlap -- event ids are STABLE because
     events.jsonl is immutable -- and requires a MAJORITY of BOTH the fresh and
@@ -711,10 +704,6 @@ def _inherit_step_identity(fresh: list, existing: list, preserved: list) -> list
                 and best_overlap * 2 > len(best_p_evs):
             claimed.add(best.get("step_id"))
             f["step_id"] = best.get("step_id")
-            if best.get("phase_id") and not f.get("phase_id"):
-                f["phase_id"] = best.get("phase_id")
-            if best.get("canonical_step_id") and not f.get("canonical_step_id"):
-                f["canonical_step_id"] = best.get("canonical_step_id")
     return fresh
 
 
@@ -728,14 +717,14 @@ def _merge_steps(existing: list, fresh: list,
     Fresh auto steps that overlap an analyst-owned (manual / edited / hidden)
     step are dropped: the analyst already owns that span, and an overlapping
     auto step is a duplicate they would otherwise have to find and delete by
-    hand (§I37). The remaining fresh steps inherit the identity (and curated
-    phase/template links) of the prior step they re-cover, so a re-analyze
-    keeps curated relationships, not just rows.
+    hand (§I37). The remaining fresh steps inherit the identity of the prior
+    step they re-cover, so a re-analyze keeps relationships keyed on
+    `step_id`, not just rows.
 
     `interactions_by_id` (event_id -> interaction event) lets every step --
-    auto, canonical-matched, and preserved -- get its ADR-0024 `grain_keys`
-    recomputed from its evidence, so the view-time grain roll-up has the
-    containment keys even on canonical/manual steps. Optional: absent it, only
+    auto and preserved -- get its ADR-0024 `grain_keys` recomputed from its
+    evidence, so the view-time grain roll-up has the containment keys even on
+    manual steps. Optional: absent it, only
     steps that already carry `grain_keys` (the auto ones, stamped in flush())
     keep them, and the viewer resolves the rest at view time."""
     by_state = {"manually_authored": [], "edited": [], "hidden": []}
@@ -756,8 +745,8 @@ def _merge_steps(existing: list, fresh: list,
     for s in result:
         s["process_label"] = process_label(s.get("name") or "")
         # ADR-0024: (re)resolve the grain-roll-up containment keys. Auto steps
-        # already carry them (flush()); canonical-matched / preserved steps get
-        # them here when the interaction map is supplied. Recomputed every
+        # already carry them (flush()); preserved steps get them here when
+        # the interaction map is supplied. Recomputed every
         # analyze so they track the current evidence.
         if interactions_by_id is not None:
             evs = [interactions_by_id.get(eid)

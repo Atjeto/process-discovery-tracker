@@ -1,29 +1,22 @@
 """Seeded property-based fuzzer for app_vocab (ADR-0002, lab Phase H G-7).
 
-Mirrors test_marker_suggest_fuzz.py in shape: thousands of random vocab
-dictionaries + event streams, deterministic per (BASE + iter) seed, two
-regimes -- one asserting full correctness on well-formed input, one
-asserting only robustness on corrupt/hand-edited input.
+The same shape as the other seeded fuzzers (e.g. test_case_assignment_fuzz.py):
+thousands of random vocab dictionaries + event streams, deterministic per
+(BASE + iter) seed, two regimes -- one asserting full correctness on
+well-formed input, one asserting only robustness on corrupt/hand-edited input.
 
 app_vocab parses UNTRUSTED input on two sides: the per-app vocabulary YAML
 (authored, but malformed files reach the matcher) and the captured event
 stream (an old/odd capture build emits odd shapes -- see G-2). Both reach
-`lookup` / `enrich_events` / `bootstrap_*`. Authored `window_title_regex`
-patterns are routed through `regex_guard.compile_guarded` (a bad / ReDoS
-pattern is made inert, not raised), so garbage regexes are in-scope here too.
+`lookup` / `enrich_events`. Authored `window_title_regex` patterns are routed
+through `regex_guard.compile_guarded` (a bad / ReDoS pattern is made inert,
+not raised), so garbage regexes are in-scope here too.
 
 Headline invariants:
 
-* `lookup`, `enrich_events`, `bootstrap_from_session`,
-  `bootstrap_per_app_from_session`, `auto_semantics` never crash -- even on
-  corrupt vocabs / events.
+* `lookup` and `enrich_events` never crash -- even on corrupt vocabs / events.
 * `enrich_events` returns `(events, summary)` with `matched <= total`, a
   coverage entry per app, and is idempotent in its summary.
-* `bootstrap_from_session` returns the documented `{app_vocabulary: {...}}`
-  shape; every interaction row carries a dict `signature` and string `name`.
-* `bootstrap_per_app_from_session` returns one entry per observed app,
-  ranked by interaction volume, each scoped to its OWN process, with
-  `interaction_count == len(interactions)`, and is deterministic.
 
 Run with:
     pytest normalization/test/test_app_vocab_fuzz.py
@@ -157,16 +150,6 @@ def _compact(events, vocabs) -> str:
             f"vocabs={len(vocabs) if isinstance(vocabs, list) else type(vocabs).__name__}")
 
 
-def _assert_bootstrap_doc(doc) -> None:
-    assert isinstance(doc, dict) and "app_vocabulary" in doc, f"bad doc: {doc!r}"
-    av = doc["app_vocabulary"]
-    assert isinstance(av.get("interactions"), list)
-    for row in av["interactions"]:
-        assert isinstance(row, dict)
-        assert isinstance(row.get("signature"), dict), f"row signature not a dict: {row!r}"
-        assert isinstance(row.get("name"), str)
-
-
 def _assert_enrich(events, summary) -> None:
     assert isinstance(events, list)
     assert isinstance(summary, dict)
@@ -193,23 +176,6 @@ def test_fuzz_wellformed():
             # Idempotent summary: enriching a FRESH copy gives the same counts.
             _, summary2 = app_vocab.enrich_events([dict(e) for e in events], vocabs)
             assert (summary["matched"], summary["total"]) == (summary2["matched"], summary2["total"])
-
-            doc = app_vocab.bootstrap_from_session(events)
-            _assert_bootstrap_doc(doc)
-
-            per_app = app_vocab.bootstrap_per_app_from_session(events)
-            assert isinstance(per_app, list)
-            counts = [a["interaction_count"] for a in per_app]
-            assert counts == sorted(counts, reverse=True), "per-app not volume-ranked"
-            for a in per_app:
-                assert a["interaction_count"] == len(a["app_vocabulary"]["interactions"])
-                assert a["app_vocabulary"]["scope"]["process_name"] == a["app"]
-                assert a["app_vocabulary"]["id"] == a["vocab_id"]
-                _assert_bootstrap_doc({"app_vocabulary": a["app_vocabulary"]})
-            # Deterministic: a re-run yields the same per-app ids + counts.
-            per_app2 = app_vocab.bootstrap_per_app_from_session(events)
-            assert [(a["vocab_id"], a["interaction_count"]) for a in per_app] == \
-                   [(a["vocab_id"], a["interaction_count"]) for a in per_app2]
         except AssertionError as e:
             raise AssertionError(f"[iter {i}, seed {hex(seed)}] {e}\n{_compact(events, vocabs)}") from e
         except Exception as e:  # noqa: BLE001 - a crash here is a finding
@@ -235,34 +201,9 @@ def test_fuzz_adversarial():
             ev2, summary = app_vocab.enrich_events(
                 [e for e in events if isinstance(e, dict)], vocabs)
             _assert_enrich(ev2, summary)
-            doc = app_vocab.bootstrap_from_session(
-                [e for e in events if isinstance(e, dict)])
-            _assert_bootstrap_doc(doc)
-            per_app = app_vocab.bootstrap_per_app_from_session(
-                [e for e in events if isinstance(e, dict)])
-            assert isinstance(per_app, list)
-            for a in per_app:
-                assert a["interaction_count"] == len(a["app_vocabulary"]["interactions"])
         except AssertionError as e:
             raise AssertionError(f"[iter {i}, seed {hex(seed)}] {e}\n{_compact(events, vocabs)}") from e
         except Exception as e:  # noqa: BLE001
             raise AssertionError(
                 f"CRASH on corrupt input [iter {i}, seed {hex(seed)}]: "
                 f"{type(e).__name__}: {e}\n{_compact(events, vocabs)}") from e
-
-
-def test_fuzz_auto_semantics_total():
-    """auto_semantics is total over any control_type / name / kinds combo."""
-    for i in range(2000):
-        rng = Random(BASE + 2_000_000 + i)
-        ct = _corrupt(rng, rng.choice(_CTRLS))
-        name = _corrupt(rng, rng.choice(_NAMES))
-        kinds = rng.choice([None, set(), {rng.choice(_KINDS)},
-                            {"value_changed", "toggle_changed"}])
-        try:
-            out = app_vocab.auto_semantics(ct, name, kinds)
-            assert isinstance(out, dict) and isinstance(out.get("verb"), str)
-        except Exception as e:  # noqa: BLE001
-            raise AssertionError(
-                f"CRASH [iter {i}]: auto_semantics({ct!r},{name!r},{kinds!r}) "
-                f"-> {type(e).__name__}: {e}") from e

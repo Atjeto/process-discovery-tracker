@@ -1,10 +1,10 @@
-"""Findings-memo export (lab-phase spec §A4 + §B3/§B4).
+"""Findings-memo model (lab-phase spec §A4 + §B3/§B4).
 
-The consultant deliverable: a ~2-page memo of measured claims +
-evidence, rendered from the analysis.json blocks Phase A produces
-(facts, findings, case_quality) plus stats.json. Templated sentences
-and measured numbers ONLY -- nothing here invents a judgment, a
-benchmark, or a number that was not computed upstream.
+The findings content of the PDD's §1: measured claims + evidence, built
+from the analysis.json blocks Phase A produces (facts, findings,
+case_quality) plus stats.json. Templated sentences and measured numbers
+ONLY -- nothing here invents a judgment, a benchmark, or a number that was
+not computed upstream.
 
 Structure:
   header        -- session, capture date/span, capture-coverage line.
@@ -17,19 +17,14 @@ Structure:
   to say more   -- the missing inputs, honestly enumerated.
 
 ONE SOURCE OF TRUTH (§B3): `build_memo_model()` computes the structured
-content; the Markdown renderer, the docx renderer (§B4), and the PDD's
-findings-first §1 (pdd_export) all consume the same model, so the memo
-and the PDD cannot disagree on a claim or a selection.
-
-`--memo-out <path>` on normalize.py writes it -- `.docx` gets the Word
-variant with the starred screenshots embedded inline as evidence
-figures; any other extension gets Markdown. Markdown path is pure
-stdlib; the docx variant needs python-docx (present in the bundled
-viewer/python, same engine pdd_export uses).
+content and `write_memo_into_docx()` renders it into the PDD's
+findings-first §1 (pdd_export), with the starred screenshots embedded
+inline as evidence figures. The docx rendering needs python-docx (present
+in the bundled viewer/python, same engine pdd_export uses); the model is
+pure stdlib.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -38,10 +33,8 @@ from typing import Any
 from findings import _fmt_ms, _pct
 
 try:
-    from docx import Document
     from docx.shared import Pt, Inches
-except ImportError:          # md export stays stdlib-only
-    Document = None
+except ImportError:          # the model stays stdlib-only
     Pt = None
     Inches = None
 
@@ -87,8 +80,7 @@ def _coverage_line(stats: dict, analysis: dict) -> str:
 
 
 def _fact_cells(facts: dict) -> list[tuple[str, str]]:
-    """The 6 (header, value) fact-strip pairs every renderer (md table,
-    docx table, PDD §1) shares.
+    """The 6 (header, value) fact-strip pairs the PDD §1 fact table shows.
 
     G-2 honesty rule: when the recording carries no app-time signal at all
     (facts.app_time_source == "none" -- old captures), the four app-time
@@ -123,15 +115,6 @@ def _fact_cells(facts: dict) -> list[tuple[str, str]]:
     ]
 
 
-def _fact_strip(facts: dict) -> list[str]:
-    cells = _fact_cells(facts)
-    return [
-        "| " + " | ".join(h for h, _ in cells) + " |",
-        "|" + "---|" * len(cells),
-        "| " + " | ".join(v for _, v in cells) + " |",
-    ]
-
-
 def _evidence_numbers(evidence: dict) -> str:
     """The scalar evidence numbers, formatted compactly. `_ms` keys render
     as durations, `share`/`coverage` as percentages; lists/dicts are
@@ -162,68 +145,28 @@ def _select_findings(analysis: dict, annotations: dict) -> list[dict]:
     return all_findings[:DEFAULT_TOP_FINDINGS]
 
 
-def _findings_section(analysis: dict, annotations: dict) -> list[str]:
-    chosen = _select_findings(analysis, annotations)
-    if not chosen:
-        return ["_Nothing stood out -- the automatic checks found nothing "
-                "worth reporting on this recording._"]
-    lines: list[str] = []
-    for i, f in enumerate(chosen, 1):
-        lines.append(f"{i}. **{f.get('claim') or '(no claim)'}**")
-        ev = f.get("evidence") or {}
-        nums = _evidence_numbers(ev)
-        if nums:
-            lines.append(f"   - Evidence: {nums}")
-        refs = ev.get("screenshot_refs") or []
-        for r in refs[:2]:
-            lines.append(f"   - ★ `{r}`")
-        note = f.get("confidence_note")
-        if note:
-            lines.append(f"   - _{note}_")
-        lines.append("")
-    return lines
-
-
-def _tier2_section(analysis: dict, stats: dict, annotations: dict) -> list[str]:
+def _tier2_section(analysis: dict, stats: dict) -> list[str]:
     cq = (analysis or {}).get("case_quality") or {}
     if not cq.get("tier2_unlocked"):
         # G-3: cases WERE identified, just not enough of them to compare.
         if cq.get("mode") != "unsegmented" and (cq.get("case_count") or 0) >= 1:
             n_cases = cq.get("case_count") or 0
-            verb = "marked" if cq.get("mode") == "markers" else "identified"
+            verb = "marked"
             return [
                 "{} case{} {} in this recording — case comparisons (how "
                 "long each case takes, the paths taken) need at least 2 "
                 "cases, so none are reported.".format(
                     n_cases, "s were" if n_cases != 1 else " was", verb),
             ]
-        n = len((annotations or {}).get("anchor_candidates") or [])
         return [
-            "No cases identified yet in this recording; {} candidate "
-            "field{} that could identify each case {} awaiting review in "
-            "the viewer.".format(n, "s" if n != 1 else "",
-                                 "are" if n != 1 else "is")
-            if n else
-            "No cases identified yet in this recording, and no candidate "
-            "field was detected; recording Start/End markers would unlock "
-            "the case-by-case numbers.",
+            "No cases identified yet in this recording; recording Start/End "
+            "markers would unlock the case-by-case numbers.",
         ]
     lines = []
-    mode = cq.get("mode")
-    if mode == "anchor":
-        anchor = cq.get("anchor") or {}
-        lines.append("Cases identified by the field `{}` (sample value: "
-                     "`{}`) -- {} cases, {} of recorded actions fall inside "
-                     "one.".format(
-                         anchor.get("field_property") or "?",
-                         anchor.get("field_value") or "?",
-                         cq.get("case_count") or 0,
-                         _pct(cq.get("coverage") or 0)))
-    else:
-        lines.append("Cases marked by the worker during recording -- {} "
-                     "cases, {} of recorded actions fall inside one.".format(
-                         cq.get("case_count") or 0,
-                         _pct(cq.get("coverage") or 0)))
+    lines.append("Cases marked by the worker during recording -- {} "
+                 "cases, {} of recorded actions fall inside one.".format(
+                     cq.get("case_count") or 0,
+                     _pct(cq.get("coverage") or 0)))
     rows = [r for r in (stats or {}).get("case_stats") or []
             if isinstance(r.get("wall_clock_ms"), (int, float))]
     if rows:
@@ -258,17 +201,9 @@ def _to_say_more(analysis: dict, annotations: dict) -> list[str]:
                                  " was" if (cq.get("case_count") or 0) == 1
                                  else "s were"))
         else:
-            n = len((annotations or {}).get("anchor_candidates") or [])
-            hint = (f" ({n} candidate field{'s' if n != 1 else ''} awaiting "
-                    "review)" if n else "")
-            items.append("No cases identified yet{} -- confirming the field that "
-                         "identifies each ticket/order, or recording Start/End "
-                         "markers, unlocks how long each case takes, the paths "
-                         "taken, and case-by-case comparison.".format(hint))
-    if not (annotations or {}).get("roi_inputs"):
-        items.append("A loaded labour rate and annual volume (Analysis → Edit "
-                     "assumptions) would turn the measured time into a € "
-                     "savings band.")
+            items.append("No cases identified yet -- recording Start/End "
+                         "markers unlocks how long each case takes, the paths "
+                         "taken, and case-by-case comparison.")
     caveat = next((f for f in (analysis or {}).get("findings") or []
                    if f.get("detector") == "coverage_caveat"), None)
     if caveat:
@@ -346,20 +281,6 @@ def _named_work_items(annotations: dict | None, stats: dict | None) -> list[dict
     return out
 
 
-def _work_item_lines(items: list[dict]) -> list[str]:
-    """Render the named work items as memo Markdown lines (shared by the md
-    memo). One line per visit: the ticket, the analyst's name, a waste tag, and
-    the note."""
-    lines: list[str] = []
-    for wi in items:
-        tag = " *(waste)*" if wi["waste"] else ""
-        line = f"- **{wi['case_label']}: {wi['name']}**{tag}"
-        if wi["notes"]:
-            line += f" -- {wi['notes']}"
-        lines.append(line)
-    return lines
-
-
 def build_memo_model(
     manifest: dict | None,
     stats: dict | None,
@@ -367,10 +288,9 @@ def build_memo_model(
     annotations: dict | None,
     session_label: str | None = None,
 ) -> dict[str, Any]:
-    """The single structured source every memo surface renders from
-    (§B3): the md memo, the docx memo, and the PDD's findings-first §1.
-    Everything in it is computed upstream -- this only SELECTS and
-    formats; it never invents a number."""
+    """The single structured source the PDD's findings-first §1 renders
+    from (§B3). Everything in it is computed upstream -- this only SELECTS
+    and formats; it never invents a number."""
     manifest = manifest or {}
     stats = stats or {}
     analysis = analysis or {}
@@ -397,70 +317,13 @@ def build_memo_model(
         ],
         "tier2_unlocked": bool(
             ((analysis.get("case_quality") or {}).get("tier2_unlocked"))),
-        "tier2_lines": _tier2_section(analysis, stats, annotations),
+        "tier2_lines": _tier2_section(analysis, stats),
         "named_work_items": _named_work_items(annotations, stats),
         "to_say_more": _to_say_more(analysis, annotations),
     }
 
 
-def render_memo(
-    manifest: dict | None,
-    stats: dict | None,
-    analysis: dict | None,
-    annotations: dict | None,
-    session_label: str | None = None,
-) -> str:
-    """Render the memo Markdown from in-memory pipeline objects."""
-    manifest = manifest or {}
-    stats = stats or {}
-    analysis = analysis or {}
-    annotations = annotations or {}
-    model = build_memo_model(manifest, stats, analysis, annotations,
-                             session_label=session_label)
-
-    out: list[str] = []
-    out.append(f"# Findings memo — {model['label']}")
-    out.append("")
-    out.append(f"*Captured {model['captured']} · {model['coverage_line']}*")
-    out.append("")
-    out.append("## What the recording measured")
-    out.append("")
-    out.extend(_fact_strip(analysis.get("facts") or {}))
-    out.append("")
-    out.append("## Findings")
-    out.append("")
-    out.extend(_findings_section(analysis, annotations))
-    out.append("## Case-by-case analysis")
-    out.append("")
-    out.extend(model["tier2_lines"])
-    # ADR-0028 §4: the analyst's named work items (case-scoped screen visits),
-    # so their business names reach the deliverable. Additive -- absent when
-    # nothing is named.
-    wi = model.get("named_work_items") or []
-    if wi:
-        out.append("")
-        out.append("Named work items:")
-        out.extend(_work_item_lines(wi))
-    out.append("")
-    out.append("## To say more")
-    out.append("")
-    more = model["to_say_more"]
-    if more:
-        out.extend(f"- {item}" for item in more)
-    else:
-        out.append("- Nothing outstanding -- every analysis input this memo "
-                   "can use was supplied.")
-    out.append("")
-    out.append("---")
-    out.append("*Every number above was measured from the recording; the "
-               "sentences around them are standard wording, not opinion. "
-               "Evidence pointers (★) name screenshots in the session "
-               "folder.*")
-    out.append("")
-    return "\n".join(out)
-
-
-# ---- docx variant (§B4) ----------------------------------------------------
+# ---- docx rendering (§B4) --------------------------------------------------
 
 def _resolve_session_image(session_folder: str | os.PathLike | None,
                            ref: str) -> Path | None:
@@ -492,11 +355,10 @@ def _docx_note(doc, text: str):
 def write_memo_into_docx(doc, model: dict, session_folder=None,
                          heading_offset: int = 0) -> None:
     """Write the memo body (fact strip, findings with INLINE starred
-    screenshots, Tier 2, to-say-more) into an open python-docx Document.
-    Shared by the standalone docx memo and the PDD's findings-first §1
-    (pdd_export) so the two artifacts render the same model the same way.
-    `heading_offset` shifts the section heading level (0 = a standalone
-    memo with level-1 sections; 1 = nested under a PDD level-1 head)."""
+    screenshots, Tier 2, to-say-more) into an open python-docx Document:
+    the PDD's findings-first §1 (pdd_export). `heading_offset` shifts the
+    section heading level (0 = level-1 sections; 1 = nested under a PDD
+    level-1 head, as pdd_export renders it)."""
     h = lambda lvl: lvl + heading_offset  # noqa: E731
 
     doc.add_heading("What the recording measured", level=h(1))
@@ -551,60 +413,3 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
                 "can use was supplied."]
     for item in more:
         doc.add_paragraph(item, style="List Bullet")
-
-
-def render_memo_docx(
-    out_path: str,
-    manifest: dict | None,
-    stats: dict | None,
-    analysis: dict | None,
-    annotations: dict | None,
-    session_folder: str | os.PathLike | None = None,
-    session_label: str | None = None,
-) -> str:
-    """Write the Word memo (same model as the Markdown memo, with the
-    starred screenshots embedded inline as evidence figures)."""
-    if Document is None:
-        raise RuntimeError(
-            "python-docx is not installed -- the .docx memo needs it "
-            "(the bundled viewer/python has it; use a .md path otherwise).")
-    model = build_memo_model(manifest, stats, analysis, annotations,
-                             session_label=session_label)
-    doc = Document()
-    doc.add_heading(f"Findings memo — {model['label']}", level=0)
-    _docx_note(doc, f"Captured {model['captured']} · {model['coverage_line']}")
-    write_memo_into_docx(doc, model, session_folder=session_folder)
-    _docx_note(doc, "Every number above was measured from the recording; "
-                    "the sentences around them are standard wording, not "
-                    "opinion. Evidence figures (★) are the screenshots "
-                    "named from the session folder.")
-    doc.save(str(out_path))
-    return str(out_path)
-
-
-def write_memo(path: str, session_folder: str) -> str:
-    """Load the session sidecars from disk and write the memo to `path`
-    -- the Word variant when `path` ends in .docx, else Markdown.
-    Returns the path written. Used by `normalize.py --memo-out` (and
-    callable standalone against an already-analyzed session)."""
-    def _read(name: str) -> dict:
-        p = os.path.join(str(session_folder), name)
-        try:
-            with open(p, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError, ValueError):
-            return {}
-
-    kwargs = dict(
-        manifest=_read("manifest.json"),
-        stats=_read("stats.json"),
-        analysis=_read("analysis.json"),
-        annotations=_read("annotations.json"),
-        session_label=None,
-    )
-    if str(path).lower().endswith(".docx"):
-        return render_memo_docx(path, session_folder=session_folder, **kwargs)
-    md = render_memo(**kwargs)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(md)
-    return path

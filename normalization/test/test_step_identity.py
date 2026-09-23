@@ -1,9 +1,9 @@
 """Re-analyze identity inheritance (_merge_steps / _inherit_step_identity).
 
-A curated step->phase grouping must survive a re-analyze even though fresh auto
-steps are regenerated with new ids: the fresh step that re-covers the same
-interactions inherits the prior step's id (and phase_id / canonical_step_id),
-so the preserved phase's step_ids keep resolving.
+Fresh auto steps are regenerated with new ids on every analyze: the fresh step
+that re-covers the same interactions inherits the prior step's id, so anything
+keyed on step_id keeps resolving. Legacy phase / template links on a prior
+step (phases and canonical matching were removed) are no longer carried.
 
 Run with:
     pytest normalization/test/test_step_identity.py
@@ -32,34 +32,35 @@ def _step(step_id, state, event_ids, *, phase_id=None, canonical_step_id=None):
     return s
 
 
-def test_fresh_auto_step_inherits_prior_id_and_phase():
-    """An auto_suggested step grouped into a phase (phase_id set, state still
-    auto_suggested) keeps its id + phase_id when re-analyze regenerates it, so
-    the preserved phase's step_ids still resolve."""
-    prior = _step("S1", "auto_suggested", ["e1", "e2", "e3"], phase_id="P1")
+def test_fresh_auto_step_inherits_prior_id():
+    """An auto_suggested step keeps its id when re-analyze regenerates it."""
+    prior = _step("S1", "auto_suggested", ["e1", "e2", "e3"])
     fresh = _step("NEW", "auto_suggested", ["e1", "e2", "e3"])
     merged = _merge_steps([prior], [fresh])
     assert len(merged) == 1
     assert merged[0]["step_id"] == "S1"
-    assert merged[0]["phase_id"] == "P1"
 
 
-def test_inherits_canonical_step_id():
-    prior = _step("S1", "auto_matched", ["e1", "e2"], canonical_step_id="C9")
+def test_legacy_phase_and_template_links_are_not_carried():
+    """Phases and canonical matching were removed: a prior step's legacy
+    phase_id / canonical_step_id no longer ride onto the fresh step (they used
+    to), while the step id itself is still inherited."""
+    prior = _step("S1", "auto_suggested", ["e1", "e2"],
+                  phase_id="P1", canonical_step_id="C9")
     fresh = _step("NEW", "auto_suggested", ["e1", "e2"])
     merged = _merge_steps([prior], [fresh])
     assert merged[0]["step_id"] == "S1"
-    assert merged[0]["canonical_step_id"] == "C9"
+    assert merged[0].get("phase_id") is None
+    assert merged[0].get("canonical_step_id") is None
 
 
 def test_step_that_grew_by_one_event_still_inherits():
     """Segmentation drift (a step gains one trailing interaction) still counts
     as the same step -- majority of both sets overlap."""
-    prior = _step("S1", "auto_suggested", ["e1", "e2", "e3"], phase_id="P1")
+    prior = _step("S1", "auto_suggested", ["e1", "e2", "e3"])
     fresh = _step("NEW", "auto_suggested", ["e1", "e2", "e3", "e4"])
     merged = _merge_steps([prior], [fresh])
     assert merged[0]["step_id"] == "S1"
-    assert merged[0]["phase_id"] == "P1"
 
 
 def test_no_overlap_keeps_new_id():
@@ -68,7 +69,6 @@ def test_no_overlap_keeps_new_id():
     fresh = _step("NEW", "auto_suggested", ["x1", "x2", "x3"])
     merged = _merge_steps([prior], [fresh])
     assert merged[0]["step_id"] == "NEW"
-    assert merged[0].get("phase_id") is None
 
 
 def test_weak_overlap_does_not_inherit():

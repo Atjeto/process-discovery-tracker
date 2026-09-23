@@ -1,16 +1,16 @@
-"""Observed-flow step/phase BPMN.
+"""Observed-flow step BPMN.
 
 The activity-level `process_map.bpmn` is mined from the real event log. This
-module does the same one level up: it mines the ACTUAL annotated step/phase
-flow -- one trace per case, labelled by step or phase name -- into a BPMN with
-branches/loops. It is the Process-diagram counterpart of the step/phase Flow
-diagram (viewer/process-map-levels.js `buildAnnotationDfg`), and the two share
-the same trace logic so they agree.
+module does the same one level up: it mines the ACTUAL annotated step flow --
+one trace per case, labelled by step name -- into a BPMN with branches/loops.
+It is the Process-diagram counterpart of the step Flow diagram
+(viewer/process-map-levels.js `buildAnnotationDfg`), and the two share the
+same trace logic so they agree.
 
-No Process Template is required (unlike bpmn_step/bpmn_phase, which render a
-template's declared order). The model comes purely from the annotations, mined
-with the same PM4Py inductive miner + pure-Python BPMNDI layout used for the
-activity map (`mining.discover_inductive` + `mining.export_bpmn`).
+No Process Template is required (unlike bpmn_step, which renders a template's
+declared order). The model comes purely from the annotations, mined with the
+same PM4Py inductive miner + pure-Python BPMNDI layout used for the activity
+map (`mining.discover_inductive` + `mining.export_bpmn`).
 """
 
 from __future__ import annotations
@@ -37,20 +37,10 @@ def _start_key(step: dict[str, Any]) -> float:
 _NOCASE = "__nocase__"
 
 
-def _phase_names(anno: dict[str, Any]) -> dict[Any, str]:
-    out: dict[Any, str] = {}
-    for ph in (anno.get("phases") or []):
-        out[ph.get("phase_id")] = ph.get("name") or "(phase)"
-    return out
-
-
-def _step_label(s: dict[str, Any], level: str, phase_name: dict[Any, str]) -> str:
-    """The node label for a step. Value-FREE for the step level (so repeated work
-    collapses to one node, not one per case) -- falls back to name for steps from
-    a pre-process_label analyze."""
-    if level == "phase":
-        pid = s.get("phase_id")
-        return phase_name.get(pid, "(phase)") if pid else "(unphased)"
+def _step_label(s: dict[str, Any]) -> str:
+    """The node label for a step. Value-FREE (so repeated work collapses to one
+    node, not one per case) -- falls back to name for steps from a
+    pre-process_label analyze."""
     return s.get("process_label") or s.get("name") or "(unnamed)"
 
 
@@ -75,14 +65,13 @@ def _collapse(labels):
     return out
 
 
-def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
-    """One trace per case, events labelled by step name (level="step") or phase
-    name (level="phase"), time-ordered, consecutive duplicates collapsed.
+def build_annotation_log(anno: dict[str, Any]) -> EventLog:
+    """One trace per case, events labelled by step name, time-ordered,
+    consecutive duplicates collapsed.
 
     Mirrors `buildAnnotationDfg` so the observed-flow BPMN and the Flow-diagram
     DFG describe the same flow.
     """
-    phase_name = _phase_names(anno)
     by_case: dict[str, list[dict[str, Any]]] = {}
     for s in _visible_steps(anno):
         by_case.setdefault(s.get("case_id") or _NOCASE, []).append(s)
@@ -95,7 +84,7 @@ def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
         trace.attributes["case:id"] = cid
         prev_label: str | None = None
         for s in case_steps:
-            label = _step_label(s, level, phase_name)
+            label = _step_label(s)
             if label == prev_label:
                 continue  # collapse consecutive duplicates (== the DFG's rule)
             prev_label = label
@@ -113,15 +102,14 @@ def build_annotation_log(anno: dict[str, Any], level: str) -> EventLog:
     return log
 
 
-def session_sequence(anno: dict[str, Any], level: str) -> list[str]:
+def session_sequence(anno: dict[str, Any]) -> list[str]:
     """The WHOLE session as one observed path: every visible step's label,
     time-ordered across all cases, consecutive duplicates collapsed. Used when
     there is at most one real case, so a handful of un-cased orphan steps render
     as part of the single chain instead of a second trace that tips the model
     into the inductive miner. Pure."""
-    phase_name = _phase_names(anno)
     steps = sorted(_visible_steps(anno), key=_start_key)
-    return _collapse(_step_label(s, level, phase_name) for s in steps)
+    return _collapse(_step_label(s) for s in steps)
 
 
 def _linear_bpmn(labels: list[str]):
@@ -151,11 +139,10 @@ def _linear_bpmn(labels: list[str]):
 
 def write_observed_bpmn(
     anno: dict[str, Any],
-    level: str,
     out_path: str,
     noise_threshold: float = 0.2,
 ) -> bool:
-    """Mine the observed step/phase flow into BPMN and write it (with layout).
+    """Mine the observed step flow into BPMN and write it (with layout).
 
     Returns True if a model was written, False when there is nothing to mine
     (no non-hidden steps / no traces).
@@ -173,13 +160,13 @@ def write_observed_bpmn(
     """
     import mining  # local import: PM4Py is only needed when --mine is on
 
-    log = build_annotation_log(anno, level)
+    log = build_annotation_log(anno)
     if len(log) == 0:
         return False
     if real_case_count(anno) <= 1:
         # <=1 real case: one observed path. Linearise ALL visible steps in time
         # order (orphans fold into the single chain) instead of mining.
-        bpmn = _linear_bpmn(session_sequence(anno, level))
+        bpmn = _linear_bpmn(session_sequence(anno))
     else:
         bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
     mining.export_bpmn(bpmn, out_path)

@@ -167,7 +167,7 @@ def test_non_utf8_inside_a_string_value_degrades_to_replacement_char(tmp_path):
     # undecodable bytes for U+FFFD. We assert U+FFFD specifically -- NOT a lone
     # surrogate: surrogateescape would also keep the record, but as a lone surrogate
     # that json.loads silently accepts here and then crashes downstream at a
-    # *.encode("utf-8") boundary (analysis_segments / anchor_suggest / marker_suggest).
+    # *.encode("utf-8") boundary (analysis_segments).
     # U+FFFD re-serializes and encodes safely everywhere.
     f = _write_bytes(
         tmp_path,

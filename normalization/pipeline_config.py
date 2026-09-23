@@ -1,7 +1,7 @@
 """Per-session pipeline configuration read from annotations.json.
 
 Extracted from normalize.py (god-file decomposition, continues F4). These are
-the readers that pull analyst-/template-authored knobs out of annotations.json
+the readers that pull analyst-authored knobs out of annotations.json
 and turn them into the values the pipeline stages consume:
 
   * _step_ignored_processes -- the step-suggestion denylist;
@@ -38,8 +38,8 @@ def _excluded_ranges(annotations: dict) -> list[dict]:
 # locked as `coalesce_typing_bursts` / `auto_suggest_steps` keyword defaults and
 # UNREACHABLE from a session (the two call sites passed none of them), so the
 # over-segmentation ("308-step") class could not be tuned without editing code.
-# They are now read from an optional `calibration` block in annotations.json (a
-# Process Template or analyst can set it per session). Defaults match the prior
+# They are now read from an optional `calibration` block in annotations.json (the
+# analyst can set it per session). Defaults match the prior
 # hardcoded values EXACTLY, so absent an override the pipeline output is unchanged.
 _DEFAULT_CALIBRATION = {
     "coalesce_idle_ms": 1500,

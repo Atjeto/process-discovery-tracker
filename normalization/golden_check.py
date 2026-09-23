@@ -64,14 +64,10 @@ _META_FIELDS = [
     "dropped_jsonl_lines",
     "collapsed_activity_count",
     "interaction_count",
-    "matched_interactions",
-    "match_rate",
     "case_count",
     "marker_edits_applied",
     "step_count",
     "step_state_breakdown",
-    "drift_count",
-    "phase_count",
     "app_vocabulary_matches",
 ]
 

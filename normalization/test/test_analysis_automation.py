@@ -195,18 +195,22 @@ def test_rank_orders_by_priority_not_instance_count():
     assert sap["rank_score"] == round(sap["instance_count"] * sap["mean_elapsed_ms"] * 0.7, 2)
 
 
-def test_automatable_fraction_override_reorders_rank():
+def test_legacy_roi_inputs_no_longer_move_the_rank():
+    """The ROI layer and its per-segment automatable-fraction overrides were
+    removed: a legacy roi_inputs block in an old annotations.json is carried
+    along untouched but no longer read, so the fraction stays at the 0.7
+    default and the priority order is unchanged."""
     events, steps = _two_patterns()
     base = score_automation(steps, events)
     sap_sig = next(r["segment_signature"] for r in base if r["app"] == "sap.exe")
-    # Knock sap's automatable fraction down hard -> crm's priority wins.
+    # This override used to knock sap down so crm's priority won.
     anno = {"roi_inputs": {"automatable_fraction_overrides": {sap_sig: 0.1}}}
     out = score_automation(steps, events, annotations=anno)
     multi = [r for r in out if r["data_sufficiency"] == "multi_instance"]
     by_app = {r["app"]: r for r in multi}
-    assert by_app["sap.exe"]["automatable_fraction"] == 0.1
-    assert by_app["crm.exe"]["rank"] == 1
-    assert by_app["sap.exe"]["rank"] == 2
+    assert by_app["sap.exe"]["automatable_fraction"] == 0.7
+    assert by_app["sap.exe"]["rank"] == 1
+    assert by_app["crm.exe"]["rank"] == 2
 
 
 def test_single_instance_has_no_rank():

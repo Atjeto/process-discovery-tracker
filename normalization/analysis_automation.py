@@ -29,11 +29,11 @@ from __future__ import annotations
 from typing import Any
 
 from analysis_segments import detect_segments, group_segments
-# Ranking reuses the SAME automatable-fraction resolution the €-ROI layer uses
-# (per-segment override → flat default → 0.7), so a candidate's rank and its ROI
-# band agree on how automatable it is. analysis_roi imports nothing from this
-# module, so the dependency is one-way (no cycle).
-from analysis_roi import _resolve_inputs, _fraction_for
+
+# The share of a candidate's observed time a robot is assumed to take over,
+# used in the automation priority. A flat default: the analyst inputs that used
+# to override it per segment (roi_inputs) were removed with the ROI layer.
+AUTOMATABLE_FRACTION = 0.7
 
 
 def _override_for(annotations: dict | None, signature: str) -> dict | None:
@@ -78,10 +78,6 @@ def score_automation(
     segs = detect_segments(events, steps or [])
     groups = group_segments(segs)
 
-    # Resolve the ROI inputs once so each candidate's rank uses the same
-    # automatable fraction its €-ROI band will (per-segment override aware).
-    roi_cfg = _resolve_inputs((annotations or {}).get("roi_inputs"))
-
     out: list[dict[str, Any]] = []
     for sig, g in groups.items():
         instances = g["instances"]
@@ -108,10 +104,10 @@ def score_automation(
         })
         # Automation priority (§11f): frequency × observed mean time ×
         # automatable fraction. This is the "how much manual time would a robot
-        # actually remove per year of this pattern" proxy that feeds both the
-        # ROI band and the PDD focus order. Single-instance patterns have no
-        # repeatability signal, so they get no rank_score (ranked last).
-        fraction = _fraction_for(sig, roi_cfg)
+        # actually remove per year of this pattern" proxy that feeds the PDD
+        # focus order. Single-instance patterns have no repeatability signal,
+        # so they get no rank_score (ranked last).
+        fraction = AUTOMATABLE_FRACTION
         rank_score = (n * mean_elapsed * fraction) if n >= 2 else 0.0
         out.append({
             "segment_signature": sig,

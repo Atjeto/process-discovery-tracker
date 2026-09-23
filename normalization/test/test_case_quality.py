@@ -34,7 +34,6 @@ def test_marker_mode_with_full_coverage_unlocks_tier2():
     assert cq["case_count"] == 2
     assert cq["coverage"] == 1.0
     assert cq["tier2_unlocked"] is True
-    assert "anchor" not in cq
 
 
 def test_unsegmented_when_no_cases():
@@ -70,44 +69,6 @@ def test_single_case_locks_tier2_even_at_full_coverage():
     assert cq["coverage"] == 1.0
     assert cq["tier2_unlocked"] is False
     assert MIN_CASES == 2
-
-
-def test_anchor_mode_from_annotations_override():
-    anno = {"case_anchor_override": {
-        "field": "automation_id", "equals": "customer-id-field",
-        "case_label_from": "value", "_accepted_signature": "abc123",
-    }}
-    cq = compute_case_quality(_events(9, 1), [{"case_id": "a"}, {"case_id": "b"}],
-                              annotations=anno)
-    assert cq["mode"] == "anchor"
-    assert cq["case_count"] == 2
-    assert cq["anchor"] == {"field_property": "automation_id",
-                            "field_value": "customer-id-field"}
-    assert cq["tier2_unlocked"] is True
-
-
-def test_anchor_mode_from_canonical_template_wins():
-    canonical = {"case_anchor": {"field": "name", "equals": "Order number"}}
-    cq = compute_case_quality(_events(8, 2), [{}, {}, {}], canonical=canonical)
-    assert cq["mode"] == "anchor"
-    assert cq["anchor"]["field_property"] == "name"
-    assert cq["anchor"]["field_value"] == "Order number"
-
-
-def test_anchor_config_with_zero_cases_is_unsegmented():
-    # An anchor that produced nothing must not claim anchor-segmentation.
-    anno = {"case_anchor_override": {"field": "name", "equals": "x"}}
-    cq = compute_case_quality(_events(0, 5), [], annotations=anno)
-    assert cq["mode"] == "unsegmented"
-    assert cq["tier2_unlocked"] is False
-
-
-def test_recognized_anchor_display():
-    anno = {"case_anchor_override": {"recognized": "invoice_number"}}
-    cq = compute_case_quality(_events(5, 0), [{}, {}], annotations=anno)
-    assert cq["mode"] == "anchor"
-    assert cq["anchor"]["field_property"] == "recognized"
-    assert cq["anchor"]["field_value"] == "invoice_number"
 
 
 def test_no_interactions_yields_zero_coverage():

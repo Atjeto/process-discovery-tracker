@@ -1,6 +1,7 @@
 """Seeded property-based fuzzer for classification.
 
-Mirrors test_marker_suggest_fuzz.py in shape. `classify_events` and the two
+The same shape as the other seeded fuzzers (e.g. test_case_assignment_fuzz.py).
+`classify_events` and the two
 `collapse_*` stages consume the UNTRUSTED captured event stream (an old/odd
 capture emits odd shapes -- non-dict `data`, a non-string app/title) and an
 authored taxonomy. This fuzzer pins that they degrade rather than crash.

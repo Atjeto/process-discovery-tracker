@@ -1,4 +1,4 @@
-"""Tests for observed-flow step/phase BPMN (bpmn_observed).
+"""Tests for observed-flow step BPMN (bpmn_observed).
 
 Run with: pytest normalization/test/test_bpmn_observed.py
 """
@@ -24,12 +24,11 @@ from bpmn_observed import (
 )
 
 
-def _step(case_id, name, start, *, phase_id=None, state="edited"):
+def _step(case_id, name, start, *, state="edited"):
     return {
         "step_id": f"{name}-{case_id}-{start}",
         "case_id": case_id,
         "name": name,
-        "phase_id": phase_id,
         "state": state,
         "time_range": {"start": start, "end": start},
     }
@@ -55,7 +54,7 @@ def test_build_log_one_trace_per_case_collapses_consecutive_dups():
         _step("B", "Search",  "2026-05-18T09:10:00Z"),
         _step("B", "Resolve", "2026-05-18T09:10:05Z"),
     ]}
-    log = build_annotation_log(anno, "step")
+    log = build_annotation_log(anno)
     assert len(log) == 2
     a = next(t for t in log if t.attributes["case:id"] == "A")
     assert [e["concept:name"] for e in a] == ["Search", "Resolve"]
@@ -67,7 +66,7 @@ def test_build_log_excludes_hidden_steps():
         _step("A", "Noise",   "2026-05-18T09:00:05Z", state="hidden"),
         _step("A", "Resolve", "2026-05-18T09:00:10Z"),
     ]}
-    labels = [e["concept:name"] for t in build_annotation_log(anno, "step") for e in t]
+    labels = [e["concept:name"] for t in build_annotation_log(anno) for e in t]
     assert labels == ["Search", "Resolve"]
 
 
@@ -78,28 +77,14 @@ def test_build_log_orders_by_start_time():
         _step("A", "First",  "2026-05-18T09:00:00Z"),
         _step("A", "Second", "2026-05-18T09:00:10Z"),
     ]}
-    a = next(iter(build_annotation_log(anno, "step")))
+    a = next(iter(build_annotation_log(anno)))
     assert [e["concept:name"] for e in a] == ["First", "Second", "Third"]
-
-
-def test_phase_level_uses_phase_names_and_collapses():
-    anno = {
-        "phases": [{"phase_id": "p1", "name": "Investigation"},
-                   {"phase_id": "p2", "name": "Resolution"}],
-        "steps": [
-            _step("A", "Search", "2026-05-18T09:00:00Z", phase_id="p1"),
-            _step("A", "Lookup", "2026-05-18T09:00:05Z", phase_id="p1"),  # same phase
-            _step("A", "Fix",    "2026-05-18T09:00:10Z", phase_id="p2"),
-        ],
-    }
-    labels = [e["concept:name"] for t in build_annotation_log(anno, "phase") for e in t]
-    assert labels == ["Investigation", "Resolution"]
 
 
 def test_write_observed_step_bpmn_has_tasks_layout_and_branch():
     with tempfile.TemporaryDirectory() as d:
         out = os.path.join(d, "process_map_step.bpmn")
-        assert write_observed_bpmn(_two_case_anno(), "step", out) is True
+        assert write_observed_bpmn(_two_case_anno(), out) is True
         xml = Path(out).read_text(encoding="utf-8")
     # Every observed step is represented as a task.
     for name in ("Search", "Open ticket", "Escalate", "Resolve"):
@@ -111,7 +96,7 @@ def test_write_observed_step_bpmn_has_tasks_layout_and_branch():
 
 
 def test_write_returns_false_when_no_steps():
-    assert write_observed_bpmn({"steps": []}, "step", "unused.bpmn") is False
+    assert write_observed_bpmn({"steps": []}, "unused.bpmn") is False
 
 
 def test_layout_ranks_topologically_ignoring_loop_back_edges():
@@ -148,7 +133,7 @@ def test_single_case_repeated_label_renders_without_gateways():
     ]}
     with tempfile.TemporaryDirectory() as d:
         out = os.path.join(d, "step.bpmn")
-        assert write_observed_bpmn(anno, "step", out) is True
+        assert write_observed_bpmn(anno, out) is True
         xml = Path(out).read_text(encoding="utf-8")
     assert "Gateway" not in xml          # no invented branches from one path
     assert "BPMNDiagram" in xml          # still laid out for bpmn-js
@@ -164,7 +149,7 @@ def test_single_case_linear_renders_without_gateways():
     ]}
     with tempfile.TemporaryDirectory() as d:
         out = os.path.join(d, "step.bpmn")
-        write_observed_bpmn(anno, "step", out)
+        write_observed_bpmn(anno, out)
         xml = Path(out).read_text(encoding="utf-8")
     assert "Gateway" not in xml
 
@@ -177,7 +162,7 @@ def test_real_case_count_ignores_the_nocase_orphan_bucket():
     ]}
     assert real_case_count(anno) == 1                    # only "A" is a real case
     # session_sequence folds every visible step into one time-ordered chain.
-    assert session_sequence(anno, "step") == ["Search", "Orphan", "Blank"]
+    assert session_sequence(anno) == ["Search", "Orphan", "Blank"]
 
 
 def test_single_real_case_with_orphans_renders_linear_not_a_flower():
@@ -195,7 +180,7 @@ def test_single_real_case_with_orphans_renders_linear_not_a_flower():
     ]}
     with tempfile.TemporaryDirectory() as d:
         out = os.path.join(d, "step.bpmn")
-        assert write_observed_bpmn(anno, "step", out) is True
+        assert write_observed_bpmn(anno, out) is True
         xml = Path(out).read_text(encoding="utf-8")
     assert "Gateway" not in xml                          # no flower model
     for name in ("Search", "Open", "Resolve", "Stray 1", "Stray 2"):

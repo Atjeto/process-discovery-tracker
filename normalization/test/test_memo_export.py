@@ -1,18 +1,22 @@
-"""Tests for memo_export (lab-phase spec §A4) -- the consultant memo seed.
+"""Tests for memo_export (lab-phase spec §A4) -- the findings model the PDD's
+§1 renders (build_memo_model) and its docx rendering (write_memo_into_docx).
 
-memo_export is pure stdlib, so this suite RUNS (not skips) under a bare
-system pytest as well as the bundled python.
+The model tests are pure stdlib and run under any pytest; the docx tests need
+python-docx and no-op without it (like test_pdd_export), so they execute under
+the bundled python.
 """
 
 from __future__ import annotations
-import json
+import importlib.util
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from memo_export import render_memo, write_memo
+from memo_export import build_memo_model, write_memo_into_docx
+
+_HAVE_DOCX = importlib.util.find_spec("docx") is not None
 
 
 def _analysis(tier2=True, findings=None):
@@ -63,50 +67,71 @@ def _manifest():
             "started_at": "2026-05-14T09:00:00Z"}
 
 
-def test_header_names_the_session_and_capture_date():
-    md = render_memo(_manifest(), _stats(), _analysis(), {})
-    assert md.startswith("# Findings memo — sess-2026-0514-0900")
-    assert "Captured 2026-05-14" in md
-    assert "900 events (460 interactions)" in md
+def _cells(model):
+    return dict(model["fact_cells"])
 
 
-def test_fact_strip_renders_measured_values():
-    md = render_memo(_manifest(), _stats(), _analysis(), {})
-    assert "| Active time |" in md
-    assert "1h 15m" in md            # active_ms
-    assert "chrome.exe (31%)" in md  # top app + share
-    assert "47 (11.2/h)" in md       # switches
-    assert "3 (5 repeated sequences)" in md
+def _docx_body(model, session_folder=None):
+    """Render the memo body into a fresh Document, as pdd_export's §1 does."""
+    from docx import Document
+    doc = Document()
+    write_memo_into_docx(doc, model, session_folder=session_folder)
+    return [p.text for p in doc.paragraphs], doc
+
+
+def test_model_names_the_session_and_capture_date():
+    model = build_memo_model(_manifest(), _stats(), _analysis(), {})
+    assert model["label"] == "sess-2026-0514-0900"
+    assert model["captured"] == "2026-05-14"
+    assert "900 events (460 interactions)" in model["coverage_line"]
+
+
+def test_fact_cells_carry_measured_values():
+    cells = _cells(build_memo_model(_manifest(), _stats(), _analysis(), {}))
+    assert cells["Active time"] == "1h 15m"                     # active_ms
+    assert cells["Top app"] == "chrome.exe (31%)"               # top app + share
+    assert cells["App switches"] == "47 (11.2/h)"               # switches
+    assert cells["Values re-typed across apps"] == "3 (5 repeated sequences)"
 
 
 def test_findings_carry_claim_numbers_and_starred_refs():
-    md = render_memo(_manifest(), _stats(), _analysis(), {})
-    assert "**chrome.exe accounts for 31%" in md
-    assert "★ `screenshots/shot_02.png`" in md
-    assert "Evidence:" in md
-    assert "_Foreground-window time._" in md
+    model = build_memo_model(_manifest(), _stats(), _analysis(), {})
+    first = model["findings"][0]
+    assert first["claim"].startswith("chrome.exe accounts for 31%")
+    assert first["screenshot_refs"] == ["screenshots/shot_02.png"]
+    assert "share 31%" in first["evidence_line"]
+    assert first["confidence_note"] == "Foreground-window time."
 
 
 def test_tier2_section_renders_only_when_unlocked():
-    md = render_memo(_manifest(), _stats(), _analysis(tier2=True), {})
-    assert "4 cases" in md
-    assert "Cycle time (wall clock): mean 15m" in md
-    assert "2 distinct path variants" in md
-    assert "No cases identified yet" not in md
+    lines = " ".join(build_memo_model(_manifest(), _stats(),
+                                      _analysis(tier2=True), {})["tier2_lines"])
+    assert "4 cases" in lines
+    assert "Cycle time (wall clock): mean 15m" in lines
+    assert "2 distinct path variants" in lines
+    assert "No cases identified yet" not in lines
 
 
 def test_tier2_locked_renders_the_one_honest_line():
-    anno = {"anchor_candidates": [{"signature": "x"}, {"signature": "y"}]}
-    md = render_memo(_manifest(), _stats(), _analysis(tier2=False), anno)
-    assert ("No cases identified yet in this recording; 2 candidate fields "
-            "that could identify each case are awaiting review") in md
+    model = build_memo_model(_manifest(), _stats(), _analysis(tier2=False), {})
+    assert model["tier2_lines"] == [
+        "No cases identified yet in this recording; recording Start/End "
+        "markers would unlock the case-by-case numbers."]
     # No fabricated case numbers below the gate.
-    assert "Cycle time (wall clock)" not in md
+    assert not any("Cycle time (wall clock)" in l for l in model["tier2_lines"])
 
 
-def test_tier2_locked_without_candidates_points_at_markers():
-    md = render_memo(_manifest(), _stats(), _analysis(tier2=False), {})
-    assert "no candidate field was detected" in md
+def test_tier2_locked_ignores_legacy_anchor_candidates():
+    """Anchor candidates were removed with their review UI: a legacy
+    anchor_candidates block in an old annotations.json must not produce a
+    'candidate fields awaiting review' line any more."""
+    anno = {"anchor_candidates": [{"signature": "x"}, {"signature": "y"}]}
+    plain = build_memo_model(_manifest(), _stats(), _analysis(tier2=False), {})
+    legacy = build_memo_model(_manifest(), _stats(), _analysis(tier2=False), anno)
+    assert legacy["tier2_lines"] == plain["tier2_lines"]
+    assert legacy["to_say_more"] == plain["to_say_more"]
+    text = " ".join(legacy["tier2_lines"] + legacy["to_say_more"])
+    assert "candidate field" not in text
 
 
 def test_tier2_locked_on_single_case_says_so_not_unsegmented():
@@ -115,100 +140,81 @@ def test_tier2_locked_on_single_case_says_so_not_unsegmented():
     a = _analysis(tier2=False)
     a["case_quality"] = {"mode": "markers", "case_count": 1,
                          "coverage": 0.999, "tier2_unlocked": False}
-    md = render_memo(_manifest(), _stats(), a, {})
-    assert "1 case was marked" in md
-    assert "need at least 2" in md
-    assert "No cases identified yet" not in md
-    assert "Cycle time (wall clock)" not in md
+    model = build_memo_model(_manifest(), _stats(), a, {})
+    text = " ".join(model["tier2_lines"] + model["to_say_more"])
+    assert "1 case was marked" in text
+    assert "need at least 2" in text
+    assert "No cases identified yet" not in text
+    assert "Cycle time (wall clock)" not in text
 
 
-def test_fact_strip_says_not_available_when_no_app_signal():
+def test_fact_cells_say_not_available_when_no_app_signal():
     # G-2: app_time_source == "none" must never render a confident 0.
     a = _analysis()
     a["facts"].update({"active_ms": 0, "top_apps": [], "app_switches": 0,
                        "longest_focus_ms": 0, "app_time_source": "none"})
-    md = render_memo(_manifest(), _stats(), a, {})
-    assert md.count("not available from this recording") >= 3
-    assert "| 0 (0/h) |" not in md
+    values = list(_cells(build_memo_model(_manifest(), _stats(), a, {})).values())
+    assert values.count("not available from this recording") >= 3
+    assert "0 (0/h)" not in values
 
 
-def test_fact_strip_labels_interaction_derived_estimate():
+def test_fact_cells_label_interaction_derived_estimate():
     a = _analysis()
     a["facts"]["app_time_source"] = "interactions"
-    md = render_memo(_manifest(), _stats(), a, {})
-    assert "estimated from clicks and typing" in md
+    values = _cells(build_memo_model(_manifest(), _stats(), a, {})).values()
+    assert any("estimated from clicks and typing" in v for v in values)
 
 
 def test_memo_selection_filters_the_findings():
     anno = {"memo_selection": ["fragmentation-bbb"]}
-    md = render_memo(_manifest(), _stats(), _analysis(), anno)
-    assert "Focus moved between apps 47 times" in md
-    assert "chrome.exe accounts for" not in md
+    claims = [f["claim"] for f in
+              build_memo_model(_manifest(), _stats(), _analysis(), anno)["findings"]]
+    assert claims == ["Focus moved between apps 47 times (11.2/h)."]
 
 
 def test_unknown_selection_falls_back_to_top_findings():
     anno = {"memo_selection": ["does-not-exist"]}
-    md = render_memo(_manifest(), _stats(), _analysis(), anno)
-    assert "chrome.exe accounts for" in md
+    claims = [f["claim"] for f in
+              build_memo_model(_manifest(), _stats(), _analysis(), anno)["findings"]]
+    assert any(c.startswith("chrome.exe accounts for") for c in claims)
 
 
 def test_to_say_more_enumerates_missing_inputs():
-    md = render_memo(_manifest(), _stats(), _analysis(tier2=False),
-                     {"anchor_candidates": [{"signature": "x"}]})
-    assert "## To say more" in md
-    assert "No cases identified yet" in md
-    assert "loaded labour rate" in md          # roi_inputs absent
-    assert "No idle time was measured" in md
-    assert "judge each step type" in md
+    more = " ".join(build_memo_model(
+        _manifest(), _stats(), _analysis(tier2=False),
+        {"anchor_candidates": [{"signature": "x"}]})["to_say_more"])
+    assert "No cases identified yet" in more
+    assert "No idle time was measured" in more
+    assert "judge each step type" in more
+    # The ROI layer was removed: no labour-rate / savings-band request.
+    assert "loaded labour rate" not in more
 
 
 def test_to_say_more_drops_supplied_inputs():
-    anno = {"roi_inputs": {"loaded_cost_per_hour": 36},
-            "analysis_overrides": [{"process_label": "Search", "bnva_ms": 1000}]}
+    anno = {"analysis_overrides": [{"process_label": "Search", "bnva_ms": 1000}]}
     a = _analysis(tier2=True)
     a["facts"]["idle_ms"] = 60000
-    md = render_memo(_manifest(), _stats(), a, anno)
-    assert "loaded labour rate" not in md
-    assert "No idle time was measured" not in md
-    assert "judge each step type" not in md
+    more = " ".join(build_memo_model(_manifest(), _stats(), a, anno)["to_say_more"])
+    assert "No idle time was measured" not in more
+    assert "judge each step type" not in more
 
 
 def test_no_findings_renders_an_honest_empty_line():
-    md = render_memo(_manifest(), _stats(), _analysis(findings=[]), {})
-    assert "Nothing stood out" in md
+    model = build_memo_model(_manifest(), _stats(), _analysis(findings=[]), {})
+    assert model["findings"] == []
+    if not _HAVE_DOCX:
+        return
+    texts, _doc = _docx_body(model)
+    assert any("Nothing stood out" in t for t in texts)
 
 
-def test_write_memo_reads_session_sidecars(tmp_path=None):
-    tmp = Path(tempfile.mkdtemp(prefix="pdt-memo-test-")) if tmp_path is None else tmp_path
-    (tmp / "manifest.json").write_text(json.dumps(_manifest()), encoding="utf-8")
-    (tmp / "stats.json").write_text(json.dumps(_stats()), encoding="utf-8")
-    (tmp / "analysis.json").write_text(json.dumps(_analysis()), encoding="utf-8")
-    (tmp / "annotations.json").write_text(json.dumps({}), encoding="utf-8")
-    out = tmp / "memo.md"
-    write_memo(str(out), str(tmp))
-    text = out.read_text(encoding="utf-8")
-    assert text.startswith("# Findings memo — sess-2026-0514-0900")
-    assert len(text) > 400
+def test_model_tolerates_empty_inputs():
+    model = build_memo_model(None, None, None, None)
+    assert model["label"] == "session"
+    assert isinstance(model["to_say_more"], list) and model["to_say_more"]
 
 
-def test_render_tolerates_empty_inputs():
-    md = render_memo(None, None, None, None)
-    assert md.startswith("# Findings memo — session")
-    assert "## To say more" in md
-
-
-# ---- §B4: the docx variant (deps-gated like test_pdd_export) ----------------
-
-import memo_export as _memo_mod  # noqa: E402
-
-_HAVE_DOCX = _memo_mod.Document is not None
-
-
-def _docx_texts(path):
-    from docx import Document
-    doc = Document(str(path))
-    return [p.text for p in doc.paragraphs], doc
-
+# ---- §B4: the docx rendering (deps-gated like test_pdd_export) --------------
 
 def _make_png():
     """A tiny but fully-valid PNG (correct CRCs), as in test_pdd_export."""
@@ -223,23 +229,16 @@ def _make_png():
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
-def test_write_memo_docx_variant_with_inline_screenshots():
-    """`--memo-out x.docx` writes the Word memo; the starred screenshot
-    refs embed INLINE as evidence figures (lab-phase §B4)."""
+def test_memo_body_docx_embeds_starred_screenshots_inline():
+    """The starred screenshot refs embed INLINE as evidence figures
+    (lab-phase §B4) when the memo body is written into a docx."""
     if not _HAVE_DOCX:
         return
-    tmp = Path(tempfile.mkdtemp(prefix="pdt-memo-docx-"))
-    (tmp / "screenshots").mkdir()
-    (tmp / "screenshots" / "shot_02.png").write_bytes(_make_png())
-    (tmp / "manifest.json").write_text(json.dumps(_manifest()), encoding="utf-8")
-    (tmp / "stats.json").write_text(json.dumps(_stats()), encoding="utf-8")
-    (tmp / "analysis.json").write_text(json.dumps(_analysis()), encoding="utf-8")
-    (tmp / "annotations.json").write_text(json.dumps({}), encoding="utf-8")
-    out = tmp / "memo.docx"
-    write_memo(str(out), str(tmp))
-    assert out.exists() and out.stat().st_size > 0
-    texts, doc = _docx_texts(out)
-    assert any(t.startswith("Findings memo — sess-2026-0514-0900") for t in texts)
+    with tempfile.TemporaryDirectory(prefix="pdt-memo-docx-") as tmp:
+        (Path(tmp) / "screenshots").mkdir()
+        (Path(tmp) / "screenshots" / "shot_02.png").write_bytes(_make_png())
+        model = build_memo_model(_manifest(), _stats(), _analysis(), {})
+        texts, doc = _docx_body(model, session_folder=tmp)
     assert "What the recording measured" in texts
     assert any("chrome.exe accounts for 31%" in t for t in texts)
     assert len(doc.inline_shapes) >= 1            # the ★ screenshot embedded
@@ -250,24 +249,19 @@ def test_write_memo_docx_variant_with_inline_screenshots():
 
 
 def test_memo_docx_skips_traversal_screenshot_refs():
-    """The docx memo applies the same containment check as pdd_export: an
-    absolute or out-of-folder ref is skipped, never embedded."""
+    """The docx memo body applies the same containment check as pdd_export:
+    an absolute or out-of-folder ref is skipped, never embedded."""
     if not _HAVE_DOCX:
         return
-    tmp = Path(tempfile.mkdtemp(prefix="pdt-memo-sec-"))
     evil = _analysis(findings=[
         {"id": "x", "detector": "screen_time_sink",
          "claim": "claim.", "tier": 1,
          "evidence": {"screenshot_refs": ["..\\..\\outside.png",
                                           "C:\\Windows\\notepad.png"]}},
     ])
-    (tmp / "manifest.json").write_text(json.dumps(_manifest()), encoding="utf-8")
-    (tmp / "stats.json").write_text(json.dumps(_stats()), encoding="utf-8")
-    (tmp / "analysis.json").write_text(json.dumps(evil), encoding="utf-8")
-    (tmp / "annotations.json").write_text(json.dumps({}), encoding="utf-8")
-    out = tmp / "memo.docx"
-    write_memo(str(out), str(tmp))
-    _texts, doc = _docx_texts(out)
+    with tempfile.TemporaryDirectory(prefix="pdt-memo-sec-") as tmp:
+        model = build_memo_model(_manifest(), _stats(), evil, {})
+        _texts, doc = _docx_body(model, session_folder=tmp)
     assert len(doc.inline_shapes) == 0
 
 
@@ -303,27 +297,26 @@ def _wi_stats():
                             "wall_clock_ms": 60000}]}
 
 
-def test_named_work_items_appear_in_memo_case_section():
-    md = render_memo(_manifest(), _wi_stats(), _analysis(tier2=True),
-                     _wi_annotations())
-    assert "Named work items:" in md
+def test_named_work_items_carry_ticket_note_and_waste_flag():
+    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True),
+                             _wi_annotations())
+    by_name = {wi["name"]: wi for wi in model["named_work_items"]}
     # The analyst name against its ticket, and its note.
-    assert "Order #10900: Enter the order lines" in md
-    assert "unit price is always 49.99" in md
-    # The waste-flagged item carries the waste tag.
-    assert "Order #10900: Re-key order into SAP" in md
-    assert "*(waste)*" in md
+    assert by_name["Enter the order lines"]["case_label"] == "Order #10900"
+    assert by_name["Enter the order lines"]["notes"] == "unit price is always 49.99"
+    # The waste-flagged item carries the waste flag.
+    assert by_name["Re-key order into SAP"]["case_label"] == "Order #10900"
+    assert by_name["Re-key order into SAP"]["waste"] is True
 
 
 def test_memo_without_group_annotations_is_unchanged():
-    """Additive no-op: a session with no group_annotations gets NO 'Named work
-    items' line -- the memo is exactly as before (the demo-session posture)."""
-    md = render_memo(_manifest(), _stats(), _analysis(tier2=True), {})
-    assert "Named work items" not in md
+    """Additive no-op: a session with no group_annotations gets NO named work
+    items -- the memo is exactly as before (the demo-session posture)."""
+    model = build_memo_model(_manifest(), _stats(), _analysis(tier2=True), {})
+    assert model["named_work_items"] == []
 
 
 def test_memo_model_carries_named_work_items():
-    from memo_export import build_memo_model
     model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True),
                              _wi_annotations())
     names = [wi["name"] for wi in model["named_work_items"]]
@@ -336,29 +329,25 @@ def test_memo_model_carries_named_work_items():
 def test_named_work_items_in_docx_memo():
     if not _HAVE_DOCX:
         return
-    tmp = Path(tempfile.mkdtemp(prefix="pdt-memo-wi-"))
-    (tmp / "manifest.json").write_text(json.dumps(_manifest()), encoding="utf-8")
-    (tmp / "stats.json").write_text(json.dumps(_wi_stats()), encoding="utf-8")
-    (tmp / "analysis.json").write_text(json.dumps(_analysis(tier2=True)), encoding="utf-8")
-    (tmp / "annotations.json").write_text(json.dumps(_wi_annotations()), encoding="utf-8")
-    out = tmp / "memo.docx"
-    write_memo(str(out), str(tmp))
-    texts, _doc = _docx_texts(out)
+    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True),
+                             _wi_annotations())
+    texts, _doc = _docx_body(model)
     assert any("Enter the order lines" in t for t in texts)
     assert any("Re-key order into SAP" in t for t in texts)
 
 
-def test_memo_model_and_md_agree_on_selection():
+def test_memo_model_and_docx_agree_on_selection():
     """§B3 one-source-of-truth: build_memo_model returns exactly the findings
-    the md render shows (the PDD §1 consumes the same model)."""
-    from memo_export import build_memo_model
+    the docx body shows (the PDD §1 renders the same model)."""
     anno = {"memo_selection": ["fragmentation-bbb"]}
     model = build_memo_model(_manifest(), _stats(), _analysis(), anno)
     assert [f["claim"] for f in model["findings"]] == [
         "Focus moved between apps 47 times (11.2/h)."]
-    md = render_memo(_manifest(), _stats(), _analysis(), anno)
-    assert "Focus moved between apps 47 times" in md
-    assert "chrome.exe accounts for" not in md
+    if not _HAVE_DOCX:
+        return
+    texts, _doc = _docx_body(model)
+    assert any("Focus moved between apps 47 times" in t for t in texts)
+    assert not any("chrome.exe accounts for" in t for t in texts)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,13 @@
-"""Lab-phase C1: vocab record semantics — loader round-trip + the three
-consumers (step boundary hint, anchor scoring bonus, rekey field set).
+"""Lab-phase C1: vocab record semantics -- loader + lookup and the two
+pipeline consumers (step boundary hint, rekey field set).
 
 The contract under test (LAB-PHASE-SPEC §C1):
   * every committed vocab (no semantic fields) loads, matches, and emits
-    EXACTLY what it did before — absence is fully tolerated;
+    EXACTLY what it did before -- absence is fully tolerated;
   * a vocab carrying verb/object/completion/case_id_source/carries_value/
-    means round-trips through to_yaml and reaches the derived stream as
-    data.vocab_semantics on matched interactions;
+    means reaches the derived stream as data.vocab_semantics on matched
+    interactions;
   * completion=true closes a step in step_suggest (boundary hint);
-  * case_id_source=true adds a small anchor_suggest scoring BONUS — never
-    a gate;
   * carries_value=true admits short values into facts.rekey_details.
 
 Run with:
@@ -21,13 +19,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import yaml
-
 NORM_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(NORM_DIR))
 
 import app_vocab        # noqa: E402
-import anchor_suggest   # noqa: E402
 import facts            # noqa: E402
 from step_suggest import auto_suggest_steps  # noqa: E402
 
@@ -101,22 +96,6 @@ def test_plain_vocab_lookup_has_no_semantics_key_on_event():
     assert "vocab_semantics" not in out[0]["data"]
 
 
-def test_semantic_vocab_round_trips_through_yaml():
-    doc = {"app_vocabulary": SEMANTIC_VOCAB}
-    text = app_vocab.to_yaml(doc)
-    loaded = yaml.safe_load(text)["app_vocabulary"]
-    by_aid = {e["signature"]["automation_id"]: e for e in loaded["interactions"]}
-    assert by_aid["order-id"]["case_id_source"] is True
-    assert by_aid["order-id"]["carries_value"] is True
-    assert by_aid["order-id"]["verb"] == "enter"
-    assert by_aid["order-id"]["object"] == "order record"
-    assert by_aid["order-id"]["means"].startswith("names the order")
-    assert by_aid["post-order"]["completion"] is True
-    # And re-emitting the loaded doc is stable (no field loss on a 2nd pass).
-    again = yaml.safe_load(app_vocab.to_yaml({"app_vocabulary": loaded}))
-    assert again["app_vocabulary"]["interactions"] == loaded["interactions"]
-
-
 def test_lookup_carries_semantics_to_matched_event():
     events = [_ev({"process_name": "orders.exe", "control_type": "Edit",
                    "automation_id": "order-id", "kind": "value_changed",
@@ -131,40 +110,6 @@ def test_lookup_carries_semantics_to_matched_event():
         "carries_value": True,
         "means": "names the order this case is about",
     }
-
-
-# --- Auto-derivation helpers (the C1 auto columns) ------------------------
-
-def test_derive_verb_from_control_and_kind():
-    assert app_vocab.derive_verb("Edit") == "enter"
-    assert app_vocab.derive_verb("ComboBox") == "select"
-    assert app_vocab.derive_verb("CheckBox") == "toggle"
-    assert app_vocab.derive_verb("MenuItem") == "open"
-    assert app_vocab.derive_verb("Button", "Search") == "click"
-    # Observed kind beats the role guess (session-bootstrap path).
-    assert app_vocab.derive_verb("Custom", kinds={"value_changed"}) == "enter"
-    assert app_vocab.derive_verb("Custom", kinds={"selection_changed"}) == "select"
-    # Completion wins as submit.
-    assert app_vocab.derive_verb("Button", "Save record") == "submit"
-
-
-def test_derive_completion_word_boundaries():
-    assert app_vocab.derive_completion("Button", "Save") is True
-    assert app_vocab.derive_completion("Button", "Submit incident") is True
-    assert app_vocab.derive_completion("Button", "OK") is True
-    assert app_vocab.derive_completion("Button", "Send") is True
-    # Not a completion: word only as a fragment, or a non-action control.
-    assert app_vocab.derive_completion("Button", "Sender address") is False
-    assert app_vocab.derive_completion("Edit", "Save") is False
-    assert app_vocab.derive_completion("Button", "Search") is False
-
-
-def test_derive_carries_value():
-    assert app_vocab.derive_carries_value("Edit") is True
-    assert app_vocab.derive_carries_value("Button") is False
-    # Observed typing wins over the role guess.
-    assert app_vocab.derive_carries_value("Custom", {"value_changed"}) is True
-    assert app_vocab.derive_carries_value("Edit", {"invoked"}) is False
 
 
 # --- Consumer 1: completion -> step boundary hint --------------------------
@@ -207,82 +152,7 @@ def test_without_semantics_same_events_stay_glued():
     assert len(steps) == 1
 
 
-# --- Consumer 2: case_id_source -> anchor scoring bonus ---------------------
-
-def _anchor_events(flag_field_a: bool):
-    """Two structurally IDENTICAL candidate fields (same fires, same case
-    structure). With the vocab flag on field A, A must outrank B; without
-    it they tie. Interleaved so each anchor's simulated cases cover the
-    same interaction spans."""
-    vocab = {
-        "id": "anchored", "name": "Anchored", "version": 1,
-        "scope": {"process_name": "app.exe"},
-        "interactions": [
-            {"signature": {"control_type": "Edit", "automation_id": "field-a"},
-             "name": "Field A",
-             **({"case_id_source": True} if flag_field_a else {})},
-        ],
-    }
-    evs = []
-    i = 0
-    for n in (1, 2, 3):
-        for aid, val in (("field-a", f"A-{n}"), ("field-b", f"B-{n}")):
-            evs.append(_ev({
-                "process_name": "app.exe", "window_title": "App",
-                "kind": "value_changed", "control_type": "Edit",
-                "automation_id": aid, "name": aid, "value": val,
-            }, ts=f"2026-06-01T09:{i:02d}:00Z", eid=f"e{i}"))
-            i += 1
-        for j in range(3):  # filler work inside each case
-            evs.append(_ev({
-                "process_name": "app.exe", "window_title": "App",
-                "kind": "invoked", "control_type": "Button",
-                "automation_id": f"work-{n}-{j}", "name": "Work",
-            }, ts=f"2026-06-01T09:{i:02d}:00Z", eid=f"e{i}"))
-            i += 1
-    enriched, _ = app_vocab.enrich_events(evs, [vocab])
-    return enriched
-
-
-def _scores_by_field(cands):
-    return {c["display"]["field_value"]: c for c in cands}
-
-
-def test_case_id_source_bonus_lifts_score_never_gates():
-    plain = _scores_by_field(anchor_suggest.suggest_anchors(_anchor_events(False)))
-    flagged = _scores_by_field(anchor_suggest.suggest_anchors(_anchor_events(True)))
-    # Both fields are candidates in BOTH runs — the flag never gates entry.
-    assert {"field-a", "field-b"} <= set(plain) and {"field-a", "field-b"} <= set(flagged)
-    # Flagged run: A gains exactly the bonus (clamped) vs its unflagged self;
-    # B is untouched in both runs.
-    assert flagged["field-b"]["score"] == plain["field-b"]["score"]
-    expected = round(min(1.0, plain["field-a"]["score"]
-                         + anchor_suggest._VOCAB_CASE_ID_BONUS), 3)
-    assert flagged["field-a"]["score"] == expected
-    assert flagged["field-a"]["metrics"]["vocab_case_id_source"] is True
-    assert "vocab_case_id_source" not in flagged["field-b"]["metrics"]
-
-
-def test_case_id_source_alone_cannot_create_a_candidate():
-    """A flagged field that fails the structural minimums (one fire) stays
-    absent — the bonus is not a gate-opener."""
-    vocab = {
-        "id": "anchored", "name": "Anchored", "version": 1,
-        "scope": {"process_name": "app.exe"},
-        "interactions": [
-            {"signature": {"control_type": "Edit", "automation_id": "field-a"},
-             "name": "Field A", "case_id_source": True},
-        ],
-    }
-    evs = [_ev({"process_name": "app.exe", "kind": "value_changed",
-                "control_type": "Edit", "automation_id": "field-a",
-                "name": "Field A", "value": "A-1",
-                "window_title": "App"}, eid="e0")]
-    enriched, _ = app_vocab.enrich_events(evs, [vocab])
-    assert anchor_suggest.suggest_anchors(enriched) == []
-
-
-# --- Consumer 3: carries_value -> rekey field set ---------------------------
+# --- Consumer 2: carries_value -> rekey field set ---------------------------
 
 def _typed(app, aid, value, eid):
     return _ev({"process_name": app, "kind": "value_changed",

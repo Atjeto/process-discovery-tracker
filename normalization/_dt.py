@@ -9,7 +9,7 @@ log:
 * :func:`parse_ts_or_none`  -- lenient; returns ``None`` on bad input.
 * :func:`parse_ts_or_epoch` -- degrading; returns ``1970-01-01 UTC`` on bad
   input (used by stages that need a sortable datetime no matter what, e.g.
-  anchor-case detection and step segmentation).
+  step segmentation).
 
 All three normalize a zone-LESS valid timestamp to UTC. This matters: a
 zone-less timestamp from a hand-edited log mixed with the zoned ones from the
@@ -54,8 +54,8 @@ def parse_ts_or_epoch(s: Any) -> datetime:
     """Degrading parser: ``1970-01-01 UTC`` for bad input.
 
     Used by stages that need *some* sortable, subtractable datetime even when a
-    log has been corrupted or hand-edited (anchor-case detection, step
-    segmentation) so the pipeline degrades instead of crashing.
+    log has been corrupted or hand-edited (step segmentation) so the pipeline
+    degrades instead of crashing.
     """
     try:
         return parse_ts(s)

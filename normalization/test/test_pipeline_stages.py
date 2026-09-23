@@ -10,6 +10,7 @@ SKIPS loudly under bare pytest and runs where the deps exist:
 """
 
 from __future__ import annotations
+import copy
 import importlib.util
 import sys
 from pathlib import Path
@@ -33,11 +34,39 @@ from pipeline_stages import _init_existing_anno
 
 def test_init_seeds_the_append_lists_and_sets_identity():
     anno = _init_existing_anno({}, "sess-123")
-    for key in ("phases", "annotations", "notes", "marker_edits",
-                "drift_markers", "reference_maps"):
+    for key in ("annotations", "notes", "marker_edits", "reference_maps"):
         assert anno[key] == [], f"{key} should be seeded to []"
+    # Keys of removed features are no longer written by the pipeline.
+    for key in ("phases", "drift_markers"):
+        assert key not in anno, f"{key} must not be seeded any more"
     assert anno["version"] == 1
     assert anno["session_id"] == "sess-123"
+
+
+def test_init_round_trips_legacy_keys_of_removed_features():
+    """Contract C10: keys the pipeline no longer owns survive re-normalization
+    verbatim (never regenerated, never deleted), so an old annotations.json
+    loads and re-analyzes without losing the analyst's data."""
+    legacy = {
+        "phases": [{"phase_id": "p", "step_ids": ["gone"]}],
+        "marker_suggestions": [{"x": 1}],
+        "marker_suggestions_dismissed": ["sig-1"],
+        "anchor_candidates": [{"signature": "a"}],
+        "anchor_candidates_dismissed": ["sig-2"],
+        "case_anchor_override": {"field": "automation_id", "equals": "x"},
+        "roi_inputs": {"loaded_cost_per_hour": 36},
+        "pii_masking": {"applied": True},
+        "pii_masking_config": {"enabled": False},
+        "self_annotations": [{"q": "a"}],
+        "group_annotations": [{"case_id": "c1", "name": "n"}],
+        "memo_selection": ["f-1"],
+        "drift_markers": [{"marker_id": "m"}],
+        "matched_against": {"canonical_process_id": "t", "canonical_version": 1},
+        "classification_overrides": [{"scope": "instance"}],
+    }
+    anno = _init_existing_anno(copy.deepcopy(legacy), "sess-legacy")
+    for key, value in legacy.items():
+        assert anno[key] == value, f"legacy key {key} was not round-tripped verbatim"
 
 
 def test_init_preserves_existing_analyst_blocks():
@@ -61,15 +90,15 @@ def test_init_does_not_mutate_the_caller_top_level_dict():
     anno = _init_existing_anno(existing, "sess-1")
     # The function works on a shallow copy: keys it seeds appear on the result,
     # not on the caller's original dict.
-    assert "phases" in anno
-    assert "phases" not in existing
+    assert "annotations" in anno
+    assert "annotations" not in existing
     assert anno is not existing
 
 
 def test_init_tolerates_a_non_dict_annotations():
     anno = _init_existing_anno(None, "sess-x")        # e.g. missing annotations.json
     assert anno["session_id"] == "sess-x"
-    assert anno["phases"] == [] and anno["reference_maps"] == []
+    assert anno["annotations"] == [] and anno["reference_maps"] == []
 
 
 if __name__ == "__main__":

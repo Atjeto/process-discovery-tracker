@@ -9,17 +9,12 @@
     "app_vocabulary_matches": 42,
     "case_count": 5,
     "collapsed_activity_count": 27,
-    "drift_count": 0,
     "dropped_jsonl_lines": 0,
     "interaction_count": 149,
     "marker_edits_applied": 0,
-    "match_rate": 0.0,
-    "matched_interactions": 0,
-    "phase_count": 0,
     "raw_event_count": 198,
     "step_count": 83,
     "step_state_breakdown": {
-      "auto_matched": 0,
       "auto_suggested": 83,
       "edited": 0,
       "manually_authored": 0

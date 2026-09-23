@@ -50,7 +50,7 @@ def load_events(events_file: Path) -> tuple[list[dict[str, Any]], int]:
     # in `dropped`, while bytes inside a string value become U+FFFD (safe to
     # re-serialize/hash downstream). NOT "surrogateescape" -- json.loads accepts
     # a lone surrogate here, only to crash later at a .encode("utf-8") boundary
-    # (analysis_segments / anchor_suggest / marker_suggest). Mirrors the ADR-0025
+    # (analysis_segments). Mirrors the ADR-0025
     # recorder-stdin mojibake fix, on the file-read path.
     with open(events_file, encoding="utf-8", errors="replace") as f:
         for line_no, line in enumerate(f, start=1):

@@ -86,7 +86,6 @@ def test_write_pdd_with_analysis_produces_a_file():
         pdd_export.write_pdd(
             out,
             session_folder=Path(tmp),
-            canonical=None,
             annotations=annotations,
             stats=stats,
             manifest=manifest,
@@ -105,7 +104,6 @@ def test_write_pdd_without_analysis_still_works():
         pdd_export.write_pdd(
             out,
             session_folder=Path(tmp),
-            canonical=None,
             annotations=annotations,
             stats=stats,
             manifest=manifest,
@@ -134,14 +132,12 @@ def test_pdd_structure_mirrors_real_pdd():
         ],
         "meta": {"case_count": 2, "step_count": 5,
                  "step_state_breakdown": {"auto_suggested": 4, "edited": 1},
-                 "phase_count": 0,
                  "vocab_coverage": {"app.exe": {"total_interactions": 12}}},
     }
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "pdd.docx"
         pdd_export.write_pdd(
             out, session_folder=Path(tmp),
-            canonical={"name": "Order entry", "version": 2},
             annotations=annotations, stats=stats, manifest=manifest,
             analysis=analysis,
         )
@@ -161,7 +157,7 @@ def test_pdd_structure_mirrors_real_pdd():
 
         # §1 renders the same findings model the memo uses (one source of truth).
         assert any("crm.exe accounts for 31%" in t for t in texts)
-        assert "What the capture measured" in texts
+        assert "What the recording measured" in texts
 
         # Analyst-judgement gaps are explicit, not silently dropped.
         assert any(t.startswith("[To be completed:") for t in texts)
@@ -206,7 +202,7 @@ def test_pdd_embeds_process_map_when_provided():
         png.write_bytes(_make_png())
         out = Path(tmp) / "pdd.docx"
         pdd_export.write_pdd(
-            out, session_folder=Path(tmp), canonical=None,
+            out, session_folder=Path(tmp),
             annotations=annotations, stats={"activity_stats": []},
             manifest=manifest, analysis=analysis, process_map_image=str(png),
         )
@@ -227,14 +223,14 @@ def test_pdd_embeds_tobe_map_when_selected():
         png.write_bytes(_make_png())
         out = Path(tmp) / "pdd.docx"
         pdd_export.write_pdd(
-            out, session_folder=Path(tmp), canonical=None,
+            out, session_folder=Path(tmp),
             annotations=annotations, stats={"activity_stats": []},
             manifest=manifest, analysis=analysis, tobe_map_image=str(png),
         )
         from docx import Document
         doc = Document(str(out))
         texts = [p.text for p in doc.paragraphs]
-        assert any("5.5 Proposed to-be process" in t for t in texts)
+        assert any("5.4 Proposed to-be process" in t for t in texts)
         assert any("NOT mined" in t for t in texts)          # provenance caption
         assert len(doc.inline_shapes) >= 1
 
@@ -248,7 +244,7 @@ def test_pdd_omits_tobe_section_when_not_selected():
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "pdd.docx"
         pdd_export.write_pdd(
-            out, session_folder=Path(tmp), canonical=None,
+            out, session_folder=Path(tmp),
             annotations=annotations, stats=stats, manifest=manifest, analysis=analysis,
         )
         from docx import Document
@@ -256,10 +252,10 @@ def test_pdd_omits_tobe_section_when_not_selected():
         assert not any("Proposed to-be process" in p.text for p in doc.paragraphs)
 
 
-def test_unphased_manually_authored_step_appears_in_output():
-    """H-2: once phases exist, steps in no phase -- including analyst
-    manually-authored steps -- must still be rendered, under an
-    'Unphased steps' subsection, not silently dropped."""
+def test_legacy_phases_neither_group_nor_drop_steps():
+    """Phases were removed: a legacy `phases` block no longer groups §4.5 (it
+    used to, with an 'Unphased steps' subsection). Every visible step,
+    including an analyst manually-authored one, still renders (H-2)."""
     if not _HAVE_DOCX:
         return
     manifest, _annotations, stats, analysis = _sample()
@@ -277,14 +273,15 @@ def test_unphased_manually_authored_step_appears_in_output():
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "pdd.docx"
         pdd_export.write_pdd(
-            out, session_folder=Path(tmp), canonical=None,
+            out, session_folder=Path(tmp),
             annotations=annotations, stats=stats, manifest=manifest,
             analysis=analysis,
         )
         from docx import Document
         doc = Document(str(out))
         texts = [p.text for p in doc.paragraphs]
-        assert any("Unphased steps" in t for t in texts)
+        assert not any("Unphased steps" in t for t in texts)
+        assert not any(t == "Phase one" for t in texts)
         assert any("Analyst-authored unphased step" in t for t in texts)
         assert any("Phased step" in t for t in texts)
 
@@ -308,7 +305,7 @@ def test_hidden_step_is_not_rendered():
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "pdd.docx"
         pdd_export.write_pdd(
-            out, session_folder=Path(tmp), canonical=None,
+            out, session_folder=Path(tmp),
             annotations=annotations, stats=stats, manifest=manifest,
             analysis=analysis,
         )
@@ -325,7 +322,7 @@ def test_hidden_step_is_not_rendered():
 def _pdd_texts(tmp, manifest, annotations, stats, analysis):
     out = Path(tmp) / "pdd.docx"
     pdd_export.write_pdd(
-        out, session_folder=Path(tmp), canonical=None,
+        out, session_folder=Path(tmp),
         annotations=annotations, stats=stats, manifest=manifest,
         analysis=analysis)
     from docx import Document
@@ -365,7 +362,7 @@ def test_efficiency_ratio_gated_on_bnva_override():
     with tempfile.TemporaryDirectory() as tmp:
         texts, cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
         assert not any("value-add (analyst-reviewed split)" in c for c in cells)
-        assert any("process-efficiency ratio is withheld" in t for t in texts)
+        assert any("No process-efficiency ratio is stated" in t for t in texts)
     # With an analyst override -> the ratio renders.
     annotations = dict(annotations,
                        analysis_overrides=[{"process_label": "Enter customer data",
@@ -373,7 +370,7 @@ def test_efficiency_ratio_gated_on_bnva_override():
     with tempfile.TemporaryDirectory() as tmp:
         texts, cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
         assert any("60% value-add (analyst-reviewed split)" in c for c in cells)
-        assert not any("process-efficiency ratio is withheld" in t for t in texts)
+        assert not any("No process-efficiency ratio is stated" in t for t in texts)
 
 
 def test_tier2_sections_gated_on_case_quality():
@@ -395,8 +392,8 @@ def test_tier2_sections_gated_on_case_quality():
     with tempfile.TemporaryDirectory() as tmp:
         texts, cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
         assert not any("Cases observed" in c for c in cells)
-        assert any("Case-based statistics" in t and "withheld" in t for t in texts)
-        assert any("Path variants are case-based analysis" in t for t in texts)
+        assert any("Per-case statistics" in t and "are not shown" in t for t in texts)
+        assert any("Path variations compare one case against another" in t for t in texts)
         assert not any(c == "Variation 1" for c in cells)
     # Unlocked -> both render as before.
     analysis["case_quality"] = {"mode": "markers", "case_count": 1,
@@ -436,7 +433,7 @@ def test_screenshot_ref_path_traversal_is_skipped():
         }
         out = session / "pdd.docx"
         pdd_export.write_pdd(
-            out, session_folder=session, canonical=None,
+            out, session_folder=session,
             annotations=annotations, stats=stats, manifest=manifest,
             analysis=analysis,
         )
@@ -467,7 +464,7 @@ def test_screenshot_ref_within_folder_is_embedded():
         }
         out = session / "pdd.docx"
         pdd_export.write_pdd(
-            out, session_folder=session, canonical=None,
+            out, session_folder=session,
             annotations=annotations, stats=stats, manifest=manifest,
             analysis=analysis,
         )

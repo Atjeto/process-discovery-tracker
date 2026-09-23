@@ -2,8 +2,8 @@
 
 FINDINGS-FIRST (lab-phase spec §B3): §1 is the findings memo content,
 rendered from the SAME `analysis.findings` + `annotations.memo_selection[]`
-model as memo_export (one source of truth -- the memo and the PDD cannot
-disagree). The long-form body follows: document control, an introduction,
+model memo_export builds (one source of truth for the findings). The
+long-form body follows: document control, an introduction,
 an As-Is process description (overview, applications, map, statistics,
 detailed steps, input data), an automation assessment, and an
 exceptions/variations section -- the outline a standard RPA PDD uses
@@ -59,7 +59,6 @@ def write_pdd(
     out_path: Path,
     *,
     session_folder: Path,
-    canonical: dict | None,
     annotations: dict,
     stats: dict,
     manifest: dict,
@@ -79,11 +78,11 @@ def write_pdd(
     doc = Document()
     _write_findings_first(doc, manifest, stats, analysis, annotations,
                           session_folder)             # 1. Findings (memo, §B3)
-    _write_title(doc, manifest, canonical)            # 2. Document control
+    _write_title(doc, manifest)                       # 2. Document control
     _write_introduction(doc, manifest)                # 3. Introduction
 
     doc.add_heading("4. As-Is Process", level=1)
-    _write_overview(doc, stats, manifest, canonical)  # 4.1 Process overview
+    _write_overview(doc, stats, manifest)             # 4.1 Process overview
     _write_applications(doc, stats)                   # 4.2 Applications used
     _write_process_map(doc, process_map_image)        # 4.3 As-Is process map
     _write_statistics(doc, stats, analysis, annotations)  # 4.4 Process statistics
@@ -91,8 +90,7 @@ def write_pdd(
     _write_input_data(doc)                            # 4.6 Input data
 
     _write_automation(doc, analysis)                  # 5. Automation assessment
-    _write_roi(doc, analysis)                         # 5.4 Estimated ROI
-    _write_tobe_map(doc, tobe_map_image)              # 5.5 Proposed to-be process (ADR-0019)
+    _write_tobe_map(doc, tobe_map_image)              # 5.4 Proposed to-be process (ADR-0019)
     _write_exceptions(doc, annotations, stats, analysis)  # 6. Exceptions & variations
     _write_footer(doc)
 
@@ -103,9 +101,9 @@ def write_pdd(
 
 def _write_findings_first(doc, manifest, stats, analysis, annotations,
                           session_folder):
-    """§1 = the findings memo, rendered from the same build_memo_model()
-    the md/docx memo uses -- one source of truth, the two artifacts
-    cannot disagree on a claim, a number, or the analyst's selection."""
+    """§1 = the findings memo content, rendered from build_memo_model() --
+    one source of truth for each claim, number, and the analyst's
+    selection."""
     from memo_export import build_memo_model, write_memo_into_docx
     doc.add_heading("1. Findings", level=1)
     model = build_memo_model(manifest, stats, analysis, annotations)
@@ -148,22 +146,18 @@ def _kv_table(doc, rows):
 
 # ---- 2. Document control ----------------------------------------------------
 
-def _write_title(doc, manifest, canonical):
+def _write_title(doc, manifest):
     doc.add_heading("Process Definition Document", level=0)
-    proc_name = (canonical or {}).get("name")
-    if proc_name:
-        sub = doc.add_paragraph()
-        sub.add_run(proc_name).bold = True
 
     doc.add_heading("2. Document control", level=1)
     worker = (manifest.get("config", {}).get("worker") or {}).get("id", "-")
     _kv_table(doc, [
         ("Engagement", manifest.get("engagement_id") or "-"),
-        ("Process", proc_name or "-"),
+        ("Process", "-"),
         ("Prepared from recording by", worker),
         ("Captured", manifest.get("started_at", "-")),
         ("Document generated", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
-        ("Version", str((canonical or {}).get("version") or "Draft")),
+        ("Version", "Draft"),
     ])
 
 
@@ -188,17 +182,13 @@ def _write_introduction(doc, manifest):
 
 # ---- 4.1 Process overview ---------------------------------------------------
 
-def _write_overview(doc, stats, manifest, canonical):
+def _write_overview(doc, stats, manifest):
     doc.add_heading("4.1 Process overview", level=2)
     meta = stats.get("meta") or {}
-    name = (canonical or {}).get("name")
     worker = (manifest.get("config", {}).get("worker") or {}).get("id")
     captured = manifest.get("started_at")
 
-    lead = "This process"
-    if name:
-        lead += f", “{name}”,"
-    lead += " was reconstructed from a recorded session"
+    lead = "This process was reconstructed from a recorded session"
     if captured and captured != "-":
         lead += f" captured {captured}"
     if worker and worker != "-":
@@ -268,7 +258,7 @@ def _write_process_map(doc, process_map_image):
     )
 
 
-# ---- 5.5 Proposed to-be process map (analyst-authored, ADR-0019) ------------
+# ---- 5.4 Proposed to-be process map (analyst-authored, ADR-0019) ------------
 
 def _write_tobe_map(doc, tobe_map_image):
     """Embed an analyst-authored To-Be reference map, when one was selected for
@@ -278,7 +268,7 @@ def _write_tobe_map(doc, tobe_map_image):
     selected (no empty placeholder)."""
     if not (tobe_map_image and Path(tobe_map_image).exists() and Inches is not None):
         return
-    doc.add_heading("5.5 Proposed to-be process", level=2)
+    doc.add_heading("5.4 Proposed to-be process", level=2)
     try:
         doc.add_picture(str(tobe_map_image), width=Inches(6.0))
     except (FileNotFoundError, OSError, ValueError) as exc:
@@ -327,11 +317,9 @@ def _write_statistics(doc, stats, analysis, annotations=None):
     sc = meta.get("step_count")
     sb = meta.get("step_state_breakdown") or {}
     if sc is not None:
-        auto = (sb.get("auto_suggested", 0) or 0) + (sb.get("auto_matched", 0) or 0)
+        auto = sb.get("auto_suggested", 0) or 0
         conf = (sb.get("manually_authored", 0) or 0) + (sb.get("edited", 0) or 0)
         rows.append(("Steps", f"{sc} ({auto} auto-detected, {conf} confirmed)"))
-    if meta.get("phase_count"):
-        rows.append(("Phases", str(meta["phase_count"])))
     if activity_stats:
         rows.append(("Distinct activities", str(len(activity_stats))))
     # Honesty gate (§B3, parity with the viewer): the VA/(VA+BNVA+NVA) ratio
@@ -346,9 +334,8 @@ def _write_statistics(doc, stats, analysis, annotations=None):
     if not tier2:
         _note(doc, "Per-case statistics (how long each case took) are not "
                    "shown: no cases have been identified in this recording "
-                   "yet. Confirming the field that identifies each "
-                   "ticket/order, or recording Start/End markers, unlocks "
-                   "them in the viewer.")
+                   "yet. Recording Start/End markers unlocks them in the "
+                   "viewer.")
     if efficiency.get("process_efficiency_ratio") is not None and not _has_bnva_override(annotations):
         _note(doc, "No process-efficiency ratio is stated: deciding which "
                    "time adds value is an analyst judgment, and no step type "
@@ -412,7 +399,7 @@ def _write_steps_by_work_item(doc, annotations, session_folder,
     """Render §4.5 grouped by case -> work item -> member fragments (ADR-0028).
     Returns True when it rendered (the session has cases), False when there is
     no case scope to group within, in which case the caller keeps the existing
-    phase-or-flat rendering. The work item's heading is its analyst name
+    flat rendering. The work item's heading is its analyst name
     (`group_annotations`) when one exists, else the value-free screen label;
     group notes and the waste flag flow in above the fragments."""
     from work_items import build_work_items
@@ -441,12 +428,10 @@ def _write_steps_by_work_item(doc, annotations, session_folder,
 
 def _write_steps(doc, annotations, session_folder, analysis, stats=None):
     doc.add_heading("4.5 Detailed process steps", level=2)
-    phases = annotations.get("phases") or []
     # Noise-suppressed steps are hidden everywhere else in the pipeline; the
     # PDD honours that convention too (M-5).
     steps = [s for s in (annotations.get("steps") or [])
              if s.get("state") != "hidden"]
-    step_by_id = {s["step_id"]: s for s in steps}
     waste_by_step = _analysis_maps(analysis)
 
     # ADR-0028 §4: when the session has cases, render the detailed steps at the
@@ -455,31 +440,12 @@ def _write_steps(doc, annotations, session_folder, analysis, stats=None):
     # uses), so a named work item shows the analyst's business name and its
     # group notes / waste flag, with the member fragments preserved beneath.
     # An unsegmented session (no case_id) or steps without grain_keys keep the
-    # exact phase-or-flat rendering below (graceful fallback).
+    # exact flat rendering below (graceful fallback).
     if _write_steps_by_work_item(doc, annotations, session_folder,
                                  waste_by_step, stats):
         return
 
-    if phases:
-        phased_ids = set()
-        for phase in phases:
-            doc.add_heading(phase.get("name", "(phase)"), level=3)
-            if phase.get("description"):
-                doc.add_paragraph(phase["description"])
-            for sid in (phase.get("step_ids") or []):
-                phased_ids.add(sid)
-                step = step_by_id.get(sid)
-                if step:
-                    _write_step(doc, step, session_folder, waste_by_step, level=4)
-        # Steps belonging to no phase -- unmatched steps and analyst-authored
-        # steps -- would otherwise silently vanish (H-2). Render them under
-        # their own subsection, preserving the original step ordering.
-        unphased = [s for s in steps if s["step_id"] not in phased_ids]
-        if unphased:
-            doc.add_heading("Unphased steps", level=3)
-            for step in unphased:
-                _write_step(doc, step, session_folder, waste_by_step, level=4)
-    elif steps:
+    if steps:
         for step in steps:
             _write_step(doc, step, session_folder, waste_by_step, level=3)
     else:
@@ -624,89 +590,6 @@ def _write_automation(doc, analysis):
                 run.italic = True
 
 
-# ---- 5.4 Estimated ROI ------------------------------------------------------
-
-_CCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
-
-
-def _fmt_money(amount, currency):
-    # A non-numeric amount (hand-edited / odd roi block) renders as a dash.
-    if not isinstance(amount, (int, float)) or isinstance(amount, bool):
-        return "—"
-    sym = _CCY_SYMBOLS.get(currency, "") if isinstance(currency, str) else ""
-    s = f"{round(amount):,}"
-    return f"{sym}{s}" if sym else f"{s} {currency}"
-
-
-def _write_roi(doc, analysis):
-    """Render §4.4 -- the €-ROI band over the automation candidates (§10).
-
-    A row per candidate segment carries the time saved per year and, when the
-    analyst has supplied a loaded labour rate and an annual volume, the net
-    annual saving and payback as a conservative / expected / optimistic band.
-    When monetary inputs are absent the section still reports the hours-saved
-    band and explicitly flags that the € figures need analyst inputs -- it
-    never fabricates a labour rate."""
-    roi = (analysis or {}).get("roi") or {}
-    cands = roi.get("candidates") or []
-    doc.add_heading("5.4 Estimated ROI", level=2)
-    if not cands:
-        _placeholder(doc, "the annual time and cost savings of automating "
-                          "the candidate step sequences (none repeated often "
-                          "enough in this recording for a savings band to be "
-                          "computed)")
-        return
-
-    currency = roi.get("currency") or "EUR"
-    needs_input = roi.get("needs_input")
-    doc.add_paragraph(
-        "Each candidate step sequence is projected to an annual saving "
-        "using its observed average duration, the share of it a robot "
-        "could take over, an annual volume, and a loaded labour cost. The "
-        "figures are reported as a conservative / expected / optimistic "
-        "band rather than a single number."
-    )
-    if needs_input:
-        _note(doc, "Monetary figures require a loaded cost per hour (and an "
-                   "annual volume) in the session's ROI inputs; only the "
-                   "hours-saved band is shown below until those are supplied.")
-
-    t = doc.add_table(rows=1, cols=5)
-    h = t.rows[0].cells
-    h[0].text = "Step sequence"
-    h[1].text = "Hours/yr (cons.–opt.)"
-    h[2].text = "Net/yr (expected)"
-    h[3].text = "Payback (expected)"
-    h[4].text = "Volume basis"
-    for r in cands:
-        bands = r.get("bands") or {}
-        cons = (bands.get("conservative") or {}).get("saved_hours_per_year")
-        opt = (bands.get("optimistic") or {}).get("saved_hours_per_year")
-        exp = bands.get("expected") or {}
-        row = t.add_row().cells
-        row[0].text = str(r.get("label", "(step sequence)"))
-        row[1].text = (f"{cons:g}–{opt:g} h"
-                       if cons is not None and opt is not None else "—")
-        row[2].text = _fmt_money(exp.get("net_annual"), currency)
-        pm = exp.get("payback_months")
-        row[3].text = f"{pm:g} mo" if pm is not None else "—"
-        row[4].text = ("annual" if r.get("volume_basis") in ("annotated", "default")
-                       else "observed (floor)")
-
-    totals = roi.get("totals") or {}
-    th = totals.get("saved_hours_per_year")
-    tnet = totals.get("net_annual")
-    if th is not None:
-        bits = [f"{th:g} hours/yr saved (expected)"]
-        if tnet is not None:
-            bits.append(f"{_fmt_money(tnet, currency)} net annual (expected)")
-        doc.add_paragraph("Estimated total across the candidate step "
-                          "sequences: " + "; ".join(bits) + ".")
-    _note(doc, "ROI is a planning estimate, not a guarantee: it assumes the "
-               "supplied annual volume and labour rate hold and that the "
-               "automation captures the stated automatable fraction.")
-
-
 # ---- 6. Exceptions & variations ---------------------------------------------
 
 def _write_exceptions(doc, annotations, stats, analysis=None):
@@ -728,9 +611,8 @@ def _write_exceptions(doc, annotations, stats, analysis=None):
     if not tier2:
         _note(doc, "Path variations compare one case against another, so "
                    "they are not shown: no cases have been identified in "
-                   "this recording yet. Confirming the field that identifies "
-                   "each ticket/order, or recording Start/End markers, "
-                   "unlocks them in the viewer.")
+                   "this recording yet. Recording Start/End markers unlocks "
+                   "them in the viewer.")
     elif len(variants) > 1:
         norm_freq = variants[0].get("frequency", 0)
         t = doc.add_table(rows=1, cols=3)

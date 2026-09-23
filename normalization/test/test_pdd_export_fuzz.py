@@ -7,10 +7,10 @@ can't run pytest). So this fuzzer covers the part that CAN run here: the pure,
 docx-free helpers that shape analyst-editable annotations / derived analysis
 into display values before rendering --
 
-    _fmt_ms, _fmt_money, _analysis_maps, _has_bnva_override
+    _fmt_ms, _analysis_maps, _has_bnva_override
 
 A hand-edited annotations.json / odd analysis block can hand these a non-dict
-annotations, a non-numeric duration/amount, or a non-list classification; they
+annotations, a non-numeric duration, or a non-list classification; they
 must degrade rather than crash the PDD export. The docx-rendering body stays
 out of scope here (documented in tech-debt #16).
 
@@ -89,20 +89,6 @@ def test_fuzz_fmt_ms_total():
             assert isinstance(out, str), f"non-str for {v!r}: {out!r}"
         except Exception as e:  # noqa: BLE001 - a crash here is a finding
             raise AssertionError(f"CRASH [iter {i}]: _fmt_ms({v!r}) -> {type(e).__name__}: {e}") from e
-
-
-def test_fuzz_fmt_money_total():
-    """_fmt_money is total over any (amount, currency) and returns a string."""
-    for i in range(ITERS):
-        rng = Random(BASE + 1_000_000 + i)
-        amount = _scalar(rng)
-        ccy = rng.choice(["EUR", "USD", "GBP", "RSD", "", None, 42, "ZZZ"])
-        try:
-            out = pdd_export._fmt_money(amount, ccy)
-            assert isinstance(out, str), f"non-str for ({amount!r},{ccy!r}): {out!r}"
-        except Exception as e:  # noqa: BLE001
-            raise AssertionError(
-                f"CRASH [iter {i}]: _fmt_money({amount!r},{ccy!r}) -> {type(e).__name__}: {e}") from e
 
 
 def test_fuzz_analysis_maps_total():

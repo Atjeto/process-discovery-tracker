@@ -9,8 +9,8 @@ the map), and inflate the stats. All of PDT's Electron windows run under the
 capture app's single exe, so excluding that process name removes them cleanly.
 
 We drop them from the DERIVED event stream only -- the raw events.jsonl is
-immutable (the same discipline as pii_masking), so re-analyzing an EXISTING
-session cleans it without rewriting capture data.
+immutable, so re-analyzing an EXISTING session cleans it without rewriting
+capture data.
 
 Exclusions are the union of:
   * a built-in default: PDT's own process names (the capture app + viewer);
