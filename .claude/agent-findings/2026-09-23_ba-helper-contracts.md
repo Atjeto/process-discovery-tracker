@@ -198,6 +198,7 @@ keys of cut features. Old annotations.json files load without error.
 | Code | Meaning |
 |---|---|
 | 0 | Success |
+| 1 | Usage error, not a session folder, or an unexpected crash |
 | 2 | annotations.json exists but cannot be parsed; nothing was written. The message names the file and the viewer's backups (annotations.json.2 to .5) |
 | 3 | A requested export (for example `--pdd-out`) failed; the analysis outputs were written, the export was not |
 
