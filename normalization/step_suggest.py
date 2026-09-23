@@ -1,10 +1,19 @@
-"""Auto-suggest steps from interaction events. See annotation-model.md §4.1.
+"""Draft steps from interaction events: the drafting rule (contract C1).
+
+Within each run (case), a step is a stretch of consecutive interactions on one
+screen. It ends at a commit interaction (inclusive), at the first interaction
+on a different screen (exclusive), or at the end of the run. Every draft
+carries a value-free `draft_key` ("<app>|<screen>|<commit>"), so a name the
+analyst gives once is remembered and applied to later drafts (contract C4).
 """
 
 from __future__ import annotations
+import bisect
 import json
 import re
+import sys
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from datetime import datetime, timezone
@@ -65,10 +74,6 @@ def _ts_excluded(ts_str: str, ranges: list[tuple[datetime, datetime]]) -> bool:
     return any(a <= t <= b for a, b in ranges)
 
 
-_COMPLETION_WORDS = frozenset(
-    "search submit save apply ok close confirm send next finish done".split()
-)
-
 # G-4 label hygiene: a PII-masked value token («password#3f9a1c0e», written by
 # the former structural masking stage) must never render raw in a user-facing
 # step name/description, and literal junk an old recorder emits as a "value"
@@ -87,20 +92,6 @@ def _display_value(v: str | None) -> str:
     if _MASKED_VALUE_RE.match(v):
         return MASKED_VALUE_DISPLAY
     return v
-
-
-def _element_key(data: dict[str, Any]) -> tuple:
-    """Identity of the UI element an interaction targeted, for A4
-    element-boundary step splitting. A stable automation id wins, else the
-    visible name; the control type and window title disambiguate same-named
-    controls across windows. Identityless web-app fields (no id, no name)
-    collapse to the same key -- they are genuinely indistinguishable, so they
-    are not force-split."""
-    return (
-        data.get("window_title") or "",
-        (data.get("automation_id") or data.get("name") or ""),
-        data.get("control_type") or "",
-    )
 
 
 def _most_common(values: list[str]) -> str:
@@ -168,45 +159,200 @@ def step_grain_keys(interactions: list[dict[str, Any]]) -> dict[str, str]:
     return {"element": element, "screen": screen, "app": app}
 
 
+# --- The drafting rule (contract C1) ------------------------------------
+
+# Control types whose `invoked` event commits the work done on a screen: a
+# button (Save, Search, Submit), a split button, a menu command, a link.
+COMMIT_CONTROL_TYPES = frozenset({"Button", "SplitButton", "MenuItem", "Hyperlink"})
+
+# The three ways a drafted step ends (C1 `end_reason`).
+END_COMMIT = "commit"
+END_SCREEN_CHANGE = "screen_change"
+END_RUN_END = "run_end"
+
+# The commit part of a draft_key when the step did not end on a commit.
+VISIT = "(visit)"
+
+
+def _is_commit(data: dict[str, Any]) -> bool:
+    """C1 (a): does this interaction end its step, inclusively? An `invoked`
+    event on a commit-type control, or any interaction whose vocab semantics
+    carry the boolean `completion: true`. Decided by the control type and
+    that flag only, never by a word inside a name: the old word match ended a
+    step at a "Lookup" or "Booking" control because the name contains "ok"."""
+    ct = data.get("control_type")
+    if (data.get("kind") == "invoked" and isinstance(ct, str)
+            and ct in COMMIT_CONTROL_TYPES):
+        return True
+    sem = data.get("vocab_semantics")
+    return isinstance(sem, dict) and sem.get("completion") is True
+
+
+def _first_text(data: dict[str, Any], fields: tuple[str, ...]) -> tuple[str, str]:
+    """(field, text) of the first field in `fields` holding non-blank text,
+    or ("", "") when none does."""
+    for f in fields:
+        v = data.get(f)
+        if isinstance(v, str) and v.strip():
+            return f, v.strip()
+    return "", ""
+
+
+def _draft_app(data: dict[str, Any]) -> str:
+    """C1 app: the process name lowercased, ".exe" stripped ("" if absent)."""
+    _f, p = _first_text(data, ("process_name",))
+    p = p.lower()
+    return p[:-4] if p.endswith(".exe") else p
+
+
+def _draft_screen(data: dict[str, Any]) -> str:
+    """C1 screen: the vocab `screen_id` when present, else the shared
+    value-free screen-label rules applied to the window title (the rules the
+    viewer's screen grain applies), else "(screen)" when there is no title."""
+    _f, sid = _first_text(data, ("screen_id",))
+    if sid:
+        return sid
+    _f, title = _first_text(data, ("window_title",))
+    return screen_label(title) or "(screen)"
+
+
+def _commit_part(data: dict[str, Any]) -> tuple[str, str]:
+    """(commit part of the draft_key, identity rung) for a commit interaction.
+    The part is "<control_type>:<identity>", identity = the automation_id,
+    else the name, else the class_name, else "?"; the rung names the field
+    that identified it ("?" when none did)."""
+    rung, ident = _first_text(data, ("automation_id", "name", "class_name"))
+    _f, ct = _first_text(data, ("control_type",))
+    return f"{ct or '?'}:{ident or '?'}", rung or "?"
+
+
+def _commit_label(data: dict[str, Any]) -> str:
+    """The commit's words in a default name: the vocab meaningful_name, else
+    the control's name, else its control type."""
+    _f, label = _first_text(data, ("meaningful_name", "name", "control_type"))
+    return label or "?"
+
+
+def _screenshot_index(events: list[dict[str, Any]]) -> tuple[list[datetime], list[str]]:
+    """(times, paths) of the session's screenshot events, sorted by time."""
+    shots: list[tuple[datetime, str]] = []
+    for ev in events:
+        if ev.get("type") != "system":
+            continue
+        d = ev.get("data")
+        if not isinstance(d, dict) or d.get("kind") not in ("screenshot", "screenshot_manual"):
+            continue
+        path = d.get("path")
+        if isinstance(path, str) and path.strip():
+            shots.append((parse_ts(ev.get("timestamp")), path))
+    shots.sort(key=lambda s: s[0])
+    return [t for t, _p in shots], [p for _t, p in shots]
+
+
+def _screenshots_between(index: tuple[list[datetime], list[str]],
+                         start: str, end: str) -> list[str]:
+    """Paths of the screenshots taken inside [start, end], both inclusive."""
+    times, paths = index
+    lo = bisect.bisect_left(times, parse_ts(start))
+    hi = bisect.bisect_right(times, parse_ts(end))
+    return paths[lo:hi]
+
+
+def _draft_reason(n: int, screen: str, end_reason: str, label: str,
+                  case_id: str | None) -> str:
+    """One line telling the analyst why these interactions form one draft."""
+    what = f"Drafted from {n} interaction{'' if n == 1 else 's'} on {screen}"
+    if end_reason == END_COMMIT:
+        return f'{what}; ended at the commit "{label}".'
+    if end_reason == END_SCREEN_CHANGE:
+        return f"{what}; ended because the next interaction was on another screen."
+    if case_id is None:
+        return f"{what}; ended at the last interaction outside a run."
+    return f"{what}; ended at the end of the run."
+
+
+def _draft_step(stretch: list[dict[str, Any]], end_reason: str, *,
+                case_id: str | None, session_id: str,
+                remembered: dict[str, str],
+                shots: tuple[list[datetime], list[str]]) -> dict[str, Any]:
+    """One drafted step (C1) from a stretch of interactions on one screen.
+    The name and the draft_key are built from the screen label and the
+    commit control only, never from a typed value."""
+    first, last = stretch[0]["data"], stretch[-1]["data"]
+    app = _draft_app(first) or "(app)"
+    screen = _draft_screen(first)
+    if end_reason == END_COMMIT:
+        commit, _rung = _commit_part(last)
+        label = _commit_label(last)
+        default_name = f"{screen}: {label}"
+    else:
+        commit, label, default_name = VISIT, "", screen
+    draft_key = f"{app}|{screen}|{commit}"
+    remembered_name = remembered.get(draft_key)
+    start, end = stretch[0]["timestamp"], stretch[-1]["timestamp"]
+    return {
+        "step_id": str(uuid.uuid4()),
+        "session_id": session_id,
+        "case_id": case_id,
+        "name": remembered_name or default_name,
+        "description": _default_step_description(stretch),
+        "time_range": {"start": start, "end": end},
+        "evidence": {
+            "interaction_event_ids": [ev["event_id"] for ev in stretch],
+            "screenshot_refs": _screenshots_between(shots, start, end),
+            "video_timecode_range": None,
+            "manual_notes": "",
+        },
+        "state": "auto_suggested",
+        "suggestion_reason": _draft_reason(len(stretch), screen, end_reason,
+                                           label, case_id),
+        "canonical_step_id": None,
+        "flags": _aggregate_vocab_flags(stretch),
+        "phase_id": None,
+        # ADR-0024 containment keys; the viewer still groups on them.
+        "grain_keys": step_grain_keys(stretch),
+        "draft_key": draft_key,
+        "name_source": "remembered" if remembered_name else "draft",
+        "end_reason": end_reason,
+    }
+
+
 def auto_suggest_steps(
     events: list[dict[str, Any]],
     *,
-    step_split_idle_ms: int = 10000,
-    step_max_interactions: int = 60,
-    step_min_interactions: int = 2,
-    step_max_idle_ms: int = 5000,
-    step_split_on_element: bool = True,
     filter_browser_chrome: bool = True,
     session_id: str = "",
     ignored_processes: list[str] | None = None,
     excluded_ranges: list[dict] | None = None,
+    remembered_names: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Walk interaction events in time order within each case. Produce
-    auto_suggested steps per the algorithm in annotation-model.md §4.1.
+    """Draft every run's steps with the drafting rule (contract C1).
 
-    `ignored_processes` is a denylist of substrings: any interaction
-    whose process_name or window_title contains one of these terms is
-    dropped before step suggestion. This is how an analyst suppresses
-    noise apps (OBS, the tracker UI itself, Teams) that the UIA
-    recorder picks up but that aren't part of the process being
-    discovered.
+    Within each run (the outermost case an interaction belongs to), walk the
+    interactions in time order. A step is a stretch of consecutive
+    interactions on one screen, and it ends
+      (a) at a commit interaction, inclusive (see _is_commit);
+      (b) at the first interaction on a different screen, exclusive;
+      (c) at the end of the run.
+    A screen belongs to its app: the same screen label in another app is a
+    different screen. Interactions outside any run are drafted the same way
+    with `case_id: None`. Every interaction that passes the filters below lands
+    in exactly one draft; nothing is dropped for being short.
 
-    `excluded_ranges` is the annotations.json `excluded_ranges` list:
-    any interaction whose timestamp falls inside one is dropped, so an
-    analyst can cut a break or an unrelated detour out of a long
-    passive recording before step suggestion runs.
+    Filters, applied before the rule and unchanged from the old suggester:
+    `ignored_processes` (denylist substrings of process_name / window_title),
+    `excluded_ranges` (annotations.json `excluded_ranges`) and
+    `filter_browser_chrome` (the browser's own address bar, tabs and toolbar,
+    ADR-0009). Typing bursts are coalesced before this runs (coalesce.py).
 
-    `step_split_on_element` (default True) additionally ends a step when
-    typing moves to a DIFFERENT field, so filling several fields yields one
-    step per field instead of a single glued blob (ADR-0010 A4). value->action
-    transitions are left intact ("type a serial then click Search" stays one
-    named step). Set False to restore the pre-A4 grouping.
-
-    `filter_browser_chrome` (default True) drops interactions on the browser's
-    own UI -- address bar, toolbar buttons, tab strip -- which are navigation
-    noise, not process steps (ADR-0009 fact-find). Web-app content is kept.
-    """
+    `remembered_names` maps a draft_key to the name the analyst gave it
+    (contract C4, the `--names` store): a draft whose key is there takes that
+    name with `name_source: "remembered"`. Otherwise the default name is
+    "<screen>: <commit label>", or "<screen>" for a step that did not end on
+    a commit, with `name_source: "draft"`."""
+    remembered = remembered_names or {}
     excluded = _parse_excluded_ranges(excluded_ranges)
+    shots = _screenshot_index(events)
     # Group by top-level case (last case_id in case_ids list, or None)
     by_case: dict[str | None, list[dict[str, Any]]] = {}
     for ev in events:
@@ -225,202 +371,116 @@ def auto_suggest_steps(
     steps: list[dict[str, Any]] = []
     for case_id, case_events in by_case.items():
         case_events.sort(key=lambda e: e["timestamp"])
-        candidate: list[dict[str, Any]] = []
-        last_ts: datetime | None = None
+        stretch: list[dict[str, Any]] = []
+        where: tuple[str, str] | None = None
 
-        def flush():
-            has_typing = any(
-                ev["data"].get("kind") in ("value_changed", "text_changed")
-                for ev in candidate
-            )
-            if len(candidate) < step_min_interactions and not has_typing:
-                candidate.clear()
-                return
-            steps.append({
-                "step_id": str(uuid.uuid4()),
-                "session_id": session_id,
-                "case_id": case_id,
-                "name": _default_step_name(candidate),
-                "description": _default_step_description(candidate),
-                "time_range": {
-                    "start": candidate[0]["timestamp"],
-                    "end": candidate[-1]["timestamp"],
-                },
-                "evidence": {
-                    "interaction_event_ids": [ev["event_id"] for ev in candidate],
-                    "screenshot_refs": [],
-                    "video_timecode_range": None,
-                    "manual_notes": "",
-                },
-                "state": "auto_suggested",
-                "suggestion_reason": _suggestion_reason(candidate, step_split_idle_ms),
-                "canonical_step_id": None,
-                "flags": _aggregate_vocab_flags(candidate),
-                "phase_id": None,
-                # ADR-0024: the UI-containment keys the view-time grain roll-up
-                # groups on (element ⊂ screen ⊂ app). Phase/case read the
-                # step's phase_id/case_id, so they are not duplicated here.
-                "grain_keys": step_grain_keys(candidate),
-            })
-            candidate.clear()
+        def close(end_reason: str) -> None:
+            steps.append(_draft_step(list(stretch), end_reason, case_id=case_id,
+                                     session_id=session_id,
+                                     remembered=remembered, shots=shots))
+            stretch.clear()
 
         for ev in case_events:
             data = ev["data"]
-            ts = parse_ts(ev["timestamp"])
-            split = False
-            if candidate:
-                gap_ms = (ts - last_ts).total_seconds() * 1000
-                if gap_ms > step_split_idle_ms:
-                    split = True
-                elif len(candidate) >= step_max_interactions:
-                    split = True
-                elif step_split_on_element:
-                    # A4: a value gesture (typing into a field) ends the step
-                    # when the next typing lands on a DIFFERENT element -- so
-                    # filling three separate fields yields three steps, not one
-                    # glued blob. value->action transitions are left intact so
-                    # "type a serial then click Search" stays one named step.
-                    prev = candidate[-1]["data"]
-                    prev_is_value = prev.get("kind") in ("value_changed", "text_changed")
-                    cur_is_value = data.get("kind") in ("value_changed", "text_changed")
-                    if (prev_is_value and cur_is_value
-                            and _element_key(prev) != _element_key(data)):
-                        split = True
-            if split:
-                flush()
-            candidate.append(ev)
-            last_ts = ts
-            # Completion-action boundary: an invoked Button/Hyperlink
-            # with a completion word closes the current step. A vocab
-            # entry that declares `completion: true` (lab-phase C1) is an
-            # explicit analyst/discovery hint and closes the step without
-            # the word heuristic -- enrichment stamps it as
-            # data.vocab_semantics.completion.
-            if data.get("kind") == "invoked":
-                if (data.get("vocab_semantics") or {}).get("completion") is True:
-                    flush()
-                elif data.get("control_type") in ("Button", "Hyperlink"):
-                    name_lower = (data.get("name") or "").lower()
-                    if any(w in name_lower for w in _COMPLETION_WORDS):
-                        flush()
-        flush()
-
+            here = (_draft_app(data), _draft_screen(data))
+            if stretch and here != where:
+                close(END_SCREEN_CHANGE)       # (b): exclusive
+            if not stretch:
+                where = here
+            stretch.append(ev)
+            if _is_commit(data):
+                close(END_COMMIT)              # (a): inclusive
+        if stretch:
+            close(END_RUN_END)                 # (c)
     return steps
 
 
-def _primary_value(interactions: list[dict[str, Any]]) -> str:
-    """The most identifying value a step typed -- the field content that
-    says *which item* the step acted on. Newest-first, so the final
-    (complete) value wins. Empty when the step typed nothing."""
-    for ev in reversed(interactions):
-        d = ev["data"]
-        if d.get("kind") in ("value_changed", "text_changed"):
-            v = _display_value(d.get("value"))
-            if v:
-                return v[:39] + "…" if len(v) > 40 else v
-    return ""
+def draft_summary(
+    drafts: list[dict[str, Any]],
+    cases: dict[str, dict[str, Any]] | None,
+    interactions_by_id: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Structure-only numbers about this analyze's drafts, for stats.json
+    `meta.draft_summary` (the plan's P1 probe). Counts only, never a name, a
+    key or a value:
+      runs              top-level runs (marker cases) in the session;
+      steps_per_run     drafted steps per run, in run start order;
+      out_of_run_steps  drafted steps outside any run;
+      end_reason        counts per C1 end_reason;
+      name_source       remembered / draft counts;
+      commit_identity   how the commit interactions were identified:
+                        automation_id / name / class_name / "?" counts.
+    It counts the rule's own output (the drafts before the merge with the
+    analyst's steps), so the numbers do not move when the analyst confirms or
+    edits a run."""
+    cases = cases or {}
+    runs = sorted((cid for cid, c in cases.items()
+                   if not (c or {}).get("parent_case_id")),
+                  key=lambda cid: (parse_ts((cases[cid] or {}).get("start_ts")), cid))
+    per_case = Counter(s.get("case_id") for s in drafts)
+    end_reason = dict.fromkeys((END_COMMIT, END_SCREEN_CHANGE, END_RUN_END), 0)
+    name_source = dict.fromkeys(("remembered", "draft"), 0)
+    identity = dict.fromkeys(("automation_id", "name", "class_name", "?"), 0)
+    for s in drafts:
+        end_reason[s["end_reason"]] += 1
+        name_source[s["name_source"]] += 1
+        if s["end_reason"] == END_COMMIT:
+            last_id = s["evidence"]["interaction_event_ids"][-1]
+            ev = (interactions_by_id or {}).get(last_id) or {}
+            identity[_commit_part(ev.get("data") or {})[1]] += 1
+    return {
+        "runs": len(runs),
+        "steps_per_run": [per_case.get(cid, 0) for cid in runs],
+        "out_of_run_steps": per_case.get(None, 0),
+        "end_reason": end_reason,
+        "name_source": name_source,
+        "commit_identity": identity,
+    }
 
 
-def _default_step_name(interactions: list[dict[str, Any]]) -> str:
-    """Derive a useful name from the actual interactions captured.
+def _warn(msg: str) -> None:
+    """One warning line on stderr (the app_vocab convention)."""
+    one_line = str(msg).replace("\r", " ").replace("\n", " ")
+    print(f"[normalize] WARNING: {one_line}", file=sys.stderr)
 
-    Strategy, in priority order:
-      0. If any interaction carries an App Vocabulary `meaningful_name`
-         and it's an Invoked action, use it directly -- analyst-curated
-         names always beat heuristics.
-      1. The window title's app prefix + the most semantically loaded
-         interaction's control name. Most of the time the last
-         user-meaningful interaction is an Invoked Button -- that's the
-         step's purpose ("Save", "Submit", "Search").
-      2. If a value_changed shows the most recent typed value, use
-         "App: Enter <value>" (clamped).
-      3. If the cluster is all selection_changed (drop-down picks),
-         report the selected values.
-      4. Final fallback: a count-based summary.
-    """
-    last = interactions[-1]["data"]
-    app = _short_app(last)
 
-    # 0. Analyst-curated meaningful name on an Invoked action wins.
-    for ev in reversed(interactions):
-        d = ev["data"]
-        if d.get("kind") == "invoked" and d.get("meaningful_name"):
-            return _trim(f"{app}: {d['meaningful_name']}")
-
-    # 1. Last invoked button -- its verb, plus the value the step acted
-    #    on if there is one ("Search — SN12345" beats a bare "Search").
-    for ev in reversed(interactions):
-        d = ev["data"]
-        if d.get("kind") == "invoked" and d.get("name"):
-            ctl = d.get("control_type") or ""
-            verb = _verb_for_control(ctl, d.get("name"))
-            obj = _primary_value(interactions)
-            if obj and obj.lower() not in verb.lower():
-                return _trim(f"{app}: {verb} — {obj}")
-            return _trim(f"{app}: {verb}")
-
-    kinds = [i["data"].get("kind") for i in interactions]
-
-    # All typed-in-fields cluster: "App: Fill 3 fields (last: Email)"
-    if all(k in ("value_changed", "text_changed") for k in kinds):
-        last_val = ""
-        for ev in reversed(interactions):
-            v = _display_value(ev["data"].get("value"))
-            if v:
-                last_val = v[:40]
-                break
-        # Prefer meaningful_name (analyst-curated) over raw control name.
-        named_fields = [
-            ((i["data"].get("meaningful_name") or i["data"].get("name") or "").strip())
-            for i in interactions
-            if (i["data"].get("meaningful_name") or i["data"].get("name") or "").strip()
-        ]
-        if named_fields:
-            uniq = list(dict.fromkeys(named_fields))  # preserve order, dedup
-            if len(uniq) == 1:
-                if last_val:
-                    return _trim(f"{app}: Enter {last_val} in {uniq[0]}")
-                return _trim(f"{app}: Fill {uniq[0]}")
-            if len(uniq) <= 3:
-                return _trim(f"{app}: Fill " + ", ".join(uniq))
-            return _trim(f"{app}: Fill {len(interactions)} fields ({uniq[0]}, ...)")
-        if last_val:
-            return _trim(f"{app}: Enter {last_val}")
-        return _trim(f"{app}: Fill {len(interactions)} fields")
-
-    # All selection_changed: "App: Select Foo, Bar"
-    if all(k == "selection_changed" for k in kinds):
-        vals = [
-            (i["data"].get("selected_value") or "").strip()
-            for i in interactions if (i["data"].get("selected_value") or "").strip()
-        ]
-        vals = list(dict.fromkeys(vals))
-        if vals:
-            if len(vals) == 1: return _trim(f"{app}: Select {vals[0]}")
-            if len(vals) <= 3: return _trim(f"{app}: Select " + ", ".join(vals))
-            return _trim(f"{app}: Select {len(vals)} options")
-
-    # Mixed cluster: no completion button -- lead with the value typed,
-    # else the first clearly-named control.
-    obj = _primary_value(interactions)
-    if obj:
-        return _trim(f"{app}: Enter {obj}")
-    for ev in interactions:
-        d = ev["data"]
-        if d.get("kind") in ("focus_changed", "text_changed"):
-            continue
-        # A browser tab switch is navigation, not the step's purpose,
-        # and its name is the window title -- which would only echo the
-        # `app` prefix (the "TAMBA: TAMBA -  " bug).
-        if (d.get("kind") == "selection_changed"
-                and d.get("control_type") in ("TabItem", "Tab")):
-            continue
-        name = (d.get("meaningful_name") or d.get("name") or "").strip()
-        if name and name.lower() != app.strip().lower():
-            return _trim(f"{app}: {name}")
-        break
-
-    return _trim(f"{app}: {len(interactions)} interactions")
+def load_remembered_names(path: str | Path | None) -> dict[str, str]:
+    """Read the remembered-names store (contract C4, the `--names` flag):
+    {"version": 1, "names": {"<draft_key>": {"name": "...", "updated_at": "..."}}}.
+    Returns {draft_key: name}. The store is optional input, so a missing,
+    unreadable or malformed file is not a failure: it prints one warning line
+    on stderr and returns {}, and drafting uses the default names. Inside a
+    valid store, an entry without a non-blank "name" is skipped (one warning
+    line counts them)."""
+    if not path:
+        return {}
+    fallback = "drafting uses the default names"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except FileNotFoundError:
+        _warn(f"remembered names file not found: {path}; {fallback}")
+        return {}
+    except (OSError, ValueError) as e:     # ValueError covers bad JSON and bad UTF-8
+        _warn(f"remembered names file unreadable: {path} "
+              f"({type(e).__name__}: {e}); {fallback}")
+        return {}
+    names = doc.get("names") if isinstance(doc, dict) else None
+    if not isinstance(names, dict) or doc.get("version") != 1:
+        _warn(f"remembered names file is not a version 1 names store: {path}; {fallback}")
+        return {}
+    out: dict[str, str] = {}
+    skipped = 0
+    for key, entry in names.items():
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if isinstance(key, str) and key and isinstance(name, str) and name.strip():
+            out[key] = name.strip()
+        else:
+            skipped += 1
+    if skipped:
+        _warn(f"remembered names file {path}: skipped {skipped} entr"
+              f"{'y' if skipped == 1 else 'ies'} without a name")
+    return out
 
 
 def _describe_interaction(data: dict[str, Any]) -> str | None:
@@ -514,25 +574,6 @@ def _default_step_description(interactions: list[dict[str, Any]]) -> str:
     return " ".join(sentences)
 
 
-def _suggestion_reason(interactions: list[dict[str, Any]], threshold_ms: int) -> str:
-    """One-line explanation of why these interactions were grouped into a
-    step -- shown to the analyst so an auto-detected step is not a black
-    box. The largest within-step gap is always below `threshold_ms` (a
-    bigger gap would have split the step)."""
-    app = _short_app(interactions[-1]["data"])
-    max_gap_ms = 0.0
-    if len(interactions) >= 2:
-        ts = [parse_ts(ev["timestamp"]) for ev in interactions]
-        max_gap_ms = max(
-            (ts[i + 1] - ts[i]).total_seconds() * 1000
-            for i in range(len(ts) - 1)
-        )
-    return (
-        f"Grouped {len(interactions)} interactions in {app}, "
-        f"max gap {max_gap_ms / 1000:.0f}s (threshold {threshold_ms // 1000}s)"
-    )
-
-
 # --- Helpers -----------------------------------------------------------
 
 def _aggregate_vocab_flags(interactions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -550,27 +591,6 @@ def _aggregate_vocab_flags(interactions: list[dict[str, Any]]) -> dict[str, Any]
         if vf.get("waste"):
             out["waste"] = True
     return out
-
-
-_VERB_HINTS = {
-    "Button": None,             # the button's name is the verb already
-    "MenuItem": "open",
-    "TabItem": "switch to",
-    "TreeItem": "select",
-    "ListItem": "select",
-    "Hyperlink": "follow",
-    "RadioButton": "choose",
-    "CheckBox": "toggle",
-}
-
-def _verb_for_control(control_type: str, name: str) -> str:
-    """Most controls' names already read like verbs ("Save", "Search").
-    For containers (MenuItem, TabItem) the name is a noun -- prefix a
-    verb so the step reads as an action."""
-    hint = _VERB_HINTS.get(control_type)
-    if hint:
-        return f"{hint} {name}"
-    return name
 
 
 def _short_app(data: dict) -> str:
@@ -606,11 +626,6 @@ def _short_app(data: dict) -> str:
     if proc.lower().endswith(".exe"):
         proc = proc[:-4]
     return proc or "App"
-
-
-def _trim(s: str, limit: int = 80) -> str:
-    s = (s or "").strip().strip(":").strip()
-    return s if len(s) <= limit else s[: limit - 1] + "…"
 
 
 # --- Step overlap (I37) ------------------------------------------------
@@ -654,6 +669,14 @@ def drop_overlapping_auto_steps(
     auto step can land on top of a span the analyst already owns. Without
     this the analyst inherits a duplicate to notice and delete (§I37).
 
+    A fresh step with no duration (one interaction, or several sharing one
+    timestamp: common under the drafting rule, which keeps one-interaction
+    steps) has no share to measure. It counts as overlapping when its instant
+    lies strictly inside an analyst-owned step, or on that step's boundary
+    while the analyst step also lists one of its interactions. So a hidden or
+    confirmed one-interaction step is not re-drafted next to itself, while a
+    draft that only touches a boundary timestamp is kept.
+
     Returns `(kept, dropped)`.
     """
     kept: list[dict] = []
@@ -667,8 +690,26 @@ def drop_overlapping_auto_steps(
                 if steps_overlap_seconds(f, p) > threshold * f_dur:
                     overlapped = True
                     break
+        elif fb is not None:
+            f_evs = _evidence_ids(f)
+            overlapped = any(_covers_instant(p, fb[0], f_evs) for p in preserved or [])
         (dropped if overlapped else kept).append(f)
     return kept, dropped
+
+
+def _evidence_ids(step: dict) -> set:
+    return set((step.get("evidence") or {}).get("interaction_event_ids") or [])
+
+
+def _covers_instant(step: dict, t: datetime, event_ids: set) -> bool:
+    """True when `step`'s time range holds instant `t` strictly inside, or on
+    its boundary while the step also lists one of `event_ids`."""
+    b = _step_bounds(step)
+    if b is None:
+        return False
+    if b[0] < t < b[1]:
+        return True
+    return b[0] <= t <= b[1] and bool(event_ids & _evidence_ids(step))
 
 
 def _inherit_step_identity(fresh: list, existing: list, preserved: list) -> list:
@@ -754,6 +795,21 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
     return restamped
 
 
+def _step_process_label(step: dict) -> str:
+    """The value-free grouping label stamped on a step. A drafted name (on a
+    draft, or on a draft the analyst confirmed unchanged) is value-free by
+    construction (C1), so it is its own label: the rule-based strip is for
+    names that embed case values, and its value-tail rule would cut a
+    window-derived screen label such as "Salesforce - Order: Save order" down
+    to "Salesforce". Every other step (edited, hand-authored, pre-draft
+    legacy) keeps the rule-based strip."""
+    name = step.get("name")
+    if (step.get("draft_key") and step.get("state") in ("auto_suggested", "confirmed")
+            and isinstance(name, str)):
+        return name.strip()
+    return process_label(step.get("name") or "")
+
+
 def _merge_steps(existing: list, fresh: list,
                  interactions_by_id: dict | None = None) -> list:
     """Preserve manually_authored, edited, confirmed, and hidden steps
@@ -773,7 +829,7 @@ def _merge_steps(existing: list, fresh: list,
     auto and preserved -- get its ADR-0024 `grain_keys` recomputed from its
     evidence, so the view-time grain roll-up has the containment keys even on
     manual steps. Optional: absent it, only
-    steps that already carry `grain_keys` (the auto ones, stamped in flush())
+    steps that already carry `grain_keys` (the drafts, stamped in _draft_step)
     keep them, and the viewer resolves the rest at view time."""
     by_state = {st: [] for st in PRESERVED_STATES}
     for s in existing or []:
@@ -790,9 +846,9 @@ def _merge_steps(existing: list, fresh: list,
     # Stamp a value-free process_label for the step-level maps (recomputed
     # every analyze, so it tracks analyst renames).
     for s in result:
-        s["process_label"] = process_label(s.get("name") or "")
-        # ADR-0024: (re)resolve the grain-roll-up containment keys. Auto steps
-        # already carry them (flush()); preserved steps get them here when
+        s["process_label"] = _step_process_label(s)
+        # ADR-0024: (re)resolve the grain-roll-up containment keys. Drafts
+        # already carry them (_draft_step); preserved steps get them here when
         # the interaction map is supplied. Recomputed every
         # analyze so they track the current evidence.
         if interactions_by_id is not None:

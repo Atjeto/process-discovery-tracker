@@ -4,11 +4,11 @@ Extracted from normalize.py (god-file decomposition, continues F4). These are
 the readers that pull analyst-authored knobs out of annotations.json
 and turn them into the values the pipeline stages consume:
 
-  * _step_ignored_processes -- the step-suggestion denylist;
+  * _step_ignored_processes -- the step-drafting denylist;
   * _excluded_ranges -- analyst-authored excluded-time ranges;
   * _DEFAULT_CALIBRATION / _calibration / _step_calibration_kwargs -- the F3
-    segmentation calibration surface (defaults match the prior hardcoded
-    values EXACTLY, so absent an override the pipeline output is unchanged).
+    calibration surface (the knobs that still apply after the drafting rule
+    replaced the old segmenter; _IGNORED_CALIBRATION_KEYS lists the dead ones).
 
 Pure; no I/O. normalize.py re-imports every name, so normalize.X and
 `from normalize import X` resolve unchanged.
@@ -34,27 +34,32 @@ def _excluded_ranges(annotations: dict) -> list[dict]:
     return [r for r in ranges if isinstance(r, dict) and r.get("start") and r.get("end")]
 
 
-# Wave 0 / F3: the segmentation calibration surface. These knobs were previously
-# locked as `coalesce_typing_bursts` / `auto_suggest_steps` keyword defaults and
-# UNREACHABLE from a session (the two call sites passed none of them), so the
-# over-segmentation ("308-step") class could not be tuned without editing code.
-# They are now read from an optional `calibration` block in annotations.json (the
-# analyst can set it per session). Defaults match the prior
-# hardcoded values EXACTLY, so absent an override the pipeline output is unchanged.
+# Wave 0 / F3: the calibration surface, read from an optional `calibration`
+# block in annotations.json (the analyst can set it per session).
+#
+# The drafting rule (contract C1) replaced the old segmenter, and the old
+# segmenter's knobs no longer apply. Old annotations.json files still carry
+# them; the block is still read, and these keys are IGNORED (dropped like any
+# unknown key):
+_IGNORED_CALIBRATION_KEYS = (
+    "step_split_idle_ms",
+    "step_max_interactions",
+    "step_min_interactions",
+    "step_max_idle_ms",
+    "step_split_on_element",
+)
+
+# The knobs that still apply, with their defaults.
 _DEFAULT_CALIBRATION = {
-    "coalesce_idle_ms": 1500,
-    "step_split_idle_ms": 10000,
-    "step_max_interactions": 60,
-    "step_min_interactions": 2,
-    "step_max_idle_ms": 5000,
-    "step_split_on_element": True,
-    "filter_browser_chrome": True,
+    "coalesce_idle_ms": 1500,       # typing-burst coalescing (coalesce.py)
+    "filter_browser_chrome": True,  # drop the browser's own UI before drafting
 }
 
 
 def _calibration(annotations: dict) -> dict:
     """Merge an optional `annotations['calibration']` override over the defaults.
-    Missing keys fall back to the prior hardcoded value; unknown keys are ignored."""
+    Missing keys fall back to the default; unknown keys and the ignored old
+    segmenter keys (_IGNORED_CALIBRATION_KEYS) are dropped."""
     cal = dict(_DEFAULT_CALIBRATION)
     override = (annotations or {}).get("calibration")
     if isinstance(override, dict):
@@ -65,12 +70,8 @@ def _calibration(annotations: dict) -> dict:
 
 
 def _step_calibration_kwargs(cal: dict) -> dict:
-    """The subset of the calibration surface that `auto_suggest_steps` accepts."""
+    """The subset of the calibration surface that `auto_suggest_steps` (the
+    drafting rule) accepts."""
     return {
-        "step_split_idle_ms": cal["step_split_idle_ms"],
-        "step_max_interactions": cal["step_max_interactions"],
-        "step_min_interactions": cal["step_min_interactions"],
-        "step_max_idle_ms": cal["step_max_idle_ms"],
-        "step_split_on_element": cal["step_split_on_element"],
         "filter_browser_chrome": cal["filter_browser_chrome"],
     }

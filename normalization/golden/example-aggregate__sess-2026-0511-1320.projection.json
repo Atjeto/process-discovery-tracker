@@ -13,34 +13,24 @@
     "interaction_count": 94,
     "marker_edits_applied": 0,
     "raw_event_count": 125,
-    "step_count": 53,
+    "step_count": 24,
     "step_state_breakdown": {
-      "auto_suggested": 53,
+      "auto_suggested": 24,
       "edited": 0,
       "manually_authored": 0
     }
   },
   "session": "sess-2026-0511-1320",
   "steps": {
-    "count": 53,
+    "count": 24,
     "process_labels": [
-      "Excel: Create sales order",
-      "Excel: Enter Date cell",
-      "Excel: Enter Status cell",
-      "Excel: Save workbook",
-      "Outlook: Enter Subject",
-      "Outlook: Enter To",
-      "Outlook: Send",
-      "SAP: Enter Material number",
-      "SAP: Enter OR",
-      "SAP: Enter Sales organisation",
-      "Salesforce: Create sales order",
-      "Salesforce: Enter Quantity",
-      "Salesforce: Enter Shipping address",
-      "Salesforce: Enter Unit price",
-      "Salesforce: Open customer record",
-      "Salesforce: Save order",
-      "Salesforce: Search"
+      "Excel - Order Tracking.xlsx: Save workbook",
+      "Outlook - Order confirmation: Send",
+      "Salesforce - Account lookup: Open customer record",
+      "Salesforce - Account lookup: Search",
+      "Salesforce - Order: Save order",
+      "va01: Check document",
+      "va01: Create sales order"
     ]
   }
 }

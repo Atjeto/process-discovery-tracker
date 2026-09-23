@@ -1,4 +1,6 @@
-"""Smoke tests for the step auto-suggestion pass.
+"""Smoke tests for the step pass: grain keys, excluded ranges, overlap,
+coalescing, browser-chrome filtering, descriptions and value-free labels.
+The drafting rule itself (contract C1) is tested in test_step_drafting.py.
 
 Run with:
     pytest normalization/test/test_step_suggest.py
@@ -136,39 +138,6 @@ def test_groups_contiguous_interactions_into_one_step():
     assert len(steps[0]["evidence"]["interaction_event_ids"]) == 4
 
 
-def test_splits_on_idle_gap():
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [
-        _make_inter(base),
-        _make_inter(base + timedelta(milliseconds=200)),
-        # 15s idle gap (> step_split_idle_ms=10000)
-        _make_inter(base + timedelta(seconds=15)),
-        _make_inter(base + timedelta(seconds=15, milliseconds=200)),
-    ]
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 2
-
-
-def test_multiple_apps_within_threshold_stay_one_step():
-    """v0.13: app/process changes no longer split steps."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [
-        _make_inter(base, window="Window A"),
-        _make_inter(base + timedelta(milliseconds=200), window="Window A"),
-        _make_inter(base + timedelta(milliseconds=400), window="Window B"),
-        _make_inter(base + timedelta(milliseconds=600), window="Window B"),
-    ]
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 1
-
-
-def test_drops_singletons_below_min_threshold():
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [_make_inter(base)]
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert steps == []
-
-
 # --- Excluded ranges (H6) ----------------------------------------------
 
 def test_excluded_range_drops_events_before_suggestion():
@@ -253,19 +222,6 @@ def test_drop_overlapping_auto_steps_keeps_disjoint():
     assert dropped == []
 
 
-# --- Suggestion reason (I5) --------------------------------------------
-
-def test_auto_step_carries_a_suggestion_reason():
-    """An auto-suggested step explains why its interactions were grouped."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [_make_inter(base + timedelta(milliseconds=i * 500)) for i in range(4)]
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 1
-    reason = steps[0]["suggestion_reason"]
-    assert "Grouped 4 interactions" in reason
-    assert "threshold" in reason
-
-
 # --- value_changed / selection coalescing (typing-noise fix) -----------
 
 def _make_value_changed(ts, value, *, automation_id="", name="",
@@ -306,11 +262,14 @@ def test_typing_burst_on_identityless_control_coalesces_to_one_step():
     steps = auto_suggest_steps(coalesced, session_id="s1")
     assert len(steps) == 1
     assert len(steps[0]["evidence"]["interaction_event_ids"]) == 1
-    assert "Enter" in steps[0]["name"]
+    # C1: a draft is named by its screen, never by the text typed into it.
+    assert steps[0]["name"] == "TAMBA"
+    assert text not in steps[0]["name"]
 
 
 def test_typing_burst_keeps_the_final_value():
-    """The coalesced event keeps the last (complete) typed value."""
+    """The coalesced event keeps the last (complete) typed value; the step's
+    description narrates it (names carry no typed value, C1)."""
     base = datetime(2026, 5, 14, 9, 0, 0)
     events = [
         _make_value_changed(base, "C"),
@@ -320,7 +279,7 @@ def test_typing_burst_keeps_the_final_value():
     coalesced = coalesce_typing_bursts(events)
     steps = auto_suggest_steps(coalesced, session_id="s1")
     assert len(steps) == 1
-    assert "CE done" in steps[0]["name"]
+    assert '"CE done"' in steps[0]["description"]
 
 
 def test_two_identityless_fields_split_by_focus_stay_separate():
@@ -340,43 +299,6 @@ def test_two_identityless_fields_split_by_focus_stay_separate():
     assert len(steps) == 1
     # two coalesced typing events + the focus event = 3 interactions
     assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
-
-
-# --- A4: element-boundary step splitting -------------------------------
-
-def test_distinct_fields_split_into_separate_steps():
-    """A4: typing into two DIFFERENT named fields yields two steps, not one
-    glued blob -- the dominant over-grouping the element split fixes."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [
-        _make_value_changed(base, "SN12345", name="Serial Number"),
-        _make_value_changed(base + timedelta(milliseconds=300), "Banking", name="Industry"),
-    ]
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 2
-
-
-def test_element_split_can_be_disabled():
-    """A4: step_split_on_element=False restores the pre-A4 grouping --
-    the two fields collapse back into one step."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [
-        _make_value_changed(base, "SN12345", name="Serial Number"),
-        _make_value_changed(base + timedelta(milliseconds=300), "Banking", name="Industry"),
-    ]
-    steps = auto_suggest_steps(events, session_id="s1", step_split_on_element=False)
-    assert len(steps) == 1
-
-
-def test_type_then_action_stays_one_step():
-    """A4: a value->action transition is NOT split -- typing a serial then
-    clicking Search in the same window stays one step (good naming/coupling)."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    typed = _make_value_changed(base, "SN12345", name="Serial", window="TAMBA")
-    btn = _make_inter(base + timedelta(milliseconds=300), kind="invoked",
-                      name="Search", window="TAMBA")
-    steps = auto_suggest_steps([typed, btn], session_id="s1")
-    assert len(steps) == 1
 
 
 # --- Browser-chrome noise filter (ADR-0009 fact-find) ------------------
@@ -417,8 +339,9 @@ def test_browser_chrome_filter_can_be_disabled():
 
 def test_repeated_identical_tab_selection_collapses():
     """The OS re-fires selection_changed on a tab every time focus
-    returns to it. Identical re-selections collapse to one, and a lone
-    tab switch is not substantial enough to be its own step."""
+    returns to it. Identical re-selections collapse to one; the drafting
+    rule keeps that one interaction as a draft (nothing is dropped for
+    being short)."""
     base = datetime(2026, 5, 14, 9, 0, 0)
     events = [
         _make_inter(base + timedelta(milliseconds=i * 300),
@@ -431,85 +354,8 @@ def test_repeated_identical_tab_selection_collapses():
         ev["data"]["selected_value"] = "TAMBA -  "
     coalesced = coalesce_typing_bursts(events)
     steps = auto_suggest_steps(coalesced, session_id="s1")
-    assert steps == []
-
-
-def test_completion_action_splits_step():
-    """An invoked Button with a completion word in its name closes the step."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [
-        _make_inter(base, kind="invoked", name="Open form"),
-        _make_inter(base + timedelta(seconds=1), kind="invoked", name="Fill field"),
-        _make_inter(base + timedelta(seconds=2), kind="invoked", name="Search"),
-        _make_inter(base + timedelta(seconds=3), kind="invoked", name="View result"),
-        _make_inter(base + timedelta(seconds=4), kind="invoked", name="Copy data"),
-    ]
-    for ev in events:
-        ev["data"]["control_type"] = "Button"
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 2
-    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
-    assert len(steps[1]["evidence"]["interaction_event_ids"]) == 2
-
-
-def test_three_apps_within_5s_one_step():
-    """v0.13 §8.1: 3 apps within 5s -> 1 step (no app split)."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [
-        _make_inter(base, window="App A", proc="a.exe"),
-        _make_inter(base + timedelta(seconds=2), window="App B", proc="b.exe"),
-        _make_inter(base + timedelta(seconds=4), window="App C", proc="c.exe"),
-    ]
-    steps = auto_suggest_steps(events, session_id="s1")
     assert len(steps) == 1
-
-
-def test_15s_gap_splits_into_two_steps():
-    """v0.13 §8.1: 15s gap -> 2 steps."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    events = [
-        _make_inter(base),
-        _make_inter(base + timedelta(milliseconds=200)),
-        _make_inter(base + timedelta(seconds=15)),
-        _make_inter(base + timedelta(seconds=15, milliseconds=200)),
-    ]
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 2
-
-
-def test_step_name_does_not_echo_app_prefix():
-    """A step whose only nameable interaction is a tab switch must not be
-    named 'TAMBA: TAMBA -  ' -- the tab title just echoes the app."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    tab = _make_inter(base, kind="selection_changed", window="TAMBA -  ",
-                      name="TAMBA -  ")
-    tab["data"]["control_type"] = "TabItem"
-    tab["data"]["selected_value"] = "TAMBA -  "
-    click = _make_inter(base + timedelta(milliseconds=300), kind="invoked",
-                        window="TAMBA -  ", name="")
-    steps = auto_suggest_steps([tab, click], session_id="s1")
-    assert len(steps) == 1
-    label = steps[0]["name"].split(": ", 1)[-1]
-    assert "TAMBA" not in label
-
-
-def test_volatile_window_title_suffix_does_not_split_steps():
-    """v0.13: app/process changes no longer split -- volatile title
-    suffixes are also safe since neither key splits on them now."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    titles = [
-        "ES CALL MANAGEMENT - Memory usage - 95.2 MB - Work - Microsoft Edge",
-        "ES CALL MANAGEMENT - Work - Microsoft Edge",
-        "ES CALL MANAGEMENT - Memory usage - 96.4 MB - Work - Microsoft Edge",
-    ]
-    events = [
-        _make_inter(base + timedelta(milliseconds=i * 300), kind="invoked",
-                    window=t, proc="msedge.exe", name="Open")
-        for i, t in enumerate(titles)
-    ]
-    steps = auto_suggest_steps(events, session_id="s1")
-    assert len(steps) == 1
-    assert len(steps[0]["evidence"]["interaction_event_ids"]) == 3
+    assert steps[0]["evidence"]["interaction_event_ids"] == [events[0]["event_id"]]
 
 
 # --- Step description (interaction summary) ----------------------------
@@ -578,30 +424,6 @@ def test_step_description_handles_text_changed_and_unknown_kinds():
     desc = steps[0]["description"]
     assert "Edited Comments." in desc
     assert "Range value changed on Volume." in desc
-
-
-def test_step_name_includes_the_value_acted_on():
-    """A step that types a value then clicks a button names both, so it
-    is recognisable from the list without opening its interactions."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    typed = _make_value_changed(base, "SN12345", name="Serial")
-    btn = _make_inter(base + timedelta(seconds=1), kind="invoked", name="Search")
-    steps = auto_suggest_steps([typed, btn], session_id="s1")
-    assert len(steps) == 1
-    name = steps[0]["name"]
-    assert "Search" in name
-    assert "SN12345" in name
-
-
-def test_step_name_for_one_field_shows_value_and_field():
-    """Typing into a single named field names the value and the field."""
-    base = datetime(2026, 5, 14, 9, 0, 0)
-    ev = _make_value_changed(base, "SN12345", name="Serial Number")
-    steps = auto_suggest_steps([ev], session_id="s1")
-    assert len(steps) == 1
-    name = steps[0]["name"]
-    assert "SN12345" in name
-    assert "Serial Number" in name
 
 
 def test_step_description_caps_long_steps_with_a_tail():

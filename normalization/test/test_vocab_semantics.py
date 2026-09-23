@@ -50,7 +50,9 @@ SEMANTIC_VOCAB = {
             "carries_value": True,
         },
         {
-            "signature": {"control_type": "Button", "automation_id": "post-order"},
+            # A clickable element that is not a commit-type control (C1), so
+            # only the completion flag can end a step on it.
+            "signature": {"control_type": "Custom", "automation_id": "post-order"},
             "name": "Post order",
             "verb": "submit",
             "completion": True,
@@ -115,16 +117,16 @@ def test_lookup_carries_semantics_to_matched_event():
 # --- Consumer 1: completion -> step boundary hint --------------------------
 
 def _orders_events():
-    """Two fill+post rounds on the same field/button. Without the completion
-    boundary they glue into one step (same element, no idle gap); the vocab
-    completion on 'Post order' must split them."""
+    """Two fill+post rounds on one screen. 'Post order' is a Custom element,
+    not a commit-type control, so without the completion boundary the four
+    interactions stay one step; the vocab completion on it must split them."""
     base = "2026-06-01T09:00:{s:02d}Z"
     evs = []
     rows = [
         ("value_changed", "Edit", "order-id", "ORD-1001"),
-        ("invoked", "Button", "post-order", None),
+        ("invoked", "Custom", "post-order", None),
         ("value_changed", "Edit", "order-id", "ORD-1002"),
-        ("invoked", "Button", "post-order", None),
+        ("invoked", "Custom", "post-order", None),
     ]
     for i, (kind, ct, aid, val) in enumerate(rows):
         d = {"process_name": "orders.exe", "window_title": "Orders",
@@ -145,9 +147,10 @@ def test_completion_semantic_closes_step():
 
 
 def test_without_semantics_same_events_stay_glued():
-    """The control case: 'Post order' has no completion word, so absent the
-    vocab semantic the four interactions remain one step. Proves the split
-    in test_completion_semantic_closes_step is the C1 hint, nothing else."""
+    """The control case: 'Post order' is not a commit-type control, so absent
+    the vocab semantic the four interactions remain one step. Proves the split
+    in test_completion_semantic_closes_step is the completion flag, nothing
+    else."""
     steps = auto_suggest_steps(_orders_events(), session_id="s")
     assert len(steps) == 1
 

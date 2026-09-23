@@ -53,8 +53,9 @@ def _inter(eid, sec, kind, control_type, name):
 
 
 def _run(prefix, s):
-    """One marked run: two drafted steps (typing + Find + Save, then typing +
-    Submit). "Save" and "Submit" are completion words that close a step."""
+    """One marked run, all on one screen: three drafted steps under the C1
+    rule (typing + Find, Save, typing + Submit), because every invoked Button
+    is a commit that ends its step."""
     return [
         {"event_id": f"{prefix}-start", "type": "marker", "timestamp": _ts(s),
          "session_id": SESSION_ID,
@@ -128,7 +129,7 @@ def test_the_same_events_normalized_twice_give_identical_case_ids(tmp_path):
     normalize_mod.normalize(session)
     second_cases = [c["case_id"] for c in _read(session, "stats.json")["case_stats"]]
     second_steps = {s["step_id"]: s["case_id"] for s in _read(session, "annotations.json")["steps"]}
-    assert len(first_cases) == 2 and len(first_steps) == 4
+    assert len(first_cases) == 2 and len(first_steps) == 6
     assert second_cases == first_cases, "case ids changed on re-analysis"
     assert second_steps == first_steps
     # Every analysis stage ran, so C12's stage_errors is written empty.
@@ -302,3 +303,126 @@ def test_the_removed_step_bpmn_flag_is_a_usage_error_not_exit_2(tmp_path):
     errors = _error_lines(proc)
     assert len(errors) == 1 and "--step-bpmn-out" in errors[0]
     assert not (session / "annotations.json").exists()
+
+
+def test_help_lists_exactly_the_c11_options():
+    proc = _run_cli("--help")
+    assert proc.returncode == 0
+    import re
+    options = set(re.findall(r"(?<![\w-])--[a-z][a-z-]*", proc.stdout))
+    assert options == {"--help", "--taxonomy", "--mine", "--pdd-out",
+                       "--pdd-map-image", "--pdd-tobe-image", "--names"}
+    assert "session_folder" in proc.stdout
+
+
+# ---- C1 drafting, C4 remembered names, P1 draft_summary --------------------
+
+FIND_KEY = "crm|CRM - Orders|Button:find"
+
+
+def _names_store(path: Path, names: dict) -> Path:
+    path.write_text(json.dumps({"version": 1, "names": {
+        k: {"name": v, "updated_at": "2026-09-23T09:00:00Z"} for k, v in names.items()}}),
+        encoding="utf-8")
+    return path
+
+
+def _warning_lines(proc) -> list[str]:
+    return [ln for ln in proc.stderr.splitlines() if ln.startswith("[normalize] WARNING:")]
+
+
+def test_the_names_flag_applies_a_remembered_name(tmp_path):
+    session = _make_session(tmp_path / "s")
+    store = _names_store(tmp_path / "remembered-names.json",
+                         {FIND_KEY: "Look up the customer"})
+    proc = _run_cli(session, "--names", store)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert _warning_lines(proc) == []
+    steps = _read(session, "annotations.json")["steps"]
+    named = [s for s in steps if s["draft_key"] == FIND_KEY]
+    assert len(named) == 2                      # one per run
+    for s in named:
+        assert s["name"] == "Look up the customer"
+        assert s["name_source"] == "remembered"
+    others = [s for s in steps if s["draft_key"] != FIND_KEY]
+    assert others and all(s["name_source"] == "draft" for s in others)
+    assert _read(session, "stats.json")["meta"]["draft_summary"]["name_source"] == {
+        "remembered": 2, "draft": 4}
+
+
+def test_an_unreadable_names_file_warns_once_and_drafts_default_names(tmp_path):
+    session = _make_session(tmp_path / "s")
+    store = tmp_path / "remembered-names.json"
+    store.write_text("{not json", encoding="utf-8")
+    proc = _run_cli(session, "--names", store)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert _error_lines(proc) == []
+    warnings = _warning_lines(proc)
+    assert len(warnings) == 1 and str(store) in warnings[0]
+    steps = _read(session, "annotations.json")["steps"]
+    assert len(steps) == 6
+    assert all(s["name_source"] == "draft" for s in steps)
+    assert {s["name"] for s in steps if s["draft_key"] == FIND_KEY} == {"CRM - Orders: Find"}
+
+
+def test_confirmed_run_1_survives_re_analysis_while_run_2_is_re_drafted(tmp_path):
+    """Item 4 of the drafting lane: the analyst confirms every draft of run 1;
+    re-analysis (now with a remembered name) leaves run 1 exactly as it was,
+    one-interaction steps included, and re-drafts run 2 under the same ids."""
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    runs = {c["label"]: c["case_id"] for c in _read(session, "stats.json")["case_stats"]}
+    anno = _read(session, "annotations.json")
+    for s in anno["steps"]:
+        if s["case_id"] == runs["Order a"]:
+            s["state"] = "confirmed"
+    run1_before = sorted((s for s in anno["steps"] if s["case_id"] == runs["Order a"]),
+                         key=lambda s: s["step_id"])
+    run2_ids_before = sorted(s["step_id"] for s in anno["steps"]
+                             if s["case_id"] == runs["Order b"])
+    assert len(run1_before) == 3 and len(run2_ids_before) == 3
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+
+    store = _names_store(tmp_path / "names.json", {FIND_KEY: "Look up the customer"})
+    normalize_mod.normalize(session, names_path=str(store))
+
+    steps = _read(session, "annotations.json")["steps"]
+    run1_after = sorted((s for s in steps if s["case_id"] == runs["Order a"]),
+                        key=lambda s: s["step_id"])
+    assert run1_after == run1_before, "a confirmed step changed on re-analysis"
+    run2 = [s for s in steps if s["case_id"] == runs["Order b"]]
+    assert sorted(s["step_id"] for s in run2) == run2_ids_before
+    assert all(s["state"] == "auto_suggested" for s in run2)
+    find2 = [s for s in run2 if s["draft_key"] == FIND_KEY]
+    assert [s["name"] for s in find2] == ["Look up the customer"]
+    assert [s["name_source"] for s in find2] == ["remembered"]
+    # The confirmed Find step kept its confirmed name: re-drafting run 2
+    # never reaches into run 1.
+    assert [s["name"] for s in run1_after if s["draft_key"] == FIND_KEY] == [
+        "CRM - Orders: Find"]
+    assert len(steps) == 6
+
+
+def test_the_draft_summary_in_stats_is_numbers_only(tmp_path):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    summary = _read(session, "stats.json")["meta"]["draft_summary"]
+    assert summary == {
+        "runs": 2,
+        "steps_per_run": [3, 3],
+        "out_of_run_steps": 0,
+        "end_reason": {"commit": 6, "screen_change": 0, "run_end": 0},
+        "name_source": {"remembered": 0, "draft": 6},
+        "commit_identity": {"automation_id": 6, "name": 0, "class_name": 0, "?": 0},
+    }
+
+    def leaves(x):
+        if isinstance(x, dict):
+            for v in x.values():
+                yield from leaves(v)
+        elif isinstance(x, list):
+            for v in x:
+                yield from leaves(v)
+        else:
+            yield x
+    assert all(type(v) is int for v in leaves(summary))

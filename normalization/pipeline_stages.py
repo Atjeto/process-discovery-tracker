@@ -40,6 +40,7 @@ from classification_overrides import apply_classification_overrides
 from xes_export import build_event_log, export_xes, export_csv
 from step_suggest import (
     auto_suggest_steps, _merge_steps, restamp_preserved_case_ids,
+    draft_summary, load_remembered_names,
 )
 import app_vocab
 import stats_compute as stats
@@ -125,9 +126,11 @@ def _run_step_segmentation(
     session_id_str: str,
     cal: dict,
     session_folder: Path,
-) -> tuple[list[dict[str, Any]], int]:
-    """Step segmentation (auto-suggest), then persist annotations. Returns
-    (merged_steps, total_interactions)."""
+    names_path: str | None = None,
+) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
+    """Step drafting (the C1 rule), then persist annotations. Returns
+    (merged_steps, total_interactions, draft_summary). `names_path` is the
+    optional remembered-names store (C4, the `--names` flag)."""
     total_interactions = sum(1 for e in with_cases if e.get("type") == "interaction")
     # ADR-0024: event_id -> interaction, so _merge_steps can resolve each step's
     # grain_keys (the view-time roll-up containment keys) from its evidence.
@@ -139,8 +142,11 @@ def _run_step_segmentation(
         with_cases, session_id=session_id_str,
         ignored_processes=_step_ignored_processes(existing_anno),
         excluded_ranges=_excluded_ranges(existing_anno),
+        remembered_names=load_remembered_names(names_path),
         **_step_calibration_kwargs(cal),
     )
+    # Counted on the fresh drafts, before the merge (see draft_summary).
+    summary = draft_summary(auto_steps, cases, interactions_by_id)
     merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps,
                                 interactions_by_id)
     # RP-01 / C9: a preserved analyst step keeps its case_id only while that
@@ -151,9 +157,9 @@ def _run_step_segmentation(
               f"that contains them (their previous run id no longer exists)")
     existing_anno["steps"] = merged_steps
     write_annotations(session_folder, existing_anno)
-    print(f"[normalize] auto-suggested {len(auto_steps)} step(s) "
+    print(f"[normalize] drafted {len(auto_steps)} step(s) "
           f"({len(merged_steps)} total after merge)")
-    return merged_steps, total_interactions
+    return merged_steps, total_interactions, summary
 
 
 def _run_classification(
@@ -252,9 +258,11 @@ def _run_stats(
     merged_steps: list[dict[str, Any]],
     coalesced: list[dict[str, Any]],
     vocab_summary: dict,
+    draft_summary: dict | None = None,
 ) -> tuple[dict[str, Any], Path]:
     """Compute the statistics summary and write stats.json. Returns
-    (summary, stats_path)."""
+    (summary, stats_path). `draft_summary` is the structure-only numbers of
+    this analyze's drafts (step_suggest.draft_summary), counts only."""
     summary = stats.compute_all(
         log_events, cases,
         excluded_ranges=_excluded_ranges(existing_anno),
@@ -281,6 +289,7 @@ def _run_stats(
             "manually_authored": sum(1 for s in merged_steps if s.get("state") == "manually_authored"),
             "edited":            sum(1 for s in merged_steps if s.get("state") == "edited"),
         },
+        "draft_summary": draft_summary,
         "coalesced_event_count": len(coalesced),
         "app_vocabularies": vocab_summary.get("vocabs_loaded") or [],
         "app_vocabulary_matches": vocab_summary.get("matched", 0),

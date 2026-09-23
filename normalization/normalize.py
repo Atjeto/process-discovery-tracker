@@ -94,7 +94,11 @@ def normalize(
     pdd_out: str | None = None,
     pdd_map_image: str | None = None,
     pdd_tobe_image: str | None = None,
+    names_path: str | None = None,
 ) -> dict[str, Any]:
+    """Run the pipeline on one session folder. `names_path` is the optional
+    remembered-names store (contract C4): drafted steps whose draft_key it
+    lists take the remembered name."""
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
         raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
@@ -138,9 +142,10 @@ def normalize(
     # Additive, regenerated each run: what the self/ignored-process filter dropped.
     existing_anno["process_exclusions"] = exclude_report
 
-    # Step segmentation (auto-suggest), then persist annotations.
-    merged_steps, total_interactions = _run_step_segmentation(
-        with_cases, cases, existing_anno, session_id_str, cal, session_folder)
+    # Step drafting (the C1 rule), then persist annotations.
+    merged_steps, total_interactions, draft_summary = _run_step_segmentation(
+        with_cases, cases, existing_anno, session_id_str, cal, session_folder,
+        names_path=names_path)
 
     # Taxonomy classification + analyst overrides + the two collapses.
     classified, collapsed, log_events, taxonomy, taxonomy_report = (
@@ -155,7 +160,7 @@ def normalize(
         session_folder, log_events, cases, existing_anno, taxonomy,
         taxonomy_path, taxonomy_report, worker_id, raw, dropped_lines,
         collapsed, total_interactions, edits_applied, merged_steps,
-        coalesced, vocab_summary)
+        coalesced, vocab_summary, draft_summary=draft_summary)
 
     # Analysis layer (ADR-0008), best-effort -- never blocks the pipeline.
     # Phase A (LAB-PHASE-SPEC §A1-§A3): cases feed the additive
@@ -215,6 +220,11 @@ def main():
     parser.add_argument("--pdd-tobe-image", type=str, default=None,
                         help="PNG of an analyst-authored To-Be reference map to embed in the "
                              "PDD's proposed-to-be section (ADR-0019). Hand-drawn, not mined.")
+    parser.add_argument("--names", type=str, default=None,
+                        help="Remembered-names store (remembered-names.json). A drafted step "
+                             "whose draft key is listed takes the remembered name. Optional: "
+                             "a missing or unreadable file prints a warning and drafting uses "
+                             "the default names.")
     args = parser.parse_args()
 
     setup_logging()
@@ -229,6 +239,7 @@ def main():
             pdd_out=args.pdd_out,
             pdd_map_image=args.pdd_map_image,
             pdd_tobe_image=args.pdd_tobe_image,
+            names_path=args.names,
         )
     except AnnotationsUnreadable as exc:
         _fail(2, str(exc))
