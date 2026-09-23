@@ -98,8 +98,7 @@ async function launch(sessionDir, pageErrors) {
   page.on("pageerror", (e) => pageErrors.push(String(e && e.message ? e.message : e)));
   await page.waitForLoadState("domcontentloaded").catch(() => {});
   await page.waitForSelector("#session-loaded", { state: "visible", timeout: 15000 });
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].setContentSize(1500, 950)).catch(() => {});
+  // The window size is launchViewer's (1500x950, or PDT_E2E_WINDOW).
   await wait(1500);
   return { app, page, close };
 }

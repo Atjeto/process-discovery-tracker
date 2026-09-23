@@ -22,7 +22,7 @@
 
 "use strict";
 
-const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast } = require("../dom.js");
+const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
@@ -1314,8 +1314,6 @@ function showStepContextMenu(stepId, x, y) {
     "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
     "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
     "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:210px;cursor:default;user-select:none;";
-  menu.style.left = x + "px";
-  menu.style.top = y + "px";
 
   function addItem(label, handler) {
     const item = document.createElement("div");
@@ -1363,6 +1361,7 @@ function showStepContextMenu(stepId, x, y) {
     () => toggleStepFlag(stepId, "automation_candidate"));
 
   document.body.appendChild(menu);
+  placeMenu(menu, x, y);   // at (x, y), kept inside the window
   const dismiss = (e) => {
     if (e.type === "keydown" && e.key !== "Escape") return;
     // A press ON the menu is a choice, not a dismissal (the Flow menus' rule).

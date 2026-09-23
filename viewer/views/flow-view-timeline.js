@@ -23,7 +23,7 @@
 
 const TimelineCore = require("../timeline/timeline-core.js");
 const State = require("../state.js");
-const { $, formatDuration } = require("../dom.js");
+const { $, formatDuration, placeMenu } = require("../dom.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
 const MarkerEdits = require("../marker-edits.js");
@@ -307,8 +307,6 @@ function _showStepBandMenu(x, y, stepId, ts) {
     "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
     "box-shadow:var(--shadow);font:13px var(--font-ui);" +
     "min-width:180px;cursor:default;user-select:none;";
-  menu.style.left = x + "px";
-  menu.style.top = y + "px";
   function addItem(label, handler) {
     const item = document.createElement("div");
     item.textContent = label;
@@ -335,6 +333,7 @@ function _showStepBandMenu(x, y, stepId, ts) {
     if (ts) seekToTimestamp(ts);
   });
   document.body.appendChild(menu);
+  placeMenu(menu, x, y);   // at (x, y), kept inside the window
   // A press ON the menu is a choice, not a dismissal (see showMarkerInsertMenu
   // in flow-view.js: closing on the item's own mousedown swallowed the click).
   function close() {

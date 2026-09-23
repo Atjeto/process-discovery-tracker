@@ -60,4 +60,42 @@ function toast(text, kind) {
   toastTimer = setTimeout(() => el.classList.remove("show"), 3500);
 }
 
-module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast };
+/* Where a w x h context menu opened at the click point (x, y) goes so all of
+   it stays inside a vw x vh window: at the click point when it fits there;
+   else on the other side of the point when it fits there (upwards at the
+   bottom of the window, leftwards at its right edge, the way desktop menus
+   open); else as close to the point as fits. Never closer than `margin` px
+   to an edge. Pure, so the unit tests pin the arithmetic. */
+function fitMenuPosition(x, y, w, h, vw, vh, margin) {
+  const m = margin == null ? 4 : margin;
+  const axis = (p, size, room) => {
+    let v = p;
+    if (p + size + m > room) v = p - size >= m ? p - size : room - size - m;
+    return Math.max(m, Math.min(v, room - size - m));
+  };
+  return { left: Math.round(axis(x, w, vw)), top: Math.round(axis(y, h, vh)) };
+}
+
+/* Show a position:fixed context menu, already in the document, at the click
+   point and inside the window (L5b). Placed at the click point as is, a
+   right-click near the bottom or the right edge of a small window put items
+   off screen, where no scrolling reaches a fixed menu (on a 1366x768 window
+   the Flow timeline shows only as a strip at the bottom edge). The menu is
+   measured at the window's top left, so its size does not depend on the
+   click point; a menu taller than the window scrolls. */
+function placeMenu(menu, x, y) {
+  const m = 4;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  if (menu.offsetHeight > vh - 2 * m) {
+    menu.style.maxHeight = (vh - 2 * m) + "px";
+    menu.style.overflowY = "auto";
+  }
+  const p = fitMenuPosition(x, y, menu.offsetWidth, menu.offsetHeight, vw, vh, m);
+  menu.style.left = p.left + "px";
+  menu.style.top = p.top + "px";
+}
+
+module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast,
+  fitMenuPosition, placeMenu };

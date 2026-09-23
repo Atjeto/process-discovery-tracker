@@ -32,7 +32,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
-const { launchViewer } = require("./throwaway-profile.js");
+const { launchViewer, logActionError } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -155,7 +155,7 @@ async function unreadableAnnotationsPin() {
   const T = 20000;
   const banner = await p.waitForSelector("#annotations-error-banner", { state: "visible", timeout: T })
     .then(() => p.$eval("#annotations-error-banner", (el) => (el.textContent || "").trim()))
-    .catch((e) => "NO BANNER: " + String(e.message).split("\n")[0]);
+    .catch((e) => { logActionError("RP-04 banner", e); return "NO BANNER: " + String(e.message).split("\n")[0]; });
   record("RP-04: an unreadable annotations.json loads as an error banner naming the file and its backups",
     /annotations\.json in this session folder cannot be read/.test(banner) && /annotations\.json\.2/.test(banner),
     banner.slice(0, 260));
@@ -171,7 +171,7 @@ async function unreadableAnnotationsPin() {
     await p.waitForFunction(() => /was not saved/.test((document.getElementById("toast") || {}).textContent || ""),
       null, { timeout: T });
     saveMsg = await toastText();
-  } catch (e) { saveMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
+  } catch (e) { logActionError("RP-04 save note", e); saveMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
   const afterSave = untouched();
   record("RP-04: an edit on that session is refused with an error naming the problem; annotations.json and its backups are untouched",
     /was not saved/.test(saveMsg) && /cannot be read/.test(saveMsg) && afterSave,
@@ -184,7 +184,7 @@ async function unreadableAnnotationsPin() {
     await p.waitForFunction(() => /Analysis stopped, nothing was changed/.test(
       (document.getElementById("normalize-log") || {}).textContent || ""), null, { timeout: 60000 });
     analyzeMsg = await p.$eval("#normalize-log", (el) => el.textContent || "");
-  } catch (e) { analyzeMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
+  } catch (e) { logActionError("RP-04 analyze", e); analyzeMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
   const afterAnalyze = untouched();
   record("RP-04: Analyze on that session is refused with the reason; annotations.json is untouched",
     /Analysis stopped, nothing was changed: .*annotations\.json in this session folder cannot be read/.test(analyzeMsg) && afterAnalyze,
@@ -538,7 +538,10 @@ async function unreadableAnnotationsPin() {
   const STATE_TIMEOUT = 15000;
   async function tsJudgeExpansionAt(idx) {
     const waits = [];
-    const waitFor = (label, p) => p.catch((e) => { waits.push(label + ": " + String(e.message).split("\n")[0]); });
+    const waitFor = (label, p) => p.catch((e) => {
+      logActionError("(R1) time row at notch " + idx + ": " + label, e);
+      waits.push(label + ": " + String(e.message).split("\n")[0]);
+    });
     await page.evaluate((i) => {
       const s = document.getElementById("grain-slider");
       if (!s) return;
@@ -584,8 +587,12 @@ async function unreadableAnnotationsPin() {
   if (!(tsAtElement && tsAtElement.hasEditor)) await shot(page, "fail-ts-judge-editor.png");
 
   const tsAtScreen = await tsJudgeExpansionAt(1);   // screen notch (coarser)
+  // L5b: the expansion must really OPEN (hidden === false). The read-only
+  // note is in the row body's DOM while it is still hidden, so without this
+  // the check passed at 1024x768 although its expand click timed out.
   record("(R1) the same row expansion is read-only (element-only) at a coarser detail level",
-    !!(tsAtScreen && !tsAtScreen.err && tsAtScreen.rowPresent && !tsAtScreen.hasEditor && tsAtScreen.readOnlyNote),
+    !!(tsAtScreen && !tsAtScreen.err && tsAtScreen.rowPresent && tsAtScreen.hidden === false &&
+      !tsAtScreen.hasEditor && tsAtScreen.readOnlyNote),
     JSON.stringify(tsAtScreen));
   if (!(tsAtScreen && tsAtScreen.readOnlyNote)) await shot(page, "fail-ts-readonly.png");
   await setGrainNotch(1);   // leave at the default (screen) notch for the pins below
@@ -653,6 +660,7 @@ async function unreadableAnnotationsPin() {
       }
     }
   } catch (e) {
+    logActionError("(R1) finding card Confirm", e);
     confirmRes.error = String(e.message).split("\n")[0];
   }
   const confirmOk = !!(confirmRes.found && confirmRes.activeBefore === false &&
@@ -1033,7 +1041,7 @@ async function unreadableAnnotationsPin() {
         const b = btns.nth(i);
         const act = await b.getAttribute("data-rm-act");
         await b.click({ trial: true, timeout: 5000 })
-          .catch((e) => blocked.push(act + ": " + String(e.message).split("\n")[0]));
+          .catch((e) => { logActionError("CI-3 gallery " + act, e); blocked.push(act + ": " + String(e.message).split("\n")[0]); });
       }
       galleryReach[summaryOpen ? "summaryOpen" : "summaryClosed"] = Object.assign(state, { buttons: n, blocked });
     }
@@ -1123,6 +1131,62 @@ async function unreadableAnnotationsPin() {
     await wait(400);
   }
 
+  // --- L5b: a timeline menu opened at the window's edge stays inside it ------
+  // On a 1366x768 window the open Session summary pushes Flow down, so the
+  // timeline shows only as a strip at the bottom edge; a menu opened there at
+  // the raw click point put its items below the window edge (and at the
+  // timeline's right end, past the right edge), where no scrolling reaches a
+  // fixed menu. Scroll the view so only the timeline's top 40 px show at the
+  // bottom edge, as far as the page allows (at 1500x950 the page above Flow is
+  // too short, so there only the right edge is exercised), open the timeline
+  // menu 3 px inside the bottom right corner of what shows (the real
+  // contextmenu handler, dispatched at that point as item 6 does), and require
+  // the whole menu inside the window with every item clickable (a trial click
+  // runs Playwright's full actionability check).
+  const edgeMenu = { blocked: [] };
+  try {
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: STATE_TIMEOUT });
+    await page.waitForSelector("#timeline .tl-band", { state: "visible", timeout: STATE_TIMEOUT });
+    edgeMenu.point = await page.evaluate(() => {
+      const tl = document.getElementById("timeline");
+      const view = document.getElementById("view-session");
+      view.scrollTop += tl.getBoundingClientRect().top - (innerHeight - 40);
+      const r = tl.getBoundingClientRect();
+      const shown = document.getElementById("timeline-scroll").getBoundingClientRect();
+      const x = Math.min(r.right, shown.right, innerWidth) - 3;
+      const y = Math.min(r.bottom, shown.bottom, innerHeight) - 3;
+      const onTimeline = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom && y >= 0;
+      if (onTimeline) tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+      return { x: Math.round(x), y: Math.round(y), onTimeline, window: innerWidth + "x" + innerHeight };
+    });
+    if (!edgeMenu.point.onTimeline) throw new Error("the right-click point is not on the visible timeline");
+    await page.waitForSelector("#tl-ctx-menu", { state: "visible", timeout: STATE_TIMEOUT });
+    edgeMenu.menu = await page.evaluate(() => {
+      const b = document.getElementById("tl-ctx-menu").getBoundingClientRect();
+      return { left: Math.round(b.left), top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom),
+        inside: b.left >= 0 && b.top >= 0 && b.right <= innerWidth && b.bottom <= innerHeight };
+    });
+    const items = page.locator("#tl-ctx-menu > div");
+    edgeMenu.items = await items.count();
+    for (let i = 0; i < edgeMenu.items; i++) {
+      await items.nth(i).click({ trial: true, timeout: 5000 }).catch((e) => {
+        logActionError("L5b edge menu item " + i, e);
+        edgeMenu.blocked.push(i + ": " + String(e.message).split("\n")[0]);
+      });
+    }
+  } catch (e) {
+    logActionError("L5b edge menu", e);
+    edgeMenu.err = String(e.message).split("\n")[0];
+  }
+  await page.keyboard.press("Escape").catch(() => {});   // close it: leave the view as found
+  edgeMenu.closed = await page.waitForSelector("#tl-ctx-menu", { state: "detached", timeout: 5000 })
+    .then(() => true, () => false);
+  const edgeOk = !!(!edgeMenu.err && edgeMenu.menu && edgeMenu.menu.inside && edgeMenu.items >= 2 &&
+    edgeMenu.blocked.length === 0 && edgeMenu.closed);
+  record("L5b: the timeline menu opened at the window's edge stays inside the window, every item clickable",
+    edgeOk, JSON.stringify(edgeMenu));
+  if (!edgeOk) await shot(page, "fail-edge-menu.png");
+
   // --- Item 6: an inserted marker shows at once as pending, with one call to
   // action that runs Analyze; after it the marker is a real one and the case
   // count follows. Runs Analyze into the session folder, so FRESH only.
@@ -1164,15 +1228,26 @@ async function unreadableAnnotationsPin() {
       before = await cases();
       // Right-click the timeline at INSERT_AT: the real contextmenu handler
       // opens the real insert menu; its item and the label prompt are clicked.
-      await page.evaluate((iso) => {
+      // L5b: the analyst can only right-click the timeline where it is on
+      // screen. On a 768 px tall window the open Session summary pushes Flow
+      // below the fold, so first scroll the timeline into view the way the
+      // analyst scrolls the page; the right-click point must then be on
+      // screen (it used to be dispatched below the window's bottom edge, which
+      // put the menu off screen: the CI-only "locator.click: Timeout").
+      await page.locator("#timeline").scrollIntoViewIfNeeded({ timeout: T });
+      const at = await page.evaluate((iso) => {
         const tl = document.getElementById("timeline");
         const evs = require("./state.js").getSession().events;
         const first = new Date(evs[0].timestamp).getTime();
         const last = new Date(evs[evs.length - 1].timestamp).getTime();
         const r = tl.getBoundingClientRect();
         const x = r.left + ((new Date(iso).getTime() - first) / (last - first)) * r.width;
-        tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: r.top + 4 }));
+        const y = r.top + 4;
+        const onScreen = x >= 0 && x < innerWidth && y >= 0 && y < innerHeight;
+        if (onScreen) tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+        return { onScreen, x: Math.round(x), y: Math.round(y), window: innerWidth + "x" + innerHeight };
       }, INSERT_AT);
+      if (!at.onScreen) throw new Error("the timeline point to right-click is off screen: " + JSON.stringify(at));
       await page.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
       await page.locator(".modal-prompt .modal-input").fill(LABEL, { timeout: T });
       await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
@@ -1184,7 +1259,7 @@ async function unreadableAnnotationsPin() {
       const a = JSON.parse(fs.readFileSync(path.join(SESSION, "annotations.json"), "utf-8"));
       onDisk = (a.marker_edits || []).some((e) => e && e.op === "insert" && e.marker_type === "start" &&
         e.label === LABEL && Math.abs(Date.parse(e.timestamp) - Date.parse(INSERT_AT)) <= 2000);
-    } catch (e) { err = String(e.message).split("\n")[0]; }
+    } catch (e) { logActionError("item 6 pending marker insert", e); err = String(e.message).split("\n")[0]; }
     const pendingOk = !!(pending && pending.row && pending.row.pending && pending.row.inserted &&
       pending.markersPanelShown && pending.pendingBars >= 1 && pending.pendingLabel === LABEL + " (pending)" &&
       pending.cta === "Analyze to apply 1 marker change" && onDisk &&
@@ -1202,7 +1277,7 @@ async function unreadableAnnotationsPin() {
           .some((r) => (r.textContent || "").includes(label) && !r.classList.contains("pending")),
       LABEL, { timeout: 120000 });
       applied = Object.assign(await pinState(), { cases: await cases() });
-    } catch (e) { err = String(e.message).split("\n")[0]; }
+    } catch (e) { logActionError("item 6 Analyze to apply", e); err = String(e.message).split("\n")[0]; }
     const appliedOk = !!(applied && before && applied.row && !applied.row.pending && applied.row.inserted &&
       applied.pendingBars === 0 && applied.cta === null &&
       applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&

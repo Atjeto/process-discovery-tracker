@@ -35,7 +35,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
-const { launchViewer } = require("./throwaway-profile.js");
+const { launchViewer, logActionError } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -54,7 +54,9 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, name), fullPage: true })
     .catch((e) => console.log("shot fail", name, e.message));
 }
-const errText = (e) => String((e && e.message) || e).split("\n")[0];
+// The first line for the result detail; the whole message (with Playwright's
+// call log, which says why an action could not run) is printed above it.
+const errText = (e) => { logActionError("runs-smoke", e); return String((e && e.message) || e).split("\n")[0]; };
 
 /* The demo, copied to temp and analyzed with the current pipeline. A missing
    deps-bearing Python is a hard stop (exit 2): every check reads its output. */
@@ -136,7 +138,8 @@ const NAME_NOTEPAD = "Look up the plant code";
   const pageErrors = [];
   page.on("console", (m) => { if (m.type() === "error") pageErrors.push(m.text()); });
   page.on("pageerror", (e) => pageErrors.push(String(e && e.message ? e.message : e)));
-  await page.setViewportSize({ width: 1500, height: 950 }).catch(() => {});
+  // The window size is launchViewer's (1500x950, or PDT_E2E_WINDOW); no
+  // emulated viewport, so the page is exactly what that window shows.
   await page.waitForSelector("#session-loaded", { state: "visible", timeout: T });
   await page.evaluate(() => { const d = document.getElementById("session-summary"); if (d) d.open = false; });
   await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });

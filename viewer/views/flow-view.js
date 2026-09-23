@@ -18,7 +18,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
+const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast, placeMenu } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const MarkerEdits = require("../marker-edits.js");
@@ -944,8 +944,6 @@ function showMarkerInsertMenu(x, y, ts) {
     "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
     "box-shadow:var(--shadow);font:13px var(--font-ui);" +
     "min-width:200px;cursor:default;user-select:none;";
-  menu.style.left = x + "px";
-  menu.style.top = y + "px";
 
   function addItem(label, handler) {
     const item = document.createElement("div");
@@ -973,6 +971,7 @@ function showMarkerInsertMenu(x, y, ts) {
   });
 
   document.body.appendChild(menu);
+  placeMenu(menu, x, y);   // at (x, y), kept inside the window
   /* Dismiss on outside click / escape. A press ON the menu is a choice, not a
      dismissal: removing the menu on its own item's mousedown swallowed the
      click, so "Insert Start marker here" never ran for a real mouse (item 6;
@@ -1152,8 +1151,6 @@ function showCaseContextMenu(x, y, c) {
     "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
     "box-shadow:var(--shadow);font:13px var(--font-ui);" +
     "min-width:240px;cursor:default;user-select:none;";
-  menu.style.left = x + "px";
-  menu.style.top = y + "px";
   function addItem(label, handler) {
     const item = document.createElement("div");
     item.textContent = label;
@@ -1184,6 +1181,7 @@ function showCaseContextMenu(x, y, c) {
     addItem("Jump to end", () => seekToTimestamp(new Date(c.endMs).toISOString()));
   }
   document.body.appendChild(menu);
+  placeMenu(menu, x, y);   // at (x, y), kept inside the window
   function dismiss(e) {
     if (!menu.contains(e.target)) {
       menu.remove();

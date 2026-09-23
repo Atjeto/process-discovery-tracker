@@ -6,6 +6,8 @@
  * landing surface end-to-end:
  *   (a) the DEFAULT level is Overview (#session-layout-overview visible,
  *       its view-mode button active, the Flow layout hidden) — no clicks;
+ *   (a2) the Overview is laid out at its full height with the Session
+ *       summary open (the view scrolls; L5b small-screen fix);
  *   (b) the case-quality badge renders the markers state on the demo
  *       session ("✓ Markers — N cases" + Tier 2 unlocked);
  *   (c) the fact strip renders 6 non-empty tiles (and none is clipped:
@@ -105,8 +107,7 @@ async function launch(sessionDir, pageErrors) {
   page.on("pageerror", (e) => pageErrors.push(String(e && e.message ? e.message : e)));
   await page.waitForLoadState("domcontentloaded").catch(() => {});
   await page.waitForSelector("#session-loaded", { state: "visible", timeout: 15000 });
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].setContentSize(1500, 950)).catch(() => {});
+  // The window size is launchViewer's (1500x950, or PDT_E2E_WINDOW).
   await wait(1500);
   return { app, page, close };
 }
@@ -156,6 +157,28 @@ async function shot(page, name) {
   record("(a) default level is Overview (visible, button active+first, Flow hidden)",
     !!(def && !def.err && def.overviewVisible && def.flowHidden && def.btnActive && def.btnFirst),
     JSON.stringify(def));
+
+  // (a2) L5b: the Overview is laid out at its full height and the Session view
+  // scrolls. It was the one level with a scroll box of its own and
+  // min-height:0, so the Session summary (open on a fresh profile) squeezed it
+  // to a 24 px sliver at 1366x768, to nothing at 1024x768 (the CI runner's
+  // screen: the "CI-only" click timeouts), and even at 1500x950 to a box far
+  // shorter than its content. Pinned at every window size: with the Session
+  // summary open, the Overview's box holds all of its content.
+  const fullHeight = await page.evaluate(() => {
+    const ov = document.getElementById("session-layout-overview");
+    const sum = document.getElementById("session-summary");
+    const view = document.getElementById("view-session");
+    return {
+      summaryOpen: !!(sum && sum.open && getComputedStyle(sum).display !== "none"),
+      boxH: ov.clientHeight, contentH: ov.scrollHeight,
+      viewScrolls: view.scrollHeight > view.clientHeight,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("(a2) the Overview is laid out at its full height, so the open Session summary cannot squeeze it (the Session view scrolls instead)",
+    !!(fullHeight && !fullHeight.err && fullHeight.summaryOpen && fullHeight.contentH > 300 &&
+      fullHeight.contentH <= fullHeight.boxH + 1),
+    JSON.stringify(fullHeight));
 
   // (b) Case-quality badge: markers state on the 4-case demo. Item 8 merged
   // the duplicate "case analysis on" chip INTO the badge as its subtitle
