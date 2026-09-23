@@ -217,11 +217,11 @@ test("probeLine: N from the analysis, the four counts, the run named by its numb
   const { runs } = RM.buildRuns(STATS, anno.steps);
   RM.recordFix(anno, runs, "c1", "merge");
   const p = RM.probeLine(STATS, runs, runs[0], anno.pattern_run);
-  assert.equal(p.text, "Run 1: 3 drafted steps, 1 boundary fix (merge 1, split 0, add 0, drop 0)");
+  assert.equal(p.text, "Run 1: 3 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)");
   assert.equal(p.source, "analysis");
   RM.recordFix(anno, runs, "c1", "drop");
   assert.equal(RM.probeLine(STATS, runs, runs[0], anno.pattern_run).text,
-    "Run 1: 3 drafted steps, 2 boundary fixes (merge 1, split 0, add 0, drop 1)");
+    "Run 1: 3 drafted steps, 2 boundary fixes (merge 1, split 0, add 0, hide 1)");
 });
 
 test("probeLine: without draft_summary it falls back to the count stored when the run became the pattern", () => {
@@ -231,9 +231,9 @@ test("probeLine: without draft_summary it falls back to the count stored when th
   RM.usePattern(anno, runs, "c2");
   const p = RM.probeLine(noSummary, runs, runs[1], anno.pattern_run);
   assert.equal(p.source, "designation");
-  assert.equal(p.text, "Run 2: 2 drafted steps, 0 boundary fixes (merge 0, split 0, add 0, drop 0)");
+  assert.equal(p.text, "Run 2: 2 drafted steps, 0 boundary fixes (merge 0, split 0, add 0, hide 0)");
   const none = RM.probeLine(noSummary, runs, runs[1], { draft_fixes: {} });
-  assert.equal(none.text, "Run 2: drafted steps not recorded, 0 boundary fixes (merge 0, split 0, add 0, drop 0)");
+  assert.equal(none.text, "Run 2: drafted steps not recorded, 0 boundary fixes (merge 0, split 0, add 0, hide 0)");
 });
 
 test("probeLine: a draft_summary for a different set of runs is not trusted", () => {

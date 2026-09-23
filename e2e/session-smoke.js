@@ -21,12 +21,13 @@
  *     under the mouse,
  *   - the automation candidates: every repeated sequence, by total time, with
  *     no Confirm or Dismiss and no rank (AD-20, P1.5),
- *   - the map-overlay regression stays fixed: on the Map level the process-map
- *     host must NOT vertically overlap the raw-events host
- *     (#session-layout-map .map-host bottom <= .event-table-host top),
+ *   - Flow's side panel opens on Screenshots (no Notes), its thumbnails show
+ *     local time, the More menu holds what it should with and without a video,
+ *     and the Raw events drawer shows on Flow only,
  *   - the one process map (built from the runs' steps) is one connected graph
- *     read left to right, and Fork copies its step-level BPMN into an editable
- *     reference map (round trip, labels, delete + undo, one-way leaf),
+ *     read left to right with every path drawn, and the Map's one act makes
+ *     the PDD's As-Is map: after a rename it analyzes first so the copy
+ *     carries the new name (round trip, labels, delete + undo, one-way leaf),
  *   - the Detail slider (the view-time grain) is gone, and the session summary
  *     shows on the Overview only.
  *
@@ -67,6 +68,12 @@ function freshenSession() {
       const s = path.join(SRC_SESSION, f);
       if (fs.existsSync(s)) fs.copyFileSync(s, path.join(tmp, f));
     }
+    // The screenshots too (the step detail shows a step's own, P2.16).
+    const shots = path.join(SRC_SESSION, "screenshots");
+    if (fs.existsSync(shots)) {
+      fs.mkdirSync(path.join(tmp, "screenshots"));
+      for (const f of fs.readdirSync(shots)) fs.copyFileSync(path.join(shots, f), path.join(tmp, "screenshots", f));
+    }
     const bundled = path.join(VIEWER, "python", "python.exe");
     const pys = fs.existsSync(bundled) ? [bundled] : ["python", "python3"];
     const norm = path.join(REPO, "normalization", "normalize.py");
@@ -106,38 +113,14 @@ const LEVEL_HOST = {
   map: "#session-layout-map",
 };
 
-// Geometry probe for the map-overlay regression. Returns the map host and the
-// raw-events host rects plus a strict no-overlap verdict, so the assertion can
-// report exact numbers when it fails.
-const OVERLAP_PROBE = () => {
-  const rect = (sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return { sel, top: Math.round(r.top), bottom: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) };
-  };
-  // Inside #session-layout-map the map renders into .map-host; prefer the live
-  // canvas (bpmn djs-container / dfg svg) when present, else the host box.
-  const mapHost =
-    rect("#session-layout-map .map-host .djs-container") ||
-    rect("#session-layout-map .map-host svg") ||
-    rect("#session-layout-map .map-host");
-  const rawHost = rect(".event-table-host");
-  let overlap = null;
-  if (mapHost && rawHost && mapHost.h > 0 && rawHost.h > 0) {
-    // No overlap == map bottom is at or above raw-events top.
-    overlap = mapHost.bottom > rawHost.top;
-  }
-  return { mapHost, rawHost, overlap };
-};
-
 /* RP-04: an annotations.json that exists but cannot be read is an error the
    analyst sees, never an empty session, and nothing may write over it. A
    second launch on a temp copy (events + manifest from the demo, read only)
    whose annotations.json is cut off mid-write, the way a crash or a cancelled
    save leaves it, next to one good backup. Pins the whole chain: main's load
-   report, the banner, the refused save (the real "Save note" verb), the
-   refused Analyze, and the files byte for byte. */
+   report, the banner, the refused save (the real "Insert Start marker here"
+   verb of the Flow timeline), the refused Analyze, and the files byte for
+   byte. */
 async function unreadableAnnotationsPin() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-unreadable-"));
   for (const f of ["events.jsonl", "manifest.json"]) fs.copyFileSync(path.join(SRC_SESSION, f), path.join(dir, f));
@@ -171,18 +154,28 @@ async function unreadableAnnotationsPin() {
     /annotations\.json in this session folder cannot be read/.test(banner) && /annotations\.json\.2/.test(banner),
     banner.slice(0, 260));
 
-  // The real verb: pin a note on the Flow level. The save must be refused with
-  // an error toast, and no file may change (no write, no backup rotation).
+  // The real verb: insert a Start marker from the Flow timeline's menu. The
+  // save must be refused with an error toast, and no file may change (no
+  // write, no backup rotation).
   const toastText = () => p.$eval("#toast", (el) => el.className.includes("error") ? (el.textContent || "") : "");
   let saveMsg = "";
   try {
     await p.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
-    await p.locator("#anno-note").fill("RP-04 probe note", { timeout: T });
-    await p.locator("#btn-save-note").click({ timeout: T });
+    await p.waitForSelector("#timeline .tl-band", { state: "visible", timeout: T });
+    await p.locator("#timeline").scrollIntoViewIfNeeded({ timeout: T });
+    await p.evaluate(() => {
+      const tl = document.getElementById("timeline");
+      const r = tl.getBoundingClientRect();
+      tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true,
+        clientX: r.left + r.width * 0.3, clientY: r.top + 4 }));
+    });
+    await p.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
+    await p.locator(".modal-prompt .modal-input").fill("RP-04 probe run", { timeout: T });
+    await p.locator(".modal-prompt .modal-ok").click({ timeout: T });
     await p.waitForFunction(() => /was not saved/.test((document.getElementById("toast") || {}).textContent || ""),
       null, { timeout: T });
     saveMsg = await toastText();
-  } catch (e) { logActionError("RP-04 save note", e); saveMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
+  } catch (e) { logActionError("RP-04 insert marker", e); saveMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
   const afterSave = untouched();
   record("RP-04: an edit on that session is refused with an error naming the problem; annotations.json and its backups are untouched",
     /was not saved/.test(saveMsg) && /cannot be read/.test(saveMsg) && afterSave,
@@ -731,61 +724,128 @@ async function unreadableAnnotationsPin() {
   }).catch(() => {});
 
   // Item 1: no recording linked → the tall black video stage collapses to a
-  // slim band, and the freed height goes to the timeline + notes. On the Flow
-  // level the video pane must carry the `no-recording` class and be much
-  // shorter than the annotations/notes pane beside it.
+  // slim band, and the freed height goes to the timeline + the side panel. On
+  // the Flow level the video pane must carry the `no-recording` class and be
+  // much shorter than the screenshots/markers panel beside it.
   const flowBtn2 = await page.$('.view-mode-btn[data-level="flow"]');
   if (flowBtn2) { await flowBtn2.click().catch(() => {}); await wait(900); }
   const videoBand = await page.evaluate(() => {
     const pane = document.getElementById("video-pane");
-    const notes = document.querySelector("#session-layout-flow .annotations-pane");
-    if (!pane || !notes) return { present: false };
+    const side = document.querySelector("#session-layout-flow .annotations-pane");
+    if (!pane || !side) return { present: false };
     const pr = pane.getBoundingClientRect();
-    const nr = notes.getBoundingClientRect();
+    const nr = side.getBoundingClientRect();
     return {
       present: true,
       collapsedClass: pane.classList.contains("no-recording"),
       videoHidden: getComputedStyle(document.getElementById("video")).display === "none",
-      linkAffordance: !!document.getElementById("btn-link-recording"),
+      linkAffordance: ((document.getElementById("btn-link-recording") || {}).textContent || "").trim(),
       paneH: Math.round(pr.height),
-      notesH: Math.round(nr.height),
+      sideH: Math.round(nr.height),
     };
   }).catch((e) => ({ err: e.message }));
   const videoBandOk = !!(videoBand && !videoBand.err && videoBand.present &&
-    videoBand.collapsedClass && videoBand.videoHidden && videoBand.linkAffordance &&
-    videoBand.paneH < videoBand.notesH);
-  record("(disclosure 1) no-recording video stage collapses to a slim band (notes gets the space)",
+    videoBand.collapsedClass && videoBand.videoHidden && videoBand.linkAffordance === "Attach video..." &&
+    videoBand.paneH < videoBand.sideH);
+  record("(disclosure 1) no-recording video stage collapses to a slim band (the side panel gets the space; its verb is More's Attach video...)",
     videoBandOk, JSON.stringify(videoBand));
   if (!videoBandOk) await shot(page, "fail-video-collapse.png");
 
-  // --- Map-overlay regression pin ---
-  // On the Map level, the process-map host must NOT vertically overlap the
-  // raw-events host. This is the exact geometry of the bug just fixed.
-  const mapBtn = await page.$('.view-mode-btn[data-level="map"]');
-  if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(1500); }
-  // Open the raw-events <details> so its host has real height (the repro state).
+  // --- P1.6 + AD-17 / F4 / P1.1: Flow's side panel --------------------------
+  // The Notes tab and its lane are gone (notes never reached the PDD);
+  // Screenshots is the panel's first and default tab, next to Markers. The
+  // thumbnails show local time, the timeline's and the markers' clock (F4).
+  // The shortcuts overlay is gone from every level (Help keeps the list).
+  const sidePanel = await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll("#session-layout-flow .anno-tab")].map((t) => ({
+      anno: t.dataset.anno, active: t.classList.contains("active") }));
+    const screens = document.querySelector('.anno-panel[data-panel="screens"]');
+    const pad = (n) => String(n).padStart(2, "0");
+    const local = (iso) => { const d = new Date(iso); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+    const shots = (require("./state.js").getSession().events || []).filter((e) => e.type === "system" &&
+      (e.data.kind === "screenshot" || e.data.kind === "screenshot_manual"));
+    const stamps = [...document.querySelectorAll("#screenshots-grid .thumb .stamp")].map((s) => s.textContent);
+    return {
+      tabs,
+      screensShown: !!(screens && getComputedStyle(screens).display !== "none"),
+      notesGone: document.querySelectorAll('.anno-tab[data-anno="notes"], .anno-panel[data-panel="notes"], #anno-note, #btn-save-note, #annotations-list, #lanes-popup input[data-lane="notes"]').length === 0,
+      overlayGone: !document.getElementById("shortcuts-overlay") && !document.querySelector(".kbd-hint"),
+      stamps, localStamps: shots.map((e) => local(e.timestamp)),
+      utcStamps: shots.map((e) => String(e.timestamp).slice(11, 19)),
+      offsetMin: new Date(shots.length ? shots[0].timestamp : Date.now()).getTimezoneOffset(),
+    };
+  }).catch((e) => ({ err: e.message }));
+  const panelOk = !!(sidePanel && !sidePanel.err &&
+    JSON.stringify(sidePanel.tabs) === JSON.stringify([{ anno: "screens", active: true }, { anno: "markers", active: false }]) &&
+    sidePanel.screensShown && sidePanel.notesGone && sidePanel.overlayGone);
+  record("P1.6 (AD-17) + P1.1: Flow's side panel opens on Screenshots next to Markers; no Notes tab, note field or note lane; no shortcuts overlay",
+    panelOk, JSON.stringify(sidePanel && { tabs: sidePanel.tabs, screensShown: sidePanel.screensShown,
+      notesGone: sidePanel.notesGone, overlayGone: sidePanel.overlayGone, err: sidePanel.err }));
+  const stampsOk = !!(sidePanel && !sidePanel.err && sidePanel.stamps.length > 0 &&
+    JSON.stringify(sidePanel.stamps) === JSON.stringify(sidePanel.localStamps) &&
+    (sidePanel.offsetMin === 0 || sidePanel.stamps.every((s, i) => s !== sidePanel.utcStamps[i])));
+  record("F4: the screenshot thumbnails show local time, the timeline's clock (not the UTC slice of the timestamp)",
+    stampsOk, JSON.stringify(sidePanel && { stamps: sidePanel.stamps, local: sidePanel.localStamps, utc: sidePanel.utcStamps,
+      utcOffsetMinutes: sidePanel && -sidePanel.offsetMin }) +
+      (sidePanel && sidePanel.offsetMin === 0 ? " (UTC machine: local equals UTC here)" : ""));
+  if (!(panelOk && stampsOk)) await shot(page, "fail-flow-side-panel.png");
+
+  // --- P2.1 / P2.8 / P2.11: the More menu without a video -------------------
+  // Attach video, the transcript item and the two dialogs Steps used to carry;
+  // no Build process map switch (the map is always built); Sync video and
+  // Flow's + Step show only once a video is linked (checked with one below).
+  const moreMenu = async () => {
+    await page.locator("#btn-session-more-menu").click({ timeout: STATE_TIMEOUT });
+    const items = await page.evaluate(() => [...document.querySelectorAll("#session-more-popup > *")]
+      .filter((el) => getComputedStyle(el).display !== "none").map((el) => el.id || (el.textContent || "").trim()));
+    await page.locator("#btn-session-more-menu").click({ timeout: STATE_TIMEOUT });
+    return items;
+  };
+  let moreNoVideo = null, addStepNoVideo = null;
+  try {
+    moreNoVideo = await moreMenu();
+    addStepNoVideo = await page.evaluate(() => {
+      const b = document.getElementById("btn-add-step");
+      return !!(b && getComputedStyle(b).display !== "none");
+    });
+  } catch (e) { logActionError("More menu", e); moreNoVideo = ["error: " + String(e.message).split("\n")[0]]; }
+  const WANT_MORE = ["btn-attach-video", "btn-attach-transcript", "btn-ignored-apps", "btn-remembered-names"];
+  const moreOk = JSON.stringify(moreNoVideo) === JSON.stringify(WANT_MORE) && addStepNoVideo === false &&
+    !(await page.$("#cb-mine")) && !(await page.$("#session-layout-steps #btn-ignored-apps, #session-layout-steps #btn-remembered-names"));
+  record("P2.1 + P2.8 + P2.11: without a video, More lists Attach video, Attach transcript, Ignored apps and Remembered names (no Sync video, no Build process map), and Flow has no + Step",
+    moreOk, JSON.stringify({ more: moreNoVideo, addStepShown: addStepNoVideo }));
+
+  // --- P2.10: the Raw events drawer is Flow's only ---------------------------
+  // The machine layer shows on Flow and nowhere else; opened there, it sits
+  // below the Flow layout (the page grows, nothing is painted over).
+  const drawerShown = () => page.evaluate(() => {
+    const d = document.querySelector(".event-table-host");
+    return !!(d && getComputedStyle(d).display !== "none");
+  });
+  const drawerOn = {};
+  for (const lvl of ["overview", "steps", "map", "flow"]) {
+    await page.locator('.view-mode-btn[data-level="' + lvl + '"]').click({ timeout: STATE_TIMEOUT }).catch(() => {});
+    await wait(500);
+    drawerOn[lvl] = await drawerShown();
+  }
   const summary = await page.$(".event-table-host > summary");
   if (summary) {
     await summary.scrollIntoViewIfNeeded().catch(() => {});
     await summary.click().catch((e) => console.log("rawevents open", e.message));
     await wait(900);
   }
-  const probe = await page.evaluate(OVERLAP_PROBE).catch((e) => ({ err: e.message }));
-  if (probe && probe.err) {
-    record("map host does not overlap raw-events host", false, "probe error: " + probe.err);
-    await shot(page, "fail-map-overlap-probe.png");
-  } else if (!probe.mapHost || !probe.rawHost) {
-    // Tolerate a genuinely absent host (e.g. empty-state) rather than fail the
-    // gate on a missing optional element — but say so loudly.
-    record("map host does not overlap raw-events host", true,
-      "skipped (mapHost=" + !!probe.mapHost + " rawHost=" + !!probe.rawHost + ")");
-  } else {
-    const ok = probe.overlap === false;
-    record("map host does not overlap raw-events host", ok,
-      "mapBottom=" + probe.mapHost.bottom + " rawTop=" + probe.rawHost.top +
-      " (no-overlap requires mapBottom <= rawTop)");
-    if (!ok) await shot(page, "fail-map-overlap.png");
-  }
+  const flowGeom = await page.evaluate(() => {
+    const d = document.querySelector(".event-table-host");
+    const flow = document.getElementById("session-layout-flow");
+    if (!d || !flow) return null;
+    return { open: d.open, flowBottom: Math.round(flow.getBoundingClientRect().bottom), rawTop: Math.round(d.getBoundingClientRect().top) };
+  }).catch((e) => ({ err: e.message }));
+  const drawerOk = !!(drawerOn.flow && !drawerOn.overview && !drawerOn.steps && !drawerOn.map &&
+    flowGeom && !flowGeom.err && flowGeom.open && flowGeom.flowBottom <= flowGeom.rawTop);
+  record("P2.10: the Raw events drawer shows on Flow only; opened there it sits below the Flow layout",
+    drawerOk, JSON.stringify({ shownOn: drawerOn, flowGeom }));
+  if (!drawerOk) await shot(page, "fail-raw-events-flow-only.png");
+  const mapBtn = await page.$('.view-mode-btn[data-level="map"]');
 
   // --- The one map: the connectivity pin (moved from the screen grain) -------
   // The Map shows one Flow diagram built from the runs' steps: a node per step
@@ -798,7 +858,9 @@ async function unreadableAnnotationsPin() {
   // run may end early (the demo's third run ends at the Excel step the other
   // runs pass through), so "one final step" is a property of the graph, not a
   // claim that every run ends in the same place. We drive the live cytoscape
-  // graph (dfg-viewer exposes host.__cy), at "All paths".
+  // graph (dfg-viewer exposes host.__cy). P2.3: every path is drawn (no
+  // filter can hide the branches the PDD needs): the drawn edges are exactly
+  // the runs' edges.
   if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(1200); }
   const connProbe = await page.evaluate(() => {
     const host = document.getElementById("session-map-dfg-host");
@@ -832,7 +894,12 @@ async function unreadableAnnotationsPin() {
       rendered: true, nodes: nodes.length, edges: edges.length, components,
       sources: sourceIds.length, sinks: sinkIds.length, sourceIds, sinkIds,
       runEndings: cy.nodes().filter((n) => n.data("role") === "end").map((n) => n.id()),
-      rareCutoff: (document.getElementById("session-hide-rare-lbl") || {}).textContent || null,
+      runEdges: (() => {
+        const s = require("./state.js").getSession();
+        const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+        return require("./process-map-levels.js").buildAnnotationDfg(runs.map((r) => r.visible)).edges.length;
+      })(),
+      filterControls: document.querySelectorAll("#session-rng-rare, #session-hide-rare-wrap, #session-map-zoom-pct").length,
       leftToRight: srcLeftmost && sinkRightmost && bb.w >= bb.h,
       aspect: Math.round((bb.w / Math.max(1, bb.h)) * 10) / 10,
     };
@@ -845,9 +912,10 @@ async function unreadableAnnotationsPin() {
     await shot(page, "fail-map-connectivity.png");
   } else {
     const ok = connProbe.components === 1 && connProbe.sources === 1 && connProbe.sinks === 1 &&
-      connProbe.rareCutoff === "All paths";
-    record("the process map is one connected graph (1 component, 1 entry step, 1 final step)", ok,
-      "nodes=" + connProbe.nodes + " edges=" + connProbe.edges + " components=" + connProbe.components +
+      connProbe.edges === connProbe.runEdges && connProbe.filterControls === 0;
+    record("the process map is one connected graph (1 component, 1 entry step, 1 final step), every path drawn", ok,
+      "nodes=" + connProbe.nodes + " edges=" + connProbe.edges + "/" + connProbe.runEdges + " components=" + connProbe.components +
+      " filterControls=" + connProbe.filterControls +
       " sources=" + JSON.stringify(connProbe.sourceIds) + " sinks=" + JSON.stringify(connProbe.sinkIds) +
       " runEndings=" + JSON.stringify(connProbe.runEndings) + " (a value in the node key would split the runs into islands)");
     if (!ok) await shot(page, "fail-map-connectivity.png");
@@ -914,9 +982,10 @@ async function unreadableAnnotationsPin() {
   }
 
   // --- ADR-0019 Reference Maps round-trip pin ---------------------------------
-  // A reference map is a decoupled, editable BPMN copy forked from the mined map.
-  // The honest-leaf contract has a full lifecycle: Fork (one-way leaf; the mined
-  // map is untouched) -> Edit (full bpmn-js palette) -> Save (debounced saveXML to
+  // An edited map is a decoupled, editable BPMN copy of the process map. The
+  // honest-leaf contract has a full lifecycle: the Map's one act (it analyzes
+  // first when the steps changed, then copies; the copy is a one-way leaf) ->
+  // Edit (full bpmn-js palette) -> Save (debounced saveXML to
   // derived_maps/<id>.bpmn) -> reload (reopen re-reads the blob) -> Delete+Undo
   // (the blob is retained so Ctrl+Z restores a WORKING, still-edited entry).
   // Validated end-to-end in _pdt_verify/refmap-verify.js; pinned here so the
@@ -929,39 +998,136 @@ async function unreadableAnnotationsPin() {
     record("reference-map round-trip (skipped — session not re-normalized)", true,
       "no deps-Python for a temp copy; not forking into the committed demo folder");
   } else {
+    // P1.7 + P2.16: the step detail shows what the analyst edits and what the
+    // PDD prints: one fact line (no Start, End or Run tiles, no drafting
+    // reason), the Description resident (not behind More), and the step's own
+    // screenshots, stamped in local time.
+    const detail = {};
+    try {
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: STATE_TIMEOUT });
+      await page.waitForSelector("#step-list .run-group.open .step-row", { timeout: STATE_TIMEOUT });
+      detail.stepId = await page.evaluate(() => {
+        const s = require("./state.js").getSession();
+        const byId = Object.fromEntries(((s.annotations || {}).steps || []).map((x) => [x.step_id, x]));
+        const rows = [...document.querySelectorAll("#step-list .run-group.open .step-row")].map((r) => r.dataset.stepId);
+        return rows.find((id) => (((byId[id] || {}).evidence || {}).screenshot_refs || []).length > 0) || null;
+      });
+      if (!detail.stepId) throw new Error("no step with screenshots in the open run");
+      await page.locator('#step-list .step-row[data-step-id="' + detail.stepId + '"]').click({ timeout: STATE_TIMEOUT });
+      await page.waitForSelector("#step-detail .step-shot img", { timeout: STATE_TIMEOUT });
+      await page.waitForFunction(() => [...document.querySelectorAll("#step-detail .step-shot img")].every((i) => i.complete),
+        null, { timeout: STATE_TIMEOUT });
+      Object.assign(detail, await page.evaluate((sid) => {
+        const s = require("./state.js").getSession();
+        const step = ((s.annotations || {}).steps || []).find((x) => x.step_id === sid);
+        const pad = (n) => String(n).padStart(2, "0");
+        const local = (iso) => { const d = new Date(iso); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+        const at = {};
+        for (const e of s.events || []) if (e.type === "system" && e.data && e.data.path) at[e.data.path] = e.timestamp;
+        const more = document.querySelector("#step-detail .step-detail-more");
+        const desc = document.getElementById("step-desc");
+        return {
+          fact: ((document.querySelector("#step-detail .step-fact") || {}).textContent || "").trim(),
+          tiles: document.querySelectorAll("#step-detail .stat-tile, #step-detail .step-suggestion-reason").length,
+          descResident: !!(desc && more && !more.contains(desc) && getComputedStyle(desc).display !== "none"),
+          refs: (step.evidence.screenshot_refs || []).length,
+          shots: [...document.querySelectorAll("#step-detail .step-shot")].map((b) => ({
+            ref: b.dataset.ref, loaded: (b.querySelector("img") || {}).naturalWidth > 0,
+            stamp: ((b.querySelector(".stamp") || {}).textContent || "").trim() })),
+          wantStamps: (step.evidence.screenshot_refs || []).map((r) => (at[r] ? local(at[r]) : "")),
+          // The draft's why, short, from the pipeline's reason (the step is a
+          // draft that ended at a commit in the demo).
+          wantWhy: (() => {
+            const r = /^Drafted from (\d+) interactions? on (.+?); ended at the commit "(.+)"\.$/.exec(step.suggestion_reason || "");
+            return step.end_reason === "commit" && r ? r[1] + " interaction" + (r[1] === "1" ? "" : "s") + " on " + r[2] + ", ended at " + r[3] : null;
+          })(),
+        };
+      }, detail.stepId));
+    } catch (e) { logActionError("P1.7 + P2.16 step detail", e); detail.err = String(e.message).split("\n")[0]; }
+    const detailOk = !!(!detail.err && /^\d+(s|:\d{2}) · \S/.test(detail.fact || "") && detail.tiles === 0 && detail.descResident &&
+      detail.wantWhy && (detail.fact || "").endsWith(" · " + detail.wantWhy) &&
+      detail.shots && detail.shots.length === detail.refs && detail.refs > 0 && detail.shots.every((x) => x.loaded) &&
+      JSON.stringify(detail.shots.map((x) => x.stamp)) === JSON.stringify(detail.wantStamps));
+    record("P1.7 + P2.16: the step detail shows one fact line ending in the draft's why (its interactions on the screen, ended at its commit), the Description resident, and the step's own screenshots (loaded, in local time); no Start, End or Run tiles",
+      detailOk, JSON.stringify(detail));
+    if (!detailOk) await shot(page, "fail-step-detail.png");
+
     const PROBE = "RT_PIN_EDIT"; // a label no mined node carries
-    // Fork copies the step-level BPMN the pipeline writes with --mine.
     const stepBpmn = path.join(SESSION, "process_map_step.bpmn");
+    // F1 + AD-19: the Map's one act makes the As-Is map from the step names as
+    // they are now. A pattern-run draft is renamed in Steps first (the
+    // analyst's verb, the detail form), so the steps are newer than the map's
+    // BPMN file: the act must analyze first (busy meanwhile), and the copy
+    // must carry the new name, not the draft's.
+    const RENAMED = "Look up the customer";
+    const OLD = "Salesforce - Account lookup: Search";
+    const f1 = {};
+    try {
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: STATE_TIMEOUT });
+      await page.waitForSelector("#step-list .run-group.pattern", { timeout: STATE_TIMEOUT });
+      // "Open in Steps" above left run 4 open: open the pattern run.
+      if (!(await page.$("#step-list .run-group.pattern.open"))) {
+        await page.locator("#step-list .run-group.pattern > .run-row").click({ timeout: STATE_TIMEOUT });
+      }
+      await page.waitForSelector("#step-list .run-group.pattern.open .step-row", { timeout: STATE_TIMEOUT });
+      await page.locator("#step-list .run-group.pattern.open .step-row", { hasText: OLD }).first().click({ timeout: STATE_TIMEOUT });
+      await page.locator("#step-name").fill(RENAMED, { timeout: STATE_TIMEOUT });
+      await page.locator("#btn-step-save").click({ timeout: STATE_TIMEOUT });
+      await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")]
+        .some((e) => e.textContent.trim() === n), RENAMED, { timeout: STATE_TIMEOUT });
+      f1.bpmnHadOld = fs.readFileSync(stepBpmn, "utf-8").includes(OLD);
+      f1.annoNewer = fs.statSync(path.join(SESSION, "annotations.json")).mtimeMs > fs.statSync(stepBpmn).mtimeMs;
+      await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: STATE_TIMEOUT });
+      await wait(700);
+      f1.button = await page.evaluate(() => {
+        const b = document.getElementById("btn-fork-refmap");
+        return { text: (b.textContent || "").trim(), primary: b.classList.contains("primary") };
+      });
+      await page.locator("#btn-fork-refmap").click({ timeout: STATE_TIMEOUT });
+      f1.busy = await page.waitForFunction(() => {
+        const b = document.getElementById("btn-fork-refmap");
+        return b.getAttribute("aria-busy") === "true" && b.disabled && /Updating/.test(b.textContent || "");
+      }, null, { timeout: 5000 }).then(() => true, () => false);
+      await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+      await wait(900);
+    } catch (e) { logActionError("F1 rename, then the Map's edit act", e); f1.err = String(e.message).split("\n")[0]; }
+    // The act's analysis rewrote the map's file; from here on nothing may
+    // touch it (the one-way leaf check below).
     const stepXml = fs.existsSync(stepBpmn) ? fs.readFileSync(stepBpmn, "utf-8") : null;
     const minedBefore = stepXml != null ? fs.statSync(stepBpmn).size + ":" + stepXml.length : null;
-
-    // Fork from the Map as it opens (the process map on screen): the copy is
-    // made from the file, and the editor opens on it.
-    if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(700); }
-    await page.click("#btn-fork-refmap").catch((e) => console.log("fork", e.message));
-    await wait(1600);
-    const forked = await page.evaluate((srcXml) => {
+    const forked = await page.evaluate((a) => {
       const State = require("./state.js"), RM = require("./reference-maps.js");
       const s = State.getSession(), e = RM.list(s.annotations)[0] || null;
       const host = document.getElementById("refmap-editor-host");
       const overlay = document.getElementById("refmap-editor-overlay");
       const palette = host && host.querySelector(".djs-palette");
+      const xml = e ? RM.readBpmn(s.sessionFolder, e) : null;
       return {
         count: RM.list(s.annotations).length,
         fileOnDisk: e ? RM.fileExists(s.sessionFolder, e) : false,
-        copyOfStepBpmn: !!(e && srcXml != null && RM.readBpmn(s.sessionFolder, e) === srcXml),
+        copyOfStepBpmn: !!(e && a.src != null && xml === a.src),
         sourceLevel: e && e.source ? e.source.level : null,
         hasHash: !!(e && e.forked_from_hash),
+        name: e && e.name, pddRole: e && e.pdd_role,
+        editorPdd: (document.getElementById("refmap-editor-pdd") || {}).value,
+        editorControls: ["refmap-editor-kind", "refmap-editor-badge", "refmap-editor-prov"].filter((id) => document.getElementById(id)),
+        newName: !!(xml && xml.includes(a.renamed)), oldName: !!(xml && xml.includes(a.old)),
         editorOpen: !!(overlay && overlay.style.display !== "none"),
         editorSvg: !!(host && host.querySelector("svg")),
         paletteVisible: palette ? getComputedStyle(palette).display !== "none" : false,
       };
-    }, stepXml).catch((e) => ({ err: e.message }));
-    const forkOk = forked && !forked.err && forked.count === 1 && forked.fileOnDisk && forked.copyOfStepBpmn &&
-      forked.sourceLevel === "step" && forked.hasHash && forked.editorOpen && forked.editorSvg && forked.paletteVisible;
-    record("reference map: Fork copies the step-level BPMN (process_map_step.bpmn) into an editable copy and opens the editor",
-      forkOk, JSON.stringify(forked));
-    if (!forkOk) await shot(page, "fail-refmap-fork.png");
+    }, { src: stepXml, renamed: RENAMED, old: OLD }).catch((e) => ({ err: e.message }));
+    const forkOk = !!(forked && !forked.err && forked.count === 1 && forked.fileOnDisk && forked.copyOfStepBpmn &&
+      forked.sourceLevel === "step" && forked.hasHash && forked.editorOpen && forked.editorSvg && forked.paletteVisible &&
+      forked.name === "As-Is map" && forked.pddRole === "as_is" && forked.editorPdd === "as_is" &&
+      forked.editorControls.length === 0 && f1.button && f1.button.text === "Edit as the As-Is map" && f1.button.primary);
+    record("AD-19 + P1.12: the Map's one act, Edit as the As-Is map, copies the process map into the editor as the PDD's As-Is map (one role control)",
+      forkOk, JSON.stringify({ button: f1.button, forked }));
+    const f1Ok = !!(!f1.err && f1.bpmnHadOld && f1.annoNewer && f1.busy && forked && forked.newName && !forked.oldName);
+    record("F1: after a rename the act analyzes first (the button busy meanwhile), and the copy's BPMN carries the new step name, not the draft's",
+      f1Ok, JSON.stringify({ err: f1.err, bpmnHadOld: f1.bpmnHadOld, annoNewer: f1.annoNewer, busy: f1.busy,
+        newName: forked && forked.newName, oldName: forked && forked.oldName }));
+    if (!(forkOk && f1Ok)) await shot(page, "fail-refmap-fork.png");
 
     // Edit: a real, undoable bpmn-js label change fires the debounced disk save.
     const edited = await page.evaluate((probe) => {
@@ -1013,6 +1179,12 @@ async function unreadableAnnotationsPin() {
     await page.click("#btn-refmap-editor-close", { timeout: 2500 }).catch(() => {});
     await wait(500);
     const rtOk = edited.ok && savedToDisk && closedAfterEdit && reopened && reloadedHasEdit;
+    const actAfter = await page.evaluate(() => {
+      const b = document.getElementById("btn-fork-refmap");
+      return { text: (b.textContent || "").trim(), primary: b.classList.contains("primary") };
+    }).catch((e) => ({ err: e.message }));
+    record("P1.12: once the As-Is map exists the act reads Edit a new copy and is no longer the orange next act",
+      !!(actAfter && actAfter.text === "Edit a new copy" && actAfter.primary === false), JSON.stringify(actAfter));
     record("reference map: Edit -> Save -> reload round-trips the edit", rtOk,
       "edit=" + edited.ok + " savedToDisk=" + savedToDisk + " closed=" + closedAfterEdit +
       " reopenedFromGallery=" + reopened + " reloadedHasEdit=" + reloadedHasEdit +
@@ -1020,7 +1192,7 @@ async function unreadableAnnotationsPin() {
     if (!rtOk) await shot(page, "fail-refmap-roundtrip.png");
 
     // Label legibility: the row/toolbar buttons carry multi-word TEXT (Edit /
-    // Duplicate / Delete; ⑂ Fork map; Reference maps) and once reused the shared
+    // Duplicate / Delete; the Map's act; Edited maps) and once reused the shared
     // .icon-btn.xs 22px icon-SQUARE, which clipped the labels and made the red
     // Delete overlap Duplicate. A button is clipped when its content overflows
     // its box (scrollWidth > clientWidth). Pin zero-clipped so it can't regress.
@@ -1035,17 +1207,40 @@ async function unreadableAnnotationsPin() {
     record("reference map: action/toolbar button labels are not clipped", clipped.length === 0,
       clipped.length ? "clipped: " + clipped.join(", ") : "all labels fit their buttons");
     if (clipped.length) await shot(page, "fail-refmap-labels.png");
+    // F3: the gallery's Delete was dark orange text on a red fill at rest. Its
+    // label must clear 4.5:1 against what it sits on.
+    const delLegible = await page.evaluate(() => {
+      const b = document.querySelector('#refmap-list [data-rm-act="del"]');
+      if (!b) return { found: false };
+      const rgb = (c) => (String(c).match(/[\d.]+/g) || []).map(Number);
+      const lum = (v) => {
+        const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(v[0]) + 0.7152 * f(v[1]) + 0.0722 * f(v[2]);
+      };
+      let bg = null;
+      for (let el = b; el && !bg; el = el.parentElement) {
+        const v = rgb(getComputedStyle(el).backgroundColor);
+        if (v.length >= 3 && (v.length < 4 || v[3] > 0)) bg = v;
+      }
+      const fg = rgb(getComputedStyle(b).color);
+      const l1 = lum(fg), l2 = lum(bg || [255, 255, 255]);
+      return { found: true, color: fg.join(","), background: (bg || []).join(","),
+        ratio: Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100 };
+    }).catch((e) => ({ err: e.message }));
+    record("F3: the gallery's Delete label is legible at rest (at least 4.5:1)",
+      !!(delLegible && delLegible.found && delLegible.ratio >= 4.5), JSON.stringify(delLegible));
 
     // CI-3: the gallery stays clickable while Raw events is open. Opening Raw
     // events used to freeze the Map layout at a fixed height, so the gallery
     // opened later was squeezed and its buttons sat under the drawer's summary,
-    // which took the clicks. A trial click runs Playwright's full actionability
-    // check (visible, stable, and the button itself receives the pointer)
-    // without clicking. The drawer must really be open here (the map-overlay
-    // pin above opened it), or the check would prove nothing.
-    const galleryReach = await page.evaluate(() => ({
-      drawerOpen: !!(document.querySelector(".event-table-host") || {}).open,
-    }));
+    // which took the clicks. P2.10: the drawer is Flow's only, so here it is
+    // left open on Flow (the P2.10 check above opened it) and hidden on the
+    // Map. A trial click runs Playwright's full actionability check (visible,
+    // stable, and the button itself receives the pointer) without clicking.
+    const galleryReach = await page.evaluate(() => {
+      const d = document.querySelector(".event-table-host");
+      return { drawerOpen: !!(d && d.open), drawerHiddenOnMap: !!(d && getComputedStyle(d).display === "none") };
+    });
     {
       const btns = page.locator("#refmap-list [data-rm-act]");
       const n = await btns.count();
@@ -1058,12 +1253,13 @@ async function unreadableAnnotationsPin() {
       }
       Object.assign(galleryReach, { buttons: n, blocked });
     }
-    const reachOk = galleryReach.drawerOpen && galleryReach.buttons > 0 && galleryReach.blocked.length === 0;
-    record("CI-3: every reference-map gallery button is clickable with Raw events open",
+    const reachOk = galleryReach.drawerOpen && galleryReach.drawerHiddenOnMap && galleryReach.buttons > 0 &&
+      galleryReach.blocked.length === 0;
+    record("CI-3 + P2.10: with Raw events left open on Flow (hidden on the Map), every gallery button is clickable",
       reachOk, JSON.stringify(galleryReach));
     if (!reachOk) await shot(page, "fail-refmap-gallery-reach.png");
 
-    // Item 2 fix: the "Reference maps" toggle is its own inverse: a shown
+    // Item 2 fix: the "Edited maps" toggle is its own inverse: a shown
     // gallery hides on a click and shows again on the next (it used to stay shown).
     const galleryState = () => page.evaluate(() => {
       const p = document.getElementById("refmap-panel");
@@ -1075,7 +1271,7 @@ async function unreadableAnnotationsPin() {
     const g1 = await galleryState();
     await page.click("#btn-toggle-refmaps").catch((e) => console.log("toggle", e.message));
     const g2 = await galleryState();
-    record("item 2: the Reference maps toggle hides a shown gallery and shows it again",
+    record("item 2: the Edited maps toggle hides a shown gallery and shows it again",
       !!(g0.shown && !g1.shown && g1.expanded === "false" && g2.shown && g2.expanded === "true"),
       JSON.stringify({ before: g0, afterFirst: g1, afterSecond: g2 }));
     if (!g2.shown) await page.click("#btn-toggle-refmaps").catch(() => {});   // leave it open, as found
@@ -1104,7 +1300,8 @@ async function unreadableAnnotationsPin() {
       JSON.stringify(delUndo));
     if (!invOk) await shot(page, "fail-refmap-undo.png");
 
-    // Decoupled leaf: the step-level BPMN on disk was never touched by any of the above.
+    // Decoupled leaf: after the act's own analysis, nothing above touched the
+    // step-level BPMN on disk.
     const minedAfter = fs.existsSync(stepBpmn)
       ? fs.statSync(stepBpmn).size + ":" + fs.readFileSync(stepBpmn, "utf-8").length : null;
     record("reference map: the step-level BPMN it was forked from is untouched (one-way leaf)",
@@ -1260,18 +1457,77 @@ async function unreadableAnnotationsPin() {
           .some((r) => (r.textContent || "").includes(label) && !r.classList.contains("pending")),
       LABEL, { timeout: 120000 });
       applied = Object.assign(await pinState(), { cases: await cases() });
+      // Runs never nest (the pipeline's rule, case_assignment.py): the new run
+      // has no End of its own, so the next run's Start ends it. Its band on
+      // the Flow timeline ends where the next band starts, not at the end of
+      // the recording.
+      applied.runBand = await page.evaluate((label) => {
+        const bands = [...document.querySelectorAll("#timeline .tl-case-band")]
+          .map((b) => ({ title: b.title || "", dangling: b.classList.contains("dangling"), r: b.getBoundingClientRect() }))
+          .sort((x, y) => x.r.left - y.r.left);
+        const i = bands.findIndex((b) => b.title.includes(label));
+        if (i < 0) return null;
+        const next = bands[i + 1] || null;
+        return { dangling: bands[i].dangling, top: Math.round(bands[i].r.top), right: Math.round(bands[i].r.right),
+          nextLeft: next ? Math.round(next.r.left) : null, nextTop: next ? Math.round(next.r.top) : null };
+      }, LABEL);
     } catch (e) { logActionError("item 6 Analyze to apply", e); err = String(e.message).split("\n")[0]; }
     const appliedOk = !!(applied && before && applied.row && !applied.row.pending && applied.row.inserted &&
       applied.pendingBars === 0 && applied.cta === null &&
       applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&
-      // The Overview names the runs the Steps level lists (a start marker
-      // with no end nests the runs after it, so the run count need not be the
-      // case count); both follow the new analysis.
+      // The Overview names the runs the Steps level lists; both follow the new
+      // analysis.
       applied.cases.runsLine === applied.cases.stepsRuns + " runs" &&
       before.runsLine === before.stepsRuns + " runs");
     record("item 6: its call to action runs Analyze; the marker becomes a real one and the case count goes up by one",
       appliedOk, JSON.stringify({ before: before && before.analyzed, applied, err }));
+    const rb = applied && applied.runBand;
+    record("runs never nest on the timeline: the inserted run's band ends where the next run starts, on the same row (the pipeline's rule)",
+      !!(rb && !rb.dangling && rb.nextLeft != null && Math.abs(rb.right - rb.nextLeft) <= 2 && rb.top === rb.nextTop),
+      JSON.stringify(rb));
     if (!appliedOk) await shot(page, "fail-marker-applied.png");
+  }
+
+  // --- P2.11: Sync video and + Step come with a video ------------------------
+  // A copy of the analyzed session with a video linked (annotations
+  // external_video: any existing file, the check is the controls, not
+  // playback), opened in the same viewer: More offers Sync video and Flow
+  // offers + Step. Opened again without it, both go.
+  if (FRESH) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-video-"));
+    for (const f of fs.readdirSync(SESSION)) {
+      const src = path.join(SESSION, f);
+      if (fs.statSync(src).isFile()) fs.copyFileSync(src, path.join(dir, f));
+    }
+    const video = path.join(dir, "call-recording.mp4");
+    fs.writeFileSync(video, Buffer.alloc(64));
+    const annoPath = path.join(dir, "annotations.json");
+    const anno = JSON.parse(fs.readFileSync(annoPath, "utf-8"));
+    anno.external_video = { path: video, offset_ms: 0 };
+    fs.writeFileSync(annoPath, JSON.stringify(anno, null, 2));
+    const vid = {};
+    try {
+      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), dir);
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: STATE_TIMEOUT });
+      vid.recording = await page.evaluate(() => !!require("./state.js").getSession().recordingAvailable);
+      vid.more = await moreMenu();
+      vid.addStep = await page.evaluate(() => {
+        const b = document.getElementById("btn-add-step");
+        return !!(b && getComputedStyle(b).display !== "none");
+      });
+      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), SESSION);
+      vid.moreAfter = await moreMenu();
+      vid.addStepAfter = await page.evaluate(() => {
+        const b = document.getElementById("btn-add-step");
+        return !!(b && getComputedStyle(b).display !== "none");
+      });
+    } catch (e) { logActionError("P2.11 with a video", e); vid.err = String(e.message).split("\n")[0]; }
+    const WITH_VIDEO = ["btn-attach-video", "btn-sync-video", "btn-attach-transcript", "btn-ignored-apps", "btn-remembered-names"];
+    record("P2.11: with a video linked, More offers Sync video and Flow offers + Step; without one again, both go",
+      !!(!vid.err && vid.recording && JSON.stringify(vid.more) === JSON.stringify(WITH_VIDEO) && vid.addStep &&
+        JSON.stringify(vid.moreAfter) === JSON.stringify(WANT_MORE) && vid.addStepAfter === false),
+      JSON.stringify(vid));
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
   }
 
   // Page errors gate (checked last so we capture errors from every interaction).

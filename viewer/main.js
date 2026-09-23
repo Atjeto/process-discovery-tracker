@@ -609,6 +609,22 @@ ipcMain.handle("viewer:undoSaveProcess", (_e, payload) => {
   }
 });
 
+/* Forget a saved process (P3.11). Payload { id }. Result
+   { ok: true, path, removed } (removed: the entry as it was stored, which
+   undoSaveProcess with { id, previous: removed } puts back) or
+   { ok: false, code, error, path }. */
+ipcMain.handle("viewer:forgetProcess", (_e, payload) => {
+  let p = null;
+  try {
+    p = processesStorePath();
+    const r = ProcessesStore.forgetProcess(p, payload || {});
+    return { ok: true, path: r.path, removed: r.removed };
+  } catch (e) {
+    console.error("[viewer:forgetProcess] not forgotten:", e && e.message);
+    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
+  }
+});
+
 /* --- App lifecycle ----------------------------------------------- */
 
 app.whenReady().then(() => {

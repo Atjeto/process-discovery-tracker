@@ -418,7 +418,9 @@ function runCount(items) {
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
 /* The P1 probe line for the pattern run:
-     "Run 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, drop 0)"
+     "Run 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)"
+   "hide" is the stored `drop` count: the button that takes a draft out says
+   Hide, so the line says it too (P2.9).
    N is the run's entry in stats.json meta.draft_summary.steps_per_run (the
    drafts the pipeline produced); when the stats lack it, the count stored when
    the run became the pattern (source "designation"). Structure only: the run
@@ -439,7 +441,7 @@ function probeLine(stats, runs, run, record) {
   const text = (run ? run.title : "Run") + ": " +
     (drafted == null ? "drafted steps not recorded" : _plural(drafted, "drafted step", "drafted steps")) +
     ", " + _plural(total, "boundary fix", "boundary fixes") +
-    " (merge " + f.merge + ", split " + f.split + ", add " + f.add + ", drop " + f.drop + ")";
+    " (merge " + f.merge + ", split " + f.split + ", add " + f.add + ", hide " + f.drop + ")";
   return { text, drafted, source, fixes: f, total };
 }
 

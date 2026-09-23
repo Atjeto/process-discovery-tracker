@@ -86,6 +86,13 @@ function undoSaveProcess(payload) {
   return ipcRenderer.invoke("viewer:undoSaveProcess", payload);
 }
 
+/** Forget a saved process (its inverse: undoSaveProcess with the removed entry).
+ *  @param {{id: string}} payload
+ *  @returns {Promise<{ok: boolean, removed?: object, path?: string, error?: string}>} */
+function forgetProcess(payload) {
+  return ipcRenderer.invoke("viewer:forgetProcess", payload);
+}
+
 /* ---- Export / shell ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -160,7 +167,7 @@ module.exports = {
   runNormalizeExtended, cancelNormalize,
   saveAnnotations,
   rememberStepName, readRememberedNames, forgetStepName,
-  readProcesses, saveProcess, undoSaveProcess,
+  readProcesses, saveProcess, undoSaveProcess, forgetProcess,
   exportFile, saveSvgFile, revealFile, openExternal,
   attachExternalVideo, saveExternalVideoSync,
   importTranscript, removeTranscript, saveTranscriptSync,

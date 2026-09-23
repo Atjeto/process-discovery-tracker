@@ -19,7 +19,7 @@
 "use strict";
 
 const State = require("../state.js");
-const { $, escapeHtml, cryptoRandomId, toast } = require("../dom.js");
+const { $, escapeHtml, cryptoRandomId, toast, localClock } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { persistAnnotations } = require("../session.js");
 const { seekToTimestamp, videoStartTs } = require("./flow-view-video.js");
@@ -34,17 +34,7 @@ function effectiveLabel(markerEvent) {
 
 /* ============ Markers list + per-marker edits ===================== */
 
-const APPLY_NOTE = "it applies to the cases when you analyze the session";
-
-/* A marker's time as the timeline shows it: local "HH:MM:SS" (the timeline's
-   axis labels are local; slicing the ISO string showed UTC and disagreed with
-   them by the time zone offset). "" when the timestamp cannot be read. */
-function localClock(iso) {
-  const d = new Date(iso);
-  if (!iso || !isFinite(d.getTime())) return "";
-  const pad = (n) => String(n).padStart(2, "0");
-  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
-}
+const APPLY_NOTE = "it applies to the runs when you analyze the session";
 
 function renderMarkersList() {
   const host = $("#markers-list");
@@ -54,37 +44,17 @@ function renderMarkersList() {
     host.innerHTML = '<p class="hint">No markers yet. To mark a run, right-click the timeline at its first moment and choose Insert Start marker here.</p>';
     return;
   }
-  const f = State.getListFilters().marker;
-  const query = (f.text || "").toLowerCase();
-  const markers = query
-    ? all.filter((m) => (m.label || "").toLowerCase().includes(query)
-        || (m.reason || "").toLowerCase().includes(query))
-    : all;
-  const meta = $("#marker-filter-meta");
-  if (meta) {
-    meta.textContent = markers.length === all.length
-      ? `${all.length} markers`
-      : `${markers.length} of ${all.length}`;
-  }
-  if (!markers.length) {
-    host.innerHTML = '<p class="hint">No markers match the filter.</p>';
-    return;
-  }
-  const hint = document.createElement("p");
-  hint.className = "hint";
-  hint.textContent = "Double-click a Start to rename it. Use the row buttons to move a marker to the video time or to delete it. " +
-    "A change shows here at once, marked pending; " + APPLY_NOTE + ".";
-  host.appendChild(hint);
-
-  // Story order: by the time shown (moves applied).
-  let depth = 0;
-  for (const m of markers) {
+  // Story order: by the time shown (moves applied). How to edit them is the
+  // list's tooltip (index.html).
+  const moveTitle = State.getSession().recordingAvailable
+    ? "Move to the current video time" : "Move to another time";
+  for (const m of all) {
     const row = document.createElement("div");
     row.className = "marker-row " + m.markerType + (m.deleted ? " deleted" : "") +
       (m.pending ? " pending" : "") + (m.inserted ? " inserted" : "");
     row.dataset.markerKey = m.key;
-    if (m.markerType === "end" && !m.deleted) depth = Math.max(0, depth - 1);
-    const lbl = m.label || "(unlabeled)";
+    // An End carries no label: it says what it is. A Start without one too.
+    const lbl = m.label || (m.markerType === "end" ? "End" : "Start");
     const notes =
       (m.inserted ? ' <span class="meta">· added</span>' : (m.edited ? ' <span class="meta">· edited</span>' : "")) +
       (m.deleted ? ' <span class="meta bad">· deleted</span>' : "") +
@@ -97,12 +67,10 @@ function renderMarkersList() {
         (m.reason ? ' <span class="meta">(' + escapeHtml(m.reason) + ')</span>' : '') +
         notes +
       '</span>' +
-      '<span class="depth">L' + depth + '</span>' +
       '<span class="marker-actions">' +
-        '<button class="icon-btn xs" data-act="adjust" title="Move to the current video time">◷</button>' +
+        '<button class="icon-btn xs" data-act="adjust" title="' + moveTitle + '">◷</button>' +
         '<button class="icon-btn xs" data-act="delete" title="Delete marker (from the analysis)">✕</button>' +
       '</span>';
-    if (m.markerType === "start" && !m.deleted) depth += 1;
     row.addEventListener("click", (e) => {
       if (e.target.closest(".marker-actions")) return;
       seekToTimestamp(m.timestamp);
@@ -133,6 +101,19 @@ function _insertEdit(anno, m) {
   return m.editId ? anno.marker_edits.find((e) => e && e.op === "insert" && e.id === m.editId) || null : null;
 }
 
+/* The moment a time of day ("11:02" or "11:02:07", as the timeline and this
+   list show it, local time) names on the day of `iso`, as an ISO string; null
+   when the text is not a time of day. Pure (exported for the unit tests). */
+function timeOfDayOn(iso, text) {
+  const m = /^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/.exec(String(text || ""));
+  const day = new Date(iso);
+  if (!m || !isFinite(day.getTime())) return null;
+  const h = Number(m[1]), min = Number(m[2]), sec = Number(m[3] || 0);
+  if (h > 23 || min > 59 || sec > 59) return null;
+  day.setHours(h, min, sec, 0);
+  return day.toISOString();
+}
+
 async function adjustMarkerToVideoTime(m) {
   if (!State.getSession()) return;
   const video = $("#video");
@@ -141,9 +122,14 @@ async function adjustMarkerToVideoTime(m) {
   if (obsStartTs && video && video.src) {
     newTs = new Date(new Date(obsStartTs).getTime() + (video.currentTime || 0) * 1000).toISOString();
   } else {
-    const input = await promptModal({ title: "Move marker", message: "New time (ISO 8601)", detail: "For example: 2026-05-14T09:23:11.482Z", defaultValue: m.timestamp, okLabel: "Save" });
-    if (!input) return;
-    newTs = input.trim();
+    // No video to take the time from: ask for the time of day, as the
+    // timeline shows it.
+    const input = await promptModal({ title: "Move marker", message: "New time of day",
+      detail: "As the timeline shows it, for example " + localClock(m.timestamp) + ".",
+      defaultValue: localClock(m.timestamp), okLabel: "Move" });
+    if (input == null) return;
+    newTs = timeOfDayOn(m.timestamp, input);
+    if (!newTs) { toast("Type a time of day such as " + localClock(m.timestamp) + ".", "error"); return; }
   }
   const anno = _annotations();
   const now = new Date().toISOString();
@@ -220,23 +206,6 @@ async function renameMarker(m, newLabel) {
   toast("Marker renamed; " + APPLY_NOTE + ".", "success");
 }
 
-/* The marker-list filter box (debounced) re-renders the list in place.
-   Wired at require() time -- the DOM is parsed when flow-view.js pulls
-   this in. */
-(function wireMarkerFilter() {
-  const txt = document.getElementById("marker-filter-text");
-  if (txt) {
-    let t;
-    txt.addEventListener("input", () => {
-      clearTimeout(t);
-      t = setTimeout(() => {
-        State.getListFilters().marker.text = txt.value.trim();
-        if (State.getSession()) renderMarkersList();
-      }, 120);
-    });
-  }
-})();
-
 module.exports = {
-  effectiveLabel, renderMarkersList, localClock,
+  effectiveLabel, renderMarkersList, timeOfDayOn,
 };

@@ -116,13 +116,6 @@ const DARK_APP = {
   fallback: "#4a5270",
 };
 
-/* Step mini-timeline palettes. A band is a translucent tint of its
-   colour over the timeline track; on the dark track a tint of the muted
-   light slates is near-invisible, so the dark palette is brighter and
-   the tint/border alpha is raised (see bandAlphas). */
-const LIGHT_STEP_PALETTE  = ["#5A7488", "#6E6A88", "#886A78", "#887A5A", "#5A8870", "#787058", "#5E6878"];
-const DARK_STEP_PALETTE   = ["#6f9fd8", "#9b8fd8", "#d88fb0", "#d8b06f", "#6fd8a8", "#b0c47a", "#7e9fd0"];
-
 /* DFG token snapshot -- cytoscape renders to <canvas> and cannot read
    CSS vars, so dfg-viewer.js reads this per render(). Keys mirror the
    styles.css :root tokens noted beside each value. */
@@ -139,20 +132,10 @@ const DARK_DFG = {
 
 /** @returns {{map: Object, palette: string[], fallback: string}} */
 function appColors()    { return _theme === "dark" ? DARK_APP : LIGHT_APP; }
-/** @returns {string[]} */
-function stepPalette()  { return _theme === "dark" ? DARK_STEP_PALETTE : LIGHT_STEP_PALETTE; }
 /** @returns {Object} DFG hex snapshot for the active theme */
 function dfgStyleTokens() { return _theme === "dark" ? DARK_DFG : LIGHT_DFG; }
 
-/* Step band tint + border alpha -- two-digit hex suffixes that
-   timeline-core appends to a 6-digit colour. Light returns null so the
-   caller keeps its own existing defaults (1F/55); dark returns a
-   stronger pair so the tint clears the dark track. */
-function bandAlphas() {
-  return _theme === "dark" ? { tintAlpha: "33", borderAlpha: "77" } : null;
-}
-
 module.exports = {
   getTheme, setTheme, applyTheme, toggleTheme, onChange,
-  appColors, stepPalette, bandAlphas, dfgStyleTokens,
+  appColors, dfgStyleTokens,
 };

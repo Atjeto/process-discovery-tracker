@@ -111,13 +111,11 @@ test("a throwing onChange subscriber does not block the others", () => {
 
 /* ---- palette accessors ------------------------------------------- */
 
-test("app / step palettes differ between the two themes", () => {
+test("the app palettes differ between the two themes", () => {
   Theme.setTheme("light");
   const lightFallback = Theme.appColors().fallback;
-  const lightStep = Theme.stepPalette();
   Theme.setTheme("dark");
   assert.notEqual(lightFallback, Theme.appColors().fallback);
-  assert.notDeepEqual(lightStep, Theme.stepPalette());
 });
 
 test("appColors returns the expected { map, palette, fallback } shape", () => {
@@ -126,15 +124,6 @@ test("appColors returns the expected { map, palette, fallback } shape", () => {
   assert.ok(c.map && typeof c.map === "object");
   assert.ok(Array.isArray(c.palette) && c.palette.length > 0);
   assert.equal(typeof c.fallback, "string");
-});
-
-test("bandAlphas is null on light and a stronger pair on dark", () => {
-  Theme.setTheme("light");
-  assert.equal(Theme.bandAlphas(), null);
-  Theme.setTheme("dark");
-  const ba = Theme.bandAlphas();
-  assert.equal(ba.tintAlpha, "33");
-  assert.equal(ba.borderAlpha, "77");
 });
 
 test("dfgStyleTokens carry the mirrored keys and differ between themes", () => {

@@ -2,26 +2,34 @@
 /*
  * Map e2e smoke: the Map level's one process map (BA-helper cycle).
  *
- * Launches the REAL viewer three times on re-normalized TEMP copies of the
+ * Launches the REAL viewer four times on re-normalized TEMP copies of the
  * demo and asserts:
  *   (a) the Map shows ONE diagram: the Flow diagram built from the runs'
  *       steps, a node per drafted step name (the node rule), time-weighted
- *       edges, and only its own controls (zoom, the rare-path slider, Fork,
- *       Reference maps): no notation tabs, level select, drill scope, file
+ *       edges with no number drawn on them, and only its own controls (fit,
+ *       the edit act, Edited maps): no zoom buttons or percentage, no
+ *       rare-path slider, no notation tabs, level select, drill scope, file
  *       status line, Advanced views drawer or BPMN view;
- *   (b) hovering an edge shows the traversal count (and hides on mouseout);
- *   (c) the rare-path slider thins the map, and "All paths" brings it back;
+ *   (b) hovering an edge says in words how often the runs took it and its
+ *       time (and hides on mouseout);
+ *   (c) every path is drawn: the map's edges are the runs' edges, the
+ *       exception branch included;
  *   (d) the map follows the steps live: a step taken out of its run's list
  *       (hidden) leaves the map, and comes back with it;
  *   (e) the reference-maps gallery is collapsed until asked for;
  *   (e2) the node rule on a renamed draft: renamed in Steps to a name the
  *       value rules would cut, the step stays ONE node across the runs (its
- *       name), never an extra node of the cut name;
+ *       name), never an extra node of the cut name, and its grouping label is
+ *       the name as typed (the pipeline's rule for a drafted step);
  *   (f) on a marker-STRIPPED copy the map is withheld: the lock message says
  *       why (no runs marked) with the mark-runs instruction, its button lands
- *       on Flow with the Markers panel, and Fork says why it makes no copy;
+ *       on Flow with the Markers panel, and the edit act says why it makes no
+ *       copy;
  *   (g) on a copy whose run check failed, the lock says the check could not
  *       run (never "not analyzed yet"), and so does the Overview;
+ *   (i) AD-18: a ONE-run copy (the demo cut after its first run) gets its
+ *       map, the edit act makes its As-Is map for the PDD, and the Overview's
+ *       As-Is stage shows done;
  *   (h) zero PAGE ERRORs across the launches.
  *
  * Screenshots land in this dir (gitignored): map-slim-default.png /
@@ -57,21 +65,26 @@ function resolvePython() {
   return ["python", "python3"];
 }
 
-function makeTempSession({ stripMarkers }) {
+/* ONE_RUN_END: the demo's first run ends before it (its End marker at
+   09:01:05 is the last event kept), so a copy cut there has one run. */
+const ONE_RUN_END = Date.parse("2026-05-14T09:01:05Z");
+function makeTempSession({ stripMarkers, oneRun }) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-mapslim-e2e-"));
   const srcEvents = fs.readFileSync(path.join(SRC_SESSION, "events.jsonl"), "utf-8");
   let events = srcEvents;
-  if (stripMarkers) {
+  if (stripMarkers || oneRun) {
     events = srcEvents.split(/\r?\n/).filter((line) => {
       const t = line.trim();
       if (!t) return false;
-      try { return JSON.parse(t).type !== "marker"; }
-      catch (_) { return true; }
+      let ev;
+      try { ev = JSON.parse(t); } catch (_) { return true; }
+      if (stripMarkers) return ev.type !== "marker";
+      return Date.parse(ev.timestamp) <= ONE_RUN_END;
     }).join("\n") + "\n";
   }
   fs.writeFileSync(path.join(tmp, "events.jsonl"), events);
   fs.copyFileSync(path.join(SRC_SESSION, "manifest.json"), path.join(tmp, "manifest.json"));
-  if (!stripMarkers && fs.existsSync(path.join(SRC_SESSION, "annotations.json"))) {
+  if (!stripMarkers && !oneRun && fs.existsSync(path.join(SRC_SESSION, "annotations.json"))) {
     fs.copyFileSync(path.join(SRC_SESSION, "annotations.json"), path.join(tmp, "annotations.json"));
   }
   return tmp;
@@ -136,8 +149,7 @@ const mapProbe = () => {
   return {
     drawn: true,
     nodes: cy.nodes().map((n) => n.id()).sort(),
-    edges: cy.edges().map((e) => ({ label: e.data("edgeLabel"), freq: e.data("freq"), totalMs: e.data("totalMs") })),
-    rare: (document.getElementById("session-hide-rare-lbl") || {}).textContent || null,
+    edges: cy.edges().map((e) => ({ label: e.style("label"), freq: e.data("freq"), totalMs: e.data("totalMs") })),
   };
 };
 
@@ -158,7 +170,8 @@ const lockProbe = () => {
   const SESSION_MARKED = makeTempSession({ stripMarkers: false });
   const SESSION_STRIPPED = makeTempSession({ stripMarkers: true });
   const SESSION_FAILED = makeTempSession({ stripMarkers: false });
-  if (!normalize(SESSION_MARKED) || !normalize(SESSION_STRIPPED) || !normalize(SESSION_FAILED)) {
+  const SESSION_ONE_RUN = makeTempSession({ oneRun: true });
+  if (!normalize(SESSION_MARKED) || !normalize(SESSION_STRIPPED) || !normalize(SESSION_FAILED) || !normalize(SESSION_ONE_RUN)) {
     record("re-normalize temp sessions (prerequisite)", false, "no deps-bearing Python");
     process.exit(1);
   }
@@ -188,26 +201,26 @@ const lockProbe = () => {
     const runs = RunsModel.buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
     const names = [...new Set(runs.flatMap((r) => r.visible).map((st) => st.name.trim()))].sort();
     const drafted = runs.flatMap((r) => r.visible).every((st) => !!st.draft_key);
-    const durationRe = /^(<1s|\d+s|\d+m( \d{2}s)?|\d+h \d{2}m)$/;
     return {
       drawn: m.drawn, nodes: m.nodes, names, drafted,
       nodesAreNames: m.drawn && JSON.stringify(m.nodes) === JSON.stringify(names),
-      timeLabels: m.drawn && m.edges.length > 0 && m.edges.every((e) => durationRe.test(String(e.label || ""))),
+      // P2.4: no number is drawn on an arrow (the tooltip carries them).
+      noArrowLabels: m.drawn && m.edges.length > 0 && m.edges.every((e) => !String(e.label || "").trim()),
       countsKept: m.drawn && m.edges.every((e) => typeof e.freq === "number" && e.freq >= 1),
       anyTime: m.drawn && m.edges.some((e) => (e.totalMs || 0) > 0),
       removed: document.querySelectorAll("#session-layout-map .panel-tab, #session-map-level, #session-map-scope, " +
         "#process-map-status, #map-expert-drawer, #session-map-bpmn-host, #btn-expert-activity-dfg, " +
-        "#btn-expert-activity-bpmn, #btn-expert-percase").length,
-      controls: ["btn-session-map-zoom-out", "btn-session-map-zoom-fit", "btn-session-map-zoom-in",
-        "session-rng-rare", "btn-fork-refmap", "btn-toggle-refmaps"].filter((id) => !document.getElementById(id)),
+        "#btn-expert-activity-bpmn, #btn-expert-percase, #btn-session-map-zoom-out, #btn-session-map-zoom-in, " +
+        "#session-map-zoom-pct, #session-rng-rare, #session-hide-rare-wrap").length,
+      controls: ["btn-session-map-zoom-fit", "btn-fork-refmap", "btn-toggle-refmaps"].filter((id) => !document.getElementById(id)),
       hosts: document.querySelectorAll("#session-layout-map .map-host .map-pane").length,
     };
   }, drawnMap).catch((e) => ({ err: e.message }));
-  record("(a) the Map shows one diagram: the Flow diagram of the runs' steps, a node per drafted step name, time-weighted edges",
-    !!(def && !def.err && def.drawn && def.drafted && def.nodesAreNames && def.timeLabels && def.countsKept && def.anyTime),
+  record("(a) the Map shows one diagram: the Flow diagram of the runs' steps, a node per drafted step name, time-weighted edges with no number drawn on them",
+    !!(def && !def.err && def.drawn && def.drafted && def.nodesAreNames && def.noArrowLabels && def.countsKept && def.anyTime),
     JSON.stringify(def && { nodes: def.nodes, nodesAreNames: def.nodesAreNames, drafted: def.drafted,
-      timeLabels: def.timeLabels, anyTime: def.anyTime, err: def.err }));
-  record("(a2) only the map's own controls: no notation tabs, level select, drill scope, file status line, Advanced views or BPMN view",
+      noArrowLabels: def.noArrowLabels, anyTime: def.anyTime, err: def.err }));
+  record("(a2) only the map's own controls (fit, the edit act, Edited maps): no zoom buttons or percentage, no rare-path slider, no notation tabs, level select, drill scope, file status line, Advanced views or BPMN view",
     !!(def && !def.err && def.removed === 0 && def.controls.length === 0 && def.hosts === 1),
     JSON.stringify(def && { removed: def.removed, missingControls: def.controls, hosts: def.hosts }));
   if (!(def && def.drawn)) await shot(page, "fail-map-slim-default.png");
@@ -223,37 +236,30 @@ const lockProbe = () => {
     const visible = el && el.style.display !== "none";
     cy.edges()[0].emit("mouseout");
     const hidden = el && el.style.display === "none";
-    return { ok: !!(visible && /× traversed/.test(text)), text, hidden };
+    return { ok: !!(visible && /^Taken \d+ times?\./.test(text) && /Start of one step to start of the next: /.test(text)), text, hidden };
   }).catch((e) => ({ ok: false, why: e.message }));
-  record("(b) edge tooltip shows the traversal count (and hides on mouseout)",
+  record("(b) the edge tooltip says how often the runs took it and its time, in words (and hides on mouseout)",
     !!(tip && tip.ok && tip.hidden), JSON.stringify(tip));
 
   await shot(page, "map-slim-default.png");
 
-  // (c) The rare-path slider: a cutoff above 1 hides the paths the runs took
-  // fewer times; "All paths" brings every edge back.
-  const setRare = (v) => page.evaluate((val) => {
-    const r = document.getElementById("session-rng-rare");
-    r.value = String(val);
-    r.dispatchEvent(new Event("input", { bubbles: true }));
-  }, v);
-  const rare = {};
-  try {
-    rare.all = await page.evaluate(mapProbe);
-    rare.max = await page.evaluate(() => Number((document.getElementById("session-rng-rare") || {}).max));
-    await setRare(rare.max);
-    await wait(700);
-    rare.thin = await page.evaluate(mapProbe);
-    await setRare(1);
-    await wait(700);
-    rare.back = await page.evaluate(mapProbe);
-  } catch (e) { rare.err = e.message; }
-  record("(c) the rare-path slider thins the map; 'All paths' brings every edge back",
-    !!(!rare.err && rare.max > 1 && rare.thin.drawn && rare.thin.edges.length < rare.all.edges.length &&
-      /hidden/.test(rare.thin.rare || "") && rare.back.edges.length === rare.all.edges.length &&
-      rare.back.rare === "All paths"),
-    JSON.stringify({ max: rare.max, all: rare.all && rare.all.edges.length, thin: rare.thin && rare.thin.edges.length,
-      thinLabel: rare.thin && rare.thin.rare, back: rare.back && rare.back.edges.length, err: rare.err }));
+  // (c) P2.3: every path is drawn. A map of 3 to 5 runs has no rare path to
+  // thin: a filter could only hide the exception branches the PDD needs (the
+  // demo's run 2 detour to Notepad).
+  const paths = await page.evaluate(() => {
+    const s = require("./state.js").getSession();
+    const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+    const want = require("./process-map-levels.js").buildAnnotationDfg(runs.map((r) => r.visible)).edges.length;
+    const cy = document.getElementById("session-map-dfg-host").__cy;
+    return {
+      drawn: cy ? cy.edges().length : null, want,
+      detour: !!(cy && cy.nodes().some((n) => /^Notepad/.test(n.id()))),
+      slider: !!document.getElementById("session-rng-rare"),
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("(c) every path is drawn: the map's edges are the runs' edges, the exception branch included, and no filter exists",
+    !!(paths && !paths.err && paths.want > 0 && paths.drawn === paths.want && paths.detour && !paths.slider),
+    JSON.stringify(paths));
 
   // (d) The map follows the step list live: the one step on "Notepad -
   // Internal mappings.txt" (run 2's detour) taken out of the list (hidden)
@@ -314,9 +320,10 @@ const lockProbe = () => {
     });
   } catch (e) { renamed.err = String(e.message).split("\n")[0]; }
   const rn = renamed.map || {};
-  record("(e2) node rule: a draft renamed to a name the value rules would cut stays one node (its name) across the runs",
+  record("(e2) node rule: a draft renamed to a name the value rules would cut stays one node (its name) across the runs, and its grouping label is the name as typed",
     !!(!renamed.err && rn.drawn && rn.nodes.includes(RENAMED) && !rn.nodes.includes("Salesforce") &&
-      !rn.nodes.includes("Salesforce - Account lookup: Search") && JSON.stringify(renamed.starts) === JSON.stringify([RENAMED])),
+      !rn.nodes.includes("Salesforce - Account lookup: Search") && JSON.stringify(renamed.starts) === JSON.stringify([RENAMED]) &&
+      Array.isArray(renamed.stamped) && renamed.stamped.length >= 4 && renamed.stamped.every((x) => x.endsWith(":" + RENAMED))),
     JSON.stringify({ stamped: renamed.stamped, nodes: rn.nodes, starts: renamed.starts, err: renamed.err }));
 
   await close();
@@ -340,7 +347,7 @@ const lockProbe = () => {
   if (!(locked && locked.cta)) await shot(page2, "fail-map-slim-locked.png");
   await shot(page2, "map-slim-locked.png");
 
-  // Fork on a withheld map makes no copy and says why.
+  // The edit act on a withheld map makes no copy and says why.
   await page2.click("#btn-fork-refmap").catch((e) => console.log("fork", e.message));
   await wait(700);
   const forkLocked = await page2.evaluate(() => ({
@@ -348,8 +355,8 @@ const lockProbe = () => {
     maps: ((require("./state.js").getSession().annotations || {}).reference_maps || []).length,
     editor: getComputedStyle(document.getElementById("refmap-editor-overlay")).display !== "none",
   })).catch((e) => ({ err: e.message }));
-  record("(f2) Fork on a withheld map makes no copy and says why",
-    !!(forkLocked && !forkLocked.err && /^Nothing to fork yet/.test(forkLocked.toast) && forkLocked.maps === 0 &&
+  record("(f2) the edit act on a withheld map makes no copy and says why",
+    !!(forkLocked && !forkLocked.err && /^No map to edit yet/.test(forkLocked.toast) && forkLocked.maps === 0 &&
       !forkLocked.editor), JSON.stringify(forkLocked));
 
   // The lock's call to action lands on Flow with the Markers panel showing.
@@ -388,6 +395,39 @@ const lockProbe = () => {
       /The run check could not run on this recording/.test(overviewSays)),
     JSON.stringify({ map: failed, overview: overviewSays.slice(0, 200) }));
   await close3();
+
+  // ================= Launch 4: a one-run copy (AD-18) ========================
+  let page4, close4;
+  try {
+    ({ page: page4, close: close4 } = await launch(SESSION_ONE_RUN, pageErrors));
+  } catch (e) {
+    console.error("FATAL: could not launch viewer (one run):", e && e.stack ? e.stack : e);
+    process.exit(2);
+  }
+  const one = {};
+  try {
+    one.runs = await page4.evaluate(() => ((require("./state.js").getSession().analysis || {}).case_quality || {}).case_count);
+    await openMapLevel(page4);
+    one.map = await page4.evaluate(lockProbe);
+    await page4.locator("#btn-fork-refmap").click({ timeout: 20000 });
+    await page4.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await wait(800);
+    one.copy = await page4.evaluate(() => {
+      const maps = ((require("./state.js").getSession().annotations || {}).reference_maps || []);
+      return maps.map((m) => ({ name: m.name, role: m.pdd_role }));
+    });
+    await page4.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
+    await page4.locator('.view-mode-btn[data-level="overview"]').click({ timeout: 20000 });
+    await wait(600);
+    one.stages = await page4.evaluate(() => [...document.querySelectorAll("#ov-next .ov-next-stage.done")].map((e) => e.dataset.stage));
+  } catch (e) { one.err = String(e.message).split("\n")[0]; }
+  await shot(page4, "map-slim-one-run.png");
+  record("(i) AD-18: a one-run recording gets its map, the edit act makes its As-Is map for the PDD, and the As-Is stage shows done",
+    !!(!one.err && one.runs === 1 && one.map && one.map.drawn && one.map.text === null &&
+      JSON.stringify(one.copy) === JSON.stringify([{ name: "As-Is map", role: "as_is" }]) &&
+      Array.isArray(one.stages) && one.stages.includes("runs") && one.stages.includes("map")),
+    JSON.stringify(one));
+  await close4();
 
   // (h) Zero page errors across the launches.
   record("(h) zero PAGE ERRORs", pageErrors.length === 0,

@@ -4,12 +4,11 @@
  * Owns session load + analyze (loadSessionIntoView / openSessionFlow /
  * the normalize buttons), the Flow timeline and every lane, the minimap,
  * range selection, the video <-> timeline sync, the event table, the
- * annotations / screenshots / markers side panel (incl. the screenshot
- * gallery and marker CRUD), and case scope. The module wires its own
- * controls at require() time (the DOM is already parsed when renderer.js
- * pulls this in). Cross-surface glue that stays in the entry
- * (renderShortcutsOverlay, rerenderActiveLevel, addStepAtTimestamp) is
- * injected by renderer.js via initFlowView().
+ * screenshots / markers side panel (incl. the screenshot gallery and marker
+ * CRUD), and case scope. The module wires its own controls at require()
+ * time (the DOM is already parsed when renderer.js pulls this in).
+ * Cross-surface glue that stays in the entry (rerenderActiveLevel,
+ * addStepAtTimestamp) is injected by renderer.js via initFlowView().
  */
 
 "use strict";
@@ -18,7 +17,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast, placeMenu } = require("../dom.js");
+const { $, $$, escapeHtml, formatDuration, toast, placeMenu } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const MarkerEdits = require("../marker-edits.js");
@@ -46,7 +45,6 @@ const Transcript = require("./flow-view-transcript.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
-let renderShortcutsOverlay = () => {};
 let rerenderActiveLevel = () => {};
 let addStepAtTimestamp = async () => {};
 
@@ -81,7 +79,8 @@ function getSpan() {
 function deriveCases(session) {
   if (!session) return [];
   const steps = (session.annotations && session.annotations.steps) || [];
-  const markers = (session.events || []).filter(e => e.type === "marker");
+  // The markers the last analysis used (renames applied), in time order.
+  const markers = MarkerEdits.appliedMarkerEvents(MarkerEdits.sessionMarkerView(session));
 
   const byCase = new Map();
   for (const s of steps) {
@@ -97,21 +96,15 @@ function deriveCases(session) {
     }
   }
 
-  // Best-effort marker-label enrichment: match a case whose range
-  // begins within 5s of a start-marker, adopt the marker's label.
-  const stack = [];
+  // Best-effort marker-label enrichment: match a case whose range begins
+  // within 5s of a start marker, adopt the marker's label. Runs never nest
+  // (the pipeline's rule, case_assignment.py): every Start opens a run, ended
+  // by its End or by the next Start, so each Start names its own run.
   for (const ev of markers) {
+    if (ev.data.marker_type !== "start" || !ev.data.label) continue;
     const t = new Date(ev.timestamp).getTime();
-    if (ev.data.marker_type === "start") {
-      stack.push({ label: ev.data.label, startMs: t });
-    } else if (ev.data.marker_type === "end" && stack.length) {
-      const opened = stack.pop();
-      if (!opened.label) continue;
-      for (const c of byCase.values()) {
-        if (Math.abs(c.startMs - opened.startMs) < 5000) {
-          c.label = opened.label;
-        }
-      }
+    for (const c of byCase.values()) {
+      if (Math.abs(c.startMs - t) < 5000) c.label = ev.data.label;
     }
   }
 
@@ -138,34 +131,6 @@ function populateCaseScope() {
   if (wrap) wrap.classList.toggle("scoped", !!State.getCaseScope());
 }
 
-/* P2.8: scope-to-marker-at-playhead. Finds the innermost case whose
-   range contains the current video time and selects it as the scope.
-   Falls back to a toast if there's no video / no marker at playhead. */
-function scopeToMarkerAtPlayhead() {
-  if (!State.getSession()) return;
-  const video = document.getElementById("video");
-  const startTs = videoStartTs();
-  if (!video || !startTs) {
-    toast("No video to anchor to playhead.", "error");
-    return;
-  }
-  const playheadMs = new Date(startTs).getTime() + video.currentTime * 1000;
-  const cases = deriveCases(State.getSession());
-  // Innermost case: smallest range containing playheadMs.
-  let best = null;
-  let bestSize = Infinity;
-  for (const c of cases) {
-    if (playheadMs < c.startMs || playheadMs > c.endMs) continue;
-    const size = c.endMs - c.startMs;
-    if (size < bestSize) { best = c; bestSize = size; }
-  }
-  if (!best) { toast("No case at the current playhead.", ""); return; }
-  State.setCaseScope(best.id);
-  populateCaseScope();
-  rerenderActiveLevel();
-  toast("Scoped to: " + (best.label || best.id), "success");
-}
-
 (function wireCaseScope() {
   const sel = document.getElementById("case-scope-select");
   if (!sel) return;
@@ -176,11 +141,9 @@ function scopeToMarkerAtPlayhead() {
     // Re-render whatever's currently on screen
     rerenderActiveLevel();
   });
-  const btn = document.getElementById("btn-scope-to-playhead");
-  if (btn) btn.addEventListener("click", scopeToMarkerAtPlayhead);
 })();
 
-/* The markers side-panel + its filter box and marker-edit resolution live in
+/* The markers side-panel and the marker-edit resolution live in
    flow-view-markers.js (god-file split). effectiveLabel and renderMarkersList
    are destructured at the top here; the marker-INSERT surfaces stay below. */
 
@@ -198,18 +161,18 @@ $("#btn-open-session").addEventListener("click", openSessionFlow);
 /* Wire normalize button so the analysis-in-progress UI is visible:
    log host expands (already open by default in the HTML), Cancel
    button shows while running. Cancellation flows through
-   viewer:cancelNormalize which kills the python child. */
-function setAnalysisRunning(running) {
+   viewer:cancelNormalize which kills the python child. `quiet`: an analysis
+   another act runs for the analyst (the Map's edit act, whose button is busy
+   meanwhile) leaves the log closed unless it fails. */
+function showAnalysisLog() {
+  const logHost = $("#log-host");
+  if (logHost) { logHost.style.display = ""; logHost.open = true; }
+}
+function setAnalysisRunning(running, quiet) {
   $("#btn-normalize").disabled = running;
   const cancelBtn = $("#btn-cancel-normalize");
   if (cancelBtn) cancelBtn.style.display = running ? "" : "none";
-  const logHost = $("#log-host");
-  if (logHost) {
-    if (running) {
-      logHost.style.display = "";
-      logHost.open = true;
-    }
-  }
+  if (running && !quiet) showAnalysisLog();
 }
 
 const btnCancelNormalize = $("#btn-cancel-normalize");
@@ -222,53 +185,62 @@ if (btnCancelNormalize) {
   });
 }
 
-/* Analyze: re-run normalization for the loaded session and reload it. The
+/* Analyze: re-run normalization for the loaded session (always writing the
+   process map's BPMN file, the file the Map's edit act copies) and reload it.
+   Resolves true when the analysis ran and the session was reloaded. The
    Analyze button and the pending-marker-changes call to action (item 6,
-   renderSessionPills) both run this. */
-async function runAnalyze() {
-  if (!State.getSession()) return;
-  /* H7: a re-analysis regenerates auto-detected steps and clears the
-     undo stack. Warn before that happens -- but only when the session
-     already has steps, so a first-ever Analyze runs straight through. */
-  const _steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
-  if (_steps.length) {
-    const _auto = _steps.filter((s) =>
-      s.state === "auto_suggested" || s.state === "auto_matched").length;
-    const _kept = _steps.length - _auto;
-    const ok = await confirmModal({
-      title: "Re-analyze this session?",
-      message: `Re-analyzing regenerates the ${_auto} auto-detected step(s) and clears the undo history.`,
-      detail: _kept
-        ? `Your ${_kept} confirmed step(s) are kept.`
-        : "There are no confirmed steps to keep.",
-      okLabel: "Re-analyze",
-    });
-    if (!ok) return;
+   renderSessionPills) run it through runAnalyze, which asks first; the Map's
+   edit act runs it directly and quietly, as one act with the copy (AD-19).
+   opts = { confirm, quiet }. */
+async function analyzeSession(opts) {
+  if (!State.getSession()) return false;
+  if (opts && opts.confirm) {
+    /* H7: a re-analysis regenerates auto-detected steps and clears the
+       undo stack. Warn before that happens, but only when the session
+       already has steps, so a first-ever Analyze runs straight through. */
+    const _steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
+    if (_steps.length) {
+      const _auto = _steps.filter((s) =>
+        s.state === "auto_suggested" || s.state === "auto_matched").length;
+      const _kept = _steps.length - _auto;
+      const ok = await confirmModal({
+        title: "Re-analyze this session?",
+        message: `Re-analyzing regenerates the ${_auto} auto-detected step(s) and clears the undo history.`,
+        detail: _kept
+          ? `Your ${_kept} confirmed step(s) are kept.`
+          : "There are no confirmed steps to keep.",
+        okLabel: "Re-analyze",
+      });
+      if (!ok) return false;
+    }
   }
-  const mine = $("#cb-mine").checked;
-  setAnalysisRunning(true);
+  const quiet = !!(opts && opts.quiet);
+  setAnalysisRunning(true, quiet);
   $("#normalize-log").textContent = "";
   const r = await Ipc.runNormalizeExtended({
     sessionFolder: State.getSession().sessionFolder,
-    mine,
+    mine: true,
   });
   setAnalysisRunning(false);
   if (r.cancelled) {
     $("#normalize-log").textContent += "\n[cancelled by user]";
     toast("Analysis cancelled");
-    return;
+    return false;
   }
   if (!r.ok) {
     // r.error is the full sentence from main.js: for a failed normalize run
     // it carries the pipeline's "[normalize] ERROR:" line (C13 exit code 2:
     // annotations.json unreadable, nothing written).
     $("#normalize-log").textContent += "\nERROR: " + r.error;
+    if (quiet) showAnalysisLog();
     toast(r.error, "error");
-    return;
+    return false;
   }
   toast("Analysis complete", "success");
   await loadSessionIntoView(State.getSession().sessionFolder);
+  return true;
 }
+function runAnalyze() { return analyzeSession({ confirm: true }); }
 $("#btn-normalize").addEventListener("click", runAnalyze);
 
 Ipc.onNormalizeLog((text) => {
@@ -336,6 +308,7 @@ async function loadSessionIntoView(folder) {
     if (workspace) workspace.classList.add("no-recording");
     if (pane) pane.classList.add("no-recording");
   }
+  syncVideoControls();
   // The #video timeupdate/loadedmetadata listeners are wired ONCE at module
   // init (see wireVideoListeners below) -- adding them here ran on every
   // session load and leaked a fresh loadedmetadata arrow each time.
@@ -343,7 +316,6 @@ async function loadSessionIntoView(folder) {
 
   renderTimeline();
   renderEventTable();
-  renderAnnotations();
   renderScreenshots();
   renderMarkersList();
   renderTimelineSummary();
@@ -371,8 +343,17 @@ async function loadSessionIntoView(folder) {
   // P1.1: clear any range selection from the previous session.
   if (prevFolder !== folder) clearSelectionRange();
   installRangeSelection();
-  // P2.4: shortcuts overlay updates with session state.
-  renderShortcutsOverlay();
+}
+
+/* The controls that act on the video show only while one is linked: the
+   Flow toolbar's + Step (a step at the playhead) and the More menu's Sync
+   video. Without a video they could only answer with an error. */
+function syncVideoControls() {
+  const hasVideo = !!(State.getSession() && State.getSession().recordingAvailable);
+  for (const id of ["btn-add-step", "btn-sync-video"]) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = !hasVideo;
+  }
 }
 
 /* RP-04: an annotations.json that exists but cannot be read is an error the
@@ -429,11 +410,6 @@ function renderSessionPills() {
     if (cta) cta.addEventListener("click", () => runAnalyze());
   }
 
-  // Show onboarding card until the session is analyzed.
-  const onboarding = $("#onboarding-card");
-  if (onboarding) {
-    onboarding.style.display = State.getSession().stats ? "none" : "";
-  }
 }
 
 /* Queue a marker deletion into annotations.json.marker_edits. Mirrors
@@ -614,7 +590,7 @@ function renderSelectionStats() {
     '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
     (topApps ? '<div class="row"><span>Top apps</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
-    '<button class="summary-fix" id="tl-selection-case">Insert case from selection</button>' +
+    '<button class="summary-fix" id="tl-selection-case">Insert run from selection</button>' +
     '<button class="summary-fix" id="tl-selection-exclude" title="Skip the events in this range during step suggestion and statistics on the next analysis.">Exclude from analysis</button>' +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
@@ -726,7 +702,7 @@ async function queueSyntheticMarker(ts, markerType) {
     label = await promptModal({
       title: "Insert Start marker",
       message: "Label for the new Start marker",
-      detail: "It shows at once as pending, and applies to the cases when you analyze the session.",
+      detail: "It shows at once as pending, and applies to the runs when you analyze the session.",
       placeholder: "For example: Send email",
       okLabel: "Insert",
     });
@@ -754,7 +730,7 @@ async function queueSyntheticMarker(ts, markerType) {
   return true;
 }
 
-/* G4: turn the current timeline range selection into a case — queue a
+/* G4: turn the current timeline range selection into a run: queue a
    synthetic Start at the range start and an End at the range end, in one
    save so undo reverts the pair. Applied on the next normalization run.
    Lets the analyst bracket process instances in an 8-hour passive
@@ -763,11 +739,11 @@ async function queueCaseFromSelection() {
   const range = State.getSelectionRange();
   if (!range || !State.getSession()) return;
   let label = await promptModal({
-    title: "Insert case from selection",
-    message: "Label for the new case",
-    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the cases when you analyze the session.",
+    title: "Insert run from selection",
+    message: "Label for the new run",
+    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the runs when you analyze the session.",
     placeholder: "For example: Order entry",
-    okLabel: "Insert case",
+    okLabel: "Insert run",
   });
   if (label === null) return;     // cancelled
   label = (label || "").trim() || null;
@@ -794,12 +770,12 @@ async function queueCaseFromSelection() {
     ts: editedAt,
   });
   try {
-    await persistAnnotations(a, "insert case from selection", ["markers", "timeline"]);
+    await persistAnnotations(a, "insert run from selection", ["markers", "timeline"]);
   } catch (_) {
     return;   // already shown to the analyst by session.js
   }
   activateAnnoTab("markers");
-  toast("Case markers added (pending): analyze the session to apply them.", "success");
+  toast("Run markers added (pending): analyze the session to apply them.", "success");
 }
 
 /* H6: mark the current timeline range as excluded from analysis. The
@@ -827,7 +803,7 @@ async function queueExcludeRange() {
   try {
     await saveAnnotationsWithUndo(a, "exclude range from analysis");
     State.getSession().annotations = a;
-    toast("Range excluded: re-run normalization to apply", "success");
+    toast("Range excluded: analyze the session to apply it.", "success");
     clearSelectionRange();
   } catch (err) {
     toast("Failed to save annotation: " + (err && err.message), "error");
@@ -838,7 +814,7 @@ async function queueExcludeRange() {
    helpers (layoutCaseLanes / isUserActivityEvent / monitorBadgeFor), and
    the minimap all live in flow-view-timeline.js (god-file split). */
 
-/* Right-click on a case band: offer scope + jump actions. Uses the
+/* Right-click on a run band: offer scope + jump actions. Uses the
    same context-menu construction pattern as showMarkerInsertMenu. */
 function showCaseContextMenu(x, y, c) {
   const prior = document.getElementById("tl-ctx-menu");
@@ -859,7 +835,7 @@ function showCaseContextMenu(x, y, c) {
     item.addEventListener("click", () => { menu.remove(); handler(); });
     menu.appendChild(item);
   }
-  addItem("Scope view to this case", () => {
+  addItem("Scope view to this run", () => {
     /* Find the case by start timestamp -- the case scope dropdown
        keys cases by case_id derived from normalization, but visually
        we map by startMs which is stable. */
@@ -872,7 +848,7 @@ function showCaseContextMenu(x, y, c) {
       else { renderTimeline(); }
       toast(`Scoped to: ${match.label || match.id}`);
     } else {
-      toast("Case not found in normalized output -- run Analyze first", "error");
+      toast("This run has no steps yet: analyze the session first.", "error");
     }
   });
   addItem("Jump to start", () => seekToTimestamp(new Date(c.startMs).toISOString()));
@@ -1020,31 +996,21 @@ $("#cb-show-marker").addEventListener("change", () => renderEventTable());
 $("#cb-show-system").addEventListener("change", () => renderEventTable());
 if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("change", () => renderEventTable());
 
-/* NAV-AUDIT §D13/§I: the Raw events drawer is shared chrome below the active
-   session layout. On Flow, opening it shifts its OWN summary −24px because the
-   growable layout above (.session-layout's .lower-workspace, flex:1) shrinks to
-   make room instead of the page growing. Same cure as the map Advanced-views
-   drawer: on open, freeze the visible layout's height so the drawer content
+/* NAV-AUDIT §D13/§I: the Raw events drawer sits below the Flow layout (P2.10:
+   it shows on Flow only, renderer.js applyLevel). Opening it shifted its OWN
+   summary up by 24 px because the growable layout above (.session-layout's
+   .lower-workspace, flex:1) shrank to make room instead of the page growing.
+   The cure: on open, freeze the Flow layout's height so the drawer content
    grows the page (the Session view's overflow:auto scrolls) and the toggle
-   stays put; release on close so tall monitors still fill. Steps already
-   measured 0 (its layout has no growable sibling to steal from), and the freeze
-   is a no-op there.
+   stays put; release on close so tall monitors still fill.
 
    CI-3: the freeze is a flex BASIS (flex: 0 0 <closed height>), never a fixed
-   `height`. A fixed height also froze the layout against its OWN later growth:
-   with the drawer open, opening the Map's reference-map gallery (or its
-   Advanced views drawer) squeezed the gallery to a sliver and let its Edit
-   buttons spill under this drawer's summary, which then took their clicks. A
-   basis keeps the closed height as the starting size, and the layouts'
-   automatic minimum size (they deliberately have no min-height:0, see
-   styles.css) still grows them to fit new content, pushing this drawer down.
-   The Overview layout scrolls internally (min-height:0), so it stays at the
-   basis exactly, as before. */
+   `height`, so the layout still grows to fit new content (its automatic
+   minimum size: it deliberately has no min-height:0, see styles.css). */
 (function wireRawEventsLocality() {
   const drawer = document.querySelector(".event-table-host");
   if (!drawer) return;
-  const layoutSel = "#session-layout-flow, #session-layout-overview, " +
-    "#session-layout-map, #session-layout-steps";
+  const layoutSel = "#session-layout-flow";
   let _frozen = null;
   let _snap = null;   // { el, h } captured BEFORE the drawer expands
   const snap = () => {
@@ -1071,47 +1037,7 @@ if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("chang
   });
 })();
 
-/* ============ Annotations / screenshots / markers ================= */
-
-function renderAnnotations() {
-  const host = $("#annotations-list");
-  host.innerHTML = "";
-  const notes = (State.getSession().annotations && State.getSession().annotations.notes) || [];
-  if (!notes.length) {
-    host.innerHTML = '<p class="hint">No annotations yet. Anchor a note to the current playback time below.</p>';
-    return;
-  }
-  for (const n of notes.slice().reverse()) {
-    const row = document.createElement("div");
-    row.className = "anno-row";
-    row.innerHTML = '<span class="ts">' + escapeHtml(n.timestamp.slice(11, 19)) + '</span>' +
-                    '<span class="text">' + escapeHtml(n.text) + '</span>';
-    row.addEventListener("click", () => seekToTimestamp(n.timestamp));
-    host.appendChild(row);
-  }
-}
-
-$("#btn-save-note").addEventListener("click", async () => {
-  if (!State.getSession()) return;
-  const note = $("#anno-note").value.trim();
-  if (!note) return;
-  const video = $("#video");
-  const videoTs = videoTimeToSessionTs(video.currentTime) || new Date().toISOString();
-  const anno = State.getSession().annotations || { notes: [] };
-  anno.notes = anno.notes || [];
-  anno.notes.push({
-    id: cryptoRandomId(),
-    type: "note",
-    timestamp: videoTs,
-    video_offset_s: video.currentTime || 0,
-    text: note,
-  });
-  await saveAnnotationsWithUndo(anno, "add note");
-  State.getSession().annotations = anno;
-  $("#anno-note").value = "";
-  renderAnnotations();
-  toast("Note saved", "success");
-});
+/* ============ Screenshots / markers ================================ */
 
 /* renderScreenshots / the screenshot gallery / openScreenshot live in
    flow-view-screenshots.js (god-file split);
@@ -1121,20 +1047,19 @@ $("#btn-save-note").addEventListener("click", async () => {
    renderMarkersList, and the per-marker adjust / delete /
    rename actions live in flow-view-markers.js (god-file split). */
 
-/* deps = { renderShortcutsOverlay, rerenderActiveLevel, addStepAtTimestamp }
-   -- cross-surface glue kept in renderer.js. Call once at boot. */
+/* deps = { rerenderActiveLevel, addStepAtTimestamp }: the cross-surface
+   glue kept in renderer.js. Call once at boot. */
 function initFlowView(deps) {
-  renderShortcutsOverlay = deps.renderShortcutsOverlay || (() => {});
   rerenderActiveLevel    = deps.rerenderActiveLevel    || (() => {});
   addStepAtTimestamp     = deps.addStepAtTimestamp     || (async () => {});
   // Hand the video module the session (re)loader it calls after a re-sync,
   // injected rather than require()d to avoid a flow-view <-> video cycle.
   Video.initVideo({ loadSessionIntoView });
   // Hand the timeline module the flow-view-resident glue its lanes call
-  // (case-scope dimming + the two context menus + the notes-tab switch),
-  // injected to keep the timeline <-> flow-view graph acyclic.
+  // (case-scope dimming + the two context menus), injected to keep the
+  // timeline <-> flow-view graph acyclic.
   Timeline.initTimeline({
-    currentScopeRange, showMarkerInsertMenu, showCaseContextMenu, activateAnnoTab,
+    currentScopeRange, showMarkerInsertMenu, showCaseContextMenu,
   });
   // The transcript's menu actions reload the session; its sync redraws the lane.
   Transcript.initTranscript({ loadSessionIntoView, renderTimeline });
@@ -1143,7 +1068,7 @@ function initFlowView(deps) {
 module.exports = {
   initFlowView,
   loadSessionIntoView, renderTimeline, renderMarkersList,
-  renderAnnotations, renderSessionPills,
+  renderSessionPills, analyzeSession,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // The Overview's marker-problem fixes (overview-view.js).

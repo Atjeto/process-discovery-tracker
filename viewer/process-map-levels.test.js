@@ -10,7 +10,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
-  buildAnnotationDfg, mapNodeLabel, dropRareEdges, processLabel,
+  buildAnnotationDfg, mapNodeLabel, processLabel,
   resolveStepGrainKeys, screenType,
 } = require("./process-map-levels.js");
 
@@ -118,22 +118,6 @@ test("§B2: a missing timestamp contributes 0 to total_ms, never a guess", () =>
   const edge = buildAnnotationDfg([steps]).edges[0];
   assert.equal(edge.frequency, 1);
   assert.equal(edge.total_ms, 0);
-});
-
-test("§B2: dropRareEdges preserves the time weight on surviving edges", () => {
-  const dfg = {
-    edges: [
-      { source: "A", target: "B", frequency: 5, total_ms: 60000 },
-      { source: "B", target: "C", frequency: 4, total_ms: 40000 },
-      { source: "B", target: "X", frequency: 1, total_ms: 500 },
-    ],
-    start_activities: { A: 5 },
-    end_activities: { C: 4, X: 1 },
-  };
-  const r = dropRareEdges(dfg, 2);
-  assert.equal(r.hidden, 1);
-  for (const e of r.dfg.edges) assert.equal(typeof e.total_ms, "number");
-  assert.equal(r.dfg.edges.find((e) => e.target === "B").total_ms, 60000);
 });
 
 test("hidden steps are excluded", () => {
@@ -272,91 +256,3 @@ test("resolveStepGrainKeys mirrors the Python rules (typed field wins over nav)"
   assert.equal(k.app, "OUTLOOK");
 });
 
-/* ---- The rare-path slider ------------------------------------------------ */
-
-test("dropRareEdges hides one-off paths but keeps the dominant flow", () => {
-  const dfg = {
-    edges: [
-      { source: "A", target: "B", frequency: 5 },
-      { source: "B", target: "C", frequency: 4 },
-      { source: "B", target: "X", frequency: 1 },   // one-off deviation
-    ],
-    start_activities: { A: 5 },
-    end_activities: { C: 4, X: 1 },
-  };
-  const r = dropRareEdges(dfg);
-  assert.equal(r.hidden, 1);
-  assert.equal(r.dfg.edges.length, 2);
-  assert.ok(!r.dfg.edges.some((e) => e.target === "X"));
-  // X lost its only edge, so it drops out of the end markers too.
-  assert.deepEqual(r.dfg.end_activities, { C: 4 });
-});
-
-test("dropRareEdges is a no-op when every edge is a singleton (no spread)", () => {
-  const dfg = {
-    edges: [
-      { source: "A", target: "B", frequency: 1 },
-      { source: "B", target: "C", frequency: 1 },
-      { source: "C", target: "D", frequency: 1 },
-    ],
-    start_activities: { A: 1 },
-    end_activities: { D: 1 },
-  };
-  const r = dropRareEdges(dfg);
-  assert.equal(r.hidden, 0);
-  assert.equal(r.dfg.edges.length, 3);   // never blank the map
-});
-
-test("dropRareEdges cutoff: minFreq=3 keeps only edges seen >= 3 times", () => {
-  const dfg = {
-    edges: [
-      { source: "A", target: "B", frequency: 5 },
-      { source: "B", target: "C", frequency: 3 },
-      { source: "B", target: "X", frequency: 2 },
-      { source: "X", target: "Y", frequency: 1 },
-    ],
-    start_activities: { A: 5 },
-    end_activities: { C: 3, Y: 1 },
-  };
-  const r = dropRareEdges(dfg, 3);
-  assert.equal(r.cutoff, 3);
-  assert.equal(r.maxFreq, 5);
-  assert.equal(r.hidden, 2);                            // the freq-2 and freq-1 edges
-  assert.deepEqual(r.dfg.edges.map((e) => e.target).sort(), ["B", "C"]);
-  assert.deepEqual(r.dfg.end_activities, { C: 3 });     // Y dropped with its edge
-});
-
-test("dropRareEdges cutoff: minFreq=1 shows every path (no-op)", () => {
-  const dfg = {
-    edges: [
-      { source: "A", target: "B", frequency: 5 },
-      { source: "B", target: "C", frequency: 1 },
-      { source: "B", target: "X", frequency: 1 },
-    ],
-    start_activities: { A: 5 },
-    end_activities: { C: 1, X: 1 },
-  };
-  const r = dropRareEdges(dfg, 1);
-  assert.equal(r.hidden, 0);
-  assert.equal(r.cutoff, 1);
-  assert.equal(r.dfg.edges.length, 3);
-});
-
-test("dropRareEdges cutoff is clamped so the map is never blanked", () => {
-  const dfg = {
-    edges: [
-      { source: "A", target: "B", frequency: 3 },
-      { source: "B", target: "C", frequency: 2 },
-      { source: "B", target: "X", frequency: 1 },
-    ],
-    start_activities: { A: 3 },
-    end_activities: { C: 2, X: 1 },
-  };
-  // A cutoff above the busiest edge clamps to maxFreq (3), keeping just A->B.
-  const r = dropRareEdges(dfg, 99);
-  assert.equal(r.cutoff, 3);
-  assert.equal(r.maxFreq, 3);
-  assert.equal(r.dfg.edges.length, 1);
-  assert.equal(r.dfg.edges[0].source, "A");
-  assert.equal(r.dfg.edges[0].target, "B");
-});

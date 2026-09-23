@@ -95,9 +95,14 @@ test("the map lock names the missing runs and offers the mark-runs verb; unlocke
   const noRuns = mapLockHtml({ case_quality: { mode: "unsegmented", case_count: 0, coverage: 0, tier2_unlocked: false } });
   assert.ok(noRuns.includes(NO_RUNS_MARKED));
   assert.ok(noRuns.includes('data-map-cta="mark-runs"'), "the lock carries the mark-runs button");
-  const one = mapLockHtml({ case_quality: { mode: "markers", case_count: 1, coverage: 1, tier2_unlocked: false } });
-  assert.ok(one.includes("Only one run is marked"), one);
-  const thin = mapLockHtml({ case_quality: { mode: "markers", case_count: 3, coverage: 0.5, tier2_unlocked: false } });
-  assert.ok(thin.includes("cover only 50% of the recording"), thin);
   assert.equal(mapLockHtml({ case_quality: CQ }), null);
+});
+
+test("AD-18: one marked run is enough for the map, and so is any coverage", () => {
+  assert.equal(mapLockHtml({ case_quality: { mode: "markers", case_count: 1, coverage: 1, tier2_unlocked: false } }), null,
+    "a one-run recording gets its map");
+  assert.equal(mapLockHtml({ case_quality: { mode: "markers", case_count: 3, coverage: 0.5, tier2_unlocked: false } }), null,
+    "runs that cover half the recording still draw");
+  assert.ok(mapLockHtml({ case_quality: { mode: "markers", case_count: 0, coverage: 0, tier2_unlocked: false } })
+    .includes(NO_RUNS_MARKED), "no run counted is still no runs marked");
 });

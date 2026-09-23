@@ -27,7 +27,7 @@ const { promptModal } = require("./modals.js");
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead, analyzeSession } = require("./views/flow-view.js");
 const { renderOverviewLevel, openMarkersInFlow, mapLockHtml } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg } = require("./process-map-levels.js");
@@ -39,9 +39,8 @@ const { pddExportOutcome } = require("./normalize-result.js");
 
 /* Cross-surface glue that stays in this entry is injected into the
    Flow module as lazy wrappers so hoisting / load order does not
-   matter (renderShortcutsOverlay etc. are declared further down). */
+   matter (rerenderActiveLevel etc. are declared further down). */
 initFlowView({
-  renderShortcutsOverlay: () => renderShortcutsOverlay(),
   rerenderActiveLevel:    () => rerenderActiveLevel(),
   addStepAtTimestamp:     (ts) => addStepAtTimestamp(ts),
 });
@@ -49,7 +48,6 @@ initFlowView({
 /* ============ Session / undo layer -- see session.js ============== */
 
 initSession({
-  renderAnnotations: () => renderAnnotations(),
   renderSessionPills: () => renderSessionPills(),
 });
 
@@ -79,17 +77,10 @@ $$(".view-mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => selectLevel(btn.dataset.level));
 });
 
-/* P2.3: viewport state transfer on mode switch. Each mode owns its own
-   scroll container (the Flow timeline, the Steps mini-timeline). When
-   the analyst flips views we snapshot the outgoing mode's zoom + scroll
-   fraction and apply them to the incoming mode -- "stayed at the same
-   zoom + position" feel without forcing the modes to share a single DOM
-   scroll container. */
-/* P2.3 viewport transfer: each mode owns its own scroll container and
-   zoom variable. MODE_VIEWPORT pairs them so snapshot/apply is one
-   code path instead of copy-pasted `if (mode === ...)` arms.
-   (Zoom still reads/writes the renderer-local vars; they move into the
-   state module in a later step.) */
+/* P2.3: viewport state transfer on mode switch. The Flow timeline owns
+   a scroll container and a zoom; the other levels ride the same path with
+   no-op zoom accessors. MODE_VIEWPORT pairs them so snapshot/apply is one
+   code path instead of copy-pasted `if (mode === ...)` arms. */
 const MODE_VIEWPORT = {
   // Lab-phase §A5: the Overview has no timeline / zoom of its own; the
   // no-op zoom accessors let it ride the viewport-transfer path harmlessly
@@ -105,9 +96,12 @@ const MODE_VIEWPORT = {
     getZoom: State.getZoomFactor, setZoom: State.setZoomFactor,
     render: renderTimeline,
   },
+  // The Steps level has no timeline of its own: while the analyst is on it,
+  // it holds the Flow timeline's zoom and scroll, so a return to Flow lands
+  // where the analyst left it (as the removed Steps strip used to).
   steps: {
-    scrollSel: "#session-layout-steps .mini-timeline-scroll",
-    getZoom: State.getStepZoom, setZoom: State.setStepZoom,
+    getZoom: () => _stepsViewport.zoom, setZoom: (z) => { _stepsViewport.zoom = z; },
+    getScrollFrac: () => _stepsViewport.scrollFrac, setScrollFrac: (f) => { _stepsViewport.scrollFrac = f; },
     render: renderStepsLevel,
   },
   // v0.18.1: the Map level also has no timeline / scroll / zoom of its own
@@ -122,13 +116,18 @@ const MODE_VIEWPORT = {
     render: renderMapLevel,
   },
 };
+const _stepsViewport = { zoom: 1, scrollFrac: 0 };
 function _viewportSnapshotForMode(mode) {
   const m = MODE_VIEWPORT[mode];
   if (!m) return { zoom: 1, scrollFrac: 0 };
   let scrollFrac = 0;
-  const el = document.querySelector(m.scrollSel);
-  if (el && el.scrollWidth > el.clientWidth) {
-    scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
+  if (m.getScrollFrac) {
+    scrollFrac = m.getScrollFrac();
+  } else {
+    const el = document.querySelector(m.scrollSel);
+    if (el && el.scrollWidth > el.clientWidth) {
+      scrollFrac = el.scrollLeft / (el.scrollWidth - el.clientWidth);
+    }
   }
   return { zoom: Math.max(1, m.getZoom() || 1), scrollFrac: Math.max(0, Math.min(1, scrollFrac || 0)) };
 }
@@ -139,6 +138,7 @@ function _viewportApplyToMode(mode, snap) {
   if (!m) return;
   m.setZoom(snap.zoom);
   m.render();
+  if (m.setScrollFrac) { m.setScrollFrac(snap.scrollFrac); return; }
   requestAnimationFrame(() => {
     const el = document.querySelector(m.scrollSel);
     if (el) el.scrollLeft = snap.scrollFrac * Math.max(0, el.scrollWidth - el.clientWidth);
@@ -150,8 +150,7 @@ function _viewportApplyToMode(mode, snap) {
 /* The Map level shows the one process map: a Flow diagram built from the
    runs' steps (process-map-levels.buildAnnotationDfg), bound to the loaded
    session through map-controller.js. Created on first render so its lookups
-   land after the DOM is ready; the rare-path cutoff lives in the controller
-   and persists across session switches. */
+   land after the DOM is ready. */
 let _sessionMapCtrl = null;
 
 /* The step-level BPMN the pipeline writes with --mine: the source Fork copies
@@ -173,8 +172,8 @@ function _sessionMapData() {
   const runs = RunsModel.buildRuns(sess.stats, (sess.annotations && sess.annotations.steps) || []).runs;
   return {
     dfg: buildAnnotationDfg(runs.map((r) => r.visible)),
-    // §B2: the map is TIME-weighted: edge thickness and labels carry the
-    // time that flowed along each path; the traversal count stays in the tooltip.
+    // §B2: the map is TIME-weighted: edge thickness carries the time that
+    // flowed along each path; the times and the count are in the tooltip.
     edgeWeight: "time",
     emptyMessage: escapeHtml("No steps to draw yet: the runs have no visible steps. Add or unhide steps in the Steps view."),
   };
@@ -185,16 +184,8 @@ function _ensureSessionMapCtrl() {
   _sessionMapCtrl = createMapController({
     hostDfg: document.getElementById("session-map-dfg-host"),
     zoomControls: {
-      in: document.getElementById("btn-session-map-zoom-in"),
-      out: document.getElementById("btn-session-map-zoom-out"),
       fit: document.getElementById("btn-session-map-zoom-fit"),
       wrap: document.getElementById("session-map-zoom"),
-      pct: document.getElementById("session-map-zoom-pct"),
-    },
-    rareSlider: {
-      wrap: document.getElementById("session-hide-rare-wrap"),
-      range: document.getElementById("session-rng-rare"),
-      label: document.getElementById("session-hide-rare-lbl"),
     },
     dataSource: _sessionMapData,
   });
@@ -266,6 +257,9 @@ function applyLevel(name) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";
   }
+  // P2.10: the Raw events drawer (the machine layer) shows on Flow only.
+  const rawEvents = document.querySelector(".event-table-host");
+  if (rawEvents) rawEvents.style.display = name === "flow" ? "" : "none";
   // Arrival reveal: switching TO Steps with a surviving selection (e.g. after
   // a "Jump to in Flow" round-trip) should scroll that row back into view. This
   // is an arrival, not an incidental re-render, so it is gated by a one-shot
@@ -280,59 +274,7 @@ function applyLevel(name) {
   } else {
     rerenderActiveLevel();
   }
-  // P2.4: refresh the shortcuts overlay for the new view.
-  renderShortcutsOverlay();
 }
-
-/* P2.4: small persistent corner widget listing 3-4 most-used
-   shortcuts for the active view. Dismissable; state persisted to
-   localStorage so the analyst doesn't have to dismiss every launch. */
-const SHORTCUTS_OVERLAY_KEY = "pdt.shortcutsOverlayHidden";
-/* The Map has no card: it sat over the diagram, and its gestures (scroll to
-   zoom, drag to pan) are the map host's tooltip. */
-const VIEW_SHORTCUTS = {
-  flow: [
-    ["Space", "Play / pause video"],
-    ["← →",  "Scrub 5s"],
-    ["+ −",  "Zoom timeline"],
-    ["Shift-drag", "Select range"],
-  ],
-  steps: [
-    ["↑ / ↓", "Previous / next step"],
-    ["Enter", "Rename step"],
-    ["S",     "Split step"],
-    ["M",     "Merge with next"],
-    ["Ctrl+Enter", "Confirm run"],
-    ["Ctrl+Z", "Undo"],
-  ],
-};
-function renderShortcutsOverlay() {
-  const ov = document.getElementById("shortcuts-overlay");
-  if (!ov) return;
-  const hidden = localStorage.getItem(SHORTCUTS_OVERLAY_KEY) === "1";
-  // Only show when a session is loaded and the overlay is not dismissed.
-  if (hidden || !State.getSession()) {
-    ov.style.display = "none";
-    return;
-  }
-  const lvl = State.getLevel();
-  const items = VIEW_SHORTCUTS[lvl] || [];
-  if (!items.length) { ov.style.display = "none"; return; }
-  ov.style.display = "";
-  document.getElementById("shortcuts-overlay-title").textContent =
-    lvl.charAt(0).toUpperCase() + lvl.slice(1) + " shortcuts";
-  document.getElementById("shortcuts-overlay-list").innerHTML =
-    items.map(([k, d]) =>
-      '<li><span class="key">' + escapeHtml(k) + '</span><span>' + escapeHtml(d) + '</span></li>'
-    ).join("");
-}
-(function wireShortcutsOverlay() {
-  const closeBtn = document.getElementById("shortcuts-overlay-close");
-  if (closeBtn) closeBtn.addEventListener("click", () => {
-    localStorage.setItem(SHORTCUTS_OVERLAY_KEY, "1");
-    renderShortcutsOverlay();
-  });
-})();
 
 /* ============ Theme toggle ======================================== */
 
@@ -368,23 +310,6 @@ initStepsView({
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   watchStep: (s) => watchStep(s),
 });
-
-/* ============ Mini-timeline zoom (Steps) ========================== */
-
-function bindMiniTimelineZoom(prefix, getZoom, setZoom, rerender) {
-  const buttons = [
-    ["zoom-in",    () => setZoom(Math.min(20, getZoom() * 1.5))],
-    ["zoom-out",   () => setZoom(Math.max(1, getZoom() / 1.5))],
-    ["zoom-reset", () => setZoom(1)],
-  ];
-  for (const [suffix, fn] of buttons) {
-    const btn = document.getElementById(`btn-${prefix}-${suffix}`);
-    if (btn) btn.addEventListener("click", () => { fn(); rerender(); });
-  }
-}
-bindMiniTimelineZoom("steps",
-  State.getStepZoom, State.setStepZoom,
-  () => renderStepsLevel());
 
 /* (Steps CRUD and ignored apps -> views/steps-view.js) */
 
@@ -522,10 +447,12 @@ if ($("#btn-session-step-bpmn")) $("#btn-session-step-bpmn").addEventListener("c
 if ($("#btn-session-map-svg"))   $("#btn-session-map-svg").addEventListener("click", () => exportMapSvg());
 
 /* ADR-0019: Reference Maps surface: fork, gallery, editor and the PDD image
-   bridge. Wired once at boot. Fork copies the step-level BPMN file. */
+   bridge. Wired once at boot. Fork copies the step-level BPMN file, after an
+   analysis when the steps changed since that file was written (AD-19). */
 RefmapUI.initRefmapUI({
   renderLiveMap: () => _ensureSessionMapCtrl().render(),
   sourceBpmnPath: () => _stepBpmnPath(),
+  analyze: () => analyzeSession({ quiet: true }),
 });
 
 /* ============ Exports ============================================= */
@@ -661,8 +588,9 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
-  // Flow view: S adds/splits a step at the video playhead.
-  if (State.getLevel() === "flow" && State.getSession()
+  // Flow view: S adds/splits a step at the video playhead (only with a video,
+  // like its + Step button: without one there is no playhead to place it at).
+  if (State.getLevel() === "flow" && State.getSession() && State.getSession().recordingAvailable
       && e.key === "s" && !e.ctrlKey && !e.metaKey && !e.altKey) {
     addStepAtPlayhead();
     e.preventDefault();

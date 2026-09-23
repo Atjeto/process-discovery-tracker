@@ -51,8 +51,8 @@
     try { ls.setItem(_layoutKey(c), JSON.stringify(pos)); } catch (_) {}
   }
 
-  /* Compact duration for edge labels / the edge tooltip ("1h 04m",
-     "4m 32s", "12s", "<1s"). Mirrors the Python claim formatter. */
+  /* Compact duration for the edge tooltip ("1h 04m", "4m 32s", "12s",
+     "<1s"). Mirrors the Python claim formatter. */
   function _fmtDur(ms) {
     const s = Math.round((ms || 0) / 1000);
     if (s < 1) return "<1s";
@@ -79,9 +79,10 @@
     // overflow the JS argument-count limit and throw.
     const maxFreq = dfg.edges.reduce((m, e) => Math.max(m, e.frequency || 1), 1);
     /* §B2 time-weighted edges: when the caller asks for edgeWeight "time"
-       AND the edges carry measured `total_ms`, thickness + label encode
-       accumulated transition TIME (the process map); the traversal count
-       stays one hover away in the edge tooltip.
+       AND the edges carry measured `total_ms`, the thickness encodes the
+       accumulated transition TIME (the process map). The numbers (how often
+       the path was taken, its time) are one hover away in the edge tooltip,
+       never drawn on the arrow (P2.4: an unexplained number read as a wait).
        With no measurable time anywhere the map degrades honestly to the
        count weighting rather than rendering uniform noodles. */
     const maxMs = dfg.edges.reduce((m, e) => Math.max(m, e.total_ms || 0), 0);
@@ -108,7 +109,6 @@
           target: e.target,
           freq,
           totalMs,
-          edgeLabel: timeWeighted ? _fmtDur(totalMs) : String(freq),
           width: timeWeighted
             ? 1 + 5 * Math.sqrt(totalMs / maxMs)
             : 1 + 5 * Math.sqrt(freq / maxFreq),
@@ -170,13 +170,6 @@
             "target-arrow-color": tok.fg3,
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            label: "data(edgeLabel)",
-            "font-family": '"JetBrains Mono", Consolas, monospace',
-            "font-size": 9,
-            color: tok.fg2,
-            "text-background-color": tok.bg,
-            "text-background-opacity": 0.85,
-            "text-background-padding": 2,
           },
         },
         {
@@ -206,13 +199,11 @@
     }
     // Persist a dragged node arrangement so it survives a re-render / re-open.
     cy.on("dragfree", "node", () => _saveLayout(cy));
-    if (opts.onZoomChange) {
-      cy.on("zoom", () => opts.onZoomChange(cy.zoom()));
-    }
 
-    /* §B2: edge hover tooltip — the canvas has no DOM titles, so a small
-       positioned div keeps BOTH weights readable whichever one the line
-       encodes: "12× traversed · 4m 32s accumulated · mean 23s". */
+    /* §B2 / P2.4: edge hover tooltip. The canvas has no DOM titles, so a
+       small positioned div says what the arrow carries, in words: how often
+       the runs took it and the time from entering one step to entering the
+       next (mostly the first step's own time, not a wait between them). */
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
     const tip = document.createElement("div");
     tip.className = "dfg-edge-tip";
@@ -221,10 +212,10 @@
     cy.on("mouseover", "edge", (e) => {
       const freq = e.target.data("freq") || 1;
       const totalMs = e.target.data("totalMs") || 0;
-      let text = freq + "× traversed";
+      let text = "Taken " + freq + (freq === 1 ? " time." : " times.");
       if (totalMs > 0) {
-        text += " · " + _fmtDur(totalMs) + " accumulated · mean " +
-          _fmtDur(totalMs / freq);
+        text += " Start of one step to start of the next: " + _fmtDur(totalMs) + " in all" +
+          (freq > 1 ? ", " + _fmtDur(totalMs / freq) + " on average." : ".");
       }
       tip.textContent = text;
       const p = e.renderedPosition ||
@@ -242,7 +233,6 @@
     setTimeout(() => {
       _restoreLayout(cy);   // re-apply any saved drags over the fresh dagre layout
       try { cy.fit(undefined, 24); } catch (_) {}
-      if (opts.onZoomChange && cy) opts.onZoomChange(cy.zoom());
     }, 50);
   }
 
@@ -255,18 +245,6 @@
   }
 
   function fit() { if (cy) { try { cy.fit(undefined, 24); } catch (_) {} } }
-  function zoomIn() {
-    if (!cy) return;
-    const c = cy.extent();
-    cy.zoom({ level: cy.zoom() * 1.25,
-              renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
-  }
-  function zoomOut() {
-    if (!cy) return;
-    cy.zoom({ level: cy.zoom() / 1.25,
-              renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
-  }
-  function getZoom() { return cy ? cy.zoom() : 1; }
 
   /* ---- Node select + info reveal (NAV-AUDIT §E1) --------------------------
      A node click on the process map is a SELECT + REVEAL, never a view change:
@@ -389,5 +367,5 @@
     }
   }
 
-  module.exports = { render, clear, fit, zoomIn, zoomOut, getZoom, selectNode, exportSvg, exportPng };
+  module.exports = { render, clear, fit, selectNode, exportSvg, exportPng };
 })();

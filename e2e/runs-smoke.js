@@ -7,14 +7,16 @@
  * with the current pipeline (4 marked runs, 30 drafted steps), and pins the
  * verbs of the Steps level the way an analyst uses them:
  *   - the runs list: 4 runs in time order, run 1 the pattern, open with its
- *     drafted steps; "Use as pattern" and its Ctrl+Z;
+ *     drafted steps (a row carries a chip only where it differs from its
+ *     run); "Use as pattern" (the run's right-click menu) and its Ctrl+Z;
  *   - names (C4): a rename of a run-1 draft names the same-key drafts of the
  *     other runs at once (still drafts, name_source "remembered") and lands in
  *     the profile's remembered-names store; a broken store shows an error and
  *     still saves the session rename; the name box suggests the name;
- *   - the draft-fix counter (C3): merge / split / add / drop each count on the
- *     pattern run, renames do not, and Ctrl+Z, Unhide and deleting an added
- *     step take a count back;
+ *   - the draft-fix count (C3, pattern_run.draft_fixes in annotations.json;
+ *     the list shows no live counter, P2.9): merge / split / add / hide each
+ *     count on the pattern run, renames do not, and Ctrl+Z, Unhide and
+ *     deleting an added step take a count back;
  *   - the keyboard: Up / Down / Enter on the open run, and no shortcut acting
  *     on a step the list does not show (RP-12);
  *   - Confirm run: the states, the Confirmed status and the probe line, which
@@ -36,11 +38,13 @@
  *     processes.json) and the toast's Undo;
  *   - a drafted step is hidden, never deleted (no Delete for it, the bulk
  *     button hides), and the hidden drafts survive Analyze;
- *   - the Remembered names dialog: its order, Rename and Forget;
+ *   - the Remembered names dialog (opened from the More menu): its order,
+ *     Rename and Forget;
  *   - a SECOND temp copy of the demo, SEEDED with an extra step and a skipped
  *     step in run 4, opened in the same viewer: it is compared with the saved
  *     process (the line, every run's differences), and Stop comparing
- *     compares it with its own pattern run.
+ *     compares it with its own pattern run; Forget this saved process (P3.11)
+ *     takes it out of processes.json and the toast's Undo brings it back.
  *
  * Writes only into its temp copies and its throwaway profile. Exits 0 when
  * every check passed, 1 on a failed check, 2 when it could not run (no Python
@@ -205,11 +209,23 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     has: page.locator(".step-name", { hasText: new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$") }),
   });
   const rowById = (id) => page.locator('#step-list .step-row[data-step-id="' + id + '"]');
-  const fixesOf = async (caseId) => ((await group(caseId)) || {}).fixes || "";
-  const waitFixes = (caseId, text) => page.waitForFunction(([sel, t]) => {
-    const f = document.querySelector(sel + " .run-fixes");
-    return !!(f && f.textContent.trim() === t);
-  }, [groupSel(caseId), text], { timeout: T });
+  // P2.9: the list shows no live fix counter; the count is the pattern run's
+  // record in annotations.json (what the probe line reads once it is
+  // confirmed). No record yet reads as zero fixes.
+  const fixesOnDisk = () => {
+    const pr = readJson(ANNO).pattern_run;
+    return JSON.stringify((pr && pr.draft_fixes) || { merge: 0, split: 0, add: 0, drop: 0 });
+  };
+  const fx = (merge, split, add, drop) => JSON.stringify({ merge, split, add, drop });
+  const waitFixes = async (want) => {
+    const deadline = Date.now() + T;
+    let got = null;
+    while (Date.now() < deadline) {
+      try { got = fixesOnDisk(); if (got === want) return; } catch (_) { /* mid-write: read again */ }
+      await wait(150);
+    }
+    throw new Error("draft_fixes stayed " + got + ", expected " + want);
+  };
   const waitRows = (caseId, n) => page.waitForFunction(([sel, k]) =>
     document.querySelectorAll(sel + " .step-row").length === k, [groupSel(caseId), n], { timeout: T });
   const toastText = () => page.$eval("#toast", (el) => ({ text: el.textContent || "", error: el.className.includes("error") }));
@@ -219,7 +235,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     return !!(el && el.classList.contains("show") && new RegExp(src).test(el.textContent || ""));
   }, re.source, { timeout: T });
   const metaDiffs = (meta) => (/ · (no differences|\d+ differences?)$/.exec(meta || "") || [])[1] || null;
-  const FIX0 = "Boundary fixes so far: 0 (merge 0, split 0, add 0, drop 0)";
+  const FIX0 = fx(0, 0, 0, 0);
   const [R1, R2, R3, R4] = RUNS;
 
   // ---- 1. the runs list ----------------------------------------------------
@@ -229,9 +245,9 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const ok = st.length === 4 && st.map((g) => g.caseId).join() === RUNS.join() &&
       st.map((g) => g.title).join() === "Run 1,Run 2,Run 3,Run 4" &&
       r1.pattern && st.filter((g) => g.pattern).length === 1 && r1.open && st.filter((g) => g.open).length === 1 &&
-      r1.rows.length === 7 && r1.rows.every((r) => r.chip === "Draft") && st.every((g) => g.status === "Draft") &&
-      r1.fixes === FIX0;
-    record("Steps shows the 4 runs in time order; run 1 is the pattern, open with its 7 drafted steps", ok,
+      r1.rows.length === 7 && r1.rows.every((r) => r.chip === "") && st.every((g) => g.status === "Draft") &&
+      r1.fixes === "" && !r1.acts.includes("use-pattern");
+    record("Steps shows the 4 runs in time order; run 1 is the pattern, open with its 7 drafted steps (no chip on a row that matches its Draft run, no live fix counter)", ok,
       JSON.stringify(st.map((g) => ({ t: g.title, pattern: g.pattern, open: g.open, status: g.status, rows: g.rows.length, fixes: g.fixes }))));
     if (!ok) await shot(page, "fail-runs-list.png");
   }
@@ -269,20 +285,23 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     let err = null, moved = null, back = null, diskMoved = null, diskBack = null;
     try {
       await openRun(R3);
-      await page.locator(groupSel(R3) + ' [data-act="use-pattern"]').click({ timeout: T });
+      moved = { buttonOnRun: (await group(R3)).acts.includes("use-pattern") };
+      await page.locator(groupSel(R3) + " > .run-row").click({ button: "right", timeout: T });
+      await page.locator('#run-ctx-menu [data-act="use-pattern"]').click({ timeout: T });
       await page.waitForFunction((sel) => document.querySelector(sel).classList.contains("pattern"), groupSel(R3), { timeout: T });
-      moved = (await runsState()).filter((g) => g.pattern).map((g) => g.caseId);
+      moved.pattern = (await runsState()).filter((g) => g.pattern).map((g) => g.caseId);
       diskMoved = (await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.case_id === R3)).pattern_run;
       await page.keyboard.press("Control+z");
       await page.waitForFunction((sel) => document.querySelector(sel).classList.contains("pattern"), groupSel(R1), { timeout: T });
       back = (await runsState()).filter((g) => g.pattern).map((g) => g.caseId);
       diskBack = (await waitDisk(ANNO, (a) => !a.pattern_run)).pattern_run;
     } catch (e) { err = errText(e); }
-    const ok = !err && JSON.stringify(moved) === JSON.stringify([R3]) && diskMoved && diskMoved.case_id === R3 &&
+    const ok = !err && moved && moved.buttonOnRun === false && JSON.stringify(moved.pattern) === JSON.stringify([R3]) &&
+      diskMoved && diskMoved.case_id === R3 &&
       diskMoved.confirmed_at === null && diskMoved.drafted_steps === 6 &&
       JSON.stringify(diskMoved.draft_fixes) === JSON.stringify({ merge: 0, split: 0, add: 0, drop: 0 }) &&
       JSON.stringify(back) === JSON.stringify([R1]) && diskBack === undefined;
-    record("C3: Use as pattern makes run 3 the pattern (pattern_run written); Ctrl+Z makes run 1 the pattern again",
+    record("C3 + P3.8: Use as pattern (the run's right-click menu, no button on the open run) makes run 3 the pattern (pattern_run written); Ctrl+Z makes run 1 the pattern again",
       ok, JSON.stringify({ err, moved, diskMoved, back, diskBack }));
     if (!ok) await shot(page, "fail-runs-use-pattern.png");
   }
@@ -313,8 +332,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     await openRun(R2);
     const g2 = await group(R2);
     const row2 = g2.rows.find((r) => r.id === searchIds[R2]) || {};
-    const ok2 = row2.name === NAME_SEARCH && row2.chip === "Draft" && row2.remembered;
-    record("C4: run 2 shows the new name on its draft right away (Draft chip, remembered tag), without a re-analysis",
+    const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && row2.remembered;
+    record("C4: run 2 shows the new name on its draft right away (remembered tag; no chip, it matches its Draft run), without a re-analysis",
       ok2, JSON.stringify(row2));
     if (!(ok && ok2)) await shot(page, "fail-runs-rename.png");
 
@@ -337,7 +356,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   // ---- 5. the draft-fix counter (C3) ------------------------------------------
   {
     await openRun(R1);
-    record("C3: renames are not counted (the pattern run still reads 0 fixes)", (await fixesOf(R1)) === FIX0, await fixesOf(R1));
+    record("C3: renames are not counted (the pattern run's record still reads 0 fixes)", fixesOnDisk() === FIX0, fixesOnDisk());
 
     // Merge with next (right-click menu).
     let err = null, disk = null, mergeToast = null, menuItems = null;
@@ -349,7 +368,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await waitToast(/Merged here and in/);
       mergeToast = (await toastText()).text;
       await waitRows(R1, 6);
-      await waitFixes(R1, "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)");
+      await waitFixes(fx(1, 0, 0, 0));
       disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.draft_fixes && a.pattern_run.draft_fixes.merge === 1);
     } catch (e) { err = errText(e); }
     const g = await group(R1);
@@ -390,11 +409,11 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     try {
       await page.keyboard.press("Control+z");
       await waitRows(R1, 7);
-      await waitFixes(R1, FIX0);
+      await waitFixes(FIX0);
       undone = await waitDisk(ANNO, (a) => RUNS.map((r) => stepsOf(a, r).length).join() === "7,10,6,7");
       await page.keyboard.press("Control+y");
       await waitRows(R1, 6);
-      await waitFixes(R1, "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)");
+      await waitFixes(fx(1, 0, 0, 0));
       redone = await waitDisk(ANNO, (a) => RUNS.map((r) => stepsOf(a, r).length).join() === "6,8,5,6");
     } catch (e) { err2 = errText(e); }
     const undoneClean = !!undone && RUNS.map((r) => stepsOf(undone, r).length).join() === "7,10,6,7" &&
@@ -411,10 +430,10 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await rowByName(R1, "Excel - Order Tracking.xlsx: Save workbook").click({ timeout: T });
       await page.keyboard.press("s");
       await waitRows(R1, 7);
-      await waitFixes(R1, "Boundary fixes so far: 2 (merge 1, split 1, add 0, drop 0)");
+      await waitFixes(fx(1, 1, 0, 0));
       await page.keyboard.press("Control+z");
       await waitRows(R1, 6);
-      await waitFixes(R1, "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)");
+      await waitFixes(fx(1, 0, 0, 0));
     } catch (e) { err3 = errText(e); }
     record("C3: S splits the selected step and counts a split; Ctrl+Z takes the split and its count back",
       !err3, err3 || "7 rows / split 1, then 6 rows / split 0");
@@ -428,7 +447,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await outlook.click({ timeout: T });
       await page.locator("#btn-step-hide", { hasText: /^Hide step$/ }).click({ timeout: T });
       await waitRows(R1, 5);
-      await waitFixes(R1, "Boundary fixes so far: 2 (merge 1, split 0, add 0, drop 1)");
+      await waitFixes(fx(1, 0, 0, 1));
       // L12b item 2: the toast offers Hide in all runs (runs 2 and 4 have this
       // draft, run 3 does not); it hides them in one edit, not counted, and
       // one Ctrl+Z shows them again (the pattern hide stays).
@@ -438,7 +457,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await waitToast(/Hidden here and in/);
       hideAll.done = (await toastText()).text;
       hideAll.disk = await waitDisk(ANNO, (a) => [R2, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_OUTLOOK && s.state === "hidden")));
-      hideAll.fixes = await fixesOf(R1);
+      hideAll.fixes = fixesOnDisk();
       await page.keyboard.press("Control+z");
       hideAll.undone = await waitDisk(ANNO, (a) => [R2, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_OUTLOOK && s.state === "auto_suggested")));
       await waitRows(R1, 5);
@@ -448,7 +467,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       hiddenRow = ((await group(R1)).rows.find((r) => r.id === oid)) || null;
       await rowById(oid).click({ timeout: T });
       await page.locator("#btn-step-hide", { hasText: "Unhide" }).click({ timeout: T });
-      await waitFixes(R1, "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)");
+      await waitFixes(fx(1, 0, 0, 0));
       await waitRows(R1, 6);
     } catch (e) { err4 = errText(e); }
     // With nothing hidden any more the switch is gone (no switch that does nothing).
@@ -462,7 +481,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       [R2, R4].every((r) => outlookOf(hideAll.disk, r).length === 1 && outlookOf(hideAll.disk, r)[0].state === "hidden" &&
         outlookOf(hideAll.disk, r)[0]._prev_state === "auto_suggested") &&
       outlookOf(hideAll.disk, R3).length === 0 && outlookOf(hideAll.disk, R1)[0].state === "hidden" &&
-      hideAll.fixes === "Boundary fixes so far: 2 (merge 1, split 0, add 0, drop 1)" &&
+      hideAll.fixes === fx(1, 0, 0, 1) &&
       [R2, R4].every((r) => outlookOf(hideAll.undone, r)[0].state === "auto_suggested") &&
       outlookOf(hideAll.undone, R1)[0].state === "hidden";
     record("L12b item 2: hiding a pattern draft offers Hide in all runs in its toast; it hides runs 2 and 4's same draft (not counted), and one Ctrl+Z shows them again while the pattern hide stays",
@@ -478,7 +497,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await page.locator(".modal-prompt .modal-input").fill("Check the stock", { timeout: T });
       await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
       await waitRows(R1, 7);
-      await waitFixes(R1, "Boundary fixes so far: 2 (merge 1, split 0, add 1, drop 0)");
+      await waitFixes(fx(1, 0, 1, 0));
       const g1 = await group(R1);
       added = { index: g1.rows.findIndex((r) => r.name === "Check the stock"), row: g1.rows.find((r) => r.name === "Check the stock") };
       addedDisk = (await waitDisk(ANNO, (a) => (a.steps || []).some((s) => s.name === "Check the stock")))
@@ -487,7 +506,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await page.locator("#btn-step-delete").click({ timeout: T });
       await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
       await waitRows(R1, 6);
-      await waitFixes(R1, "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)");
+      await waitFixes(fx(1, 0, 0, 0));
     } catch (e) { err5 = errText(e); }
     const searchStep = stepsOf(pre, R1)[0];
     const ok5 = !err5 && added && added.index === 1 && added.row.chip === "Added" && addedDisk &&
@@ -543,7 +562,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   }
 
   // ---- 7. Confirm run and the probe line --------------------------------------
-  const PROBE = "Run 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, drop 0)";
+  const PROBE = "Run 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)";
   {
     let err = null;
     try {
@@ -563,6 +582,13 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     record("C2/C3: Confirm run turns run 1's remaining drafts into confirmed, reads Confirmed, and shows the probe line \"" + PROBE + "\"",
       ok, JSON.stringify({ err, states, status: g.status, probe: g.probe, pattern_run: disk.pattern_run }));
     if (!ok) await shot(page, "fail-runs-confirm.png");
+    // P1.9: a row carries a chip only where it differs from its run. In the
+    // confirmed run the confirmed rows carry none; the edited ones stand out.
+    const chips = (g.rows || []).map((r) => r.state + ":" + r.chip);
+    const chipsOk = chips.length === 6 &&
+      chips.filter((c) => c === "confirmed:").length === 4 && chips.filter((c) => c === "edited:Edited").length === 2;
+    record("P1.9: in the confirmed run only the rows that differ carry a chip (the 2 edited ones), the 4 confirmed ones none",
+      chipsOk, JSON.stringify(chips));
 
     let clip = null;
     try {
@@ -609,8 +635,9 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await openRun(R1);
       await page.locator(groupSel(R1) + ' [data-act="reopen-run"]').click({ timeout: T });
       disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.confirmed_at === null);
-      await page.waitForFunction((sel) => !document.querySelector(sel + " .run-probe-text") && !!document.querySelector(sel + " .run-fixes"),
-        groupSel(R1), { timeout: T });
+      await page.waitForFunction((sel) => !document.querySelector(sel + " .run-probe-text") &&
+        ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Draft",
+      groupSel(R1), { timeout: T });
       g = await group(R1);
       await page.keyboard.press("Control+z");
       back = await waitDisk(ANNO, (a) => a.pattern_run && typeof a.pattern_run.confirmed_at === "string");
@@ -620,7 +647,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const states = (a) => stepsOf(a || { steps: [] }, R1).filter((s) => s.state !== "hidden").map((s) => s.state).sort().join(",");
     const ok = !err && states(disk) === "auto_suggested,auto_suggested,auto_suggested,auto_suggested,edited,edited" &&
       JSON.stringify(disk.pattern_run.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 }) &&
-      g && g.status === "Draft" && !g.probe && g.fixes === "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)" &&
+      g && g.status === "Draft" && !g.probe && g.fixes === "" &&
       g.acts.includes("confirm-run") && !g.acts.includes("reopen-run") && !g.acts.includes("save-process") &&
       states(back) === "confirmed,confirmed,confirmed,confirmed,edited,edited" &&
       gBack && gBack.status === "Confirmed" && gBack.probe === PROBE && gBack.acts.includes("reopen-run");
@@ -806,6 +833,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       const store = readJson(STORE);
       store.names[OTHER_KEY] = { name: "Save the other book", updated_at: "2026-09-01T10:00:00.000Z" };
       fs.writeFileSync(STORE, JSON.stringify(store, null, 2));
+      await page.locator("#btn-session-more-menu").click({ timeout: T });
       await page.locator("#btn-remembered-names").click({ timeout: T });
       await page.waitForSelector("#remembered-names-dialog .rn-row", { timeout: T });
       rowsBefore = await dialogRows();
@@ -996,6 +1024,32 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     record("L12b item 7 (C5 gate): a session whose pattern run is confirmed opens without the comparison, although the saved process matches it",
       !err2 && control && control.name === PROCESS_NAME && control.score >= 0.5 && lineBack === null && confirmedBack === "Confirmed",
       JSON.stringify({ err: err2, control, lineShown: lineBack !== null, status: confirmedBack }));
+
+    // P3.11: "Forget this saved process", the inverse of Save as this process
+    // where the saved process shows: the second copy opens compared with it
+    // again; Forget takes it out of the profile's processes.json and the line
+    // goes; the toast's Undo brings both back.
+    let err3 = null, forgot = null, lineGone = null, restored = null, lineBackAgain = null;
+    try {
+      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), S2);
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+      await page.waitForSelector('#step-list .runs-compare [data-act="forget-process"]', { timeout: T });
+      await page.locator('#step-list .runs-compare [data-act="forget-process"]').click({ timeout: T });
+      await waitToast(/^Forgot the saved process/);
+      forgot = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 0);
+      lineGone = await page.waitForFunction(() => !document.querySelector("#step-list .runs-compare"), null, { timeout: T })
+        .then(() => true, () => false);
+      await page.locator('#toast [data-act="undo-forget-process"]').click({ timeout: T });
+      await waitToast(/saved process is back/);
+      restored = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 1);
+      lineBackAgain = await page.waitForSelector("#step-list .runs-compare", { timeout: T }).then(() => true, () => false);
+    } catch (e) { err3 = errText(e); }
+    const back1 = restored && restored.processes && restored.processes[0];
+    record("P3.11: Forget this saved process takes it out of processes.json and the comparison line goes; the toast's Undo brings both back",
+      !!(!err3 && forgot && forgot.processes.length === 0 && lineGone && back1 && back1.name === PROCESS_NAME &&
+        back1.steps.length === 6 && lineBackAgain),
+      JSON.stringify({ err: err3, forgot: forgot && forgot.processes.length, lineGone,
+        restored: back1 && { name: back1.name, steps: back1.steps.length }, lineBackAgain }));
   }
 
   record("zero PAGE ERRORs", pageErrors.length === 0,

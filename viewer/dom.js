@@ -22,6 +22,17 @@ function escapeAttr(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 }
 
+/* A moment's local clock time, "HH:MM:SS": the time the Flow timeline's axis,
+   its markers and its screenshots all show (slicing the ISO string showed
+   UTC, which disagreed with them by the time zone offset). "" when the
+   timestamp cannot be read. */
+function localClock(iso) {
+  const d = new Date(iso);
+  if (!iso || !isFinite(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+}
+
 function formatDuration(ms) {
   if (ms == null) return "";
   const s = ms / 1000;
@@ -114,5 +125,5 @@ function placeMenu(menu, x, y) {
   menu.style.top = p.top + "px";
 }
 
-module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast,
+module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, localClock, fillTable, cryptoRandomId, toast,
   fitMenuPosition, placeMenu };

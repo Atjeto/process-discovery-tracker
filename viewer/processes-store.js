@@ -14,8 +14,9 @@
  * their keys in order), or neither (a step added by hand).
  *
  * Written by "Save as this process" on a confirmed pattern run (and its
- * Undo); read by the viewer when a session opens, to compare it with the
- * closest saved process. The pipeline never reads it.
+ * Undo) and by "Forget this saved process" (and its Undo); read by the viewer
+ * when a session opens, to compare it with the closest saved process. The
+ * pipeline never reads it.
  *
  * The rules of names-store.js hold here too: a file that exists but cannot
  * be read is UNREADABLE (never "absent") and is never replaced, and a write
@@ -169,7 +170,25 @@ function undoSaveProcess(p, payload, opts) {
   return { path: p, changed: true };
 }
 
+/* Forget a saved process (P3.11): the entry with `id` leaves the store; every
+   other entry is kept as it is on disk. Returns { path, removed } where
+   removed is the entry as it was stored (its inverse: undoSaveProcess with
+   { id, previous: removed }). Throws when no saved process has that id, for
+   an unreadable store, or a failed write (the previous store stays). */
+function forgetProcess(p, payload, opts) {
+  const fs = (opts && opts.fs) || nodeFs;
+  const id = payload && typeof payload.id === "string" ? payload.id : "";
+  if (!id) throw new Error("Nothing to forget: no saved process was named.");
+  const doc = _docForWrite(p, fs);
+  const at = doc.processes.findIndex((x) => x && x.id === id);
+  if (at < 0) throw new Error("That saved process is no longer on this computer.");
+  const removed = JSON.parse(JSON.stringify(doc.processes[at]));
+  doc.processes.splice(at, 1);
+  _writeAtomic(p, doc, fs);
+  return { path: p, removed };
+}
+
 module.exports = {
   LIBRARY_DIR, FILE, VERSION, processesStorePath, readProcessesFile, saveProcess, undoSaveProcess,
-  ProcessesUnreadableError,
+  forgetProcess, ProcessesUnreadableError,
 };

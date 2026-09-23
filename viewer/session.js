@@ -8,9 +8,8 @@
  * performUndo/performRedo revert in place without a full session
  * reload (issue S6). ensureAnnoShape normalizes the annotations object.
  *
- * renderAnnotations / renderSessionPills (flow-view surfaces refreshed
- * after an in-place revert) are injected by renderer.js via
- * initSession().
+ * renderSessionPills (the flow-view surface refreshed after an in-place
+ * revert) is injected by renderer.js via initSession().
  *
  * RP-04: every annotations.json write in the renderer goes through
  * writeAnnotations() here (the undo-recording save, persistAnnotations,
@@ -31,7 +30,6 @@ const Ipc = require("./ipc.js");
 const Dom = require("./dom.js");
 
 /* Injected by renderer.js. */
-let renderAnnotations = () => {};
 let renderSessionPills = () => {};
 
 function resetUndoStack() { State.resetUndo(); }
@@ -195,7 +193,6 @@ function applyRevertedAnnotations(annotations) {
     State.emit("markers");
     State.emit("analysis");
   });
-  renderAnnotations();
   renderSessionPills();
 }
 
@@ -258,9 +255,8 @@ if (typeof window !== "undefined" && window && typeof window.addEventListener ==
   });
 }
 
-/* deps = { renderAnnotations, renderSessionPills }. Call once at boot. */
+/* deps = { renderSessionPills }. Call once at boot. */
 function initSession(deps) {
-  renderAnnotations = deps.renderAnnotations || (() => {});
   renderSessionPills = deps.renderSessionPills || (() => {});
 }
 

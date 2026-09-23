@@ -1,36 +1,18 @@
 "use strict";
 
 (function () {
-  const TimelineCore = require("./timeline/timeline-core.js");
-  const PdtTheme = require("./theme.js");
   const PdtRecognize = require("./recognition.js");
   const { stepChip } = require("./runs-model.js");
   const TM = require("./transcript-model.js");
-  const { escapeHtml, escapeAttr } = require("./dom.js");   // shared escapers (deduped)
+  // Shared escapers and the local clock (step and screenshot times show the
+  // Flow timeline's local time, never a UTC slice of the ISO string).
+  const { escapeHtml, escapeAttr, localClock: localTime } = require("./dom.js");
   // One composed human identity line per element (App Library pass, R1). Reused
   // here for the step-detail interaction rows so a control with no accessible
   // name reads as `<ControlType> · "<best identity>" · <window>` with the
   // volatility/weak marker + tooltip -- never a bare automation_id or a raw
   // window title. The matcher stays ground truth; this is presentation only.
   const { identityLine } = require("./identity-line.js");
-
-  /* Local "HH:MM:SS" from an ISO timestamp. The mini-timeline axis
-     already uses toLocaleTimeString, so step times must use the same
-     convention -- a raw .slice(11,19) shows the UTC time and silently
-     disagrees with the timeline (e.g. 08:55:07 in the detail tile
-     vs. 10:55 on the timeline on a +2 system). */
-  function localTime(iso) {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (!isFinite(d.getTime())) return "";
-    const pad = (n) => String(n).padStart(2, "0");
-    return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
-  }
-
-  function formatTimeRange(tr) {
-    if (!tr || !tr.start || !tr.end) return "";
-    return `${localTime(tr.start)} - ${localTime(tr.end)}`;
-  }
 
   /* Compact duration for a step's time range -- "42s", "2:17", "1h04". */
   function stepDuration(tr) {
@@ -44,6 +26,29 @@
     return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
   }
 
+  /* Why the recorder drafted this step, short: how many interactions it
+     groups, on which screen, and where it ends ("4 interactions on
+     Salesforce - Account lookup, ended at Search"). Read from the pipeline's
+     draft reason (step_suggest._draft_reason), so the words are the ones the
+     drafting used. Only while the step is still that draft: a split or a merge
+     drops end_reason (runs-model.dropDraftIdentity), and then the reason no
+     longer describes the step. "" when there is nothing to say. */
+  function draftWhy(step) {
+    const reason = step && typeof step.suggestion_reason === "string" ? step.suggestion_reason.trim() : "";
+    if (!reason || !step.end_reason) return "";
+    const m = /^Drafted from (\d+) interactions? on (.+?); ended (.+?)\.?$/.exec(reason);
+    if (!m) return reason;   // a reason worded otherwise is shown as written
+    const n = Number(m[1]);
+    const what = n + " interaction" + (n === 1 ? "" : "s") + (m[2] === "(screen)" ? "" : " on " + m[2]);
+    const tail = m[3];
+    const commit = /^at the commit "(.+)"$/.exec(tail);
+    if (commit) return what + ", ended at " + commit[1];
+    if (tail === "because the next interaction was on another screen") return what + ", ended where the screen changed";
+    if (tail === "at the end of the run") return what + ", ended with the run";
+    if (tail === "at the last interaction outside a run") return what + ", outside the runs";
+    return what + ", ended " + tail;
+  }
+
   /* What each step chip means, on hover. */
   const CHIP_TITLES = {
     draft: "Draft: the recorder drafted this step and it has not been checked yet. Confirm run accepts it as it is.",
@@ -54,10 +59,15 @@
   };
 
   /* The step rows of one run (steps-view.js renders the runs around them).
-     A row: the multi-select tick, the name (double-click to rename, with the
-     shared name suggestions), a remembered-name tag on a draft that took a
-     name given before, the waste badge, the state chip and the duration.
-       opts: { nameListId, onBeginRename(step), emptyHtml } */
+     A row: the multi-select tick (shown on hover or once ticked), the name
+     (double-click to rename, with the shared name suggestions), a
+     remembered-name tag on a draft that took a name given before, the waste
+     badge, the state chip and the duration. P1.9: a row carries a chip only
+     where it differs from its run: `opts.baseline` is the chip class the run's
+     status stands for ("draft" or "confirmed"), and a row whose chip is that
+     class shows none (the run's own status says it). Without a baseline (the
+     steps outside runs) every row shows its chip.
+       opts: { nameListId, onBeginRename(step), emptyHtml, baseline } */
   function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu, opts) {
     const o = opts || {};
     host.innerHTML = "";
@@ -96,6 +106,8 @@
         ? '<span class="step-remembered" title="Named from a name you gave before">remembered</span>'
         : "";
       const chip = stepChip(s.state);
+      const chipHtml = (o.baseline && chip.cls === o.baseline) ? ""
+        : `<span class="step-chip step-chip-${escapeAttr(chip.cls)}" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>`;
       // R1 (Steps chrome diet): a truncated name (the list ellipsizes) must be
       // readable on hover, so the title shows the FULL name; the rename hint
       // rides after it. There are no per-row reorder buttons: the list is in
@@ -105,8 +117,7 @@
       row.innerHTML = `
         <span class="multi-check" title="Click to select for merge or to hide several steps at once"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${remembered}${flagBadges}
-        <span class="step-chip step-chip-${escapeAttr(chip.cls)}" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
+        ${remembered}${flagBadges}${chipHtml}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
       `;
       row.addEventListener("click", (e) => {
@@ -116,8 +127,9 @@
           onSelect(s.step_id);
         }
       });
-      // A plain click on the checkbox toggles multi-selection -- no Ctrl
-      // needed; stopPropagation so it doesn't also fire row-select.
+      // A plain click on the tick box toggles multi-selection (no Ctrl
+      // needed); stopPropagation so it doesn't also fire row-select. P2.14:
+      // the box shows on hover and on a ticked row only (styles.css).
       const checkEl = row.querySelector(".multi-check");
       checkEl.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -189,38 +201,24 @@
     input.addEventListener("blur", () => commit("stay"));
   }
 
-  /* R1 triage economics (APPROACHABILITY-REDESIGN-2026-07-03 §3-5): a real
-     session carries ~500 auto steps and only ~10-15 ever matter for the memo,
-     so any per-step ask is multiplied by 500 -- empty fields read as owed
-     work. RESIDENT (zero-click, disclosure Memo altitude): the name (inline-
-     editable), the one-line facts (duration, app/screen, case), and the three
-     primary one-click acts that already existed (Hide/Unhide, the Waste flag,
-     the name edit) -- nothing else. Everything else the panel used to show at
-     equal weight (description, interaction evidence, screenshot count,
-     classification detail, split/merge/jump/watch/
-     propagate/delete) moves behind ONE native <details> expansion ("More ▸"),
-     collapsed by default and NOT persisted per step -- renderStepDetail is
-     called fresh on every selection change, so a re-render always starts
-     collapsed (the default stance is triage, per the brief). This mirrors
-     the disclosure model's expand-in-place mechanic (same <details> +
-     ::-webkit-details-marker suppression + CSS-only chevron as
-     .analysis-module in analysis-view.js/styles.css) -- Evidence altitude,
-     one click, stays on page, no navigation. */
+  /* The selected step's editor (P1.7): what the analyst edits and what the
+     PDD prints, resident; the rest one click away.
+       resident: one fact line (duration, application, and the screen, or
+         for a draft why it was drafted: draftWhy), the name, the
+         Description (the note the PDD prints under the step once it is
+         edited, C7) with "Said during this step" under it while a transcript
+         is attached, the Waste flag, Save and Hide, and the step's
+         screenshots (P2.16: the review medium when there is no video);
+       "More" (a native <details>, collapsed on every selection): the
+         interactions the step is made of, Jump to in Flow, Watch (with a
+         video), Split, Merge with next, Merge selected, Delete (added steps
+         only).
+     The disclosure mirrors .analysis-module: native <details>, the marker
+     suppressed via list-style:none + ::-webkit-details-marker, one CSS
+     chevron. Callbacks (steps-view.js stepDetailCallbacks) carry the verbs,
+     the fact values and the step's screenshots. */
   function renderStepDetail(host, step, callbacks) {
-    if (!step) {
-      host.innerHTML = `
-        <div class="empty-pane">
-          <p>Pick a step on the left to see its details, rename it, or flag it.</p>
-          <p class="meta">Each step has a name, an optional description, a list of UI interactions that made it up, and a <strong>Waste</strong> flag: mark a step as waste when it shouldn't be needed (rework, duplicate effort, copy-paste between systems); it feeds the value-add / efficiency analysis.</p>
-          <p class="meta">Process variations / exception paths come from the observed <em>variants</em>, automation candidacy from coherent <em>segments</em> (Analysis), and conditionality from the map's branch frequency. None are per-step toggles.</p>
-        </div>`;
-      return;
-    }
     const flags = step.flags || {};
-    const _tr = step.time_range || {};
-    const _dur = stepDuration(_tr) || "-";
-    const _start = _tr.start ? escapeHtml(localTime(_tr.start)) : "-";
-    const _end = _tr.end ? escapeHtml(localTime(_tr.end)) : "-";
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
     const resolvedInter = interIds.map((id) => interMap[id]).filter(Boolean);
@@ -242,14 +240,13 @@
     const mergeSelectedBtn = mergeSelCount >= 2
       ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
       : "";
-    // Resident one-line facts: duration/start/end (unchanged) plus the R1
-    // app/screen + run facts threaded in from steps-view.js (a step with
-    // neither resolves to no chip, never a placeholder "(app)").
-    const appScreenFact = (callbacks && callbacks.appScreenFact) || "";
-    const runLabel = (callbacks && callbacks.runLabel) || "";
-    const factTiles =
-      (appScreenFact ? `<div class="stat-tile"><div class="stat-tile-label">App / Screen</div><div class="stat-tile-value" title="${escapeAttr(appScreenFact)}">${escapeHtml(appScreenFact)}</div></div>` : "") +
-      (runLabel ? `<div class="stat-tile"><div class="stat-tile-label">Run</div><div class="stat-tile-value" title="${escapeAttr(runLabel)}">${escapeHtml(runLabel)}</div></div>` : "");
+    // One fact line: the duration, the application by its readable name, and
+    // the screen (steps-view.js resolves both; a missing one is left out). A
+    // step that is still a draft says why instead of the bare screen: what it
+    // groups on that screen and where it ends (draftWhy).
+    const why = draftWhy(step);
+    const fact = [stepDuration(step.time_range), (callbacks && callbacks.appName) || "",
+      why || (callbacks && callbacks.screenName) || ""].filter(Boolean).join(" · ");
     // C4: the name input suggests remembered and already-used names.
     const nameList = (callbacks && callbacks.nameListId) ? ` list="${escapeAttr(callbacks.nameListId)}"` : "";
     const isHidden = step.state === "hidden";
@@ -257,37 +254,31 @@
     // would draft it again; a hidden one stays out). Only a step the analyst
     // added has Delete.
     const isAdded = step.state === "manually_authored";
+    const watchBtn = (callbacks && callbacks.recordingAvailable)
+      ? `<button id="btn-step-watch" title="Play the recording across this step's time range">▶ Watch</button>` : "";
     host.innerHTML = `
-      <div class="step-stat-tiles">
-        <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
-        <div class="stat-tile"><div class="stat-tile-label">Start</div><div class="stat-tile-value">${_start}</div></div>
-        <div class="stat-tile"><div class="stat-tile-label">End</div><div class="stat-tile-value">${_end}</div></div>
-        ${factTiles}
-      </div>
+      ${fact ? `<p class="step-fact"${why ? ` title="Why the recorder drafted this step: the interactions it groups on one screen, and where it ends"` : ""}>${escapeHtml(fact)}</p>` : ""}
       <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"${nameList}></label>
+      <label>Description <textarea id="step-desc" placeholder="The note the PDD prints under this step">${escapeHtml(step.description || "")}</textarea></label>
+      ${saidDuringStepHtml(callbacks && callbacks.transcriptSaid, step.description || "")}
       <div class="flags">
-        <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Feeds the value-add / waste analysis and surfaces in the aggregate as 'waste hotspots'."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
+        <label title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
       <div class="actions">
         <button id="btn-step-save" class="primary">Save</button>
         <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its run lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
       </div>
+      ${stepShotsHtml(callbacks && callbacks.screenshots)}
       <details class="step-detail-more">
         <summary class="step-detail-more-head">
           <span class="step-detail-more-title">More</span>
           <span class="step-detail-more-chevron" aria-hidden="true"></span>
         </summary>
         <div class="step-detail-more-body">
-          ${step.suggestion_reason ? `<p class="step-suggestion-reason" title="Why the tool grouped these interactions into a step">Auto-detected: ${escapeHtml(step.suggestion_reason)}</p>` : ""}
-          <label>Description <textarea id="step-desc">${escapeHtml(step.description || "")}</textarea></label>
-          ${saidDuringStepHtml(callbacks && callbacks.transcriptSaid, step.description || "")}
-          <div class="evidence">
-            ${interListHtml}
-            <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
-          </div>
+          <div class="evidence">${interListHtml}</div>
           <div class="actions">
             <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
-            ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
+            ${watchBtn}
             <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
             <button id="btn-step-merge" title="Merge this step with the next step of its run (the inverse of Split)">Merge with next</button>
             ${mergeSelectedBtn}
@@ -310,6 +301,9 @@
       });
     });
     wireSaidDuringStep(host, callbacks && callbacks.transcriptSaid);
+    host.querySelectorAll(".step-shot[data-ref]").forEach((b) => {
+      b.addEventListener("click", () => callbacks.onOpenScreenshot && callbacks.onOpenScreenshot(b.dataset.ref));
+    });
     const deleteBtn = document.getElementById("btn-step-delete");
     if (deleteBtn) deleteBtn.addEventListener("click", () =>
       callbacks.onDelete && callbacks.onDelete(step.step_id));
@@ -336,11 +330,24 @@
       jumpBtn.addEventListener("click", () => callbacks.onJumpToFlow && callbacks.onJumpToFlow(step));
       jumpBtn.disabled = !(step.time_range && step.time_range.start);
     }
-    const watchBtn = document.getElementById("btn-step-watch");
-    if (watchBtn) {
-      watchBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
-      watchBtn.disabled = !(step.time_range && step.time_range.start);
+    const watchEl = document.getElementById("btn-step-watch");
+    if (watchEl) {
+      watchEl.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
+      watchEl.disabled = !(step.time_range && step.time_range.start);
     }
+  }
+
+  /* P2.16: the step's screenshots in its editor, the review medium of a
+     recording without a video. `shots` = [{ ref, url, time }] (steps-view.js
+     resolves the step's screenshot_refs inside the session folder); a click
+     opens the screenshot full size. Nothing when the step has none. */
+  function stepShotsHtml(shots) {
+    if (!Array.isArray(shots) || !shots.length) return "";
+    return `<div class="step-shots">` + shots.map((sh) =>
+      `<button type="button" class="step-shot" data-ref="${escapeAttr(sh.ref)}" title="${escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size")}">` +
+        `<img src="${escapeAttr(sh.url)}" alt="${escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : ""))}">` +
+        (sh.time ? `<span class="stamp">${escapeHtml(sh.time)}</span>` : "") +
+      `</button>`).join("") + `</div>`;
   }
 
   /* C8: "Said during this step", under the Description, only while a
@@ -388,76 +395,6 @@
       refresh();
     }));
     desc.addEventListener("input", refresh);
-  }
-
-  /* Build the Steps mini-timeline. The lane-packing, tick maths, axis, and
-     band layout all live in timeline-core.js (shared with the Phases and Flow
-     timelines); this function only shapes step data into the core's MiniItem
-     form. `interactions` is unused -- kept for call-site compatibility. */
-  function renderStepTimeline(host, steps, interactions, span, opts) {
-    opts = opts || {};
-    if (!steps || !steps.length || !span) { host.innerHTML = ""; return; }
-
-    // Palette + band alphas track the active theme (see theme.js).
-    const STEP_PALETTE = PdtTheme.stepPalette();
-    const ba = PdtTheme.bandAlphas();
-    // Same name -> same colour across the session.
-    const colorByName = new Map();
-    let pi = 0;
-    for (const s of steps) {
-      const name = s.name || s.step_id;
-      if (!colorByName.has(name)) colorByName.set(name, STEP_PALETTE[pi++ % STEP_PALETTE.length]);
-    }
-
-    const items = [];
-    for (const s of steps) {
-      if (!s.time_range) continue;
-      const startMs = new Date(s.time_range.start).getTime();
-      const endMs = new Date(s.time_range.end).getTime();
-      if (!isFinite(startMs) || !isFinite(endMs)) continue;
-      const dur = endMs - startMs;
-      const durStr = dur < 60000 ? `${Math.round(dur / 1000)}s`
-        : dur < 3600000 ? `${Math.round(dur / 60000)}m`
-        : `${(dur / 3600000).toFixed(1)}h`;
-      items.push({
-        id: s.step_id,
-        startMs,
-        endMs,
-        label: s.name || "",
-        color: colorByName.get(s.name || s.step_id),
-        title: `${s.name} (${s.state})\n${new Date(startMs).toLocaleTimeString()} · ${durStr}`,
-        selected: opts.selectedId === s.step_id,
-        dimmed: !!(opts.dimmedIds && opts.dimmedIds.has(s.step_id)),
-      });
-    }
-
-    TimelineCore.renderMiniTimeline(host, {
-      items,
-      span,
-      zoom: opts.zoom,
-      maxLanes: 4,
-      laneHeight: 18,
-      blockClass: "step-block",
-      labelClass: "step-block-label",
-      idAttr: "data-step-id",
-      tintAlpha: ba ? ba.tintAlpha : undefined,
-      borderAlpha: ba ? ba.borderAlpha : undefined,
-      selectedId: opts.selectedId,
-      onSelect: opts.onSelect,
-    });
-
-    // A5: right-click a step block for the step context menu (split, merge,
-    // rename, hide, jump, flag). The Flow timeline's document-level
-    // contextmenu handler is scoped to #timeline, so it never fires here.
-    if (opts.onContextMenu) {
-      for (const block of host.querySelectorAll(".step-block[data-step-id]")) {
-        block.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          opts.onContextMenu(block.getAttribute("data-step-id"), e.clientX, e.clientY);
-        });
-      }
-    }
   }
 
   /* A readable one-line description of a single interaction event --
@@ -595,7 +532,7 @@
   }
 
   module.exports = {
-    renderStepList, renderStepDetail, renderStepTimeline,
-    describeInteraction, renderInteractionList, siKindClass,
+    renderStepList, renderStepDetail,
+    describeInteraction, renderInteractionList, siKindClass, draftWhy,
   };
 })();

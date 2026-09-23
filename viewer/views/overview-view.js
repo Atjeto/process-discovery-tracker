@@ -82,10 +82,11 @@ function openMarkersInFlow() {
 
 /* The HTML the Map level shows instead of the process map, or null when the
    map can be drawn. The map draws how the runs flow, so it needs the run
-   check to have run and found runs to compare: at least 2, covering at least
-   70% of the recording (case_quality.tier2_unlocked). Each state says what
+   check to have run and at least one run to be marked. AD-18: one run is
+   enough (a one-run recording gets its map, its As-Is copy and its PDD), and
+   so is any coverage: the map draws the marked runs. Each state says what
    actually happened: not analyzed at all, analyzed by an older version, the
-   run check failed, or which condition the runs miss. */
+   run check failed, or no runs marked. */
 function mapLockHtml(analysis) {
   const lead = "The process map is not shown because it draws how the runs flow. ";
   if (!analysis) {
@@ -101,14 +102,8 @@ function mapLockHtml(analysis) {
     }
     return escapeHtml(lead + "This session was analyzed by an older version: click Analyze session once.");
   }
-  if (cq.tier2_unlocked) return null;
-  const why = cq.mode === "unsegmented"
-    ? NO_RUNS_MARKED
-    : ((cq.case_count || 0) < 2
-        ? "Only one run is marked, and the map needs at least 2 to show how the runs flow."
-        : "The marked runs cover only " + _pct(cq.coverage) +
-          " of the recording, below the 70% needed to trust them.");
-  return escapeHtml(lead + why + " " + MARK_RUNS_INSTRUCTION) +
+  if (cq.mode !== "unsegmented" && (cq.case_count || 0) >= 1) return null;
+  return escapeHtml(lead + NO_RUNS_MARKED + " " + MARK_RUNS_INSTRUCTION) +
     ' <button type="button" class="link-btn" data-map-cta="mark-runs">' +
     escapeHtml(MARK_RUNS_BUTTON) + "</button>";
 }

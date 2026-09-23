@@ -7,7 +7,7 @@
  * or the collapsed-by-default "Outside runs" group for the steps no run
  * contains. The analyst confirms the PATTERN run first (fix its boundaries,
  * name its steps, Confirm run); the app counts the boundary fixes made to it
- * (merge, split, add, drop) and, once it is confirmed, shows the probe line.
+ * (merge, split, add, hide) and, once it is confirmed, shows the probe line.
  * Renaming a step that carries a draft_key remembers the name (main-process
  * store, passed as --names on every Analyze) and names the same-key drafts of
  * the session at once. The Detail slider does not change this view.
@@ -20,8 +20,8 @@
  * uses): an open run lists its differences, a run's meta counts them. Reopen
  * run takes Confirm run back; a drafted step is hidden, never deleted (the
  * next Analyze would draft it again); Save as this process stores the
- * confirmed pattern run; the Remembered names dialog renames or forgets a
- * remembered name.
+ * confirmed pattern run, and the comparison line can forget a saved process;
+ * the Remembered names dialog renames or forgets a remembered name.
  *
  * The model is runs-model.js (pure, unit-tested); this module renders it and
  * owns the step verbs (rename / save / split / merge / hide / delete / add /
@@ -34,7 +34,9 @@
 
 "use strict";
 
-const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu } = require("../dom.js");
+const path = require("node:path");
+const fs = require("node:fs");
+const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu, localClock } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
@@ -144,8 +146,7 @@ function _openGroup(key) {
 }
 
 /* Select a step and make sure it is on screen: its group opens, and hidden
-   steps show when it is hidden. Used by the clicks that reach a step from
-   outside the list (the step timeline, the context menu). */
+   steps show when it is hidden. Used by the step context menu. */
 function _selectAndReveal(stepId) {
   const s = _findStep(stepId);
   if (!s) return;
@@ -314,7 +315,6 @@ function renderStepsLevel() {
   for (const id of [...multi]) if (!visibleIds.has(id)) multi.delete(id);
   syncMultiSelectButtons();
 
-  $("#steps-badge").textContent = String(allSteps.length);
   const pc = $("#runs-pane-count");
   if (pc) pc.textContent = String(model.runs.length);
   _renderFlagSummary(allSteps);
@@ -327,11 +327,10 @@ function renderStepsLevel() {
   if (selected) {
     if (title) title.textContent = "Selected step";
     _fillNameList(selected, interactionsById);
-    PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById, model));
+    PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById));
   } else {
     renderRunGuide($("#step-detail"), model, pattern, ref);
   }
-  _renderStepsMiniTimeline(allSteps, visibleIds);
 
   if (revealStep && visibleIds.has(revealStep.step_id)) {
     setTimeout(() => {
@@ -363,6 +362,8 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
     line.innerHTML = '<span class="runs-compare-text">Compared with saved process <strong>' + escapeHtml(ref.name) + "</strong></span>";
     line.appendChild(_actionBtn("stop-comparing", "Stop comparing", "",
       "Compare the runs with this session's pattern run instead", stopComparingAction));
+    line.appendChild(_actionBtn("forget-process", "Forget this saved process", "",
+      "Remove this saved process from this computer. The toast's Undo brings it back.", forgetProcessAction));
     host.appendChild(line);
   }
   if (!model.runs.length && !model.outside.length) {
@@ -387,8 +388,7 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
 }
 
 const PATTERN_TITLE = "The pattern run: confirm it first. Its step names carry over to the other runs.";
-const FIXES_TITLE = "Merges, splits, added steps and hidden or deleted drafts you make to the pattern run " +
-  "before you confirm it. Renames are not counted. Ctrl+Z takes a fix back.";
+const OTHER_RUN_TITLE = "Right-click to use this run as the pattern";
 
 function _groupHead(isOpen, innerHtml, titleAttr) {
   return '<div class="run-row" role="button" tabindex="0" aria-expanded="' + (isOpen ? "true" : "false") + '"' +
@@ -408,8 +408,10 @@ function _wireHead(group, key) {
   });
 }
 
-/* The open group's steps and its "Show hidden steps (N)" switch. */
-function _groupBody(visible, hiddenCount, emptyText) {
+/* The open group's steps and its "Show hidden steps (N)" switch. `baseline`
+   is the chip class the run's status stands for (a row with that chip shows
+   none, P1.9), null for the steps outside runs. */
+function _groupBody(visible, hiddenCount, emptyText, baseline) {
   const body = document.createElement("div");
   body.className = "run-body";
   const acts = document.createElement("div");
@@ -451,6 +453,7 @@ function _groupBody(visible, hiddenCount, emptyText) {
     {
       nameListId: NAME_LIST_ID,
       onBeginRename: (step) => _fillNameList(step),
+      baseline: baseline || null,
     });
   return body;
 }
@@ -469,13 +472,23 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   const diffs = _runDiffs(ref, run);
   const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + formatDuration(run.durationMs) : "") +
     (diffs ? " · " + (diffs.length ? _plural(diffs.length, "difference", "differences") : "no differences") : "");
+  // P3.8: "Use as pattern" is a once-a-session choice, so it lives in the
+  // run's right-click menu, not on every open run.
+  const canUsePattern = !isPattern && run.members.length > 0;
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
     (isPattern ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Pattern</span>' : "") +
     '<span class="run-status run-status-' + run.status + '">' + escapeHtml(RunsModel.STATUS_LABELS[run.status]) + "</span>" +
-    '<span class="run-meta">' + escapeHtml(meta) + "</span>");
+    '<span class="run-meta">' + escapeHtml(meta) + "</span>", canUsePattern ? OTHER_RUN_TITLE : "");
   _wireHead(g, run.caseId);
+  if (canUsePattern) {
+    g.querySelector(".run-row").addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showRunContextMenu(run.caseId, e.clientX, e.clientY);
+    });
+  }
 
   // The P1 probe line sits on the pattern run once it is confirmed, open or
   // not: the number the owner reads and copies.
@@ -483,7 +496,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   if (!isOpen) return g;
 
   const body = _groupBody(visible, run.hiddenCount,
-    run.hiddenCount ? "Every step of this run is hidden." : "No steps in this run.");
+    run.hiddenCount ? "Every step of this run is hidden." : "No steps in this run.", run.status);
   const acts = body.querySelector(".run-actions");
   const canConfirm = run.status === "draft" || (isPattern && !patternConfirmed && run.visible.length > 0);
   const buttons = [];
@@ -502,23 +515,8 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
       "Store this run's steps, so that a later session of the same process is compared with them when you open it.",
       () => saveAsProcessAction(run.caseId)));
   }
-  if (!isPattern && run.members.length) {
-    buttons.push(_actionBtn("use-pattern", "Use as pattern", "",
-      "Make this the run you confirm first. The boundary fix count starts again at zero.",
-      () => usePatternAction(run.caseId)));
-  }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
-  let after = acts;
-  if (isPattern && !patternConfirmed) {
-    const f = RunsModel.probeLine(stats, model.runs, run, rec);
-    const line = document.createElement("div");
-    line.className = "run-fixes";
-    line.title = FIXES_TITLE;
-    line.textContent = "Boundary fixes so far: " + f.total + " (merge " + f.fixes.merge + ", split " +
-      f.fixes.split + ", add " + f.fixes.add + ", drop " + f.fixes.drop + ")";
-    body.insertBefore(line, acts.nextSibling);
-    after = line;
-  }
+  const after = acts;
   if (diffs && diffs.length) {
     const list = document.createElement("ul");
     list.className = "run-diffs";
@@ -547,7 +545,7 @@ function _outsideGroupEl(model, visible) {
     '<span class="run-meta">' + escapeHtml(_plural(vis.length, "step", "steps")) + "</span>",
     "Steps that fall outside every marked run");
   _wireHead(g, OUTSIDE);
-  if (isOpen) g.appendChild(_groupBody(visible, hidden, "Every step outside the runs is hidden."));
+  if (isOpen) g.appendChild(_groupBody(visible, hidden, "Every step outside the runs is hidden.", null));
   return g;
 }
 
@@ -573,7 +571,7 @@ function _probeEl(stats, model, run, rec) {
   const box = document.createElement("div");
   box.className = "run-probe";
   box.innerHTML = '<span class="run-probe-text" title="' + escapeAttr(why + " Boundary fixes: the merges, splits, " +
-    "added steps and dropped drafts made to the run from when it became the pattern until you confirmed it.") + '">' +
+    "added steps and hidden drafts made to the run from when it became the pattern until you confirmed it.") + '">' +
     escapeHtml(p.text) + "</span>";
   box.appendChild(_actionBtn("copy-probe", "Copy", "run-probe-copy", "Copy this line",
     () => { if (_copyText(p.text)) toast("Copied: " + p.text, "success"); else toast("Could not copy the line.", "error"); }));
@@ -618,10 +616,9 @@ function renderRunGuide(host, model, pattern, ref) {
     head = run ? run.title + (run.label ? " (" + run.label + ")" : "") : "Run";
     paras = isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
     const diffs = run ? _runDiffs(ref, run) : null;
-    if (diffs) {
+    if (diffs && !diffs.length) {
       const noun = ref.kind === "saved" ? RunDiff.SAVED_REFERENCE : RunDiff.PATTERN_REFERENCE;
-      paras.unshift(diffs.length ? "Its differences from " + noun + " are listed above its steps."
-        : "It has no differences from " + noun + ".");
+      paras.unshift("It has no differences from " + noun + ".");
     }
   } else {
     paras = [model.runs.length ? "Pick a run on the left to see its steps." : "Pick a step on the left."];
@@ -631,51 +628,70 @@ function renderRunGuide(host, model, pattern, ref) {
     "<p" + (i ? ' class="meta"' : "") + ">" + escapeHtml(p) + "</p>").join("") + "</div>";
 }
 
-/* The Steps mini-timeline: the full set as context, the steps the list does
-   not show dimmed, so the open run stands out. */
-function _renderStepsMiniTimeline(allSteps, visibleIds) {
-  const span = getSpan();
-  if (!span) return;
-  const dimmedIds = new Set();
-  if (_ui.open != null) for (const s of allSteps) if (!visibleIds.has(s.step_id)) dimmedIds.add(s.step_id);
-  PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
-    State.getSession().events.filter(e => e.type === "interaction"), span, {
-      zoom: State.getStepZoom(),
-      selectedId: State.getSelectedStepId(),
-      dimmedIds,
-      onSelect: (sid) => { _selectAndReveal(sid); renderStepsLevel(); },
-      onContextMenu: (sid, x, y) => showStepContextMenu(sid, x, y),
-    });
-  const range = $("#steps-timeline-range");
-  if (range) {
-    const fmt = (ms) => new Date(ms).toLocaleTimeString();
-    range.textContent = `${fmt(span.startMs)} → ${fmt(span.endMs)} · ${formatDuration(span.endMs - span.startMs)}`;
+/* The readable name of an application token ("chrome", "chrome.exe",
+   "EXCEL.EXE"): the recording's own name for it (stats.json meta.app_names,
+   the names the findings and the PDD use), else the executable name without
+   its extension, capitalized when it is a machine token. Mirrors
+   normalization/app_names.display_name. */
+function readableApp(app, names) {
+  const raw = String(app || "").trim();
+  if (!raw || raw === "(app)") return "";
+  const map = (names && typeof names === "object") ? names : {};
+  if (typeof map[raw] === "string" && map[raw].trim()) return map[raw].trim();
+  const key = (v) => { const k = String(v || "").trim().toLowerCase(); return k.endsWith(".exe") ? k.slice(0, -4) : k; };
+  for (const [exe, nm] of Object.entries(map)) {
+    if (key(exe) === key(raw) && typeof nm === "string" && nm.trim()) return nm.trim();
   }
+  const bare = raw.toLowerCase().endsWith(".exe") ? raw.slice(0, -4) : raw;
+  return (bare === bare.toUpperCase() || bare === bare.toLowerCase())
+    ? bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase() : bare;
 }
 
-/* R1 triage economics: a resident "App / Screen" fact for the step detail
-   panel's fact line. Prefers the pipeline-stamped grain_keys (screen already
-   value-freed at stamp time is not guaranteed, so re-apply screenType -- the
-   same read-only helper the map's screen axis uses, imported but never
-   mutated here); falls back to resolving live from the step's interactions
-   for older sessions/hand-authored steps (mirrors process-map-levels' own
-   _containmentKeys fallback). Never touches process-map-levels.js. */
-function stepAppScreenFact(step, interactionsById) {
-  if (!step) return "";
+function _appNames() {
+  const s = State.getSession();
+  return (s && s.stats && s.stats.meta && s.stats.meta.app_names) || {};
+}
+
+/* The step's application (its readable name) and screen for the detail
+   pane's one fact line. Prefers the pipeline-stamped grain_keys (the screen
+   gets screenType again, the read-only helper the map's screen axis uses);
+   falls back to resolving them from the step's interactions for older or
+   hand-authored steps. */
+function stepAppAndScreen(step, interactionsById) {
+  if (!step) return { app: "", screen: "" };
   const keys = (step.grain_keys && typeof step.grain_keys === "object")
     ? step.grain_keys
     : resolveStepGrainKeys(step, interactionsById || {});
-  const app = (keys.app || "").trim();
   const screen = screenType(keys.screen || "").trim();
-  if (app && screen && screen !== "(screen)") return app + " - " + screen;
-  return app || (screen && screen !== "(screen)" ? screen : "");
+  return { app: readableApp(keys.app, _appNames()), screen: screen === "(screen)" ? "" : screen };
 }
 
-/* The run a step belongs to, as the detail pane names it. */
-function _runLabelFor(step, model) {
-  const run = step && model.runs.find((r) => r.caseId === step.case_id);
-  if (!run) return "Outside runs";
-  return run.title + (run.label ? " (" + run.label + ")" : "");
+/* P2.16: the step's screenshots, for its editor: [{ ref, url, time }]. A ref
+   comes from annotations.json (untrusted): only a session-relative image
+   path that stays inside the session folder and exists is shown. `time` is
+   the screenshot's local clock time, from its capture event. */
+const _IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+function stepScreenshots(step) {
+  const s = State.getSession();
+  const refs = (step && step.evidence && step.evidence.screenshot_refs) || [];
+  if (!s || !s.sessionFolder || !Array.isArray(refs) || !refs.length) return [];
+  const base = path.resolve(s.sessionFolder);
+  const timeOf = {};
+  for (const ev of s.events || []) {
+    const d = ev && ev.data;
+    if (ev && ev.type === "system" && d && (d.kind === "screenshot" || d.kind === "screenshot_manual") && d.path) {
+      timeOf[d.path] = ev.timestamp;
+    }
+  }
+  const out = [];
+  for (const ref of refs) {
+    if (typeof ref !== "string" || !ref || path.isAbsolute(ref) || !_IMG_EXT.test(ref)) continue;
+    const full = path.resolve(base, ref);
+    const rel = path.relative(base, full);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || !fs.existsSync(full)) continue;
+    out.push({ ref, url: "file:///" + full.replace(/\\/g, "/"), time: timeOf[ref] ? localClock(timeOf[ref]) : "" });
+  }
+  return out;
 }
 
 /* C8: what the step editor's "Said during this step" shows: null without a
@@ -688,7 +704,8 @@ function _transcriptSaid(step) {
 }
 
 /* The callbacks the per-step detail editor needs. */
-function stepDetailCallbacks(selected, interactionsById, model) {
+function stepDetailCallbacks(selected, interactionsById) {
+  const where = stepAppAndScreen(selected, interactionsById);
   return {
     onSave: saveStep,
     onDelete: deleteStep,
@@ -712,10 +729,13 @@ function stepDetailCallbacks(selected, interactionsById, model) {
       }
       renderStepsLevel();
     },
-    // R1 triage economics: resident one-line facts (duration/start/end already
-    // came from time_range; these two are the added app/screen + run facts).
-    appScreenFact: stepAppScreenFact(selected, interactionsById),
-    runLabel: _runLabelFor(selected, model || _model()),
+    // P1.7: the one fact line (the duration comes from the step itself).
+    appName: where.app,
+    screenName: where.screen,
+    // P2.16: the step's screenshots, opened full size on a click (a lazy
+    // require: the Flow module wires its own buttons when it loads).
+    screenshots: stepScreenshots(selected),
+    onOpenScreenshot: (ref) => require("./flow-view-screenshots.js").openScreenshot(ref),
     // C4: the name input suggests remembered and already-used names.
     nameListId: NAME_LIST_ID,
     transcriptSaid: _transcriptSaid(selected),
@@ -725,14 +745,21 @@ function stepDetailCallbacks(selected, interactionsById, model) {
 /* ===== Names: rename, remember, propagate (C4) ======================== */
 
 /* The one rename rule, for every entry point (inline rename, the detail
-   form): the step becomes an analyst state and its map label follows the
-   name; when it carries a draft_key, every other still-draft step with that
-   key takes the name at once. Returns { key, propagated } (key: the
-   draft_key to remember, or null). */
+   form): the step becomes an analyst state and its grouping label follows the
+   name the way the pipeline stamps it (step_suggest._step_process_label): a
+   drafted step (it carries a draft_key) is labelled by its name as typed, the
+   name the analyst chose for every step with that key (C4), so the value
+   rules never cut it ("Salesforce - Order: Save order" is not "Salesforce");
+   any other step keeps the value rules. The same-key drafts that take the
+   name (propagateName) get the same label, so the renamed step and its
+   siblings group together before the next Analyze stamps them again. When it
+   carries a draft_key, every other still-draft step with that key takes the
+   name at once. Returns { key, propagated } (key: the draft_key to remember,
+   or null). */
 function _applyRename(anno, step, name) {
   step.name = name;
   step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
-  const pl = processLabel(name);
+  const pl = (typeof step.draft_key === "string" && step.draft_key) ? String(name).trim() : processLabel(name);
   if (pl) step.process_label = pl;
   const key = typeof step.draft_key === "string" && step.draft_key ? step.draft_key : null;
   const propagated = key ? RunsModel.propagateName(anno.steps || [], step, name) : 0;
@@ -1053,7 +1080,9 @@ function makeStep(name, startISO, endISO, eventIds, caseId) {
     evidence: { interaction_event_ids: eventIds, screenshot_refs: [], video_timecode_range: null, manual_notes: "" },
     state: "manually_authored",
     canonical_step_id: null,
-    flags: { conditional: false, condition_text: null, exception_path: false, waste: false, automation_candidate: false },
+    // Waste is the only per-step flag (ADR-0027): the retired ones are not
+    // written.
+    flags: { waste: false },
     phase_id: null,
   };
 }
@@ -1366,12 +1395,14 @@ async function saveAsProcessAction(caseId) {
   if (!p.run || p.run.caseId !== caseId || !p.record || !p.record.confirmed_at) return;
   const steps = RunDiff.processStepsFrom(p.run.visible);
   if (!steps.length) { toast("This run has no steps to save.", "error"); return; }
+  const docTitle = anno.document && typeof anno.document.title === "string" ? anno.document.title.trim() : "";
   const name = await promptModal({
     title: "Save as this process",
     message: "Name the process",
     detail: "A later session of this process is compared with these " + _plural(steps.length, "step", "steps") +
       " when you open it. Saving under a name already saved replaces that process.",
     placeholder: "For example: Order entry",
+    defaultValue: docTitle,
     okLabel: "Save",
   });
   if (!name || !name.trim()) return;
@@ -1402,6 +1433,46 @@ async function _undoSaveProcess(saved) {
   }
   if (r && r.ok) toast(saved.previous ? "The saved process is back as it was." : "The process is no longer saved.", "success");
   else toast("The save could not be taken back: " + ((r && r.error) || "no reason was given"), "error");
+}
+
+/* "Forget this saved process" (P3.11), the inverse of Save as this process
+   where the saved process shows (the comparison line): it leaves this
+   computer's saved processes, the runs are compared with the session's own
+   pattern run, and the toast's Undo brings it back, with the comparison. */
+async function forgetProcessAction() {
+  const match = _ui.compare;
+  const proc = match && match.process;
+  if (!proc || !proc.id) return;
+  let r;
+  try {
+    r = await Ipc.forgetProcess({ id: proc.id });
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
+  }
+  if (!r || !r.ok) {
+    toast("The saved process was not forgotten: " + ((r && r.error) || "no reason was given"), "error");
+    return;
+  }
+  const folder = _ui.folder;
+  _ui.compare = null;
+  renderStepsLevel();
+  toast('Forgot the saved process "' + proc.name + '".', "success",
+    { action: { label: "Undo", act: "undo-forget-process", onClick: () => _undoForgetProcess(r.removed, match, folder) } });
+}
+
+async function _undoForgetProcess(removed, match, folder) {
+  let r;
+  try {
+    r = removed ? await Ipc.undoSaveProcess({ id: removed.id, previous: removed }) : { ok: false, error: "nothing was forgotten" };
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
+  }
+  if (!r || !r.ok) {
+    toast("The saved process could not be brought back: " + ((r && r.error) || "no reason was given"), "error");
+    return;
+  }
+  if (_ui.folder === folder) { _ui.compare = match; _ui.compareStopped = false; renderStepsLevel(); }
+  toast("The saved process is back.", "success");
 }
 
 async function usePatternAction(caseId) {
@@ -1509,7 +1580,7 @@ function openIgnoredAppsDialog() {
       '<header class="modal-header"><h2>Ignored apps</h2>' +
         '<button class="icon-btn modal-close" id="ia-close" title="Close">✕</button></header>' +
       '<div class="modal-body">' +
-        '<p class="meta" style="margin-top:0">Apps you tick here are left out of step suggestions: useful for OBS, the tracker itself, or anything that isn\'t part of the process you\'re mapping. Saving re-analyzes the session.</p>' +
+        '<p class="meta" style="margin-top:0">The apps you tick are left out of the drafted steps: for example the recorder itself, or anything that is not part of the process you are mapping. Saving analyzes the session again.</p>' +
         '<div id="ia-list" style="margin-top:10px"></div>' +
       '</div>' +
       '<div class="modal-footer">' +
@@ -1520,11 +1591,12 @@ function openIgnoredAppsDialog() {
   document.body.appendChild(backdrop);
 
   const list = backdrop.querySelector("#ia-list");
-  list.innerHTML = apps.map((a, i) => {
+  const names = _appNames();
+  list.innerHTML = apps.map((a) => {
     const checked = current.has(a.proc.toLowerCase()) ? " checked" : "";
-    return '<label class="cb" style="display:flex;gap:8px;padding:5px 4px;align-items:center">' +
+    return '<label class="cb" style="display:flex;gap:8px;padding:5px 4px;align-items:center" title="' + escapeAttr(a.proc) + '">' +
       '<input type="checkbox" data-proc="' + escapeHtml(a.proc) + '"' + checked + ' />' +
-      '<span style="flex:1">' + escapeHtml(a.proc) + '</span>' +
+      '<span style="flex:1">' + escapeHtml(readableApp(a.proc, names) || a.proc) + '</span>' +
       '<span class="meta">' + a.count + ' interactions</span>' +
       '</label>';
   }).join("");
@@ -1685,11 +1757,50 @@ async function toggleStepFlag(stepId, flagKey) {
   toast(step.flags[flagKey] ? "Flagged" : "Flag cleared", "success");
 }
 
-/* A5: right-click context menu for a step, from its list row or its block
-   on the step timeline. Mirrors the inline-styled menu pattern used by the
-   Flow timeline (flow-view.js showMarkerInsertMenu) for visual consistency.
-   The step is revealed first (its run opens), so every item acts on a step
-   the list shows. */
+/* P3.8: a run's right-click menu: "Use as pattern", the once-a-session
+   choice that used to sit on every open run. The same inline-styled menu as
+   the step menu below. */
+function showRunContextMenu(caseId, x, y) {
+  const prior = document.getElementById("run-ctx-menu");
+  if (prior) prior.remove();
+  const menu = document.createElement("div");
+  menu.id = "run-ctx-menu";
+  menu.style.cssText =
+    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
+    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
+    "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:180px;cursor:default;user-select:none;";
+  const item = document.createElement("div");
+  item.dataset.act = "use-pattern";
+  item.textContent = "Use as pattern";
+  item.title = "Make this the run you confirm first. The boundary fix count starts again at zero.";
+  item.style.cssText = "padding:6px 14px;cursor:pointer;";
+  item.addEventListener("mouseenter", () => { item.style.background = "var(--accent)"; });
+  item.addEventListener("mouseleave", () => { item.style.background = ""; });
+  menu.appendChild(item);
+  document.body.appendChild(menu);
+  placeMenu(menu, x, y);   // at (x, y), kept inside the window
+  const close = () => {
+    menu.remove();
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", dismiss, true);
+  };
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    // A press ON the menu is a choice, not a dismissal (the Flow menus' rule).
+    if (e.type === "mousedown" && menu.contains(e.target)) return;
+    close();
+  };
+  item.addEventListener("click", async () => { close(); await usePatternAction(caseId); });
+  setTimeout(() => {
+    document.addEventListener("mousedown", dismiss, true);
+    document.addEventListener("keydown", dismiss, true);
+  }, 0);
+}
+
+/* A5: right-click context menu for a step, from its list row. Mirrors the
+   inline-styled menu pattern used by the Flow timeline (flow-view.js
+   showMarkerInsertMenu) for visual consistency. The step is revealed first
+   (its run opens), so every item acts on a step the list shows. */
 function showStepContextMenu(stepId, x, y) {
   const prior = document.getElementById("step-ctx-menu");
   if (prior) prior.remove();

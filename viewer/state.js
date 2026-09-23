@@ -10,9 +10,9 @@
  * them, and `emit` / `subscribe` are the only notification mechanism.
  * Loaded via CommonJS `require("./state.js")`, like timeline-core.js.
  *
- * Note: getListFilters and getMultiSelectedStepIds return the live
- * object so existing field-level mutation keeps working. Mutating those bypasses the bus;
- * the paths that must notify go through emit()/batch() explicitly.
+ * Note: getMultiSelectedStepIds returns the live set so existing
+ * field-level mutation keeps working. Mutating it bypasses the bus; the
+ * paths that must notify go through emit()/batch() explicitly.
  */
 
 "use strict";
@@ -23,11 +23,6 @@
  * Renderable concerns a view can subscribe to. An edit emits the
  * topics it touched; every function subscribed to that topic re-runs.
  * @typedef {"steps"|"timeline"|"markers"} ChangeTopic
- */
-
-/**
- * @typedef {Object} ListFilters
- * @property {{ text: string }} marker
  */
 
 /**
@@ -45,9 +40,7 @@
  * @property {Level} currentLevel       Active session sub-view.
  * @property {string|null} selectedStepId
  * @property {Set<string>} multiSelectedStepIds
- * @property {ListFilters} listFilters
  * @property {string} currentCaseScope  Session-wide case filter; "" = all cases.
- * @property {number} stepZoom
  * @property {number} zoomFactor        Flow timeline zoom.
  * @property {*} selectionRange         Flow timeline drag-selected range, or null.
  * @property {UndoEntry[]} undoStack
@@ -62,11 +55,7 @@ const _s = {
   currentLevel: "overview",
   selectedStepId: null,
   multiSelectedStepIds: new Set(),
-  listFilters: {
-    marker: { text: "" },
-  },
   currentCaseScope: "",
-  stepZoom: 1,
   zoomFactor: 1,
   selectionRange: null,
   undoStack: [],
@@ -224,9 +213,7 @@ function getMultiSelectedStepIds() { return _s.multiSelectedStepIds; }
 /** @param {Set<string>} v */
 function setMultiSelectedStepIds(v) { _s.multiSelectedStepIds = v; }
 
-/* Filters & case scope */
-/** @returns {ListFilters} the live object */
-function getListFilters() { return _s.listFilters; }
+/* Case scope */
 function getCaseScope() { return _s.currentCaseScope; }
 /** @param {string} v */
 function setCaseScope(v) { _s.currentCaseScope = v; }
@@ -257,9 +244,6 @@ function consumePendingStepReveal() {
 function getZoomFactor() { return _s.zoomFactor; }
 /** @param {number} v */
 function setZoomFactor(v) { _s.zoomFactor = v; }
-function getStepZoom() { return _s.stepZoom; }
-/** @param {number} v */
-function setStepZoom(v) { _s.stepZoom = v; }
 
 /* Flow timeline range selection */
 function getSelectionRange() { return _s.selectionRange; }
@@ -278,13 +262,13 @@ module.exports = {
   // selection
   getSelectedStepId, setSelectedStepId,
   getMultiSelectedStepIds, setMultiSelectedStepIds,
-  // filters & case scope
-  getListFilters, getCaseScope, setCaseScope,
+  // case scope
+  getCaseScope, setCaseScope,
   // cross-view step-jump request
   setPendingStepJump, consumePendingStepJump,
   setPendingStepReveal, consumePendingStepReveal,
   // zoom
-  getZoomFactor, setZoomFactor, getStepZoom, setStepZoom,
+  getZoomFactor, setZoomFactor,
   // flow timeline range selection
   getSelectionRange, setSelectionRange,
 };

@@ -135,6 +135,36 @@ test("a failed write or rename leaves the previous store in place and no temp fi
   }
 });
 
+test("forgetProcess removes one saved process and returns it as stored; Undo puts it back", () => {
+  const p = tempStore();
+  Store.saveProcess(p, { name: "Order entry", sourceSessionId: "s-1", steps: STEPS }, { now: "t1", uuid: "a" });
+  Store.saveProcess(p, { name: "Returns", steps: STEPS.slice(0, 1) }, { now: "t2", uuid: "b" });
+  const r = Store.forgetProcess(p, { id: "proc-a" });
+  assert.equal(r.path, p);
+  assert.equal(r.removed.id, "proc-a");
+  assert.equal(r.removed.source_session_id, "s-1");
+  assert.deepEqual(Store.readProcessesFile(p).processes.map((x) => x.id), ["proc-b"], "the other process stays");
+  assert.deepEqual(Store.undoSaveProcess(p, { id: r.removed.id, previous: r.removed }), { path: p, changed: true });
+  const back = Store.readProcessesFile(p).processes.find((x) => x.id === "proc-a");
+  assert.equal(back.name, "Order entry");
+  assert.equal(back.steps.length, 3);
+  assert.deepEqual(leftoverTemps(p), []);
+});
+
+test("forgetProcess refuses an unknown id and an unreadable store, and changes nothing", () => {
+  const p = tempStore();
+  Store.saveProcess(p, { name: "Kept", steps: STEPS }, { now: "t1", uuid: "k" });
+  const text = fs.readFileSync(p, "utf-8");
+  assert.throws(() => Store.forgetProcess(p, { id: "proc-gone" }), /no longer on this computer/);
+  assert.throws(() => Store.forgetProcess(p, {}), /no saved process was named/);
+  assert.equal(fs.readFileSync(p, "utf-8"), text);
+  const bad = tempStore();
+  fs.mkdirSync(path.dirname(bad), { recursive: true });
+  fs.writeFileSync(bad, "[]");
+  assert.throws(() => Store.forgetProcess(bad, { id: "proc-k" }), (e) => e.code === "PROCESSES_UNREADABLE");
+  assert.equal(fs.readFileSync(bad, "utf-8"), "[]");
+});
+
 test("nothing is saved without a name or without steps", () => {
   const p = tempStore();
   assert.throws(() => Store.saveProcess(p, { name: "  ", steps: STEPS }), /no name/);

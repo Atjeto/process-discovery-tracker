@@ -91,16 +91,21 @@ test("fork prefers the on-disk source hash; drift fires when the source changes"
   assert.equal(RM.isStale(e, RM.fileHash(srcFile)), true);
 });
 
-test("duplicate copies the blob, carries kind, fresh id + file", () => {
+test("duplicate copies the blob as a To-Be map with no PDD role, fresh id + file", () => {
   const sf = tmpSession();
   const anno = {};
-  const src = RM.fork({ sessionFolder: sf, anno, xml: "<a/>", source: { level: "step" }, kind: "as_is", nowIso: "t" });
+  const src = RM.fork({ sessionFolder: sf, anno, xml: "<a/>", source: { level: "step" }, name: "As-Is map", kind: "as_is", nowIso: "t" });
+  RM.setRole(anno, src.map_id, "as_is");
   const dup = RM.duplicate({ sessionFolder: sf, anno, srcEntry: src, nowIso: "t2" });
   assert.notEqual(dup.map_id, src.map_id);
   assert.notEqual(dup.file, src.file);
-  assert.equal(dup.kind, "as_is");
+  assert.equal(dup.name, "To-Be map");
+  assert.equal(dup.kind, "to_be");
+  assert.equal(dup.pdd_role, null);
+  assert.equal(dup.source.level, "step");
   assert.equal(RM.readBpmn(sf, dup), "<a/>");
   assert.equal(RM.list(anno).length, 2);
+  assert.equal(RM.pddPick(anno, "as_is").map_id, src.map_id, "the As-Is map keeps its role");
 });
 
 test("destroy removes the manifest row but KEEPS the blob (undo-safe)", () => {
@@ -125,9 +130,24 @@ test("absPath refuses a path that escapes the session folder", () => {
   assert.throws(() => RM.writeBpmn(sf, { file: "../evil.bpmn" }, "<x/>"));
 });
 
-test("cellLabel / kindLabel are human-readable", () => {
-  assert.equal(RM.cellLabel({ level: "step" }), "Step Process diagram");
-  assert.equal(RM.cellLabel(null), "Activity Process diagram");
-  assert.equal(RM.kindLabel("to_be"), "To-Be");
-  assert.equal(RM.kindLabel("reference"), "Reference");
+test("setRole is the one role control: exclusive per slot, and the stored kind follows a chosen role", () => {
+  const anno = {};
+  RM.upsert(anno, RM.buildEntry({ map_id: "a", file: "a", kind: "reference" }));
+  RM.upsert(anno, RM.buildEntry({ map_id: "b", file: "b", kind: "as_is" }));
+  RM.setRole(anno, "a", "as_is");
+  assert.deepEqual([RM.find(anno, "a").pdd_role, RM.find(anno, "a").kind], ["as_is", "as_is"]);
+  RM.setRole(anno, "b", "as_is");   // takes the slot from a
+  assert.equal(RM.find(anno, "a").pdd_role, null);
+  assert.equal(RM.pddPick(anno, "as_is").map_id, "b");
+  RM.setRole(anno, "b", "to_be");
+  assert.deepEqual([RM.find(anno, "b").pdd_role, RM.find(anno, "b").kind], ["to_be", "to_be"]);
+  RM.setRole(anno, "b", null);      // cleared: the role goes, the kind stays
+  assert.deepEqual([RM.find(anno, "b").pdd_role, RM.find(anno, "b").kind], [null, "to_be"]);
+  assert.equal(RM.setRole(anno, "missing", "as_is"), null);
+});
+
+test("the stored shape of a map is unchanged (the Export menu reads it)", () => {
+  const e = RM.buildEntry({ file: "derived_maps/x.bpmn", name: "As-Is map", kind: "as_is", source: { level: "step" }, forked_at: "t" });
+  assert.deepEqual(Object.keys(e).sort(),
+    ["edited_at", "file", "forked_at", "forked_from_hash", "kind", "map_id", "name", "notes", "pdd_role", "source"]);
 });

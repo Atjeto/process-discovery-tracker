@@ -229,11 +229,12 @@ const WANT_OFFSET = -30000;
       } : null,
     };
   });
+  // P1.7: the Description (with "Said during this step" under it) is resident
+  // in the step detail, not behind its More disclosure.
   const openStep = async (stepId) => {
     await level("steps");
     await page.locator('#step-list .step-row[data-step-id="' + stepId + '"]').click({ timeout: T });
-    await page.waitForSelector("#step-detail .step-detail-more", { timeout: T });
-    await page.evaluate(() => { document.querySelector("#step-detail .step-detail-more").open = true; });
+    await page.waitForSelector("#step-detail #step-desc", { state: "visible", timeout: T });
   };
   const openOverviewTranscript = async () => {
     await level("overview");
@@ -356,13 +357,20 @@ const WANT_OFFSET = -30000;
     // The drafted step already has a description: the sentence goes on a new line after it.
     const appended = typeof desc === "string" && (desc === S.t0005 || desc.endsWith("\n" + S.t0005));
     const button = (list, seg) => ((list && list.buttons) || []).find((b) => b.seg === seg) || {};
-    const ok = !err && !!listed && JSON.stringify(listed.rows) === JSON.stringify([S.t0004, S.t0005]) &&
+    const resident = await page.evaluate(() => {
+      const more = document.querySelector("#step-detail .step-detail-more");
+      const said = document.getElementById("step-said");
+      return { moreClosed: !!(more && !more.open), saidOutsideMore: !!(said && !(more && more.contains(said))),
+        descOutsideMore: !!(document.getElementById("step-desc") && !(more && more.contains(document.getElementById("step-desc")))) };
+    }).catch((e) => ({ err: e.message }));
+    const ok = !err && resident.moreClosed && resident.saidOutsideMore && resident.descOutsideMore &&
+      !!listed && JSON.stringify(listed.rows) === JSON.stringify([S.t0004, S.t0005]) &&
       listed.buttons.every((b) => b.text === "Add" && !b.disabled) && appended &&
       typeof saved.description === "string" && saved.description.endsWith(S.t0005) && saved.state === "edited" &&
       button(after, "t0005").text === "Added" && button(after, "t0004").text === "Add" &&
       !!empty && empty.note === "Nothing was said during this step." && empty.rows.length === 0;
-    record("(e) the step editor lists the sentences of the step's window (10 s lead), Add fills the Description, Save keeps it, the button reads Added; a quiet step says so",
-      ok, JSON.stringify({ err, listed, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
+    record("(e) the step editor lists the sentences of the step's window (10 s lead) under the resident Description (More stays closed), Add fills it, Save keeps it, the button reads Added; a quiet step says so",
+      ok, JSON.stringify({ err, resident, listed, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
     if (!ok) await shot(page, "fail-transcript-step.png");
   }
 

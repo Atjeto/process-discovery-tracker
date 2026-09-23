@@ -25,8 +25,6 @@ const KINDS = ["as_is", "to_be", "reference"];
 const PDD_ROLES = ["as_is", "to_be"];
 const DERIVED_DIR = "derived_maps";
 
-const KIND_LABELS = { as_is: "As-Is", to_be: "To-Be", reference: "Reference" };
-
 /* ---- hashing (drift detection) -------------------------------------------
    blake2b where available (matches the Python signature idiom), sha256 fallback
    on an OpenSSL build without it. Drift only ever compares two hashes computed
@@ -50,15 +48,6 @@ function genId() {
   catch (_) { return "rm_" + crypto.randomBytes(8).toString("hex"); }
 }
 
-/* Human label for the forked-from cell, e.g. "Step Process diagram". */
-function cellLabel(source) {
-  const lvl = (source && source.level) || "activity";
-  const cap = lvl.charAt(0).toUpperCase() + lvl.slice(1);
-  return cap + " Process diagram";
-}
-
-function kindLabel(kind) { return KIND_LABELS[kind] || "Reference"; }
-
 /* ---- pure manifest manipulation (unit-tested) ----------------------------- */
 
 function ensure(anno) {
@@ -76,7 +65,7 @@ function find(anno, id) {
 function buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked_at } = {}) {
   return {
     map_id: map_id || genId(),
-    name: (name && String(name).trim()) || "Untitled reference map",
+    name: (name && String(name).trim()) || "Untitled map",
     kind: KINDS.includes(kind) ? kind : "reference",
     file,
     source: source || null,
@@ -107,12 +96,6 @@ function rename(anno, id, name) {
   if (n) e.name = n;
   return e;
 }
-function setKind(anno, id, kind) {
-  const e = find(anno, id);
-  if (!e) return null;
-  if (KINDS.includes(kind)) e.kind = kind;
-  return e;
-}
 /* A PDD role (as_is / to_be) is exclusive: at most one map fills each slot, so
    selecting a new one clears the prior holder. `null` / unknown clears. */
 function setPddRole(anno, id, role) {
@@ -124,6 +107,15 @@ function setPddRole(anno, id, role) {
     for (const m of arr) if (m && m.map_id !== id && m.pdd_role === next) m.pdd_role = null;
   }
   e.pdd_role = next;
+  return e;
+}
+/* The one role control (P2.5): the PDD role a map fills (exclusive, see
+   setPddRole) and, when it has one, its stored kind follows it, so the stored
+   shape keeps a kind that agrees with the role although the viewer no longer
+   shows the kind on its own. */
+function setRole(anno, id, role) {
+  const e = setPddRole(anno, id, role);
+  if (e && e.pdd_role) e.kind = e.pdd_role;
   return e;
 }
 function pddPick(anno, role) {
@@ -188,13 +180,15 @@ function fork({ sessionFolder, anno, xml, source, sourceBpmnPath, name, kind, no
   return entry;
 }
 
-/* Duplicate an existing copy (carries kind + provenance; fresh id + file). */
+/* Duplicate an existing copy (provenance carried; fresh id + file). A
+   duplicate is how a To-Be map starts from the As-Is map, so it is named and
+   kept as one ("To-Be map"); it fills no PDD role until the analyst chooses. */
 function duplicate({ sessionFolder, anno, srcEntry, nowIso }) {
   const xml = readBpmn(sessionFolder, srcEntry) || "";
   const map_id = genId();
   const file = path.posix.join(DERIVED_DIR, map_id + ".bpmn");
   const entry = buildEntry({
-    map_id, name: (srcEntry.name || "Reference map") + " (copy)", kind: srcEntry.kind,
+    map_id, name: "To-Be map", kind: "to_be",
     file, source: srcEntry.source, forked_from_hash: srcEntry.forked_from_hash, forked_at: nowIso || null,
   });
   writeBpmn(sessionFolder, entry, xml);
@@ -213,9 +207,9 @@ function destroy({ sessionFolder, anno, id }) {
 }
 
 module.exports = {
-  KINDS, PDD_ROLES, DERIVED_DIR, KIND_LABELS,
-  hashContent, fileHash, genId, cellLabel, kindLabel,
-  ensure, list, find, buildEntry, upsert, remove, rename, setKind, setPddRole, pddPick, isStale,
+  KINDS, PDD_ROLES, DERIVED_DIR,
+  hashContent, fileHash, genId,
+  ensure, list, find, buildEntry, upsert, remove, rename, setPddRole, setRole, pddPick, isStale,
   derivedDir, absPath, fileExists, writeBpmn, readBpmn, deleteBpmn,
   fork, duplicate, destroy,
 };

@@ -78,12 +78,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             </button>
             <div class="project-menu-popup" id="session-more-popup" style="display:none">
               <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
+              <!-- Shown only while a video is linked (flow-view.js syncVideoControls). -->
+              <button class="project-menu-item" id="btn-sync-video" hidden title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
               <!-- C8: the meeting transcript. The label says Replace once one is
                    attached, and only then does Remove show (flow-view-transcript.js). -->
               <button class="project-menu-item" id="btn-attach-transcript" title="Attach the meeting transcript Teams saved (.vtt or .docx). Its sentences show on the timeline, next to each step and beside the document sections.">Attach transcript...</button>
               <button class="project-menu-item" id="btn-remove-transcript" hidden title="Take the transcript out of this session. The original file stays in the session's transcript folder.">Remove transcript</button>
-              <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
-              <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Also write the process map as a BPMN file during analysis: the file Fork copies into an editable As-Is or To-Be map."/> Build process map</label>
+              <button class="project-menu-item" id="btn-ignored-apps" title="Leave apps out of the drafted steps, for example the recorder itself. Saving analyzes the session again.">Ignored apps...</button>
+              <button class="project-menu-item" id="btn-remembered-names" title="The names this computer remembers for drafted steps: rename or forget one">Remembered names...</button>
             </div>
           </div>
           <!-- The one session-state call to action (Analyze to apply N marker
@@ -119,7 +121,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </button>
           <button class="view-mode-btn" data-level="steps" title="Each run's drafted steps: confirm the pattern run first">
             <span class="view-mode-icon">▣</span> Steps
-            <span class="badge" id="steps-badge">0</span>
           </button>
           <button class="view-mode-btn" data-level="map" title="The process map built from the runs' steps, and the editable As-Is and To-Be maps forked from it">
             <span class="view-mode-icon">◯</span> Map
@@ -145,7 +146,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <strong>Timeline</strong>
               <span id="timeline-summary" class="meta"></span>
               <div class="timeline-controls">
-                <button class="icon-btn" id="btn-add-step" type="button" title="Add a step at the video playhead (S)">+ Step</button>
+                <!-- Shown only while a video is linked (flow-view.js syncVideoControls). -->
+                <button class="icon-btn" id="btn-add-step" type="button" hidden title="Add a step at the video playhead (S)">+ Step</button>
                 <div class="lanes-menu" id="lanes-menu">
                   <button class="icon-btn" id="btn-lanes" title="Choose which timeline lanes to show">Lanes ▾</button>
                   <div class="lanes-popup" id="lanes-popup" style="display:none">
@@ -153,11 +155,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                     <label class="cb"><input type="checkbox" data-lane="idle" /> Idle gaps</label>
                     <label class="cb"><input type="checkbox" data-lane="markers" /> Marker bars</label>
                     <label class="cb"><input type="checkbox" data-lane="screenshots" /> Screenshot dots</label>
-                    <label class="cb"><input type="checkbox" data-lane="cases" /> Case lanes</label>
-                    <label class="cb"><input type="checkbox" data-lane="density" /> Activity density</label>
-                    <label class="cb"><input type="checkbox" data-lane="titles" /> Window-title strip</label>
+                    <label class="cb"><input type="checkbox" data-lane="cases" /> Runs</label>
                     <label class="cb"><input type="checkbox" data-lane="steps" /> Per-step bands</label>
-                    <label class="cb"><input type="checkbox" data-lane="notes" /> Note markers</label>
                     <label class="cb" id="lane-transcript-row" hidden><input type="checkbox" data-lane="transcript" /> Transcript</label>
                   </div>
                 </div>
@@ -195,9 +194,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <video id="video" controls preload="metadata"></video>
               <div class="no-video" id="no-video">
                 <span class="nv-icon">▶</span>
-                <span class="nv-text">No recording linked</span>
-                <span class="nv-hint">The timeline below is complete without one.</span>
-                <button type="button" id="btn-link-recording" class="link-btn nv-link" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Link recording…</button>
+                <span class="nv-text">No video linked</span>
+                <span class="nv-hint">The timeline above is complete without one.</span>
+                <button type="button" id="btn-link-recording" class="link-btn nv-link" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
               </div>
               <div class="video-overlay" id="video-overlay"></div>
             </div>
@@ -206,27 +205,17 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
             <aside class="annotations-pane">
               <div class="anno-tabs">
-                <button class="anno-tab active" data-anno="notes">Notes</button>
-                <button class="anno-tab" data-anno="screens">Screenshots</button>
+                <button class="anno-tab active" data-anno="screens">Screenshots</button>
                 <button class="anno-tab" data-anno="markers">Markers</button>
               </div>
-              <div class="anno-panel" data-panel="notes">
-                <div id="annotations-list"></div>
-                <textarea id="anno-note" placeholder="Pin a note to the current playback time..."></textarea>
-                <button id="btn-save-note">Save note at current time</button>
-              </div>
-              <div class="anno-panel" data-panel="screens" style="display:none">
+              <div class="anno-panel" data-panel="screens">
                 <div class="screens-toolbar">
                   <button id="btn-open-gallery" type="button" class="link-btn" title="Step through every screenshot full-screen with arrow keys.">Open gallery...</button>
                 </div>
                 <div id="screenshots-grid" class="screens-grid"></div>
               </div>
               <div class="anno-panel" data-panel="markers" style="display:none">
-                <div class="list-filter list-filter-compact">
-                  <input type="search" class="list-filter-input" id="marker-filter-text" placeholder="Filter markers..." />
-                  <span class="list-filter-meta" id="marker-filter-meta"></span>
-                </div>
-                <div id="markers-list" class="markers-list"></div>
+                <div id="markers-list" class="markers-list" title="Double-click a Start to rename its run. The row buttons move a marker or delete it. A change shows here at once, marked pending, and applies to the runs when you analyze the session."></div>
               </div>
             </aside>
           </div>
@@ -235,32 +224,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- ========= STEPS view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
           <div class="editor-toolbar">
-            <button id="btn-add-manual-step" class="primary" title="Add a step by hand: after the selected step of the open run, or at the video playhead">+ Add step</button>
+            <button id="btn-add-manual-step" title="Add a step by hand: after the selected step of the open run, or at the video playhead">+ Add step</button>
             <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
                  syncMultiSelectButtons() toggles `hidden`. -->
             <button id="btn-delete-selected-steps" hidden title="Hide the ticked drafted steps and delete the ticked steps you added">Hide selected</button>
             <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
-            <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
-            <button id="btn-remembered-names" title="The names this computer remembers for drafted steps: rename or forget one">Remembered names...</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
-            <span class="hint"><span class="kbd-hint" title="Up / Down: previous / next step · Enter: rename · S: split · M: merge with next · N: new step · Ctrl+Enter: confirm run · Ctrl+click: tick for merge or hide">⌨ shortcuts</span> · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
-          </div>
-          <div class="mini-timeline-pane">
-            <div class="mini-timeline-header">
-              <strong>Step timeline</strong>
-              <span class="meta" id="steps-timeline-range"></span>
-              <span class="flex-spacer"></span>
-              <div class="timeline-controls">
-                <button class="icon-btn" id="btn-steps-zoom-out" title="Zoom out (-)">−</button>
-                <button class="icon-btn" id="btn-steps-zoom-reset" title="Reset zoom (0)">⊙</button>
-                <button class="icon-btn" id="btn-steps-zoom-in" title="Zoom in (+)">+</button>
-              </div>
-            </div>
-            <div class="mini-timeline-scroll">
-              <div class="timeline timeline-steps" id="timeline-steps"></div>
-            </div>
-            <div class="resize-v" id="resize-steps-timeline" title="Drag to resize timeline height"></div>
+            <span class="hint"><a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="editor-split">
             <div class="editor-list-pane">
@@ -282,27 +253,22 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="panel-header">
               <h3>Process map</h3>
               <div class="map-zoom" id="session-map-zoom" style="display:none">
-                <span class="map-zoom-pct" id="session-map-zoom-pct">100%</span>
-                <button class="icon-btn xs" id="btn-session-map-zoom-out" title="Zoom out">−</button>
-                <button class="icon-btn xs" id="btn-session-map-zoom-fit" title="Fit to view">fit</button>
-                <button class="icon-btn xs" id="btn-session-map-zoom-in" title="Zoom in">+</button>
-                <span class="map-rare" id="session-hide-rare-wrap" style="display:none" title="Drag to thin the map: hide paths the runs took fewer times than the cutoff, so the usual flow stands out. At 1× every path shows."><span id="session-hide-rare-lbl" class="map-rare-lbl">All paths</span><input type="range" id="session-rng-rare" class="map-rare-range" min="1" max="1" step="1" value="1" aria-label="Minimum path frequency" /></span>
+                <button class="icon-btn xs" id="btn-session-map-zoom-fit" title="Fit the whole map in view (scroll to zoom, drag to pan)">fit</button>
               </div>
               <div class="refmap-tools">
-                <button class="icon-btn xs" id="btn-fork-refmap" title="Make a standalone, fully editable copy of the process map (from its BPMN file) to draw the As-Is or To-Be map. Decoupled from analysis: re-analyze never changes it (ADR-0019).">⑂ Fork map</button>
-                <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide this session's reference maps.">Reference maps <span class="refmap-count" id="refmap-count"></span></button>
+                <!-- The Map's one act (refmap-ui.js syncForkButton sets its
+                     label and style): a copy of the process map in the editor,
+                     chosen as the PDD's As-Is map when none is chosen yet. -->
+                <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the session again never changes it.">Edit as the As-Is map</button>
+                <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the session again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
               </div>
             </div>
-            <div class="map-host" title="Scroll to zoom · drag to pan">
+            <div class="map-host" title="Scroll to zoom · drag to pan · hover an arrow for its times">
               <div class="map-pane active" id="session-map-dfg-host"></div>
             </div>
             <div class="refmap-panel" id="refmap-panel" style="display:none">
-              <div class="refmap-panel-head">
-                <h4>Reference maps</h4>
-                <span class="refmap-hint">Hand-edited, standalone copies: decoupled from analysis. Re-analyze never changes them.</span>
-              </div>
               <ul class="refmap-list" id="refmap-list"></ul>
-              <div class="refmap-empty" id="refmap-empty">No reference maps yet. Click <strong>⑂ Fork map</strong> to make an editable copy of the process map.</div>
+              <div class="refmap-empty" id="refmap-empty">No edited maps yet. <strong>Edit as the As-Is map</strong> makes the first one.</div>
             </div>
           </div>
         </div>
@@ -312,7 +278,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
              candidates) render into the Overview's #overview-evidence
              host below the findings feed. -->
 
-        <details class="event-table-host">
+        <!-- P2.10: the machine layer belongs to Flow only (renderer.js applyLevel
+             shows it there; hidden on the Overview, the default level). -->
+        <details class="event-table-host" style="display:none">
           <summary>Raw events (<span id="event-count">0</span>)</summary>
           <div class="event-filter">
             <input type="text" id="event-filter" placeholder="Filter by app, label, or kind..." />
@@ -362,13 +330,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
   </div>
 
   <div class="toast" id="toast"></div>
-
-  <!-- ========= Mode-specific shortcuts overlay (P2.4) ========= -->
-  <div class="shortcuts-overlay" id="shortcuts-overlay" style="display:none">
-    <button class="shortcuts-overlay-close" id="shortcuts-overlay-close" type="button" title="Hide (re-enable from Help → Show shortcuts overlay)">×</button>
-    <div class="shortcuts-overlay-title" id="shortcuts-overlay-title">Shortcuts</div>
-    <ul class="shortcuts-overlay-list" id="shortcuts-overlay-list"></ul>
-  </div>
 
   <!-- ========= Help modal ========= -->
   <div class="modal-backdrop" id="help-modal" style="display:none">
@@ -503,28 +464,19 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 </div>
 
 <!-- ADR-0019: Reference Maps editor overlay (full-screen, decoupled editable BPMN copy) -->
-<div class="refmap-editor-overlay" id="refmap-editor-overlay" style="display:none" role="dialog" aria-label="Reference map editor">
+<div class="refmap-editor-overlay" id="refmap-editor-overlay" style="display:none" role="dialog" aria-label="Map editor">
   <div class="refmap-editor-frame">
     <div class="refmap-editor-bar">
-      <span class="refmap-badge" id="refmap-editor-badge" title="This is a standalone copy. Edits stay in this map and never change the mined map or the analysis.">⑂ Reference copy: decoupled from analysis</span>
-      <input class="refmap-name-input" id="refmap-editor-name" placeholder="Reference map name" />
-      <label class="refmap-bar-lbl">Type
-        <select class="map-status-select" id="refmap-editor-kind">
-          <option value="as_is">As-Is</option>
-          <option value="to_be">To-Be</option>
-          <option value="reference">Reference</option>
-        </select>
-      </label>
-      <label class="refmap-bar-lbl">Use in PDD
-        <select class="map-status-select" id="refmap-editor-pdd" title="Embed this map in the PDD .docx export.">
-          <option value="">No</option>
+      <input class="refmap-name-input" id="refmap-editor-name" placeholder="Map name" aria-label="Map name" />
+      <label class="refmap-bar-lbl">Use in PDD as
+        <select class="map-status-select" id="refmap-editor-pdd" title="The PDD embeds the As-Is map and the To-Be map chosen here.">
+          <option value="">None</option>
           <option value="as_is">As-Is map</option>
           <option value="to_be">To-Be map</option>
         </select>
       </label>
-      <span class="refmap-prov" id="refmap-editor-prov"></span>
       <span class="refmap-editor-spacer"></span>
-      <button class="icon-btn" id="btn-refmap-editor-close" title="Close the editor (edits auto-save).">Close ✕</button>
+      <button class="icon-btn" id="btn-refmap-editor-close" title="Close the editor. Your edits are saved as you make them.">Close ✕</button>
     </div>
     <div class="refmap-editor-host" id="refmap-editor-host"></div>
   </div>

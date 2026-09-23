@@ -3,9 +3,10 @@
 /*
  * timeline-core.js -- shared timeline rendering core.
  *
- * One module behind the viewer timelines (Flow, Steps). Before it existed,
- * tick maths, lane packing, and band construction were copy-pasted across the
- * timeline renderers, so a fix in one never reached the others. See docs/adr/0003-viewer-architecture-refactor.md.
+ * The shared maths behind the Flow timeline: ticks, lane packing and the lane
+ * stack. Before it existed, tick maths and lane packing were copy-pasted
+ * across the timeline renderers, so a fix in one never reached the others.
+ * See docs/adr/0003-viewer-architecture-refactor.md.
  *
  * CommonJS module: `require("./timeline/timeline-core.js")`. Type-checked via
  * JSDoc (`npm run typecheck`); the pure functions are covered by
@@ -25,58 +26,6 @@
  * @property {number} startMs  Start time (ms since epoch).
  * @property {number} endMs    End time (ms since epoch).
  */
-
-/**
- * @typedef {Object} BandSpec
- * @property {number} leftPct                  Left edge, percent of span.
- * @property {number} widthPct                 Width, percent of span.
- * @property {string} top                      CSS length for `top` (px or calc()).
- * @property {string} height                   CSS length for `height` (px or calc()).
- * @property {string} className                Full class string for the band.
- * @property {string} [label]                  Text label; rendered in a child span.
- * @property {string} [labelClass]             Class for the label span.
- * @property {string} [background]             CSS background.
- * @property {string} [borderColor]            CSS border-color.
- * @property {string} [color]                  CSS text color.
- * @property {string} [title]                  Native hover tooltip.
- * @property {Record<string, string>} [data]   data-* attributes (name -> value).
- * @property {() => void} [onClick]            Click handler (event already stopped).
- */
-
-/**
- * @typedef {Object} MiniItem
- * @property {string} id
- * @property {number} startMs
- * @property {number} endMs
- * @property {string} label
- * @property {string} color           Solid hex, e.g. "#5A7488".
- * @property {string} [title]
- * @property {boolean} [selected]
- * @property {boolean} [dimmed]
- */
-
-/**
- * @typedef {Object} MiniTimelineOptions
- * @property {MiniItem[]} items
- * @property {{ startMs: number, endMs: number }} span
- * @property {number} maxLanes        Lane cap; overflow items share the last lane.
- * @property {number} laneHeight      Natural lane height in px (the minHeight floor).
- * @property {string} blockClass      Base block class, e.g. "step-block".
- * @property {string} idAttr          data-* attribute for the id, e.g. "data-step-id".
- * @property {number} [zoom]          Horizontal zoom factor, >= 1 (default 1).
- * @property {string} [labelClass]    Class for each block's label span.
- * @property {string} [tintAlpha]     Hex alpha appended to color for the fill (default "1F").
- * @property {string} [borderAlpha]   Hex alpha appended to color for the border (default "55").
- * @property {string} [selectedId]    Id to scroll into view after render.
- * @property {(id: string) => void} [onSelect]
- */
-
-/** Vertical gap between lanes, in px. */
-const LANE_GAP = 2;
-/** Height of the time-axis row, in px. */
-const AXIS_H = 16;
-/** Gap between the lane stack and the axis, in px. */
-const AXIS_GAP = 4;
 
 /**
  * Tick-interval ladder, ascending, in ms (1s .. 24h). The shared superset of
@@ -184,67 +133,6 @@ function packLanes(items, opts) {
 }
 
 /**
- * Create one absolutely-positioned timeline band/block and append it to host.
- * @param {HTMLElement} host
- * @param {BandSpec} spec
- * @returns {HTMLElement} the band element
- */
-function renderBand(host, spec) {
-  const band = document.createElement("div");
-  band.className = spec.className;
-  band.style.left = spec.leftPct + "%";
-  band.style.width = spec.widthPct + "%";
-  band.style.top = spec.top;
-  band.style.height = spec.height;
-  if (spec.background) band.style.background = spec.background;
-  if (spec.borderColor) band.style.borderColor = spec.borderColor;
-  if (spec.color) band.style.color = spec.color;
-  if (spec.title) band.title = spec.title;
-  if (spec.data) {
-    for (const [name, value] of Object.entries(spec.data)) band.setAttribute(name, value);
-  }
-  if (spec.label != null) {
-    const lbl = document.createElement("span");
-    if (spec.labelClass) lbl.className = spec.labelClass;
-    lbl.textContent = spec.label;
-    band.appendChild(lbl);
-  }
-  if (spec.onClick) {
-    const onClick = spec.onClick;
-    band.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
-  }
-  host.appendChild(band);
-  return band;
-}
-
-/**
- * Render the time-axis row (ticks + labels) into host.
- * @param {HTMLElement} host
- * @param {Tick[]} ticks
- * @param {{ top?: string, axisHeight?: number }} [opts]
- * @returns {HTMLElement} the axis element
- */
-function renderAxis(host, ticks, opts) {
-  const axisHeight = (opts && opts.axisHeight) || AXIS_H;
-  const axis = document.createElement("div");
-  axis.className = "tl-time-axis";
-  axis.style.top = (opts && opts.top) || `calc(100% - ${axisHeight}px)`;
-  axis.style.height = axisHeight + "px";
-  for (const tick of ticks) {
-    const tickEl = document.createElement("div");
-    tickEl.className = "tl-tick";
-    tickEl.style.left = tick.xPct + "%";
-    const lbl = document.createElement("span");
-    lbl.className = "tl-tick-label";
-    lbl.textContent = tick.label;
-    tickEl.appendChild(lbl);
-    axis.appendChild(tickEl);
-  }
-  host.appendChild(axis);
-  return axis;
-}
-
-/**
  * @typedef {Object} LaneSlot
  * @property {number} top     Resolved top offset, px from the host top.
  * @property {number} height  Lane height, px.
@@ -287,9 +175,8 @@ function renderAxis(host, ticks, opts) {
 /**
  * Stack lanes vertically into cumulative { top, height } geometry. Pure layout
  * maths -- no DOM, no time -- so it is unit-tested directly. The Flow timeline
- * is a heterogeneous vertical stack (ticks, cases, activity, screenshots, the
- * optional lanes); this resolves that stack the way packLanes resolves the
- * single-block-type mini-timelines.
+ * is a heterogeneous vertical stack (ticks, runs, activity, screenshots, the
+ * optional lanes); this resolves that stack.
  * @param {{ key: string, height: number, gapBefore: number }[]} lanes
  *        Lanes in top-to-bottom order. A height of 0 keeps the lane in the
  *        stack (its gapBefore still applies) but contributes no height.
@@ -316,9 +203,9 @@ function layoutLaneStack(lanes, opts) {
  * Render a heterogeneous vertical lane stack into host: set the host width for
  * zoom, resolve the layout, set the host minHeight, then call render(host, ctx)
  * on each visible (height > 0) lane in order. Each lane is a { height, render }
- * plugin (ADR-0003 item 5). Unlike renderMiniTimeline this does NOT clear host
- * or bind host listeners -- the caller owns the host lifecycle (innerHTML,
- * click handlers, overlays such as a playhead).
+ * plugin (ADR-0003 item 5). It does NOT clear host or bind host listeners:
+ * the caller owns the host lifecycle (innerHTML, click handlers, overlays such
+ * as a playhead).
  * @param {HTMLElement} host
  * @param {LaneStackOptions} opts
  * @returns {LaneStackLayout}
@@ -346,83 +233,11 @@ function renderLaneStack(host, opts) {
   return layout;
 }
 
-/**
- * Render a single-block-type mini-timeline -- the Steps strip: a lane-packed
- * row of blocks plus a bottom time axis, scaled to fill the drag-resizable
- * strip height. Replaces the body of renderStepTimeline.
- * @param {HTMLElement} host  The `.timeline` element inside `.mini-timeline-scroll`.
- * @param {MiniTimelineOptions} opts
- * @returns {void}
- */
-function renderMiniTimeline(host, opts) {
-  host.innerHTML = "";
-  const { items, span } = opts;
-  if (!items.length || !span || span.endMs <= span.startMs) return;
-  const spanMs = span.endMs - span.startMs;
-  const zoom = Math.max(1, opts.zoom || 1);
-  host.style.width = 100 * zoom + "%";
-
-  const { laneCount, laneOf } = packLanes(
-    items.map((it) => ({ id: it.id, startMs: it.startMs, endMs: it.endMs })),
-    { maxLanes: opts.maxLanes, spanMs }
-  );
-
-  // Lanes scale via calc() to fill the resizable strip; minHeight floors them
-  // at natural size so a short strip scrolls rather than crushing the bands.
-  const naturalH = laneCount * (opts.laneHeight + LANE_GAP) + AXIS_H + AXIS_GAP;
-  host.style.height = "100%";
-  host.style.minHeight = naturalH + "px";
-  const laneSlot = `((100% - ${AXIS_H + AXIS_GAP}px) / ${laneCount})`;
-
-  const tickCount = Math.max(4, Math.round(10 * zoom));
-  renderAxis(host, chooseTicks(span.startMs, span.endMs, tickCount));
-
-  const tintAlpha = opts.tintAlpha || "1F";
-  const borderAlpha = opts.borderAlpha || "55";
-  const onSelect = opts.onSelect;
-  for (const it of items) {
-    const lane = laneOf.get(it.id) || 0;
-    renderBand(host, {
-      leftPct: timeToXPct(it.startMs, span.startMs, spanMs),
-      widthPct: Math.max(0.5, ((it.endMs - it.startMs) / spanMs) * 100),
-      top: `calc(${laneSlot} * ${lane})`,
-      height: `calc(${laneSlot} - ${LANE_GAP}px)`,
-      className: opts.blockClass
-        + (it.selected ? " selected" : "")
-        + (it.dimmed ? " dimmed" : ""),
-      label: it.label,
-      labelClass: opts.labelClass,
-      background: it.color + tintAlpha,
-      borderColor: it.color + borderAlpha,
-      color: it.color,
-      title: it.title,
-      data: { [opts.idAttr]: it.id },
-      onClick: onSelect ? () => onSelect(it.id) : undefined,
-    });
-  }
-
-  // Scroll the selected block into the horizontal centre of the viewport.
-  if (opts.selectedId) {
-    const sel = host.querySelector(`.${opts.blockClass}[${opts.idAttr}="${opts.selectedId}"]`);
-    const scroll = host.parentElement;
-    if (sel instanceof HTMLElement && scroll) {
-      const target = sel.offsetLeft + sel.offsetWidth / 2 - scroll.clientWidth / 2;
-      scroll.scrollLeft = Math.max(0, target);
-    }
-  }
-}
-
 module.exports = {
-  LANE_GAP,
-  AXIS_H,
-  AXIS_GAP,
   timeToXPct,
   formatAxisLabel,
   chooseTicks,
   packLanes,
-  renderBand,
-  renderAxis,
-  renderMiniTimeline,
   layoutLaneStack,
   renderLaneStack,
 };
