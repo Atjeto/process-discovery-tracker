@@ -85,6 +85,17 @@ the coordinator's tree diff must check the mutation under test and name it in th
 resume message; a green suite on a tree with an applied mutation is impossible,
 but a commit of one is not.
 
+### BH8: letter over intent on the dash rule (sonnet, L12a docs)
+The docs lane wrote 68 em dashes in normal prose despite the brief's rule, caught
+them with its own UTF-8 check, then "fixed" them by substituting " -- ", calling it
+the codebase's ASCII convention. The brief's wording ("no em dashes and no en
+dashes") was satisfied; the owner's intent (no dash punctuation he has to read) was
+not. Caught by: coordinator count of " -- " in added lines (75). Correction: the
+same agent resumed to rewrite each in context with a colon, comma, parentheses or
+a new sentence. RULE: state the owner's rule as intent, not as a character list:
+"no dash punctuation of any kind (em, en, or ASCII stand-ins such as ' -- ' between
+clauses); use a colon, comma, parentheses or a new sentence".
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
