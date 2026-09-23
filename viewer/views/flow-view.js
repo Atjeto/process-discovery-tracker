@@ -5,11 +5,11 @@
  * the normalize buttons), the Flow timeline and every lane, the minimap,
  * range selection, the video <-> timeline sync, the event table, the
  * annotations / screenshots / markers side panel (incl. the screenshot
- * gallery and marker CRUD), case scope, and the Ctrl+K command-palette
- * provider. The module wires its own controls at require() time (the DOM
- * is already parsed when renderer.js pulls this in). Cross-surface glue
- * that stays in the entry (renderShortcutsOverlay, rerenderActiveLevel,
- * applyLevel, activateTab) is injected by renderer.js via initFlowView().
+ * gallery and marker CRUD), and case scope. The module wires its own
+ * controls at require() time (the DOM is already parsed when renderer.js
+ * pulls this in). Cross-surface glue that stays in the entry
+ * (renderShortcutsOverlay, rerenderActiveLevel, addStepAtTimestamp) is
+ * injected by renderer.js via initFlowView().
  */
 
 "use strict";
@@ -18,7 +18,6 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const PdtPalette = require("../command-palette.js");
 const { $, $$, escapeHtml, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations, ensureAnnoShape } = require("../session.js");
@@ -27,7 +26,6 @@ const { renderStepsLevel } = require("./steps-view.js");
 const { renderPhasesLevel } = require("./phases-view.js");
 const { renderOverviewLevel } = require("./overview-view.js");
 const SessionSummary = require("../session-summary.js");
-const PdtProject = require("../project.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
 const {
@@ -37,7 +35,7 @@ const {
 const { renderScreenshots, openScreenshot } = require("./flow-view-screenshots.js");
 const FlowMarkers = require("./flow-view-markers.js");
 const {
-  effectiveLabel, visibleMarkerSuggestions, renderMarkersList, renderAnchorCandidates,
+  effectiveLabel, renderMarkersList,
 } = FlowMarkers;
 const Timeline = require("./flow-view-timeline.js");
 const {
@@ -49,8 +47,6 @@ const {
    Lazy wrappers so hoisting / load order does not matter. */
 let renderShortcutsOverlay = () => {};
 let rerenderActiveLevel = () => {};
-let applyLevel = () => {};
-let activateTab = () => {};
 let addStepAtTimestamp = async () => {};
 
 /* ============ Annotation sub-tabs ================================= */
@@ -211,115 +207,6 @@ function scopeToMarkerAtPlayhead() {
   if (btn) btn.addEventListener("click", scopeToMarkerAtPlayhead);
 })();
 
-/* Command palette provider: union of cases / steps / markers /
-   commands, scored by case-insensitive substring match. Capped per
-   bucket so a single huge session doesn't drown out the commands. */
-function commandPaletteProvider(rawQuery) {
-  const q = (rawQuery || "").toLowerCase().trim();
-  const out = [];
-
-  function pushIfMatch(label, hint, type, run, score) {
-    if (q && !label.toLowerCase().includes(q) && !(hint || "").toLowerCase().includes(q)) return;
-    out.push({ label, hint, type, run, _score: score });
-  }
-
-  // 1) Cases -- prominent navigation primitive
-  if (State.getSession()) {
-    const cases = deriveCases(State.getSession());
-    for (const c of cases) {
-      const dur = c.endMs - c.startMs;
-      const durStr = dur < 60000 ? `${Math.round(dur / 1000)}s`
-                    : dur < 3600000 ? `${Math.round(dur / 60000)}m`
-                    : `${(dur / 3600000).toFixed(1)}h`;
-      pushIfMatch(c.label, durStr, "case", () => {
-        State.setCaseScope(c.id);
-        populateCaseScope();
-        rerenderActiveLevel();
-      }, 5);
-    }
-  }
-
-  // 2) Steps -- the long-tail surface that needs find-by-name most
-  if (State.getSession()) {
-    const allSteps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
-    let n = 0;
-    for (const s of allSteps) {
-      if (n >= 80) break;
-      const time = s.time_range && s.time_range.start ? s.time_range.start.slice(11, 19) : "";
-      if (q && !(s.name || "").toLowerCase().includes(q)) continue;
-      out.push({
-        type: "step",
-        label: s.name || s.step_id,
-        hint: `${s.state || ""}${time ? " · " + time : ""}`,
-        run: () => {
-          State.setSelectedStepId(s.step_id);
-          applyLevel("steps");
-          // Activate the steps view-mode button so the UI catches up
-          const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
-          if (btn && !btn.classList.contains("active")) btn.click();
-        },
-        _score: 3,
-      });
-      n++;
-    }
-  }
-
-  // 3) Markers -- case boundaries by label
-  if (State.getSession()) {
-    const markers = (State.getSession().events || []).filter(e => e.type === "marker" && e.data.marker_type === "start");
-    let n = 0;
-    for (const m of markers) {
-      if (n >= 40) break;
-      const lbl = (m.data && m.data.label) || "(unlabeled)";
-      if (q && !lbl.toLowerCase().includes(q)) continue;
-      const time = m.timestamp ? m.timestamp.slice(11, 19) : "";
-      out.push({
-        type: "marker",
-        label: lbl,
-        hint: time,
-        run: () => {
-          const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
-          if (flowBtn) flowBtn.click();
-          seekToTimestamp(m.timestamp);
-        },
-        _score: 2,
-      });
-      n++;
-    }
-  }
-
-  // 4) Top-level commands -- always available
-  const commands = [
-    { label: "Analyze session", hint: "Re-run normalize", run: () => $("#btn-normalize") && $("#btn-normalize").click() },
-    { label: "Match Process Template…", hint: "", run: () => $("#btn-match-template") && $("#btn-match-template").click() },
-    { label: "Open another session…", hint: "", run: () => $("#btn-open-session") && $("#btn-open-session").click() },
-    { label: "Switch to Aggregate", hint: "Tab 2", run: () => activateTab("aggregate") },
-    { label: "Switch to Session", hint: "Tab 1", run: () => activateTab("session") },
-    // R1 (APPROACHABILITY-REDESIGN-2026-07-03 §5): Process Template moved out
-    // of the resident tab row (it's "More ▾" now) and its "3" hotkey retired
-    // -- Vocabularies is Tab 3. The palette still finds Template by name/search.
-    { label: "Switch to Process Template", hint: "", run: () => activateTab("canonical") },
-    { label: "Switch to Vocabularies", hint: "Tab 3", run: () => activateTab("vocabularies") },
-    { label: "Clear case scope", hint: "Show all cases", run: () => {
-        State.setCaseScope("");
-        populateCaseScope();
-        rerenderActiveLevel();
-      } },
-    { label: "Open help", hint: "?", run: () => $("#btn-help") && $("#btn-help").click() },
-  ];
-  for (const cmd of commands) {
-    pushIfMatch(cmd.label, cmd.hint, "command", cmd.run, 1);
-  }
-
-  // Sort by score (cases first, then steps/markers, commands last on ties)
-  out.sort((a, b) => (b._score || 0) - (a._score || 0));
-  return out.slice(0, 50);
-}
-
-if (PdtPalette) {
-  PdtPalette.registerProvider("flow", commandPaletteProvider);
-}
-
 function uniqueCaseIds(steps) {
   const seen = new Map();
   for (const s of (steps || [])) {
@@ -336,12 +223,9 @@ function syncCaseDropdown(selectEl, cases, currentValue) {
   if (selectEl.innerHTML !== want) selectEl.innerHTML = want;
 }
 
-/* The markers side-panel + its filter box, marker-edit resolution,
-   suggested markers (ADR-0017), and anchor candidates (ADR-0018) live in
-   flow-view-markers.js (god-file split). effectiveLabel /
-   visibleMarkerSuggestions (the timeline marker overlay) and
-   renderMarkersList / renderAnchorCandidates are destructured at the top
-   here; the marker-INSERT surfaces stay below. */
+/* The markers side-panel + its filter box and marker-edit resolution live in
+   flow-view-markers.js (god-file split). effectiveLabel and renderMarkersList
+   are destructured at the top here; the marker-INSERT surfaces stay below. */
 
 /* ============ Session view: open + normalize ====================== */
 
@@ -546,7 +430,6 @@ async function loadSessionIntoView(folder) {
   renderAnnotations();
   renderScreenshots();
   renderMarkersList();
-  renderAnchorCandidates();
   renderTimelineSummary();
   // Phase B+ surfaces
   State.setSelectedStepId(null);
@@ -558,7 +441,7 @@ async function loadSessionIntoView(folder) {
   // The Overview level (lab-phase §A5) is the default on load; it reads the
   // freshly-loaded analysis.json blocks and (R4) renders the Evidence modules
   // that the retired Analysis level used to own, so refreshing it here covers
-  // both the memo surface and the analytical trio.
+  // both the findings surface and the Evidence modules.
   renderOverviewLevel();
   // The map's "N nodes / Open / Reveal" status line is now driven by the map
   // controller's onRender (renderer._syncMapStatus), so it always reflects the
@@ -581,100 +464,6 @@ async function loadSessionIntoView(folder) {
   installRangeSelection();
   // P2.4: shortcuts overlay updates with session state.
   renderShortcutsOverlay();
-  // Phase F: apply project-level knowledge to the freshly-loaded session.
-  applyProjectDenylist();
-  maybeApplyStepTemplate();
-}
-
-/* ===== Phase F: project knowledge applied on session load ===== */
-
-function _eventSpan(events) {
-  const evs = Array.isArray(events) ? events : [];
-  if (!evs.length) return null;
-  const a = Date.parse(evs[0].timestamp);
-  const b = Date.parse(evs[evs.length - 1].timestamp);
-  if (!isFinite(a) || !isFinite(b) || b <= a) return null;
-  return { startMs: a, endMs: b };
-}
-
-/* F3: a project can carry a team-wide step-suggestion denylist. Apply
-   it to a freshly-loaded session that has none of its own -- never
-   override a denylist the analyst already set on the session. */
-function applyProjectDenylist() {
-  const proj = PdtProject.activeProject();
-  const session = State.getSession();
-  if (!proj || !session) return;
-  const defaults = proj.default_ignored_processes || [];
-  if (!defaults.length) return;
-  const anno = session.annotations || {};
-  const sf = anno.step_filters || {};
-  if ((sf.ignored_processes || []).length) return;  // session has its own
-  anno.step_filters = Object.assign({}, sf, { ignored_processes: defaults.slice() });
-  session.annotations = anno;
-  Ipc.saveAnnotations({ sessionFolder: session.sessionFolder, annotations: anno });
-  toast("Applied the project's team denylist (" + defaults.length + " app(s))");
-}
-
-/* F5: a project can name a "step template" session. When a session
-   with no steps is opened under such a project, offer to seed it with
-   the template's step structure, each step positioned at the same
-   fraction of the session's elapsed time. The analyst then adjusts. */
-async function maybeApplyStepTemplate() {
-  const proj = PdtProject.activeProject();
-  const session = State.getSession();
-  if (!proj || !session || !proj.step_template_session) return;
-  if (((session.annotations || {}).steps || []).length) return;
-  let template;
-  try { template = await Ipc.loadSession(proj.step_template_session); }
-  catch (_) { return; }
-  const tSteps = ((template && template.annotations) || {}).steps || [];
-  const tSpan = _eventSpan(template && template.events);
-  const nSpan = _eventSpan(session.events);
-  if (!tSteps.length || !tSpan || !nSpan) return;
-  const ok = await confirmModal({
-    title: "Apply step structure?",
-    message: "Seed this session with the step structure from the project's template?",
-    detail: tSteps.length + " step(s) from " + path.basename(proj.step_template_session) +
-      ". You can adjust, split, or merge them afterwards.",
-    okLabel: "Apply", cancelLabel: "Skip",
-  });
-  if (!ok || State.getSession() !== session) return;  // session may have changed
-  const nDur = nSpan.endMs - nSpan.startMs;
-  const tDur = (tSpan.endMs - tSpan.startMs) || 1;
-  const frac = (iso) => {
-    const t = Date.parse(iso);
-    if (!isFinite(t)) return 0;
-    return Math.max(0, Math.min(1, (t - tSpan.startMs) / tDur));
-  };
-  const sid = (session.manifest || {}).session_id || "";
-  const anno = session.annotations || {};
-  anno.steps = tSteps.map((ts, i) => {
-    const tr = ts.time_range || {};
-    const startMs = nSpan.startMs + frac(tr.start) * nDur;
-    const endMs = nSpan.startMs + frac(tr.end) * nDur;
-    return {
-      step_id: cryptoRandomId(),
-      session_id: sid,
-      case_id: null,
-      name: ts.name || ("Step " + (i + 1)),
-      description: ts.description || "",
-      time_range: {
-        start: new Date(startMs).toISOString(),
-        end: new Date(Math.max(startMs, endMs)).toISOString(),
-      },
-      evidence: { interaction_event_ids: [], screenshot_refs: [],
-        video_timecode_range: [0, 0], manual_notes: "" },
-      state: "manually_authored",
-      canonical_step_id: null,
-      flags: { conditional: false, condition_text: null,
-        exception_path: false, waste: false, automation_candidate: false },
-      phase_id: null,
-    };
-  });
-  session.annotations = anno;
-  await saveAnnotationsWithUndo(anno, "apply step template");
-  renderStepsLevel();
-  toast("Applied " + anno.steps.length + " template step(s)", "success");
 }
 
 /* The "N nodes / Open / Reveal" status line + per-case picker used to live here
@@ -1568,10 +1357,6 @@ async function queueCaseFromSelection() {
   }
 }
 
-/* Suggested markers (ADR-0017) + anchor candidates (ADR-0018) -- the
-   accept/dismiss/clear logic and renderAnchorCandidates -- live in
-   flow-view-markers.js (god-file split). */
-
 /* H6: mark the current timeline range as excluded from analysis. The
    range is stored in annotations.json.excluded_ranges; on the next
    analysis, step suggestion and statistics skip every event inside it.
@@ -1875,29 +1660,23 @@ $("#btn-save-note").addEventListener("click", async () => {
   toast("Note saved", "success");
 });
 
-/* renderScreenshots / the screenshot gallery / toggleScreenshotStar /
-   openScreenshot live in flow-view-screenshots.js (god-file split);
+/* renderScreenshots / the screenshot gallery / openScreenshot live in
+   flow-view-screenshots.js (god-file split);
    renderScreenshots + openScreenshot are destructured at the top here. */
 
 /* getMarkerEdit / effectiveLabel / effectiveTimestamp / isDeletedMarker,
-   renderMarkersList, _humanReason, and the per-marker adjust / delete /
+   renderMarkersList, and the per-marker adjust / delete /
    rename actions live in flow-view-markers.js (god-file split). */
 
-/* deps = { renderShortcutsOverlay, rerenderActiveLevel, applyLevel,
-   activateTab } -- cross-surface glue kept in renderer.js. Call once
-   at boot. */
+/* deps = { renderShortcutsOverlay, rerenderActiveLevel, addStepAtTimestamp }
+   -- cross-surface glue kept in renderer.js. Call once at boot. */
 function initFlowView(deps) {
   renderShortcutsOverlay = deps.renderShortcutsOverlay || (() => {});
   rerenderActiveLevel    = deps.rerenderActiveLevel    || (() => {});
-  applyLevel             = deps.applyLevel             || (() => {});
-  activateTab            = deps.activateTab            || (() => {});
   addStepAtTimestamp     = deps.addStepAtTimestamp     || (async () => {});
   // Hand the video module the session (re)loader it calls after a re-sync,
   // injected rather than require()d to avoid a flow-view <-> video cycle.
   Video.initVideo({ loadSessionIntoView });
-  // Hand the markers module the timeline re-render it triggers after an
-  // accept/dismiss, injected for the same reason.
-  FlowMarkers.initMarkers({ renderTimeline });
   // Hand the timeline module the flow-view-resident glue its lanes call
   // (case-scope dimming + the two context menus + the notes-tab switch),
   // injected to keep the timeline <-> flow-view graph acyclic.
@@ -1909,7 +1688,6 @@ function initFlowView(deps) {
 module.exports = {
   initFlowView,
   loadSessionIntoView, renderTimeline, renderMarkersList,
-  renderAnchorCandidates,
   renderAnnotations, renderSessionPills,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
   activateAnnoTab, addStepAtPlayhead, deriveCases,

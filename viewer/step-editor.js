@@ -11,7 +11,7 @@
   // name reads as `<ControlType> · "<best identity>" · <window>` with the
   // volatility/weak marker + tooltip -- never a bare automation_id or a raw
   // window title. The matcher stays ground truth; this is presentation only.
-  const { identityLine } = require("./vocab-match.js");
+  const { identityLine } = require("./identity-line.js");
 
   /* Local "HH:MM:SS" from an ISO timestamp. The mini-timeline axis
      already uses toLocaleTimeString, so step times must use the same
@@ -177,7 +177,7 @@
      propagate/delete) moves behind ONE native <details> expansion ("More ▸"),
      collapsed by default and NOT persisted per step -- renderStepDetail is
      called fresh on every selection change, so a re-render always starts
-     collapsed (the default posture is triage, per the brief). This mirrors
+     collapsed (the default stance is triage, per the brief). This mirrors
      the disclosure model's expand-in-place mechanic (same <details> +
      ::-webkit-details-marker suppression + CSS-only chevron as
      .analysis-module in analysis-view.js/styles.css) -- Evidence altitude,

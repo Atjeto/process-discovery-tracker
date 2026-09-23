@@ -15,7 +15,6 @@ const { $, formatDuration, cryptoRandomId, toast } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const PdtPhases = require("../phase-editor.js");
-const PdtPalette = require("../command-palette.js");
 const Flags = require("../flags.js");
 
 /* Injected by renderer.js. */
@@ -352,17 +351,6 @@ function initPhasesView(deps) {
     } else {
       _suggestBtn.remove();
     }
-  }
-
-  // I72: Phases-view commands for the Ctrl+K palette.
-  if (PdtPalette) {
-    PdtPalette.registerProvider("phases", (q) => {
-      const ql = (q || "").toLowerCase();
-      const cmds = [
-        { type: "command", label: "New phase", hint: "Phases", run: addManualPhase },
-      ];
-      return cmds.filter((c) => !ql || c.label.toLowerCase().includes(ql));
-    });
   }
 }
 

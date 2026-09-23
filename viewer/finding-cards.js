@@ -11,7 +11,7 @@
  * apart visually or in what a "finding" looks like.
  *
  * Disclosure altitude (DISCLOSURE-MODEL rule 1: "lead with the sentence"):
- *   Resident  = tier chip + claim sentence + "include in memo" checkbox
+ *   Resident  = tier chip + claim sentence + "include in PDD" checkbox
  *               + an expand chevron.
  *   Expand-in-place (hidden until the card/chevron is clicked, inline, no
  *               navigation) = the mono evidence line, the screenshot chip,
@@ -23,7 +23,8 @@
  *                           (Overview only; a cross-session finding has
  *                           no single timeline to jump).
  *   opts.memoSelection      a Set of finding ids => the "include in
- *                           memo" checkbox, pre-checked from the set.
+ *                           PDD" checkbox, pre-checked from the set
+ *                           (annotations.memo_selection feeds the PDD).
  *   opts.detailHtml(f)      extra pre-built HTML inserted after the
  *                           evidence numbers (Compare uses it for the
  *                           per-worker breakdown line).
@@ -73,8 +74,8 @@ function findingCardHtml(f, opts) {
   const refs = opts.screenshots === false ? [] : (ev.screenshot_refs || []).slice(0, 2);
   const target = typeof opts.timelineTarget === "function" ? opts.timelineTarget(f) : null;
   const memo = opts.memoSelection instanceof Set
-    ? '<label class="ov-memo-check" title="Ticked findings are included in the exported memo">' +
-      '<input type="checkbox" data-act="memo"' + (opts.memoSelection.has(f.id) ? " checked" : "") + " /> include in memo</label>"
+    ? '<label class="ov-memo-check" title="Ticked findings are included in the exported PDD">' +
+      '<input type="checkbox" data-act="memo"' + (opts.memoSelection.has(f.id) ? " checked" : "") + " /> include in PDD</label>"
     : "";
   const show = target
     ? '<button type="button" class="link-btn" data-act="show" title="Jump the Flow timeline (and video) to this finding\'s evidence">Show on timeline</button>'

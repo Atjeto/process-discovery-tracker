@@ -575,73 +575,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .markers-list .marker-row.deleted { opacity: 0.45; text-decoration: line-through; }
 .markers-list .marker-row.deleted .meta.bad { text-decoration: none; color: var(--bad); }
 
-/* Anchor candidates (ADR-0018) -- pattern-mined case anchors for an
-   unbracketed session. Renders above the markers list with strongest
-   first. When the analyst Accepts one, the override badge above
-   replaces this panel until they Clear it. */
-.anchor-candidates-panel {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--rule);
-  background: var(--bg-2);
-  font-size: 12px;
-}
-.anchor-candidates-panel .ac-header {
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--fg-3);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-}
-.anchor-candidates-panel .ac-hint {
-  color: var(--fg-3);
-  font-size: 11px;
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-.anchor-candidates-panel .ac-row {
-  display: flex; gap: 8px; align-items: center;
-  padding: 6px 8px; margin-bottom: 4px;
-  background: var(--bg); border: 1px solid var(--rule); border-radius: 3px;
-}
-.anchor-candidates-panel .ac-row .ac-field {
-  font-family: var(--font-mono); font-size: 11px;
-  color: var(--fg); font-weight: 600;
-}
-.anchor-candidates-panel .ac-row .ac-meta {
-  color: var(--fg-3); font-size: 10px; margin-left: 4px;
-}
-.anchor-candidates-panel .ac-row .ac-samples {
-  flex: 1; color: var(--fg-3); font-size: 10px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.anchor-candidates-panel .ac-row .ac-actions {
-  display: flex; gap: 2px; flex: 0 0 auto;
-}
-.anchor-candidates-panel.ac-active {
-  background: var(--accent-2-bg, var(--bg-3));
-  border-left: 3px solid var(--accent);
-}
-.anchor-candidates-panel .ac-active-label {
-  font-family: var(--font-mono);
-  font-size: 11px; font-weight: 600;
-  color: var(--fg);
-}
-.anchor-candidates-panel .ac-active-row {
-  display: flex; gap: 8px; align-items: center;
-}
-/* Suggested markers (ADR-0017): change-point candidates. Dashed
-   left-border mirrors the timeline's tl-suggested encoding. */
-.markers-list .marker-row.suggested {
-  border-left: 2px dashed var(--accent);
-  padding-left: 8px;
-}
-.markers-list .marker-row.suggested .dir { color: var(--fg-3); }
-.markers-list .marker-row.suggested .meta.suggested {
-  background: var(--bg-3); color: var(--fg-3);
-  padding: 1px 5px; border-radius: 2px;
-  font-size: 10px; margin-left: 6px;
-}
 .icon-btn.xs { width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 1; }
 
 .actions-bar input[type=date] { background: var(--bg-3); color: var(--fg);
@@ -1069,17 +1002,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-tier2.ok { color: var(--va); border-color: var(--va); }
 .ov-tier2.locked { color: var(--fg-3); border-style: dashed; }
-/* §C4: the data-posture chip + selector on the Overview header line. */
-.ov-posture {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
-  font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.4px;
-  text-transform: uppercase; color: var(--fg-3);
-}
-.ov-posture select {
-  font-size: 11px; padding: 3px 6px; border-radius: var(--radius-sm);
-  background: var(--bg-2); color: var(--fg); border: 1px solid var(--rule);
-}
-.ov-posture.sealed select { color: var(--warn); border-color: var(--warn); }
 .ov-section {
   background: var(--bg-2); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 12px 14px;
@@ -1088,21 +1010,15 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px;
 }
-/* Anchor hero — the unsegmented-session call to action (full-width card). */
-.ov-hero {
-  background: var(--accent-muted); border: 1px solid var(--accent);
-  border-radius: var(--radius); padding: 12px 14px;
-}
-.ov-hero .ov-section-title { color: var(--fg-2); }
-.ov-hero-hint { font-size: 12px; color: var(--fg-2); margin-bottom: 10px; line-height: 1.5; }
-.ov-hero-row {
+/* AD-14: the mark-runs line, shown when no runs are marked (no cases): one
+   instruction + a button that opens Flow with the Markers panel. */
+.ov-mark-runs {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 6px;
+  background: var(--accent-muted); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 10px 14px;
 }
-.ov-hero-field { flex: 1 1 260px; font-size: 13px; min-width: 0; }
-.ov-hero-metrics { flex: 0 0 auto; font-size: 11px; color: var(--fg-3); font-family: var(--font-mono); }
-.ov-hero-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+.ov-mark-runs-text { flex: 1 1 320px; min-width: 0; font-size: 13px; color: var(--fg); line-height: 1.5; }
+.ov-mark-runs button { flex: 0 0 auto; }
 /* Fact strip — 6 measured tiles. */
 .ov-facts {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -1123,49 +1039,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-tile-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* R4: the next-act rail — the resident "what's the next valuable act" checklist,
-   directly under the badge/fact tiles. Exactly one row is `.active`. */
-.ov-rail {
-  background: var(--bg-2); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 12px 14px;
-}
-.ov-rail-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 10px; border-radius: var(--radius-sm);
-  border: 1px solid transparent; margin-bottom: 4px;
-}
-.ov-rail-row:last-child { margin-bottom: 0; }
-.ov-rail-row.done    { opacity: 0.62; }
-.ov-rail-row.pending { opacity: 0.72; }
-.ov-rail-row.active {
-  opacity: 1; background: var(--accent-muted); border-color: var(--accent);
-}
-.ov-rail-tick {
-  flex: 0 0 auto; width: 18px; text-align: center; font-size: 13px;
-  color: var(--fg-3); font-family: var(--font-mono);
-}
-.ov-rail-row.done .ov-rail-tick   { color: var(--va); }
-.ov-rail-row.active .ov-rail-tick { color: var(--accent); font-weight: 700; }
-.ov-rail-num {
-  flex: 0 0 auto; width: 20px; height: 20px; line-height: 20px; text-align: center;
-  font-size: 11px; font-family: var(--font-mono); color: var(--fg-3);
-  border: 1px solid var(--rule); border-radius: 50%;
-}
-.ov-rail-row.active .ov-rail-num { color: var(--accent); border-color: var(--accent); }
-.ov-rail-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.ov-rail-title { font-size: 13px; font-weight: 600; color: var(--fg); }
-.ov-rail-sentence { font-size: 12px; color: var(--fg-2); line-height: 1.45; }
-.ov-rail-btn {
-  flex: 0 0 auto; font: inherit; font-size: 12px; cursor: pointer;
-  padding: 6px 12px; border-radius: var(--radius-sm);
-  border: 1px solid var(--rule); background: var(--bg-3); color: var(--fg-2);
-}
-.ov-rail-btn:hover { background: var(--bg-hover); color: var(--fg); }
-.ov-rail-btn.primary {
-  background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 500;
-}
-.ov-rail-btn.primary:hover { filter: brightness(1.08); }
-
 /* R4 (Task 3b): the template-match offer line (renders only when the pipeline
    already found a match — replace-pattern: absent when no match data). */
 .ov-template-offer {
@@ -1459,53 +1332,6 @@ details.analysis-module { padding: 0; }
   font-size: 10px; font-weight: 600; color: var(--fg-4);
   font-family: var(--font-mono); width: 18px; text-align: right;
 }
-/* €-ROI section (§11c): the commercial closer -- a savings band per candidate
-   plus session totals. Reuses .analysis-section / .analysis-table chrome. */
-.roi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.roi-edit-btn {
-  font-size: 11px; padding: 3px 10px; cursor: pointer;
-  border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  background: var(--bg-3); color: var(--fg-2);
-}
-.roi-edit-btn:hover { border-color: var(--accent); color: var(--fg); }
-.roi-legend {
-  display: flex; gap: 16px; margin: 8px 0; font-size: 11px; color: var(--fg-3);
-}
-.roi-legend .roi-swatch {
-  display: inline-block; width: 10px; height: 10px;
-  border-radius: 2px; margin-right: 4px; vertical-align: middle;
-}
-.roi-swatch-conservative { background: var(--fg-4); }
-.roi-swatch-expected { background: var(--accent); }
-.roi-swatch-optimistic { background: var(--va); }
-.roi-factor { color: var(--fg-4); font-family: var(--font-mono); }
-.roi-totals { display: flex; gap: 24px; margin: 10px 0 12px; flex-wrap: wrap; }
-.roi-total-big {
-  font-size: 20px; font-weight: 700; color: var(--accent);
-  font-family: var(--font-mono); line-height: 1.2;
-}
-.roi-total-label { font-size: 11px; color: var(--fg-3); margin-top: 2px; }
-/* Item 3: below the hero floor the number is carried by a sentence, not the
-   20px stat figure (presentation weight matches the evidence). */
-.roi-total-floor { flex: 1 1 100%; }
-.roi-floor-note {
-  font-size: 12px; color: var(--fg-2); line-height: 1.5; max-width: 640px;
-}
-.roi-table td.roi-expected, .roi-table th.roi-expected {
-  background: var(--accent-muted);
-}
-.roi-unit { color: var(--fg-4); font-size: 10px; }
-.roi-basis {
-  font-size: 9px; color: var(--fg-4); font-style: italic;
-  margin-left: 4px; white-space: nowrap;
-}
-.roi-basis-set { color: var(--accent); font-style: normal; }
-.roi-tune-btn {
-  font-size: 10px; padding: 2px 7px; cursor: pointer;
-  border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  background: var(--bg-3); color: var(--fg-3);
-}
-.roi-tune-btn:hover { border-color: var(--accent); color: var(--fg-2); }
 /* Compare-Sessions analysis panel -- process-efficiency trend bars. */
 .agg-eff-list { display: flex; flex-direction: column; gap: 6px; }
 .agg-eff-row { display: flex; align-items: center; gap: 10px; }
@@ -1523,17 +1349,7 @@ details.analysis-module { padding: 0; }
   color: var(--fg-2);
 }
 
-/* ===== Screenshot star (Phase D findings report) ===== */
-.screens-grid .thumb .thumb-star {
-  position: absolute; top: 2px; left: 2px;
-  width: 18px; height: 18px; padding: 0; line-height: 16px;
-  font-size: 12px; text-align: center; cursor: pointer;
-  background: rgba(0, 0, 0, 0.45); color: #fff;
-  border: none; border-radius: 3px;
-}
-.screens-grid .thumb .thumb-star.starred { color: var(--accent); }
-
-/* ===== Checklist modal (findings-report export options) ===== */
+/* ===== Option rows in the single-choice picker modal ===== */
 .modal-check {
   display: flex; align-items: baseline; gap: 8px;
   padding: 5px 2px; cursor: pointer; font-size: 13px; color: var(--fg);
@@ -1621,69 +1437,6 @@ details.analysis-module { padding: 0; }
 @media (max-width: 1100px) {
   .editor-split { grid-template-columns: 1fr; }
 }
-/* Command palette: Ctrl+K overlay for cross-surface navigation. */
-#cmdpalette-overlay {
-  position: fixed; inset: 0; z-index: 1000;
-  background: rgba(0, 0, 0, 0.55);
-  display: none; align-items: flex-start; justify-content: center;
-  padding-top: 10vh;
-  backdrop-filter: blur(2px);
-}
-#cmdpalette-overlay.open { display: flex; }
-.cmdpalette {
-  width: 640px; max-width: 92vw; max-height: 70vh;
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: var(--radius); box-shadow: 0 24px 60px rgba(0,0,0,0.5);
-  display: flex; flex-direction: column; overflow: hidden;
-  font-family: var(--font-ui);
-}
-.cmdpalette-input-wrap {
-  display: flex; align-items: center; gap: 8px;
-  padding: 12px 14px; border-bottom: 1px solid var(--rule);
-}
-.cmdpalette-input-wrap input {
-  flex: 1; background: transparent; border: 0; outline: none;
-  color: var(--fg); font-size: 14px; font-family: inherit;
-}
-.cmdpalette-input-wrap input::placeholder { color: var(--fg-4); }
-.cmdpalette-kbd, .cmdpalette-footer kbd {
-  display: inline-block; padding: 0 6px; min-width: 18px; height: 18px;
-  font-family: var(--font-mono); font-size: 10px; line-height: 18px;
-  text-align: center; background: var(--bg-4);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg-3);
-}
-.cmdpalette-list {
-  flex: 1; overflow-y: auto; min-height: 0; padding: 4px 0;
-}
-.cmdpalette-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 14px; cursor: pointer;
-  font-size: 12px; color: var(--fg-2);
-}
-.cmdpalette-row.selected { background: var(--bg-3); color: var(--fg); }
-.cmdpalette-row .cmdpalette-type {
-  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.5px;
-  padding: 2px 6px; border-radius: 3px; flex-shrink: 0;
-  background: var(--bg-4); color: var(--fg-3); min-width: 38px; text-align: center;
-}
-.cmdpalette-row .cmdpalette-type-step    { color: var(--accent); }
-.cmdpalette-row .cmdpalette-type-marker  { color: var(--warn); }
-.cmdpalette-row .cmdpalette-type-case    { color: var(--accent-2); }
-.cmdpalette-row .cmdpalette-type-command { color: var(--fg-3); }
-.cmdpalette-row .cmdpalette-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmdpalette-row .cmdpalette-hint {
-  font-family: var(--font-mono); font-size: 10px; color: var(--fg-4);
-  white-space: nowrap; margin-left: auto;
-}
-.cmdpalette-empty {
-  padding: 24px; text-align: center; color: var(--fg-4); font-size: 12px;
-}
-.cmdpalette-footer {
-  display: flex; gap: 14px; padding: 8px 14px;
-  border-top: 1px solid var(--rule); font-size: 10px; color: var(--fg-4);
-}
-
 /* Top-level case scope selector in the view-mode-bar. Sits to the
    right of Flow/Steps/Phases so the analyst sees "what I'm viewing"
    and "what slice I'm scoping to" together. */
@@ -2792,28 +2545,6 @@ button.danger:disabled {
   font-family: var(--font-mono); letter-spacing: 0.3px;
   pointer-events: none;
 }
-/* Suggested markers (ADR-0017): change-point candidates rendered as
-   dashed/ghost variants of the captured-marker bars. Dashed (not just
-   opacity-ghosted) reads as "tentative" on lossy projectors and to
-   colorblind users; opacity carries the score tier as a secondary
-   signal. A legend chip in the timeline legend strip explains the
-   encoding. */
-.tl-marker.tl-suggested {
-  background: transparent;
-  border-left: 2px dashed var(--fg);
-  box-shadow: none;
-  opacity: 0.50;
-}
-.tl-marker.tl-suggested.tl-suggested-hi { opacity: 0.72; }
-.tl-marker-label.tl-suggested {
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px dashed var(--fg);
-  box-shadow: none;
-  opacity: 0.75;
-}
-.tl-marker-label.tl-suggested::before { content: "? "; opacity: 0.7; }
-
 /* Legend: per-app swatches + element entries */
 .legend { display: flex; gap: 12px; padding: 6px 4px 0;
   font-size: 10px; color: var(--fg-3); letter-spacing: 0.3px;
@@ -2826,19 +2557,13 @@ button.danger:disabled {
   background: var(--fg-4); opacity: 0.5;
 }
 .legend .lg-marker::before { background: var(--warn); width: 8px !important; height: 2px !important; border-radius: 1px !important; }
-.legend .lg-marker-suggested::before {
-  background: transparent;
-  border-left: 2px dashed var(--fg);
-  width: 8px !important; height: 8px !important; border-radius: 0 !important;
-  opacity: 0.7;
-}
 .legend .lg-screenshot::before {
   background: var(--accent-2); border-radius: 50% !important; width: 7px !important; height: 7px !important;
   border: 1px solid var(--bg);
 }
 .legend-shortcuts { color: var(--fg-4); margin-left: auto; font-family: var(--font-mono); font-size: 9px; }
 
-/* ===== Project menu (top-bar) ====================================== */
+/* ===== Dropdown menus (Recent, More, Export) ======================== */
 .project-menu { position: relative; display: inline-block; }
 .project-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -2848,9 +2573,7 @@ button.danger:disabled {
   max-width: 240px;
 }
 .project-btn:hover { background: var(--bg-3); color: var(--fg); border-color: var(--accent); }
-.project-btn.has-project { color: var(--accent); border-color: var(--accent); }
 .project-btn .project-menu-caret { font-size: 9px; opacity: 0.7; }
-#project-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .project-menu-popup {
   position: absolute; right: 0; top: calc(100% + 4px);
   min-width: 220px; background: var(--bg-2); border: 1px solid var(--rule);
@@ -3096,14 +2819,6 @@ button.danger:disabled {
 .step-suggestion-reason {
   margin: 2px 0 6px; font-size: 11px; color: var(--fg-3); font-style: italic;
 }
-/* I72 -- topbar command-palette discoverability hint */
-.cmdk-hint {
-  padding: 3px 8px; font-size: 11px; font-family: var(--font-mono);
-  cursor: pointer; color: var(--fg-2);
-  background: var(--bg-3); border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-}
-.cmdk-hint:hover { color: var(--fg); border-color: var(--fg-4); }
 /* I23 -- an idle stretch where the worker was still at the desk */
 .tl-idle-atdesk {
   border: 1px dashed var(--accent-2);
@@ -3388,21 +3103,6 @@ details.wb-row-matched { padding: 0; }
 .vocab-machine-chevron::before { content: "▸"; }
 .vocab-machine-drawer[open] .vocab-machine-chevron::before { content: "▾"; }
 .vocab-machine-body { padding-top: 8px; }
-
-/* ===== Lab-phase C3: the Copy-for-LLM review modal ====================== */
-.llm-export-modal { width: min(860px, 92vw); }
-.llm-export-modal .llm-export-text {
-  width: 100%; height: min(52vh, 480px); resize: vertical;
-  background: var(--bg-3); color: var(--fg);
-  border: 1px solid var(--rule); border-radius: 3px;
-  font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
-  padding: 10px 12px; white-space: pre;
-}
-.llm-export-modal .modal-footer { display: flex; align-items: center; gap: 8px; }
-.modal-check-all {
-  border-bottom: 1px solid var(--rule); padding-bottom: 6px; margin-bottom: 6px;
-  font-weight: 600;
-}
 
 /* ===== Mode-specific shortcuts overlay (P2.4) ===================== */
 .shortcuts-overlay {

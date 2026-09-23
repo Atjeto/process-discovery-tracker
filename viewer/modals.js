@@ -189,88 +189,6 @@ function formModal(opts) {
   });
 }
 
-/* A modal with a list of checkboxes. `items` is an array of
-   { key, label, hint, checked, disabled }; resolves to an object of
-   key->bool, or null on cancel/escape. Used by the findings-report
-   export to pick which optional sections to include, and by the §C3
-   LLM-suggestions import (`selectAll: true` adds a master select-all/none
-   toggle above the rows — per-row or select-all approval, never implicit). */
-function checklistModal(opts) {
-  opts = opts || {};
-  const items = Array.isArray(opts.items) ? opts.items : [];
-  return new Promise((resolve) => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "modal-backdrop modal-prompt";
-    const okLabel = opts.okLabel || "OK";
-    const cancelLabel = opts.cancelLabel || "Cancel";
-    const master = opts.selectAll
-      ? '<label class="modal-check modal-check-all">' +
-        '<input type="checkbox" class="modal-check-master">' +
-        "<span>Select all</span></label>"
-      : "";
-    const rows = master + items.map((it) =>
-      '<label class="modal-check' + (it.disabled ? " disabled" : "") + '">' +
-      '<input type="checkbox" data-key="' + escapeAttr(it.key || "") + '"' +
-      (it.checked ? " checked" : "") + (it.disabled ? " disabled" : "") + ">" +
-      "<span>" + escapeHtml(it.label || it.key || "") + "</span>" +
-      (it.hint ? '<small>' + escapeHtml(it.hint) + "</small>" : "") +
-      "</label>").join("");
-    backdrop.innerHTML =
-      '<div class="modal modal-sm">' +
-      '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Options") + "</h2>" +
-      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
-      '<div class="modal-body">' +
-      (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + "</p>" : "") +
-      rows +
-      "</div>" +
-      '<footer class="modal-footer">' +
-      '<button class="modal-cancel">' + escapeHtml(cancelLabel) + "</button>" +
-      '<button class="primary modal-ok">' + escapeHtml(okLabel) + "</button>" +
-      "</footer></div>";
-    document.body.appendChild(backdrop);
-    const okBtn = backdrop.querySelector(".modal-ok");
-    const cancelBtn = backdrop.querySelector(".modal-cancel");
-    const closeBtn = backdrop.querySelector(".modal-close");
-    let resolved = false;
-    function done(value) {
-      if (resolved) return;
-      resolved = true;
-      backdrop.remove();
-      document.removeEventListener("keydown", onKey);
-      resolve(value);
-    }
-    function collect() {
-      const out = {};
-      backdrop.querySelectorAll("input[type=checkbox][data-key]").forEach((c) => {
-        out[c.dataset.key] = c.checked;
-      });
-      return out;
-    }
-    const masterBox = backdrop.querySelector(".modal-check-master");
-    if (masterBox) {
-      masterBox.addEventListener("change", () => {
-        backdrop.querySelectorAll("input[type=checkbox][data-key]:not(:disabled)")
-          .forEach((c) => { c.checked = masterBox.checked; });
-      });
-      backdrop.addEventListener("change", (e) => {
-        if (e.target === masterBox || !e.target.dataset || e.target.dataset.key === undefined) return;
-        const boxes = Array.from(backdrop.querySelectorAll("input[type=checkbox][data-key]:not(:disabled)"));
-        masterBox.checked = boxes.length > 0 && boxes.every((c) => c.checked);
-      });
-    }
-    function onKey(e) {
-      if (e.key === "Enter") { e.preventDefault(); done(collect()); }
-      else if (e.key === "Escape") { e.preventDefault(); done(null); }
-    }
-    okBtn.addEventListener("click", () => done(collect()));
-    cancelBtn.addEventListener("click", () => done(null));
-    closeBtn.addEventListener("click", () => done(null));
-    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) done(null); });
-    document.addEventListener("keydown", onKey);
-    setTimeout(() => { okBtn.focus(); }, 0);
-  });
-}
-
 /* A single-choice modal: a list of radio options, resolves to the chosen
    option's `key` (or null on cancel/escape). `options` is an array of
    { key, label, hint, disabled }; `selectedKey` pre-selects one (defaults to
@@ -334,4 +252,4 @@ function pickerModal(opts) {
   });
 }
 
-module.exports = { promptModal, confirmModal, formModal, checklistModal, pickerModal };
+module.exports = { promptModal, confirmModal, formModal, pickerModal };

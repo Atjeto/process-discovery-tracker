@@ -9,7 +9,7 @@
  * membership logic the CRUD now delegates to.
  *
  * steps-view.js transitively loads DOM-touching modules at require time
- * (command-palette.js / theme.js bind document-level listeners). We stub
+ * (theme.js reads document.documentElement). We stub
  * a permissive `document`/`window` via Proxy so the module loads under
  * plain node; the helpers under test touch neither.
  *

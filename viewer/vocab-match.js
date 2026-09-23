@@ -49,6 +49,10 @@
  * Pure module: no DOM, no IPC. Unit-tested in vocab-match.test.js.
  */
 
+// The composed identity line and its helpers live in identity-line.js (kept
+// by the Steps surface); re-exported below for the App Library view.
+const { identityLine, looksVolatileId, _asData } = require("./identity-line.js");
+
 // Signature fields, in the SAME set app_vocab.py::_SIG_FIELDS uses.
 const SIG_FIELDS = ["control_type", "automation_id", "name", "class_name", "framework_id"];
 
@@ -125,10 +129,6 @@ function triageSnapshotCandidates(controls, cap) {
   // such by the view's "incl. non-interactive" copy).
   const deferred = interactive.slice(limit).concat(nonInteractive);
   return { shown, deferred, keptTotal: interactive.length, rawTotal };
-}
-
-function _asData(x) {
-  return x && typeof x === "object" ? x : {};
 }
 
 function _compile(pattern) {
@@ -231,86 +231,6 @@ function bestIdentity(data) {
   if (data.class_name) return { kind: "class_name", value: String(data.class_name) };
   if (data.control_type) return { kind: "control_type", value: String(data.control_type) };
   return { kind: "unknown", value: "(unidentified control)" };
-}
-
-/* THE one composed human identity line for a control — shown wherever a row
-   used to render the four raw signature inputs. Design (R1 App Library pass):
-   the four signature fields are the MACHINE's re-identification key (kept as
-   data, edited only in the raw-rule expansion); the HUMAN sees one line and
-   writes one name.
-
-   Shape: `<ControlType> · "<best identity>" · <window/screen context>`
-     - best identity = name || automation_id || class_name (in THAT order — the
-       human-legible label first; the machine ladder in bestIdentity() prefers
-       automation_id, but a person reads the accessible name best).
-     - window/screen context = the explicit `scope` string when the caller has
-       one (a named screen), else the signature/event's own window_title, else
-       omitted.
-     - volatility/weak flags render as a small trailing marker `{kind, note}`
-       (NOT baked into the string) so the view can attach the existing tooltip;
-       the plain `.text` is always the human sentence with no marker noise.
-
-   `signature` is a signature-shaped object (control_type / automation_id / name
-   / class_name / window_title / window_title_regex — a rule signature OR a raw
-   captured-event data blob both work, since we only read those fields).
-   `scope` (optional) is an explicit screen/window context string to append.
-
-   Returns { text, controlType, identity:{kind,value}, context, marker|null }.
-   Pure — unit-tested in vocab-match.test.js. */
-function identityLine(signature, scope) {
-  const sig = _asData(signature);
-  const controlType = String(sig.control_type || "").trim();
-  // Human-first identity ladder: name, then automation_id, then class_name.
-  let identity;
-  if (sig.name) identity = { kind: "name", value: String(sig.name) };
-  else if (sig.automation_id) identity = { kind: "automation_id", value: String(sig.automation_id) };
-  else if (sig.class_name) identity = { kind: "class_name", value: String(sig.class_name) };
-  else identity = { kind: "unknown", value: "" };
-
-  // Window/screen context: explicit scope wins, else the control's own window.
-  let context = "";
-  if (typeof scope === "string" && scope.trim()) context = scope.trim();
-  else if (sig.window_title) context = String(sig.window_title);
-  else if (sig.window_title_regex) context = String(sig.window_title_regex);
-
-  // Reuse the volatility/weak flag logic already used by the Name… flow
-  // (looksVolatile) — do NOT duplicate the rule shapes. A volatile-looking
-  // automation_id we're keying on, or a class_name-only weak identity, gets a
-  // small marker with a tooltip the view renders.
-  let marker = null;
-  if (identity.kind === "automation_id" && looksVolatileId(identity.value)) {
-    marker = {
-      kind: "volatile",
-      note: "This id looks auto-generated (a per-render counter) — it may change between recordings.",
-    };
-  } else if (identity.kind === "class_name") {
-    marker = {
-      kind: "weak",
-      note: "Weak identity — keyed on a generic class name, with no stable id or accessible label. It may not match reliably.",
-    };
-  } else if (identity.kind === "unknown") {
-    marker = {
-      kind: "weak",
-      note: "No stable identity was captured for this control.",
-    };
-  }
-
-  // Compose the sentence. An empty identity reads as "unidentified control".
-  const parts = [];
-  parts.push(controlType || "Control");
-  parts.push(identity.value ? '"' + identity.value + '"' : "(unidentified control)");
-  if (context) parts.push(context);
-  return { text: parts.join(" · "), controlType, identity, context, marker };
-}
-
-/* Heuristic mirror of the discovery volatility flag + vocab-view.looksVolatile:
-   an id ending in a render counter (trailing digits after a hyphen/underscore),
-   a `prefix-NNN` pattern, or a long hex hash is suspect. Kept here (pure) so
-   identityLine has no view dependency; vocab-view.looksVolatile stays the DOM
-   caller. Advisory only. */
-function looksVolatileId(aid) {
-  const s = String(aid || "");
-  return /[-_]\d{2,}$/.test(s) || /^[a-z]+-\d+$/i.test(s) || /[0-9a-f]{8,}/i.test(s);
 }
 
 /* Derive the minimum signature to hand the add-from-interaction flow, mirroring
@@ -472,32 +392,6 @@ function buildWorkbench(events, vocab) {
   };
 }
 
-/* R4 (next-act rail act 1): how many DISTINCT captured controls no loaded vocab
-   named, across the whole session. Advisory (mirrors, not the pipeline).
-   Computed as: every distinct in-session control (controlKey) MINUS the union of
-   the controls any vocab matched. This deliberately does NOT sum each vocab's
-   UNNAMED list -- the shipped vocabs often carry an empty scope (which matches
-   every app), so per-vocab summing double-counts. A control named by ANY vocab
-   is "named" for this rail signal (the honest "is anything still unnamed?"
-   question, not the per-vocab "is THIS selector right?" the workbench answers).
-
-   `events` = the session's raw events; `vocabs` = the loaded App Library
-   vocabularies. Returns { distinctControls, named, unnamed }. */
-function countUnnamedControls(events, vocabs) {
-  const interactions = (Array.isArray(events) ? events : []).filter(
-    (e) => e && e.type === "interaction");
-  const allKeys = new Set();
-  for (const ev of interactions) allKeys.add(controlKey(_asData(ev.data)));
-  const named = new Set();
-  for (const vocab of (Array.isArray(vocabs) ? vocabs : [])) {
-    const wb = buildWorkbench(events, vocab);
-    for (const m of wb.matched) named.add(m.key);
-  }
-  let unnamed = 0;
-  for (const k of allKeys) if (!named.has(k)) unnamed += 1;
-  return { distinctControls: allKeys.size, named: named.size, unnamed };
-}
-
 /* Distinct observed window titles for this vocab's app, split into those a
    `screens` entry's window_title_regex matches vs. those unnamed. */
 function buildScreens(groups, vocab) {
@@ -627,7 +521,6 @@ module.exports = {
   minimalSignature,
   coverage,
   buildWorkbench,
-  countUnnamedControls,
   buildScreens,
   suggestScreenRegex,
   escapeRegex,

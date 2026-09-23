@@ -90,18 +90,6 @@ function saveSvgFile(payload) {
   return ipcRenderer.invoke("viewer:saveSvgFile", payload);
 }
 
-/** @param {object} payload @returns {Promise<any>} */
-function saveHtmlFile(payload) {
-  return ipcRenderer.invoke("viewer:saveHtmlFile", payload);
-}
-
-/** Generic save-text-as dialog (Copy-for-LLM JSON, §C3).
- * @param {object} payload { content, suggestedName, title?, filterName?, filterExt? }
- * @returns {Promise<any>} { ok, path } | { ok:false, error } | null on cancel */
-function saveTextFile(payload) {
-  return ipcRenderer.invoke("viewer:saveTextFile", payload);
-}
-
 /** @param {string} filePath @returns {Promise<any>} */
 function revealFile(filePath) {
   return ipcRenderer.invoke("viewer:revealFile", filePath);
@@ -219,28 +207,6 @@ function saveExternalVideoSync(payload) {
   return ipcRenderer.invoke("viewer:saveExternalVideoSync", payload);
 }
 
-/* ---- Projects ---- */
-
-/** @param {object} payload @returns {Promise<any>} */
-function saveProjectAs(payload) {
-  return ipcRenderer.invoke("viewer:saveProjectAs", payload);
-}
-
-/** @param {object} payload @returns {Promise<any>} */
-function saveProject(payload) {
-  return ipcRenderer.invoke("viewer:saveProject", payload);
-}
-
-/** @returns {Promise<any>} */
-function openProject() {
-  return ipcRenderer.invoke("viewer:openProject");
-}
-
-/** @param {string} filePath @returns {Promise<any>} */
-function loadProjectFile(filePath) {
-  return ipcRenderer.invoke("viewer:loadProjectFile", filePath);
-}
-
 /* ---- Main -> renderer subscriptions ---- */
 
 /** @param {Function} fn called with each streamed normalization log line */
@@ -258,11 +224,10 @@ module.exports = {
   runNormalize, runNormalizeExtended, testCanonicalMatch, bootstrapAppVocab,
   cancelNormalize,
   saveAnnotations, addClassificationOverride, promoteTaxonomyRules,
-  exportFile, saveSvgFile, saveHtmlFile, saveTextFile, revealFile, openExternal, openDiagram,
+  exportFile, saveSvgFile, revealFile, openExternal, openDiagram,
   openCanonicalFile, saveCanonicalFile, newCanonicalFile, deleteCanonicalFile, listTemplateVersions, readTemplateFile,
   listAppVocabs, saveAppVocab, readVocab, writeVocab, newVocabFile, openVocabFile,
   discoverFromWindow, pickWindow, deleteVocab, bootstrapVocabsFromSession,
   attachExternalVideo, saveExternalVideoSync,
-  saveProjectAs, saveProject, openProject, loadProjectFile,
   onNormalizeLog, onOpenInitialSession,
 };

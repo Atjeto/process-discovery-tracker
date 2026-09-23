@@ -4,7 +4,7 @@
  * After the Phase 3 decomposition (ADR-0003) this file only wires the
  * feature modules together: tab routing, the Flow / Steps / Phases
  * level switcher, the state-change bus subscriptions, global keyboard
- * shortcuts, the project menu, the export buttons, and boot. Every
+ * shortcuts, the Recent menu, the export buttons, and boot. Every
  * surface lives in its own module, reached through the require() block
  * below; index.html loads only this entry script plus the vendored
  * libraries.
@@ -20,8 +20,6 @@ const State = require("./state.js");
 const PdtTheme = require("./theme.js");
 const PdtCharts = require("./charts.js");
 const PdtReport = require("./report-md.js");
-const PdtReportHtml = require("./report-html.js");
-const PdtPalette = require("./command-palette.js");
 const PdtDfg = require("./dfg-viewer.js");
 const PdtBpmn = require("./bpmn-viewer.js");
 const PdtSteps = require("./step-editor.js");
@@ -29,8 +27,8 @@ const PdtPhases = require("./phase-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
-const { promptModal, confirmModal, checklistModal } = require("./modals.js");
-const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent, relTime } = require("./recent.js");
+const { promptModal } = require("./modals.js");
+const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent } = require("./recent.js");
 const { initAggregateView, renderAggregate, loadAggregateFolders, filteredAggregateSessions, getAggregateFindings } = require("./views/aggregate-view.js");
 const { initVocabView, reloadVocabList, addInteractionFromStep } = require("./views/vocab-view.js");
 const { mergeInteractionsIntoVocab } = require("./canonical-author.js");
@@ -38,8 +36,8 @@ const { refreshTemplateVersions, renderCanonicalStepList, loadCanonical } = requ
 const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, reorderSelectedStep } = require("./views/steps-view.js");
 const { initPhasesView, renderPhasesLevel, addManualPhase, groupIntoPhase } = require("./views/phases-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnchorCandidates, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
-const { renderOverviewLevel } = require("./views/overview-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, activateAnnoTab, addStepAtPlayhead } = require("./views/flow-view.js");
+const { renderOverviewLevel, openMarkersInFlow, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, processLabel } = require("./process-map-levels.js");
 const RefmapUI = require("./refmap-ui.js");
@@ -52,8 +50,6 @@ const RefmapUI = require("./refmap-ui.js");
 initFlowView({
   renderShortcutsOverlay: () => renderShortcutsOverlay(),
   rerenderActiveLevel:    () => rerenderActiveLevel(),
-  applyLevel:             (name) => applyLevel(name),
-  activateTab:            (name) => activateTab(name),
   addStepAtTimestamp:     (ts) => addStepAtTimestamp(ts),
 });
 
@@ -147,7 +143,6 @@ function _applyGrain(notch, opts = {}) {
   // listener already moved it when the change came FROM the select.
   if (!opts.fromMapCtrl && _sessionMapCtrl) _sessionMapCtrl.setLevel(notch);
   State.emit("grain");           // Steps + Flow re-render to the new grain
-  scheduleAutoSave();
 }
 (() => {
   const slider = document.getElementById("grain-slider");
@@ -171,7 +166,7 @@ function _applyGrain(notch, opts = {}) {
 })();
 
 const VIEW_MODE_HELP = {
-  overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the memo export — the consultant's landing surface.",
+  overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the PDD export.",
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
   steps:  "Steps view: rename, split, merge, or flag the logical actions captured — or use the Detail slider to roll them up by screen / app / phase / case.",
   phases: "Phases view: group steps into milestones, or review the phases an auto-match produced.",
@@ -319,12 +314,12 @@ function _sessionMapDataSource({ notation, level, scope }) {
     // §B2 honesty gate: the step-grain observed BPMN draws CASE flow (one
     // trace per case), so it is Tier-2 — it renders only when
     // case_quality.tier2_unlocked. Below the gate the section is REPLACED
-    // by the one-line state + the anchor call to action (the §1 replace
+    // by the one-line state + the mark-runs call to action (the §1 replace
     // pattern), never rendered with fact-level authority.
     if (level === "step" || level === "element") {
       const cq = (sess.analysis || {}).case_quality;
       if (!cq || !cq.tier2_unlocked) {
-        return { emptyMessage: _stepBpmnLockedMessage(sess, cq) };
+        return { emptyMessage: _stepBpmnLockedMessage(cq) };
       }
     }
     const bpmnPath = sess.sessionFolder ? path.join(sess.sessionFolder, file) : null;
@@ -365,27 +360,24 @@ function _sessionMapDataSource({ notation, level, scope }) {
   };
 }
 
-/* §B2: the replace-pattern lock message for the step-grain Process diagram.
-   One honest line on WHY it is withheld + the anchor call to action. HTML —
-   the CTA button is handled by the delegated listener installed on the BPMN
-   host in _ensureSessionMapCtrl (innerHTML rewrites keep delegation alive). */
-function _stepBpmnLockedMessage(sess, cq) {
-  const cands = (((sess && sess.annotations) || {}).anchor_candidates || []).length;
-  const why = !cq
-    ? "this session has not been analyzed yet — run Analyze once"
-    : (cq.mode === "unsegmented"
-        ? "no cases have been identified in this recording yet"
-        : ((cq.case_count || 0) < 2
-            ? "only one case was identified — case comparisons need at least 2"
-            : "the identified cases cover only " + Math.round((cq.coverage || 0) * 100) +
-              "% of the recording, below the 70% needed to trust them"));
-  const cta = cands
-    ? cands + " candidate field" + (cands === 1 ? "" : "s") + " that could identify each case await" + (cands === 1 ? "s" : "") + " review."
-    : "Recording Start/End markers, or confirming the field that identifies each case, unlocks it.";
-  return "The step-level Process diagram is not shown — it draws how cases " +
-    "flow, and " + why + ". " + cta +
-    ' <button type="button" class="link-btn" data-map-cta="overview">' +
-    "Review on Overview</button>";
+/* §B2 + AD-14: the replace-pattern lock message for the step-grain Process
+   diagram. One honest line on WHY it is withheld, then the same mark-runs
+   instruction and button the Overview shows (overview-view.js owns the
+   sentence and the verb). HTML: the button is handled by the delegated
+   listener installed on the BPMN host in _ensureSessionMapCtrl (innerHTML
+   rewrites keep delegation alive). */
+function _stepBpmnLockedMessage(cq) {
+  const lead = "The step-level Process diagram is not shown because it draws how cases flow. ";
+  if (!cq) return lead + "This session has not been analyzed yet, so run Analyze once.";
+  const why = cq.mode === "unsegmented"
+    ? NO_RUNS_MARKED
+    : ((cq.case_count || 0) < 2
+        ? "Only one case was identified, and case comparisons need at least 2."
+        : "The identified cases cover only " + Math.round((cq.coverage || 0) * 100) +
+          "% of the recording, below the 70% needed to trust them.");
+  return escapeHtml(lead + why + " " + MARK_RUNS_INSTRUCTION) +
+    ' <button type="button" class="link-btn" data-map-cta="mark-runs">' +
+    escapeHtml(MARK_RUNS_BUTTON) + "</button>";
 }
 
 /* Resolver context for the grain roll-up: a stable case label and the
@@ -483,12 +475,13 @@ function _ensureSessionMapCtrl() {
     initialNotation: "dfg",
     initialLevel: State.getGrain(),
   });
-  // §B2: the lock-state CTA inside the BPMN host (the replace-pattern's
-  // "Review on Overview"). Delegated once — innerHTML rewrites keep it alive.
+  // §B2 + AD-14: the lock-state CTA inside the BPMN host ("Mark runs in
+  // Flow", the same verb as the Overview's button). Delegated once, so
+  // innerHTML rewrites keep it alive.
   const bpmnHost = document.getElementById("session-map-bpmn-host");
   if (bpmnHost) {
     bpmnHost.addEventListener("click", (e) => {
-      if (e.target.closest('[data-map-cta="overview"]')) applyLevel("overview");
+      if (e.target.closest('[data-map-cta="mark-runs"]')) openMarkersInFlow();
     });
   }
   _wireMapExpertDrawer();
@@ -571,12 +564,10 @@ State.subscribe("steps",    renderStepsLevel);
 State.subscribe("phases",   renderPhasesLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
-State.subscribe("markers",  renderAnchorCandidates);
-// Lab-phase §A5 + R4: the Overview renders the anchor hero (markers topic), the
-// analysis-backed badge / facts / findings / rail, AND (R4) the Evidence
-// modules retired from the Analysis level -- so it follows markers, analysis,
-// steps (the rail's story/case signals + work-item shape), and grain (the
-// time-goes itemisation notch).
+// Lab-phase §A5 + R4: the Overview renders the analysis-backed badge / facts /
+// findings AND (R4) the Evidence modules retired from the Analysis level -- so
+// it follows markers, analysis, steps, and grain (the time-goes itemisation
+// notch).
 State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
@@ -592,7 +583,7 @@ State.subscribe("grain",    renderOverviewLevel);
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
    an `if (currentLevel === ...)` triplet that was copied verbatim
-   across the case-scope and command-palette handlers (issue S5). */
+   across the case-scope handlers (issue S5). */
 function rerenderActiveLevel() {
   const fn = LEVEL_RENDERERS[State.getLevel()];
   if (fn) fn();
@@ -662,7 +653,6 @@ function applyLevel(name) {
   }
   // P2.4: refresh the shortcuts overlay for the new view.
   renderShortcutsOverlay();
-  scheduleAutoSave();   // F1: persist the project after a view-mode switch
 }
 
 /* P2.4: small persistent corner widget listing 3-4 most-used
@@ -1102,13 +1092,6 @@ $("#btn-export-md").addEventListener("click", async () => {
   await saveMarkdownReport(md, "aggregate-report.md");
 });
 
-$("#btn-session-md").addEventListener("click", async () => {
-  if (!State.getSession() || !PdtReport) return;
-  const md = PdtReport.buildSessionReport(State.getSession());
-  const name = "session-" + (State.getSession().sessionFolder.split(/[\\/]/).slice(-1)[0] || "report") + ".md";
-  await saveMarkdownReport(md, name);
-});
-
 /* PDD export from Session view -- new in v0.18.1. The PDD's As-Is process
    map (section 3.3) is rasterised from the currently-rendered Flow diagram;
    to embed THIS session's map (not whatever was last shown on the
@@ -1156,73 +1139,6 @@ async function saveMarkdownReport(md, suggestedName) {
     toast("Markdown report saved: " + path.basename(out), "success");
   }
   try { fs.unlinkSync(tmpPath); } catch (_) {}
-}
-
-/* Phase D: self-contained HTML findings report. A pre-export dialog
-   picks which optional sections to include; report-html.js builds the
-   document string; viewer:saveHtmlFile writes it (viewer:exportFile
-   only copies an existing file -- ADR-0006 Correction 1). */
-if ($("#btn-export-findings")) {
-  $("#btn-export-findings").addEventListener("click", async () => {
-    const session = State.getSession();
-    if (!session) { toast("Open a session first.", "error"); return; }
-    if (!PdtReportHtml) return;
-    const anno = session.annotations || {};
-    const notes = anno.notes || [];
-    const starred = anno.starred_screenshots || [];
-    let mapSvg = null;
-    try { if (PdtDfg && PdtDfg.exportSvg) mapSvg = PdtDfg.exportSvg(); } catch (_) {}
-    const opts = await checklistModal({
-      title: "Export findings report",
-      message: "Choose what to include in the HTML report.",
-      okLabel: "Generate",
-      items: [
-        { key: "map", label: "Process map", checked: !!mapSvg,
-          disabled: !mapSvg, hint: mapSvg ? "" : "no process map rendered" },
-        { key: "analysis", label: "Waste & automation findings",
-          checked: !!session.analysis, disabled: !session.analysis,
-          hint: session.analysis ? "" : "session not analyzed" },
-        { key: "notes", label: "Notes", checked: notes.length > 0,
-          disabled: notes.length === 0, hint: notes.length ? "" : "no notes" },
-        { key: "screenshots", label: "Starred screenshots",
-          checked: starred.length > 0, disabled: starred.length === 0,
-          hint: starred.length ? starred.length + " starred"
-            : "none starred — star them in the Screenshots panel" },
-      ],
-    });
-    if (!opts) return;
-    const screenshotData = {};
-    if (opts.screenshots) {
-      for (const rel of starred) {
-        try {
-          const full = path.join(session.sessionFolder, rel);
-          if (fs.existsSync(full)) {
-            screenshotData[rel] = "data:image/jpeg;base64," +
-              fs.readFileSync(full).toString("base64");
-          }
-        } catch (_) {}
-      }
-    }
-    const proj = PdtProject.activeProject();
-    const html = PdtReportHtml.generateFindingsReport(session, {
-      includeProcessMap: !!opts.map,
-      includeAnalysis: !!opts.analysis,
-      includeNotes: !!opts.notes,
-      includeScreenshots: !!opts.screenshots,
-      processMapSvg: opts.map ? mapSvg : null,
-      screenshotData,
-      projectFindings: (proj && proj.findings) || "",
-    });
-    const folder = (session.sessionFolder || "").split(/[\\/]/).slice(-1)[0] || "session";
-    const r = await Ipc.saveHtmlFile({ content: html,
-      suggestedName: "findings-" + folder + ".html" });
-    if (r && r.ok) {
-      await Ipc.revealFile(r.path);
-      toast("Findings report saved: " + path.basename(r.path), "success");
-    } else if (r && r.error) {
-      toast("Export failed: " + r.error, "error");
-    }
-  });
 }
 
 $("#btn-export-promotions").addEventListener("click", async () => {
@@ -1354,7 +1270,7 @@ document.addEventListener("keydown", (e) => {
   // R1 (APPROACHABILITY-REDESIGN-2026-07-03 §5): renumbered to match the
   // resident tab row (1/2/3, no gap where Template used to sit at 3).
   // Template's hotkey is retired, not reassigned -- it's a "More ▾"
-  // destination now, reachable via the menu / command palette / the
+  // destination now, reachable via the menu / the
   // openCanonicalInTemplateTab drill, never a top-level number.
   if (e.key === "1") activateTab("session");
   else if (e.key === "2") activateTab("aggregate");
@@ -1561,10 +1477,6 @@ initVocabView({
   }),
 });
 
-/* I72: the topbar command-palette hint opens the palette (also Ctrl+K). */
-const _cmdkHint = document.getElementById("btn-cmdk-hint");
-if (_cmdkHint && PdtPalette) _cmdkHint.addEventListener("click", () => PdtPalette.toggle());
-
 /* ============ Attach external video (Teams recording, etc.) ======= */
 
 function parseHmsToMs(s) {
@@ -1627,104 +1539,14 @@ if ($("#btn-link-recording")) {
   $("#btn-link-recording").addEventListener("click", attachExternalVideo);
 }
 
-/* ============ Project / engagement wiring (P2.1) ==================
-   A project bundles aggregate sessions, the current focus session, the
-   active process template, view mode, case scope, and (forward-
-   compatible) vocabularies into a single re-loadable file. The data
-   layer lives in viewer/project.js; this block snapshots / restores
-   the live state and wires the topbar UI. */
-
-const PdtProject = require("./project.js");
-
-const projectCollectors = {
-  currentSessionFolder: () => State.getSession() && State.getSession().sessionFolder,
-  aggregateSessions:    () => (State.getAggregateSessions() || []).map((s) => s && s.sessionFolder).filter(Boolean),
-  templatePath:         () => State.getCanonicalState() && State.getCanonicalState().path,
-  vocabularies:         () => [],   // captured by path on a future project-format bump
-  currentTab:           () => {
-    const t = document.querySelector(".tab.active");
-    return t ? t.dataset.view : "session";
-  },
-  viewMode:             () => State.getLevel(),
-  currentCaseScope:     () => State.getCaseScope() || null,
-  timeline: () => {
-    const scroll = document.getElementById("timeline-scroll");
-    return {
-      zoomFactor: State.getZoomFactor(),
-      scrollLeft: scroll ? scroll.scrollLeft : 0,
-    };
-  },
-};
-
-function updateProjectMenuLabel() {
-  const lbl = document.getElementById("project-menu-label");
-  const btn = document.getElementById("btn-project-menu");
-  const saveItem = document.getElementById("btn-project-save");
-  const notesItem = document.getElementById("btn-project-notes");
-  const tmplItem = document.getElementById("btn-set-session-template");
-  const closeItem = document.getElementById("btn-project-close");
-  const proj = PdtProject.activeProject();
-  if (proj && proj.path) {
-    if (lbl) lbl.textContent = proj.name || path.basename(proj.path, ".pdt-project.json");
-    if (btn) btn.classList.add("has-project");
-    if (saveItem) saveItem.style.display = "";
-    if (notesItem) notesItem.style.display = "";
-    if (tmplItem) tmplItem.style.display = "";
-    if (closeItem) closeItem.style.display = "";
-  } else {
-    if (lbl) lbl.textContent = "No project";
-    if (btn) btn.classList.remove("has-project");
-    if (saveItem) saveItem.style.display = "none";
-    if (notesItem) notesItem.style.display = "none";
-    if (tmplItem) tmplItem.style.display = "none";
-    if (closeItem) closeItem.style.display = "none";
-  }
-}
-
-document.addEventListener("pdt:projectChanged", updateProjectMenuLabel);
-
-function toggleProjectMenu(force) {
-  const popup = document.getElementById("project-menu-popup");
-  if (!popup) return;
-  const open = force === undefined ? popup.style.display === "none" : !!force;
-  popup.style.display = open ? "" : "none";
-}
-
-(function wireProjectMenu() {
-  const btn = document.getElementById("btn-project-menu");
-  const popup = document.getElementById("project-menu-popup");
-  if (!btn || !popup) return;
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleProjectMenu();
-  });
-  document.addEventListener("click", (e) => {
-    if (!popup.contains(e.target) && e.target !== btn) toggleProjectMenu(false);
-  });
-})();
-
 /* ===== Recent dropdown (top-bar) =====
-   Recent sessions + projects were only reachable from the Session
-   empty-state, which disappears once a session loads. This top-bar
-   menu makes them reachable any time. */
+   Recent sessions were only reachable from the Session empty-state,
+   which disappears once a session loads. This top-bar menu makes them
+   reachable any time. */
 function renderRecentMenu() {
   const host = document.getElementById("recent-menu-content");
   if (!host) return;
   let html = "";
-  // Recent projects.
-  const projects = (typeof PdtProject !== "undefined") ? PdtProject.getRecentProjects() : [];
-  if (projects.length) {
-    html += '<div class="recent-menu-heading">Recent projects</div>';
-    html += projects.map((p) => {
-      let missing = false;
-      try { missing = !fs.existsSync(p.path); } catch (_) { missing = true; }
-      return '<button class="recent-menu-item' + (missing ? " missing" : "") + '" ' +
-        'data-kind="project" data-path="' + escapeHtml(p.path) + '">' +
-        '<span class="ri-label">' + escapeHtml(p.name || path.basename(p.path)) + '</span>' +
-        '<span class="ri-tag">' + (missing ? "missing" : "project") + '</span>' +
-        '</button>';
-    }).join("");
-  }
   // Recent sessions + bundled examples.
   const recents = getRecent();
   const hidden = getHiddenExamples();
@@ -1744,18 +1566,14 @@ function renderRecentMenu() {
     }).join("");
   }
   if (!html) {
-    html = '<div class="recent-menu-empty">No recent sessions or projects yet.</div>';
+    html = '<div class="recent-menu-empty">No recent sessions yet.</div>';
   }
   host.innerHTML = html;
   host.querySelectorAll(".recent-menu-item").forEach((item) => {
     item.addEventListener("click", () => {
       toggleRecentMenu(false);
-      if (item.dataset.kind === "project") {
-        projectOpenByPath(item.dataset.path);
-      } else {
-        activateTab("session");
-        loadSessionIntoView(item.dataset.folder);
-      }
+      activateTab("session");
+      loadSessionIntoView(item.dataset.folder);
     });
   });
 }
@@ -1780,7 +1598,7 @@ function toggleRecentMenu(force) {
 })();
 
 /* Generic dropdown menu (button + popup) -- used by the Export menus on
-   the Session and Compare Sessions tabs. Mirrors wireProjectMenu: the
+   the Session and Compare Sessions tabs. Mirrors wireRecentMenu: the
    button toggles the popup, an outside click closes it, and clicking
    any enabled menu item closes it after the item's own handler runs. */
 function wireDropdownMenu(btnId, popupId) {
@@ -1804,270 +1622,3 @@ wireDropdownMenu("btn-session-more-menu", "session-more-popup");
 wireDropdownMenu("btn-agg-export-menu", "agg-export-popup");
 wireDropdownMenu("btn-vocab-more-menu", "vocab-more-popup");
 wireDropdownMenu("btn-tabs-more-menu", "tabs-more-popup");
-
-async function projectSaveAs() {
-  toggleProjectMenu(false);
-  const name = await promptModal({
-    title: "Save project as",
-    message: "Project name",
-    detail: "Saves the current aggregate session set, focus session, template, view mode, and case scope into a single .pdt-project.json file you can re-open later.",
-    placeholder: "e.g. ENG-2026-001 onboarding review",
-    initial: (PdtProject.activeProject() && PdtProject.activeProject().name) || "Untitled project",
-  });
-  if (!name) return;
-  const project = PdtProject.captureFromCollectors(projectCollectors, { name });
-  const r = await Ipc.saveProjectAs({ project, suggestedName: name.replace(/[^A-Za-z0-9._-]+/g, "-") });
-  if (!r) return;
-  if (!r.ok) { toast("Save failed: " + (r.error || "unknown"), "error"); return; }
-  PdtProject.setActiveProject({ path: r.path, name, ...project });
-  PdtProject.pushRecentProject(r.path, name);
-  renderRecentProjects();
-  toast("Project saved", "success");
-}
-
-async function projectSave() {
-  toggleProjectMenu(false);
-  const active = PdtProject.activeProject();
-  if (!active || !active.path) return projectSaveAs();
-  const project = PdtProject.captureFromCollectors(projectCollectors, { name: active.name });
-  const r = await Ipc.saveProject({ project, path: active.path });
-  if (!r || !r.ok) { toast("Save failed: " + ((r && r.error) || "unknown"), "error"); return; }
-  PdtProject.setActiveProject({ path: r.path, name: active.name, ...project });
-  PdtProject.pushRecentProject(r.path, active.name);
-  renderRecentProjects();
-  toast("Project saved", "success");
-}
-
-async function projectOpen() {
-  toggleProjectMenu(false);
-  const r = await Ipc.openProject();
-  if (!r) return;
-  if (!r.ok) { toast("Couldn't open project: " + (r.error || "unknown"), "error"); return; }
-  await applyProject(r.path, r.project);
-}
-
-async function projectOpenByPath(filePath) {
-  const r = await Ipc.loadProjectFile(filePath);
-  if (!r) return;
-  if (!r.ok) { toast("Couldn't open project: " + (r.error || "unknown"), "error"); return; }
-  await applyProject(r.path, r.project);
-}
-
-async function applyProject(filePath, raw) {
-  const v = PdtProject.validateProject(raw);
-  if (!v.ok) { toast("Project file invalid: " + v.error, "error"); return; }
-  const project = v.project;
-  PdtProject.setActiveProject({ path: filePath, ...project });
-  PdtProject.pushRecentProject(filePath, project.name);
-  renderRecentProjects();
-
-  // Aggregate sessions
-  if (project.aggregateSessions && project.aggregateSessions.length) {
-    try {
-      const sessions = await Ipc.loadMultipleSessions(project.aggregateSessions);
-      State.setAggregateSessions((sessions || []).filter((s) => s && !s.error));
-      const aggEmpty = $("#aggregate-empty");
-      const aggLoaded = $("#aggregate-loaded");
-      if (aggEmpty) aggEmpty.style.display = State.getAggregateSessions().length ? "none" : "";
-      if (aggLoaded) aggLoaded.style.display = State.getAggregateSessions().length ? "" : "none";
-      const btnNorm = $("#btn-normalize-all");
-      if (btnNorm) btnNorm.disabled = !State.getAggregateSessions().length;
-      if (typeof renderAggregate === "function" && State.getAggregateSessions().length) renderAggregate();
-    } catch (e) {
-      toast("Failed to load aggregate sessions: " + (e.message || e), "error");
-    }
-  }
-
-  // Focus session
-  if (project.currentSessionFolder) {
-    try { await loadSessionIntoView(project.currentSessionFolder); }
-    catch (e) { toast("Couldn't load focus session: " + (e.message || e), "error"); }
-  }
-
-  // Process template
-  if (project.templatePath) {
-    try {
-      if (fs.existsSync(project.templatePath)) {
-        State.getCanonicalState().path = project.templatePath;
-        State.getCanonicalState().content = fs.readFileSync(project.templatePath, "utf-8");
-        const yamlEl = document.getElementById("canonical-yaml");
-        if (yamlEl) yamlEl.value = State.getCanonicalState().content;
-        const metaEl = document.getElementById("canonical-meta");
-        if (metaEl) metaEl.textContent = "Loaded " + project.templatePath;
-        const saveBtn = document.getElementById("btn-save-canonical");
-        if (saveBtn) saveBtn.disabled = false;
-        const closeBtn = document.getElementById("btn-close-canonical");
-        if (closeBtn) closeBtn.disabled = false;
-        const deleteBtn = document.getElementById("btn-delete-canonical");
-        if (deleteBtn) deleteBtn.disabled = false;
-        if (typeof renderCanonicalStepList === "function") renderCanonicalStepList();
-      }
-    } catch (_) { /* template missing or unreadable; project still usable */ }
-  }
-
-  // View mode (Flow / Steps / Phases)
-  if (project.viewMode && project.viewMode !== State.getLevel()) {
-    const vmBtn = document.querySelector('.view-mode-btn[data-level="' + project.viewMode + '"]');
-    if (vmBtn) vmBtn.click();
-  }
-
-  // Case scope
-  if (project.currentCaseScope) {
-    State.setCaseScope(project.currentCaseScope);
-    const sel = document.getElementById("case-scope-select");
-    if (sel) {
-      sel.value = State.getCaseScope();
-      sel.dispatchEvent(new Event("change"));
-    }
-  }
-
-  // Tab last so any tab-specific re-render (e.g. aggregate fit) runs.
-  if (project.currentTab) activateTab(project.currentTab);
-
-  toast("Project loaded: " + (project.name || path.basename(filePath)), "success");
-}
-
-function projectClose() {
-  toggleProjectMenu(false);
-  PdtProject.setActiveProject(null);
-  toast("Project closed (sessions stay loaded)");
-}
-
-/* F1: auto-save the active project ~5s after a project-state change
-   (a tab or view-mode switch). Only a named project auto-saves -- an
-   unsaved capture has no file to write to. Best-effort: a failure is
-   swallowed; the interactive Save still works. */
-let _autoSaveTimer = null;
-function scheduleAutoSave() {
-  const active = PdtProject.activeProject();
-  if (!active || !active.path) return;
-  clearTimeout(_autoSaveTimer);
-  _autoSaveTimer = setTimeout(autoSaveProject, 5000);
-}
-async function autoSaveProject() {
-  const active = PdtProject.activeProject();
-  if (!active || !active.path) return;
-  const project = PdtProject.captureFromCollectors(projectCollectors, { name: active.name });
-  try {
-    const r = await Ipc.saveProject({ project, path: active.path });
-    if (r && r.ok) {
-      PdtProject.setActiveProject({ path: r.path, name: active.name, ...project });
-    }
-  } catch (_) { /* best-effort -- interactive Save still works */ }
-}
-document.addEventListener("pdt:tabchange", scheduleAutoSave);
-
-/* F4: project-level notes. A textarea modal off the Project menu; the
-   text is stored on the project file (`findings`) and included in the
-   findings report when one is generated with a project open. */
-async function projectNotes() {
-  toggleProjectMenu(false);
-  const active = PdtProject.activeProject();
-  if (!active || !active.path) {
-    toast("Open or save a project first.", "error");
-    return;
-  }
-  const text = await promptModal({
-    title: "Project notes",
-    message: "Findings and notes for this project.",
-    detail: "Saved on the project file; included in the findings report.",
-    multiline: true,
-    okLabel: "Save",
-    defaultValue: active.findings || "",
-  });
-  if (text == null) return;
-  PdtProject.setActiveProject(Object.assign({}, PdtProject.activeProject(), { findings: text }));
-  await projectSave();
-}
-
-/* F5 setter: record the loaded session as the project's step template
-   so a step-less session later opened under the project is offered its
-   step structure. Mirrors projectNotes(). */
-async function setSessionAsTemplate() {
-  toggleProjectMenu(false);
-  const active = PdtProject.activeProject();
-  if (!active || !active.path) {
-    toast("Open or save a project first.", "error");
-    return;
-  }
-  const session = State.getSession();
-  const folder = session && session.sessionFolder;
-  if (!folder) {
-    toast("Open a session first.", "error");
-    return;
-  }
-  PdtProject.setActiveProject(Object.assign({}, active, { step_template_session: folder }));
-  await projectSave();
-}
-
-(function wireProjectMenuItems() {
-  const open = document.getElementById("btn-project-open");
-  const saveAs = document.getElementById("btn-project-save-as");
-  const save = document.getElementById("btn-project-save");
-  const close = document.getElementById("btn-project-close");
-  const notes = document.getElementById("btn-project-notes");
-  const tmpl = document.getElementById("btn-set-session-template");
-  if (open)   open.addEventListener("click", projectOpen);
-  if (saveAs) saveAs.addEventListener("click", projectSaveAs);
-  if (save)   save.addEventListener("click", projectSave);
-  if (notes)  notes.addEventListener("click", projectNotes);
-  if (tmpl)   tmpl.addEventListener("click", setSessionAsTemplate);
-  if (close)  close.addEventListener("click", projectClose);
-})();
-
-function renderRecentProjects() {
-  const block = document.getElementById("recent-projects-block");
-  const list = document.getElementById("recent-list-projects");
-  if (!block || !list) return;
-  const recents = PdtProject.getRecentProjects();
-  if (!recents.length) { block.style.display = "none"; return; }
-  block.style.display = "";
-  list.innerHTML = recents.map((r) => {
-    let missing = false;
-    try { missing = !fs.existsSync(r.path); } catch (_) { missing = true; }
-    const name = escapeHtml(r.name || path.basename(r.path, ".pdt-project.json"));
-    const missingTag = missing ? '<span class="recent-missing-tag">missing</span>' : "";
-    const cls = missing ? "missing" : "";
-    return '<li data-project-path="' + escapeHtml(r.path) + '" class="' + cls + '" title="' + escapeHtml(r.path) + '">' +
-      '<span class="label">' + name + missingTag + '</span>' +
-      '<span class="when">' + (r.ts ? relTime(r.ts) : "") + '</span>' +
-      '<button class="recent-remove" type="button" title="Remove from Recent projects">×</button>' +
-    '</li>';
-  }).join("");
-  list.querySelectorAll("li[data-project-path]").forEach((li) => {
-    li.addEventListener("click", (e) => {
-      if (e.target.closest(".recent-remove")) return;
-      projectOpenByPath(li.dataset.projectPath);
-    });
-  });
-  list.querySelectorAll(".recent-remove").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      PdtProject.removeRecentProject(btn.closest("li").dataset.projectPath);
-      renderRecentProjects();
-    });
-  });
-}
-
-(function wireRecentProjectsClear() {
-  const btn = document.getElementById("recent-projects-clear");
-  if (!btn) return;
-  btn.addEventListener("click", async () => {
-    if (!PdtProject.getRecentProjects().length) return;
-    const ok = await confirmModal({
-      title: "Clear Recent projects?",
-      message: "Remove all entries from Recent projects?",
-      detail: "Project files on disk are not touched; only the localStorage list is cleared.",
-      okLabel: "Clear",
-      danger: true,
-    });
-    if (ok) {
-      PdtProject.clearRecentProjects();
-      renderRecentProjects();
-    }
-  });
-})();
-
-// Initial render
-updateProjectMenuLabel();
-renderRecentProjects();

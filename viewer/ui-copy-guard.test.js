@@ -58,14 +58,11 @@ const BANNED_CAPTURE_ONLY = [
    justification next to each entry. An entry must name a GENUINE false
    positive (an internal value that never renders), not user-facing copy. */
 const ALLOW = {
-  // Machine values and module paths, never rendered: renderer.js and
-  // overview-view.js compare analysis.case_quality.mode === "unsegmented";
-  // overview-view.js / vocab-view.js require("../posture.js") and emit
-  // ov-posture-* class names. The rendered copy says "no cases identified
-  // yet" and "data sharing".
+  // Machine values, never rendered: renderer.js and overview-view.js compare
+  // analysis.case_quality.mode === "unsegmented". The rendered copy says
+  // "no cases identified yet".
   "viewer/renderer.js": ["unsegmented"],
-  "viewer/views/overview-view.js": ["unsegmented", "posture"],
-  "viewer/views/vocab-view.js": ["posture"],
+  "viewer/views/overview-view.js": ["unsegmented"],
 };
 
 const SKIP_DIRS = new Set(["node_modules", "python", "fonts", "recorder", "test", "dist"]);

@@ -10,12 +10,10 @@
 "use strict";
 
 const { $, escapeHtml, escapeAttr, toast } = require("../dom.js");
-const { confirmModal, promptModal, checklistModal, pickerModal } = require("../modals.js");
+const { confirmModal, promptModal, pickerModal } = require("../modals.js");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const CA = require("../canonical-author.js");
-const Posture = require("../posture.js");
-const LlmExport = require("../llm-export.js");
 const VocabMatch = require("../vocab-match.js");
 
 // Renderer-injected callback: re-run the pipeline on the loaded session so
@@ -1571,136 +1569,6 @@ function _flashInteractionRow(idx) {
   if (nameInput) { try { nameInput.focus({ preventScroll: true }); } catch (_) { nameInput.focus(); } }
 }
 
-/* ---- "Copy for LLM" + suggestions import (lab-phase §C3) -------------- */
-
-/* Copy-for-LLM from the App Library: the SELECTED vocab as skeleton rows
-   (signatures + auto-semantics + value-free titles). Authoring-time,
-   consultant-side; the export modal shows the exact artifact for
-   line-by-line review before anything is copied. */
-function copyVocabForLlm() {
-  const v = State.getVocabState().current;
-  if (!v) { toast("Pick a vocabulary on the left first.", "error"); return; }
-  LlmExport.showExportModal({
-    vocabs: [v],
-    posture: Posture.getDataPosture(),
-    surface: "app-library",
-  });
-}
-
-/* Multiline paste modal (promptModal is single-line). Resolves to the
-   pasted text or null. */
-function _pasteSuggestionsModal() {
-  return new Promise((resolve) => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "modal-backdrop";
-    backdrop.innerHTML =
-      '<div class="modal llm-export-modal">' +
-      '<header class="modal-header"><h2>Import AI suggestions</h2>' +
-      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
-      '<div class="modal-body">' +
-      '<p class="modal-msg">Paste the reply text the AI returned (the <code>{ "suggestions": { "&lt;row_key&gt;": { name / object / means } } }</code> shape from the export\'s instructions). ' +
-      "Nothing is applied yet — next you approve each suggestion row by row.</p>" +
-      '<textarea class="llm-export-text" spellcheck="false" placeholder="{\n  &quot;suggestions&quot;: { … }\n}"></textarea>' +
-      "</div>" +
-      '<footer class="modal-footer">' +
-      '<button class="modal-cancel">Cancel</button>' +
-      '<button class="primary llm-import-next">Review suggestions…</button>' +
-      "</footer></div>";
-    document.body.appendChild(backdrop);
-    const ta = backdrop.querySelector("textarea");
-    let resolved = false;
-    function done(val) {
-      if (resolved) return;
-      resolved = true;
-      backdrop.remove();
-      document.removeEventListener("keydown", onKey, true);
-      resolve(val);
-    }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); done(null); } }
-    document.addEventListener("keydown", onKey, true);
-    backdrop.querySelector(".modal-close").addEventListener("click", () => done(null));
-    backdrop.querySelector(".modal-cancel").addEventListener("click", () => done(null));
-    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) done(null); });
-    backdrop.querySelector(".llm-import-next").addEventListener("click", () => done(ta.value));
-    setTimeout(() => ta.focus(), 0);
-  });
-}
-
-/* Import path (§C3): paste -> parse -> per-row approval checklist ->
-   apply ONLY the approved rows onto the in-memory vocab (dirty; the
-   analyst still presses Save). Suggest-don't-mutate end to end. */
-async function importLlmSuggestions() {
-  const v = State.getVocabState().current;
-  if (!v) { toast("Pick the vocabulary the suggestions belong to first.", "error"); return; }
-  const text = await _pasteSuggestionsModal();
-  if (!text || !text.trim()) return;
-  const parsed = LlmExport.parseSuggestions(text);
-  if (!parsed.suggestions) { toast(parsed.error, "error"); return; }
-  const m = LlmExport.matchSuggestions(v, parsed.suggestions);
-  if (!m.rows.length) {
-    const extra = [];
-    if ((m.otherVocab || []).length) {
-      extra.push(m.otherVocab.length + " row(s) belong to a different app's " +
-        "entry — pick that app in the list and import again");
-    }
-    if (m.unmatched.length) extra.push(m.unmatched.length + " unknown row_key(s)");
-    toast("No suggestions matched this vocabulary's rows" +
-      (extra.length ? " (" + extra.join("; ") + ")" : "") +
-      " — nothing to apply.", "error");
-    return;
-  }
-  const items = m.rows.map((r) => {
-    const cur = r.current.name || "(unnamed row)";
-    const parts = [];
-    if (r.proposed.name) parts.push("name → “" + r.proposed.name + "”");
-    if (r.proposed.object) parts.push("object → “" + r.proposed.object + "”");
-    if (r.proposed.means) parts.push("means → “" + r.proposed.means + "”");
-    return { key: r.key, label: cur + ":  " + parts.join("  ·  "), checked: false };
-  });
-  const picked = await checklistModal({
-    title: "Apply AI suggestions? (" + m.rows.length + " row" + (m.rows.length === 1 ? "" : "s") + ")",
-    message: "Nothing applies without your approval — tick the rows to accept" +
-      (m.unmatched.length ? " (" + m.unmatched.length + " suggestion(s) named unknown rows and were ignored)" : "") +
-      ". Applying marks the vocabulary dirty; Save persists it.",
-    items, selectAll: true, okLabel: "Apply selected",
-  });
-  if (!picked) return;
-  const approvedKeys = Object.keys(picked).filter((k) => picked[k]);
-  if (!approvedKeys.length) { toast("No rows approved — nothing applied.", "info"); return; }
-  const applied = LlmExport.applySuggestionsToVocab(v, m.rows, approvedKeys);
-  renderVocabEditor();
-  markDirty();
-  toast("Applied " + applied + " suggestion(s) — review and Save vocabulary.", "success");
-}
-
-/* The two §C3 buttons live in the App Library toolbar ONLY while the data
-   posture allows them: `sealed` REMOVES them from the DOM (§C4) — the
-   egress promise is enforced by code, not by a disabled button. */
-function renderVocabLlmButtons() {
-  const copyOld = $("#btn-vocab-copy-llm");
-  const importOld = $("#btn-vocab-import-llm");
-  if (copyOld) copyOld.remove();
-  if (importOld) importOld.remove();
-  if (!Posture.copyForLlmAllowed()) return;
-  // Item 18: anchor on the dedicated marker span, not #btn-vocab-reload --
-  // that button now lives inside the "⋯ More" overflow popup, while these
-  // two stay resident primary actions in the main toolbar.
-  const anchor = $("#vocab-llm-anchor");
-  if (!anchor || !anchor.parentNode) return;
-  const copyBtn = document.createElement("button");
-  copyBtn.id = "btn-vocab-copy-llm";
-  copyBtn.textContent = "Copy for AI review…";
-  copyBtn.title = "Build a privacy-masked text summary of the selected app's rows to paste into an AI chat for naming suggestions. You review it line by line first; data sharing mode: " + Posture.getDataPosture() + ".";
-  copyBtn.addEventListener("click", copyVocabForLlm);
-  const importBtn = document.createElement("button");
-  importBtn.id = "btn-vocab-import-llm";
-  importBtn.textContent = "Import suggestions…";
-  importBtn.title = "Paste the AI's suggestions back — shown as a per-row approval checklist; nothing is applied without your tick.";
-  importBtn.addEventListener("click", importLlmSuggestions);
-  anchor.parentNode.insertBefore(copyBtn, anchor);
-  anchor.parentNode.insertBefore(importBtn, anchor);
-}
-
 /* Wire the App Library tab controls. Call once at boot. `deps.onReanalyze` is
    the renderer's re-run-the-pipeline path (the existing "Analyze session"
    flow), used by the workbench's "Re-analyze to apply names" CTA. */
@@ -1732,16 +1600,12 @@ function initVocabView(deps) {
       if (State.getVocabState().selectedPath) Ipc.openVocabFile(State.getVocabState().selectedPath);
     });
   }
-  // §C3/§C4: the LLM buttons exist only under a permitting posture, and
-  // appear/disappear live when the posture changes (Overview header select).
-  renderVocabLlmButtons();
-  Posture.onPostureChange(renderVocabLlmButtons);
 }
 
 module.exports = {
   initVocabView, reloadVocabList, mergeVocabEntry,
   mergeDiscoveredSkeleton, mergeScreens, stripDiscoveryMeta,
-  isDiscoveredEntry, renderVocabLlmButtons,
+  isDiscoveredEntry,
   bootstrapFromSession, addInteractionFromStep,
   // R2 workbench helpers (exported for unit testing).
   siblingVariants, looksVolatile,

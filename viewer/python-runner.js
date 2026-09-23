@@ -70,7 +70,6 @@ function runNormalize(opts) {
   const {
     sessionFolder, taxonomyPath, mine, onLog, onProc,
     canonical, pddOut, pddMapImage, pddTobeImage, stepBpmnOut, phaseBpmnOut, stepCsvOut,
-    memoOut,
     bootstrapVocabOut, vocabId, vocabName,
   } = opts || {};
   /* onProc(child) fires once with the spawned process handle so the
@@ -106,11 +105,6 @@ function runNormalize(opts) {
       if (stepBpmnOut) args.push("--step-bpmn-out", stepBpmnOut);
       if (phaseBpmnOut) args.push("--phase-bpmn-out", phaseBpmnOut);
       if (stepCsvOut) args.push("--step-csv-out", stepCsvOut);
-      // Repeatable (lab-phase §B4): each path renders by extension
-      // (.docx = Word memo with inline evidence figures, else Markdown).
-      for (const p of [].concat(memoOut || [])) {
-        if (p) args.push("--memo-out", p);
-      }
     }
 
     const proc = spawn(python, args, {

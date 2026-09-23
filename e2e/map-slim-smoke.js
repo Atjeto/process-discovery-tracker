@@ -15,7 +15,8 @@
  *       grain select (it left the matrix);
  *   (e) on a marker-STRIPPED re-normalized copy the step BPMN is LOCKED:
  *       the replace-pattern line renders instead (withheld + why + the
- *       anchor CTA), and the CTA jumps to the Overview;
+ *       mark-runs instruction), and its button opens Flow with the Markers
+ *       panel (the same verb as the Overview mark-runs line);
  *   (f) zero PAGE ERRORs across both launches.
  *
  * Screenshots land in this dir (gitignored): map-slim-default.png /
@@ -265,29 +266,35 @@ async function openMapLevel(page) {
     const text = empty ? (empty.textContent || "") : "";
     return {
       hasLockLine: /is not shown/i.test(text) && /draws how cases\s+flow/i.test(text),
-      explainsWhy: /no cases have been identified|cover only|not been analyzed/i.test(text),
-      ctaPresent: !!(empty && empty.querySelector('[data-map-cta="overview"]')),
+      explainsWhy: /no runs marked|cover only|not been analyzed/i.test(text),
+      instruction: /start marker at the beginning of each run/i.test(text),
+      ctaPresent: !!(empty && empty.querySelector('[data-map-cta="mark-runs"]')),
       shapes: host ? host.querySelectorAll(".djs-element[data-element-id]").length : 0,
       text: text.slice(0, 220),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(e) stripped session: step BPMN locked — replace-pattern line + anchor CTA, no diagram",
-    !!(locked && !locked.err && locked.hasLockLine && locked.explainsWhy &&
+  record("(e) stripped session: step BPMN locked: replace-pattern line + mark-runs instruction, no diagram",
+    !!(locked && !locked.err && locked.hasLockLine && locked.explainsWhy && locked.instruction &&
        locked.ctaPresent && locked.shapes === 0),
     JSON.stringify(locked));
   if (!(locked && locked.hasLockLine)) await shot(page2, "fail-map-slim-locked.png");
 
   await shot(page2, "map-slim-locked.png");
 
-  // The CTA is the gate's call to action: it must land on the Overview.
-  await page2.click('#session-map-bpmn-host [data-map-cta="overview"]').catch((e) => console.log("cta", e.message));
+  // The CTA is the gate's call to action: it must land on Flow with the
+  // Markers panel showing (where a start marker is added).
+  await page2.click('#session-map-bpmn-host [data-map-cta="mark-runs"]').catch((e) => console.log("cta", e.message));
   await wait(900);
   const ctaLanded = await page2.evaluate(() => {
-    const ov = document.getElementById("session-layout-overview");
-    return ov && getComputedStyle(ov).display !== "none";
+    const flow = document.getElementById("session-layout-flow");
+    const tab = document.querySelector('.anno-tab[data-anno="markers"]');
+    const panel = document.querySelector('.anno-panel[data-panel="markers"]');
+    return !!(flow && getComputedStyle(flow).display !== "none" &&
+      tab && tab.classList.contains("active") &&
+      panel && getComputedStyle(panel).display !== "none");
   }).catch(() => false);
-  record("(e2) the lock CTA lands on the Overview (anchor review surface)",
-    !!ctaLanded, ctaLanded ? "" : "#session-layout-overview did not show");
+  record("(e2) the lock CTA lands on Flow with the Markers panel showing",
+    !!ctaLanded, ctaLanded ? "" : "Flow + Markers panel did not show");
 
   await app2.close().catch(() => {});
 

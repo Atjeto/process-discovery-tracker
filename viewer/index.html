@@ -34,12 +34,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <!-- R1: Process Template is a byproduct destination nothing in the
            default workflow hands you (APPROACHABILITY-REDESIGN-2026-07-03
            §4) -- out of the resident tab row, reachable one click down. The
-           view, its IPC, and the command palette entry are unchanged. R1
+           view and its IPC are unchanged. R1
            renumbering (§5): the resident row reads 1/2/3 (no gap where
            Template used to be 3); Template's own hotkey "3" is RETIRED
            (App Library now owns it) rather than reassigned, since a
            non-resident destination shouldn't claim a top-level number --
-           it stays one click away via this menu (or the command palette). -->
+           it stays one click away via this menu. -->
       <div class="project-menu tabs-more-menu" id="tabs-more-menu">
         <button class="project-btn tabs-more-btn" id="btn-tabs-more-menu" title="More views">
           <span>More</span><span class="project-menu-caret">▾</span>
@@ -51,7 +51,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     </nav>
     <div class="topbar-meta">
       <div class="project-menu" id="recent-menu">
-        <button class="project-btn" id="btn-recent-menu" title="Open a recent session or project">
+        <button class="project-btn" id="btn-recent-menu" title="Open a recent session">
           <span>Recent</span>
           <span class="project-menu-caret">▾</span>
         </button>
@@ -59,21 +59,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <div class="recent-menu-section" id="recent-menu-content"></div>
         </div>
       </div>
-      <div class="project-menu" id="project-menu">
-        <button class="project-btn" id="btn-project-menu" title="Project actions">
-          <span id="project-menu-label">No project</span>
-          <span class="project-menu-caret">▾</span>
-        </button>
-        <div class="project-menu-popup" id="project-menu-popup" style="display:none">
-          <button class="project-menu-item" id="btn-project-open">Open project...</button>
-          <button class="project-menu-item" id="btn-project-save-as">Save current as project...</button>
-          <button class="project-menu-item" id="btn-project-save" style="display:none">Save project</button>
-          <button class="project-menu-item" id="btn-project-notes" style="display:none">Project notes...</button>
-          <button class="project-menu-item" id="btn-set-session-template" style="display:none">Set current session as step template</button>
-          <button class="project-menu-item" id="btn-project-close" style="display:none">Close project</button>
-        </div>
-      </div>
-      <button class="cmdk-hint" id="btn-cmdk-hint" title="Command palette — press Ctrl+K to jump to a step, marker, case, or command">⌘K</button>
       <button class="icon-btn theme-toggle" id="btn-theme-toggle" title="Toggle dark theme" aria-pressed="false">☾</button>
       <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
       <span id="topbar-meta"></span>
@@ -91,13 +76,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <p>Open a session folder produced by the capture tracker to begin.</p>
         <button class="primary" id="btn-open-session-hero">Open session folder...</button>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
-        <div class="recent-sessions" id="recent-projects-block" style="display:none">
-          <div class="recent-header">
-            <h3>Recent projects</h3>
-            <button id="recent-projects-clear" class="recent-clear-btn" type="button" title="Remove all entries from Recent projects">Clear all</button>
-          </div>
-          <ul id="recent-list-projects"></ul>
-        </div>
         <div class="recent-sessions">
           <div class="recent-header">
             <h3>Recent sessions</h3>
@@ -138,8 +116,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             </button>
             <div class="project-menu-popup" id="session-export-popup" style="display:none">
               <button class="project-menu-item" id="btn-session-pdd" title="Generate a standard RPA Process Definition Document (.docx) for this session with the Flow diagram embedded as the As-Is process map.">PDD (.docx)</button>
-              <button class="project-menu-item" id="btn-export-findings" title="Generate a self-contained HTML findings report for this session.">Findings report...</button>
-              <button class="project-menu-item" id="btn-session-md">Markdown report (this session)</button>
             </div>
           </div>
         </div>
@@ -183,7 +159,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- View-mode bar: prominent, controls what the whole session view shows -->
         <div class="view-mode-bar">
           <span class="view-mode-label">View:</span>
-          <button class="view-mode-btn active" data-level="overview" title="What the recording measured: case quality, the key numbers, findings, and the memo export (the default landing view)">
+          <button class="view-mode-btn active" data-level="overview" title="What the recording measured: case quality, the key numbers, findings, and the PDD export (the default landing view)">
             <span class="view-mode-icon">◈</span> Overview
             <span class="view-mode-desc">facts &amp; findings</span>
           </button>
@@ -228,7 +204,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
              below the view-mode bar so the level switcher leads (clutter pass). -->
         <details class="session-summary" id="session-summary" style="display:none"></details>
 
-        <!-- ========= OVERVIEW view (lab-phase §A5: badge → hero → facts → findings → memo) ========= -->
+        <!-- ========= OVERVIEW view (lab-phase §A5: badge → mark-runs line → facts → findings → Export PDD) ========= -->
         <div class="session-layout-overview" id="session-layout-overview">
           <div id="overview-content"></div>
         </div>
@@ -269,7 +245,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span class="legend-apps" id="legend-apps"></span>
               <span class="lg-idle">idle</span>
               <span class="lg-marker">marker</span>
-              <span class="lg-marker-suggested">suggested marker</span>
               <span class="lg-screenshot">screenshot</span>
             </div>
           </div>
@@ -317,7 +292,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <div id="screenshots-grid" class="screens-grid"></div>
               </div>
               <div class="anno-panel" data-panel="markers" style="display:none">
-                <div id="anchor-candidates-panel" class="anchor-candidates-panel" style="display:none"></div>
                 <div class="list-filter list-filter-compact">
                   <input type="search" class="list-filter-input" id="marker-filter-text" placeholder="Filter markers..." />
                   <span class="list-filter-meta" id="marker-filter-meta"></span>
@@ -509,8 +483,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         </div>
 
         <!-- ANALYSIS level retired in R4 (APPROACHABILITY-REDESIGN-2026-07-03
-             §5): its three surviving modules (Where the time goes / Automation
-             candidates / €-ROI) render into the Overview's #overview-evidence
+             §5): its surviving modules (Where the time goes / Automation
+             candidates) render into the Overview's #overview-evidence
              host below the findings feed. -->
 
         <details class="event-table-host">
@@ -854,8 +828,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <!-- Item 18: "Reload list" and "Open YAML in editor" are Machine-layer
                verbs (re-read the folder from disk / edit the raw file directly),
                tucked into the same "⋯ More" popup mechanism the session toolbar
-               uses -- the primary actions (New / Start from a recording / Discover
-               / Copy for AI review / Import suggestions) stay resident. -->
+               uses -- the primary actions (New / Start from a recording / Discover)
+               stay resident. -->
           <div class="project-menu" id="vocab-more-menu">
             <button class="project-btn" id="btn-vocab-more-menu" title="More actions for the App Library">
               <span>⋯ More</span><span class="project-menu-caret">▾</span>
@@ -865,7 +839,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <button class="project-menu-item" id="btn-vocab-open-yaml" disabled>Open YAML in editor</button>
             </div>
           </div>
-          <span id="vocab-llm-anchor"></span>
           <span class="flex-spacer"></span>
           <span class="meta" id="vocab-list-meta"></span>
         </div>
@@ -940,8 +913,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Annotate</strong>: rename markers, add timestamped notes. Edits save to <code>annotations.json</code>; raw events stay immutable.</li>
             <li><strong>Compare across sessions</strong> (Tab 2) when you want statistics, path variations, and a combined process map.</li>
           </ol>
-          <h3>Save your work as a project</h3>
-          <p>The top-bar <strong>Project</strong> menu bundles the session set you've loaded for comparison, the focus session, the active Process Template, the current view mode, and the case scope into a single <code>.pdt-project.json</code> file. Use it when you're juggling multiple sessions and a template across days — instead of re-loading everything every morning, pick the project from <em>Recent projects</em> on the empty state.</p>
           <h3>What the viewer expects in a session folder</h3>
           <ul class="help-list">
             <li><code>events.jsonl</code> - one JSON event per line; the durable artifact</li>
@@ -1123,7 +1094,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>
             <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last step / phase / marker / note edit</td></tr>
             <tr><td><span class="kbd">Ctrl+Y</span> / <span class="kbd">Ctrl+Shift+Z</span></td><td>Redo</td></tr>
-            <tr><td><span class="kbd">Ctrl+K</span></td><td>Open the command palette</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>

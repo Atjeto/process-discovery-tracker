@@ -33,7 +33,7 @@ function canRedo() {
   return !!s && State.canRedo(s.sessionFolder);
 }
 function emptyAnnotationsShape() {
-  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [], excluded_ranges: [], starred_screenshots: [], reference_maps: [] };
+  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [], excluded_ranges: [], reference_maps: [] };
 }
 function snapshotAnnotations(a) {
   // Never push null/undefined onto the stack -- a later undo/redo
@@ -139,14 +139,6 @@ function ensureAnnoShape(anno) {
   a.annotations = a.annotations || [];
   a.notes = a.notes || [];
   a.marker_edits = a.marker_edits || [];
-  a.marker_suggestions = a.marker_suggestions || [];
-  a.marker_suggestions_dismissed = a.marker_suggestions_dismissed || [];
-  a.anchor_candidates = a.anchor_candidates || [];
-  a.anchor_candidates_dismissed = a.anchor_candidates_dismissed || [];
-  // case_anchor_override is null (not [], not {}) until accepted -- the
-  // shape lets normalize.py and coerce_anchor_override distinguish
-  // "no override" from "garbage override".
-  if (a.case_anchor_override === undefined) a.case_anchor_override = null;
   a.drift_markers = a.drift_markers || [];
   a.excluded_ranges = a.excluded_ranges || [];
   // ADR-0019: analyst-authored reference maps (decoupled editable BPMN copies).

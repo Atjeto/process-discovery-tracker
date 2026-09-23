@@ -183,8 +183,8 @@ async function onFork() {
     }
     const cq = (s.analysis || {}).case_quality;
     if (!cq || !cq.tier2_unlocked) {
-      toast("Nothing to fork yet — the step-level Process diagram stays hidden " +
-        "until cases are confirmed. Review the case suggestions on the Overview first.", "error");
+      toast("Nothing to fork yet: the step-level Process diagram stays hidden " +
+        "until cases are confirmed. Mark the start of each run in Flow, then click Analyze session.", "error");
       return;
     }
     // Drive the map to the step-level Process diagram and wait for the paint.

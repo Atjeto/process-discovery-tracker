@@ -34,18 +34,17 @@ const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
 const SRC_SESSION = path.join(REPO, "sessions", "example-aggregate", "sess-2026-0514-0900");
 let SESSION = SRC_SESSION; // overridden by a fresh re-normalized temp copy when possible
-let FRESH = false;         // true once re-normalized, so analysis.json carries a current roi block
+let FRESH = false;         // true once re-normalized into the temp copy (current pipeline output)
 const electronPath = require(path.join(VIEWER, "node_modules", "electron"));
 const OUT = __dirname;
 
 // Re-normalize the committed demo into a TEMP copy so the viewer sees CURRENT
-// pipeline output (incl. the §11c roi block) instead of the stale committed
-// analysis.json -- and so example-aggregate is never regenerated in place
-// (CLAUDE.md). Needs a Python with the pipeline deps: the bundled viewer/python
-// if present (dev box), else `python` on PATH (CI installs requirements.txt).
-// If neither can normalize, fall back to the committed session and SKIP the
-// roi-panel assertion (honest degradation -- the panel correctly hides with no
-// roi block, so asserting it against stale data would false-fail).
+// pipeline output instead of the stale committed analysis.json -- and so
+// example-aggregate is never regenerated in place (CLAUDE.md). Needs a Python
+// with the pipeline deps: the bundled viewer/python if present (dev box), else
+// `python` on PATH (CI installs requirements.txt). If neither can normalize,
+// fall back to the committed session and SKIP the checks that write into the
+// session folder (the reference-map round-trip).
 function freshenSession() {
   try {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-"));
@@ -64,7 +63,7 @@ function freshenSession() {
       } catch (_) { /* try the next interpreter */ }
     }
   } catch (_) { /* fall through to the committed-session fallback */ }
-  console.log("[e2e] note: could not re-normalize (no deps-bearing Python); using committed session — roi-panel check will skip");
+  console.log("[e2e] note: could not re-normalize (no deps-bearing Python); using committed session; the reference-map round-trip will skip");
 }
 freshenSession();
 
@@ -302,8 +301,7 @@ const OVERLAP_PROBE = () => {
 
   // --- ADR-0024 grain control: the single view-time roll-up slider ---
   // The slider exists; the Steps list reproduces the FINE count at the element
-  // notch (detail never destroyed) and CONSOLIDATES at the screen notch; and
-  // the €-ROI total is INVARIANT across notches (the load-bearing guarantee).
+  // notch (detail never destroyed) and CONSOLIDATES at the screen notch.
   async function setGrainNotch(idx) {
     // Move the shared grain slider and fire its input handler (renderer wiring).
     await page.evaluate((i) => {
@@ -326,24 +324,6 @@ const OVERLAP_PROBE = () => {
     const ob = await page.$('.view-mode-btn[data-level="overview"]');
     if (ob) { await ob.click().catch(() => {}); await wait(900); }
   }
-
-  // Read the €-ROI module's takeaway (its memo-altitude summary — item 21)
-  // in the Overview Evidence host, for the invariance check below. R1 gates the
-  // whole section body on an analyst-entered volume; the demo has none, so
-  // the body never renders a hero/floor figure at all (the replace-pattern
-  // CTA shows instead) — the takeaway is the one thing that ALWAYS renders
-  // (collapsed or gated) and is never grain-dependent (the €-ROI candidates
-  // are at the segment grain, not the Detail-slider step grain), so it is
-  // the correct invariance signal either way.
-  async function roiTotalText() {
-    await goEvidence();
-    return page.evaluate(() => {
-      const mod = document.querySelector('#overview-evidence .analysis-module[data-module="roi"]');
-      const takeaway = mod && mod.querySelector(".analysis-module-takeaway");
-      return takeaway ? (takeaway.textContent || "").trim() : null;
-    }).catch(() => null);
-  }
-  const roiAtScreen = await roiTotalText();   // default notch = screen
 
   // ADR-0028 (R3): the DEFAULT screen-notch Steps reading is now the CASE TREE
   // (cases -> case-scoped screen-visit work items), NOT the ADR-0024 consecutive
@@ -380,16 +360,6 @@ const OVERLAP_PROBE = () => {
     if (!consolidates) await shot(page, "fail-grain-rollup.png");
   }
 
-  // €-ROI total must be identical at another notch (it is time-based and reads
-  // event-stream segments, not step grain — invariant by construction).
-  await setGrainNotch(2);   // app notch
-  const roiAtApp = await roiTotalText();
-  if (grainSliderExists) {
-    const invariant = roiAtScreen != null && roiAtScreen === roiAtApp;
-    record("€-ROI total is invariant across grain notches", invariant,
-      "screen='" + roiAtScreen + "' app='" + roiAtApp + "' (must match)");
-    if (!invariant) await shot(page, "fail-roi-invariance.png");
-  }
   // R1 (approachability redesign, 2026-07-03): "Process efficiency" and the
   // resident "Waste by step/screen" module are GONE from the Analysis stack.
   // The judgment editor relocated into a "Where the time goes" row's
@@ -484,44 +454,6 @@ const OVERLAP_PROBE = () => {
   record("(R1) a finding card's Confirm button works (activates + persists the decision)",
     !!(confirmBtn && confirmActive), "confirmBtnFound=" + !!confirmBtn + " active=" + confirmActive);
   if (!(confirmBtn && confirmActive)) await shot(page, "fail-automation-confirm.png");
-
-  // --- €-ROI whole-section gate (R1 §4) ---
-  // The full body (table, hero figures, per-row tune, AUTO% -- which no
-  // longer exists as a column anywhere) renders ONLY once an analyst has
-  // entered an explicit annual volume. The demo has no roi_inputs, so the
-  // gate must be CLOSED: the section replaces its whole body with the
-  // one-line observed-volume takeaway + the "Edit assumptions…" CTA --
-  // no table, no legend, no hero figures, no zeros.
-  const roiProbe = await page.evaluate(() => {
-    const host = document.querySelector("#overview-evidence");
-    if (!host) return { host: false };
-    const mod = host.querySelector('.analysis-module[data-module="roi"]');
-    if (mod && !mod.open) mod.open = true;
-    const body = mod && mod.querySelector(".analysis-module-body");
-    return {
-      host: true,
-      title: /Return on automation/.test(host.textContent || ""),
-      editBtn: !!(body && body.querySelector(".roi-edit-btn")),
-      table: !!(body && body.querySelector("table")),
-      legend: !!(body && body.querySelector(".roi-legend")),
-      heroBig: body ? body.querySelectorAll(".roi-total-big").length : 0,
-      autoPctColumn: /Auto%/.test((body && body.textContent) || ""),
-      takeaway: (mod && mod.querySelector(".analysis-module-takeaway") || {}).textContent,
-    };
-  }).catch((e) => ({ err: e.message }));
-  if (roiProbe && roiProbe.err) {
-    record("€-ROI section renders in the Overview Evidence host", false, "probe error: " + roiProbe.err);
-    await shot(page, "fail-roi-probe.png");
-  } else if (!FRESH) {
-    record("€-ROI section renders in the Overview Evidence host (skipped — session not re-normalized)", true,
-      "no deps-Python to produce a fresh roi block; panel correctly hidden, not asserted");
-  } else {
-    const gateOk = !!(roiProbe.host && roiProbe.title && roiProbe.editBtn &&
-      !roiProbe.table && !roiProbe.legend && roiProbe.heroBig === 0 && !roiProbe.autoPctColumn);
-    record("(R1) €-ROI section: no analyst-entered volume -> whole body replaced by the takeaway + Edit-assumptions CTA (no table, no AUTO% column)",
-      gateOk, JSON.stringify(roiProbe));
-    if (!gateOk) await shot(page, "fail-roi-gate.png");
-  }
 
   // Item 21: the Evidence module collapse persists per analyst (localStorage,
   // pdt.analysis.* keys — the module keys are unchanged by the R4 relocation).

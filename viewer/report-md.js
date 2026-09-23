@@ -1,8 +1,8 @@
 /*
- * Markdown report generator for sessions + aggregates.
+ * Markdown report generator for the Compare Sessions aggregate.
  *
  * Produces a Confluence-friendly Markdown report from in-memory
- * session data. Used by the "Export Markdown" buttons on both views.
+ * session data. Used by the Compare Sessions "Markdown report" export.
  */
 
 "use strict";
@@ -33,155 +33,6 @@ function mdEscape(s) {
     .replace(/>/g, "&gt;")
     .replace(/\|/g, "\\|")
     .replace(/\r?\n/g, " ");
-}
-
-function buildSessionReport(session) {
-  const m = session.manifest || {};
-  const stats = session.stats || {};
-  const meta = stats.meta || {};
-  const evs = session.events || [];
-  const markers = evs.filter((e) => e.type === "marker");
-
-  const lines = [];
-  lines.push(`# Process Discovery Session Report`);
-  lines.push("");
-  lines.push(`**Engagement:** ${mdEscape(m.engagement_id || "-")}`);
-  lines.push(`**Session:** ${mdEscape(m.session_id || "-")}`);
-  lines.push(`**Started:** ${fmtTs(m.started_at)}`);
-  lines.push(`**Ended:** ${fmtTs(m.ended_at)}`);
-  lines.push(`**Status:** ${mdEscape(m.status || "-")}`);
-  if (meta.worker_id) lines.push(`**Worker:** ${mdEscape(meta.worker_id)}`);
-  if (meta.taxonomy_version) lines.push(`**Taxonomy version:** ${mdEscape(meta.taxonomy_version)}`);
-  if (m.obs && m.obs.recording_path) {
-    lines.push(`**OBS recording:** ${mdEscape(m.obs.recording_path)} (offset ${m.obs.offset_ms || 0}ms)`);
-  }
-  lines.push("");
-
-  /* Summary */
-  lines.push(`## Summary`);
-  lines.push("");
-  lines.push(`- Total events: ${evs.length}`);
-  if (meta.collapsed_activity_count != null) {
-    lines.push(`- Activity events after collapse: ${meta.collapsed_activity_count}`);
-  }
-  lines.push(`- Markers fired: ${markers.length}`);
-  const shotCount = evs.filter((e) =>
-    e.type === "system" && (e.data.kind === "screenshot" || e.data.kind === "screenshot_manual")
-  ).length;
-  lines.push(`- Screenshots: ${shotCount}`);
-  if (meta.case_count != null) lines.push(`- Cases identified: ${meta.case_count}`);
-  if (meta.marker_edits_applied) lines.push(`- Annotation edits applied: ${meta.marker_edits_applied}`);
-  lines.push("");
-
-  /* Steps + analyst flags (A3) -- the analyst's annotations reach the report,
-     not just the viewer. Hidden steps are left out. */
-  const reportSteps = ((session.annotations || {}).steps || []).filter((s) => s.state !== "hidden");
-  if (reportSteps.length) {
-    lines.push(`## Steps`);
-    lines.push("");
-    lines.push(`| # | Step | Duration | Flags |`);
-    lines.push(`|---|---|---:|---|`);
-    reportSteps.forEach((s, i) => {
-      const fl = s.flags || {};
-      // Only `waste` is a per-step flag (ADR-0027). Automation candidacy lives at
-      // the coherent-segment grain (ADR-0016, analysis.json `automation_candidates`);
-      // exception/variation comes from the observed variants — neither is per-step.
-      const flags = [
-        fl.waste ? "waste" : null,
-      ].filter(Boolean).join(", ");
-      const tr = s.time_range || {};
-      const durMs = (tr.start && tr.end) ? (new Date(tr.end) - new Date(tr.start)) : 0;
-      lines.push(`| ${i + 1} | ${mdEscape(s.name || "(unnamed)")} ` +
-        `| ${fmtDuration(durMs)} | ${mdEscape(flags)} |`);
-    });
-    lines.push("");
-  }
-
-  /* Cases / Markers timeline */
-  if (markers.length) {
-    lines.push(`## Markers`);
-    lines.push("");
-    lines.push(`| Time | Type | Label | Reason |`);
-    lines.push(`|---|---|---|---|`);
-    let depth = 0;
-    for (const mk of markers) {
-      if (mk.data.marker_type === "end") depth = Math.max(0, depth - 1);
-      const indent = "  ".repeat(depth);
-      lines.push(`| ${fmtTs(mk.timestamp)} | ${mk.data.marker_type} ` +
-        `| ${indent}${mdEscape(mk.data.label || "(unlabeled)")} ` +
-        `| ${mdEscape(mk.data.reason || "")} |`);
-      if (mk.data.marker_type === "start") depth += 1;
-    }
-    lines.push("");
-  }
-
-  /* Per-activity statistics */
-  if (stats.activity_stats && stats.activity_stats.length) {
-    lines.push(`## Activity statistics`);
-    lines.push("");
-    lines.push(`| Activity | Frequency | Total time | Median | p90 |`);
-    lines.push(`|---|---:|---:|---:|---:|`);
-    for (const r of stats.activity_stats.slice(0, 25)) {
-      lines.push(`| ${mdEscape(r.activity_label)} | ${r.frequency} ` +
-        `| ${fmtDuration(r.total_duration_ms)} | ${fmtDuration(r.median_ms)} | ${fmtDuration(r.p90_ms)} |`);
-    }
-    lines.push("");
-  }
-
-  /* Per-step statistics -- the step-level analogue of the activity table, so
-     the analyst's stepped view gets the same distribution (no split-brain). */
-  if (stats.step_stats && stats.step_stats.length) {
-    lines.push(`## Step statistics`);
-    lines.push("");
-    lines.push(`| Step | Frequency | Total time | Median | p90 |`);
-    lines.push(`|---|---:|---:|---:|---:|`);
-    for (const r of stats.step_stats.slice(0, 25)) {
-      lines.push(`| ${mdEscape(r.step_name)} | ${r.frequency} ` +
-        `| ${fmtDuration(r.total_duration_ms)} | ${fmtDuration(r.median_ms)} | ${fmtDuration(r.p90_ms)} |`);
-    }
-    lines.push("");
-  }
-
-  /* Cases */
-  if (stats.case_stats && stats.case_stats.length) {
-    lines.push(`## Cases`);
-    lines.push("");
-    lines.push(`| Case | Label | Wall-clock | Active | End reason |`);
-    lines.push(`|---|---|---:|---:|---|`);
-    for (const r of stats.case_stats) {
-      if (r.parent_case_id) continue;
-      lines.push(`| ${mdEscape(r.case_id.slice(0, 8))} | ${mdEscape(r.label || "")} ` +
-        `| ${fmtDuration(r.wall_clock_ms)} | ${fmtDuration(r.active_ms)} | ${mdEscape(r.end_reason || "")} |`);
-    }
-    lines.push("");
-  }
-
-  /* Outliers + rework */
-  if (stats.app_outliers && stats.app_outliers.length) {
-    lines.push(`## App outliers (under 5% of cases)`);
-    lines.push("");
-    lines.push(`| App | Cases | % |`);
-    lines.push(`|---|---:|---:|`);
-    for (const r of stats.app_outliers) {
-      lines.push(`| ${mdEscape(r.app)} | ${r.case_count} | ${r.case_pct}% |`);
-    }
-    lines.push("");
-  }
-  if (stats.rework_loops && stats.rework_loops.length) {
-    lines.push(`## Rework loops`);
-    lines.push("");
-    lines.push(`| Activity | Repeats |`);
-    lines.push(`|---|---:|`);
-    for (const r of stats.rework_loops) {
-      lines.push(`| ${mdEscape(r.activity_label)} | ${r.rework_count} |`);
-    }
-    lines.push("");
-  }
-
-  /* Footer */
-  lines.push(`---`);
-  lines.push(`Generated by Process Discovery Viewer on ${new Date().toISOString()}.`);
-  return lines.join("\n");
 }
 
 function buildAggregateReport(sessions, mergedActivity, mergedCases, dfg, findings) {
@@ -270,4 +121,4 @@ function buildAggregateReport(sessions, mergedActivity, mergedCases, dfg, findin
   return lines.join("\n");
 }
 
-module.exports = { buildSessionReport, buildAggregateReport };
+module.exports = { buildAggregateReport };

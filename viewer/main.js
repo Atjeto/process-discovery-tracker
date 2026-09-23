@@ -262,40 +262,6 @@ ipcMain.handle("viewer:saveSvgFile", async (_e, { content, suggestedName }) => {
   }
 });
 
-ipcMain.handle("viewer:saveHtmlFile", async (_e, { content, suggestedName }) => {
-  const r = await dialog.showSaveDialog(mainWindow, {
-    title: "Export findings report",
-    defaultPath: suggestedName || "findings-report.html",
-    filters: [{ name: "HTML document", extensions: ["html"] }],
-  });
-  if (r.canceled || !r.filePath) return null;
-  try {
-    fs.writeFileSync(r.filePath, content, "utf-8");
-    return { ok: true, path: r.filePath };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-/* Generic save-text-as sink (lab-phase §C3: the Copy-for-LLM JSON). Local
-   file write only -- the export's egress is the operator's paste, never
-   this app. */
-ipcMain.handle("viewer:saveTextFile", async (_e, payload) => {
-  const { content, suggestedName, title, filterName, filterExt } = payload || {};
-  const r = await dialog.showSaveDialog(mainWindow, {
-    title: title || "Save",
-    defaultPath: suggestedName || "export.txt",
-    filters: [{ name: filterName || "Text", extensions: [filterExt || "txt"] }],
-  });
-  if (r.canceled || !r.filePath) return null;
-  try {
-    fs.writeFileSync(r.filePath, String(content == null ? "" : content), "utf-8");
-    return { ok: true, path: r.filePath };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
 ipcMain.handle("viewer:revealFile", (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle("viewer:openExternal", (_e, p) => {
   // SECURITY: `p` originates from untrusted session data (a screenshot
@@ -588,7 +554,6 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       stepBpmnOut: opts.stepBpmnOut || null,
       phaseBpmnOut: opts.phaseBpmnOut || null,
       stepCsvOut: opts.stepCsvOut || null,
-      memoOut: opts.memoOut || null,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
     });
@@ -917,68 +882,6 @@ ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, 
     return { ok: false, error: e.message };
   }
 });
-
-/* --- Project file IPC --------------------------------------------- */
-
-const { toRelativePaths, toAbsolutePaths } = require("./project.js");
-const PROJECT_FILE_EXT = ".pdt-project.json";
-
-ipcMain.handle("viewer:saveProjectAs", async (_e, { project, suggestedName }) => {
-  const r = await dialog.showSaveDialog(mainWindow, {
-    title: "Save project",
-    defaultPath: (suggestedName || "untitled") + PROJECT_FILE_EXT,
-    filters: [{ name: "Process Discovery Project", extensions: ["pdt-project.json", "json"] }],
-  });
-  if (r.canceled || !r.filePath) return null;
-  let target = r.filePath;
-  // The save dialog may strip our compound extension; ensure it's present.
-  if (!target.endsWith(PROJECT_FILE_EXT) && !target.endsWith(".json")) {
-    target = target + PROJECT_FILE_EXT;
-  }
-  try {
-    const rel = toRelativePaths(project, path.dirname(target));
-    fs.writeFileSync(target, JSON.stringify(rel, null, 2), "utf-8");
-    return { ok: true, path: target };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle("viewer:saveProject", async (_e, { project, path: target }) => {
-  if (!target) return { ok: false, error: "No project path" };
-  try {
-    const rel = toRelativePaths(project, path.dirname(target));
-    fs.writeFileSync(target, JSON.stringify(rel, null, 2), "utf-8");
-    return { ok: true, path: target };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle("viewer:openProject", async () => {
-  const r = await dialog.showOpenDialog(mainWindow, {
-    title: "Open project",
-    properties: ["openFile"],
-    filters: [{ name: "Process Discovery Project", extensions: ["pdt-project.json", "json"] }],
-  });
-  if (r.canceled || !r.filePaths.length) return null;
-  return loadProjectFile(r.filePaths[0]);
-});
-
-ipcMain.handle("viewer:loadProjectFile", (_e, p) => loadProjectFile(p));
-
-function loadProjectFile(filePath) {
-  try {
-    const abs = path.resolve(filePath);
-    if (!fs.existsSync(abs)) return { ok: false, error: "Project file not found: " + abs };
-    const raw = fs.readFileSync(abs, "utf-8");
-    const parsed = JSON.parse(raw);
-    const project = toAbsolutePaths(parsed, path.dirname(abs));
-    return { ok: true, path: abs, project };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-}
 
 /* --- Annotations write-back --------------------------------------- */
 

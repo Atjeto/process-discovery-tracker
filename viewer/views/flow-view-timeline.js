@@ -2,7 +2,7 @@
  * flow-view-timeline.js -- the Flow timeline subsystem.
  *
  * Extracted from flow-view.js (god-file split). Owns renderTimeline (the lane
- * stack: ticks / cases / activity+idle+markers+suggested / screenshots /
+ * stack: ticks / cases / activity+idle+markers / screenshots /
  * density / titles / steps / notes, via TimelineCore.renderLaneStack), the
  * lane plugins' helpers (layoutCaseLanes, isUserActivityEvent, monitorBadgeFor),
  * the minimap, the lane-visibility toggles, per-session zoom/scroll
@@ -14,8 +14,8 @@
  * back in flow-view.js -- currentScopeRange (case scope), showMarkerInsertMenu
  * / showCaseContextMenu (the timeline context menus), activateAnnoTab -- is
  * injected via initTimeline() so this module never require()s flow-view.js.
- * flow-view.js re-exports renderTimeline on its own surface (and feeds it to
- * the markers module's initMarkers), so renderer.js sees no change.
+ * flow-view.js re-exports renderTimeline on its own surface, so renderer.js
+ * sees no change.
  */
 
 "use strict";
@@ -25,7 +25,7 @@ const State = require("../state.js");
 const { $, formatDuration } = require("../dom.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
-const { effectiveLabel, visibleMarkerSuggestions } = require("./flow-view-markers.js");
+const { effectiveLabel } = require("./flow-view-markers.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
 const { rollUpSteps } = require("../process-map-levels.js");
 
@@ -704,41 +704,6 @@ function renderTimeline() {
             lbl.style.left = "calc(" + x + "% + 4px)";
             lbl.style.top = (activityTop + 2) + "px";
             lbl.textContent = label;
-            host.appendChild(lbl);
-          }
-        }
-      }
-
-      // Suggested markers (ADR-0017): dashed bars on the same lane as
-      // captured markers, with the markers lane toggle in charge of
-      // visibility. visibleMarkerSuggestions filters out signatures
-      // already promoted to op:insert so we don't render a ghost
-      // alongside the real bar in the moments before the suggestion
-      // row is dropped.
-      if (lanes.markers) {
-        const sess = State.getSession();
-        const sugs = sess ? visibleMarkerSuggestions(sess.annotations) : [];
-        for (const s of sugs) {
-          if (!s.timestamp) continue;
-          const t = new Date(s.timestamp).getTime();
-          if (!isFinite(t)) continue;
-          const x = ((t - first) / span) * 100;
-          const bar = document.createElement("div");
-          bar.className = "tl-marker tl-suggested" +
-            ((typeof s.score === "number" && s.score >= 0.75) ? " tl-suggested-hi" : "");
-          bar.style.left = x + "%";
-          bar.style.height = activityH + "px";
-          bar.style.top = activityTop + "px";
-          const scoreStr = (typeof s.score === "number") ? s.score.toFixed(2) : "?";
-          bar.title = s.marker_type + ": " + (s.label || "(suggested)") +
-            " (" + (s.reason || "") + ", suggested, score " + scoreStr + ")";
-          host.appendChild(bar);
-          if (s.marker_type === "start") {
-            const lbl = document.createElement("div");
-            lbl.className = "tl-marker-label tl-suggested";
-            lbl.style.left = "calc(" + x + "% + 4px)";
-            lbl.style.top = (activityTop + 2) + "px";
-            lbl.textContent = s.label || "suggested";
             host.appendChild(lbl);
           }
         }

@@ -8,12 +8,14 @@
  *       its view-mode button active, the Flow layout hidden) — no clicks;
  *   (b) the case-quality badge renders the markers state on the demo
  *       session ("✓ Markers — N cases" + Tier 2 unlocked);
- *   (c) the fact strip renders 6 non-empty tiles (and none is clipped —
+ *   (c) the fact strip renders 6 non-empty tiles (and none is clipped:
  *       scrollWidth must not exceed clientWidth; labels have drifted
  *       before, see e1f5680);
- *   (d) on a marker-STRIPPED re-normalized temp copy the anchor hero
- *       renders with >= 1 candidate (the unsegmented call to action);
- *   (e) the memo export button produces a non-empty <session>/memo.md;
+ *   (d) on a marker-STRIPPED re-normalized temp copy the mark-runs line
+ *       renders (the no-runs call to action), and its button opens Flow
+ *       with the Markers panel showing;
+ *   (e) the "Export PDD" button writes a .docx through the Session menu's
+ *       PDD export path;
  *   (f) zero PAGE ERRORs across both launches.
  *
  * Screenshots of BOTH Overview states land in this dir (gitignored):
@@ -202,115 +204,6 @@ async function shot(page, name) {
     !!(tiles && !tiles.err && tiles.clipped.length === 0),
     tiles && tiles.clipped && tiles.clipped.length ? "clipped: " + tiles.clipped.join(", ") : "all fit");
 
-  // R4: the next-act rail. On the MARKED demo the rail must show exactly ONE
-  // highlighted act, and (reasoned) it must be act 1, "Name what the recorder
-  // saw": the demo has 4 marked cases (act 2 "cases" is DONE), but its captured
-  // controls carry no signatures the shipped App Library vocabs target, so the
-  // advisory matcher reports ~53 UNNAMED distinct controls (> 0) — and "name"
-  // comes first in the sequence, so it wins the highlight. The count is fetched
-  // async, so poll until the rail leaves the "checking…" state.
-  let railProbe = null;
-  const railDeadline = Date.now() + 15000;
-  while (Date.now() < railDeadline) {
-    railProbe = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll("#overview-content #ov-rail .ov-rail-row")];
-      const active = rows.filter((r) => r.classList.contains("active"));
-      const nameRow = rows.find((r) => r.getAttribute("data-rail-act") === "name");
-      const nameSentence = nameRow ? (nameRow.querySelector(".ov-rail-sentence").textContent || "") : "";
-      return {
-        rowCount: rows.length,
-        activeCount: active.length,
-        activeAct: active.length ? active[0].getAttribute("data-rail-act") : null,
-        casesDone: (() => {
-          const c = rows.find((r) => r.getAttribute("data-rail-act") === "cases");
-          return c ? c.classList.contains("done") : null;
-        })(),
-        nameStillChecking: /Checking/.test(nameSentence),
-        nameSentence,
-      };
-    }).catch((e) => ({ err: e.message }));
-    if (railProbe && !railProbe.err && !railProbe.nameStillChecking) break;
-    await wait(400);
-  }
-  const railOk = !!(railProbe && !railProbe.err &&
-    railProbe.rowCount === 5 &&
-    railProbe.activeCount === 1 &&
-    railProbe.activeAct === "name" &&
-    railProbe.casesDone === true &&
-    /~\d+ control/.test(railProbe.nameSentence));
-  record("R4: next-act rail shows exactly one highlighted act; on the demo it is 'name' (cases done, controls unnamed)",
-    railOk, JSON.stringify(railProbe));
-  if (!railOk) await shot(page, "fail-overview-rail.png");
-
-  // NAV-AUDIT §D1 fix: EVERY rail act button must LAND on its destination — not
-  // merely exist. The prior pin only checked the rail rendered, so the dead
-  // "Open the App Library" button (its require path threw) slipped through. Here
-  // each button is CLICKED and the destination asserted VISIBLE, returning to
-  // Overview between checks. Destinations by act:
-  //   name  -> App Library resident tab (#view-vocabularies active)
-  //   story -> Flow level (#session-layout-flow visible)
-  //   judge -> the time-goes Evidence module opened on Overview
-  //   memo  -> stays on Overview (findings feed scrolled into view)
-  //   cases -> Flow + the Markers annotation tab active (done-act target=markers)
-  const gotoOverview = async () => {
-    await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
-    await page.click('.tab[data-view="session"]').catch(() => {});
-    await wait(300);
-  };
-  async function clickRailAct(actId) {
-    return page.evaluate((id) => {
-      const row = document.querySelector('#ov-rail .ov-rail-row[data-rail-act="' + id + '"]');
-      const btn = row && row.querySelector(".ov-rail-btn");
-      if (!btn) return { clicked: false, target: null };
-      const target = btn.getAttribute("data-rail-target");
-      btn.click();
-      return { clicked: true, target };
-    }, actId);
-  }
-  const railLandChecks = [
-    { act: "name", desc: "App Library",
-      landed: () => page.evaluate(() => {
-        const tab = document.querySelector('.tab[data-view="vocabularies"]');
-        const view = document.querySelector("#view-vocabularies");
-        return !!(tab && tab.classList.contains("active") &&
-          view && view.classList.contains("active"));
-      }) },
-    { act: "story", desc: "Flow level",
-      landed: () => page.evaluate(() => {
-        const el = document.querySelector("#session-layout-flow");
-        return !!(el && getComputedStyle(el).display !== "none");
-      }) },
-    { act: "judge", desc: "time-goes module open on Overview",
-      landed: () => page.evaluate(() => {
-        const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
-        const ov = document.querySelector("#session-layout-overview");
-        return !!(mod && mod.open && ov && getComputedStyle(ov).display !== "none");
-      }) },
-    { act: "memo", desc: "stays on Overview (findings feed)",
-      landed: () => page.evaluate(() => {
-        const ov = document.querySelector("#session-layout-overview");
-        return !!(ov && getComputedStyle(ov).display !== "none");
-      }) },
-    { act: "cases", desc: "Flow + Markers annotation tab",
-      landed: () => page.evaluate(() => {
-        const flow = document.querySelector("#session-layout-flow");
-        const markersTab = document.querySelector('.anno-tab[data-anno="markers"]');
-        return !!(flow && getComputedStyle(flow).display !== "none" &&
-          markersTab && markersTab.classList.contains("active"));
-      }) },
-  ];
-  for (const chk of railLandChecks) {
-    await gotoOverview();
-    const c = await clickRailAct(chk.act);
-    await wait(500);   // allow deferred nav (markers uses a 60ms setTimeout)
-    const landed = c.clicked ? await chk.landed() : false;
-    record("§D1 rail act '" + chk.act + "' → " + chk.desc + " LANDS (button click reaches destination)",
-      !!(c.clicked && landed),
-      "clicked=" + c.clicked + " target=" + c.target + " landed=" + landed);
-    if (!landed) await shot(page, "fail-rail-land-" + chk.act + ".png");
-  }
-  await gotoOverview();
-
   // R4: the Evidence modules (retired Analysis) render below the findings feed.
   const evidence = await page.evaluate(() => {
     const host = document.querySelector("#overview-content #overview-evidence");
@@ -319,26 +212,61 @@ async function shot(page, name) {
       .map((m) => m.getAttribute("data-module"));
     return { present: true, modules: mods };
   }).catch((e) => ({ err: e.message }));
-  record("R4: Evidence modules (time / automation / roi) render in #overview-evidence below the findings",
+  record("R4: Evidence modules (time / automation) render in #overview-evidence below the findings, no ROI module",
     !!(evidence && !evidence.err && evidence.present &&
-      evidence.modules.includes("time") && evidence.modules.includes("automation")),
+      evidence.modules.includes("time") && evidence.modules.includes("automation") &&
+      !evidence.modules.includes("roi")),
     JSON.stringify(evidence));
 
-  // Findings feed sanity on the demo (claims + at least one memo checkbox).
+  // Findings feed sanity on the demo (claims + an "include in PDD" checkbox on
+  // every card; the checkbox still writes annotations.memo_selection).
   const feed = await page.evaluate(() => {
     // R4: the Evidence host below the feed reuses the .ov-finding component for
-    // automation candidate cards (no memo checkbox). Scope the findings-feed
-    // count to cards OUTSIDE #overview-evidence so the "every finding has a memo
+    // automation candidate cards (no PDD checkbox). Scope the findings-feed
+    // count to cards OUTSIDE #overview-evidence so the "every finding has a PDD
     // checkbox" invariant still holds exactly (never weakened).
     const inFeed = (el) => el.closest("#overview-evidence") === null;
     const findings = [...document.querySelectorAll("#overview-content .ov-finding")].filter(inFeed);
-    const memoChecks = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed);
+    const pddChecks = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed);
     const showBtns = [...document.querySelectorAll('#overview-content [data-act="show"]')].filter(inFeed);
-    return { findings: findings.length, memoChecks: memoChecks.length, showBtns: showBtns.length };
+    const labels = pddChecks.map((c) => ((c.closest("label") || {}).textContent || "").trim());
+    return {
+      findings: findings.length, pddChecks: pddChecks.length, showBtns: showBtns.length,
+      allSayPdd: labels.length > 0 && labels.every((t) => t === "include in PDD"),
+      firstLabel: labels[0] || null,
+    };
   }).catch((e) => ({ err: e.message }));
-  record("findings feed renders with memo checkboxes",
-    !!(feed && !feed.err && feed.findings > 0 && feed.memoChecks === feed.findings),
+  record("findings feed renders with an 'include in PDD' checkbox on every finding",
+    !!(feed && !feed.err && feed.findings > 0 && feed.pddChecks === feed.findings && feed.allSayPdd),
     JSON.stringify(feed));
+
+  // AD-13: ticking "include in PDD" still writes annotations.memo_selection
+  // (the PDD's findings section reads that key). Tick the first unticked box,
+  // read the saved annotations.json, then untick to leave the session as found.
+  const tick = await page.evaluate(async () => {
+    const inFeed = (el) => el.closest("#overview-evidence") === null;
+    const box = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed)
+      .find((c) => !c.checked);
+    if (!box) return { err: "no unticked PDD checkbox" };
+    const fid = box.closest(".ov-finding").dataset.fid;
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    return { fid };
+  }).catch((e) => ({ err: e.message }));
+  await wait(800);
+  let savedSel = null;
+  try {
+    savedSel = JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "annotations.json"), "utf-8")).memo_selection;
+  } catch (e) { savedSel = "read error: " + e.message; }
+  record("AD-13: ticking 'include in PDD' saves the finding id to annotations.memo_selection",
+    !!(tick && !tick.err && Array.isArray(savedSel) && savedSel.includes(tick.fid)),
+    JSON.stringify({ tick, savedSel }));
+  await page.evaluate((fid) => {
+    const row = document.querySelector('#overview-content .ov-finding[data-fid="' + fid + '"]');
+    const box = row && row.querySelector('[data-act="memo"]');
+    if (box && box.checked) { box.checked = false; box.dispatchEvent(new Event("change", { bubbles: true })); }
+  }, tick && tick.fid).catch(() => {});
+  await wait(500);
 
   // Item 4a (ADD pin d): the "how this was measured" methodology sentence
   // renders AT MOST ONCE per detector group. The demo has 3 `repetition`
@@ -392,67 +320,63 @@ async function shot(page, name) {
       cardStruct.rawPathLeak === false && cardStruct.expandedOk === true),
     JSON.stringify(cardStruct));
 
-  // §C4: the data posture is displayed on the Overview header line
-  // (default reviewable), the Copy-for-LLM button exists under it, and
-  // sealing the posture REMOVES the button from the DOM (re-render).
-  const posture = await page.evaluate(() => {
-    const sel = document.querySelector("#ov-posture-select");
-    return {
-      present: !!sel, value: sel ? sel.value : null,
-      copyBtn: document.querySelectorAll("#btn-ov-copy-llm").length,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("§C4: posture shown on the Overview header (default reviewable) + Copy-for-LLM present",
-    !!(posture && !posture.err && posture.present && posture.value === "reviewable" && posture.copyBtn === 1),
-    JSON.stringify(posture));
-  const sealedOv = await page.evaluate(() => {
-    const sel = document.querySelector("#ov-posture-select");
-    sel.value = "sealed";
-    sel.dispatchEvent(new Event("change", { bubbles: true }));
-    return {
-      copyBtn: document.querySelectorAll("#btn-ov-copy-llm").length,
-      selValue: (document.querySelector("#ov-posture-select") || {}).value,
-      memoBtn: document.querySelectorAll("#btn-ov-export-memo").length,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("§C4: sealed posture removes Copy-for-LLM from the Overview DOM (memo export unaffected)",
-    !!(sealedOv && !sealedOv.err && sealedOv.copyBtn === 0 && sealedOv.selValue === "sealed" && sealedOv.memoBtn === 1),
-    JSON.stringify(sealedOv));
-  await page.evaluate(() => {
-    const sel = document.querySelector("#ov-posture-select");
-    sel.value = "reviewable";
-    sel.dispatchEvent(new Event("change", { bubbles: true }));
-  }).catch(() => {});
-  await wait(200);
+  // BA-helper cut: the Overview no longer carries the next-act rail, the data
+  // sharing select, Copy for AI review, the memo export or the ROI module; and
+  // on this marked demo the mark-runs line must not show.
+  const cutSurfaces = await page.evaluate(() => ({
+    rail: document.querySelectorAll("#ov-rail").length,
+    sharingSelect: document.querySelectorAll("#ov-posture-select").length,
+    copyForAi: document.querySelectorAll("#btn-ov-copy-llm").length,
+    memoExport: document.querySelectorAll("#btn-ov-export-memo").length,
+    roiModule: document.querySelectorAll('#overview-evidence .analysis-module[data-module="roi"]').length,
+    markRuns: document.querySelectorAll("#ov-mark-runs").length,
+    exportPdd: document.querySelectorAll("#btn-ov-export-pdd").length,
+  })).catch((e) => ({ err: e.message }));
+  record("cut Overview surfaces are gone; Export PDD present; no mark-runs line on a marked session",
+    !!(cutSurfaces && !cutSurfaces.err && cutSurfaces.rail === 0 && cutSurfaces.sharingSelect === 0 &&
+      cutSurfaces.copyForAi === 0 && cutSurfaces.memoExport === 0 && cutSurfaces.roiModule === 0 &&
+      cutSurfaces.markRuns === 0 && cutSurfaces.exportPdd === 1),
+    JSON.stringify(cutSurfaces));
 
   await shot(page, "overview-markers-state.png");
 
-  // (e) Memo export: stub the shell reveal (no Explorer window in a gate),
-  // click the button, poll for a non-empty memo.md.
-  await app.evaluate(({ shell }) => { shell.showItemInFolder = () => {}; }).catch(() => {});
-  const memoPath = path.join(SESSION_MARKED, "memo.md");
-  if (fs.existsSync(memoPath)) fs.unlinkSync(memoPath);
-  await page.click("#btn-ov-export-memo").catch((e) => console.log("export click", e.message));
-  let memoOk = false, memoDetail = "";
-  const deadline = Date.now() + 120000;
+  // (e) AD-13: "Export PDD" runs the Session menu's PDD export (#btn-session-pdd).
+  // Stub the save dialog to a temp path and the shell reveal (no Explorer
+  // window in a gate), click the Overview button, poll for a real .docx (a
+  // zip: "PK" magic). The shared path renders the map first, so the viewer
+  // lands on the Map level: that pins "same path", not a second export.
+  const pddOut = path.join(os.tmpdir(), "pdt-ov-e2e-" + Date.now() + ".docx");
+  await app.evaluate(({ dialog, shell }, p) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: p });
+    shell.showItemInFolder = () => {};
+  }, pddOut).catch((e) => console.log("stub dialog", e.message));
+  await page.click("#btn-ov-export-pdd").catch((e) => console.log("export click", e.message));
+  let pddOk = false, pddDetail = "";
+  const deadline = Date.now() + 180000;
   while (Date.now() < deadline) {
-    if (fs.existsSync(memoPath)) {
-      const text = fs.readFileSync(memoPath, "utf-8");
-      if (text.length > 200 && text.startsWith("# Findings memo")) {
-        memoOk = true;
-        memoDetail = text.length + " chars, starts with '# Findings memo'";
+    if (fs.existsSync(pddOut)) {
+      const buf = fs.readFileSync(pddOut);
+      if (buf.length > 1000 && buf[0] === 0x50 && buf[1] === 0x4b) {
+        pddOk = true;
+        pddDetail = buf.length + " bytes, zip (docx) magic";
         break;
       }
     }
     await wait(500);
   }
-  if (!memoOk) memoDetail = "memo.md missing or empty after 120s";
-  record("(e) memo export writes a non-empty memo.md", memoOk, memoDetail);
-  if (!memoOk) await shot(page, "fail-overview-memo.png");
+  if (!pddOk) pddDetail = "no .docx at the stubbed save path after 180s";
+  const onMap = await page.evaluate(() => {
+    const el = document.querySelector("#session-layout-map");
+    return !!(el && getComputedStyle(el).display !== "none");
+  }).catch(() => false);
+  record("(e) Export PDD writes a .docx through the Session menu's PDD path (lands on Map)",
+    pddOk && onMap, pddDetail + " onMap=" + onMap);
+  if (!pddOk) await shot(page, "fail-overview-pdd.png");
+  try { fs.unlinkSync(pddOut); } catch (_) {}
 
   await app.close().catch(() => {});
 
-  // ================= Launch 2: the marker-stripped copy (hero state) ======
+  // ================= Launch 2: the marker-stripped copy (no runs marked) ==
   let app2, page2;
   try {
     ({ app: app2, page: page2 } = await launch(SESSION_STRIPPED, pageErrors));
@@ -461,28 +385,58 @@ async function shot(page, name) {
     process.exit(2);
   }
 
-  // (d) Unsegmented badge + the anchor hero with >= 1 candidate row.
-  const hero = await page2.evaluate(() => {
+  // (d) AD-14: unsegmented badge + the one-line mark-runs instruction.
+  const markRuns = await page2.evaluate(() => {
     const badge = document.querySelector("#overview-content .ov-badge");
-    const rows = document.querySelectorAll("#overview-content .ov-hero-row");
-    const accepts = document.querySelectorAll('#overview-content .ov-hero-row [data-act="accept"]');
+    const line = document.querySelector("#overview-content #ov-mark-runs");
     return {
       badgeText: badge ? (badge.textContent || "").trim() : null,
       badgeWarn: !!(badge && badge.classList.contains("warn")),
-      heroRows: rows.length,
-      acceptBtns: accepts.length,
+      lineText: line ? (line.textContent || "").trim() : null,
+      button: !!document.querySelector("#overview-content #btn-ov-mark-runs"),
+      heroRows: document.querySelectorAll("#overview-content .ov-hero-row").length,
     };
   }).catch((e) => ({ err: e.message }));
-  const heroOk = !!(hero && !hero.err && hero.badgeWarn &&
-    /No cases identified yet/.test(hero.badgeText || "") &&
-    hero.heroRows >= 1 && hero.acceptBtns === hero.heroRows);
-  record("(d) marker-stripped session: ⚠ no-cases badge + anchor hero with >= 1 candidate",
-    heroOk, JSON.stringify(hero));
-  if (!heroOk) await shot(page2, "fail-overview-hero.png");
+  const markRunsOk = !!(markRuns && !markRuns.err && markRuns.badgeWarn &&
+    /No cases identified yet/.test(markRuns.badgeText || "") &&
+    /no runs marked/i.test(markRuns.lineText || "") && /start marker/i.test(markRuns.lineText || "") &&
+    markRuns.button && markRuns.heroRows === 0);
+  record("(d) marker-stripped session: no-cases badge + the mark-runs instruction (no anchor hero)",
+    markRunsOk, JSON.stringify(markRuns));
+  if (!markRunsOk) await shot(page2, "fail-overview-mark-runs.png");
 
   await shot(page2, "overview-unsegmented-state.png");
 
+  // (d2) The instruction's button LANDS: Flow shows, with the Markers panel
+  // (pre-state: the Notes tab is the active annotation tab).
+  const markersTabBefore = await page2.evaluate(() => {
+    const t = document.querySelector('.anno-tab[data-anno="markers"]');
+    return !!(t && t.classList.contains("active"));
+  }).catch(() => null);
+  await page2.click("#btn-ov-mark-runs").catch((e) => console.log("mark-runs click", e.message));
+  await wait(700);
+  const landed = await page2.evaluate(() => {
+    const flow = document.querySelector("#session-layout-flow");
+    const tab = document.querySelector('.anno-tab[data-anno="markers"]');
+    const panel = document.querySelector('.anno-panel[data-panel="markers"]');
+    const r = panel ? panel.getBoundingClientRect() : null;
+    return {
+      flowVisible: !!(flow && getComputedStyle(flow).display !== "none"),
+      markersTabActive: !!(tab && tab.classList.contains("active")),
+      markersPanelVisible: !!(panel && getComputedStyle(panel).display !== "none"),
+      panelOnScreen: !!(r && r.height > 0 && r.top < window.innerHeight && r.bottom > 0),
+      emptyHint: ((document.querySelector("#markers-list") || {}).textContent || "").trim().slice(0, 120),
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("(d2) 'Mark runs in Flow' lands on Flow with the Markers panel showing on screen",
+    !!(landed && !landed.err && markersTabBefore === false && landed.flowVisible &&
+      landed.markersTabActive && landed.markersPanelVisible && landed.panelOnScreen),
+    JSON.stringify({ markersTabBefore, landed }));
+  if (!(landed && landed.markersPanelVisible)) await shot(page2, "fail-overview-mark-runs-land.png");
+
   // The existing levels must still be reachable from the new default.
+  await page2.click('.view-mode-btn[data-level="overview"]').catch(() => {});
+  await wait(500);
   const flowStillWorks = await (async () => {
     const btn = await page2.$('.view-mode-btn[data-level="flow"]');
     if (!btn) return false;

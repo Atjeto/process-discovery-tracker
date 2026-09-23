@@ -4,7 +4,7 @@
  * The honesty redesign's cargo-cult cuts (lab-phase spec §1) take
  * heuristic affordances OUT of the default flow without deleting the
  * code: a flag here re-enables one deliberately. Flags persist in the
- * viewer user-config (localStorage, like pdt.theme / pdt.dataPosture)
+ * viewer user-config (localStorage, like pdt.theme)
  * and are read at module-wire time -- flipping one takes effect on the
  * next reload (Ctrl+R).
  *
@@ -21,7 +21,7 @@
  * suggestion) renders them regardless of any flag.
  *
  * A leaf module (no DOM): guarded localStorage so node:test can
- * require it headlessly, mirroring posture.js.
+ * require it headlessly.
  */
 
 "use strict";
