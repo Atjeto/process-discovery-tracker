@@ -1,121 +1,163 @@
-# Documentation Index
+# Documentation index
 
-Process Discovery Tracker is an internal Windows **process-mining** tool: a worker
-records how they perform a business process (Capture), an analyst transforms the
-recording (Normalization) and explores it (Viewer) to produce process maps and
-statistics.
-
-This folder holds the project's documentation. It is split into three tiers:
-current **architecture reference** (what the code is now), current **operational
-& component** docs, and **historical** design specs (kept for context).
+Process Discovery Tracker (PDT) is an internal Windows tool for a business
+analyst or process manager. An SME records a business process a few times,
+the recorder drafts the steps, the analyst confirms one run and reviews how
+the others differ, and the tool produces a process map and a tool-neutral
+PDD.
 
 > **New here? Start with [architecture/OVERVIEW.md](architecture/OVERVIEW.md).**
 
+The index has two parts:
+
+- **Current (light version):** what the code on `master` does now, and the
+  plan it is being built to.
+- **Product edition, historical:** kept for reference. These docs describe
+  the v1.5.0 product (a process-mining product for outside buyers); its code
+  lives on branch `product-edition`, tag `product-edition-v1.5.0`. Where one
+  of them disagrees with a current doc or with the code, the current doc and
+  the code win.
+
 ## Find the right doc
 
-| You want to… | Read |
+| You want to | Read |
 |---|---|
+| Know where the project is going and why | [To-Do/BA-HELPER-PLAN-2026-09-22.md](To-Do/BA-HELPER-PLAN-2026-09-22.md), [adr/0029-ba-helper-refocus.md](adr/0029-ba-helper-refocus.md) |
 | Understand the whole system fast | [architecture/OVERVIEW.md](architecture/OVERVIEW.md) |
-| Know what the product does (feature catalogue) | [FEATURES.md](FEATURES.md) |
-| Set up a dev environment / build / test | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
-| Work with session data / file formats | [architecture/DATA-MODEL.md](architecture/DATA-MODEL.md) · [../shared/SCHEMA.md](../shared/SCHEMA.md) |
+| Work with session files | [architecture/DATA-MODEL.md](architecture/DATA-MODEL.md), [../shared/SCHEMA.md](../shared/SCHEMA.md) |
 | Change how recording works | [architecture/CAPTURE.md](architecture/CAPTURE.md) |
 | Change the Python pipeline | [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) |
-| Work on the Viewer app | [architecture/VIEWER.md](architecture/VIEWER.md) |
-| Touch the timeline | [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) |
-| Change UI styling or colour | [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) |
-| Know what's structurally wrong | [ARCHITECTURE-ISSUES.md](ARCHITECTURE-ISSUES.md) |
-| See the refactor decision & migration path | [adr/0003-viewer-architecture-refactor.md](adr/0003-viewer-architecture-refactor.md) |
-| Build or ship a release | [BUILD-AND-DIST.md](BUILD-AND-DIST.md) · [DEPLOY.md](DEPLOY.md) |
+| Set up, test, build | [../CONTRIBUTING.md](../CONTRIBUTING.md), [BUILD-AND-DIST.md](BUILD-AND-DIST.md) |
+| Install on a machine | [DEPLOY.md](DEPLOY.md) |
 | Diagnose a failure | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
+| Run the owner-only checks | [To-Do/P1-DRAFT-PROBE-RUNBOOK.md](To-Do/P1-DRAFT-PROBE-RUNBOOK.md), [To-Do/P5-REAL-SESSION-GATE.md](To-Do/P5-REAL-SESSION-GATE.md) |
 
-## Current — architecture reference
+## Current (light version)
 
-Originally written in the refactor-review pass (2026-05-16); last full refresh
-2026-05-31 for v0.20.0 (€-ROI, the view-time grain slider, Reference Maps, real
-App Vocabularies + point-and-learn discovery, recorder capture-confidence, PII
-masking + consent, the map-readability fixes, and the in-repo e2e/golden/ADR
-guards), building on the v0.19.0 detectors and the v0.15.0 analysis & recognition
-layers; reconciled to v0.22.2 (2026-06-02) for the post-v0.20.0 increments —
-Compare drill-downs + the retired per-step path flags
-([ADR-0027](adr/0027-retire-per-step-path-flags.md)), App Library delete +
-discovery hardening, and the UI density pass. Describes the code as it is today.
+### Direction and plan
 
 | Doc | Covers |
 |---|---|
-| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | System architecture, the three layers, data flow, key principles |
-| [architecture/DATA-MODEL.md](architecture/DATA-MODEL.md) | Event/annotation model + the Viewer's in-memory session object |
-| [architecture/CAPTURE.md](architecture/CAPTURE.md) | Capture app + C# recorder sidecar (overview) |
-| [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) | The Python transformation pipeline (overview) |
-| [architecture/VIEWER.md](architecture/VIEWER.md) | Viewer architecture — modules, views, state, IPC, render pipeline *(deep)* |
-| [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline subsystem and the shared timeline core *(deep)* |
-| [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, colour palettes, and the contrast problem |
-| [architecture/DISCLOSURE-MODEL.md](architecture/DISCLOSURE-MODEL.md) | Where content renders — Memo/Evidence/Machine as mechanical placement rules |
-| [ARCHITECTURE-ISSUES.md](ARCHITECTURE-ISSUES.md) | Viewer refactor register — structural / design-system / regression issues (all resolved) |
-| [CAPTURE-ARCHITECTURE-ISSUES.md](CAPTURE-ARCHITECTURE-ISSUES.md) | Capture refactor register — tech-debt items C1-C8 (all resolved in v0.5.0) |
-| [architecture/VALUE-CHAIN-REVIEW.md](architecture/VALUE-CHAIN-REVIEW.md) | Strategic review — where meaning leaks across the capture→insight value chain |
-| [architecture/COHERENCE-AUDIT.md](architecture/COHERENCE-AUDIT.md) | Coherence discipline — every "verb" needs its inverse, a legend, and a real-run check |
-| [architecture/NORTH-STAR.md](architecture/NORTH-STAR.md) | The target ("perfect") state — the value chain at its best, the gap, and the path |
+| [To-Do/BA-HELPER-PLAN-2026-09-22.md](To-Do/BA-HELPER-PLAN-2026-09-22.md) | Plan of record (approved 2026-09-23): the scenario, the analyst path, the feature verdicts, the phases |
+| [adr/0029-ba-helper-refocus.md](adr/0029-ba-helper-refocus.md) | ADR for the refocus: the key choices and everything that was cut |
+| [To-Do/RESTART-POINT-2026-09-22.md](To-Do/RESTART-POINT-2026-09-22.md) | The baseline the refocus started from: health, CI history, code review RP-01 to RP-36 |
+| [To-Do/UI-CLARITY-AUDIT-2026-09-23.md](To-Do/UI-CLARITY-AUDIT-2026-09-23.md) | Element-by-element audit of the light viewer; the subtraction lanes LUX-A and LUX-B apply it (not landed) |
+| [To-Do/P1-DRAFT-PROBE-RUNBOOK.md](To-Do/P1-DRAFT-PROBE-RUNBOOK.md) | The owner's probe of draft quality on a real recording (plan risk R1) |
+| [To-Do/P5-REAL-SESSION-GATE.md](To-Do/P5-REAL-SESSION-GATE.md) | The owner's real-session gate for the whole path |
 
-## Current — operational & component docs
+### Architecture reference
 
 | Doc | Covers |
 |---|---|
-| [../README.md](../README.md) | Repo quick-start and per-release feature notes |
-| [../CLAUDE.md](../CLAUDE.md) | Project context for Claude Code — layout, commands, conventions |
-| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Developer setup, build, test, and conventions |
-| [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | **Agents/chips read first** — the hard invariants, each paired with the CI guard that fails on regression |
-| [FEATURES.md](FEATURES.md) | What the product does — capability catalogue by component |
-| [../CHANGELOG.md](../CHANGELOG.md) | Per-release history |
-| [../SECURITY.md](../SECURITY.md) | Threat model and security posture |
-| [../shared/SCHEMA.md](../shared/SCHEMA.md) | **Authoritative** session-data schema + data dictionary |
-| [BUILD-AND-DIST.md](BUILD-AND-DIST.md) | Build pipeline and distribution model |
-| [DEPLOY.md](DEPLOY.md) | Field-installation steps |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Error messages and diagnostics |
-| [Security-QA.md](Security-QA.md) | One-page Q&A for a corporate security review |
-| [SPEC-DEFERRED.md](SPEC-DEFERRED.md) | Features intentionally deferred past v1.0 |
-| [REAL-VALUE-TESTING.md](REAL-VALUE-TESTING.md) | The method for getting *real* UIA values into vocab/template authoring (§11d) and calibration (§11b) — probe live apps + drive the real recorder |
+| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | The three layers, the session folder, the data flow |
+| [architecture/DATA-MODEL.md](architecture/DATA-MODEL.md) | The session files, the annotation model, the viewer's in-memory session |
+| [../shared/SCHEMA.md](../shared/SCHEMA.md) | **Authoritative** file formats and data dictionary |
+| [architecture/CAPTURE.md](architecture/CAPTURE.md) | The capture app and the C# recorder |
+| [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) | The pipeline: CLI, stages, modules, outputs |
 | [interaction-recorder.md](interaction-recorder.md) | Design of the C# UI Automation recorder |
-| [adr/0001-click-recorder-sidecar-language.md](adr/0001-click-recorder-sidecar-language.md) | ADR — why the recorder is C#, not Python |
-| [adr/0002-app-vocabularies.md](adr/0002-app-vocabularies.md) | ADR — why the App Vocabulary layer exists |
-| [adr/0003-viewer-architecture-refactor.md](adr/0003-viewer-architecture-refactor.md) | ADR — the viewer refactor decision and migration path |
-| [adr/0004-flow-timeline-steps-rework.md](adr/0004-flow-timeline-steps-rework.md) | ADR — the Flow timeline + Steps view rework (Warm Editorial) |
-| [adr/0005-capture-architecture-remediation.md](adr/0005-capture-architecture-remediation.md) | ADR — the capture app tech-debt remediation (C1-C8) |
-| [adr/0006-backlog-sequencing.md](adr/0006-backlog-sequencing.md) | ADR — sequencing the IMPROVEMENTS backlog; defer the analysis layer |
-| [adr/0007-activity-event-granularity.md](adr/0007-activity-event-granularity.md) | ADR — activity-event granularity; title in the capture run key |
-| [adr/0008-build-the-analysis-layer.md](adr/0008-build-the-analysis-layer.md) | ADR — build the heuristic IE/CI analysis layer |
-| [adr/0009-normalization-redesign-v013.md](adr/0009-normalization-redesign-v013.md) | ADR — v0.13 normalization redesign; intra-session repetition alignment |
-| [adr/0010-ux-overhaul-viewer-recorder.md](adr/0010-ux-overhaul-viewer-recorder.md) | ADR — viewer + recorder UX overhaul (12 fixes) |
-| [adr/0011-platform-recognition-layer.md](adr/0011-platform-recognition-layer.md) | ADR — platform/framework recognition layer |
-| [adr/0012-active-case-stamping-and-map-matrix.md](adr/0012-active-case-stamping-and-map-matrix.md) | ADR — active-case stamping + the notation × level map matrix |
-| [adr/0013-value-free-grouping-and-map-readability.md](adr/0013-value-free-grouping-and-map-readability.md) | ADR — `process_label` value-free grouping + map readability |
-| [adr/0014-distribution-model.md](adr/0014-distribution-model.md) | ADR — distribution model: GitHub Releases + electron-packager |
-| [adr/0015-intra-session-repetition-alignment.md](adr/0015-intra-session-repetition-alignment.md) | ADR — intra-session repetition alignment (curate one, propagate to all) |
-| [adr/0016-segment-level-automation-candidacy.md](adr/0016-segment-level-automation-candidacy.md) | ADR — segment-level (not atomic-step) automation candidacy |
-| [adr/0017-suggested-markers.md](adr/0017-suggested-markers.md) | ADR — suggested markers: change-point detection for unbracketed sessions |
-| [adr/0018-anchor-candidates.md](adr/0018-anchor-candidates.md) | ADR — anchor candidates: auto-rank the field that segments a session into cases |
-| [adr/0019-reference-maps.md](adr/0019-reference-maps.md) | ADR — Reference Maps: decoupled, editable BPMN copies (As-Is → To-Be) |
-| [adr/0023-recorder-capture-confidence.md](adr/0023-recorder-capture-confidence.md) | ADR — recorder capture-confidence model + OCR last resort (§11e) |
-| [adr/0024-step-grain-as-view-time-rollup.md](adr/0024-step-grain-as-view-time-rollup.md) | ADR — step grain as a view-time roll-up (§11b, reframed) |
-| [adr/0025-in-app-vocabulary-discovery.md](adr/0025-in-app-vocabulary-discovery.md) | ADR — in-app vocabulary discovery ("point-and-learn") |
-| [adr/0026-distribution-unsigned-and-services-boutique-scope.md](adr/0026-distribution-unsigned-and-services-boutique-scope.md) | ADR — ship unsigned by design; services-boutique scope |
-| [adr/0027-retire-per-step-path-flags.md](adr/0027-retire-per-step-path-flags.md) | ADR — retire the per-step path/segment flags; keep only `waste` |
-| [adr/README.md](adr/README.md) | ADR index & registry (CI-enforced numbering) |
-| [../capture/README.md](../capture/README.md) | Capture component quick-start |
-| [../viewer/README.md](../viewer/README.md) | Viewer component quick-start |
-| [../normalization/README.md](../normalization/README.md) | Normalization component quick-start |
-| `User-Guide.docx` | Generated end-user guide (binary; produced at release time) |
+| [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, the two themes, contrast rules, the UI copy style guide |
+| [architecture/VIEWER.md](architecture/VIEWER.md) | Viewer modules, state, IPC. Still describes the product viewer; rewritten after the subtraction lane |
+| [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline subsystem. Same status as VIEWER.md |
 
-## Historical — design specs
+### Principles that still bind
 
-Kept for context and intent. These describe what was *planned*; where they conflict
-with the architecture reference above, **the architecture reference wins**. The
-first three live at the workspace root, one level above the repo.
+| Doc | Covers |
+|---|---|
+| [architecture/COHERENCE-AUDIT.md](architecture/COHERENCE-AUDIT.md) | Every new verb needs its inverse, a legend, a control-interaction check and a real-run check |
+| [LAB-PHASE-SPEC.md](LAB-PHASE-SPEC.md) | Section 1, the honesty rules the plan keeps (measured facts render as measured; nothing projected dresses up as measurement; gates gate whole composites). The rest of it is product-edition history |
+| [architecture/DISCLOSURE-MODEL.md](architecture/DISCLOSURE-MODEL.md) | Those rules as placement rules (Memo / Evidence / Machine). Written for the product viewer's surfaces; the rules still hold |
 
-| Doc | Was | Superseded by |
-|---|---|---|
-| `../../PROCESS_DISCOVERY_BRIEF.md` | Initial intake brief / requirements | the design doc, then the shipped product |
-| `../../process_discovery_tracker_design.md` | v0.2 design baseline (§-numbered) | this architecture reference for current-state facts |
-| `../../annotation-model.md` | Design of the Steps/Phases annotation model | `../shared/SCHEMA.md` + DATA-MODEL.md |
-| [IMPLEMENTATION_SPEC.md](IMPLEMENTATION_SPEC.md) | Phase A–G build spec (imperative "what to build") | the shipped code; VIEWER.md / CAPTURE.md / NORMALIZATION.md |
-| [UX-CHANGES.md](UX-CHANGES.md) | v0.3 feature narrative | `../CHANGELOG.md` |
+### Decision records
+
+[adr/README.md](adr/README.md) is the registry, with each ADR's status (CI
+enforces the numbering). The decisions that shape the light version:
+
+| ADR | Decision |
+|---|---|
+| [0029](adr/0029-ba-helper-refocus.md) | The BA-helper refocus |
+| [0001](adr/0001-click-recorder-sidecar-language.md) | The recorder is a C# sidecar |
+| [0002](adr/0002-app-vocabularies.md) | App vocabularies (the matching engine stays; in-app authoring is cut) |
+| [0007](adr/0007-activity-event-granularity.md) | Activity-event granularity: the window title in the run key |
+| [0008](adr/0008-build-the-analysis-layer.md) | The analysis layer |
+| [0011](adr/0011-platform-recognition-layer.md) | The platform recognition layer |
+| [0012](adr/0012-active-case-stamping-and-map-matrix.md) | Marker-based case stamping (narrowed: anchors and the map matrix are cut) |
+| [0013](adr/0013-value-free-grouping-and-map-readability.md) | Value-free grouping (`process_label`) |
+| [0014](adr/0014-distribution-model.md) | GitHub Releases and electron-packager |
+| [0016](adr/0016-segment-level-automation-candidacy.md) | Segment-level automation candidacy (narrowed: the ROI extension is cut) |
+| [0019](adr/0019-reference-maps.md) | Reference maps: editable As-Is and To-Be copies |
+| [0023](adr/0023-recorder-capture-confidence.md) | Recorder capture confidence |
+| [0024](adr/0024-step-grain-as-view-time-rollup.md) | Step grain keys (narrowed: the grain slider is cut, `grain_keys` stay) |
+| [0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md) | Ship unsigned |
+| [0027](adr/0027-retire-per-step-path-flags.md) | `waste` is the only per-step flag |
+
+### Operate
+
+| Doc | Covers |
+|---|---|
+| [../README.md](../README.md) | What the tool is, install, run from source |
+| [../CLAUDE.md](../CLAUDE.md) | Project context for Claude Code: start here, commands, conventions, environment |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Dev setup, test commands, conventions |
+| [../CHANGELOG.md](../CHANGELOG.md) | Release history; `[Unreleased]` is the 2.0.0 draft |
+| [BUILD-AND-DIST.md](BUILD-AND-DIST.md) | Build pipeline and release zips |
+| [To-Do/BUILD-BOX-VALIDATION.md](To-Do/BUILD-BOX-VALIDATION.md) | Open since 2026-05: a maintained bundled Python, packaged Electron 42 checks |
+| [DEPLOY.md](DEPLOY.md) | Installing on a worker or analyst machine |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Error messages and diagnostics |
+| [../SECURITY.md](../SECURITY.md), [Security-QA.md](Security-QA.md) | Threat model; one-page Q&A for a corporate security review |
+| [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | Agents read first: the hard invariants and how to drive the viewer. Its command list and DOM-handle map predate the light viewer (rewrite queued) |
+| [FEATURES.md](FEATURES.md) | Capability catalogue. Still the product edition's; rewritten after the subtraction lane |
+| `User-Guide.docx` | Generated end-user guide (binary, built by `build-user-guide.js`). Same status as FEATURES.md |
+| [../capture/README.md](../capture/README.md), [../viewer/README.md](../viewer/README.md), [../normalization/README.md](../normalization/README.md), [../e2e/README.md](../e2e/README.md) | Component quick-starts |
+| [claude-skills/README.md](claude-skills/README.md) | Frozen 2026-07-03 snapshot of the skills pack (the live copy is user-global) |
+
+## Product edition, historical
+
+Kept for reference; the code these describe lives on branch
+`product-edition`. Nothing here is deleted.
+
+### Architecture and strategy
+
+| Doc | Was |
+|---|---|
+| [architecture/VALUE-CHAIN-REVIEW.md](architecture/VALUE-CHAIN-REVIEW.md) | Strategic review: where meaning leaked from capture to insight |
+| [architecture/NORTH-STAR.md](architecture/NORTH-STAR.md) | The product's target state |
+| [ARCHITECTURE-ISSUES.md](ARCHITECTURE-ISSUES.md) | Viewer refactor register (all resolved) |
+| [CAPTURE-ARCHITECTURE-ISSUES.md](CAPTURE-ARCHITECTURE-ISSUES.md) | Capture refactor register C1 to C8 (all resolved in v0.5.0) |
+| [LAB-PHASE-SPEC.md](LAB-PHASE-SPEC.md) | The honesty redesign, phases A to E (section 1 still binds, see above) |
+| [REAL-VALUE-TESTING.md](REAL-VALUE-TESTING.md) | Method for real UIA values in vocab and template authoring and segmenter calibration |
+
+### Decision records for cut or replaced features
+
+| ADR | Status |
+|---|---|
+| [0003](adr/0003-viewer-architecture-refactor.md), [0004](adr/0004-flow-timeline-steps-rework.md), [0005](adr/0005-capture-architecture-remediation.md), [0006](adr/0006-backlog-sequencing.md), [0010](adr/0010-ux-overhaul-viewer-recorder.md) | Past refactors, reworks and sequencing; implemented, history now |
+| [0009](adr/0009-normalization-redesign-v013.md) | v0.13 normalization redesign; superseded in part |
+| [0015](adr/0015-intra-session-repetition-alignment.md) | Intra-session alignment; its engine (`step-alignment.js`) is removed, the differences view aligns by draft key instead |
+| [0017](adr/0017-suggested-markers.md), [0018](adr/0018-anchor-candidates.md) | Suggested markers and anchor candidates; cut |
+| [0025](adr/0025-in-app-vocabulary-discovery.md) | In-app vocabulary discovery; cut (remembered names replace it) |
+| [0028](adr/0028-case-screen-work-items.md) | Case by screen work items; cut (the runs and steps view replaces it) |
+
+### Plans, audits and reviews
+
+| Doc | Was |
+|---|---|
+| [To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md](To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md) | Plan of record before the refocus (superseded by the BA-helper plan) |
+| [To-Do/NEXT-SESSION-SPEC.md](To-Do/NEXT-SESSION-SPEC.md) | Operational plan of record, 2026-06 |
+| [To-Do/PDT-MASTER-ASSESSMENT.md](To-Do/PDT-MASTER-ASSESSMENT.md), [To-Do/PDT-ROADMAP-CODEBASE-FIT.md](To-Do/PDT-ROADMAP-CODEBASE-FIT.md) | Product strategy and the roadmap fit analysis |
+| [To-Do/R5-SITDOWN-RUNBOOK.md](To-Do/R5-SITDOWN-RUNBOOK.md) | Superseded by the P1 and P5 runbooks |
+| [To-Do/DELIVERABLE-AUDIT-2026-07-03.md](To-Do/DELIVERABLE-AUDIT-2026-07-03.md) | Audit of the memo and the PDD (the plan's fix list cites its gaps 2 to 10) |
+| [To-Do/DESIGN-CRITIQUE-2026-07-01.md](To-Do/DESIGN-CRITIQUE-2026-07-01.md), [To-Do/NAV-AUDIT-2026-07-03.md](To-Do/NAV-AUDIT-2026-07-03.md) | Design and navigation audits of the product viewer |
+| [To-Do/PERF-CEILING-2026-07-03.md](To-Do/PERF-CEILING-2026-07-03.md), [To-Do/REAL-DATA-VITALS-2026-07-03.md](To-Do/REAL-DATA-VITALS-2026-07-03.md) | Performance ceiling and structure-only vitals of real captures |
+| [To-Do/real-session-findings.md](To-Do/real-session-findings.md), [To-Do/ui-copy-feedback.md](To-Do/ui-copy-feedback.md) | The first real company session (2026-06-10) and the owner's copy feedback |
+| [To-Do/AGENT-DELEGATION-POSTMORTEM-2026-07-02.md](To-Do/AGENT-DELEGATION-POSTMORTEM-2026-07-02.md) | Delegation postmortem of the v1.4.0 pass |
+| [To-Do/APP-COVERAGE-LIST.md](To-Do/APP-COVERAGE-LIST.md), [To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md](To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md) | Vocabulary mapping worklist and the discovery spec |
+| [To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md](To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md), [To-Do/REAL-APP-MAP-VALIDATION-2026-05-31.md](To-Do/REAL-APP-MAP-VALIDATION-2026-05-31.md) | Segmenter calibration and the screen-grain map validation |
+| [To-Do/IMPLEMENTATION-SPEC-v0.13-normalization-redesign.md](To-Do/IMPLEMENTATION-SPEC-v0.13-normalization-redesign.md) | Build spec for the v0.13 pipeline redesign |
+| [To-Do/CONSOLIDATED-REVIEW-2026-05.md](To-Do/CONSOLIDATED-REVIEW-2026-05.md), [To-Do/tech-debt-findings.md](To-Do/tech-debt-findings.md), [CODE-REVIEW-2026-05.md](CODE-REVIEW-2026-05.md), [security-review-session-findings.md](security-review-session-findings.md) | Code, tech-debt and security reviews of v0.19.0 |
+| [DOC-COVERAGE-AUDIT.md](DOC-COVERAGE-AUDIT.md) | Documentation coverage worklist, last reconciled to v0.22.2 |
+| [SPEC-DEFERRED.md](SPEC-DEFERRED.md) | Deferred UX work from the v0.2 to v0.17 era |
+| [IMPLEMENTATION_SPEC.md](IMPLEMENTATION_SPEC.md), [UX-CHANGES.md](UX-CHANGES.md) | The phase A to G build spec and the v0.3 feature narrative |
+| `To-Do/Archive/` | Older specs and plans |
+
+The original intake brief, the v0.2 design (`process_discovery_tracker_design.md`)
+and the annotation-model design live at the workspace root, one level above
+the repo.

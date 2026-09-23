@@ -24,12 +24,28 @@ not deleted. Full rationale and the complete list of what changed:
   reviews how the other runs differ.
 - **Names are remembered**: naming a drafted step once applies that name to
   every future draft of the same control and screen, within the session
-  and across later sessions.
-- **Saved processes**: a confirmed run's pattern can be saved and matched
-  against a later session of the same process, so it opens already
-  drafted and named.
+  and across later sessions. A Remembered names list renames or forgets
+  a name.
+- **Differences between runs**: every run after the pattern run lists how
+  it differs from it (a skipped step, an extra step, a different order),
+  or says it has none. The PDD's differences section uses the same rule.
+- **Fixes carry across runs**: merging drafted steps in the pattern run
+  repeats the merge on the same drafts in every other run (one undo), and
+  a draft hidden in the pattern run can be hidden in all runs at once.
+- **Reopen run**, the inverse of Confirm run.
+- **Saved processes**: "Save as this process" stores the confirmed pattern
+  run. A later session of the same process that has no confirmed pattern
+  run yet is compared with the closest saved process, with "Stop
+  comparing" to turn that off.
+- **The Overview is the home**: a "What is left" line names the next thing
+  to do (mark the runs, confirm the pattern run, review the other runs,
+  fill in the document, finish the As-Is map, export the PDD) with one
+  button for it.
+- **Document sections**: a Document panel edits the title, purpose,
+  scope, contacts, business rules, exceptions and notes the PDD prints;
+  every change can be undone.
 - **Meeting transcript import**: a Teams `.vtt` or `.docx` transcript is
-  parsed into timestamped, speaker-tagged segments and aligned to the
+  parsed into timestamped, speaker-tagged segments and stored with the
   session; nothing in the app interprets what was said.
 - **Readable application names**: exports and findings show "Microsoft
   Excel" or a recording's own window-title wording instead of a raw
@@ -64,6 +80,23 @@ not deleted. Full rationale and the complete list of what changed:
   recorder now reaches its restart limit and reports itself dead instead
   of restarting forever unnoticed; a spawn failure is now reported and
   retried the same way a crash is.
+- **One process map**: the Map shows one left-to-right map built from the
+  runs' steps, and Fork copies it into an editable As-Is or To-Be map. The
+  BPMN file behind it now covers the runs only and ends in a real end
+  event instead of a task named "end".
+- **Drafts are hidden, not deleted**, so an Analyze cannot bring them
+  back; steps added by hand can still be deleted.
+- **Runs never nest**: a run start that arrives while a run is open ends
+  that run first, the way the capture app's run hotkey does. A start
+  inserted in the viewer used to nest every later run inside the open one.
+- **The Overview fits small screens**: it stays usable at 1366x768 and
+  1024x768 instead of being squeezed out by the Session summary, and
+  right-click menus stay inside the window. The fact tiles and the
+  Session summary panel are gone; each repeated a finding on the same
+  screen.
+- **Analyst work is safer on disk**: an `annotations.json` that cannot be
+  read is reported, with its backups, and never overwritten; every save
+  goes through a temporary file first.
 
 ### Removed
 
@@ -86,6 +119,9 @@ Preserved in full on the `product-edition` branch.
   exports the measured inputs it needs in a later release.
 - **Phases**, the phase-level process map, and the map's detail (grain)
   slider and notation-by-level matrix.
+- **Activity-level process maps and the event-log exports**: the pipeline
+  no longer writes `dfg.json`, the activity-level `process_map.bpmn`, the
+  per-case maps, or the XES and CSV event logs.
 - **Compare Sessions**, the case-by-screen work-item view, cross-machine
   sync markers, app-vocabulary prep sessions, the worker close-out
   wizard's observed-value questions, and the per-marker label picker.

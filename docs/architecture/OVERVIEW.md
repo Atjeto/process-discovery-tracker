@@ -1,129 +1,137 @@
-# Architecture Overview
+# Architecture overview
 
-> Part of the [architecture reference](./). Describes the current working tree
-> (refreshed 2026-05-31 for v0.20.0, reconciled to v0.22.2 on 2026-06-02; the
-> three-layer architecture is stable, with the €-ROI, view-time grain, Reference
-> Maps, recorder-confidence, and PII layers added on top). For *why* decisions were
-> made, see the ADRs and historical design docs linked from
-> [`docs/README.md`](../README.md).
+> Part of the architecture reference ([docs/README.md](../README.md)). It
+> describes the light version on `master`, the BA-helper refocus
+> ([ADR-0029](../adr/0029-ba-helper-refocus.md)). The product edition's
+> architecture lives with its code on branch `product-edition`.
 
 ## What this is
 
-Process Discovery Tracker is an internal Windows tool for **process mining**: it
-records how a worker actually performs a business process, then turns that
-recording into an analyzable, mineable process model — process maps (BPMN / DFG),
-a step/phase breakdown, and statistics derived from real desktop activity.
-
-It is used by two roles, on two machines:
+Process Discovery Tracker (PDT) records how a subject-matter expert (SME)
+performs a business process on a Windows PC and turns the recording into a
+confirmed step list, a process map and a tool-neutral process definition
+document (PDD). It is an internal tool for the owner's work as a business
+analyst / process manager.
 
 | Role | Machine | Runs |
 |---|---|---|
-| **Worker / SME** | their normal work PC | the **Capture** app, while doing the process |
-| **Analyst** | their own PC | the **Viewer** (which drives **Normalization**) |
+| **SME** | their own work PC | the **Capture** app, while doing the process a few times, one run hotkey press per run |
+| **Analyst** | their own PC | the **Viewer**, which runs **Normalization** |
 
-The two halves never talk over a network. The hand-off is a **session folder** —
-a self-contained directory of files — moved from worker to analyst.
+The two halves never talk over a network. The hand-off is a **session
+folder**, a self-contained directory copied from the SME's PC to the
+analyst's.
+
+Two input modes are supported (plan D8): the recorder alone, and the recorder
+plus a video (plus, optionally, a Teams transcript). The recorder always
+runs: it is the recording when there is no video, it drafts the steps, it
+measures the timings, and it knows which field in which app was used. The
+video adds the SME's narration and what happened away from the keyboard.
 
 ## The three layers
 
 ```
-[ worker machine ]                          [ analyst machine ]
-┌──────────────────┐                        ┌────────────────────────┐
-│ CAPTURE          │   session folder       │ VIEWER                 │
-│ Electron + a C#  │ ─────────────────────▶ │ Electron + bundled     │
-│ recorder sidecar │   events.jsonl,        │ Python                 │
-│                  │   manifest.json,       │  • loads the session   │
-│                  │   screenshots/,        │  • runs normalization  │
-│                  │   OBS video            │  • timeline + editors  │
-└──────────────────┘                        │  • mines + exports     │
-                                            └───────────┬────────────┘
-                                                        │ spawns
-                                                        ▼
-                                            ┌────────────────────────┐
-                                            │ NORMALIZATION          │
-                                            │ Python + PM4Py         │
-                                            │ events.jsonl ──▶ XES,  │
-                                            │ CSV, stats.json,       │
-                                            │ process_map.bpmn, dfg  │
-                                            └────────────────────────┘
+[ SME machine ]                           [ analyst machine ]
++---------------------+                   +-----------------------------+
+| CAPTURE             |  session folder   | VIEWER                      |
+| Electron tray app   | ----------------> | Electron + bundled Python   |
+| + C# recorder       |  copied by hand   |  open, attach video,        |
+|                     |                   |  confirm, review, map,      |
+| events.jsonl        |                   |  export                     |
+| manifest.json       |                   +--------------+--------------+
+| screenshots/        |                                  | runs "Analyze"
+| optional OBS video  |                                  v
++---------------------+                   +-----------------------------+
+                                          | NORMALIZATION (Python)      |
+                                          |  runs from the markers,     |
+                                          |  drafted steps, statistics, |
+                                          |  findings, step BPMN, PDD   |
+                                          +-----------------------------+
 ```
 
 | Layer | Folder | Responsibility | Tech |
 |---|---|---|---|
-| **Capture** | [`capture/`](../../capture/) | Poll the foreground window every 5 s, record UI interactions, fire Start/End markers, take screenshots, drive OBS, append a per-session `events.jsonl`. | Electron 33 (main process, no renderer logic of note) + a C# .NET 8 UI Automation recorder sidecar |
-| **Normalization** | [`normalization/`](../../normalization/) | Transform raw `events.jsonl` into cases (marker- or anchor-based), steps, and phases; classify activities (taxonomy + platform recognition); compute statistics + heuristic IE/CI findings (the analysis layer); optionally mine activity / step / phase process maps. | Python 3.12 + PM4Py, pandas, networkx |
-| **Viewer** | [`viewer/`](../../viewer/) | Load a session, run normalization, render a video-synced timeline, let the analyst edit steps/phases, compare sessions, and export. | Electron 33 + a bundled Python embeddable distribution |
-| **Shared** | [`shared/`](../../shared/) | The cross-cutting data-format contract. | Markdown only ([`SCHEMA.md`](../../shared/SCHEMA.md)) |
+| **Capture** | [`capture/`](../../capture/) | Poll the foreground window every 5 s, record UI interactions, take screenshots, write a start and end marker per run from the run hotkey, drive OBS when configured, append to `events.jsonl`. | Electron 42 (main process) + a C# .NET 8 UI Automation recorder sidecar |
+| **Normalization** | [`normalization/`](../../normalization/) | Turn `events.jsonl` into runs (from the markers), draft each run's steps, keep the analyst's steps, compute statistics and findings, mine the step-level BPMN, render the PDD. A separate CLI imports a meeting transcript. | Python with pm4py, pandas, python-docx |
+| **Viewer** | [`viewer/`](../../viewer/) | Load a session, run the pipeline, show the recording on a video-synced timeline, let the analyst confirm and edit steps, place a meeting transcript, draw the process map, fork editable maps, export the PDD. | Electron 42 + a bundled Python embeddable |
+| **Shared** | [`shared/`](../../shared/) | The data contract ([SCHEMA.md](../../shared/SCHEMA.md)) and the rule files both languages load: platform recognition, value-free labels, the run-differences golden. | JSON, Markdown |
 
 ## Key design principles
 
-These hold across the whole system; every other doc assumes them.
-
-- **The session folder is the single integration seam.** Everything downstream of
-  capture is reproducible from `events.jsonl` plus a taxonomy file. Capture and the
-  analyst tooling share no code and no live connection — only the folder.
-- **Video is the reference; the tracker is the index.** When OBS recording is used,
-  the screen recording is the ground truth. The event stream is a navigable index
-  *into* the video, not a replacement for it.
-- **Raw events are immutable.** `events.jsonl` is append-only and never edited.
-  Every analyst correction lives in `annotations.json`, a sidecar file. See
-  [DATA-MODEL.md](./DATA-MODEL.md).
-- **Re-normalization is non-destructive.** Re-running the Python pipeline preserves
-  manually-authored and analyst-edited steps; only machine-suggested artifacts are
-  regenerated.
-- **Recognition is platform-grounded; classification & analysis are heuristic.**
-  An interaction's semantic *type* comes from documented platform/framework
-  invariants (the recognition layer, [ADR-0011](../adr/0011-platform-recognition-layer.md)),
-  so it transfers across apps; business *labels* and the IE/CI analysis findings
-  are heuristics the analyst confirms ([ADR-0008](../adr/0008-build-the-analysis-layer.md)).
-- **No network egress.** No telemetry, no update checks. The only socket is OBS on
-  `ws://127.0.0.1:4455`. See [`SECURITY.md`](../../SECURITY.md).
+- **The session folder is the only integration seam.** Capture and the
+  analyst tools share no code and no live connection. Everything the pipeline
+  writes can be rebuilt from the folder, given the same taxonomy and
+  remembered-names store.
+- **Raw events are immutable.** `events.jsonl` is append-only. Every analyst
+  decision lives in `annotations.json`, and re-analysis keeps it: steps the
+  analyst confirmed, edited, added or hid survive; only the drafts are
+  replaced. See [DATA-MODEL.md](./DATA-MODEL.md).
+- **The recorder drafts, the analyst decides.** Drafted steps, remembered
+  names and the comparison with a saved process are suggestions the analyst
+  can see and undo; nothing is applied silently.
+- **Measured facts render as measured.** A stage that could not run says so
+  instead of showing zeros (`stage_errors`); a failed export exits non-zero
+  and the viewer never opens a stale file.
+- **Value-free grouping.** Step names and screen strings are stripped of case
+  values by one rule set shared by Python and JS, so the same step in every
+  run is one node and one row.
+- **No network, no AI.** No telemetry, no update checks. The only socket is
+  OBS on `ws://127.0.0.1:4455`. See [SECURITY.md](../../SECURITY.md).
 
 ## Repository layout
 
 ```
 process-discovery-tracker/
-  capture/          Worker-side Electron app + C# recorder sidecar (recorder/)
-  normalization/    Python pipeline (normalize.py + ~13 modules)
-  viewer/           Analyst-side Electron app (renderer.js + CommonJS view modules)
-  shared/           SCHEMA.md — the data-format contract
-  docs/             This documentation set + design specs + ADRs
-  scripts/          PowerShell/Node build, release, and admin scripts
-  sessions/         (gitignored) captured session folders land here
+  capture/          SME side Electron app + C# recorder sidecar (recorder/)
+  normalization/    Python pipeline (normalize.py and its modules), transcript_import.py
+  viewer/           Analyst side Electron app (renderer, views/, stores)
+  e2e/              Playwright smokes against the real viewer (run-all.js)
+  shared/           SCHEMA.md and the shared rule files
+  docs/             Architecture reference, ADRs, plans and audits
+  scripts/          Build, release and structure-only data scripts
+  sessions/         Committed demo in example-aggregate/; everything else gitignored
   dist/             (gitignored) build output and release zips
-  README.md         Repo quick-start + per-release feature notes
-  CHANGELOG.md      Per-release history
-  SECURITY.md       Threat model and security posture
 ```
 
 ## The data lifecycle
 
-1. **Capture** — the worker runs the Capture tray app. Active-window polls and UI
-   interactions append to `events.jsonl`; Start/End markers bracket the process;
-   screenshots and (optionally) an OBS video are saved into the session folder.
-2. **Hand-off** — the session folder is moved to the analyst's machine.
-3. **Load** — the analyst opens the folder in the Viewer.
-4. **Normalize** — the Viewer spawns the Python pipeline, which assigns cases,
-   suggests steps (each stamped with a value-free `process_label`), classifies
-   activities, computes statistics + heuristic analysis findings, and (with
-   `--mine`) mines activity / step / phase process maps. Outputs are written back
-   into the same folder; `annotations.json` is updated non-destructively.
-5. **Analyze & edit** — the analyst reviews the timeline, edits steps and phases
-   (saved to `annotations.json`), reviews the Analysis findings, and re-normalizes
-   as needed.
-6. **Explore & export** — the Compare-Sessions view shows the process map as a
-   notation × level matrix (BPMN / DFG × Activity / Step / Phase) with drill-down
-   and a cross-session analysis panel; process maps (BPMN / DFG / SVG), reports,
-   CSVs, and a PDD are exported.
+1. **Capture.** The SME runs the tray app and presses the run hotkey at the
+   start of each run; pressing it again ends the open run and starts the
+   next. Interactions, window polls, markers and screenshots append to the
+   session folder; an OBS video is optional.
+2. **Hand-off.** The session folder is copied to the analyst's machine.
+   `session-integrity.json` lets the viewer flag files that did not arrive.
+3. **Open.** The viewer loads the folder. The analyst may attach a video and
+   sync it to the session clock, and attach the meeting transcript (step 8).
+4. **Analyze.** The viewer runs `normalize.py` with the bundled taxonomy,
+   `--names` and (by default) `--mine`. The pipeline derives the runs from the markers,
+   drafts each run's steps, merges them with the analyst's steps, and writes
+   `stats.json`, `analysis.json`, `process_map_step.bpmn` and the updated
+   `annotations.json` back into the folder.
+5. **Confirm and review.** The analyst confirms the pattern run, then reviews
+   how each other run differs from it. Edits save to `annotations.json`;
+   renames also go to the remembered-names store on the analyst's machine.
+6. **Map.** The viewer draws the process map from the runs' steps. Fork copies
+   `process_map_step.bpmn` into an editable As-Is or To-Be map under
+   `derived_maps/`.
+7. **Export.** The viewer runs the pipeline again with `--pdd-out` and the map
+   images; the PDD `.docx` is offered for saving. "Save as this process"
+   stores the confirmed pattern for later sessions of the same process.
+8. **Transcript (optional).** Attach transcript runs `transcript_import.py`,
+   which parses a Teams `.vtt` or `.docx` file into `transcript.json`. The
+   viewer places each sentence on the session clock (through the video's
+   sync, or by matching one sentence to one moment), shows the sentences said
+   during each step and the talk outside the runs, and adds a chosen sentence
+   to a step's description or a document field, from where it reaches the
+   PDD.
 
 ## Where to go next
 
-| You want to understand… | Read |
+| You want to understand | Read |
 |---|---|
-| The on-disk and in-memory data formats | [DATA-MODEL.md](./DATA-MODEL.md) |
+| The session files and the annotation model | [DATA-MODEL.md](./DATA-MODEL.md), [SCHEMA.md](../../shared/SCHEMA.md) |
 | How a session gets recorded | [CAPTURE.md](./CAPTURE.md) |
-| The Python transformation pipeline | [NORMALIZATION.md](./NORMALIZATION.md) |
-| The Viewer app (the active refactor target) | [VIEWER.md](./VIEWER.md) |
-| The timeline subsystem in depth | [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) |
-| UI styling, tokens, and colour | [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) |
-| Known structural problems / refactor targets | [ARCHITECTURE-ISSUES.md](../ARCHITECTURE-ISSUES.md) |
+| The Python pipeline | [NORMALIZATION.md](./NORMALIZATION.md) |
+| The viewer's internals (still the product-edition text) | [VIEWER.md](./VIEWER.md), [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) |
+| UI styling and copy | [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) |
+| Why the light version looks the way it does | [ADR-0029](../adr/0029-ba-helper-refocus.md), [BA-HELPER-PLAN-2026-09-22.md](../To-Do/BA-HELPER-PLAN-2026-09-22.md) |
