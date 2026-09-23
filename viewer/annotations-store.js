@@ -183,4 +183,6 @@ module.exports = {
   AnnotationsUnreadableError,
   readAnnotationsFile, listAnnotationBackups, unreadableMessage, annotationsLoadError,
   assertWritable, writeAnnotationsFile,
+  // The same temp-then-rename step for the remembered-names store (names-store.js).
+  renameWithRetry: _renameWithRetry,
 };

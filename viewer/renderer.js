@@ -26,7 +26,7 @@ require("./layout-controls.js"); // side-effect import: self-wires resize handle
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
 const { promptModal } = require("./modals.js");
 const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent } = require("./recent.js");
-const { initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, reorderSelectedStep } = require("./views/steps-view.js");
+const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead } = require("./views/flow-view.js");
 const { renderOverviewLevel, openMarkersInFlow, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON } = require("./views/overview-view.js");
@@ -130,7 +130,7 @@ function _applyGrain(notch, opts = {}) {
 const VIEW_MODE_HELP = {
   overview: "Overview: what the capture measured (facts), the case-quality gate, the findings feed, and the PDD export.",
   flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
-  steps:  "Steps view: rename, split, merge, or flag the logical actions captured, or use the Detail slider to roll them up by screen / app / phase / case.",
+  steps:  "Steps view: each run's drafted steps. Confirm the pattern run first: fix its step boundaries, name its steps, then click Confirm run.",
   map:    "Map view: the Process diagram (BPMN) or Flow diagram for this session, at the chosen detail level (element … case) or by app category.",
 };
 
@@ -528,10 +528,10 @@ State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
 State.subscribe("steps",    renderMapLevel);
-// ADR-0024: a grain change re-renders the Steps list and the Flow timeline to
-// the new notch (the Map is moved by mapCtrl.setLevel, so it isn't subscribed
-// here to avoid a double render).
-State.subscribe("grain",    renderStepsLevel);
+// ADR-0024: a grain change re-renders the Flow timeline to the new notch (the
+// Map is moved by mapCtrl.setLevel, so it isn't subscribed here to avoid a
+// double render). The Steps level shows the runs and their steps whatever the
+// notch, so it does not follow the grain.
 State.subscribe("grain",    renderTimeline);
 State.subscribe("grain",    renderOverviewLevel);
 
@@ -631,10 +631,11 @@ const VIEW_SHORTCUTS = {
     ["Shift-drag", "Select range"],
   ],
   steps: [
-    ["J / K", "Prev / next step"],
-    ["Alt+↑ / ↓", "Move step up / down"],
-    ["S",     "Split step at playhead"],
-    ["M",     "Merge selected"],
+    ["↑ / ↓", "Previous / next step"],
+    ["Enter", "Rename step"],
+    ["S",     "Split step"],
+    ["M",     "Merge with next"],
+    ["Ctrl+Enter", "Confirm run"],
     ["Ctrl+Z", "Undo"],
   ],
 };
@@ -972,30 +973,41 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
-  // Step editor shortcuts (only when on the Steps level)
+  // Step shortcuts (only on the Steps level). They act only on what the list
+  // shows: the rows of the open run and a selected step whose row is on
+  // screen (RP-12: a shortcut once mutated a selection that was not on
+  // screen). Enter on a focused button or link keeps its own meaning, and a
+  // dialog on screen owns the keyboard (its Enter confirms the dialog).
   if (State.getLevel() === "steps" && State.getSession()) {
-    const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
-    // R1 (Steps chrome diet): reorder keeps a keyboard path now that the per-row
-    // ↑ / ↓ buttons are gone -- Alt+ArrowUp / Alt+ArrowDown move the selected
-    // step (same reorderStep semantics the right-click Move up/down items use).
-    // Plain Arrow / j / k still just navigate the selection.
-    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.altKey && !e.ctrlKey && !e.metaKey) {
-      if (State.getSelectedStepId()) { reorderSelectedStep(e.key === "ArrowUp" ? -1 : 1); e.preventDefault(); }
-    } else if (e.key === "j" || e.key === "ArrowDown") {
-      const idx = steps.findIndex(s => s.step_id === State.getSelectedStepId());
-      if (idx < steps.length - 1) { State.setSelectedStepId(steps[Math.max(0, idx + 1)].step_id); renderStepsLevel(); e.preventDefault(); }
-    } else if (e.key === "k" || e.key === "ArrowUp") {
-      const idx = steps.findIndex(s => s.step_id === State.getSelectedStepId());
-      if (idx > 0) { State.setSelectedStepId(steps[idx - 1].step_id); renderStepsLevel(); e.preventDefault(); }
-    } else if (e.key === "n") {
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    const onControl = tag === "button" || tag === "select" || tag === "a" ||
+      (e.target.getAttribute && e.target.getAttribute("role") === "button");
+    // The help modal is a .modal-backdrop that stays in the page, hidden:
+    // only a dialog on screen counts.
+    const dialogOpen = Array.from(document.querySelectorAll(".modal-backdrop"))
+      .some((m) => getComputedStyle(m).display !== "none");
+    if (dialogOpen) {
+      // Nothing: the dialog's own keys apply.
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      if (confirmOpenRun()) e.preventDefault();
+    } else if (e.key === "Enter" && plain && !onControl) {
+      if (renameSelectedStep()) e.preventDefault();
+    } else if ((e.key === "j" || e.key === "ArrowDown") && plain) {
+      if (moveSelection(1)) e.preventDefault();
+    } else if ((e.key === "k" || e.key === "ArrowUp") && plain) {
+      if (moveSelection(-1)) e.preventDefault();
+    } else if (e.key === "n" && plain) {
       addManualStep(); e.preventDefault();
-    } else if (e.key === "s") {
-      if (State.getSelectedStepId()) { splitStep(State.getSelectedStepId()); e.preventDefault(); }
-    } else if (e.key === "m") {
-      // P0.1: with a 2+ multi-selection, M merges that selection; otherwise it
-      // merges the selected step with the next one. No hidden "wrong pair".
+    } else if (e.key === "s" && plain) {
+      const sid = visibleSelectedStepId();
+      if (sid) { splitStep(sid); e.preventDefault(); }
+    } else if (e.key === "m" && plain) {
+      // P0.1: with a 2+ multi-selection (ticks stand only on rows the list
+      // shows), M merges that selection; otherwise it merges the selected
+      // step with the next step of its run. No hidden "wrong pair".
+      const sid = visibleSelectedStepId();
       if (State.getMultiSelectedStepIds().size >= 2) { mergeSelectedSteps(); e.preventDefault(); }
-      else if (State.getSelectedStepId()) { mergeStepWithNext(State.getSelectedStepId()); e.preventDefault(); }
+      else if (sid) { mergeStepWithNext(sid); e.preventDefault(); }
     }
   }
   else if (e.key === " ") {

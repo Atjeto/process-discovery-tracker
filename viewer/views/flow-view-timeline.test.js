@@ -86,3 +86,32 @@ test("a caller-supplied floor overrides the default", () => {
 test("a zero-width host renders nothing (no divide-by-zero surprise)", () => {
   assert.equal(caseLabelFits(50, 0), false);
 });
+
+/* ---- timeAtClientX: the marker menu acts at the clicked moment (item 8) ---- */
+
+const { timeAtClientX } = Timeline;
+const T0 = Date.parse("2026-05-14T09:00:00Z");
+const T1 = Date.parse("2026-05-14T09:10:00Z");   // a 600 s session
+
+test("timeAtClientX maps the pointer across the timeline width to the session time", () => {
+  const rect = { left: 100, width: 1200 };
+  assert.equal(timeAtClientX(100, rect, T0, T1), "2026-05-14T09:00:00.000Z");
+  assert.equal(timeAtClientX(700, rect, T0, T1), "2026-05-14T09:05:00.000Z");
+  assert.equal(timeAtClientX(1300, rect, T0, T1), "2026-05-14T09:10:00.000Z");
+});
+
+test("timeAtClientX follows a zoomed timeline that is scrolled (its rect starts left of the viewport)", () => {
+  // Zoomed 4x: 4800 px wide, scrolled so the host starts 2000 px left of the screen.
+  const rect = { left: -2000, width: 4800 };
+  // x = 160 + 2000 = 2160 px of 4800 = 45 % of 600 s = 270 s.
+  assert.equal(timeAtClientX(160, rect, T0, T1), "2026-05-14T09:04:30.000Z");
+});
+
+test("timeAtClientX clamps to the session and refuses unusable geometry", () => {
+  const rect = { left: 0, width: 600 };
+  assert.equal(timeAtClientX(-50, rect, T0, T1), "2026-05-14T09:00:00.000Z");
+  assert.equal(timeAtClientX(9999, rect, T0, T1), "2026-05-14T09:10:00.000Z");
+  assert.equal(timeAtClientX(10, { left: 0, width: 0 }, T0, T1), null);
+  assert.equal(timeAtClientX(10, rect, NaN, T1), null);
+  assert.equal(timeAtClientX(10, null, T0, T1), null);
+});

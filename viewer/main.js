@@ -29,7 +29,14 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
   : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
 const { runNormalize } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}) };
 const AnnoStore = require("./annotations-store.js");
+const NamesStore = require("./names-store.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
+
+/* Contract C4: the remembered-names store, one per analyst machine, under the
+   viewer's userData folder (an e2e run's throwaway profile gets its own). */
+function namesStorePath() {
+  return NamesStore.namesStorePath(app.getPath("userData"));
+}
 
 let mainWindow = null;
 
@@ -371,6 +378,16 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       error: e.code === "ANNOTATIONS_UNREADABLE" ? "Analysis stopped, nothing was changed: " + e.message
         : "Analysis could not start: " + e.message };
   }
+  // C4: every analysis the viewer runs drafts with the remembered names when
+  // the store exists (a missing store simply means no names yet). Analyze,
+  // the PDD export and the step-map export all re-draft, so all pass it.
+  let namesPath = null;
+  try {
+    const p = namesStorePath();
+    if (fs.existsSync(p)) namesPath = p;
+  } catch (e) {
+    console.warn("[viewer:runNormalizeExtended] the remembered names store could not be located: " + e.message);
+  }
   try {
     const result = await runNormalize({
       sessionFolder: root,
@@ -378,6 +395,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       pddOut: opts.pddOut || null,
       pddMapImage: opts.pddMapImage || null,
       pddTobeImage: opts.pddTobeImage || null,
+      namesPath,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
     });
@@ -466,6 +484,40 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
   } catch (e) {
     console.error("[viewer:saveAnnotations] not saved:", e && e.message);
     return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e) };
+  }
+});
+
+/* --- Remembered names (C4) ---------------------------------------- */
+
+/* The analyst renamed a step that carries a draft_key: remember the name for
+   that key. Payload { draftKey, name }. Result { ok: true, path } or
+   { ok: false, code, error, path }; never throws across IPC. The write is
+   atomic and never replaces an unreadable store (names-store.js). */
+ipcMain.handle("viewer:rememberStepName", (_e, payload) => {
+  let p = null;
+  try {
+    p = namesStorePath();
+    const { draftKey, name } = payload || {};
+    const r = NamesStore.rememberName(p, draftKey, name);
+    return { ok: true, path: r.path };
+  } catch (e) {
+    console.error("[viewer:rememberStepName] not remembered:", e && e.message);
+    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
+  }
+});
+
+/* The remembered names, for the name suggestions. Result
+   { ok: true, path, status: "absent" | "ok", names } or
+   { ok: false, path, error } (the store exists but cannot be read). */
+ipcMain.handle("viewer:readRememberedNames", () => {
+  let p = null;
+  try {
+    p = namesStorePath();
+    const r = NamesStore.readNamesFile(p);
+    if (r.status === "unreadable") return { ok: false, path: p, error: r.error };
+    return { ok: true, path: p, status: r.status, names: r.names };
+  } catch (e) {
+    return { ok: false, path: p, error: (e && e.message) || String(e) };
   }
 });
 

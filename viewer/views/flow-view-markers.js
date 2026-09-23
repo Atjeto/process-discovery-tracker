@@ -36,6 +36,16 @@ function effectiveLabel(markerEvent) {
 
 const APPLY_NOTE = "it applies to the cases when you analyze the session";
 
+/* A marker's time as the timeline shows it: local "HH:MM:SS" (the timeline's
+   axis labels are local; slicing the ISO string showed UTC and disagreed with
+   them by the time zone offset). "" when the timestamp cannot be read. */
+function localClock(iso) {
+  const d = new Date(iso);
+  if (!iso || !isFinite(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+}
+
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
@@ -80,7 +90,8 @@ function renderMarkersList() {
       (m.deleted ? ' <span class="meta bad">· deleted</span>' : "") +
       (m.pending ? ' <span class="meta pending-tag" title="Not applied yet: analyze the session to apply this change">· pending</span>' : "");
     row.innerHTML =
-      '<span class="ts">' + escapeHtml(String(m.timestamp || "").slice(11, 19)) + '</span>' +
+      '<span class="ts" title="' + escapeHtml(localClock(m.timestamp) ? new Date(m.timestamp).toLocaleString() : "") + '">' +
+        escapeHtml(localClock(m.timestamp)) + '</span>' +
       '<span class="dir">' + (m.markerType === "start" ? "▶" : "■") + '</span>' +
       '<span class="lbl">' + escapeHtml(lbl) +
         (m.reason ? ' <span class="meta">(' + escapeHtml(m.reason) + ')</span>' : '') +
@@ -227,5 +238,5 @@ async function renameMarker(m, newLabel) {
 })();
 
 module.exports = {
-  effectiveLabel, renderMarkersList,
+  effectiveLabel, renderMarkersList, localClock,
 };

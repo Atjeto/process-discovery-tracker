@@ -4,7 +4,7 @@
   const TimelineCore = require("./timeline/timeline-core.js");
   const PdtTheme = require("./theme.js");
   const PdtRecognize = require("./recognition.js");
-  const { stepStateLabel } = require("./session-summary.js");
+  const { stepChip } = require("./runs-model.js");
   const { escapeHtml, escapeAttr } = require("./dom.js");   // shared escapers (deduped)
   // One composed human identity line per element (App Library pass, R1). Reused
   // here for the step-detail interaction rows so a control with no accessible
@@ -43,14 +43,28 @@
     return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
   }
 
-  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu) {
+  /* What each step chip means, on hover. */
+  const CHIP_TITLES = {
+    draft: "Draft: the recorder drafted this step and it has not been checked yet. Confirm run accepts it as it is.",
+    confirmed: "Confirmed: you accepted the drafted step as it is.",
+    edited: "Edited: you changed this step (its name, its boundaries or its flags).",
+    added: "Added: you added this step by hand.",
+    hidden: "Hidden: you took this step out. Unhide it from its menu.",
+  };
+
+  /* The step rows of one run (steps-view.js renders the runs around them).
+     A row: the multi-select tick, the name (double-click to rename, with the
+     shared name suggestions), a remembered-name tag on a draft that took a
+     name given before, the waste badge, the state chip and the duration.
+       opts: { nameListId, onBeginRename(step), emptyHtml } */
+  function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu, opts) {
+    const o = opts || {};
     host.innerHTML = "";
     if (!steps || !steps.length) {
-      host.innerHTML = `
+      host.innerHTML = o.emptyHtml || `
         <div class="empty-pane">
           <p><strong>No steps yet.</strong></p>
-          <p>Steps appear after you click <em>Analyze session</em>. If the session had interaction events recorded, you'll see auto-suggested steps here.</p>
-          <p>You can also build steps yourself with the <strong>+ Add step</strong> button above.</p>
+          <p>Steps appear after you click <em>Analyze session</em>.</p>
         </div>`;
       return;
     }
@@ -65,6 +79,7 @@
         (s.state === "hidden" ? " step-hidden" : "") +
         (s.flags && s.flags.waste ? " step-flag-waste" : "");
       row.dataset.stepId = s.step_id;
+      row.dataset.state = s.state || "";
       // A3: analyst flag badges -- marking a step now visibly shows in the list.
       const _f = s.flags || {};
       // Only the value-add judgment is a genuine PER-STEP property. Exception
@@ -74,25 +89,23 @@
       // segments (ADR-0016), conditionality from the map's branch frequency.
       const flagBadges =
         (_f.waste ? '<span class="step-flag flag-waste" title="Waste: should not be needed">W</span>' : "");
-      // P0.3: repeat badge -- shown only when the repetition discriminates
-      // (the step recurs in some, not all, cases). A legible "N×" label; a
-      // step in every case is the uniform backbone and carries no badge.
-      const repeatBadge = s._repeatDiscriminating
-        ? `<span class="step-repeat" title="Appears in ${s._repeat} of ${s._repeatCaseCount} cases (not all): edit one, then Apply to repeats">${s._repeat}×</span>`
+      // RP-11: a draft that took a name the analyst gave before says where its
+      // name came from, so it is not mistaken for a name given here.
+      const remembered = (s.name_source === "remembered" && (s.state === "auto_suggested" || s.state === "confirmed"))
+        ? '<span class="step-remembered" title="Named from a name you gave before">remembered</span>'
         : "";
+      const chip = stepChip(s.state);
       // R1 (Steps chrome diet): a truncated name (the list ellipsizes) must be
       // readable on hover, so the title shows the FULL name; the rename hint
-      // rides after it. The per-row ↑ / ↓ reorder buttons are gone -- reorder
-      // moved into the right-click context menu (steps-view.js
-      // showStepContextMenu "Move up / Move down"), so 500-step lists aren't
-      // multiplied by two always-present controls. The multi-select check
-      // stays (a genuine per-row act for merge and bulk delete).
+      // rides after it. There are no per-row reorder buttons: the list is in
+      // time order. The multi-select check stays (a genuine per-row act for
+      // merge and bulk delete).
       const _nameTitle = (s.name ? s.name + " - " : "") + "double-click to rename";
       row.innerHTML = `
-        <span class="state-icon state-${escapeAttr(s.state)}" title="${escapeAttr(stepStateLabel(s.state))}"></span>
         <span class="multi-check" title="Click to select for merge or bulk delete"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${flagBadges}${repeatBadge}
+        ${remembered}${flagBadges}
+        <span class="step-chip step-chip-${escapeAttr(chip.cls)}" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
       `;
       row.addEventListener("click", (e) => {
@@ -110,9 +123,8 @@
         if (onMultiSelect) onMultiSelect(s.step_id);
       });
       // Right-click a row for the full step context menu (Split / Merge /
-      // Rename / Hide / Jump / flags AND the relocated Move up / Move down).
-      // Same menu the Steps timeline blocks open, so reorder stays reachable
-      // where the ↑ / ↓ buttons used to live.
+      // Rename / Hide / Jump / flags), the same menu the Steps timeline
+      // blocks open.
       if (onContextMenu) {
         row.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -123,19 +135,31 @@
       const nameEl = row.querySelector(".step-name");
       nameEl.addEventListener("dblclick", (e) => {
         e.stopPropagation();
-        beginInlineRename(nameEl, s, onInlineRename, steps);
+        // The first click of a double-click selects the row, and selecting
+        // re-renders the list, so this row can be detached by now (the
+        // browser still delivers dblclick to it). Rename the row that is on
+        // screen for this step, or the input would open where nobody sees it.
+        let target = nameEl;
+        if (!nameEl.isConnected) {
+          const live = Array.from(document.querySelectorAll(".step-row")).find((r) => r.dataset.stepId === s.step_id);
+          target = (live && live.querySelector(".step-name")) || nameEl;
+        }
+        if (o.onBeginRename) o.onBeginRename(s);
+        beginInlineRename(target, s, onInlineRename, steps, o.nameListId);
       });
       host.appendChild(row);
     }
   }
 
-  function beginInlineRename(nameEl, step, onInlineRename, allSteps) {
+  function beginInlineRename(nameEl, step, onInlineRename, allSteps, nameListId) {
     if (!nameEl || nameEl.querySelector("input")) return;
     const original = step.name || "";
     const input = document.createElement("input");
     input.type = "text";
     input.value = original;
     input.className = "step-name-edit";
+    // C4: suggest remembered names and the names already used in the session.
+    if (nameListId) input.setAttribute("list", nameListId);
     nameEl.textContent = "";
     nameEl.appendChild(input);
     input.focus();
@@ -209,12 +233,6 @@
     const splitBtnTitle = _hasSplitPoint
       ? "Split this step after interaction #" + (splitAfterIndex + 1)
       : "Split this step in two. Click the scissors on an interaction to choose where; otherwise it splits at the midpoint.";
-    // Decision 1: when this step recurs across tickets, offer to apply the
-    // curation (name + description + flags) to the matching steps in the rest.
-    const repeatCount = (callbacks && callbacks.repeatCount) || 0;
-    const propagateBtn = repeatCount > 1
-      ? `<button id="btn-step-propagate" title="Apply this step's name, description and flags to the ${repeatCount - 1} matching step(s) in other tickets">Apply to ${repeatCount - 1} repeat(s)</button>`
-      : "";
     // P0.1: merge is the inverse of split, shown right beside it. "Merge with
     // next" always merges this step + the following one; the count-labelled
     // "Merge N selected" appears only when 2+ steps are ticked, so one button
@@ -224,13 +242,15 @@
       ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
       : "";
     // Resident one-line facts: duration/start/end (unchanged) plus the R1
-    // app/screen + case facts threaded in from steps-view.js (a step with
+    // app/screen + run facts threaded in from steps-view.js (a step with
     // neither resolves to no chip, never a placeholder "(app)").
     const appScreenFact = (callbacks && callbacks.appScreenFact) || "";
-    const caseLabel = (callbacks && callbacks.caseLabel) || "";
+    const runLabel = (callbacks && callbacks.runLabel) || "";
     const factTiles =
       (appScreenFact ? `<div class="stat-tile"><div class="stat-tile-label">App / Screen</div><div class="stat-tile-value" title="${escapeAttr(appScreenFact)}">${escapeHtml(appScreenFact)}</div></div>` : "") +
-      (caseLabel ? `<div class="stat-tile"><div class="stat-tile-label">Case</div><div class="stat-tile-value" title="${escapeAttr(caseLabel)}">${escapeHtml(caseLabel)}</div></div>` : "");
+      (runLabel ? `<div class="stat-tile"><div class="stat-tile-label">Run</div><div class="stat-tile-value" title="${escapeAttr(runLabel)}">${escapeHtml(runLabel)}</div></div>` : "");
+    // C4: the name input suggests remembered and already-used names.
+    const nameList = (callbacks && callbacks.nameListId) ? ` list="${escapeAttr(callbacks.nameListId)}"` : "";
     const isHidden = step.state === "hidden";
     host.innerHTML = `
       <div class="step-stat-tiles">
@@ -239,13 +259,13 @@
         <div class="stat-tile"><div class="stat-tile-label">End</div><div class="stat-tile-value">${_end}</div></div>
         ${factTiles}
       </div>
-      <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"></label>
+      <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"${nameList}></label>
       <div class="flags">
         <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Feeds the value-add / waste analysis and surfaces in the aggregate as 'waste hotspots'."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
       <div class="actions">
         <button id="btn-step-save" class="primary">Save</button>
-        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Suppress this step as noise. It stays out of the list and survives re-analyze. Reveal it again via the hidden filter chip."}">${isHidden ? "Unhide" : "Hide as noise"}</button>
+        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out as noise. It stays out of the list and survives re-analyze. Show hidden steps on its run lists it again."}">${isHidden ? "Unhide" : "Hide as noise"}</button>
       </div>
       <details class="step-detail-more">
         <summary class="step-detail-more-head">
@@ -260,11 +280,10 @@
             <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
           </div>
           <div class="actions">
-            ${propagateBtn}
             <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
             ${(callbacks && callbacks.recordingAvailable) ? '<button id="btn-step-watch" title="Play the recording across this step\'s time range">▶ Watch</button>' : ""}
             <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
-            <button id="btn-step-merge" title="Merge this step with the one that follows it (the inverse of Split)">Merge with next</button>
+            <button id="btn-step-merge" title="Merge this step with the next step of its run (the inverse of Split)">Merge with next</button>
             ${mergeSelectedBtn}
             <button id="btn-step-delete" class="danger">Delete</button>
           </div>
@@ -291,9 +310,6 @@
       callbacks.onToggleHide && callbacks.onToggleHide(step.step_id));
     document.getElementById("btn-step-split").addEventListener("click", () =>
       callbacks.onSplit && callbacks.onSplit(step.step_id));
-    const _propBtn = document.getElementById("btn-step-propagate");
-    if (_propBtn) _propBtn.addEventListener("click", () =>
-      callbacks.onPropagate && callbacks.onPropagate());
     // A2: scissors on each interaction pick the split boundary.
     host.querySelectorAll(".si-split-btn").forEach((b) => {
       b.addEventListener("click", (e) => {
@@ -523,151 +539,8 @@
       `</details>`;
   }
 
-  /* ADR-0015 Phase 2: the aligned reading. Render the consensus BACKBONE -- the
-     modal step sequence across the detected cases (tickets) -- into the list
-     pane. Each row carries a frequency pill: how many of N cases hit that
-     position. A full-strength pill at n = N (in every case); a muted "partial"
-     pill below that (the step is not universal). The analyst curates ONE
-     backbone step and propagates to its instances (Phase 3); exceptions -- steps
-     a case has that the backbone lacks -- render below when supplied (Phase 4).
-       opts: { caseCount, backbone, selectedIndex, onSelectBackbone,
-               exceptions?, selectedStepId?, onSelectException? } */
-  function renderBackboneList(host, opts) {
-    opts = opts || {};
-    const backbone = opts.backbone || [];
-    host.innerHTML = "";
-    if (!backbone.length) {
-      host.innerHTML = `
-        <div class="empty-pane">
-          <p><strong>No aligned reading yet.</strong></p>
-          <p>The aligned reading lines up the repeating work across the session's cases (tickets). It needs the session split into 2+ cases: detect a case key first, then the consensus steps appear here.</p>
-        </div>`;
-      return;
-    }
-    const caseCount = opts.caseCount || 0;
-    const frag = document.createDocumentFragment();
-    backbone.forEach((e, i) => {
-      const row = document.createElement("div");
-      const partial = caseCount && e.frequency < caseCount;
-      row.className = "backbone-row" + (i === opts.selectedIndex ? " selected" : "");
-      row.dataset.bbIndex = String(i);
-      row.innerHTML =
-        `<span class="bb-seq">${i + 1}</span>` +
-        `<span class="bb-name" title="${escapeAttr(e.token)}">${escapeHtml(e.token)}</span>` +
-        `<span class="bb-freq${partial ? " partial" : ""}" title="In ${e.frequency} of ${caseCount} cases">${e.frequency}/${caseCount}</span>`;
-      row.addEventListener("click", () => opts.onSelectBackbone && opts.onSelectBackbone(i));
-      frag.appendChild(row);
-    });
-    host.appendChild(frag);
-
-    // Phase 4: exceptions -- steps a case has that the consensus does not.
-    const exceptions = opts.exceptions || [];
-    if (exceptions.length) {
-      const sec = document.createElement("div");
-      sec.className = "bb-exceptions";
-      sec.innerHTML =
-        `<div class="bb-exc-head" title="Steps a single case has that the consensus backbone does not: an exception ticket's extra work. Edit each one in place.">` +
-          `Exceptions · ${exceptions.length}</div>`;
-      const exFrag = document.createDocumentFragment();
-      exceptions.forEach((ex) => {
-        const row = document.createElement("div");
-        row.className = "bb-exc-row" + (ex.stepId === opts.selectedStepId ? " selected" : "");
-        row.dataset.stepId = ex.stepId;
-        row.innerHTML =
-          `<span class="bb-inst-case" title="Case (ticket): ${escapeAttr(ex.caseId || "")}">${escapeHtml(ex.caseLabel || ex.caseId || "")}</span>` +
-          `<span class="bb-name" title="${escapeAttr(ex.token)}">${escapeHtml(ex.token)}</span>`;
-        row.addEventListener("click", () => opts.onSelectException && opts.onSelectException(ex.stepId));
-        exFrag.appendChild(row);
-      });
-      sec.appendChild(exFrag);
-      host.appendChild(sec);
-    }
-  }
-
-  /* ADR-0015 Phase 2/3: the consensus-step detail. Shows the backbone step's
-     frequency and its aligned instances across cases (each with a jump to the
-     Flow view). Phase 3 adds the curate form (name / description / flags) seeded
-     from a representative instance and an "Apply to all instances" button that
-     propagates the curation to every member in ONE write (one Ctrl+Z).
-       entry: { token, frequency, members } (or null for the empty hint)
-       opts:  { caseCount, instances:[{caseId, step}], seed:{name,description,flags},
-                onJump, onApply } */
-  function renderBackboneDetail(host, entry, opts) {
-    opts = opts || {};
-    if (!entry) {
-      host.innerHTML = `
-        <div class="empty-pane">
-          <p>Pick a step in the consensus backbone to see its instances across cases, then curate one name + flags and apply to all.</p>
-          <p class="meta">Steps below the backbone are <strong>exceptions</strong>: one case's extra work. Select an exception to edit it in place.</p>
-        </div>`;
-      return;
-    }
-    const caseCount = opts.caseCount || 0;
-    const partial = caseCount && entry.frequency < caseCount;
-    const instances = opts.instances || [];
-    const seed = opts.seed || {};
-    const flags = seed.flags || {};
-    const instHtml = instances.map((it) => {
-      const sid = it.step ? it.step.step_id : "";
-      const nm = (it.step && it.step.name) || "(unnamed)";
-      const tm = it.step && it.step.time_range ? localTime(it.step.time_range.start) : "";
-      return `<li class="bb-instance" data-step-id="${escapeAttr(sid)}">` +
-        `<span class="bb-inst-case" title="Case (ticket): ${escapeAttr(it.caseId || "")}">${escapeHtml(it.caseLabel || it.caseId || "")}</span>` +
-        `<span class="bb-inst-name" title="${escapeAttr(nm)}">${escapeHtml(nm)}</span>` +
-        `<span class="bb-inst-time">${escapeHtml(tm)}</span>` +
-        `<button type="button" class="bb-inst-jump" data-step-id="${escapeAttr(sid)}" title="Jump to this instance in the Flow view">Flow ▸</button>` +
-        `</li>`;
-    }).join("");
-    // The curate form + Apply button only render when the caller wires onApply
-    // (ADR-0015 Phase 3). Phase 2 is a read-only reading: head + instances only,
-    // so no inert control is shown.
-    const curateHtml = opts.onApply ? `
-      <label>Name <input type="text" id="bb-name" value="${escapeAttr(seed.name || entry.token)}"></label>
-      <label>Description <textarea id="bb-desc">${escapeHtml(seed.description || "")}</textarea></label>
-      <div class="flags">
-        <label title="This step shouldn't be necessary (rework, duplicate effort, copy-paste between systems). Feeds the value-add / waste analysis."><input type="checkbox" id="bb-flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
-      </div>
-      <p class="meta">Exception paths come from the observed variants, automation candidacy from coherent segments (Analysis), and conditionality from the map's branch frequency. None are per-step toggles (ADR-0027).</p>
-      <div class="actions">
-        <button id="btn-bb-apply" class="primary" title="Apply this name, description and flags to all ${instances.length} aligned instance(s) across cases: one edit, one Ctrl+Z.">Apply to all ${instances.length} instances</button>
-      </div>` : "";
-    host.innerHTML = `
-      <div class="bb-detail-head">
-        <div class="bb-detail-title" title="The shared step name (ticket/order values stripped out)">${escapeHtml(entry.token)}</div>
-        <div class="bb-detail-freq${partial ? " partial" : ""}">Seen in ${entry.frequency} of ${caseCount} cases</div>
-      </div>
-      <p class="meta">${partial
-        ? "Not in every case: review whether it belongs in the consensus before applying."
-        : "In every case: the consensus backbone for this process."}</p>
-      ${curateHtml}
-      <div class="bb-instances">
-        <div class="bb-instances-title">Aligned instances (${instances.length})</div>
-        <ol class="bb-instance-list">${instHtml}</ol>
-      </div>`;
-    host.querySelectorAll(".bb-inst-jump").forEach((b) => b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (opts.onJump) opts.onJump(b.dataset.stepId);
-    }));
-    const applyBtn = document.getElementById("btn-bb-apply");
-    if (applyBtn) applyBtn.addEventListener("click", () => {
-      if (!opts.onApply) return;
-      opts.onApply({
-        name: document.getElementById("bb-name").value.trim(),
-        description: document.getElementById("bb-desc").value.trim(),
-        // ADR-0027: waste is the only per-step flag. Spread any existing seed
-        // flags so legacy keys are preserved-but-untouched (ignored downstream),
-        // and only the waste toggle is authored here -- mirrors renderStepDetail.
-        flags: {
-          ...flags,
-          waste: document.getElementById("bb-flag-waste").checked,
-        },
-      });
-    });
-  }
-
   module.exports = {
     renderStepList, renderStepDetail, renderStepTimeline,
     describeInteraction, renderInteractionList, siKindClass,
-    renderBackboneList, renderBackboneDetail,
   };
 })();

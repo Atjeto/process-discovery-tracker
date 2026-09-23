@@ -372,31 +372,72 @@ async function unreadableAnnotationsPin() {
   record("§A3: steps-lane band click selects + seeks WITHOUT a view switch (stays on Flow)",
     !!(laneClick.ok && laneClick.stayedFlow && laneClick.selected && laneClick.highlighted),
     JSON.stringify(laneClick));
+  // "Open in Steps" on a band of the LAST run: the Steps view opened on the
+  // pattern run (run 1) before, so the arrival has to open another run to
+  // reveal the step.
   const openInSteps = await page.evaluate(() => {
-    const band = document.querySelector(".tl-step-band[data-step-id]");
-    if (!band) return { ok: false };
+    const s = require("./state.js").getSession();
+    const runs = ((s.stats && s.stats.case_stats) || []).filter((c) => !c.parent_case_id)
+      .sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts));
+    const last = runs[runs.length - 1];
+    const caseOf = {};
+    for (const st of ((s.annotations && s.annotations.steps) || [])) caseOf[st.step_id] = st.case_id;
+    const band = [...document.querySelectorAll(".tl-step-band[data-step-id]")]
+      .find((b) => last && caseOf[b.dataset.stepId] === last.case_id);
+    if (!band) return { ok: false, why: "no steps-lane band of the last run" };
     band.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 300, clientY: 250 }));
     const menu = document.getElementById("tl-ctx-menu");
     const item = menu && [...menu.querySelectorAll("div")].find((d) => /open in steps/i.test(d.textContent || ""));
     if (!item) return { ok: false, why: "no Open in Steps item" };
     item.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    return { ok: true };
+    return { ok: true, stepId: band.dataset.stepId, caseId: last.case_id, runs: runs.length };
   }).catch((e) => ({ ok: false, why: e.message }));
+  // Where the step is in the Steps list: its run open (the only open one), its
+  // row selected and inside the list's visible box.
+  const revealProbe = (o) => page.evaluate((x) => {
+    const State = require("./state.js");
+    const layout = document.getElementById("session-layout-steps");
+    const grp = [...document.querySelectorAll("#step-list .run-group")].find((g) => g.dataset.caseId === x.caseId);
+    const row = grp && [...grp.querySelectorAll(".step-row")].find((r) => r.dataset.stepId === x.stepId);
+    const lr = document.getElementById("step-list").getBoundingClientRect();
+    const rr = row ? row.getBoundingClientRect() : null;
+    return {
+      onSteps: State.getLevel() === "steps" && !!layout && getComputedStyle(layout).display !== "none",
+      selectionKept: State.getSelectedStepId() === x.stepId,
+      runOpen: !!(grp && grp.classList.contains("open")),
+      openRuns: document.querySelectorAll("#step-list .run-group.open").length,
+      rowSelected: !!(row && row.classList.contains("selected")),
+      rowInView: !!(rr && rr.top >= lr.top - 1 && rr.bottom <= lr.bottom + 1),
+    };
+  }, o).catch((e) => ({ err: e.message }));
+  const revealed = (p) => !!(p && p.onSteps && p.selectionKept && p.runOpen && p.openRuns === 1 && p.rowSelected && p.rowInView);
   let openLanded = { onSteps: false };
   if (openInSteps.ok) {
-    await wait(700);
-    openLanded = await page.evaluate(() => {
-      const State = require("./state.js");
-      const layout = document.getElementById("session-layout-steps");
-      return {
-        onSteps: State.getLevel() === "steps" && layout && getComputedStyle(layout).display !== "none",
-        selectionKept: !!State.getSelectedStepId(),
-      };
-    });
+    // The row scrolls smoothly into view: wait for the state, not a fixed time.
+    await page.waitForFunction((x) => {
+      const grp = [...document.querySelectorAll("#step-list .run-group")].find((g) => g.dataset.caseId === x.caseId);
+      const row = grp && [...grp.querySelectorAll(".step-row")].find((r) => r.dataset.stepId === x.stepId);
+      if (!row) return false;
+      const lr = document.getElementById("step-list").getBoundingClientRect(), rr = row.getBoundingClientRect();
+      return rr.top >= lr.top - 1 && rr.bottom <= lr.bottom + 1;
+    }, openInSteps, { timeout: 15000 }).catch(() => {});
+    openLanded = await revealProbe(openInSteps);
   }
-  record("§A3: the labeled 'Open in Steps' right-click item switches to Steps + keeps the selection (arrival reveal)",
-    !!(openInSteps.ok && openLanded.onSteps && openLanded.selectionKept),
+  record("§A3: the labeled 'Open in Steps' right-click item switches to Steps and reveals the step inside its run (the run opens, the row is selected and in view)",
+    !!(openInSteps.ok && openInSteps.runs >= 2 && revealed(openLanded)),
     JSON.stringify({ openInSteps, openLanded }));
+  // A return (Flow, then back to Steps) restores the same run and step.
+  let returned = null;
+  if (openInSteps.ok) {
+    await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
+    await wait(500);
+    await page.click('.view-mode-btn[data-level="steps"]').catch(() => {});
+    await wait(900);
+    returned = await revealProbe(openInSteps);
+  }
+  record("§A3: a return to Steps restores the same run and step (still open and selected)",
+    revealed(returned), JSON.stringify(returned));
+  if (!revealed(openLanded) || !revealed(returned)) await shot(page, "fail-open-in-steps.png");
   // Restore: back to Flow, steps lane off, screen notch (leave the view as found).
   await page.evaluate(() => {
     const T = require("./views/flow-view-timeline.js");
@@ -433,39 +474,37 @@ async function unreadableAnnotationsPin() {
     if (ob) { await ob.click().catch(() => {}); await wait(900); }
   }
 
-  // ADR-0028 (R3): the DEFAULT screen-notch Steps reading is now the CASE TREE
-  // (cases -> case-scoped screen-visit work items), NOT the ADR-0024 consecutive
-  // roll-up in .step-row. The element notch still shows every fine fragment.
-  // Pin the same invariant against the new default: element shows the fine
-  // fragment count; the screen notch consolidates to fewer work-item units.
+  // BA helper L7a: the Steps level is the runs and their steps whatever the
+  // Detail slider says. The ADR-0028 case tree (the old screen-notch default)
+  // and the ADR-0024 roll-up rows are gone from Steps, so the same runs, the
+  // same open run and the same step rows show at the element and the screen
+  // notch. (This replaces the pin "element shows the fine count, screen
+  // consolidates to work items": the slider no longer changes Steps.)
   async function goSteps() {
     const sb = await page.$('.view-mode-btn[data-level="steps"]');
     if (sb) { await sb.click().catch(() => {}); await wait(700); }
   }
-  await goSteps();
-  await setGrainNotch(0);   // element notch -> the flat fragment list
-  const elementCount = await page.evaluate(
-    () => document.querySelectorAll("#step-list .step-row").length).catch(() => 0);
-  await goSteps();
-  await setGrainNotch(1);   // screen notch (default) -> the R3 case tree
-  // Expand every case (each click re-renders the list, so click one at a time,
-  // re-querying between), then count the work-item rows.
-  const caseCount = await page.evaluate(
-    () => document.querySelectorAll("#step-list .wi-case-head").length).catch(() => 0);
-  for (let i = 0; i < caseCount; i++) {
-    await page.evaluate((idx) => {
-      const heads = document.querySelectorAll("#step-list .wi-case-head");
-      if (heads[idx] && !heads[idx].classList.contains("open")) heads[idx].click();
-    }, i).catch(() => {});
-    await wait(120);
-  }
-  const screenCount = await page.evaluate(
-    () => document.querySelectorAll("#step-list .wi-item-row").length).catch(() => 0);
+  const stepsAtNotch = async (idx) => {
+    await goSteps();
+    await setGrainNotch(idx);
+    return page.evaluate(() => ({
+      runs: document.querySelectorAll("#step-list .run-group").length,
+      open: [...document.querySelectorAll("#step-list .run-group.open")].map((g) => g.dataset.caseId || g.dataset.group),
+      rows: [...document.querySelectorAll("#step-list .step-row")].map((r) => r.dataset.stepId),
+      removed: document.querySelectorAll(
+        "#step-list .wi-case-head, #step-list .wi-item-row, #step-list .grain-group-row, #step-list .backbone-row").length,
+    })).catch((e) => ({ err: e.message }));
+  };
+  const atElement = await stepsAtNotch(0);
+  const atScreen = await stepsAtNotch(1);
   if (grainSliderExists) {
-    const consolidates = elementCount > 0 && screenCount > 0 && screenCount < elementCount;
-    record("grain roll-up: element shows the fine count, screen consolidates to work items", consolidates,
-      "element=" + elementCount + " fragments, screen=" + screenCount + " work items (screen must be fewer, both > 0)");
-    if (!consolidates) await shot(page, "fail-grain-rollup.png");
+    const same = !!(atElement && atScreen && !atElement.err && atElement.runs >= 2 && atElement.rows.length > 0 &&
+      atElement.removed === 0 && atScreen.removed === 0 &&
+      JSON.stringify(atElement) === JSON.stringify(atScreen));
+    record("Steps shows the same runs and steps at every Detail notch (no case tree, no roll-up rows)", same,
+      JSON.stringify({ element: atElement && { runs: atElement.runs, open: atElement.open, rows: (atElement.rows || []).length },
+        screen: atScreen && { runs: atScreen.runs, open: atScreen.open, rows: (atScreen.rows || []).length } }));
+    if (!same) await shot(page, "fail-steps-notch.png");
   }
 
   // R1 (approachability redesign, 2026-07-03): "Process efficiency" and the

@@ -15,18 +15,20 @@ const path = require("node:path");
 const { describeInteraction, renderInteractionList, siKindClass } = require("./step-editor.js");
 
 /* ---- ADR-0027 regression guard ------------------------------------- */
-// renderBackboneDetail's "apply to all" curate form once re-introduced the
-// retired per-step flags (conditional / exception_path / automation_candidate)
-// and wrote them onto every aligned instance. waste is the only per-step flag
-// now. renderBackboneDetail needs a DOM, so we scan the source (the curate form
-// only EVER references these control ids) to pin the invariant DOM-free.
-test("ADR-0027: the backbone curate form exposes only the waste flag", () => {
+// The aligned reading's "apply to all" curate form (removed with the aligned
+// reading, BA helper L7a) once re-introduced the retired per-step flags
+// (conditional / exception_path / automation_candidate) and wrote them onto
+// every aligned instance. waste is the only per-step flag. The step forms need
+// a DOM, so we scan the source for every retired control id (the step detail's
+// old flag-conditional / flag-exception / flag-auto, and the curate form's
+// bb-flag-* forms, which contain them) to pin the invariant DOM-free.
+test("ADR-0027: no step form exposes a retired per-step flag; the waste flag stays", () => {
   const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
-  for (const id of ["bb-flag-conditional", "bb-flag-exception", "bb-flag-auto"]) {
+  for (const id of ["flag-conditional", "flag-exception", "flag-auto"]) {
     assert.ok(!src.includes(id),
-      `retired per-step flag control ${id} must not return to the backbone form`);
+      `retired per-step flag control ${id} must not return to a step form`);
   }
-  assert.ok(src.includes("bb-flag-waste"), "the waste flag control must remain");
+  assert.ok(src.includes('id="flag-waste"'), "the waste flag control must remain");
 });
 
 function inter(data) {

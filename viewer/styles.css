@@ -800,10 +800,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background: transparent; padding: 0; font-size: 11px;
   color: var(--fg-2); white-space: pre;
 }
-.help-section .state-icon {
-  display: inline-block; width: 9px; height: 9px;
-  border-radius: 50%; margin-right: 4px; vertical-align: middle;
-}
+.help-section .step-chip { margin-right: 4px; vertical-align: 1px; }
 
 /* ===== Scrollbars ===== */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1309,7 +1306,9 @@ details.analysis-module { padding: 0; }
 }
 .editor-toolbar .link-help:hover { color: var(--accent); border-color: var(--accent); }
 .editor-split {
-  display: grid; grid-template-columns: 340px 1fr; gap: 10px;
+  /* The runs list is where the analyst reads and fixes step names, so it
+     gets the wider share (it was a 340px step list). */
+  display: grid; grid-template-columns: minmax(360px, 45%) 1fr; gap: 10px;
   flex: 1; min-height: 340px;
   /* B1: pin the single row to the available height (minmax(0,1fr)) instead
      of letting it grow to whichever pane is taller. The list pane then keeps
@@ -1358,65 +1357,6 @@ details.analysis-module { padding: 0; }
   min-width: 46px; text-align: left;
 }
 
-/* ADR-0024: the Steps list rolled up at a coarse grain — one row per run of
-   consecutive same-notch steps. Reuses .step-row spacing; adds a fold count. */
-.grain-group-row { display: flex; align-items: center; gap: 8px; }
-.grain-group-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.grain-group-count {
-  display: inline-block; margin-left: 6px; padding: 0 5px;
-  font-family: var(--font-mono); font-size: 10px;
-  background: var(--bg-4); color: var(--fg-3); border-radius: 8px;
-}
-.grain-group-dur { font-size: 10px; }
-.grain-legend-hint { color: var(--fg-4); }
-
-/* ADR-0028 (R3): the Steps case tree — cases -> case-scoped screen-visit work
-   items. The case head is a collapsible group; work items are indented rows. */
-.wi-case-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px; border-radius: 3px; cursor: pointer;
-  font-size: 12px; font-weight: 600; color: var(--fg);
-  border: 1px solid transparent; margin-bottom: 1px; min-height: 28px;
-}
-.wi-case-head:hover { background: var(--bg-3); border-color: var(--rule); }
-.wi-case-head.open { background: var(--bg-2); }
-.wi-case-caret { flex: 0 0 auto; width: 12px; color: var(--fg-3); font-size: 10px; }
-.wi-case-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wi-case-meta { flex-shrink: 0; font-size: 10px; }
-.wi-item-group { margin: 0 0 3px 14px; border-left: 1px solid var(--rule-soft); padding-left: 4px; }
-.wi-item-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 12px;
-  border: 1px solid transparent; margin-bottom: 1px; min-height: 24px;
-}
-.wi-item-row:hover { background: var(--bg-3); border-color: var(--rule); }
-.wi-item-row.selected { background: var(--accent-muted); border-color: var(--accent); }
-.wi-item-row.wi-item-hidden { opacity: 0.45; }
-.wi-item-name { flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wi-item-meta { flex-shrink: 0; font-size: 10px; }
-.wi-item-dur { flex-shrink: 0; font-size: 10px; font-family: var(--font-mono); color: var(--fg-3); }
-.wi-visits { color: var(--accent-2); }
-.wi-waste-tag {
-  display: inline-block; padding: 0 5px; margin-right: 4px;
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
-  background: var(--bg-4); color: var(--fg-3); border-radius: 8px;
-}
-/* Work-item detail: member fragment list under "More". */
-.wi-members { display: flex; flex-direction: column; gap: 1px; }
-.wi-member-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 3px 4px; border-radius: 3px; font-size: 11px; cursor: pointer;
-}
-.wi-member-row:hover { background: var(--bg-3); }
-.wi-member-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-2); }
-.wi-member-time { flex-shrink: 0; font-size: 10px; font-family: var(--font-mono); }
-.wi-member-jump {
-  flex-shrink: 0; padding: 1px 6px; font-size: 10px;
-  background: var(--bg-3); border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg-3); cursor: pointer;
-}
-.wi-member-jump:hover { color: var(--accent); border-color: var(--accent); }
-
 /* Flow timeline activity bands dimmed when out of the scoped case. */
 .tl-activity.out-of-scope { opacity: 0.15; filter: grayscale(0.4); }
 
@@ -1433,15 +1373,6 @@ details.analysis-module { padding: 0; }
 }
 .list-filter-input::-webkit-search-cancel-button { filter: invert(0.5); }
 .list-filter-input:focus { border-color: var(--accent-2); }
-.list-filter-chips { display: flex; gap: 2px; }
-.list-filter-chips .chip {
-  padding: 4px 6px; background: var(--bg-3); border: 1px solid var(--rule);
-  border-radius: 3px; cursor: pointer; opacity: 0.45; transition: all 0.1s;
-  display: flex; align-items: center; min-width: 24px; justify-content: center;
-}
-.list-filter-chips .chip:hover { opacity: 0.75; background: var(--bg-4); }
-.list-filter-chips .chip.active { opacity: 1; background: var(--bg-4); border-color: var(--fg-4); }
-.list-filter-chips .chip .state-icon { margin: 0; }
 .list-filter-case {
   background: var(--bg-3); color: var(--fg); border: 1px solid var(--rule);
   border-radius: 3px; padding: 4px 6px; font-size: 11px; font-family: inherit;
@@ -1571,17 +1502,77 @@ details.analysis-module { padding: 0; }
   color: var(--fg-3); font-family: var(--font-mono); font-size: 10px;
   flex-shrink: 0;
 }
-.state-icon {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--fg-3); flex: 0 0 auto;
-}
-.state-icon.state-auto_suggested    { background: var(--fg-3); }
-.state-icon.state-auto_matched      { background: var(--accent); }
-.state-icon.state-manually_authored { background: var(--accent-2); }
-.state-icon.state-edited            { background: var(--accent-3); }
-.state-icon.state-hidden            { background: transparent; border: 1px solid var(--fg-4); }
 /* Hidden steps render dimmed in the list so they're visibly suppressed. */
 .step-row.step-hidden { opacity: 0.4; }
+
+/* A step's state as a word (Draft / Confirmed / Edited / Added / Hidden).
+   The text stays --fg / --fg-3 so small labels keep AA contrast in both
+   themes; the state shows in the border and the tint. */
+.step-chip {
+  flex: none; display: inline-flex; align-items: center; height: 16px;
+  padding: 0 6px; border-radius: 8px; border: 1px solid var(--rule);
+  font-size: 10px; line-height: 1; white-space: nowrap; color: var(--fg-3);
+}
+.step-chip-confirmed { color: var(--fg); border-color: var(--va); background: color-mix(in srgb, var(--va) 14%, transparent); }
+.step-chip-edited { color: var(--fg); border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
+.step-chip-added { color: var(--fg); border-color: var(--accent); background: var(--accent-muted); }
+.step-chip-hidden { border-style: dashed; }
+.step-remembered {
+  flex: none; font-size: 10px; font-style: italic; color: var(--fg-3); white-space: nowrap;
+}
+
+/* ===== Steps: the runs and their steps (BA helper, contracts C1 to C4) =====
+   One group per run; the open one lists its steps. The pattern run carries
+   a badge, and once confirmed the probe line (a copyable monospace line). */
+.runs-none {
+  padding: 8px 10px; margin-bottom: 8px; font-size: 12px; color: var(--fg-2);
+  border: 1px dashed var(--rule); border-radius: var(--radius-sm);
+}
+.runs-none p { margin: 0 0 8px; }
+.run-group {
+  border: 1px solid transparent; border-radius: var(--radius-sm); margin-bottom: 3px;
+}
+.run-group.open { border-color: var(--rule); background: var(--bg-1); }
+.run-row {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding: 6px 8px; min-height: 30px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 12px; color: var(--fg);
+}
+.run-row:hover { background: var(--bg-3); }
+.run-row:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.run-caret { flex: 0 0 10px; color: var(--fg-3); font-size: 10px; }
+.run-title { flex: none; font-weight: 600; white-space: nowrap; }
+.run-label {
+  flex: 1 1 auto; min-width: 0; color: var(--fg-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.run-pattern-badge, .run-status {
+  flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px;
+  border-radius: 8px; border: 1px solid var(--rule); font-size: 10px; line-height: 1; white-space: nowrap;
+}
+.run-pattern-badge { font-weight: 700; color: var(--fg); border-color: var(--accent); background: var(--accent-muted); }
+.run-status { color: var(--fg-3); }
+.run-status-confirmed { color: var(--fg); border-color: var(--va); background: color-mix(in srgb, var(--va) 14%, transparent); }
+.run-status-empty { border-style: dashed; }
+.run-meta { flex: none; font-size: 10px; font-family: var(--font-mono); color: var(--fg-3); white-space: nowrap; }
+.run-body { padding: 2px 8px 8px 26px; }
+.run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 6px; }
+.run-actions:empty { display: none; }
+.run-show-hidden {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-3); cursor: pointer;
+}
+.run-fixes { font-size: 11px; color: var(--fg-3); margin: 0 0 6px; }
+.run-steps-empty { margin: 4px 0; font-size: 11px; color: var(--fg-3); }
+.run-probe {
+  display: flex; align-items: center; gap: 8px; margin: 0 8px 6px 26px; padding: 5px 8px;
+  border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-muted);
+}
+.run-probe-text {
+  flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); font-size: 11px; color: var(--fg);
+  user-select: text; overflow-wrap: anywhere;
+}
+.run-probe-copy { flex: none; padding: 2px 10px; font-size: 11px; }
+.run-guide p { margin: 0 0 10px; }
 
 /* ===== Step detail editor (compact) ===== */
 .editor-detail-pane label {
@@ -1728,87 +1719,6 @@ details.analysis-module { padding: 0; }
 .step-flag.flag-cond  { background: #7C7A72; }
 .step-flag.flag-exc   { background: #C8862A; }
 .step-row.step-flag-waste .step-name { text-decoration: line-through; opacity: 0.72; }
-/* Decision 1: repeat badge -- this step recurs across N tickets. */
-.step-repeat {
-  display: inline-flex; align-items: center; margin-left: 4px; flex: none;
-  padding: 0 4px; height: 14px; border-radius: 3px;
-  font-size: 9px; font-weight: 700; font-family: var(--font-mono);
-  color: var(--accent); background: var(--accent-muted); border: 1px solid var(--accent);
-}
-
-/* ===== ADR-0015: the aligned reading (Steps view) =====
-   The Flat/Aligned toggle, the consensus backbone list, and the consensus
-   detail. All colours come from theme tokens (--accent strong = universal,
-   --warn = partial/exception), so light and dark read in parity. */
-.reading-toggle { display: inline-flex; align-items: center; gap: 6px; }
-.reading-toggle-label { font-size: 11px; color: var(--fg-3); }
-.seg-toggle { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--radius-sm); overflow: hidden; }
-.seg-toggle button {
-  border: 0; border-radius: 0; padding: 3px 12px; font-size: 11px;
-  background: transparent; color: var(--fg-3); cursor: pointer;
-}
-.seg-toggle button + button { border-left: 1px solid var(--rule); }
-.seg-toggle button.active { background: var(--accent); color: var(--accent-text); }
-.seg-toggle button:hover:not(.active) { background: var(--bg-3); color: var(--fg); }
-
-/* Backbone list rows */
-.backbone-row {
-  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-  border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 13px;
-}
-.backbone-row:hover { background: var(--bg-3); }
-.backbone-row.selected { background: var(--accent-muted); box-shadow: inset 2px 0 0 var(--accent); }
-.backbone-row .bb-seq {
-  flex: none; min-width: 18px; text-align: right; color: var(--fg-4);
-  font-family: var(--font-mono); font-size: 11px;
-}
-.backbone-row .bb-name {
-  flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.bb-freq {
-  flex: none; padding: 0 5px; height: 16px; display: inline-flex; align-items: center;
-  border-radius: 3px; font-size: 10px; font-weight: 700; font-family: var(--font-mono);
-  color: var(--accent); background: var(--accent-muted); border: 1px solid var(--accent);
-}
-.bb-freq.partial {
-  color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: var(--warn);
-}
-
-/* Backbone detail (consensus step) */
-.bb-detail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
-.bb-detail-title { font-size: 15px; font-weight: 600; color: var(--fg); }
-.bb-detail-freq { flex: none; font-size: 11px; font-family: var(--font-mono); color: var(--accent); }
-.bb-detail-freq.partial { color: var(--warn); }
-.bb-instances { margin-top: 12px; }
-.bb-instances-title { font-size: 11px; color: var(--fg-3); margin-bottom: 4px; }
-.bb-instance-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
-.bb-instance {
-  display: flex; align-items: center; gap: 8px; padding: 4px 6px;
-  border-bottom: 1px solid var(--rule); font-size: 12px;
-}
-.bb-inst-case {
-  flex: none; font-family: var(--font-mono); font-size: 10px; color: var(--accent-2);
-  background: color-mix(in srgb, var(--accent-2) 14%, transparent); padding: 0 5px; border-radius: 3px;
-}
-.bb-inst-name { flex: 1; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bb-inst-time { flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px; }
-.bb-inst-jump { flex: none; padding: 1px 7px; font-size: 10px; }
-
-/* Phase 4: exceptions -- steps a single case has that the consensus lacks.
-   Warn-toned (the partial/divergent colour), edited per-instance. */
-.bb-exceptions { border-top: 1px solid var(--rule); margin-top: 4px; }
-.bb-exc-head {
-  padding: 7px 8px 4px; font-size: 10px; font-weight: 700; color: var(--warn);
-  text-transform: uppercase; letter-spacing: 0.4px;
-}
-.bb-exc-row {
-  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-  border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 12px;
-  box-shadow: inset 2px 0 0 var(--warn);
-}
-.bb-exc-row:hover { background: var(--bg-3); }
-.bb-exc-row.selected { background: color-mix(in srgb, var(--warn) 14%, transparent); }
-.bb-exc-row .bb-name { flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ===== Anno-tab badge ===== */
 .badge {

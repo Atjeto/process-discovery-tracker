@@ -42,6 +42,21 @@ function saveAnnotations(payload) {
   return ipcRenderer.invoke("viewer:saveAnnotations", payload);
 }
 
+/* ---- Remembered names (C4) ---- */
+
+/** Remember a step name for its draft key.
+ *  @param {{draftKey: string, name: string}} payload
+ *  @returns {Promise<{ok: boolean, path?: string, error?: string}>} */
+function rememberStepName(payload) {
+  return ipcRenderer.invoke("viewer:rememberStepName", payload);
+}
+
+/** The remembered names ({ ok, path, status, names } or { ok: false, error }).
+ *  @returns {Promise<any>} */
+function readRememberedNames() {
+  return ipcRenderer.invoke("viewer:readRememberedNames");
+}
+
 /* ---- Export / shell ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -98,6 +113,7 @@ module.exports = {
   loadSession, openSessionFolder,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations,
+  rememberStepName, readRememberedNames,
   exportFile, saveSvgFile, revealFile, openExternal, openDiagram,
   attachExternalVideo, saveExternalVideoSync,
   onNormalizeLog, onOpenInitialSession,

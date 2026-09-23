@@ -66,11 +66,25 @@ function resolveDefaultTaxonomy() {
   return null;
 }
 
-function runNormalize(opts) {
+/* The normalize.py command line (after the interpreter) for one run. Pure, so
+   the unit tests pin it. `namesPath` is the remembered-names store (contract
+   C4): passed as --names so drafts whose key it lists arrive named. */
+function buildNormalizeArgs(script, opts) {
   const {
-    sessionFolder, taxonomyPath, mine, onLog, onProc,
-    pddOut, pddMapImage, pddTobeImage,
+    sessionFolder, taxonomyPath, mine, pddOut, pddMapImage, pddTobeImage, namesPath,
   } = opts || {};
+  const args = [script, sessionFolder];
+  if (taxonomyPath) args.push("--taxonomy", taxonomyPath);
+  if (mine) args.push("--mine");
+  if (pddOut) args.push("--pdd-out", pddOut);
+  if (pddMapImage) args.push("--pdd-map-image", pddMapImage);
+  if (pddTobeImage) args.push("--pdd-tobe-image", pddTobeImage);
+  if (namesPath) args.push("--names", namesPath);
+  return args;
+}
+
+function runNormalize(opts) {
+  const { taxonomyPath, onLog, onProc } = opts || {};
   /* onProc(child) fires once with the spawned process handle so the
      caller can install a cancel button. We DON'T expose the promise
      resolver because we want consistent semantics: cancellation
@@ -80,12 +94,7 @@ function runNormalize(opts) {
     const python = resolvePython();
     const script = resolveNormalizeScript();
     const tax = taxonomyPath || resolveDefaultTaxonomy();
-    const args = [script, sessionFolder];
-    if (tax) args.push("--taxonomy", tax);
-    if (mine) args.push("--mine");
-    if (pddOut) args.push("--pdd-out", pddOut);
-    if (pddMapImage) args.push("--pdd-map-image", pddMapImage);
-    if (pddTobeImage) args.push("--pdd-tobe-image", pddTobeImage);
+    const args = buildNormalizeArgs(script, Object.assign({}, opts, { taxonomyPath: tax }));
 
     const proc = spawn(python, args, {
       cwd: path.dirname(script),
@@ -155,5 +164,5 @@ function runNormalize(opts) {
 }
 
 module.exports = {
-  runNormalize, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
+  runNormalize, buildNormalizeArgs, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
 };

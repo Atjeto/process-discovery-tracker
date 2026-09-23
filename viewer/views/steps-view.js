@@ -1,12 +1,23 @@
 /*
- * steps-view.js -- the Steps level of the Session view.
+ * steps-view.js -- the Steps level of the Session view: the runs and their
+ * steps (BA helper cycle, contracts C1 to C4).
  *
- * Owns the step list + detail + mini-timeline rendering, the step
- * filter, all step CRUD (rename / save / split / merge / hide / delete /
- * add-manual / bulk-delete), and the ignored-apps denylist dialog.
+ * The list pane shows the runs in time order (the cases from the markers).
+ * One group is open at a time: a run, which lists its steps in time order,
+ * or the collapsed-by-default "Outside runs" group for the steps no run
+ * contains. The analyst confirms the PATTERN run first (fix its boundaries,
+ * name its steps, Confirm run); the app counts the boundary fixes made to it
+ * (merge, split, add, drop) and, once it is confirmed, shows the probe line.
+ * Renaming a step that carries a draft_key remembers the name (main-process
+ * store, passed as --names on every Analyze) and names the same-key drafts of
+ * the session at once. The Detail slider does not change this view.
+ *
+ * The model is runs-model.js (pure, unit-tested); this module renders it and
+ * owns the step verbs (rename / save / split / merge / hide / delete / add /
+ * bulk-delete / confirm run / use as pattern) and the ignored-apps dialog.
  * Cross-surface helpers (ensureAnnoShape, persistAnnotations,
- * videoTimeToSessionTs, jumpToStepInFlow) are injected by renderer.js
- * via initStepsView().
+ * videoTimeToSessionTs, jumpToStepInFlow, watchStep) are injected by
+ * renderer.js via initStepsView().
  */
 
 "use strict";
@@ -15,10 +26,12 @@ const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast } = req
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
+const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
-const PdtAlign = require("../step-alignment.js");
-const { rollUpSteps, screenType, resolveStepGrainKeys } = require("../process-map-levels.js");
-const { buildWorkItems, findGroupAnnotation } = require("../work-items.js");
+const RunsModel = require("../runs-model.js");
+const { screenType, resolveStepGrainKeys, processLabel } = require("../process-map-levels.js");
+
+const OUTSIDE = RunsModel.OUTSIDE;
 
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
@@ -32,19 +45,21 @@ let watchStep = () => {};
    index when no boundary is picked (Split then falls back to the midpoint). */
 let _splitAfter = { stepId: null, index: null };
 
-/* ADR-0015: the Steps list has two readings. Flat (default) is the
-   chronological step list; Aligned is the consensus backbone across the
-   detected cases (curate one -> apply to all). _alignSelIndex is the selected
-   backbone position in aligned mode; null means an exception/instance step is
-   selected instead (its per-instance editor shows, keyed on getSelectedStepId). */
-let _alignMode = false;
-let _alignSelIndex = null;
+/* The runs view's own state, per session folder: `open` is the group whose
+   steps show (a run's case_id, OUTSIDE, or null for none; undefined until
+   the first render opens the pattern run) and `showHidden` also lists the
+   hidden steps of the open group. It survives level switches and a
+   re-analysis of the same session (case ids are stable, C9), so a return to
+   Steps finds the view as the analyst left it. */
+let _ui = { folder: null, open: undefined, showHidden: false };
 
-/* ADR-0028 (R3): the selected case-tree work item -- { caseId, screenKey } --
-   and the set of expanded case ids (collapsed by default). Null selection shows
-   the empty hint; a selection shows the group-scoped R1c detail panel. */
-let _wiSelected = null;
-let _wiExpandedCases = new Set();
+/* The remembered names (C4) behind the name suggestions: read from the main
+   process once, then updated in place after each name is remembered. */
+let _remembered = {};
+let _rememberedLoad = null;
+
+/* The one datalist the step name inputs (detail and inline rename) share. */
+const NAME_LIST_ID = "step-name-suggestions";
 
 function getSpan() {
   const evs = (State.getSession() && State.getSession().events) || [];
@@ -55,60 +70,120 @@ function getSpan() {
   };
 }
 
-/* Decision 1: tag each step with how many cases (tickets) it recurs in, so
-   the detail can offer "apply to all". `_repeat` is the case span and drives
-   the propagate action. P0.3: the LIST badge is shown only when the repetition
-   DISCRIMINATES -- the step recurs across some but not all cases. A step in
-   *every* case is the uniform backbone (on 5 identical demo cases every step
-   would read "5×" -- zero signal), so it gets no badge even though the
-   propagate action stays available. A step in only one case gets no tag. */
-function decorateRepeats(steps, interactionsById) {
-  const { caseCount, groups } = PdtAlign.alignSteps(steps, interactionsById);
-  const span = new Map();
-  for (const g of groups) for (const m of g.members) span.set(m.stepId, g.caseSpan);
-  return (steps || []).map(s => {
-    if (!span.has(s.step_id)) return s;
-    const caseSpan = span.get(s.step_id);
-    return { ...s, _repeat: caseSpan, _repeatCaseCount: caseCount,
-      _repeatDiscriminating: caseSpan < caseCount };
-  });
+function _interactionsById() {
+  const m = {};
+  for (const ev of ((State.getSession() && State.getSession().events) || [])) {
+    if (ev.type === "interaction") m[ev.event_id] = ev;
+  }
+  return m;
 }
 
-function stepMatchesFilter(s, f, scopeCaseId) {
-  if (scopeCaseId && s.case_id !== scopeCaseId) return false;
-  if (f.text && !(s.name || "").toLowerCase().includes(f.text.toLowerCase())) return false;
-  if (f.states && f.states.size > 0) {
-    if (!f.states.has(s.state)) return false;
-  } else {
-    // No explicit state filter: hidden steps stay out of the list by
-    // default (they're suppressed noise). The "hidden" chip reveals them.
-    if (s.state === "hidden") return false;
-  }
-  return true;
+/* The runs model of the loaded session: runs from stats.json, steps from the
+   live annotations (so it reflects every edit made since the last analysis). */
+function _model() {
+  const s = State.getSession();
+  return RunsModel.buildRuns(s && s.stats, (s && s.annotations && s.annotations.steps) || []);
 }
+
+function _findStep(stepId) {
+  const s = State.getSession();
+  return ((s && s.annotations && s.annotations.steps) || []).find((x) => x.step_id === stepId) || null;
+}
+
+/* The rendered list row of a step, or null when it is not on screen (its
+   group is closed, or it is hidden and hidden steps do not show). */
+function _rowFor(stepId) {
+  if (!stepId) return null;
+  for (const r of document.querySelectorAll("#step-list .step-row")) {
+    if (r.dataset.stepId === stepId) return r;
+  }
+  return null;
+}
+
+/* The group to open by default: the pattern run; without runs, the steps
+   outside runs. */
+function _defaultOpen(model, pattern) {
+  if (pattern && pattern.run) return pattern.run.caseId;
+  if (model.runs.length) return model.runs[0].caseId;
+  return model.outside.length ? OUTSIDE : null;
+}
+
+/* Open a group (a run's case_id, OUTSIDE, or null to close it). The
+   multi-selection is cleared and a selected step outside the new group is
+   deselected, so no verb or shortcut acts on a step the analyst no longer
+   sees (RP-12). */
+function _openGroup(key) {
+  if (_ui.open === key) return;
+  _ui.open = key;
+  State.getMultiSelectedStepIds().clear();
+  const s = _findStep(State.getSelectedStepId());
+  if (s && (key == null || RunsModel.groupKeyOf(s, _model().runs) !== key)) State.setSelectedStepId(null);
+}
+
+/* Select a step and make sure it is on screen: its group opens, and hidden
+   steps show when it is hidden. Used by the clicks that reach a step from
+   outside the list (the step timeline, the context menu). */
+function _selectAndReveal(stepId) {
+  const s = _findStep(stepId);
+  if (!s) return;
+  _openGroup(RunsModel.groupKeyOf(s, _model().runs));
+  if (s.state === "hidden") _ui.showHidden = true;
+  State.setSelectedStepId(stepId);
+}
+
+function _ensureRememberedLoaded() {
+  if (_rememberedLoad) return _rememberedLoad;
+  _rememberedLoad = Promise.resolve()
+    .then(() => Ipc.readRememberedNames())
+    .then((r) => {
+      if (r && r.ok) _remembered = r.names || {};
+      else if (r && r.error) console.warn("[steps] the remembered names could not be read: " + r.error);
+    })
+    .catch((e) => console.warn("[steps] the remembered names could not be read:", e && e.message));
+  return _rememberedLoad;
+}
+
+function _nameListEl() {
+  let dl = document.getElementById(NAME_LIST_ID);
+  if (!dl) {
+    dl = document.createElement("datalist");
+    dl.id = NAME_LIST_ID;
+    document.body.appendChild(dl);
+  }
+  return dl;
+}
+
+/* Fill the shared name datalist for `step` (C4 read side): remembered names
+   of the same app, then the names already used in this session. */
+function _fillNameList(step, interactionsById) {
+  const s = State.getSession();
+  const names = RunsModel.nameSuggestions((s && s.annotations && s.annotations.steps) || [], step,
+    _remembered, interactionsById || _interactionsById());
+  _nameListEl().innerHTML = names.map((n) => '<option value="' + escapeAttr(n) + '"></option>').join("");
+}
+
+function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+
+/* ===== The Steps level ================================================== */
 
 function renderStepsLevel() {
-  if (!State.getSession() || !PdtSteps) return;
-  const interactionsById = {};
-  for (const ev of (State.getSession().events || [])) {
-    if (ev.type === "interaction") interactionsById[ev.event_id] = ev;
-  }
-  // Decorate with intra-session repeat counts (a step that recurs across
-  // anchor-detected cases is the high-value "curate once" target).
-  const allSteps = decorateRepeats(
-    (State.getSession().annotations && State.getSession().annotations.steps) || [],
-    interactionsById);
+  const session = State.getSession();
+  if (!session || !PdtSteps) return;
+  if (_ui.folder !== session.sessionFolder) _ui = { folder: session.sessionFolder, open: undefined, showHidden: false };
+  _ensureRememberedLoaded();
+  const anno = session.annotations || {};
+  const allSteps = anno.steps || [];
+  const interactionsById = _interactionsById();
+  const model = RunsModel.buildRuns(session.stats, allSteps);
+  const pattern = RunsModel.patternRun(anno, model.runs);
 
-  // Consume a pending step-jump request from a Flow seek: focus on the
-  // step containing the requested timestamp. Scrolled into view at the
-  // end of this function so the row exists in the DOM.
+  // A Flow request to show the step at a moment ("Jump to step here"):
+  // select the step containing it, else the nearest one, so a right-click in
+  // a gap between steps still lands on a step.
   const pendingTs = State.consumePendingStepJump();
   if (pendingTs) {
     const targetMs = new Date(pendingTs).getTime();
     if (isFinite(targetMs) && allSteps.length) {
-      // Prefer a step that contains the timestamp; fall back to the
-      // closest by nearest edge so a right-click in a gap between
-      // steps still focuses a step instead of doing nothing visible.
       let best = null, bestDist = Infinity;
       for (const s of allSteps) {
         const tr = s.time_range; if (!tr) continue;
@@ -122,483 +197,343 @@ function renderStepsLevel() {
       if (best) State.setSelectedStepId(best.step_id);
     }
   }
-
-  const f = State.getListFilters().step;
-  const filtered = allSteps.filter(s => stepMatchesFilter(s, f, State.getCaseScope()));
-  const filteredIds = new Set(filtered.map(s => s.step_id));
-
-  const meta = $("#step-filter-meta");
-  if (meta) meta.textContent = filtered.length === allSteps.length
-    ? `${allSteps.length} steps`
-    : `${filtered.length} of ${allSteps.length}`;
-  // Reflect active state chips
-  for (const chip of document.querySelectorAll("#step-filter-states .chip")) {
-    chip.classList.toggle("active", f.states.has(chip.dataset.state));
+  // An ARRIVAL (Open in Steps, a jump, or a return to Steps with a surviving
+  // selection) reveals the selected step: its group opens and, when it is
+  // hidden, the hidden steps show; the row is scrolled into view below. The
+  // one-shot flag is consumed here, so a later incidental re-render never
+  // scrolls.
+  const arriveReveal = State.consumePendingStepReveal();
+  const revealStep = (pendingTs || arriveReveal) ? _findStep(State.getSelectedStepId()) : null;
+  if (revealStep) {
+    const key = RunsModel.groupKeyOf(revealStep, model.runs);
+    if (_ui.open !== key) { _ui.open = key; State.getMultiSelectedStepIds().clear(); }
+    if (revealStep.state === "hidden") _ui.showHidden = true;
   }
+  const openIsGone = _ui.open === undefined ||
+    (_ui.open === OUTSIDE ? !model.outside.length
+      : _ui.open !== null && !model.runs.some((r) => r.caseId === _ui.open));
+  if (openIsGone) _ui.open = _defaultOpen(model, pattern);
+  // "Show hidden steps" lasts while the open group has hidden steps; with
+  // none left (the last one unhidden, another group opened) it switches off,
+  // so a step hidden later leaves the list as expected.
+  const openMembers = _ui.open === OUTSIDE ? model.outside
+    : ((model.runs.find((r) => r.caseId === _ui.open) || {}).members || []);
+  if (!openMembers.some((s) => s.state === "hidden")) _ui.showHidden = false;
+
+  const visible = RunsModel.groupSteps(model, _ui.open, _ui.showHidden);
+  const visibleIds = new Set(visible.map((s) => s.step_id));
+  // Ticks only ever stand on rows the analyst can see (RP-12).
+  const multi = State.getMultiSelectedStepIds();
+  for (const id of [...multi]) if (!visibleIds.has(id)) multi.delete(id);
+  syncMultiSelectButtons();
 
   $("#steps-badge").textContent = String(allSteps.length);
-  if ($("#steps-pane-count")) $("#steps-pane-count").textContent = String(allSteps.length);
-  // A3: surface analyst flag counts so marking a step visibly counts.
-  const sumEl = $("#steps-summary");
-  if (sumEl) {
-    const fc = { waste: 0, automation_candidate: 0, conditional: 0, exception_path: 0 };
-    for (const st of allSteps) {
-      const fl = st.flags || {};
-      for (const k of Object.keys(fc)) if (fl[k]) fc[k]++;
-    }
-    const parts = [];
-    if (fc.waste) parts.push(fc.waste + " waste");
-    if (fc.automation_candidate) parts.push(fc.automation_candidate + " automatable");
-    if (fc.conditional) parts.push(fc.conditional + " conditional");
-    if (fc.exception_path) parts.push(fc.exception_path + " exception");
-    sumEl.textContent = parts.length ? ("Flagged: " + parts.join(" · ")) : "";
-  }
+  const pc = $("#runs-pane-count");
+  if (pc) pc.textContent = String(model.runs.length);
+  _renderFlagSummary(allSteps);
 
-  // ADR-0024: at a coarser grain than "element", the Steps list shows the
-  // view-time ROLL-UP -- one row per run of consecutive steps sharing the
-  // notch key (screen / app / phase / case). "element" keeps the full,
-  // editable per-step list below (detail is never destroyed). The roll-up is
-  // read-oriented: clicking a group selects its first member so the per-step
-  // editor still works; the legend points back to the element notch to edit.
-  const grain = State.getGrain();
-  // ADR-0028 (R3): the DEFAULT Steps reading at the screen notch is the CASE
-  // TREE -- cases -> case-scoped screen-visit work items (fragments merged
-  // NON-consecutively across bounces within a case), the analyst's real unit of
-  // work. When the session has NO cases there is no scope to merge within, so we
-  // fall back to the ADR-0024 consecutive roll-up + a CTA (§5). The element notch
-  // and the other coarse notches keep their ADR-0024 behavior below (the Detail
-  // slider reaches the flat fragment list -- detail is never destroyed).
-  if (grain === "screen") {
-    const anno0 = (State.getSession() && State.getSession().annotations) || {};
-    const wi = buildWorkItems(filtered, {
-      interactionsById,
-      caseLabel: caseLabeler(),
-      groupAnnotations: anno0.group_annotations || [],
-    });
-    if (wi.hasCases) {
-      renderCaseTree(wi, allSteps, interactionsById);
-      _renderStepsMiniTimeline(allSteps, filteredIds);
-      return;
-    }
-    // No cases: keep the ADR-0024 roll-up, but show the segment-me CTA.
-    renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById, /*noCasesCta=*/true);
-    _renderStepsMiniTimeline(allSteps, filteredIds);
-    return;
-  }
-  if (grain !== "element") {
-    renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById);
-    _renderStepsMiniTimeline(allSteps, filteredIds);
-    return;
-  }
+  renderRunsList($("#step-list"), model, pattern, visible, session.stats);
 
-  // ADR-0015: the aligned reading needs 2+ detected cases. Gate the toggle on
-  // that and fall back to flat for a single-case session. The per-step filter
-  // (text + state chips) doesn't act on a consensus, so hide it in aligned mode
-  // rather than leave a control that does nothing (coherence discipline).
-  const distinctCases = new Set(
-    ((State.getSession().annotations && State.getSession().annotations.steps) || [])
-      .filter(s => s && s.state !== "hidden" && s.case_id).map(s => s.case_id));
-  const canAlign = distinctCases.size >= 2;
-  if (_alignMode && !canAlign) _alignMode = false;
-  const alignToggle = $("#step-align-toggle");
-  if (alignToggle) {
-    alignToggle.style.display = canAlign ? "" : "none";
-    for (const b of alignToggle.querySelectorAll("button"))
-      b.classList.toggle("active", (b.dataset.mode === "aligned") === _alignMode);
-  }
-  const listFilterEl = $("#step-list-filter");
-  if (listFilterEl) listFilterEl.style.display = _alignMode ? "none" : "";
-
-  if (!_alignMode) {
-    // ---- Flat reading: the chronological step list + per-step editor ----
-    // P0.4: a one-line key for the repeat badge, shown only when at least one
-    // discriminating badge is on screen (otherwise the legend is just noise).
-    const legendEl = $("#steps-legend");
-    if (legendEl) {
-      const anyRepeat = allSteps.some(s => s._repeatDiscriminating);
-      legendEl.innerHTML = anyRepeat
-        ? '<span class="step-repeat">N×</span> = recurs in some (not all) cases: curate one, then "Apply to repeats"'
-        : "";
-      legendEl.style.display = anyRepeat ? "" : "none";
-    }
-    PdtSteps.renderStepList($("#step-list"), filtered, State.getSelectedStepId(),
-      (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
-      (sid) => {
-        if (State.getMultiSelectedStepIds().has(sid)) State.getMultiSelectedStepIds().delete(sid);
-        else State.getMultiSelectedStepIds().add(sid);
-        syncMultiSelectButtons();
-        // Re-render so the user sees the multi-selected state -- otherwise
-        // Ctrl+click feels broken because nothing visibly changes.
-        renderStepsLevel();
-      },
-      inlineRenameStep,
-      State.getMultiSelectedStepIds(),
-      // R1 (Steps chrome diet): the per-row ↑ / ↓ move buttons are retired;
-      // reorder lives in the right-click menu now (Move up / Move down),
-      // reachable from the flat-list rows via this same context-menu opener.
-      showStepContextMenu,
-    );
-    const selected = allSteps.find(s => s.step_id === State.getSelectedStepId()) || null;
-    PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById));
+  const selId = State.getSelectedStepId();
+  const selected = selId && visibleIds.has(selId) ? allSteps.find((s) => s.step_id === selId) : null;
+  const title = $("#step-detail-title");
+  if (selected) {
+    if (title) title.textContent = "Selected step";
+    _fillNameList(selected, interactionsById);
+    PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById, model));
   } else {
-    // ---- Aligned reading: the consensus backbone across detected cases ----
-    renderAlignedReading(interactionsById);
+    renderRunGuide($("#step-detail"), model, pattern);
   }
-  _renderStepsMiniTimeline(allSteps, filteredIds);
-  // The ONLY unrequested scroll: reveal the selected row on ARRIVAL -- either a
-  // Flow-seek step jump (pendingTs) or a view switch back to Steps with a
-  // surviving selection (pendingStepReveal, e.g. after "Jump to in Flow").
-  // Consume pendingStepReveal unconditionally so it never leaks into a later
-  // incidental re-render. Select / rename / flag / multi-select re-renders set
-  // neither flag, so they never scroll.
-  const arriveReveal = State.consumePendingStepReveal();
-  if ((pendingTs || arriveReveal) && State.getSelectedStepId()) {
+  _renderStepsMiniTimeline(allSteps, visibleIds);
+
+  if (revealStep && visibleIds.has(revealStep.step_id)) {
     setTimeout(() => {
-      const row = document.querySelector('.step-row[data-step-id="' + State.getSelectedStepId() + '"]');
+      const row = _rowFor(revealStep.step_id);
       if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 0);
   }
 }
 
-/* The Steps mini-timeline (full set as context; non-matching blocks dimmed so
-   the filter still localises). Factored so the flat reading and the ADR-0024
-   grain roll-up reading both render the same timeline beneath their list. */
-function _renderStepsMiniTimeline(allSteps, filteredIds) {
+/* A3: the flagged-step count on the toolbar (waste and the legacy flags an
+   older annotations.json may still carry). */
+function _renderFlagSummary(allSteps) {
+  const sumEl = $("#steps-summary");
+  if (!sumEl) return;
+  const fc = { waste: 0, automation_candidate: 0, conditional: 0, exception_path: 0 };
+  for (const st of allSteps) {
+    const fl = st.flags || {};
+    for (const k of Object.keys(fc)) if (fl[k]) fc[k]++;
+  }
+  const parts = [];
+  if (fc.waste) parts.push(fc.waste + " waste");
+  if (fc.automation_candidate) parts.push(fc.automation_candidate + " automatable");
+  if (fc.conditional) parts.push(fc.conditional + " conditional");
+  if (fc.exception_path) parts.push(fc.exception_path + " exception");
+  sumEl.textContent = parts.length ? ("Flagged: " + parts.join(" · ")) : "";
+}
+
+/* The list pane: the runs (the open one with its steps), then the steps
+   outside runs. */
+function renderRunsList(host, model, pattern, visible, stats) {
+  if (!host) return;
+  host.innerHTML = "";
+  if (!model.runs.length && !model.outside.length) {
+    host.innerHTML =
+      '<div class="empty-pane">' +
+        "<p><strong>No steps yet.</strong></p>" +
+        "<p>Steps appear after you click <em>Analyze session</em>: the app drafts each run's steps from the recording.</p>" +
+      "</div>";
+    return;
+  }
+  if (!model.runs.length) {
+    const ov = require("./overview-view.js");
+    const note = document.createElement("div");
+    note.className = "runs-none";
+    note.innerHTML = "<p>" + escapeHtml(ov.NO_RUNS_MARKED + " " + ov.MARK_RUNS_INSTRUCTION) + "</p>" +
+      '<button type="button" class="primary" id="btn-steps-mark-runs">' + escapeHtml(ov.MARK_RUNS_BUTTON) + "</button>";
+    note.querySelector("button").addEventListener("click", () => ov.openMarkersInFlow());
+    host.appendChild(note);
+  }
+  for (const run of model.runs) host.appendChild(_runGroupEl(run, model, pattern, visible, stats));
+  if (model.outside.length) host.appendChild(_outsideGroupEl(model, visible));
+}
+
+const PATTERN_TITLE = "The pattern run: confirm it first. Its step names carry over to the other runs.";
+const FIXES_TITLE = "Merges, splits, added steps and hidden or deleted drafts you make to the pattern run " +
+  "before you confirm it. Renames are not counted. Ctrl+Z takes a fix back.";
+
+function _groupHead(isOpen, innerHtml, titleAttr) {
+  return '<div class="run-row" role="button" tabindex="0" aria-expanded="' + (isOpen ? "true" : "false") + '"' +
+    (titleAttr ? ' title="' + escapeAttr(titleAttr) + '"' : "") + ">" +
+    '<span class="run-caret" aria-hidden="true">' + (isOpen ? "▾" : "▸") + "</span>" + innerHtml + "</div>";
+}
+
+function _wireHead(group, key) {
+  const head = group.querySelector(".run-row");
+  const toggle = () => {
+    _openGroup(_ui.open === key ? null : key);
+    renderStepsLevel();
+  };
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggle(); }
+  });
+}
+
+/* The open group's steps and its "Show hidden steps (N)" switch. */
+function _groupBody(visible, hiddenCount, emptyText) {
+  const body = document.createElement("div");
+  body.className = "run-body";
+  const acts = document.createElement("div");
+  acts.className = "run-actions";
+  if (hiddenCount) {
+    const lbl = document.createElement("label");
+    lbl.className = "run-show-hidden";
+    lbl.title = "List the steps you hid, so you can check or unhide them";
+    lbl.innerHTML = '<input type="checkbox" data-act="show-hidden"' + (_ui.showHidden ? " checked" : "") + "> " +
+      escapeHtml("Show hidden steps (" + hiddenCount + ")");
+    lbl.querySelector("input").addEventListener("change", (e) => {
+      _ui.showHidden = !!e.target.checked;
+      renderStepsLevel();
+    });
+    acts.appendChild(lbl);
+  }
+  body.appendChild(acts);
+  const list = document.createElement("div");
+  list.className = "run-steps";
+  body.appendChild(list);
+  if (!visible.length) {
+    list.innerHTML = '<p class="run-steps-empty">' + escapeHtml(emptyText) + "</p>";
+    return body;
+  }
+  PdtSteps.renderStepList(list, visible, State.getSelectedStepId(),
+    // A click on the row that is already selected changes nothing, so it
+    // does not re-render (a double-click keeps its row).
+    (sid) => { if (State.getSelectedStepId() === sid) return; State.setSelectedStepId(sid); renderStepsLevel(); },
+    (sid) => {
+      const m = State.getMultiSelectedStepIds();
+      if (m.has(sid)) m.delete(sid); else m.add(sid);
+      syncMultiSelectButtons();
+      // Re-render so the tick shows; Ctrl+click would feel broken otherwise.
+      renderStepsLevel();
+    },
+    inlineRenameStep,
+    State.getMultiSelectedStepIds(),
+    showStepContextMenu,
+    {
+      nameListId: NAME_LIST_ID,
+      onBeginRename: (step) => _fillNameList(step),
+    });
+  return body;
+}
+
+function _runGroupEl(run, model, pattern, visible, stats) {
+  const isOpen = _ui.open === run.caseId;
+  const isPattern = !!(pattern.run && pattern.run.caseId === run.caseId);
+  const rec = isPattern ? pattern.record : null;
+  const patternConfirmed = !!(rec && rec.confirmed_at);
+  const g = document.createElement("div");
+  g.className = "run-group" + (isOpen ? " open" : "") + (isPattern ? " pattern" : "");
+  g.dataset.caseId = run.caseId;
+  const n = run.visible.length;
+  const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + formatDuration(run.durationMs) : "");
+  g.innerHTML = _groupHead(isOpen,
+    '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
+    '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
+    (isPattern ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Pattern</span>' : "") +
+    '<span class="run-status run-status-' + run.status + '">' + escapeHtml(RunsModel.STATUS_LABELS[run.status]) + "</span>" +
+    '<span class="run-meta">' + escapeHtml(meta) + "</span>");
+  _wireHead(g, run.caseId);
+
+  // The P1 probe line sits on the pattern run once it is confirmed, open or
+  // not: the number the owner reads and copies.
+  if (isPattern && patternConfirmed) g.appendChild(_probeEl(stats, model, run, rec));
+  if (!isOpen) return g;
+
+  const body = _groupBody(visible, run.hiddenCount,
+    run.hiddenCount ? "Every step of this run is hidden." : "No steps in this run.");
+  const acts = body.querySelector(".run-actions");
+  const canConfirm = run.status === "draft" || (isPattern && !patternConfirmed && run.visible.length > 0);
+  const buttons = [];
+  if (canConfirm) {
+    buttons.push(_actionBtn("confirm-run", "Confirm run", "primary",
+      "Accept this run's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
+      () => confirmRunAction(run.caseId)));
+  }
+  if (!isPattern && run.members.length) {
+    buttons.push(_actionBtn("use-pattern", "Use as pattern", "",
+      "Make this the run you confirm first. The boundary fix count starts again at zero.",
+      () => usePatternAction(run.caseId)));
+  }
+  for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
+  if (isPattern && !patternConfirmed) {
+    const f = RunsModel.probeLine(stats, model.runs, run, rec);
+    const line = document.createElement("div");
+    line.className = "run-fixes";
+    line.title = FIXES_TITLE;
+    line.textContent = "Boundary fixes so far: " + f.total + " (merge " + f.fixes.merge + ", split " +
+      f.fixes.split + ", add " + f.fixes.add + ", drop " + f.fixes.drop + ")";
+    body.insertBefore(line, acts.nextSibling);
+  }
+  g.appendChild(body);
+  return g;
+}
+
+function _outsideGroupEl(model, visible) {
+  const isOpen = _ui.open === OUTSIDE;
+  const vis = model.outside.filter((s) => s.state !== "hidden");
+  const hidden = model.outside.length - vis.length;
+  const g = document.createElement("div");
+  g.className = "run-group run-group-outside" + (isOpen ? " open" : "");
+  g.dataset.group = "outside";
+  g.innerHTML = _groupHead(isOpen,
+    '<span class="run-title">Outside runs</span><span class="run-label"></span>' +
+    '<span class="run-meta">' + escapeHtml(_plural(vis.length, "step", "steps")) + "</span>",
+    "Steps that fall outside every marked run");
+  _wireHead(g, OUTSIDE);
+  if (isOpen) g.appendChild(_groupBody(visible, hidden, "Every step outside the runs is hidden."));
+  return g;
+}
+
+function _actionBtn(act, label, cls, title, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.dataset.act = act;
+  if (cls) b.className = cls;
+  b.title = title;
+  b.textContent = label;
+  b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
+  return b;
+}
+
+/* The probe line, readable and copyable (the owner's P1 instrument). */
+function _probeEl(stats, model, run, rec) {
+  const p = RunsModel.probeLine(stats, model.runs, run, rec);
+  const why = p.source === "analysis"
+    ? "Drafted steps: how many steps the analysis drafted for this run."
+    : p.source === "designation"
+      ? "Drafted steps: the analysis file does not record how many steps it drafted, so this is the number of steps the run had when it became the pattern."
+      : "The drafted step count is not recorded; analyze the session again to record it.";
+  const box = document.createElement("div");
+  box.className = "run-probe";
+  box.innerHTML = '<span class="run-probe-text" title="' + escapeAttr(why + " Boundary fixes: the merges, splits, " +
+    "added steps and dropped drafts made to the run from when it became the pattern until you confirmed it.") + '">' +
+    escapeHtml(p.text) + "</span>";
+  box.appendChild(_actionBtn("copy-probe", "Copy", "run-probe-copy", "Copy this line",
+    () => { if (_copyText(p.text)) toast("Copied: " + p.text, "success"); else toast("Could not copy the line.", "error"); }));
+  return box;
+}
+
+function _copyText(text) {
+  try {
+    const { clipboard } = require("electron");
+    if (clipboard && typeof clipboard.writeText === "function") { clipboard.writeText(text); return true; }
+  } catch (_) { /* not in Electron: try the web clipboard */ }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); return true; }
+  } catch (_) { /* no clipboard at all */ }
+  return false;
+}
+
+/* The detail pane when no step is selected: what to do with the open group. */
+const GUIDE_PATTERN =
+  "This is the pattern run: confirm it first. Check its drafted steps against the video or the screenshots. " +
+  "Where a boundary is wrong, merge, split, add or hide steps, and give the steps the names you want in the " +
+  "document. Then click Confirm run. The app counts the boundary fixes; renames are not counted.";
+const GUIDE_REMEMBER =
+  "Every name you give is remembered: the matching drafted steps in the other runs take it at once, and the " +
+  "next analysis drafts with it.";
+const GUIDE_PATTERN_DONE =
+  "The pattern run is confirmed. The other runs keep their drafted steps; a name you give a step there is " +
+  "remembered the same way.";
+const GUIDE_OTHER =
+  "Pick a step to rename it, fix its boundaries, or flag it as waste. Confirm run accepts the drafted steps " +
+  "that are left.";
+const GUIDE_OUTSIDE =
+  "These steps fall outside every marked run. To bring them into a run, add a start marker in Flow and " +
+  "analyze the session.";
+
+function renderRunGuide(host, model, pattern) {
+  if (!host) return;
+  const key = _ui.open;
+  const title = $("#step-detail-title");
+  let head = "", paras = [];
+  if (key === OUTSIDE) {
+    head = "Outside runs";
+    paras = [GUIDE_OUTSIDE];
+  } else if (key) {
+    const run = model.runs.find((r) => r.caseId === key);
+    const isPattern = !!(run && pattern.run && pattern.run.caseId === key);
+    const done = isPattern && pattern.record && pattern.record.confirmed_at;
+    head = run ? run.title + (run.label ? " (" + run.label + ")" : "") : "Run";
+    paras = isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_REMEMBER]) : [GUIDE_OTHER, GUIDE_REMEMBER];
+  } else {
+    paras = [model.runs.length ? "Pick a run on the left to see its steps." : "Pick a step on the left."];
+  }
+  if (title) title.textContent = head || "Steps";
+  host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
+    "<p" + (i ? ' class="meta"' : "") + ">" + escapeHtml(p) + "</p>").join("") + "</div>";
+}
+
+/* The Steps mini-timeline: the full set as context, the steps the list does
+   not show dimmed, so the open run stands out. */
+function _renderStepsMiniTimeline(allSteps, visibleIds) {
   const span = getSpan();
   if (!span) return;
   const dimmedIds = new Set();
-  for (const s of allSteps) if (!filteredIds.has(s.step_id)) dimmedIds.add(s.step_id);
+  if (_ui.open != null) for (const s of allSteps) if (!visibleIds.has(s.step_id)) dimmedIds.add(s.step_id);
   PdtSteps.renderStepTimeline($("#timeline-steps"), allSteps,
     State.getSession().events.filter(e => e.type === "interaction"), span, {
       zoom: State.getStepZoom(),
       selectedId: State.getSelectedStepId(),
       dimmedIds,
-      onSelect: (sid) => { State.setSelectedStepId(sid); renderStepsLevel(); },
+      onSelect: (sid) => { _selectAndReveal(sid); renderStepsLevel(); },
       onContextMenu: (sid, x, y) => showStepContextMenu(sid, x, y),
     });
   const range = $("#steps-timeline-range");
   if (range) {
     const fmt = (ms) => new Date(ms).toLocaleTimeString();
     range.textContent = `${fmt(span.startMs)} → ${fmt(span.endMs)} · ${formatDuration(span.endMs - span.startMs)}`;
-  }
-}
-
-/* ADR-0024: render the Steps list as the view-time grain ROLL-UP. Each row is a
-   run of consecutive steps sharing the notch key (rollUpSteps); it shows the
-   group label, the count of folded steps, and the group's duration. The roll-up
-   is read-oriented -- clicking a group selects its first member so the per-step
-   detail editor (rename / flag / split) still works; the legend points back to
-   the element notch to edit individual steps. The fine steps are never
-   destroyed: slide back to "element" to see them all. */
-function renderGrainGroupedSteps(filtered, allSteps, grain, interactionsById, noCasesCta) {
-  const anno = (State.getSession() && State.getSession().annotations) || {};
-  const phaseName = {};
-  for (const ph of (anno.phases || [])) phaseName[ph.phase_id] = ph.name || "(phase)";
-  const ctx = { phaseName, interactionsById, caseLabel: caseLabeler() };
-  const groups = rollUpSteps(filtered, grain, ctx);
-
-  const meta = $("#step-filter-meta");
-  if (meta) {
-    meta.textContent = `${groups.length} ${grain} group${groups.length === 1 ? "" : "s"} · ${filtered.length} steps`;
-  }
-  // Legend: name the notch and the inverse (slide to element to edit). Reuse
-  // the steps-legend slot the flat/aligned readings use.
-  const legendEl = $("#steps-legend");
-  if (legendEl) {
-    // ADR-0028 §5: an unsegmented session can't group work by ticket, so the
-    // screen notch falls back here -- name that + offer the segment-me path.
-    const cta = noCasesCta
-      ? ' <span class="grain-legend-hint">This session isn\'t split into cases yet. ' +
-        'To group the work by run, mark the start of each run in Flow (right-click ' +
-        'the timeline at that moment), then click Analyze session.</span>'
-      : ' <span class="grain-legend-hint">Set the Detail slider to ' +
-        '<strong>element</strong> to edit individual steps.</span>';
-    legendEl.innerHTML = 'Grouped by <strong>' + escapeHtml(grain) +
-      '</strong>: each row folds a run of consecutive steps on the same ' +
-      escapeHtml(grain) + '.' + cta;
-    legendEl.style.display = "";
-  }
-  // Hide the per-step filter controls that don't act on a roll-up (mirrors the
-  // aligned reading's discipline -- no control that does nothing).
-  const listFilterEl = $("#step-list-filter");
-  if (listFilterEl) listFilterEl.style.display = "none";
-  const alignToggle = $("#step-align-toggle");
-  if (alignToggle) alignToggle.style.display = "none";
-
-  const selId = State.getSelectedStepId();
-  const rows = groups.map((g) => {
-    const startMs = g.time_range.start ? new Date(g.time_range.start).getTime() : 0;
-    const endMs = g.time_range.end ? new Date(g.time_range.end).getTime() : startMs;
-    const dur = formatDuration(Math.max(0, endMs - startMs));
-    const sel = g.step_ids.includes(selId) ? " selected" : "";
-    const countBadge = g.count > 1
-      ? '<span class="grain-group-count" title="' + g.count + ' steps combined at the ' +
-        escapeHtml(grain) + ' detail level">' + g.count + "&times;</span>"
-      : "";
-    return '<div class="step-row grain-group-row' + sel + '" data-step-id="' +
-        escapeHtml(g.step_ids[0] || "") + '" data-count="' + g.count + '">' +
-      '<span class="grain-group-label" title="' + escapeHtml(g.label) + '">' +
-        escapeHtml(g.label) + countBadge + "</span>" +
-      '<span class="grain-group-dur meta">' + escapeHtml(dur) + "</span>" +
-    "</div>";
-  }).join("");
-  const list = $("#step-list");
-  if (list) {
-    list.innerHTML = rows ||
-      '<div class="empty-hint">No steps at this detail level.</div>';
-    list.querySelectorAll(".grain-group-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        State.setSelectedStepId(row.dataset.stepId || null);
-        renderStepsLevel();
-      });
-    });
-  }
-  // Detail: show the selected member's editor so a group is still inspectable.
-  const selected = allSteps.find((s) => s.step_id === selId) || null;
-  PdtSteps.renderStepDetail($("#step-detail"), selected,
-    stepDetailCallbacks(selected, interactionsById));
-}
-
-/* ===== ADR-0028 (R3): the case tree -- cases -> work items ============== */
-
-/* Render the Steps list as the CASE TREE: cases (collapsed) -> case-scoped
-   screen-visit work items. This is the DEFAULT screen-notch reading when the
-   session has cases. A work-item row shows the work item's name (group
-   annotation -> screen label), its duration, and "visited N× · M steps".
-   Expanding a case shows its work items; clicking a work item selects it and
-   shows the group-scoped R1c detail panel. The fine fragments are never
-   destroyed -- slide the Detail slider to element to edit them individually. */
-function renderCaseTree(wi, allSteps, interactionsById) {
-  // Legend: name the active reading + the inverse (element to edit fragments).
-  const legendEl = $("#steps-legend");
-  if (legendEl) {
-    legendEl.innerHTML = 'Grouped by <strong>ticket → screen</strong>: each row is ' +
-      'one screen visit for a ticket, its bounces merged back together. ' +
-      '<span class="grain-legend-hint">Set the Detail slider to <strong>element</strong> ' +
-      'to edit individual fragments.</span>';
-    legendEl.style.display = "";
-  }
-  // Hide the per-step filter/align controls that don't act on the tree.
-  const listFilterEl = $("#step-list-filter");
-  if (listFilterEl) listFilterEl.style.display = "none";
-  const alignToggle = $("#step-align-toggle");
-  if (alignToggle) alignToggle.style.display = "none";
-
-  const meta = $("#step-filter-meta");
-  if (meta) {
-    const totalItems = wi.cases.reduce((n, c) => n + c.work_items.length, 0);
-    meta.textContent = wi.cases.length + " case" + (wi.cases.length === 1 ? "" : "s") +
-      " · " + totalItems + " work item" + (totalItems === 1 ? "" : "s");
-  }
-
-  // Default: all cases collapsed. First render pre-expands nothing; a selection
-  // keeps its case open so the selected row is visible.
-  if (_wiSelected) _wiExpandedCases.add(_wiSelected.caseId == null ? "__unassigned__" : _wiSelected.caseId);
-
-  const caseKey = (cid) => (cid == null ? "__unassigned__" : cid);
-  const rowsHtml = wi.cases.map((cs) => {
-    const ck = caseKey(cs.case_id);
-    const expanded = _wiExpandedCases.has(ck);
-    const nItems = cs.work_items.length;
-    const totalMs = cs.work_items.reduce((n, w) => n + (w.total_ms || 0), 0);
-    const head =
-      '<div class="wi-case-head' + (expanded ? " open" : "") + '" data-case-key="' + escapeHtml(ck) + '">' +
-        '<span class="wi-case-caret" aria-hidden="true">' + (expanded ? "▾" : "▸") + "</span>" +
-        '<span class="wi-case-name" title="' + escapeHtml(cs.case_label) + '">' + escapeHtml(cs.case_label) + "</span>" +
-        '<span class="wi-case-meta meta">' + nItems + " item" + (nItems === 1 ? "" : "s") +
-          " · " + escapeHtml(formatDuration(totalMs)) + "</span>" +
-      "</div>";
-    if (!expanded) return head;
-    const items = cs.work_items.map((w) => {
-      const isSel = _wiSelected && _wiSelected.caseId === cs.case_id &&
-        _wiSelected.screenKey === w.screen_key;
-      const visited = w.visit_count > 1
-        ? '<span class="wi-visits" title="' + w.visit_count + ' separate visits to this screen for this ticket, merged">visited ' +
-          w.visit_count + "×</span> · " : "";
-      const wasteTag = w.waste ? '<span class="wi-waste-tag" title="Flagged as waste">waste</span> ' : "";
-      const hiddenCls = w.hidden ? " wi-item-hidden" : "";
-      return '<div class="wi-item-row' + (isSel ? " selected" : "") + hiddenCls +
-          '" data-case-key="' + escapeHtml(ck) + '" data-screen-key="' + escapeHtml(w.screen_key) + '">' +
-        '<span class="wi-item-name" title="' + escapeHtml(w.label) + '">' + wasteTag + escapeHtml(w.label) + "</span>" +
-        '<span class="wi-item-meta meta">' + visited + w.fragment_count +
-          " step" + (w.fragment_count === 1 ? "" : "s") + "</span>" +
-        '<span class="wi-item-dur meta">' + escapeHtml(formatDuration(w.total_ms || 0)) + "</span>" +
-      "</div>";
-    }).join("");
-    return head + '<div class="wi-item-group">' + items + "</div>";
-  }).join("");
-
-  const list = $("#step-list");
-  if (list) {
-    list.innerHTML = rowsHtml || '<div class="empty-hint">No work items: no cases with steps.</div>';
-    list.querySelectorAll(".wi-case-head").forEach((h) => {
-      h.addEventListener("click", () => {
-        const ck = h.dataset.caseKey;
-        if (_wiExpandedCases.has(ck)) _wiExpandedCases.delete(ck);
-        else _wiExpandedCases.add(ck);
-        renderStepsLevel();
-      });
-    });
-    list.querySelectorAll(".wi-item-row").forEach((r) => {
-      r.addEventListener("click", () => {
-        const ck = r.dataset.caseKey;
-        _wiSelected = { caseId: ck === "__unassigned__" ? null : ck, screenKey: r.dataset.screenKey };
-        // Select the first member step too, so a Jump-to-Flow / timeline seek
-        // has a concrete target.
-        const cs = wi.cases.find((c) => (c.case_id == null ? "__unassigned__" : c.case_id) === ck);
-        const item = cs && cs.work_items.find((w) => w.screen_key === r.dataset.screenKey);
-        if (item && item.step_ids.length) State.setSelectedStepId(item.step_ids[0]);
-        renderStepsLevel();
-      });
-    });
-  }
-
-  // Detail: the group-scoped R1c panel for the selected work item (facts
-  // aggregated; name/waste/hide act on the group).
-  const selItem = _wiSelected ? _findSelectedWorkItem(wi) : null;
-  renderWorkItemDetail($("#step-detail"), selItem, allSteps, interactionsById);
-}
-
-function _findSelectedWorkItem(wi) {
-  if (!_wiSelected) return null;
-  for (const cs of wi.cases) {
-    if (cs.case_id !== _wiSelected.caseId) continue;
-    const w = cs.work_items.find((x) => x.screen_key === _wiSelected.screenKey);
-    if (w) return Object.assign({ case_label: cs.case_label }, w);
-  }
-  return null;
-}
-
-/* The group-scoped detail panel for a selected work item (ADR-0028): the R1c
-   triage panel scoped to the WHOLE screen visit. Facts aggregated (duration,
-   visits, fragment count, case); name/waste/hide act on the GROUP (writing to
-   group_annotations); "More ▸" lists the member fragments with jump-to-timeline.
-   Built here (not via renderStepDetail) because the acts target a group, not a
-   single step -- but it reuses the same visual affordances. */
-function renderWorkItemDetail(host, item, allSteps, interactionsById) {
-  if (!host) return;
-  if (!item) {
-    host.innerHTML =
-      '<div class="empty-pane">' +
-        "<p>Pick a work item on the left to name it, note it, or flag it.</p>" +
-        '<p class="meta">A work item is one <strong>screen visit for a ticket</strong>: ' +
-        "every time you bounced into that screen while working the ticket, merged into " +
-        "one thing to read and annotate. Naming it flows down to its fragments on the " +
-        "timeline and the map.</p>" +
-      "</div>";
-    return;
-  }
-  const ga = item.group_annotation || {};
-  const name = (ga.name || item.label || "").toString();
-  const notes = (ga.notes || "").toString();
-  const dur = formatDuration(item.total_ms || 0);
-  const membersHtml = item.steps.map((s, i) => {
-    const nm = escapeHtml(s.name || s.step_id || ("Fragment " + (i + 1)));
-    const t = (s.time_range && s.time_range.start) ? new Date(s.time_range.start).toLocaleTimeString() : "";
-    return '<div class="wi-member-row" data-step-id="' + escapeHtml(s.step_id) + '">' +
-      '<span class="wi-member-name" title="' + escapeAttr(s.name || "") + '">' + nm + "</span>" +
-      '<span class="wi-member-time meta">' + escapeHtml(t) + "</span>" +
-      '<button class="wi-member-jump" title="Jump to this fragment in the Flow timeline">Jump ▸</button>' +
-    "</div>";
-  }).join("");
-  const isHidden = !!ga.hidden;
-  host.innerHTML =
-    '<div class="step-stat-tiles">' +
-      '<div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">' + escapeHtml(dur) + "</div></div>" +
-      '<div class="stat-tile"><div class="stat-tile-label">Visits</div><div class="stat-tile-value" title="How many separate times you entered this screen for this ticket">' + item.visit_count + "×</div></div>" +
-      '<div class="stat-tile"><div class="stat-tile-label">Fragments</div><div class="stat-tile-value">' + item.fragment_count + "</div></div>" +
-      '<div class="stat-tile"><div class="stat-tile-label">Case</div><div class="stat-tile-value" title="' + escapeAttr(item.case_label || "") + '">' + escapeHtml(item.case_label || "") + "</div></div>" +
-    "</div>" +
-    '<label>Name <input type="text" id="wi-name" value="' + escapeAttr(name) + '"></label>' +
-    '<label>Notes <textarea id="wi-notes">' + escapeHtml(notes) + "</textarea></label>" +
-    '<div class="flags">' +
-      '<label title="This whole screen visit shouldn\'t be necessary (rework, duplicate effort). Feeds the waste analysis."><input type="checkbox" id="wi-waste" ' + (ga.waste ? "checked" : "") + "> Waste</label>" +
-    "</div>" +
-    '<div class="actions">' +
-      '<button id="wi-save" class="primary">Save</button>' +
-      '<button id="wi-hide" title="' + (isHidden ? "Bring this work item back into the tree" : "Suppress this whole screen visit from the case tree") + '">' + (isHidden ? "Unhide" : "Hide") + "</button>" +
-    "</div>" +
-    '<details class="step-detail-more">' +
-      '<summary class="step-detail-more-head">' +
-        '<span class="step-detail-more-title">More: ' + item.fragment_count + " fragment" + (item.fragment_count === 1 ? "" : "s") + "</span>" +
-        '<span class="step-detail-more-chevron" aria-hidden="true"></span>' +
-      "</summary>" +
-      '<div class="step-detail-more-body"><div class="wi-members">' + membersHtml + "</div></div>" +
-    "</details>";
-
-  const saveBtn = host.querySelector("#wi-save");
-  if (saveBtn) saveBtn.addEventListener("click", () => {
-    const nm = (host.querySelector("#wi-name").value || "").trim();
-    const nt = (host.querySelector("#wi-notes").value || "").trim();
-    const wst = host.querySelector("#wi-waste").checked;
-    saveWorkItemAnnotation(item, { name: nm, notes: nt, waste: wst });
-  });
-  const hideBtn = host.querySelector("#wi-hide");
-  if (hideBtn) hideBtn.addEventListener("click", () => toggleWorkItemHidden(item));
-  host.querySelectorAll(".wi-member-row").forEach((row) => {
-    const jump = () => {
-      const s = allSteps.find((x) => x.step_id === row.dataset.stepId);
-      if (s) { State.setSelectedStepId(s.step_id); jumpToStepInFlow(s); }
-    };
-    const jb = row.querySelector(".wi-member-jump");
-    if (jb) jb.addEventListener("click", (e) => { e.stopPropagation(); jump(); });
-    row.addEventListener("click", () => {
-      State.setSelectedStepId(row.dataset.stepId || null);
-    });
-  });
-}
-
-/* Upsert a work item's group_annotations entry (name/notes/waste), keyed by
-   {case_id, screen_key}. Writes via persistAnnotations so Ctrl+Z reverts it
-   (the annotation snapshot deep-clones the whole blob, so the additive key is
-   covered by the existing undo mechanism -- no new undo system). An entry that
-   becomes empty (no name/notes/waste/hidden) is removed, keeping the array lean. */
-async function saveWorkItemAnnotation(item, patch) {
-  if (!State.getSession() || !item) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  const cid = item.case_id == null ? null : item.case_id;
-  const key = item.screen_key;
-  let entry = findGroupAnnotation(anno.group_annotations, cid, key);
-  if (!entry) {
-    entry = { case_id: cid, screen_key: key, manually_authored: true };
-    anno.group_annotations.push(entry);
-  }
-  if ("name" in patch) entry.name = patch.name || "";
-  if ("notes" in patch) entry.notes = patch.notes || "";
-  if ("waste" in patch) entry.waste = !!patch.waste;
-  entry.manually_authored = true;
-  _pruneEmptyGroupAnnotation(anno, entry);
-  await persistAnnotations(anno, "annotate work item");
-  toast("Work item saved", "success");
-  renderStepsLevel();
-}
-
-async function toggleWorkItemHidden(item) {
-  if (!State.getSession() || !item) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  const cid = item.case_id == null ? null : item.case_id;
-  const key = item.screen_key;
-  let entry = findGroupAnnotation(anno.group_annotations, cid, key);
-  const nextHidden = !(entry && entry.hidden);
-  if (!entry) {
-    entry = { case_id: cid, screen_key: key, manually_authored: true };
-    anno.group_annotations.push(entry);
-  }
-  entry.hidden = nextHidden;
-  entry.manually_authored = true;
-  _pruneEmptyGroupAnnotation(anno, entry);
-  await persistAnnotations(anno, nextHidden ? "hide work item" : "unhide work item");
-  toast(nextHidden ? "Work item hidden" : "Work item restored", "success");
-  renderStepsLevel();
-}
-
-/* Drop a group_annotations entry that carries no analyst content (all of
-   name/notes/waste/hidden empty) so the array doesn't accumulate blank rows. */
-function _pruneEmptyGroupAnnotation(anno, entry) {
-  const empty = !((entry.name || "").trim()) && !((entry.notes || "").trim()) &&
-    !entry.waste && !entry.hidden;
-  if (empty) {
-    anno.group_annotations = (anno.group_annotations || []).filter((g) => g !== entry);
   }
 }
 
@@ -620,10 +555,15 @@ function stepAppScreenFact(step, interactionsById) {
   return app || (screen && screen !== "(screen)" ? screen : "");
 }
 
-/* The callbacks the per-step detail editor needs. Factored so both the flat
-   reading and the aligned reading's exception editor (ADR-0015 Phase 4) wire the
-   same verbs to a selected step. */
-function stepDetailCallbacks(selected, interactionsById) {
+/* The run a step belongs to, as the detail pane names it. */
+function _runLabelFor(step, model) {
+  const run = step && model.runs.find((r) => r.caseId === step.case_id);
+  if (!run) return "Outside runs";
+  return run.title + (run.label ? " (" + run.label + ")" : "");
+}
+
+/* The callbacks the per-step detail editor needs. */
+function stepDetailCallbacks(selected, interactionsById, model) {
   return {
     onSave: saveStep,
     onDelete: deleteStep,
@@ -636,9 +576,6 @@ function stepDetailCallbacks(selected, interactionsById) {
     onToggleHide: toggleStepHidden,
     interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
-    // Decision 1: how many tickets this step recurs in + the propagate action.
-    repeatCount: (selected && selected._repeat) || 0,
-    onPropagate: () => { if (selected) propagateStepToGroup(selected.step_id); },
     // A2: the chosen split boundary for this step (if any) + the picker.
     splitAfterIndex: (selected && _splitAfter.stepId === selected.step_id) ? _splitAfter.index : null,
     onPickSplit: (idx) => {
@@ -651,114 +588,53 @@ function stepDetailCallbacks(selected, interactionsById) {
       renderStepsLevel();
     },
     // R1 triage economics: resident one-line facts (duration/start/end already
-    // came from time_range; these two are the added app/screen + case facts).
+    // came from time_range; these two are the added app/screen + run facts).
     appScreenFact: stepAppScreenFact(selected, interactionsById),
-    caseLabel: selected && selected.case_id ? caseLabeler()(selected.case_id) : "",
+    runLabel: _runLabelFor(selected, model || _model()),
+    // C4: the name input suggests remembered and already-used names.
+    nameListId: NAME_LIST_ID,
   };
 }
 
-/* A friendly, stable label per case_id for the aligned reading: the canonical
-   marker-enriched label from deriveCases when one exists, else a stable "Case N"
-   index (never the opaque case_id hash). Lazy-require flow-view so the
-   steps<->flow module cycle resolves at call time, not load time. */
-function caseLabeler() {
-  let cases = [];
-  try { cases = require("./flow-view.js").deriveCases(State.getSession()) || []; } catch (_) { cases = []; }
-  const m = {};
-  cases.forEach((c, i) => { m[c.id] = (c.label && c.label !== c.id) ? c.label : ("Case " + (i + 1)); });
-  return (id) => m[id] || "Case ?";
+/* ===== Names: rename, remember, propagate (C4) ======================== */
+
+/* The one rename rule, for every entry point (inline rename, the detail
+   form): the step becomes an analyst state and its map label follows the
+   name; when it carries a draft_key, every other still-draft step with that
+   key takes the name at once. Returns { key, propagated } (key: the
+   draft_key to remember, or null). */
+function _applyRename(anno, step, name) {
+  step.name = name;
+  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
+  const pl = processLabel(name);
+  if (pl) step.process_label = pl;
+  const key = typeof step.draft_key === "string" && step.draft_key ? step.draft_key : null;
+  const propagated = key ? RunsModel.propagateName(anno.steps || [], step, name) : 0;
+  return { key, propagated };
 }
 
-/* ADR-0015 Phase 2-4: render the aligned reading into the Steps list + detail.
-   The consensus backbone is computed LIVE from the current annotation steps
-   (no persisted template, per VALUE-CHAIN Decision 1), so it tracks analyst
-   edits with no re-analyze. A backbone row selected -> the curate/instances
-   detail; an exception (or a deselected backbone) -> the per-instance editor. */
-function renderAlignedReading(interactionsById) {
-  const steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
-  const aligned = PdtAlign.alignCases(steps);
-  const byId = {};
-  for (const s of steps) byId[s.step_id] = s;
-  const caseLabel = caseLabeler();
-
-  // P0.4 discipline: an on-screen key for the frequency-pill encoding.
-  const legendEl = $("#steps-legend");
-  if (legendEl) {
-    legendEl.innerHTML = '<span class="bb-freq">n/N</span> = cases (tickets) that include this step: curate one, then Apply to all instances';
-    legendEl.style.display = "";
+/* Remember `name` for `key` in the main-process store. A failed write is
+   shown; the session rename is saved either way. */
+async function _rememberName(key, name) {
+  let r;
+  try {
+    r = await Ipc.rememberStepName({ draftKey: key, name });
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
   }
-
-  // null _alignSelIndex is a VALID state: an exception/instance step is selected
-  // instead of a backbone row. Only default to the first backbone row when
-  // nothing at all is selected; only snap back to 0 if the index fell off the end.
-  if (_alignSelIndex != null && _alignSelIndex >= aligned.backbone.length) {
-    _alignSelIndex = aligned.backbone.length ? 0 : null;
-  } else if (_alignSelIndex == null && !State.getSelectedStepId() && aligned.backbone.length) {
-    _alignSelIndex = 0;
+  if (r && r.ok) {
+    _remembered[key] = { name, updated_at: new Date().toISOString() };
+    return true;
   }
-
-  PdtSteps.renderBackboneList($("#step-list"), {
-    caseCount: aligned.caseCount,
-    backbone: aligned.backbone,
-    selectedIndex: _alignSelIndex,
-    onSelectBackbone: (i) => { _alignSelIndex = i; State.setSelectedStepId(null); renderStepsLevel(); },
-    // Phase 4: steps a case has that the consensus lacks. Selecting one drops
-    // the backbone selection and shows the normal per-instance editor below.
-    exceptions: aligned.exceptions.map(ex => Object.assign({ caseLabel: caseLabel(ex.caseId) }, ex)),
-    selectedStepId: State.getSelectedStepId(),
-    onSelectException: (sid) => { _alignSelIndex = null; State.setSelectedStepId(sid); renderStepsLevel(); },
-  });
-
-  const entry = (_alignSelIndex != null) ? aligned.backbone[_alignSelIndex] : null;
-  if (entry) {
-    const instances = entry.members.map(m => ({ caseId: m.caseId, caseLabel: caseLabel(m.caseId), step: byId[m.stepId] }));
-    const memberSteps = entry.members.map(m => byId[m.stepId]).filter(Boolean);
-    const seed = Object.assign({ name: entry.token }, PdtAlign.representativeCuration(memberSteps));
-    const idx = _alignSelIndex;
-    PdtSteps.renderBackboneDetail($("#step-detail"), entry, {
-      caseCount: aligned.caseCount,
-      instances,
-      seed,
-      onJump: (sid) => { const s = byId[sid]; if (s) jumpToStepInFlow(s); },
-      onApply: (curated) => applyCurationToBackbone(idx, curated),
-    });
-  } else {
-    // Phase 4: an exception step selected -> edit it in place with the normal
-    // per-instance editor (rename / flag / delete / split / jump). Otherwise the
-    // empty hint.
-    const sel = byId[State.getSelectedStepId()] || null;
-    if (sel) {
-      PdtSteps.renderStepDetail($("#step-detail"), sel, stepDetailCallbacks(sel, interactionsById));
-    } else {
-      PdtSteps.renderBackboneDetail($("#step-detail"), null, {});
-    }
-  }
+  toast("The new name is saved in this session, but it could not be remembered for later analyses: " +
+    ((r && r.error) || "no reason was given"), "error");
+  return false;
 }
 
-/* ADR-0015 Phase 3: curate one consensus step -> propagate to ALL its aligned
-   instances across cases in ONE annotations write (therefore one Ctrl+Z). Fork
-   F2 default = confirmed: the analyst edits the consensus name/description/flags
-   then clicks Apply; nothing auto-applies. Re-derives the backbone from the live
-   steps so the member set is current at apply time. */
-async function applyCurationToBackbone(backboneIndex, curated) {
-  if (!State.getSession() || !curated) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  const aligned = PdtAlign.alignCases(anno.steps || []);
-  const entry = aligned.backbone[backboneIndex];
-  if (!entry || !entry.members.length) { toast("No instances to apply to", "error"); return; }
-  let applied = 0;
-  for (const m of entry.members) {
-    const t = (anno.steps || []).find(s => s.step_id === m.stepId);
-    if (!t) continue;
-    if (curated.name) t.name = curated.name;
-    t.description = curated.description || "";
-    t.flags = Object.assign({}, t.flags || {}, curated.flags || {});
-    t.state = t.state === "manually_authored" ? "manually_authored" : "edited";
-    applied++;
-  }
-  await persistAnnotations(anno, "apply to all instances");   // one write -> one Ctrl+Z
-  toast("Applied to " + applied + " instance(s) across cases", "success");
-  renderStepsLevel();
+function _renamedToast(propagated) {
+  return propagated
+    ? "Renamed. " + _plural(propagated, "matching drafted step", "matching drafted steps") + " took the name too."
+    : "Renamed";
 }
 
 async function inlineRenameStep(stepId, newName, advance) {
@@ -775,37 +651,52 @@ async function inlineRenameStep(stepId, newName, advance) {
   const anno = ensureAnnoShape(State.getSession().annotations);
   const step = anno.steps.find(s => s.step_id === stepId);
   if (!step) return;
-  step.name = newName;
-  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
-  await persistAnnotations(anno, 'rename step');
-  if (advance === "next") {
-    const idx = anno.steps.findIndex(s => s.step_id === stepId);
-    const nextStep = anno.steps[idx + 1];
-    if (nextStep) {
-      State.setSelectedStepId(nextStep.step_id);
-      renderStepsLevel();
-      setTimeout(() => beginRenameOnSelected(), 30);
-    }
+  // Tab moves on to the row below, in the list the analyst sees.
+  const goNext = advance === true || advance === "next";
+  const next = goNext ? RunsModel.nextInGroup(_model(), stepId, _ui.showHidden) : null;
+  const { key, propagated } = _applyRename(anno, step, newName);
+  let saved = true;
+  try { await persistAnnotations(anno, "rename step"); } catch (_) { saved = false; }   // already shown
+  if (key) await _rememberName(key, newName);
+  if (saved && propagated) toast(_renamedToast(propagated), "success");
+  if (next) {
+    State.setSelectedStepId(next.step_id);
+    renderStepsLevel();
+    setTimeout(() => beginRenameOnSelected(), 30);
   }
 }
 
+/* Start the inline rename of the selected step, when its row is on screen. */
 function beginRenameOnSelected() {
-  if (!State.getSelectedStepId()) return;
-  const row = document.querySelector(`.step-row[data-step-id="${State.getSelectedStepId()}"] .step-name`);
-  if (row) {
-    const evt = new MouseEvent("dblclick", { bubbles: true, cancelable: true });
-    row.dispatchEvent(evt);
-  }
+  const row = _rowFor(State.getSelectedStepId());
+  const nameEl = row && row.querySelector(".step-name");
+  if (!nameEl) return;
+  row.scrollIntoView({ block: "nearest" });
+  nameEl.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
 }
 
 async function saveStep(updatedStep) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const idx = anno.steps.findIndex(s => s.step_id === updatedStep.step_id);
+  const before = idx >= 0 ? anno.steps[idx] : null;
+  const newName = String(updatedStep.name || "").trim();
+  const renamed = !!(before && newName && newName !== String(before.name || "").trim());
   if (idx >= 0) anno.steps[idx] = updatedStep;
   else anno.steps.push(updatedStep);
-  await persistAnnotations(anno, 'save step');
-  toast("Step saved", "success");
+  const r = renamed ? _applyRename(anno, updatedStep, newName) : { key: null, propagated: 0 };
+  let saved = true;
+  try { await persistAnnotations(anno, 'save step'); } catch (_) { saved = false; }   // already shown
+  if (r.key) await _rememberName(r.key, newName);
+  if (saved) toast(renamed ? "Step saved. " + _renamedToast(r.propagated) : "Step saved", "success");
+}
+
+/* ===== Boundary verbs (counted on the pattern run, C3) ================ */
+
+/* Taking a step out (hide or delete) is a dropped draft, or, for a step the
+   analyst added, the add taken back. */
+function _removalFix(state) {
+  return state === "manually_authored" ? { kind: "add", delta: -1 } : { kind: "drop", delta: 1 };
 }
 
 async function deleteStep(stepId) {
@@ -815,37 +706,48 @@ async function deleteStep(stepId) {
   const ok = await confirmModal({
     title: "Delete step?",
     message: step ? `Delete step "${step.name || "(unnamed)"}"?` : "Delete this step?",
-    detail: "Ctrl+Z will restore it.",
+    detail: "Ctrl+Z will restore it. To keep a drafted step out of the next analysis too, hide it instead.",
     okLabel: "Delete",
     danger: true,
   });
   if (!ok) return;
+  if (step && step.state !== "hidden") {
+    const f = _removalFix(step.state);
+    RunsModel.recordFix(anno, _model().runs, step.case_id, f.kind, f.delta);
+  }
   anno.steps = anno.steps.filter(s => s.step_id !== stepId);
   if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
   await persistAnnotations(anno, 'delete step');
   toast("Step deleted", "success");
 }
 
-/* Toggle a step's "hidden" state. Hidden steps drop out of the list
-   (unless the hidden filter chip is on) and survive re-analyze via
-   _merge_steps. The pre-hide state is stashed on `_prev_state` so
-   unhiding restores it. */
+/* Toggle a step's "hidden" state. Hidden steps drop out of the list (unless
+   the run's "Show hidden steps" is on) and survive re-analyze via
+   _merge_steps. The pre-hide state is stashed on `_prev_state` so unhiding
+   restores it. On the pattern run, hiding a draft counts as a drop and
+   unhiding it takes the drop back. */
 async function toggleStepHidden(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const step = anno.steps.find(s => s.step_id === stepId);
   if (!step) return;
+  const runs = _model().runs;
   if (step.state === "hidden") {
-    step.state = step._prev_state || "auto_suggested";
+    const prev = step._prev_state || "auto_suggested";
+    const f = _removalFix(prev);
+    RunsModel.recordFix(anno, runs, step.case_id, f.kind, -f.delta);
+    step.state = prev;
     delete step._prev_state;
     await persistAnnotations(anno, "unhide step");
     toast("Step restored", "success");
   } else {
+    const f = _removalFix(step.state);
+    RunsModel.recordFix(anno, runs, step.case_id, f.kind, f.delta);
     step._prev_state = step.state;
     step.state = "hidden";
-    if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
+    if (State.getSelectedStepId() === stepId && !_ui.showHidden) State.setSelectedStepId(null);
     await persistAnnotations(anno, "hide step");
-    toast("Step hidden: reveal via the hidden filter chip", "success");
+    toast('Step hidden. "Show hidden steps" on its run lists it again.', "success");
   }
 }
 
@@ -872,18 +774,21 @@ async function splitStep(stepId) {
   const firstEvents = firstIds.map(id => interMap[id]).filter(Boolean);
   const secondEvents = secondIds.map(id => interMap[id]).filter(Boolean);
   if (!firstEvents.length || !secondEvents.length) { toast("Could not split step", "error"); return; }
+  RunsModel.recordFix(anno, _model().runs, s.case_id, "split");
   // G-4: splitting an already-split step must not stack suffixes
   // ("X (split 1) (split 1)") — strip any existing artifact first.
   const baseName = stripSplitSuffix(s.name);
-  const second = { ...s, step_id: cryptoRandomId(),
+  // Neither half is one draft any more: no draft identity (a rename of a
+  // half is not remembered under the whole draft's key).
+  const second = RunsModel.dropDraftIdentity({ ...s, step_id: cryptoRandomId(),
     name: baseName + " (split 2)",
     time_range: { start: secondEvents[0].timestamp, end: secondEvents[secondEvents.length - 1].timestamp },
     evidence: { ...s.evidence, interaction_event_ids: secondIds },
-    state: "edited" };
-  const first = { ...s, name: baseName + " (split 1)",
+    state: "edited" });
+  const first = RunsModel.dropDraftIdentity({ ...s, name: baseName + " (split 1)",
     time_range: { start: firstEvents[0].timestamp, end: firstEvents[firstEvents.length - 1].timestamp },
     evidence: { ...s.evidence, interaction_event_ids: firstIds },
-    state: "edited" };
+    state: "edited" });
   anno.steps.splice(idx, 1, first, second);
   _splitAfter = { stepId: null, index: null };
   await persistAnnotations(anno, 'split step');
@@ -895,20 +800,24 @@ async function splitStep(stepId) {
      - playhead inside a step -> split that step at the playhead
        (a boundary inside a step necessarily cuts it in two);
      - playhead in open space -> new step from the playhead to the
-       next step's start (or the session end);
+       next step's start (or the end of the run it is in, or the
+       session end);
      - no steps yet           -> carve the session into "Step 1" /
        "Step 2" at the playhead.
    Distinct from splitStep(), which cuts a selected step at its
-   interaction-count midpoint. */
+   interaction-count midpoint. A new step belongs to the run that contains
+   it; on the pattern run the split and the add are counted fixes. */
 async function addStepAtTimestamp(tsISO) {
   if (!State.getSession()) return;
   const t = new Date(tsISO).getTime();
   if (!isFinite(t)) { toast("Couldn't read the playhead position", "error"); return; }
   const anno = ensureAnnoShape(State.getSession().annotations);
+  const runs = _model().runs;
   const inter = State.getSession().events.filter(e => e.type === "interaction");
   const interMap = Object.fromEntries(inter.map(e => [e.event_id, e]));
   const evTime = (id) => interMap[id] ? new Date(interMap[id].timestamp).getTime() : NaN;
   const tISO = new Date(t).toISOString();
+  const runAt = (a, b) => { const r = RunsModel.runForRange(runs, a, b); return r ? r.caseId : null; };
 
   // No steps yet: carve the whole session in two at the playhead.
   if (!anno.steps.length) {
@@ -917,8 +826,8 @@ async function addStepAtTimestamp(tsISO) {
     const before = inter.filter(e => new Date(e.timestamp).getTime() < t).map(e => e.event_id);
     const after = inter.filter(e => new Date(e.timestamp).getTime() >= t).map(e => e.event_id);
     anno.steps.push(
-      makeStep("Step 1", new Date(span.startMs).toISOString(), tISO, before),
-      makeStep("Step 2", tISO, new Date(span.endMs).toISOString(), after),
+      makeStep("Step 1", new Date(span.startMs).toISOString(), tISO, before, runAt(span.startMs, t)),
+      makeStep("Step 2", tISO, new Date(span.endMs).toISOString(), after, runAt(t, span.endMs)),
     );
     await persistAnnotations(anno, "Add step at playhead");
     toast('Created "Step 1" and "Step 2"', "success");
@@ -933,42 +842,49 @@ async function addStepAtTimestamp(tsISO) {
     const s = anno.steps[idx];
     const ids = (s.evidence && s.evidence.interaction_event_ids) || [];
     const newName = nextStepName(anno.steps);
-    const first = { ...s, time_range: { start: s.time_range.start, end: tISO },
+    RunsModel.recordFix(anno, runs, s.case_id, "split");
+    const first = RunsModel.dropDraftIdentity({ ...s, time_range: { start: s.time_range.start, end: tISO },
       evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) < t) },
-      state: "edited" };
-    const second = { ...s, step_id: cryptoRandomId(), name: newName,
+      state: "edited" });
+    const second = RunsModel.dropDraftIdentity({ ...s, step_id: cryptoRandomId(), name: newName,
       time_range: { start: tISO, end: s.time_range.end },
       evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) >= t) },
-      state: "edited" };
+      state: "edited" });
     anno.steps.splice(idx, 1, first, second);
     await persistAnnotations(anno, "Add step at playhead");
     toast('Added "' + newName + '"', "success");
     return;
   }
 
-  // Playhead in open space: new step from the playhead to the next boundary.
+  // Playhead in open space: new step from the playhead to the next boundary
+  // (the next step's start, else the end of the run it is in, else the end
+  // of the session).
   const span = getSpan();
+  const inRun = RunsModel.runForRange(runs, t, t);
   const next = anno.steps
     .filter(s => s.time_range && s.time_range.start)
     .map(s => new Date(s.time_range.start).getTime())
     .filter(ms => ms >= t)
     .sort((a, b) => a - b)[0];
-  const endMs = next != null ? next : (span ? span.endMs : t + 5000);
+  let endMs = next != null ? next : (span ? span.endMs : t + 5000);
+  if (inRun && inRun.endMs != null) endMs = Math.min(endMs, inRun.endMs);
   if (endMs - t <= 0) { toast("A step already starts here"); return; }
   const newName = nextStepName(anno.steps);
   const ids = inter
     .filter(e => { const et = new Date(e.timestamp).getTime(); return et >= t && et < endMs; })
     .map(e => e.event_id);
-  anno.steps.push(makeStep(newName, tISO, new Date(endMs).toISOString(), ids));
+  const caseId = runAt(t, endMs);
+  RunsModel.recordFix(anno, runs, caseId, "add");
+  anno.steps.push(makeStep(newName, tISO, new Date(endMs).toISOString(), ids, caseId));
   await persistAnnotations(anno, "Add step at playhead");
   toast('Added "' + newName + '"', "success");
 }
 
-function makeStep(name, startISO, endISO, eventIds) {
+function makeStep(name, startISO, endISO, eventIds, caseId) {
   return {
     step_id: cryptoRandomId(),
     session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
-    case_id: null,
+    case_id: caseId || null,
     name,
     description: "",
     time_range: { start: startISO, end: endISO },
@@ -989,9 +905,6 @@ function nextStepName(steps) {
   return "Step " + (max + 1);
 }
 
-const byStartTime = (a, b) =>
-  ((a.time_range && a.time_range.start) || "").localeCompare((b.time_range && b.time_range.start) || "");
-
 /* G-4: "(split N)" suffixes are split-tool artifacts; they stack and then
    ride along into merged names ("X (split 1) (split 1) + Y" — the owner's
    real session). Strip them whenever a name is reused as a building block. */
@@ -1004,7 +917,8 @@ function stripSplitSuffix(name) {
    concatenated. Shared by both merge entry points so they cannot diverge.
    The merged name dedupes the parts (merging "X (split 1)" + "X (split 2)"
    reads "X", not "X + X") and caps its length — a merge of long auto names
-   must not produce a paragraph. */
+   must not produce a paragraph. The merged step is no longer one draft, so
+   it carries no draft identity. */
 function mergeStepObjects(toMerge) {
   const first = toMerge[0];
   const last = toMerge[toMerge.length - 1];
@@ -1015,7 +929,7 @@ function mergeStepObjects(toMerge) {
   }
   let mergedName = parts.join(" + ") || stripSplitSuffix(first.name);
   if (mergedName.length > 120) mergedName = mergedName.slice(0, 119) + "…";
-  return {
+  return RunsModel.dropDraftIdentity({
     ...first,
     name: mergedName,
     time_range: { start: first.time_range.start, end: last.time_range.end },
@@ -1025,10 +939,11 @@ function mergeStepObjects(toMerge) {
       screenshot_refs: toMerge.flatMap(s => (s.evidence && s.evidence.screenshot_refs) || []),
     },
     state: "edited",
-  };
+  });
 }
 
 async function commitMerge(anno, toMerge, undoLabel) {
+  RunsModel.recordFix(anno, _model().runs, toMerge[0].case_id, "merge");
   const merged = mergeStepObjects(toMerge);
   const mergedIds = new Set(toMerge.map(s => s.step_id));
   anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
@@ -1038,32 +953,38 @@ async function commitMerge(anno, toMerge, undoLabel) {
   return merged;
 }
 
-/* P0.1: merge the clicked step with the chronologically NEXT step -- always,
-   regardless of any multi-selection. The selection-aware merge is a separate,
-   explicitly-labelled action (mergeSelectedSteps) so one control never does
-   two things on hidden state (the "merged the wrong pair" defect). */
+/* P0.1: merge the clicked step with the NEXT step of the same run, the row
+   below it in the list -- always, regardless of any multi-selection, and
+   never across runs or with a step the list does not show. The
+   selection-aware merge is a separate, explicitly-labelled action
+   (mergeSelectedSteps) so one control never does two things on hidden state
+   (the "merged the wrong pair" defect). */
 async function mergeStepWithNext(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const sorted = anno.steps.slice().sort(byStartTime);
-  const idx = sorted.findIndex(s => s.step_id === stepId);
-  if (idx < 0) { toast("Step not found", "error"); return; }
-  if (idx === sorted.length - 1) { toast("No next step to merge with", "error"); return; }
-  const toMerge = [sorted[idx], sorted[idx + 1]];
+  const step = anno.steps.find(s => s.step_id === stepId);
+  if (!step) { toast("Step not found", "error"); return; }
+  const next = RunsModel.nextInGroup(_model(), stepId, _ui.showHidden);
+  if (!next) { toast("This is the last step of its run: there is no next step to merge with.", "error"); return; }
+  const toMerge = [step, next];
   await commitMerge(anno, toMerge, 'merge step with next');
   toast('Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"', "success");
 }
 
-/* P0.1: merge exactly the Ctrl/checkbox multi-selected steps (chronologically
-   ordered), the inverse of split for an arbitrary set. Acts on the user's
-   actual selection -- never falls back to "next". */
+/* P0.1: merge exactly the ticked steps (time order), the inverse of split for
+   an arbitrary set. Acts on the user's actual selection -- never falls back
+   to "next" -- and only within one run. */
 async function mergeSelectedSteps() {
   if (!State.getSession()) return;
   const multi = State.getMultiSelectedStepIds();
   if (!multi || multi.size < 2) { toast("Tick 2+ steps to merge", "error"); return; }
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const toMerge = anno.steps.filter(s => multi.has(s.step_id)).sort(byStartTime);
+  const toMerge = anno.steps.filter(s => multi.has(s.step_id)).sort(RunsModel.byStart);
   if (toMerge.length < 2) { toast("Select at least two steps to merge", "error"); return; }
+  if (new Set(toMerge.map((s) => s.case_id || null)).size > 1) {
+    toast("Select steps from one run to merge them.", "error");
+    return;
+  }
   const merged = await commitMerge(anno, toMerge, 'merge selected steps');
   multi.clear();
   syncMultiSelectButtons();
@@ -1082,96 +1003,71 @@ function syncMultiSelectButtons() {
   }
 }
 
-/* Move a step one slot up/down. The swap is relative to the step's
-   neighbour in the *displayed* (filtered) order so it stays intuitive
-   when a filter is active, but applied to the underlying anno.steps. */
-async function reorderStep(stepId, delta) {
-  if (!State.getSession()) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  const f = State.getListFilters().step;
-  const visible = (anno.steps || [])
-    .filter(s => stepMatchesFilter(s, f, State.getCaseScope()));
-  const vIdx = visible.findIndex(s => s.step_id === stepId);
-  const neighbour = visible[vIdx + delta];
-  if (vIdx < 0 || !neighbour) return;
-  const i = anno.steps.findIndex(s => s.step_id === stepId);
-  const j = anno.steps.findIndex(s => s.step_id === neighbour.step_id);
-  if (i < 0 || j < 0) return;
-  const tmp = anno.steps[i];
-  anno.steps[i] = anno.steps[j];
-  anno.steps[j] = tmp;
-  await persistAnnotations(anno, 'reorder step');
-}
-
-/* Keyboard reorder (Alt+ArrowUp / Alt+ArrowDown from renderer): move the
-   SELECTED step one slot, then re-render + keep it visible. reorderStep
-   persists but does not re-render, so this wraps it. Reuses the arrival-reveal
-   scroll path (the only unrequested scroll) since the moved row is the point of
-   the act -- an explicit reorder is a request to see the row move. */
-async function reorderSelectedStep(delta) {
-  const sid = State.getSelectedStepId();
-  if (!sid) return;
-  await reorderStep(sid, delta);
-  renderStepsLevel();
-  const row = document.querySelector('.step-row[data-step-id="' + sid + '"]');
-  if (row) row.scrollIntoView({ block: "nearest" });
-}
-
-/* Reorder the whole step list chronologically by time_range.start. */
-async function sortStepsByTime() {
-  if (!State.getSession()) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  if (!anno.steps.length) { toast("No steps to sort", ""); return; }
-  anno.steps.sort((a, b) =>
-    ((a.time_range && a.time_range.start) || "")
-      .localeCompare((b.time_range && b.time_range.start) || ""));
-  await persistAnnotations(anno, 'sort steps by time');
-  toast("Steps sorted by start time", "success");
+/* Where a step added from the toolbar goes when no video playhead places
+   it: into the open run, right after the selected step (or after the run's
+   last step), ending before the next step so it never covers a drafted
+   step. Returns { startMs, endMs, caseId } or null. */
+function _anchorInOpenRun(model) {
+  const run = model.runs.find((r) => r.caseId === _ui.open);
+  if (!run) return null;
+  const list = run.visible;
+  const after = list.find((s) => s.step_id === State.getSelectedStepId()) || list[list.length - 1] || null;
+  let startMs = after ? new Date(after.time_range && after.time_range.end).getTime() : run.startMs;
+  if (!isFinite(startMs)) startMs = run.startMs;
+  if (!isFinite(startMs)) return null;
+  const later = run.members
+    .map((s) => new Date(s.time_range && s.time_range.start).getTime())
+    .filter((ms) => isFinite(ms) && ms > startMs);
+  let endMs = startMs + 5000;
+  if (later.length) endMs = Math.min(endMs, Math.min(...later));
+  if (run.endMs != null) endMs = Math.min(endMs, run.endMs);
+  return { startMs, endMs: Math.max(startMs, endMs), caseId: run.caseId };
 }
 
 async function addManualStep() {
   if (!State.getSession()) return;
-  const name = await promptModal({ title: "Add manual step", message: "Name this step", placeholder: "e.g., Search customer in CRM", okLabel: "Add step" });
+  const name = await promptModal({ title: "Add step", message: "Name this step", placeholder: "For example: Search customer in CRM", okLabel: "Add step" });
   if (!name) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
+  const model = _model();
   const video = $("#video");
-  let tsNow = video ? videoTimeToSessionTs(video.currentTime) : null;   // #video may be absent
-  if (!tsNow) {
-    // No video to anchor to: drop the step at the end of the session's
-    // recorded span (after any existing step) rather than wall-clock
-    // now, which would land far past the timeline.
-    const span = getSpan();
-    let anchorMs = span ? span.endMs : Date.now();
-    for (const s of anno.steps) {
-      const end = s.time_range && s.time_range.end && new Date(s.time_range.end).getTime();
-      if (end && end > anchorMs) anchorMs = end;
+  const tsNow = video ? videoTimeToSessionTs(video.currentTime) : null;   // #video may be absent
+  let startMs, endMs, caseId;
+  if (tsNow) {
+    // The video playhead places it; it belongs to the run that contains it.
+    startMs = new Date(tsNow).getTime();
+    endMs = startMs + 5000;
+    const r = RunsModel.runForRange(model.runs, startMs, endMs);
+    caseId = r ? r.caseId : null;
+  } else {
+    const a = _anchorInOpenRun(model);
+    if (a) {
+      ({ startMs, endMs, caseId } = a);
+    } else {
+      // No video and no open run: drop the step at the end of the recorded
+      // span (after any existing step) rather than wall-clock now, which
+      // would land far past the timeline.
+      const span = getSpan();
+      startMs = span ? span.endMs : Date.now();
+      for (const s of anno.steps) {
+        const end = s.time_range && s.time_range.end && new Date(s.time_range.end).getTime();
+        if (end && end > startMs) startMs = end;
+      }
+      endMs = startMs + 5000;
+      caseId = null;
     }
-    tsNow = new Date(anchorMs).toISOString();
   }
-  // Default duration so manual steps render with a non-zero width
-  // in the mini-timeline; the analyst can edit the time range later.
-  const endTs = new Date(new Date(tsNow).getTime() + 5000).toISOString();
-  const step = {
-    step_id: cryptoRandomId(),
-    session_id: (State.getSession().manifest && State.getSession().manifest.session_id) || "",
-    case_id: null,
-    name,
-    description: "",
-    time_range: { start: tsNow, end: endTs },
-    evidence: { interaction_event_ids: [], screenshot_refs: [], video_timecode_range: null, manual_notes: "" },
-    state: "manually_authored",
-    canonical_step_id: null,
-    flags: { conditional: false, condition_text: null, exception_path: false, waste: false, automation_candidate: false },
-    phase_id: null,
-  };
+  const step = makeStep(name.trim(), new Date(startMs).toISOString(), new Date(endMs).toISOString(), [], caseId);
+  RunsModel.recordFix(anno, model.runs, caseId, "add");
   anno.steps.push(step);
+  if (caseId && _ui.open !== caseId) _openGroup(caseId);
   State.setSelectedStepId(step.step_id);
   await persistAnnotations(anno, 'add step');
-  toast("Manual step added", "success");
+  toast("Step added", "success");
 }
 
-/* Bulk-delete the Ctrl+click multi-selection. One confirm for the
-   whole set; Ctrl+Z restores. */
+/* Bulk-delete the ticked steps. One confirm for the whole set; Ctrl+Z
+   restores. */
 async function deleteSelectedSteps() {
   if (!State.getSession()) return;
   const ids = Array.from(State.getMultiSelectedStepIds());
@@ -1186,12 +1082,105 @@ async function deleteSelectedSteps() {
   if (!ok) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const idSet = new Set(ids);
+  const runs = _model().runs;
+  for (const s of anno.steps) {
+    if (!idSet.has(s.step_id) || s.state === "hidden") continue;
+    const f = _removalFix(s.state);
+    RunsModel.recordFix(anno, runs, s.case_id, f.kind, f.delta);
+  }
   anno.steps = anno.steps.filter(s => !idSet.has(s.step_id));
   if (idSet.has(State.getSelectedStepId())) State.setSelectedStepId(null);
   State.getMultiSelectedStepIds().clear();
   await persistAnnotations(anno, "delete " + ids.length + " steps");
   syncMultiSelectButtons();
   toast(ids.length + " steps deleted", "success");
+}
+
+/* ===== Run verbs: confirm, use as pattern (C2, C3) ==================== */
+
+async function confirmRunAction(caseId) {
+  const session = State.getSession();
+  if (!session) return;
+  const anno = ensureAnnoShape(session.annotations);
+  const model = _model();
+  const run = model.runs.find((r) => r.caseId === caseId);
+  if (!run) return;
+  const r = RunsModel.confirmRun(anno, model.runs, caseId, new Date().toISOString());
+  try { await persistAnnotations(anno, "confirm run"); } catch (_) { return; }   // already shown
+  toast(run.title + " confirmed" +
+    (r.converted ? ": " + _plural(r.converted, "drafted step", "drafted steps") + " accepted" : "") +
+    ". Ctrl+Z undoes it.", "success");
+}
+
+async function usePatternAction(caseId) {
+  const session = State.getSession();
+  if (!session) return;
+  const anno = ensureAnnoShape(session.annotations);
+  const model = _model();
+  const run = model.runs.find((r) => r.caseId === caseId);
+  if (!run) return;
+  const cur = RunsModel.patternRun(anno, model.runs);
+  if (cur.run && cur.run.caseId === caseId && cur.record) return;
+  // Something to lose: the current pattern's count or its confirmation.
+  const f = cur.record ? RunsModel.probeLine(session.stats, model.runs, cur.run, cur.record) : null;
+  if (cur.record && cur.run && (cur.record.confirmed_at || (f && f.total > 0))) {
+    const ok = await confirmModal({
+      title: "Use " + run.title + " as the pattern?",
+      message: cur.run.title + " is the pattern run now. Its boundary fix count" +
+        (cur.record.confirmed_at ? " and its confirmation are" : " is") + " replaced.",
+      detail: "Ctrl+Z undoes it.",
+      okLabel: "Use as pattern",
+    });
+    if (!ok) return;
+  }
+  RunsModel.usePattern(anno, model.runs, caseId);
+  try { await persistAnnotations(anno, "use run as pattern"); } catch (_) { return; }   // already shown
+  toast(run.title + " is now the pattern run. The boundary fix count starts at zero.", "success");
+}
+
+/* ===== Keyboard (renderer.js) ========================================= */
+
+/* The selected step when its row is on screen in the list, else null. The
+   Steps shortcuts act only on a step the analyst can see (RP-12: a shortcut
+   once mutated a selection that was not on screen). */
+function visibleSelectedStepId() {
+  const sid = State.getSelectedStepId();
+  return sid && _rowFor(sid) ? sid : null;
+}
+
+/* Up / Down (J / K): move the selection to the neighbouring row of the open
+   group; with no row selected, to the first (Down) or last (Up) row. Returns
+   false when the open group shows no rows. */
+function moveSelection(delta) {
+  const rows = [...document.querySelectorAll("#step-list .run-steps .step-row")];
+  if (!rows.length) return false;
+  const i = rows.findIndex((r) => r.dataset.stepId === State.getSelectedStepId());
+  const j = i < 0 ? (delta > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, i + delta));
+  if (i !== j) {
+    State.setSelectedStepId(rows[j].dataset.stepId);
+    renderStepsLevel();
+  }
+  const row = _rowFor(State.getSelectedStepId());
+  if (row) row.scrollIntoView({ block: "nearest" });
+  return true;
+}
+
+/* Enter: rename the selected step (only when its row is on screen). */
+function renameSelectedStep() {
+  if (!visibleSelectedStepId()) return false;
+  beginRenameOnSelected();
+  return true;
+}
+
+/* Ctrl+Enter: confirm the open run, when it is on screen and has something
+   to confirm. */
+function confirmOpenRun() {
+  const key = _ui.open;
+  if (!key || key === OUTSIDE) return false;
+  const group = [...document.querySelectorAll("#step-list .run-group")].find((g) => g.dataset.caseId === key);
+  if (!group || !group.querySelector('[data-act="confirm-run"]')) return false;
+  confirmRunAction(key);
+  return true;
 }
 
 /* ===== Ignored apps (step-noise denylist) =====
@@ -1285,47 +1274,10 @@ function initStepsView(deps) {
   jumpToStepInFlow = deps.jumpToStepInFlow;
   watchStep = deps.watchStep || (() => {});
 
-  const txt = document.getElementById("step-filter-text");
-  if (txt) {
-    let t;
-    txt.addEventListener("input", () => {
-      clearTimeout(t);
-      t = setTimeout(() => {
-        State.getListFilters().step.text = txt.value.trim();
-        renderStepsLevel();
-      }, 120);
-    });
-  }
-  const stateGrp = document.getElementById("step-filter-states");
-  if (stateGrp) {
-    stateGrp.addEventListener("click", (e) => {
-      const chip = e.target.closest(".chip");
-      if (!chip) return;
-      const st = chip.dataset.state;
-      const set = State.getListFilters().step.states;
-      if (set.has(st)) set.delete(st); else set.add(st);
-      renderStepsLevel();
-    });
-  }
   if ($("#btn-add-manual-step")) $("#btn-add-manual-step").addEventListener("click", addManualStep);
-  if ($("#btn-sort-steps-time")) $("#btn-sort-steps-time").addEventListener("click", sortStepsByTime);
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
   if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
-
-  // ADR-0015: the Flat / Aligned reading toggle (shown only with 2+ cases).
-  const alignToggle = $("#step-align-toggle");
-  if (alignToggle) {
-    alignToggle.addEventListener("click", (e) => {
-      const b = e.target.closest("button[data-mode]");
-      if (!b) return;
-      const next = b.dataset.mode === "aligned";
-      if (next === _alignMode) return;
-      _alignMode = next;
-      _alignSelIndex = next ? 0 : null;
-      renderStepsLevel();
-    });
-  }
 }
 
 /* A2/A5: toggle one boolean flag on a step and persist. Shared by the step
@@ -1342,42 +1294,11 @@ async function toggleStepFlag(stepId, flagKey) {
   toast(step.flags[flagKey] ? "Flagged" : "Flag cleared", "success");
 }
 
-/* Decision 1: apply this step's name + description + flags to the matching
-   steps in the OTHER cases it recurs in -- "curate one ticket, apply to all".
-   Alignment is by the value-agnostic structural signature (step-alignment.js). */
-async function propagateStepToGroup(stepId) {
-  if (!State.getSession()) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  const interactionsById = {};
-  for (const ev of (State.getSession().events || [])) {
-    if (ev.type === "interaction") interactionsById[ev.event_id] = ev;
-  }
-  const group = PdtAlign.groupForStep(stepId, anno.steps || [], interactionsById);
-  if (!group || group.caseSpan < 2) {
-    toast("This step doesn't recur across tickets", "error");
-    return;
-  }
-  const source = (anno.steps || []).find(s => s.step_id === stepId);
-  if (!source) return;
-  let applied = 0;
-  for (const m of group.members) {
-    if (m.stepId === stepId) continue;
-    const t = (anno.steps || []).find(s => s.step_id === m.stepId);
-    if (!t) continue;
-    t.name = source.name;
-    t.description = source.description;
-    t.flags = { ...(source.flags || {}) };
-    t.state = t.state === "manually_authored" ? "manually_authored" : "edited";
-    applied++;
-  }
-  await persistAnnotations(anno, "apply step to repeats");
-  toast("Applied to " + applied + " matching step(s) in other tickets", "success");
-  renderStepsLevel();
-}
-
-/* A5: right-click context menu for a step block in the Step timeline.
-   Mirrors the inline-styled menu pattern used by the Flow timeline
-   (flow-view.js showMarkerInsertMenu) for visual consistency. */
+/* A5: right-click context menu for a step, from its list row or its block
+   on the step timeline. Mirrors the inline-styled menu pattern used by the
+   Flow timeline (flow-view.js showMarkerInsertMenu) for visual consistency.
+   The step is revealed first (its run opens), so every item acts on a step
+   the list shows. */
 function showStepContextMenu(stepId, x, y) {
   const prior = document.getElementById("step-ctx-menu");
   if (prior) prior.remove();
@@ -1385,7 +1306,7 @@ function showStepContextMenu(stepId, x, y) {
   const anno = session && session.annotations;
   const step = anno && (anno.steps || []).find(s => s.step_id === stepId);
   if (!step) return;
-  State.setSelectedStepId(stepId);
+  _selectAndReveal(stepId);
 
   const menu = document.createElement("div");
   menu.id = "step-ctx-menu";
@@ -1424,21 +1345,6 @@ function showStepContextMenu(stepId, x, y) {
     addItem("Merge " + _multiSel.size + " selected steps", () => mergeSelectedSteps());
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
-  // R1 (Steps chrome diet): reorder relocated here from the retired per-row
-  // ↑ / ↓ buttons. Same reorderStep callback + semantics (swap with the
-  // visible neighbour in the filtered list). Only offer a direction that has a
-  // neighbour, so no menu item is a no-op. reorderStep persists but does not
-  // re-render, so re-render after it (mirrors the other mutating items).
-  const _f = State.getListFilters().step;
-  const _visible = (anno.steps || [])
-    .filter(s => stepMatchesFilter(s, _f, State.getCaseScope()));
-  const _vIdx = _visible.findIndex(s => s.step_id === stepId);
-  if (_vIdx > 0) {
-    addItem("Move up", async () => { await reorderStep(stepId, -1); renderStepsLevel(); });
-  }
-  if (_vIdx >= 0 && _vIdx < _visible.length - 1) {
-    addItem("Move down", async () => { await reorderStep(stepId, 1); renderStepsLevel(); });
-  }
   addItem(step.state === "hidden" ? "Unhide" : "Hide as noise", () => toggleStepHidden(stepId));
   addItem("Jump to in Flow", () => {
     const s = (anno.steps || []).find(x => x.step_id === stepId);
@@ -1456,21 +1362,11 @@ function showStepContextMenu(stepId, x, y) {
   addItem(flags.automation_candidate ? "Clear automation flag" : "Flag as automation candidate",
     () => toggleStepFlag(stepId, "automation_candidate"));
 
-  // Decision 1: "apply to repeats" when this step recurs across cases.
-  const _interById = {};
-  for (const ev of (State.getSession().events || [])) {
-    if (ev.type === "interaction") _interById[ev.event_id] = ev;
-  }
-  const _grp = PdtAlign.groupForStep(stepId, (anno.steps || []), _interById);
-  if (_grp && _grp.caseSpan > 1) {
-    addSep();
-    addItem("Apply name + flags to " + (_grp.caseSpan - 1) + " repeat(s)",
-      () => propagateStepToGroup(stepId));
-  }
-
   document.body.appendChild(menu);
   const dismiss = (e) => {
     if (e.type === "keydown" && e.key !== "Escape") return;
+    // A press ON the menu is a choice, not a dismissal (the Flow menus' rule).
+    if (e.type === "mousedown" && menu.contains(e.target)) return;
     menu.remove();
     document.removeEventListener("mousedown", dismiss, true);
     document.removeEventListener("keydown", dismiss, true);
@@ -1485,7 +1381,9 @@ function showStepContextMenu(stepId, x, y) {
 module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
   deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps,
-  addStepAtTimestamp, reorderSelectedStep,
+  addStepAtTimestamp,
+  // Keyboard: act only on what the list shows (RP-12).
+  visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun,
   // G-4 label hygiene -- pure, exported for unit testing.
   stripSplitSuffix, mergeStepObjects,
 };

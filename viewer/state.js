@@ -27,7 +27,6 @@
 
 /**
  * @typedef {Object} ListFilters
- * @property {{ text: string, states: Set<string> }} step
  * @property {{ text: string }} marker
  */
 
@@ -61,14 +60,14 @@ const _s = {
   // Lab-phase §A5: the Overview level (case-quality badge → facts →
   // findings → Export PDD) is the default surface a loaded session opens on.
   currentLevel: "overview",
-  // ADR-0024: the view-time grain notch shared across Flow / Steps / Map.
+  // ADR-0024: the view-time grain notch shared across Flow / Map (the Steps
+  // level shows the runs and their steps whatever the notch).
   // One of element|screen|app|phase|case; default "screen" ("one step per
   // screen"). A view-only control -- changing it never re-normalizes.
   currentGrain: "screen",
   selectedStepId: null,
   multiSelectedStepIds: new Set(),
   listFilters: {
-    step:   { text: "", states: new Set() },
     marker: { text: "" },
   },
   currentCaseScope: "",

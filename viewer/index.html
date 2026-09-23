@@ -130,9 +130,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-icon">≡</span> Flow
             <span class="view-mode-desc">raw event timeline</span>
           </button>
-          <button class="view-mode-btn" data-level="steps" title="Logical actions grouped from interactions">
+          <button class="view-mode-btn" data-level="steps" title="Each run's drafted steps: confirm the pattern run first">
             <span class="view-mode-icon">▣</span> Steps
-            <span class="view-mode-desc">logical actions</span>
+            <span class="view-mode-desc">runs and steps</span>
             <span class="badge" id="steps-badge">0</span>
           </button>
           <button class="view-mode-btn" data-level="map" title="The interactive process map (flowchart or process diagram) for this session, at the detail level chosen on the Detail slider (every field → screen → app → phase → case)">
@@ -140,7 +140,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="view-mode-desc">process diagram</span>
           </button>
           <span class="flex-spacer"></span>
-          <label class="case-scope" title="Scope the Session view -- Flow timeline, Steps mini-timeline, and the matching lists -- to a single case. Pick 'All cases' to see the full session.">
+          <label class="case-scope" title="Scope the Flow timeline to a single case: the other cases' activity is dimmed. Pick 'All cases' to see the full session. (In Steps, open a run to see its steps.)">
             <span class="case-scope-label">Case:</span>
             <select id="case-scope-select"><option value="">All cases</option></select>
             <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">Scope to playhead</button>
@@ -263,24 +263,15 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- ========= STEPS view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
           <div class="editor-toolbar">
-            <button id="btn-add-manual-step" class="primary">+ Add step</button>
-            <button id="btn-sort-steps-time" title="Reorder the step list into chronological order by start time.">Sort by time</button>
+            <button id="btn-add-manual-step" class="primary" title="Add a step by hand: after the selected step of the open run, or at the video playhead">+ Add step</button>
             <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
                  syncMultiSelectButtons() toggles `hidden`. -->
             <button id="btn-delete-selected-steps" hidden title="Delete all the ticked steps at once">Delete selected</button>
             <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
             <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
             <span class="meta" id="steps-summary"></span>
-            <span class="meta" id="steps-legend" style="display:none"></span>
             <span class="flex-spacer"></span>
-            <span class="reading-toggle" id="step-align-toggle" style="display:none" title="Flat: the chronological step list. Aligned: the consensus backbone across the detected cases (tickets): curate one step and apply it to every case.">
-              <span class="reading-toggle-label">Reading:</span>
-              <span class="seg-toggle">
-                <button type="button" data-mode="flat" class="active">Flat</button>
-                <button type="button" data-mode="aligned">Aligned</button>
-              </span>
-            </span>
-            <span class="hint"><span class="kbd-hint" title="J / K navigate · S split · M merge · N new · Ctrl+click multi-select">⌨ shortcuts</span> · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
+            <span class="hint"><span class="kbd-hint" title="Up / Down: previous / next step · Enter: rename · S: split · M: merge with next · N: new step · Ctrl+Enter: confirm run · Ctrl+click: tick for merge or delete">⌨ shortcuts</span> · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="mini-timeline-pane">
             <div class="mini-timeline-header">
@@ -300,21 +291,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
           <div class="editor-split">
             <div class="editor-list-pane">
-              <div class="editor-pane-title">Steps · <span id="steps-pane-count">0</span></div>
-              <div class="list-filter" id="step-list-filter">
-                <input type="search" class="list-filter-input" id="step-filter-text" placeholder="Filter steps by name..." />
-                <div class="list-filter-chips" id="step-filter-states">
-                  <button class="chip" data-state="auto_suggested" title="auto-suggested"><span class="state-icon state-auto_suggested"></span></button>
-                  <button class="chip" data-state="manually_authored" title="manually authored"><span class="state-icon state-manually_authored"></span></button>
-                  <button class="chip" data-state="edited" title="edited"><span class="state-icon state-edited"></span></button>
-                  <button class="chip" data-state="hidden" title="hidden (suppressed by you)"><span class="state-icon state-hidden"></span></button>
-                </div>
-                <span class="list-filter-meta" id="step-filter-meta"></span>
-              </div>
+              <div class="editor-pane-title">Runs · <span id="runs-pane-count">0</span></div>
               <div id="step-list"></div>
             </div>
             <div class="editor-detail-pane">
-              <div class="editor-pane-title">Selected step</div>
+              <div class="editor-pane-title" id="step-detail-title">Selected step</div>
               <div id="step-detail"></div>
             </div>
           </div>
@@ -528,28 +509,34 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>At the top of every loaded session you'll see a <strong>View</strong> bar. Flow and Steps show the same captured data at two levels of detail:</p>
           <ul class="help-list">
             <li><strong>Flow</strong>: raw events as they were captured. Use this to understand what actually happened, second-by-second. Video, timeline, screenshots, notes.</li>
-            <li><strong>Steps</strong>: the same data grouped into logical actions. A "step" is what a process analyst would call one named thing the worker did. <em>Search customer in Salesforce</em> is one step, even if it took 14 clicks underneath.</li>
+            <li><strong>Steps</strong>: each run's steps. A "step" is one named thing the worker did: <em>Search customer in Salesforce</em> is one step, even if it took 14 clicks underneath.</li>
           </ul>
-          <h3>How steps get created</h3>
-          <p>There are two ways, and you can use both:</p>
+          <h3>Runs and drafted steps</h3>
+          <p>A <strong>run</strong> is one pass through the process, from a start marker to its end marker (the capture app's run hotkey places them). When you click <em>Analyze session</em>, the app drafts every run's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the worker moves to another screen. The Steps view lists the runs in time order; open a run to see its steps. Steps that fall outside every run are listed under <em>Outside runs</em>.</p>
+          <h3>Confirm the pattern run first</h3>
           <ol class="help-steps">
-            <li><strong>Auto-suggested</strong>: normalize.py walks the interaction stream and splits on idle gaps, app switches, and window changes. Cheap and works on any session. Quality depends on how clean the workflow was.</li>
-            <li><strong>Manually authored</strong>: click <em>+ Add step</em> in the Steps view and define one yourself. Useful for anything the automatic guess missed.</li>
+            <li>Open the <strong>pattern</strong> run: the first run, marked <em>Pattern</em> (<em>Use as pattern</em> picks another one).</li>
+            <li>Check its steps against the video or the screenshots. Where a boundary is wrong, <strong>merge</strong>, <strong>split</strong>, <strong>add</strong> or <strong>hide</strong> steps (right-click a step, or use the step editor).</li>
+            <li>Give the steps the names you want in the document: double-click a name, or select the step and press Enter.</li>
+            <li>Click <strong>Confirm run</strong>: the steps you did not change are accepted as they are.</li>
           </ol>
-          <h3>What state means</h3>
-          <p>Every step has a colored dot indicating where it came from:</p>
+          <p>While you confirm it, the app counts the boundary fixes you make to the pattern run: merges, splits, added steps, and hidden or deleted drafts. Renames are not counted, and Ctrl+Z takes a fix back. Once the run is confirmed it shows one line, for example <em>Run 1: 12 drafted steps, 2 boundary fixes (merge 1, split 0, add 1, drop 0)</em>; <em>Copy</em> puts that line on the clipboard.</p>
+          <h3>Names are remembered</h3>
+          <p>When you rename a drafted step, the matching drafted steps in the other runs (the same screen and the same closing action) take the name at once, and the name is remembered on this computer: the next analysis, of this session or of a later one, drafts those steps with it. Such a step shows a small <em>remembered</em> tag. The name box suggests remembered names and the names already used in the session.</p>
+          <h3>What the step labels mean</h3>
           <ul class="help-list">
-            <li><span class="state-icon state-auto_suggested"></span> <strong>auto-suggested</strong> - an automatic guess from the interactions. Replaced on every re-analysis.</li>
-            <li><span class="state-icon state-manually_authored"></span> <strong>manually authored</strong> - you typed it. Survives re-normalization.</li>
-            <li><span class="state-icon state-edited"></span> <strong>edited</strong> - you modified an auto-suggested step. Survives re-normalization.</li>
-            <li><span class="state-icon state-hidden"></span> <strong>hidden</strong> - you suppressed it as noise. It stays out of the list and survives re-normalization.</li>
+            <li><span class="step-chip step-chip-draft">Draft</span> drafted by the app and not checked yet. Every analysis drafts it again.</li>
+            <li><span class="step-chip step-chip-confirmed">Confirmed</span> you accepted the draft as it is (Confirm run). Every analysis keeps it.</li>
+            <li><span class="step-chip step-chip-edited">Edited</span> you changed the step: its name, its boundaries or its flags. Every analysis keeps it.</li>
+            <li><span class="step-chip step-chip-added">Added</span> you added the step by hand. Every analysis keeps it.</li>
+            <li><span class="step-chip step-chip-hidden">Hidden</span> you took the step out as noise. It stays out of the list (<em>Show hidden steps</em> on its run lists it again), and every analysis keeps it out.</li>
           </ul>
+          <p>A run reads <em>Draft</em> while it still has drafted steps, and <em>Confirmed</em> once every step in it is confirmed, edited or added.</p>
           <h3>Cutting down step noise</h3>
-          <p>A session captured with a screen recorder or other background app open can produce dozens of irrelevant steps ("OBS: 12 interactions"). Three tools handle this:</p>
           <ul class="help-list">
-            <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process (they're left out of step suggestion entirely), and the session re-analyzes. The choice is saved per session, so re-analyze keeps them out.</li>
-            <li><strong>Delete selected</strong>: tick (or Ctrl+click) two or more steps, then delete them all in one go (Ctrl+Z restores).</li>
-            <li><strong>Hide as noise</strong> (step editor): suppress a single step. Unlike delete, hidden steps survive re-normalization: a re-analyze won't bring them back. Reveal them via the hidden filter chip.</li>
+            <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process (they're left out of the drafting entirely), and the session re-analyzes. The choice is saved per session, so a re-analysis keeps them out.</li>
+            <li><strong>Hide as noise</strong> (step editor or right-click): take a single step out. Unlike delete, a hidden step survives re-analysis: an analysis won't bring it back.</li>
+            <li><strong>Delete selected</strong>: tick (or Ctrl+click) two or more steps, then delete them all in one go (Ctrl+Z restores). The next analysis drafts a deleted drafted step again.</li>
           </ul>
           <h3>Flags</h3>
           <p>A step can be flagged as <strong>Waste</strong>: it shouldn't be needed (rework, duplicate effort, fixing someone else's mistake). The flag doesn't change the data, but it shows up in exports and statistics.</p>
@@ -583,6 +570,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>
             <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last step / marker / note edit</td></tr>
             <tr><td><span class="kbd">Ctrl+Y</span> / <span class="kbd">Ctrl+Shift+Z</span></td><td>Redo</td></tr>
+            <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> (Steps)</td><td>Previous / next step of the open run</td></tr>
+            <tr><td><span class="kbd">Enter</span> (Steps)</td><td>Rename the selected step</td></tr>
+            <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step / merge it with the next step of its run</td></tr>
+            <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the open run</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>

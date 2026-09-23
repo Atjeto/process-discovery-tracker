@@ -48,6 +48,18 @@ function caseLabelFits(widthPct, hostW, minPx) {
   return ((widthPct / 100) * (hostW || 0)) >= floor;
 }
 
+/* The moment under the pointer on the Flow timeline, as an ISO string: `rect`
+   is the timeline host's client rect (its whole zoomed width, however far it
+   is scrolled), firstMs / lastMs the session's first and last event times,
+   which the lanes lay out across that width. Clamped to the session; null
+   when the geometry is unusable. Pure + unit-tested (flow-view-timeline.test.js). */
+function timeAtClientX(clientX, rect, firstMs, lastMs) {
+  if (!rect || !(rect.width > 0) || !Number.isFinite(clientX) ||
+      !Number.isFinite(firstMs) || !Number.isFinite(lastMs) || lastMs < firstMs) return null;
+  const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+  return new Date(firstMs + (x / rect.width) * (lastMs - firstMs)).toISOString();
+}
+
 /* Injected by flow-view.js via initTimeline() -- kept out of a require() to
    avoid a flow-view <-> timeline cycle. */
 let currentScopeRange = () => null;
@@ -308,8 +320,12 @@ function _showStepBandMenu(x, y, stepId, ts) {
   }
   addItem("Open in Steps", () => {
     if (stepId) {
+      // This step is the explicit target: drop a seek position an earlier
+      // click parked for the Steps view, or it would select the step at that
+      // older moment instead.
+      State.consumePendingStepJump();
       State.setSelectedStepId(stepId);
-      State.setPendingStepReveal();   // Steps render scrolls the row into view
+      State.setPendingStepReveal();   // Steps render reveals the row (its run opens)
     }
     const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
     if (stepsBtn) setTimeout(() => stepsBtn.click(), 0);
@@ -660,7 +676,10 @@ function renderTimeline() {
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          showMarkerInsertMenu(e.clientX, e.clientY, ev.timestamp);
+          // The menu acts at the moment the analyst right-clicked, not at the
+          // band's start: "Insert Start marker here" means here.
+          const at = timeAtClientX(e.clientX, host.getBoundingClientRect(), first, last) || ev.timestamp;
+          showMarkerInsertMenu(e.clientX, e.clientY, at);
         });
         host.appendChild(band);
       }
@@ -1084,5 +1103,5 @@ module.exports = {
   renderTimeline, renderTimelineSummary, renderMinimap, syncMinimapViewport,
   restoreTimelineForCurrent, persistTimelineForCurrent, maybeAutoScrollToFirstCase,
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
-  caseLabelFits, CASE_LABEL_MIN_PX,
+  caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX,
 };
