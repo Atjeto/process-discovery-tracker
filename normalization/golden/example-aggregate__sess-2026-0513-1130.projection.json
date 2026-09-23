@@ -16,7 +16,9 @@
     "step_count": 21,
     "step_state_breakdown": {
       "auto_suggested": 21,
+      "confirmed": 0,
       "edited": 0,
+      "hidden": 0,
       "manually_authored": 0
     }
   },

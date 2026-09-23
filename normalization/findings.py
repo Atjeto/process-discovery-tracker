@@ -35,7 +35,8 @@ import logging
 from typing import Any
 
 from _dt import parse_ts_or_none as _parse_ts
-from facts import rekey_details
+from app_names import display_name
+from facts import PER_HOUR_MIN_SPAN_MS, rekey_details
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,9 @@ logger = logging.getLogger(__name__)
 MAX_BOUNCE_FINDINGS = 3
 MAX_REPETITION_FINDINGS = 3
 
-# B4 (lab-phase spec): repetition claims render a SHORT segment label --
-# the full "app — s1 → s2 → s3 → s4 → s5 …" narrative label overflows a
-# memo sentence. Cap ~60 chars; the full label stays in the evidence.
+# B4 (lab-phase spec): repetition claims render a SHORT segment label; the
+# full five-step narrative label overflows a memo sentence. Cap ~60 chars;
+# the full label stays in the evidence.
 SEGMENT_LABEL_MAX = 60
 
 # Per-app trust: coverage_hint values that mark reduced capture fidelity
@@ -79,23 +80,20 @@ def _pct(x: float) -> str:
     return f"{round((x or 0) * 100)}%"
 
 
-def short_segment_label(app: Any, step_labels: list | tuple | None,
+def short_segment_label(step_labels: list | tuple | None,
                         max_len: int = SEGMENT_LABEL_MAX) -> str:
-    """'<app> — first 2 steps … (+N more)' capped at ~`max_len` chars
-    (lab-phase B4). Degrades to 1 step, then a hard truncation, so the
-    cap holds even for pathological step names. The FULL label is never
-    lost -- it lives in the finding's evidence detail."""
-    app = str(app or "").strip()
-    if app.lower().endswith(".exe"):
-        app = app[:-4]
-    app = app or "one app"
+    """'first 2 steps … (+N more)' capped at ~`max_len` chars (lab-phase
+    B4). Degrades to 1 step, then a hard truncation, so the cap holds even
+    for pathological step names. The application is named by the claim
+    sentence around it, never as a process token inside the label (DA gap
+    3). The FULL label is never lost: it lives in the finding's evidence."""
     labels = [str(s).strip() for s in (step_labels or []) if str(s).strip()]
     if not labels:
-        return app[:max_len]
+        return ""
     for take in (2, 1):
         shown = labels[:take]
         extra = len(labels) - take
-        out = app + " — " + " → ".join(shown)
+        out = " → ".join(shown)
         if extra > 0:
             out += f" … (+{extra} more)"
         if len(out) <= max_len:
@@ -104,7 +102,7 @@ def short_segment_label(app: Any, step_labels: list | tuple | None,
     extra = len(labels) - 1
     tail = f" … (+{extra} more)" if extra > 0 else ""
     keep = max(1, max_len - len(tail) - 1)
-    return (app + " — " + labels[0])[:keep] + "…" + tail
+    return labels[0][:keep] + "…" + tail
 
 
 def _screenshots_between(events: list[dict], start_iso: str, end_iso: str,
@@ -178,7 +176,7 @@ def _derived_app_time_note(facts: dict) -> str:
 # ---------------------------------------------------------------------------
 # Detectors. Each returns a list of findings (possibly empty).
 
-def _detect_screen_time_sink(events, facts) -> list[dict]:
+def _detect_screen_time_sink(events, facts, app_names=None) -> list[dict]:
     top = (facts.get("top_apps") or [])
     active = facts.get("active_ms") or 0
     if not top or active <= 0:
@@ -188,7 +186,8 @@ def _detect_screen_time_sink(events, facts) -> list[dict]:
     run = _top_app_longest_run(events, lead["app"])
     if run:
         refs = _screenshots_between(events, run[0], run[1])
-    claim = (f"{lead['app']} accounts for {_pct(lead['share'])} of measured "
+    claim = (f"{display_name(lead['app'], app_names)} accounts for "
+             f"{_pct(lead['share'])} of measured "
              f"foreground time ({_fmt_ms(lead['ms'])} of {_fmt_ms(active)}).")
     return [{
         "id": _fid("screen_time_sink", lead["app"]),
@@ -216,20 +215,24 @@ def _detect_fragmentation(facts) -> list[dict]:
     if switches <= 0 or active <= 0:
         return []
     mean_dwell = active / (switches + 1)
-    claim = (f"Focus moved between apps {switches} times "
-             f"({facts.get('switches_per_hour') or 0}/h); the mean unbroken "
-             f"stretch in one app was {_fmt_ms(mean_dwell)}, the longest "
-             f"{_fmt_ms(facts.get('longest_focus_ms'))}.")
+    # DA gap 9: a per-hour rate only for a recording long enough to carry one.
+    span = facts.get("session_span_ms")
+    show_rate = (isinstance(span, (int, float)) and not isinstance(span, bool)
+                 and span >= PER_HOUR_MIN_SPAN_MS)
+    rate = f" ({facts.get('switches_per_hour') or 0}/h)" if show_rate else ""
+    claim = (f"Focus moved between apps {switches} times{rate}; the mean "
+             f"unbroken stretch in one app was {_fmt_ms(mean_dwell)}, the "
+             f"longest {_fmt_ms(facts.get('longest_focus_ms'))}.")
+    evidence = {"app_switches": switches}
+    if show_rate:
+        evidence["switches_per_hour"] = facts.get("switches_per_hour") or 0
+    evidence["mean_dwell_ms"] = round(mean_dwell)
+    evidence["longest_focus_ms"] = facts.get("longest_focus_ms") or 0
     return [{
         "id": _fid("fragmentation", switches),
         "detector": "fragmentation",
         "claim": claim,
-        "evidence": {
-            "app_switches": switches,
-            "switches_per_hour": facts.get("switches_per_hour") or 0,
-            "mean_dwell_ms": round(mean_dwell),
-            "longest_focus_ms": facts.get("longest_focus_ms") or 0,
-        },
+        "evidence": evidence,
         "tier": 1,
         "confidence_note": "A switch is counted each time a different app "
                            "comes to the front; near-instant switches can "
@@ -266,7 +269,7 @@ def _detect_waiting(facts, analysis_blocks) -> list[dict]:
     }]
 
 
-def _detect_repetition(analysis_blocks) -> list[dict]:
+def _detect_repetition(analysis_blocks, app_names=None) -> list[dict]:
     cands = [
         c for c in ((analysis_blocks or {}).get("automation_candidates") or [])
         if isinstance(c, dict) and c.get("data_sufficiency") == "multi_instance"
@@ -283,10 +286,13 @@ def _detect_repetition(analysis_blocks) -> list[dict]:
     out = []
     for c in cands[:MAX_REPETITION_FINDINGS]:
         step_ids = step_ids_by_sig.get(c.get("segment_signature")) or []
-        # B4: the claim sentence carries the SHORT label (app + first 2 steps,
-        # ~60 chars); the full narrative label stays in the evidence detail.
-        short = short_segment_label(c.get("app"), c.get("step_labels"))
-        claim = (f"The step sequence \"{short}\" was "
+        # B4: the claim sentence carries the SHORT label (first 2 steps,
+        # ~60 chars) and the readable application name; the full narrative
+        # label stays in the evidence detail.
+        short = short_segment_label(c.get("step_labels")) or "unnamed steps"
+        app = display_name(c.get("app"), app_names)
+        where = f" in {app}" if app else ""
+        claim = (f"The step sequence \"{short}\"{where} was "
                  f"repeated {c.get('instance_count') or 0} times, totalling "
                  f"{_fmt_ms(c.get('total_elapsed_ms'))} "
                  f"(average {_fmt_ms(c.get('mean_elapsed_ms'))} per repeat).")
@@ -337,20 +343,20 @@ def _detect_backtracking(steps, bounces) -> list[dict]:
             "tier": 1,
             "confidence_note": "Read from the order of the recorded steps. A "
                                "deliberate double-check looks the same as "
-                               "rework here -- confirm on the timeline "
+                               "rework here; confirm on the timeline "
                                "before relying on it.",
         })
     return out
 
 
-def _detect_rekey_transfer(events) -> list[dict]:
+def _detect_rekey_transfer(events, app_names=None) -> list[dict]:
     rows = rekey_details(events)
     if not rows:
         return []
     top = rows[0]
-    apps = ", ".join(top["apps"])
+    apps = ", ".join(display_name(a, app_names) for a in top["apps"])
     claim = (f"{len(rows)} value{'s were' if len(rows) != 1 else ' was'} "
-             f"typed into more than one app -- e.g. \"{top['value']}\" was "
+             f"typed into more than one app; for example, \"{top['value']}\" was "
              f"entered in {apps} ({top['entry_count']} times in total).")
     return [{
         "id": _fid("rekey_transfer", len(rows), top["value"]),
@@ -376,7 +382,7 @@ def _detect_rekey_transfer(events) -> list[dict]:
     }]
 
 
-def _detect_coverage_caveat(events) -> list[dict]:
+def _detect_coverage_caveat(events, app_names=None) -> list[dict]:
     per_app: dict[str, dict[str, Any]] = {}
     for ev in events or []:
         if not isinstance(ev, dict) or ev.get("type") != "interaction":
@@ -408,7 +414,7 @@ def _detect_coverage_caveat(events) -> list[dict]:
             continue
         if wall:
             tier_label = "wall"
-            why = "a remote/terminal window -- only the screen image crosses it"
+            why = "a remote/terminal window: only the screen image crosses it"
         elif reduced_hint:
             tier_label = sorted(rec["hints"] & _REDUCED_HINTS)[0]
             why = ("the app does not name its fields reliably"
@@ -428,7 +434,8 @@ def _detect_coverage_caveat(events) -> list[dict]:
     total_apps = len(per_app)
     # The machine tier name ("wall"/"basic"/"minimal") stays in the evidence
     # for tooling; the claim sentence says only the plain-words reason.
-    listing = "; ".join(f"{f['app']} ({f['why']})" for f in flagged[:4])
+    listing = "; ".join(f"{display_name(f['app'], app_names)} ({f['why']})"
+                        for f in flagged[:4])
     claim = (f"The recorder saw less detail in {len(flagged)} of "
              f"{total_apps} apps: {listing}.")
     return [{
@@ -458,12 +465,17 @@ def detect_findings(
     analysis_blocks: dict[str, Any] | None = None,
     bounces: list[dict[str, Any]] | None = None,
     errors: list[str] | None = None,
+    app_names: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run every detector whose preconditions hold; never raise.
 
     `analysis_blocks` is the classic analysis dict (time_study /
     automation_candidates / segments) when the session has steps, else
     None/empty -- the Tier-1 detectors do not need it.
+
+    `app_names` is stats.json `meta.app_names` (app_names.build_app_names):
+    the claims name applications by it, never by their executable token
+    (DA gap 3). Without it a claim uses the capitalized executable name.
 
     A detector that raises does not block the others, but it is never
     silent: it is logged, and appended to `errors` as
@@ -473,13 +485,13 @@ def detect_findings(
     facts = facts or {}
     findings: list[dict[str, Any]] = []
     detectors = [
-        ("screen_time_sink", lambda: _detect_screen_time_sink(events, facts)),
+        ("screen_time_sink", lambda: _detect_screen_time_sink(events, facts, app_names)),
         ("fragmentation", lambda: _detect_fragmentation(facts)),
         ("waiting", lambda: _detect_waiting(facts, analysis_blocks)),
-        ("repetition", lambda: _detect_repetition(analysis_blocks)),
+        ("repetition", lambda: _detect_repetition(analysis_blocks, app_names)),
         ("backtracking", lambda: _detect_backtracking(steps or [], bounces or [])),
-        ("rekey_transfer", lambda: _detect_rekey_transfer(events)),
-        ("coverage_caveat", lambda: _detect_coverage_caveat(events)),
+        ("rekey_transfer", lambda: _detect_rekey_transfer(events, app_names)),
+        ("coverage_caveat", lambda: _detect_coverage_caveat(events, app_names)),
     ]
     for name, det in detectors:
         try:

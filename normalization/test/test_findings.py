@@ -131,8 +131,10 @@ def test_screen_time_sink_claims_the_top_app_share():
     fs = _by_detector(_detect(_base_events()))
     assert "screen_time_sink" in fs
     f = fs["screen_time_sink"][0]
-    assert "chrome.exe" in f["claim"]
-    assert "80%" in f["claim"]          # 120s of 150s
+    # DA gap 3: without an app_names map, the capitalized executable name.
+    assert f["claim"].startswith("Chrome accounts for 80%")   # 120s of 150s
+    assert "chrome.exe" not in f["claim"]
+    assert f["evidence"]["app"] == "chrome.exe"     # the machine key stays in evidence
     assert f["tier"] == 1
     assert f["evidence"]["foreground_ms"] == 120000
     assert f["id"].startswith("screen_time_sink-")
@@ -153,6 +155,37 @@ def test_fragmentation_reports_switches_without_judging():
     assert f["tier"] == 1
     # Non-normative: the claim states numbers, not verdicts.
     assert "too" not in f["claim"].lower()
+
+
+def test_fragmentation_states_a_rate_only_for_30_minutes_or_more():
+    """DA gap 9: a 4-minute recording states the plain count; the per-hour
+    rate appears (claim and evidence) only from a 30-minute span on."""
+    short = _by_detector(_detect(_base_events()))["fragmentation"][0]
+    assert short["claim"].startswith("Focus moved between apps 2 times; ")
+    assert "/h" not in short["claim"]
+    assert "switches_per_hour" not in short["evidence"]
+    long_events = _base_events() + [
+        {"type": "system", "timestamp": "2026-05-14T09:30:00Z",
+         "data": {"kind": "session_end"}}]
+    long = _by_detector(_detect(long_events))["fragmentation"][0]
+    rate = compute_facts(long_events)["switches_per_hour"]
+    assert long["claim"].startswith(f"Focus moved between apps 2 times ({rate}/h); ")
+    assert long["evidence"]["switches_per_hour"] == rate
+
+
+def test_claims_use_the_readable_app_names():
+    """DA gap 3: with the pipeline's app_names map, no claim carries an
+    executable token."""
+    evs = _base_events() + [
+        _typed("chrome.exe", "CUST-10900", T.format(1), "t1"),
+        _typed("excel.exe", "CUST-10900", T.format(2), "t2"),
+    ]
+    names = {"chrome.exe": "Google Chrome", "excel.exe": "Microsoft Excel"}
+    found = detect_findings(evs, [], compute_facts(evs), app_names=names)
+    fs = _by_detector(found)
+    assert fs["screen_time_sink"][0]["claim"].startswith("Google Chrome accounts for")
+    assert "entered in Google Chrome, Microsoft Excel" in fs["rekey_transfer"][0]["claim"]
+    assert not any(".exe" in f["claim"] for f in found)
 
 
 def test_waiting_skips_when_nothing_measured():
@@ -197,19 +230,20 @@ def test_repetition_needs_multi_instance_candidates():
     assert "4 times" in f["claim"]
     assert f["tier"] == 2
     assert f["evidence"]["step_ids"] == ["s1", "s2", "s3"]
-    # B4: the claim carries the short label (app + steps, no .exe).
-    assert '"excel — Lookup → Paste"' in f["claim"]
-    assert f["evidence"]["short_label"] == "excel — Lookup → Paste"
+    # B4: the claim carries the short label (the steps only) and names the
+    # application by its readable name (DA gap 3), never "excel".
+    assert '"Lookup → Paste" in Excel was repeated 4 times' in f["claim"]
+    assert f["evidence"]["short_label"] == "Lookup → Paste"
 
 
 def test_repetition_claim_label_is_shortened():
-    """B4: a long segment renders as 'app — first 2 steps … (+N more)'
-    capped ~60 chars in the claim; the FULL label stays in the evidence."""
+    """B4: a long segment renders as 'first 2 steps … (+N more)' capped ~60
+    chars in the claim; the FULL label stays in the evidence."""
     from findings import short_segment_label, SEGMENT_LABEL_MAX
     long_steps = ["Open customer record", "Copy account number",
                   "Switch to billing", "Paste account number",
                   "Validate", "Submit", "Confirm dialog"]
-    full = "crm — " + " → ".join(long_steps[:5]) + " → … (+2 more)"
+    full = "crm: " + " → ".join(long_steps[:5]) + " → … (+2 more)"
     blocks = {
         "automation_candidates": [
             {"segment_signature": "sigLong", "label": full,
@@ -223,18 +257,18 @@ def test_repetition_claim_label_is_shortened():
     fs = _by_detector(_detect(_base_events(), analysis_blocks=blocks))
     f = fs["repetition"][0]
     short = f["evidence"]["short_label"]
-    assert short in f["claim"]
+    assert f'"{short}" in Crm was repeated 3 times' in f["claim"]
     assert len(short) <= SEGMENT_LABEL_MAX
-    assert short.startswith("crm — ")
+    assert short.startswith("Open customer record → Copy account number")
     assert "(+" in short and "more)" in short      # the elided-count tail
     assert f["evidence"]["label"] == full          # full label preserved
     # The helper holds the cap even on absurd names (hard truncation),
     # only ever exceeding it by the preserved "(+N more)" count tail.
     monster = short_segment_label(
-        "averyverylongprocessname.exe",
-        ["An extremely long step label that on its own overflows the cap",
-         "Another"], 60)
+        ["An extremely long step label that on its own overflows the cap, "
+         "and then some more words", "Another"], 60)
     assert len(monster) <= 60 + len(" … (+1 more)")
+    assert monster.endswith("… (+1 more)")
 
 
 def test_backtracking_uses_bounces_and_needs_steps():

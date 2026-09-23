@@ -173,7 +173,8 @@ def normalize(
     # export raises ExportFailed after every analysis output is written.
     _run_mining_exports(
         session_folder, log, existing_anno, mine, summary, manifest,
-        analysis_result, pdd_out, pdd_map_image, pdd_tobe_image)
+        analysis_result, pdd_out, pdd_map_image, pdd_tobe_image,
+        events=classified)
 
     return {
         "session_folder": str(session_folder),

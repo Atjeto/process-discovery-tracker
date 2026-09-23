@@ -18,6 +18,7 @@ from typing import Any
 
 from _dt import parse_ts as _parse_ts  # public re-export
 from analysis_common import step_group_label
+from facts import _active_duration_ms, _idle_intervals
 
 
 def _filter_excluded(
@@ -115,20 +116,26 @@ def case_stats(
     events: list[dict[str, Any]],
     cases: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Per-case duration -- both wall-clock and active (§5.4)."""
-    active_by_case: dict[str, int] = defaultdict(int)
+    """Per-case duration -- both wall-clock and active (§5.4).
+
+    Active time is measured the way facts measures it (RP-07): each
+    foreground run stamped to the case, minus the idle time the recorder
+    measured inside it, limited to the case's own start/end span. So a run's
+    active time never counts idle time and never exceeds its elapsed time."""
+    windows = {cid: (_safe_parse(meta.get("start_ts")), _safe_parse(meta.get("end_ts")))
+               for cid, meta in cases.items()}
+    idle = _idle_intervals(events)
+    active_by_case: dict[str, float] = defaultdict(float)
     for ev in events:
         if ev.get("type") != "activity":
             continue
         cids = ev["data"].get("case_ids") or []
-        dur = _num(ev["data"].get("duration_ms"))
         for cid in cids:
-            active_by_case[cid] += dur
+            active_by_case[cid] += _active_duration_ms(ev, idle, windows.get(cid))
 
     rows = []
     for cid, meta in cases.items():
-        start = _safe_parse(meta.get("start_ts"))
-        end = _safe_parse(meta.get("end_ts"))
+        start, end = windows[cid]
         wall = int((end - start).total_seconds() * 1000) if (start and end and end >= start) else None
         rows.append({
             "case_id": cid,
@@ -137,7 +144,7 @@ def case_stats(
             "start_ts": meta.get("start_ts"),
             "end_ts": meta.get("end_ts"),
             "wall_clock_ms": wall,
-            "active_ms": active_by_case.get(cid, 0),
+            "active_ms": round(active_by_case.get(cid, 0)),
             "end_reason": meta.get("end_reason"),
         })
     rows.sort(key=lambda r: r["start_ts"] or "")

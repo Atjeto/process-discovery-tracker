@@ -7,11 +7,11 @@ can't run pytest). So this fuzzer covers the part that CAN run here: the pure,
 docx-free helpers that shape analyst-editable annotations / derived analysis
 into display values before rendering --
 
-    _fmt_ms, _analysis_maps, _has_bnva_override
+    _fmt_ms, _has_bnva_override
 
 A hand-edited annotations.json / odd analysis block can hand these a non-dict
-annotations, a non-numeric duration, or a non-list classification; they
-must degrade rather than crash the PDD export. The docx-rendering body stays
+annotations or a non-numeric duration; they must degrade rather than crash
+the PDD export. The docx-rendering body stays
 out of scope here (documented in tech-debt #16).
 
 Run with:
@@ -36,7 +36,7 @@ ITERS = 4000
 def _scalar(rng: Random):
     return rng.choice([
         0, 1, -1, 500, 1000, 59999, 3600000, 12345678,
-        0.0, 1.5, -2.5, 1e9,
+        0.0, 1.5, -2.5, 1e9, float("nan"), float("inf"),
         None, "", "abc", "123", [], {}, True, False, [1, 2], {"x": 1},
     ])
 
@@ -63,22 +63,6 @@ def _annotations(rng: Random):
     return _corrupt(rng, {"analysis_overrides": []})
 
 
-def _analysis(rng: Random):
-    shape = rng.random()
-    if shape < 0.5:
-        n = rng.randint(0, 4)
-        rows = []
-        for _ in range(n):
-            row = {}
-            if rng.random() < 0.7:
-                row["step_id"] = "s" + str(rng.randint(0, 5))
-            if rng.random() < 0.5:
-                row["waste_ms"] = _corrupt(rng, 1000)
-            rows.append(_corrupt(rng, row) if rng.random() < 0.2 else row)
-        return {"waste_classification": _corrupt(rng, rows) if rng.random() < 0.2 else rows}
-    return _corrupt(rng, {"waste_classification": []})
-
-
 def test_fuzz_fmt_ms_total():
     """_fmt_ms is total over any scalar and returns a string."""
     for i in range(ITERS):
@@ -89,18 +73,6 @@ def test_fuzz_fmt_ms_total():
             assert isinstance(out, str), f"non-str for {v!r}: {out!r}"
         except Exception as e:  # noqa: BLE001 - a crash here is a finding
             raise AssertionError(f"CRASH [iter {i}]: _fmt_ms({v!r}) -> {type(e).__name__}: {e}") from e
-
-
-def test_fuzz_analysis_maps_total():
-    """_analysis_maps never crashes on a corrupt analysis block; returns a dict."""
-    for i in range(ITERS):
-        rng = Random(BASE + 2_000_000 + i)
-        a = _analysis(rng)
-        try:
-            out = pdd_export._analysis_maps(a)
-            assert isinstance(out, dict), f"non-dict: {out!r}"
-        except Exception as e:  # noqa: BLE001
-            raise AssertionError(f"CRASH [iter {i}]: _analysis_maps({a!r}) -> {type(e).__name__}: {e}") from e
 
 
 def test_fuzz_has_bnva_override_total():

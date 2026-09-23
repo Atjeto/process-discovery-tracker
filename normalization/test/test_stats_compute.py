@@ -191,6 +191,30 @@ def test_activity_stats_clamps_negative_duration():
     assert activity_stats(events)[0]["total_duration_ms"] == 0
 
 
+def test_case_active_time_excludes_recorded_idle_and_stays_inside_the_run():
+    """RP-07 for runs: a run's active time is its foreground time minus the
+    idle time the recorder measured (the facts.active_ms basis), and it never
+    counts foreground time after the run's end marker."""
+    events = [
+        {"type": "activity", "timestamp": "2026-05-14T09:00:00Z",
+         "data": {"activity_label": "A", "duration_ms": 60000, "case_ids": ["c1"]}},
+        {"type": "system", "timestamp": "2026-05-14T09:00:20Z",
+         "data": {"kind": "idle_start"}},
+        {"type": "system", "timestamp": "2026-05-14T09:00:35Z",
+         "data": {"kind": "idle_end"}},
+        # Runs 10s past the end marker at 09:01:20.
+        {"type": "activity", "timestamp": "2026-05-14T09:01:00Z",
+         "data": {"activity_label": "B", "duration_ms": 30000, "case_ids": ["c1"]}},
+    ]
+    cases = {"c1": {"label": "Run 1", "start_ts": "2026-05-14T09:00:00Z",
+                    "end_ts": "2026-05-14T09:01:20Z"}}
+    row = case_stats(events, cases)[0]
+    assert row["wall_clock_ms"] == 80000
+    # (60s - 15s idle) + the 20s of the second stretch inside the run.
+    assert row["active_ms"] == 65000
+    assert row["active_ms"] <= row["wall_clock_ms"]
+
+
 def test_case_stats_tolerates_corrupt_timestamps():
     cases = {"c1": {"label": "C1", "start_ts": "not-a-date", "end_ts": "also-bad"}}
     rows = case_stats([], cases)               # must not raise ValueError on parse

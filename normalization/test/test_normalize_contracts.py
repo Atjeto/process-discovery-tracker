@@ -201,6 +201,32 @@ def test_a_hidden_step_does_not_reach_the_stats_or_the_analysis(tmp_path):
     assert _read(session, "stats.json")["step_stats"]
 
 
+def test_the_step_state_breakdown_counts_confirmed_and_hidden_steps(tmp_path):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    anno = _read(session, "annotations.json")
+    anno["steps"][0]["state"] = "confirmed"
+    anno["steps"][1]["state"] = "hidden"
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+    normalize_mod.normalize(session)
+    meta = _read(session, "stats.json")["meta"]
+    assert meta["step_count"] == 6
+    assert meta["step_state_breakdown"] == {
+        "auto_suggested": 4, "manually_authored": 0, "edited": 0,
+        "confirmed": 1, "hidden": 1}
+
+
+def test_readable_app_names_reach_the_stats_and_the_claims(tmp_path):
+    """DA gap 3 wiring: the pipeline names crm.exe from its window title
+    ("CRM - Orders") and the findings claims use that name."""
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    assert _read(session, "stats.json")["meta"]["app_names"] == {"crm.exe": "CRM"}
+    claims = [f["claim"] for f in _read(session, "analysis.json")["findings"]]
+    assert any(c.startswith("CRM accounts for") for c in claims)
+    assert not any("crm.exe" in c for c in claims)
+
+
 # ---- RP-10 / C12 --------------------------------------------------------------
 
 def _analysis_inputs(tmp_path):

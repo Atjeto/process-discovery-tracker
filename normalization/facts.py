@@ -50,6 +50,11 @@ REKEY_MIN_LEN_VOCAB = 2
 
 TOP_APPS_N = 5
 
+# A per-hour rate is stated only for a recording at least this long (DA gap
+# 9): below it, "16 switches (168.4/h)" extrapolates a rate from a few
+# minutes, so renderers state the plain count instead.
+PER_HOUR_MIN_SPAN_MS = 30 * 60 * 1000
+
 # G-2 interaction-derived fallback: the dwell attributed to an interaction is
 # the gap to the NEXT interaction, capped -- a long think/lunch gap must not
 # credit one app with an hour of "focus" the recorder never measured.
@@ -118,17 +123,29 @@ def _idle_ms(events: list[dict[str, Any]]) -> int:
                      for start, end in _idle_intervals(events)))
 
 
-def _active_duration_ms(ev: dict, idle: list[tuple[Any, Any]]) -> float:
+def _active_duration_ms(ev: dict, idle: list[tuple[Any, Any]],
+                        window: tuple[Any, Any] | None = None) -> float:
     """An activity run's foreground time minus the recorded idle time inside
     it (RP-07). The recorder keeps a foreground run open through an idle
     stretch, so its duration_ms includes that idle time; subtracting it keeps
     active time and idle time disjoint. A run whose timestamp cannot be read
-    cannot be placed against the idle intervals and keeps its full duration."""
+    cannot be placed against the idle intervals and keeps its full duration.
+
+    `window` (start, end), either side None for open, limits the run to one
+    recorded run's span first (stats' per-run active time), so a run's active
+    time never exceeds its elapsed time."""
     dur = _duration_ms(ev["data"])
     start = _parse_ts(ev.get("timestamp"))
     if start is None or dur <= 0:
         return dur
     end = start + timedelta(milliseconds=dur)
+    if window is not None:
+        w0, w1 = window
+        start = max(start, w0) if w0 is not None else start
+        end = min(end, w1) if w1 is not None else end
+        if end <= start:
+            return 0.0
+        dur = (end - start).total_seconds() * 1000.0
     overlap = 0.0
     for i0, i1 in idle:
         lo, hi = max(start, i0), min(end, i1)

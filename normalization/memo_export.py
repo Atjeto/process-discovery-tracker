@@ -30,6 +30,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from app_names import display_name
+from facts import PER_HOUR_MIN_SPAN_MS
 from findings import _fmt_ms, _pct
 
 try:
@@ -100,11 +102,13 @@ def _coverage_line(stats: dict, analysis: dict) -> str:
 
 
 _FACT_HEADS = ("Active time", "Idle time", "Top app", "App switches",
-               "Longest stretch in one app", "Values re-typed across apps")
+               "Longest stretch in one app", "Values re-typed across apps",
+               "Repeated step sequences")
 
 
-def _fact_cells(facts: dict, failed: bool = False) -> list[tuple[str, str]]:
-    """The 6 (header, value) fact-strip pairs the PDD §1 fact table shows.
+def _fact_cells(facts: dict, failed: bool = False,
+                app_names: dict | None = None) -> list[tuple[str, str]]:
+    """The 7 (header, value) fact-strip pairs the PDD §1 fact table shows.
 
     G-2 honesty rule: when the recording carries no app-time signal at all
     (facts.app_time_source == "none" -- old captures), the four app-time
@@ -113,39 +117,45 @@ def _fact_cells(facts: dict, failed: bool = False) -> list[tuple[str, str]]:
 
     C12 (RP-10): when the facts stage failed (`failed`), every cell says the
     check could not run; a failed motif stage (repeated_sequence_count
-    written as null) says so for the repeated-sequence count."""
+    written as null) says so for the repeated-sequence count.
+
+    DA gap 8: the re-typed values and the repeated step sequences are two
+    separate counts in two cells. DA gap 9: the switch count carries a
+    per-hour rate only when the recording spans at least 30 minutes. DA gap
+    3: the top app is named by its readable name (`app_names`)."""
     if failed:
         return [(head, COULD_NOT_RUN) for head in _FACT_HEADS]
     top = (facts.get("top_apps") or [{}])
     lead = top[0] if top else {}
-    lead_cell = (f"{lead.get('app', '—')} ({_pct(lead.get('share', 0))})"
-                 if lead.get("app") else "—")
-    rekey = facts.get("rekey_count") or 0
-    seqs = facts.get("repeated_sequence_count") or 0
-    source = facts.get("app_time_source") or "activity"
     na = "not available from this recording"
+    lead_cell = (f"{display_name(lead.get('app'), app_names)} "
+                 f"({_pct(lead.get('share', 0))})" if lead.get("app") else na)
+    source = facts.get("app_time_source") or "activity"
     est = " (estimated from clicks and typing)" if source == "interactions" else ""
     if source == "none":
         active_cell = top_cell = switches_cell = longest_cell = na
     else:
         active_cell = _fmt_ms(facts.get("active_ms")) + est
         top_cell = lead_cell
-        switches_cell = "{} ({}/h)".format(
-            facts.get("app_switches") or 0,
-            facts.get("switches_per_hour") or 0) + est
+        switches_cell = str(facts.get("app_switches") or 0)
+        span = facts.get("session_span_ms")
+        if (isinstance(span, (int, float)) and not isinstance(span, bool)
+                and span >= PER_HOUR_MIN_SPAN_MS):
+            switches_cell += " ({}/h)".format(facts.get("switches_per_hour") or 0)
+        switches_cell += est
         longest_cell = _fmt_ms(facts.get("longest_focus_ms"))
     if "repeated_sequence_count" in facts and facts["repeated_sequence_count"] is None:
-        rekey_cell = f"{rekey} (repeated sequences: {COULD_NOT_RUN})"
+        seq_cell = COULD_NOT_RUN
     else:
-        rekey_cell = "{} ({} repeated sequence{})".format(
-            rekey, seqs, "s" if seqs != 1 else "")
+        seq_cell = str(facts.get("repeated_sequence_count") or 0)
     return list(zip(_FACT_HEADS, (
         active_cell,
         _fmt_ms(facts.get("idle_ms")),
         top_cell,
         switches_cell,
         longest_cell,
-        rekey_cell,
+        str(facts.get("rekey_count") or 0),
+        seq_cell,
     )))
 
 
@@ -167,9 +177,13 @@ def _evidence_numbers(evidence: dict) -> str:
     return " · ".join(parts)
 
 
-def _select_findings(analysis: dict, annotations: dict) -> list[dict]:
+def _select_findings(analysis: dict, annotations: dict,
+                     runs_exist: bool = True) -> list[dict]:
+    """The analyst's selection (memo_selection) or the top N in feed order.
+    A case-based finding (tier 2) is left out when the recording has no
+    runs: it compares runs, so without runs it has nothing to stand on."""
     all_findings = [f for f in (analysis or {}).get("findings") or []
-                    if isinstance(f, dict)]
+                    if isinstance(f, dict) and (runs_exist or f.get("tier") != 2)]
     selected_ids = [s for s in ((annotations or {}).get("memo_selection") or [])
                     if isinstance(s, str)]
     if selected_ids:
@@ -179,54 +193,73 @@ def _select_findings(analysis: dict, annotations: dict) -> list[dict]:
     return all_findings[:DEFAULT_TOP_FINDINGS]
 
 
+def run_rows(stats: dict | None) -> list[dict]:
+    """The recording's runs: the top-level marked cases in stats.case_stats,
+    in start order. The PDD's timings table and this memo's elapsed-time line
+    read the same rows, so the two never disagree (DA gap 7)."""
+    rows = [r for r in (stats or {}).get("case_stats") or []
+            if isinstance(r, dict) and r.get("case_id") and not r.get("parent_case_id")]
+    return sorted(rows, key=lambda r: str(r.get("start_ts") or ""))
+
+
+def _run_count(stats: dict | None, analysis: dict | None) -> int:
+    """How many runs the recording has (the case check's count when the
+    stats carry no case rows)."""
+    rows = run_rows(stats)
+    if rows:
+        return len(rows)
+    n = ((analysis or {}).get("case_quality") or {}).get("case_count")
+    return n if isinstance(n, int) and not isinstance(n, bool) else 0
+
+
 def _tier2_section(analysis: dict, stats: dict,
                    failed: set | frozenset = frozenset()) -> list[str]:
     if "case_quality" in failed:
-        # C12: a failed case check is not "no cases identified".
-        return [f"The case check {COULD_NOT_RUN}, so no case-by-case "
+        # C12: a failed run check is not "no runs marked".
+        return [f"The run check {COULD_NOT_RUN}, so no run-by-run "
                 "numbers are shown."]
     cq = (analysis or {}).get("case_quality") or {}
     if not cq.get("tier2_unlocked"):
-        # G-3: cases WERE identified, just not enough of them to compare.
+        # G-3: runs WERE marked, just not enough of them to compare.
         if cq.get("mode") != "unsegmented" and (cq.get("case_count") or 0) >= 1:
-            n_cases = cq.get("case_count") or 0
-            verb = "marked"
+            n_runs = cq.get("case_count") or 0
             return [
-                "{} case{} {} in this recording — case comparisons (how "
-                "long each case takes, the paths taken) need at least 2 "
-                "cases, so none are reported.".format(
-                    n_cases, "s were" if n_cases != 1 else " was", verb),
+                "{} run{} marked in this recording. Comparing runs (how "
+                "long each run takes, the steps each run followed) needs at "
+                "least 2 runs, so no comparison is reported.".format(
+                    n_runs, "s were" if n_runs != 1 else " was"),
             ]
         return [
-            "No cases identified yet in this recording; recording Start/End "
-            "markers would unlock the case-by-case numbers.",
+            "No runs were marked in this recording; marking each repetition "
+            "as a run would unlock the run-by-run numbers.",
         ]
     lines = []
-    lines.append("Cases marked by the worker during recording -- {} "
-                 "cases, {} of recorded actions fall inside one.".format(
+    lines.append("{} runs were marked during the recording; {} of the "
+                 "recorded actions fall inside a run.".format(
                      cq.get("case_count") or 0,
                      _pct(cq.get("coverage") or 0)))
-    rows = [r for r in (stats or {}).get("case_stats") or []
+    rows = [r for r in run_rows(stats)
             if isinstance(r.get("wall_clock_ms"), (int, float))]
     if rows:
         walls = [r["wall_clock_ms"] for r in rows]
-        lines.append("Cycle time (wall clock): mean {} · fastest {} · slowest {} "
-                     "across {} timed case{}.".format(
+        lines.append("Elapsed time per run (wall clock): mean {}, fastest {}, "
+                     "slowest {}, across {} timed run{}.".format(
                          _fmt_ms(sum(walls) / len(walls)),
                          _fmt_ms(min(walls)), _fmt_ms(max(walls)),
                          len(walls), "s" if len(walls) != 1 else ""))
     variants = (stats or {}).get("step_variants") or (stats or {}).get("trace_variants") or []
     if variants:
         top_freq = variants[0].get("frequency") or 0
-        lines.append("{} distinct path variant{} observed; the most common "
-                     "ran {} time{}.".format(
+        lines.append("The runs followed {} different step sequence{}; the "
+                     "most common one was followed {} time{}.".format(
                          len(variants), "s" if len(variants) != 1 else "",
                          top_freq, "s" if top_freq != 1 else ""))
     return lines
 
 
 def _to_say_more(analysis: dict, annotations: dict,
-                 failed: set | frozenset = frozenset()) -> list[str]:
+                 failed: set | frozenset = frozenset(),
+                 app_names: dict | None = None) -> list[str]:
     items: list[str] = []
     cq = (analysis or {}).get("case_quality") or {}
     facts = (analysis or {}).get("facts") or {}
@@ -234,29 +267,30 @@ def _to_say_more(analysis: dict, annotations: dict,
     # missing either; its items are skipped rather than stated as findings.
     if "case_quality" not in failed and not cq.get("tier2_unlocked"):
         if cq.get("mode") != "unsegmented" and (cq.get("case_count") or 0) >= 1:
-            # G-3: identified but too few to compare.
-            items.append("Only {} case{} identified -- case comparisons "
-                         "need at least 2, so recording one more case (or "
-                         "marking another in this recording) would unlock "
-                         "how long each case takes and the paths taken."
+            # G-3: marked but too few to compare.
+            items.append("Only {} run{} marked. Comparing runs needs at "
+                         "least 2, so recording one more run (or marking "
+                         "another in this recording) would show how long "
+                         "each run takes and how the runs differ."
                          .format(cq.get("case_count") or 0,
                                  " was" if (cq.get("case_count") or 0) == 1
                                  else "s were"))
         else:
-            items.append("No cases identified yet -- recording Start/End "
-                         "markers unlocks how long each case takes, the paths "
-                         "taken, and case-by-case comparison.")
+            items.append("No runs were marked. Marking each repetition of "
+                         "the process as a run shows how long each run "
+                         "takes, how the runs differ, and the run-by-run "
+                         "numbers.")
     caveat = next((f for f in (analysis or {}).get("findings") or []
                    if f.get("detector") == "coverage_caveat"), None)
     if caveat:
-        apps = [a.get("app") for a in
+        apps = [display_name(a.get("app"), app_names) for a in
                 ((caveat.get("evidence") or {}).get("flagged_apps")) or []]
         items.append("The recorder saw less detail in {}, so the numbers "
                      "measured inside {} are less precise."
                      .format(", ".join(apps[:4]),
                              "those apps" if len(apps) != 1 else "that app"))
     if "facts" not in failed and not facts.get("idle_ms"):
-        items.append("No idle time was measured -- time spent waiting "
+        items.append("No idle time was measured: time spent waiting "
                      "inside an app without typing or clicking is invisible "
                      "to this recording.")
     has_bnva = any(
@@ -268,60 +302,6 @@ def _to_say_more(analysis: dict, annotations: dict,
                      "Waste by step); until then the memo makes no "
                      "efficiency claim.")
     return items
-
-
-def _case_labels(stats: dict | None) -> dict:
-    """A `case_id -> friendly label` map from `stats.case_stats` (e.g.
-    "Order #10900"), so a named work item reads against its ticket rather than
-    a raw UUID."""
-    out = {}
-    for c in (stats or {}).get("case_stats") or []:
-        cid = c.get("case_id")
-        lbl = c.get("label")
-        if cid and isinstance(lbl, str) and lbl.strip():
-            out[cid] = lbl.strip()
-    return out
-
-
-def _named_work_items(annotations: dict | None, stats: dict | None) -> list[dict]:
-    """The analyst-NAMED case-scoped screen visits (ADR-0028 §4), for the memo's
-    Case-by-case section. Additive: only work items the analyst gave a name (or
-    a note, or a waste flag) surface here -- an un-annotated session yields an
-    empty list, so the memo is byte-identical to before. Reuses the shared
-    view-time grouping (work_items.build_work_items) so the memo, the PDD, and
-    the viewer agree on the unit and its name."""
-    annotations = annotations or {}
-    if not (annotations.get("group_annotations")):
-        return []                       # nothing named -> no memo lines (no-op)
-    try:
-        from work_items import build_work_items
-    except ImportError:                 # pragma: no cover - defensive
-        return []
-    labels = _case_labels(stats)
-    result = build_work_items(annotations.get("steps"),
-                              annotations.get("group_annotations"))
-    out: list[dict] = []
-    for i, case in enumerate(result["cases"], start=1):
-        cid = case["case_id"]
-        case_label = (labels.get(cid) or f"Case {i}") if cid is not None \
-            else "Unassigned"
-        for wi in case["work_items"]:
-            if wi["hidden"]:
-                continue    # RP-06: a work item the analyst hid stays out
-            ga = wi.get("group_annotation")
-            # Only annotated visits reach the memo: a name, a note, or a waste
-            # flag. The screen-label fallback alone is not memo-worthy.
-            named = bool(ga and (ga.get("name") or wi["notes"] or wi["waste"]))
-            if not named:
-                continue
-            out.append({
-                "case_label": case_label,
-                "name": wi["label"],
-                "notes": wi["notes"],
-                "waste": wi["waste"],
-                "fragment_count": len(wi["step_ids"]),
-            })
-    return out
 
 
 def build_memo_model(
@@ -342,14 +322,17 @@ def build_memo_model(
              or manifest.get("label")
              or manifest.get("session_id")
              or "session")
-    chosen = _select_findings(analysis, annotations)
+    app_names = (stats.get("meta") or {}).get("app_names")
+    chosen = _select_findings(analysis, annotations,
+                              runs_exist=_run_count(stats, analysis) > 0)
     failed = failed_stages(analysis)
     return {
         "label": label,
         "captured": _capture_date(manifest, stats),
         "coverage_line": _coverage_line(stats, analysis),
         "fact_cells": _fact_cells(analysis.get("facts") or {},
-                                  failed="facts" in failed),
+                                  failed="facts" in failed,
+                                  app_names=app_names),
         # C12: the findings stage failed, so an empty list is not "nothing
         # stood out".
         "findings_failed": "findings" in failed,
@@ -360,14 +343,17 @@ def build_memo_model(
                 "screenshot_refs": list(
                     ((f.get("evidence") or {}).get("screenshot_refs") or [])[:2]),
                 "confidence_note": f.get("confidence_note") or "",
+                # Tier 2 compares runs: the renderer labels it as such.
+                "case_based": f.get("tier") == 2,
+                # The PDD's candidate list skips what a finding already says.
+                "segment_signature": (f.get("evidence") or {}).get("segment_signature"),
             }
             for f in chosen
         ],
         "tier2_unlocked": bool(
             ((analysis.get("case_quality") or {}).get("tier2_unlocked"))),
         "tier2_lines": _tier2_section(analysis, stats, failed),
-        "named_work_items": _named_work_items(annotations, stats),
-        "to_say_more": _to_say_more(analysis, annotations, failed),
+        "to_say_more": _to_say_more(analysis, annotations, failed, app_names),
     }
 
 
@@ -403,8 +389,8 @@ def _docx_note(doc, text: str):
 def write_memo_into_docx(doc, model: dict, session_folder=None,
                          heading_offset: int = 0) -> None:
     """Write the memo body (fact strip, findings with INLINE starred
-    screenshots, Tier 2, to-say-more) into an open python-docx Document:
-    the PDD's findings-first §1 (pdd_export). `heading_offset` shifts the
+    screenshots, the run-by-run lines, to-say-more) into an open python-docx
+    Document: the PDD's findings-first §1 (pdd_export). `heading_offset` shifts the
     section heading level (0 = level-1 sections; 1 = nested under a PDD
     level-1 head, as pdd_export renders it)."""
     h = lambda lvl: lvl + heading_offset  # noqa: E731
@@ -421,11 +407,15 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
         _docx_note(doc, f"The automatic checks {COULD_NOT_RUN}, so no "
                         "findings are reported.")
     elif not model["findings"]:
-        _docx_note(doc, "Nothing stood out -- the automatic checks found "
+        _docx_note(doc, "Nothing stood out: the automatic checks found "
                         "nothing worth reporting on this recording.")
     for i, f in enumerate(model["findings"], 1):
         p = doc.add_paragraph()
-        p.add_run(f"{i}. {f['claim']}").bold = True
+        p.add_run(f"{i}. ").bold = True
+        if f.get("case_based"):
+            # A case-based finding compares the runs; say so up front.
+            p.add_run("Across runs: ").italic = True
+        p.add_run(f["claim"]).bold = True
         if f["evidence_line"]:
             _docx_note(doc, "Evidence: " + f["evidence_line"])
         for ref in f["screenshot_refs"]:
@@ -442,25 +432,14 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
         if f["confidence_note"]:
             _docx_note(doc, f["confidence_note"])
 
-    doc.add_heading("Case-by-case analysis", level=h(1))
+    doc.add_heading("Run-by-run analysis", level=h(1))
     for line in model["tier2_lines"]:
         doc.add_paragraph(line)
-    # ADR-0028 §4: the analyst's named work items reach the deliverable here.
-    # Additive -- nothing renders when no work item is named.
-    wi = model.get("named_work_items") or []
-    if wi:
-        doc.add_paragraph("Named work items:")
-        for w in wi:
-            tag = " (waste)" if w["waste"] else ""
-            text = f"{w['case_label']}: {w['name']}{tag}"
-            if w["notes"]:
-                text += f" -- {w['notes']}"
-            doc.add_paragraph(text, style="List Bullet")
 
     doc.add_heading("To say more", level=h(1))
     more = model["to_say_more"]
     if not more:
-        more = ["Nothing outstanding -- every analysis input this memo "
+        more = ["Nothing outstanding: every analysis input this memo "
                 "can use was supplied."]
     for item in more:
         doc.add_paragraph(item, style="List Bullet")

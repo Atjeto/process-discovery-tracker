@@ -43,6 +43,7 @@ from step_suggest import (
     draft_summary, load_remembered_names,
 )
 import app_vocab
+from app_names import build_app_names
 import stats_compute as stats
 from session_io import write_annotations, compute_screenshot_hashes
 from marker_edits import apply_marker_edits
@@ -97,6 +98,9 @@ def _run_case_assignment(
     else:
         vocab_summary = {"matched": 0, "total": 0, "vocabs_loaded": [],
                          "vocabs_hit": {}, "coverage": {}}
+    # DA gap 3: the readable name of every recorded executable, for the
+    # findings claims and the PDD (stats.json meta.app_names).
+    vocab_summary["app_names"] = build_app_names(with_cases, vocabs)
     return with_cases, cases, vocab_summary
 
 
@@ -288,6 +292,8 @@ def _run_stats(
             "auto_suggested":    sum(1 for s in merged_steps if s.get("state") == "auto_suggested"),
             "manually_authored": sum(1 for s in merged_steps if s.get("state") == "manually_authored"),
             "edited":            sum(1 for s in merged_steps if s.get("state") == "edited"),
+            "confirmed":         sum(1 for s in merged_steps if s.get("state") == "confirmed"),
+            "hidden":            sum(1 for s in merged_steps if s.get("state") == "hidden"),
         },
         "draft_summary": draft_summary,
         "coalesced_event_count": len(coalesced),
@@ -295,6 +301,7 @@ def _run_stats(
         "app_vocabulary_matches": vocab_summary.get("matched", 0),
         "app_vocabulary_hits_by_id": vocab_summary.get("vocabs_hit") or {},
         "vocab_coverage": vocab_summary.get("coverage") or {},
+        "app_names": vocab_summary.get("app_names") or {},
     }
 
     stats_path = session_folder / "stats.json"
@@ -408,7 +415,8 @@ def _run_analysis(
                 case_quality=analysis_result.get("case_quality"),
                 analysis_blocks=analysis_result,
                 bounces=bounces,
-                errors=detector_errors)
+                errors=detector_errors,
+                app_names=((summary or {}).get("meta") or {}).get("app_names"))
             if detector_errors:
                 # A detector that could not run makes the list incomplete; an
                 # incomplete list must not read as "nothing else stood out".
@@ -447,11 +455,14 @@ def _run_mining_exports(
     pdd_out: str | None,
     pdd_map_image: str | None,
     pdd_tobe_image: str | None = None,
+    events: list[dict[str, Any]] | None = None,
 ) -> None:
     """Mining (DFG / aggregate BPMN / observed-flow BPMN / per-case BPMN) plus
     the requested PDD export. Each mining output keeps its own best-effort
     try/except. A requested PDD export that fails raises ExportFailed (C13
-    exit code 3); it runs last, so every analysis output is already written."""
+    exit code 3); it runs last, so every analysis output is already written.
+    `events` is the derived event stream the PDD reads the entered fields
+    from."""
     if mine:
         import mining as mining_mod
         from pm4py.objects.log.obj import EventLog
@@ -532,6 +543,7 @@ def _run_mining_exports(
                 analysis=analysis_result,
                 process_map_image=pdd_map_image,
                 tobe_map_image=pdd_tobe_image,
+                events=events,
             )
         except Exception as e:  # noqa: BLE001 -- any failure fails the export
             # The traceback goes to normalize.log only (INFO is below the

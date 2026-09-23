@@ -89,9 +89,33 @@ def test_model_names_the_session_and_capture_date():
 def test_fact_cells_carry_measured_values():
     cells = _cells(build_memo_model(_manifest(), _stats(), _analysis(), {}))
     assert cells["Active time"] == "1h 15m"                     # active_ms
-    assert cells["Top app"] == "chrome.exe (31%)"               # top app + share
-    assert cells["App switches"] == "47 (11.2/h)"               # switches
-    assert cells["Values re-typed across apps"] == "3 (5 repeated sequences)"
+    # DA gap 3: no app_names map here, so the capitalized executable name.
+    assert cells["Top app"] == "Chrome (31%)"                   # top app + share
+    assert cells["App switches"] == "47 (11.2/h)"               # 90 min: rate shown
+    # DA gap 8: two counts, two cells.
+    assert cells["Values re-typed across apps"] == "3"
+    assert cells["Repeated step sequences"] == "5"
+
+
+def test_top_app_cell_uses_the_readable_app_name():
+    stats = dict(_stats(), meta=dict(_stats()["meta"],
+                                     app_names={"chrome.exe": "Google Chrome"}))
+    cells = _cells(build_memo_model(_manifest(), stats, _analysis(), {}))
+    assert cells["Top app"] == "Google Chrome (31%)"
+    assert not any("chrome.exe" in v for v in cells.values())
+
+
+def test_switch_rate_is_stated_only_for_a_recording_of_30_minutes_or_more():
+    """DA gap 9: below 30 minutes the cell is the plain count, never a rate
+    extrapolated from a few minutes."""
+    short = _analysis()
+    short["facts"]["session_span_ms"] = 29 * 60 * 1000
+    assert _cells(build_memo_model(_manifest(), _stats(), short, {}))[
+        "App switches"] == "47"
+    edge = _analysis()
+    edge["facts"]["session_span_ms"] = 30 * 60 * 1000
+    assert _cells(build_memo_model(_manifest(), _stats(), edge, {}))[
+        "App switches"] == "47 (11.2/h)"
 
 
 def test_findings_carry_claim_numbers_and_starred_refs():
@@ -106,19 +130,21 @@ def test_findings_carry_claim_numbers_and_starred_refs():
 def test_tier2_section_renders_only_when_unlocked():
     lines = " ".join(build_memo_model(_manifest(), _stats(),
                                       _analysis(tier2=True), {})["tier2_lines"])
-    assert "4 cases" in lines
-    assert "Cycle time (wall clock): mean 15m" in lines
-    assert "2 distinct path variants" in lines
-    assert "No cases identified yet" not in lines
+    assert "4 runs were marked" in lines
+    # DA gap 7: the same metric name the PDD's timings table uses.
+    assert ("Elapsed time per run (wall clock): mean 15m, fastest 10m, "
+            "slowest 20m, across 2 timed runs.") in lines
+    assert "2 different step sequences" in lines
+    assert "No runs were marked" not in lines
 
 
 def test_tier2_locked_renders_the_one_honest_line():
     model = build_memo_model(_manifest(), _stats(), _analysis(tier2=False), {})
     assert model["tier2_lines"] == [
-        "No cases identified yet in this recording; recording Start/End "
-        "markers would unlock the case-by-case numbers."]
-    # No fabricated case numbers below the gate.
-    assert not any("Cycle time (wall clock)" in l for l in model["tier2_lines"])
+        "No runs were marked in this recording; marking each repetition "
+        "as a run would unlock the run-by-run numbers."]
+    # No fabricated run numbers below the gate.
+    assert not any("Elapsed time per run" in l for l in model["tier2_lines"])
 
 
 def test_tier2_locked_ignores_legacy_anchor_candidates():
@@ -142,10 +168,10 @@ def test_tier2_locked_on_single_case_says_so_not_unsegmented():
                          "coverage": 0.999, "tier2_unlocked": False}
     model = build_memo_model(_manifest(), _stats(), a, {})
     text = " ".join(model["tier2_lines"] + model["to_say_more"])
-    assert "1 case was marked" in text
-    assert "need at least 2" in text
-    assert "No cases identified yet" not in text
-    assert "Cycle time (wall clock)" not in text
+    assert "1 run was marked" in text
+    assert "needs at least 2 runs" in text
+    assert "No runs were marked" not in text
+    assert "Elapsed time per run" not in text
 
 
 def test_fact_cells_say_not_available_when_no_app_signal():
@@ -183,7 +209,7 @@ def test_to_say_more_enumerates_missing_inputs():
     more = " ".join(build_memo_model(
         _manifest(), _stats(), _analysis(tier2=False),
         {"anchor_candidates": [{"signature": "x"}]})["to_say_more"])
-    assert "No cases identified yet" in more
+    assert "No runs were marked." in more
     assert "No idle time was measured" in more
     assert "judge each step type" in more
     # The ROI layer was removed: no labour-rate / savings-band request.
@@ -265,75 +291,40 @@ def test_memo_docx_skips_traversal_screenshot_refs():
     assert len(doc.inline_shapes) == 0
 
 
-# ---- ADR-0028 §4: named work items in the Case-by-case section --------------
+# ---- case-based findings: labeled, and only when runs exist -----------------
 
-def _wi_step(step_id, case_id, screen, start):
-    return {"step_id": step_id, "name": f"{screen}: {step_id}",
-            "case_id": case_id, "state": "auto_suggested",
-            "grain_keys": {"element": step_id, "screen": screen, "app": "app"},
-            "time_range": {"start": start, "end": start}}
-
-
-def _wi_annotations():
-    return {
-        "steps": [
-            _wi_step("s1", "c1", "Salesforce - Order #10900", "2026-05-14T09:00:00Z"),
-            _wi_step("s2", "c1", "va01", "2026-05-14T09:00:05Z"),
-        ],
-        "group_annotations": [
-            {"case_id": "c1", "screen_key": "scr:Salesforce - Order",
-             "name": "Enter the order lines", "notes": "unit price is always 49.99",
-             "manually_authored": True},
-            {"case_id": "c1", "screen_key": "scr:va01",
-             "name": "Re-key order into SAP", "waste": True,
-             "manually_authored": True},
-        ],
-    }
+def _repetition_finding():
+    return {"id": "repetition-ccc", "detector": "repetition", "tier": 2,
+            "claim": "The step sequence \"Lookup → Paste\" in Excel was "
+                     "repeated 4 times, totalling 4m (average 1m per repeat).",
+            "evidence": {"segment_signature": "sigA", "instance_count": 4},
+            "confidence_note": "Counts exact repeats."}
 
 
-def _wi_stats():
-    return {"meta": {"raw_event_count": 900, "interaction_count": 460},
-            "case_stats": [{"case_id": "c1", "label": "Order #10900",
-                            "wall_clock_ms": 60000}]}
-
-
-def test_named_work_items_carry_ticket_note_and_waste_flag():
-    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True),
-                             _wi_annotations())
-    by_name = {wi["name"]: wi for wi in model["named_work_items"]}
-    # The analyst name against its ticket, and its note.
-    assert by_name["Enter the order lines"]["case_label"] == "Order #10900"
-    assert by_name["Enter the order lines"]["notes"] == "unit price is always 49.99"
-    # The waste-flagged item carries the waste flag.
-    assert by_name["Re-key order into SAP"]["case_label"] == "Order #10900"
-    assert by_name["Re-key order into SAP"]["waste"] is True
-
-
-def test_memo_without_group_annotations_is_unchanged():
-    """Additive no-op: a session with no group_annotations gets NO named work
-    items -- the memo is exactly as before (the demo-session posture)."""
-    model = build_memo_model(_manifest(), _stats(), _analysis(tier2=True), {})
-    assert model["named_work_items"] == []
-
-
-def test_memo_model_carries_named_work_items():
-    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True),
-                             _wi_annotations())
-    names = [wi["name"] for wi in model["named_work_items"]]
-    assert "Enter the order lines" in names
-    assert "Re-key order into SAP" in names
-    # Only annotated visits reach the memo (both here carry a name).
-    assert all(wi["case_label"] == "Order #10900" for wi in model["named_work_items"])
-
-
-def test_named_work_items_in_docx_memo():
+def test_a_case_based_finding_is_labeled_across_runs():
+    a = _analysis(findings=_analysis()["findings"] + [_repetition_finding()])
+    model = build_memo_model(_manifest(), _stats(), a, {})
+    flags = {f["claim"][:20]: f["case_based"] for f in model["findings"]}
+    assert flags["The step sequence \"L"] is True
+    assert flags["chrome.exe accounts "] is False
     if not _HAVE_DOCX:
         return
-    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True),
-                             _wi_annotations())
     texts, _doc = _docx_body(model)
-    assert any("Enter the order lines" in t for t in texts)
-    assert any("Re-key order into SAP" in t for t in texts)
+    assert "3. Across runs: The step sequence \"Lookup → Paste\" in Excel was " \
+           "repeated 4 times, totalling 4m (average 1m per repeat)." in texts
+    assert "1. chrome.exe accounts for 31% of measured foreground time " \
+           "(23m 15s of 1h 15m)." in texts
+
+
+def test_a_case_based_finding_is_left_out_when_there_are_no_runs():
+    a = _analysis(tier2=False,
+                  findings=_analysis()["findings"] + [_repetition_finding()])
+    no_runs = {"meta": _stats()["meta"], "case_stats": []}
+    claims = [f["claim"] for f in build_memo_model(_manifest(), no_runs, a, {})["findings"]]
+    assert len(claims) == 2 and not any("step sequence" in c for c in claims)
+    # Positive control: the same finding renders once the recording has runs.
+    claims = [f["claim"] for f in build_memo_model(_manifest(), _stats(), a, {})["findings"]]
+    assert any("step sequence" in c for c in claims)
 
 
 def test_memo_model_and_docx_agree_on_selection():
@@ -350,17 +341,7 @@ def test_memo_model_and_docx_agree_on_selection():
     assert not any("chrome.exe accounts for" in t for t in texts)
 
 
-# ---- RP-06 hidden work items, RP-10 failed stages (lane L4) ----------------
-
-def test_a_hidden_work_item_stays_out_of_the_memo_lines():
-    """RP-06: a work item the analyst hid never reaches the deliverable."""
-    anno = _wi_annotations()
-    anno["group_annotations"][1]["hidden"] = True
-    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True), anno)
-    names = [wi["name"] for wi in model["named_work_items"]]
-    assert "Enter the order lines" in names            # the visible item stays
-    assert "Re-key order into SAP" not in names
-
+# ---- RP-10 failed stages (lane L4) -------------------------------------------
 
 def _with_failed(analysis, *stages):
     """C12 shape: each failed stage's output key is null and named once."""
@@ -391,8 +372,8 @@ def test_a_failed_case_check_is_not_no_cases_identified():
     model = build_memo_model(_manifest(), _stats(),
                              _with_failed(_analysis(tier2=False), "case_quality"), {})
     lines = " ".join(model["tier2_lines"] + model["to_say_more"])
-    assert "could not run on this recording" in lines
-    assert "No cases identified" not in lines
+    assert "The run check could not run on this recording" in lines
+    assert "No runs were marked" not in lines
 
 
 def test_the_less_detail_caveat_names_no_removed_feature():
@@ -404,7 +385,8 @@ def test_the_less_detail_caveat_names_no_removed_feature():
          "evidence": {"flagged_apps": [{"app": "mstsc.exe"}]}},
     ])
     more = " ".join(build_memo_model(_manifest(), _stats(), a, {})["to_say_more"])
-    assert ("The recorder saw less detail in mstsc.exe, so the numbers "
+    # DA gap 3: the capitalized executable name, not the token "mstsc.exe".
+    assert ("The recorder saw less detail in Mstsc, so the numbers "
             "measured inside that app are less precise.") in more
     assert "App Library" not in more
 
@@ -412,8 +394,9 @@ def test_the_less_detail_caveat_names_no_removed_feature():
 def test_a_failed_motif_stage_says_so_for_the_repeated_sequences():
     a = _analysis()
     a["facts"]["repeated_sequence_count"] = None     # written null when motifs fail
-    cell = _cells(build_memo_model(_manifest(), _stats(), a, {}))["Values re-typed across apps"]
-    assert cell == "3 (repeated sequences: could not run on this recording)"
+    cells = _cells(build_memo_model(_manifest(), _stats(), a, {}))
+    assert cells["Repeated step sequences"] == "could not run on this recording"
+    assert cells["Values re-typed across apps"] == "3"     # still measured
 
 
 if __name__ == "__main__":
