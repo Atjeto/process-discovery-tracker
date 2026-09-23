@@ -1,40 +1,114 @@
-"""Tests for app_names: readable application names (deliverable audit gap 3).
+"""Tests for app_names: readable application names (deliverable audit gap 3)
+and the one vocabulary of systems (shared/system-names.json, AD-28).
 
 Pure stdlib, so this suite runs under any pytest.
 """
 
 from __future__ import annotations
+import json
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app_names import build_app_names, display_name
+import app_names
+from app_names import build_app_names, display_name, system_name
+
+SYSTEMS = Path(__file__).resolve().parent.parent.parent / "shared" / "system-names.json"
 
 
 def _inter(proc, title):
     return {"type": "interaction", "data": {"process_name": proc, "window_title": title}}
 
 
-def test_a_vocab_scoped_to_the_executable_names_it():
+# ---- the one vocabulary of systems ---------------------------------------------
+
+def test_the_demo_five_applications_resolve_to_their_business_systems():
+    """The committed demo's five applications, with their recorded window
+    titles: the system is Salesforce (in Chrome), SAP, Excel, Outlook and
+    Notepad; the browser is only where Salesforce ran."""
+    cases = {
+        ("chrome.exe", "Salesforce - Account lookup"): "Salesforce",
+        ("chrome.exe", "Salesforce - Order #10900"): "Salesforce",
+        ("SAPGUI.exe", "SAP - Create Sales Order (VA01)"): "SAP",
+        ("EXCEL.EXE", "Excel - Order Tracking.xlsx"): "Excel",
+        ("OUTLOOK.EXE", "Outlook - Order #10900 confirmation"): "Outlook",
+        ("notepad.exe", "Notepad - Internal mappings.txt"): "Notepad",
+    }
+    for (app, title), system in cases.items():
+        assert system_name(app, title) == system, (app, title)
+
+
+def test_a_browser_window_without_a_listed_web_system_keeps_the_browser_name():
+    assert system_name("chrome.exe", "Intranet - Google Chrome") == "Google Chrome"
+    assert system_name("msedge.exe", "Account lookup | Salesforce - Microsoft Edge") == "Salesforce"
+    assert system_name("msedge.exe", "Timesheets - Microsoft Edge") == "Microsoft Edge"
+    # A title rule is for browsers only: an Excel file named after Salesforce is Excel.
+    assert system_name("EXCEL.EXE", "Salesforce export.xlsx - Excel") == "Excel"
+
+
+def test_an_unlisted_application_takes_its_readable_name():
+    names = {"crm.exe": "Contoso CRM"}
+    assert system_name("crm.exe", "Orders", names) == "Contoso CRM"
+    assert system_name("erpclient.exe", "Orders") == "Erpclient"
+    assert system_name("", "Orders") == "" and system_name(None) == ""
+
+
+def test_the_file_is_ordered_rules_with_a_process_list_and_a_system():
+    doc = json.loads(SYSTEMS.read_text(encoding="utf-8"))
+    assert doc["version"] == 1 and isinstance(doc["_README"], str)
+    for rule in doc["rules"]:
+        assert set(rule) <= {"process", "title", "system"}, rule
+        assert rule["process"] and all(p == p.lower() and not p.endswith(".exe")
+                                       for p in rule["process"])
+        assert rule["system"].strip()
+        if "title" in rule:
+            re.compile(rule["title"])
+    # No dash punctuation in the shared text the viewer may show.
+    text = SYSTEMS.read_text(encoding="utf-8")
+    assert chr(0x2013) not in text and chr(0x2014) not in text and " -- " not in text
+
+
+def test_the_first_matching_rule_wins(tmp_path):
+    path = tmp_path / "systems.json"
+    path.write_text(json.dumps({"version": 1, "rules": [
+        {"process": ["chrome"], "title": "Portal", "system": "Order Portal"},
+        {"process": ["chrome"], "system": "Google Chrome"},
+        {"process": ["chrome"], "title": "Portal", "system": "Never reached"},
+        {"process": [], "system": "No process"},
+        {"process": ["x"], "title": "(", "system": "Bad pattern"},
+    ]}), encoding="utf-8")
+    rules = app_names._load_system_rules(path)
+    assert [system for _k, _rx, system in rules] == ["Order Portal", "Google Chrome",
+                                                      "Never reached"]
+
+
+# ---- the per-application names (stats.json meta.app_names) -----------------------
+
+def test_a_listed_application_is_named_by_the_system_list_before_a_vocab():
     vocabs = [{"id": "sap-gui", "name": "SAP GUI", "scope": {"process_name": "sapgui.exe"}},
               {"id": "salesforce", "name": "Salesforce (Lightning)",
                "scope": {"window_title_regex": ".*Salesforce.*"}}]
     names = build_app_names([_inter("SAPGUI.exe", "SAP - Create Sales Order (VA01)"),
                              _inter("chrome.exe", "Salesforce - Account lookup")], vocabs)
-    assert names["SAPGUI.exe"] == "SAP GUI"
-    # A vocab scoped by window title only names no executable.
-    assert names["chrome.exe"] == "Chrome"
+    assert names == {"SAPGUI.exe": "SAP", "chrome.exe": "Google Chrome"}
+
+
+def test_a_vocab_scoped_to_an_unlisted_executable_names_it():
+    vocabs = [{"id": "crm", "name": "Contoso CRM", "scope": {"process_name": "crm.exe"}}]
+    names = build_app_names([_inter("CRM.exe", "Orders - Contoso")], vocabs)
+    assert names == {"CRM.exe": "Contoso CRM"}
 
 
 def test_a_window_title_segment_naming_the_executable_is_used():
     names = build_app_names([
-        _inter("EXCEL.EXE", "Book1 - Excel"),
-        _inter("EXCEL.EXE", "Excel export of orders.xlsx - Excel"),
+        _inter("TIMESHEET.EXE", "Week 38 - Timesheet"),
+        _inter("TIMESHEET.EXE", "Week 39 - Timesheet"),
         {"type": "activity", "data": {"app": "chrome.exe",
                                       "title": "Account lookup | Salesforce - Google Chrome"}},
     ])
-    assert names == {"EXCEL.EXE": "Excel", "chrome.exe": "Google Chrome"}
+    assert names == {"TIMESHEET.EXE": "Timesheet", "chrome.exe": "Google Chrome"}
 
 
 def test_a_word_inside_another_word_does_not_name_the_app():
@@ -42,10 +116,10 @@ def test_a_word_inside_another_word_does_not_name_the_app():
     assert names == {"code.exe": "Code"}
 
 
-def test_without_a_vocab_or_a_title_the_executable_name_is_capitalized():
-    names = build_app_names([_inter("SAPGUI.exe", "SAP - Create Sales Order (VA01)"),
-                             _inter("notepad.exe", "")])
-    assert names == {"SAPGUI.exe": "Sapgui", "notepad.exe": "Notepad"}
+def test_without_a_rule_a_vocab_or_a_title_the_executable_name_is_capitalized():
+    names = build_app_names([_inter("ERPCLIENT.exe", "Orders (VA01)"),
+                             _inter("mstsc.exe", "")])
+    assert names == {"ERPCLIENT.exe": "Erpclient", "mstsc.exe": "Mstsc"}
 
 
 def test_display_name_finds_a_token_with_or_without_exe_in_any_case():
@@ -55,3 +129,5 @@ def test_display_name_finds_a_token_with_or_without_exe_in_any_case():
     assert display_name("mstsc.exe", names) == "Mstsc"
     assert display_name("Google Chrome") == "Google Chrome"
     assert display_name(None, names) == ""
+    # Without a map, a listed application still gets its system name.
+    assert display_name("EXCEL.EXE") == "Excel"

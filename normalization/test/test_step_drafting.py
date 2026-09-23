@@ -529,3 +529,17 @@ def test_draft_summary_is_numbers_only_in_run_order():
     text = json.dumps(summary)
     for word in ("Alpha", "VALUE-9", "Send", "Go on", "CRM", "run-a"):
         assert word not in text
+
+
+def test_a_step_with_nothing_to_narrate_says_actions_and_the_old_wording_still_reads_as_drafted():
+    """Lane LUX-P: the narration speaks of actions, not interactions; a
+    description stored in the older wording is still recognised as the
+    drafting's, so a document never prints it as the analyst's text."""
+    from step_suggest import _default_step_description, is_drafted_description
+    focus = [_ev("e1", 1, "focus_changed", aid="a", name="A"),
+             _ev("e2", 2, "focus_changed", aid="b", name="B")]
+    assert _default_step_description(focus) == "2 actions with no recorded detail."
+    assert is_drafted_description("2 actions with no recorded detail.", focus)
+    assert is_drafted_description("2 interactions with no recorded detail.", focus)
+    assert is_drafted_description("1 interaction with no recorded detail.", focus)
+    assert not is_drafted_description("Checked the order by phone.", focus)

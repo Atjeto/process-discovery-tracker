@@ -1,10 +1,13 @@
-"""Tests for pdd_export: the PDD built around the pattern run (C3), the
-analyst's document sections (C6), one measured timings table, and the
-differences between runs.
+"""Tests for pdd_export: the process manager's hand-over document, in the
+reader's order (lane LUX-P): document control, purpose and scope (the
+analyst's fields, C6), the As-Is map and the reference run's steps (C3), the
+variations and rules, the data, applications and time, the improvement
+scope and the notes.
 
-The fixture is a synthetic two-run session: run 1 is the pattern (Find,
-Save, Send, plus one hidden step); run 2 does Find, an extra Log step and
-Save, and skips Send.
+The fixture is a synthetic two-run session: run 1 is the reference run
+(Find, Save, Send, plus one hidden step); run 2 does Find, an extra Log step
+and Save, and skips Send. Run 1 types its order number again as the mail's
+subject (re-keyed data).
 
 Deps-gated: write_pdd needs python-docx, which the full-deps gate (bundled
 python plus the system pytest) has; without it these tests no-op.
@@ -34,6 +37,9 @@ FIND = "crm|CRM - Orders|Button:find"
 SAVE = "crm|CRM - Orders|Button:save"
 SEND = "outlook|Mail - Compose|Button:send"
 LOG = "excel|Sheet - Log|Button:save"
+CRM_TITLE = "Contoso CRM - Orders"
+MAIL_TITLE = "Order confirmation - Outlook"
+LOG_TITLE = "Order log.xlsx - Excel"
 
 
 def _ts(sec):
@@ -49,41 +55,45 @@ def _step(sid, case_id, name, key, sec, eids, state="auto_suggested", **extra):
     return step
 
 
-def _inter(eid, sec, proc, kind, name, control_type="Edit", **data):
+def _inter(eid, sec, proc, title, kind, name, control_type="Edit", **data):
     return {"event_id": eid, "type": "interaction", "timestamp": _ts(sec),
-            "data": {"kind": kind, "process_name": proc, "name": name,
-                     "control_type": control_type, **data}}
+            "data": {"kind": kind, "process_name": proc, "window_title": title,
+                     "name": name, "control_type": control_type, **data}}
 
 
 def _session():
     """(manifest, annotations, stats, analysis, events) of the fixture."""
     manifest = {"session_id": "sess-pdd", "engagement_id": "ENG-1",
-                "started_at": _ts(0), "config": {"worker": {"id": "w1"}}}
+                "started_at": _ts(0),
+                "config": {"worker": {"id": "w1", "name": "Ana Silva"}}}
     annotations = {"steps": [
         _step("a1", R1, "Look up the order", FIND, 1, ["e1", "e2"],
               state="confirmed", description="Search the order by its number."),
         _step("a2", R1, "CRM - Orders: Save", SAVE, 5, ["e3"], state="confirmed"),
         _step("hid", R1, "Hidden noise step", "crm|CRM - Orders|Button:noise", 7,
               ["e9"], state="hidden"),
-        _step("a3", R1, "Mail - Compose: Send", SEND, 10, ["e4", "e5", "e6"],
+        _step("a3", R1, "Mail - Compose: Send", SEND, 10, ["e4", "e7", "e5", "e6"],
               state="confirmed", flags={"waste": True}),
         _step("b1", R2, "Look up the order", FIND, 61, ["f1", "f2"]),
         _step("b2", R2, "Sheet - Log: Save", LOG, 65, ["f3", "f4"]),
         _step("b3", R2, "CRM - Orders: Save", SAVE, 70, ["f5"]),
     ], "pattern_run": {"case_id": R1, "confirmed_at": _ts(200)}}
     events = [
-        _inter("e1", 1, "crm.exe", "value_changed", "Order number", value="ORD-1"),
-        _inter("e2", 2, "crm.exe", "invoked", "Find", "Button"),
-        _inter("e3", 5, "crm.exe", "invoked", "Save", "Button"),
-        _inter("e9", 7, "crm.exe", "value_changed", "Noise field", value="NOISE-VALUE"),
-        _inter("e4", 10, "OUTLOOK.EXE", "value_changed", "To", value="customer@example.com"),
-        _inter("e5", 11, "OUTLOOK.EXE", "value_changed", "Password", value_redacted=True),
-        _inter("e6", 12, "OUTLOOK.EXE", "invoked", "Send", "Button"),
-        _inter("f1", 61, "crm.exe", "value_changed", "Order number", value="ORD-2"),
-        _inter("f2", 62, "crm.exe", "invoked", "Find", "Button"),
-        _inter("f3", 65, "EXCEL.EXE", "value_changed", "Status", value="Logged"),
-        _inter("f4", 66, "EXCEL.EXE", "invoked", "Save", "Button"),
-        _inter("f5", 70, "crm.exe", "invoked", "Save", "Button"),
+        _inter("e1", 1, "crm.exe", CRM_TITLE, "value_changed", "Order number", value="ORD-1"),
+        _inter("e2", 2, "crm.exe", CRM_TITLE, "invoked", "Find", "Button"),
+        _inter("e3", 5, "crm.exe", CRM_TITLE, "invoked", "Save", "Button"),
+        _inter("e9", 7, "crm.exe", CRM_TITLE, "value_changed", "Noise field", value="NOISE-VALUE"),
+        _inter("e4", 10, "OUTLOOK.EXE", MAIL_TITLE, "value_changed", "To",
+               value="customer@example.com"),
+        _inter("e7", 10.5, "OUTLOOK.EXE", MAIL_TITLE, "value_changed", "Subject", value="ORD-1"),
+        _inter("e5", 11, "OUTLOOK.EXE", MAIL_TITLE, "value_changed", "Password",
+               value_redacted=True),
+        _inter("e6", 12, "OUTLOOK.EXE", MAIL_TITLE, "invoked", "Send", "Button"),
+        _inter("f1", 61, "crm.exe", CRM_TITLE, "value_changed", "Order number", value="ORD-2"),
+        _inter("f2", 62, "crm.exe", CRM_TITLE, "invoked", "Find", "Button"),
+        _inter("f3", 65, "EXCEL.EXE", LOG_TITLE, "value_changed", "Status", value="Logged"),
+        _inter("f4", 66, "EXCEL.EXE", LOG_TITLE, "invoked", "Save", "Button"),
+        _inter("f5", 70, "crm.exe", CRM_TITLE, "invoked", "Save", "Button"),
     ]
     stats = {
         "case_stats": [
@@ -94,18 +104,10 @@ def _session():
              "start_ts": _ts(60), "end_ts": _ts(120), "wall_clock_ms": 60000,
              "active_ms": 58000},
         ],
-        "step_variants": [{"variant": ["x"], "frequency": 1},
-                          {"variant": ["y"], "frequency": 1}],
         "meta": {
             "raw_event_count": 40, "interaction_count": 12, "step_count": 7,
-            "step_state_breakdown": {"auto_suggested": 3, "manually_authored": 0,
-                                     "edited": 0, "confirmed": 3, "hidden": 1},
-            "vocab_coverage": {"crm.exe": {"total_interactions": 7},
-                               "OUTLOOK.EXE": {"total_interactions": 3},
-                               "EXCEL.EXE": {"total_interactions": 2}},
-            "app_names": {"crm.exe": "Contoso CRM",
-                          "OUTLOOK.EXE": "Microsoft Outlook (classic)",
-                          "EXCEL.EXE": "Microsoft Excel"},
+            "app_names": {"crm.exe": "Contoso CRM", "OUTLOOK.EXE": "Outlook",
+                          "EXCEL.EXE": "Excel"},
         },
     }
     analysis = {
@@ -113,33 +115,21 @@ def _session():
                          "tier2_unlocked": True},
         "facts": {"active_ms": 102000, "idle_ms": 0, "session_span_ms": 120000,
                   "top_apps": [{"app": "crm.exe", "ms": 60000, "share": 0.59}],
-                  "app_switches": 4, "switches_per_hour": 120.0,
-                  "longest_focus_ms": 20000, "rekey_count": 0,
-                  "repeated_sequence_count": 1, "app_time_source": "activity"},
+                  "app_switches": 4, "rekey_count": 1, "app_time_source": "activity"},
         "findings": [
             {"id": "screen_time_sink-x", "detector": "screen_time_sink", "tier": 1,
              "claim": "Contoso CRM accounts for 59% of measured foreground time.",
              "evidence": {"app": "crm.exe", "share": 0.59, "screenshot_refs": []},
              "confidence_note": "Foreground-window time."},
-            {"id": "repetition-y", "detector": "repetition", "tier": 2,
-             "claim": "The step sequence \"Look up the order → CRM - Orders: "
-                      "Save\" in Contoso CRM was repeated 2 times.",
-             "evidence": {"segment_signature": "sigA", "instance_count": 2},
-             "confidence_note": "Counts exact repeats."},
         ],
         "automation_candidates": [
             {"segment_signature": "sigA", "app": "crm.exe",
              "step_labels": ["Look up the order", "CRM - Orders: Save"],
              "instance_count": 2, "total_elapsed_ms": 12000,
              "mean_elapsed_ms": 6000, "data_sufficiency": "multi_instance"},
-            {"segment_signature": "sigB", "app": "OUTLOOK.EXE",
-             "step_labels": ["Mail - Compose: Send"], "instance_count": 3,
-             "total_elapsed_ms": 9000, "mean_elapsed_ms": 3000,
-             "data_sufficiency": "multi_instance"},
-            {"segment_signature": "sigC", "app": "x.exe", "step_labels": ["One-off"],
-             "instance_count": 1, "data_sufficiency": "single_instance"},
         ],
         "efficiency": {"process_efficiency_ratio": 0.6},
+        "pdd_findings": {"eligible": ["screen_time_sink-x"], "default": ["screen_time_sink-x"]},
         "stage_errors": [],
     }
     return manifest, annotations, stats, analysis, events
@@ -193,28 +183,42 @@ def _all_text(blocks):
     return "\n".join(t for _k, t in blocks)
 
 
-def _rendered():
-    """The body blocks of the fixture's PDD."""
-    manifest, annotations, stats, analysis, events = _session()
+def _blocks_of(manifest, annotations, stats, analysis, events, **images):
     with tempfile.TemporaryDirectory() as tmp:
-        doc = _render(tmp, manifest, annotations, stats, analysis, events)
-        return _blocks(doc)
+        return _blocks(_render(tmp, manifest, annotations, stats, analysis, events, **images))
+
+
+def _rendered():
+    return _blocks_of(*_session())
 
 
 OUTLINE = [
-    "1. Findings", "2. Document control", "3. Introduction", "3.1 Purpose",
-    "3.2 Scope", "3.3 Key contacts", "4. As-is process", "4.1 Overview",
-    "4.2 Applications used", "4.3 As-is process map", "4.4 Measured timings",
-    "4.5 Detailed process steps", "4.6 Input data", "5. Automation assessment",
-    "5.1 In scope", "5.2 Out of scope", "5.3 Automation candidates",
-    "6. Exceptions and variations", "6.1 Differences between runs",
-    "6.2 Business rules and exceptions", "6.3 Rework", "6.4 Application errors",
+    "1. Document control",
+    "2. Purpose and scope", "2.1 Purpose", "2.2 Scope", "2.3 Trigger", "2.4 Result",
+    "2.5 Key contacts",
+    "3. As-Is process", "3.1 As-Is process map", "3.2 Process steps",
+    "4. Variations, rules and exceptions", "4.1 Differences between runs",
+    "4.2 Business rules", "4.3 Exceptions",
+    "5. Data",
+    "6. Applications and time", "6.1 Time per run", "6.2 Time in each application",
+    "7. Improvement and automation scope",
 ]
 
+FIELDS = {"title": "Order intake", "purpose": "Book every customer order.",
+          "scope": "Standard orders; returns are out of scope.",
+          "trigger": "An order email arrives.\nIt names the customer.",
+          "result": "The customer has a confirmation mail.",
+          "contacts": "Ana (process owner)\nBo (analyst)",
+          "business_rules": "Orders over 10,000 need a second approval.",
+          "exceptions": "A blocked customer goes to credit control.\n"
+                        "The CRM times out: save again.",
+          "improvement": "Automate the order entry; the credit check stays manual.",
+          "notes": ""}
 
-# ---- the outline, the title, the document fields (C6) --------------------------
 
-def test_the_section_outline_is_complete_and_contiguous():
+# ---- the outline, the title, document control, the fields (C6) -------------------
+
+def test_the_outline_is_in_the_readers_order():
     if not _HAVE_DOCX:
         return
     blocks = _rendered()
@@ -222,47 +226,101 @@ def test_the_section_outline_is_complete_and_contiguous():
     assert blocks[0] == ("Title", "Process Definition Document")
 
 
-def test_document_fields_replace_their_placeholders():
+def test_document_control_names_the_folder_the_sme_the_video_and_the_project():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
-    annotations["document"] = {
-        "title": "Order intake", "purpose": "Book every customer order.",
-        "scope": "From the order email to the confirmation mail.",
-        "contacts": "Ana (process owner)\nBo (analyst)",
-        "business_rules": "Orders over 10,000 need a second approval.",
-        "exceptions": "A blocked customer goes to credit control.",
-        "notes": ""}
     with tempfile.TemporaryDirectory() as tmp:
         blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events))
+        folder = Path(tmp).resolve().name
+    rows = _section(blocks, "1. Document control")
+    assert rows[:7] == ["Process | Not named yet", f"Session folder | {folder}",
+                        "Recorded | 2026-05-14", "Recorded by | Ana Silva",
+                        "Runs recorded | 2", "Video | None", "Project | ENG-1"]
+    assert rows[7].startswith("Document generated | ") and rows[8] == "Version | Draft"
+
+    # The login when the profile has no name; an attached video; the capture's
+    # default project prints no row.
+    manifest["config"]["worker"] = {"id": "w1"}
+    manifest["engagement_id"] = "default"
+    annotations["external_video"] = {"path": "D:/call.mp4", "offset_ms": 0}
+    rows = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                    "1. Document control")
+    assert "Recorded by | w1" in rows and "Video | Attached" in rows
+    assert not any(r.startswith("Project") for r in rows)
+    manifest["engagement_name"] = "Order desk review"
+    rows = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                    "1. Document control")
+    assert "Project | Order desk review" in rows
+
+
+def test_document_fields_replace_their_gaps():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["document"] = dict(FIELDS)
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
     assert blocks[0] == ("Title", "Order intake")
     assert blocks[1] == ("p", "Process Definition Document")
-    assert _section(blocks, "3.1 Purpose") == ["Book every customer order."]
-    assert _section(blocks, "3.2 Scope") == ["From the order email to the confirmation mail."]
-    contacts = _section(blocks, "3.3 Key contacts")
-    assert contacts[-2:] == ["Ana (process owner)", "Bo (analyst)"]
-    rules = _section(blocks, "6.2 Business rules and exceptions")
-    assert rules == ["Business rules", "Orders over 10,000 need a second approval.",
-                     "Exceptions", "A blocked customer goes to credit control."]
-    assert "Process | Order intake" in _section(blocks, "2. Document control")
-    assert "[To be completed" not in "".join(
-        _section(blocks, "3.1 Purpose") + _section(blocks, "3.2 Scope") + contacts + rules)
+    assert _section(blocks, "2.1 Purpose") == ["Book every customer order."]
+    assert _section(blocks, "2.2 Scope") == ["Standard orders; returns are out of scope."]
+    assert _section(blocks, "2.3 Trigger") == ["An order email arrives.", "It names the customer."]
+    assert _section(blocks, "2.4 Result") == ["The customer has a confirmation mail."]
+    assert _section(blocks, "2.5 Key contacts") == ["Ana (process owner)", "Bo (analyst)"]
+    assert _section(blocks, "4.2 Business rules") == ["Orders over 10,000 need a second approval."]
+    assert _section(blocks, "4.3 Exceptions") == [
+        "A blocked customer goes to credit control.", "The CRM times out: save again."]
+    assert _section(blocks, "7. Improvement and automation scope") == [
+        "Automate the order entry; the credit check stays manual."]
+    assert "Process | Order intake" in _section(blocks, "1. Document control")
+    assert "[To be completed" not in _all_text(blocks)
 
 
-def test_empty_document_fields_keep_short_placeholders():
+def test_a_gap_stands_only_for_a_field_the_analyst_fills():
+    """With no document field written, the only gaps are the eight fields the
+    app lets the analyst fill (C6); nothing else in the document is left
+    open."""
     if not _HAVE_DOCX:
         return
     blocks = _rendered()
-    for heading in ("3.1 Purpose", "3.2 Scope"):
+    gaps = [t for _k, t in blocks if "[To be completed" in t]
+    assert len(gaps) == 8
+    for heading in ("2.1 Purpose", "2.2 Scope", "2.3 Trigger", "2.4 Result",
+                    "2.5 Key contacts", "4.2 Business rules", "4.3 Exceptions",
+                    "7. Improvement and automation scope"):
         texts = _section(blocks, heading)
         assert len(texts) == 1 and texts[0].startswith("[To be completed:"), heading
-    assert _section(blocks, "3.3 Key contacts")[-1].startswith("[To be completed:")
-    rules = _section(blocks, "6.2 Business rules and exceptions")
-    assert [t.startswith("[To be completed:") for t in rules] == [False, True, False, True]
-    assert "Process | Not named yet" in _section(blocks, "2. Document control")
+    assert "application errors" in _section(blocks, "4.3 Exceptions")[0]
 
 
-# ---- the pattern run (C3) and the detailed steps ------------------------------
+# ---- what the document no longer says ---------------------------------------------
+
+CUT = ("Findings", "What the recording measured", "Evidence", "Run-by-run", "To say more",
+       "pattern run", "interaction", "Interactions", "foreground", "wall clock", "memo",
+       "templated", "mined", "as exported from the viewer", "Generated by",
+       "Process operator", "Engagement", "worker", "candidate", "Automation assessment",
+       "Application errors", "confirmed by the analyst", "chose it", "Value-add",
+       "Measured timings", "Rework", "Overview", "In scope", "Out of scope",
+       "Role in process", "starred", "events", "polling", "JSONL", "operator")
+
+
+def test_no_findings_method_notes_or_machine_units_are_printed():
+    """Section 1 of the earlier document (the analysis findings) is cut: the
+    document prints no finding, whatever the analyst selected, and none of
+    the method sentences or machine words the review listed."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["memo_selection"] = ["screen_time_sink-x"]
+    annotations["analysis_overrides"] = [{"process_label": "Look up the order",
+                                          "bnva_ms": 5000}]
+    text = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
+    assert "accounts for 59%" not in text
+    for phrase in CUT:
+        assert phrase not in text, phrase
+
+
+# ---- the reference run (C3) and its steps -------------------------------------------
 
 def _steps_section(annotations_change=None, stats_change=None):
     manifest, annotations, stats, analysis, events = _session()
@@ -270,36 +328,43 @@ def _steps_section(annotations_change=None, stats_change=None):
         annotations_change(annotations)
     if stats_change:
         stats_change(stats)
-    with tempfile.TemporaryDirectory() as tmp:
-        blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events))
-    return blocks, _section(blocks, "4.5 Detailed process steps")
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    return blocks, _section(blocks, "3.2 Process steps")
 
 
-def test_the_chosen_pattern_run_is_the_detailed_process():
+def test_the_reference_run_is_the_detailed_process():
+    if not _HAVE_DOCX:
+        return
+    blocks, steps = _steps_section()
+    assert steps[:2] == ["The process runs through Contoso CRM, Outlook and Excel.",
+                         "The steps as done in Run 1: Order 1, the reference run."]
+    assert [t for k, t in blocks if k == "Heading 3"] == [
+        "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send"]
+    assert not any("not confirmed yet" in t for t in steps)
+
+
+def test_a_chosen_reference_run_and_its_draft_status_line():
     if not _HAVE_DOCX:
         return
     def choose_run_2(a):
         a["pattern_run"] = {"case_id": R2}
     blocks, steps = _steps_section(choose_run_2)
-    assert steps[0] == ("The steps below are those of Run 2: Order 2, the pattern "
-                        "run: the analyst chose it as the pattern.")
-    headings = [t for k, t in blocks if k == "Heading 3"]
-    assert headings == ["1. Look up the order", "2. Sheet - Log: Save",
-                        "3. CRM - Orders: Save"]
-    assert "3 of its 3 steps are drafts the analyst has not confirmed yet." in steps
+    assert steps[1] == "The steps as done in Run 2: Order 2, the reference run."
+    assert steps[2] == "3 of these 3 steps are drafts not confirmed yet."
+    assert [t for k, t in blocks if k == "Heading 3"] == [
+        "1. Look up the order", "2. Sheet - Log: Save", "3. CRM - Orders: Save"]
+    # The time is counted from the start of the recording, not of the run:
+    # run 2's first step is 1:01 in, not 0:01.
+    assert steps[steps.index("1. Look up the order") + 1].endswith("Run 2 at 1:01")
 
 
-def test_without_a_valid_choice_the_first_run_with_steps_is_the_pattern():
+def test_without_a_valid_choice_the_first_run_with_steps_is_the_reference():
     if not _HAVE_DOCX:
         return
     def unknown_run(a):
         a["pattern_run"] = {"case_id": "no-such-run"}
     blocks, steps = _steps_section(unknown_run)
-    assert steps[0].startswith("The steps below are those of Run 1: Order 1, the "
-                               "pattern run: no run has been chosen as the pattern yet")
-    assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send"]
-    assert "All 3 steps of this run are confirmed by the analyst." in steps
+    assert steps[1] == "The steps as done in Run 1: Order 1, the reference run."
 
     def run_1_all_hidden(a):
         del a["pattern_run"]
@@ -307,7 +372,7 @@ def test_without_a_valid_choice_the_first_run_with_steps_is_the_pattern():
             if st["case_id"] == R1:
                 st["state"] = "hidden"
     blocks, steps = _steps_section(run_1_all_hidden)
-    assert steps[0].startswith("The steps below are those of Run 2: Order 2")
+    assert steps[1] == "The steps as done in Run 2: Order 2, the reference run."
 
 
 def test_without_runs_every_visible_step_is_listed_in_time_order():
@@ -322,34 +387,57 @@ def test_without_runs_every_visible_step_is_listed_in_time_order():
     def no_case_stats(s):
         s["case_stats"] = []
     blocks, steps = _steps_section(no_runs, no_case_stats)
-    assert steps[0] == ("Runs were not marked in this recording, so there is no "
-                        "pattern run; every step is listed in time order.")
+    assert steps[1] == ("Runs were not marked in this recording, so every step is "
+                        "listed in time order.")
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send",
         "4. Look up the order", "5. Sheet - Log: Save", "6. CRM - Orders: Save"]
-    assert _section(blocks, "6.1 Differences between runs") == [
+    # A step outside every run is placed by its time in the recording.
+    assert steps[steps.index("1. Look up the order") + 1] == (
+        "Contoso CRM, Orders \u00b7 2s \u00b7 0:01 into the recording")
+    assert _section(blocks, "4.1 Differences between runs") == [
         "Runs were not marked in this recording, so there are no runs to compare."]
+    assert _section(blocks, "6.1 Time per run") == [
+        "Runs were not marked in this recording, so there is no time per run."]
 
 
-def test_a_step_shows_its_description_fields_and_waste_flag():
+def test_each_step_carries_its_system_time_runs_and_place_in_the_recording():
     if not _HAVE_DOCX:
         return
-    blocks = _rendered()
-    steps = _section(blocks, "4.5 Detailed process steps")
+    steps = _section(_rendered(), "3.2 Process steps")
+    line = lambda heading: steps[steps.index(heading) + 1]  # noqa: E731
+    assert line("1. Look up the order") == (
+        "Contoso CRM, Orders \u00b7 2s on average \u00b7 in 2 of 2 runs \u00b7 Run 1 at 0:01")
+    assert line("3. Mail - Compose: Send") == (
+        "Outlook, Order confirmation \u00b7 2s on average \u00b7 in 1 of 2 runs \u00b7 Run 1 at 0:10")
+
+
+def test_the_video_time_joins_the_place_when_the_video_is_synced():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["external_video"] = {"path": "D:/call.mp4", "offset_ms": -90000}
+    steps = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "3.2 Process steps")
+    assert steps[steps.index("1. Look up the order") + 1].endswith(
+        "Run 1 at 0:01 (video 1:31)")
+
+
+def test_a_step_shows_its_description_field_names_and_waste_flag():
+    if not _HAVE_DOCX:
+        return
+    steps = _section(_rendered(), "3.2 Process steps")
     i = steps.index("1. Look up the order")
-    assert steps[i + 1:i + 5] == ["Search the order by its number.",
-                                  "Fields entered in this run:",
-                                  "Field | Value entered", "Order number | ORD-1"]
+    assert steps[i + 2:i + 4] == ["Search the order by its number.", "Fields: Order number."]
     j = steps.index("3. Mail - Compose: Send")
-    assert steps[j + 1:j + 6] == ["Fields entered in this run:", "Field | Value entered",
-                                  "To | customer@example.com",
-                                  "Password | (not recorded: secret field)",
-                                  "Flagged as waste."]
+    assert steps[j + 2:j + 4] == ["Fields: To, Subject, Password.", "Flagged as waste."]
+    # The values live in the data table, not under the steps.
+    assert not any("customer@example.com" in t for t in steps)
 
 
 def test_a_step_description_shows_only_when_the_analyst_wrote_it():
     """A draft's description is the narration the drafting generates from its
-    interactions ("Clicked Save."), which repeats the step's fields table. It
+    interactions ("Clicked Save."), which the step's field list repeats. It
     is left out when it equals that narration, recomputed with the same
     function; a description the analyst wrote, or edited, is shown. Without
     the events the narration cannot be recomputed, so it is shown."""
@@ -368,47 +456,14 @@ def test_a_step_description_shows_only_when_the_analyst_wrote_it():
     steps["a2"]["description"] = narration("a2")                   # generated
     steps["a3"]["description"] = narration("a3") + " Ana: then I send it."  # edited
     body = _section(_blocks_of(manifest, annotations, stats, analysis, events),
-                    "4.5 Detailed process steps")
-    assert body[body.index("1. Look up the order") + 1] == "Search the order by its number."
-    assert body[body.index("2. CRM - Orders: Save") + 1] == "3. Mail - Compose: Send"
+                    "3.2 Process steps")
+    assert body[body.index("2. CRM - Orders: Save") + 2] == "3. Mail - Compose: Send"
     assert "Clicked Save." not in body
-    assert body[body.index("3. Mail - Compose: Send") + 1] == (
+    assert body[body.index("3. Mail - Compose: Send") + 2] == (
         narration("a3") + " Ana: then I send it.")
     no_events = _section(_blocks_of(manifest, annotations, stats, analysis, None),
-                         "4.5 Detailed process steps")
-    assert no_events[no_events.index("2. CRM - Orders: Save") + 1] == "Clicked Save."
-
-
-def test_document_notes_render_as_a_last_section_only_when_written():
-    """C6 `document.notes` becomes a final "7. Notes" section; an empty or
-    blank field adds nothing (no heading, no placeholder)."""
-    if not _HAVE_DOCX:
-        return
-    manifest, annotations, stats, analysis, events = _session()
-    for blank in ("", "  \n  "):
-        annotations["document"] = {"notes": blank}
-        blocks = _blocks_of(manifest, annotations, stats, analysis, events)
-        assert _numbered(blocks) == OUTLINE, repr(blank)
-        assert "Notes" not in [t for k, t in blocks if k.startswith("Heading")]
-    annotations["document"] = {
-        "notes": "Ask Ana about the credit block.\n\nThe log step is skipped on Fridays."}
-    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
-    assert _numbered(blocks) == OUTLINE + ["7. Notes"]
-    assert _section(blocks, "7. Notes")[:2] == [
-        "Ask Ana about the credit block.", "The log step is skipped on Fridays."]
-
-
-def test_input_data_lists_each_field_once_with_its_step():
-    if not _HAVE_DOCX:
-        return
-    blocks = _rendered()
-    assert _section(blocks, "4.6 Input data") == [
-        "Field | Step | Example value",
-        "Order number | Look up the order | ORD-1",
-        "To | Mail - Compose: Send | customer@example.com",
-        "Password | Mail - Compose: Send | (not recorded: secret field)",
-        "Status | Sheet - Log: Save | Logged",
-    ]
+                         "3.2 Process steps")
+    assert no_events[no_events.index("2. CRM - Orders: Save") + 2] == "Clicked Save."
 
 
 def test_hidden_steps_never_appear():
@@ -421,57 +476,36 @@ def test_hidden_steps_never_appear():
     assert "Mail - Compose: Send" in text
 
 
-# ---- 4.4 measured timings -----------------------------------------------------
+# ---- 4. Variations -------------------------------------------------------------------
 
-def test_the_timings_table_has_one_row_per_run_and_no_median():
+def test_the_differences_carry_the_system_the_runs_and_what_was_done():
     if not _HAVE_DOCX:
         return
-    blocks = _rendered()
-    timings = _section(blocks, "4.4 Measured timings")
-    assert timings[:3] == [
-        "Run | Steps | Active time | Elapsed time (wall clock)",
-        "Run 1: Order 1 | 3 | 44s | 50s",            # the hidden step is not counted
-        "Run 2: Order 2 | 3 | 58s | 1m",
+    diffs = _section(_rendered(), "4.1 Differences between runs")
+    assert diffs == [
+        "Run 2: Order 2",
+        "Extra step after Look up the order: Sheet - Log: Save (Excel), in 1 of 2 runs. "
+        "Fields: Status.",
+        "Skipped: Mail - Compose: Send (done in 1 of 2 runs).",
     ]
-    assert timings[3].startswith("Active time is the time an application window")
-    assert "Active time over 2 runs: mean 51s, minimum 44s, maximum 58s." in timings
-    assert "Elapsed time over 2 runs: mean 55s, minimum 50s, maximum 1m." in timings
-    text = _all_text(blocks).lower()
-    assert "median" not in text and "percentile" not in text and "p90" not in text
-    # DA gap 7: section 1 names the elapsed time the same way, same numbers.
-    assert ("Elapsed time per run (wall clock): mean 55s, fastest 50s, slowest 1m, "
-            "across 2 timed runs.") in _all_text(blocks)
 
 
-def test_the_efficiency_ratio_needs_the_analysts_judgment():
+def test_an_extra_step_prints_the_analysts_description():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
-    with tempfile.TemporaryDirectory() as tmp:
-        blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events))
-    assert "Value-add share" not in _all_text(blocks)
-    annotations["analysis_overrides"] = [{"process_label": "Look up the order",
-                                          "bnva_ms": 5000}]
-    with tempfile.TemporaryDirectory() as tmp:
-        blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events))
-    assert ("Value-add share: 60% of the measured step time, after the analyst "
-            "judged which time adds value.") in _section(blocks, "4.4 Measured timings")
+    for st in annotations["steps"]:
+        if st["step_id"] == "b2":
+            st["name"] = "Log the order"
+            st["description"] = "Only for orders from new customers."
+            st["state"] = "edited"
+    diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "4.1 Differences between runs")
+    assert diffs[1] == ("Extra step after Look up the order: Log the order (Excel), "
+                        "in 1 of 2 runs. Only for orders from new customers.")
 
 
-# ---- 6.1 differences, 6.3 rework ----------------------------------------------
-
-def test_the_differences_list_exactly_the_extra_and_the_skipped_step():
-    if not _HAVE_DOCX:
-        return
-    diffs = _section(_rendered(), "6.1 Differences between runs")
-    assert diffs[1:] == [
-        "Run 2: Order 2",
-        "Extra step: Sheet - Log: Save (after Look up the order).",
-        "Skipped: Mail - Compose: Send (step 3 of the pattern run).",
-    ]
-
-
-def test_an_order_change_and_a_run_without_differences():
+def test_an_order_change_a_repeat_and_a_run_without_differences():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
@@ -483,25 +517,38 @@ def test_an_order_change_and_a_run_without_differences():
         _step("c1", r3, "Look up the order", FIND, 131, []),
         _step("c2", r3, "CRM - Orders: Save", SAVE, 135, []),
         _step("c3", r3, "Mail - Compose: Send", SEND, 140, []),
+        _step("b4", R2, "CRM - Orders: Save", SAVE, 80, []),
     ]
-    # Run 2 now saves before it looks the order up.
+    # Run 2 now saves before it looks the order up, and saves twice.
     for st in annotations["steps"]:
         if st["step_id"] == "b3":
             st["time_range"] = {"start": _ts(60), "end": _ts(60)}
-    with tempfile.TemporaryDirectory() as tmp:
-        blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events))
-    assert _section(blocks, "6.1 Differences between runs")[1:] == [
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert _section(blocks, "4.1 Differences between runs") == [
         "Run 2: Order 2",
-        "Different order: Look up the order (in this run after CRM - Orders: Save).",
-        "Extra step: Sheet - Log: Save (after Look up the order).",
-        "Skipped: Mail - Compose: Send (step 3 of the pattern run).",
-        "No differences from the pattern run: Run 3: Order 3.",
+        "Different order: Look up the order, done after CRM - Orders: Save in this run.",
+        "Extra step after Look up the order: Sheet - Log: Save (Excel), in 1 of 3 runs. "
+        "Fields: Status.",
+        "Skipped: Mail - Compose: Send (done in 2 of 3 runs).",
+        "Repeated: CRM - Orders: Save, 2 times.",
+        "No differences from the reference run: Run 3: Order 3.",
     ]
 
 
-def test_a_merged_pattern_step_matches_the_same_drafts_in_another_run():
-    """Item 1 (BA helper L12b): the analyst merged the pattern run's Find and
-    Save drafts into one step (draft_keys). Run 2 still has them as two
+def test_a_repeat_in_the_reference_run_is_listed_under_it():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["steps"].append(_step("a4", R1, "Look up the order", FIND, 20, []))
+    diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "4.1 Differences between runs")
+    assert diffs[:2] == ["Run 1: Order 1 (the reference run)",
+                         "Repeated: Look up the order, 2 times."]
+
+
+def test_a_merged_reference_step_matches_the_same_drafts_in_another_run():
+    """Item 1 (BA helper L12b): the analyst merged the reference run's Find
+    and Save drafts into one step (draft_keys). Run 2 still has them as two
     consecutive drafts: they read as the merged step (no Extra, no Skipped
     for them), and the step after them is placed after the merged step."""
     if not _HAVE_DOCX:
@@ -517,135 +564,219 @@ def test_a_merged_pattern_step_matches_the_same_drafts_in_another_run():
             st["time_range"] = {"start": _ts(75), "end": _ts(77)}
     annotations["steps"] = steps
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
-    assert _section(blocks, "6.1 Differences between runs")[1:] == [
+    assert _section(blocks, "4.1 Differences between runs") == [
         "Run 2: Order 2",
-        "Extra step: Sheet - Log: Save (after Look up and save the order).",
-        "Skipped: Mail - Compose: Send (step 2 of the pattern run).",
+        "Extra step after Look up and save the order: Sheet - Log: Save (Excel), "
+        "in 1 of 2 runs. Fields: Status.",
+        "Skipped: Mail - Compose: Send (done in 1 of 2 runs).",
+    ]
+    steps_text = _section(blocks, "3.2 Process steps")
+    # The merged step happened in both runs: run 2's two drafts count as one
+    # occurrence of 4s (2s each), run 1's merged step took 2s.
+    assert steps_text[steps_text.index("1. Look up and save the order") + 1].startswith(
+        "Contoso CRM, Orders \u00b7 3s on average \u00b7 in 2 of 2 runs")
+
+
+def test_one_run_has_nothing_to_compare():
+    if not _HAVE_DOCX:
+        return
+    def one_run(s):
+        s["case_stats"] = s["case_stats"][:1]
+    blocks, _steps = _steps_section(stats_change=one_run)
+    assert _section(blocks, "4.1 Differences between runs") == ["Only one run was recorded."]
+
+
+# ---- 5. Data ---------------------------------------------------------------------------
+
+def test_the_data_table_marks_re_keyed_fields_and_states_the_requirement():
+    if not _HAVE_DOCX:
+        return
+    data = _section(_rendered(), "5. Data")
+    assert data == [
+        "Field | System and screen | Step | Example value | Re-keyed",
+        "Order number | Contoso CRM, Orders | Look up the order | ORD-1 | as Subject (Outlook)",
+        "To | Outlook, Order confirmation | Mail - Compose: Send | customer@example.com | ",
+        "Subject | Outlook, Order confirmation | Mail - Compose: Send | ORD-1 | "
+        "from Order number (Contoso CRM)",
+        "Password | Outlook, Order confirmation | Mail - Compose: Send | "
+        "(not recorded: secret field) | ",
+        "Status | Excel, Order log.xlsx | Sheet - Log: Save | Logged | ",
+        "Re-keyed data",
+        "Order number (Contoso CRM) is typed again as Subject (Outlook) in 1 of 2 runs.",
     ]
 
 
-def test_rework_lists_a_step_done_twice_within_a_run():
+def test_a_value_re_keyed_in_every_run_says_so():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
-    assert _section(_blocks_of(manifest, annotations, stats, analysis, events),
-                    "6.3 Rework") == ["No step was done more than once within a run."]
-    annotations["steps"].append(_step("b4", R2, "CRM - Orders: Save", SAVE, 80, []))
-    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
-    assert _section(blocks, "6.3 Rework") == [
-        "Steps done more than once within one run:",
-        "Run 2: Order 2: CRM - Orders: Save (2 times)."]
-    # A repeat is rework, not a difference from the pattern run.
-    assert "CRM - Orders: Save" not in "".join(
-        _section(blocks, "6.1 Differences between runs")[1:])
+    events.append(_inter("f6", 66.5, "EXCEL.EXE", LOG_TITLE, "value_changed", "Order",
+                         value="ORD-2"))
+    events.append(_inter("e8", 12.5, "EXCEL.EXE", LOG_TITLE, "value_changed", "Order",
+                         value="ORD-1"))
+    for st in annotations["steps"]:
+        if st["step_id"] == "b2":
+            st["evidence"]["interaction_event_ids"].append("f6")
+        if st["step_id"] == "a3":
+            st["evidence"]["interaction_event_ids"].append("e8")
+    data = _section(_blocks_of(manifest, annotations, stats, analysis, events), "5. Data")
+    assert "Order number (Contoso CRM) is typed again as Order (Excel) in every run." in data
+    # A secret, a noise literal or a short value is never counted.
+    assert not any("Password" in t and "typed again" in t for t in data)
 
 
-def _blocks_of(manifest, annotations, stats, analysis, events):
-    with tempfile.TemporaryDirectory() as tmp:
-        return _blocks(_render(tmp, manifest, annotations, stats, analysis, events))
+# ---- 6. Applications and time ------------------------------------------------------------
 
-
-# ---- readable names, tool-neutral wording, section 1 and 5.3 --------------------
-
-def test_applications_carry_readable_names_never_process_tokens():
+def test_the_times_of_the_runs_with_the_walkthrough_line():
     if not _HAVE_DOCX:
         return
     blocks = _rendered()
-    assert _section(blocks, "4.2 Applications used")[:4] == [
-        "Application | Interactions recorded | Role in process",
-        "Contoso CRM | 7 | ", "Microsoft Outlook (classic) | 3 | ",
-        "Microsoft Excel | 2 | "]
-    text = _all_text(blocks)
-    assert "Mail - Compose: Send | Microsoft Outlook (classic) | 3 | 9s | 3s" in text
-    for token in ("crm.exe", "OUTLOOK.EXE", "EXCEL.EXE", "x.exe"):
-        assert token not in text
-    assert not re.search(r"\.exe\b", text, re.IGNORECASE)
-
-
-def test_the_document_is_tool_neutral():
-    if not _HAVE_DOCX:
-        return
-    manifest, annotations, stats, analysis, events = _session()
-    annotations["document"] = {"title": "Order intake", "purpose": "p", "scope": "s"}
-    with tempfile.TemporaryDirectory() as tmp:
-        png = Path(tmp) / "map.png"
-        png.write_bytes(_make_png())
-        blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events,
-                                 process_map_image=str(png), tobe_map_image=str(png)))
-    text = _all_text(blocks)
-    assert "5.4 Proposed to-be process" in text            # every section rendered
-    for pattern in (r"robot", r"uipath", r"blue\s*prism", r"\bbot\b"):
-        assert not re.search(pattern, text, re.IGNORECASE), pattern
-    # Law 3 of the lane: no en dash or em dash in the rendered text.
-    assert chr(0x2013) not in text and chr(0x2014) not in text
-
-
-def test_section_1_renders_the_selected_findings_with_the_case_based_label():
-    if not _HAVE_DOCX:
-        return
-    manifest, annotations, stats, analysis, events = _session()
-    analysis["findings"].append(
-        {"id": "run_spread-z", "detector": "run_spread", "tier": 2,
-         "claim": "The slower run took 10s longer.", "evidence": {}})
-    text = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
-    assert "1. Contoso CRM accounts for 59% of measured foreground time." in text
-    assert "2. Across runs: The slower run took 10s longer." in text
-    annotations["memo_selection"] = ["screen_time_sink-x"]
-    text = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
-    assert "Contoso CRM accounts for 59%" in text
-    assert "Across runs:" not in text
-
-
-def test_section_1_leaves_the_repeated_sequences_to_5_3():
-    """AD-20: a repeated step sequence has one home, 5.3. Section 1 never
-    prints it, not even when an older memo_selection names it."""
-    if not _HAVE_DOCX:
-        return
-    manifest, annotations, stats, analysis, events = _session()
-    for selection in (None, ["repetition-y"], ["repetition-y", "screen_time_sink-x"]):
-        if selection is not None:
-            annotations["memo_selection"] = selection
-        findings = _section(_blocks_of(manifest, annotations, stats, analysis, events), "Findings")
-        assert "1. Contoso CRM accounts for 59% of measured foreground time." in findings
-        assert not any("The step sequence" in t for t in findings), (selection, findings)
-
-
-def test_candidates_are_listed_by_total_time():
-    if not _HAVE_DOCX:
-        return
-    cands = _section(_rendered(), "5.3 Automation candidates")
-    assert cands[1:4] == [
-        "Step sequence | Application | Times run | Total time | Average per run",
-        "Look up the order → CRM - Orders: Save | Contoso CRM | 2 | 12s | 6s",
-        "Mail - Compose: Send | Microsoft Outlook (classic) | 3 | 9s | 3s",
+    assert _section(blocks, "6.1 Time per run") == [
+        "Run | Steps | Active time | Elapsed time",
+        "Run 1: Order 1 | 3 | 44s | 50s",            # the hidden step is not counted
+        "Run 2: Order 2 | 3 | 58s | 1m",
+        "The runs were recorded as a walkthrough, with explanations, so these times "
+        "show the recording, not the usual handling time.",
     ]
-    assert not any("already describes" in t for t in cands)
+    text = _all_text(blocks).lower()
+    assert "median" not in text and "percentile" not in text and "p90" not in text
 
 
-def test_failed_analysis_stages_render_as_could_not_run():
-    """C12: every section that would render a failed stage says the check
-    could not run on this recording, never a measured negative."""
+def test_time_in_each_application_is_per_system_and_per_run():
+    if not _HAVE_DOCX:
+        return
+    assert _section(_rendered(), "6.2 Time in each application") == [
+        "System | Screens | Steps | Time per run",
+        "Contoso CRM | Orders | Look up the order, CRM - Orders: Save | 4s",
+        "Outlook | Order confirmation | Mail - Compose: Send | 1s",
+        "Excel | Order log.xlsx | Sheet - Log: Save | 1s",
+    ]
+
+
+def test_systems_carry_business_names_never_process_tokens():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
-    stages = ("case_quality", "facts", "findings", "automation_candidates", "efficiency")
-    for stage in stages:
-        analysis[stage] = None
-    analysis["stage_errors"] = [{"stage": s, "error": "KeyError: 'x'"} for s in stages]
+    stats["meta"]["app_names"] = {}              # the shared system list still names them
+    text = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
+    assert "Outlook, Order confirmation" in text and "Excel, Order log.xlsx" in text
+    assert not re.search(r"\.exe\b", text, re.IGNORECASE)
+    assert "(browser)" not in text
+
+
+# ---- tables, maps, files ------------------------------------------------------------------
+
+def test_every_table_has_a_grid_and_a_repeating_header():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
     with tempfile.TemporaryDirectory() as tmp:
         doc = _render(tmp, manifest, annotations, stats, analysis, events)
+        tables = list(doc.tables)
+        assert len(tables) == 5          # control, map from the runs, data, runs, systems
+        for t in tables:
+            assert t.style is not None and t.style.name == "Table Grid"
+        for t in tables[1:]:
+            assert t.rows[0]._tr.xpath("./w:trPr/w:tblHeader")
+
+
+def _make_png(width=2, height=2):
+    """A small but fully valid PNG (correct CRCs) to stand in for a rendered
+    map or a screenshot."""
+    def chunk(typ, data):
+        body = typ + data
+        return (struct.pack(">I", len(data)) + body
+                + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF))
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)   # 8-bit RGB
+    raw = b"".join(b"\x00" + b"\xff\xff\xff" * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def _descr(doc):
+    return [s._inline.docPr.get("descr") for s in doc.inline_shapes]
+
+
+def test_a_wide_as_is_map_gets_a_landscape_page_of_its_own():
+    if not _HAVE_DOCX:
+        return
+    from docx.enum.section import WD_ORIENT
+    manifest, annotations, stats, analysis, events = _session()
+    with tempfile.TemporaryDirectory() as tmp:
+        png = Path(tmp) / "map.png"
+        png.write_bytes(_make_png(40, 20))
+        doc = _render(tmp, manifest, annotations, stats, analysis, events,
+                      process_map_image=str(png))
         blocks = _blocks(doc)
-    text = _all_text(blocks)
-    for phrase in ("The automatic checks could not run on this recording",
-                   "The run check could not run on this recording",
-                   "The automation-candidate check could not run on this recording",
-                   "The process-efficiency check could not run on this recording"):
-        assert phrase in text, f"missing: {phrase}"
-    for negative in ("Nothing stood out", "No runs were marked",
-                     "No sequence of steps was repeated"):
-        assert negative not in text, f"measured negative rendered: {negative}"
-    fact_table = next(t for t in doc.tables if t.rows[0].cells[0].text == "Active time")
-    assert {c.text for c in fact_table.rows[1].cells} == {"could not run on this recording"}
+        orientations = [s.orientation for s in doc.sections]
+        width_in = doc.inline_shapes[0].width.inches
+        alt = _descr(doc)
+    assert orientations == [WD_ORIENT.PORTRAIT, WD_ORIENT.LANDSCAPE, WD_ORIENT.PORTRAIT]
+    assert alt == ["As-Is process map"]
+    assert 9.0 <= width_in <= 9.5
+    # The section's heading opens the map's page; the picture has no caption.
+    assert _section(blocks, "3. As-Is process") == []
+    assert _section(blocks, "3.1 As-Is process map") == []
+    assert "Each step and the steps that followed it" not in _all_text(blocks)
+
+
+def test_the_map_pictures_carry_their_alternative_text():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    with tempfile.TemporaryDirectory() as tmp:
+        png = Path(tmp) / "map.png"
+        png.write_bytes(_make_png(20, 40))           # a tall map stays portrait
+        doc = _render(tmp, manifest, annotations, stats, analysis, events,
+                      process_map_image=str(png), tobe_map_image=str(png))
+        assert _descr(doc) == ["As-Is process map", "To-Be process map"]
+        texts = [p.text for p in doc.paragraphs]
+        assert "7.1 To-Be process map" in texts
+        assert "Proposed To-Be process, drawn by the analyst." in texts
+
+
+def test_without_a_map_picture_the_map_from_the_runs_is_a_table():
+    """The viewer passes a picture of the map; without one (a command line
+    export) the section still shows the map from the runs: each step and
+    what followed it, with the number of runs."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    with tempfile.TemporaryDirectory() as tmp:
+        doc = _render(tmp, manifest, annotations, stats, analysis, events)
+        assert len(doc.inline_shapes) == 0
+        (Path(tmp) / "process_map_step.bpmn").write_text("<x/>", encoding="utf-8")
+        blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events))
+    assert _section(blocks, "3.1 As-Is process map") == [
+        "Each step and the steps that followed it in the runs:",
+        "Step | Followed by",
+        "Start | Look up the order (2 of 2 runs)",
+        "Look up the order | CRM - Orders: Save (1 of 2 runs); Sheet - Log: Save (1 of 2 runs)",
+        "CRM - Orders: Save | Mail - Compose: Send (1 of 2 runs); End (1 of 2 runs)",
+        "Mail - Compose: Send | End (1 of 2 runs)",
+        "Sheet - Log: Save | CRM - Orders: Save (1 of 2 runs)",
+        "The map file is process_map_step.bpmn in the session folder.",
+    ]
+    assert "7.1 To-Be process map" not in [t for _k, t in blocks]
+
+
+def test_document_notes_render_as_a_last_section_only_when_written():
+    """C6 `document.notes` becomes a final "8. Notes" section; an empty or
+    blank field adds nothing (no heading, no placeholder)."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    for blank in ("", "  \n  "):
+        annotations["document"] = {"notes": blank}
+        blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+        assert _numbered(blocks) == OUTLINE, repr(blank)
+        assert "Notes" not in [t for k, t in blocks if k.startswith("Heading")]
+    annotations["document"] = {
+        "notes": "Ask Ana about the credit block.\n\nThe log step is skipped on Fridays."}
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert _numbered(blocks) == OUTLINE + ["8. Notes"]
+    assert _section(blocks, "8. Notes")[:2] == [
+        "Ask Ana about the credit block.", "The log step is skipped on Fridays."]
 
 
 def test_legacy_keys_neither_group_nor_drop_steps():
@@ -665,51 +796,33 @@ def test_legacy_keys_neither_group_nor_drop_steps():
         "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send"]
 
 
-# ---- files, images, containment -----------------------------------------------
-
 def test_write_pdd_works_without_analysis_or_events():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, _analysis, _events = _session()
-    with tempfile.TemporaryDirectory() as tmp:
-        blocks = _blocks(_render(tmp, manifest, annotations, stats, None, None))
+    blocks = _blocks_of(manifest, annotations, stats, None, None)
     assert _numbered(blocks) == OUTLINE
-    assert _section(blocks, "4.6 Input data") == [
+    assert _section(blocks, "5. Data") == [
         "The recorded field entries were not available to this export."]
 
 
-def _make_png(width=2, height=2):
-    """A small but fully valid PNG (correct CRCs) to stand in for a rendered
-    map or a screenshot."""
-    def chunk(typ, data):
-        body = typ + data
-        return (struct.pack(">I", len(data)) + body
-                + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF))
-    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)   # 8-bit RGB
-    raw = b"".join(b"\x00" + b"\xff\xff\xff" * width for _ in range(height))
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
-            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
-
-
-def test_the_maps_are_embedded_when_provided_and_to_be_is_omitted_otherwise():
+def test_failed_analysis_stages_change_nothing_in_the_document():
+    """C12: the document reads no analysis stage, so a failed one can print
+    neither a measured negative nor a finding; the document is the same as
+    with every stage run."""
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
-    with tempfile.TemporaryDirectory() as tmp:
-        doc = _render(tmp, manifest, annotations, stats, analysis, events)
-        assert len(doc.inline_shapes) == 0
-        texts = [p.text for p in doc.paragraphs]
-        assert not any("Proposed to-be process" in t for t in texts)
-        assert any("not embedded in this document" in t for t in texts)
-        png = Path(tmp) / "map.png"
-        png.write_bytes(_make_png())
-        doc = _render(tmp, manifest, annotations, stats, analysis, events,
-                      process_map_image=str(png), tobe_map_image=str(png))
-        texts = [p.text for p in doc.paragraphs]
-    assert len(doc.inline_shapes) == 2
-    assert "5.4 Proposed to-be process" in texts
-    assert any("NOT mined" in t for t in texts)          # provenance caption
-    assert not any("not embedded in this document" in t for t in texts)
+    before = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
+    stages = ("case_quality", "facts", "findings", "automation_candidates", "efficiency")
+    for stage in stages:
+        analysis[stage] = None
+    analysis["stage_errors"] = [{"stage": s, "error": "KeyError: 'x'"} for s in stages]
+    after = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
+    strip = lambda t: re.sub(r"Session folder \| \S+", "", t)  # noqa: E731
+    assert strip(after) == strip(before)
+    for negative in ("Nothing stood out", "could not run"):
+        assert negative not in after
 
 
 def test_screenshot_refs_embed_only_inside_the_session_folder():
@@ -734,18 +847,27 @@ def test_screenshot_refs_embed_only_inside_the_session_folder():
         assert len(doc.inline_shapes) == 1
 
 
-def test_the_overview_counts_runs_applications_and_step_states():
+def test_the_document_is_tool_neutral_and_has_no_dash_punctuation():
     if not _HAVE_DOCX:
         return
-    overview = _section(_rendered(), "4.1 Overview")
-    assert overview[:3] == [
-        "This process was recorded on 2026-05-14 by w1: 2 runs, in 3 applications "
-        "(Contoso CRM, Microsoft Outlook (classic), Microsoft Excel).",
-        "Each run took between 50s and 1m of elapsed time (mean 55s); section 4.4 "
-        "has the timings of every run.",
-        "Steps: 7 in total (3 confirmed, 3 drafted and not yet confirmed); 1 hidden "
-        "by the analyst and left out of this document.",
-    ]
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["document"] = dict(FIELDS)
+    with tempfile.TemporaryDirectory() as tmp:
+        png = Path(tmp) / "map.png"
+        png.write_bytes(_make_png())
+        blocks = _blocks(_render(tmp, manifest, annotations, stats, analysis, events,
+                                 process_map_image=str(png), tobe_map_image=str(png)))
+    text = _all_text(blocks)
+    for pattern in (r"robot", r"uipath", r"blue\s*prism", r"\bbot\b"):
+        assert not re.search(pattern, text, re.IGNORECASE), pattern
+    # No en dash or em dash anywhere; the document's own sentences carry no
+    # spaced hyphen either (the step names come from window titles and may).
+    assert chr(0x2013) not in text and chr(0x2014) not in text
+    own = text
+    for name in ("CRM - Orders: Save", "Mail - Compose: Send", "Sheet - Log: Save",
+                 "Contoso CRM - Orders"):
+        own = own.replace(name, "")
+    assert " - " not in own and " -- " not in own
 
 
 if __name__ == "__main__":

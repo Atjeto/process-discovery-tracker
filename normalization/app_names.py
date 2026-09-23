@@ -1,30 +1,44 @@
-"""Readable application names for the deliverable (deliverable audit gap 3).
+"""Readable application names and business system names (deliverable
+audit gap 3; one vocabulary of systems, AD-28).
 
 The recorder names an application by its executable ("SAPGUI.exe",
 "chrome.exe", "EXCEL.EXE"): a machine token, not a name a business reader
-uses. `build_app_names` gives every executable of a recording the most
-specific readable name the recording itself supports, in this order:
+uses. The known systems are named by shared/system-names.json, the one list
+the viewer reads too: ordered rules from an application (and, for a
+browser, the window title) to the system's name ("SAP", "Excel",
+"Salesforce" for a Chrome window on Salesforce).
 
-  1. the name of a loaded app vocabulary whose scope is that executable
-     ("SAP GUI", "Microsoft Excel");
-  2. a recorded window-title segment that names the executable as a word
+`build_app_names` gives every executable of a recording its readable name,
+in this order:
+
+  1. the system-names rule for that application alone (a rule without a
+     title: "SAPGUI.exe" is "SAP", "chrome.exe" is "Google Chrome");
+  2. the name of a loaded app vocabulary whose scope is that executable;
+  3. a recorded window-title segment that names the executable as a word
      ("Excel" in "Book1 - Excel", "Notepad" in "Untitled - Notepad");
-  3. the executable name without its extension, capitalized ("Sapgui").
+  4. the executable name without its extension, capitalized ("Erpclient").
 
-It never invents a product name: every result is a vocabulary name, a piece
-of a recorded window title, or the executable name itself. The platform
-recognition labels (shared/recognition-patterns.json) name control types,
-not applications, so they are not a source.
+`system_name` names the system one application and window title belong to:
+the first system-names rule that matches both, else the application's
+readable name. A browser is only where a web system ran.
 
-The pipeline stores the map as stats.json `meta.app_names`; the findings
-claims, the findings fact strip and the PDD read it through `display_name`.
+It never invents a product name: every result is a listed system name, a
+vocabulary name, a piece of a recorded window title, or the executable name
+itself. The platform recognition labels (shared/recognition-patterns.json)
+name control types, not applications, so they are not a source.
+
+The pipeline stores the per-application map as stats.json `meta.app_names`;
+the findings claims and the PDD read it through `display_name` and
+`system_name`.
 
 Pure stdlib.
 """
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any
 
 # The separators an application puts between a document and its own name in
@@ -40,6 +54,34 @@ def app_key(app: Any) -> str:
     """The comparison key of an executable token: lowercased, ".exe" stripped."""
     s = str(app or "").strip().lower()
     return s[:-4] if s.endswith(".exe") else s
+
+
+# The one vocabulary of systems, shared with the viewer.
+_SYSTEMS_PATH = Path(__file__).resolve().parent.parent / "shared" / "system-names.json"
+
+
+def _load_system_rules(path: Path = _SYSTEMS_PATH) -> list[tuple[frozenset, Any, str]]:
+    """The system-names rules, in order: (application keys, compiled title
+    pattern or None, system name). A rule without applications or a name,
+    or with a pattern that does not compile, is skipped."""
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    rules = []
+    for r in doc.get("rules") or []:
+        if not isinstance(r, dict):
+            continue
+        procs = r.get("process")
+        procs = [procs] if isinstance(procs, str) else procs
+        keys = frozenset(app_key(p) for p in procs or [] if isinstance(p, str) and p.strip())
+        system = r.get("system")
+        title = r.get("title")
+        try:
+            rx = re.compile(title, re.IGNORECASE) if isinstance(title, str) and title else None
+        except re.error:
+            continue
+        if keys and isinstance(system, str) and system.strip():
+            rules.append((keys, rx, system.strip()))
+    return rules
 
 
 def fallback_name(app: Any) -> str:
@@ -67,6 +109,14 @@ def _title_name(key: str, titles: list[str]) -> str:
     if not counts:
         return ""
     return min(counts, key=lambda seg: (-counts[seg], len(seg), seg))
+
+
+def _application_rule(key: str) -> str:
+    """The system name a rule without a title gives this application, or ""."""
+    for keys, rx, system in _SYSTEM_RULES:
+        if rx is None and key in keys:
+            return system
+    return ""
 
 
 def build_app_names(events: list[dict[str, Any]] | None,
@@ -98,8 +148,8 @@ def build_app_names(events: list[dict[str, Any]] | None,
         key = apps.setdefault(app.strip(), app_key(app))
         if isinstance(title, str) and title.strip():
             titles[key].append(title)
-    return {app: (vocab_names.get(key) or _title_name(key, titles[key])
-                  or fallback_name(app))
+    return {app: (_application_rule(key) or vocab_names.get(key)
+                  or _title_name(key, titles[key]) or fallback_name(app))
             for app, key in apps.items()}
 
 
@@ -117,4 +167,22 @@ def display_name(app: Any, names: dict[str, str] | None = None) -> str:
     for raw, name in names.items():
         if app_key(raw) == key and isinstance(name, str) and name.strip():
             return name
-    return fallback_name(app)
+    return _application_rule(key) or fallback_name(app)
+
+
+def system_name(app: Any, title: Any = "", names: dict[str, str] | None = None) -> str:
+    """The business system one application and window title belong to: the
+    first shared/system-names.json rule whose applications include `app`
+    and whose title pattern (when it has one) matches `title`; else the
+    application's readable name (display_name). "" for no application."""
+    if not isinstance(app, str) or not app.strip():
+        return ""
+    key = app_key(app)
+    text = title if isinstance(title, str) else ""
+    for keys, rx, system in _SYSTEM_RULES:
+        if key in keys and (rx is None or rx.search(text)):
+            return system
+    return display_name(app, names)
+
+
+_SYSTEM_RULES = _load_system_rules()

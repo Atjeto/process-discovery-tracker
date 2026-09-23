@@ -339,6 +339,7 @@ def auto_suggest_steps(
     ignored_processes: list[str] | None = None,
     excluded_ranges: list[dict] | None = None,
     remembered_names: dict[str, str] | None = None,
+    session_names: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Draft every run's steps with the drafting rule (contract C1).
 
@@ -359,12 +360,16 @@ def auto_suggest_steps(
     `filter_browser_chrome` (the browser's own address bar, tabs and toolbar,
     ADR-0009). Typing bursts are coalesced before this runs (coalesce.py).
 
-    `remembered_names` maps a draft_key to the name the analyst gave it
-    (contract C4, the `--names` store): a draft whose key is there takes that
-    name with `name_source: "remembered"`. Otherwise the default name is
-    "<screen>: <commit label>", or "<screen>" for a step that did not end on
-    a commit, with `name_source: "draft"`."""
-    remembered = remembered_names or {}
+    A draft takes, in this order (contract C4): the name the analyst gave to
+    a step with the same draft_key in this session (`session_names`, from
+    session_names() on the session's own annotations, so the names travel
+    with the session folder); else the name the remembered-names store gives
+    it (`remembered_names`, the `--names` file on the analyst's machine);
+    either way with `name_source: "remembered"`. Otherwise the default name
+    is "<screen>: <commit label>", or "<screen>" for a step that did not end
+    on a commit, with `name_source: "draft"`."""
+    remembered = dict(remembered_names or {})
+    remembered.update(session_names or {})
     excluded = _parse_excluded_ranges(excluded_ranges)
     shots = _screenshot_index(events)
     # Group by top-level case (last case_id in case_ids list, or None)
@@ -497,6 +502,63 @@ def load_remembered_names(path: str | Path | None) -> dict[str, str]:
     return out
 
 
+# The step states whose names a draft with the same key takes (C4, F1): the
+# analyst confirmed, renamed or added the step. A hidden step names nothing.
+NAMING_STATES = ("confirmed", "edited", "manually_authored")
+
+
+def session_names(annotations: dict | None) -> dict[str, str]:
+    """The names the analyst gave in this session, by draft_key (contract C4,
+    F1): {draft_key: name} from the session's steps in NAMING_STATES, so the
+    drafts of runs 2 to N read the same on every machine without the
+    analyst's remembered-names file.
+
+    A name the analyst typed (a step `edited` or `manually_authored`) comes
+    before a name the analyst accepted (`confirmed`, usually the drafted or
+    remembered name the step had when its run was confirmed): a rename in run
+    2 names the other runs' drafts even when the pattern run was confirmed
+    under the drafted name, as the viewer's rename does at once. Within each,
+    a step's draft_key names that key, then a merged step names each of its
+    draft_keys (a single step's own name is the more specific one); among
+    steps of one key the pattern run's step (annotations.pattern_run) comes
+    first, then the others in time order. Blank names are skipped."""
+    ann = annotations if isinstance(annotations, dict) else {}
+    chosen = ann.get("pattern_run")
+    pattern = chosen.get("case_id") if isinstance(chosen, dict) else None
+    steps = [s for s in (ann.get("steps") or [])
+             if isinstance(s, dict) and s.get("state") in NAMING_STATES]
+
+    def order(s):
+        t = _parse_ts_or_none((s.get("time_range") or {}).get("start"))
+        in_pattern = pattern is not None and s.get("case_id") == pattern
+        return (not in_pattern, t is None, t.timestamp() if t else 0.0)
+
+    names: dict[str, str] = {}
+    for typed in (True, False):
+        single: dict[str, str] = {}
+        merged: dict[str, str] = {}
+        for s in sorted(steps, key=order):
+            if (s.get("state") != "confirmed") != typed:
+                continue
+            name = s.get("name")
+            name = name.strip() if isinstance(name, str) else ""
+            if not name:
+                continue
+            dk = s.get("draft_key")
+            if isinstance(dk, str) and dk:
+                single.setdefault(dk, name)
+                continue
+            keys = s.get("draft_keys")
+            if isinstance(keys, list):
+                for k in keys:
+                    if isinstance(k, str) and k:
+                        merged.setdefault(k, name)
+        for tier in (single, merged):
+            for k, name in tier.items():
+                names.setdefault(k, name)
+    return names
+
+
 def _describe_interaction(data: dict[str, Any]) -> str | None:
     """A short human phrase for one interaction ('entered "X" into Y',
     'clicked Search', 'turned Remember me on'), or None for interactions
@@ -578,7 +640,7 @@ def _default_step_description(interactions: list[dict[str, Any]]) -> str:
             phrases.append(phrase)
     if not phrases:
         n = len(interactions)
-        return f"{n} interaction{'' if n == 1 else 's'} with no recorded detail."
+        return f"{n} action{'' if n == 1 else 's'} with no recorded detail."
     cap = 6
     shown = phrases[:cap]
     sentences = [p[0].upper() + p[1:] + "." for p in shown]
@@ -586,6 +648,19 @@ def _default_step_description(interactions: list[dict[str, Any]]) -> str:
     if extra > 0:
         sentences.append(f"Plus {extra} more action{'' if extra == 1 else 's'}.")
     return " ".join(sentences)
+
+
+# The drafting's wording before lane LUX-P for a step with nothing to narrate.
+_OLD_NO_DETAIL = re.compile(r"^\d+ interactions? with no recorded detail\.$")
+
+
+def is_drafted_description(description: str, interactions: list[dict[str, Any]]) -> bool:
+    """True when `description` is what the drafting writes for these
+    interaction events (_default_step_description, or its older wording for a
+    step with nothing to narrate), so it is not the analyst's text."""
+    desc = (description or "").strip()
+    return (desc == _default_step_description(interactions).strip()
+            or bool(_OLD_NO_DETAIL.match(desc)))
 
 
 # --- Helpers -----------------------------------------------------------
@@ -955,6 +1030,26 @@ def _value_free(text: str) -> str:
     for rx, repl in _SCREEN_RULES:
         s = rx.sub(repl, s)
     return _SCREEN_END_TRIM.sub("", s).strip()
+
+
+def step_identity(step: dict) -> str:
+    """What makes two steps the same step, whatever they are called: the
+    step's value-free draft_key ("draft:" and the key); for merged drafts,
+    their draft_keys in order ("merge:" and a JSON array); else, for a step
+    with no draft identity (added by hand), the process_label of its name
+    ("label:"). The alignment key of the differences between runs
+    (pdd_export._align_key, viewer/run-differences.js, pinned by
+    shared/run-differences-golden.json), and the grouping key of the repeats
+    and the automation groupings, so their counts do not move with names."""
+    step = step if isinstance(step, dict) else {}
+    dk = step.get("draft_key")
+    if isinstance(dk, str) and dk:
+        return "draft:" + dk
+    keys = step.get("draft_keys")
+    if (isinstance(keys, list) and keys
+            and all(isinstance(k, str) and k for k in keys)):
+        return "merge:" + json.dumps(keys, ensure_ascii=False, separators=(",", ":"))
+    return "label:" + process_label(str(step.get("name") or ""))
 
 
 def process_label(name: str) -> str:

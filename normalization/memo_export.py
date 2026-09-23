@@ -1,5 +1,11 @@
 """Findings-memo model (lab-phase spec §A4 + §B3/§B4).
 
+Lane LUX-P cut the PDD's findings section: pdd_export no longer calls
+build_memo_model or write_memo_into_docx. What still runs is `pdd_findings`
+(analysis.json, read by the viewer's "include in PDD" boxes), `run_rows`,
+`failed_stages` and COULD_NOT_RUN; the rest goes with those boxes (viewer
+lane). The description below is the section as it was.
+
 The findings content of the PDD's §1: measured claims + evidence, built
 from the analysis.json blocks Phase A produces (facts, findings,
 case_quality) plus stats.json. Templated sentences and measured numbers

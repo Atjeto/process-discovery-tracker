@@ -12,10 +12,13 @@ stretches.
 A segment, here, is a run of contiguous interactions inside ONE case
 that share the SAME app and are not separated by a long idle gap. App
 switches and case switches end the segment. Two segments are "the same
-pattern" when they share (app, ordered list of process_labels of the
-steps they cover) -- so the across-case repetition the analyst cares
-about ("CRM lookup four times") still groups, while the within-step
-mechanics (every individual click) do not.
+pattern" when they share (app, ordered list of the identities of the
+steps they cover: step_suggest.step_identity, the draft_key, a merged
+step's draft_keys, else the label of a step added by hand). So the
+across-case repetition the analyst cares about ("CRM lookup four
+times") still groups, whether or not the analyst renamed the steps
+(F1), while the within-step mechanics (every individual click) do not.
+The step labels ride along for display.
 
 Detection is intentionally conservative: a segment must touch >= 2
 steps in one app run, OR be a single multi-interaction step long
@@ -31,6 +34,7 @@ from typing import Any
 
 from _dt import parse_ts_or_none as parse_ts
 from app_names import display_name
+from step_suggest import step_identity
 
 
 # The maximum gap inside one segment. A pause longer than this ends the
@@ -85,11 +89,11 @@ def _step_label(step: dict | None) -> str:
     return step.get("process_label") or step.get("name") or ""
 
 
-def _segment_signature(app: str, step_labels: tuple[str, ...]) -> str:
-    """A stable short hash of (app, step_label_sequence) -- the cross-
+def _segment_signature(app: str, step_keys: tuple[str, ...]) -> str:
+    """A stable short hash of (app, step identity sequence): the cross
     instance grouping key. Two segments with the same signature are the
     same pattern performed twice."""
-    raw = app + "\x1f" + "\x1e".join(step_labels)
+    raw = app + "\x1f" + "\x1e".join(step_keys)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
@@ -147,12 +151,13 @@ def detect_segments(
         if not cur_eids or cur_start_ts is None or cur_end_ts is None:
             return
         elapsed = (cur_end_ts - cur_start_ts).total_seconds() * 1000.0
-        step_labels = tuple(_step_label(s) for s in cur_steps if _step_label(s))
-        distinct_labels = len(set(step_labels))
+        named = [s for s in cur_steps if _step_label(s)]
+        step_labels = tuple(_step_label(s) for s in named)
+        step_keys = tuple(step_identity(s) for s in named)
         # Drop single-step, short segments -- they are not actionable.
-        if distinct_labels < 2 and elapsed < MIN_SEGMENT_MS:
+        if len(set(step_keys)) < 2 and elapsed < MIN_SEGMENT_MS:
             return
-        sig = _segment_signature(cur_app or "", step_labels)
+        sig = _segment_signature(cur_app or "", step_keys)
         segments.append({
             "segment_id": sig + ":" + (cur_case or "_") + ":" +
                           (cur_start_ts.isoformat() if cur_start_ts else "_"),

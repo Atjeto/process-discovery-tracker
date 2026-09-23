@@ -97,7 +97,8 @@ def normalize(
 ) -> dict[str, Any]:
     """Run the pipeline on one session folder. `names_path` is the optional
     remembered-names store (contract C4): drafted steps whose draft_key it
-    lists take the remembered name."""
+    lists take the remembered name, after the names the analyst gave in this
+    session (the session's own names come first, so they travel with it)."""
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
         raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
@@ -214,13 +215,14 @@ def main():
     parser.add_argument("--pdd-map-image", type=str, default=None,
                         help="PNG of the process map to embed in the PDD's As-Is map section.")
     parser.add_argument("--pdd-tobe-image", type=str, default=None,
-                        help="PNG of an analyst-authored To-Be reference map to embed in the "
-                             "PDD's proposed-to-be section (ADR-0019). Hand-drawn, not mined.")
+                        help="PNG of the To-Be map the analyst drew (ADR-0019), embedded "
+                             "in the PDD's improvement and automation scope section.")
     parser.add_argument("--names", type=str, default=None,
                         help="Remembered-names store (remembered-names.json). A drafted step "
-                             "whose draft key is listed takes the remembered name. Optional: "
-                             "a missing or unreadable file prints a warning and drafting uses "
-                             "the default names.")
+                             "whose draft key is listed takes the remembered name, unless a "
+                             "step the analyst named in this session has that key (its name "
+                             "comes first). Optional: a missing or unreadable file prints a "
+                             "warning and drafting uses the session's and the default names.")
     args = parser.parse_args()
 
     setup_logging()

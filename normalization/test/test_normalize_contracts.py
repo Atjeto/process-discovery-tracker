@@ -223,7 +223,7 @@ def test_readable_app_names_reach_the_stats_and_the_claims(tmp_path):
     normalize_mod.normalize(session)
     assert _read(session, "stats.json")["meta"]["app_names"] == {"crm.exe": "CRM"}
     claims = [f["claim"] for f in _read(session, "analysis.json")["findings"]]
-    assert any(c.startswith("CRM accounts for") for c in claims)
+    assert any(c.startswith("CRM takes") for c in claims)
     assert not any("crm.exe" in c for c in claims)
 
 
@@ -394,7 +394,9 @@ def test_an_unreadable_names_file_warns_once_and_drafts_default_names(tmp_path):
 def test_confirmed_run_1_survives_re_analysis_while_run_2_is_re_drafted(tmp_path):
     """Item 4 of the drafting lane: the analyst confirms every draft of run 1;
     re-analysis (now with a remembered name) leaves run 1 exactly as it was,
-    one-interaction steps included, and re-drafts run 2 under the same ids."""
+    one-interaction steps included, and re-drafts run 2 under the same ids.
+    F1 (C4): run 2's draft takes the name the analyst confirmed for its key
+    in this session, before the remembered-names file's name."""
     session = _make_session(tmp_path / "s")
     normalize_mod.normalize(session)
     runs = {c["label"]: c["case_id"] for c in _read(session, "stats.json")["case_stats"]}
@@ -420,7 +422,7 @@ def test_confirmed_run_1_survives_re_analysis_while_run_2_is_re_drafted(tmp_path
     assert sorted(s["step_id"] for s in run2) == run2_ids_before
     assert all(s["state"] == "auto_suggested" for s in run2)
     find2 = [s for s in run2 if s["draft_key"] == FIND_KEY]
-    assert [s["name"] for s in find2] == ["Look up the customer"]
+    assert [s["name"] for s in find2] == ["CRM - Orders: Find"]
     assert [s["name_source"] for s in find2] == ["remembered"]
     # The confirmed Find step kept its confirmed name: re-drafting run 2
     # never reaches into run 1.

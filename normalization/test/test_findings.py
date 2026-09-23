@@ -131,8 +131,9 @@ def test_screen_time_sink_claims_the_top_app_share():
     fs = _by_detector(_detect(_base_events()))
     assert "screen_time_sink" in fs
     f = fs["screen_time_sink"][0]
-    # DA gap 3: without an app_names map, the capitalized executable name.
-    assert f["claim"].startswith("Chrome accounts for 80%")   # 120s of 150s
+    # DA gap 3: without an app_names map, the shared system list's name for
+    # the application (shared/system-names.json).
+    assert f["claim"].startswith("Google Chrome takes 80% of the active time")   # 120s of 150s
     assert "chrome.exe" not in f["claim"]
     assert f["evidence"]["app"] == "chrome.exe"     # the machine key stays in evidence
     assert f["tier"] == 1
@@ -161,7 +162,7 @@ def test_fragmentation_states_a_rate_only_for_30_minutes_or_more():
     """DA gap 9: a 4-minute recording states the plain count; the per-hour
     rate appears (claim and evidence) only from a 30-minute span on."""
     short = _by_detector(_detect(_base_events()))["fragmentation"][0]
-    assert short["claim"].startswith("Focus moved between apps 2 times; ")
+    assert short["claim"].startswith("The work moved between applications 2 times; ")
     assert "/h" not in short["claim"]
     assert "switches_per_hour" not in short["evidence"]
     long_events = _base_events() + [
@@ -169,7 +170,8 @@ def test_fragmentation_states_a_rate_only_for_30_minutes_or_more():
          "data": {"kind": "session_end"}}]
     long = _by_detector(_detect(long_events))["fragmentation"][0]
     rate = compute_facts(long_events)["switches_per_hour"]
-    assert long["claim"].startswith(f"Focus moved between apps 2 times ({rate}/h); ")
+    assert long["claim"].startswith(
+        f"The work moved between applications 2 times ({rate}/h); ")
     assert long["evidence"]["switches_per_hour"] == rate
 
 
@@ -183,8 +185,8 @@ def test_claims_use_the_readable_app_names():
     names = {"chrome.exe": "Google Chrome", "excel.exe": "Microsoft Excel"}
     found = detect_findings(evs, [], compute_facts(evs), app_names=names)
     fs = _by_detector(found)
-    assert fs["screen_time_sink"][0]["claim"].startswith("Google Chrome accounts for")
-    assert "entered in Google Chrome, Microsoft Excel" in fs["rekey_transfer"][0]["claim"]
+    assert fs["screen_time_sink"][0]["claim"].startswith("Google Chrome takes")
+    assert "in Google Chrome, Microsoft Excel (2 entries)" in fs["rekey_transfer"][0]["claim"]
     assert not any(".exe" in f["claim"] for f in found)
 
 
@@ -366,3 +368,35 @@ if __name__ == "__main__":
             _fn()
             print("ok", _name)
     print("all passed")
+
+
+# ---- F1: repeats key on the step's identity, not its name --------------------------
+
+def test_a_repeat_counts_the_same_whether_or_not_the_analyst_renamed_the_steps():
+    """Run 1's drafts were renamed; runs 2 and 3 still carry the drafted
+    names. By draft_key they are the same three steps, so the repeated
+    sequence is found once, three times, and named from its first run."""
+    renamed = {"k1": "Look up the order", "k2": "Save the order", "k3": "Send it"}
+    drafted = {"k1": "CRM: Find", "k2": "CRM: Save", "k3": "Mail: Send"}
+    steps = []
+    for run, names in (("r1", renamed), ("r2", drafted), ("r3", drafted)):
+        for i, key in enumerate(("k1", "k2", "k3")):
+            s = _step(names[key], run, f"2026-05-14T09:0{i}:00Z", f"{run}-{key}")
+            s["draft_key"] = key
+            steps.append(s)
+    motifs = maximal_motifs(find_motifs(steps))
+    assert len(motifs) == 1 and motifs[0]["frequency"] == 3
+    assert motifs[0]["labels"] == ["Look up the order", "Save the order", "Send it"]
+    assert motifs[0]["keys"] == ["draft:k1", "draft:k2", "draft:k3"]
+
+
+def test_a_bounce_groups_by_identity_and_reads_its_first_names():
+    steps = []
+    for run, (a, b) in (("r1", ("Look up", "Check")), ("r2", ("CRM: Find", "CRM: Check"))):
+        for i, (key, name) in enumerate((("ka", a), ("kb", b), ("ka", a))):
+            s = _step(name, run, f"2026-05-14T09:0{i}:00Z", f"{run}-{i}")
+            s["draft_key"] = key
+            steps.append(s)
+    bounces = find_bounces(steps)
+    assert len(bounces) == 1 and bounces[0]["count"] == 2
+    assert bounces[0]["labels"] == ["Look up", "Check", "Look up"]

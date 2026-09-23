@@ -90,8 +90,8 @@ def test_model_names_the_session_and_capture_date():
 def test_fact_cells_carry_measured_values():
     cells = _cells(build_memo_model(_manifest(), _stats(), _analysis(), {}))
     assert cells["Active time"] == "1h 15m"                     # active_ms
-    # DA gap 3: no app_names map here, so the capitalized executable name.
-    assert cells["Top app"] == "Chrome (31%)"                   # top app + share
+    # DA gap 3: no app_names map here, so the shared system list's name.
+    assert cells["Top app"] == "Google Chrome (31%)"            # top app + share
     assert cells["App switches"] == "47 (11.2/h)"               # 90 min: rate shown
     # DA gap 8: two counts, two cells.
     assert cells["Values re-typed across apps"] == "3"

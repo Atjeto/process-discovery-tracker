@@ -15,7 +15,8 @@
  *       (collapsed to their takeaway lines); F2: the "include in PDD" boxes
  *       show the PDD's default findings ticked, unticking one stores the
  *       others, unticking the last returns to the default with one toast
- *       line, and the exported PDD prints exactly the ticked findings;
+ *       line, and the exported PDD prints no finding (its findings section
+ *       is cut, lane LUX-P);
  *   (d) the analyst path, walked on the demo: every next act lands where it
  *       says (the pattern run open in Steps, each other run open in Steps,
  *       the document sections open on their first empty field, the Map), a
@@ -673,8 +674,11 @@ const T = 20000;   // the bound on every wait for an observable state
   const handed = await page.evaluate(() => window.__pddMaps || null).catch(() => null);
   const docChecks = {
     handed,
-    asIsEmbedded: !!(docXml && docXml.includes("The As-is process map, as exported from the viewer.")),
-    toBeEmbedded: !!(docXml && docXml.includes("5.4 Proposed to-be process")),
+    // Each map picture carries its alternative text (lane LUX-P); the To-Be
+    // map has its own heading in the improvement section.
+    asIsEmbedded: !!(docXml && docXml.includes('descr="As-Is process map"')),
+    toBeEmbedded: !!(docXml && docXml.includes('descr="To-Be process map"') &&
+      docXml.includes("7.1 To-Be process map")),
     purpose: !!(docXml && docXml.includes(PURPOSE)),
     title: !!(docXml && docXml.includes("E2E order intake")),
     purposePlaceholderGone: !!(docXml && !docXml.includes("the business need this process serves")),
@@ -688,13 +692,14 @@ const T = 20000;   // the bound on every wait for an observable state
     JSON.stringify({ handed, asIsEmbedded: docChecks.asIsEmbedded, toBeEmbedded: docChecks.toBeEmbedded }));
   try { fs.unlinkSync(pddOut); } catch (_) {}
 
-  // F2, end to end: after one untick above, the export follows. Section 1
-  // prints the claims of the findings still ticked, and not the unticked one.
+  // F2, end to end, after lane LUX-P cut the PDD's findings section: the
+  // export prints no finding, neither the ones still ticked above nor the
+  // unticked one (the boxes stay until the viewer lane removes them).
   const xmlText = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const inDoc = (fid) => !!(docXml && f2.claims && f2.claims[fid] && docXml.includes(xmlText(f2.claims[fid])));
   const printedKept = (f2.kept || []).map(inDoc);
-  record("F2: the exported PDD prints exactly the ticked findings; the unticked one is left out",
-    !!(docXml && f2.kept && f2.kept.length && printedKept.every(Boolean) && !inDoc(f2.dropped)),
+  record("F2: the exported PDD prints no finding, ticked or not (its findings section is cut)",
+    !!(docXml && f2.kept && f2.kept.length && !printedKept.some(Boolean) && !inDoc(f2.dropped)),
     JSON.stringify({ kept: f2.kept, printedKept, dropped: f2.dropped, droppedPrinted: inDoc(f2.dropped) }));
 
   // P2.12: with an As-Is copy chosen for the PDD, the Export menu's map items

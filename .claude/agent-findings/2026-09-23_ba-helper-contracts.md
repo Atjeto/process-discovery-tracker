@@ -30,7 +30,7 @@ New/defined fields on every drafted step, in addition to the existing step entit
 | Field | Type | Meaning |
 |---|---|---|
 | `draft_key` | string | Value-free identity: `"<app>|<screen>|<commit>"`. `app` = process_name lowercased, `.exe` stripped. `screen` = the value-free screen label (vocab `screen_id` when present, else the shared screen-label rules applied to the window title). `commit` = `"<control_type>:<identity>"` of the commit interaction where identity is automation_id, else name, else class_name, else `"?"`; or the literal `"(visit)"` when the step did not end on a commit |
-| `name_source` | string | `"remembered"` when the name came from the remembered-names store (C4), else `"draft"` |
+| `name_source` | string | `"remembered"` when the name is one the analyst gave before: from this session's analyst steps or from the remembered-names store (C4, lane LUX-P); else `"draft"` |
 | `end_reason` | string | `"commit"`, `"screen_change"` or `"run_end"` |
 
 Default draft name when not remembered: `"<Screen label>: <commit label>"`, or
@@ -86,6 +86,27 @@ File: `<viewer userData>/pdt-library/remembered-names.json`, written atomically
 - Read by the pipeline at draft time through the CLI flag `--names <path>`
   (optional; absent or unreadable = no remembered names, and a warning on stderr).
   The viewer passes it on every Analyze.
+- **Name precedence at draft time (F1, lane LUX-P).** Names travel with the
+  session folder: a draft takes, in this order, (1) the name the analyst gave to
+  a step with the same `draft_key` in this session's `annotations.steps`, states
+  `edited` or `manually_authored` (a typed name), then `confirmed` (an accepted
+  name); hidden steps name nothing; within each, a single step's `draft_key`
+  names its key before a merged step names each key of its `draft_keys`, and
+  among steps of one key the pattern run's comes first, then time order
+  (`step_suggest.session_names`); (2) the remembered-names store's name
+  (`--names`); (3) its drafted name. (1) and (2) both give
+  `name_source: "remembered"`. So the same session analyzed or exported on another
+  machine drafts the same names, and a rename in run 2 still names runs 3 to N
+  after re-analysis when run 1 was confirmed under the drafted name. Viewer note:
+  the Remembered names dialog's Rename renames the store and the session's drafts
+  but not its edited or confirmed steps of that key, so the next analysis gives
+  those drafts the session's name back (lane V to align).
+- **Groupings key on identity, not on names.** The repeats (motif and bounce
+  detection, section 4.1's repeated steps) and the automation groupings (segment
+  signatures) key on `step_suggest.step_identity`: `draft:<draft_key>`,
+  `merge:<JSON draft_keys>`, else `label:<process_label>` for a step with no draft
+  identity (the differences' alignment key, C3 and the shared golden). Finding and
+  segment ids hash the identities, so their ids changed once with this lane.
 
 ## C5. Saved processes (light template), analyst machine
 
@@ -111,12 +132,26 @@ File: `<viewer userData>/pdt-library/processes.json`, written atomically by the 
 ## C6. Document sections (`annotations.document`, viewer-written; AD-2)
 
 ```json
-"document": { "title": "", "purpose": "", "scope": "", "contacts": "",
-              "business_rules": "", "exceptions": "", "notes": "" }
+"document": { "title": "", "purpose": "", "scope": "", "trigger": "", "result": "",
+              "contacts": "", "business_rules": "", "exceptions": "",
+              "improvement": "", "notes": "" }
 ```
 
 Plain multi-line strings. The PDD renders each non-empty field in place of the
 matching placeholder; empty fields keep today's placeholder. Survives re-export.
+
+Lane LUX-P added `trigger` (what starts the process), `result` (what it has
+produced when it ends) and `improvement` (printed as "Improvement and automation
+scope"; it replaces the old 5.1 In scope and 5.2 Out of scope gaps). Where each
+field prints: `title` as the document's title and Document control's Process;
+2.1 `purpose`, 2.2 `scope`, 2.3 `trigger`, 2.4 `result`, 2.5 `contacts`;
+4.2 `business_rules`; 4.3 `exceptions` (it now also holds the application errors:
+the old 6.4 is gone); 7 `improvement`; 8 `notes` (only when written, no gap). A
+"[To be completed: ...]" gap is printed only for these eight fields (all but
+`title` and `notes`), so every gap is one the analyst can close in the app once
+the viewer has an input for it (trigger, result and improvement: viewer lane).
+The step-level BPMN names its start event from the first line of `trigger` and
+its end event from the first line of `result` (C15).
 
 ## C7. Step notes
 
@@ -192,6 +227,8 @@ keys of cut features. Old annotations.json files load without error.
   key is `null` (never an empty list or zeros), and one entry names the stage.
 - Every renderer (Overview, PDD) shows a failed stage as "this check could not run
   on this recording", never as a measured negative ("nothing stood out", zeros).
+  Since lane LUX-P the PDD reads no analysis stage (its findings section is cut),
+  so a failed stage changes nothing in it.
 
 ## C13. normalize.py exit codes (RP-04, RP-09)
 
@@ -215,3 +252,59 @@ Removed with their features (L3, L4): `--canonical`, `--phase-bpmn-out`,
 rendered a template's steps; the step-level map BPMN the viewer exports is
 `process_map_step.bpmn`, written by `--mine`).
 The transcript parser has its own entry point (C8), not a normalize.py flag.
+
+## C14. One vocabulary of systems (`shared/system-names.json`; AD-28, lane LUX-P)
+
+One list, read by Python (`normalization/app_names.py`) and by the viewer, turns an
+application and a window title into the business system the work happened in.
+
+```json
+{ "_README": "...", "version": 1,
+  "rules": [ { "process": ["chrome", "msedge"], "title": "\bSalesforce\b", "system": "Salesforce" },
+             { "process": ["sapgui", "saplogon"], "system": "SAP" } ] }
+```
+
+- The rules are ordered; the first match wins. A rule matches when the application
+  (process name lowercased, `.exe` stripped) is in `process` and, when the rule has
+  a `title`, that regular expression finds a match in the window title, ignoring
+  case (plain patterns only: they run in Python and JavaScript).
+- A rule without `title` also names the application itself: `build_app_names` (so
+  stats.json `meta.app_names`) takes it first, before a vocabulary's name, a window
+  title word or the capitalized executable name.
+- `app_names.system_name(process, title, app_names)`: the first matching rule's
+  system, else the application's readable name (`display_name`). The PDD, the step
+  BPMN's documentation and the findings name systems through it; the viewer applies
+  the same rules (legend, step fact line, map boxes: lane V2).
+- The demo's five applications resolve to Salesforce (Chrome on Salesforce), SAP,
+  Excel, Outlook and Notepad (pinned by `test_app_names.py`).
+
+## C15. The PDD's inputs and the step map file (lane LUX-P)
+
+- `--pdd-map-image <png>`: the picture of the As-Is map. The viewer passes the
+  edited As-Is copy when one is chosen (`RefmapUI.renderPddMaps`), else today the
+  live map's cytoscape PNG, and only when the Map level was drawn in this viewer
+  session (`dfg-viewer.exportPng` returns null otherwise); that PNG is one long
+  row (2734 x 238 px on the demo, labels at about 5 pt on a landscape page).
+  **Viewer half (V1):** when no As-Is copy is chosen, pass a bpmn-js render of
+  `process_map_step.bpmn` (the same `renderEntryToPng` path the copy uses, read
+  from the session folder), so the map from the runs prints like the copy.
+  The pipeline cannot draw the image itself (no renderer in the bundled Python).
+  Without an image the PDD still fills 3.1: the map from the runs as a table (each
+  step and the steps that followed it, with the number of runs), plus a line naming
+  `process_map_step.bpmn` when the folder has it.
+- A map image gets a page of its own, landscape when it is wider than tall, as
+  large as the page allows; the picture's alternative text is "As-Is process map"
+  or "To-Be process map" (the e2e smokes read it).
+- The PDD prints no analysis finding (its former section 1 is cut). analysis.json
+  keeps `pdd_findings` and annotations keep `memo_selection` exactly as before
+  (C10) until the viewer lane removes the "include in PDD" boxes.
+- `process_map_step.bpmn` (written by `--mine`, the Fork source): valid BPMN 2.0
+  with diagram interchange, laid out left to right and wrapped into rows when one
+  row would print its labels below 8.5 pt on a landscape page (rows end where the
+  fewest flows cross), every flow routed around the boxes. Each task carries
+  `<bpmn:documentation>`: the step's analyst description (the pattern run's first),
+  then "System, screen. In N of M runs, T on average."; the start and end events
+  are named from the first line of `document.trigger` and `document.result`
+  (unnamed while empty); each flow leaving a branching gateway is named
+  "N of M runs" (the runs whose steps take it, by replaying each run through the
+  model) with a `BPMNLabel` position. The viewer's live map is unchanged.

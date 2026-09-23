@@ -268,3 +268,156 @@ def test_every_pm4py_start_and_end_event_variant_gets_its_event_element():
         elements = _process_elements(out)
     assert sorted(elements) == [("endEvent", "end"), ("startEvent", "start"),
                                 ("task", "Search")]
+
+
+# ---- lane LUX-P: what a process manager moving the map into a BPMN tool gets ----
+
+_DI = "{http://www.omg.org/spec/BPMN/20100524/DI}"
+_DC = "{http://www.omg.org/spec/DD/20100524/DC}"
+_BPMNDI = "{http://www.omg.org/spec/BPMN/20100524/DI}"
+
+
+def _written(anno, **kwargs):
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "process_map_step.bpmn")
+        assert write_observed_bpmn(anno, out, **kwargs) is True
+        return ET.parse(out).getroot()
+
+
+def _by_name(root, tag):
+    process = root.find(f"{_BPMN}process")
+    return {el.get("name"): el for el in process if el.tag == f"{_BPMN}{tag}"}
+
+
+def _steps_with_evidence():
+    """Two runs of Search, Open ticket or Escalate, Resolve, with the
+    interactions a StepContext reads."""
+    anno = _two_case_anno()
+    for s in anno["steps"]:
+        s["evidence"] = {"interaction_event_ids": [s["step_id"]]}
+    anno["steps"][0]["description"] = "Search by the ticket number."
+    anno["pattern_run"] = {"case_id": "A"}
+    return anno
+
+
+def _context(anno):
+    from step_context import StepContext
+    inter = {s["step_id"]: {"process_name": "chrome.exe", "kind": "invoked",
+                            "window_title": "Incident | ServiceNow - Google Chrome",
+                            "name": "Go", "control_type": "Button"}
+             for s in anno["steps"]}
+    return StepContext(inter, {}, vocabs=[])
+
+
+def test_each_task_documents_its_description_system_screen_runs_and_time():
+    anno = _steps_with_evidence()
+    root = _written(anno, context=_context(anno))
+    tasks = _by_name(root, "task")
+    doc = lambda name: tasks[name].find(f"{_BPMN}documentation").text  # noqa: E731
+    assert doc("Search") == ("Search by the ticket number.\n"
+                             "ServiceNow, Incident. In 2 of 2 runs, under 1s on average.")
+    assert doc("Escalate") == "ServiceNow, Incident. In 1 of 2 runs, under 1s on average."
+    # BPMN 2.0 order: the documentation comes before the task's flow references.
+    first = list(tasks["Search"])[0]
+    assert first.tag == f"{_BPMN}documentation"
+
+
+def test_a_drafted_narration_is_not_documented_as_a_description():
+    anno = _steps_with_evidence()
+    anno["steps"][0]["description"] = "Clicked Go."       # what the drafting writes
+    root = _written(anno, context=_context(anno))
+    text = _by_name(root, "task")["Search"].find(f"{_BPMN}documentation").text
+    assert text == "ServiceNow, Incident. In 2 of 2 runs, under 1s on average."
+
+
+def test_the_events_take_the_trigger_and_the_result_and_are_unnamed_without():
+    anno = _two_case_anno()
+    root = _written(anno)
+    process = root.find(f"{_BPMN}process")
+    events = [el for el in process if el.tag in (f"{_BPMN}startEvent", f"{_BPMN}endEvent")]
+    assert len(events) == 2 and all(el.get("name") is None for el in events)
+    anno["document"] = {"trigger": "A ticket arrives in the queue.\nFrom any channel.",
+                        "result": "The ticket is resolved and closed."}
+    root = _written(anno)
+    assert _by_name(root, "startEvent").keys() == {"A ticket arrives in the queue."}
+    assert _by_name(root, "endEvent").keys() == {"The ticket is resolved and closed."}
+
+
+def test_each_branch_says_in_how_many_runs_it_was_taken():
+    anno = _two_case_anno()
+    anno["steps"] += [
+        _step("C", "Search", "2026-05-18T09:20:00Z"),
+        _step("C", "Open ticket", "2026-05-18T09:20:10Z"),
+        _step("C", "Resolve", "2026-05-18T09:20:20Z"),
+    ]
+    root = _written(anno)
+    process = root.find(f"{_BPMN}process")
+    ids = {el.get("id"): el for el in process}
+    names = {}
+    for flow in process.findall(f"{_BPMN}sequenceFlow"):
+        if flow.get("name"):
+            names[ids[flow.get("targetRef")].get("name")] = flow.get("name")
+    assert names == {"Open ticket": "2 of 3 runs", "Escalate": "1 of 3 runs"}
+    # Every named flow carries its label's place on the diagram.
+    edges = {e.get("bpmnElement"): e for e in root.iter(f"{_BPMNDI}BPMNEdge")}
+    for flow in process.findall(f"{_BPMN}sequenceFlow"):
+        if flow.get("name"):
+            assert edges[flow.get("id")].find(f"{_BPMNDI}BPMNLabel/{_DC}Bounds") is not None
+
+
+def _boxes_and_segments(root):
+    shapes = {}
+    for sh in root.iter(f"{_BPMNDI}BPMNShape"):
+        b = sh.find(f"{_DC}Bounds")
+        shapes[sh.get("bpmnElement")] = tuple(float(b.get(k)) for k in ("x", "y", "width", "height"))
+    flows = {f.get("id"): f for f in root.find(f"{_BPMN}process").findall(f"{_BPMN}sequenceFlow")}
+    segments = []
+    for edge in root.iter(f"{_BPMNDI}BPMNEdge"):
+        pts = [(float(w.get("x")), float(w.get("y"))) for w in edge.findall(f"{_DI}waypoint")]
+        flow = flows[edge.get("bpmnElement")]
+        for a, b in zip(pts, pts[1:]):
+            segments.append((a, b, flow.get("sourceRef"), flow.get("targetRef")))
+    return shapes, segments
+
+
+def _crosses(seg, box):
+    (x1, y1), (x2, y2) = seg
+    bx, by, bw, bh = box
+    lo_x, hi_x, lo_y, hi_y = min(x1, x2), max(x1, x2), min(y1, y2), max(y1, y2)
+    return lo_x < bx + bw and hi_x > bx and lo_y < by + bh and hi_y > by
+
+
+def test_a_long_flow_wraps_into_rows_that_print_legibly_and_no_line_crosses_a_box():
+    names = [f"Step number {i}" for i in range(14)]
+    anno = {"steps": []}
+    for run, offset in (("A", 0), ("B", 600)):
+        for i, name in enumerate(names):
+            if run == "B" and i == 6:
+                continue                                  # run B skips a step: a branch
+            anno["steps"].append(_step(run, name, f"2026-05-18T09:{(offset // 60 + i):02d}:00Z"))
+    root = _written(anno)
+    shapes, segments = _boxes_and_segments(root)
+    process = root.find(f"{_BPMN}process")
+    nodes = [el.get("id") for el in process if el.tag != f"{_BPMN}sequenceFlow"]
+    assert set(nodes) == set(shapes)                      # every node has a shape
+    assert {f.get("id") for f in process.findall(f"{_BPMN}sequenceFlow")} == {
+        e.get("bpmnElement") for e in root.iter(f"{_BPMNDI}BPMNEdge")}
+    rows = {y for (_x, y, _w, _h) in shapes.values()}
+    assert len({round(y / 100) for y in rows}) >= 2      # wrapped
+    for (a, b, src, tgt) in segments:
+        for nid, box in shapes.items():
+            if nid not in (src, tgt):
+                assert not _crosses((a, b), box), (src, tgt, nid)
+    xs = [x for (x, _y, w, _h) in shapes.values()] + [x + w for (x, _y, w, _h) in shapes.values()]
+    ys = [y for (_x, y, _w, h) in shapes.values()] + [y + h for (_x, y, _w, h) in shapes.values()]
+    width, height = max(xs) - min(xs), max(ys) - min(ys)
+    # A landscape page's printable area (684 x 425 pt): 12 px labels print at 8 pt or more.
+    assert 12 * min(684 / width, 425 / height) >= 8.0
+
+
+def test_a_short_flow_stays_one_row():
+    anno = {"steps": [_step("A", n, f"2026-05-18T09:00:{i:02d}Z")
+                      for i, n in enumerate(("One", "Two", "Three"))]}
+    shapes, _segments = _boxes_and_segments(_written(anno))
+    centres = {round(y + h / 2) for (_x, y, _w, h) in shapes.values()}
+    assert len(centres) == 1

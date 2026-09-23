@@ -251,3 +251,23 @@ if __name__ == "__main__":
             _fn()
             print("ok", _name)
     print("all passed")
+
+
+def test_segments_of_the_same_drafts_share_a_signature_whatever_their_names():
+    """F1: run 1's drafts were renamed, run 2's were not. They are the same
+    drafts (draft_key), so the two segments are one pattern; the label comes
+    from each segment's own step names."""
+    events = [
+        _interaction("i1", 0, "crm.exe", "c1"), _interaction("i2", 3, "crm.exe", "c1"),
+        _interaction("i3", 60, "crm.exe", "c2"), _interaction("i4", 63, "crm.exe", "c2"),
+    ]
+    renamed = [_step("s1", "Look up the order", ["i1"]), _step("s2", "Save the order", ["i2"])]
+    drafted = [_step("s3", "CRM: Find", ["i3"]), _step("s4", "CRM: Save", ["i4"])]
+    for s, key in zip(renamed + drafted, ("k1", "k2", "k1", "k2")):
+        s["draft_key"] = key
+    segs = detect_segments(events, renamed + drafted)
+    assert len(segs) == 2
+    assert segs[0]["signature"] == segs[1]["signature"]
+    assert segs[0]["step_labels"] == ["Look up the order", "Save the order"]
+    assert segs[1]["step_labels"] == ["CRM: Find", "CRM: Save"]
+    assert len(group_segments(segs)) == 1

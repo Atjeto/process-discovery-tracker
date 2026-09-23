@@ -1,4 +1,4 @@
-"""Sequence motif discovery on the step `process_label` stream.
+"""Sequence motif discovery on the step stream.
 
 Ported as-is from the parked ML branch (`project-vision-ai-ml:
 normalization/patterns/motif_mining.py`, ADR-0029 there) per the
@@ -7,19 +7,25 @@ the `backtracking` / `repetition` findings detectors plus the
 `repeated_sequence_count` fact. Phase A adds `find_bounces` (A->B->A
 returns), which the original module did not have.
 
-For each case, the case's step `process_label` sequence is treated as a
-string of symbols and repeated subsequences of length 3-8 are counted
-via a simple sliding window. A motif is reported when its frequency
->= 3 across the session.
+For each case, the case's step sequence is treated as a string of symbols
+and repeated subsequences of length 3-8 are counted via a simple sliding
+window. A motif is reported when its frequency >= 3 across the session.
+
+A step's symbol is its identity (step_suggest.step_identity: the draft_key,
+a merged step's draft_keys, else the label of a step added by hand), not its
+name, so a repeat counts the same whether the analyst renamed the steps or
+not (F1). The step names ride along for display (`labels`).
 
 The output is a JSON-serialisable list; each motif carries its stable id
-(a 12-hex blake2b hash of the label sequence) plus the list of
+(a 12-hex blake2b hash of the identity sequence) plus the list of
 occurrences with their step_ids and ISO timestamps. Pure stdlib.
 """
 from __future__ import annotations
 
 import hashlib
 from typing import Any
+
+from step_suggest import step_identity
 
 MIN_LEN = 3
 MAX_LEN = 8
@@ -34,14 +40,25 @@ def _stable_id(labels: list[str]) -> str:
     return hashlib.blake2b(joined.encode("utf-8"), digest_size=6).hexdigest()
 
 
+def _label(step: dict[str, Any]) -> str:
+    """The step's display label: its process_label, else its name."""
+    return (step.get("process_label") or step.get("name") or "").strip()
+
+
+def _symbol(step: dict[str, Any]) -> str:
+    """The step's symbol: its identity; "" for a step with no draft identity
+    and no label (no signal for motif mining)."""
+    key = step_identity(step)
+    return "" if key == "label:" else key
+
+
 def _per_case_step_lists(steps: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Group steps by case_id and sort each case's steps by `time_range.start`.
-    Steps without a process_label are skipped (no signal for motif mining).
+    Steps without a symbol are skipped (no signal for motif mining).
     Returns ordered lists ready to slice into symbol windows."""
     by_case: dict[str, list[dict[str, Any]]] = {}
     for s in steps or []:
-        label = (s.get("process_label") or "").strip()
-        if not label:
+        if not isinstance(s, dict) or not _symbol(s):
             continue
         cid = s.get("case_id") or "__nocase__"
         by_case.setdefault(cid, []).append(s)
@@ -57,29 +74,32 @@ def find_motifs(
     max_len: int = MAX_LEN,
     min_freq: int = MIN_FREQ,
 ) -> list[dict[str, Any]]:
-    """Discover repeated step-label subsequences of length [min_len, max_len]
+    """Discover repeated step subsequences of length [min_len, max_len]
     that appear at least `min_freq` times across the session.
 
-    Sliding-window counting across the per-case label streams: for each window
-    length L, every contiguous L-step slice is keyed by its label tuple and
-    its occurrence (case + step_ids + start/end ISO) is recorded. Motifs whose
-    occurrence count meets the threshold are returned, sorted by descending
-    frequency then by motif_id for stability.
+    Sliding-window counting across the per-case symbol streams: for each
+    window length L, every contiguous L-step slice is keyed by its identity
+    tuple and its occurrence (case + step_ids + start/end ISO) is recorded.
+    Motifs whose occurrence count meets the threshold are returned, sorted by
+    descending frequency then by motif_id for stability. `keys` is the
+    identity sequence, `labels` the first occurrence's step labels.
     """
     if not steps:
         return []
     by_case = _per_case_step_lists(steps)
 
-    # Map: tuple-of-labels -> list of occurrence dicts.
+    # Map: tuple of symbols -> list of occurrence dicts.
     seen: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    shown: dict[tuple[str, ...], list[str]] = {}
     for cid, case_steps in by_case.items():
-        labels = [(s.get("process_label") or "").strip() for s in case_steps]
-        n = len(labels)
+        symbols = [_symbol(s) for s in case_steps]
+        n = len(symbols)
         for L in range(min_len, max_len + 1):
             if L > n:
                 break
             for i in range(n - L + 1):
-                window = tuple(labels[i:i + L])
+                window = tuple(symbols[i:i + L])
+                shown.setdefault(window, [_label(s) for s in case_steps[i:i + L]])
                 window_steps = case_steps[i:i + L]
                 occ = {
                     "case_id": cid,
@@ -99,10 +119,10 @@ def find_motifs(
     for window, occurrences in seen.items():
         if len(occurrences) < min_freq:
             continue
-        labels_list = list(window)
         motifs.append({
-            "motif_id": _stable_id(labels_list),
-            "labels": labels_list,
+            "motif_id": _stable_id(list(window)),
+            "keys": list(window),
+            "labels": shown[window],
             "occurrences": occurrences,
             "frequency": len(occurrences),
         })
@@ -126,12 +146,15 @@ def maximal_motifs(motifs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ones. The full list (with shadows) stays available from find_motifs
     for drill-down; this filter feeds the `repeated_sequence_count` fact.
     """
+    def seq(m):
+        return m.get("keys") or m.get("labels") or []
+
     out = []
     for m in motifs or []:
         contained = any(
             other is not m
             and other.get("frequency", 0) >= m.get("frequency", 0)
-            and _is_contiguous_sub(m.get("labels") or [], other.get("labels") or [])
+            and _is_contiguous_sub(seq(m), seq(other))
             for other in motifs
         )
         if not contained:
@@ -140,27 +163,30 @@ def maximal_motifs(motifs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def find_bounces(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Detect A->B->A bounces in the per-case step-label streams (Phase A
+    """Detect A->B->A bounces in the per-case step streams (Phase A
     addition for the `backtracking` findings detector).
 
-    A bounce is three consecutive steps labelled A, B, A with A != B --
+    A bounce is three consecutive steps A, B, A (by identity) with A != B:
     the flow left a screen/action and came straight back. Bounces are
-    grouped by the (A, B) label pair; each group carries every occurrence
-    (case + step_ids + timestamps) so the viewer can jump to the evidence.
-    Sorted by descending count then bounce_id for stability.
+    grouped by the (A, B) identity pair and named by the first occurrence's
+    step labels; each group carries every occurrence (case + step_ids +
+    timestamps) so the viewer can jump to the evidence. Sorted by descending
+    count then bounce_id for stability.
     """
     if not steps:
         return []
     by_case = _per_case_step_lists(steps)
 
     groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    names: dict[tuple[str, str], tuple[str, str]] = {}
     for cid, case_steps in by_case.items():
-        labels = [(s.get("process_label") or "").strip() for s in case_steps]
-        for i in range(len(labels) - 2):
-            a, b, a2 = labels[i], labels[i + 1], labels[i + 2]
+        symbols = [_symbol(s) for s in case_steps]
+        for i in range(len(symbols) - 2):
+            a, b, a2 = symbols[i], symbols[i + 1], symbols[i + 2]
             if a != a2 or a == b:
                 continue
             window_steps = case_steps[i:i + 3]
+            names.setdefault((a, b), (_label(window_steps[0]), _label(window_steps[1])))
             occ = {
                 "case_id": cid,
                 "step_ids": [
@@ -177,11 +203,12 @@ def find_bounces(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     bounces: list[dict[str, Any]] = []
     for (a, b), occurrences in groups.items():
+        la, lb = names[(a, b)]
         bounces.append({
             "bounce_id": _stable_id([a, b, a]),
-            "labels": [a, b, a],
-            "returned_to": a,
-            "via": b,
+            "labels": [la, lb, la],
+            "returned_to": la,
+            "via": lb,
             "occurrences": occurrences,
             "count": len(occurrences),
         })

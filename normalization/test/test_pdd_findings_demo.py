@@ -1,11 +1,11 @@
-"""F2 on the demo: the findings the viewer ticks for the PDD are the findings
-the PDD prints.
+"""The demo recording through the pipeline and into the PDD (lane LUX-P).
 
-The viewer ticks the ids analysis.json names in `pdd_findings` (its `default`
-list while the analyst has ticked nothing, else the ticked ones). This runs the
-pipeline on a temp copy of the committed demo recording the way the viewer's
-export does (the bundled taxonomy, the PDD written by the same run) and reads
-section 1 of the written document back.
+The document no longer prints the analysis findings (its former section 1 is
+cut), whatever the analyst ticked. analysis.json keeps `pdd_findings` exactly
+as before, because the viewer still reads it (its "include in PDD" boxes;
+the viewer lane removes both). This runs the pipeline on a temp copy of the
+committed demo recording the way the viewer's export does (the bundled
+taxonomy, the PDD written by the same run) and reads the document back.
 
 The pipeline imports pandas and pm4py and the PDD needs python-docx, so this
 module skips where they are absent and runs under the full-deps gate.
@@ -16,7 +16,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -61,42 +60,40 @@ def _analyze_and_export(folder: Path, docx: Path) -> dict:
     return json.loads((folder / "analysis.json").read_text(encoding="utf-8"))
 
 
-def _printed_claims(docx: Path) -> list[str]:
-    """The numbered findings of section 1, in order, without the number."""
+def _text(docx: Path) -> str:
     from docx import Document
-    texts = [p.text for p in Document(str(docx)).paragraphs]
-    start, end = texts.index("Findings"), texts.index("Run-by-run analysis")
-    claims = []
-    for t in texts[start + 1:end]:
-        m = re.match(r"^\d+\. (?:Across runs: )?(.*)$", t)
-        if m:
-            claims.append(m.group(1))
-    return claims
+    doc = Document(str(docx))
+    rows = [" | ".join(c.text for c in r.cells) for t in doc.tables for r in t.rows]
+    return "\n".join([p.text for p in doc.paragraphs] + rows)
 
 
-def test_the_default_ticks_are_the_findings_the_pdd_prints(tmp_path):
+def test_the_pdd_prints_no_finding_and_pdd_findings_is_still_written(tmp_path):
     folder = _copy_demo(tmp_path / "demo")
     analysis = _analyze_and_export(folder, tmp_path / "pdd.docx")
     ticks = analysis["pdd_findings"]
     claims = {f["id"]: f["claim"] for f in analysis["findings"]}
     detector = {f["id"]: f["detector"] for f in analysis["findings"]}
-    assert ticks["default"], "the demo has findings to print"
-    # AD-20 is real on the demo: it has repeated sequences, none printable.
+    assert ticks["default"], "the demo has findings the viewer offers"
+    # AD-20 still holds for the viewer's boxes: repeated sequences are not offered.
     assert "repetition" in detector.values()
     assert all(detector[i] != "repetition" for i in ticks["eligible"])
-    assert _printed_claims(tmp_path / "pdd.docx") == [claims[i] for i in ticks["default"]]
+    text = _text(tmp_path / "pdd.docx")
+    for fid in ticks["eligible"]:
+        assert claims[fid] not in text, claims[fid]
+    assert "Findings" not in text
 
 
-def test_after_one_untick_the_pdd_prints_the_rest(tmp_path):
+def test_a_selection_neither_prints_findings_nor_moves_the_default(tmp_path):
     folder = _copy_demo(tmp_path / "demo")
     default = _analyze_and_export(folder, tmp_path / "first.docx")["pdd_findings"]["default"]
     assert len(default) >= 2
-    # Unticking the first finding stores the others explicitly (the viewer's
-    # write), and the next export prints exactly those.
     anno = json.loads((folder / "annotations.json").read_text(encoding="utf-8"))
     anno["memo_selection"] = default[1:]
     (folder / "annotations.json").write_text(json.dumps(anno, indent=2), encoding="utf-8")
     analysis = _analyze_and_export(folder, tmp_path / "second.docx")
     claims = {f["id"]: f["claim"] for f in analysis["findings"]}
     assert analysis["pdd_findings"]["default"] == default     # the selection does not move the default
-    assert _printed_claims(tmp_path / "second.docx") == [claims[i] for i in default[1:]]
+    after = json.loads((folder / "annotations.json").read_text(encoding="utf-8"))
+    assert after["memo_selection"] == default[1:]             # C10: the key round-trips
+    text = _text(tmp_path / "second.docx")
+    assert not any(claims[i] in text for i in default)

@@ -38,7 +38,7 @@ from classification import (
 from classification_overrides import apply_classification_overrides
 from step_suggest import (
     auto_suggest_steps, _merge_steps, restamp_preserved_case_ids,
-    draft_summary, load_remembered_names,
+    draft_summary, load_remembered_names, session_names,
 )
 import app_vocab
 from app_names import build_app_names
@@ -131,8 +131,10 @@ def _run_step_segmentation(
     names_path: str | None = None,
 ) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
     """Step drafting (the C1 rule), then persist annotations. Returns
-    (merged_steps, total_interactions, draft_summary). `names_path` is the
-    optional remembered-names store (C4, the `--names` flag)."""
+    (merged_steps, total_interactions, draft_summary). A draft takes the name
+    the analyst gave to a step with its draft_key in this session first, then
+    the one in `names_path`, the optional remembered-names store (C4, the
+    `--names` flag)."""
     total_interactions = sum(1 for e in with_cases if e.get("type") == "interaction")
     # ADR-0024: event_id -> interaction, so _merge_steps can resolve each step's
     # grain_keys (the view-time roll-up containment keys) from its evidence.
@@ -145,6 +147,7 @@ def _run_step_segmentation(
         ignored_processes=_step_ignored_processes(existing_anno),
         excluded_ranges=_excluded_ranges(existing_anno),
         remembered_names=load_remembered_names(names_path),
+        session_names=session_names(existing_anno),
         **_step_calibration_kwargs(cal),
     )
     # Counted on the fresh drafts, before the merge (see draft_summary).
@@ -406,9 +409,10 @@ def _run_analysis(
         except Exception as e:  # noqa: BLE001 -- recorded as a stage error
             analysis_result["findings"] = None
             _failed("findings", f"{type(e).__name__}: {e}")
-    # F2: the findings the PDD's section 1 can print and prints by default,
-    # from the PDD's own selection, so the viewer's "include in PDD" boxes
-    # show exactly what the PDD prints.
+    # F2: the findings the PDD's former section 1 could print and printed by
+    # default, for the viewer's "include in PDD" boxes. The PDD prints no
+    # finding since lane LUX-P; this stays until the viewer lane removes the
+    # boxes.
     try:
         from memo_export import pdd_findings
         analysis_result["pdd_findings"] = pdd_findings(analysis_result, summary)
@@ -450,11 +454,19 @@ def _run_mining_exports(
         # Built from annotations -- no Process Template needed.
         try:
             import bpmn_observed
+            from step_context import StepContext
             if any(s.get("state") != "hidden"
                    for s in (existing_anno.get("steps") or [])):
+                # The system and screen each task's documentation names.
+                context = StepContext(
+                    {e["event_id"]: e["data"] for e in events or []
+                     if e.get("type") == "interaction" and e.get("event_id")
+                     and isinstance(e.get("data"), dict)},
+                    ((summary or {}).get("meta") or {}).get("app_names"))
                 if bpmn_observed.write_observed_bpmn(
                         existing_anno,
-                        str(session_folder / "process_map_step.bpmn")):
+                        str(session_folder / "process_map_step.bpmn"),
+                        context=context):
                     print(f"[normalize] wrote {session_folder / 'process_map_step.bpmn'}")
         except Exception as e:
             print(f"[normalize] WARNING: step BPMN failed: {e}")

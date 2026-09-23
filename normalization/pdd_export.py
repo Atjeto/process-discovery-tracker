@@ -1,53 +1,72 @@
 """Generate the Process Definition Document (.docx) from a normalized session.
 
-The PDD is the analyst's deliverable, written for any automation technology
-or application work, so its wording is tool-neutral. It is built around:
+The PDD is the process manager's hand-over: a document the team can pass on
+as it is, in place of the maps and documents built by hand. Its wording is
+tool-neutral (any automation technology or application work), and it reads
+in the reader's order:
 
-  * the PATTERN RUN (annotations.pattern_run, contract C3): the run the
-    analyst confirmed as the reference; its steps, in time order, are the
-    detailed process description (4.5);
-  * the analyst's document sections (annotations.document, contract C6):
-    title, purpose, scope, contacts, business rules, exceptions, and notes
-    (a last section 7, only when written);
-  * the measured timings of every run, in one table (4.4);
-  * the differences between the runs, each aligned to the pattern run (6.1).
+  1. Document control: the process, the session folder (a developer's way
+     into the recording), who recorded it, the runs, whether a video is
+     attached.
+  2. Purpose and scope: the analyst's document fields (annotations.document,
+     contract C6): purpose, scope, trigger, result and key contacts.
+  3. As-Is process: the systems the process runs through, the As-Is map on
+     a page of its own, and the steps of the reference run (the pattern run,
+     contract C3). Each step says its system and screen, its average time,
+     in how many runs it happened and where it is in the recording ("Run 1
+     at 0:19", and the video time when the video's start is known); its
+     description (C7) is its text.
+  4. Variations, rules and exceptions: how each other run differed from the
+     reference run (aligned by draft key; the rule is pinned with the viewer
+     by shared/run-differences-golden.json), steps repeated within a run,
+     then the business rules and the exceptions.
+  5. Data: every field entered, with its system and screen, its step and an
+     example value. Re-keyed data (a value typed again in another system in
+     the same run) is marked and stated as a requirement.
+  6. Applications and time: the time of every run, and each system's
+     screens, steps and time per run.
+  7. Improvement and automation scope: the analyst's field, and the To-Be
+     map when one was chosen.
+  8. Notes: only when written.
 
-Section 1 is the findings content, rendered from memo_export's model (the
-analyst's memo_selection). Every number printed is measured from the
-recording or entered by the analyst; "[To be completed: ...]" placeholders
-mark what the analyst still owns.
-
-Honesty rules kept here: hidden steps never appear (RP-06); an analysis stage
-that failed says it could not run on this recording (C12); a case-based
-finding renders only when runs exist; applications carry readable names,
-never executable tokens (app_names, DA gap 3).
+A "[To be completed: ...]" gap stands only for a document field the analyst
+fills in the app. Every number is measured from the recording. Hidden steps
+never appear (RP-06); applications carry readable names, never executable
+tokens (app_names, step_context); every table has a grid; a map gets a page
+of its own, landscape when it is wide, so it prints legibly.
 
 Uses python-docx.
 """
 
 from __future__ import annotations
-import json
 import logging
 import math
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 try:
     from docx import Document
-    from docx.shared import Pt, Inches
+    from docx.enum.section import WD_ORIENT, WD_SECTION
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.image.image import Image as _DocxImage
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Pt, Inches, RGBColor
 except ImportError:
     Document = None
-    Pt = None
-    Inches = None
+    WD_ORIENT = WD_SECTION = WD_ALIGN_PARAGRAPH = None
+    _DocxImage = OxmlElement = qn = None
+    Pt = Inches = RGBColor = None
 
 from _dt import parse_ts_or_none as _parse_ts
-from app_names import display_name
-from facts import _NOISE_VALUES
+from facts import _NOISE_VALUES, REKEY_MIN_LEN, REKEY_MIN_LEN_VOCAB
 from findings import _fmt_ms as _fmt_duration
-from memo_export import (COULD_NOT_RUN as _COULD_NOT_RUN, build_memo_model,
-                         failed_stages, run_rows, write_memo_into_docx)
-from step_suggest import _default_step_description, process_label
+from memo_export import run_rows
+from step_context import (StepContext, clock, has_video, step_ms, step_start,
+                          video_start)
+from step_suggest import is_drafted_description, step_identity
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +74,11 @@ logger = logging.getLogger(__name__)
 _TYPED_KINDS = ("value_changed", "text_changed")
 # A field value longer than this is cut in the document.
 _VALUE_MAX = 200
+# The line under the times of the runs (AD-28).
+_WALKTHROUGH = ("The runs were recorded as a walkthrough, with explanations, so "
+                "these times show the recording, not the usual handling time.")
+# The step context line's separator (a middle dot, as the viewer's fact line).
+_SEP = " · "
 
 
 def write_pdd(
@@ -70,40 +94,42 @@ def write_pdd(
     events: list[dict] | None = None,
 ) -> None:
     """Write the PDD to `out_path`. `events` is the derived event stream the
-    entered fields (4.5, 4.6) are read from; without it those parts say the
-    field entries were not available."""
+    steps' systems, screens and entered fields are read from; without it the
+    data section says the field entries were not available. `analysis` is
+    accepted for the pipeline's call and not printed: the document holds no
+    analysis findings (section 1 of the earlier document is cut)."""
     if Document is None:
         raise RuntimeError(
             "python-docx is not installed. Add `python-docx>=1.1.0` to "
             "normalization/requirements.txt and reinstall."
         )
-    s = _Session(session_folder, annotations, stats, manifest, analysis, events)
+    s = _Session(session_folder, annotations, stats, manifest, events)
     doc = Document()
+    s.portrait = _page_of(doc.sections[0])
+    notes = bool(s.field("notes"))
     _write_title(doc, s)
-    model = _write_findings(doc, s)                   # 1. Findings
-    _write_document_control(doc, s)                   # 2. Document control
-    _write_introduction(doc, s)                       # 3. Introduction
-    doc.add_heading("4. As-is process", level=1)
-    _write_overview(doc, s)                           # 4.1
-    _write_applications(doc, s)                       # 4.2
-    _write_process_map(doc, process_map_image)        # 4.3
-    _write_timings(doc, s)                            # 4.4
-    _write_steps(doc, s)                              # 4.5
-    _write_input_data(doc, s)                         # 4.6
-    _write_automation(doc, s, model)                  # 5.1 to 5.3
-    _write_tobe_map(doc, tobe_map_image)              # 5.4
-    _write_exceptions(doc, s)                         # 6.
-    _write_notes(doc, s)                              # 7., only when written
-    _write_footer(doc)
+    _write_document_control(doc, s)                     # 1
+    _write_purpose_and_scope(doc, s)                    # 2
+    _write_as_is(doc, s, process_map_image)             # 3
+    _write_variations(doc, s)                           # 4
+    _write_data(doc, s)                                 # 5
+    _write_applications_and_time(doc, s)                # 6
+    _write_improvement(doc, s, tobe_map_image, notes)   # 7
+    _write_notes(doc, s)                                # 8, only when written
     doc.save(str(out_path))
 
 
 # ---- the session as the document sees it -----------------------------------
 
+def _time_key(ts):
+    """A sort key for an ISO timestamp: parsed, so "…21Z" sorts before
+    "…21.5Z"; an unreadable one sorts last."""
+    t = _parse_ts(ts)
+    return (t is None, t.timestamp() if t else 0.0, str(ts or ""))
+
+
 def _start_key(step):
-    start = (step.get("time_range") or {}).get("start")
-    t = _parse_ts(start)
-    return (t is None, t.timestamp() if t else 0.0, str(start or ""))
+    return _time_key((step.get("time_range") or {}).get("start"))
 
 
 def _key_list(value):
@@ -129,15 +155,10 @@ def _align_key(step) -> str:
     """How a step is matched across runs: its value-free draft_key; else, for
     merged drafts, their draft_keys in order ("merge:" and a JSON array, the
     same text viewer/run-differences.js builds); else (a hand-added step) the
-    process_label of its name. Pinned with the viewer by
-    shared/run-differences-golden.json."""
-    dk = step.get("draft_key")
-    if isinstance(dk, str) and dk:
-        return "draft:" + dk
-    keys = _key_list(step.get("draft_keys"))
-    if keys:
-        return "merge:" + json.dumps(keys, ensure_ascii=False, separators=(",", ":"))
-    return "label:" + process_label(str(step.get("name") or ""))
+    process_label of its name. step_suggest.step_identity, the one rule the
+    repeats and the automation groupings key on too. Pinned with the viewer
+    by shared/run-differences-golden.json."""
+    return step_identity(step)
 
 
 def _step_name(step) -> str:
@@ -145,28 +166,46 @@ def _step_name(step) -> str:
     return name.strip() if isinstance(name, str) and name.strip() else "(unnamed step)"
 
 
+def _members(unit) -> list:
+    """The steps a unit stands for: the run's steps a merged reference step
+    folded (_collapse_merged), else the unit itself."""
+    members = unit.get("members") if isinstance(unit, dict) else None
+    return members if isinstance(members, list) and members else [unit]
+
+
+def _unit_ms(unit) -> float:
+    return sum(step_ms(m) for m in _members(unit))
+
+
 def _num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
+def _text_of(v) -> str:
+    return v.strip() if isinstance(v, str) else ""
+
+
 class _Session:
     """What every section reads, computed once: the visible steps, the runs,
-    the pattern run (C3), the document fields (C6) and the entered fields."""
+    the reference run (C3), each run's steps aligned to it, the document
+    fields (C6), the recorded interactions and where each step happened."""
 
-    def __init__(self, folder, annotations, stats, manifest, analysis, events):
+    def __init__(self, folder, annotations, stats, manifest, events):
         self.folder = Path(folder)
         self.annotations = annotations if isinstance(annotations, dict) else {}
         self.stats = stats if isinstance(stats, dict) else {}
         self.manifest = manifest if isinstance(manifest, dict) else {}
-        self.analysis = analysis if isinstance(analysis, dict) else {}
-        self.failed = failed_stages(self.analysis)
+        self.portrait = None
         meta = self.stats.get("meta") or {}
         self.app_names = meta.get("app_names") or {}
         config = self.manifest.get("config")
         worker = config.get("worker") if isinstance(config, dict) else None
-        self.worker = str((worker if isinstance(worker, dict) else {}).get("id") or "")
+        worker = worker if isinstance(worker, dict) else {}
+        # The SME's name from the capture profile, else the login it ran under.
+        self.recorded_by = _text_of(worker.get("name")) or _text_of(worker.get("id"))
         started = self.manifest.get("started_at")
         self.captured = started[:10] if isinstance(started, str) and len(started) >= 10 else ""
+        self.recording_start = _parse_ts(started)
 
         # RP-06: a hidden step never reaches the document.
         self.steps = sorted((st for st in self.annotations.get("steps") or []
@@ -178,14 +217,36 @@ class _Session:
             cid = st.get("case_id")
             self.steps_by_run.setdefault(cid if isinstance(cid, str) else None,
                                          []).append(st)
-        self.pattern_index, self.pattern_how = self._pick_pattern()
+        self.run_index = {run["case_id"]: i for i, run in enumerate(self.runs)}
+        self.pattern_index = self._pick_pattern()
 
         self.interactions = {}
+        self.times = {}
         for ev in events or []:
             if (isinstance(ev, dict) and ev.get("type") == "interaction"
                     and ev.get("event_id") and isinstance(ev.get("data"), dict)):
                 self.interactions[ev["event_id"]] = ev["data"]
+                self.times[ev["event_id"]] = str(ev.get("timestamp") or "")
         self.have_events = events is not None
+        self.ctx = StepContext(self.interactions, self.app_names)
+        self.video_start = video_start(self.manifest, self.annotations)
+        self.has_video = has_video(self.manifest, self.annotations)
+
+        # Each run's steps as units aligned to the reference run, and per
+        # unit identity: in how many runs it happened and how long it took.
+        pattern = self.run_steps(self.pattern_index) if self.pattern_index is not None else []
+        self.units = []
+        for i in range(len(self.runs)):
+            steps = self.run_steps(i)
+            self.units.append(steps if i == self.pattern_index or not pattern
+                              else _collapse_merged(pattern, steps))
+        self.key_runs: Counter = Counter()
+        self.key_ms: dict[str, list[float]] = {}
+        for units in self.units:
+            for key in {_align_key(u) for u in units}:
+                self.key_runs[key] += 1
+            for u in units:
+                self.key_ms.setdefault(_align_key(u), []).append(_unit_ms(u))
 
     def _pick_pattern(self):
         """C3: the run the analyst chose, when it names a recorded run; else
@@ -194,16 +255,35 @@ class _Session:
         cid = chosen.get("case_id") if isinstance(chosen, dict) else None
         for i, run in enumerate(self.runs):
             if cid and run["case_id"] == cid:
-                return i, "chosen"
+                return i
         for i, run in enumerate(self.runs):
             if self.steps_by_run.get(run["case_id"]):
-                return i, "first"
-        return None, None
+                return i
+        return None
+
+    def portrait_width_in(self) -> float:
+        """The printable width of the document's portrait page, in inches."""
+        p = self.portrait or {}
+        try:
+            return (p["width"] - p["left"] - p["right"]) / 914400
+        except (KeyError, TypeError):
+            return 6.0
 
     def field(self, key) -> str:
         doc = self.annotations.get("document")
         value = doc.get(key) if isinstance(doc, dict) else None
         return value.strip() if isinstance(value, str) else ""
+
+    def project(self) -> str:
+        """The capture's project, only when one was set: its name, else its
+        code; the capture app's defaults print nothing."""
+        config = self.manifest.get("config")
+        config = config if isinstance(config, dict) else {}
+        name = _text_of(self.manifest.get("engagement_name")) or _text_of(config.get("engagement_name"))
+        if name and name != "Default engagement":
+            return name
+        code = _text_of(self.manifest.get("engagement_id"))
+        return code if code and code != "default" else ""
 
     def run_label(self, index) -> str:
         label = self.runs[index].get("label")
@@ -213,42 +293,120 @@ class _Session:
     def run_steps(self, index) -> list:
         return self.steps_by_run.get(self.runs[index]["case_id"], [])
 
-    def drafted_description(self, step) -> str | None:
-        """The narration the drafting writes for this step's interactions,
-        recomputed with the same function (step_suggest's
-        _default_step_description), or None when it cannot be recomputed: no
-        events given to the export, a step without interactions, or an
-        interaction missing from the events."""
+    def run_units(self) -> list:
+        """Every unit of every run, the reference run first."""
+        order = ([self.pattern_index] if self.pattern_index is not None else []) + [
+            i for i in range(len(self.runs)) if i != self.pattern_index]
+        return [u for i in order for u in self.units[i]]
+
+    def where(self, step) -> str:
+        """"System, screen" of a step ("" when unknown)."""
+        system, screen = self.ctx.where(_members(step)[0])
+        return ", ".join(x for x in (system, screen) if x)
+
+    def system_of(self, step) -> str:
+        return self.ctx.where(_members(step)[0])[0]
+
+    def position(self, step) -> str:
+        """Where a step is in the recording: its run and its time from the
+        start of the recording ("Run 1 at 0:19": the same on every machine,
+        whatever its time zone), and the video time when the video's start
+        is known ("Run 1 at 0:19 (video 12:45)"); for a step outside every
+        run, "0:19 into the recording"."""
+        start = step_start(_members(step)[0])
+        if start is None:
+            return ""
+        cid = step.get("case_id")
+        index = self.run_index.get(cid) if isinstance(cid, str) else None
+        at = ""
+        if self.recording_start is not None and start >= self.recording_start:
+            at = clock((start - self.recording_start).total_seconds() * 1000)
+        if index is not None:
+            out = f"Run {index + 1} at {at}" if at else f"Run {index + 1}"
+        else:
+            out = f"{at} into the recording" if at else ""
+        if self.video_start is not None and start >= self.video_start:
+            video = "video " + clock((start - self.video_start).total_seconds() * 1000)
+            out = f"{out} ({video})" if out else video
+        return out
+
+    def context_line(self, step) -> str:
+        """The line under a step's heading: system and screen, its average
+        time, in how many runs it happened, where it is in the recording."""
+        parts = []
+        where = self.where(step)
+        if where:
+            parts.append(where)
+        if self.runs:
+            key = _align_key(step)
+            durations = self.key_ms.get(key) or [_unit_ms(step)]
+            parts.append(_duration(sum(durations) / len(durations)) + " on average")
+            parts.append(f"in {self.key_runs.get(key) or 1} of {_plural(len(self.runs), 'run')}")
+        else:
+            parts.append(_duration(_unit_ms(step)))
+        position = self.position(step)
+        if position:
+            parts.append(position)
+        return _SEP.join(parts)
+
+    def analyst_description(self, step) -> str:
+        """The step's description when the analyst wrote it. A draft's
+        description is the drafting's narration of its interactions, which
+        the step's field list and screenshots already carry: a description
+        that still equals it (recomputed with the same function,
+        step_suggest.is_drafted_description) is left out. Without the events
+        (none given to the export, or an interaction missing) it cannot be
+        recomputed, so it is shown."""
+        desc = step.get("description")
+        desc = desc.strip() if isinstance(desc, str) else ""
+        if not desc:
+            return ""
         ids = (step.get("evidence") or {}).get("interaction_event_ids") or []
         datas = [self.interactions.get(eid) for eid in ids]
         if not self.have_events or not ids or any(d is None for d in datas):
-            return None
-        return _default_step_description([{"data": d} for d in datas])
+            return desc
+        return "" if is_drafted_description(desc, [{"data": d} for d in datas]) else desc
 
-    def fields_of(self, step) -> list[tuple[str, str]]:
-        """The (field, value) pairs entered in this step, in the order first
-        entered; a field entered twice keeps its last value."""
-        out: dict[str, str] = {}
-        for eid in (step.get("evidence") or {}).get("interaction_event_ids") or []:
-            got = _entered(self.interactions.get(eid))
-            if got:
-                out[got[0]] = got[1]
-        return list(out.items())
+    def what_was_done(self, step) -> str:
+        """For a step outside the reference run: the analyst's description;
+        else the fields it entered; else the drafting's narration of what
+        was done (its clicks), each sentence once."""
+        for member in _members(step):
+            desc = self.analyst_description(member) if isinstance(member, dict) else ""
+            if desc:
+                return " ".join(desc.split())
+        fields = self.field_names(step)
+        if fields:
+            return "Fields: " + ", ".join(fields) + "."
+        for member in _members(step):
+            desc = member.get("description") if isinstance(member, dict) else None
+            desc = desc.strip() if isinstance(desc, str) else ""
+            if desc:
+                seen: dict[str, None] = {}
+                for sentence in re.split(r"(?<=\.)\s+", desc):
+                    if sentence.strip():
+                        seen.setdefault(sentence.strip(), None)
+                return " ".join(seen)
+        return ""
 
-    def applications(self) -> list[tuple[str, int]]:
-        """(readable name, interactions recorded), most used first."""
-        counts: Counter[str] = Counter()
-        cov = (self.stats.get("meta") or {}).get("vocab_coverage") or {}
-        if isinstance(cov, dict) and cov:
-            for proc, info in cov.items():
-                n = (info or {}).get("total_interactions") if isinstance(info, dict) else 0
-                counts[display_name(proc, self.app_names)] += n if _num(n) else 0
-        else:
-            for data in self.interactions.values():
-                proc = data.get("process_name")
-                if isinstance(proc, str) and proc.strip():
-                    counts[display_name(proc, self.app_names)] += 1
-        return [(name, n) for name, n in counts.most_common() if name]
+    def entries(self, step) -> list[tuple[str, str, dict, str]]:
+        """(field, value, interaction data, timestamp) of every field entry in
+        a step (its members' interactions, in order)."""
+        out = []
+        for member in _members(step):
+            for eid in (member.get("evidence") or {}).get("interaction_event_ids") or []:
+                data = self.interactions.get(eid)
+                got = _entered(data)
+                if got:
+                    out.append((got[0], got[1], data, self.times.get(eid, "")))
+        return out
+
+    def field_names(self, step) -> list[str]:
+        """The distinct fields entered in a step, in the order first entered."""
+        seen: dict[str, None] = {}
+        for field, _value, _data, _ts in self.entries(step):
+            seen.setdefault(field, None)
+        return list(seen)
 
 
 def _entered(data) -> tuple[str, str] | None:
@@ -282,6 +440,27 @@ def _entered(data) -> tuple[str, str] | None:
 
 # ---- shared bits ------------------------------------------------------------
 
+def _page_of(section) -> dict:
+    return {"width": section.page_width, "height": section.page_height,
+            "left": section.left_margin, "right": section.right_margin,
+            "top": section.top_margin, "bottom": section.bottom_margin}
+
+
+def _set_page(section, portrait: dict, landscape: bool) -> None:
+    """Portrait with the document's own page, or landscape with narrow
+    margins for a map."""
+    if landscape:
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width, section.page_height = portrait["height"], portrait["width"]
+        section.left_margin = section.right_margin = Inches(0.75)
+        section.top_margin = section.bottom_margin = Inches(0.75)
+    else:
+        section.orientation = WD_ORIENT.PORTRAIT
+        section.page_width, section.page_height = portrait["width"], portrait["height"]
+        section.left_margin, section.right_margin = portrait["left"], portrait["right"]
+        section.top_margin, section.bottom_margin = portrait["top"], portrait["bottom"]
+
+
 def _placeholder(doc, text):
     """An italic, clearly-marked gap for the analyst to complete."""
     p = doc.add_paragraph()
@@ -289,13 +468,14 @@ def _placeholder(doc, text):
     return p
 
 
-def _note(doc, text):
-    """A small italic caption (bases, disclaimers, table footnotes)."""
+def _small(doc, text, italic=False):
+    """A small line: the step context under a step heading, a caption."""
     p = doc.add_paragraph()
     run = p.add_run(text)
-    run.italic = True
+    run.italic = italic
     if Pt is not None:
         run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
     return p
 
 
@@ -314,22 +494,62 @@ def _field_or_placeholder(doc, text, placeholder):
         _placeholder(doc, placeholder)
 
 
-def _table(doc, header, rows):
+def _shade(cell, fill="E7E6E6"):
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill)
+    tc_pr.append(shd)
+
+
+def _bold(cell):
+    for p in cell.paragraphs:
+        for run in p.runs:
+            run.bold = True
+
+
+def _widths(table, inches):
+    """Fixed column widths (inches), so a table reads the same in every
+    viewer."""
+    if not inches or Inches is None:
+        return
+    table.autofit = False
+    for row in table.rows:
+        for cell, width in zip(row.cells, inches):
+            cell.width = Inches(width)
+
+
+def _table(doc, header, rows, widths=None):
+    """A grid table with a shaded, bold header row that repeats on every page."""
     t = doc.add_table(rows=1, cols=len(header))
+    t.style = "Table Grid"
     for cell, text in zip(t.rows[0].cells, header):
         cell.text = text
+        _bold(cell)
+        _shade(cell)
+    tr_pr = t.rows[0]._tr.get_or_add_trPr()
+    repeat = OxmlElement("w:tblHeader")
+    repeat.set(qn("w:val"), "true")
+    tr_pr.append(repeat)
     for row in rows:
         for cell, text in zip(t.add_row().cells, row):
             cell.text = str(text)
+    _widths(t, widths)
     return t
 
 
 def _kv_table(doc, rows):
+    """A two-column grid table, the labels bold and shaded."""
     t = doc.add_table(rows=0, cols=2)
+    t.style = "Table Grid"
     for k, v in rows:
         c = t.add_row().cells
         c[0].text = str(k)
         c[1].text = str(v)
+        _bold(c[0])
+        _shade(c[0])
+    _widths(t, (1.8, 4.2))
     return t
 
 
@@ -339,10 +559,74 @@ def _plural(n, word):
 
 def _joined(items):
     items = [str(i) for i in items]
+    if not items:
+        return ""
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
 
-# ---- title, 1. Findings, 2. Document control, 3. Introduction ---------------
+def _duration(ms) -> str:
+    """A step or run time: "12s", "1m 07s"; "under 1s" below half a second."""
+    if not _num(ms):
+        return "-"
+    return "under 1s" if ms < 500 else _fmt_duration(ms)
+
+
+def _fmt_ms(ms):
+    """A duration in the findings' format ("46s", "1m 07s"). A non-numeric
+    value (hand-edited annotations, odd analysis) is "-"."""
+    if not _num(ms):
+        return "-"
+    return _fmt_duration(ms)
+
+
+def _image_px(path) -> tuple[int, int] | None:
+    """(width, height) in pixels of an image python-docx can embed, or None."""
+    try:
+        img = _DocxImage.from_file(str(path))
+        if img.px_width > 0 and img.px_height > 0:
+            return img.px_width, img.px_height
+    except Exception as exc:  # noqa: BLE001 (an unreadable image is not embedded)
+        logger.warning("pdd_export: cannot read image %s: %s", path, exc)
+    return None
+
+
+def _map_page(doc, s, image, heading, alt, caption, then_portrait,
+              section_heading="") -> bool:
+    """A map on a page of its own: landscape when the image is wider than it
+    is tall, the picture as large as the page allows (so its labels print
+    legibly), with `alt` as the picture's alternative text. The page opens
+    with `section_heading` (a level 1 heading) when given. Returns False
+    (nothing written) when the image is missing or unreadable."""
+    if not image or not Path(image).exists() or Inches is None:
+        return False
+    px = _image_px(image)
+    if px is None:
+        return False
+    landscape = px[0] > px[1]
+    _set_page(doc.add_section(WD_SECTION.NEW_PAGE), s.portrait, landscape)
+    if section_heading:
+        doc.add_heading(section_heading, level=1)
+    doc.add_heading(heading, level=2)
+    # The printable area below the headings and above the caption.
+    avail_w, avail_h = (9.5, 5.9) if landscape else (s.portrait_width_in(), 7.9)
+    if section_heading:
+        avail_h -= 0.5
+    width = min(avail_w, avail_h * px[0] / px[1])
+    try:
+        shape = doc.add_picture(str(image), width=Inches(width))
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        logger.warning("pdd_export: could not embed map %s: %s", image, exc)
+        return False
+    shape._inline.docPr.set("descr", alt)
+    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if caption:
+        _small(doc, caption, italic=True)
+    if then_portrait:
+        _set_page(doc.add_section(WD_SECTION.NEW_PAGE), s.portrait, False)
+    return True
+
+
+# ---- title, 1. Document control, 2. Purpose and scope ------------------------
 
 def _write_title(doc, s):
     title = s.field("title")
@@ -353,210 +637,133 @@ def _write_title(doc, s):
         doc.add_heading("Process Definition Document", level=0)
 
 
-def _write_findings(doc, s):
-    """1 = the findings content, rendered from build_memo_model(): one source
-    of truth for each claim, number, and the analyst's selection."""
-    doc.add_heading("1. Findings", level=1)
-    model = build_memo_model(s.manifest, s.stats, s.analysis, s.annotations)
-    _note(doc, f"Captured {model['captured']} · {model['coverage_line']}")
-    write_memo_into_docx(doc, model, session_folder=s.folder, heading_offset=1)
-    _note(doc, "Every number above was measured from the recording; the "
-               "sentences are templated. The sections below document the "
-               "process in full.")
-    return model
-
-
 def _write_document_control(doc, s):
-    doc.add_heading("2. Document control", level=1)
-    _kv_table(doc, [
+    doc.add_heading("1. Document control", level=1)
+    rows = [
         ("Process", s.field("title") or "Not named yet"),
-        ("Engagement", s.manifest.get("engagement_id") or "Not recorded"),
-        ("Source recording", s.manifest.get("session_id") or "Not recorded"),
-        ("Recorded by", s.worker or "Not recorded"),
-        ("Captured", s.captured or "Not recorded"),
+        ("Session folder", s.folder.resolve().name or "Not recorded"),
+        ("Recorded", s.captured or "Not recorded"),
+        ("Recorded by", s.recorded_by or "Not recorded"),
         ("Runs recorded", str(len(s.runs))),
-        ("Document generated", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
-        ("Version", "Draft"),
-    ])
+        ("Video", "Attached" if s.has_video else "None"),
+    ]
+    project = s.project()
+    if project:
+        rows.append(("Project", project))
+    rows += [("Document generated", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+             ("Version", "Draft")]
+    _kv_table(doc, rows)
 
 
-def _write_introduction(doc, s):
-    doc.add_heading("3. Introduction", level=1)
-    doc.add_heading("3.1 Purpose", level=2)
-    _field_or_placeholder(doc, s.field("purpose"),
-                          "the business need this process serves and why it "
-                          "is being documented")
-    doc.add_heading("3.2 Scope", level=2)
-    _field_or_placeholder(doc, s.field("scope"),
-                          "where the process starts and ends, and what it covers")
-    doc.add_heading("3.3 Key contacts", level=2)
-    if s.worker:
-        _table(doc, ("Name", "Role", "Contact"),
-               [(s.worker, "Process operator (recorded)", "Not recorded")])
-    _field_or_placeholder(doc, s.field("contacts"),
-                          "the process owner, the subject-matter expert and "
-                          "the analyst")
+# The analyst's fields of section 2 (C6), each with the gap it leaves empty.
+_INTRO_FIELDS = (
+    ("2.1", "Purpose", "purpose",
+     "the business need this process serves and why it is being documented"),
+    ("2.2", "Scope", "scope", "what the process covers and what it leaves out"),
+    ("2.3", "Trigger", "trigger", "the event that starts the process"),
+    ("2.4", "Result", "result", "what the process has produced when it ends"),
+    ("2.5", "Key contacts", "contacts",
+     "the process owner, the subject-matter expert and the analyst"),
+)
 
 
-# ---- 4.1 Overview -----------------------------------------------------------
-
-def _write_overview(doc, s):
-    doc.add_heading("4.1 Overview", level=2)
-    apps = [name for name, _n in s.applications()]
-    lead = "This process was recorded"
-    if s.captured:
-        lead += f" on {s.captured}"
-    if s.worker:
-        lead += f" by {s.worker}"
-    lead += f": {_plural(len(s.runs), 'run')}" if s.runs else ": no runs were marked"
-    if apps:
-        lead += f", in {_plural(len(apps), 'application')} ({', '.join(apps)})"
-    doc.add_paragraph(lead + ".")
-
-    walls = [r["wall_clock_ms"] for r in s.runs if _num(r.get("wall_clock_ms"))]
-    if len(walls) >= 2:
-        doc.add_paragraph(
-            f"Each run took between {_fmt_ms(min(walls))} and {_fmt_ms(max(walls))} "
-            f"of elapsed time (mean {_fmt_ms(sum(walls) / len(walls))}); "
-            "section 4.4 has the timings of every run.")
-    elif walls:
-        doc.add_paragraph(f"The run took {_fmt_ms(walls[0])} of elapsed time; "
-                          "section 4.4 has its timings.")
-
-    meta = s.stats.get("meta") or {}
-    sb = meta.get("step_state_breakdown")
-    if isinstance(sb, dict) and _num(meta.get("step_count")):
-        parts = [f"{sb.get(key)} {word}" for key, word in (
-            ("confirmed", "confirmed"), ("edited", "edited by the analyst"),
-            ("manually_authored", "added by the analyst"),
-            ("auto_suggested", "drafted and not yet confirmed"))
-            if _num(sb.get(key)) and sb.get(key) > 0]
-        line = f"Steps: {meta['step_count']} in total"
-        if parts:
-            line += f" ({', '.join(parts)})"
-        hidden = sb.get("hidden")
-        if _num(hidden) and hidden > 0:
-            line += (f"; {hidden} hidden by the analyst and left out of this "
-                     "document")
-        doc.add_paragraph(line + ".")
-    _placeholder(doc, "a short business description of what the process does "
-                      "and the outcome it produces")
+def _write_purpose_and_scope(doc, s):
+    doc.add_heading("2. Purpose and scope", level=1)
+    for number, title, key, gap in _INTRO_FIELDS:
+        doc.add_heading(f"{number} {title}", level=2)
+        _field_or_placeholder(doc, s.field(key), gap)
 
 
-# ---- 4.2 Applications used ---------------------------------------------------
+# ---- 3. As-Is process -----------------------------------------------------------
 
-def _write_applications(doc, s):
-    doc.add_heading("4.2 Applications used", level=2)
-    apps = s.applications()
-    if not apps:
-        _placeholder(doc, "the applications this process touches")
-        return
-    _table(doc, ("Application", "Interactions recorded", "Role in process"),
-           [(name, n, "") for name, n in apps])
-    _note(doc, "The role each application plays is to be completed by the analyst.")
-
-
-# ---- 4.3 As-is process map ---------------------------------------------------
-
-def _write_process_map(doc, process_map_image):
-    doc.add_heading("4.3 As-is process map", level=2)
-    if process_map_image and Path(process_map_image).exists() and Inches is not None:
-        try:
-            doc.add_picture(str(process_map_image), width=Inches(6.0))
-            _note(doc, "The As-is process map, as exported from the viewer.")
-            return
-        except (FileNotFoundError, OSError, ValueError) as exc:
-            logger.warning("pdd_export: could not embed process map %s: %s",
-                           process_map_image, exc)
-    doc.add_paragraph("The process map is available in the viewer; the "
-                      "rendered diagram is not embedded in this document.")
+def _systems_in_order(s) -> list[str]:
+    """The systems of the process, in the order the reference run (then the
+    other runs, then the steps outside the runs) first used them."""
+    seen: dict[str, None] = {}
+    outside = s.steps_by_run.get(None, []) if s.runs else s.steps
+    for unit in s.run_units() + outside:
+        system = s.system_of(unit)
+        if system:
+            seen.setdefault(system, None)
+    return list(seen)
 
 
-# ---- 4.4 Measured timings ------------------------------------------------------
-
-def _has_bnva_override(annotations) -> bool:
-    """Has the analyst judged business-required time anywhere? The same gate
-    the viewer applies to the efficiency ratio (lab-phase §A5/§B3): while
-    every step's bnva_ms sits at the heuristic default of 0, the ratio is an
-    artifact of that default."""
-    ann = annotations if isinstance(annotations, dict) else {}
-    ovs = ann.get("analysis_overrides")
-    if not isinstance(ovs, list):
-        return False
-    return any(
-        isinstance(ov, dict) and ov.get("bnva_ms") is not None for ov in ovs)
-
-
-def _write_timings(doc, s):
-    """4.4: ONE table, one row per run (DA gap 5), each column's basis stated
-    once (DA gap 7); below it count, mean, minimum and maximum, never a
-    median or a percentile (DA gap 6)."""
-    doc.add_heading("4.4 Measured timings", level=2)
-    if not s.runs:
-        line = "Runs were not marked in this recording, so there are no per-run timings."
-        facts = s.analysis.get("facts")
-        if (isinstance(facts, dict) and "facts" not in s.failed
-                and facts.get("app_time_source") == "activity"
-                and _num(facts.get("active_ms")) and _num(facts.get("session_span_ms"))):
-            line += (f" The recording as a whole: {_fmt_ms(facts['active_ms'])} of "
-                     f"active time over a {_fmt_ms(facts['session_span_ms'])} span.")
-        doc.add_paragraph(line)
-    else:
-        rows = []
-        for i, run in enumerate(s.runs):
-            wall = run.get("wall_clock_ms")
-            rows.append((s.run_label(i), len(s.run_steps(i)),
-                         _fmt_ms(run.get("active_ms")),
-                         _fmt_ms(wall) if _num(wall) else "Not measured (no end marker)"))
-        _table(doc, ("Run", "Steps", "Active time", "Elapsed time (wall clock)"), rows)
-        _note(doc, "Active time is the time an application window was in the "
-                   "foreground during the run, minus the idle time the recorder "
-                   "measured. Elapsed time is the wall-clock time from the run's "
-                   "start marker to its end marker.")
-        for label, key in (("Active time", "active_ms"),
-                           ("Elapsed time", "wall_clock_ms")):
-            vals = [r[key] for r in s.runs if _num(r.get(key))]
-            if len(vals) >= 2:
-                doc.add_paragraph(
-                    f"{label} over {len(vals)} runs: mean {_fmt_ms(sum(vals) / len(vals))}, "
-                    f"minimum {_fmt_ms(min(vals))}, maximum {_fmt_ms(max(vals))}.")
-    efficiency = s.analysis.get("efficiency") or {}
-    if "efficiency" in s.failed:
-        _note(doc, f"The process-efficiency check {_COULD_NOT_RUN}.")
-    elif (efficiency.get("process_efficiency_ratio") is not None
-          and _has_bnva_override(s.annotations)):
-        doc.add_paragraph(
-            f"Value-add share: {round(efficiency['process_efficiency_ratio'] * 100)}% "
-            "of the measured step time, after the analyst judged which time "
-            "adds value.")
+def _flow_rows(s) -> list[tuple[str, str]]:
+    """The map from the runs as rows (step, what followed it): for each step
+    of the runs, in the order the reference run (then the others) first did
+    it, the steps that came next, each with the number of runs in which it
+    did. A step repeated back to back counts once, as on the map."""
+    runs = len(s.runs)
+    names: dict[str, str] = {"start": "Start", "end": "End"}
+    order: dict[str, None] = {"start": None}
+    follows: dict[str, dict[str, set]] = {}
+    ordered_runs = ([s.pattern_index] if s.pattern_index is not None else []) + [
+        i for i in range(runs) if i != s.pattern_index]
+    for i in ordered_runs:
+        keys = []
+        for unit in s.units[i]:
+            key = _align_key(unit)
+            names.setdefault(key, _step_name(unit))
+            if not keys or keys[-1] != key:
+                keys.append(key)
+        if not keys:
+            continue
+        path = ["start"] + keys + ["end"]
+        for a, b in zip(path, path[1:]):
+            order.setdefault(a, None)
+            follows.setdefault(a, {}).setdefault(b, set()).add(i)
+    rows = []
+    for key in order:
+        nexts = follows.get(key)
+        if not nexts:
+            continue
+        parts = sorted(nexts.items(), key=lambda kv: -len(kv[1]))
+        rows.append((names[key], "; ".join(
+            f"{names[b]} ({len(r)} of {_plural(runs, 'run')})" for b, r in parts)))
+    return rows
 
 
-# ---- 4.5 Detailed process steps ---------------------------------------------
+def _write_as_is(doc, s, process_map_image):
+    """3: the As-Is map on a page of its own (the section's heading on the
+    same page), then the steps. Without a picture of the map (the viewer
+    passes one), the map from the runs as a table, so the section is never
+    empty."""
+    if not _map_page(doc, s, process_map_image, "3.1 As-Is process map",
+                     "As-Is process map", "", then_portrait=True,
+                     section_heading="3. As-Is process"):
+        doc.add_heading("3. As-Is process", level=1)
+        doc.add_heading("3.1 As-Is process map", level=2)
+        rows = _flow_rows(s) if s.runs else []
+        if rows:
+            doc.add_paragraph("Each step and the steps that followed it in the runs:")
+            _table(doc, ("Step", "Followed by"), rows, widths=(2.4, 3.6))
+        else:
+            doc.add_paragraph("Runs were not marked in this recording, so there is no map.")
+        if (s.folder / "process_map_step.bpmn").exists():
+            doc.add_paragraph("The map file is process_map_step.bpmn in the session folder.")
+    _write_steps(doc, s)
+
 
 def _write_steps(doc, s):
-    doc.add_heading("4.5 Detailed process steps", level=2)
+    doc.add_heading("3.2 Process steps", level=2)
+    systems = _systems_in_order(s)
+    if systems:
+        doc.add_paragraph(f"The process runs through {_joined(systems)}.")
     if s.pattern_index is None:
         steps = s.steps
         if steps:
             why = ("Runs were not marked in this recording" if not s.runs
                    else "None of the recorded runs has steps")
-            _note(doc, f"{why}, so there is no pattern run; every step is "
-                       "listed in time order.")
+            doc.add_paragraph(f"{why}, so every step is listed in time order.")
     else:
         steps = s.run_steps(s.pattern_index)
-        how = ("the analyst chose it as the pattern" if s.pattern_how == "chosen"
-               else "no run has been chosen as the pattern yet, so the first "
-                    "run with steps is used")
-        doc.add_paragraph(f"The steps below are those of "
-                          f"{s.run_label(s.pattern_index)}, the pattern run: {how}.")
+        doc.add_paragraph(f"The steps as done in {s.run_label(s.pattern_index)}, "
+                          "the reference run.")
         drafts = sum(1 for st in steps if st.get("state") == "auto_suggested")
-        if steps and not drafts:
-            doc.add_paragraph(f"All {_plural(len(steps), 'step')} of this run are "
-                              "confirmed by the analyst.")
-        elif steps:
-            doc.add_paragraph(f"{drafts} of its {_plural(len(steps), 'step')} "
+        if drafts:
+            doc.add_paragraph(f"{drafts} of these {_plural(len(steps), 'step')} "
                               f"{'is a draft' if drafts == 1 else 'are drafts'} "
-                              "the analyst has not confirmed yet.")
+                              "not confirmed yet.")
     if not steps:
         doc.add_paragraph("No steps have been recorded for this run yet."
                           if s.pattern_index is not None
@@ -568,19 +775,13 @@ def _write_steps(doc, s):
 
 def _write_step(doc, s, step, number):
     doc.add_heading(f"{number}. {_step_name(step)}", level=3)
-    desc = step.get("description")
-    if isinstance(desc, str) and desc.strip():
-        # A description is shown when the analyst wrote it (C7). A draft's
-        # description is the drafting's generated narration of its
-        # interactions; the fields table and the screenshots below already
-        # carry that, so a description that still equals it is left out.
-        drafted = s.drafted_description(step)
-        if drafted is None or desc.strip() != drafted.strip():
-            _text(doc, desc)
-    fields = s.fields_of(step)
+    _small(doc, s.context_line(step))
+    desc = s.analyst_description(step)
+    if desc:
+        _text(doc, desc)
+    fields = s.field_names(step)
     if fields:
-        doc.add_paragraph("Fields entered in this run:")
-        _table(doc, ("Field", "Value entered"), fields)
+        doc.add_paragraph("Fields: " + ", ".join(fields) + ".")
     for ref in (step.get("evidence") or {}).get("screenshot_refs") or []:
         _embed_screenshot(doc, s.folder, ref, step)
     if (step.get("flags") or {}).get("waste") is True:
@@ -611,124 +812,7 @@ def _embed_screenshot(doc, folder, ref, step):
                            ref, step.get("step_id", "?"), exc)
 
 
-# ---- 4.6 Input data -----------------------------------------------------------
-
-def _write_input_data(doc, s):
-    """The distinct fields entered across the process, each with its step:
-    the pattern run's first, then what only the other runs entered."""
-    doc.add_heading("4.6 Input data", level=2)
-    if not s.have_events:
-        _note(doc, "The recorded field entries were not available to this export.")
-        return
-    first = s.run_steps(s.pattern_index) if s.pattern_index is not None else []
-    in_first = {id(st) for st in first}
-    ordered = first + [st for st in s.steps if id(st) not in in_first]
-    rows, seen = [], set()
-    for step in ordered:
-        for field, value in s.fields_of(step):
-            key = (field, _align_key(step))
-            if key not in seen:
-                seen.add(key)
-                rows.append((field, _step_name(step), value))
-    if not rows:
-        doc.add_paragraph("No field entries were recorded in the steps of this process.")
-        return
-    _table(doc, ("Field", "Step", "Example value"), rows)
-
-
-# ---- 5. Automation assessment ------------------------------------------------
-
-def _write_automation(doc, s, model):
-    """5.3 lists the repeated step sequences (ADR-0016 segment grain) that
-    section 1 does not already describe (DA gap 2), each with measured counts
-    and times only."""
-    doc.add_heading("5. Automation assessment", level=1)
-    doc.add_heading("5.1 In scope", level=2)
-    _placeholder(doc, "which steps or sequences of steps are in scope for automation")
-    doc.add_heading("5.2 Out of scope", level=2)
-    _placeholder(doc, "which steps are explicitly out of scope, and why")
-
-    doc.add_heading("5.3 Automation candidates", level=2)
-    doc.add_paragraph(
-        "A candidate is a whole sequence of steps: an unbroken stretch of work "
-        "in one application within one run, repeated in the recording. A "
-        "single click or keystroke is not a meaningful unit to automate on its "
-        "own; a sequence of steps is the smallest stretch an automated "
-        "solution can take over end to end.")
-    if "automation_candidates" in s.failed:
-        # C12: a failed check is not "this recording lacks the repetition".
-        _note(doc, f"The automation-candidate check {_COULD_NOT_RUN}.")
-        return
-    cands = sorted((c for c in s.analysis.get("automation_candidates") or []
-                    if isinstance(c, dict) and c.get("data_sufficiency") == "multi_instance"),
-                   key=lambda c: -(c.get("total_elapsed_ms") or 0))
-    if not cands:
-        doc.add_paragraph("No sequence of steps was repeated in this recording, "
-                          "so no candidate was identified from it.")
-        return
-    in_findings = {f.get("segment_signature"): i
-                   for i, f in enumerate(model.get("findings") or [], start=1)
-                   if f.get("segment_signature")}
-    covered = [in_findings[c.get("segment_signature")] for c in cands
-               if c.get("segment_signature") in in_findings]
-    rest = [c for c in cands if c.get("segment_signature") not in in_findings]
-    if covered:
-        doc.add_paragraph(
-            f"Section 1 already describes {_plural(len(covered), 'candidate')} "
-            f"(finding{'s' if len(covered) != 1 else ''} {_joined(sorted(covered))}); "
-            f"{'it is' if len(covered) == 1 else 'they are'} not repeated here.")
-    if rest:
-        rows = []
-        for c in rest:
-            labels = [str(x) for x in c.get("step_labels") or [] if str(x).strip()]
-            seq = " → ".join(labels[:5]) + (f" → … (+{len(labels) - 5} more)"
-                                            if len(labels) > 5 else "")
-            rows.append((seq or "(unnamed steps)",
-                         display_name(c.get("app"), s.app_names) or "Not recorded",
-                         c.get("instance_count") or 0,
-                         _fmt_ms(c.get("total_elapsed_ms")),
-                         _fmt_ms(c.get("mean_elapsed_ms"))))
-        _table(doc, ("Step sequence", "Application", "Times run", "Total time",
-                     "Average per run"), rows)
-        _note(doc, "Each repetition is timed from its first to its last "
-                   "recorded action; the sequences are ordered by total time.")
-
-
-def _write_tobe_map(doc, tobe_map_image):
-    """Embed an analyst-authored To-Be map when one was selected for the PDD
-    (ADR-0019), captioned so it is never mistaken for observed evidence. The
-    section is omitted entirely when no To-Be map is selected."""
-    if not (tobe_map_image and Path(tobe_map_image).exists() and Inches is not None):
-        return
-    doc.add_heading("5.4 Proposed to-be process", level=2)
-    try:
-        doc.add_picture(str(tobe_map_image), width=Inches(6.0))
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        logger.warning("pdd_export: could not embed to-be map %s: %s",
-                       tobe_map_image, exc)
-        return
-    _note(doc, "Analyst-authored proposed future-state process: drawn by hand, "
-               "NOT mined from the recorded events.")
-
-
-# ---- 6. Exceptions and variations ---------------------------------------------
-
-def _write_exceptions(doc, s):
-    doc.add_heading("6. Exceptions and variations", level=1)
-    _write_run_differences(doc, s)
-    doc.add_heading("6.2 Business rules and exceptions", level=2)
-    for label, key, placeholder in (
-            ("Business rules", "business_rules",
-             "the business rules the process follows"),
-            ("Exceptions", "exceptions",
-             "the business exceptions and how each one is handled")):
-        doc.add_paragraph().add_run(label).bold = True
-        _field_or_placeholder(doc, s.field(key), placeholder)
-    _write_rework(doc, s)
-    doc.add_heading("6.4 Application errors", level=2)
-    _placeholder(doc, "system or application errors that can interrupt the "
-                      "process, and the recovery steps for each")
-
+# ---- 4. Variations, rules and exceptions ------------------------------------------
 
 def _first_occurrences(steps):
     """(key, step, index in `steps`) for the first step of each align key."""
@@ -787,7 +871,9 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
     draft_keys, so it matches the merge (two drafts in a run match the
     pattern's merge of the same two drafts). At each position the merged
     pattern step with the most keys wins; among equals, the first one. The
-    same rule as viewer/run-differences.js collapseToReference."""
+    same rule as viewer/run-differences.js collapseToReference. A folded unit
+    keeps the run's steps it stands for under `members` (their times and
+    fields); the rule does not read them."""
     targets = []
     for step in pattern_steps:
         dk = step.get("draft_key") if isinstance(step, dict) else None
@@ -808,7 +894,10 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
             if n >= 2:
                 best, best_len = (keys, step), n
         if best is not None:
-            out.append({"name": best[1].get("name"), "draft_keys": list(best[0])})
+            members = list(run_steps[i:i + best_len])
+            out.append({"name": best[1].get("name"), "draft_keys": list(best[0]),
+                        "case_id": members[0].get("case_id") if isinstance(members[0], dict) else None,
+                        "members": members})
             i += best_len
         else:
             out.append(run_steps[i])
@@ -816,116 +905,260 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
     return out
 
 
-def _differences(pattern_steps, run_steps) -> list[str]:
-    """One line per difference of a run from the pattern run: steps it
-    skipped, extra steps, and steps done in a different order. Steps are
-    matched by their align key, after the run's stretches that spell a
-    merged pattern step are folded (_collapse_merged); a step repeated
-    within a run counts once here (section 6.3 lists repeats). The viewer's
-    differences review (viewer/run-differences.js) mirrors this; both are
-    pinned by shared/run-differences-golden.json."""
+def _difference_items(pattern_steps, run_steps) -> list[tuple]:
+    """The differences of a run from the pattern run, as
+    (kind, key, unit, previous unit or None, index in the pattern run or None)
+    with kind "extra", "order" or "skipped": extra steps and steps in a
+    different order, in the run's order, then the pattern steps the run
+    skipped. Steps are matched by their align key, after the run's stretches
+    that spell a merged pattern step are folded (_collapse_merged); a step
+    repeated within a run counts once here."""
     units = _collapse_merged(pattern_steps, run_steps)
     pat, run = _first_occurrences(pattern_steps), _first_occurrences(units)
     pat_keys, run_keys = [k for k, _s, _i in pat], [k for k, _s, _i in run]
     in_order = _common_order(pat_keys, run_keys)
-    out = []
+    items = []
     for key, step, i in run:
-        where = (f"after {_step_name(units[i - 1])}" if i
-                 else "at the start of the run")
+        prev = units[i - 1] if i else None
         if key not in pat_keys:
-            out.append(f"Extra step: {_step_name(step)} ({where}).")
+            items.append(("extra", key, step, prev, None))
         elif key not in in_order:
-            out.append(f"Different order: {_step_name(step)} (in this run {where}).")
+            items.append(("order", key, step, prev, None))
     for key, step, i in pat:
         if key not in run_keys:
-            out.append(f"Skipped: {_step_name(step)} (step {i + 1} of the pattern run).")
+            items.append(("skipped", key, step, None, i))
+    return items
+
+
+def _differences(pattern_steps, run_steps) -> list[str]:
+    """One line per difference of a run from the pattern run (_difference_items):
+    the viewer's differences review (viewer/run-differences.js) builds the
+    same lines; both are pinned by shared/run-differences-golden.json. The
+    document words them for its reader (_variation_lines)."""
+    out = []
+    for kind, _key, step, prev, index in _difference_items(pattern_steps, run_steps):
+        where = f"after {_step_name(prev)}" if prev is not None else "at the start of the run"
+        if kind == "extra":
+            out.append(f"Extra step: {_step_name(step)} ({where}).")
+        elif kind == "order":
+            out.append(f"Different order: {_step_name(step)} (in this run {where}).")
+        else:
+            out.append(f"Skipped: {_step_name(step)} (step {index + 1} of the pattern run).")
     return out
 
 
-def _write_run_differences(doc, s):
-    """6.1: every other run aligned to the pattern run (DA gap 4: only the
-    differences that occurred, no single-occurrence variant table)."""
-    doc.add_heading("6.1 Differences between runs", level=2)
+def _variation_lines(s, run_index) -> list[str]:
+    """The document's lines for one run: its differences from the reference
+    run (each extra step with its system, in how many runs it happened and
+    what was done; each skipped step with how many runs did it), then the
+    steps it repeated."""
+    m = len(s.runs)
+    lines = []
+    if run_index != s.pattern_index:
+        pattern = s.run_steps(s.pattern_index)
+        for kind, key, step, prev, _index in _difference_items(pattern, s.run_steps(run_index)):
+            name = _step_name(step)
+            if kind == "extra":
+                where = f" after {_step_name(prev)}" if prev is not None else " at the start of the run"
+                system = s.system_of(step)
+                shown = f"{name} ({system})" if system and system.lower() not in name.lower() else name
+                line = f"Extra step{where}: {shown}, in {s.key_runs.get(key) or 1} of {m} runs."
+                done = s.what_was_done(step)
+                lines.append(f"{line} {done}" if done else line)
+            elif kind == "order":
+                after = f"after {_step_name(prev)}" if prev is not None else "first"
+                lines.append(f"Different order: {name}, done {after} in this run.")
+            else:
+                lines.append(f"Skipped: {name} (done in {s.key_runs.get(key) or 0} of {m} runs).")
+    counts = Counter(_align_key(u) for u in s.units[run_index])
+    for key, unit, _i in _first_occurrences(s.units[run_index]):
+        if counts[key] > 1:
+            lines.append(f"Repeated: {_step_name(unit)}, {counts[key]} times.")
+    return lines
+
+
+def _write_variations(doc, s):
+    doc.add_heading("4. Variations, rules and exceptions", level=1)
+    doc.add_heading("4.1 Differences between runs", level=2)
     if not s.runs:
         doc.add_paragraph("Runs were not marked in this recording, so there are "
                           "no runs to compare.")
-        return
-    if s.pattern_index is None:
+    elif s.pattern_index is None:
         doc.add_paragraph("None of the recorded runs has steps, so the runs "
                           "cannot be compared.")
-        return
-    others = [i for i in range(len(s.runs)) if i != s.pattern_index]
-    if not others:
-        doc.add_paragraph("Only one run was recorded, so there is no other run "
-                          "to compare with the pattern run.")
-        return
-    doc.add_paragraph(
-        f"Each other run is compared with the pattern run "
-        f"({s.run_label(s.pattern_index)}), step by step. Only the differences "
-        "that occurred are listed; a step done more than once within a run is "
-        "listed under 6.3.")
-    pattern = s.run_steps(s.pattern_index)
-    same = []
-    for i in others:
-        diffs = _differences(pattern, s.run_steps(i))
-        if not diffs:
-            same.append(s.run_label(i))
-            continue
-        doc.add_paragraph().add_run(s.run_label(i)).bold = True
-        for line in diffs:
-            doc.add_paragraph(line, style="List Bullet")
-    if same:
-        doc.add_paragraph(f"No differences from the pattern run: {_joined(same)}.")
+    else:
+        same = []
+        for i in range(len(s.runs)):
+            lines = _variation_lines(s, i)
+            if not lines:
+                if i != s.pattern_index:
+                    same.append(s.run_label(i))
+                continue
+            label = s.run_label(i) + (" (the reference run)" if i == s.pattern_index else "")
+            doc.add_paragraph().add_run(label).bold = True
+            for line in lines:
+                doc.add_paragraph(line, style="List Bullet")
+        if len(s.runs) == 1:
+            doc.add_paragraph("Only one run was recorded.")
+        elif same:
+            doc.add_paragraph(f"No differences from the reference run: {_joined(same)}.")
+    doc.add_heading("4.2 Business rules", level=2)
+    _field_or_placeholder(doc, s.field("business_rules"),
+                          "the business rules the process follows")
+    doc.add_heading("4.3 Exceptions", level=2)
+    _field_or_placeholder(doc, s.field("exceptions"),
+                          "the business exceptions and the application errors "
+                          "that can interrupt the process, and how each one is handled")
 
 
-def _write_rework(doc, s):
-    """6.3: steps done more than once within one run (measured from the
-    recorded steps of every run, the pattern run included)."""
-    doc.add_heading("6.3 Rework", level=2)
+# ---- 5. Data ------------------------------------------------------------------
+
+def _rekey_value(data, value) -> str:
+    """The value as re-keying compares it, or "" when it does not count: a
+    secret, a noise literal, or shorter than the re-key minimum (facts.py;
+    a vocabulary that vouches for the field lowers it)."""
+    if not isinstance(data, dict) or data.get("kind") not in _TYPED_KINDS:
+        return ""
+    if data.get("value_redacted") is True or value.lower() in _NOISE_VALUES:
+        return ""
+    vouched = (data.get("vocab_semantics") or {}).get("carries_value") is True
+    return value if len(value) >= (REKEY_MIN_LEN_VOCAB if vouched else REKEY_MIN_LEN) else ""
+
+
+def _rekeyed(s) -> list[tuple[tuple[str, str], tuple[str, str], int]]:
+    """Re-keyed data: ((field, system) first typed, (field, system) typed
+    again, runs) for every value typed into a field in one system and typed
+    again into a field of another system in the same run, counted over the
+    runs, most frequent first."""
+    counts: Counter = Counter()
+    order: dict = {}
+    for units in s.units:
+        entries = []
+        for unit in units:
+            for field, value, data, ts in s.entries(unit):
+                v = _rekey_value(data, value)
+                if v:
+                    system = s.ctx.where_datas([data])[0]
+                    entries.append((ts, field, system, v))
+        first: dict[str, tuple[str, str]] = {}
+        pairs = set()
+        for _ts, field, system, v in sorted(entries, key=lambda e: _time_key(e[0])):
+            if v not in first:
+                first[v] = (field, system)
+            elif system and system != first[v][1]:
+                pairs.add((first[v], (field, system)))
+        for pair in pairs:
+            counts[pair] += 1
+            order.setdefault(pair, len(order))
+    return [(a, b, n) for (a, b), n in sorted(counts.items(),
+                                                key=lambda kv: (-kv[1], order[kv[0]]))]
+
+
+def _rekey_sentence(src, dst, n, runs) -> str:
+    often = "in every run" if n >= runs else f"in {n} of {runs} runs"
+    if src[0] == dst[0]:
+        return f"{src[0]} is typed in {src[1]} and again in {dst[1]} {often}."
+    return f"{src[0]} ({src[1]}) is typed again as {dst[0]} ({dst[1]}) {often}."
+
+
+def _write_data(doc, s):
+    """The distinct fields entered across the process, each with its system
+    and screen and its step: the reference run's first, then what only the
+    other runs (and the steps outside the runs) entered. Re-keyed fields are
+    marked, and each re-keying is stated below the table."""
+    doc.add_heading("5. Data", level=1)
+    if not s.have_events:
+        doc.add_paragraph("The recorded field entries were not available to this export.")
+        return
+    outside = s.steps_by_run.get(None, []) if s.runs else s.steps
+    rows, seen = [], set()
+    for unit in s.run_units() + outside:
+        for field, value, data, _ts in s.entries(unit):
+            key = (field, _align_key(unit))
+            if key in seen:
+                continue
+            seen.add(key)
+            system, screen = s.ctx.where_datas([data])
+            rows.append([field, ", ".join(x for x in (system, screen) if x),
+                         _step_name(unit), value, system])
+    if not rows:
+        doc.add_paragraph("No field entries were recorded in the steps of this process.")
+        return
+    rekeys = _rekeyed(s)
+    marks: dict[tuple[str, str], list[str]] = {}
+    for src, dst, _n in rekeys:
+        marks.setdefault(src, []).append(f"as {dst[0]} ({dst[1]})")
+        marks.setdefault(dst, []).append(f"from {src[0]} ({src[1]})")
+    _table(doc, ("Field", "System and screen", "Step", "Example value", "Re-keyed"),
+           [(f, where, step, value, "; ".join(marks.get((f, system), [])))
+            for f, where, step, value, system in rows],
+           widths=(1.15, 1.35, 1.35, 1.15, 1.0))
+    if rekeys:
+        doc.add_paragraph().add_run("Re-keyed data").bold = True
+        for src, dst, n in rekeys:
+            doc.add_paragraph(_rekey_sentence(src, dst, n, len(s.runs) or 1),
+                              style="List Bullet")
+
+
+# ---- 6. Applications and time -------------------------------------------------
+
+def _write_applications_and_time(doc, s):
+    doc.add_heading("6. Applications and time", level=1)
+    doc.add_heading("6.1 Time per run", level=2)
     if not s.runs:
-        doc.add_paragraph("Runs were not marked in this recording, so repeated "
-                          "work within a run cannot be identified.")
+        doc.add_paragraph("Runs were not marked in this recording, so there is "
+                          "no time per run.")
+    else:
+        rows = []
+        for i, run in enumerate(s.runs):
+            wall = run.get("wall_clock_ms")
+            rows.append((s.run_label(i), len(s.run_steps(i)),
+                         _fmt_ms(run.get("active_ms")),
+                         _fmt_ms(wall) if _num(wall) else "Not measured: the run was not ended"))
+        _table(doc, ("Run", "Steps", "Active time", "Elapsed time"), rows,
+               widths=(2.4, 0.8, 1.4, 1.4))
+        # AD-28: the runs are a walkthrough, not the day-to-day work.
+        doc.add_paragraph(_WALKTHROUGH)
+    doc.add_heading("6.2 Time in each application", level=2)
+    units = s.run_units() if s.runs else s.steps
+    per: dict[str, dict] = {}
+    for unit in units:
+        system = s.system_of(unit) or "Not recorded"
+        row = per.setdefault(system, {"screens": {}, "steps": {}, "ms": 0.0})
+        screen = s.ctx.where(_members(unit)[0])[1]
+        if screen:
+            row["screens"].setdefault(screen, None)
+        row["steps"].setdefault(_align_key(unit), _step_name(unit))
+        row["ms"] += _unit_ms(unit)
+    if not per:
+        doc.add_paragraph("No steps have been recorded for this session yet.")
         return
-    lines = []
-    for i in range(len(s.runs)):
-        steps = s.run_steps(i)
-        counts = Counter(_align_key(st) for st in steps)
-        repeated = [f"{_step_name(st)} ({counts[key]} times)"
-                    for key, st, _i in _first_occurrences(steps) if counts[key] > 1]
-        if repeated:
-            lines.append(f"{s.run_label(i)}: {'; '.join(repeated)}.")
-    if not lines:
-        doc.add_paragraph("No step was done more than once within a run.")
-        return
-    doc.add_paragraph("Steps done more than once within one run:")
-    for line in lines:
-        doc.add_paragraph(line, style="List Bullet")
+    runs = len(s.runs)
+    ordered = sorted(per.items(), key=lambda kv: -kv[1]["ms"])
+    _table(doc, ("System", "Screens", "Steps", "Time per run" if runs else "Time"),
+           [(system, ", ".join(row["screens"]) or "Not recorded",
+             ", ".join(row["steps"].values()),
+             _duration(row["ms"] / runs) if runs else _duration(row["ms"]))
+            for system, row in ordered],
+           widths=(1.1, 1.6, 2.4, 0.9))
 
 
-# ---- 7. Notes -----------------------------------------------------------------
+# ---- 7. Improvement and automation scope, 8. Notes ---------------------------------
+
+def _write_improvement(doc, s, tobe_map_image, notes_follow):
+    doc.add_heading("7. Improvement and automation scope", level=1)
+    _field_or_placeholder(doc, s.field("improvement"),
+                          "what to improve or automate, what stays manual, and why")
+    _map_page(doc, s, tobe_map_image, "7.1 To-Be process map", "To-Be process map",
+              "Proposed To-Be process, drawn by the analyst.", then_portrait=notes_follow)
+
 
 def _write_notes(doc, s):
-    """7: the analyst's notes (C6 `document.notes`) as the last section. An
+    """8: the analyst's notes (C6 `document.notes`) as the last section. An
     empty field adds nothing, no heading and no placeholder: notes are
     optional, so their absence is not a gap in the document."""
     notes = s.field("notes")
     if not notes:
         return
-    doc.add_heading("7. Notes", level=1)
+    doc.add_heading("8. Notes", level=1)
     _text(doc, notes)
-
-
-# ---- footer & formatting ------------------------------------------------------
-
-def _write_footer(doc):
-    _note(doc, "Generated by the Process Discovery Viewer on "
-               + datetime.now(timezone.utc).strftime("%Y-%m-%d") + ".")
-
-
-def _fmt_ms(ms):
-    """A duration in the findings' format ("46s", "1m 07s"), so section 1 and
-    the timings table print the same number the same way (DA gap 7). A
-    non-numeric value (hand-edited annotations, odd analysis) is "-"."""
-    if not _num(ms):
-        return "-"
-    return _fmt_duration(ms)

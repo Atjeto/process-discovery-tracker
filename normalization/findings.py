@@ -167,9 +167,9 @@ def _derived_app_time_note(facts: dict) -> str:
     timestamps (no activity signal in the recording), every claim built on
     them says so. Empty for measured recordings."""
     if (facts or {}).get("app_time_source") == "interactions":
-        return (" This recording has no direct window-focus signal, so the "
-                "app time here is estimated from where clicks and typing "
-                "happened.")
+        return (" This recording does not say which window was in front, so "
+                "the time per application is estimated from where the clicks "
+                "and typing happened.")
     return ""
 
 
@@ -186,9 +186,9 @@ def _detect_screen_time_sink(events, facts, app_names=None) -> list[dict]:
     run = _top_app_longest_run(events, lead["app"])
     if run:
         refs = _screenshots_between(events, run[0], run[1])
-    claim = (f"{display_name(lead['app'], app_names)} accounts for "
-             f"{_pct(lead['share'])} of measured "
-             f"foreground time ({_fmt_ms(lead['ms'])} of {_fmt_ms(active)}).")
+    claim = (f"{display_name(lead['app'], app_names)} takes "
+             f"{_pct(lead['share'])} of the active time "
+             f"({_fmt_ms(lead['ms'])} of {_fmt_ms(active)}).")
     return [{
         "id": _fid("screen_time_sink", lead["app"]),
         "detector": "screen_time_sink",
@@ -202,9 +202,9 @@ def _detect_screen_time_sink(events, facts, app_names=None) -> list[dict]:
             "screenshot_refs": refs,
         },
         "tier": 1,
-        "confidence_note": "Time the app spent as the front window; short "
-                           "pauses inside the app count too, unless the "
-                           "recorder flagged them as idle."
+        "confidence_note": "The time the application was the window in "
+                           "front; short pauses in it count too, unless the "
+                           "recorder marked them as waiting."
                            + _derived_app_time_note(facts),
     }]
 
@@ -220,9 +220,9 @@ def _detect_fragmentation(facts) -> list[dict]:
     show_rate = (isinstance(span, (int, float)) and not isinstance(span, bool)
                  and span >= PER_HOUR_MIN_SPAN_MS)
     rate = f" ({facts.get('switches_per_hour') or 0}/h)" if show_rate else ""
-    claim = (f"Focus moved between apps {switches} times{rate}; the mean "
-             f"unbroken stretch in one app was {_fmt_ms(mean_dwell)}, the "
-             f"longest {_fmt_ms(facts.get('longest_focus_ms'))}.")
+    claim = (f"The work moved between applications {switches} times{rate}; "
+             f"it stayed in one application {_fmt_ms(mean_dwell)} on "
+             f"average, {_fmt_ms(facts.get('longest_focus_ms'))} at most.")
     evidence = {"app_switches": switches}
     if show_rate:
         evidence["switches_per_hour"] = facts.get("switches_per_hour") or 0
@@ -234,9 +234,9 @@ def _detect_fragmentation(facts) -> list[dict]:
         "claim": claim,
         "evidence": evidence,
         "tier": 1,
-        "confidence_note": "A switch is counted each time a different app "
-                           "comes to the front; near-instant switches can "
-                           "merge into one." + _derived_app_time_note(facts),
+        "confidence_note": "A move counts each time another application "
+                           "comes to the front; moves a moment apart can "
+                           "count as one." + _derived_app_time_note(facts),
     }]
 
 
@@ -250,10 +250,10 @@ def _detect_waiting(facts, analysis_blocks) -> list[dict]:
     if idle <= 0 and waiting_in_steps <= 0:
         return []
     if waiting_in_steps > 0:
-        claim = (f"{_fmt_ms(idle)} of measured idle time in the session; "
-                 f"{_fmt_ms(waiting_in_steps)} of it fell inside annotated steps.")
+        claim = (f"{_fmt_ms(idle)} of waiting in the recording; "
+                 f"{_fmt_ms(waiting_in_steps)} of it within steps.")
     else:
-        claim = f"{_fmt_ms(idle)} of measured idle time in the session."
+        claim = f"{_fmt_ms(idle)} of waiting in the recording."
     return [{
         "id": _fid("waiting", idle, round(waiting_in_steps)),
         "detector": "waiting",
@@ -263,9 +263,9 @@ def _detect_waiting(facts, analysis_blocks) -> list[dict]:
             "waiting_in_steps_ms": round(waiting_in_steps),
         },
         "tier": 1,
-        "confidence_note": "Idle means no mouse or keyboard input for a "
-                           "while; waiting on a slow system while still "
-                           "moving the mouse is not counted.",
+        "confidence_note": "Waiting means no mouse or keyboard input for a "
+                           "while; waiting on a slow system while moving the "
+                           "mouse does not count.",
     }]
 
 
@@ -355,9 +355,9 @@ def _detect_rekey_transfer(events, app_names=None) -> list[dict]:
         return []
     top = rows[0]
     apps = ", ".join(display_name(a, app_names) for a in top["apps"])
-    claim = (f"{len(rows)} value{'s were' if len(rows) != 1 else ' was'} "
-             f"typed into more than one app; for example, \"{top['value']}\" was "
-             f"entered in {apps} ({top['entry_count']} times in total).")
+    claim = (f"Re-keyed data: {len(rows)} value{'s' if len(rows) != 1 else ''} "
+             f"typed again in another application; for example, "
+             f"\"{top['value']}\" in {apps} ({top['entry_count']} entries).")
     return [{
         "id": _fid("rekey_transfer", len(rows), top["value"]),
         "detector": "rekey_transfer",
@@ -376,9 +376,9 @@ def _detect_rekey_transfer(events, app_names=None) -> list[dict]:
             "event_ids": top["event_ids"][:20],
         },
         "tier": 1,
-        "confidence_note": "Counted when exactly the same typed text appears "
-                           "in two or more apps; a copy-paste transfer "
-                           "that is never re-typed does not show up here.",
+        "confidence_note": "Counted when exactly the same text is typed in "
+                           "two or more applications; a value pasted rather "
+                           "than typed does not show here.",
     }]
 
 
