@@ -9,6 +9,10 @@ compaction). Plan of record: `docs/To-Do/BA-HELPER-PLAN-2026-09-22.md` (approved
 "start implementing and don't stop until the whole plan is implemented and a light
 version is delivered." The owner is asleep; the session is fully autonomous.
 
+## Goal update (owner, 2026-09-23 night, verbatim)
+
+"Going to sleep. /goal continue building until everything is covered. If limit is reached, recover once it resets." Queue: LUX-P and V1 (running), V2 (Steps and map per AD-26/AD-28), C (capture), V3 companion basics (AD-27: projects from a video or from nothing, hand-added screenshots, notes pinned to steps or moments, attachments, systems for hand-added steps), docs (L12b-2 plus the review's docs items), then a validated packaged build (publish only when ready; the owner said there is no rush). Spend-limit recovery: after a 429 kill, diff the trees, wait for the reset with a background sleep, then resume the same agents with their inventories. No narration.
+
 ## Operating mode
 
 - Coordinator (main session) plans, briefs, reviews, verifies, commits. Agents
