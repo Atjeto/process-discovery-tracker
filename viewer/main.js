@@ -30,12 +30,18 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
 const { runNormalize } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}) };
 const AnnoStore = require("./annotations-store.js");
 const NamesStore = require("./names-store.js");
+const ProcessesStore = require("./processes-store.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 
 /* Contract C4: the remembered-names store, one per analyst machine, under the
    viewer's userData folder (an e2e run's throwaway profile gets its own). */
 function namesStorePath() {
   return NamesStore.namesStorePath(app.getPath("userData"));
+}
+
+/* Contract C5: the saved processes, next to the remembered names. */
+function processesStorePath() {
+  return ProcessesStore.processesStorePath(app.getPath("userData"));
 }
 
 let mainWindow = null;
@@ -518,6 +524,68 @@ ipcMain.handle("viewer:readRememberedNames", () => {
     return { ok: true, path: p, status: r.status, names: r.names };
   } catch (e) {
     return { ok: false, path: p, error: (e && e.message) || String(e) };
+  }
+});
+
+/* Forget a remembered name (the Remembered names dialog). Payload
+   { draftKey }. Result { ok: true, path, removed } or { ok: false, code,
+   error, path }; never throws across IPC. */
+ipcMain.handle("viewer:forgetStepName", (_e, payload) => {
+  let p = null;
+  try {
+    p = namesStorePath();
+    const r = NamesStore.forgetName(p, (payload || {}).draftKey);
+    return { ok: true, path: r.path, removed: r.removed };
+  } catch (e) {
+    console.error("[viewer:forgetStepName] not forgotten:", e && e.message);
+    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
+  }
+});
+
+/* --- Saved processes (C5) ---------------------------------------- */
+
+/* The saved processes, for the comparison on open. Result
+   { ok: true, path, status: "absent" | "ok", processes } or
+   { ok: false, path, error } (the store exists but cannot be read). */
+ipcMain.handle("viewer:readProcesses", () => {
+  let p = null;
+  try {
+    p = processesStorePath();
+    const r = ProcessesStore.readProcessesFile(p);
+    if (r.status === "unreadable") return { ok: false, path: p, error: r.error };
+    return { ok: true, path: p, status: r.status, processes: r.processes };
+  } catch (e) {
+    return { ok: false, path: p, error: (e && e.message) || String(e) };
+  }
+});
+
+/* "Save as this process". Payload { name, sourceSessionId, steps }. Result
+   { ok: true, path, id, previous } (previous: the process this save replaced,
+   for Undo, or null) or { ok: false, code, error, path }. The write is atomic
+   and never replaces an unreadable store (processes-store.js). */
+ipcMain.handle("viewer:saveProcess", (_e, payload) => {
+  let p = null;
+  try {
+    p = processesStorePath();
+    const r = ProcessesStore.saveProcess(p, payload || {});
+    return { ok: true, path: r.path, id: r.id, previous: r.previous };
+  } catch (e) {
+    console.error("[viewer:saveProcess] not saved:", e && e.message);
+    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
+  }
+});
+
+/* Undo "Save as this process". Payload { id, previous }. Result
+   { ok: true, path, changed } or { ok: false, code, error, path }. */
+ipcMain.handle("viewer:undoSaveProcess", (_e, payload) => {
+  let p = null;
+  try {
+    p = processesStorePath();
+    const r = ProcessesStore.undoSaveProcess(p, payload || {});
+    return { ok: true, path: r.path, changed: r.changed };
+  } catch (e) {
+    console.error("[viewer:undoSaveProcess] not undone:", e && e.message);
+    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
   }
 });
 

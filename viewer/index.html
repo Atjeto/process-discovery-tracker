@@ -266,12 +266,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button id="btn-add-manual-step" class="primary" title="Add a step by hand: after the selected step of the open run, or at the video playhead">+ Add step</button>
             <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
                  syncMultiSelectButtons() toggles `hidden`. -->
-            <button id="btn-delete-selected-steps" hidden title="Delete all the ticked steps at once">Delete selected</button>
+            <button id="btn-delete-selected-steps" hidden title="Hide the ticked drafted steps and delete the ticked steps you added">Hide selected</button>
             <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
             <button id="btn-ignored-apps" title="Choose which apps to leave out of step suggestions (e.g. OBS, the tracker itself). Re-analyzes the session.">Ignored apps...</button>
+            <button id="btn-remembered-names" title="The names this computer remembers for drafted steps: rename or forget one">Remembered names...</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
-            <span class="hint"><span class="kbd-hint" title="Up / Down: previous / next step · Enter: rename · S: split · M: merge with next · N: new step · Ctrl+Enter: confirm run · Ctrl+click: tick for merge or delete">⌨ shortcuts</span> · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
+            <span class="hint"><span class="kbd-hint" title="Up / Down: previous / next step · Enter: rename · S: split · M: merge with next · N: new step · Ctrl+Enter: confirm run · Ctrl+click: tick for merge or hide">⌨ shortcuts</span> · <a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="mini-timeline-pane">
             <div class="mini-timeline-header">
@@ -520,23 +521,29 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Give the steps the names you want in the document: double-click a name, or select the step and press Enter.</li>
             <li>Click <strong>Confirm run</strong>: the steps you did not change are accepted as they are.</li>
           </ol>
-          <p>While you confirm it, the app counts the boundary fixes you make to the pattern run: merges, splits, added steps, and hidden or deleted drafts. Renames are not counted, and Ctrl+Z takes a fix back. Once the run is confirmed it shows one line, for example <em>Run 1: 12 drafted steps, 2 boundary fixes (merge 1, split 0, add 1, drop 0)</em>; <em>Copy</em> puts that line on the clipboard.</p>
+          <p>While you confirm it, the app counts the boundary fixes you make to the pattern run: merges, splits, added steps, and hidden drafts. Renames are not counted, and Ctrl+Z takes a fix back. Once the run is confirmed it shows one line, for example <em>Run 1: 12 drafted steps, 2 boundary fixes (merge 1, split 0, add 1, drop 0)</em>; <em>Copy</em> puts that line on the clipboard. <em>Reopen run</em> takes a confirmation back: the confirmed steps are drafts again, the steps you edited or added stay as they are, and the count is kept.</p>
+          <h3>Fixes that carry to the other runs</h3>
+          <p>When you merge drafted steps in the pattern run, the same drafted steps in the other runs (the same steps, one after the other) are merged too and take the pattern step's name. A short message says how many runs took the merge, and one Ctrl+Z undoes all of it. When you hide a drafted step in the pattern run, the message offers <em>Hide in all runs</em> for the same drafted step in the other runs. Splits and added steps are not carried: make them in each run that needs them. A carried fix is not counted as a boundary fix.</p>
+          <h3>Differences between runs</h3>
+          <p>Every other run is compared with the pattern run, step by step, the way the PDD compares them: a run's line counts its differences, and an open run lists them above its steps: extra steps (and where they happen), skipped steps (with their number in the pattern run), and steps done in a different order. A step done twice within one run counts once here.</p>
+          <h3>Saved processes</h3>
+          <p>Once the pattern run is confirmed, <em>Save as this process</em> stores its steps on this computer under a name. When you later open a session of the same process (most of its drafted steps match) and none of its runs is confirmed yet, every run is compared with the saved process instead, and a line above the runs says so. <em>Stop comparing</em> compares them with the session's own pattern run, and confirming the pattern run does the same.</p>
           <h3>Names are remembered</h3>
-          <p>When you rename a drafted step, the matching drafted steps in the other runs (the same screen and the same closing action) take the name at once, and the name is remembered on this computer: the next analysis, of this session or of a later one, drafts those steps with it. Such a step shows a small <em>remembered</em> tag. The name box suggests remembered names and the names already used in the session.</p>
+          <p>When you rename a drafted step, the matching drafted steps in the other runs (the same screen and the same closing action) take the name at once, and the name is remembered on this computer: the next analysis, of this session or of a later one, drafts those steps with it. Such a step shows a small <em>remembered</em> tag. The name box suggests remembered names and the names already used in the session. <em>Remembered names</em> (toolbar) lists them: rename one, or forget it (the names already in a session stay).</p>
           <h3>What the step labels mean</h3>
           <ul class="help-list">
             <li><span class="step-chip step-chip-draft">Draft</span> drafted by the app and not checked yet. Every analysis drafts it again.</li>
             <li><span class="step-chip step-chip-confirmed">Confirmed</span> you accepted the draft as it is (Confirm run). Every analysis keeps it.</li>
             <li><span class="step-chip step-chip-edited">Edited</span> you changed the step: its name, its boundaries or its flags. Every analysis keeps it.</li>
             <li><span class="step-chip step-chip-added">Added</span> you added the step by hand. Every analysis keeps it.</li>
-            <li><span class="step-chip step-chip-hidden">Hidden</span> you took the step out as noise. It stays out of the list (<em>Show hidden steps</em> on its run lists it again), and every analysis keeps it out.</li>
+            <li><span class="step-chip step-chip-hidden">Hidden</span> you took the step out. It stays out of the list (<em>Show hidden steps</em> on its run lists it again), and every analysis keeps it out.</li>
           </ul>
           <p>A run reads <em>Draft</em> while it still has drafted steps, and <em>Confirmed</em> once every step in it is confirmed, edited or added.</p>
           <h3>Cutting down step noise</h3>
           <ul class="help-list">
             <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process (they're left out of the drafting entirely), and the session re-analyzes. The choice is saved per session, so a re-analysis keeps them out.</li>
-            <li><strong>Hide as noise</strong> (step editor or right-click): take a single step out. Unlike delete, a hidden step survives re-analysis: an analysis won't bring it back.</li>
-            <li><strong>Delete selected</strong>: tick (or Ctrl+click) two or more steps, then delete them all in one go (Ctrl+Z restores). The next analysis drafts a deleted drafted step again.</li>
+            <li><strong>Hide step</strong> (step editor or right-click): take a single step out. A hidden step survives re-analysis: an analysis won't bring it back. A drafted step is hidden, never deleted (the next analysis would draft a deleted one again); only a step you added can be deleted.</li>
+            <li><strong>Hide selected</strong>: tick (or Ctrl+click) two or more steps, then take them all out in one go (Ctrl+Z restores). Drafted steps are hidden; steps you added are deleted.</li>
           </ul>
           <h3>Flags</h3>
           <p>A step can be flagged as <strong>Waste</strong>: it shouldn't be needed (rework, duplicate effort, fixing someone else's mistake). The flag doesn't change the data, but it shows up in exports and statistics.</p>

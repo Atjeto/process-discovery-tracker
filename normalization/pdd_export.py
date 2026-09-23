@@ -26,6 +26,7 @@ Uses python-docx.
 """
 
 from __future__ import annotations
+import json
 import logging
 import math
 from collections import Counter
@@ -105,12 +106,37 @@ def _start_key(step):
     return (t is None, t.timestamp() if t else 0.0, str(start or ""))
 
 
+def _key_list(value):
+    """A list of draft keys (a non-empty list of non-empty strings), else None."""
+    if isinstance(value, list) and value and all(isinstance(k, str) and k for k in value):
+        return value
+    return None
+
+
+def _step_keys(step):
+    """The draft keys a step stands for: [draft_key] for a drafted step, its
+    draft_keys for merged drafts, None for a step with no draft identity."""
+    if not isinstance(step, dict):
+        return None
+    dk = step.get("draft_key")
+    if isinstance(dk, str) and dk:
+        return [dk]
+    keys = _key_list(step.get("draft_keys"))
+    return list(keys) if keys else None
+
+
 def _align_key(step) -> str:
-    """How a step is matched across runs: its value-free draft_key, else (a
-    hand-added step) the process_label of its name."""
+    """How a step is matched across runs: its value-free draft_key; else, for
+    merged drafts, their draft_keys in order ("merge:" and a JSON array, the
+    same text viewer/run-differences.js builds); else (a hand-added step) the
+    process_label of its name. Pinned with the viewer by
+    shared/run-differences-golden.json."""
     dk = step.get("draft_key")
     if isinstance(dk, str) and dk:
         return "draft:" + dk
+    keys = _key_list(step.get("draft_keys"))
+    if keys:
+        return "merge:" + json.dumps(keys, ensure_ascii=False, separators=(",", ":"))
     return "label:" + process_label(str(step.get("name") or ""))
 
 
@@ -736,17 +762,75 @@ def _common_order(a, b) -> set:
     return keys
 
 
+def _stretch_at(run, i, keys) -> int:
+    """How many steps from run[i] on read exactly `keys` (a merged step's
+    keys flattened in place), or 0."""
+    k, j = 0, i
+    while k < len(keys):
+        if j >= len(run):
+            return 0
+        step_keys = _step_keys(run[j])
+        if not step_keys:
+            return 0
+        for key in step_keys:
+            if k >= len(keys) or key != keys[k]:
+                return 0
+            k += 1
+        j += 1
+    return j - i
+
+
+def _collapse_merged(pattern_steps, run_steps) -> list:
+    """The run's steps, with every stretch of at least two consecutive steps
+    whose draft keys, read in order, are exactly the draft_keys of a merged
+    pattern step folded into one unit carrying that step's name and
+    draft_keys, so it matches the merge (two drafts in a run match the
+    pattern's merge of the same two drafts). At each position the merged
+    pattern step with the most keys wins; among equals, the first one. The
+    same rule as viewer/run-differences.js collapseToReference."""
+    targets = []
+    for step in pattern_steps:
+        dk = step.get("draft_key") if isinstance(step, dict) else None
+        if not isinstance(step, dict) or (isinstance(dk, str) and dk):
+            continue
+        keys = _key_list(step.get("draft_keys"))
+        if keys and len(keys) >= 2:
+            targets.append((keys, step))
+    if not targets:
+        return list(run_steps)
+    out, i = [], 0
+    while i < len(run_steps):
+        best, best_len = None, 0
+        for keys, step in targets:
+            if best is not None and len(keys) <= len(best[0]):
+                continue
+            n = _stretch_at(run_steps, i, keys)
+            if n >= 2:
+                best, best_len = (keys, step), n
+        if best is not None:
+            out.append({"name": best[1].get("name"), "draft_keys": list(best[0])})
+            i += best_len
+        else:
+            out.append(run_steps[i])
+            i += 1
+    return out
+
+
 def _differences(pattern_steps, run_steps) -> list[str]:
     """One line per difference of a run from the pattern run: steps it
     skipped, extra steps, and steps done in a different order. Steps are
-    matched by their align key; a step repeated within a run counts once
-    here (section 6.3 lists repeats)."""
-    pat, run = _first_occurrences(pattern_steps), _first_occurrences(run_steps)
+    matched by their align key, after the run's stretches that spell a
+    merged pattern step are folded (_collapse_merged); a step repeated
+    within a run counts once here (section 6.3 lists repeats). The viewer's
+    differences review (viewer/run-differences.js) mirrors this; both are
+    pinned by shared/run-differences-golden.json."""
+    units = _collapse_merged(pattern_steps, run_steps)
+    pat, run = _first_occurrences(pattern_steps), _first_occurrences(units)
     pat_keys, run_keys = [k for k, _s, _i in pat], [k for k, _s, _i in run]
     in_order = _common_order(pat_keys, run_keys)
     out = []
     for key, step, i in run:
-        where = (f"after {_step_name(run_steps[i - 1])}" if i
+        where = (f"after {_step_name(units[i - 1])}" if i
                  else "at the start of the run")
         if key not in pat_keys:
             out.append(f"Extra step: {_step_name(step)} ({where}).")

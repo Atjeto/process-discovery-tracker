@@ -1,0 +1,134 @@
+{
+  "_README": "Seam guard for the differences between runs. The viewer (viewer/run-differences.js, the Steps differences review) and the PDD (normalization/pdd_export.py, section 6.1) implement one algorithm: the alignment key of a step (draft:<draft_key>, merge:<JSON array of draft_keys>, else label:<process_label of the name>), the folding of consecutive run steps that spell a merged reference step, and the difference lines. Both viewer/run-differences.test.js and normalization/test/test_run_differences_golden.py read every case here: `run_keys` is the alignment keys of the run after folding, `expected` the difference lines of the run against the pattern run, in order. Steps are listed in time order and are all visible (hidden steps never reach either side). Change a case only together with both implementations.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "an identical run has no differences",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:crm|Orders|Button:save",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": []
+    },
+    {
+      "name": "extra steps, one at the start of the run and one after a step",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Log book", "draft_key": "excel|Log book|(visit)" },
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Log book: Save", "draft_key": "excel|Log book|Button:save" },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run_keys": [
+        "draft:excel|Log book|(visit)",
+        "draft:crm|Orders|Button:find",
+        "draft:crm|Orders|Button:save",
+        "draft:excel|Log book|Button:save",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": [
+        "Extra step: Log book (at the start of the run).",
+        "Extra step: Log book: Save (after Orders: Save)."
+      ]
+    },
+    {
+      "name": "a skipped step names its number in the pattern run",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": [
+        "Skipped: Save the order (step 2 of the pattern run)."
+      ]
+    },
+    {
+      "name": "an order change",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:save",
+        "draft:crm|Orders|Button:find",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": [
+        "Different order: Orders: Find (in this run after Orders: Save)."
+      ]
+    },
+    {
+      "name": "a merged pattern step is matched by two consecutive drafts, which then read as that step",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Check and create the order", "draft_keys": ["sap|va01|MenuItem:check", "sap|va01|Button:create"] },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "va01: Check", "draft_key": "sap|va01|MenuItem:check" },
+        { "name": "va01: Create", "draft_key": "sap|va01|Button:create" },
+        { "name": "Log book: Save", "draft_key": "excel|Log book|Button:save" },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "merge:[\"sap|va01|MenuItem:check\",\"sap|va01|Button:create\"]",
+        "draft:excel|Log book|Button:save",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": [
+        "Extra step: Log book: Save (after Check and create the order)."
+      ]
+    },
+    {
+      "name": "a step added by hand is matched by the label of its name",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Order form: Enter 4711 in Quantity" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Order form: Enter 12 in Quantity" },
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "label:Order form: Enter Quantity",
+        "draft:crm|Orders|Button:save"
+      ],
+      "expected": []
+    }
+  ]
+}

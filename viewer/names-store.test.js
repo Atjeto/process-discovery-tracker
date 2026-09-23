@@ -111,6 +111,47 @@ test("a failed write or rename leaves the previous store in place and no temp fi
   }
 });
 
+test("forgetName removes only its key; the other entries (read or not) stay on disk", () => {
+  const p = Names.namesStorePath(tempUserData());
+  Names.rememberName(p, KEY_A, "Save the case", { now: "t1" });
+  Names.rememberName(p, KEY_B, "Check the order", { now: "t2" });
+  const doc = JSON.parse(fs.readFileSync(p, "utf-8"));
+  doc.names.odd = { name: "", note: "kept" };
+  fs.writeFileSync(p, JSON.stringify(doc));
+  assert.deepEqual(Names.forgetName(p, KEY_A), { path: p, removed: true });
+  const after = JSON.parse(fs.readFileSync(p, "utf-8"));
+  assert.deepEqual(Object.keys(after.names).sort(), [KEY_B, "odd"].sort());
+  assert.deepEqual(Names.readNamesFile(p).names, { [KEY_B]: { name: "Check the order", updated_at: "t2" } });
+  assert.deepEqual(leftoverTemps(p), []);
+});
+
+test("forgetName with nothing to forget writes nothing; an unreadable store is never replaced", () => {
+  const absent = Names.namesStorePath(tempUserData());
+  assert.deepEqual(Names.forgetName(absent, KEY_A), { path: absent, removed: false });
+  assert.equal(fs.existsSync(absent), false, "no file is created to forget nothing");
+  const p = Names.namesStorePath(tempUserData());
+  Names.rememberName(p, KEY_B, "Check", { now: "t" });
+  const before = fs.readFileSync(p);
+  assert.deepEqual(Names.forgetName(p, KEY_A), { path: p, removed: false });
+  assert.deepEqual(fs.readFileSync(p), before);
+  fs.writeFileSync(p, '{"version":1,"names":{');
+  const broken = fs.readFileSync(p);
+  assert.throws(() => Names.forgetName(p, KEY_B), (e) => e.code === "NAMES_UNREADABLE" && /cannot be forgotten/.test(e.message));
+  assert.deepEqual(fs.readFileSync(p), broken);
+  assert.throws(() => Names.forgetName(p, ""), /no draft key/);
+});
+
+test("a failed forget leaves the previous store in place and no temp file behind", () => {
+  for (const which of ["write", "rename"]) {
+    const p = Names.namesStorePath(tempUserData());
+    Names.rememberName(p, KEY_A, "Save the case", { now: "t1" });
+    const before = fs.readFileSync(p, "utf-8");
+    assert.throws(() => Names.forgetName(p, KEY_A, { fs: failingFs(which) }), which === "write" ? /ENOSPC/ : /EXDEV/);
+    assert.equal(fs.readFileSync(p, "utf-8"), before);
+    assert.deepEqual(leftoverTemps(p), []);
+  }
+});
+
 test("nothing is remembered for a blank name or a step without a draft key", () => {
   const p = Names.namesStorePath(tempUserData());
   assert.throws(() => Names.rememberName(p, KEY_A, "   "), /name is empty/);

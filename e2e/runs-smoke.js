@@ -24,10 +24,27 @@
  *     steps carry the remembered names (the viewer passed --names);
  *   - item 8: a Start marker inserted from an activity band's menu lands at the
  *     clicked moment, and the Markers list shows local times.
+ * Lane L12b adds:
+ *   - a merge in the pattern run carries to the same consecutive drafts of
+ *     runs 2 to 4 (draft_keys, the pattern step's name), the toast says so in
+ *     one line, it is not counted, and ONE Ctrl+Z takes all of it back;
+ *   - a draft hidden in the pattern run: the toast offers Hide in all runs,
+ *     which hides the same drafts elsewhere (not counted; one Ctrl+Z);
+ *   - the differences review against the confirmed pattern run (the demo's
+ *     own extra step in run 2 and skipped step in run 3, run 4 identical);
+ *   - Reopen run and its Ctrl+Z; Save as this process (the profile's
+ *     processes.json) and the toast's Undo;
+ *   - a drafted step is hidden, never deleted (no Delete for it, the bulk
+ *     button hides), and the hidden drafts survive Analyze;
+ *   - the Remembered names dialog: its order, Rename and Forget;
+ *   - a SECOND temp copy of the demo, SEEDED with an extra step and a skipped
+ *     step in run 4, opened in the same viewer: it is compared with the saved
+ *     process (the line, every run's differences), and Stop comparing
+ *     compares it with its own pattern run.
  *
- * Writes only into its temp copy and its throwaway profile. Exits 0 when every
- * check passed, 1 on a failed check, 2 when it could not run (no Python with
- * the pipeline dependencies, or no Electron).
+ * Writes only into its temp copies and its throwaway profile. Exits 0 when
+ * every check passed, 1 on a failed check, 2 when it could not run (no Python
+ * with the pipeline dependencies, or no Electron).
  */
 
 const path = require("path");
@@ -85,6 +102,7 @@ if (!SESSION) {
 const ANNO = path.join(SESSION, "annotations.json");
 const STATS = path.join(SESSION, "stats.json");
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
+const _temps = [SESSION];
 
 /* Poll the file on disk until `pred` holds (saves are asynchronous). Returns
    the last value read, whether or not it holds. */
@@ -100,8 +118,8 @@ async function waitDisk(p, pred, ms) {
 
 /* Run case ids in time order, from the analysis (the same order the view and
    meta.draft_summary use). */
-function runIds() {
-  return (readJson(STATS).case_stats || []).filter((c) => !c.parent_case_id)
+function runIds(statsPath) {
+  return (readJson(statsPath || STATS).case_stats || []).filter((c) => !c.parent_case_id)
     .sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts) || (a.case_id < b.case_id ? -1 : 1))
     .map((c) => c.case_id);
 }
@@ -109,11 +127,20 @@ const stepsOf = (anno, caseId) => (anno.steps || []).filter((s) => s.case_id ===
   .sort((a, b) => a.time_range.start.localeCompare(b.time_range.start));
 
 const KEY_SEARCH = "chrome|Salesforce - Account lookup|Button:search";
+const KEY_OPEN = "chrome|Salesforce - Account lookup|Button:open-customer-record";
+const KEY_SAVE_ORDER = "chrome|Salesforce - Order|Button:save-order";
+const KEY_CHECK = "sapgui|va01|MenuItem:check-document";
+const KEY_CREATE = "sapgui|va01|Button:create-sales-order";
 const KEY_EXCEL = "excel|Excel - Order Tracking.xlsx|Button:save-workbook";
+const KEY_OUTLOOK = "outlook|Outlook - Order confirmation|Button:send";
 const KEY_NOTEPAD = "notepad|Notepad - Internal mappings.txt|(visit)";
 const NAME_SEARCH = "Look up the customer";
 const NAME_EXCEL = "Update the order tracker";
 const NAME_NOTEPAD = "Look up the plant code";
+const MERGED = "va01: Check document + va01: Create sales order";
+const PROCESS_NAME = "Order entry";
+const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERGED &&
+  JSON.stringify(s.draft_keys) === JSON.stringify([KEY_CHECK, KEY_CREATE]);
 
 (async () => {
   const RUNS = runIds();
@@ -153,6 +180,9 @@ const NAME_NOTEPAD = "Look up the plant code";
     status: ((g.querySelector(".run-status") || {}).textContent || "").trim(),
     fixes: ((g.querySelector(".run-fixes") || {}).textContent || "").trim(),
     probe: ((g.querySelector(".run-probe-text") || {}).textContent || "").trim(),
+    meta: ((g.querySelector(".run-meta") || {}).textContent || "").trim(),
+    diffs: [...g.querySelectorAll(".run-diffs li")].map((li) => li.textContent.trim()),
+    acts: [...g.querySelectorAll(".run-actions > button")].map((b) => b.dataset.act),
     showHidden: (() => { const cb = g.querySelector('[data-act="show-hidden"]'); return cb ? { checked: cb.checked, label: (cb.parentElement.textContent || "").trim() } : null; })(),
     rows: [...g.querySelectorAll(".step-row")].map((r) => ({
       id: r.dataset.stepId, state: r.dataset.state,
@@ -183,6 +213,12 @@ const NAME_NOTEPAD = "Look up the plant code";
   const waitRows = (caseId, n) => page.waitForFunction(([sel, k]) =>
     document.querySelectorAll(sel + " .step-row").length === k, [groupSel(caseId), n], { timeout: T });
   const toastText = () => page.$eval("#toast", (el) => ({ text: el.textContent || "", error: el.className.includes("error") }));
+  // Wait until the toast shows `re` (a toast is transient: read it while it shows).
+  const waitToast = (re) => page.waitForFunction((src) => {
+    const el = document.getElementById("toast");
+    return !!(el && el.classList.contains("show") && new RegExp(src).test(el.textContent || ""));
+  }, re.source, { timeout: T });
+  const metaDiffs = (meta) => (/ · (no differences|\d+ differences?)$/.exec(meta || "") || [])[1] || null;
   const FIX0 = "Boundary fixes so far: 0 (merge 0, split 0, add 0, drop 0)";
   const [R1, R2, R3, R4] = RUNS;
 
@@ -304,35 +340,70 @@ const NAME_NOTEPAD = "Look up the plant code";
     record("C3: renames are not counted (the pattern run still reads 0 fixes)", (await fixesOf(R1)) === FIX0, await fixesOf(R1));
 
     // Merge with next (right-click menu).
-    let err = null, disk = null;
+    let err = null, disk = null, mergeToast = null, menuItems = null;
     try {
       await rowByName(R1, "va01: Check document").click({ button: "right", timeout: T });
+      await page.waitForSelector("#step-ctx-menu", { timeout: T });
+      menuItems = await page.$$eval("#step-ctx-menu > div", (els) => els.map((d) => (d.textContent || "").trim()).filter(Boolean));
       await page.locator("#step-ctx-menu div", { hasText: /^Merge with next$/ }).click({ timeout: T });
+      await waitToast(/Merged here and in/);
+      mergeToast = (await toastText()).text;
       await waitRows(R1, 6);
       await waitFixes(R1, "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)");
       disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.draft_fixes && a.pattern_run.draft_fixes.merge === 1);
     } catch (e) { err = errText(e); }
     const g = await group(R1);
-    const merged = g.rows.find((r) => r.name === "va01: Check document + va01: Create sales order");
+    const merged = g.rows.find((r) => r.name === MERGED);
     const pr = disk && disk.pattern_run;
     const ok = !err && merged && merged.chip === "Edited" && pr && pr.case_id === R1 && pr.confirmed_at === null &&
       pr.drafted_steps === 7 && JSON.stringify(pr.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 });
     record("C3: Merge with next on the pattern run counts one merge (pattern_run written: run 1, drafted_steps 7)",
       ok, JSON.stringify({ err, merged, pattern_run: pr, fixes: g.fixes }));
     if (!ok) await shot(page, "fail-runs-merge.png");
+    // L12b item 6: the step menu offers no automation-candidate flag (ADR-0027);
+    // waste is its one flag, and its take-out item for a draft reads Hide step.
+    const okMenu = !!menuItems && !menuItems.some((t) => /automation/i.test(t)) &&
+      menuItems.includes("Flag as waste") && menuItems.includes("Hide step") && menuItems.includes("Merge with next");
+    record("L12b item 6: the step menu has no automation-candidate item; Flag as waste is its one flag and a draft's take-out item reads Hide step",
+      okMenu, JSON.stringify(menuItems));
 
-    // Undo takes the count back; redo brings it back.
-    let err2 = null;
+    // L12b items 1 and 2: the merged step keeps its members' keys, and the merge
+    // carries to runs 2 to 4 (run 2 does the pair twice), named like the pattern
+    // step; the one-line toast says so; the carried merges are not counted.
+    const carried = RUNS.map((r) => stepsOf(disk || { steps: [] }, r));
+    const st = await runsState();
+    const metaOf = (c) => (st.find((x) => x.caseId === c) || {}).meta || "";
+    const leftover = carried.flat().filter((s) => s.draft_key === KEY_CHECK || s.draft_key === KEY_CREATE);
+    const okCarry = !err && isCarried(carried[0].find((s) => s.name === MERGED) || {}) &&
+      carried.map((l) => l.filter(isCarried).length).join() === "1,2,1,1" &&
+      carried.map((l) => l.length).join() === "6,8,5,6" && leftover.length === 0 &&
+      [R2, R3, R4].map(metaOf).map((m) => m.split(" · ")[0]).join() === "8 steps,5 steps,6 steps" &&
+      mergeToast === "Merged here and in 3 other runs. Ctrl+Z undoes it.";
+    record("L12b items 1-2: the pattern merge keeps draft_keys and carries to the same drafts of runs 2 to 4 (run 2 twice), named like the pattern step, not counted; the toast says \"Merged here and in 3 other runs\"",
+      okCarry, JSON.stringify({ err, toast: mergeToast, carriedPerRun: carried.map((l) => l.filter(isCarried).length),
+        stepsPerRun: carried.map((l) => l.length), leftover: leftover.length, metas: [R2, R3, R4].map(metaOf) }));
+    if (!okCarry) await shot(page, "fail-runs-carry.png");
+
+    // ONE Ctrl+Z takes the merge, its count and every carried merge back; Ctrl+Y
+    // brings all of it back.
+    let err2 = null, undone = null, redone = null;
     try {
       await page.keyboard.press("Control+z");
       await waitRows(R1, 7);
       await waitFixes(R1, FIX0);
+      undone = await waitDisk(ANNO, (a) => RUNS.map((r) => stepsOf(a, r).length).join() === "7,10,6,7");
       await page.keyboard.press("Control+y");
       await waitRows(R1, 6);
       await waitFixes(R1, "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)");
+      redone = await waitDisk(ANNO, (a) => RUNS.map((r) => stepsOf(a, r).length).join() === "6,8,5,6");
     } catch (e) { err2 = errText(e); }
-    record("C3: Ctrl+Z of the merge takes the count back to 0; Ctrl+Y brings the merge and its count back",
-      !err2, err2 || "undo 7 rows / 0 fixes, redo 6 rows / merge 1");
+    const undoneClean = !!undone && RUNS.map((r) => stepsOf(undone, r).length).join() === "7,10,6,7" &&
+      undone.steps.every((s) => s.draft_key && !s.draft_keys) &&
+      undone.steps.filter((s) => s.draft_key === KEY_CHECK || s.draft_key === KEY_CREATE).length === 10 &&
+      undone.steps.filter((s) => s.draft_key === KEY_CHECK || s.draft_key === KEY_CREATE).every((s) => s.state === "auto_suggested");
+    const redoneAll = !!redone && RUNS.map((r) => stepsOf(redone, r).filter(isCarried).length).join() === "1,2,1,1";
+    record("C3 + L12b: ONE Ctrl+Z takes the merge, its count and the 4 carried merges back (every step a draft again); Ctrl+Y brings them all back",
+      !err2 && undoneClean && redoneAll, err2 || JSON.stringify({ undoneClean, redoneAll }));
 
     // S splits the selected (visible) step: a split; Ctrl+Z takes it back.
     let err3 = null;
@@ -350,13 +421,27 @@ const NAME_NOTEPAD = "Look up the plant code";
 
     // Hide a draft (a drop), list it with Show hidden steps, Unhide (drop back).
     let err4 = null, hiddenRow = null;
+    const hideAll = { offer: null, done: null, disk: null, fixes: null, undone: null };
     try {
       const outlook = rowByName(R1, "Outlook - Order confirmation: Send");
       const oid = await outlook.getAttribute("data-step-id");
       await outlook.click({ timeout: T });
-      await page.locator("#btn-step-hide").click({ timeout: T });
+      await page.locator("#btn-step-hide", { hasText: /^Hide step$/ }).click({ timeout: T });
       await waitRows(R1, 5);
       await waitFixes(R1, "Boundary fixes so far: 2 (merge 1, split 0, add 0, drop 1)");
+      // L12b item 2: the toast offers Hide in all runs (runs 2 and 4 have this
+      // draft, run 3 does not); it hides them in one edit, not counted, and
+      // one Ctrl+Z shows them again (the pattern hide stays).
+      await waitToast(/Hide in all runs/);
+      hideAll.offer = (await toastText()).text;
+      await page.locator('#toast [data-act="hide-all-runs"]').click({ timeout: T });
+      await waitToast(/Hidden here and in/);
+      hideAll.done = (await toastText()).text;
+      hideAll.disk = await waitDisk(ANNO, (a) => [R2, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_OUTLOOK && s.state === "hidden")));
+      hideAll.fixes = await fixesOf(R1);
+      await page.keyboard.press("Control+z");
+      hideAll.undone = await waitDisk(ANNO, (a) => [R2, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_OUTLOOK && s.state === "auto_suggested")));
+      await waitRows(R1, 5);
       const toggle = page.locator(groupSel(R1) + ' [data-act="show-hidden"]');
       await toggle.check({ timeout: T });
       await waitRows(R1, 6);
@@ -371,6 +456,19 @@ const NAME_NOTEPAD = "Look up the plant code";
     const ok4 = !err4 && hiddenRow && hiddenRow.chip === "Hidden" && hiddenRow.state === "hidden" && noToggle;
     record("C3: hiding a draft counts a drop; Show hidden steps lists it with a Hidden chip; Unhide takes the drop back",
       ok4, err4 || JSON.stringify(hiddenRow));
+    const outlookOf = (a, r) => stepsOf(a || { steps: [] }, r).filter((s) => s.draft_key === KEY_OUTLOOK);
+    const okAll = !err4 && hideAll.offer === "Step hidden. 2 other runs have the same drafted step.Hide in all runs" &&
+      hideAll.done === "Hidden here and in 2 other runs. Ctrl+Z undoes it." &&
+      [R2, R4].every((r) => outlookOf(hideAll.disk, r).length === 1 && outlookOf(hideAll.disk, r)[0].state === "hidden" &&
+        outlookOf(hideAll.disk, r)[0]._prev_state === "auto_suggested") &&
+      outlookOf(hideAll.disk, R3).length === 0 && outlookOf(hideAll.disk, R1)[0].state === "hidden" &&
+      hideAll.fixes === "Boundary fixes so far: 2 (merge 1, split 0, add 0, drop 1)" &&
+      [R2, R4].every((r) => outlookOf(hideAll.undone, r)[0].state === "auto_suggested") &&
+      outlookOf(hideAll.undone, R1)[0].state === "hidden";
+    record("L12b item 2: hiding a pattern draft offers Hide in all runs in its toast; it hides runs 2 and 4's same draft (not counted), and one Ctrl+Z shows them again while the pattern hide stays",
+      okAll, JSON.stringify({ err: err4, offer: hideAll.offer, done: hideAll.done, fixes: hideAll.fixes,
+        hidden: [R2, R4].map((r) => (outlookOf(hideAll.disk, r)[0] || {}).state), undone: [R2, R4].map((r) => (outlookOf(hideAll.undone, r)[0] || {}).state) }));
+    if (!okAll) await shot(page, "fail-runs-hide-all.png");
 
     // + Add step lands in the open run after the selected step: an add; deleting it takes the add back.
     let err5 = null, added = null, addedDisk = null;
@@ -476,6 +574,100 @@ const NAME_NOTEPAD = "Look up the plant code";
     await shot(page, "runs-smoke-confirmed.png");
   }
 
+  // ---- 7b. L12b item 3: the differences review against the pattern run ------
+  // The demo's own variants: run 2 visits Notepad (renamed in check 2) between
+  // its two carried merges, run 3 never sends the confirmation, run 4 matches.
+  {
+    const WANT = {
+      [R2]: ["Extra step: " + NAME_NOTEPAD + " (after " + MERGED + ")."],
+      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the pattern run)."],
+      [R4]: [],
+    };
+    let err = null;
+    const seen = {};
+    try {
+      for (const r of [R2, R3, R4]) {
+        await openRun(r);
+        seen[r] = (await group(r)).diffs;
+      }
+    } catch (e) { err = errText(e); }
+    const st = await runsState();
+    const metas = RUNS.map((r) => metaDiffs((st.find((g) => g.caseId === r) || {}).meta));
+    const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
+      metas.join() === ",1 difference,1 difference,no differences";
+    record("L12b item 3: each other run lists its differences from the confirmed pattern run (run 2: an extra step, run 3: a skipped step, run 4: none) and its line counts them",
+      ok, JSON.stringify({ err, seen: [R2, R3, R4].map((r) => seen[r]), metas }));
+    if (!ok) await shot(page, "fail-runs-differences.png");
+    await openRun(R2);
+    await shot(page, "runs-smoke-differences.png");
+  }
+
+  // ---- 7c. L12b item 4: Reopen run, the inverse of Confirm run ------------------
+  {
+    let err = null, g = null, disk = null, back = null, gBack = null;
+    try {
+      await openRun(R1);
+      await page.locator(groupSel(R1) + ' [data-act="reopen-run"]').click({ timeout: T });
+      disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.confirmed_at === null);
+      await page.waitForFunction((sel) => !document.querySelector(sel + " .run-probe-text") && !!document.querySelector(sel + " .run-fixes"),
+        groupSel(R1), { timeout: T });
+      g = await group(R1);
+      await page.keyboard.press("Control+z");
+      back = await waitDisk(ANNO, (a) => a.pattern_run && typeof a.pattern_run.confirmed_at === "string");
+      await page.waitForSelector(groupSel(R1) + " .run-probe-text", { timeout: T });
+      gBack = await group(R1);
+    } catch (e) { err = errText(e); }
+    const states = (a) => stepsOf(a || { steps: [] }, R1).filter((s) => s.state !== "hidden").map((s) => s.state).sort().join(",");
+    const ok = !err && states(disk) === "auto_suggested,auto_suggested,auto_suggested,auto_suggested,edited,edited" &&
+      JSON.stringify(disk.pattern_run.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 }) &&
+      g && g.status === "Draft" && !g.probe && g.fixes === "Boundary fixes so far: 1 (merge 1, split 0, add 0, drop 0)" &&
+      g.acts.includes("confirm-run") && !g.acts.includes("reopen-run") && !g.acts.includes("save-process") &&
+      states(back) === "confirmed,confirmed,confirmed,confirmed,edited,edited" &&
+      gBack && gBack.status === "Confirmed" && gBack.probe === PROBE && gBack.acts.includes("reopen-run");
+    record("L12b item 4: Reopen run turns run 1's confirmed steps back into drafts (the edited ones stay), clears confirmed_at, hides the probe line and keeps the count; Ctrl+Z confirms it again",
+      ok, JSON.stringify({ err, reopened: states(disk), fixes: g && g.fixes, status: g && g.status, acts: g && g.acts,
+        back: states(back), probeBack: gBack && gBack.probe }));
+    if (!ok) await shot(page, "fail-runs-reopen.png");
+  }
+
+  // ---- 7d. L12b item 7: Save as this process, and the toast's Undo --------------
+  const PROCESSES = path.join(profileDir, "pdt-library", "processes.json");
+  {
+    const save = async () => {
+      await page.locator(groupSel(R1) + ' [data-act="save-process"]').click({ timeout: T });
+      await page.locator(".modal-prompt .modal-input").fill(PROCESS_NAME, { timeout: T });
+      await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
+      await waitToast(/Saved the process/);
+    };
+    let err = null, first = null, undone = null, second = null, toast1 = null;
+    try {
+      await save();
+      toast1 = (await toastText()).text;
+      first = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 1);
+      await page.locator('#toast [data-act="undo-save-process"]').click({ timeout: T });
+      await waitToast(/no longer saved/);
+      undone = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 0);
+      await save();
+      second = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 1);
+    } catch (e) { err = errText(e); }
+    const p = second && second.processes && second.processes[0];
+    const want = [
+      { draft_key: KEY_SEARCH, name: NAME_SEARCH }, { draft_key: KEY_OPEN, name: "Salesforce - Account lookup: Open customer record" },
+      { draft_key: KEY_SAVE_ORDER, name: "Salesforce - Order: Save order" }, { draft_keys: [KEY_CHECK, KEY_CREATE], name: MERGED },
+      { draft_key: KEY_EXCEL, name: "Excel - Order Tracking.xlsx: Save workbook" }, { draft_key: KEY_OUTLOOK, name: "Outlook - Order confirmation: Send" },
+    ];
+    const got = p ? p.steps.map((s) => (s.draft_keys ? { draft_keys: s.draft_keys, name: s.name } : { draft_key: s.draft_key, name: s.name })) : null;
+    const manifest = readJson(path.join(SESSION, "manifest.json"));
+    const ok = !err && first && first.version === 1 && toast1 === 'Saved the process "' + PROCESS_NAME + '".Undo' &&
+      undone && undone.processes.length === 0 &&
+      p && p.name === PROCESS_NAME && /^proc-/.test(p.id) && p.source_session_id === manifest.session_id &&
+      !isNaN(Date.parse(p.saved_at)) && JSON.stringify(got) === JSON.stringify(want) &&
+      p.steps.every((s) => typeof s.description === "string" && s.waste === false);
+    record("L12b item 7: Save as this process writes the confirmed pattern run's 6 steps (draft_key, or draft_keys for the merge) to the profile's processes.json; the toast's Undo takes the save back",
+      ok, JSON.stringify({ err, toast: toast1, undoneCount: undone && undone.processes.length, saved: p && { name: p.name, id: p.id, steps: got } }));
+    if (!ok) await shot(page, "fail-runs-save-process.png");
+  }
+
   // ---- 8. a rename in run 2 after confirming: the confirmed step keeps its name --
   let excelIds = {};
   {
@@ -497,6 +689,41 @@ const NAME_NOTEPAD = "Look up the plant code";
       Object.keys(store.names).sort().join("|") === [KEY_EXCEL, KEY_SEARCH].sort().join("|");
     record("C4: a rename in run 2 names runs 3 and 4 at once, while the confirmed pattern step keeps its name; the store holds the two keys (not the one whose write failed)",
       ok, JSON.stringify({ err, per: per.map((s) => [s.state, s.name]), keys: Object.keys(store.names) }));
+  }
+
+  // ---- 8b. L12b item 5: a drafted step is hidden, never deleted --------------
+  // Run 4 (not the pattern, so no Hide in all runs offer): the step editor has
+  // no Delete for a draft, its one take-out button reads Hide step; ticking two
+  // drafts turns the toolbar's bulk button into Hide selected, which hides them.
+  let hiddenIds = [];
+  {
+    let err = null, noDelete = null, bulkLabel = null, disk = null;
+    try {
+      await openRun(R4);
+      const outlookRow = rowByName(R4, "Outlook - Order confirmation: Send");
+      const oid = await outlookRow.getAttribute("data-step-id", { timeout: T });
+      await outlookRow.click({ timeout: T });
+      await page.locator(".step-detail-more > summary").click({ timeout: T });
+      noDelete = (await page.$("#btn-step-delete")) === null;
+      await page.locator("#btn-step-hide", { hasText: /^Hide step$/ }).click({ timeout: T });
+      await waitRows(R4, 5);
+      const openId = await rowByName(R4, "Salesforce - Account lookup: Open customer record").getAttribute("data-step-id", { timeout: T });
+      const saveId = await rowByName(R4, "Salesforce - Order: Save order").getAttribute("data-step-id", { timeout: T });
+      await rowById(openId).locator(".multi-check").click({ timeout: T });
+      await rowById(saveId).locator(".multi-check").click({ timeout: T });
+      bulkLabel = ((await page.locator("#btn-delete-selected-steps").textContent({ timeout: T })) || "").trim();
+      await page.locator("#btn-delete-selected-steps").click({ timeout: T });
+      await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+      await waitRows(R4, 3);
+      hiddenIds = [oid, openId, saveId];
+      disk = await waitDisk(ANNO, (a) => hiddenIds.every((id) => (a.steps.find((s) => s.step_id === id) || {}).state === "hidden"));
+    } catch (e) { err = errText(e); }
+    const r4 = stepsOf(disk || { steps: [] }, R4);
+    const ok = !err && noDelete && bulkLabel === "Hide selected" && r4.length === 6 &&
+      hiddenIds.every((id) => { const s = r4.find((x) => x.step_id === id); return !!s && s.state === "hidden" && s._prev_state === "auto_suggested"; });
+    record("L12b item 5: a drafted step has no Delete; Hide step and the bulk Hide selected hide drafts instead of deleting them (run 4 keeps its 6 steps, 3 hidden)",
+      ok, JSON.stringify({ err, noDelete, bulkLabel, r4: r4.map((s) => s.state) }));
+    if (!ok) await shot(page, "fail-runs-hide-not-delete.png");
   }
 
   // ---- 9. Analyze: the confirm dialog answered, the run awaited --------------
@@ -549,6 +776,74 @@ const NAME_NOTEPAD = "Look up the plant code";
     record("after Analyze: the rename saved while the store was broken survived (edited, its name)",
       np.state === "edited" && np.name === NAME_NOTEPAD, JSON.stringify([np.state, np.name]));
     if (!(ok1 && ok2)) await shot(page, "fail-runs-after-analyze.png");
+
+    // L12b item 5: the hidden drafts survived, and Analyze drafted none of them
+    // again next to them (a deleted draft would be back).
+    const r4 = stepsOf(disk, R4);
+    const sameKey = (k) => r4.filter((s) => s.draft_key === k).map((s) => s.state);
+    const okHidden = hiddenIds.length === 3 && hiddenIds.every((id) => (r4.find((s) => s.step_id === id) || {}).state === "hidden") &&
+      [KEY_OUTLOOK, KEY_OPEN, KEY_SAVE_ORDER].every((k) => JSON.stringify(sameKey(k)) === '["hidden"]');
+    record("after Analyze (L12b item 5): the 3 hidden drafts of run 4 are still hidden and none of them was drafted again",
+      okHidden, JSON.stringify({ outlook: sameKey(KEY_OUTLOOK), open: sameKey(KEY_OPEN), saveOrder: sameKey(KEY_SAVE_ORDER) }));
+
+    // The carried merges (edited) survived too, and their drafts were not drafted again.
+    const carriedAfter = RUNS.map((r) => stepsOf(disk, r).filter(isCarried).length).join();
+    const redraftedPair = disk.steps.filter((s) => s.draft_key === KEY_CHECK || s.draft_key === KEY_CREATE).length;
+    record("after Analyze (L12b item 2): the carried merges of runs 2 to 4 survived and their drafts were not drafted again",
+      carriedAfter === "1,2,1,1" && redraftedPair === 0, JSON.stringify({ carriedAfter, redraftedPair }));
+  }
+
+  // ---- 9b. L12b item 8: the Remembered names dialog --------------------------
+  {
+    const OTHER_KEY = "excel|Excel - Other book.xlsx|Button:save-workbook";
+    const RENAMED = "Update the tracker";
+    let err = null, rowsBefore = null, rowsAfter = null, afterRename = null, storeRename = null, storeForget = null, afterForget = null;
+    const dialogRows = () => page.evaluate(() => [...document.querySelectorAll("#remembered-names-dialog .rn-row")].map((r) => ({
+      key: r.dataset.key, name: r.querySelector(".rn-name").textContent.trim(), where: r.querySelector(".rn-where").textContent.trim() })));
+    const rowSel = (key) => '#remembered-names-dialog .rn-row[data-key="' + key + '"]';
+    try {
+      // A name remembered in another session (its key is not in this one).
+      const store = readJson(STORE);
+      store.names[OTHER_KEY] = { name: "Save the other book", updated_at: "2026-09-01T10:00:00.000Z" };
+      fs.writeFileSync(STORE, JSON.stringify(store, null, 2));
+      await page.locator("#btn-remembered-names").click({ timeout: T });
+      await page.waitForSelector("#remembered-names-dialog .rn-row", { timeout: T });
+      rowsBefore = await dialogRows();
+      // Rename: the store and this session's drafts with that key.
+      await page.locator(rowSel(KEY_EXCEL) + ' [data-act="rename-name"]').click({ timeout: T });
+      await page.locator(".modal-prompt .modal-input").fill(RENAMED, { timeout: T });
+      await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
+      await waitToast(/^Renamed/);
+      afterRename = await waitDisk(ANNO, (a) => [R3, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_EXCEL && s.name === RENAMED)));
+      storeRename = readJson(STORE);
+      // Forget: the store entry goes, the session's names stay.
+      await page.locator(rowSel(KEY_SEARCH) + ' [data-act="forget-name"]').click({ timeout: T });
+      await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+      await waitToast(/^Forgot/);
+      storeForget = await waitDisk(STORE, (s) => s && s.names && !s.names[KEY_SEARCH]);
+      await page.waitForFunction(() => document.querySelectorAll("#remembered-names-dialog .rn-row").length === 2, null, { timeout: T });
+      rowsAfter = await dialogRows();
+      afterForget = readJson(ANNO);
+      await page.locator('#remembered-names-dialog .modal-footer [data-act="close"]').click({ timeout: T });
+    } catch (e) { err = errText(e); }
+    const excelOf = (a, r) => stepsOf(a || { steps: [] }, r).find((s) => s.draft_key === KEY_EXCEL) || {};
+    const okOrder = !err && JSON.stringify((rowsBefore || []).map((r) => [r.name, r.where])) === JSON.stringify([
+      [NAME_SEARCH, "4 steps in this session"], [NAME_EXCEL, "4 steps in this session"], ["Save the other book", "Not in this session"]]);
+    record("L12b item 8: the Remembered names dialog lists the names whose key is in this session first, then the others",
+      okOrder, JSON.stringify({ err, rows: rowsBefore }));
+    const okRename = !err && storeRename && storeRename.names[KEY_EXCEL].name === RENAMED &&
+      [R3, R4].every((r) => excelOf(afterRename, r).state === "auto_suggested" && excelOf(afterRename, r).name === RENAMED &&
+        excelOf(afterRename, r).name_source === "remembered") &&
+      excelOf(afterRename, R2).state === "edited" && excelOf(afterRename, R2).name === NAME_EXCEL &&
+      excelOf(afterRename, R1).state === "confirmed" && excelOf(afterRename, R1).name === "Excel - Order Tracking.xlsx: Save workbook";
+    record("L12b item 8: Rename changes the remembered name and names this session's drafts with that key (runs 3 and 4), not the edited or confirmed steps",
+      okRename, JSON.stringify({ err, store: storeRename && storeRename.names[KEY_EXCEL], steps: RUNS.map((r) => [excelOf(afterRename, r).state, excelOf(afterRename, r).name]) }));
+    const okForget = !err && storeForget && !storeForget.names[KEY_SEARCH] && storeForget.names[OTHER_KEY] &&
+      JSON.stringify((rowsAfter || []).map((r) => r.name)) === JSON.stringify([RENAMED, "Save the other book"]) &&
+      [R2, R3, R4].every((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name === NAME_SEARCH);
+    record("L12b item 8: Forget removes the name from the store (the list follows) while the session's steps keep it",
+      okForget, JSON.stringify({ err, keys: storeForget && Object.keys(storeForget.names), rows: rowsAfter && rowsAfter.map((r) => r.name) }));
+    if (!(okOrder && okRename && okForget)) await shot(page, "fail-runs-names-dialog.png");
   }
 
   // ---- 10. item 8: marker at the clicked moment; local times in the Markers list --
@@ -617,12 +912,100 @@ const NAME_NOTEPAD = "Look up the plant code";
         " utcOffsetMinutes=" + (-offsetMin) + (offsetMin === 0 ? " (UTC machine: local equals UTC, so this check cannot tell them apart here)" : ""));
   }
 
+  // ---- 11. L12b items 3 and 7: a second session of the same process ---------
+  // A second temp copy of the demo, analyzed afresh (all drafts, no pattern run
+  // confirmed) and SEEDED in run 4 with a step added by hand where the
+  // "Save order" draft was (removed): an extra step and a skipped step the demo
+  // does not have. Opened in the same viewer (the same profile, so the process
+  // saved in 7d is there), it is compared with the saved process.
+  {
+    let err = null, S2 = null, before = null, line = null, st = null, seen = {}, after = {}, stopped = null;
+    try {
+      S2 = freshSession();
+      if (!S2) throw new Error("the second copy could not be analyzed");
+      _temps.push(S2);
+      const A2 = path.join(S2, "annotations.json");
+      const runs2 = runIds(path.join(S2, "stats.json"));
+      if (runs2.join() !== RUNS.join()) throw new Error("the second copy's runs differ: " + runs2.join());
+      const anno2 = readJson(A2);
+      const gone = anno2.steps.find((s) => s.case_id === R4 && s.draft_key === KEY_SAVE_ORDER);
+      anno2.steps = anno2.steps.filter((s) => s !== gone);
+      anno2.steps.push({ step_id: "e2e-added-call", session_id: gone.session_id, case_id: R4, name: "Call the customer",
+        description: "", time_range: gone.time_range, evidence: { interaction_event_ids: [], screenshot_refs: [], video_timecode_range: null, manual_notes: "" },
+        state: "manually_authored", canonical_step_id: null, flags: { waste: false }, phase_id: null });
+      fs.writeFileSync(A2, JSON.stringify(anno2, null, 2));
+      before = fs.readFileSync(A2, "utf-8");
+      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), S2);
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+      await page.waitForSelector("#step-list .runs-compare", { timeout: T });
+      line = await page.$eval("#step-list .runs-compare-text", (el) => el.textContent.trim());
+      st = await runsState();
+      for (const r of RUNS) { await openRun(r); seen[r] = (await group(r)).diffs; }
+      await shot(page, "runs-smoke-saved-process.png");
+      await page.locator('#step-list .runs-compare [data-act="stop-comparing"]').click({ timeout: T });
+      await page.waitForFunction(() => !document.querySelector("#step-list .runs-compare"), null, { timeout: T });
+      for (const r of [R2, R3, R4]) { await openRun(r); after[r] = (await group(r)).diffs; }
+      stopped = await runsState();
+    } catch (e) { err = errText(e); }
+    const metas = (s) => RUNS.map((r) => metaDiffs(((s || []).find((g) => g.caseId === r) || {}).meta));
+    const WANT = {
+      [R1]: [],
+      [R2]: ["Extra step: Notepad - Internal mappings.txt (after " + MERGED + ")."],
+      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the saved process)."],
+      [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
+        "Skipped: Salesforce - Order: Save order (step 3 of the saved process)."],
+    };
+    const ok = !err && line === "Compared with saved process " + PROCESS_NAME &&
+      RUNS.every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
+      metas(st).join() === "no differences,1 difference,1 difference,2 differences" &&
+      fs.readFileSync(path.join(S2, "annotations.json"), "utf-8") === before;
+    record("L12b items 3 + 7: a second copy of the demo (seeded with an extra and a skipped step) opens compared with the saved process: the line, and every run's differences from it (the file is not changed)",
+      ok, JSON.stringify({ err, line, seen: RUNS.map((r) => seen[r]), metas: metas(st) }));
+    const WANT_STOP = {
+      [R2]: ["Extra step: Notepad - Internal mappings.txt (after va01: Create sales order)."],
+      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 7 of the pattern run)."],
+      [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
+        "Skipped: Salesforce - Order: Save order (step 3 of the pattern run)."],
+    };
+    const okStop = !err && [R2, R3, R4].every((r) => JSON.stringify(after[r]) === JSON.stringify(WANT_STOP[r])) &&
+      metas(stopped)[0] === null;
+    record("L12b item 7: Stop comparing removes the line and compares the runs with the session's own pattern run",
+      okStop, JSON.stringify({ err, after: [R2, R3, R4].map((r) => after[r]), metas: metas(stopped) }));
+    if (!(ok && okStop)) await shot(page, "fail-runs-saved-process.png");
+
+    // C5's gate: the first session, whose pattern run is confirmed, is NOT
+    // compared when it opens again, although the saved process matches its
+    // steps (the control: the same match the viewer runs, on its steps).
+    let err2 = null, control = null, lineBack = null, confirmedBack = null;
+    try {
+      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), SESSION);
+      await page.waitForFunction((n) => {
+        const g = document.querySelector("#step-list .run-group.pattern .run-probe-text");
+        return !!(g && g.textContent.trim()) && document.querySelectorAll("#step-list .run-group").length === n;
+      }, RUNS.length, { timeout: T });
+      control = await page.evaluate(async (name) => {
+        const saved = await require("./ipc.js").readProcesses();
+        const s = require("./state.js").getSession();
+        const m = require("./run-differences.js").matchSavedProcess(saved.processes, s.annotations.steps);
+        return m && { name: m.process.name, score: Math.round(m.score * 100) / 100, want: name };
+      }, PROCESS_NAME);
+      await wait(1500);   // the match on open is asynchronous: give it time to (wrongly) arrive
+      lineBack = await page.$("#step-list .runs-compare");
+      confirmedBack = (await group(R1) || {}).status;
+    } catch (e) { err2 = errText(e); }
+    record("L12b item 7 (C5 gate): a session whose pattern run is confirmed opens without the comparison, although the saved process matches it",
+      !err2 && control && control.name === PROCESS_NAME && control.score >= 0.5 && lineBack === null && confirmedBack === "Confirmed",
+      JSON.stringify({ err: err2, control, lineShown: lineBack !== null, status: confirmedBack }));
+  }
+
   record("zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.length + " error(s): " + pageErrors.slice(0, 5).join(" | ") : "");
   if (pageErrors.length) await shot(page, "fail-runs-page-errors.png");
 
   await viewer.close();
-  try { fs.rmSync(SESSION, { recursive: true, force: true }); } catch (_) { /* temp */ }
+  for (const dir of _temps) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
+  }
   const pass = results.filter((r) => r.ok).length;
   const fail = results.length - pass;
   console.log("\n[runs-e2e] " + pass + "/" + results.length + " checks passed, " + fail + " failed");

@@ -22,9 +22,19 @@
  * where drafted_steps (additive to C3) is the run's drafted-step count at the
  * moment the run became the pattern: the fallback for the probe line when
  * stats.json has no meta.draft_summary.
+ *
+ * Boundary fixes carry (lane L12b): a merge of drafted steps keeps their
+ * draft keys as `draft_keys` (the members' keys in order, a merged member's
+ * flattened), and a merge made in the pattern run is repeated on the same
+ * consecutive drafts of every other run (carriedMerges). A draft hidden in
+ * the pattern run can be hidden in every run (sameKeyDraftsElsewhere).
+ * Neither counts as a fix of the pattern run. Reopen run (reopenRun) is the
+ * inverse of Confirm run.
  */
 
 "use strict";
+
+const { stepKeys } = require("./run-differences.js");
 
 /* A step in one of these states stands on an analyst decision (C2). */
 const ANALYST_STATES = new Set(["confirmed", "edited", "manually_authored"]);
@@ -289,6 +299,122 @@ function confirmRun(anno, runs, caseId, nowIso) {
   return { converted, patternConfirmed: isPattern };
 }
 
+/* "Reopen run", the inverse of Confirm run: the run's confirmed steps are
+   drafts again (a hidden step that was confirmed unhides as a draft), while
+   the steps the analyst edited or added keep their state; on the pattern
+   run, confirmed_at goes back to null and its draft-fix counts are kept.
+   Returns { reopened, patternReopened }. */
+function reopenRun(anno, runs, caseId) {
+  const p = patternRun(anno, runs);
+  const isPattern = !!(p.run && p.run.caseId === caseId);
+  let reopened = 0;
+  for (const s of (anno && anno.steps) || []) {
+    if (!s || s.case_id !== caseId) continue;
+    if (s.state === "confirmed") {
+      s.state = "auto_suggested";
+      reopened++;
+    } else if (s.state === "hidden" && s._prev_state === "confirmed") {
+      s._prev_state = "auto_suggested";
+    }
+  }
+  const patternReopened = !!(isPattern && p.record && p.record.confirmed_at);
+  if (patternReopened) p.record.confirmed_at = null;
+  return { reopened, patternReopened };
+}
+
+/* Whether Reopen run applies to `run`: a confirmed pattern run, or another
+   run that reads Confirmed and has confirmed steps to turn back. */
+function canReopen(run, patternRecord, isPattern) {
+  if (!run) return false;
+  if (isPattern) return !!(patternRecord && patternRecord.confirmed_at);
+  return run.status === "confirmed" && (run.members || []).some((s) => s.state === "confirmed");
+}
+
+/* ---- Carried boundary fixes (lane L12b) -------------------------------------- */
+
+/* The draft keys a merge of `steps` keeps: each member's draft_key, or a
+   merged member's draft_keys, in order. Null when a member has no draft
+   identity (a step added by hand, a split half): the merge then keeps none. */
+function mergedDraftKeys(steps) {
+  const out = [];
+  for (const s of steps || []) {
+    const keys = stepKeys(s);
+    if (!keys) return null;
+    out.push(...keys);
+  }
+  return out.length ? out : null;
+}
+
+/* How many visible steps from list[i] on are still drafts that read exactly
+   `keys` in order, or 0. */
+function _draftStretchAt(list, i, keys) {
+  let k = 0, j = i;
+  while (k < keys.length) {
+    const s = list[j];
+    if (!s || !DRAFT_STATES.has(s.state)) return 0;
+    const sk = stepKeys(s);
+    if (!sk) return 0;
+    for (const key of sk) {
+      if (k >= keys.length || key !== keys[k]) return 0;
+      k++;
+    }
+    j++;
+  }
+  return j - i;
+}
+
+/* Where a merge made in the pattern run carries (item 2): in every other run,
+   each stretch of at least two consecutive visible steps, all still drafts,
+   whose draft keys read exactly `keys` (left to right, never overlapping).
+   Returns [{ caseId, steps }], one entry per stretch; a run can have two. */
+function carriedMerges(model, patternCaseId, keys) {
+  const out = [];
+  if (!Array.isArray(keys) || keys.length < 2) return out;
+  for (const run of (model && model.runs) || []) {
+    if (run.caseId === patternCaseId) continue;
+    const list = run.visible || [];
+    let i = 0;
+    while (i < list.length) {
+      const n = _draftStretchAt(list, i, keys);
+      if (n >= 2) {
+        out.push({ caseId: run.caseId, steps: list.slice(i, i + n) });
+        i += n;
+      } else {
+        i++;
+      }
+    }
+  }
+  return out;
+}
+
+/* What "Hide in all runs" hides with a pattern-run draft (item 2): every
+   other run's visible, still-draft steps with the same draft_key. */
+function sameKeyDraftsElsewhere(model, patternCaseId, draftKey) {
+  const out = [];
+  if (typeof draftKey !== "string" || !draftKey) return out;
+  for (const run of (model && model.runs) || []) {
+    if (run.caseId === patternCaseId) continue;
+    for (const s of run.visible || []) {
+      if (DRAFT_STATES.has(s.state) && s.draft_key === draftKey) out.push(s);
+    }
+  }
+  return out;
+}
+
+/* Hide steps: each keeps its state in _prev_state, so Unhide restores it. */
+function hideSteps(steps) {
+  for (const s of steps || []) {
+    if (!s || s.state === "hidden") continue;
+    s._prev_state = s.state;
+    s.state = "hidden";
+  }
+}
+
+/* How many distinct runs a list of steps (or of { caseId }) touches. */
+function runCount(items) {
+  return new Set((items || []).map((x) => (x && (x.caseId || x.case_id)) || null)).size;
+}
+
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
 /* The P1 probe line for the pattern run:
@@ -388,19 +514,61 @@ function nameSuggestions(steps, step, remembered, interactionsById) {
 }
 
 /* A merged or split step is no longer one draft: drop the C1 identity
-   (draft_key, name_source, end_reason) so a later rename is not remembered
-   under a key that no longer describes it. */
+   (draft_key, name_source, end_reason) and a merge's draft_keys, so a later
+   rename is not remembered under a key that no longer describes it. A merge
+   of drafts then sets its own draft_keys (mergedDraftKeys). */
 function dropDraftIdentity(step) {
   if (!step || typeof step !== "object") return step;
   delete step.draft_key;
+  delete step.draft_keys;
   delete step.name_source;
   delete step.end_reason;
   return step;
+}
+
+/* A remembered name renamed in the Remembered names dialog (item 8): the
+   session's still-draft steps that carry `draftKey` take `name`, the way a
+   propagated name lands (state kept, name_source "remembered"). Steps the
+   analyst confirmed, edited or hid keep their names. Returns how many took
+   it. */
+function renameDrafts(steps, draftKey, name) {
+  const nm = typeof name === "string" ? name.trim() : "";
+  if (typeof draftKey !== "string" || !draftKey || !nm) return 0;
+  let n = 0;
+  for (const s of steps || []) {
+    if (!s || s.draft_key !== draftKey || !DRAFT_STATES.has(s.state)) continue;
+    s.name = nm;
+    s.name_source = "remembered";
+    s.process_label = nm;
+    n++;
+  }
+  return n;
+}
+
+/* The rows of the Remembered names dialog (item 8): one per remembered name,
+   { key, name, updated_at, inSession } where inSession counts this session's
+   visible steps that carry the key. The names whose key occurs in this
+   session come first, then the others; each part by name (case does not
+   matter), then by key. */
+function rememberedNameRows(names, steps) {
+  const counts = new Map();
+  for (const s of steps || []) {
+    if (!s || s.state === "hidden" || typeof s.draft_key !== "string" || !s.draft_key) continue;
+    counts.set(s.draft_key, (counts.get(s.draft_key) || 0) + 1);
+  }
+  const rows = Object.keys(names && typeof names === "object" ? names : {})
+    .filter((key) => names[key] && typeof names[key].name === "string" && names[key].name.trim())
+    .map((key) => ({ key, name: names[key].name.trim(), updated_at: names[key].updated_at || "", inSession: counts.get(key) || 0 }));
+  rows.sort((a, b) => (b.inSession > 0) - (a.inSession > 0) ||
+    a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return rows;
 }
 
 module.exports = {
   ANALYST_STATES, DRAFT_STATES, FIX_KINDS, OUTSIDE, STATUS_LABELS,
   byStart, runStatus, stepChip, buildRuns, runForRange, groupKeyOf, groupSteps, nextInGroup,
   emptyFixes, defaultPatternRun, patternRun, designatePattern, usePattern, recordFix, confirmRun,
-  probeLine, propagateName, stepApp, nameSuggestions, dropDraftIdentity,
+  reopenRun, canReopen,
+  probeLine, propagateName, stepApp, nameSuggestions, dropDraftIdentity, renameDrafts, rememberedNameRows,
+  mergedDraftKeys, carriedMerges, sameKeyDraftsElsewhere, hideSteps, runCount,
 };

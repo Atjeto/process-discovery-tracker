@@ -102,7 +102,7 @@
       // merge and bulk delete).
       const _nameTitle = (s.name ? s.name + " - " : "") + "double-click to rename";
       row.innerHTML = `
-        <span class="multi-check" title="Click to select for merge or bulk delete"></span>
+        <span class="multi-check" title="Click to select for merge or to hide several steps at once"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
         ${remembered}${flagBadges}
         <span class="step-chip step-chip-${escapeAttr(chip.cls)}" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
@@ -252,6 +252,10 @@
     // C4: the name input suggests remembered and already-used names.
     const nameList = (callbacks && callbacks.nameListId) ? ` list="${escapeAttr(callbacks.nameListId)}"` : "";
     const isHidden = step.state === "hidden";
+    // Item 5 (L12b): a drafted step is hidden, never deleted (the next Analyze
+    // would draft it again; a hidden one stays out). Only a step the analyst
+    // added has Delete.
+    const isAdded = step.state === "manually_authored";
     host.innerHTML = `
       <div class="step-stat-tiles">
         <div class="stat-tile"><div class="stat-tile-label">Duration</div><div class="stat-tile-value">${escapeHtml(_dur)}</div></div>
@@ -265,7 +269,7 @@
       </div>
       <div class="actions">
         <button id="btn-step-save" class="primary">Save</button>
-        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out as noise. It stays out of the list and survives re-analyze. Show hidden steps on its run lists it again."}">${isHidden ? "Unhide" : "Hide as noise"}</button>
+        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its run lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
       </div>
       <details class="step-detail-more">
         <summary class="step-detail-more-head">
@@ -285,7 +289,7 @@
             <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
             <button id="btn-step-merge" title="Merge this step with the next step of its run (the inverse of Split)">Merge with next</button>
             ${mergeSelectedBtn}
-            <button id="btn-step-delete" class="danger">Delete</button>
+            ${isAdded ? '<button id="btn-step-delete" class="danger" title="Delete this step you added">Delete</button>' : ""}
           </div>
         </div>
       </details>`;
@@ -303,7 +307,8 @@
         state: step.state === "manually_authored" ? "manually_authored" : "edited",
       });
     });
-    document.getElementById("btn-step-delete").addEventListener("click", () =>
+    const deleteBtn = document.getElementById("btn-step-delete");
+    if (deleteBtn) deleteBtn.addEventListener("click", () =>
       callbacks.onDelete && callbacks.onDelete(step.step_id));
     const hideBtn = document.getElementById("btn-step-hide");
     if (hideBtn) hideBtn.addEventListener("click", () =>

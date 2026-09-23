@@ -12,9 +12,21 @@
  * store, passed as --names on every Analyze) and names the same-key drafts of
  * the session at once. The Detail slider does not change this view.
  *
+ * Lane L12b: a merge made in the pattern run carries to the same consecutive
+ * drafts of the other runs (one undo), and a draft hidden there can be hidden
+ * in all runs (a toast offers it). Every run is compared with its reference,
+ * the pattern run or, while no pattern run is confirmed, the saved process
+ * matched on open (run-differences.js, the algorithm the PDD's section 6.1
+ * uses): an open run lists its differences, a run's meta counts them. Reopen
+ * run takes Confirm run back; a drafted step is hidden, never deleted (the
+ * next Analyze would draft it again); Save as this process stores the
+ * confirmed pattern run; the Remembered names dialog renames or forgets a
+ * remembered name.
+ *
  * The model is runs-model.js (pure, unit-tested); this module renders it and
  * owns the step verbs (rename / save / split / merge / hide / delete / add /
- * bulk-delete / confirm run / use as pattern) and the ignored-apps dialog.
+ * bulk hide or delete / confirm run / reopen run / use as pattern / save as
+ * this process) and the ignored-apps and remembered-names dialogs.
  * Cross-surface helpers (ensureAnnoShape, persistAnnotations,
  * videoTimeToSessionTs, jumpToStepInFlow, watchStep) are injected by
  * renderer.js via initStepsView().
@@ -29,6 +41,7 @@ const Session = require("../session.js");
 const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
 const RunsModel = require("../runs-model.js");
+const RunDiff = require("../run-differences.js");
 const { screenType, resolveStepGrainKeys, processLabel } = require("../process-map-levels.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
@@ -50,8 +63,17 @@ let _splitAfter = { stepId: null, index: null };
    the first render opens the pattern run) and `showHidden` also lists the
    hidden steps of the open group. It survives level switches and a
    re-analysis of the same session (case ids are stable, C9), so a return to
-   Steps finds the view as the analyst left it. */
-let _ui = { folder: null, open: undefined, showHidden: false };
+   Steps finds the view as the analyst left it. `compare` is the saved process
+   matched when the session opened ({ process, score }, C5) and
+   `compareStopped` the analyst's Stop comparing. */
+function _freshUi(folder) {
+  return { folder, open: undefined, showHidden: false, compare: null, compareStopped: false };
+}
+let _ui = _freshUi(null);
+
+/* Each session open starts one saved-process match; a later answer for a
+   session that is no longer open is dropped. */
+let _compareSeq = 0;
 
 /* The remembered names (C4) behind the name suggestions: read from the main
    process once, then updated in place after each name is remembered. */
@@ -164,18 +186,82 @@ function _fillNameList(step, interactionsById) {
 
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
+/* ===== Saved processes on open, and what the runs are compared with ===== */
+
+/* Match the session just opened with the saved processes (C5), when no
+   pattern run of it is confirmed. The store is read in the main process, so
+   this is asynchronous: the view renders again when a match arrives. A store
+   that cannot be read is shown as an error, and the session is then not
+   compared with a saved process. */
+function _startCompareMatch(session) {
+  const seq = ++_compareSeq;
+  const folder = session.sessionFolder;
+  const anno = session.annotations || {};
+  const p = RunsModel.patternRun(anno, RunsModel.buildRuns(session.stats, anno.steps || []).runs);
+  if (p.record && p.record.confirmed_at) return;
+  const fail = (why) => toast("The saved processes could not be read, so this session is not compared with one: " + why, "error");
+  Promise.resolve()
+    .then(() => Ipc.readProcesses())
+    .then((r) => {
+      const cur = State.getSession();
+      if (seq !== _compareSeq || !cur || cur.sessionFolder !== folder || _ui.folder !== folder) return;
+      if (!r || !r.ok) { fail((r && r.error) || "no reason was given"); return; }
+      const m = RunDiff.matchSavedProcess(r.processes || [], (cur.annotations && cur.annotations.steps) || []);
+      if (!m) return;
+      _ui.compare = m;
+      renderStepsLevel();
+    })
+    .catch((e) => fail((e && e.message) || String(e)));
+}
+
+/* What the runs are compared with: the saved process matched on open, while
+   no pattern run is confirmed and the analyst has not stopped comparing (then
+   every run is compared with it); else the pattern run (every other run is
+   compared with it). Null without a pattern run. */
+function _reference(pattern) {
+  const confirmed = !!(pattern.record && pattern.record.confirmed_at);
+  if (_ui.compare && !_ui.compareStopped && !confirmed) {
+    const pr = _ui.compare.process;
+    return { kind: "saved", name: String(pr.name || ""), steps: Array.isArray(pr.steps) ? pr.steps : [],
+      noun: RunDiff.SAVED_REFERENCE, caseId: null };
+  }
+  if (pattern.run) {
+    return { kind: "pattern", steps: pattern.run.visible, noun: RunDiff.PATTERN_REFERENCE, caseId: pattern.run.caseId };
+  }
+  return null;
+}
+
+/* A run's differences from the reference (item 3), or null for the pattern
+   run itself and without a reference. */
+function _runDiffs(ref, run) {
+  if (!ref || (ref.kind === "pattern" && run.caseId === ref.caseId)) return null;
+  return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun });
+}
+
+/* Stop comparing (the inverse of the comparison on open): the runs are
+   compared with this session's pattern run for as long as it stays open. */
+function stopComparingAction() {
+  _ui.compareStopped = true;
+  renderStepsLevel();
+  toast("Stopped comparing: the runs are compared with the pattern run.", "success");
+}
+
 /* ===== The Steps level ================================================== */
 
 function renderStepsLevel() {
   const session = State.getSession();
   if (!session || !PdtSteps) return;
-  if (_ui.folder !== session.sessionFolder) _ui = { folder: session.sessionFolder, open: undefined, showHidden: false };
+  if (_ui.folder !== session.sessionFolder) {
+    _ui = _freshUi(session.sessionFolder);
+    _startCompareMatch(session);
+  }
   _ensureRememberedLoaded();
   const anno = session.annotations || {};
   const allSteps = anno.steps || [];
   const interactionsById = _interactionsById();
   const model = RunsModel.buildRuns(session.stats, allSteps);
   const pattern = RunsModel.patternRun(anno, model.runs);
+  const ref = _reference(pattern);
 
   // A Flow request to show the step at a moment ("Jump to step here"):
   // select the step containing it, else the nearest one, so a right-click in
@@ -232,7 +318,7 @@ function renderStepsLevel() {
   if (pc) pc.textContent = String(model.runs.length);
   _renderFlagSummary(allSteps);
 
-  renderRunsList($("#step-list"), model, pattern, visible, session.stats);
+  renderRunsList($("#step-list"), model, pattern, visible, session.stats, ref);
 
   const selId = State.getSelectedStepId();
   const selected = selId && visibleIds.has(selId) ? allSteps.find((s) => s.step_id === selId) : null;
@@ -242,7 +328,7 @@ function renderStepsLevel() {
     _fillNameList(selected, interactionsById);
     PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById, model));
   } else {
-    renderRunGuide($("#step-detail"), model, pattern);
+    renderRunGuide($("#step-detail"), model, pattern, ref);
   }
   _renderStepsMiniTimeline(allSteps, visibleIds);
 
@@ -254,29 +340,30 @@ function renderStepsLevel() {
   }
 }
 
-/* A3: the flagged-step count on the toolbar (waste and the legacy flags an
-   older annotations.json may still carry). */
+/* A3: the waste-flagged step count on the toolbar. Waste is the only per-step
+   flag (ADR-0027); the retired flags an older annotations.json may still
+   carry are ignored here like everywhere else (C10). */
 function _renderFlagSummary(allSteps) {
   const sumEl = $("#steps-summary");
   if (!sumEl) return;
-  const fc = { waste: 0, automation_candidate: 0, conditional: 0, exception_path: 0 };
-  for (const st of allSteps) {
-    const fl = st.flags || {};
-    for (const k of Object.keys(fc)) if (fl[k]) fc[k]++;
-  }
-  const parts = [];
-  if (fc.waste) parts.push(fc.waste + " waste");
-  if (fc.automation_candidate) parts.push(fc.automation_candidate + " automatable");
-  if (fc.conditional) parts.push(fc.conditional + " conditional");
-  if (fc.exception_path) parts.push(fc.exception_path + " exception");
-  sumEl.textContent = parts.length ? ("Flagged: " + parts.join(" · ")) : "";
+  const waste = allSteps.filter((st) => st.flags && st.flags.waste).length;
+  sumEl.textContent = waste ? "Flagged: " + waste + " waste" : "";
 }
 
-/* The list pane: the runs (the open one with its steps), then the steps
-   outside runs. */
-function renderRunsList(host, model, pattern, visible, stats) {
+/* The list pane: the saved-process comparison line (when the runs are
+   compared with a saved process), the runs (the open one with its steps),
+   then the steps outside runs. */
+function renderRunsList(host, model, pattern, visible, stats, ref) {
   if (!host) return;
   host.innerHTML = "";
+  if (ref && ref.kind === "saved") {
+    const line = document.createElement("div");
+    line.className = "runs-compare";
+    line.innerHTML = '<span class="runs-compare-text">Compared with saved process <strong>' + escapeHtml(ref.name) + "</strong></span>";
+    line.appendChild(_actionBtn("stop-comparing", "Stop comparing", "",
+      "Compare the runs with this session's pattern run instead", stopComparingAction));
+    host.appendChild(line);
+  }
   if (!model.runs.length && !model.outside.length) {
     host.innerHTML =
       '<div class="empty-pane">' +
@@ -294,7 +381,7 @@ function renderRunsList(host, model, pattern, visible, stats) {
     note.querySelector("button").addEventListener("click", () => ov.openMarkersInFlow());
     host.appendChild(note);
   }
-  for (const run of model.runs) host.appendChild(_runGroupEl(run, model, pattern, visible, stats));
+  for (const run of model.runs) host.appendChild(_runGroupEl(run, model, pattern, visible, stats, ref));
   if (model.outside.length) host.appendChild(_outsideGroupEl(model, visible));
 }
 
@@ -367,7 +454,7 @@ function _groupBody(visible, hiddenCount, emptyText) {
   return body;
 }
 
-function _runGroupEl(run, model, pattern, visible, stats) {
+function _runGroupEl(run, model, pattern, visible, stats, ref) {
   const isOpen = _ui.open === run.caseId;
   const isPattern = !!(pattern.run && pattern.run.caseId === run.caseId);
   const rec = isPattern ? pattern.record : null;
@@ -376,7 +463,11 @@ function _runGroupEl(run, model, pattern, visible, stats) {
   g.className = "run-group" + (isOpen ? " open" : "") + (isPattern ? " pattern" : "");
   g.dataset.caseId = run.caseId;
   const n = run.visible.length;
-  const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + formatDuration(run.durationMs) : "");
+  // Item 3: the run's differences from its reference, counted in its meta
+  // (no count on the pattern run the others are compared with).
+  const diffs = _runDiffs(ref, run);
+  const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + formatDuration(run.durationMs) : "") +
+    (diffs ? " · " + (diffs.length ? _plural(diffs.length, "difference", "differences") : "no differences") : "");
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
@@ -400,12 +491,23 @@ function _runGroupEl(run, model, pattern, visible, stats) {
       "Accept this run's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
       () => confirmRunAction(run.caseId)));
   }
+  if (RunsModel.canReopen(run, rec, isPattern)) {
+    buttons.push(_actionBtn("reopen-run", "Reopen run", "",
+      "Turn this run's confirmed steps back into drafts; the steps you edited or added stay as they are. Ctrl+Z undoes it.",
+      () => reopenRunAction(run.caseId)));
+  }
+  if (isPattern && patternConfirmed) {
+    buttons.push(_actionBtn("save-process", "Save as this process", "",
+      "Store this run's steps, so that a later session of the same process is compared with them when you open it.",
+      () => saveAsProcessAction(run.caseId)));
+  }
   if (!isPattern && run.members.length) {
     buttons.push(_actionBtn("use-pattern", "Use as pattern", "",
       "Make this the run you confirm first. The boundary fix count starts again at zero.",
       () => usePatternAction(run.caseId)));
   }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
+  let after = acts;
   if (isPattern && !patternConfirmed) {
     const f = RunsModel.probeLine(stats, model.runs, run, rec);
     const line = document.createElement("div");
@@ -414,6 +516,19 @@ function _runGroupEl(run, model, pattern, visible, stats) {
     line.textContent = "Boundary fixes so far: " + f.total + " (merge " + f.fixes.merge + ", split " +
       f.fixes.split + ", add " + f.fixes.add + ", drop " + f.fixes.drop + ")";
     body.insertBefore(line, acts.nextSibling);
+    after = line;
+  }
+  if (diffs && diffs.length) {
+    const list = document.createElement("ul");
+    list.className = "run-diffs";
+    list.title = "How this run differs from " + (ref.kind === "saved" ? "the saved process" : "the pattern run");
+    for (const d of diffs) {
+      const li = document.createElement("li");
+      li.dataset.kind = d.kind;
+      li.textContent = d.text;
+      list.appendChild(li);
+    }
+    body.insertBefore(list, after.nextSibling);
   }
   g.appendChild(body);
   return g;
@@ -477,23 +592,17 @@ function _copyText(text) {
 
 /* The detail pane when no step is selected: what to do with the open group. */
 const GUIDE_PATTERN =
-  "This is the pattern run: confirm it first. Check its drafted steps against the video or the screenshots. " +
-  "Where a boundary is wrong, merge, split, add or hide steps, and give the steps the names you want in the " +
-  "document. Then click Confirm run. The app counts the boundary fixes; renames are not counted.";
-const GUIDE_REMEMBER =
-  "Every name you give is remembered: the matching drafted steps in the other runs take it at once, and the " +
-  "next analysis drafts with it.";
-const GUIDE_PATTERN_DONE =
-  "The pattern run is confirmed. The other runs keep their drafted steps; a name you give a step there is " +
-  "remembered the same way.";
-const GUIDE_OTHER =
-  "Pick a step to rename it, fix its boundaries, or flag it as waste. Confirm run accepts the drafted steps " +
-  "that are left.";
+  "Confirm this run first. Check its steps against the video or the screenshots, fix the boundaries " +
+  "(merge, split, add, hide) and name the steps, then click Confirm run.";
+const GUIDE_CARRY =
+  "A merge carries to the same drafted steps in the other runs, and every name you give is remembered.";
+const GUIDE_PATTERN_DONE = "This run is confirmed: the other runs are compared with it.";
+const GUIDE_OTHER = "Fix a step where needed; Confirm run accepts the drafted steps that are left.";
 const GUIDE_OUTSIDE =
   "These steps fall outside every marked run. To bring them into a run, add a start marker in Flow and " +
   "analyze the session.";
 
-function renderRunGuide(host, model, pattern) {
+function renderRunGuide(host, model, pattern, ref) {
   if (!host) return;
   const key = _ui.open;
   const title = $("#step-detail-title");
@@ -506,7 +615,13 @@ function renderRunGuide(host, model, pattern) {
     const isPattern = !!(run && pattern.run && pattern.run.caseId === key);
     const done = isPattern && pattern.record && pattern.record.confirmed_at;
     head = run ? run.title + (run.label ? " (" + run.label + ")" : "") : "Run";
-    paras = isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_REMEMBER]) : [GUIDE_OTHER, GUIDE_REMEMBER];
+    paras = isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
+    const diffs = run ? _runDiffs(ref, run) : null;
+    if (diffs) {
+      const noun = ref.kind === "saved" ? RunDiff.SAVED_REFERENCE : RunDiff.PATTERN_REFERENCE;
+      paras.unshift(diffs.length ? "Its differences from " + noun + " are listed above its steps."
+        : "It has no differences from " + noun + ".");
+    }
   } else {
     paras = [model.runs.length ? "Pick a run on the left to see its steps." : "Pick a step on the left."];
   }
@@ -699,14 +814,21 @@ function _removalFix(state) {
   return state === "manually_authored" ? { kind: "add", delta: -1 } : { kind: "drop", delta: 1 };
 }
 
+/* Item 5: only a step the analyst added is deleted. Any other step came from
+   the drafting, and the next Analyze would draft it again, so taking it out
+   hides it instead (a hidden step stays out of every analysis). */
 async function deleteStep(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const step = anno.steps.find(s => s.step_id === stepId);
+  if (step && step.state !== "manually_authored") {
+    if (step.state !== "hidden") await toggleStepHidden(stepId);
+    return;
+  }
   const ok = await confirmModal({
     title: "Delete step?",
     message: step ? `Delete step "${step.name || "(unnamed)"}"?` : "Delete this step?",
-    detail: "Ctrl+Z will restore it. To keep a drafted step out of the next analysis too, hide it instead.",
+    detail: "You added this step by hand. Ctrl+Z restores it.",
     okLabel: "Delete",
     danger: true,
   });
@@ -747,8 +869,37 @@ async function toggleStepHidden(stepId) {
     step.state = "hidden";
     if (State.getSelectedStepId() === stepId && !_ui.showHidden) State.setSelectedStepId(null);
     await persistAnnotations(anno, "hide step");
-    toast('Step hidden. "Show hidden steps" on its run lists it again.', "success");
+    // Item 2: a draft hidden in the pattern run is offered for every run.
+    const p = RunsModel.patternRun(anno, runs);
+    const others = p.run && step.case_id === p.run.caseId
+      ? RunsModel.sameKeyDraftsElsewhere(_model(), p.run.caseId, step.draft_key) : [];
+    if (others.length) {
+      toast("Step hidden. " + _plural(RunsModel.runCount(others), "other run has", "other runs have") +
+        " the same drafted step.", "success",
+        { action: { label: "Hide in all runs", act: "hide-all-runs", onClick: () => hideInAllRuns(stepId) } });
+    } else {
+      toast('Step hidden. "Show hidden steps" on its run lists it again.', "success");
+    }
   }
+}
+
+/* "Hide in all runs" (item 2): the other runs' still-draft steps with the
+   same draft_key as the pattern-run draft `stepId` (hidden a moment ago) are
+   hidden too, in one edit (one Ctrl+Z). They are not fixes of the pattern
+   run. Does nothing once the pattern step is no longer hidden (the offer
+   outlived an undo). */
+async function hideInAllRuns(stepId) {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const step = anno.steps.find((s) => s.step_id === stepId);
+  const model = _model();
+  const p = RunsModel.patternRun(anno, model.runs);
+  if (!step || step.state !== "hidden" || !p.run || step.case_id !== p.run.caseId) return;
+  const others = RunsModel.sameKeyDraftsElsewhere(model, p.run.caseId, step.draft_key);
+  if (!others.length) return;
+  RunsModel.hideSteps(others);
+  await persistAnnotations(anno, "hide in all runs");
+  toast("Hidden here and in " + _plural(RunsModel.runCount(others), "other run", "other runs") + ". Ctrl+Z undoes it.", "success");
 }
 
 async function splitStep(stepId) {
@@ -917,8 +1068,10 @@ function stripSplitSuffix(name) {
    concatenated. Shared by both merge entry points so they cannot diverge.
    The merged name dedupes the parts (merging "X (split 1)" + "X (split 2)"
    reads "X", not "X + X") and caps its length — a merge of long auto names
-   must not produce a paragraph. The merged step is no longer one draft, so
-   it carries no draft identity. */
+   must not produce a paragraph. The merged step is no longer one draft: it
+   carries no draft_key, and when every member was drafted it keeps their
+   keys in order as draft_keys (item 1), so it still matches the same drafts
+   in the other runs. */
 function mergeStepObjects(toMerge) {
   const first = toMerge[0];
   const last = toMerge[toMerge.length - 1];
@@ -929,7 +1082,8 @@ function mergeStepObjects(toMerge) {
   }
   let mergedName = parts.join(" + ") || stripSplitSuffix(first.name);
   if (mergedName.length > 120) mergedName = mergedName.slice(0, 119) + "…";
-  return RunsModel.dropDraftIdentity({
+  const keys = RunsModel.mergedDraftKeys(toMerge);
+  const merged = RunsModel.dropDraftIdentity({
     ...first,
     name: mergedName,
     time_range: { start: first.time_range.start, end: last.time_range.end },
@@ -940,17 +1094,44 @@ function mergeStepObjects(toMerge) {
     },
     state: "edited",
   });
+  if (keys) merged.draft_keys = keys;
+  return merged;
+}
+
+/* Item 2: a merge of drafts made in the pattern run is repeated on every
+   other run's consecutive still-draft steps with the same keys; each carried
+   merge takes the pattern step's name. It is part of the same edit (one
+   Ctrl+Z) and not a fix of the pattern run. Returns how many runs took it. */
+function _carryMerge(anno, runs, model, merged) {
+  const p = RunsModel.patternRun(anno, runs);
+  if (!p.run || merged.case_id !== p.run.caseId || !merged.draft_keys) return 0;
+  const stretches = RunsModel.carriedMerges(model, p.run.caseId, merged.draft_keys);
+  for (const st of stretches) {
+    const m = mergeStepObjects(st.steps);
+    m.name = merged.name;
+    const ids = new Set(st.steps.map((s) => s.step_id));
+    anno.steps = anno.steps.filter((s) => !ids.has(s.step_id));
+    anno.steps.push(m);
+  }
+  return RunsModel.runCount(stretches);
 }
 
 async function commitMerge(anno, toMerge, undoLabel) {
-  RunsModel.recordFix(anno, _model().runs, toMerge[0].case_id, "merge");
+  const model = _model();
+  RunsModel.recordFix(anno, model.runs, toMerge[0].case_id, "merge");
   const merged = mergeStepObjects(toMerge);
   const mergedIds = new Set(toMerge.map(s => s.step_id));
   anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
   anno.steps.push(merged);
+  const carriedRuns = _carryMerge(anno, model.runs, model, merged);
   State.setSelectedStepId(merged.step_id);
   await persistAnnotations(anno, undoLabel);
-  return merged;
+  return { merged, carriedRuns };
+}
+
+/* The one-line toast of a merge that carried to other runs (item 2). */
+function _carriedToast(carriedRuns) {
+  return "Merged here and in " + _plural(carriedRuns, "other run", "other runs") + ". Ctrl+Z undoes it.";
 }
 
 /* P0.1: merge the clicked step with the NEXT step of the same run, the row
@@ -967,8 +1148,8 @@ async function mergeStepWithNext(stepId) {
   const next = RunsModel.nextInGroup(_model(), stepId, _ui.showHidden);
   if (!next) { toast("This is the last step of its run: there is no next step to merge with.", "error"); return; }
   const toMerge = [step, next];
-  await commitMerge(anno, toMerge, 'merge step with next');
-  toast('Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"', "success");
+  const r = await commitMerge(anno, toMerge, 'merge step with next');
+  toast(r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"', "success");
 }
 
 /* P0.1: merge exactly the ticked steps (time order), the inverse of split for
@@ -985,10 +1166,10 @@ async function mergeSelectedSteps() {
     toast("Select steps from one run to merge them.", "error");
     return;
   }
-  const merged = await commitMerge(anno, toMerge, 'merge selected steps');
+  const r = await commitMerge(anno, toMerge, 'merge selected steps');
   multi.clear();
   syncMultiSelectButtons();
-  toast('Merged ' + toMerge.length + ' steps into "' + merged.name + '"', "success");
+  toast(r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged ' + toMerge.length + ' steps into "' + r.merged.name + '"', "success");
 }
 
 /* Keep the two multi-selection toolbar actions (delete / merge) in lockstep
@@ -1001,6 +1182,27 @@ function syncMultiSelectButtons() {
     const b = $("#" + id);
     if (b) b.hidden = n < 2;
   }
+  // Item 5: the ticked drafted steps are hidden, the added ones deleted; the
+  // button says which.
+  const del = $("#btn-delete-selected-steps");
+  if (del && n >= 2) {
+    const { hide, remove } = _removalSplit(State.getMultiSelectedStepIds());
+    del.textContent = !remove.length ? "Hide selected" : !hide.length ? "Delete selected" : "Hide or delete selected";
+    del.title = !remove.length ? "Hide the ticked steps: every analysis keeps them out"
+      : !hide.length ? "Delete the ticked steps you added"
+        : "Hide the ticked drafted steps and delete the ticked steps you added";
+  }
+}
+
+/* The ticked steps split by what taking them out does (item 5): steps the
+   analyst added are deleted, every other visible step is hidden. */
+function _removalSplit(ids) {
+  const s = State.getSession();
+  const steps = ((s && s.annotations && s.annotations.steps) || []).filter((x) => ids.has(x.step_id));
+  return {
+    hide: steps.filter((x) => x.state !== "manually_authored" && x.state !== "hidden"),
+    remove: steps.filter((x) => x.state === "manually_authored"),
+  };
 }
 
 /* Where a step added from the toolbar goes when no video playhead places
@@ -1066,34 +1268,42 @@ async function addManualStep() {
   toast("Step added", "success");
 }
 
-/* Bulk-delete the ticked steps. One confirm for the whole set; Ctrl+Z
-   restores. */
+/* Take the ticked steps out (item 5): the drafted ones are hidden (the next
+   Analyze would draft a deleted one again), the ones the analyst added are
+   deleted. One confirm for the whole set; Ctrl+Z restores them all. */
 async function deleteSelectedSteps() {
   if (!State.getSession()) return;
   const ids = Array.from(State.getMultiSelectedStepIds());
   if (ids.length < 2) return;
+  let { hide, remove } = _removalSplit(new Set(ids));
+  if (!hide.length && !remove.length) return;
+  const what = [hide.length ? "hide " + _plural(hide.length, "drafted step", "drafted steps") : "",
+    remove.length ? "delete " + _plural(remove.length, "step you added", "steps you added") : ""].filter(Boolean).join(" and ");
   const ok = await confirmModal({
-    title: "Delete " + ids.length + " steps?",
-    message: "Delete the " + ids.length + " selected steps?",
-    detail: "Ctrl+Z restores them all.",
-    okLabel: "Delete " + ids.length,
-    danger: true,
+    title: what.charAt(0).toUpperCase() + what.slice(1) + "?",
+    message: "Take the " + (hide.length + remove.length) + " selected steps out: " + what + ".",
+    detail: "A hidden step stays out of every analysis. Ctrl+Z restores them all.",
+    okLabel: !remove.length ? "Hide " + hide.length : !hide.length ? "Delete " + remove.length : "Hide and delete",
+    danger: remove.length > 0,
   });
-  if (!ok) return;
+  if (!ok || !State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const idSet = new Set(ids);
+  ({ hide, remove } = _removalSplit(new Set(ids)));   // the live steps, after the dialog
   const runs = _model().runs;
-  for (const s of anno.steps) {
-    if (!idSet.has(s.step_id) || s.state === "hidden") continue;
+  for (const s of hide.concat(remove)) {
     const f = _removalFix(s.state);
     RunsModel.recordFix(anno, runs, s.case_id, f.kind, f.delta);
   }
-  anno.steps = anno.steps.filter(s => !idSet.has(s.step_id));
-  if (idSet.has(State.getSelectedStepId())) State.setSelectedStepId(null);
+  RunsModel.hideSteps(hide);
+  const removeIds = new Set(remove.map((s) => s.step_id));
+  anno.steps = anno.steps.filter(s => !removeIds.has(s.step_id));
+  const idSet = new Set(ids);
+  if (idSet.has(State.getSelectedStepId()) && !_ui.showHidden) State.setSelectedStepId(null);
   State.getMultiSelectedStepIds().clear();
-  await persistAnnotations(anno, "delete " + ids.length + " steps");
+  await persistAnnotations(anno, what);
   syncMultiSelectButtons();
-  toast(ids.length + " steps deleted", "success");
+  toast([hide.length ? _plural(hide.length, "step", "steps") + " hidden" : "",
+    remove.length ? _plural(remove.length, "step", "steps") + " deleted" : ""].filter(Boolean).join(", "), "success");
 }
 
 /* ===== Run verbs: confirm, use as pattern (C2, C3) ==================== */
@@ -1110,6 +1320,77 @@ async function confirmRunAction(caseId) {
   toast(run.title + " confirmed" +
     (r.converted ? ": " + _plural(r.converted, "drafted step", "drafted steps") + " accepted" : "") +
     ". Ctrl+Z undoes it.", "success");
+}
+
+/* "Reopen run" (item 4), the inverse of Confirm run: the run's confirmed
+   steps are drafts again, edited and added ones stay; on the pattern run the
+   confirmation (and its probe line) goes until the run is confirmed again,
+   and the draft-fix counts are kept. One edit, so Ctrl+Z undoes it. */
+async function reopenRunAction(caseId) {
+  const session = State.getSession();
+  if (!session) return;
+  const anno = ensureAnnoShape(session.annotations);
+  const model = _model();
+  const run = model.runs.find((r) => r.caseId === caseId);
+  if (!run) return;
+  const r = RunsModel.reopenRun(anno, model.runs, caseId);
+  if (!r.reopened && !r.patternReopened) return;
+  try { await persistAnnotations(anno, "reopen run"); } catch (_) { return; }   // already shown
+  toast(run.title + " reopened" +
+    (r.reopened ? ": " + _plural(r.reopened, "step is a draft", "steps are drafts") + " again" : "") +
+    ". Ctrl+Z undoes it.", "success");
+}
+
+/* "Save as this process" (item 7, contract C5): the confirmed pattern run's
+   visible steps, in time order, are stored under a name in the saved
+   processes of this computer, so that a later session of the same process is
+   compared with them when it opens. A name already saved is replaced. The
+   toast's Undo takes the save back (the replaced process returns). */
+async function saveAsProcessAction(caseId) {
+  const session = State.getSession();
+  if (!session) return;
+  const anno = session.annotations || {};
+  const model = _model();
+  const p = RunsModel.patternRun(anno, model.runs);
+  if (!p.run || p.run.caseId !== caseId || !p.record || !p.record.confirmed_at) return;
+  const steps = RunDiff.processStepsFrom(p.run.visible);
+  if (!steps.length) { toast("This run has no steps to save.", "error"); return; }
+  const name = await promptModal({
+    title: "Save as this process",
+    message: "Name the process",
+    detail: "A later session of this process is compared with these " + _plural(steps.length, "step", "steps") +
+      " when you open it. Saving under a name already saved replaces that process.",
+    placeholder: "For example: Order entry",
+    okLabel: "Save",
+  });
+  if (!name || !name.trim()) return;
+  let r;
+  try {
+    r = await Ipc.saveProcess({
+      name: name.trim(),
+      sourceSessionId: (session.manifest && session.manifest.session_id) || "",
+      steps,
+    });
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
+  }
+  if (!r || !r.ok) {
+    toast("The process was not saved: " + ((r && r.error) || "no reason was given"), "error");
+    return;
+  }
+  toast((r.previous ? "Replaced" : "Saved") + ' the process "' + name.trim() + '".', "success",
+    { action: { label: "Undo", act: "undo-save-process", onClick: () => _undoSaveProcess(r) } });
+}
+
+async function _undoSaveProcess(saved) {
+  let r;
+  try {
+    r = await Ipc.undoSaveProcess({ id: saved.id, previous: saved.previous || null });
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
+  }
+  if (r && r.ok) toast(saved.previous ? "The saved process is back as it was." : "The process is no longer saved.", "success");
+  else toast("The save could not be taken back: " + ((r && r.error) || "no reason was given"), "error");
 }
 
 async function usePatternAction(caseId) {
@@ -1265,6 +1546,104 @@ function openIgnoredAppsDialog() {
   });
 }
 
+/* ===== Remembered names (item 8, C4) =====
+   The names this computer remembers for drafted steps, those whose draft key
+   occurs in this session first. Rename changes the remembered name and names
+   this session's still-draft steps with that key; Forget removes it from the
+   store, and the names already in this session stay. */
+function openRememberedNamesDialog() {
+  if (!State.getSession()) { toast("Open a session first.", ""); return; }
+  const prior = document.getElementById("remembered-names-dialog");
+  if (prior) prior.remove();
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.id = "remembered-names-dialog";
+  backdrop.innerHTML =
+    '<div class="modal modal-simple" role="dialog" aria-label="Remembered names">' +
+      '<header class="modal-header"><h2>Remembered names</h2>' +
+        '<button class="icon-btn modal-close" data-act="close" title="Close">✕</button></header>' +
+      '<div class="modal-body">' +
+        '<p class="meta rn-intro">Names you gave drafted steps. Every analysis names the same drafted steps with them.</p>' +
+        '<div class="rn-list"></div>' +
+      "</div>" +
+      '<div class="modal-footer"><button class="primary" data-act="close">Close</button></div>' +
+    "</div>";
+  document.body.appendChild(backdrop);
+  const list = backdrop.querySelector(".rn-list");
+  for (const b of backdrop.querySelectorAll('[data-act="close"]')) b.addEventListener("click", () => backdrop.remove());
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+
+  let names = {};
+  async function render() {
+    let r;
+    try { r = await Ipc.readRememberedNames(); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+    if (!backdrop.isConnected) return;
+    if (!r || !r.ok) {
+      list.innerHTML = '<p class="rn-error">' + escapeHtml("The remembered names cannot be read: " +
+        ((r && r.error) || "no reason was given")) + "</p>";
+      return;
+    }
+    names = r.names || {};
+    _remembered = Object.assign({}, names);
+    const s = State.getSession();
+    const rows = RunsModel.rememberedNameRows(names, (s && s.annotations && s.annotations.steps) || []);
+    if (!rows.length) {
+      list.innerHTML = '<p class="meta">No names are remembered yet. When you rename a drafted step, its name is remembered.</p>';
+      return;
+    }
+    list.innerHTML = rows.map((row) =>
+      '<div class="rn-row" data-key="' + escapeAttr(row.key) + '" title="' + escapeAttr(row.key) + '">' +
+        '<div class="rn-text"><span class="rn-name">' + escapeHtml(row.name) + "</span>" +
+        '<span class="rn-where">' + escapeHtml(row.inSession
+          ? _plural(row.inSession, "step in this session", "steps in this session") : "Not in this session") + "</span></div>" +
+        '<button type="button" data-act="rename-name">Rename</button>' +
+        '<button type="button" data-act="forget-name">Forget</button>' +
+      "</div>").join("");
+    for (const rowEl of list.querySelectorAll(".rn-row")) {
+      const key = rowEl.dataset.key;
+      rowEl.querySelector('[data-act="rename-name"]').addEventListener("click", () => renameRemembered(key));
+      rowEl.querySelector('[data-act="forget-name"]').addEventListener("click", () => forgetRemembered(key));
+    }
+  }
+
+  async function renameRemembered(key) {
+    const cur = (names[key] && names[key].name) || "";
+    const next = await promptModal({ title: "Rename a remembered name", message: 'New name for "' + cur + '"',
+      defaultValue: cur, okLabel: "Rename" });
+    const nm = typeof next === "string" ? next.trim() : "";
+    if (!nm || nm === cur || !State.getSession()) return;
+    let r;
+    try { r = await Ipc.rememberStepName({ draftKey: key, name: nm }); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+    if (!r || !r.ok) { toast("The name was not renamed: " + ((r && r.error) || "no reason was given"), "error"); return; }
+    _remembered[key] = { name: nm, updated_at: new Date().toISOString() };
+    const anno = ensureAnnoShape(State.getSession().annotations);
+    const n = RunsModel.renameDrafts(anno.steps, key, nm);
+    let saved = true;
+    if (n) { try { await persistAnnotations(anno, "rename a remembered name"); } catch (_) { saved = false; } }   // already shown
+    if (saved) {
+      toast("Renamed" + (n ? ": " + _plural(n, "drafted step in this session took", "drafted steps in this session took") +
+        " the new name" : "") + ".", "success");
+    }
+    await render();
+  }
+
+  async function forgetRemembered(key) {
+    const cur = (names[key] && names[key].name) || "";
+    const ok = await confirmModal({ title: "Forget this name?", message: 'Forget "' + cur + '"?',
+      detail: "A later analysis gives these drafted steps their own names again. The names in this session stay.",
+      okLabel: "Forget" });
+    if (!ok) return;
+    let r;
+    try { r = await Ipc.forgetStepName({ draftKey: key }); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+    if (!r || !r.ok) { toast("The name was not forgotten: " + ((r && r.error) || "no reason was given"), "error"); return; }
+    delete _remembered[key];
+    toast('Forgot "' + cur + '". The names in this session stay.', "success");
+    await render();
+  }
+
+  render();
+}
+
 /* Wire the Steps surface. deps = { ensureAnnoShape, persistAnnotations,
    videoTimeToSessionTs, jumpToStepInFlow, watchStep }. Call once at boot. */
 function initStepsView(deps) {
@@ -1278,6 +1657,7 @@ function initStepsView(deps) {
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
   if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
+  if ($("#btn-remembered-names")) $("#btn-remembered-names").addEventListener("click", openRememberedNamesDialog);
 }
 
 /* A2/A5: toggle one boolean flag on a step and persist. Shared by the step
@@ -1343,7 +1723,7 @@ function showStepContextMenu(stepId, x, y) {
     addItem("Merge " + _multiSel.size + " selected steps", () => mergeSelectedSteps());
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
-  addItem(step.state === "hidden" ? "Unhide" : "Hide as noise", () => toggleStepHidden(stepId));
+  addItem(step.state === "hidden" ? "Unhide" : "Hide step", () => toggleStepHidden(stepId));
   addItem("Jump to in Flow", () => {
     const s = (anno.steps || []).find(x => x.step_id === stepId);
     if (s) jumpToStepInFlow(s);
@@ -1357,8 +1737,6 @@ function showStepContextMenu(stepId, x, y) {
   addSep();
   addItem(flags.waste ? "Clear waste flag" : "Flag as waste",
     () => toggleStepFlag(stepId, "waste"));
-  addItem(flags.automation_candidate ? "Clear automation flag" : "Flag as automation candidate",
-    () => toggleStepFlag(stepId, "automation_candidate"));
 
   document.body.appendChild(menu);
   placeMenu(menu, x, y);   // at (x, y), kept inside the window

@@ -499,6 +499,31 @@ def test_an_order_change_and_a_run_without_differences():
     ]
 
 
+def test_a_merged_pattern_step_matches_the_same_drafts_in_another_run():
+    """Item 1 (BA helper L12b): the analyst merged the pattern run's Find and
+    Save drafts into one step (draft_keys). Run 2 still has them as two
+    consecutive drafts: they read as the merged step (no Extra, no Skipped
+    for them), and the step after them is placed after the merged step."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    steps = [st for st in annotations["steps"] if st["step_id"] not in ("a1", "a2")]
+    merged = _step("m1", R1, "Look up and save the order", None, 1, ["e1", "e2", "e3"],
+                   state="edited", draft_keys=[FIND, SAVE])
+    del merged["draft_key"]
+    steps.append(merged)
+    for st in steps:
+        if st["step_id"] == "b2":   # run 2 logs after it saves: Find, Save, Log
+            st["time_range"] = {"start": _ts(75), "end": _ts(77)}
+    annotations["steps"] = steps
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert _section(blocks, "6.1 Differences between runs")[1:] == [
+        "Run 2: Order 2",
+        "Extra step: Sheet - Log: Save (after Look up and save the order).",
+        "Skipped: Mail - Compose: Send (step 2 of the pattern run).",
+    ]
+
+
 def test_rework_lists_a_step_done_twice_within_a_run():
     if not _HAVE_DOCX:
         return

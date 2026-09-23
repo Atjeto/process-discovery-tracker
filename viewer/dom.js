@@ -52,12 +52,29 @@ function cryptoRandomId() {
 }
 
 let toastTimer = null;
-function toast(text, kind) {
+/* A transient message at the bottom of the window. opts.action =
+   { label, act, onClick } adds one button to it (an offer such as "Hide in all
+   runs", or an Undo): the toast then stays a little longer and takes clicks
+   while it shows (only then: a hidden toast never catches a click). */
+function toast(text, kind, opts) {
   const el = $("#toast");
+  const action = opts && opts.action;
   el.textContent = text;
-  el.className = "toast show" + (kind ? " " + kind : "");
+  el.className = "toast show" + (kind ? " " + kind : "") + (action ? " has-action" : "");
+  if (action) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "toast-action";
+    if (action.act) b.dataset.act = action.act;
+    b.textContent = action.label;
+    b.addEventListener("click", () => {
+      el.classList.remove("show");
+      action.onClick();
+    });
+    el.appendChild(b);
+  }
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 3500);
+  toastTimer = setTimeout(() => el.classList.remove("show"), action ? 8000 : 3500);
 }
 
 /* Where a w x h context menu opened at the click point (x, y) goes so all of

@@ -7,10 +7,11 @@
  *   { "version": 1,
  *     "names": { "<draft_key>": { "name": "Look up customer", "updated_at": "ISO 8601" } } }
  *
- * Written when the analyst renames a step that carries a draft_key; read by
- * the pipeline at draft time (normalize.py --names, passed on every Analyze)
- * and by the viewer for its name suggestions. A draft_key is used whole as
- * the key and never split (a screen label can contain "|").
+ * Written when the analyst renames a step that carries a draft_key, and by
+ * the Remembered names dialog (Rename, Forget); read by the pipeline at draft
+ * time (normalize.py --names, passed on every Analyze) and by the viewer for
+ * its name suggestions. A draft_key is used whole as the key and never split
+ * (a screen label can contain "|").
  *
  * The two rules of annotations-store.js hold here too:
  *   1. A file that exists but cannot be read is UNREADABLE, never "absent",
@@ -72,11 +73,28 @@ function readNamesFile(p, fs = nodeFs) {
 }
 
 class NamesUnreadableError extends Error {
-  constructor(p, reason) {
-    super("The remembered names file cannot be read (" + reason + "), so names are not being remembered. " +
-      "Remove or repair the file, then rename the step again. File: " + p);
+  /* `consequence` says what could not be done; by default a rename. */
+  constructor(p, reason, consequence) {
+    super("The remembered names file cannot be read (" + reason + "), " +
+      (consequence || "so names are not being remembered. Remove or repair the file, then rename the step again.") +
+      " File: " + p);
     this.name = "NamesUnreadableError";
     this.code = "NAMES_UNREADABLE";
+  }
+}
+
+/* Write `text` over the store through a temp file in the same folder, so a
+   failed write leaves the previous store in place and no temp file behind. */
+function _writeAtomic(p, text, fs) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  const tmp = p + ".tmp-" + process.pid + "-" + Date.now();
+  try {
+    fs.writeFileSync(tmp, text);
+    renameWithRetry(fs, tmp, p);
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }); }
+    catch (cleanupErr) { e.message += " (the temporary file " + tmp + " could not be removed: " + cleanupErr.message + ")"; }
+    throw e;
   }
 }
 
@@ -98,18 +116,29 @@ function rememberName(p, draftKey, name, opts) {
   // not read); only this key changes.
   const doc = current.status === "ok" ? current.raw : { version: VERSION, names: {} };
   doc.names[key] = { name: nm, updated_at: o.now || new Date().toISOString() };
-  const text = JSON.stringify(doc, null, 2);
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  const tmp = p + ".tmp-" + process.pid + "-" + Date.now();
-  try {
-    fs.writeFileSync(tmp, text);
-    renameWithRetry(fs, tmp, p);
-  } catch (e) {
-    try { fs.rmSync(tmp, { force: true }); }
-    catch (cleanupErr) { e.message += " (the temporary file " + tmp + " could not be removed: " + cleanupErr.message + ")"; }
-    throw e;
-  }
+  _writeAtomic(p, JSON.stringify(doc, null, 2), fs);
   return { path: p };
 }
 
-module.exports = { LIBRARY_DIR, FILE, VERSION, namesStorePath, readNamesFile, rememberName, NamesUnreadableError };
+/* Forget the name remembered for `draftKey`, the inverse of rememberName
+   (the Remembered names dialog, item 8): its entry is removed and every
+   other entry is kept as it is on disk. Returns { path, removed }, removed
+   false when there was nothing to forget (nothing is written then). Throws
+   NamesUnreadableError when the store cannot be read (it is left untouched),
+   and the file-system error when the write fails (the previous store stays
+   in place). */
+function forgetName(p, draftKey, opts) {
+  const fs = (opts && opts.fs) || nodeFs;
+  const key = typeof draftKey === "string" ? draftKey : "";
+  if (!key) throw new Error("Nothing to forget: no draft key was given.");
+  const current = readNamesFile(p, fs);
+  if (current.status === "unreadable") {
+    throw new NamesUnreadableError(p, current.error, "so the name cannot be forgotten. Remove or repair the file, then try again.");
+  }
+  if (current.status !== "ok" || !Object.prototype.hasOwnProperty.call(current.raw.names, key)) return { path: p, removed: false };
+  delete current.raw.names[key];
+  _writeAtomic(p, JSON.stringify(current.raw, null, 2), fs);
+  return { path: p, removed: true };
+}
+
+module.exports = { LIBRARY_DIR, FILE, VERSION, namesStorePath, readNamesFile, rememberName, forgetName, NamesUnreadableError };

@@ -57,6 +57,35 @@ function readRememberedNames() {
   return ipcRenderer.invoke("viewer:readRememberedNames");
 }
 
+/** Forget a remembered name.
+ *  @param {{draftKey: string}} payload
+ *  @returns {Promise<{ok: boolean, removed?: boolean, path?: string, error?: string}>} */
+function forgetStepName(payload) {
+  return ipcRenderer.invoke("viewer:forgetStepName", payload);
+}
+
+/* ---- Saved processes (C5) ---- */
+
+/** The saved processes ({ ok, path, status, processes } or { ok: false, error }).
+ *  @returns {Promise<any>} */
+function readProcesses() {
+  return ipcRenderer.invoke("viewer:readProcesses");
+}
+
+/** "Save as this process".
+ *  @param {{name: string, sourceSessionId: string, steps: object[]}} payload
+ *  @returns {Promise<{ok: boolean, id?: string, previous?: object|null, path?: string, error?: string}>} */
+function saveProcess(payload) {
+  return ipcRenderer.invoke("viewer:saveProcess", payload);
+}
+
+/** Undo "Save as this process" (the replaced process comes back, or the new one goes).
+ *  @param {{id: string, previous: object|null}} payload
+ *  @returns {Promise<{ok: boolean, changed?: boolean, path?: string, error?: string}>} */
+function undoSaveProcess(payload) {
+  return ipcRenderer.invoke("viewer:undoSaveProcess", payload);
+}
+
 /* ---- Export / shell ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -113,7 +142,8 @@ module.exports = {
   loadSession, openSessionFolder,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations,
-  rememberStepName, readRememberedNames,
+  rememberStepName, readRememberedNames, forgetStepName,
+  readProcesses, saveProcess, undoSaveProcess,
   exportFile, saveSvgFile, revealFile, openExternal, openDiagram,
   attachExternalVideo, saveExternalVideoSync,
   onNormalizeLog, onOpenInitialSession,

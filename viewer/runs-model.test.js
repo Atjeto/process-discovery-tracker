@@ -307,8 +307,136 @@ test("nameSuggestions: same-app remembered names first (newest first), then the 
   assert.deepEqual(got, ["Browse the queue", "Save the case", "Given name", "Step s", "Draft name"]);
 });
 
-test("dropDraftIdentity: a merged or split step loses draft_key, name_source and end_reason", () => {
+test("dropDraftIdentity: a merged or split step loses draft_key, draft_keys, name_source and end_reason", () => {
   const s = { step_id: "m", draft_key: KEY, name_source: "draft", end_reason: "commit", name: "Kept" };
   RM.dropDraftIdentity(s);
   assert.deepEqual(s, { step_id: "m", name: "Kept" });
+  const half = { step_id: "h", draft_keys: ["a", "b"], name: "Half" };
+  RM.dropDraftIdentity(half);
+  assert.deepEqual(half, { step_id: "h", name: "Half" }, "a split half of a merge is no merge of drafts");
+});
+
+/* ---- Reopen run (item 4) ------------------------------------------------------------ */
+
+test("reopenRun: confirmed steps are drafts again, edited and added ones keep their state; the pattern loses confirmed_at, not its counts", () => {
+  const anno = { steps: steps().concat([
+    step("a4", "c1", "00:52", "00:55", { state: "manually_authored" }),
+    step("a5", "c1", "00:56", "00:58", { state: "hidden", _prev_state: "auto_suggested" }),
+    step("a6", "c1", "00:58", "00:59"),
+  ]) };
+  const { runs } = RM.buildRuns(STATS, anno.steps);
+  RM.recordFix(anno, runs, "c1", "merge");
+  anno.steps.find((s) => s.step_id === "a3").state = "edited";
+  RM.confirmRun(anno, runs, "c1", "2026-09-23T10:00:00.000Z");
+  anno.steps.find((s) => s.step_id === "a1").state = "hidden";
+  anno.steps.find((s) => s.step_id === "a1")._prev_state = "confirmed";
+  const before = JSON.stringify(anno.pattern_run.draft_fixes);
+  const { runs: runs2 } = RM.buildRuns(STATS, anno.steps);
+  assert.equal(RM.canReopen(runs2[0], anno.pattern_run, true), true);
+  const r = RM.reopenRun(anno, runs2, "c1");
+  assert.deepEqual(r, { reopened: 1, patternReopened: true });
+  const by = Object.fromEntries(anno.steps.map((s) => [s.step_id, s]));
+  assert.equal(by.a6.state, "auto_suggested", "the confirmed draft is a draft again");
+  assert.equal(by.a5.state, "hidden");
+  assert.equal(by.a1._prev_state, "auto_suggested", "a hidden confirmed step unhides as a draft");
+  assert.equal(by.a3.state, "edited");
+  assert.equal(by.a4.state, "manually_authored");
+  assert.equal(by.a2.state, "hidden");
+  assert.equal(anno.pattern_run.confirmed_at, null);
+  assert.equal(JSON.stringify(anno.pattern_run.draft_fixes), before, "the draft-fix counts are kept");
+  assert.equal(RM.recordFix(anno, runs2, "c1", "split"), true, "the reopened pattern counts fixes again");
+});
+
+test("reopenRun on another run turns its confirmed steps back and leaves pattern_run alone; canReopen needs confirmed steps", () => {
+  const anno = { steps: steps() };
+  const { runs } = RM.buildRuns(STATS, anno.steps);
+  assert.equal(RM.canReopen(runs[1], null, false), true, "run 2 reads Confirmed and has a confirmed step");
+  const r = RM.reopenRun(anno, runs, "c2");
+  assert.deepEqual(r, { reopened: 1, patternReopened: false });
+  assert.equal(anno.steps.find((s) => s.step_id === "b2").state, "auto_suggested");
+  assert.equal(anno.steps.find((s) => s.step_id === "b1").state, "edited");
+  assert.equal(anno.pattern_run, undefined);
+  const edited = RM.buildRuns(STATS, [step("e", "c2", "02:00", "02:10", { state: "edited" })]).runs[1];
+  assert.equal(RM.canReopen(edited, null, false), false, "nothing confirmed to turn back");
+  assert.equal(RM.canReopen(runs[0], { confirmed_at: null }, true), false, "an unconfirmed pattern run");
+});
+
+/* ---- carried boundary fixes (item 2) and merged draft keys (item 1) --------------- */
+
+const K = { find: "crm|Orders|Button:find", check: "sap|va01|MenuItem:check", create: "sap|va01|Button:create",
+  note: "notepad|Mappings|(visit)", send: "mail|Compose|Button:send" };
+
+test("mergedDraftKeys: the members' keys in order, a merged member's keys flattened; none with a member added by hand", () => {
+  assert.deepEqual(RM.mergedDraftKeys([{ draft_key: K.check }, { draft_key: K.create }]), [K.check, K.create]);
+  assert.deepEqual(RM.mergedDraftKeys([{ draft_keys: [K.find, K.check] }, { draft_key: K.create }]), [K.find, K.check, K.create]);
+  assert.equal(RM.mergedDraftKeys([{ draft_key: K.check }, { name: "Added" }]), null);
+  assert.equal(RM.mergedDraftKeys([]), null);
+});
+
+function carryFixture() {
+  const d = (id, c, s, key, extra) => step(id, c, s, s.replace(/:(\d\d)$/, (m, x) => ":" + String(Number(x) + 5).padStart(2, "0")), Object.assign({ draft_key: key }, extra || {}));
+  return [
+    d("p1", "c1", "00:00", K.find), d("p2", "c1", "00:10", K.check), d("p3", "c1", "00:20", K.create), d("p4", "c1", "00:30", K.send),
+    // Run 2 does the pair twice around a Notepad visit: two stretches.
+    d("r1", "c2", "02:00", K.check), d("r2", "c2", "02:10", K.create), d("r3", "c2", "02:20", K.note),
+    d("r4", "c2", "02:30", K.check), d("r5", "c2", "02:40", K.create),
+    // Run 3: the analyst renamed the check (edited): not still a draft, no carry; a hidden
+    // step between two drafts does not break a stretch (the list does not show it).
+    d("s1", "c3", "04:00", K.check, { state: "edited", name: "Checked by hand" }), d("s2", "c3", "04:10", K.create),
+    d("s3", "c3", "04:20", K.check), d("s4", "c3", "04:30", K.find, { state: "hidden" }), d("s5", "c3", "04:40", K.create),
+  ];
+}
+
+test("carriedMerges: every other run's stretches of still-drafts that read the merged keys, never the pattern run", () => {
+  const model = RM.buildRuns(STATS, carryFixture());
+  const got = RM.carriedMerges(model, "c1", [K.check, K.create]);
+  assert.deepEqual(got.map((g) => [g.caseId, g.steps.map((s) => s.step_id)]),
+    [["c2", ["r1", "r2"]], ["c2", ["r4", "r5"]], ["c3", ["s3", "s5"]]]);
+  assert.equal(RM.runCount(got), 2);
+  assert.deepEqual(RM.carriedMerges(model, "c1", [K.check]), [], "a single key is no merge");
+  assert.deepEqual(RM.carriedMerges(model, "c1", [K.check, K.note]), [], "the keys are read in order");
+  assert.deepEqual(RM.carriedMerges(model, "c1", [K.note, K.check]).map((g) => g.steps.map((s) => s.step_id)), [["r3", "r4"]]);
+  assert.deepEqual(RM.carriedMerges(model, "c1", [K.check, K.create, K.note]).map((g) => g.steps.map((s) => s.step_id)),
+    [["r1", "r2", "r3"]]);
+});
+
+test("sameKeyDraftsElsewhere and hideSteps: the other runs' visible drafts with the key, hidden with their state kept", () => {
+  const model = RM.buildRuns(STATS, carryFixture());
+  const got = RM.sameKeyDraftsElsewhere(model, "c2", K.check);
+  assert.deepEqual(got.map((s) => s.step_id), ["p2", "s3"], "not run 2's own, not the edited one");
+  RM.hideSteps(got);
+  assert.deepEqual(got.map((s) => [s.state, s._prev_state]), [["hidden", "auto_suggested"], ["hidden", "auto_suggested"]]);
+  assert.deepEqual(RM.sameKeyDraftsElsewhere(model, "c2", ""), []);
+});
+
+test("rememberedNameRows: names whose key is in this session first, then the others, each by name", () => {
+  const names = {
+    "excel|Book|Button:save": { name: "update the tracker", updated_at: "t1" },
+    [KEY]: { name: "Save the case", updated_at: "t2" },
+    "sap|Other|(visit)": { name: "Browse", updated_at: "t3" },
+    "notepad|X|(visit)": { name: "Add a note", updated_at: "t4" },
+    "blank|X|(visit)": { name: "   ", updated_at: "t5" },
+  };
+  const list = [
+    step("a", "c1", "00:00", "00:05", { draft_key: KEY }),
+    step("b", "c2", "02:00", "02:05", { draft_key: KEY, state: "edited" }),
+    step("c", "c2", "02:10", "02:15", { draft_key: "excel|Book|Button:save" }),
+    step("h", "c2", "02:20", "02:25", { draft_key: "notepad|X|(visit)", state: "hidden" }),
+  ];
+  assert.deepEqual(RM.rememberedNameRows(names, list).map((r) => [r.name, r.inSession]), [
+    ["Save the case", 2], ["update the tracker", 1], ["Add a note", 0], ["Browse", 0]]);
+  assert.deepEqual(RM.rememberedNameRows({}, list), []);
+});
+
+test("renameDrafts: the session's still-drafts with the key take the name; confirmed, edited and hidden ones keep theirs", () => {
+  const list = [
+    step("a", "c1", "00:00", "00:05", { draft_key: KEY }),
+    step("b", "c2", "02:00", "02:05", { draft_key: KEY, state: "confirmed", name: "Kept" }),
+    step("c", "c2", "02:10", "02:15", { draft_key: KEY, state: "hidden", name: "Hidden kept" }),
+    step("d", "c3", "04:00", "04:05", { draft_key: KEY }),
+    step("e", "c3", "04:10", "04:15", { draft_key: "other" }),
+  ];
+  assert.equal(RM.renameDrafts(list, KEY, " Save it "), 2);
+  assert.deepEqual(list.map((s) => [s.name, s.name_source || null]), [
+    ["Save it", "remembered"], ["Kept", null], ["Hidden kept", null], ["Save it", "remembered"], ["Step e", null]]);
 });
