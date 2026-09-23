@@ -33,17 +33,34 @@ version is delivered." The owner is asleep; the session is fully autonomous.
 | AD-4 | P6 transcript is built now, ahead of the P5 gate | Owner directive covers the whole plan; flagged to drop if P5 shows no value |
 | AD-5 | QB business-case inputs stay deferred | Owner: "We can work through the formula later" |
 | AD-6 | Delivery = packaged zips in dist/release plus a GitHub pre-release | P5 real-session gate still pending, so not marked Latest |
+| AD-7 | Light vocab = remembered-names store keyed by `draft_key` (contracts C4) | Step names are not control vocab entries; exact-key lookup cannot drift |
+| AD-8 | Light template = saved-process store matched in the viewer (C5); canonical_match, the Template editor and canonical-author.js are cut | Simpler than template matching; no second segmentation path |
+| AD-9 | Detail slider (V9), map matrix + expert drawer (V11) and activity-level mining + XES/CSV (P6) are cut in the map lane (L9) together with their replacement | They carry the Fork source, the golden's dfg block and the connectivity pin |
+| AD-10 | "Save as reference" and "Match Process Template" are cut with the template engine (L1b/L3); "Save as this process" arrives in L8 | AD-8 |
+| AD-11 | Map SVG / step-BPMN export moves from Compare into the Session Export menu | Plan keeps map exports; Compare is cut |
+| AD-12 | Markdown session report and starred screenshots go with the HTML findings report | Not among the outputs; use gate |
+| AD-13 | Overview CTA becomes "Export PDD"; "include in memo" becomes "include in PDD" (memo_selection keeps feeding PDD section 1) | The memo is cut; the PDD is the deliverable |
+| AD-14 | A session without run markers shows an instruction to mark runs in Flow (replaces the anchor hero and the anchor-based lock copy) | Anchors are cut |
+| AD-15 | Canonical matching goes with its drift markers and `--canonical`; classification and `--taxonomy` stay until Q4 is settled | AD-8; Q4 open |
+
+Shared files: contracts `.claude/agent-findings/2026-09-23_ba-helper-contracts.md`; cut map `.claude/agent-findings/2026-09-23_ba-helper-cut-map.md`.
 
 ## Lanes and status
 
 | Lane | Track | Content | Status |
 |---|---|---|---|
-| P0 | coord | Commit restart point + plan, product-edition branch + tag, CLAUDE.md pointer, push | in progress |
-| M1 | explore | Read-only cut map across layers | running |
-| L1 | V | Viewer cut (plan 8.3 Cut rows) | pending |
-| L3 | P | Pipeline cut (plan 8.2 Cut rows) + golden update | pending |
-| L2 | V | Capture: cut C1/C2, fixes RP-20..24 + CI-2, rework (run wording, end summary) | pending |
-| L4 | P | Pipeline fixes RP-01, RP-04 (py), RP-06, RP-09, RP-10, CI-1, RP-27 | pending |
+| P0 | coord | Commit restart point + plan, product-edition branch + tag, CLAUDE.md pointer, push | DONE 73f3bbf (pushed; tag product-edition-v1.5.0) |
+| M1 | explore | Read-only cut map across layers | DONE (cut-map file) |
+| L1a | V | Viewer cut part 1: Overview + globals (V4, V6, V7, V10, V12, V13, V14, identity-line move, Export-PDD CTA, mark-runs instruction) | DONE 957167d on track-v (after a spend-limit kill and resume) |
+| L1b | V | Viewer cut part 2: V1, V2 (+C2 viewer), V3 (+Save as reference, Match template), V5, V8, tab row, delete vocab/workbench/flywheel smokes, map export move (AD-11), L1a leftovers | in progress (launched about 02:30) |
+| L3 | P | Pipeline cut (P1, P2, P3, P4 minus XES/CSV, P5, P7, canonical) + CI-1 + golden update | DONE d908132 on track-p (385 passed / 0 skipped; golden 10/10 after removing 5 keys per session) |
+| L2 | V | Capture: cut C1/C2, fixes RP-20..24 + CI-2, rework (run wording, end summary) | DONE 1042c94 on track-v |
+| L4 | P | Pipeline fixes RP-01 (C9), RP-04 (C13 code 2), RP-09 (C13 code 3), RP-10 (C12), RP-06, RP-07, remove --step-bpmn-out + bpmn_step.py; optional RP-27, stale wording, dev scripts | in progress (launched about 02:45) |
+
+Merge procedure while both tracks are busy: when the Track V lane lands, cherry-pick
+the committed Track P commits onto track-v in the main checkout, run the full gates,
+fast-forward master, push. A later rebase of track-p onto track-v skips the
+cherry-picked commits by patch id.
 | L5 | V | Viewer fixes RP-04 (viewer), RP-34, RP-36, CI-3 | pending |
 | L6 | P | Drafting rule (P1) + probe instrument | pending |
 | L7 | V | Steps rework: runs and steps, confirm run 1, differences view, name reuse | pending |
@@ -56,7 +73,10 @@ version is delivered." The owner is asleep; the session is fully autonomous.
 
 ## Gates run before every merge to master
 
-`python -m pytest normalization/test/ -q` (report pass AND skip counts);
+Full-deps pytest (bundled interpreter + the system's pure-Python pytest; reproduces
+CI exactly, 0 skips; baseline at 73f3bbf = 3 failed (CI-1) / 577 passed), from
+`normalization/`: `../viewer/python/python.exe -c "import sys; sys.path.append(r'C:\Users\rasha\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages'); import pytest; sys.exit(pytest.main(['test/', '-q', '-p', 'no:cacheprovider']))"`
+(the plain `python -m pytest normalization/test/ -q` skips the pipeline tests);
 `viewer/python/python.exe normalization/golden_check.py`; `cd viewer && node --test`;
 `cd capture && node --test`; `cd e2e && node session-smoke.js` (plus the other
 smokes that still exist); `dotnet test` for the recorder when capture/recorder
