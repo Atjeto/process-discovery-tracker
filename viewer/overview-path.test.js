@@ -196,14 +196,16 @@ test("the fact tiles, the badge, the separate mark-runs line and the export bar 
   }
 });
 
-test("the document sections panel is collapsed, says how many are filled, and names where each lands", () => {
+test("the document sections panel is collapsed, says how many are filled, and names where each lands in its placeholder", () => {
   const sess = session({});
   sess.annotations.document = { title: "Order intake", purpose: "Why" };
   const html = overviewHtml(sess);
   assert.ok(html.includes('<details class="analysis-section analysis-module ov-doc" id="ov-doc">'), "closed by default");
   assert.ok(html.includes('<span class="analysis-module-takeaway" id="ov-doc-status">2 of 6 filled</span>'));
-  assert.equal((html.match(/In the PDD: /g) || []).length, 7);
-  assert.ok(html.includes("In the PDD: 3.1 Purpose"));
-  assert.ok(html.includes('<textarea class="ov-doc-input" data-doc="purpose" rows="3">Why</textarea>'));
-  assert.ok(html.includes('data-doc="title" value="Order intake"'));
+  // P3.6: where a field lands is its placeholder and tooltip, not a resident line.
+  assert.equal((html.match(/placeholder="In the PDD: /g) || []).length, 7);
+  assert.ok(!html.includes("ov-doc-where"));
+  assert.ok(html.includes('<textarea class="ov-doc-input" data-doc="purpose" placeholder="In the PDD: 3.1 Purpose" ' +
+    'title="In the PDD: 3.1 Purpose" rows="3">Why</textarea>'));
+  assert.ok(/data-doc="title"[^>]*value="Order intake"/.test(html));
 });

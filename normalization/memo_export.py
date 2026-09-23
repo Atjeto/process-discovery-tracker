@@ -46,6 +46,11 @@ logger = logging.getLogger(__name__)
 # feed order (the detector-table order is already a narrative order).
 DEFAULT_TOP_FINDINGS = 5
 
+# AD-20: a repeated step sequence has one home, the automation candidates
+# (the PDD's 5.3 and the Overview's Automation candidates), so section 1
+# never prints it as a finding, not even when an older memo_selection names it.
+_NOT_PRINTED = frozenset({"repetition"})
+
 # C12 (RP-10): the words every renderer uses for an analysis stage that
 # failed, in place of its output. Never a zero, never "nothing found".
 COULD_NOT_RUN = "could not run on this recording"
@@ -177,13 +182,21 @@ def _evidence_numbers(evidence: dict) -> str:
     return " · ".join(parts)
 
 
+def printable_findings(analysis: dict | None, runs_exist: bool = True) -> list[dict]:
+    """The findings section 1 can print, in feed order: every finding except
+    a repeated step sequence (AD-20), and a case-based finding (tier 2) only
+    when the recording has runs: it compares runs, so without runs it has
+    nothing to stand on."""
+    return [f for f in (analysis or {}).get("findings") or []
+            if isinstance(f, dict) and f.get("detector") not in _NOT_PRINTED
+            and (runs_exist or f.get("tier") != 2)]
+
+
 def _select_findings(analysis: dict, annotations: dict,
                      runs_exist: bool = True) -> list[dict]:
-    """The analyst's selection (memo_selection) or the top N in feed order.
-    A case-based finding (tier 2) is left out when the recording has no
-    runs: it compares runs, so without runs it has nothing to stand on."""
-    all_findings = [f for f in (analysis or {}).get("findings") or []
-                    if isinstance(f, dict) and (runs_exist or f.get("tier") != 2)]
+    """The analyst's selection (memo_selection) among the printable findings,
+    or the first DEFAULT_TOP_FINDINGS of them when it names none."""
+    all_findings = printable_findings(analysis, runs_exist)
     selected_ids = [s for s in ((annotations or {}).get("memo_selection") or [])
                     if isinstance(s, str)]
     if selected_ids:
@@ -191,6 +204,21 @@ def _select_findings(analysis: dict, annotations: dict,
         if chosen:
             return chosen
     return all_findings[:DEFAULT_TOP_FINDINGS]
+
+
+def pdd_findings(analysis: dict | None, stats: dict | None) -> dict | None:
+    """What section 1 prints, for the viewer's "include in PDD" boxes (F2):
+    the ids of the printable findings (`eligible`, feed order) and of the
+    ones printed when the analyst ticked none (`default`). Computed by the
+    same selection the PDD uses, so the boxes cannot disagree with it. None
+    when the findings stage did not run (C12)."""
+    if not isinstance((analysis or {}).get("findings"), list):
+        return None
+    runs = _run_count(stats, analysis) > 0
+    return {
+        "eligible": [f.get("id") for f in printable_findings(analysis, runs)],
+        "default": [f.get("id") for f in _select_findings(analysis, {}, runs)],
+    }
 
 
 def run_rows(stats: dict | None) -> list[dict]:

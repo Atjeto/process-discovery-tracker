@@ -222,6 +222,10 @@ const WANT_OFFSET = -30000;
         note: ((ov.querySelector(".tr-note") || {}).textContent || "").trim(),
         during: !!ov.querySelector(".ov-tr-during-cb"),
         rows: [...ov.querySelectorAll(".tr-row .tr-text")].map((e) => e.textContent),
+        // P1.10: the disclosure sits in the document sections, which sit
+        // directly under the summary line.
+        inDocUnderSummary: !!(ov.closest("#ov-doc") && q("#ov-summary") &&
+          q("#ov-summary").nextElementSibling === q("#ov-doc")),
       } : null,
     };
   });
@@ -290,9 +294,9 @@ const WANT_OFFSET = -30000;
     } catch (e) { err = errText(e); }
     const ok = !err && /Transcript/.test(flow.label) && /Not synced/.test(flow.label) && flow.syncAction &&
       flow.blocks.length === 0 && step && step.note === NOT_SYNCED && step.rows.length === 0 && step.buttons.length === 0 &&
-      ov && ov.count === "(10)" && ov.rows.length === 10 && ov.note === NOT_SYNCED && !ov.during;
-    record("(c) not synced: the lane says Not synced with Sync..., the step editor shows one line, the Overview lists all 10 with the line and no runs filter",
-      ok, JSON.stringify({ err, label: flow && flow.label, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, rows: ov.rows.length, note: ov.note, during: ov.during } }));
+      ov && ov.count === "(10)" && ov.rows.length === 10 && ov.note === NOT_SYNCED && !ov.during && ov.inDocUnderSummary;
+    record("(c) not synced: the lane says Not synced with Sync..., the step editor shows one line, the Overview lists all 10 with the line and no runs filter, in the document sections under the summary line",
+      ok, JSON.stringify({ err, label: flow && flow.label, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, rows: ov.rows.length, note: ov.note, during: ov.during, inDocUnderSummary: ov.inDocUnderSummary } }));
     if (!ok) await shot(page, "fail-transcript-not-synced.png");
   }
 

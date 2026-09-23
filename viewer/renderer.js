@@ -24,7 +24,7 @@ require("./layout-controls.js"); // side-effect import: self-wires resize handle
 
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
 const { promptModal } = require("./modals.js");
-const { initRecent, getRecent, getHiddenExamples, listBundledExamples, pushRecent, renderRecent } = require("./recent.js");
+const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
 const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderAnnotations, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead } = require("./views/flow-view.js");
@@ -78,21 +78,6 @@ function selectLevel(name) {
 $$(".view-mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => selectLevel(btn.dataset.level));
 });
-// Item 19: Overview is the default level on boot (State.getLevel() ===
-// "overview" before any session loads) -- set the playhead-button visibility
-// once up front so it isn't visible-by-HTML-default until the first level
-// switch fires applyLevel().
-(() => {
-  const playheadBtn = document.getElementById("btn-scope-to-playhead");
-  if (playheadBtn) playheadBtn.style.display = (State.getLevel() === "overview") ? "none" : "";
-})();
-
-const VIEW_MODE_HELP = {
-  overview: "Overview: what is left to do, the recording in one line, the findings, and the document sections for the PDD.",
-  flow:   "Flow view: video, raw event timeline, and side panel for notes / screenshots / markers.",
-  steps:  "Steps view: each run's drafted steps. Confirm the pattern run first: fix its step boundaries, name its steps, then click Confirm run.",
-  map:    "Map view: the process map built from the runs' steps. Fork it to draw the As-Is or To-Be map for the PDD.",
-};
 
 /* P2.3: viewport state transfer on mode switch. Each mode owns its own
    scroll container (the Flow timeline, the Steps mini-timeline). When
@@ -272,42 +257,14 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
-  // Item 19: "Scope to playhead" jumps the case scope to whichever case
-  // contains the current video playhead -- meaningless on Overview, which has
-  // no visible playhead/timeline. Hide it there; it stays wherever a timeline
-  // (or a timeline-driven view) exists. The Case: select itself stays --
-  // scoping by case is still meaningful on Overview.
-  const playheadBtn = document.getElementById("btn-scope-to-playhead");
-  if (playheadBtn) playheadBtn.style.display = (name === "overview") ? "none" : "";
+  // The run select dims the other runs on the Flow timeline and changes
+  // nothing on the other levels, so it shows on Flow only (P1.2).
+  const caseScope = document.getElementById("case-scope");
+  if (caseScope) caseScope.style.display = (name === "flow") ? "" : "none";
   const layouts = ["overview", "flow", "steps", "map"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";
-  }
-  const help = document.getElementById("view-mode-help");
-  if (help) {
-    // Clutter pass: the per-view hint is an onboarding aid, not permanent
-    // chrome. A dismiss "×" hides it for good (persisted); the same guidance
-    // stays in the Help (?) modal. Re-show by clearing pdt.viewModeHelpDismissed.
-    let dismissed = false;
-    try { dismissed = localStorage.getItem("pdt.viewModeHelpDismissed") === "1"; } catch (e) {}
-    const txt = VIEW_MODE_HELP[name] || "";
-    if (dismissed || !txt) {
-      help.innerHTML = "";
-      help.style.display = "none";
-    } else {
-      help.style.display = "";
-      help.innerHTML = '<span class="view-mode-help-text"></span>' +
-        '<button class="view-mode-help-x" id="btn-view-mode-help-x" title="Hide these per-view hints (still in Help)" aria-label="Dismiss view hint">×</button>';
-      help.querySelector(".view-mode-help-text").textContent = txt;
-      const x = help.querySelector("#btn-view-mode-help-x");
-      if (x) x.addEventListener("click", (e) => {
-        e.stopPropagation();
-        try { localStorage.setItem("pdt.viewModeHelpDismissed", "1"); } catch (_) {}
-        help.innerHTML = "";
-        help.style.display = "none";
-      });
-    }
   }
   // Arrival reveal: switching TO Steps with a surviving selection (e.g. after
   // a "Jump to in Flow" round-trip) should scroll that row back into view. This
@@ -437,11 +394,20 @@ async function exportArtifact(kind) {
   const target = State.getSession();
   if (!target) return;
 
-  // Step BPMN export = the OBSERVED-FLOW map the viewer already shows
-  // (process_map_step.bpmn, mined from the annotations by bpmn_observed.py
-  // under --mine), exported from the session folder (mining it first if it
-  // is not there yet).
+  // Process map (BPMN), P2.12: the As-Is copy chosen for the PDD when there is
+  // one (the map the analyst finished), else the OBSERVED-FLOW map the viewer
+  // shows (process_map_step.bpmn, mined from the annotations by
+  // bpmn_observed.py under --mine), mining it first if it is not there yet.
   if (kind === "step-bpmn") {
+    const asIs = _chosenAsIsMap();
+    if (asIs) {
+      const out = await Ipc.exportFile({ sourcePath: asIs.path, suggestedName: "as-is-map.bpmn" });
+      if (out) {
+        await Ipc.revealFile(out);
+        toast("Exported: " + path.basename(out), "success");
+      }
+      return;
+    }
     const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
     if (!fs.existsSync(sourcePath)) {
       const r = await Ipc.runNormalizeExtended({ sessionFolder: target.sessionFolder, mine: true });
@@ -452,7 +418,7 @@ async function exportArtifact(kind) {
       toast("No step-level flow to export. Analyze a session that has steps first.", "error");
       return;
     }
-    const out = await Ipc.exportFile({ sourcePath, suggestedName: "process." + kind + ".bpmn" });
+    const out = await Ipc.exportFile({ sourcePath, suggestedName: "process-map.bpmn" });
     if (out) {
       await Ipc.revealFile(out);
       toast("Exported: " + path.basename(out), "success");
@@ -549,9 +515,9 @@ async function exportArtifact(kind) {
   try { fs.unlinkSync(tmpPath); } catch (_) {}
 }
 
-/* AD-11: the Session Export menu carries the two map exports. "Step map as
-   BPMN" copies the step-level BPMN file the pipeline writes; "Map as SVG" is
-   exportMapSvg below. */
+/* AD-11: the Session Export menu carries the two map exports. "Process map
+   (BPMN)" copies a BPMN file; "Process map (image)" is exportMapSvg below.
+   P2.12: both save the As-Is copy chosen for the PDD when there is one. */
 if ($("#btn-session-step-bpmn")) $("#btn-session-step-bpmn").addEventListener("click", () => exportArtifact("step-bpmn"));
 if ($("#btn-session-map-svg"))   $("#btn-session-map-svg").addEventListener("click", () => exportMapSvg());
 
@@ -564,13 +530,53 @@ RefmapUI.initRefmapUI({
 
 /* ============ Exports ============================================= */
 
-/* AD-11: "Map as SVG" saves the process map the Map level shows as an SVG
-   image, the format Figma / Lucidchart / browsers all import. From another
-   level it opens the Map first and lets the diagram draw (the same settle the
-   PDD export uses). A Map that shows a message instead of a diagram (locked,
-   no steps) exports nothing and says so. */
+/* P2.12: the As-Is copy chosen for the PDD (reference_maps pdd_role "as_is")
+   when its file is on disk: { entry, path }, else null. */
+function _chosenAsIsMap() {
+  const RefStore = require("./reference-maps.js");
+  const sess = State.getSession();
+  if (!sess || !sess.sessionFolder) return null;
+  const entry = RefStore.pddPick(sess.annotations, "as_is");
+  if (!entry || !RefStore.fileExists(sess.sessionFolder, entry)) return null;
+  return { entry, path: RefStore.absPath(sess.sessionFolder, entry) };
+}
+
+/* A BPMN file drawn off screen and saved as SVG (bpmn-js saveSVG), or null. */
+function _bpmnXmlToSvg(xml) {
+  return new Promise((resolve) => {
+    if (typeof BpmnJS === "undefined" || !xml) { resolve(null); return; }
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;left:-99999px;top:-99999px;width:1600px;height:1200px;";
+    document.body.appendChild(host);
+    const v = new BpmnJS({ container: host });
+    v.importXML(xml)
+      .then(() => v.saveSVG())
+      .then(({ svg }) => resolve(svg || null))
+      .catch((e) => { console.error("[renderer] As-Is map image failed:", e); resolve(null); })
+      .finally(() => { try { v.destroy(); } catch (_) {} host.remove(); });
+  });
+}
+
+/* AD-11: "Process map (image)" saves the process map as an SVG image, the
+   format Figma / Lucidchart / browsers all import. P2.12: the As-Is copy
+   chosen for the PDD when there is one, drawn off screen. Else the map the
+   Map level shows: from another level it opens the Map first and lets the
+   diagram draw (the same settle the PDD export uses). A Map that shows a
+   message instead of a diagram (locked, no steps) exports nothing and says so. */
 async function exportMapSvg() {
   if (!State.getSession()) { toast("Open a session first.", "error"); return; }
+  const asIs = _chosenAsIsMap();
+  if (asIs) {
+    let xml = null;
+    try { xml = fs.readFileSync(asIs.path, "utf-8"); }
+    catch (e) { console.error("[renderer] could not read the As-Is map:", e); }
+    const asIsSvg = await _bpmnXmlToSvg(xml);
+    if (!asIsSvg) { toast("The As-Is map could not be drawn as an image.", "error"); return; }
+    const saved = await Ipc.saveSvgFile({ content: asIsSvg, suggestedName: "as-is-map.svg" });
+    if (saved && saved.ok) toast("As-Is map exported to " + saved.path, "success");
+    else if (saved && saved.error) toast("Export failed: " + saved.error, "error");
+    return;
+  }
   if (State.getLevel() !== "map") {
     // Click the level button (not applyLevel alone) so the View bar shows Map.
     const mapBtn = document.querySelector('.view-mode-btn[data-level="map"]');
@@ -832,7 +838,8 @@ $("#help-modal").addEventListener("click", (e) => {
 /* ============ Boot ================================================ */
 
 renderRecent();
-$("#topbar-meta").textContent = "v" + require("./package.json").version + " · " + new Date().toLocaleDateString();
+// P3.1: the version lives in Help, not in the top bar.
+$("#help-version").textContent = "Version " + require("./package.json").version;
 
 /* If launched with --session=<path>, the main process pushes the path
    via this channel. Open it without any further user click. */
@@ -902,19 +909,15 @@ if ($("#btn-link-recording")) {
   $("#btn-link-recording").addEventListener("click", attachExternalVideo);
 }
 
-/* ===== Recent dropdown (top-bar) =====
-   Recent sessions were only reachable from the Session empty-state,
-   which disappears once a session loads. This top-bar menu makes them
-   reachable any time. */
+/* ===== Open menu (top-bar) =====
+   One menu for opening a session (P2.2): "Open session folder..." (its
+   click is flow-view's openSessionFlow), then the recent sessions, reachable
+   from every level. */
 function renderRecentMenu() {
   const host = document.getElementById("recent-menu-content");
   if (!host) return;
   let html = "";
-  // Recent sessions + bundled examples.
-  const recents = getRecent();
-  const hidden = getHiddenExamples();
-  const examples = listBundledExamples().filter((e) => !hidden.has(e.folder));
-  const sessions = recents.concat(examples);
+  const sessions = getRecent();
   if (sessions.length) {
     html += '<div class="recent-menu-heading">Recent sessions</div>';
     html += sessions.map((r) => {
@@ -924,7 +927,7 @@ function renderRecentMenu() {
       return '<button class="recent-menu-item' + (missing ? " missing" : "") + '" ' +
         'data-kind="session" data-folder="' + escapeHtml(r.folder) + '">' +
         '<span class="ri-label">' + escapeHtml(label) + '</span>' +
-        '<span class="ri-tag">' + (missing ? "missing" : (r.example ? "example" : "session")) + '</span>' +
+        (missing ? '<span class="ri-tag">missing</span>' : "") +
         '</button>';
     }).join("");
   }
@@ -954,6 +957,8 @@ function toggleRecentMenu(force) {
     e.stopPropagation();
     toggleRecentMenu();
   });
+  const openFolder = document.getElementById("btn-open-session");
+  if (openFolder) openFolder.addEventListener("click", () => toggleRecentMenu(false));
   document.addEventListener("click", (e) => {
     if (!popup.contains(e.target) && e.target !== btn) toggleRecentMenu(false);
   });

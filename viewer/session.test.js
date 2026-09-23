@@ -184,3 +184,20 @@ test("a save still queued when another session opens leaves the new session's un
   const top = State.popUndo("G2");
   assert.equal(top.annotations.steps[0].name, "new", "G2's undo returns to G2's loaded state, not G1's edit");
 });
+
+/* ---- keys of cut features: not seeded, kept when present (C10) ----------- */
+
+test("ensureAnnoShape seeds no key of a cut feature and keeps an older file's keys as they are", () => {
+  State.setSession(null);
+  const fresh = Session.ensureAnnoShape({ steps: [] });
+  assert.ok(!("phases" in fresh), "phases is not seeded");
+  assert.ok(!("drift_markers" in fresh), "drift_markers is not seeded");
+  const older = {
+    steps: [],
+    phases: [{ phase_id: "p1", step_ids: ["s1"] }],
+    drift_markers: [{ marker_id: "d1" }],
+  };
+  const kept = Session.ensureAnnoShape(JSON.parse(JSON.stringify(older)));
+  assert.deepEqual(kept.phases, older.phases, "an existing phases key round-trips untouched");
+  assert.deepEqual(kept.drift_markers, older.drift_markers, "an existing drift_markers key round-trips untouched");
+});

@@ -44,7 +44,7 @@ function canRedo() {
   return !!s && State.canRedo(s.sessionFolder);
 }
 function emptyAnnotationsShape() {
-  return { steps: [], phases: [], annotations: [], notes: [], marker_edits: [], drift_markers: [], excluded_ranges: [], reference_maps: [] };
+  return { steps: [], annotations: [], notes: [], marker_edits: [], excluded_ranges: [], reference_maps: [] };
 }
 function snapshotAnnotations(a) {
   // Never push null/undefined onto the stack -- a later undo/redo
@@ -203,12 +203,12 @@ function ensureAnnoShape(anno) {
   const a = anno || {};
   a.version = 1;
   a.steps = a.steps || [];
-  a.phases = a.phases || [];
   a.annotations = a.annotations || [];
   a.notes = a.notes || [];
   a.marker_edits = a.marker_edits || [];
-  a.drift_markers = a.drift_markers || [];
   a.excluded_ranges = a.excluded_ranges || [];
+  // Keys of cut features (phases, drift_markers, ...) are not seeded; an
+  // older file keeps them as they are (C10).
   // ADR-0019: analyst-authored reference maps (decoupled editable BPMN copies).
   a.reference_maps = a.reference_maps || [];
   a.step_filters = a.step_filters || { ignored_processes: [], ignored_window_titles: [] };

@@ -11,8 +11,10 @@
  * apart visually or in what a "finding" looks like.
  *
  * Disclosure altitude (DISCLOSURE-MODEL rule 1: "lead with the sentence"):
- *   Resident  = tier chip + claim sentence + "include in PDD" checkbox
- *               + an expand chevron.
+ *   Resident  = claim sentence + "include in PDD" checkbox + an expand
+ *               chevron. (P2.7: no tier chip; a finding that needs runs is
+ *               left out of the feed while no runs are marked, as the PDD
+ *               does, so every card shown is measured.)
  *   Expand-in-place (hidden until the card/chevron is clicked, inline, no
  *               navigation) = the mono evidence line, the screenshot chip,
  *               "Show on timeline", any caller detail, and the methodology
@@ -25,8 +27,7 @@
  *                           PDD" checkbox, pre-checked from the set
  *                           (annotations.memo_selection feeds the PDD).
  *   opts.detailHtml(f)      extra pre-built HTML inserted after the
- *                           evidence numbers (the automation candidates
- *                           use it for the step chain and Confirm/Dismiss).
+ *                           evidence numbers.
  *   opts.screenshots        false => omit the screenshot chip(s) (a card
  *                           with no screenshots to open, e.g. an
  *                           automation candidate). Default: render them
@@ -104,10 +105,6 @@ function findingCardHtml(f, opts) {
 
   return '<div class="ov-finding" data-fid="' + escapeAttr(f.id || "") + '">' +
     '<div class="ov-finding-head">' +
-      '<span class="ov-finding-tier t' + (f.tier || 1) + '" title="' +
-        (f.tier === 2 ? "Based on the identified cases: needs confirmed cases to be reliable"
-                      : "Measured directly from the recording: no case identification needed") +
-        '">' + (f.tier === 2 ? "case-based" : "measured") + "</span>" +
       '<span class="ov-finding-claim">' + escapeHtml(f.claim || "") + "</span>" +
       chevron +
     "</div>" +

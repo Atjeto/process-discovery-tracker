@@ -7,19 +7,18 @@
  *      finish the As-Is map, export the PDD), each shown done or not from
  *      the session data alone, and ONE button for the next act. Nothing
  *      runs by itself: the button lands where it says.
- *   2. session summary: one line (the recording, its runs, how many steps
- *      are confirmed), plus a warning line only when a marker problem, a
- *      missing file or a check that could not run needs one.
- *   3. findings feed: analysis.findings[]: claim + evidence, "Show on
- *      timeline", "include in PDD" (annotations.memo_selection feeds the
- *      PDD's findings section).
- *   4. evidence modules: analysis-view.renderEvidenceInto.
- *   5. "to say more" box: the missing inputs, honestly enumerated.
- *   6. document sections: annotations.document (contract C6), the PDD's
- *      document-level fields; collapsed, with a one-line status.
- *
- * Tier discipline: everything here is measured or explicitly gated. Nothing
- * renders case-based authority while case_quality.tier2_unlocked is false.
+ *   2. session summary: one line (the recording or, once written, the
+ *      document title; its runs; how many steps are confirmed), plus a
+ *      warning line only when a marker problem, a missing file or a check
+ *      that could not run needs one.
+ *   3. document sections: annotations.document (contract C6), the PDD's
+ *      document-level fields, and the sentences of an attached transcript;
+ *      collapsed, with a one-line status.
+ *   4. findings feed: the findings the PDD can print (analysis.pdd_findings),
+ *      claim + evidence, "Show on timeline", and "include in PDD" boxes that
+ *      show exactly what the PDD prints (annotations.memo_selection, else the
+ *      PDD's default findings).
+ *   5. evidence modules: analysis-view.renderEvidenceInto, collapsed.
  */
 
 "use strict";
@@ -271,17 +270,19 @@ function _wireNextLine(host) {
 
 /* ---- 2. Session summary ---------------------------------------------------- */
 
-/* The recording in one line: its name, who recorded it, how long, its runs,
-   and how many of its steps the analyst stands behind (confirmed, edited or
-   added: the Steps level's meaning of Confirmed), counted live from the
-   steps so the line agrees with the Steps level at once. */
+/* The recording in one line: its name (the document title once written,
+   P3.9), who recorded it, how long, its runs, and how many of its steps the
+   analyst stands behind (confirmed, edited or added: the Steps level's
+   meaning of Confirmed), counted live from the steps so the line agrees with
+   the Steps level at once. */
 function _summaryLine(sess, state) {
   const s = SessionSummary.computeSummary(sess);
   if (!s) return "";
   const steps = (((sess && sess.annotations) || {}).steps || []).filter((st) => st && st.state !== "hidden");
   const confirmed = steps.filter((st) => RunsModel.ANALYST_STATES.has(st.state)).length;
   const runs = state.runs.length;
-  const name = s.engagementName || s.engagement;
+  const docTitle = _docValue(((sess && sess.annotations) || {}).document, "title").trim();
+  const name = docTitle || s.engagementName || s.engagement;
   const parts = [
     '<strong class="ov-summary-name">' + escapeHtml(name) + "</strong>",
     "recorded by " + escapeHtml(s.worker),
@@ -412,6 +413,34 @@ function _detectorHeading(det) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/* F2: the "include in PDD" boxes show exactly what the PDD prints. `pdd` is
+   analysis.pdd_findings, written by the pipeline from the PDD's own selection
+   (memo_export): `eligible`, the findings section 1 can print, and `default`,
+   the ones it prints while the analyst has ticked none. The analyst's ticks
+   (memo_selection) count when they name a printable finding. Pure. */
+function pddTicks(pdd, memoSelection) {
+  const eligible = new Set(pdd.eligible);
+  const chosen = (Array.isArray(memoSelection) ? memoSelection : []).filter((id) => eligible.has(id));
+  return new Set(chosen.length ? chosen : pdd.default);
+}
+
+/* The memo_selection to store after one box changes: the ticks as shown, with
+   `fid` added or removed, in feed order. Unticking the last one stores none,
+   which returns to the default (`toDefault`). Pure. */
+function nextMemoSelection(pdd, memoSelection, fid, on) {
+  const ticks = pddTicks(pdd, memoSelection);
+  if (on) ticks.add(fid); else ticks.delete(fid);
+  const selection = pdd.eligible.filter((id) => ticks.has(id));
+  return { selection, toDefault: selection.length === 0 };
+}
+
+const TO_DEFAULT_TOAST = "No finding is ticked, so the PDD prints its default findings.";
+
+function _pddFindings(analysis) {
+  const pdd = analysis && analysis.pdd_findings;
+  return (pdd && Array.isArray(pdd.eligible) && Array.isArray(pdd.default)) ? pdd : null;
+}
+
 function _findingsFeed(findings, memoSelection, analysis) {
   if (findings == null) {
     // C12: the findings stage failed. "Nothing stood out" would be a measured
@@ -422,7 +451,17 @@ function _findingsFeed(findings, memoSelection, analysis) {
         "still fails, the analysis log names the problem.") + "</div>" +
       _technicalDetail(_stageError(analysis, "findings")) + "</div>";
   }
-  if (!findings.length) {
+  const pdd = _pddFindings(analysis);
+  if (findings.length && !pdd) {
+    // An analysis from an older version cannot say what the PDD prints.
+    return '<div class="ov-section"><div class="ov-section-title">Findings</div>' +
+      '<div class="analysis-note">Click Analyze session again to see the findings the PDD prints.</div></div>';
+  }
+  // AD-20 and the no-runs gate: the feed shows the findings the PDD can
+  // print. A repeated step sequence is an automation candidate (Evidence).
+  const eligible = new Set(pdd ? pdd.eligible : []);
+  const shown = findings.filter((f) => f && eligible.has(f.id));
+  if (!shown.length) {
     return '<div class="ov-section"><div class="ov-section-title">Findings</div>' +
       '<div class="analysis-note">Nothing stood out: the automatic checks ' +
       "found nothing worth reporting on this recording.</div></div>";
@@ -433,12 +472,12 @@ function _findingsFeed(findings, memoSelection, analysis) {
   // Group findings by detector, preserving first-seen order.
   const order = [];
   const byDet = new Map();
-  for (const f of findings) {
+  for (const f of shown) {
     const det = f.detector || "other";
     if (!byDet.has(det)) { byDet.set(det, []); order.push(det); }
     byDet.get(det).push(f);
   }
-  const sel = new Set(memoSelection || []);
+  const sel = pddTicks(pdd, memoSelection);
   const groups = order.map((det) => {
     const list = byDet.get(det);
     const method = list.map((f) => f.confidence_note).find((n) => n) || "";
@@ -457,7 +496,6 @@ function _findingsFeed(findings, memoSelection, analysis) {
     return '<div class="ov-finding-group" data-detector="' + escapeAttr(det) + '">' +
       '<div class="ov-finding-group-head">' +
         '<span class="ov-finding-group-title">' + escapeHtml(_detectorHeading(det)) + "</span>" +
-        (list.length > 1 ? '<span class="ov-group-count">' + list.length + " findings</span>" : "") +
         info +
       "</div>" + cards + "</div>";
   }).join("");
@@ -467,18 +505,27 @@ function _findingsFeed(findings, memoSelection, analysis) {
 
 async function _toggleMemoSelection(fid, on) {
   const sess = State.getSession();
-  if (!sess || !fid) return;
+  const pdd = _pddFindings(sess && sess.analysis);
+  if (!sess || !fid || !pdd) return;
   const a = sess.annotations || {};
-  const list = Array.isArray(a.memo_selection) ? a.memo_selection.slice() : [];
-  const i = list.indexOf(fid);
-  if (on && i === -1) list.push(fid);
-  if (!on && i !== -1) list.splice(i, 1);
-  a.memo_selection = list;
+  const next = nextMemoSelection(pdd, a.memo_selection, fid, on);
+  a.memo_selection = next.selection;
   try {
     await saveAnnotationsWithUndo(a, on ? "include finding in PDD" : "exclude finding from PDD");
     sess.annotations = a;
   } catch (err) {
     toast("Failed to save the PDD selection: " + (err && err.message), "error");
+    return;
+  }
+  if (next.toDefault) {
+    // The default findings show ticked again, in place (the boxes stay the
+    // same elements under the pointer), and one line says why.
+    const ticks = pddTicks(pdd, a.memo_selection);
+    document.querySelectorAll("#overview-content .ov-finding[data-fid]").forEach((row) => {
+      const box = row.querySelector('[data-act="memo"]');
+      if (box) box.checked = ticks.has(row.dataset.fid);
+    });
+    toast(TO_DEFAULT_TOAST, "info");
   }
 }
 
@@ -505,7 +552,7 @@ function _wireFindings(host) {
     if (expand) expand.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
     const head = row.querySelector(".ov-finding-head");
     if (head && body) head.addEventListener("click", (e) => {
-      // A click on the tier chip / claim text (not a control) expands.
+      // A click on the claim text (not a control) expands.
       if (e.target.closest("button, a, label, input")) return;
       toggle();
     });
@@ -542,41 +589,6 @@ function _wireFindings(host) {
   });
 }
 
-/* ---- 5. "To say more" box ----------------------------------------------- */
-
-/* The missing inputs. A recording with no runs marked is not listed: the
-   what-is-left line says it, with its button. */
-function _toSayMore(analysis, anno) {
-  const items = [];
-  // C12: a failed case check or facts stage says nothing about runs or idle
-  // time, so neither gap is claimed from a null block.
-  const cq = analysis.case_quality;
-  if (cq && !cq.tier2_unlocked && cq.mode && cq.mode !== "unsegmented" && (cq.case_count || 0) >= 1) {
-    const n = cq.case_count || 0;
-    items.push(n < 2
-      ? "Only 1 run is marked: comparing runs needs at least 2, so recording one more run " +
-        "(or marking another in this recording) would show how long each run takes and how the runs differ."
-      : "The marked runs cover only " + _pct(cq.coverage) + " of the recording, below the 70% needed " +
-        "to compare them: marking the rest of the work as runs would show how long each run takes " +
-        "and how the runs differ.");
-  }
-  if (analysis.facts && !analysis.facts.idle_ms) {
-    items.push("No idle time was measured: time spent waiting inside an " +
-      "app without typing or clicking is invisible to this recording.");
-  }
-  const hasBnva = ((anno || {}).analysis_overrides || []).some(
-    (ov) => ov && ov.bnva_ms !== undefined && ov.bnva_ms !== null);
-  if (!hasBnva) {
-    items.push("Saying how much of the time added value needs an analyst " +
-      "to judge each step type first (Evidence → Where the time goes, above); " +
-      "until then no efficiency claim is made.");
-  }
-  if (!items.length) return "";
-  return '<div class="ov-section ov-saymore">' +
-    '<div class="ov-section-title">To say more, this analysis needs</div>' +
-    "<ul>" + items.map((i) => "<li>" + escapeHtml(i) + "</li>").join("") + "</ul></div>";
-}
-
 /* ---- R4 (Task 2): the Evidence modules (retired Analysis, in Overview) --- */
 
 function _evidenceSection() {
@@ -584,11 +596,11 @@ function _evidenceSection() {
   // renderEvidenceInto() fills #overview-evidence with the two collapsible
   // modules (time / automation), each with its own collapse persistence.
   return '<div class="ov-section ov-evidence-section">' +
-    '<div class="ov-section-title">Evidence: the measured detail behind the findings</div>' +
+    '<div class="ov-section-title">Evidence</div>' +
     '<div id="overview-evidence"></div></div>';
 }
 
-/* ---- 6. Document sections (contract C6) ------------------------------------ */
+/* ---- 3. Document sections (contract C6) ------------------------------------ */
 
 /* Whether the analyst opened the document sections: kept across re-renders
    (an undo, a re-analysis) for the session on screen; closed by default. */
@@ -599,7 +611,7 @@ function _documentStatusText(st) {
   return st.filled + " of " + st.total + " filled";
 }
 
-/* ---- 6b. From the transcript (contract C8) -------------------------------- */
+/* ---- 3b. From the transcript (contract C8) -------------------------------- */
 
 /* One collapsed disclosure at the end of the document sections, only while a
    transcript is attached. By default it lists the talk outside the runs
@@ -741,12 +753,14 @@ function _documentHtml(anno, sess) {
   const st = documentStatus(doc);
   const fields = DOC_FIELDS.map((f) => {
     const value = _docValue(doc, f.key);
+    // P3.6: where the field lands is its placeholder and tooltip, not a line.
+    const where = "In the PDD: " + f.where;
+    const attrs = ' data-doc="' + f.key + '" placeholder="' + escapeAttr(where) + '" title="' + escapeAttr(where) + '"';
     const input = f.line
-      ? '<input type="text" class="ov-doc-input" data-doc="' + f.key + '" value="' + escapeAttr(value) + '" />'
-      : '<textarea class="ov-doc-input" data-doc="' + f.key + '" rows="3">' + escapeHtml(value) + "</textarea>";
+      ? '<input type="text" class="ov-doc-input"' + attrs + ' value="' + escapeAttr(value) + '" />'
+      : '<textarea class="ov-doc-input"' + attrs + ' rows="3">' + escapeHtml(value) + "</textarea>";
     return '<label class="ov-doc-field">' +
       '<span class="ov-doc-label">' + escapeHtml(f.label) + (f.optional ? ' <span class="ov-doc-optional">optional</span>' : "") + "</span>" +
-      '<span class="ov-doc-where">In the PDD: ' + escapeHtml(f.where) + "</span>" +
       input + "</label>";
   }).join("");
   // The same disclosure as the Evidence modules (.analysis-module): a title,
@@ -801,6 +815,9 @@ function _refreshPathInPlace() {
   }
   const status = host.querySelector("#ov-doc-status");
   if (status) status.textContent = _documentStatusText(state.doc);
+  // P3.9: the summary line names the document title once it is written.
+  const summary = host.querySelector("#ov-summary .ov-summary-line");
+  if (summary) summary.outerHTML = _summaryLine(sess, state);
 }
 
 function _wireDocument(host) {
@@ -846,18 +863,27 @@ function overviewHtml(sess) {
   const state = pathState(sess);
   let html = _nextLineHtml(state);
   html += _summaryHtml(sess, state);
+  // P1.10: the only typing the home asks for sits under the summary line.
+  html += _documentHtml(anno, sess);
   html += _findingsFeed(analysis.findings, anno.memo_selection, analysis);
   // R4 (Task 2): the retired Analysis modules, as Evidence, BELOW the findings.
   html += _evidenceSection();
-  html += _toSayMore(analysis, anno);
-  html += _documentHtml(anno, sess);
   return html;
+}
+
+/* P1.11: one orange button per screen, the next act. Until the session is
+   analyzed that is Analyze session; afterwards the Overview's what-is-left
+   button (and each level's own act) is, so Analyze session turns secondary. */
+function _syncAnalyzeButton(sess) {
+  const btn = document.getElementById("btn-normalize");
+  if (btn) btn.classList.toggle("primary", !_hasOverview(sess && sess.analysis));
 }
 
 function renderOverviewLevel() {
   const host = document.getElementById("overview-content");
   if (!host) return;
   const sess = State.getSession();
+  _syncAnalyzeButton(sess);
   if (!sess) { host.innerHTML = ""; return; }
   if (_docFolder !== sess.sessionFolder) {
     _docFolder = sess.sessionFolder;
@@ -880,5 +906,6 @@ function renderOverviewLevel() {
 
 module.exports = {
   renderOverviewLevel, openMarkersInFlow, overviewHtml, pathState, documentStatus, mapLockHtml,
+  pddTicks, nextMemoSelection, TO_DEFAULT_TOAST,
   DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN,
 };

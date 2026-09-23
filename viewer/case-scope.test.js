@@ -1,6 +1,6 @@
 "use strict";
 /*
- * RP-34: the Flow "Case:" dropdown escapes the case id, which comes from
+ * RP-34: the Flow "Run:" dropdown escapes the case id, which comes from
  * annotations.json (session data, untrusted), in the option's value
  * attribute as well as in its text (case-scope.js, used by
  * flow-view.populateCaseScope).
@@ -31,7 +31,7 @@ test("the selected case and the duplicate-label suffix still work", () => {
   assert.ok(html.includes('<option value="c">c</option>'), html);
 });
 
-test("no cases: the unanalyzed hint", () => {
+test("no runs: one plain line under All runs", () => {
   assert.equal(caseScopeOptionsHtml([], "", NaN),
-    '<option value="">All cases</option><option value="" disabled>(no cases yet: click Analyze session first)</option>');
+    '<option value="">All runs</option><option value="" disabled>(no runs yet)</option>');
 });

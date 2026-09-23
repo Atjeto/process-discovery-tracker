@@ -406,6 +406,15 @@ def _run_analysis(
         except Exception as e:  # noqa: BLE001 -- recorded as a stage error
             analysis_result["findings"] = None
             _failed("findings", f"{type(e).__name__}: {e}")
+    # F2: the findings the PDD's section 1 can print and prints by default,
+    # from the PDD's own selection, so the viewer's "include in PDD" boxes
+    # show exactly what the PDD prints.
+    try:
+        from memo_export import pdd_findings
+        analysis_result["pdd_findings"] = pdd_findings(analysis_result, summary)
+    except Exception as e:  # noqa: BLE001 (recorded as a stage error)
+        analysis_result["pdd_findings"] = None
+        _failed("pdd_findings", f"{type(e).__name__}: {e}")
     analysis_result["stage_errors"] = stage_errors
 
     try:

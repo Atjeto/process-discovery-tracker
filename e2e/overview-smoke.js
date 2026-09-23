@@ -6,19 +6,24 @@
  *   (a) the DEFAULT level is Overview (#session-layout-overview visible,
  *       its view-mode button active, the Flow layout hidden), laid out at its
  *       full height (the Session view scrolls; L5b small-screen fix);
- *   (b) the home leads with the "What is left" line (one button) and the
- *       one-line session summary; the fact tiles, the badge, the separate
- *       mark-runs line and the export bar are gone, and the run count is
- *       said once;
- *   (c) the findings feed (include in PDD, methodology once per group,
- *       expand-in-place evidence) and the Evidence modules;
+ *   (b) the home leads with the "What is left" line (one button), the
+ *       one-line session summary and, right under it, the document sections;
+ *       the fact tiles, the badge, the separate mark-runs line and the export
+ *       bar are gone, and the run count is said once;
+ *   (c) the findings feed (methodology once per group, expand-in-place
+ *       evidence, no repeated-sequence group: AD-20) and the Evidence modules
+ *       (collapsed to their takeaway lines); F2: the "include in PDD" boxes
+ *       show the PDD's default findings ticked, unticking one stores the
+ *       others, unticking the last returns to the default with one toast
+ *       line, and the exported PDD prints exactly the ticked findings;
  *   (d) the analyst path, walked on the demo: every next act lands where it
  *       says (the pattern run open in Steps, each other run open in Steps,
  *       the document sections open on their first empty field, the Map), a
  *       done stage shows done, a document field saves undoably, and the last
  *       act exports the PDD, whose word/document.xml carries the Purpose the
  *       analyst wrote (contract C6, end to end) and the As-Is and To-Be maps
- *       chosen in the reference-map gallery;
+ *       chosen in the reference-map gallery; the Export menu's map items then
+ *       save the As-Is copy chosen for the PDD (P2.12);
  *   (e) on a marker-STRIPPED re-normalized copy the line says no runs are
  *       marked, and its button opens Flow with the Markers panel showing;
  *   (f) zero PAGE ERRORs across both launches.
@@ -216,7 +221,7 @@ const T = 20000;   // the bound on every wait for an observable state
     const text = host.textContent || "";
     const sum = document.querySelector("#ov-summary .ov-summary-line");
     return {
-      first: kids[0], second: kids[1],
+      first: kids[0], second: kids[1], third: kids[2],
       next: line ? line.dataset.next : null,
       buttons: line ? line.querySelectorAll("button").length : 0,
       button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
@@ -229,8 +234,9 @@ const T = 20000;   // the bound on every wait for an observable state
       casesSaid: (text.match(/\b4 cases\b/g) || []).length,
     };
   }).catch((e) => ({ err: e.message }));
-  record("(b) the home leads with the What is left line (runs done, next: the pattern run, one button), then the one-line summary",
-    !!(home && !home.err && home.first === "ov-next" && home.second === "ov-summary" && home.next === "pattern" &&
+  record("(b) the home leads with the What is left line (runs done, next: the pattern run, one button), then the one-line summary, then the document sections (P1.10)",
+    !!(home && !home.err && home.first === "ov-next" && home.second === "ov-summary" && home.third === "ov-doc" &&
+      home.next === "pattern" &&
       home.buttons === 1 && home.button === "Confirm Run 1 in Steps" &&
       home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,map:-,export:-"),
     JSON.stringify(home));
@@ -240,18 +246,25 @@ const T = 20000;   // the bound on every wait for an observable state
     JSON.stringify(home && { removed: home.removed, summary: home.summary, summaryH: home.summaryH,
       runsSaid: home.runsSaid, casesSaid: home.casesSaid }));
 
-  // (c) R4: the Evidence modules (retired Analysis) render below the findings.
+  // (c) R4: the Evidence modules (retired Analysis) render below the findings,
+  // collapsed to their one-line takeaways on a fresh profile (P1.10).
   const evidence = await page.evaluate(() => {
     const host = document.querySelector("#overview-content #overview-evidence");
     if (!host) return { present: false };
-    const mods = [...host.querySelectorAll(".analysis-module[data-module]")]
-      .map((m) => m.getAttribute("data-module"));
-    return { present: true, modules: mods };
+    const all = [...host.querySelectorAll(".analysis-module[data-module]")];
+    return {
+      present: true,
+      modules: all.map((m) => m.getAttribute("data-module")),
+      open: all.filter((m) => m.open).length,
+      takeaways: all.map((m) => ((m.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim()),
+      captions: host.querySelectorAll(".analysis-caption").length,
+    };
   }).catch((e) => ({ err: e.message }));
-  record("R4: Evidence modules (time / automation) render in #overview-evidence below the findings, no ROI module",
+  record("R4 + P1.10: Evidence modules (time / automation) render below the findings, collapsed with their takeaways showing; no ROI module, no caption",
     !!(evidence && !evidence.err && evidence.present &&
       evidence.modules.includes("time") && evidence.modules.includes("automation") &&
-      !evidence.modules.includes("roi")),
+      !evidence.modules.includes("roi") && evidence.open === 0 && evidence.captions === 0 &&
+      evidence.takeaways.every((t) => t.length > 0)),
     JSON.stringify(evidence));
 
   // Findings feed sanity on the demo (claims + an "include in PDD" checkbox on
@@ -274,31 +287,93 @@ const T = 20000;   // the bound on every wait for an observable state
     !!(feed && !feed.err && feed.findings > 0 && feed.pddChecks === feed.findings && feed.allSayPdd),
     JSON.stringify(feed));
 
-  // AD-13: ticking "include in PDD" writes annotations.memo_selection (the
-  // PDD's findings section reads that key). Tick the first unticked box, read
-  // the saved annotations.json, then untick to leave the session as found.
-  const tick = await page.evaluate(async () => {
+  // F2 + AD-20: the "include in PDD" boxes show exactly what the PDD prints.
+  // With nothing ticked they show the PDD's default findings, the ids the
+  // pipeline wrote into analysis.json from the PDD's own selection; the feed
+  // holds the printable findings, and a repeated step sequence is not one.
+  const feedState = () => page.evaluate(() => {
     const inFeed = (el) => el.closest("#overview-evidence") === null;
-    const box = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed)
-      .find((c) => !c.checked);
-    if (!box) return { err: "no unticked PDD checkbox" };
-    const fid = box.closest(".ov-finding").dataset.fid;
-    box.checked = true;
-    box.dispatchEvent(new Event("change", { bubbles: true }));
-    return { fid };
-  }).catch((e) => ({ err: e.message }));
-  await wait(800);
-  let savedSel = null;
-  try { savedSel = readAnno().memo_selection; } catch (e) { savedSel = "read error: " + e.message; }
-  record("AD-13: ticking 'include in PDD' saves the finding id to annotations.memo_selection",
-    !!(tick && !tick.err && Array.isArray(savedSel) && savedSel.includes(tick.fid)),
-    JSON.stringify({ tick, savedSel }));
-  await page.evaluate((fid) => {
-    const row = document.querySelector('#overview-content .ov-finding[data-fid="' + fid + '"]');
-    const box = row && row.querySelector('[data-act="memo"]');
-    if (box && box.checked) { box.checked = false; box.dispatchEvent(new Event("change", { bubbles: true })); }
-  }, tick && tick.fid).catch(() => {});
-  await wait(500);
+    const cards = [...document.querySelectorAll("#overview-content .ov-finding")].filter(inFeed);
+    const box = (c) => c.querySelector('[data-act="memo"]');
+    return {
+      ids: cards.map((c) => c.dataset.fid),
+      ticked: cards.filter((c) => box(c) && box(c).checked).map((c) => c.dataset.fid),
+      groups: [...document.querySelectorAll("#overview-content .ov-finding-group")].map((g) => g.dataset.detector),
+    };
+  });
+  const f2 = {};
+  try {
+    Object.assign(f2, await page.evaluate(() => {
+      const an = require("./state.js").getSession().analysis || {};
+      return {
+        pdd: an.pdd_findings || null,
+        claims: Object.fromEntries((an.findings || []).map((f) => [f.id, f.claim])),
+        repetitionInAnalysis: (an.findings || []).some((f) => f.detector === "repetition"),
+      };
+    }));
+    f2.start = await feedState();
+    f2.selBefore = readAnno().memo_selection || [];
+  } catch (e) {
+    logActionError("F2 default ticks", e);
+    f2.err = String(e.message).split("\n")[0];
+  }
+  const D = (f2.pdd && f2.pdd.default) || [];
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  record("F2 + AD-20: with nothing ticked the boxes show the PDD's default findings; the feed is the printable findings, with no repeated-sequence group",
+    !!(!f2.err && D.length >= 2 && f2.selBefore.length === 0 && same(f2.start.ticked, D) &&
+      same(f2.start.ids, f2.pdd.eligible) && f2.repetitionInAnalysis && !f2.start.groups.includes("repetition")),
+    JSON.stringify({ pdd: f2.pdd, start: f2.start, selBefore: f2.selBefore, repetitionInAnalysis: f2.repetitionInAnalysis, err: f2.err }));
+
+  // Untick every box in turn: each untick stores the others explicitly; the
+  // last one returns to the default and says so in one toast line. Then untick
+  // the first one again and keep that for the export below.
+  const untick = async (fid, expectSel) => {
+    // One real click. Not uncheck(): unticking the last box ticks the default
+    // again by design, which uncheck() reads as a click that did not take.
+    await page.locator('#overview-content .ov-finding[data-fid="' + fid + '"] [data-act="memo"]').click({ timeout: T });
+    const deadline = Date.now() + T;
+    let sel = null;
+    while (Date.now() < deadline) {
+      try { sel = readAnno().memo_selection; } catch (_) { sel = null; }
+      if (same(sel, expectSel)) break;
+      await wait(150);
+    }
+    return { sel, feed: await feedState() };
+  };
+  const steps2 = [];
+  let toastLine = null;
+  try {
+    for (let i = 0; i < D.length; i++) {
+      const expect = D.slice(i + 1);
+      const r = await untick(D[i], expect);
+      if (i === D.length - 1) {
+        // The toast and the re-render that ticks the default again come
+        // together once the save is done: read the boxes after the toast.
+        await page.waitForFunction(() => /PDD prints its default findings/.test((document.getElementById("toast") || {}).textContent || ""),
+          null, { timeout: T });
+        toastLine = (await page.$eval("#toast", (el) => el.textContent || "")).trim();
+        r.feed = await feedState();
+      }
+      steps2.push({ unticked: D[i], stored: r.sel, ticked: r.feed.ticked });
+    }
+    f2.kept = D.slice(1);
+    f2.dropped = D[0];
+    const r = await untick(D[0], f2.kept);
+    f2.final = { stored: r.sel, ticked: r.feed.ticked };
+  } catch (e) {
+    logActionError("F2 untick", e);
+    f2.untickErr = String(e.message).split("\n")[0];
+  }
+  const partialOk = steps2.length === D.length && steps2.slice(0, -1).every((s, i) =>
+    same(s.stored, D.slice(i + 1)) && same(s.ticked, D.slice(i + 1)));
+  record("F2: unticking a box stores the other ticked findings, and the boxes show just those",
+    !!(!f2.untickErr && partialOk && f2.final && same(f2.final.stored, f2.kept) && same(f2.final.ticked, f2.kept)),
+    JSON.stringify({ steps: steps2.slice(0, -1), final: f2.final, err: f2.untickErr }));
+  const last = steps2[steps2.length - 1];
+  record("F2: unticking the last box returns to the PDD's default (nothing stored, the default ticked again) and says so in one toast line",
+    !!(last && same(last.stored, []) && same(last.ticked, D) &&
+      toastLine === "No finding is ticked, so the PDD prints its default findings."),
+    JSON.stringify({ last, toastLine }));
 
   // Item 4a: the "how this was measured" methodology sentence renders AT MOST
   // ONCE per detector group.
@@ -316,9 +391,9 @@ const T = 20000;   // the bound on every wait for an observable state
       repetition: perGroup.find((g) => g.det === "repetition") || null,
     };
   }).catch((e) => ({ err: e.message }));
-  record("(c) methodology sentence renders at most once per detector group",
+  record("(c) methodology sentence renders at most once per detector group; no Repeated sequences group (AD-20)",
     !!(method && !method.err && method.groups > 0 && method.maxMethodPerGroup <= 1 &&
-      method.perCardNotes === 0 && method.repetition && method.repetition.cards >= 2),
+      method.perCardNotes === 0 && method.repetition === null),
     JSON.stringify(method));
 
   // Item 4b + 5: a finding card is resident claim + expand chevron; the
@@ -483,6 +558,8 @@ const T = 20000;   // the bound on every wait for an observable state
       null, { timeout: T });
     docProbe.onDisk = readAnno().document || {};
     docProbe.line = await lineState();
+    docProbe.summaryName = await page.evaluate(() =>
+      ((document.querySelector("#ov-summary .ov-summary-name") || {}).textContent || "").trim());
   } catch (e) {
     logActionError("(d5) document fields", e);
     docProbe.err = String(e.message).split("\n")[0];
@@ -495,6 +572,8 @@ const T = 20000;   // the bound on every wait for an observable state
     !!(docProbe.line && docProbe.line.next === "map" && docProbe.line.done.includes("document") &&
       docProbe.onDisk && docProbe.onDisk.purpose === PURPOSE && docProbe.onDisk.notes === ""),
     JSON.stringify({ line: docProbe.line, onDisk: docProbe.onDisk }));
+  record("(P3.9) once written, the document title names the recording on the summary line",
+    docProbe.summaryName === "E2E order intake", JSON.stringify({ summaryName: docProbe.summaryName }));
 
   // 5. The As-Is map: the button lands on the Map; Fork, choose the copy as
   // the PDD's As-Is map, and the stage shows done.
@@ -608,6 +687,62 @@ const T = 20000;   // the bound on every wait for an observable state
     !!(handed && handed.asis && handed.tobe && docChecks.asIsEmbedded && docChecks.toBeEmbedded),
     JSON.stringify({ handed, asIsEmbedded: docChecks.asIsEmbedded, toBeEmbedded: docChecks.toBeEmbedded }));
   try { fs.unlinkSync(pddOut); } catch (_) {}
+
+  // F2, end to end: after one untick above, the export follows. Section 1
+  // prints the claims of the findings still ticked, and not the unticked one.
+  const xmlText = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inDoc = (fid) => !!(docXml && f2.claims && f2.claims[fid] && docXml.includes(xmlText(f2.claims[fid])));
+  const printedKept = (f2.kept || []).map(inDoc);
+  record("F2: the exported PDD prints exactly the ticked findings; the unticked one is left out",
+    !!(docXml && f2.kept && f2.kept.length && printedKept.every(Boolean) && !inDoc(f2.dropped)),
+    JSON.stringify({ kept: f2.kept, printedKept, dropped: f2.dropped, droppedPrinted: inDoc(f2.dropped) }));
+
+  // P2.12: with an As-Is copy chosen for the PDD, the Export menu's map items
+  // save that copy (the map the analyst finished), not the process map.
+  const exportVia = async (itemId, outPath) => {
+    await app.evaluate(({ dialog, shell }, p) => {
+      global.__pdtSaveDefault = null;
+      dialog.showSaveDialog = async (_w, opts) => {
+        global.__pdtSaveDefault = (opts && opts.defaultPath) || null;
+        return { canceled: false, filePath: p };
+      };
+      shell.showItemInFolder = () => {};
+    }, outPath);
+    await page.locator("#btn-session-export-menu").click({ timeout: T });
+    await page.locator("#" + itemId).click({ timeout: T });
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      if (fs.existsSync(outPath) && fs.statSync(outPath).size > 0) break;
+      await wait(250);
+    }
+    await wait(300);
+    const text = fs.existsSync(outPath) ? fs.readFileSync(outPath, "utf-8") : "";
+    const suggested = await app.evaluate(() => global.__pdtSaveDefault).catch(() => null);
+    try { fs.unlinkSync(outPath); } catch (_) {}
+    return { text, suggested: suggested ? path.basename(suggested) : null };
+  };
+  const mapExport = {};
+  try {
+    const asIsEntry = (readAnno().reference_maps || []).find((m) => m && m.pdd_role === "as_is");
+    mapExport.asIsFile = asIsEntry ? asIsEntry.file : null;
+    const asIsXml = asIsEntry ? fs.readFileSync(path.join(SESSION_MARKED, asIsEntry.file), "utf-8") : null;
+    const bpmn = await exportVia("btn-session-step-bpmn", path.join(os.tmpdir(), "pdt-ov-e2e-asis-" + Date.now() + ".bpmn"));
+    mapExport.bpmnIsTheCopy = !!(asIsXml && bpmn.text === asIsXml);
+    mapExport.bpmnSuggested = bpmn.suggested;
+    const svg = await exportVia("btn-session-map-svg", path.join(os.tmpdir(), "pdt-ov-e2e-asis-" + Date.now() + ".svg"));
+    mapExport.svgSuggested = svg.suggested;
+    mapExport.svgIsBpmnDrawing = /<svg[\s>]/.test(svg.text) && /djs-/.test(svg.text) && !/Flow diagram \(DFG\)/.test(svg.text);
+    mapExport.labels = await page.evaluate(() => ["btn-session-map-svg", "btn-session-step-bpmn"]
+      .map((id) => ((document.getElementById(id) || {}).textContent || "").trim()));
+  } catch (e) {
+    logActionError("P2.12 map exports", e);
+    mapExport.err = String(e.message).split("\n")[0];
+  }
+  record("P2.12: with an As-Is copy chosen, Export > Process map (BPMN) saves that copy and Process map (image) draws it",
+    !!(!mapExport.err && mapExport.asIsFile && mapExport.bpmnIsTheCopy && mapExport.bpmnSuggested === "as-is-map.bpmn" &&
+      mapExport.svgIsBpmnDrawing && mapExport.svgSuggested === "as-is-map.svg" &&
+      JSON.stringify(mapExport.labels) === '["Process map (image)","Process map (BPMN)"]'),
+    JSON.stringify(mapExport));
 
   await close();
 

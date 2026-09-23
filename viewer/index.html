@@ -28,18 +28,19 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div><h1>Process Discovery</h1></div>
     </div>
     <div class="topbar-meta">
+      <!-- One Open menu: the folder picker, then the recent sessions. -->
       <div class="project-menu" id="recent-menu">
-        <button class="project-btn" id="btn-recent-menu" title="Open a recent session">
-          <span>Recent</span>
+        <button class="project-btn" id="btn-recent-menu" title="Open a session folder or a recent session">
+          <span>Open</span>
           <span class="project-menu-caret">▾</span>
         </button>
         <div class="project-menu-popup" id="recent-menu-popup" style="display:none; min-width: 280px;">
+          <button class="project-menu-item" id="btn-open-session" type="button">Open session folder...</button>
           <div class="recent-menu-section" id="recent-menu-content"></div>
         </div>
       </div>
       <button class="icon-btn theme-toggle" id="btn-theme-toggle" title="Toggle dark theme" aria-pressed="false">☾</button>
       <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
-      <span id="topbar-meta"></span>
     </div>
   </header>
 
@@ -65,7 +66,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
       <div class="loaded" id="session-loaded" style="display:none">
         <div class="actions-bar">
-          <button id="btn-open-session">Open another</button>
+          <!-- Orange (primary) until the session is analyzed; then the page's
+               own next act is the one orange button (overview-view.js). -->
           <button id="btn-normalize" class="primary" title="Build the timeline, classify activities, compute statistics, and discover a process map.">Analyze session</button>
           <!-- Occasional session actions live behind one visible "More" menu so the
                bar stays a single short row at laptop width (clutter pass). The
@@ -95,8 +97,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             </button>
             <div class="project-menu-popup" id="session-export-popup" style="display:none">
               <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx) for this session, with the process map as its As-Is map.">PDD (.docx)</button>
-              <button class="project-menu-item" id="btn-session-map-svg" title="Save the process map shown on the Map level as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Map as SVG</button>
-              <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the step-level process diagram as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Step map as BPMN</button>
+              <!-- P2.12: both map items save the As-Is map chosen for the PDD
+                   when there is one, else the process map on the Map level. -->
+              <button class="project-menu-item" id="btn-session-map-svg" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
+              <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Process map (BPMN)</button>
             </div>
           </div>
         </div>
@@ -105,54 +109,31 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
              treated as an empty session); names the file and its backups. -->
         <div class="anno-error-banner" id="annotations-error-banner" role="alert" style="display:none"></div>
 
-        <!-- First-run guidance: visible until the session has been analyzed -->
-        <div class="onboarding-card" id="onboarding-card" style="display:none">
-          <div class="onboarding-step">
-            <span class="onboarding-num">1</span>
-            <div>
-              <strong>Click <em>Analyze session</em></strong>
-              <span class="onboarding-detail">Builds the timeline, labels every activity by app category (Salesforce, Outlook, Excel, etc.), groups events into cases, computes statistics, and builds a process map. Takes 5-20 seconds for a typical session. You can re-run it any time without losing your edits.</span>
-            </div>
-          </div>
-          <div class="onboarding-step">
-            <span class="onboarding-num">2</span>
-            <div>
-              <strong>Review the timeline, then switch to Steps</strong>
-              <span class="onboarding-detail">Once analysis finishes, the buttons under "View:" show the session in different ways. Flow = raw events. Steps = logical actions. Map = the process diagram.</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- View-mode bar: prominent, controls what the whole session view shows -->
+        <!-- View-mode bar: the four levels; on Flow, the run select -->
         <div class="view-mode-bar">
-          <span class="view-mode-label">View:</span>
-          <button class="view-mode-btn active" data-level="overview" title="What is left to do, the recording in one line, the findings and the document sections (the default landing view)">
+          <button class="view-mode-btn active" data-level="overview" title="What is left to do, the recording in one line, the document sections and the findings (the default landing view)">
             <span class="view-mode-icon">◈</span> Overview
-            <span class="view-mode-desc">facts &amp; findings</span>
           </button>
           <button class="view-mode-btn" data-level="flow" title="Timeline of every captured event">
             <span class="view-mode-icon">≡</span> Flow
-            <span class="view-mode-desc">raw event timeline</span>
           </button>
           <button class="view-mode-btn" data-level="steps" title="Each run's drafted steps: confirm the pattern run first">
             <span class="view-mode-icon">▣</span> Steps
-            <span class="view-mode-desc">runs and steps</span>
             <span class="badge" id="steps-badge">0</span>
           </button>
           <button class="view-mode-btn" data-level="map" title="The process map built from the runs' steps, and the editable As-Is and To-Be maps forked from it">
             <span class="view-mode-icon">◯</span> Map
-            <span class="view-mode-desc">process diagram</span>
           </button>
           <span class="flex-spacer"></span>
-          <label class="case-scope" title="Scope the Flow timeline to a single case: the other cases' activity is dimmed. Pick 'All cases' to see the full session. (In Steps, open a run to see its steps.)">
-            <span class="case-scope-label">Case:</span>
-            <select id="case-scope-select"><option value="">All cases</option></select>
-            <button id="btn-scope-to-playhead" type="button" class="link-btn" title="Scope to whichever case contains the current video playhead.">Scope to playhead</button>
+          <!-- Shown on Flow only (renderer.js applyLevel): it dims the other
+               runs on the Flow timeline and changes nothing elsewhere. -->
+          <label class="case-scope" id="case-scope" style="display:none" title="Show one run on the Flow timeline: the other runs are dimmed. Pick All runs to see the whole recording.">
+            <span class="case-scope-label">Run:</span>
+            <select id="case-scope-select"><option value="">All runs</option></select>
           </label>
-          <span class="view-mode-help" id="view-mode-help"></span>
         </div>
 
-        <!-- ========= OVERVIEW view (the home: what is left → session summary → findings → evidence → document sections) ========= -->
+        <!-- ========= OVERVIEW view (the home: what is left → session summary → document sections → findings → evidence) ========= -->
         <div class="session-layout-overview" id="session-layout-overview">
           <div id="overview-content"></div>
         </div>
@@ -398,178 +379,122 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       </header>
       <nav class="help-nav">
         <button class="help-nav-item active" data-section="start">Getting started</button>
-        <button class="help-nav-item" data-section="session">Session view</button>
         <button class="help-nav-item" data-section="stepsphases">Steps</button>
-        <button class="help-nav-item" data-section="capture">Capture workflow</button>
+        <button class="help-nav-item" data-section="markers">Markers</button>
+        <button class="help-nav-item" data-section="capture">Recording keys</button>
         <button class="help-nav-item" data-section="shortcuts">Shortcuts</button>
         <button class="help-nav-item" data-section="trouble">Troubleshooting</button>
+        <span class="help-version" id="help-version"></span>
       </nav>
       <div class="help-body">
 
         <section class="help-section active" data-section="start">
-          <h3>End-to-end flow</h3>
+          <h3>From a recording to the PDD</h3>
+          <p>The SME records the process a few times, one run each time, and sends you the session folder. You confirm the first run's drafted steps, review how the other runs differ, finish the map and export the PDD. The Overview's <em>What is left</em> line shows where you are, with one button for the next act.</p>
           <ol class="help-steps">
-            <li><strong>Capture</strong> a session on the worker machine: tray app polls active window, fires marker events on hotkey or tray, optionally drives OBS to record the screen.</li>
-            <li><strong>Move</strong> the session folder to the analyst's machine (network share, USB, however you already move OBS recordings).</li>
-            <li><strong>Open</strong> the session in this viewer: Session view → <em>Open session folder...</em></li>
-            <li><strong>Analyze</strong>: click <em>Analyze session</em>. Tick <em>Build process map</em> to also discover a BPMN diagram.</li>
-            <li><strong>Annotate</strong>: rename markers, add timestamped notes. Edits save to <code>annotations.json</code>; raw events stay immutable.</li>
+            <li><strong>Runs.</strong> Open the session folder and click <em>Analyze session</em>. Each run starts at a start marker; if one is missing, add it in Flow (right-click the timeline at that moment) and analyze again.</li>
+            <li><strong>Pattern run.</strong> In Steps, check run 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, add a note where a step needs one, then click <em>Confirm run</em>.</li>
+            <li><strong>Other runs.</strong> The other runs arrive drafted and named like the pattern run. Review the differences each one lists (extra, skipped or reordered steps) and confirm it.</li>
+            <li><strong>Document.</strong> On the Overview, write the document sections: title, purpose, scope, contacts, business rules and exceptions. The PDD prints them in place of its placeholders.</li>
+            <li><strong>As-Is map.</strong> On the Map, fork the map into an editable As-Is copy and finish it in the map editor. The PDD embeds it as its As-Is map.</li>
+            <li><strong>PDD.</strong> Tick the findings the PDD should print, then export the PDD (.docx). <em>Save as this process</em> on the confirmed pattern run lets the next recording of the same process arrive drafted and named.</li>
           </ol>
-          <h3>What the viewer expects in a session folder</h3>
+          <h3>Optional inputs</h3>
           <ul class="help-list">
-            <li><code>events.jsonl</code> - one JSON event per line; the durable artifact</li>
-            <li><code>manifest.json</code> - session metadata + OBS recording reference</li>
-            <li><code>screenshots/</code> - event-triggered captures, optional</li>
-            <li><code>obs/sync.json</code> - tracker↔OBS time offset, optional</li>
-            <li>After analysis: <code>stats.json</code>, <code>analysis.json</code> and <code>annotations.json</code>; with <em>Build process map</em> ticked, <code>process_map_step.bpmn</code> (the process map as BPMN, which Fork copies)</li>
+            <li><strong>A video</strong> of the session, for example a Teams recording: attach it from the More menu to check the steps against it and hear the SME explain.</li>
+            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it from the More menu. Its sentences show next to each step and beside the document sections, ready to add to a step note or a section.</li>
           </ul>
-        </section>
-
-        <section class="help-section" data-section="session">
-          <h3>Session view layout</h3>
-          <ul class="help-list">
-            <li><strong>Video pane</strong> (top left): OBS recording if linked in the manifest. Standard HTML5 controls; click any timeline event to seek.</li>
-            <li><strong>Minimap</strong> (above the timeline): 30-px strip showing the whole session compressed. Click anywhere to jump; drag the highlighted viewport to scroll. Stays in sync as you zoom.</li>
-            <li><strong>Timeline</strong> (top right): activity bands (per-app colour), idle gaps (grey), marker bars, screenshot dots (hover for a thumbnail preview), event-density histogram, optional per-step bands and numbered note dots beneath. Right-click an activity band for the context menu (insert markers / scope to case). <strong>Shift-drag</strong> across the background to select a time range: a stats card pops above the legend with duration, event count, marker count, screenshot count, and top apps in the range. Esc clears the selection.</li>
-            <li><strong>Snap-to-event</strong>: clicking the timeline background snaps to the nearest event within ~10px tolerance; click in genuine empty space to seek to the literal point.</li>
-            <li><strong>Persistent zoom + scroll</strong>: each session remembers its zoom factor and scroll position in localStorage. Reopening a session restores where you were.</li>
-            <li><strong>Annotations</strong> (right column) with three sub-tabs:
-              <ul>
-                <li><em>Notes</em> - pin text to the current playback time</li>
-                <li><em>Screenshots</em> - thumbnail grid; click to seek the video</li>
-                <li><em>Markers</em> - full list; <strong>double-click a Start marker to rename it</strong> (edit saved to <code>annotations.json</code>)</li>
-              </ul>
-            </li>
-            <li><strong>Raw events</strong> (collapsible at the bottom): filter by text or by type checkboxes. Click any row to seek, or use its per-row actions to jump, spin off a new step, or add the event to the selected step.</li>
-          </ul>
-          <h3>Working with markers</h3>
-          <p>Markers bracket business activities. Captured markers are immutable in <code>events.jsonl</code>; edits live in <code>annotations.json</code> and are layered in by re-normalization (§9.3).</p>
-          <p><strong>Markers are not cases.</strong> During capture the worker places markers: a start, an end, and a label. <em>Cases</em> (the individual runs through the process) are never recorded directly: they're derived from the marker stream during normalization, with nested markers forming a case tree. That's why editing a marker reshapes the cases, and why there is no "mark a case" action while recording: you mark markers, and the pipeline computes the cases from them.</p>
-          <p>From the <em>Markers</em> sub-tab on the right:</p>
-          <ul class="help-list">
-            <li><strong>Rename</strong>: double-click a Start marker row, type the new label, press Enter.</li>
-            <li><strong>Adjust timestamp</strong>: hover a row, click the clock icon. Sets the marker's timestamp to the current video time (or prompts for an ISO timestamp if there is no video).</li>
-            <li><strong>Delete</strong>: hover a row, click the X icon. The marker is dropped from the normalized stream; raw events stay untouched.</li>
-          </ul>
-          <p>To add a marker, right-click the Flow timeline at that moment and choose <em>Insert Start marker here</em> or <em>Insert End marker here</em>.</p>
-          <p>Every marker change shows at once in the list and on the timeline, marked <em>pending</em>. Click <em>Analyze to apply</em> on the actions bar (or <em>Analyze session</em>) to apply it to the cases, steps, statistics and exports.</p>
-          <p class="help-hint">Moving, inserting and deleting markers is enough to merge or split cases. To merge two adjacent same-label cases, delete the inner End and the following Start. To split a long case, move its End earlier and insert a new Start after it.</p>
         </section>
 
         <section class="help-section" data-section="stepsphases">
-          <h3>Flow and Steps</h3>
-          <p>At the top of every loaded session you'll see a <strong>View</strong> bar. Flow and Steps show the same captured data at two levels of detail:</p>
-          <ul class="help-list">
-            <li><strong>Flow</strong>: raw events as they were captured. Use this to understand what actually happened, second-by-second. Video, timeline, screenshots, notes.</li>
-            <li><strong>Steps</strong>: each run's steps. A "step" is one named thing the worker did: <em>Search customer in Salesforce</em> is one step, even if it took 14 clicks underneath.</li>
-          </ul>
           <h3>Runs and drafted steps</h3>
-          <p>A <strong>run</strong> is one pass through the process, from a start marker to its end marker (the capture app's run hotkey places them). When you click <em>Analyze session</em>, the app drafts every run's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the worker moves to another screen. The Steps view lists the runs in time order; open a run to see its steps. Steps that fall outside every run are listed under <em>Outside runs</em>.</p>
+          <p>A <strong>run</strong> is one pass through the process, from a start marker to its end marker. <em>Analyze session</em> drafts every run's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the work moves to another screen. Steps lists the runs in time order; open a run to see its steps. Steps outside every run are listed under <em>Outside runs</em>.</p>
           <h3>Confirm the pattern run first</h3>
           <ol class="help-steps">
-            <li>Open the <strong>pattern</strong> run: the first run, marked <em>Pattern</em> (<em>Use as pattern</em> picks another one).</li>
-            <li>Check its steps against the video or the screenshots. Where a boundary is wrong, <strong>merge</strong>, <strong>split</strong>, <strong>add</strong> or <strong>hide</strong> steps (right-click a step, or use the step editor).</li>
-            <li>Give the steps the names you want in the document: double-click a name, or select the step and press Enter.</li>
-            <li>Click <strong>Confirm run</strong>: the steps you did not change are accepted as they are.</li>
+            <li>Open the <strong>pattern</strong> run: run 1, marked <em>Pattern</em>, unless you choose another one.</li>
+            <li>Check its steps against the screenshots or the video. Where a boundary is wrong, <strong>merge</strong>, <strong>split</strong>, <strong>add</strong> or <strong>hide</strong> steps (right-click a step, or use the step pane).</li>
+            <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. A step's note is printed with it in the PDD.</li>
+            <li>Click <strong>Confirm run</strong>: the steps you did not change are accepted as they are. <em>Reopen run</em> takes the confirmation back.</li>
           </ol>
-          <p>While you confirm it, the app counts the boundary fixes you make to the pattern run: merges, splits, added steps, and hidden drafts. Renames are not counted, and Ctrl+Z takes a fix back. Once the run is confirmed it shows one line, for example <em>Run 1: 12 drafted steps, 2 boundary fixes (merge 1, split 0, add 1, drop 0)</em>; <em>Copy</em> puts that line on the clipboard. <em>Reopen run</em> takes a confirmation back: the confirmed steps are drafts again, the steps you edited or added stay as they are, and the count is kept.</p>
           <h3>Fixes that carry to the other runs</h3>
-          <p>When you merge drafted steps in the pattern run, the same drafted steps in the other runs (the same steps, one after the other) are merged too and take the pattern step's name. A short message says how many runs took the merge, and one Ctrl+Z undoes all of it. When you hide a drafted step in the pattern run, the message offers <em>Hide in all runs</em> for the same drafted step in the other runs. Splits and added steps are not carried: make them in each run that needs them. A carried fix is not counted as a boundary fix.</p>
+          <p>A merge in the pattern run is also made in the other runs wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every run. Splits and added steps are made in each run that needs them.</p>
           <h3>Differences between runs</h3>
-          <p>Every other run is compared with the pattern run, step by step, the way the PDD compares them: a run's line counts its differences, and an open run lists them above its steps: extra steps (and where they happen), skipped steps (with their number in the pattern run), and steps done in a different order. A step done twice within one run counts once here.</p>
-          <h3>Saved processes</h3>
-          <p>Once the pattern run is confirmed, <em>Save as this process</em> stores its steps on this computer under a name. When you later open a session of the same process (most of its drafted steps match) and none of its runs is confirmed yet, every run is compared with the saved process instead, and a line above the runs says so. <em>Stop comparing</em> compares them with the session's own pattern run, and confirming the pattern run does the same.</p>
+          <p>Every other run is compared with the pattern run step by step, the way the PDD compares them: an open run lists its extra steps (and where they happen), its skipped steps and the steps done in a different order.</p>
           <h3>Names are remembered</h3>
-          <p>When you rename a drafted step, the matching drafted steps in the other runs (the same screen and the same closing action) take the name at once, and the name is remembered on this computer: the next analysis, of this session or of a later one, drafts those steps with it. Such a step shows a small <em>remembered</em> tag. The name box suggests remembered names and the names already used in the session. <em>Remembered names</em> (toolbar) lists them: rename one, or forget it (the names already in a session stay).</p>
+          <p>A name you give a drafted step goes at once to the same drafted steps in the other runs, and this computer remembers it: the next analysis of this session or a later one drafts those steps with it (a small <em>remembered</em> tag). <em>Remembered names</em> lists them: rename one, or forget it.</p>
+          <h3>Saved processes</h3>
+          <p>Once the pattern run is confirmed, <em>Save as this process</em> keeps its steps on this computer. A later session of the same process is compared with the saved process until its own pattern run is confirmed.</p>
           <h3>What the step labels mean</h3>
           <ul class="help-list">
-            <li><span class="step-chip step-chip-draft">Draft</span> drafted by the app and not checked yet. Every analysis drafts it again.</li>
-            <li><span class="step-chip step-chip-confirmed">Confirmed</span> you accepted the draft as it is (Confirm run). Every analysis keeps it.</li>
-            <li><span class="step-chip step-chip-edited">Edited</span> you changed the step: its name, its boundaries or its flags. Every analysis keeps it.</li>
-            <li><span class="step-chip step-chip-added">Added</span> you added the step by hand. Every analysis keeps it.</li>
-            <li><span class="step-chip step-chip-hidden">Hidden</span> you took the step out. It stays out of the list (<em>Show hidden steps</em> on its run lists it again), and every analysis keeps it out.</li>
+            <li><span class="step-chip step-chip-draft">Draft</span> drafted by the app and not checked yet; every analysis drafts it again.</li>
+            <li><span class="step-chip step-chip-confirmed">Confirmed</span> you accepted the draft as it is.</li>
+            <li><span class="step-chip step-chip-edited">Edited</span> you changed its name, its boundaries or its flags.</li>
+            <li><span class="step-chip step-chip-added">Added</span> you added it by hand.</li>
+            <li><span class="step-chip step-chip-hidden">Hidden</span> you took it out; <em>Show hidden steps</em> on its run lists it again.</li>
           </ul>
-          <p>A run reads <em>Draft</em> while it still has drafted steps, and <em>Confirmed</em> once every step in it is confirmed, edited or added.</p>
-          <h3>Cutting down step noise</h3>
+          <p>Every analysis keeps confirmed, edited, added and hidden steps as they are.</p>
+          <h3>Leaving things out</h3>
           <ul class="help-list">
-            <li><strong>Ignored apps</strong> (toolbar button): tick the apps that aren't part of the process (they're left out of the drafting entirely), and the session re-analyzes. The choice is saved per session, so a re-analysis keeps them out.</li>
-            <li><strong>Hide step</strong> (step editor or right-click): take a single step out. A hidden step survives re-analysis: an analysis won't bring it back. A drafted step is hidden, never deleted (the next analysis would draft a deleted one again); only a step you added can be deleted.</li>
-            <li><strong>Hide selected</strong>: tick (or Ctrl+click) two or more steps, then take them all out in one go (Ctrl+Z restores). Drafted steps are hidden; steps you added are deleted.</li>
+            <li><strong>Ignored apps</strong>: tick the apps that are not part of the process; the session is analyzed again without them.</li>
+            <li><strong>Hide step</strong>: takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
-          <h3>Flags</h3>
-          <p>A step can be flagged as <strong>Waste</strong>: it shouldn't be needed (rework, duplicate effort, fixing someone else's mistake). The flag doesn't change the data, but it shows up in exports and statistics.</p>
-          <p class="help-hint">Branches, exception paths and automation candidates are not flags: they come from the recorded runs (the map's branches, the runs that differ, and step sequences that repeat).</p>
+          <h3>Waste</h3>
+          <p>Flag a step as <strong>Waste</strong> when it should not be needed (rework, duplicate effort). The PDD prints the flag with the step. Branches, exceptions and automation candidates are not flags: they come from the recorded runs.</p>
+        </section>
+
+        <section class="help-section" data-section="markers">
+          <h3>Working with markers</h3>
+          <p>A run starts at a start marker and ends at its end marker; the SME places them with the recording keys. An edited marker changes the runs once the session is analyzed again; the recording itself never changes.</p>
+          <ul class="help-list">
+            <li><strong>Add</strong>: right-click the Flow timeline at that moment and insert a Start or End marker.</li>
+            <li><strong>Rename, move or delete</strong>: in Flow's Markers panel. Double-click a Start marker to rename it.</li>
+            <li><strong>Apply</strong>: a changed marker shows at once as pending. <em>Analyze to apply</em> on the actions bar (or <em>Analyze session</em>) updates the runs, the steps and the map.</li>
+          </ul>
+          <p class="help-hint">To join two runs, delete the End of the first and the Start of the second. To split a run, move its End earlier and insert a new Start after it.</p>
         </section>
 
         <section class="help-section" data-section="capture">
-          <h3>Running a capture session</h3>
-          <ol class="help-steps">
-            <li>(One-time) Launch OBS with WebSocket enabled (<em>Tools → WebSocket Server Settings → Enable</em>, port 4455).</li>
-            <li>(Optional) Set <code>PDT_CONFIG=path\to\your-config.yaml</code> to load engagement-specific labels, hotkeys, OBS settings. See <code>capture/sample-config.yaml</code>.</li>
-            <li>Launch the capture tray app (<code>npm start</code> in capture/).</li>
-            <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the run hotkey: the session auto-starts.</li>
-            <li>Show the status window (tray menu) for the live dashboard.</li>
-            <li>Press the run hotkey at the start of each run as the SME walks through the process. End the session when done.</li>
-          </ol>
-          <h3>Default hotkeys</h3>
+          <h3>What to tell the SME</h3>
+          <p>The SME records with the capture app on their own computer. These keys mark the runs while recording:</p>
           <table class="help-table">
-            <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Start the next run (Run 1, Run 2, ...). Ends the previous run first. Starts the session if none is running.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Start the next run (Run 1, Run 2, and so on). Ends the previous run first, and starts the recording if none is running.</td></tr>
             <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>End the current run.</td></tr>
-            <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Manual screenshot, annotated as <code>screenshot_manual</code>.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Take a screenshot by hand.</td></tr>
           </table>
-          <p class="help-hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>.</p>
         </section>
 
         <section class="help-section" data-section="shortcuts">
-          <h3>Viewer keyboard shortcuts</h3>
+          <h3>Keyboard shortcuts</h3>
           <table class="help-table">
-            <tr><td><span class="kbd">Space</span></td><td>Play / pause video</td></tr>
-            <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Scrub 5 seconds (hold <span class="kbd">Shift</span> for 10s)</td></tr>
-            <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Timeline zoom in / out / reset</td></tr>
-            <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last step / marker / note edit</td></tr>
+            <tr><td><span class="kbd">Space</span></td><td>Play or pause the video</td></tr>
+            <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Move the video 5 seconds (hold <span class="kbd">Shift</span> for 10)</td></tr>
+            <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Zoom the Flow timeline in, out, or back to the whole recording</td></tr>
+            <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last edit</td></tr>
             <tr><td><span class="kbd">Ctrl+Y</span> / <span class="kbd">Ctrl+Shift+Z</span></td><td>Redo</td></tr>
-            <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> (Steps)</td><td>Previous / next step of the open run</td></tr>
+            <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> (Steps)</td><td>Previous or next step of the open run</td></tr>
             <tr><td><span class="kbd">Enter</span> (Steps)</td><td>Rename the selected step</td></tr>
-            <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step / merge it with the next step of its run</td></tr>
+            <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step, or merge it with the next step of its run</td></tr>
             <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the open run</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
-          <p class="help-hint">Undo / redo capture every annotation edit (step / marker / note). Stack is capped at 50 and resets when you switch sessions.</p>
-          <h3>Click behaviors</h3>
+          <p class="help-hint">Undo covers every edit (steps, markers, document sections, maps), up to 50, until you open another session.</p>
+          <h3>Clicks</h3>
           <ul class="help-list">
-            <li>Any timeline band, marker, screenshot dot, or event row → seek the video</li>
-            <li><strong>Right-click an activity band</strong> on the timeline → context menu: insert a Start/End marker at the clicked moment, scope view to the case under the cursor, jump to the case start / end. A faint <code>⋯</code> appears on hover to advertise the menu.</li>
-            <li>Marker row in the sidebar → seek; <strong>double-click a Start marker</strong> → rename</li>
-            <li>Recent session in the empty state → reload that session</li>
+            <li>Click a band, a marker or a screenshot on the Flow timeline to go to that moment.</li>
+            <li>Right-click the Flow timeline to insert a Start or End marker there.</li>
+            <li>While an analysis runs, its log shows with a <strong>Cancel</strong> button that stops it.</li>
           </ul>
-          <h3>Cancelling a long analysis</h3>
-          <p>Once an analysis kicks off the log host opens automatically. A red <strong>Cancel</strong> button in the log summary stops the in-flight Python child (graceful first, hard kill 500ms later). It works for <em>Analyze session</em>.</p>
         </section>
 
         <section class="help-section" data-section="trouble">
           <h3>Common issues</h3>
           <dl class="help-dl">
-            <dt>Normalization fails with "normalize.py not found"</dt>
-            <dd>The viewer expects <code>normalization/</code> as a sibling of <code>viewer/</code> in dev, or under <code>resources/normalization/</code> in a packaged build. Override with <code>PDT_PYTHON</code> if needed.</dd>
+            <dt>A recording key did nothing</dt>
+            <dd>Another program on the SME's computer may use the same keys. Close it and press the key again, or use <em>Start next run</em> and <em>End run</em> in the capture app's tray menu.</dd>
 
-            <dt>"ModuleNotFoundError: pm4py" during normalization</dt>
-            <dd>Run <code>pip install -r normalization/requirements.txt</code> against the Python interpreter the viewer uses.</dd>
-
-            <dt>BPMN map shows "bpmn-js failed to load"</dt>
-            <dd>The BPMN file is still on disk under the session folder - importable into Adonis directly. The in-viewer preview is a nice-to-have.</dd>
-
-            <dt>No video in session view</dt>
-            <dd>Capture ran without OBS, or the OBS recording path in <code>manifest.json</code> is unreachable. Timeline + statistics still work; click-to-seek is just a no-op.</dd>
-
-            <dt>Empty event table</dt>
-            <dd>Check the type checkboxes (activity / marker / system) and clear the text filter.</dd>
-
-            <dt>Hotkey didn't register in capture</dt>
-            <dd>Another app may have the same global shortcut. Enable <code>PDT_DEBUG=1</code> in the capture launch env and check <code>%APPDATA%\process-discovery-tracker\boot.log</code> for "hotkeys: start=false". Edit your <code>config.yaml</code> to use different keys.</dd>
-
-            <dt>Citrix or remote-desktop session shows one band labelled "Citrix Workspace.exe"</dt>
-            <dd>active-win cannot see inside Citrix windows from the local host. Either run the capture tracker inside the Citrix session, or accept that local capture will not classify inner apps and rely on markers + the OBS video for context.</dd>
+            <dt>A Citrix or remote desktop window shows as one app</dt>
+            <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the run markers and a video for that part.</dd>
           </dl>
         </section>
       </div>

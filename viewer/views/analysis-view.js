@@ -16,15 +16,15 @@
  * `renderEvidenceInto(host)`. The uniform collapsible-module header + per-
  * analyst collapse persistence (pdt.analysis.* keys) are unchanged.
  *
- * The underlying estimates ship provisional (ADR-0008): the value-add vs.
- * business-required split needs a human, and confirming a candidate really
- * is automation-worthy is an analyst call. Corrections live in
- * annotations.json `analysis_overrides[]`, keyed by `process_label`
- * for waste and by `segment_signature` for automation; not in
- * analysis.json (which `normalize` regenerates every run).
- * `applyAnalysisOverrides` folds them back in so the view updates
- * immediately; the next Analyze run bakes them into analysis.json
- * proper. See ANALYSIS-LAYER-FOLLOWUPS.md and ADR-0016.
+ * The value-add vs. business-required split needs a human (ADR-0008). The
+ * analyst's judgment lives in annotations.json `analysis_overrides[]`,
+ * keyed by `process_label`; not in analysis.json (which `normalize`
+ * regenerates every run). `applyAnalysisOverrides` folds it back in so the
+ * view updates immediately; the next Analyze run bakes it into
+ * analysis.json proper. See ANALYSIS-LAYER-FOLLOWUPS.md.
+ *
+ * Automation candidates (ADR-0016) are the one home of a repeated step
+ * sequence (AD-20): listed by total time, as the PDD's 5.3 lists them.
  */
 
 "use strict";
@@ -87,9 +87,8 @@ function _applyWasteOverride(w, ov) {
 /* Fold annotations.json `analysis_overrides` into a copy of the
    analysis.json sidecar, so an analyst correction shows in the view
    before the next re-analyze bakes it in. Mirrors the normalization
-   side: analysis_waste.py (_apply_waste_override) + analysis_efficiency.py
-   + analysis_automation.py (automation_confirmed). Returns `analysis`
-   unchanged when there is nothing to apply. */
+   side: analysis_waste.py (_apply_waste_override) + analysis_efficiency.py.
+   Returns `analysis` unchanged when there is nothing to apply. */
 function applyAnalysisOverrides(analysis, overrides) {
   if (!analysis || !overrides || !overrides.length) return analysis;
   const byStep = _overridesByStep(overrides);
@@ -99,13 +98,6 @@ function applyAnalysisOverrides(analysis, overrides) {
     const ov = byStep[w.step_id] || byPl[_wasteRowProcessLabel(w)];
     if (!ov) return w;
     return _applyWasteOverride(w, ov);
-  });
-
-  const automation = (analysis.automation_candidates || []).map((a) => {
-    const ov = (overrides || []).find((o) =>
-      o && o.segment_signature && o.segment_signature === a.segment_signature);
-    if (!ov || ov.automation_confirmed === undefined) return a;
-    return Object.assign({}, a, { automation_confirmed: !!ov.automation_confirmed });
   });
 
   const sum = (k) => waste.reduce((t, w) => t + (w[k] || 0), 0);
@@ -123,7 +115,7 @@ function applyAnalysisOverrides(analysis, overrides) {
     meta: analysis.meta,
     waste_classification: waste,
     time_study: analysis.time_study || [],
-    automation_candidates: automation,
+    automation_candidates: analysis.automation_candidates || [],
     efficiency,
   };
 }
@@ -143,12 +135,13 @@ function applyAnalysisOverrides(analysis, overrides) {
    DOM and only un-renders it while collapsed, so it reappears on expand.
 
    Collapse state persists per analyst in localStorage under `pdt.analysis.*`
-   (same pattern as `pdt.theme` / `pdt.summaryOpen`). Default on first run:
-   every module open (today's behaviour). */
+   (same pattern as `pdt.theme` / `pdt.summaryOpen`). Default: collapsed, so
+   the Overview shows each module's takeaway line and the detail is one click
+   away (P1.10). */
 const _MODULE_KEY_PREFIX = "pdt.analysis.";
 function _moduleOpen(key) {
-  try { return localStorage.getItem(_MODULE_KEY_PREFIX + key) !== "0"; }
-  catch (_) { return true; }
+  try { return localStorage.getItem(_MODULE_KEY_PREFIX + key) === "1"; }
+  catch (_) { return false; }
 }
 function _setModuleOpen(key, open) {
   try { localStorage.setItem(_MODULE_KEY_PREFIX + key, open ? "1" : "0"); }
@@ -183,18 +176,6 @@ function _wireModulePersistence(host) {
 }
 
 /* ============ Sections ============================================ */
-
-function _caption(overrideCount) {
-  let html = '<div class="analysis-caption">Estimates: these figures ' +
-    "come from rules of thumb set before any real recording data existed. " +
-    "Review them before relying on them.";
-  if (overrideCount > 0) {
-    html += " <strong>" + overrideCount + " analyst correction" +
-      (overrideCount === 1 ? "" : "s") + "</strong> applied in this view: " +
-      "run Analyze again to bake them into analysis.json and the PDD export.";
-  }
-  return html + "</div>";
-}
 
 /* Roll the per-instance waste rows up to one row per `process_label`
    (the value-free step-type key the rest of the UI groups on -- the
@@ -241,20 +222,14 @@ function _groupWasteRows(waste) {
   return out;
 }
 
-/* The inline judgment summary shown on a collapsed "Where the time goes" row
-   (item 2 relocated): "36.0s measured · 20s business-required" once an
-   analyst has judged this step type, else "36.0s measured · not judged" —
-   never a colored bar (a default-green bar would read as a measured "all
-   value-add" result, the same honesty gate the old resident module enforced,
-   now applied per row instead of per section). */
+/* The inline judgment on a "Where the time goes" row (item 2 relocated):
+   "20s business-required" once an analyst has judged this step type, else
+   nothing (P1.4: the row's own total already says what was measured). Never
+   a colored bar: a default-green bar would read as a measured "all value-add"
+   result. */
 function _wasteInlineSummary(g) {
-  if (!g) return "";
-  const total = (g.va_ms || 0) + (g.bnva_ms || 0) + (g.nva_ms || 0);
-  if (!total) return "";
-  const judged = !!(g.bnva_ms || 0);
-  return judged
-    ? escapeHtml(_fmt(total)) + " measured · " + escapeHtml(_fmt(g.bnva_ms)) + " business-required"
-    : escapeHtml(_fmt(total)) + " measured · not judged";
+  if (!g || !(g.bnva_ms || 0)) return "";
+  return escapeHtml(_fmt(g.bnva_ms)) + " business-required";
 }
 
 /* The judgment editor for one step type's process_label, relocated (item 2)
@@ -371,11 +346,11 @@ function _timeStudySection(ts, wasteByProcessLabel) {
   }
 
   // Render order: biggest total first — this section answers "where did the
-  // time go", so the heaviest step type leads. Display order only.
-  const ordered = study.slice().sort((a, b) => {
-    const tot = (t) => Math.round(((t.cycle_ms || {}).mean || 0) * (t.instances || 0));
-    return tot(b) - tot(a);
-  });
+  // time go", so the heaviest step type leads. Display order only. A step
+  // type with no measured time has nothing to show and is left out (P3.7).
+  const tot = (t) => Math.round(((t.cycle_ms || {}).mean || 0) * (t.instances || 0));
+  const ordered = study.filter((t) => tot(t) > 0).sort((a, b) => tot(b) - tot(a));
+  if (!ordered.length) return null;
 
   const rows = ordered.map((t) => {
     const c = t.cycle_ms || {};
@@ -403,8 +378,10 @@ function _timeStudySection(ts, wasteByProcessLabel) {
       : "";
     // Item 2 (relocated): the judgment editor lives one click behind this row
     // (expand-in-place, Evidence mechanic). Rows that already carry a judgment
-    // show it inline on the row line ("36.0s measured · 20s business-required");
-    // the click target for editing lives in the expansion, not the row itself.
+    // show it inline on the row line ("20s business-required"); the click
+    // target for editing lives in the expansion, not the row itself. The
+    // judgment cell is always there (empty until judged) so the row's grid
+    // keeps its columns.
     const g = wasteFor(t.name);
     const judgment = _wasteInlineSummary(g);
     const judgmentBody = g ? _buildWasteRow(g) : "";
@@ -417,7 +394,7 @@ function _timeStudySection(ts, wasteByProcessLabel) {
         '<span class="ts-n">' + (t.instances || 0) + "×</span>" +
         '<span class="ts-total">' + escapeHtml(_fmt(total)) + "</span>" +
         '<div class="ts-strip">' + dots + "</div>" +
-        (judgment ? '<span class="ts-judgment">' + judgment + "</span>" : "") +
+        '<span class="ts-judgment">' + judgment + "</span>" +
         expand +
       "</div>" +
       stats +
@@ -425,42 +402,20 @@ function _timeStudySection(ts, wasteByProcessLabel) {
     "</div>";
   }).join("");
 
-  const gateNote = distribution ? "" :
-    '<div class="analysis-caption">Summary statistics (mean/stdev/percentiles) ' +
-    "render once a step type reaches " + TIME_STUDY_DISTRIBUTION_MIN_N +
-    " instances. Below that, the strip shows exactly what was measured: " +
-    "one dot per observed instance.</div>";
   const axis = '<div class="ts-axis"><span class="ts-axis-lbl">per-instance ' +
     'duration</span><span>0s</span><span class="ts-axis-line"></span><span>' +
     escapeHtml(_fmt(axisMax)) + "</span></div>";
   // Takeaway: name the heaviest step type + its total time (the module's memo
-  // altitude), or the row count when nothing measured a duration.
-  const totalMs = ordered.reduce((s, t) =>
-    s + Math.round(((t.cycle_ms || {}).mean || 0) * (t.instances || 0)), 0);
+  // altitude).
+  const totalMs = ordered.reduce((s, t) => s + tot(t), 0);
   const top = ordered[0];
-  const takeaway = totalMs > 0 && top
-    ? _fmt(totalMs) + " across " + ordered.length + " step type" +
-      (ordered.length === 1 ? "" : "s") + " · most in " + (top.name || "(step)")
-    : ordered.length + " step type" + (ordered.length === 1 ? "" : "s") + " measured";
+  const takeaway = _fmt(totalMs) + " across " + ordered.length + " step type" +
+    (ordered.length === 1 ? "" : "s") + " · most in " + (top.name || "(step)");
   return {
     title: "Where the time goes",
     takeaway,
-    body: gateNote + axis + '<div class="ts-rows">' + rows + "</div>",
+    body: axis + '<div class="ts-rows">' + rows + "</div>",
   };
-}
-
-/* Confirm/Dismiss — preserved EXACTLY as-is functionally: same data-confirm
-   handling, same analysis_overrides automation_confirmed write path
-   (_writeSegmentOverride, wired in _wireControls). Only the container moved
-   (table cell -> finding-card detail line). */
-function _decisionCell(a) {
-  const c = a.automation_confirmed;
-  const btn = (val, label) =>
-    '<button type="button" class="auto-btn' + (c === val ? " active" : "") +
-    '" data-confirm="' + val + '">' + label + "</button>";
-  return '<div class="auto-decision" data-segment-signature="' +
-    escapeAttr(a.segment_signature || "") + '">' +
-    btn(true, "Confirm") + btn(false, "Dismiss") + "</div>";
 }
 
 /* The claim sentence for one candidate's finding card: the pipeline's
@@ -477,122 +432,40 @@ function _candidateClaim(a) {
     _fmt(a.total_elapsed_ms) + " in total, " + _fmt(a.mean_elapsed_ms) + " on average";
 }
 
-/* The segment signatures the findings feed already states: a "repeated
-   sequences" finding carries its candidate's signature in its evidence. The
-   Overview shows each candidate once, as the PDD does (its section 5.3 lists
-   only the candidates section 1 does not already describe). */
-function _statedSignatures(findings) {
-  const out = new Set();
-  for (const f of (findings || [])) {
-    const sig = f && f.evidence && f.evidence.segment_signature;
-    if (sig) out.add(sig);
-  }
-  return out;
+/* The candidates in the order the Overview and the PDD's 5.3 list them (AD-20):
+   repeated sequences only, longest total time first (a stable sort, so ties
+   keep the pipeline's order, as Python's sorted() does in pdd_export). Pure. */
+function orderedCandidates(auto) {
+  return (auto || []).filter((a) => a && a.data_sufficiency === "multi_instance")
+    .sort((a, b) => (b.total_elapsed_ms || 0) - (a.total_elapsed_ms || 0));
 }
 
-/* The one line for the candidates the findings above already state. */
-function _inFindingsSentence(covered, total) {
-  const one = covered === 1;
-  const lead = covered === total
-    ? (one ? "This candidate is" : "All " + covered + " candidates are")
-    : covered + (one ? " more candidate is" : " more candidates are");
-  return lead + " already in the findings above, as " + (one ? "a repeated sequence" : "repeated sequences") +
-    ", so " + (one ? "it is" : "they are") + " not listed again here.";
-}
-
-/* R1 (§4/§5): the ranked table is replaced by finding-card presentation,
-   reusing the SAME shared card component the Overview findings feed uses
-   (finding-cards.js): one card per candidate, in the existing rank order.
-   Detection + scoring (Python) and the Confirm/Dismiss write path are
-   unchanged; only the presentation moved from a table row to a card. A
-   candidate the findings feed already states (`stated`, its signature) is
-   not repeated here: one line says how many are in the findings. */
-function _automationSection(auto, stated) {
+/* R1 (§4/§5): one finding card per candidate, the SAME shared card component
+   the Overview findings feed uses (finding-cards.js). AD-20: the one home of a
+   repeated step sequence, listed by total time as the PDD's 5.3 lists it. */
+function _automationSection(auto) {
   if (!auto.length) return null;
-  const scored = auto.filter((a) => a.data_sufficiency === "multi_instance");
-  const lonely = auto.length - scored.length;
-  const lead = '<div class="analysis-caption">' +
-    "A candidate is a contiguous run of work in one application within one " +
-    "case, for example a CRM lookup → copy → paste sequence. Single clicks or " +
-    "keystrokes are not surfaced (a hybrid where a robot clicks one button " +
-    "inside a manual flow is worse than fully manual). Ranked by automation " +
-    "priority: frequency × mean time × automatable share." +
-    "</div>";
+  const scored = orderedCandidates(auto);
   if (!scored.length) {
-    const note = lonely
-      ? "All detected segments occurred only once in this capture: "
-        + "automation candidacy needs the same segment seen across 2+ cases. "
-        + "Load more sessions or analyze a longer recording."
-      : "No multi-instance segments detected.";
     return {
       title: "Automation candidates",
-      takeaway: "None ranked yet: needs a sequence seen across 2+ cases",
-      body: lead + '<div class="analysis-note">' + escapeHtml(note) + "</div>",
+      takeaway: "None yet: no step sequence was repeated",
+      body: '<div class="analysis-note">Every step sequence in this recording happened once. ' +
+        "A candidate is a step sequence done at least twice.</div>",
     };
   }
-  // Card order = existing rank order (unchanged from the table).
-  const covered = scored.filter((a) => stated && a.segment_signature && stated.has(a.segment_signature)).length;
-  const cards = scored.map((a, i) => {
-    if (stated && a.segment_signature && stated.has(a.segment_signature)) return "";
-    const rank = (a.rank === null || a.rank === undefined) ? (i + 1) : a.rank;
-    const f = {
-      id: "automation-" + (a.segment_signature || i),
-      tier: 1,
-      claim: _candidateClaim(a),
-    };
-    const cardHtml = findingCardHtml(f, {
-      screenshots: false,
-      detailHtml: () => _decisionCell(a),
-    });
-    // Rank prefix stays visible on the card (the existing priority order).
-    return '<div class="auto-card" data-rank="' + escapeAttr(String(rank)) + '">' + cardHtml + "</div>";
-  }).join("");
-  const inFindings = covered
-    ? '<div class="analysis-note auto-in-findings">' + escapeHtml(_inFindingsSentence(covered, scored.length)) + "</div>"
-    : "";
-  const tail = lonely
-    ? '<div class="analysis-note">' + lonely + " more segment" +
-      (lonely === 1 ? "" : "s") + " occurred only once and " +
-      "aren't ranked (single instances can't be judged for repeatability)." +
-      "</div>"
-    : "";
+  const cards = scored.map((a, i) => findingCardHtml({
+    id: "automation-" + (a.segment_signature || i),
+    claim: _candidateClaim(a),
+  }, { screenshots: false })).join("");
   return {
     title: "Automation candidates",
-    takeaway: scored.length + " candidate" + (scored.length === 1 ? "" : "s") +
-      " ranked by automation priority",
-    body: lead + (cards ? '<div class="auto-cards">' + cards + "</div>" : "") + inFindings + tail,
+    takeaway: scored.length + " candidate" + (scored.length === 1 ? "" : "s") + ", longest total time first",
+    body: '<div class="auto-cards">' + cards + "</div>",
   };
 }
 
 /* ============ Correction handlers ================================= */
-
-/* Upsert a segment-signature entry in annotations.json
-   `analysis_overrides[]` -- the new shape used for confirming or
-   dismissing an automation segment (ADR-0016). A patch field set to
-   undefined clears that correction; an entry left with only the
-   identity field is pruned. Persists with undo, then emits "analysis"
-   so this view (and undo/redo) repaint. */
-async function _writeSegmentOverride(signature, patch) {
-  const session = State.getSession();
-  if (!session || !signature) return;
-  let anno;
-  try { anno = JSON.parse(JSON.stringify(session.annotations || {})); }
-  catch (_) { anno = {}; }
-  const list = Array.isArray(anno.analysis_overrides) ? anno.analysis_overrides : [];
-  let entry = list.find((o) => o && o.segment_signature === signature);
-  if (!entry) { entry = { segment_signature: signature }; list.push(entry); }
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) delete entry[k];
-    else entry[k] = v;
-  }
-  anno.analysis_overrides = list.filter((o) =>
-    o && (o.step_id != null || o.process_label || o.segment_signature) &&
-    Object.keys(o).some((k) =>
-      k !== "step_id" && k !== "process_label" && k !== "segment_signature"));
-  await Session.saveAnnotationsWithUndo(anno, "Adjust analysis classification");
-  session.annotations = anno;
-  State.emit("analysis");
-}
 
 /* Upsert a process_label-scoped entry in `analysis_overrides[]`. Written
    from a grouped 'Waste by step' row; on the next re-analyze the entry
@@ -668,11 +541,10 @@ async function _editBnva(group) {
   _writeProcessLabelOverride(group.process_label, { bnva_ms: Math.round(min * 60000) });
 }
 
-/* Attach the waste-row and automation-decision handlers after a render.
-   `analysis` is the override-merged view, so the current state is read
-   from it (a second click on the active decision clears it). Waste rows
-   are grouped by `process_label`; the click targets the group, not a
-   single instance, so an edit propagates across the step type. */
+/* Attach the waste-row handlers after a render. `analysis` is the
+   override-merged view. Waste rows are grouped by `process_label`; the click
+   targets the group, not a single instance, so an edit propagates across the
+   step type. */
 function _wireControls(host, analysis) {
   const groups = _groupWasteRows(analysis.waste_classification || []);
   const groupByPl = {};
@@ -706,47 +578,6 @@ function _wireControls(host, analysis) {
       body.hidden = !open;
       btn.setAttribute("aria-expanded", String(open));
       btn.textContent = open ? "▾" : "▸";
-    });
-  });
-
-  // Automation candidate cards (finding-cards.js): expand-in-place toggle for
-  // the evidence body (the step chain + the Confirm/Dismiss decision). Mirrors
-  // overview-view.js's _wireFindings toggle so the same component behaves the
-  // same everywhere it's reused.
-  host.querySelectorAll(".auto-cards .ov-finding").forEach((card) => {
-    const body = card.querySelector(".ov-finding-body");
-    const expand = card.querySelector('[data-act="expand"]');
-    const toggle = () => {
-      if (!body) return;
-      const open = body.hidden;
-      body.hidden = !open;
-      if (expand) {
-        expand.setAttribute("aria-expanded", String(open));
-        expand.textContent = open ? "▾" : "▸";
-      }
-    };
-    if (expand) expand.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
-    const head = card.querySelector(".ov-finding-head");
-    if (head && body) head.addEventListener("click", (e) => {
-      if (e.target.closest("button, a, label, input")) return;
-      toggle();
-    });
-  });
-
-  const autoBySig = {};
-  for (const a of (analysis.automation_candidates || [])) {
-    if (a.segment_signature) autoBySig[a.segment_signature] = a;
-  }
-  host.querySelectorAll(".auto-decision .auto-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const wrap = btn.closest(".auto-decision");
-      if (!wrap) return;
-      const sig = wrap.dataset.segmentSignature;
-      if (!sig) return;
-      const want = btn.dataset.confirm === "true";
-      const cur = autoBySig[sig];
-      const isActive = cur && cur.automation_confirmed === want;
-      _writeSegmentOverride(sig, { automation_confirmed: isActive ? undefined : want });
     });
   });
 }
@@ -791,12 +622,10 @@ function renderEvidenceInto(host) {
   // even when expanded, and a collapse never removes it (the native <details>
   // retains the body in the DOM).
   host.innerHTML =
-    _caption(overrides.length) +
     _moduleShell("time", _timeStudySection(analysis.time_study || [], wasteByProcessLabel)) +
-    _moduleShell("automation", _automationSection(analysis.automation_candidates || [],
-      _statedSignatures(raw.findings)));
+    _moduleShell("automation", _automationSection(analysis.automation_candidates || []));
   _wireControls(host, analysis);
   _wireModulePersistence(host);
 }
 
-module.exports = { renderEvidenceInto };
+module.exports = { renderEvidenceInto, orderedCandidates };

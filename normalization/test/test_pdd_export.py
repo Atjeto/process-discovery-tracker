@@ -583,28 +583,43 @@ def test_the_document_is_tool_neutral():
 def test_section_1_renders_the_selected_findings_with_the_case_based_label():
     if not _HAVE_DOCX:
         return
-    blocks = _rendered()
-    text = _all_text(blocks)
-    assert "1. Contoso CRM accounts for 59% of measured foreground time." in text
-    assert ("2. Across runs: The step sequence \"Look up the order → CRM - Orders: "
-            "Save\" in Contoso CRM was repeated 2 times.") in text
     manifest, annotations, stats, analysis, events = _session()
+    analysis["findings"].append(
+        {"id": "run_spread-z", "detector": "run_spread", "tier": 2,
+         "claim": "The slower run took 10s longer.", "evidence": {}})
+    text = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
+    assert "1. Contoso CRM accounts for 59% of measured foreground time." in text
+    assert "2. Across runs: The slower run took 10s longer." in text
     annotations["memo_selection"] = ["screen_time_sink-x"]
     text = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
     assert "Contoso CRM accounts for 59%" in text
     assert "Across runs:" not in text
 
 
-def test_candidates_skip_what_section_1_already_says():
+def test_section_1_leaves_the_repeated_sequences_to_5_3():
+    """AD-20: a repeated step sequence has one home, 5.3. Section 1 never
+    prints it, not even when an older memo_selection names it."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    for selection in (None, ["repetition-y"], ["repetition-y", "screen_time_sink-x"]):
+        if selection is not None:
+            annotations["memo_selection"] = selection
+        findings = _section(_blocks_of(manifest, annotations, stats, analysis, events), "Findings")
+        assert "1. Contoso CRM accounts for 59% of measured foreground time." in findings
+        assert not any("The step sequence" in t for t in findings), (selection, findings)
+
+
+def test_candidates_are_listed_by_total_time():
     if not _HAVE_DOCX:
         return
     cands = _section(_rendered(), "5.3 Automation candidates")
     assert cands[1:4] == [
-        "Section 1 already describes 1 candidate (finding 2); it is not repeated here.",
         "Step sequence | Application | Times run | Total time | Average per run",
+        "Look up the order → CRM - Orders: Save | Contoso CRM | 2 | 12s | 6s",
         "Mail - Compose: Send | Microsoft Outlook (classic) | 3 | 9s | 3s",
     ]
-    assert not any("Look up the order →" in t for t in cands)
+    assert not any("already describes" in t for t in cands)
 
 
 def test_failed_analysis_stages_render_as_could_not_run():

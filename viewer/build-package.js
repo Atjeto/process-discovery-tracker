@@ -136,14 +136,6 @@ function stripLocales(appDir) {
          dev tree and the package. Without this the released app's recognition
          silently breaks while dev tests stay green. */
       path.join(PROJECT_DIR, "..", "shared"),
-      /* Example sessions for the empty state on first launch.
-         renderer.js listBundledExamples() looks for these in
-         process.resourcesPath/example-aggregate/ and renders them
-         beneath the user's real Recents so the SME has something
-         clickable out of the box. ~1.3 MB, no video / screenshots,
-         just the JSONL + XES + BPMN the demo aggregate was built
-         against. */
-      path.join(PROJECT_DIR, "..", "sessions", "example-aggregate"),
     ],
   });
 

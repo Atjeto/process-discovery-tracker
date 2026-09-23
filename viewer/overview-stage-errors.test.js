@@ -26,6 +26,8 @@ const ZERO_FACTS = Object.assign({}, FACTS, {
   rekey_count: 0, repeated_sequence_count: 0,
 });
 const FINDING = { id: "f1", detector: "screen_time_sink", tier: 1, claim: "Most time went to Excel", evidence: { share: 0.5 } };
+// What the pipeline writes beside the findings (F2): the findings the PDD can print and prints by default.
+const PDD = { eligible: ["f1"], default: ["f1"] };
 const STATS = {
   meta: { worker_id: "w1", normalization_run_at: "2026-05-17T10:00:00Z" },
   case_stats: [{ case_id: "c1", start_ts: "2026-05-17T09:00:00Z", end_ts: "2026-05-17T09:05:00Z" }],
@@ -43,9 +45,11 @@ test("a failed facts stage says the facts could not be measured, never a zero", 
 });
 
 test("control: facts that ran and measured zeros carry no could-not-run note", () => {
-  const out = html({ case_quality: CQ, facts: ZERO_FACTS, findings: [FINDING] });
+  const out = html({ case_quality: CQ, facts: ZERO_FACTS, findings: [FINDING], pdd_findings: PDD });
   assert.ok(!out.includes(STAGE_NOT_RUN));
-  assert.ok(out.includes("No idle time was measured"), "a measured zero idle time is said as measured");
+  // P1.4: the "To say more" box is gone, so a measured zero is not restated there either.
+  assert.ok(!out.includes("To say more") && !out.includes("No idle time was measured"));
+  assert.ok(out.includes("Most time went to Excel"), "the finding is shown");
 });
 
 test("a failed findings stage says the check could not run, never 'Nothing stood out'", () => {
@@ -63,7 +67,7 @@ test("control: findings that ran and found nothing still say 'Nothing stood out'
 });
 
 test("a failed run check is said on the Overview, not read as 'not analyzed'", () => {
-  const out = html({ case_quality: null, facts: FACTS, findings: [FINDING],
+  const out = html({ case_quality: null, facts: FACTS, findings: [FINDING], pdd_findings: PDD,
     stage_errors: [{ stage: "case_quality", error: "TypeError: bad marker" }] });
   assert.ok(out.includes("The run check could not run on this recording"));
   assert.ok(out.includes("Technical detail: TypeError: bad marker"));

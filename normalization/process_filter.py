@@ -18,7 +18,9 @@ Exclusions are the union of:
     (`capture-vX.Y.Z` / `viewer-vX.Y.Z` -- the worker browsing the capture
     install in Explorer shows up as explorer.exe, so only the title betrays
     it; G-4);
-  * the capture-side `manifest.config.exclude_processes` knob;
+  * the capture-side exclusion list: `manifest.config.interactions.exclude_processes`
+    (where capture/config.js keeps it) and a top-level
+    `manifest.config.exclude_processes`;
   * the capture app's self-recorded `manifest.tool.process_name` (future-proof,
     exact -- works in dev where the exe is electron.exe);
   * the analyst's per-session `annotations.step_filters.ignored_processes` /
@@ -73,9 +75,14 @@ def collect_exclusions(manifest: dict | None, annotations: dict | None) -> tuple
     windows: list[str] = []
     cfg = (manifest or {}).get("config") or {}
     if isinstance(cfg, dict):
-        for p in (cfg.get("exclude_processes") or []):
-            if isinstance(p, str) and p.strip():
-                procs.add(_norm_proc(p))
+        # The capture config keeps the list under `interactions`
+        # (capture/config.js); a top-level list is read too.
+        inter = cfg.get("interactions")
+        for source in (cfg, inter if isinstance(inter, dict) else {}):
+            listed = source.get("exclude_processes")
+            for p in (listed if isinstance(listed, list) else []):
+                if isinstance(p, str) and p.strip():
+                    procs.add(_norm_proc(p))
     tool = (manifest or {}).get("tool")
     if isinstance(tool, dict) and tool.get("process_name"):
         procs.add(_norm_proc(tool["process_name"]))

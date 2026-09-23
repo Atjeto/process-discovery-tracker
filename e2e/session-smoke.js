@@ -13,8 +13,14 @@
  *   - the Session-view levels flow/steps/map render (R4 retired the Analysis
  *     level, its modules moved into the Overview; the BA-helper cut removed
  *     Phases and the top tab row),
- *   - the Session Export menu's "Map as SVG" and "Step map as BPMN" items
- *     each write their file,
+ *   - the Session Export menu's "Process map (image)" and "Process map
+ *     (BPMN)" items each write their file (no As-Is copy chosen yet: the map
+ *     on the Map level),
+ *   - the chrome: the Run select on Flow only, one Open menu, the version in
+ *     Help, Analyze session secondary once analyzed, the active level legible
+ *     under the mouse,
+ *   - the automation candidates: every repeated sequence, by total time, with
+ *     no Confirm or Dismiss and no rank (AD-20, P1.5),
  *   - the map-overlay regression stays fixed: on the Map level the process-map
  *     host must NOT vertically overlap the raw-events host
  *     (#session-layout-map .map-host bottom <= .event-table-host top),
@@ -307,26 +313,79 @@ async function unreadableAnnotationsPin() {
       cut.entryPoints === 0 && cut.sessionViewShown && cut.exportItems.every(Boolean)),
     JSON.stringify(cut));
 
-  // Item 19: "Scope to playhead" is orphaned chrome on Overview (no visible
-  // playhead there) but meaningful everywhere a timeline exists. We just
-  // cycled through flow/steps/map (the loop above), so the button should
-  // be visible now (last level = map, not overview); switch back to Flow
-  // (has it) then Overview (hides it) to check both ends.
-  await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
-  await wait(500);
-  const playheadOnFlow = await page.evaluate(() => {
-    const b = document.getElementById("btn-scope-to-playhead");
-    return !!(b && getComputedStyle(b).display !== "none");
-  }).catch(() => false);
+  // P1.2: the run select dims the other runs on the Flow timeline and changes
+  // nothing elsewhere, so it shows on Flow only; "Scope to playhead" is gone
+  // on every level. Checked on each level in turn.
+  const runSelect = {};
+  for (const lvl of ["overview", "flow", "steps", "map"]) {
+    await page.click('.view-mode-btn[data-level="' + lvl + '"]').catch(() => {});
+    await wait(400);
+    runSelect[lvl] = await page.evaluate(() => {
+      const el = document.getElementById("case-scope");
+      return !!(el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0);
+    }).catch(() => null);
+  }
+  const runSelectText = await page.evaluate(() => ({
+    label: ((document.querySelector("#case-scope .case-scope-label") || {}).textContent || "").trim(),
+    first: ((document.querySelector("#case-scope-select option") || {}).textContent || "").trim(),
+    playhead: document.querySelectorAll("#btn-scope-to-playhead").length,
+  })).catch((e) => ({ err: e.message }));
+  record("P1.2: the Run select shows on Flow only (All runs); Scope to playhead is gone",
+    runSelect.flow === true && runSelect.overview === false && runSelect.steps === false && runSelect.map === false &&
+      runSelectText.label === "Run:" && runSelectText.first === "All runs" && runSelectText.playhead === 0,
+    JSON.stringify({ runSelect, runSelectText }));
+
+  // P1.2 / P3.1 / P3.2 / P2.2: the chrome says each thing once. No VIEW label,
+  // per-level hint, hidden level descriptions or top-bar date; the version is
+  // in Help; one Open menu holds the folder picker and the recent sessions.
+  // P1.11: once the session is analyzed, Analyze session is secondary, so the
+  // Overview's one orange button is its next act.
   await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
-  await wait(500);
-  const playheadOnOverview = await page.evaluate(() => {
-    const b = document.getElementById("btn-scope-to-playhead");
-    return !!(b && getComputedStyle(b).display !== "none");
-  }).catch(() => true);
-  record("item 19: 'Scope to playhead' hidden on Overview, visible on Flow",
-    playheadOnFlow && !playheadOnOverview,
-    "flow=" + playheadOnFlow + " overview=" + playheadOnOverview);
+  await wait(400);
+  const chrome = await page.evaluate(() => {
+    const n = (sel) => document.querySelectorAll(sel).length;
+    const shown = (el) => !!(el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0);
+    return {
+      gone: n(".view-mode-label") + n("#view-mode-help") + n(".view-mode-desc") + n("#topbar-meta") + n("#onboarding-card"),
+      version: ((document.getElementById("help-version") || {}).textContent || "").trim(),
+      openMenu: ((document.querySelector("#btn-recent-menu span") || {}).textContent || "").trim(),
+      openFolderInMenu: !!document.querySelector("#recent-menu-popup #btn-open-session"),
+      analyzeIsPrimary: document.getElementById("btn-normalize").classList.contains("primary"),
+      orangeOnOverview: [...document.querySelectorAll("#session-loaded button.primary")].filter(shown)
+        .map((b) => (b.textContent || "").trim()),
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("P1.2/P3.1/P2.2/P1.11: no VIEW label, level hint or top-bar date; the version is in Help; one Open menu; Analyze session secondary, one orange button on the Overview",
+    !!(chrome && !chrome.err && chrome.gone === 0 && /^Version \d+\.\d+\.\d+/.test(chrome.version) &&
+      chrome.openMenu === "Open" && chrome.openFolderInMenu && chrome.analyzeIsPrimary === false &&
+      chrome.orangeOnOverview.length === 1 && chrome.orangeOnOverview[0] === "Confirm Run 1 in Steps"),
+    JSON.stringify(chrome));
+
+  // F3: the active level button stays legible under the mouse (the global
+  // button hover used to give it a light background under near-white text).
+  const activeHover = {};
+  try {
+    const active = page.locator(".view-mode-btn.active");
+    activeHover.rest = await active.evaluate((b) => { const c = getComputedStyle(b); return { bg: c.backgroundColor, fg: c.color }; });
+    await active.hover({ timeout: 15000 });
+    await wait(250);
+    activeHover.hover = await active.evaluate((b) => { const c = getComputedStyle(b); return { bg: c.backgroundColor, fg: c.color }; });
+    await page.mouse.move(2, 600);
+  } catch (e) {
+    logActionError("F3 active hover", e);
+    activeHover.err = String(e.message).split("\n")[0];
+  }
+  const lum = (rgb) => {
+    const m = /rgba?\((\d+), (\d+), (\d+)/.exec(rgb || "");
+    if (!m) return null;
+    const ch = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * ch(+m[1]) + 0.7152 * ch(+m[2]) + 0.0722 * ch(+m[3]);
+  };
+  const contrast = (a, b) => { const x = lum(a), y = lum(b); return (x == null || y == null) ? 0 : (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  activeHover.ratio = activeHover.hover ? Math.round(contrast(activeHover.hover.bg, activeHover.hover.fg) * 100) / 100 : 0;
+  record("F3: the active level button keeps a legible label under the mouse (contrast at least 3:1, label colour unchanged)",
+    !!(!activeHover.err && activeHover.ratio >= 3 && activeHover.hover.fg === activeHover.rest.fg),
+    JSON.stringify(activeHover));
 
   // Item 20: .tl-act-app activity labels must never escape their band --
   // NOTE this is deliberately NOT the usual scrollWidth>clientWidth clipping
@@ -595,103 +654,77 @@ async function unreadableAnnotationsPin() {
       autoCardsProbe.cardCount > 0 && autoCardsProbe.noOldTable),
     JSON.stringify(autoCardsProbe));
   if (!(autoCardsProbe && autoCardsProbe.cardCount > 0)) await shot(page, "fail-automation-cards.png");
-  // Item 4: a card leads with the pipeline's readable candidate label (the
-  // application by its readable name, no raw process token), and a candidate
-  // a finding on the same screen already states (its "repeated sequence") is
-  // not repeated as a card: one line says how many are in the findings.
+  // AD-20: the automation candidates are the one home of a repeated step
+  // sequence. Every repeated sequence is a card, longest total time first (the
+  // order the PDD's 5.3 lists them in); each card leads with the pipeline's
+  // readable label (the application by its readable name, no raw process
+  // token); no line points at the findings any more.
   const autoLabels = await page.evaluate(() => {
     const a = require("./state.js").getSession().analysis || {};
-    const stated = new Set((a.findings || []).map((f) => f && f.evidence && f.evidence.segment_signature).filter(Boolean));
-    const scored = (a.automation_candidates || []).filter((c) => c.data_sufficiency === "multi_instance");
-    const expected = scored.filter((c) => !stated.has(c.segment_signature));
+    const expected = (a.automation_candidates || []).filter((c) => c.data_sufficiency === "multi_instance")
+      .sort((x, y) => (y.total_elapsed_ms || 0) - (x.total_elapsed_ms || 0));
     const claims = [...document.querySelectorAll("#overview-evidence .auto-cards .ov-finding-claim")]
       .map((e) => (e.textContent || "").trim());
     return {
-      scored: scored.length, expected: expected.length, cards: claims.length,
+      expected: expected.length, cards: claims.length,
+      totals: expected.map((c) => c.total_elapsed_ms),
       labelsLead: claims.length > 0 && claims.every((c, i) => !!expected[i] && c.startsWith(expected[i].label + ": ran ")),
       rawToken: claims.some((c) => /\.exe\b/i.test(c)),
-      note: ((document.querySelector("#overview-evidence .auto-in-findings") || {}).textContent || "").trim(),
+      inFindingsNote: document.querySelectorAll("#overview-evidence .auto-in-findings").length,
+      takeaway: ((document.querySelector('#overview-evidence .analysis-module[data-module="automation"] .analysis-module-takeaway') || {}).textContent || "").trim(),
       firstClaim: claims[0] || null,
     };
   }).catch((e) => ({ err: e.message }));
-  record("item 4: automation cards lead with the pipeline's readable label; candidates the findings state are not repeated",
-    !!(autoLabels && !autoLabels.err && autoLabels.expected >= 1 && autoLabels.scored > autoLabels.expected &&
-      autoLabels.cards === autoLabels.expected && autoLabels.labelsLead && !autoLabels.rawToken &&
-      /already in the findings above/.test(autoLabels.note)),
+  record("AD-20: every repeated sequence is an automation card, longest total time first, led by its readable label; no 'already in the findings' line",
+    !!(autoLabels && !autoLabels.err && autoLabels.expected >= 2 && autoLabels.cards === autoLabels.expected &&
+      autoLabels.labelsLead && !autoLabels.rawToken && autoLabels.inFindingsNote === 0 &&
+      /^\d+ candidates?, longest total time first$/.test(autoLabels.takeaway)),
     JSON.stringify(autoLabels));
 
-  // Confirm/Dismiss must still work: expand the first card and click Confirm;
-  // the SAME analysis_overrides automation_confirmed write path (unchanged).
-  // CI-4: this pin flaked on GitHub Actions only (active=false after a fixed
-  // 900 ms sleep). It now waits for each observable state with a generous
-  // timeout: the card body open (Confirm visible), the Confirm button active
-  // for THIS card's segment, and the decision written to annotations.json
-  // (the "persists" half of the check's name, which the old version never
-  // read back). A failed wait is recorded as the reason, never swallowed.
-  const confirmRes = { found: false };
-  try {
-    const card = page.locator("#overview-evidence .auto-cards .ov-finding").first();
-    const confirmLoc = card.locator('.auto-btn[data-confirm="true"]');
-    confirmRes.found = (await confirmLoc.count()) > 0;
-    if (confirmRes.found) {
-      const sig = await card.locator(".auto-decision").getAttribute("data-segment-signature");
-      confirmRes.signature = sig;
-      confirmRes.activeBefore = await confirmLoc.evaluate((b) => b.classList.contains("active"));
-      await card.click({ timeout: STATE_TIMEOUT });               // expand in place
-      await confirmLoc.waitFor({ state: "visible", timeout: STATE_TIMEOUT });
-      await confirmLoc.click({ timeout: STATE_TIMEOUT });
-      await page.waitForFunction((s) =>
-        [...document.querySelectorAll("#overview-evidence .auto-cards .auto-decision")].some((d) =>
-          d.dataset.segmentSignature === s && d.querySelector('.auto-btn[data-confirm="true"].active')),
-      sig, { timeout: STATE_TIMEOUT });
-      confirmRes.active = true;
-      const annoPath = path.join(SESSION, "annotations.json");
-      const deadline = Date.now() + STATE_TIMEOUT;
-      while (Date.now() < deadline && !confirmRes.persisted) {
-        try {
-          const a = JSON.parse(fs.readFileSync(annoPath, "utf-8"));
-          confirmRes.persisted = (a.analysis_overrides || []).some((o) =>
-            o && o.segment_signature === sig && o.automation_confirmed === true);
-        } catch (_) { /* mid-write; read again */ }
-        if (!confirmRes.persisted) await wait(200);
-      }
-    }
-  } catch (e) {
-    logActionError("(R1) finding card Confirm", e);
-    confirmRes.error = String(e.message).split("\n")[0];
-  }
-  const confirmOk = !!(confirmRes.found && confirmRes.activeBefore === false &&
-    confirmRes.active && confirmRes.persisted);
-  record("(R1) a finding card's Confirm button works (activates + persists the decision)",
-    confirmOk, JSON.stringify(confirmRes));
-  if (!confirmOk) await shot(page, "fail-automation-confirm.png");
+  // P1.5: Confirm and Dismiss reached nothing downstream and the rank was an
+  // unexplained number: a candidate card is its claim, with no control, no
+  // rank and no caption above the cards.
+  const autoCard = await page.evaluate(() => {
+    const mod = document.querySelector('#overview-evidence .analysis-module[data-module="automation"]');
+    const cardsHost = mod && mod.querySelector(".auto-cards");
+    return {
+      cards: cardsHost ? cardsHost.querySelectorAll(".ov-finding").length : 0,
+      controls: cardsHost ? cardsHost.querySelectorAll("button, input, select, a").length : -1,
+      decisions: document.querySelectorAll(".auto-decision, .auto-btn, [data-confirm]").length,
+      ranks: document.querySelectorAll(".auto-card, [data-rank]").length,
+      captions: mod ? mod.querySelectorAll(".analysis-caption").length : -1,
+      chips: document.querySelectorAll("#overview-content .ov-finding-tier").length,
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("P1.5 + P2.7: an automation card has no Confirm, Dismiss or rank; no card carries a tier chip",
+    !!(autoCard && !autoCard.err && autoCard.cards > 0 && autoCard.controls === 0 && autoCard.decisions === 0 &&
+      autoCard.ranks === 0 && autoCard.captions === 0 && autoCard.chips === 0),
+    JSON.stringify(autoCard));
+  if (!(autoCard && autoCard.cards > 0 && autoCard.decisions === 0)) await shot(page, "fail-automation-cards-controls.png");
 
   // Item 21: the Evidence module collapse persists per analyst (localStorage,
   // pdt.analysis.* keys — the module keys are unchanged by the R4 relocation).
-  // Two halves: (i) collapsing a module WRITES the key; (ii) the stored key
-  // survives a re-render. Use the "time" module in #overview-evidence.
-  // (i) collapse via the native summary → the toggle listener persists "0".
-  const wroteKey = await page.evaluate(async () => {
+  // P1.10: collapsed is the default. Both directions, on the "time" module in
+  // #overview-evidence: opening it writes "1" and it comes back open after a
+  // re-render; collapsing it writes "0" and it comes back collapsed.
+  const toggleTime = (open) => page.evaluate(async (want) => {
     const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
     if (!mod) return { present: false };
-    if (mod.open) mod.querySelector("summary").click();   // collapse
+    if (mod.open !== want) mod.querySelector("summary").click();
     await new Promise((r) => setTimeout(r, 50));           // let the toggle event fire
     let stored = null;
     try { stored = localStorage.getItem("pdt.analysis.time"); } catch (_) {}
-    return { present: true, stored };
-  }).catch((e) => ({ err: e.message }));
-  // (ii) re-render the Overview (which re-renders the Evidence modules); the
-  // module must come back collapsed from storage.
-  const persisted = await page.evaluate(() => {
     require("./views/overview-view.js").renderOverviewLevel();
     const after = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
-    return after ? after.open : null;
-  }).catch((e) => ({ err: e.message }));
-  record("(disclosure 21) Evidence module collapse persists across a re-render",
-    !!(wroteKey && !wroteKey.err && wroteKey.present && wroteKey.stored === "0" &&
-      persisted === false),
-    JSON.stringify({ wroteKey, reopenedOpen: persisted }));
-  // Restore the default (expanded) so the persisted key doesn't leak to a human run.
+    return { present: true, stored, afterRerender: after ? after.open : null };
+  }, open).catch((e) => ({ err: e.message }));
+  const opened = await toggleTime(true);
+  const collapsed = await toggleTime(false);
+  record("(disclosure 21) Evidence module open and collapse both persist across a re-render",
+    !!(opened && opened.present && opened.stored === "1" && opened.afterRerender === true &&
+      collapsed && collapsed.present && collapsed.stored === "0" && collapsed.afterRerender === false),
+    JSON.stringify({ opened, collapsed }));
+  // Restore the default (collapsed) so the persisted key doesn't leak to a human run.
   await page.evaluate(() => {
     try { localStorage.removeItem("pdt.analysis.time"); } catch (_) {}
     require("./views/overview-view.js").renderOverviewLevel();
@@ -864,18 +897,18 @@ async function unreadableAnnotationsPin() {
     return !!(layout && getComputedStyle(layout).display !== "none" && btn && btn.classList.contains("active"));
   }).catch(() => false);
   const svgOk = svgRes.bytes > 0 && /<svg[\s>]/.test(svgRes.text) && /\.svg$/.test(svgRes.suggested || "") && svgLanded;
-  record("AD-11: Export > Map as SVG (from Overview) opens the Map and writes the shown map as an SVG file",
+  record("AD-11: Export > Process map (image), with no As-Is copy chosen, opens the Map from the Overview and writes the shown map as an SVG file",
     svgOk, "bytes=" + svgRes.bytes + " suggested=" + svgRes.suggested + " onMap=" + svgLanded + " head=" + JSON.stringify(svgRes.head.slice(0, 80)));
   if (!svgOk) await shot(page, "fail-export-map-svg.png");
   if (!FRESH) {
-    record("AD-11: Export > Step map as BPMN (skipped: session not re-normalized)", true,
+    record("AD-11: Export > Process map (BPMN) (skipped: session not re-normalized)", true,
       "the export would analyze into the committed demo folder");
   } else {
     const bpmnOut = path.join(os.tmpdir(), "pdt-e2e-step-" + Date.now() + ".bpmn");
     const bpmnRes = await exportViaMenu("btn-session-step-bpmn", bpmnOut);
     const bpmnOk = bpmnRes.bytes > 0 && /<(?:[\w-]+:)?definitions[\s>]/.test(bpmnRes.text) &&
       /<(?:[\w-]+:)?(?:task|userTask)[\s>]/.test(bpmnRes.text) && /\.bpmn$/.test(bpmnRes.suggested || "");
-    record("AD-11: Export > Step map as BPMN writes the step-level BPMN file",
+    record("AD-11: Export > Process map (BPMN), with no As-Is copy chosen, writes the step-level BPMN file",
       bpmnOk, "bytes=" + bpmnRes.bytes + " suggested=" + bpmnRes.suggested + " head=" + JSON.stringify(bpmnRes.head.slice(0, 80)));
     if (!bpmnOk) await shot(page, "fail-export-step-bpmn.png");
   }

@@ -251,9 +251,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   white-space: nowrap; font-family: var(--font-mono); font-size: 11px;
   display: flex; align-items: center; gap: 6px; }
 .recent-sessions .when { color: var(--fg-3); font-size: 11px; flex: 0 0 auto; }
-.recent-sessions .recent-tag { display: inline-block; font-family: var(--font-mono);
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px;
-  border-radius: 8px; background: var(--accent-muted); color: var(--accent); }
 .recent-sessions .recent-missing-tag { display: inline-block; font-family: var(--font-mono);
   font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px;
   border-radius: 8px; background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
@@ -709,6 +706,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .help-nav-item:hover { background: var(--bg-3); color: var(--fg); }
 .help-nav-item.active { background: var(--bg-3); color: var(--accent);
   border-left: 2px solid var(--accent); padding-left: 10px; }
+.help-version { margin-top: auto; padding: 8px 12px 2px; font-size: 11px; color: var(--fg-3);
+  font-family: var(--font-mono); }
 .help-body { grid-area: body; overflow-y: auto; padding: 22px 32px 32px;
   color: var(--fg-2); font-size: 13px; line-height: 1.6; }
 .help-section { display: none; }
@@ -761,11 +760,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   padding: 4px 10px; margin: 0 0 10px;
   background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius-sm);
 }
-.view-mode-label {
-  display: flex; align-items: center;
-  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
-  color: var(--fg-3); padding-right: 4px;
-}
 .view-mode-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 12px;
@@ -779,29 +773,13 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background: var(--accent); color: var(--bg); border-color: var(--accent);
   font-weight: 500;
 }
+/* F3: the active level keeps its colours under the mouse; the global
+   button:hover rule outranks .active and turned its label illegible. */
+.view-mode-btn.active:hover:not(:disabled) {
+  background: var(--accent-hover); border-color: var(--accent-hover); color: var(--bg);
+}
 .view-mode-btn .view-mode-icon { font-size: 13px; }
-/* Hide the long descriptions in the compact bar; tooltip on each btn
-   already explains. Keep markup so renderer/HTML doesn't need editing. */
-.view-mode-btn .view-mode-desc { display: none; }
 .view-mode-btn .badge { position: static; margin-left: 4px; }
-/* Item 7: the per-view hint is one line. It sits in the room the bar has left;
-   when that is too narrow for the line (a 1024 px window), it wraps onto a row
-   of its own under the view buttons instead of standing as a tall column. */
-.view-mode-help {
-  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
-  font-size: 11px; color: var(--fg-3);
-  flex: 1 1 auto; min-width: 0; text-align: right;
-}
-.view-mode-help-text {
-  font-style: italic; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; min-width: 0;
-}
-.view-mode-help-x {
-  flex-shrink: 0; background: transparent; border: 0; cursor: pointer;
-  color: var(--fg-4); font-size: 14px; line-height: 1; padding: 0 2px;
-  border-radius: 3px;
-}
-.view-mode-help-x:hover { color: var(--fg-2); background: var(--bg-3); }
 
 /* ===== Full-width Steps layout (tight, no waste) ===== */
 .session-layout-stepsphases {
@@ -913,7 +891,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-3);
 }
-.ov-group-count { font-size: 11px; color: var(--fg-3); }
 .ov-finding-method-btn {
   margin-left: auto; font: inherit; font-size: 11px; color: var(--fg-3);
   background: none; border: none; cursor: pointer; padding: 0;
@@ -928,25 +905,19 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-finding-group .ov-finding:first-of-type { border-top: none; }
 .ov-finding-head { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
-.ov-finding-tier {
-  flex: 0 0 auto; font-size: 10px; font-family: var(--font-mono);
-  padding: 1px 6px; border-radius: var(--radius-sm);
-  border: 1px solid var(--rule); color: var(--fg-3);
-}
-.ov-finding-tier.t2 { color: var(--accent-2); border-color: var(--accent-2); }
 .ov-finding-claim { flex: 1; font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.45; }
 .ov-finding-expand {
   flex: 0 0 auto; font: inherit; font-size: 12px; color: var(--fg-3);
   background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1;
 }
 .ov-finding-expand:hover { color: var(--accent); }
-.ov-finding-memo { margin: 4px 0 0 30px; }
+.ov-finding-memo { margin: 4px 0 0; }
 .ov-finding-body { margin-top: 2px; }
 .ov-finding-evidence {
   font-size: 11px; color: var(--fg-2); font-family: var(--font-mono);
-  margin: 4px 0 0 30px;
+  margin: 4px 0 0;
 }
-.ov-finding-refs { font-size: 11px; color: var(--fg-2); margin: 3px 0 0 30px; }
+.ov-finding-refs { font-size: 11px; color: var(--fg-2); margin: 3px 0 0; }
 /* Item 5: screenshot evidence as a chip that opens the image (never a raw path). */
 .ov-finding-shot {
   display: inline-flex; align-items: center; gap: 4px;
@@ -956,27 +927,21 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 }
 .ov-finding-shot:hover { border-color: var(--accent); color: var(--fg); }
 .ov-shot-star { color: var(--warn); }
-.ov-finding-note { font-size: 11px; color: var(--fg-3); font-style: italic; margin: 3px 0 0 30px; line-height: 1.45; }
+.ov-finding-note { font-size: 11px; color: var(--fg-3); font-style: italic; margin: 3px 0 0; line-height: 1.45; }
 .ov-finding-actions {
-  display: flex; align-items: center; gap: 14px; margin: 6px 0 0 30px;
+  display: flex; align-items: center; gap: 14px; margin: 6px 0 0;
 }
 .ov-memo-check {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 11px; color: var(--fg-2); cursor: pointer;
 }
 .ov-memo-check input { margin: 0; }
-/* "To say more" box. */
-.ov-saymore { border-left: 3px solid var(--accent-2); }
-.ov-saymore ul { margin: 0; padding-left: 18px; }
-.ov-saymore li { font-size: 12px; color: var(--fg-2); line-height: 1.55; margin-bottom: 4px; }
 /* Document sections (contract C6): the Evidence modules' disclosure
    (.analysis-module) around a grid of the PDD's document fields. */
-.ov-doc { margin-bottom: 18px; }
 .ov-doc-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 16px; }
 .ov-doc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ov-doc-label { font-size: 12px; font-weight: 600; color: var(--fg); }
 .ov-doc-optional { font-size: 11px; font-weight: 400; color: var(--fg-3); }
-.ov-doc-where { font-size: 11px; color: var(--fg-3); }
 .ov-doc-input { width: 100%; box-sizing: border-box; font-family: var(--font-ui); font-size: 13px; }
 textarea.ov-doc-input { min-height: 64px; }
 
@@ -992,11 +957,6 @@ textarea.ov-doc-input { min-height: 64px; }
 .analysis-note {
   color: var(--fg-3); font-size: 12px; font-style: italic;
   padding: 6px 2px 0; line-height: 1.5;
-}
-.analysis-caption {
-  background: var(--accent-muted); color: var(--fg-2);
-  border-left: 3px solid var(--accent);
-  padding: 8px 12px; font-size: 12px; border-radius: var(--radius-sm);
 }
 .analysis-section {
   background: var(--bg-2); border-radius: var(--radius);
@@ -1131,27 +1091,9 @@ details.analysis-module { padding: 0; }
 .waste-row-editable:hover { background: var(--bg-3); }
 .waste-edit { flex: 0 0 auto; font-size: 10px; color: var(--fg-4); }
 .waste-row-editable:hover .waste-edit { color: var(--accent); }
-.auto-decision { display: flex; gap: 4px; }
-.auto-btn {
-  font-size: 10px; padding: 2px 7px; white-space: nowrap; cursor: pointer;
-  border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  background: var(--bg-3); color: var(--fg-3);
-}
-.auto-btn:hover { border-color: var(--accent); color: var(--fg-2); }
-.auto-btn.active {
-  background: var(--accent-muted); border-color: var(--accent);
-  color: var(--fg); font-weight: 600;
-}
 /* Automation-candidate finding cards (R1 §5): reuses .ov-finding chrome
-   (finding-cards.js); .auto-card only adds spacing between cards, and
-   restates the existing rank order as a small gutter number. */
+   (finding-cards.js), longest total time first. */
 .auto-cards { display: flex; flex-direction: column; gap: 2px; }
-.auto-card { position: relative; padding-left: 22px; }
-.auto-card::before {
-  content: attr(data-rank); position: absolute; left: 0; top: 10px;
-  font-size: 10px; font-weight: 600; color: var(--fg-4);
-  font-family: var(--font-mono); width: 18px; text-align: right;
-}
 
 /* Multi-line prompt modal (project notes) */
 .modal-textarea {
@@ -1234,9 +1176,8 @@ details.analysis-module { padding: 0; }
 @media (max-width: 1100px) {
   .editor-split { grid-template-columns: 1fr; }
 }
-/* Top-level case scope selector in the view-mode-bar. Sits to the
-   right of Flow/Steps/Phases so the analyst sees "what I'm viewing"
-   and "what slice I'm scoping to" together. */
+/* The run select in the view-mode bar, shown on Flow only: it dims the
+   other runs on the Flow timeline. */
 .case-scope {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--fg-3);
@@ -1642,37 +1583,6 @@ details.analysis-module { padding: 0; }
   display: inline-block; padding: 0 6px; border-radius: 8px;
   background: var(--bg-3); color: var(--fg-3); font-size: 9px;
   font-family: var(--font-mono); margin-left: 4px;
-}
-
-/* ===== Onboarding card (first-run guidance before Analyze) ===== */
-.onboarding-card {
-  display: flex; flex-direction: column; gap: 16px;
-  padding: 18px 22px; margin: 0 0 14px;
-  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
-  border: 1px solid var(--accent-2); border-radius: var(--radius);
-  position: relative;
-}
-.onboarding-card::before {
-  content: "Getting started"; position: absolute; top: -10px; left: 16px;
-  padding: 1px 10px; background: var(--bg); color: var(--accent-2);
-  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
-  border: 1px solid var(--accent-2); border-radius: 4px;
-}
-.onboarding-step {
-  display: flex; gap: 14px; align-items: flex-start;
-}
-.onboarding-num {
-  flex: 0 0 28px; height: 28px; line-height: 28px;
-  text-align: center; border-radius: 50%;
-  background: var(--accent); color: var(--bg);
-  font-weight: 600; font-size: 13px;
-}
-.onboarding-step > div { flex: 1; }
-.onboarding-step strong { color: var(--fg); font-size: 14px; }
-.onboarding-step em { font-style: normal; color: var(--accent); font-weight: 500; }
-.onboarding-detail {
-  display: block; margin-top: 4px;
-  color: var(--fg-2); font-size: 12px; line-height: 1.6;
 }
 
 /* Warning lines (the Overview's session summary) and small fix buttons (also

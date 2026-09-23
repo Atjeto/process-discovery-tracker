@@ -14,7 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from memo_export import build_memo_model, write_memo_into_docx
+from memo_export import (DEFAULT_TOP_FINDINGS, build_memo_model, pdd_findings,
+                         write_memo_into_docx)
 
 _HAVE_DOCX = importlib.util.find_spec("docx") is not None
 
@@ -293,6 +294,14 @@ def test_memo_docx_skips_traversal_screenshot_refs():
 
 # ---- case-based findings: labeled, and only when runs exist -----------------
 
+def _case_based_finding():
+    """A case-based (tier 2) finding: it compares the runs."""
+    return {"id": "run_spread-ddd", "detector": "run_spread", "tier": 2,
+            "claim": "The slowest run took twice as long as the fastest.",
+            "evidence": {"slowest_ms": 240000, "fastest_ms": 120000},
+            "confidence_note": "Wall clock per run."}
+
+
 def _repetition_finding():
     return {"id": "repetition-ccc", "detector": "repetition", "tier": 2,
             "claim": "The step sequence \"Lookup → Paste\" in Excel was "
@@ -302,29 +311,72 @@ def _repetition_finding():
 
 
 def test_a_case_based_finding_is_labeled_across_runs():
-    a = _analysis(findings=_analysis()["findings"] + [_repetition_finding()])
+    a = _analysis(findings=_analysis()["findings"] + [_case_based_finding()])
     model = build_memo_model(_manifest(), _stats(), a, {})
     flags = {f["claim"][:20]: f["case_based"] for f in model["findings"]}
-    assert flags["The step sequence \"L"] is True
+    assert flags["The slowest run took"] is True
     assert flags["chrome.exe accounts "] is False
     if not _HAVE_DOCX:
         return
     texts, _doc = _docx_body(model)
-    assert "3. Across runs: The step sequence \"Lookup → Paste\" in Excel was " \
-           "repeated 4 times, totalling 4m (average 1m per repeat)." in texts
+    assert "3. Across runs: The slowest run took twice as long as the fastest." in texts
     assert "1. chrome.exe accounts for 31% of measured foreground time " \
            "(23m 15s of 1h 15m)." in texts
 
 
 def test_a_case_based_finding_is_left_out_when_there_are_no_runs():
     a = _analysis(tier2=False,
-                  findings=_analysis()["findings"] + [_repetition_finding()])
+                  findings=_analysis()["findings"] + [_case_based_finding()])
     no_runs = {"meta": _stats()["meta"], "case_stats": []}
     claims = [f["claim"] for f in build_memo_model(_manifest(), no_runs, a, {})["findings"]]
-    assert len(claims) == 2 and not any("step sequence" in c for c in claims)
+    assert len(claims) == 2 and not any("slowest run" in c for c in claims)
     # Positive control: the same finding renders once the recording has runs.
     claims = [f["claim"] for f in build_memo_model(_manifest(), _stats(), a, {})["findings"]]
-    assert any("step sequence" in c for c in claims)
+    assert any("slowest run" in c for c in claims)
+
+
+# ---- AD-20: a repeated step sequence is an automation candidate, never a finding
+
+def test_a_repeated_sequence_is_never_printed_in_section_1():
+    a = _analysis(findings=_analysis()["findings"] + [_repetition_finding()])
+    default = [f["claim"] for f in build_memo_model(_manifest(), _stats(), a, {})["findings"]]
+    assert len(default) == 2 and not any("step sequence" in c for c in default)
+    # Not even when an older memo_selection names it: with nothing else named
+    # the PDD prints the default findings, else only the other named ones.
+    only_it = build_memo_model(_manifest(), _stats(), a, {"memo_selection": ["repetition-ccc"]})
+    assert [f["claim"] for f in only_it["findings"]] == default
+    with_it = build_memo_model(_manifest(), _stats(), a,
+                               {"memo_selection": ["repetition-ccc", "fragmentation-bbb"]})
+    assert [f["claim"] for f in with_it["findings"]] == ["Focus moved between apps 47 times (11.2/h)."]
+
+
+# ---- F2: the ids the viewer ticks are the findings the PDD prints -------------
+
+def _many_findings(n):
+    return [{"id": f"screen_time_sink-{i}", "detector": "screen_time_sink", "tier": 1,
+             "claim": f"Claim {i}.", "evidence": {}} for i in range(n)]
+
+
+def test_pdd_findings_names_the_printable_and_the_default_findings():
+    a = _analysis(findings=[_repetition_finding()] + _many_findings(7) + [_case_based_finding()])
+    out = pdd_findings(a, _stats())
+    assert out["eligible"] == [f"screen_time_sink-{i}" for i in range(7)] + ["run_spread-ddd"]
+    assert out["default"] == out["eligible"][:DEFAULT_TOP_FINDINGS]
+    # The default list is exactly what section 1 prints with nothing ticked.
+    claims = {f["id"]: f["claim"] for f in a["findings"]}
+    printed = [f["claim"] for f in build_memo_model(_manifest(), _stats(), a, {})["findings"]]
+    assert printed == [claims[i] for i in out["default"]]
+    # Without runs a case-based finding is not printable (the no-runs gate).
+    no_runs = {"meta": _stats()["meta"], "case_stats": []}
+    a_unmarked = dict(a, case_quality=_analysis(tier2=False)["case_quality"])
+    assert "run_spread-ddd" not in pdd_findings(a_unmarked, no_runs)["eligible"]
+
+
+def test_pdd_findings_is_none_when_the_findings_stage_did_not_run():
+    failed = _with_failed(_analysis(), "findings")
+    assert pdd_findings(failed, _stats()) is None
+    assert pdd_findings({}, _stats()) is None
+    assert pdd_findings(_analysis(findings=[]), _stats()) == {"eligible": [], "default": []}
 
 
 def test_memo_model_and_docx_agree_on_selection():

@@ -1,5 +1,5 @@
 /*
- * case-scope.js: the options of the Flow "Case:" dropdown (#case-scope-select).
+ * case-scope.js: the options of the Flow "Run:" dropdown (#case-scope-select).
  * Pure, so the escaping is unit-tested.
  *
  * RP-34: a case id comes from annotations.json (steps[].case_id), which is
@@ -22,7 +22,7 @@ function _timecode(ms) {
 }
 
 /* `cases` = [{ id, label, startMs }] (flow-view.deriveCases); `scope` = the
-   selected case id ("" for all cases); `sessionStartMs` = the first event's
+   selected case id ("" for all runs); `sessionStartMs` = the first event's
    time. Duplicate labels get a [H:MM:SS] offset so they can be told apart
    (P2.8). Returns the options' HTML. */
 function caseScopeOptionsHtml(cases, scope, sessionStartMs) {
@@ -31,17 +31,17 @@ function caseScopeOptionsHtml(cases, scope, sessionStartMs) {
     const k = c.label || c.id;
     labelCounts[k] = (labelCounts[k] || 0) + 1;
   }
-  const opts = ['<option value="">All cases</option>'].concat(cases.map((c) => {
+  const opts = ['<option value="">All runs</option>'].concat(cases.map((c) => {
     const baseLabel = c.label && c.label !== c.id ? c.label : c.id;
     const offsetMs = c.startMs && Number.isFinite(sessionStartMs) ? c.startMs - sessionStartMs : 0;
     const label = labelCounts[baseLabel] > 1 ? `${baseLabel} [${_timecode(offsetMs)}]` : baseLabel;
     return '<option value="' + escapeAttr(c.id) + '"' + (c.id === scope ? " selected" : "") + ">" +
       escapeHtml(label) + "</option>";
   }));
-  // Cases are derived from analyzed steps. An unanalyzed session has none:
-  // spell that out rather than showing a lone "All cases".
+  // Runs are derived from analyzed steps; a session without any says so
+  // rather than showing a lone "All runs".
   if (!cases.length) {
-    opts.push('<option value="" disabled>(no cases yet: click Analyze session first)</option>');
+    opts.push('<option value="" disabled>(no runs yet)</option>');
   }
   return opts.join("");
 }

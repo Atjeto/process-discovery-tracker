@@ -88,6 +88,31 @@ def test_config_exclude_processes_is_honoured():
     assert [e["event_id"] for e in out] == ["i2"]
 
 
+def test_the_capture_config_interactions_list_is_honoured():
+    """capture/config.js keeps the list under `interactions`, and the manifest
+    carries that config as it is: a process excluded there is left out."""
+    evs = [_inter("i1", "legacy-crm.exe"), _activity("a1", "legacy-crm.exe"),
+           _inter("i2", "chrome.exe")]
+    manifest = {"config": {"interactions": {"exclude_processes": ["Legacy-CRM.exe"]}}}
+    out, report = filter_excluded(evs, manifest=manifest)
+    assert [e["event_id"] for e in out] == ["i2"]
+    assert report["by_process"] == {"legacy-crm": 2}
+
+
+def test_both_config_lists_are_read_together():
+    procs, _windows = collect_exclusions(
+        manifest={"config": {"exclude_processes": ["top.exe"],
+                             "interactions": {"exclude_processes": ["nested"]}}},
+        annotations=None)
+    assert {"top", "nested"} <= procs
+    # A malformed list (not a list, or holding non-strings) adds nothing.
+    procs, _windows = collect_exclusions(
+        manifest={"config": {"exclude_processes": "top.exe",
+                             "interactions": {"exclude_processes": [None, 3, " "]}}},
+        annotations=None)
+    assert procs == {"process discovery tracker", "process discovery viewer"}
+
+
 def test_manifest_tool_process_name_excluded_for_dev_electron():
     # In dev the capture app is electron.exe; the default set won't catch it, but
     # the capture app's self-recorded process name (manifest.tool) does.
