@@ -566,6 +566,62 @@ def test_pdd_no_cases_keeps_flat_step_rendering():
         assert any(t == "Enter customer data" for t in texts)
 
 
+# ---- RP-06 hidden work items, RP-10 failed stages (lane L4) ----------------
+
+def test_a_hidden_work_item_is_not_rendered():
+    """RP-06: a work item the analyst hid (group_annotations `hidden`) never
+    reaches the PDD, neither §4.5 nor the §1 memo lines; a case whose items
+    are all hidden loses its heading too."""
+    if not _HAVE_DOCX:
+        return
+    manifest, _a, _s, analysis = _sample()
+    annotations = _cased_annotations()
+    annotations["group_annotations"] = [
+        {"case_id": "c1", "screen_key": "scr:va01", "name": "Hidden detour",
+         "hidden": True},
+        {"case_id": "c2", "screen_key": "scr:va01", "name": "Hidden again",
+         "hidden": True},
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, cells = _pdd_texts(tmp, manifest, annotations, _cased_stats(), analysis)
+    everything = texts + cells
+    assert not any("Hidden detour" in t or "Hidden again" in t for t in everything)
+    assert not any("va01: s2" in t or "va01: s4" in t for t in everything)
+    assert not any(t == "Order #10901" for t in texts)       # all its items hidden
+    # Positive control: the visible work item of case c1 still renders.
+    assert any(t == "Order #10900" for t in texts)
+    assert any("Salesforce - Order #10900: s1" in t for t in texts)
+
+
+def test_failed_analysis_stages_render_as_could_not_run():
+    """RP-10 / C12: every section that would render a failed stage says the
+    check could not run on this recording, never a measured negative."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis = _sample()
+    stages = ("case_quality", "facts", "findings", "waste_classification",
+              "automation_candidates", "efficiency")
+    for stage in stages:
+        analysis[stage] = None
+    analysis["stage_errors"] = [{"stage": s, "error": "KeyError: 'x'"} for s in stages]
+    with tempfile.TemporaryDirectory() as tmp:
+        texts, _cells = _pdd_texts(tmp, manifest, annotations, stats, analysis)
+        from docx import Document
+        doc = Document(str(Path(tmp) / "pdd.docx"))
+    joined = " ".join(texts)
+    for phrase in ("The automatic checks could not run on this recording",
+                   "the case check could not run on this recording",
+                   "The waste check could not run on this recording",
+                   "The automation-candidate check could not run on this recording",
+                   "The process-efficiency check could not run on this recording"):
+        assert phrase in joined, f"missing: {phrase}"
+    for negative in ("Nothing stood out", "No cases identified",
+                     "no cases have been identified", "lacks the repetition"):
+        assert negative not in joined, f"measured negative rendered: {negative}"
+    fact_table = next(t for t in doc.tables if t.rows[0].cells[0].text == "Active time")
+    assert {c.text for c in fact_table.rows[1].cells} == {"could not run on this recording"}
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

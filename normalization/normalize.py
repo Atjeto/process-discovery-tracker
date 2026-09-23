@@ -15,6 +15,15 @@ Pipeline:
 Output goes into <session_folder>/ alongside the raw data. Re-runnable
 against an updated taxonomy without recapture (§6.3) -- raw events.jsonl
 is never modified.
+
+Exit codes (contract C13). Codes 1 to 3 below report the error as one stderr
+line starting with "[normalize] ERROR:"; an unexpected crash also exits 1,
+with a Python traceback.
+    0  success
+    1  usage error, or the folder is not a session folder
+    2  annotations.json exists but cannot be read; nothing was written
+    3  a requested export (--pdd-out) failed; the analysis outputs were
+       written, the export was not
 """
 
 from __future__ import annotations
@@ -43,7 +52,7 @@ from process_filter import filter_excluded
 # unchanged.
 from session_io import (
     _coerce_event_shape, load_events, load_manifest, load_annotations,
-    write_annotations, compute_screenshot_hashes,
+    write_annotations, compute_screenshot_hashes, AnnotationsUnreadable,
 )
 from marker_edits import apply_marker_edits
 from pipeline_config import (
@@ -74,7 +83,7 @@ from pipeline_config import (
 from pipeline_stages import (
     _run_coalesce, _run_case_assignment, _init_existing_anno,
     _run_step_segmentation, _run_classification, _run_event_log_export,
-    _run_stats, _run_analysis, _run_mining_exports,
+    _run_stats, _run_analysis, _run_mining_exports, ExportFailed,
 )
 
 
@@ -85,11 +94,15 @@ def normalize(
     pdd_out: str | None = None,
     pdd_map_image: str | None = None,
     pdd_tobe_image: str | None = None,
-    step_bpmn_out: str | None = None,
 ) -> dict[str, Any]:
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
         raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
+
+    # RP-04: read annotations.json first. If it is present but unreadable this
+    # raises AnnotationsUnreadable before anything, normalize.log included, is
+    # written into the session folder.
+    annotations = load_annotations(session_folder)
 
     setup_logging(session_folder=session_folder)
 
@@ -101,7 +114,6 @@ def normalize(
     if dropped_lines:
         print(f"[normalize] WARNING: dropped {dropped_lines} malformed JSONL line(s); see warnings above")
 
-    annotations = load_annotations(session_folder)
     cal = _calibration(annotations)
     session_id_str = manifest.get("session_id", "")
 
@@ -120,7 +132,7 @@ def normalize(
     coalesced, edited, edits_applied = _run_coalesce(raw, annotations, cal)
 
     # Stage 2a/3: marker-based case assignment + app-vocab enrichment.
-    with_cases, cases, vocab_summary = _run_case_assignment(edited)
+    with_cases, cases, vocab_summary = _run_case_assignment(edited, session_id_str)
 
     existing_anno = _init_existing_anno(annotations, session_id_str)
     # Additive, regenerated each run: what the self/ignored-process filter dropped.
@@ -152,10 +164,11 @@ def normalize(
         session_folder, classified, existing_anno, summary, manifest,
         cases=cases)
 
-    # Mining (DFG / BPMN variants) + Phase E exports (PDD, step BPMN).
+    # Mining (DFG / BPMN variants) + the requested PDD export. A failed PDD
+    # export raises ExportFailed after every analysis output is written.
     _run_mining_exports(
         session_folder, log, existing_anno, mine, summary, manifest,
-        analysis_result, pdd_out, pdd_map_image, step_bpmn_out, pdd_tobe_image)
+        analysis_result, pdd_out, pdd_map_image, pdd_tobe_image)
 
     return {
         "session_folder": str(session_folder),
@@ -170,8 +183,23 @@ def normalize(
     }
 
 
+def _fail(code: int, message: str) -> None:
+    """Contract C13: report an error as ONE stderr line, then exit."""
+    one_line = str(message).replace("\r", " ").replace("\n", " ")
+    print(f"[normalize] ERROR: {one_line}", file=sys.stderr, flush=True)
+    sys.exit(code)
+
+
+class _ArgumentParser(argparse.ArgumentParser):
+    """argparse exits 2 on a usage error, but C13 reserves exit code 2 for an
+    unreadable annotations.json, so a usage error exits 1 here."""
+
+    def error(self, message: str) -> None:  # overrides the argparse hook
+        _fail(1, f"{message} (run normalize.py --help for the options)")
+
+
 def main():
-    parser = argparse.ArgumentParser(
+    parser = _ArgumentParser(
         description="Normalize a captured process-discovery session into XES + CSV + stats."
     )
     parser.add_argument("session_folder", type=Path, nargs="?",
@@ -187,24 +215,25 @@ def main():
     parser.add_argument("--pdd-tobe-image", type=str, default=None,
                         help="PNG of an analyst-authored To-Be reference map to embed in the "
                              "PDD's proposed-to-be section (ADR-0019). Hand-drawn, not mined.")
-    parser.add_argument("--step-bpmn-out", type=str, default=None,
-                        help="Write step-level BPMN to this path.")
     args = parser.parse_args()
 
     setup_logging()
 
     if not args.session_folder or not args.session_folder.is_dir():
-        print(f"ERROR: {args.session_folder} is not a directory", file=sys.stderr)
-        sys.exit(2)
-    result = normalize(
-        args.session_folder,
-        taxonomy_path=args.taxonomy,
-        mine=args.mine,
-        pdd_out=getattr(args, "pdd_out"),
-        pdd_map_image=getattr(args, "pdd_map_image", None),
-        pdd_tobe_image=getattr(args, "pdd_tobe_image", None),
-        step_bpmn_out=getattr(args, "step_bpmn_out"),
-    )
+        _fail(1, f"{args.session_folder} is not a session folder")
+    try:
+        result = normalize(
+            args.session_folder,
+            taxonomy_path=args.taxonomy,
+            mine=args.mine,
+            pdd_out=args.pdd_out,
+            pdd_map_image=args.pdd_map_image,
+            pdd_tobe_image=args.pdd_tobe_image,
+        )
+    except AnnotationsUnreadable as exc:
+        _fail(2, str(exc))
+    except ExportFailed as exc:
+        _fail(3, str(exc))
     print(json.dumps(result, indent=2))
 
 

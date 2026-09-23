@@ -6,7 +6,10 @@ the `analysis.json` sidecar. `normalize.py` calls this after
 
 Each module runs in its own try/except: a failure in one (waste, time
 study, automation, efficiency) must not lose the others -- analysis is
-best-effort enrichment, never a hard pipeline dependency.
+best-effort enrichment, never a hard pipeline dependency. A module that
+fails leaves its output key null (never [] or {}) and adds one entry to
+`stage_errors` (contract C12, RP-10), so no renderer can mistake the
+failure for a measured "nothing found".
 
 ADR-0016 bumped the heuristic version: automation candidacy moved from
 the atomic-step grain (one click per row) to coherent segments (a
@@ -64,29 +67,32 @@ def run_analysis(
         return result
 
     seg = segment_steps(steps, events)
+    stage_errors: list[dict[str, str]] = []
 
-    try:
-        result["waste_classification"] = classify_waste(
-            steps, events, stats or {}, seg, annotations)
-    except Exception as e:  # noqa: BLE001 -- best-effort, log and continue
-        logger.warning("analysis: waste classifier failed: %s", e)
-    try:
-        result["time_study"] = compute_time_study(steps, events, seg)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("analysis: time study failed: %s", e)
-    try:
-        result["segments"] = detect_segments(events, steps)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("analysis: segment detection failed: %s", e)
-    try:
-        result["automation_candidates"] = score_automation(
-            steps, events, seg, annotations)
-    except Exception as e:  # noqa: BLE001
-        logger.warning("analysis: automation scorer failed: %s", e)
-    try:
-        result["efficiency"] = compute_efficiency(
-            result["waste_classification"])
-    except Exception as e:  # noqa: BLE001
-        logger.warning("analysis: efficiency failed: %s", e)
+    def _stage(key: str, compute) -> None:
+        try:
+            result[key] = compute()
+        except Exception as e:  # noqa: BLE001 -- recorded, never swallowed
+            logger.warning("analysis: %s failed: %s", key, e)
+            result[key] = None
+            stage_errors.append({"stage": key, "error": f"{type(e).__name__}: {e}"})
 
+    _stage("waste_classification",
+           lambda: classify_waste(steps, events, stats or {}, seg, annotations))
+    _stage("time_study", lambda: compute_time_study(steps, events, seg))
+    _stage("segments", lambda: detect_segments(events, steps))
+    _stage("automation_candidates",
+           lambda: score_automation(steps, events, seg, annotations))
+    if result["waste_classification"] is None:
+        # The ratio is computed from the waste split; without it the check
+        # cannot run at all.
+        result["efficiency"] = None
+        stage_errors.append({"stage": "efficiency",
+                             "error": "not run: waste_classification failed"})
+    else:
+        _stage("efficiency",
+               lambda: compute_efficiency(result["waste_classification"]))
+
+    if stage_errors:
+        result["stage_errors"] = stage_errors
     return result

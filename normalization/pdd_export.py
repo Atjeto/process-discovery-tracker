@@ -39,6 +39,8 @@ except ImportError:
     Pt = None
     Inches = None
 
+from memo_export import COULD_NOT_RUN as _COULD_NOT_RUN, failed_stages
+
 logger = logging.getLogger(__name__)
 
 _FLAG_LABELS = {
@@ -74,6 +76,9 @@ def write_pdd(
     stats = stats or {}
     analysis = analysis or {}
     annotations = annotations or {}
+    # C12 (RP-10): the analysis stages that could not run on this recording;
+    # each section that would render one of them says so instead.
+    failed = failed_stages(analysis)
 
     doc = Document()
     _write_findings_first(doc, manifest, stats, analysis, annotations,
@@ -85,13 +90,13 @@ def write_pdd(
     _write_overview(doc, stats, manifest)             # 4.1 Process overview
     _write_applications(doc, stats)                   # 4.2 Applications used
     _write_process_map(doc, process_map_image)        # 4.3 As-Is process map
-    _write_statistics(doc, stats, analysis, annotations)  # 4.4 Process statistics
-    _write_steps(doc, annotations, session_folder, analysis, stats)  # 4.5 Detailed steps
+    _write_statistics(doc, stats, analysis, annotations, failed)  # 4.4 Process statistics
+    _write_steps(doc, annotations, session_folder, analysis, stats, failed)  # 4.5 Detailed steps
     _write_input_data(doc)                            # 4.6 Input data
 
-    _write_automation(doc, analysis)                  # 5. Automation assessment
+    _write_automation(doc, analysis, failed)          # 5. Automation assessment
     _write_tobe_map(doc, tobe_map_image)              # 5.4 Proposed to-be process (ADR-0019)
-    _write_exceptions(doc, annotations, stats, analysis)  # 6. Exceptions & variations
+    _write_exceptions(doc, annotations, stats, analysis, failed)  # 6. Exceptions & variations
     _write_footer(doc)
 
     doc.save(str(out_path))
@@ -294,7 +299,7 @@ def _has_bnva_override(annotations) -> bool:
         isinstance(ov, dict) and ov.get("bnva_ms") is not None for ov in ovs)
 
 
-def _write_statistics(doc, stats, analysis, annotations=None):
+def _write_statistics(doc, stats, analysis, annotations=None, failed=frozenset()):
     doc.add_heading("4.4 Process statistics", level=2)
     meta = stats.get("meta") or {}
     case_stats = stats.get("case_stats") or []
@@ -331,11 +336,16 @@ def _write_statistics(doc, stats, analysis, annotations=None):
                      "value-add (analyst-reviewed split)"))
     if rows:
         _kv_table(doc, rows)
-    if not tier2:
+    if "case_quality" in failed:
+        _note(doc, "Per-case statistics (how long each case took) are not "
+                   f"shown: the case check {_COULD_NOT_RUN}.")
+    elif not tier2:
         _note(doc, "Per-case statistics (how long each case took) are not "
                    "shown: no cases have been identified in this recording "
                    "yet. Recording Start/End markers unlocks them in the "
                    "viewer.")
+    if "efficiency" in failed:
+        _note(doc, f"The process-efficiency check {_COULD_NOT_RUN}.")
     if efficiency.get("process_efficiency_ratio") is not None and not _has_bnva_override(annotations):
         _note(doc, "No process-efficiency ratio is stated: deciding which "
                    "time adds value is an analyst judgment, and no step type "
@@ -409,11 +419,16 @@ def _write_steps_by_work_item(doc, annotations, session_folder,
         return False
     case_labels = _case_labels(stats)
     for i, case in enumerate(result["cases"], start=1):
+        # RP-06: a work item the analyst hid stays out of the deliverable. The
+        # case numbering still counts every case, matching the memo lines.
+        visible = [wi for wi in case["work_items"] if not wi["hidden"]]
+        if not visible:
+            continue
         cid = case["case_id"]
         heading = (case_labels.get(cid) or f"Case {i}") if cid is not None \
             else "Unassigned steps"
         doc.add_heading(heading, level=3)
-        for wi in case["work_items"]:
+        for wi in visible:
             doc.add_heading(wi["label"], level=4)
             if wi["notes"]:
                 doc.add_paragraph(wi["notes"])
@@ -426,13 +441,19 @@ def _write_steps_by_work_item(doc, annotations, session_folder,
     return True
 
 
-def _write_steps(doc, annotations, session_folder, analysis, stats=None):
+def _write_steps(doc, annotations, session_folder, analysis, stats=None,
+                 failed=frozenset()):
     doc.add_heading("4.5 Detailed process steps", level=2)
     # Noise-suppressed steps are hidden everywhere else in the pipeline; the
     # PDD honours that convention too (M-5).
     steps = [s for s in (annotations.get("steps") or [])
              if s.get("state") != "hidden"]
     waste_by_step = _analysis_maps(analysis)
+    if "waste_classification" in failed:
+        # C12: without this note a step with no waste line would read as
+        # "measured, no waste".
+        _note(doc, f"The waste check {_COULD_NOT_RUN}, so no step below "
+                   "shows waste figures.")
 
     # ADR-0028 §4: when the session has cases, render the detailed steps at the
     # analyst-facing WORK-ITEM grain -- a case's fragments merged non-
@@ -513,7 +534,7 @@ def _write_input_data(doc):
 
 # ---- 5. Automation assessment -----------------------------------------------
 
-def _write_automation(doc, analysis):
+def _write_automation(doc, analysis, failed=frozenset()):
     """Render §4 with the segment grain (ADR-0016): "a coherent stretch of
     work, ideally end-to-end" rather than a per-click table. A row says
     "the CRM lookup → copy → paste sequence ran 4× across cases, total
@@ -535,6 +556,10 @@ def _write_automation(doc, analysis):
         "human continue); a step sequence is the smallest stretch a "
         "robot can realistically take end-to-end."
     )
+    if "automation_candidates" in failed:
+        # C12: a failed check is not "this recording lacks the repetition".
+        _note(doc, f"The automation-candidate check {_COULD_NOT_RUN}.")
+        return
     cands = [a for a in ((analysis or {}).get("automation_candidates") or [])
              if a.get("data_sufficiency") == "multi_instance"]
     if not cands:
@@ -592,7 +617,7 @@ def _write_automation(doc, analysis):
 
 # ---- 6. Exceptions & variations ---------------------------------------------
 
-def _write_exceptions(doc, annotations, stats, analysis=None):
+def _write_exceptions(doc, annotations, stats, analysis=None, failed=frozenset()):
     doc.add_heading("6. Exceptions & variations", level=1)
     # ADR-0027: an exception/variation is a property of a PATH, not a single
     # step, so this section is DERIVED from the observed trace variants (the most
@@ -608,7 +633,10 @@ def _write_exceptions(doc, annotations, stats, analysis=None):
     # Tier-2 gate (§B3): a "variant" is a per-CASE path -- on an unsegmented
     # session every event pools into one default bucket and the variant table
     # would be an artifact, so it is REPLACED by the call to action.
-    if not tier2:
+    if "case_quality" in failed:
+        _note(doc, "Path variations compare one case against another, so "
+                   f"they are not shown: the case check {_COULD_NOT_RUN}.")
+    elif not tier2:
         _note(doc, "Path variations compare one case against another, so "
                    "they are not shown: no cases have been identified in "
                    "this recording yet. Recording Start/End markers unlocks "

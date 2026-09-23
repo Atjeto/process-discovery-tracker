@@ -10,6 +10,7 @@ from typing import Any
 from datetime import datetime, timezone
 
 from _dt import parse_ts_or_epoch as parse_ts  # public re-export
+from _dt import parse_ts_or_none as _parse_ts_or_none
 # A corrupt or hand-edited log can carry a non-ISO / empty / non-string
 # timestamp; the epoch-fallback variant keeps segmentation sortable instead of
 # crashing. The boundary (load_events) already coerces timestamp to a string;
@@ -645,7 +646,7 @@ def drop_overlapping_auto_steps(
     threshold: float = 0.5,
 ) -> tuple[list[dict], list[dict]]:
     """Drop a freshly-suggested auto step when it overlaps an
-    analyst-owned (manually_authored / edited / hidden) step by more than
+    analyst-owned (PRESERVED_STATES) step by more than
     `threshold` of the fresh step's own duration.
 
     A re-analyze regenerates auto steps from the raw interaction stream,
@@ -707,14 +708,61 @@ def _inherit_step_identity(fresh: list, existing: list, preserved: list) -> list
     return fresh
 
 
+# Analyst-owned step states: re-normalization keeps these steps verbatim and
+# regenerates only the auto_* set. `confirmed` (contract C2) is a draft the
+# analyst accepted unchanged; it is preserved exactly like `edited`.
+PRESERVED_STATES = ("manually_authored", "edited", "confirmed", "hidden")
+
+
+def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
+    """Contract C9 (RP-01): give every preserved analyst step whose `case_id`
+    is not a current case id (a legacy random id, an id from a removed run, or
+    no id at all) the run whose span contains the step's time range, or
+    `case_id: None` when no run contains it. Steps whose case_id is current are
+    left alone. Returns how many steps were restamped.
+
+    `cases` is collect_cases() output. A run left open (no end marker) spans
+    to the end of the recording. When nested runs both contain the step, the
+    outermost wins, matching auto_suggest_steps, which files steps under the
+    outermost case. Among containing sibling runs (a zero-length step on the
+    boundary), the one that opened last wins."""
+    cases = cases or {}
+    spans = []
+    for cid, c in cases.items():
+        start = _parse_ts_or_none(c.get("start_ts"))
+        end = _parse_ts_or_none(c.get("end_ts"))
+        if start is None or (c.get("end_ts") is not None and end is None):
+            continue    # a run whose span cannot be read contains nothing
+        spans.append((cid, c.get("parent_case_id"), start, end))
+    restamped = 0
+    for s in steps or []:
+        cid_now = s.get("case_id")
+        if s.get("state") not in PRESERVED_STATES or (
+                isinstance(cid_now, str) and cid_now in cases):
+            continue
+        bounds = _step_bounds(s)
+        containing = [] if bounds is None else [
+            (cid, parent, start) for cid, parent, start, end in spans
+            if start <= bounds[0] and (end is None or bounds[1] <= end)
+        ]
+        ids = {cid for cid, _p, _s in containing}
+        outermost = [c for c in containing if c[1] not in ids]
+        new_cid = max(outermost, key=lambda c: c[2])[0] if outermost else None
+        if new_cid != cid_now:
+            restamped += 1
+        s["case_id"] = new_cid
+    return restamped
+
+
 def _merge_steps(existing: list, fresh: list,
                  interactions_by_id: dict | None = None) -> list:
-    """Preserve manually_authored, edited, and hidden steps. Replace auto_*
-    steps with the latest fresh suggestions. A `hidden` step is one the analyst
+    """Preserve manually_authored, edited, confirmed, and hidden steps
+    (PRESERVED_STATES). Replace auto_* steps with the latest fresh
+    suggestions. A `hidden` step is one the analyst
     manually suppressed -- preserving it means a re-analyze won't resurrect it
     as a fresh auto_suggested row.
 
-    Fresh auto steps that overlap an analyst-owned (manual / edited / hidden)
+    Fresh auto steps that overlap an analyst-owned (PRESERVED_STATES)
     step are dropped: the analyst already owns that span, and an overlapping
     auto step is a duplicate they would otherwise have to find and delete by
     hand (§I37). The remaining fresh steps inherit the identity of the prior
@@ -727,13 +775,12 @@ def _merge_steps(existing: list, fresh: list,
     manual steps. Optional: absent it, only
     steps that already carry `grain_keys` (the auto ones, stamped in flush())
     keep them, and the viewer resolves the rest at view time."""
-    by_state = {"manually_authored": [], "edited": [], "hidden": []}
+    by_state = {st: [] for st in PRESERVED_STATES}
     for s in existing or []:
         st = s.get("state")
         if st in by_state:
             by_state[st].append(s)
-    preserved = (by_state["manually_authored"] + by_state["edited"]
-                 + by_state["hidden"])
+    preserved = [s for st in PRESERVED_STATES for s in by_state[st]]
     kept, dropped = drop_overlapping_auto_steps(fresh or [], preserved)
     if dropped:
         print(f"[normalize] dropped {len(dropped)} auto step(s) "

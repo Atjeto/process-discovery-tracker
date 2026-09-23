@@ -7,9 +7,11 @@
  *
  * It deliberately NEVER prints `value` (user-typed text) or `window_title`
  * (can carry customer names). It prints only structural UIA fields --
- * control_type, framework_id, class_name, automation_id, coverage_hint --
- * which are app/developer-defined, not runtime data. The output is safe to
- * paste into a chat / ticket.
+ * control_type, framework_id, class_name, coverage_hint -- which are
+ * app/developer-defined, not runtime data. `automation_id` is reported as a
+ * presence count only (how many interactions carry one), never its value:
+ * a web page's element ids can embed record ids (RP-27). The output is safe
+ * to paste into a chat / ticket.
  *
  * Run on a machine with Node (e.g. the dev box):
  *   node scripts/inspect-events.js <path-to-events.jsonl> [titleFilterSubstring]
@@ -70,7 +72,7 @@ for (const [proc, b] of Object.entries(byProc)) {
     framework_ids: tally(b.datas, "framework_id"),
     frameworks: tally(b.datas, "framework"),            // §11e normalized UI-toolkit detection
     class_names: tally(b.datas, "class_name"),          // the AG-Grid discriminator candidate
-    automation_ids: tally(b.datas, "automation_id"),    // e.g. the serial field id
+    with_automation_id: b.datas.filter((d) => d.automation_id).length, // presence count, never the ids (RP-27)
     coverage_hint: tally(b.datas, "coverage_hint"),
     identity_sources: tally(b.datas, "identity_source"), // §11e identity-ladder rung
     mean_confidence: meanConfidence,                     // §11e mean capture confidence [0,1]
@@ -89,12 +91,12 @@ console.log(JSON.stringify(report, null, 2));
 const busiest = Object.entries(byProc).sort((a, b) => b[1].count - a[1].count)[0];
 if (busiest) {
   console.log("\n=== SEQUENCE SAMPLE for " + busiest[0] + " (first 50, structural only) ===");
-  console.log("kind | control_type | automation_id | class_name | framework_id | framework | identity_source | conf | name? | value?");
+  console.log("kind | control_type | automation_id? | class_name | framework_id | framework | identity_source | conf | name? | value?");
   for (const d of busiest[1].datas.slice(0, 50)) {
     console.log([
       d.kind || "-",
       d.control_type || "-",
-      d.automation_id || "-",
+      d.automation_id ? "Y" : "-",
       d.class_name || "-",
       d.framework_id || "-",
       d.framework || "-",

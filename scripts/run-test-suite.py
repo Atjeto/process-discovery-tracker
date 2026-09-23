@@ -1,5 +1,5 @@
 """Run every scenario in the test suite, with the appropriate normalize
-flags (canonical / vocab), then assert outcomes and emit a markdown
+environment (vocab), then assert outcomes and emit a markdown
 report at scripts/test-suite-report.md.
 
 Run from the repo root, after generate-test-suite.py:
@@ -55,49 +55,6 @@ def _events(folder: Path) -> list[dict]:
 
 
 # --- assertions per test ---------------------------------------------
-
-def a_steps_and_phases(folder):
-    stats = _load(folder, "stats.json")
-    ann = _load(folder, "annotations.json")
-    steps = ann.get("steps", [])
-    phases = ann.get("phases", [])
-    bpmn_phase = (folder / "process_map_phase.bpmn").exists()
-    bpmn_step = (folder / "process_map_step.bpmn").exists()
-    meta = stats.get("meta") or {}
-    ok = (meta.get("case_count") == 4
-          and meta.get("step_count", 0) >= 12        # 4 cases x 3+ steps each
-          and len(phases) == 2
-          and all(p.get("step_ids") for p in phases)
-          and bpmn_phase and bpmn_step)
-    return ok, (
-        f"cases={meta.get('case_count')}, steps={meta.get('step_count')}, "
-        f"phases={len(phases)} (state={[p.get('state') for p in phases]}), "
-        f"step BPMN={bpmn_step}, phase BPMN={bpmn_phase}"
-    )
-
-
-def a_canonical_match(folder):
-    """After matching against onboarding-template.yaml, every case's
-    steps should be `auto_matched` (state) with the expected
-    canonical_step_id set. Match rate should be > 0."""
-    stats = _load(folder, "stats.json")
-    ann = _load(folder, "annotations.json")
-    steps = ann.get("steps", [])
-    matched = [s for s in steps if s.get("state") == "auto_matched"
-               and s.get("canonical_step_id")]
-    distinct_canonical = {s.get("canonical_step_id") for s in matched}
-    expected = {"search-crm", "kyc-verify", "create-account", "send-welcome"}
-    meta = stats.get("meta") or {}
-    ok = (meta.get("canonical_process_id") == "onboarding-test"
-          and len(matched) >= 12   # 3 cases x 4 steps
-          and distinct_canonical >= expected)
-    return ok, (
-        f"canonical_process_id={meta.get('canonical_process_id')}, "
-        f"matched steps={len(matched)}/{len(steps)}, "
-        f"distinct canonical ids matched={sorted(distinct_canonical)}, "
-        f"match_rate={meta.get('match_rate')}"
-    )
-
 
 def a_vocab_off(folder):
     """The default vocab dir (sample-salesforce, sample-outlook) is
@@ -206,12 +163,6 @@ def a_step_analytics(folder):
 
 TESTS = [
     # (id, folder, extra args, env, assertion, description)
-    ("T01", "01-steps-and-phases", [], {}, a_steps_and_phases,
-     "Steps suggested + phases authored across 4 cases"),
-    ("T02", "02-canonical-match",
-     ["--canonical", str(ASSETS / "onboarding-template.yaml")],
-     {}, a_canonical_match,
-     "Canonical Process Template matches across 3 cases (4 expected steps each)"),
     ("T03a", "03a-vocab-off", [], {}, a_vocab_off,
      "App-vocab disabled: no meaningful_name on interactions"),
     ("T03b", "03b-vocab-on", [], {"PDT_APP_VOCABULARIES": str(ASSETS / "vocab")},
@@ -251,20 +202,6 @@ def normalize(folder: Path, extra: list[str], env: dict[str, str]) -> tuple[bool
     return p.returncode == 0, (p.stderr or "")[-400:]
 
 
-def post_patches(test_id: str, folder: Path):
-    """Run-after hooks that aren't pure normalize. For the steps+phases
-    test we want to author analyst phases AFTER the auto-suggested steps
-    are written, then re-normalize so the phase-level BPMN gets produced."""
-    if test_id == "T01":
-        # Filename has a dash; load the generator module from its path.
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "gen_ts", str(ROOT / "scripts" / "generate-test-suite.py"))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        mod.patch_phases_post_normalize(folder)
-
-
 def main():
     if not SUITE.exists():
         print("no test suite generated; run generate-test-suite.py first",
@@ -281,16 +218,6 @@ def main():
             rows.append((tid, desc, "FAIL",
                          "normalize crashed", tail.replace("\n", " | ")[:200]))
             continue
-        # Some tests need a post-normalize patch + re-normalize to bake
-        # the analyst-authored phase entries into the BPMN.
-        if tid == "T01":
-            post_patches(tid, folder)
-            ok2, tail2 = normalize(folder, extra, env)
-            if not ok2:
-                rows.append((tid, desc, "FAIL",
-                             "re-normalize after phase author crashed",
-                             tail2.replace("\n", " | ")[:200]))
-                continue
         passed, evidence = fn(folder)
         rows.append((tid, desc, "PASS" if passed else "FAIL",
                      evidence, ""))

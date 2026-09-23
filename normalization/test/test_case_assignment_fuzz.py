@@ -113,8 +113,8 @@ def test_fuzz_marker_case_assignment():
         try:
             out = assign_case_ids(events)
             assert len(out) == len(events), "assign_case_ids changed the event count"
-            # Determinism modulo the fresh uuid4 on start markers: check structure
-            # (types/order preserved, activity depths correct).
+            # Check structure (types/order preserved, activity depths correct);
+            # case-id determinism is pinned in test_case_assignment.py.
             expected = _expected_depths(events)
             act_depths = [len(e["data"]["case_ids"]) for e in out if e["type"] == "activity"]
             assert act_depths == expected, \

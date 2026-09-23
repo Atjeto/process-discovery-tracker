@@ -5,7 +5,9 @@ stream -- no heuristic judgments, no case boundaries required. It always
 renders (the honesty architecture's Tier 1) and feeds the viewer's
 Overview fact strip plus the memo's fact strip.
 
-  active_ms        -- summed foreground-window time (activity duration_ms).
+  active_ms        -- summed foreground-window time (activity duration_ms)
+                      minus the measured idle intervals inside those runs,
+                      so active_ms and idle_ms never count the same time.
   idle_ms          -- summed idle_start/idle_end intervals the recorder
                       measured (0 when the session has no idle events).
   top_apps         -- top 5 apps by foreground time, each with its share.
@@ -30,6 +32,7 @@ Pure stdlib.
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import timedelta
 from typing import Any
 
 from _dt import parse_ts_or_none as _parse_ts
@@ -89,9 +92,11 @@ def _session_span_ms(events: list[dict[str, Any]]) -> float:
     return (last - first).total_seconds() * 1000.0
 
 
-def _idle_ms(events: list[dict[str, Any]]) -> int:
-    """Total measured idle time: paired idle_start/idle_end system events."""
-    total = 0.0
+def _idle_intervals(events: list[dict[str, Any]]) -> list[tuple[Any, Any]]:
+    """The measured idle intervals: paired idle_start/idle_end system events,
+    as (start, end) datetimes. The single source for both idle_ms and the
+    idle time subtracted from active time, so the two never double-count."""
+    intervals = []
     open_start = None
     for ev in events or []:
         if not isinstance(ev, dict) or ev.get("type") != "system":
@@ -102,9 +107,34 @@ def _idle_ms(events: list[dict[str, Any]]) -> int:
         elif kind == "idle_end":
             end = _parse_ts(ev.get("timestamp"))
             if open_start is not None and end is not None and end > open_start:
-                total += (end - open_start).total_seconds() * 1000.0
+                intervals.append((open_start, end))
             open_start = None
-    return round(total)
+    return intervals
+
+
+def _idle_ms(events: list[dict[str, Any]]) -> int:
+    """Total measured idle time: paired idle_start/idle_end system events."""
+    return round(sum((end - start).total_seconds() * 1000.0
+                     for start, end in _idle_intervals(events)))
+
+
+def _active_duration_ms(ev: dict, idle: list[tuple[Any, Any]]) -> float:
+    """An activity run's foreground time minus the recorded idle time inside
+    it (RP-07). The recorder keeps a foreground run open through an idle
+    stretch, so its duration_ms includes that idle time; subtracting it keeps
+    active time and idle time disjoint. A run whose timestamp cannot be read
+    cannot be placed against the idle intervals and keeps its full duration."""
+    dur = _duration_ms(ev["data"])
+    start = _parse_ts(ev.get("timestamp"))
+    if start is None or dur <= 0:
+        return dur
+    end = start + timedelta(milliseconds=dur)
+    overlap = 0.0
+    for i0, i1 in idle:
+        lo, hi = max(start, i0), min(end, i1)
+        if hi > lo:
+            overlap += (hi - lo).total_seconds() * 1000.0
+    return max(0.0, dur - overlap)
 
 
 def _typed_value(ev: dict) -> str:
@@ -245,6 +275,7 @@ def compute_facts(
     """Build the `analysis.facts` block. `motifs` is the find_motifs output
     (only its length is read -- the repeated-sequence count)."""
     acts = _activity_events(events)
+    idle = _idle_intervals(events)
 
     per_app: dict[str, float] = defaultdict(float)
     switches = 0
@@ -254,7 +285,7 @@ def compute_facts(
     for ev in acts:
         data = ev["data"]
         app = (data.get("app") or "").strip() or "(unknown)"
-        dur = _duration_ms(data)
+        dur = _active_duration_ms(ev, idle)
         per_app[app] += dur
         if prev_app is not None and app != prev_app:
             switches += 1
@@ -270,8 +301,10 @@ def compute_facts(
     # G-2: an old capture shape (v0.9.0) has no activity events / durations,
     # which used to render every app-time fact as a confident 0. Fall back to
     # an interaction-derived estimate; failing that, say so via the source key.
+    # The test is the RAW durations: runs that were all idle are a measured
+    # zero of active time, not a missing signal.
     app_time_source = "activity"
-    if active_ms <= 0:
+    if not any(_duration_ms(ev["data"]) > 0 for ev in acts):
         derived = _derive_app_time_from_interactions(events)
         if derived is not None:
             per_app, switches, longest = derived

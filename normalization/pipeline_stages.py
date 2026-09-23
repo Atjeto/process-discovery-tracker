@@ -16,6 +16,7 @@ when that stage/export actually runs.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 from datetime import datetime, timezone
@@ -37,7 +38,9 @@ from classification import (
 )
 from classification_overrides import apply_classification_overrides
 from xes_export import build_event_log, export_xes, export_csv
-from step_suggest import auto_suggest_steps, _merge_steps
+from step_suggest import (
+    auto_suggest_steps, _merge_steps, restamp_preserved_case_ids,
+)
 import app_vocab
 import stats_compute as stats
 from session_io import write_annotations, compute_screenshot_hashes
@@ -45,6 +48,13 @@ from marker_edits import apply_marker_edits
 from pipeline_config import (
     _step_ignored_processes, _excluded_ranges, _step_calibration_kwargs,
 )
+
+logger = logging.getLogger(__name__)
+
+
+class ExportFailed(Exception):
+    """A requested export failed after the analysis outputs were written.
+    Contract C13 exit code 3 (RP-09)."""
 
 
 def _run_coalesce(
@@ -66,10 +76,12 @@ def _run_coalesce(
 
 def _run_case_assignment(
     edited: list[dict[str, Any]],
+    session_id_str: str,
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], dict]:
     """Stage 2a/3: marker-based case assignment + app-vocab enrichment.
-    Returns (with_cases, cases, vocab_summary)."""
-    with_cases = assign_case_ids(edited)
+    Returns (with_cases, cases, vocab_summary). `session_id_str` seeds the
+    deterministic case ids (RP-01)."""
+    with_cases = assign_case_ids(edited, session_id=session_id_str)
     cases = collect_cases(with_cases)
     print(f"[normalize] identified {len(cases)} cases")
 
@@ -108,7 +120,7 @@ def _init_existing_anno(annotations: dict, session_id_str: str) -> dict[str, Any
 
 def _run_step_segmentation(
     with_cases: list[dict[str, Any]],
-    cases: list[dict[str, Any]],
+    cases: dict[str, dict[str, Any]],
     existing_anno: dict,
     session_id_str: str,
     cal: dict,
@@ -131,6 +143,12 @@ def _run_step_segmentation(
     )
     merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps,
                                 interactions_by_id)
+    # RP-01 / C9: a preserved analyst step keeps its case_id only while that
+    # run still exists; otherwise it moves to the run containing it in time.
+    restamped = restamp_preserved_case_ids(merged_steps, cases)
+    if restamped:
+        print(f"[normalize] moved {restamped} analyst step(s) to the run "
+              f"that contains them (their previous run id no longer exists)")
     existing_anno["steps"] = merged_steps
     write_annotations(session_folder, existing_anno)
     print(f"[normalize] auto-suggested {len(auto_steps)} step(s) "
@@ -198,6 +216,25 @@ def _run_event_log_export(
     return log, xes_path, csv_path
 
 
+def _visible_steps(existing_anno: dict) -> list[dict[str, Any]]:
+    """RP-06: the steps the analyst has not hidden. A hidden step stays in
+    annotations.json, so a re-analyze does not resurrect it, but it never
+    feeds the stats, the analysis or the deliverable built from them."""
+    return [s for s in (existing_anno.get("steps") or [])
+            if s.get("state") != "hidden"]
+
+
+# The analysis.json keys the step-grained analysis layer (analysis.run_analysis)
+# writes. When the layer fails as a whole, each is written as null (C12).
+_STEP_ANALYSIS_KEYS = ("waste_classification", "time_study", "segments",
+                       "automation_candidates", "efficiency")
+
+# The stages the findings detectors read. If one of them failed, the findings
+# would silently miss checks, so the findings stage does not run (C12).
+_FINDINGS_INPUT_STAGES = ("step_analysis", "motifs", "facts", "time_study",
+                          "segments", "automation_candidates")
+
+
 def _run_stats(
     session_folder: Path,
     log_events: list[dict[str, Any]],
@@ -221,7 +258,7 @@ def _run_stats(
     summary = stats.compute_all(
         log_events, cases,
         excluded_ranges=_excluded_ranges(existing_anno),
-        steps=existing_anno.get("steps") or [],
+        steps=_visible_steps(existing_anno),
     )
     summary["screenshot_hashes"] = compute_screenshot_hashes(session_folder)
     summary["meta"] = {
@@ -276,30 +313,44 @@ def _run_analysis(
     measured blocks -- `case_quality`, `facts`, `findings` -- as additive
     keys on the same file. Tier 1 needs no case boundaries and no steps,
     so analysis.json now writes for a stepless session too (the classic
-    step-grained blocks stay empty there)."""
+    step-grained blocks stay empty there).
+
+    Stage failures (contract C12, RP-10): a stage that fails leaves its
+    output key null, never [] or zeros, and adds one
+    {"stage", "error"} entry to `stage_errors`, which is always written
+    (empty when every stage ran). Hidden steps are left out (RP-06)."""
+    stage_errors: list[dict[str, str]] = []
+
+    def _failed(stage: str, error: str) -> None:
+        print(f"[normalize] WARNING: {stage} failed: {error}")
+        stage_errors.append({"stage": stage, "error": error})
+
+    steps = _visible_steps(existing_anno)
     analysis_result = None
     try:
         from analysis import run_analysis
         analysis_result = run_analysis(
             events=classified,
-            steps=existing_anno.get("steps") or [],
+            steps=steps,
             stats=summary,
             manifest=manifest,
             annotations=existing_anno,
         )
-    except Exception as e:
-        print(f"[normalize] WARNING: analysis layer failed: {e}")
+    except Exception as e:  # noqa: BLE001 -- recorded as a stage error
+        _failed("step_analysis", f"{type(e).__name__}: {e}")
     if analysis_result is None:
         # The classic layer failed entirely; still attempt the Tier-1
         # blocks on a minimal shell rather than losing the whole file.
         analysis_result = {"meta": {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "session_id": (manifest or {}).get("session_id", ""),
-            "step_count": len(existing_anno.get("steps") or []),
+            "step_count": len(steps),
             "provisional": True,
         }}
+        analysis_result.update({key: None for key in _STEP_ANALYSIS_KEYS})
+    # Sub-stage failures inside the classic layer (analysis.run_analysis).
+    stage_errors.extend(analysis_result.pop("stage_errors", None) or [])
 
-    steps = existing_anno.get("steps") or []
     try:
         from case_quality import compute_case_quality
         analysis_result["case_quality"] = compute_case_quality(classified, cases)
@@ -307,38 +358,64 @@ def _run_analysis(
         print(f"[normalize] case quality: {cq['mode']}, "
               f"coverage {cq['coverage']:.0%}, "
               f"tier2 {'unlocked' if cq['tier2_unlocked'] else 'locked'}")
-    except Exception as e:
-        print(f"[normalize] WARNING: case_quality failed: {e}")
-    motifs: list = []
-    bounces: list = []
+    except Exception as e:  # noqa: BLE001 -- recorded as a stage error
+        analysis_result["case_quality"] = None
+        _failed("case_quality", f"{type(e).__name__}: {e}")
+    motifs: list | None = None
+    bounces: list | None = None
     try:
         from motifs import find_motifs, find_bounces, maximal_motifs
         # The maximal filter keeps the repeated-sequence count honest --
         # the raw sliding window counts every overlapping sub-window.
         motifs = maximal_motifs(find_motifs(steps))
         bounces = find_bounces(steps)
-    except Exception as e:
-        print(f"[normalize] WARNING: motif mining failed: {e}")
+    except Exception as e:  # noqa: BLE001 -- recorded as a stage error
+        motifs = bounces = None
+        _failed("motifs", f"{type(e).__name__}: {e}")
     try:
         from facts import compute_facts
-        analysis_result["facts"] = compute_facts(classified, motifs)
-    except Exception as e:
-        print(f"[normalize] WARNING: facts failed: {e}")
-    try:
-        from findings import detect_findings
-        analysis_result["findings"] = detect_findings(
-            classified, steps,
-            analysis_result.get("facts"),
-            case_quality=analysis_result.get("case_quality"),
-            analysis_blocks=analysis_result,
-            bounces=bounces)
-        n = len(analysis_result["findings"])
-        if n:
-            # ASCII-only: the bundled embeddable's console codepage mangles
-            # non-ASCII in print output (it lands in normalize.log too).
-            print(f"[normalize] {n} finding(s) detected (lab-phase A3)")
-    except Exception as e:
-        print(f"[normalize] WARNING: findings failed: {e}")
+        facts = compute_facts(classified, motifs or [])
+        if motifs is None:
+            # The repeated-sequence count comes from motif mining, which failed.
+            facts["repeated_sequence_count"] = None
+        analysis_result["facts"] = facts
+    except Exception as e:  # noqa: BLE001 -- recorded as a stage error
+        analysis_result["facts"] = None
+        _failed("facts", f"{type(e).__name__}: {e}")
+
+    failed_inputs = [s for s in _FINDINGS_INPUT_STAGES
+                     if any(err["stage"] == s for err in stage_errors)]
+    if failed_inputs:
+        analysis_result["findings"] = None
+        _failed("findings", "not run: depends on failed stage(s) "
+                + ", ".join(failed_inputs))
+    else:
+        try:
+            from findings import detect_findings
+            detector_errors: list[str] = []
+            found = detect_findings(
+                classified, steps,
+                analysis_result.get("facts"),
+                case_quality=analysis_result.get("case_quality"),
+                analysis_blocks=analysis_result,
+                bounces=bounces,
+                errors=detector_errors)
+            if detector_errors:
+                # A detector that could not run makes the list incomplete; an
+                # incomplete list must not read as "nothing else stood out".
+                analysis_result["findings"] = None
+                _failed("findings", "; ".join(detector_errors))
+            else:
+                analysis_result["findings"] = found
+                if found:
+                    # ASCII-only: the bundled embeddable's console codepage
+                    # mangles non-ASCII in print output (it lands in
+                    # normalize.log too).
+                    print(f"[normalize] {len(found)} finding(s) detected (lab-phase A3)")
+        except Exception as e:  # noqa: BLE001 -- recorded as a stage error
+            analysis_result["findings"] = None
+            _failed("findings", f"{type(e).__name__}: {e}")
+    analysis_result["stage_errors"] = stage_errors
 
     try:
         analysis_path = session_folder / "analysis.json"
@@ -360,12 +437,12 @@ def _run_mining_exports(
     analysis_result: Any,
     pdd_out: str | None,
     pdd_map_image: str | None,
-    step_bpmn_out: str | None,
     pdd_tobe_image: str | None = None,
 ) -> None:
     """Mining (DFG / aggregate BPMN / observed-flow BPMN / per-case BPMN) plus
-    the Phase E exports (PDD, step BPMN). Each sub-export keeps its own
-    best-effort try/except."""
+    the requested PDD export. Each mining output keeps its own best-effort
+    try/except. A requested PDD export that fails raises ExportFailed (C13
+    exit code 3); it runs last, so every analysis output is already written."""
     if mine:
         import mining as mining_mod
         from pm4py.objects.log.obj import EventLog
@@ -432,7 +509,8 @@ def _run_mining_exports(
             if wrote:
                 print(f"[normalize] wrote {wrote} per-case BPMNs to {per_case_dir}")
 
-    # Phase E exports
+    # The requested PDD export (RP-09): a failure is never a warning, because
+    # the viewer trusts the exit code and would otherwise open the previous PDD.
     if pdd_out:
         try:
             from pdd_export import write_pdd
@@ -446,14 +524,11 @@ def _run_mining_exports(
                 process_map_image=pdd_map_image,
                 tobe_map_image=pdd_tobe_image,
             )
-            print(f"[normalize] wrote PDD: {pdd_out}")
-        except Exception as e:
-            print(f"[normalize] WARNING: PDD export failed: {e}")
-
-    if step_bpmn_out:
-        # bpmn_step renders a Process Template's declared step order. Canonical
-        # matching (the only source of a template) is removed, so there is no
-        # template to render and this export writes nothing. The observed-flow
-        # step map is process_map_step.bpmn, written under --mine.
-        print("[normalize] WARNING: step BPMN export needs a Process Template, "
-              f"which is no longer supported; nothing written to {step_bpmn_out}")
+        except Exception as e:  # noqa: BLE001 -- any failure fails the export
+            # The traceback goes to normalize.log only (INFO is below the
+            # stderr handler's level), so stderr keeps its one ERROR line.
+            logger.info("PDD export traceback", exc_info=True)
+            raise ExportFailed(
+                f"PDD export to {pdd_out} failed: {type(e).__name__}: {e}. "
+                "The analysis outputs were written; the PDD was not.") from e
+        print(f"[normalize] wrote PDD: {pdd_out}")

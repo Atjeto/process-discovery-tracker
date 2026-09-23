@@ -196,6 +196,37 @@ def test_app_time_source_none_when_no_signal_at_all():
     assert f["active_ms"] == 0
 
 
+def test_idle_inside_a_foreground_run_is_not_active_time():
+    """RP-07: the recorder keeps a foreground run open through idle, so a
+    10-minute run holding a 5-minute idle interval is 5 minutes active, and
+    active time and idle time never count the same minutes."""
+    events = [
+        _act("crm.exe", 600000, BASE.format(0)),     # 09:00 to 09:10
+        _sys("idle_start", BASE.format(2)),
+        _sys("idle_end", BASE.format(7)),            # 09:02 to 09:07
+    ]
+    f = compute_facts(events)
+    assert f["idle_ms"] == 300000
+    assert f["active_ms"] == 300000
+    assert f["top_apps"][0]["ms"] == 300000
+    assert f["longest_focus_ms"] == 300000
+
+
+def test_a_run_that_was_all_idle_is_a_measured_zero_not_a_missing_signal():
+    """A run fully covered by idle leaves 0 active time from the activity
+    signal; it must not switch to the interaction-derived estimate."""
+    events = [
+        _act("crm.exe", 120000, BASE.format(3)),     # 09:03 to 09:05
+        _sys("idle_start", BASE.format(2)),
+        _sys("idle_end", BASE.format(6)),
+        _typed("crm.exe", "abcd", BASE.format(0), "t1"),
+        _typed("crm.exe", "efgh", BASE.format(1), "t2"),
+    ]
+    f = compute_facts(events)
+    assert f["active_ms"] == 0
+    assert f["app_time_source"] == "activity"
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

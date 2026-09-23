@@ -7,8 +7,7 @@ It is the Process-diagram counterpart of the step Flow diagram
 (viewer/process-map-levels.js `buildAnnotationDfg`), and the two share the
 same trace logic so they agree.
 
-No Process Template is required (unlike bpmn_step, which renders a template's
-declared order). The model comes purely from the annotations, mined with the
+No Process Template is required. The model comes purely from the annotations, mined with the
 same PM4Py inductive miner + pure-Python BPMNDI layout used for the activity
 map (`mining.discover_inductive` + `mining.export_bpmn`).
 """

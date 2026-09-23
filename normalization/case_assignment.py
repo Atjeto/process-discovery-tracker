@@ -6,6 +6,13 @@ events captured outside any open marker get an empty list.
 
 Raw marker events carry no case_id at capture time -- the capture
 layer writes start/end + label; case identity is fully derived here.
+
+Case identity is deterministic (RP-01, contract C9): a run's case_id is
+`uuid5(CASE_ID_NAMESPACE, "<session_id>:<start marker event_id>")`, so
+re-analyzing the same recording yields the same case ids and the analyst's
+confirmed steps stay attached to their run. A synthetic start marker inserted
+through annotations.json marker_edits carries the event id
+`insert-<edit_id>` (marker_edits.py), which is equally stable.
 """
 
 from __future__ import annotations
@@ -16,6 +23,15 @@ from typing import Any
 # Public re-export: test_parse_ts_consistency pins every module's parse_ts
 # copy to the shared _dt contract.
 from _dt import parse_ts_or_epoch as _parse_ts  # noqa: F401
+
+# Fixed namespace for marker-run case ids. Never change it: every case_id
+# already written into an annotations.json derives from it.
+CASE_ID_NAMESPACE = uuid.UUID("c35db218-e350-4efb-ae74-37c31a4f697a")
+
+
+def marker_case_id(session_id: str, start_event_id: str) -> str:
+    """The deterministic case_id of the run opened by one start marker."""
+    return str(uuid.uuid5(CASE_ID_NAMESPACE, f"{session_id}:{start_event_id}"))
 
 
 def _event_data(ev: dict[str, Any]) -> dict[str, Any]:
@@ -30,14 +46,25 @@ def _event_data(ev: dict[str, Any]) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def assign_case_ids(
+    events: list[dict[str, Any]],
+    session_id: str = "",
+) -> list[dict[str, Any]]:
     """Return a new event list with `case_ids` stamped on activity events.
 
     Markers and system events pass through untouched (markers also get
     `case_id` and `parent_case_id` for downstream reference).
+
+    `session_id` seeds the deterministic case ids (see marker_case_id). The
+    start marker's event id alone is already unique within one recording, so
+    callers without a session id (unit tests) still get stable, distinct ids.
     """
     stack: list[dict[str, Any]] = []  # entries: {case_id, label, parent_case_id, start_ts}
     out: list[dict[str, Any]] = []
+    # A start marker's event id seeds its case id. A corrupt log can repeat a
+    # line; the repeat is a second run, so it gets its own occurrence-suffixed
+    # seed instead of silently merging into the first run's case.
+    start_seen: dict[str, int] = {}
 
     for ev in events:
         etype = ev.get("type")
@@ -46,7 +73,17 @@ def assign_case_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             mtype = data.get("marker_type")
             label = data.get("label")
             if mtype == "start":
-                case_id = str(uuid.uuid4())
+                eid = ev.get("event_id")
+                if not isinstance(eid, str) or not eid:
+                    # load_events guarantees an event id on every event, so a
+                    # missing one here is a caller bug, not a corrupt log.
+                    raise ValueError(
+                        "start marker at timestamp "
+                        f"{ev.get('timestamp')!r} has no event_id; the case id "
+                        "is derived from it")
+                start_seen[eid] = start_seen.get(eid, 0) + 1
+                seed = eid if start_seen[eid] == 1 else f"{eid}#{start_seen[eid]}"
+                case_id = marker_case_id(session_id, seed)
                 parent = stack[-1]["case_id"] if stack else None
                 stack.append({
                     "case_id": case_id,

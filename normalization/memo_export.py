@@ -44,6 +44,26 @@ logger = logging.getLogger(__name__)
 # feed order (the detector-table order is already a narrative order).
 DEFAULT_TOP_FINDINGS = 5
 
+# C12 (RP-10): the words every renderer uses for an analysis stage that
+# failed, in place of its output. Never a zero, never "nothing found".
+COULD_NOT_RUN = "could not run on this recording"
+
+# analysis.json keys that are the output of one analysis stage (C12).
+_STAGE_KEYS = ("case_quality", "facts", "findings", "waste_classification",
+               "time_study", "segments", "automation_candidates", "efficiency")
+
+
+def failed_stages(analysis: dict | None) -> set[str]:
+    """The analysis stages that could not run on this recording (C12): every
+    stage named in `stage_errors`, plus every stage-output key written as
+    null. An ABSENT key is not a failure (an older analysis.json, or no
+    analysis at all); only an explicit null is."""
+    a = analysis if isinstance(analysis, dict) else {}
+    out = {e.get("stage") for e in (a.get("stage_errors") or [])
+           if isinstance(e, dict) and isinstance(e.get("stage"), str)}
+    out.update(k for k in _STAGE_KEYS if k in a and a[k] is None)
+    return out
+
 
 def _capture_date(manifest: dict, stats: dict) -> str:
     """The capture day, from the manifest start or the stats meta run stamp."""
@@ -79,13 +99,23 @@ def _coverage_line(stats: dict, analysis: dict) -> str:
     return " · ".join(parts) if parts else "no capture metadata available"
 
 
-def _fact_cells(facts: dict) -> list[tuple[str, str]]:
+_FACT_HEADS = ("Active time", "Idle time", "Top app", "App switches",
+               "Longest stretch in one app", "Values re-typed across apps")
+
+
+def _fact_cells(facts: dict, failed: bool = False) -> list[tuple[str, str]]:
     """The 6 (header, value) fact-strip pairs the PDD §1 fact table shows.
 
     G-2 honesty rule: when the recording carries no app-time signal at all
     (facts.app_time_source == "none" -- old captures), the four app-time
     cells say "not available from this recording" instead of a confident
-    0; an interaction-derived estimate is labelled as one."""
+    0; an interaction-derived estimate is labelled as one.
+
+    C12 (RP-10): when the facts stage failed (`failed`), every cell says the
+    check could not run; a failed motif stage (repeated_sequence_count
+    written as null) says so for the repeated-sequence count."""
+    if failed:
+        return [(head, COULD_NOT_RUN) for head in _FACT_HEADS]
     top = (facts.get("top_apps") or [{}])
     lead = top[0] if top else {}
     lead_cell = (f"{lead.get('app', '—')} ({_pct(lead.get('share', 0))})"
@@ -104,15 +134,19 @@ def _fact_cells(facts: dict) -> list[tuple[str, str]]:
             facts.get("app_switches") or 0,
             facts.get("switches_per_hour") or 0) + est
         longest_cell = _fmt_ms(facts.get("longest_focus_ms"))
-    return [
-        ("Active time", active_cell),
-        ("Idle time", _fmt_ms(facts.get("idle_ms"))),
-        ("Top app", top_cell),
-        ("App switches", switches_cell),
-        ("Longest stretch in one app", longest_cell),
-        ("Values re-typed across apps", "{} ({} repeated sequence{})".format(
-            rekey, seqs, "s" if seqs != 1 else "")),
-    ]
+    if "repeated_sequence_count" in facts and facts["repeated_sequence_count"] is None:
+        rekey_cell = f"{rekey} (repeated sequences: {COULD_NOT_RUN})"
+    else:
+        rekey_cell = "{} ({} repeated sequence{})".format(
+            rekey, seqs, "s" if seqs != 1 else "")
+    return list(zip(_FACT_HEADS, (
+        active_cell,
+        _fmt_ms(facts.get("idle_ms")),
+        top_cell,
+        switches_cell,
+        longest_cell,
+        rekey_cell,
+    )))
 
 
 def _evidence_numbers(evidence: dict) -> str:
@@ -145,7 +179,12 @@ def _select_findings(analysis: dict, annotations: dict) -> list[dict]:
     return all_findings[:DEFAULT_TOP_FINDINGS]
 
 
-def _tier2_section(analysis: dict, stats: dict) -> list[str]:
+def _tier2_section(analysis: dict, stats: dict,
+                   failed: set | frozenset = frozenset()) -> list[str]:
+    if "case_quality" in failed:
+        # C12: a failed case check is not "no cases identified".
+        return [f"The case check {COULD_NOT_RUN}, so no case-by-case "
+                "numbers are shown."]
     cq = (analysis or {}).get("case_quality") or {}
     if not cq.get("tier2_unlocked"):
         # G-3: cases WERE identified, just not enough of them to compare.
@@ -186,11 +225,14 @@ def _tier2_section(analysis: dict, stats: dict) -> list[str]:
     return lines
 
 
-def _to_say_more(analysis: dict, annotations: dict) -> list[str]:
+def _to_say_more(analysis: dict, annotations: dict,
+                 failed: set | frozenset = frozenset()) -> list[str]:
     items: list[str] = []
     cq = (analysis or {}).get("case_quality") or {}
     facts = (analysis or {}).get("facts") or {}
-    if not cq.get("tier2_unlocked"):
+    # C12: a stage that failed measured nothing, so it cannot say what is
+    # missing either; its items are skipped rather than stated as findings.
+    if "case_quality" not in failed and not cq.get("tier2_unlocked"):
         if cq.get("mode") != "unsegmented" and (cq.get("case_count") or 0) >= 1:
             # G-3: identified but too few to compare.
             items.append("Only {} case{} identified -- case comparisons "
@@ -209,12 +251,11 @@ def _to_say_more(analysis: dict, annotations: dict) -> list[str]:
     if caveat:
         apps = [a.get("app") for a in
                 ((caveat.get("evidence") or {}).get("flagged_apps")) or []]
-        items.append("The recorder saw less detail in {} -- teaching the "
-                     "app {} screens (App Library -> Discover from window) "
-                     "would make those numbers firmer."
+        items.append("The recorder saw less detail in {}, so the numbers "
+                     "measured inside {} are less precise."
                      .format(", ".join(apps[:4]),
-                             "their" if len(apps) != 1 else "its"))
-    if not facts.get("idle_ms"):
+                             "those apps" if len(apps) != 1 else "that app"))
+    if "facts" not in failed and not facts.get("idle_ms"):
         items.append("No idle time was measured -- time spent waiting "
                      "inside an app without typing or clicking is invisible "
                      "to this recording.")
@@ -265,6 +306,8 @@ def _named_work_items(annotations: dict | None, stats: dict | None) -> list[dict
         case_label = (labels.get(cid) or f"Case {i}") if cid is not None \
             else "Unassigned"
         for wi in case["work_items"]:
+            if wi["hidden"]:
+                continue    # RP-06: a work item the analyst hid stays out
             ga = wi.get("group_annotation")
             # Only annotated visits reach the memo: a name, a note, or a waste
             # flag. The screen-label fallback alone is not memo-worthy.
@@ -300,11 +343,16 @@ def build_memo_model(
              or manifest.get("session_id")
              or "session")
     chosen = _select_findings(analysis, annotations)
+    failed = failed_stages(analysis)
     return {
         "label": label,
         "captured": _capture_date(manifest, stats),
         "coverage_line": _coverage_line(stats, analysis),
-        "fact_cells": _fact_cells(analysis.get("facts") or {}),
+        "fact_cells": _fact_cells(analysis.get("facts") or {},
+                                  failed="facts" in failed),
+        # C12: the findings stage failed, so an empty list is not "nothing
+        # stood out".
+        "findings_failed": "findings" in failed,
         "findings": [
             {
                 "claim": f.get("claim") or "(no claim)",
@@ -317,9 +365,9 @@ def build_memo_model(
         ],
         "tier2_unlocked": bool(
             ((analysis.get("case_quality") or {}).get("tier2_unlocked"))),
-        "tier2_lines": _tier2_section(analysis, stats),
+        "tier2_lines": _tier2_section(analysis, stats, failed),
         "named_work_items": _named_work_items(annotations, stats),
-        "to_say_more": _to_say_more(analysis, annotations),
+        "to_say_more": _to_say_more(analysis, annotations, failed),
     }
 
 
@@ -369,7 +417,10 @@ def write_memo_into_docx(doc, model: dict, session_folder=None,
         t.rows[1].cells[i].text = val
 
     doc.add_heading("Findings", level=h(1))
-    if not model["findings"]:
+    if model.get("findings_failed"):
+        _docx_note(doc, f"The automatic checks {COULD_NOT_RUN}, so no "
+                        "findings are reported.")
+    elif not model["findings"]:
         _docx_note(doc, "Nothing stood out -- the automatic checks found "
                         "nothing worth reporting on this recording.")
     for i, f in enumerate(model["findings"], 1):

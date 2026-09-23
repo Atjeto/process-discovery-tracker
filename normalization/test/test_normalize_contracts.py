@@ -1,0 +1,304 @@
+"""End-to-end contracts of normalize.py on a small synthetic session (the BA
+helper lane L4): deterministic case ids and restamped analyst steps (RP-01,
+C9), the preserved `confirmed` state (C2), hidden steps kept out of the stats
+and the analysis (RP-06), stage failures recorded as null plus stage_errors
+(RP-10, C12), and the exit codes 1 to 3 (RP-04, RP-09, C13).
+
+The session is built in pytest's tmp_path, never in sessions/. The pipeline
+imports pandas and pm4py, so this module skips where they are absent (bare
+system pytest) and runs under the full-deps gate (bundled python plus the
+system pytest), which is where it must be executed.
+"""
+
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import logging
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+HERE = Path(__file__).resolve().parent
+NORMALIZATION = HERE.parent
+sys.path.insert(0, str(NORMALIZATION))
+
+_DEPS_OK = all(importlib.util.find_spec(m) is not None for m in ("pandas", "pm4py"))
+pytestmark = pytest.mark.skipif(not _DEPS_OK, reason="pipeline deps (pandas/pm4py) not installed")
+
+if _DEPS_OK:
+    import normalize as normalize_mod
+    import pipeline_stages
+
+SESSION_ID = "sess-contract-test"
+T0 = datetime(2026, 5, 14, 9, 0, 0, tzinfo=timezone.utc)
+
+
+def _ts(sec: float) -> str:
+    return (T0 + timedelta(seconds=sec)).isoformat().replace("+00:00", "Z")
+
+
+def _inter(eid, sec, kind, control_type, name):
+    data = {"kind": kind, "control_type": control_type, "name": name,
+            "automation_id": name.lower(), "process_name": "crm.exe",
+            "window_title": "CRM - Orders"}
+    if kind == "value_changed":
+        data["value"] = "typed text"
+    return {"event_id": eid, "type": "interaction", "timestamp": _ts(sec),
+            "session_id": SESSION_ID, "data": data}
+
+
+def _run(prefix, s):
+    """One marked run: two drafted steps (typing + Find + Save, then typing +
+    Submit). "Save" and "Submit" are completion words that close a step."""
+    return [
+        {"event_id": f"{prefix}-start", "type": "marker", "timestamp": _ts(s),
+         "session_id": SESSION_ID,
+         "data": {"marker_type": "start", "label": f"Order {prefix}"}},
+        {"event_id": f"{prefix}-act", "type": "activity", "timestamp": _ts(s),
+         "session_id": SESSION_ID,
+         "data": {"app": "crm.exe", "title": "CRM - Orders", "pid": 1,
+                  "duration_ms": 9000}},
+        _inter(f"{prefix}-i1", s + 1, "value_changed", "Edit", "Customer"),
+        _inter(f"{prefix}-i2", s + 2, "invoked", "Button", "Find"),
+        _inter(f"{prefix}-i3", s + 3, "invoked", "Button", "Save"),
+        _inter(f"{prefix}-i4", s + 4, "value_changed", "Edit", "Note"),
+        _inter(f"{prefix}-i5", s + 5, "invoked", "Button", "Submit"),
+        {"event_id": f"{prefix}-end", "type": "marker", "timestamp": _ts(s + 9),
+         "session_id": SESSION_ID, "data": {"marker_type": "end"}},
+    ]
+
+
+def _make_session(folder: Path) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    events = ([{"event_id": "sys-0", "type": "system", "timestamp": _ts(0),
+                "session_id": SESSION_ID, "data": {"kind": "session_start"}}]
+              + _run("a", 1) + _run("b", 20)
+              + [{"event_id": "sys-1", "type": "system", "timestamp": _ts(31),
+                  "session_id": SESSION_ID, "data": {"kind": "session_end"}}])
+    for seq, ev in enumerate(events):
+        ev["_seq"] = seq
+    (folder / "events.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    (folder / "manifest.json").write_text(json.dumps({
+        "session_id": SESSION_ID, "started_at": _ts(0),
+        "config": {"worker": {"id": "w1"}}}), encoding="utf-8")
+    return folder
+
+
+def _read(folder: Path, name: str):
+    return json.loads((folder / name).read_text(encoding="utf-8"))
+
+
+def _run_cli(*args):
+    return subprocess.run(
+        [sys.executable, str(NORMALIZATION / "normalize.py"), *map(str, args)],
+        capture_output=True, text=True, cwd=str(NORMALIZATION.parent))
+
+
+def _error_lines(proc) -> list[str]:
+    return [ln for ln in proc.stderr.splitlines() if ln.startswith("[normalize] ERROR:")]
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging():
+    """normalize() attaches a file handler for <session>/normalize.log to the
+    root logger; detach and close it so tmp folders are not held open."""
+    root = logging.getLogger()
+    before, level = list(root.handlers), root.level
+    yield
+    for h in list(root.handlers):
+        if h not in before:
+            root.removeHandler(h)
+            h.close()
+    root.setLevel(level)
+
+
+# ---- RP-01 / C9 / C2 ---------------------------------------------------------
+
+def test_the_same_events_normalized_twice_give_identical_case_ids(tmp_path):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    first_cases = [c["case_id"] for c in _read(session, "stats.json")["case_stats"]]
+    first_steps = {s["step_id"]: s["case_id"] for s in _read(session, "annotations.json")["steps"]}
+    normalize_mod.normalize(session)
+    second_cases = [c["case_id"] for c in _read(session, "stats.json")["case_stats"]]
+    second_steps = {s["step_id"]: s["case_id"] for s in _read(session, "annotations.json")["steps"]}
+    assert len(first_cases) == 2 and len(first_steps) == 4
+    assert second_cases == first_cases, "case ids changed on re-analysis"
+    assert second_steps == first_steps
+    # Every analysis stage ran, so C12's stage_errors is written empty.
+    analysis = _read(session, "analysis.json")
+    assert analysis["stage_errors"] == []
+    assert analysis["facts"] is not None and analysis["findings"] is not None
+
+
+def test_a_preserved_step_with_a_legacy_case_id_moves_to_the_run_containing_it(tmp_path):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    runs = {c["label"]: c["case_id"] for c in _read(session, "stats.json")["case_stats"]}
+    anno = _read(session, "annotations.json")
+    anno["steps"].append({
+        "step_id": "manual-1", "session_id": SESSION_ID,
+        "case_id": "7d1e0c52-0000-4000-8000-legacy-random", "state": "manually_authored",
+        "name": "Check the order total", "description": "",
+        "time_range": {"start": _ts(24), "end": _ts(26)},
+        "evidence": {"interaction_event_ids": [], "screenshot_refs": []},
+        "flags": {},
+    })
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+    normalize_mod.normalize(session)
+    steps = {s["step_id"]: s for s in _read(session, "annotations.json")["steps"]}
+    assert steps["manual-1"]["case_id"] == runs["Order b"]
+    assert steps["manual-1"]["name"] == "Check the order total"
+
+
+def test_a_confirmed_step_survives_re_normalization_unchanged(tmp_path):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    anno = _read(session, "annotations.json")
+    target = anno["steps"][0]
+    target["state"] = "confirmed"
+    before = copy.deepcopy(target)
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+    normalize_mod.normalize(session)
+    after = [s for s in _read(session, "annotations.json")["steps"]
+             if s["step_id"] == before["step_id"]]
+    assert len(after) == 1
+    for key in ("state", "name", "description", "case_id", "time_range", "evidence"):
+        assert after[0][key] == before[key], f"confirmed step changed its {key}"
+    # No fresh draft was laid over the span the analyst confirmed.
+    covered = set(before["evidence"]["interaction_event_ids"])
+    assert not [s for s in _read(session, "annotations.json")["steps"]
+                if s["state"] == "auto_suggested"
+                and covered & set(s["evidence"]["interaction_event_ids"])]
+
+
+# ---- RP-06 --------------------------------------------------------------------
+
+def test_a_hidden_step_does_not_reach_the_stats_or_the_analysis(tmp_path):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    anno = _read(session, "annotations.json")
+    hidden = anno["steps"][1]
+    hidden["state"] = "hidden"
+    hidden["name"] = "Hidden noise step"
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+    normalize_mod.normalize(session)
+    kept = [s for s in _read(session, "annotations.json")["steps"]
+            if s["step_id"] == hidden["step_id"]]
+    assert kept and kept[0]["state"] == "hidden"          # still preserved
+    for name in ("stats.json", "analysis.json"):
+        text = (session / name).read_text(encoding="utf-8")
+        assert "Hidden noise step" not in text, f"hidden step name leaked into {name}"
+        assert hidden["step_id"] not in text, f"hidden step id leaked into {name}"
+    # Positive control: the visible steps did reach the stats.
+    assert _read(session, "stats.json")["step_stats"]
+
+
+# ---- RP-10 / C12 --------------------------------------------------------------
+
+def _analysis_inputs(tmp_path):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    events, _dropped = normalize_mod.load_events(session / "events.jsonl")
+    return session, events, _read(session, "annotations.json")
+
+
+def test_a_failed_facts_stage_is_null_and_named_in_stage_errors(tmp_path, monkeypatch):
+    session, events, anno = _analysis_inputs(tmp_path)
+    import facts as facts_mod
+
+    def boom(*_a, **_k):
+        raise KeyError("duration_ms")
+    monkeypatch.setattr(facts_mod, "compute_facts", boom)
+    result = pipeline_stages._run_analysis(
+        session, events, anno, {}, {"session_id": SESSION_ID}, cases={})
+    assert result.get("facts", "MISSING") is None
+    assert {"stage": "facts", "error": "KeyError: 'duration_ms'"} in result["stage_errors"]
+    # The findings read the facts, so they could not run either.
+    assert result["findings"] is None
+    assert any(e["stage"] == "findings" and "facts" in e["error"]
+               for e in result["stage_errors"])
+    assert _read(session, "analysis.json") == json.loads(json.dumps(result))
+
+
+def test_a_failed_findings_stage_is_null_and_named_in_stage_errors(tmp_path, monkeypatch):
+    session, events, anno = _analysis_inputs(tmp_path)
+    import findings as findings_mod
+
+    def boom(*_a, **_k):
+        raise RuntimeError("detector table broke")
+    monkeypatch.setattr(findings_mod, "detect_findings", boom)
+    result = pipeline_stages._run_analysis(
+        session, events, anno, {}, {"session_id": SESSION_ID}, cases={})
+    assert result.get("findings", "MISSING") is None
+    assert result["stage_errors"] == [
+        {"stage": "findings", "error": "RuntimeError: detector table broke"}]
+    assert result["facts"] is not None                     # facts still measured
+
+
+def test_one_failed_detector_fails_the_findings_stage(tmp_path, monkeypatch):
+    """A detector that raises used to vanish silently, so a missing finding
+    read as "nothing stood out". Now the findings stage is marked failed."""
+    session, events, anno = _analysis_inputs(tmp_path)
+    import findings as findings_mod
+
+    def boom(*_a, **_k):
+        raise ZeroDivisionError("division by zero")
+    monkeypatch.setattr(findings_mod, "_detect_fragmentation", boom)
+    result = pipeline_stages._run_analysis(
+        session, events, anno, {}, {"session_id": SESSION_ID}, cases={})
+    assert result["findings"] is None
+    assert result["stage_errors"] == [{
+        "stage": "findings",
+        "error": "fragmentation: ZeroDivisionError: division by zero"}]
+
+
+# ---- C13 exit codes (RP-04, RP-09) and the CLI surface (C11) -------------------
+
+def test_an_unreadable_annotations_file_exits_2_and_nothing_is_written(tmp_path):
+    session = _make_session(tmp_path / "s")
+    good = json.dumps({"steps": [{"step_id": "m1", "state": "manually_authored",
+                                  "name": "Analyst work"}]}, indent=2).encode("utf-8")
+    truncated = good[: len(good) // 2]
+    (session / "annotations.json").write_bytes(truncated)
+    before = sorted(p.name for p in session.iterdir())
+
+    proc = _run_cli(session)
+
+    assert proc.returncode == 2, proc.stdout[-2000:] + proc.stderr[-2000:]
+    assert (session / "annotations.json").read_bytes() == truncated
+    assert sorted(p.name for p in session.iterdir()) == before, "normalize wrote a file"
+    errors = _error_lines(proc)
+    assert len(errors) == 1
+    assert "annotations.json" in errors[0] and "annotations.json.2" in errors[0]
+
+
+def test_a_failed_pdd_export_exits_3_after_writing_the_analysis(tmp_path):
+    session = _make_session(tmp_path / "s")
+    pdd_out = tmp_path / "missing-folder" / "pdd.docx"    # the save must fail
+
+    proc = _run_cli(session, "--pdd-out", pdd_out)
+
+    assert proc.returncode == 3, proc.stdout[-2000:] + proc.stderr[-2000:]
+    errors = _error_lines(proc)
+    assert len(errors) == 1 and "PDD export" in errors[0] and str(pdd_out) in errors[0]
+    for name in ("annotations.json", "stats.json", "analysis.json"):
+        assert (session / name).exists(), f"{name} was not written"
+    assert not pdd_out.exists()
+
+
+def test_the_removed_step_bpmn_flag_is_a_usage_error_not_exit_2(tmp_path):
+    """C11 removed --step-bpmn-out; argparse would exit 2 on it, which C13
+    reserves for an unreadable annotations.json, so usage errors exit 1."""
+    session = _make_session(tmp_path / "s")
+    proc = _run_cli(session, "--step-bpmn-out", tmp_path / "x.bpmn")
+    assert proc.returncode == 1
+    errors = _error_lines(proc)
+    assert len(errors) == 1 and "--step-bpmn-out" in errors[0]
+    assert not (session / "annotations.json").exists()

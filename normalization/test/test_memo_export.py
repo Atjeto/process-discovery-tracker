@@ -350,6 +350,72 @@ def test_memo_model_and_docx_agree_on_selection():
     assert not any("chrome.exe accounts for" in t for t in texts)
 
 
+# ---- RP-06 hidden work items, RP-10 failed stages (lane L4) ----------------
+
+def test_a_hidden_work_item_stays_out_of_the_memo_lines():
+    """RP-06: a work item the analyst hid never reaches the deliverable."""
+    anno = _wi_annotations()
+    anno["group_annotations"][1]["hidden"] = True
+    model = build_memo_model(_manifest(), _wi_stats(), _analysis(tier2=True), anno)
+    names = [wi["name"] for wi in model["named_work_items"]]
+    assert "Enter the order lines" in names            # the visible item stays
+    assert "Re-key order into SAP" not in names
+
+
+def _with_failed(analysis, *stages):
+    """C12 shape: each failed stage's output key is null and named once."""
+    for stage in stages:
+        analysis[stage] = None
+    analysis["stage_errors"] = [{"stage": s, "error": "KeyError: 'x'"} for s in stages]
+    return analysis
+
+
+def test_a_failed_facts_stage_renders_could_not_run_not_zeros():
+    """RP-10: a failed facts stage used to render zeros ("0s", "0 (0/h)")."""
+    model = build_memo_model(_manifest(), _stats(), _with_failed(_analysis(), "facts"), {})
+    assert set(_cells(model).values()) == {"could not run on this recording"}
+    assert "No idle time was measured" not in " ".join(model["to_say_more"])
+
+
+def test_a_failed_findings_stage_is_not_nothing_stood_out():
+    model = build_memo_model(_manifest(), _stats(), _with_failed(_analysis(), "findings"), {})
+    assert model["findings"] == [] and model.get("findings_failed") is True
+    if not _HAVE_DOCX:
+        return
+    texts, _doc = _docx_body(model)
+    assert any("could not run on this recording" in t for t in texts)
+    assert not any("Nothing stood out" in t for t in texts)
+
+
+def test_a_failed_case_check_is_not_no_cases_identified():
+    model = build_memo_model(_manifest(), _stats(),
+                             _with_failed(_analysis(tier2=False), "case_quality"), {})
+    lines = " ".join(model["tier2_lines"] + model["to_say_more"])
+    assert "could not run on this recording" in lines
+    assert "No cases identified" not in lines
+
+
+def test_the_less_detail_caveat_names_no_removed_feature():
+    """The coverage caveat line used to send the reader to App Library
+    discovery, which was removed with the BA-helper refocus."""
+    a = _analysis(findings=[
+        {"id": "coverage_caveat-x", "detector": "coverage_caveat",
+         "claim": "claim.", "tier": 1,
+         "evidence": {"flagged_apps": [{"app": "mstsc.exe"}]}},
+    ])
+    more = " ".join(build_memo_model(_manifest(), _stats(), a, {})["to_say_more"])
+    assert ("The recorder saw less detail in mstsc.exe, so the numbers "
+            "measured inside that app are less precise.") in more
+    assert "App Library" not in more
+
+
+def test_a_failed_motif_stage_says_so_for_the_repeated_sequences():
+    a = _analysis()
+    a["facts"]["repeated_sequence_count"] = None     # written null when motifs fail
+    cell = _cells(build_memo_model(_manifest(), _stats(), a, {}))["Values re-typed across apps"]
+    assert cell == "3 (repeated sequences: could not run on this recording)"
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

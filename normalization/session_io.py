@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -101,21 +103,66 @@ def load_manifest(session_folder: Path) -> dict[str, Any]:
         return json.load(f)
 
 
+class AnnotationsUnreadable(Exception):
+    """annotations.json exists but cannot be read as an annotations object.
+
+    Contract C13 code 2 (RP-04): normalize must stop before writing anything.
+    Treating the file as empty would let the next write replace it and wipe
+    the analyst's work; the viewer's numbered backups are the way back."""
+
+
 def load_annotations(session_folder: Path) -> dict[str, Any]:
+    """The session's annotations.json as a dict.
+
+    An absent file is the normal state of a session nobody has annotated yet
+    and loads as {}. A file that is present but unreadable (truncated, not
+    UTF-8, not a JSON object, locked) raises AnnotationsUnreadable, naming the
+    file and the viewer's backups."""
     annotations_file = session_folder / "annotations.json"
     if not annotations_file.exists():
         return {}
     try:
         with open(annotations_file, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return {}
+            data = json.load(f)
+    except (OSError, ValueError) as exc:     # ValueError covers JSON and UTF-8 decode errors
+        raise AnnotationsUnreadable(
+            _unreadable_message(annotations_file, f"{type(exc).__name__}: {exc}")
+        ) from exc
+    if not isinstance(data, dict):
+        raise AnnotationsUnreadable(_unreadable_message(
+            annotations_file, f"the top level is {type(data).__name__}, not an object"))
+    return data
+
+
+def _unreadable_message(path: Path, reason: str) -> str:
+    return (f"{path} exists but cannot be read ({reason}). Nothing was written. "
+            "The viewer keeps the previous versions next to it as "
+            "annotations.json.2 to annotations.json.5; copy the newest good one "
+            "over annotations.json, then analyze again.")
 
 
 def write_annotations(session_folder: Path, anno: dict) -> None:
+    """Write annotations.json atomically (RP-04): the JSON goes to a temp file
+    in the same folder, which then replaces annotations.json in one step, so a
+    crash or a cancelled run never leaves a truncated file behind."""
     anno["last_modified"] = datetime.now(timezone.utc).isoformat()
-    with open(session_folder / "annotations.json", "w", encoding="utf-8") as f:
-        json.dump(anno, f, indent=2)
+    target = session_folder / "annotations.json"
+    fd, tmp_name = tempfile.mkstemp(dir=session_folder,
+                                    prefix="annotations.json.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(anno, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, target)
+    except BaseException:
+        # The temp file is ours and incomplete; remove it, then re-raise so
+        # the failure still stops the run. annotations.json is untouched.
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def compute_screenshot_hashes(session_folder: Path) -> list[dict[str, str]]:

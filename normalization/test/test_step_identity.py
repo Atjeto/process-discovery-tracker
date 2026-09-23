@@ -109,3 +109,77 @@ def test_each_prior_claimed_at_most_once():
     ids = [s["step_id"] for s in merged]
     assert "S1" in ids
     assert len(set(ids)) == 2  # no duplicate ids
+
+
+# --- C2 / C9 (RP-01): confirmed steps and run restamping -------------------
+
+def test_confirmed_step_survives_merge_unchanged():
+    """C2: a draft the analyst confirmed is preserved exactly like an edited
+    step. It used to be treated as an auto step: re-analysis replaced it with
+    a fresh auto_suggested draft that took over its id."""
+    import copy
+    prior = _step("C1", "confirmed", ["e1", "e2", "e3"])
+    prior["name"] = "Look up customer"
+    prior["case_id"] = "run-1"
+    before = copy.deepcopy(prior)
+    fresh = _step("NEW", "auto_suggested", ["e1", "e2", "e3"])
+    fresh["name"] = "CRM: Search"
+    merged = _merge_steps([prior], [fresh])
+    assert [s["step_id"] for s in merged] == ["C1"]
+    for key in ("state", "name", "case_id", "evidence", "time_range"):
+        assert merged[0][key] == before[key], f"confirmed step changed its {key}"
+
+
+def _timed(step_id, state, case_id, start, end):
+    s = _step(step_id, state, [])
+    s["case_id"] = case_id
+    s["time_range"] = {"start": start, "end": end}
+    return s
+
+
+def _run(cid, start, end, parent=None):
+    return {"case_id": cid, "parent_case_id": parent, "start_ts": start, "end_ts": end}
+
+
+def test_preserved_step_with_a_legacy_case_id_moves_to_the_run_containing_it():
+    """C9: a preserved analyst step whose case_id is not a current run id (a
+    legacy random id) is restamped by time containment; no containing run
+    gives None. Current ids and auto steps are never touched."""
+    from step_suggest import restamp_preserved_case_ids
+    cases = {
+        "run-1": _run("run-1", "2026-05-18T09:00:00Z", "2026-05-18T09:05:00Z"),
+        "run-2": _run("run-2", "2026-05-18T09:10:00Z", "2026-05-18T09:15:00Z"),
+    }
+    legacy = _timed("M1", "manually_authored", "0b6f3c9e-legacy-random",
+                    "2026-05-18T09:11:00Z", "2026-05-18T09:12:00Z")
+    outside = _timed("M2", "edited", "0b6f3c9e-legacy-random",
+                     "2026-05-18T09:06:00Z", "2026-05-18T09:07:00Z")
+    current = _timed("M3", "confirmed", "run-1",
+                     "2026-05-18T09:11:00Z", "2026-05-18T09:12:00Z")
+    auto = _timed("A1", "auto_suggested", "0b6f3c9e-legacy-random",
+                  "2026-05-18T09:11:00Z", "2026-05-18T09:12:00Z")
+    moved = restamp_preserved_case_ids([legacy, outside, current, auto], cases)
+    assert legacy["case_id"] == "run-2"
+    assert outside["case_id"] is None
+    assert current["case_id"] == "run-1"
+    assert auto["case_id"] == "0b6f3c9e-legacy-random"
+    assert moved == 2
+
+
+def test_restamp_prefers_the_outermost_run_and_an_open_run_spans_to_the_end():
+    """Nested runs both contain the step: the outermost wins, as for auto
+    steps. A run with no end marker contains everything after its start."""
+    from step_suggest import restamp_preserved_case_ids
+    cases = {
+        "outer": _run("outer", "2026-05-18T09:00:00Z", "2026-05-18T09:30:00Z"),
+        "inner": _run("inner", "2026-05-18T09:10:00Z", "2026-05-18T09:15:00Z",
+                      parent="outer"),
+        "open": _run("open", "2026-05-18T10:00:00Z", None),
+    }
+    nested = _timed("M1", "hidden", None,
+                    "2026-05-18T09:11:00Z", "2026-05-18T09:12:00Z")
+    late = _timed("M2", "manually_authored", "gone",
+                  "2026-05-18T11:00:00Z", "2026-05-18T11:01:00Z")
+    restamp_preserved_case_ids([nested, late], cases)
+    assert nested["case_id"] == "outer"
+    assert late["case_id"] == "open"

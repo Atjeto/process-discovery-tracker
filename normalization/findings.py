@@ -31,10 +31,13 @@ Pure stdlib.
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Any
 
 from _dt import parse_ts_or_none as _parse_ts
 from facts import rekey_details
+
+logger = logging.getLogger(__name__)
 
 # Findings are capped so the feed stays a readable shortlist, not a log.
 MAX_BOUNCE_FINDINGS = 3
@@ -368,8 +371,7 @@ def _detect_rekey_transfer(events) -> list[dict]:
         },
         "tier": 1,
         "confidence_note": "Counted when exactly the same typed text appears "
-                           "in two or more apps (privacy-masked values "
-                           "still match reliably); a copy-paste transfer "
+                           "in two or more apps; a copy-paste transfer "
                            "that is never re-typed does not show up here.",
     }]
 
@@ -455,29 +457,37 @@ def detect_findings(
     case_quality: dict[str, Any] | None = None,
     analysis_blocks: dict[str, Any] | None = None,
     bounces: list[dict[str, Any]] | None = None,
+    errors: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run every detector whose preconditions hold; never raise.
 
     `analysis_blocks` is the classic analysis dict (time_study /
     automation_candidates / segments) when the session has steps, else
     None/empty -- the Tier-1 detectors do not need it.
+
+    A detector that raises does not block the others, but it is never
+    silent: it is logged, and appended to `errors` as
+    "<detector>: <ExceptionType>: <message>" when the caller passes a list
+    (the pipeline does, and records the findings stage as failed, RP-10).
     """
     facts = facts or {}
     findings: list[dict[str, Any]] = []
     detectors = [
-        lambda: _detect_screen_time_sink(events, facts),
-        lambda: _detect_fragmentation(facts),
-        lambda: _detect_waiting(facts, analysis_blocks),
-        lambda: _detect_repetition(analysis_blocks),
-        lambda: _detect_backtracking(steps or [], bounces or []),
-        lambda: _detect_rekey_transfer(events),
-        lambda: _detect_coverage_caveat(events),
+        ("screen_time_sink", lambda: _detect_screen_time_sink(events, facts)),
+        ("fragmentation", lambda: _detect_fragmentation(facts)),
+        ("waiting", lambda: _detect_waiting(facts, analysis_blocks)),
+        ("repetition", lambda: _detect_repetition(analysis_blocks)),
+        ("backtracking", lambda: _detect_backtracking(steps or [], bounces or [])),
+        ("rekey_transfer", lambda: _detect_rekey_transfer(events)),
+        ("coverage_caveat", lambda: _detect_coverage_caveat(events)),
     ]
-    for det in detectors:
+    for name, det in detectors:
         try:
             findings.extend(det() or [])
-        except Exception:  # noqa: BLE001 -- a detector never blocks the rest
-            continue
+        except Exception as exc:  # noqa: BLE001 -- a detector never blocks the rest
+            logger.warning("findings: detector %s failed: %s", name, exc)
+            if errors is not None:
+                errors.append(f"{name}: {type(exc).__name__}: {exc}")
     # variant_divergence (spec table) is viewer-side (lab-phase §D1):
     # it needs >= 2 loaded sessions, so it runs in the Compare surface's
     # aggregate payload (viewer/variant-divergence.js), not here.

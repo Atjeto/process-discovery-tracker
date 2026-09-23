@@ -80,3 +80,49 @@ def test_hand_inserted_markers_promote_to_a_real_case():
     cases = collect_cases(with_cases)
     assert any(c.get("label") == "Hand-added run" for c in cases.values()), \
         f"expected a real 'Hand-added run' case, got {[c.get('label') for c in cases.values()]}"
+
+
+# --- RP-01 / contract C9: deterministic case identity -----------------------
+
+
+def _two_runs():
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    return [
+        {"event_id": "m-start-1", "type": "marker", "timestamp": _iso(base),
+         "data": {"marker_type": "start", "label": "Order 1"}},
+        {"event_id": "a1", "type": "activity", "timestamp": _iso(base + timedelta(seconds=1)),
+         "data": {"app": "crm.exe", "duration_ms": 1000}},
+        {"event_id": "m-end-1", "type": "marker", "timestamp": _iso(base + timedelta(seconds=2)),
+         "data": {"marker_type": "end"}},
+        {"event_id": "m-start-2", "type": "marker", "timestamp": _iso(base + timedelta(seconds=3)),
+         "data": {"marker_type": "start", "label": "Order 2"}},
+        {"event_id": "a2", "type": "activity", "timestamp": _iso(base + timedelta(seconds=4)),
+         "data": {"app": "crm.exe", "duration_ms": 1000}},
+    ]
+
+
+def test_case_ids_are_identical_across_runs_and_derived_from_the_start_marker():
+    """RP-01: the same events assigned twice give the same case ids (they used
+    to be a fresh uuid4 per run), each id is uuid5 over
+    "<session_id>:<start marker event_id>", and two runs never share an id."""
+    import uuid
+    from case_assignment import CASE_ID_NAMESPACE
+    first = collect_cases(assign_case_ids(_two_runs(), session_id="sess-A"))
+    second = collect_cases(assign_case_ids(_two_runs(), session_id="sess-A"))
+    assert sorted(first) == sorted(second), "case ids changed between two runs"
+    expected = {str(uuid.uuid5(CASE_ID_NAMESPACE, f"sess-A:{eid}"))
+                for eid in ("m-start-1", "m-start-2")}
+    assert set(first) == expected
+    # A different session never collides with this one.
+    other = collect_cases(assign_case_ids(_two_runs(), session_id="sess-B"))
+    assert not set(other) & set(first)
+
+
+def test_a_repeated_start_marker_line_stays_a_separate_run():
+    """A corrupt log that repeats a start-marker line (same event_id) opens a
+    second run; it must not silently merge into the first run's case id."""
+    events = _two_runs()[:2] + [dict(_two_runs()[0], timestamp=_two_runs()[1]["timestamp"])]
+    out = assign_case_ids(events, session_id="s")
+    cases = collect_cases(out)
+    assert len(cases) == 2
+    assert assign_case_ids(events, session_id="s") == out   # still deterministic
