@@ -141,6 +141,16 @@ parsed, derived `transcript.json` is written next to `annotations.json`:
 - `clock: "video"`: segment wall time = session start + `external_video.offset_ms`
   + `start_s`. `clock: "own"` (no video): `offset_ms` maps transcript t=0 to wall
   time, set by matching one sentence to one moment.
+- Viewer time rule (L11b; refines the two clock bullets above): a sentence's wall
+  time is `started_at + offset + start_s`, where offset is `transcript.offset_ms`
+  when it is a number (the analyst synced it), else the attached external video's
+  `offset_ms` (D2: the transcript shares the meeting video's clock, so a video
+  re-sync moves it too), else the transcript is not synced and nothing is placed.
+  For both clocks `offset_ms` is relative to `manifest.started_at`, the reference
+  the video offset uses. `clock` is informational. Sync (pick a sentence, click the
+  timeline moment) writes `offset_ms` into transcript.json; re-import resets it to
+  null. Remove transcript deletes transcript.json only; `transcript/<original>`
+  stays.
 - Pulling a sentence appends it to a step's `description` or to a C6 document field;
   the analyst can edit it afterwards.
 - CLI (built in L11a, `normalization/transcript_import.py`):
