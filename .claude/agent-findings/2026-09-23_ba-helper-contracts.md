@@ -51,9 +51,13 @@ disappears with canonical matching.)
 "pattern_run": {
   "case_id": "<case_id of the run used as the pattern>",
   "confirmed_at": "ISO 8601 or null",
-  "draft_fixes": { "merge": 0, "split": 0, "add": 0, "drop": 0 }
+  "draft_fixes": { "merge": 0, "split": 0, "add": 0, "drop": 0 },
+  "drafted_steps": 7
 }
 ```
+
+`drafted_steps` (added in L7a): the run's draft count at the moment it became the
+pattern; the probe line's fallback N when stats lack `draft_summary`.
 
 - Default pattern run: the first run by start time that has at least one step. The
   analyst can pick another run as the pattern.
@@ -139,6 +143,19 @@ parsed, derived `transcript.json` is written next to `annotations.json`:
   time, set by matching one sentence to one moment.
 - Pulling a sentence appends it to a step's `description` or to a C6 document field;
   the analyst can edit it afterwards.
+- CLI (built in L11a, `normalization/transcript_import.py`):
+  `python transcript_import.py <session_folder> <transcript_file>`. Exit 0 = imported
+  (one summary line on stdout, UTF-8); 1 = bad arguments or not a session folder;
+  2 = transcript unreadable or its layout unsupported (nothing written); 3 =
+  annotations.json unreadable or the output write failed (the previous transcript
+  is kept). Errors are one stderr line starting `[transcript] ERROR:`.
+  `transcript_import.parse(path)` returns `{"format", "segments"}` and raises
+  `TranscriptError` without writing anything.
+- Supported layouts (no real Teams file was available; owner to confirm with one):
+  WebVTT with `<v Name>` voice tags and padded or unpadded timings (confident);
+  WebVTT Graph-export variants (confident for Graph exports); Word "timing, speaker,
+  text" paragraphs (confident up to 2023); Word "Name 0:03" then text (least
+  certain).
 
 ## C9. Case identity (RP-01)
 

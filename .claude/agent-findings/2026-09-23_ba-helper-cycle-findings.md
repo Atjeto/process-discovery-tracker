@@ -60,6 +60,31 @@ file-based checks held). RULE: any sweep over piped git output decodes
 `sys.stdin.buffer` as UTF-8; prove a sweep can see a planted dash before
 trusting its zero.
 
+### BH6: "CI-only flakes" were click-reachability at the runner's screen size (coordinator + L5)
+CI e2e on 8ac239f: 36/40, while the same smokes pass 40/40 locally four times. All
+four CI failures are `locator.click: Timeout` (the two historical CI-4 checks and
+the two new pending-marker checks). L5 treated CI-4 as timing (waits for state) and
+said it could not confirm the CI cause; the waits did not help. Every local gate
+runs at 1500x950, while GitHub's Windows runners have a small desktop, so layout
+and viewport-reachability are the likely cause, not timing. Root cause: the gate
+never exercises a small screen (O3's one-narrow-glance rule covers width, not
+height). Status: open; a dedicated lane (L5b) reproduces at 1024x768 and 1366x768
+and fixes both the smokes and any real small-screen defect. RULE: when a check
+fails only on CI, first reproduce CI's environment (screen size, Node and Python
+versions) locally before changing waits.
+
+### BH7: a second spend-limit kill landed mid-mutation (environment, L7a + L11a)
+Both running lanes died again with HTTP 429 around 05:10; the owner raised the
+limit at 07:10. L7a's dying words were "M3: remove the merge count from
+commitMerge": the coordinator's tree diff found commitMerge with no merge
+recordFix call while split/add/drop were recorded, i.e. the deliberate mutation
+was still APPLIED. The resume message told the agent to restore M3 first.
+L7a had also used `git rm` (staged deletion) against the brief's plain-rm rule;
+harmless, noted. RULE (extends IC-24): when a lane dies during mutation controls,
+the coordinator's tree diff must check the mutation under test and name it in the
+resume message; a green suite on a tree with an applied mutation is impossible,
+but a commit of one is not.
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
