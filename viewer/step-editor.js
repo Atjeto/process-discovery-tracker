@@ -5,6 +5,7 @@
   const PdtTheme = require("./theme.js");
   const PdtRecognize = require("./recognition.js");
   const { stepChip } = require("./runs-model.js");
+  const TM = require("./transcript-model.js");
   const { escapeHtml, escapeAttr } = require("./dom.js");   // shared escapers (deduped)
   // One composed human identity line per element (App Library pass, R1). Reused
   // here for the step-detail interaction rows so a control with no accessible
@@ -279,6 +280,7 @@
         <div class="step-detail-more-body">
           ${step.suggestion_reason ? `<p class="step-suggestion-reason" title="Why the tool grouped these interactions into a step">Auto-detected: ${escapeHtml(step.suggestion_reason)}</p>` : ""}
           <label>Description <textarea id="step-desc">${escapeHtml(step.description || "")}</textarea></label>
+          ${saidDuringStepHtml(callbacks && callbacks.transcriptSaid, step.description || "")}
           <div class="evidence">
             ${interListHtml}
             <p>${(step.evidence && step.evidence.screenshot_refs || []).length} screenshots</p>
@@ -307,6 +309,7 @@
         state: step.state === "manually_authored" ? "manually_authored" : "edited",
       });
     });
+    wireSaidDuringStep(host, callbacks && callbacks.transcriptSaid);
     const deleteBtn = document.getElementById("btn-step-delete");
     if (deleteBtn) deleteBtn.addEventListener("click", () =>
       callbacks.onDelete && callbacks.onDelete(step.step_id));
@@ -338,6 +341,53 @@
       watchBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       watchBtn.disabled = !(step.time_range && step.time_range.start);
     }
+  }
+
+  /* C8: "Said during this step", under the Description, only while a
+     transcript is attached. `said` is null (no transcript), { synced: false }
+     or { synced: true, sentences } (the sentences of the step's window,
+     transcript-model.sentencesForStep). Add puts a sentence's text in the
+     Description box; the editor's own Save keeps it, like typed text. */
+  function _addTitle(added) {
+    return added ? "The description already holds this sentence"
+      : "Add this sentence to the description. Edit it there, then click Save.";
+  }
+  function saidDuringStepHtml(said, description) {
+    if (!said) return "";
+    let body;
+    if (!said.synced) body = `<p class="tr-note">${escapeHtml(TM.NOT_SYNCED_LINE)}</p>`;
+    else if (!said.sentences.length) body = `<p class="tr-note">Nothing was said during this step.</p>`;
+    else {
+      body = `<ol class="tr-list">` + said.sentences.map((s) => {
+        const added = TM.isAdded(description, s.text);
+        return `<li class="tr-row">${TM.sentenceRowHtml(s)}` +
+          `<button type="button" class="tr-add" data-seg="${escapeAttr(s.id)}" title="${escapeAttr(_addTitle(added))}"${added ? " disabled" : ""}>${added ? "Added" : "Add"}</button></li>`;
+      }).join("") + `</ol>`;
+    }
+    return `<details class="tr-more" id="step-said" open>` +
+      `<summary class="tr-more-head"><span class="tr-more-title">Said during this step</span>` +
+      `<span class="tr-more-chevron" aria-hidden="true"></span></summary>` +
+      `<div class="tr-more-body">${body}</div></details>`;
+  }
+  function wireSaidDuringStep(host, said) {
+    const desc = document.getElementById("step-desc");
+    if (!said || !said.synced || !desc) return;
+    const byId = new Map(said.sentences.map((s) => [s.id, s]));
+    const buttons = Array.from(host.querySelectorAll("#step-said .tr-add"));
+    const refresh = () => buttons.forEach((b) => {
+      const s = byId.get(b.dataset.seg);
+      const added = !!s && TM.isAdded(desc.value, s.text);
+      b.disabled = added;
+      b.textContent = added ? "Added" : "Add";
+      b.title = _addTitle(added);
+    });
+    buttons.forEach((b) => b.addEventListener("click", () => {
+      const s = byId.get(b.dataset.seg);
+      if (!s) return;
+      desc.value = TM.appendText(desc.value, s.text);
+      refresh();
+    }));
+    desc.addEventListener("input", refresh);
   }
 
   /* Build the Steps mini-timeline. The lane-packing, tick maths, axis, and

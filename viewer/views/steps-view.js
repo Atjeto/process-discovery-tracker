@@ -42,6 +42,7 @@ const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
 const RunsModel = require("../runs-model.js");
 const RunDiff = require("../run-differences.js");
+const TM = require("../transcript-model.js");
 const { screenType, resolveStepGrainKeys, processLabel } = require("../process-map-levels.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
@@ -677,6 +678,15 @@ function _runLabelFor(step, model) {
   return run.title + (run.label ? " (" + run.label + ")" : "");
 }
 
+/* C8: what the step editor's "Said during this step" shows: null without a
+   transcript, else whether it is synced and the sentences of the step's
+   window (transcript-model.js). */
+function _transcriptSaid(step) {
+  const placed = TM.forSession(State.getSession());
+  if (!placed) return null;
+  return { synced: placed.synced, sentences: placed.synced ? TM.sentencesForStep(placed.sentences, step) : [] };
+}
+
 /* The callbacks the per-step detail editor needs. */
 function stepDetailCallbacks(selected, interactionsById, model) {
   return {
@@ -708,6 +718,7 @@ function stepDetailCallbacks(selected, interactionsById, model) {
     runLabel: _runLabelFor(selected, model || _model()),
     // C4: the name input suggests remembered and already-used names.
     nameListId: NAME_LIST_ID,
+    transcriptSaid: _transcriptSaid(selected),
   };
 }
 

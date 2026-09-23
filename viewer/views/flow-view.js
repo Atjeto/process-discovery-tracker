@@ -42,6 +42,7 @@ const {
   renderTimeline, renderTimelineSummary, restoreTimelineForCurrent,
   maybeAutoScrollToFirstCase, _wireTimelineScrollPersist, setLaneToggle,
 } = Timeline;
+const Transcript = require("./flow-view-transcript.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -305,6 +306,8 @@ async function loadSessionIntoView(folder) {
   pushRecent(folder, recentLabel);
 
   renderSessionPills();
+  // C8: the transcript's menu items follow the loaded file.
+  Transcript.onSessionLoaded();
   // Wire video. Toggle the no-video card explicitly since the
   // sibling-selector CSS only fires when [src] is present.
   const video = $("#video");
@@ -1133,6 +1136,8 @@ function initFlowView(deps) {
   Timeline.initTimeline({
     currentScopeRange, showMarkerInsertMenu, showCaseContextMenu, activateAnnoTab,
   });
+  // The transcript's menu actions reload the session; its sync redraws the lane.
+  Transcript.initTranscript({ loadSessionIntoView, renderTimeline });
 }
 
 module.exports = {

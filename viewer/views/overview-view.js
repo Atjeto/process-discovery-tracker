@@ -25,7 +25,8 @@
 "use strict";
 
 const State = require("../state.js");
-const { escapeHtml, escapeAttr, formatDuration, toast } = require("../dom.js");
+const { escapeHtml, escapeAttr, formatDuration, toast, placeMenu } = require("../dom.js");
+const TM = require("../transcript-model.js");
 const { saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const { findingCardHtml } = require("../finding-cards.js");
 const { renderEvidenceInto } = require("./analysis-view.js");
@@ -598,7 +599,144 @@ function _documentStatusText(st) {
   return st.filled + " of " + st.total + " filled";
 }
 
-function _documentHtml(anno) {
+/* ---- 6b. From the transcript (contract C8) -------------------------------- */
+
+/* One collapsed disclosure at the end of the document sections, only while a
+   transcript is attached. By default it lists the talk outside the runs
+   (where purpose, scope, rules and exceptions are discussed); a speaker
+   filter and a search narrow it; "Add to" appends a sentence to a document
+   field. Kept across re-renders for the session on screen, like _docOpen. */
+let _tr = { open: false, speaker: "", query: "", during: false };
+
+/* The document fields a sentence can be added to: C6's, less title and contacts. */
+const TR_TARGETS = DOC_FIELDS.filter((f) => f.key !== "title" && f.key !== "contacts");
+
+/* The sentences the disclosure lists now, or null without a transcript. */
+function _transcriptView(sess) {
+  const placed = TM.forSession(sess);
+  if (!placed) return null;
+  const speakers = TM.speakersOf(placed.sentences);
+  if (_tr.speaker && !speakers.includes(_tr.speaker)) _tr.speaker = "";
+  let list = placed.sentences;
+  if (placed.synced) {
+    if (_tr.during) list = list.slice().sort((a, b) => a.startMs - b.startMs);
+    else {
+      const runs = RunsModel.buildRuns(sess.stats, (sess.annotations || {}).steps || []).runs;
+      const evs = sess.events || [];
+      const endMs = evs.length ? Date.parse(evs[evs.length - 1].timestamp) : NaN;
+      list = TM.outsideRuns(list, TM.runSpans(runs, endMs));
+    }
+  }
+  return { synced: placed.synced, speakers, list: TM.filterSentences(list, _tr.speaker, _tr.query) };
+}
+
+function _transcriptListHtml(view) {
+  if (!view.list.length) return '<p class="tr-note">No sentence matches.</p>';
+  return '<ol class="tr-list">' + view.list.map((s) => '<li class="tr-row">' + TM.sentenceRowHtml(s) +
+    '<button type="button" class="tr-add tr-add-to" data-seg="' + escapeAttr(s.id) + '" ' +
+    'title="Add this sentence to a document section">Add to</button></li>').join("") + "</ol>";
+}
+
+function _transcriptHtml(sess) {
+  const view = _transcriptView(sess);
+  if (!view) return "";
+  const speakers = view.speakers.map((sp) => '<option value="' + escapeAttr(sp) + '"' +
+    (sp === _tr.speaker ? " selected" : "") + ">" + escapeHtml(sp) + "</option>").join("");
+  return '<details class="tr-more ov-tr" id="ov-tr"' + (_tr.open ? " open" : "") + ">" +
+    '<summary class="tr-more-head"><span class="tr-more-title">From the transcript ' +
+      '<span id="ov-tr-count">(' + view.list.length + ")</span></span>" +
+      '<span class="tr-more-chevron" aria-hidden="true"></span></summary>' +
+    '<div class="tr-more-body">' +
+      (view.synced ? "" : '<p class="tr-note">' + escapeHtml(TM.NOT_SYNCED_LINE) + "</p>") +
+      '<div class="ov-tr-tools">' +
+        '<select class="ov-tr-speaker" aria-label="Speaker"><option value="">All speakers</option>' + speakers + "</select>" +
+        '<input type="search" class="ov-tr-search" placeholder="Search the transcript" aria-label="Search the transcript" value="' +
+          escapeAttr(_tr.query) + '" />' +
+        (view.synced ? '<label class="cb ov-tr-during"><input type="checkbox" class="ov-tr-during-cb"' +
+          (_tr.during ? " checked" : "") + " /> Include talk during the runs</label>" : "") +
+      "</div>" +
+      '<div id="ov-tr-list">' + _transcriptListHtml(view) + "</div>" +
+    "</div></details>";
+}
+
+function _closeAddToMenu() {
+  const menu = document.getElementById("ov-tr-add-menu");
+  if (menu) menu.remove();
+}
+
+/* The "Add to" menu of one sentence: the fields it can go to, a field that
+   already holds it marked and disabled. */
+function _showAddToMenu(btn, segId) {
+  _closeAddToMenu();
+  const placed = TM.forSession(State.getSession());
+  const s = placed && placed.sentences.find((x) => x.id === segId);
+  const panel = document.getElementById("ov-doc");
+  if (!s || !panel) return;
+  const menu = document.createElement("div");
+  menu.id = "ov-tr-add-menu";
+  menu.className = "project-menu-popup tr-add-menu";
+  menu.setAttribute("role", "menu");
+  menu.innerHTML = TR_TARGETS.map((f) => {
+    const el = panel.querySelector('[data-doc="' + f.key + '"]');
+    const added = !!el && TM.isAdded(el.value, s.text);
+    return '<button type="button" class="project-menu-item" role="menuitem" data-doc-target="' + f.key + '"' +
+      (added ? " disabled" : "") + ">" + escapeHtml(f.label) + (added ? " (added)" : "") + "</button>";
+  }).join("");
+  document.body.appendChild(menu);
+  const r = btn.getBoundingClientRect();
+  placeMenu(menu, r.left, r.bottom + 2);
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    if (e.type === "mousedown" && menu.contains(e.target)) return;
+    close();
+  };
+  function close() {
+    menu.remove();
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", dismiss, true);
+  }
+  menu.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-doc-target]");
+    if (!item || item.disabled) return;
+    close();
+    const field = panel.querySelector('[data-doc="' + item.dataset.docTarget + '"]');
+    if (!field) return;
+    // The field shows the text at once and stays editable; the save is the
+    // panel's own (one undoable entry, like typing in the field).
+    field.value = TM.appendText(field.value, s.text);
+    _saveDocField(item.dataset.docTarget, field.value);
+    const label = (DOC_FIELDS.find((f) => f.key === item.dataset.docTarget) || {}).label || "";
+    toast("Added to " + label + ".", "success");
+  });
+  setTimeout(() => {
+    document.addEventListener("mousedown", dismiss, true);
+    document.addEventListener("keydown", dismiss, true);
+  }, 0);
+}
+
+function _wireTranscript(host) {
+  const panel = host.querySelector("#ov-tr");
+  if (!panel) return;
+  panel.addEventListener("toggle", () => { _tr.open = panel.open; });
+  const refresh = () => {
+    const view = _transcriptView(State.getSession());
+    if (!view) return;
+    panel.querySelector("#ov-tr-list").innerHTML = _transcriptListHtml(view);
+    panel.querySelector("#ov-tr-count").textContent = "(" + view.list.length + ")";
+  };
+  const speaker = panel.querySelector(".ov-tr-speaker");
+  speaker.addEventListener("change", () => { _tr.speaker = speaker.value; refresh(); });
+  const search = panel.querySelector(".ov-tr-search");
+  search.addEventListener("input", () => { _tr.query = search.value; refresh(); });
+  const during = panel.querySelector(".ov-tr-during-cb");
+  if (during) during.addEventListener("change", () => { _tr.during = during.checked; refresh(); });
+  panel.querySelector("#ov-tr-list").addEventListener("click", (e) => {
+    const b = e.target.closest(".tr-add-to");
+    if (b) _showAddToMenu(b, b.dataset.seg);
+  });
+}
+
+function _documentHtml(anno, sess) {
   const doc = (anno && anno.document) || null;
   const st = documentStatus(doc);
   const fields = DOC_FIELDS.map((f) => {
@@ -620,7 +758,7 @@ function _documentHtml(anno) {
       '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st)) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
-    '<div class="analysis-module-body ov-doc-body">' + fields + "</div></details>";
+    '<div class="analysis-module-body ov-doc-body">' + fields + _transcriptHtml(sess) + "</div></details>";
 }
 
 /* Save one field through the one write path (persistAnnotations: undoable,
@@ -712,7 +850,7 @@ function overviewHtml(sess) {
   // R4 (Task 2): the retired Analysis modules, as Evidence, BELOW the findings.
   html += _evidenceSection();
   html += _toSayMore(analysis, anno);
-  html += _documentHtml(anno);
+  html += _documentHtml(anno, sess);
   return html;
 }
 
@@ -721,7 +859,12 @@ function renderOverviewLevel() {
   if (!host) return;
   const sess = State.getSession();
   if (!sess) { host.innerHTML = ""; return; }
-  if (_docFolder !== sess.sessionFolder) { _docFolder = sess.sessionFolder; _docOpen = false; }
+  if (_docFolder !== sess.sessionFolder) {
+    _docFolder = sess.sessionFolder;
+    _docOpen = false;
+    _tr = { open: false, speaker: "", query: "", during: false };
+  }
+  _closeAddToMenu();
   host.innerHTML = overviewHtml(sess);
   if (!_hasOverview(sess.analysis)) return;   // the "not analyzed yet" note has nothing to wire
 
@@ -732,6 +875,7 @@ function renderOverviewLevel() {
   // persistence). Kept after innerHTML so the modules render into the live host.
   renderEvidenceInto(host.querySelector("#overview-evidence"));
   _wireDocument(host);
+  _wireTranscript(host);
 }
 
 module.exports = {

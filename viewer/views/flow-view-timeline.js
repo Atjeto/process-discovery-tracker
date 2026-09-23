@@ -28,6 +28,7 @@ const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
 const MarkerEdits = require("../marker-edits.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
+const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
 
 /* NAV-AUDIT §J/§9: case-label density. At a multi-hour span dozens of case
    bands pack into ~1500px and their left-anchored labels overlap into
@@ -365,6 +366,8 @@ const LANE_KEY = "pdt.timelineLanes";
 const LANE_DEFAULTS = {
   idle: true, markers: false, screenshots: false, cases: true,
   density: false, titles: false, steps: false, notes: false,
+  // C8: exists only while a transcript is attached; on when it does.
+  transcript: true,
 };
 function getLaneToggles() {
   try {
@@ -412,6 +415,9 @@ function renderTimeline() {
   const first = new Date(evs[0].timestamp).getTime();
   const last = new Date(evs[evs.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
+  // C8: the Transcript lane exists only while a transcript is attached
+  // (flow-view-transcript.js; it also shows the lane's row in the Lanes menu).
+  const transcriptLane = makeTranscriptLane({ first, last, span, on: !!lanes.transcript });
 
   /* Lane stack (top to bottom):
        ticks        -- HH:MM:SS labels at sensible intervals
@@ -936,7 +942,7 @@ function renderTimeline() {
   // lane plugin owns its own DOM. tailPx (14) + the 120 floor reproduce the
   // pre-core host.style.minHeight.
   TimelineCore.renderLaneStack(host, {
-    lanes: [ticksLane, casesLane, activityLane, screenshotsLane,
+    lanes: [ticksLane, casesLane, activityLane, transcriptLane, screenshotsLane,
             densityLane, titlesLane, stepsLane, notesLane],
     span: { startMs: first, endMs: last },
     zoom: State.getZoomFactor(),

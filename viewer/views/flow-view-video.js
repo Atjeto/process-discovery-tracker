@@ -322,5 +322,5 @@ module.exports = {
   setVideoOverlay, positionPlayhead,
   videoStartTs, formatPlayback, videoTimeToSessionTs,
   seekToTimestamp, movePlayheadToTimestamp, jumpToStepInFlow,
-  watchStep, startVideoSync,
+  watchStep, startVideoSync, cancelVideoSync,
 };

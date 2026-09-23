@@ -2114,6 +2114,81 @@ button.danger:disabled {
   outline: 2px solid var(--accent); outline-offset: -2px; cursor: crosshair;
 }
 
+/* ===== Meeting transcript (contract C8) ============================ */
+/* Menu rows that exist only while a transcript is attached. */
+.project-menu-item[hidden], .lanes-popup label.cb[hidden] { display: none; }
+/* The Flow lane: a label row (Sync stays at the visible left edge), then
+   one row of sentence blocks in one neutral colour. */
+.tl-tr-rail {
+  position: absolute; left: 0; width: 100%; pointer-events: none;
+  background: color-mix(in srgb, var(--fg-3) 5%, transparent);
+  border-top: 1px solid var(--rule-soft); border-bottom: 1px solid var(--rule-soft);
+}
+.tl-tr-block {
+  position: absolute; border-radius: 2px; cursor: pointer;
+  background: color-mix(in srgb, var(--fg-3) 50%, transparent);
+}
+.tl-tr-block:hover { background: var(--fg-2); }
+.tl-tr-label {
+  position: absolute; display: inline-flex; align-items: center; gap: 8px;
+  height: 16px; font-size: 11px; line-height: 16px; white-space: nowrap; color: var(--fg-3);
+}
+.tl-tr-name { font-weight: 600; color: var(--fg-2); }
+.tl-tr-label .tl-tr-sync { padding: 0 2px; line-height: 16px; }
+/* The Sync card: the video sync card, grown to a column for the list. */
+.video-sync-card.tr-sync-card { align-items: flex-start; width: min(560px, calc(100vw - 32px)); }
+.tr-sync-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.tr-sync-list {
+  list-style: none; margin: 0; padding: 0; max-height: 180px; overflow-y: auto;
+  border: 1px solid var(--rule-soft); border-radius: var(--radius-sm);
+}
+.tr-sync-pick {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  background: transparent; border: 0; border-radius: 0; padding: 4px 8px; color: var(--fg);
+}
+.tr-sync-picked { display: flex; align-items: baseline; gap: 8px; min-width: 0; color: var(--fg-2); }
+.tr-sync-picked .tr-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One sentence in a list: time, speaker, text, and its action. */
+.tr-list { list-style: none; margin: 0; padding: 0; }
+.tr-row {
+  display: flex; align-items: baseline; gap: 8px; padding: 4px 2px;
+  border-bottom: 1px solid var(--rule-soft); font-size: 12px; line-height: 1.4;
+}
+.tr-row:last-child { border-bottom: 0; }
+.tr-time { flex: 0 0 auto; min-width: 34px; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+.tr-speaker { flex: 0 0 auto; font-weight: 600; color: var(--fg-2); }
+.tr-text { flex: 1 1 auto; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
+.tr-row .tr-add { flex: 0 0 auto; align-self: center; padding: 1px 8px; font-size: 11px; }
+.tr-note { margin: 4px 0; font-size: 12px; color: var(--fg-3); }
+/* The two transcript disclosures (the step editor's, the Overview's): the
+   step editor's More pattern, one chevron, native marker suppressed. */
+.tr-more { margin-top: 8px; border-top: 1px solid var(--rule-soft); }
+.tr-more-head {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none;
+  user-select: none; padding: 8px 2px; font-size: 11px; color: var(--fg-3);
+}
+.tr-more-head::-webkit-details-marker { display: none; }
+.tr-more-head:hover { color: var(--fg-2); }
+.tr-more[open] > .tr-more-head { color: var(--accent); }
+.tr-more-title { text-transform: uppercase; letter-spacing: 0.6px; }
+.tr-more-chevron { font-size: 10px; color: var(--fg-4); }
+.tr-more-chevron::before { content: "▸"; }
+.tr-more[open] > .tr-more-head .tr-more-chevron::before { content: "▾"; }
+.tr-more-body { padding-bottom: 4px; }
+/* The step editor's list scrolls on its own, so Save stays in reach. */
+#step-said .tr-list { max-height: 180px; overflow-y: auto; }
+/* The Overview's disclosure spans the document sections' grid. */
+.ov-tr { grid-column: 1 / -1; }
+.ov-tr-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
+.ov-tr-speaker {
+  background: var(--bg-3); color: var(--fg); border: 1px solid var(--rule);
+  border-radius: var(--radius-sm); padding: 6px 8px; font-family: inherit; font-size: 12px;
+}
+.ov-tr-search { flex: 1 1 200px; min-width: 0; }
+.ov-tr .tr-list { max-height: 320px; overflow-y: auto; }
+/* The "Add to" menu, opened at its button. */
+.project-menu-popup.tr-add-menu { position: fixed; right: auto; top: auto; min-width: 180px; }
+
 /* ===== Phase I: polish styles ===================================== */
 /* I5 -- the "why" line under an auto-detected step's name */
 .step-suggestion-reason {

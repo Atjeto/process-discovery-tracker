@@ -163,6 +163,56 @@ function runNormalize(opts) {
   });
 }
 
+/* Contract C8: transcript_import.py sits beside normalize.py (the dev tree
+   and the package's resources/normalization alike). */
+function resolveTranscriptScript() {
+  return path.join(path.dirname(resolveNormalizeScript()), "transcript_import.py");
+}
+
+/* Run `transcript_import.py <sessionFolder> <file>` with the interpreter
+   normalize.py uses. Resolves { code, signal, stdout, stderr } (the script
+   prints UTF-8); rejects only when Python cannot be started. */
+function runTranscriptImport(opts) {
+  const { sessionFolder, file } = opts || {};
+  return new Promise((resolve, reject) => {
+    const script = resolveTranscriptScript();
+    const proc = spawn(resolvePython(), [script, sessionFolder, file], {
+      cwd: path.dirname(script), env: process.env, windowsHide: true,
+    });
+    const out = [], err = [];
+    proc.stdout.on("data", (b) => out.push(b));
+    proc.stderr.on("data", (b) => err.push(b));
+    proc.on("error", (e) => reject(new Error("Python could not be started: " + e.message)));
+    proc.on("close", (code, signal) => resolve({
+      code, signal: signal || null,
+      stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8"),
+    }));
+  });
+}
+
+const TRANSCRIPT_ERROR_PREFIX = "[transcript] ERROR:";
+
+/* The viewer:importTranscript result for one run of the script. Exit 0:
+   { ok: true, summary } (the stdout line). Otherwise { ok: false, code,
+   error } where error is the script's "[transcript] ERROR:" line without
+   that prefix, or, when it printed none (a crash), what it did print. */
+function transcriptImportResult(run) {
+  const r = run || {};
+  const lines = (s) => String(s || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (r.code === 0) {
+    const out = lines(r.stdout);
+    return { ok: true, summary: out.length ? out[out.length - 1] : "" };
+  }
+  const errLines = lines(r.stderr);
+  const tagged = errLines.filter((l) => l.startsWith(TRANSCRIPT_ERROR_PREFIX)).pop();
+  const error = tagged
+    ? tagged.slice(TRANSCRIPT_ERROR_PREFIX.length).trim()
+    : "the transcript import stopped (" + (r.code == null ? "no exit code" : "exit " + r.code) + ")" +
+      (errLines.length ? ": " + errLines[errLines.length - 1] : "");
+  return { ok: false, code: r.code == null ? null : r.code, error };
+}
+
 module.exports = {
   runNormalize, buildNormalizeArgs, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
+  resolveTranscriptScript, runTranscriptImport, transcriptImportResult,
 };

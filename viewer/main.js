@@ -28,7 +28,9 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
   ? _electron
   : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
 const { runNormalize } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}) };
+const { runTranscriptImport, transcriptImportResult } = require("./python-runner.js");
 const AnnoStore = require("./annotations-store.js");
+const TranscriptStore = require("./transcript-store.js");
 const NamesStore = require("./names-store.js");
 const ProcessesStore = require("./processes-store.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
@@ -247,6 +249,12 @@ function loadSessionData(sessionFolder) {
   if (annotationsError) console.warn("[viewer:loadSession] " + annotationsError.message);
   const obsSync = loadOptionalJson(path.join(sessionFolder, "obs", "sync.json"));
   const analysis = loadOptionalJson(path.join(sessionFolder, "analysis.json"));
+  // C8: the parsed meeting transcript, or null. A file that exists but cannot
+  // be used is reported in one line (transcriptError) and otherwise ignored.
+  const transcriptRead = TranscriptStore.readTranscriptFile(sessionFolder);
+  const transcript = transcriptRead.status === "ok" ? transcriptRead.transcript : null;
+  const transcriptError = transcriptRead.status === "unreadable" ? transcriptRead.error : null;
+  if (transcriptError) console.warn("[viewer:loadSession] transcript.json not used: " + transcriptError);
 
   /* Locate the recording. Priority: an analyst-attached external video
      (annotations.external_video, set via the Attach video flow for
@@ -290,6 +298,8 @@ function loadSessionData(sessionFolder) {
     recordingAvailable,
     externalVideoOffsetMs,
     integrity,
+    transcript,
+    transcriptError,
   };
 }
 
@@ -415,6 +425,60 @@ ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, 
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };
+  }
+});
+
+/* --- Meeting transcript (C8) --------------------------------------- */
+
+/* The resolved session folder, or null when the path is not one (no
+   manifest.json): the transcript writers never act outside a session. */
+function _sessionRoot(sessionFolder) {
+  const root = path.resolve(String(sessionFolder || ""));
+  return sessionFolder && fs.existsSync(path.join(root, "manifest.json")) ? root : null;
+}
+
+/* Attach or replace the transcript: an open dialog, then transcript_import.py
+   on the chosen file (the Python normalize.py uses). Result null (cancelled),
+   { ok: true, summary }, or { ok: false, code, error } (error: the script's
+   reason; exit 2 and 3 leave the previous transcript in place). */
+ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => {
+  const root = _sessionRoot(sessionFolder);
+  if (!root) return { ok: false, code: null, error: "this is not a session folder." };
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: "Attach transcript",
+    properties: ["openFile"],
+    filters: [{ name: "Teams transcript", extensions: ["vtt", "docx"] }],
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  try {
+    return transcriptImportResult(await runTranscriptImport({ sessionFolder: root, file: r.filePaths[0] }));
+  } catch (e) {
+    return { ok: false, code: null, error: (e && e.message) || String(e) };
+  }
+});
+
+/* Remove transcript: deletes transcript.json only (the original copied into
+   transcript/ stays). Result { ok: true, removed } or { ok: false, error }. */
+ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
+  try {
+    const root = _sessionRoot(sessionFolder);
+    if (!root) return { ok: false, error: "this is not a session folder." };
+    return { ok: true, removed: TranscriptStore.removeTranscript(root).removed };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+/* Sync: rewrites transcript.json's offset_ms (atomically) and nothing else.
+   Result { ok: true } or { ok: false, error }. */
+ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {}) => {
+  try {
+    const root = _sessionRoot(sessionFolder);
+    if (!root) return { ok: false, error: "this is not a session folder." };
+    TranscriptStore.saveTranscriptOffset(root, offsetMs);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
   }
 });
 

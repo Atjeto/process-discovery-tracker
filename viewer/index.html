@@ -76,6 +76,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             </button>
             <div class="project-menu-popup" id="session-more-popup" style="display:none">
               <button class="project-menu-item" id="btn-attach-video" title="Point at an external video file (Teams recording, screen capture, etc.) and align it to this session.">Attach video...</button>
+              <!-- C8: the meeting transcript. The label says Replace once one is
+                   attached, and only then does Remove show (flow-view-transcript.js). -->
+              <button class="project-menu-item" id="btn-attach-transcript" title="Attach the meeting transcript Teams saved (.vtt or .docx). Its sentences show on the timeline, next to each step and beside the document sections.">Attach transcript...</button>
+              <button class="project-menu-item" id="btn-remove-transcript" hidden title="Take the transcript out of this session. The original file stays in the session's transcript folder.">Remove transcript</button>
               <button class="project-menu-item" id="btn-sync-video" title="Re-sync the video to the timeline: click a recognizable moment in the video, then the matching point on the timeline.">Sync video...</button>
               <label class="project-menu-item cb"><input type="checkbox" id="cb-mine" checked title="Also write the process map as a BPMN file during analysis: the file Fork copies into an editable As-Is or To-Be map."/> Build process map</label>
             </div>
@@ -173,6 +177,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                     <label class="cb"><input type="checkbox" data-lane="titles" /> Window-title strip</label>
                     <label class="cb"><input type="checkbox" data-lane="steps" /> Per-step bands</label>
                     <label class="cb"><input type="checkbox" data-lane="notes" /> Note markers</label>
+                    <label class="cb" id="lane-transcript-row" hidden><input type="checkbox" data-lane="transcript" /> Transcript</label>
                   </div>
                 </div>
                 <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)">−</button>

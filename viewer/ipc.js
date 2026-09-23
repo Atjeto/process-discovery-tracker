@@ -120,6 +120,29 @@ function saveExternalVideoSync(payload) {
   return ipcRenderer.invoke("viewer:saveExternalVideoSync", payload);
 }
 
+/* ---- Meeting transcript (C8) ---- */
+
+/** Attach or replace the transcript (an open dialog, then the import).
+ *  @param {{sessionFolder: string}} payload
+ *  @returns {Promise<null|{ok: boolean, summary?: string, code?: number|null, error?: string}>} null when cancelled */
+function importTranscript(payload) {
+  return ipcRenderer.invoke("viewer:importTranscript", payload);
+}
+
+/** Remove the transcript (transcript.json only).
+ *  @param {{sessionFolder: string}} payload
+ *  @returns {Promise<{ok: boolean, removed?: boolean, error?: string}>} */
+function removeTranscript(payload) {
+  return ipcRenderer.invoke("viewer:removeTranscript", payload);
+}
+
+/** Save the transcript's sync offset.
+ *  @param {{sessionFolder: string, offsetMs: number}} payload
+ *  @returns {Promise<{ok: boolean, error?: string}>} */
+function saveTranscriptSync(payload) {
+  return ipcRenderer.invoke("viewer:saveTranscriptSync", payload);
+}
+
 /* ---- Main -> renderer subscriptions ---- */
 
 /** @param {Function} fn called with each streamed normalization log line */
@@ -140,5 +163,6 @@ module.exports = {
   readProcesses, saveProcess, undoSaveProcess,
   exportFile, saveSvgFile, revealFile, openExternal,
   attachExternalVideo, saveExternalVideoSync,
+  importTranscript, removeTranscript, saveTranscriptSync,
   onNormalizeLog, onOpenInitialSession,
 };
