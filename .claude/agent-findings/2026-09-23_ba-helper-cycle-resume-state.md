@@ -52,22 +52,37 @@ Shared files: contracts `.claude/agent-findings/2026-09-23_ba-helper-contracts.m
 | P0 | coord | Commit restart point + plan, product-edition branch + tag, CLAUDE.md pointer, push | DONE 73f3bbf (pushed; tag product-edition-v1.5.0) |
 | M1 | explore | Read-only cut map across layers | DONE (cut-map file) |
 | L1a | V | Viewer cut part 1: Overview + globals (V4, V6, V7, V10, V12, V13, V14, identity-line move, Export-PDD CTA, mark-runs instruction) | DONE 957167d on track-v (after a spend-limit kill and resume) |
-| L1b | V | Viewer cut part 2: V1, V2 (+C2 viewer), V3 (+Save as reference, Match template), V5, V8, tab row, delete vocab/workbench/flywheel smokes, map export move (AD-11), L1a leftovers | in progress (launched about 02:30) |
+| L1b | V | Viewer cut part 2: V1, V2 (+C2 viewer), V3 (+Save as reference, Match template), V5, V8, tab row, delete vocab/workbench/flywheel smokes, map export move (AD-11), L1a leftovers | DONE 9cf822d on track-v |
+
+**Merge point A (DONE):** L3 cherry-picked onto track-v as ff9ec75; gates on the
+combined tree: full-deps pytest 385/0/0, golden 10/10, capture 126 pass, viewer 210
+pass, overview 15/15, map-slim 9/9, workitems 6/6, session-smoke 32/33 (known CI-3).
+master fast-forwarded to f55a668 and pushed.
+
+| L5 | V | Viewer fixes: CI-3, RP-36 (throwaway e2e profile), CI-4, RP-04 viewer, RP-09/10 viewer (C12/C13), pending-marker feedback, Export PDD level sync, em/en dash copy guard, RP-34; optional cleanup + busy state | DONE cbda839 on track-v (session-smoke 40/40 x3; viewer 252) |
 | L3 | P | Pipeline cut (P1, P2, P3, P4 minus XES/CSV, P5, P7, canonical) + CI-1 + golden update | DONE d908132 on track-p (385 passed / 0 skipped; golden 10/10 after removing 5 keys per session) |
 | L2 | V | Capture: cut C1/C2, fixes RP-20..24 + CI-2, rework (run wording, end summary) | DONE 1042c94 on track-v |
-| L4 | P | Pipeline fixes RP-01 (C9), RP-04 (C13 code 2), RP-09 (C13 code 3), RP-10 (C12), RP-06, RP-07, remove --step-bpmn-out + bpmn_step.py; optional RP-27, stale wording, dev scripts | in progress (launched about 02:45) |
+| L4 | P | Pipeline fixes RP-01 (C9), RP-04 (C13 code 2), RP-09 (C13 code 3), RP-10 (C12), RP-06, RP-07, remove --step-bpmn-out + bpmn_step.py; RP-27, stale wording, dev scripts | DONE 5ad74a8 on track-p (rebased onto master f55a668; 411/0/0; golden unchanged); not yet on track-v (merge after L5) |
+| L6 | P | Drafting rule (C1), draft_key/name_source/end_reason, --names (C4), draft_summary probe numbers, golden update, viewer impact report | DONE d34c22a on track-p (430/0/0; demo 611 steps -> 280 drafts; golden updated) |
+
+**Merge point B (DONE):** L4 and L6 cherry-picked onto track-v as 4451e76 and 12669d1;
+gates on the combined tree: full-deps pytest 430/0/0, golden 10/10, session-smoke 40/40,
+overview 15/15, map-slim 9/9, workitems 6/6. master fast-forwarded and pushed.
+
+CI on master f55a668: JS + unit GREEN, pytest GREEN (first green since June); e2e pending (CI-3 expected until L5).
+Worktree py-track now also has junctions viewer/node_modules and e2e/node_modules (read-only; unlink before removing the worktree).
 
 Merge procedure while both tracks are busy: when the Track V lane lands, cherry-pick
 the committed Track P commits onto track-v in the main checkout, run the full gates,
 fast-forward master, push. A later rebase of track-p onto track-v skips the
 cherry-picked commits by patch id.
-| L5 | V | Viewer fixes RP-04 (viewer), RP-34, RP-36, CI-3 | pending |
-| L6 | P | Drafting rule (P1) + probe instrument | pending |
-| L7 | V | Steps rework: runs and steps, confirm run 1, differences view, name reuse | pending |
-| L8 | P+V | Light vocab + light template | pending |
-| L9 | V | Overview home + map from confirmed runs | pending |
-| L10 | P | PDD rework (tool-neutral, document sections, notes, exceptions) | pending |
-| L11 | P+V | Transcript (P6) | pending |
+| L7a | V | Runs and steps view: pattern run, confirm run, draft-fix counter (C3), rename writes remembered names (C4) and propagates in session, name reuse list, pass --names on Analyze; case tree and aligned reading UI replaced | pending (after L5 + L6 merged) |
+| L7b | V | Differences view for runs 2..N vs the pattern (alignment by draft_key), Save as this process + saved-process comparison on open (C5), remembered-names list (rename/forget) | pending (after L7a) |
+| L9 | V | Map from the runs (step level), Detail slider + map matrix + expert drawer removed (AD-9), fork source = process_map_step.bpmn, connectivity pin moved; Overview home with "what is left"; document sections panel (C6) | pending |
+| L10 | P | PDD rework: tool-neutral, document sections (C6), pattern-run steps with descriptions (C7) and screenshots, one timings table, run differences (6.1), DA gaps 2-10, confirmed/hidden in step_state_breakdown | in progress |
+| L9b | P | P6: activity-level mining, dfg.json, process_map.bpmn, per-case maps, XES/CSV + xes_export/csv_safe removal; golden dfg block re-pointed | pending (after L9 re-points the e2e fork checks) |
+| L11a | P | Transcript parser (C8, stdlib only) + CLI entry | pending |
+| L11b | V | Transcript import UI, timeline lane, sentences beside steps, pull into step notes and document sections | pending |
 | L12 | docs | Docs, ADR-0029, runbooks (P1 probe, P5 gate), CHANGELOG | pending |
 | L13 | coord | Version 2.0.0, build, packaged smoke, pre-release, push | pending |
 

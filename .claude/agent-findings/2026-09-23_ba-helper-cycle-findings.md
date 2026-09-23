@@ -45,6 +45,21 @@ Status: RP-36 is on the L5 fix list (launch e2e with a temp user-data-dir).
 RULE: e2e and eyeball launches use a throwaway profile; a check whose result
 depends on persisted UI state is not a pin.
 
+### BH5: the coordinator's dash sweep was blind for five commits (coordinator)
+The pre-commit sweep piped `git diff` into `python -c` that read `sys.stdin` as
+text. Git Bash hands Python a cp1252 stdin, so UTF-8 bytes were misdecoded: a real
+em dash (E2 80 94) became "â€”" and was never matched, while "×" (C3 97) and "■"
+(E2 96 A0) decoded INTO dash characters and produced false positives. The flaw
+surfaced only when L5's diff showed five "dash" lines that held no dash. Root
+cause: text-mode stdin in a non-UTF-8 console (windows-environment already warns
+that byte-level sweeps lie here; the coordinator used a variant it believed safe).
+Correction: a sweep script that reads `sys.stdin.buffer` and decodes UTF-8
+explicitly; re-sweep of everything committed this cycle (73f3bbf..HEAD), the
+track-p commits and the L5 tree: 0 dashes, so nothing escaped (the agents'
+file-based checks held). RULE: any sweep over piped git output decodes
+`sys.stdin.buffer` as UTF-8; prove a sweep can see a planted dash before
+trusting its zero.
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
