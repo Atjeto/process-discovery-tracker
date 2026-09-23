@@ -73,6 +73,14 @@ runs 25/25. master fast-forwarded and pushed.
 gates on the combined tree: full-deps pytest 430/0/0, golden 10/10, session-smoke 40/40,
 overview 15/15, map-slim 9/9, workitems 6/6. master fast-forwarded and pushed.
 
+CI on master ec701a3: ALL THREE WORKFLOWS GREEN (runner display 1024x720).
+
+Open items for LUX / cleanup (from L9): map and Fork gated on 2+ runs and 70% coverage, so a single-run session gets no map or As-Is image (decide: allow from 1 run); steps-view _applyRename sets process_label via the value-tail rule; Case select shown on the Map with no effect; Automation Confirm/Dismiss reaches nothing in the PDD; bpmn-viewer drill path and some dead CSS; refmap editor dark-theme labels unverified.
+Open items for LUX / cleanup (from L7b): no delete for a saved process (missing inverse);
+label-key fallback over-matches via the value-tail rule (both languages); equal-start
+tie order differs viewer vs PDD; makeStep writes retired flags; dead empty-selection
+branch in the step editor; the shortcuts overlay covers controls at 1024x768.
+
 CI on master f55a668: JS + unit GREEN, pytest GREEN (first green since June); e2e pending (CI-3 expected until L5).
 Worktree py-track now also has junctions viewer/node_modules and e2e/node_modules (read-only; unlink before removing the worktree).
 
@@ -81,14 +89,15 @@ the committed Track P commits onto track-v in the main checkout, run the full ga
 fast-forward master, push. A later rebase of track-p onto track-v skips the
 cherry-picked commits by patch id.
 | L7a | V | Runs and steps view: pattern run, confirm run, draft-fix counter (C3), rename writes remembered names (C4) and propagates in session, name reuse list, pass --names on Analyze; case tree and aligned reading UI replaced | DONE a386c99 on track-v (runs-smoke 25/25; viewer 289) |
-| L5b | V | CI e2e 36/40 on 8ac239f (click timeouts: 2 CI-4 checks + 2 pending-marker checks): reproduce at the runner's small screen (1024x768, 1366x768), fix real small-screen layout defects and make smokes reachable; verify on CI | in progress (launched after merge point C, master 690aea3) |
-| L7b | V | Differences view for runs 2..N vs the pattern (alignment by draft_key), Save as this process + saved-process comparison on open (C5), remembered-names list (rename/forget) | pending (after L7a) |
-| L9 | V | Map from the runs (step level), Detail slider + map matrix + expert drawer removed (AD-9), fork source = process_map_step.bpmn, connectivity pin moved; Overview home with "what is left"; document sections panel (C6) | pending |
+| L5b | V | CI e2e 36/40 on 8ac239f (click timeouts: 2 CI-4 checks + 2 pending-marker checks): reproduce at the runner's small screen (1024x768, 1366x768), fix real small-screen layout defects and make smokes reachable; verify on CI | DONE bbe8605 (root cause: open Session summary squeezed the Overview; all smokes pass at 1500x950, 1366x768, 1024x768) |
+| L7b | V | Differences view for runs 2..N vs the pattern (alignment by draft_key), Save as this process + saved-process comparison on open (C5), remembered-names list (rename/forget) | DONE 7419664 on track-v (runs-smoke 40/40; viewer 314; pytest 484; shared golden fixture) |
+| L9 | V | Map from the runs (step level), Detail slider + map matrix + expert drawer removed (AD-9), fork source = process_map_step.bpmn, connectivity pin moved; Overview home with "what is left"; document sections panel (C6) | DONE d2c410b in map-track, cherry-picked onto track-v as 5488b36 (one ipc.js export conflict resolved); merged gates: unit 302, session 41, runs 40, overview 24, map-slim 12 |
 | L10 | P | PDD rework: tool-neutral, document sections (C6), pattern-run steps with descriptions (C7) and screenshots, one timings table, run differences (6.1), DA gaps 2-10, confirmed/hidden in step_state_breakdown | DONE 6559fef on track-p (rebased on master 8ac239f; 434/0/0; golden +confirmed/hidden keys); not yet on track-v |
 | L9b | P | P6: activity-level mining, dfg.json, process_map.bpmn, per-case maps, XES/CSV + xes_export/csv_safe removal; golden dfg block re-pointed | pending (after L9 re-points the e2e fork checks) |
 | L11a | P | Transcript parser (C8, stdlib only) + CLI; follow-ups: edited-draft process_label, candidate labels (readable names, no dash), PDD 7. Notes, drafted narration not duplicated in 4.5, record values out of commit identities | DONE b74dede on track-p (473/0/0; golden unchanged; transcript CLI exit 0/1/2/3) |
+| LUX | V | UI clarity pass (owner 2026-09-23: clutter, how info is conveyed, is every element needed in the light version): read-only audit of every level at 1366x768 with use-gate verdicts, then a subtraction lane applying them | pending (after L7b and L9) |
 | L11b | V | Transcript import UI, timeline lane, sentences beside steps, pull into step notes and document sections | pending |
-| L12a | docs | ADR-0029, SCHEMA, NORMALIZATION.md, CAPTURE.md, two normalization READMEs, P1 probe + P5 gate runbooks, plan implementation notes, CHANGELOG Unreleased draft (sonnet) | in progress |
+| L12a | docs | ADR-0029, SCHEMA, NORMALIZATION.md, CAPTURE.md, two normalization READMEs, P1 probe + P5 gate runbooks, plan implementation notes, CHANGELOG Unreleased draft (sonnet) | DONE 11d4173 (ADR-0029; registry guard 6/6; double hyphens rewritten) |
 | L12b | docs | Viewer docs (VIEWER.md, FEATURES.md, CHIP-GUARDRAILS.md, e2e/README.md, README.md, CLAUDE.md rewrite, user guide) after the viewer settles | pending |
 | L13 | coord | Version 2.0.0, build, packaged smoke, pre-release, push | pending |
 

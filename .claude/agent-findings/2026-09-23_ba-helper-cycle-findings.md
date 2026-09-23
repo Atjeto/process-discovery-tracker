@@ -68,8 +68,9 @@ said it could not confirm the CI cause; the waits did not help. Every local gate
 runs at 1500x950, while GitHub's Windows runners have a small desktop, so layout
 and viewport-reachability are the likely cause, not timing. Root cause: the gate
 never exercises a small screen (O3's one-narrow-glance rule covers width, not
-height). Status: open; a dedicated lane (L5b) reproduces at 1024x768 and 1366x768
-and fixes both the smokes and any real small-screen defect. RULE: when a check
+height). Status: RESOLVED by L5b (bbe8605): at 1024x768 session-smoke failed exactly CI's four
+checks; the open Session summary squeezed the Overview to 0-24px. CI on ec701a3 logged
+the runner's display work area as 1024x720 and all three workflows went green. RULE: when a check
 fails only on CI, first reproduce CI's environment (screen size, Node and Python
 versions) locally before changing waits.
 
