@@ -308,3 +308,43 @@ application and a window title into the business system the work happened in.
   (unnamed while empty); each flow leaving a branching gateway is named
   "N of M runs" (the runs whose steps take it, by replaying each run through the
   model) with a `BPMNLabel` position. The viewer's live map is unchanged.
+
+## C16. Analyst-added content and sessions without a recording (AD-25, AD-27; lanes V3-P and V3-V)
+
+Everything the analyst adds lives in the session folder, so it travels with it.
+
+- **Session kinds.** `manifest.json` gains `source`: `"recorder"` (absent means recorder),
+  `"video"` or `"blank"`. The viewer creates video and blank sessions: a new folder with
+  `manifest.json` (`session_id` a uuid, `started_at`: for video the moment the analyst
+  says the video starts, default the file's creation time; for blank the creation
+  time), an empty `events.jsonl`, and `annotations.json` (for video, `external_video`
+  with the path relative to the folder and `offset_ms: 0`).
+- **Runs.** Video and blank sessions with no run markers have one implicit run covering
+  the whole session, so the analyst can add steps at once. Markers inserted by hand
+  (`marker_edits`, synthetic `insert-<edit_id>` events) replace it, exactly as in a
+  recorder session.
+- **Steps without times.** A hand-added step may have `time_range: null` (blank
+  sessions, or a step added without a playhead). Such steps order by `order` (an
+  integer, set by the viewer, unique within the run); a step with a time orders by
+  time. Every pipeline stage, the map and the PDD accept both.
+- **System of a hand-added step.** `step.system` (string), set by the analyst. For a
+  recorded step the system is derived (C14); an explicit `step.system` wins.
+- **Screenshots added by hand.** Files go to `screenshots/analyst/<id>.<png|jpg>`;
+  `annotations.analyst_screenshots[]`: `{id, file, step_id | null, at | null (ISO
+  time), source: "video_frame" | "paste" | "file", added_at}`. Per step,
+  `step.pdd_screenshot` names the one the PDD prints (a recorder screenshot path or an
+  analyst screenshot id; absent means the current rule), and
+  `step.hidden_screenshots[]` lists recorder screenshots taken off the step (raw
+  files are never deleted).
+- **Notes.** `annotations.notes[]`: `{id, text, step_id | null, at | null (ISO
+  time), added_at}`. A note shows where its step or moment shows (the step pane, the
+  timeline, the panel). Notes are context in the viewer, not printed in the PDD (the
+  document's own Notes field is). If annotations.json already holds a legacy notes key
+  from the product edition, round-trip it untouched (C10) and choose a key that does not
+  collide.
+- **Attachments.** Files go to `attachments/<name>` (a numeric suffix when the name
+  exists); `annotations.attachments[]`: `{id, file, label, step_id | null, added_at}`.
+  The PDD lists them (label and file name) in one short section, and a step's
+  attachments by label under that step. Nothing is embedded.
+- **Removal.** Removing a screenshot, note or attachment the analyst added deletes its
+  entry and its copied file; recorder screenshots are only hidden.
