@@ -103,8 +103,28 @@ async function sizeWindow(app, want) {
    appended. Resolves to { app, profileDir, windowSize, close } where close()
    quits the app and removes the directory. Throws, naming both paths, if
    Electron is not using it. */
-async function launchViewer(electron, opts) {
-  const want = requestedWindowSize();   // a bad PDT_E2E_WINDOW fails before anything launches
+/* The viewer process's last output lines and its exit, kept so a launch that
+   fails can say what the app printed before it went (CI-only launch failures
+   were otherwise a bare "Execution context was destroyed"). */
+function watchProcess(app) {
+  const tail = [];
+  const state = { exit: null, tail };
+  const child = app.process && app.process();
+  if (!child) return state;
+  const keep = (d) => {
+    for (const line of String(d).split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      tail.push(line);
+      if (tail.length > 60) tail.shift();
+    }
+  };
+  if (child.stdout) child.stdout.on("data", keep);
+  if (child.stderr) child.stderr.on("data", keep);
+  child.on("exit", (code, signal) => { state.exit = { code, signal }; });
+  return state;
+}
+
+async function launchOnce(electron, opts, want) {
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-profile-"));
   _live.add(profileDir);
   const app = await electron.launch({
@@ -112,21 +132,43 @@ async function launchViewer(electron, opts) {
     cwd: opts.cwd,
     args: [...(opts.args || []), "--user-data-dir=" + profileDir],
   });
-  const actual = await app.evaluate(({ app: electronApp }) => electronApp.getPath("userData"));
-  if (!_samePath(actual, profileDir)) {
-    await app.close().catch(() => {});
-    removeProfileDir(profileDir);
-    throw new Error("the viewer is not on the throwaway profile: userData is " + actual +
-      ", expected " + profileDir);
-  }
+  const watch = watchProcess(app);
   let windowSize;
   try {
+    const actual = await app.evaluate(({ app: electronApp }) => electronApp.getPath("userData"));
+    if (!_samePath(actual, profileDir)) {
+      const err = new Error("the viewer is not on the throwaway profile: userData is " + actual +
+        ", expected " + profileDir);
+      err.notRetryable = true;
+      throw err;
+    }
     windowSize = await sizeWindow(app, want);
   } catch (e) {
+    // Give an exiting process a moment to report its exit code.
+    await new Promise((r) => setTimeout(r, 500));
+    console.log("[e2e] launch failed: " + String((e && e.message) || e).split("\n")[0] +
+      "\n    viewer process: " + (watch.exit ? "exited (code " + watch.exit.code + ", signal " + watch.exit.signal + ")" : "still running") +
+      "\n    its last output:\n" + (watch.tail.length ? watch.tail.map((l) => "      " + l).join("\n") : "      (none)"));
     await app.close().catch(() => {});
     removeProfileDir(profileDir);
     throw e;
   }
+  return { app, profileDir, windowSize };
+}
+
+async function launchViewer(electron, opts) {
+  const want = requestedWindowSize();   // a bad PDT_E2E_WINDOW fails before anything launches
+  let launched;
+  try {
+    launched = await launchOnce(electron, opts, want);
+  } catch (e) {
+    if (e && e.notRetryable) throw e;
+    // One retry: the failure and the process's last output are logged above,
+    // so a launch race on a slow runner is visible without failing the run.
+    console.log("[e2e] retrying the launch once");
+    launched = await launchOnce(electron, opts, want);
+  }
+  const { app, profileDir, windowSize } = launched;
   return {
     app,
     profileDir,
