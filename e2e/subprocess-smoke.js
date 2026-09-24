@@ -27,7 +27,16 @@
  *   - Confirm transaction confirms the reference transaction's drafts at
  *     every level; a new sub-process with drafts makes it read Draft again;
  *   - the step panel and the Timeline's steps lane follow the level (the
- *     occurrences of a sub-step in every visit; "Steps in Save order").
+ *     occurrences of a sub-step in every visit; "Steps in Save order");
+ *   - the Map at a level (lane SUB-V2): the picker lists every map (Main
+ *     process, then each sub-process indented with its number) and the live
+ *     map marks the sub-processes' boxes; choosing Save order draws its live
+ *     map (its boxes are its sub-steps) and Steps shows the same level; a
+ *     double-click on a marked box opens its map; Export, Process map (image)
+ *     saves the plane of the map shown; an As-Is copy made after the
+ *     sub-process shows its plane, a task there opens the panel at that
+ *     level, and bpmn-js's own drill down keeps the picker in step; the PDD
+ *     carries a picture per sub-process chapter.
  *
  * Writes only into its temp copy and its throwaway profile. Exits 0 when
  * every check passed, 1 on a failed check, 2 when it could not run (no
@@ -37,6 +46,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const zlib = require("zlib");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
 const { launchViewer, logActionError } = require("./throwaway-profile.js");
@@ -97,6 +107,27 @@ async function waitDisk(p, pred, ms) {
     await wait(150);
   }
   return last;
+}
+
+/* The entries of a .docx (a zip): { name: Buffer }. Stored or deflated. */
+function zipFiles(buf) {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("not a zip");
+  const out = {};
+  let p = buf.readUInt32LE(eocd + 16);
+  for (let k = 0; k < buf.readUInt16LE(eocd + 10); k++) {
+    const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), local = buf.readUInt32LE(p + 42);
+    const nlen = buf.readUInt16LE(p + 28), xlen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32);
+    const name = buf.toString("utf8", p + 46, p + 46 + nlen);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const data = buf.subarray(start, start + csize);
+    out[name] = method === 0 ? Buffer.from(data) : zlib.inflateRawSync(data);
+    p += 46 + nlen + xlen + clen;
+  }
+  return out;
 }
 
 /* Run case ids in time order (the order the view uses). */
@@ -434,6 +465,185 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       /Open as a sub-process/.test(help.text) && /Dissolve sub-process/.test(help.text) && /Only when/.test(help.text) && /Go to/.test(help.text);
     record("Help: one paragraph on sub-processes (make, open, dissolve) and one on the flow verbs (Only when, Go to)", ok, JSON.stringify(help.heads));
   }
+
+  // ---- 9. The Map at a level (lane SUB-V2) -----------------------------------
+  // The project now holds Save order (opened, "Enter Quantity" renamed), the
+  // group and Excel's Save workbook (opened in step 6): four maps.
+  const SUBS = ["Enter Product code", RENAMED, "Enter Unit price", "Enter Shipping address", "Enter Delivery method", "Click Save order"];
+  const mapState = () => page.evaluate(() => {
+    const cy = (document.getElementById("session-map-dfg-host") || {}).__cy;
+    const bv = (document.getElementById("map-asis-canvas") || {}).__bpmnViewer;
+    const root = bv ? bv.get("canvas").getRootElement() : null;
+    const picker = document.getElementById("map-picker");
+    return {
+      path: require("./state.js").getMapPath(),
+      picker: !!picker && !picker.hidden,
+      name: ((document.getElementById("map-picker-name") || {}).textContent || "").trim(),
+      items: [...document.querySelectorAll("#map-picker-popup .map-pick")].map((b) => ({
+        num: ((b.querySelector(".map-pick-num") || {}).textContent || "").trim(),
+        name: ((b.querySelector(".map-pick-name") || {}).textContent || "").trim(),
+        depth: b.style.getPropertyValue("--map-depth").trim(), current: b.classList.contains("current") })),
+      nodes: cy ? cy.nodes().filter((n) => n.data("kind") !== "event").map((n) => n.id()).sort() : null,
+      marked: cy ? cy.nodes().filter((n) => n.data("sub")).map((n) => n.id()).sort() : null,
+      asis: !document.getElementById("session-map-asis").hidden,
+      root: root ? { id: root.id, name: (root.businessObject && root.businessObject.name) || "" } : null,
+    };
+  });
+  const pickMap = async (name) => {
+    await page.locator("#btn-map-picker").click({ timeout: T });
+    await page.locator("#map-picker-popup .map-pick").filter({
+      has: page.locator(".map-pick-name", { hasText: new RegExp("^" + esc(name) + "$") }),
+    }).first().click({ timeout: T });
+    await page.waitForFunction((n) => (document.getElementById("map-picker-name") || {}).textContent === n, name, { timeout: T });
+    await wait(600);
+  };
+  const saveVia = async (item, out) => {
+    await app.evaluate(({ dialog, shell }, f) => {
+      global.__pdtSaveDefault = null; global.__pdtRevealed = null;
+      dialog.showSaveDialog = async (_w, o) => { global.__pdtSaveDefault = (o && o.defaultPath) || null; return { canceled: false, filePath: f }; };
+      shell.showItemInFolder = (p) => { global.__pdtRevealed = p; };
+    }, out);
+    await page.locator("#btn-session-export-menu").click({ timeout: T });
+    await page.locator(item).click({ timeout: T });
+    const by = Date.now() + 180000;
+    while (Date.now() < by && !(fs.existsSync(out) && fs.statSync(out).size > 0)) await wait(250);
+    await wait(500);
+    return {
+      suggested: path.basename((await app.evaluate(() => global.__pdtSaveDefault)) || ""),
+      revealed: path.resolve((await app.evaluate(() => global.__pdtRevealed)) || ".").toLowerCase() === path.resolve(out).toLowerCase(),
+    };
+  };
+  const TMP_OUT = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-subproc-out-"));
+  const EXCEL = "Excel" + " " + String.fromCharCode(45) + " " + "Order Tracking.xlsx: Save workbook";
+  {
+    let err = null, main = null, sub = null, dbl = null, steps = null;
+    try {
+      await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
+      await page.waitForFunction(() => !document.getElementById("map-picker").hidden, null, { timeout: T });
+      await page.locator("#btn-map-picker").click({ timeout: T });
+      main = await mapState();
+      await page.locator("#btn-map-picker").click({ timeout: T });
+      await pickMap(SAVE);
+      sub = await mapState();
+      await shot(page, "subproc-map-level.png");
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+      await page.waitForSelector("#steps-crumbs:not([hidden])", { timeout: T });
+      steps = await level();
+      await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
+      await pickMap("Main process");
+      // A double-click on a marked box opens its map.
+      await page.evaluate((n) => document.getElementById("session-map-dfg-host").__cy.getElementById(n).emit("dbltap"), GROUP);
+      await page.waitForFunction((n) => (document.getElementById("map-picker-name") || {}).textContent === n, GROUP, { timeout: T });
+      await wait(600);
+      dbl = await mapState();
+    } catch (e) { err = errText(e); }
+    const okPicker = !err && main && main.picker && main.name === "Main process" &&
+      JSON.stringify(main.items.map((i) => [i.num, i.name, i.depth, i.current])) ===
+        JSON.stringify([["", "Main process", "0", true], ["3", SAVE, "1", false], ["4", GROUP, "1", false], ["5", EXCEL, "1", false]]) &&
+      JSON.stringify(main.marked) === JSON.stringify([SAVE, GROUP, EXCEL].sort());
+    record("the Map's picker lists every map after Open as a sub-process: Main process, then each sub-process indented with its number; the live map marks the sub-processes' boxes",
+      okPicker, JSON.stringify({ err, main: main && { name: main.name, items: main.items, marked: main.marked } }));
+    const okLive = !err && sub && JSON.stringify(sub.path) === JSON.stringify([SAVE]) && sub.name === SAVE &&
+      JSON.stringify(sub.nodes) === JSON.stringify(SUBS.slice().sort()) && sub.marked.length === 0 &&
+      steps && JSON.stringify(steps.crumbs) === JSON.stringify(["Main process", SAVE]) &&
+      dbl && JSON.stringify(dbl.path) === JSON.stringify([GROUP]) && JSON.stringify(dbl.nodes) === JSON.stringify(["va01: Check document", "va01: Create sales order"]);
+    record("choosing Save order draws its live map (its boxes are its sub-steps) and Steps shows the same level; a double-click on a marked box opens its map",
+      okLive, JSON.stringify({ err, sub: sub && { path: sub.path, nodes: sub.nodes }, crumbs: steps && steps.crumbs, dbl: dbl && { path: dbl.path, nodes: dbl.nodes } }));
+    if (!okLive) await shot(page, "fail-subproc-map-live.png");
+  }
+  {
+    // Export, Process map (image) with a sub-process chosen: that map, drawn
+    // from the step BPMN (no As-Is copy yet), named after its number.
+    let err = null, r = null, svg = "";
+    const out = path.join(TMP_OUT, "sub.svg");
+    try {
+      await pickMap(SAVE);
+      r = await saveVia("#btn-session-map-svg", out);
+      svg = fs.existsSync(out) ? fs.readFileSync(out, "utf-8") : "";
+    } catch (e) { err = errText(e); }
+    const ids = [...svg.matchAll(/data-element-id="([^"]+)"/g)].map((m) => m[1]);
+    const sub = ids.filter((i) => /^Sub\d+_/.test(i));
+    const ok = !err && /created with bpmn-js/.test(svg) && sub.length > 0 && ids.every((i) => /^Sub\d+_/.test(i)) &&
+      r.suggested === "process-map-sub-process-3.svg" && r.revealed;
+    record("Export, Process map (image), with Save order chosen, saves its plane of the step BPMN (only that plane's elements), offered as process-map-sub-process-3.svg, and opens its folder at the file",
+      ok, JSON.stringify({ err, r, ids: ids.length, sub: sub.length, sample: ids.slice(0, 3) }));
+  }
+  {
+    // An As-Is copy made after the sub-process has its plane: the picker
+    // shows it, a task there opens the panel at that level, and bpmn-js's own
+    // drill down keeps the picker in step.
+    let err = null, shown = null, panel = null, up = null, down = null, r = null, svg = "";
+    try {
+      await page.locator("#btn-fork-refmap").click({ timeout: T });
+      await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+      await wait(800);
+      await page.locator("#btn-refmap-editor-close").click({ timeout: T });
+      // The canvas's own svg (the drill down arrows' icons come first in the page).
+      await page.waitForSelector("#map-asis-canvas .djs-container > svg", { timeout: T });
+      await pickMap("Main process");
+      await pickMap(SAVE);
+      await page.waitForFunction(() => {
+        const bv = document.getElementById("map-asis-canvas").__bpmnViewer;
+        return !!bv && /_plane$/.test(bv.get("canvas").getRootElement().id);
+      }, null, { timeout: T });
+      shown = await mapState();
+      await shot(page, "subproc-map-asis-plane.png");
+      const task = await page.evaluate(() => {
+        const bv = document.getElementById("map-asis-canvas").__bpmnViewer;
+        const root = bv.get("canvas").getRootElement();
+        const el = bv.get("elementRegistry").filter((e) => e.parent === root && e.businessObject &&
+          e.businessObject.$instanceOf("bpmn:Task") && e.businessObject.name === "Enter Unit price")[0];
+        return el ? el.id : null;
+      });
+      await page.click('#map-asis-canvas .djs-element[data-element-id="' + task + '"]', { timeout: T });
+      await page.waitForFunction(() => (document.getElementById("sp-name") || {}).textContent === "Enter Unit price", null, { timeout: T });
+      panel = await page.evaluate(() => ({ occ: document.querySelectorAll("#sp-body .sp-occ").length,
+        explain: (document.getElementById("sp-explain") || {}).textContent || "" }));
+      await page.locator("#btn-sp-close").click({ timeout: T });
+      await page.locator("#map-asis-canvas .bjs-breadcrumbs .bjs-crumb a").first().click({ timeout: T });
+      await page.waitForFunction(() => (document.getElementById("map-picker-name") || {}).textContent === "Main process", null, { timeout: T });
+      up = await mapState();
+      const arrow = await page.evaluate((n) => {
+        const bv = document.getElementById("map-asis-canvas").__bpmnViewer;
+        const sp = bv.get("elementRegistry").filter((e) => e.type === "bpmn:SubProcess" && e.businessObject.name === n)
+          .find((e) => bv.get("canvas").findRoot(e.id + "_plane"));
+        return sp ? sp.id : null;
+      }, GROUP);
+      await page.locator('#map-asis-canvas .djs-overlays[data-container-id="' + arrow + '"] .bjs-drilldown').click({ timeout: T });
+      await page.waitForFunction((n) => (document.getElementById("map-picker-name") || {}).textContent === n, GROUP, { timeout: T });
+      down = await mapState();
+      // Export, Process map (image) now saves the As-Is copy's plane.
+      await pickMap(SAVE);
+      r = await saveVia("#btn-session-map-svg", path.join(TMP_OUT, "asis-sub.svg"));
+      svg = fs.existsSync(path.join(TMP_OUT, "asis-sub.svg")) ? fs.readFileSync(path.join(TMP_OUT, "asis-sub.svg"), "utf-8") : "";
+    } catch (e) { err = errText(e); }
+    const okPlane = !err && shown && shown.asis && shown.root && shown.root.name === SAVE && /_plane$/.test(shown.root.id) &&
+      panel && panel.occ === 4 && /once in each transaction/.test(panel.explain);
+    record("an As-Is copy made after the sub-process shows Save order's plane when the picker chooses it, and a task there opens the panel on its sub-step (4 occurrences)",
+      okPlane, JSON.stringify({ err, root: shown && shown.root, asis: shown && shown.asis, panel }));
+    if (!okPlane) await shot(page, "fail-subproc-map-asis.png");
+    const okDrill = !err && up && JSON.stringify(up.path) === "[]" && up.root && !/_plane$/.test(up.root.id) &&
+      down && JSON.stringify(down.path) === JSON.stringify([GROUP]) && down.root && down.root.name === GROUP &&
+      r && r.suggested === "as-is-map-sub-process-3.svg" && r.revealed && /created with bpmn-js/.test(svg) &&
+      [...svg.matchAll(/data-element-id="([^"]+)"/g)].every((m) => /^Sub\d+_/.test(m[1]));
+    record("bpmn-js's own drill down (a crumb up, the arrow on the group) keeps the picker and the level in step; the image export then saves the As-Is copy's plane (as-is-map-sub-process-3.svg)",
+      okDrill, JSON.stringify({ err, up: up && { path: up.path, root: up.root }, down: down && { path: down.path, root: down.root }, r }));
+  }
+  {
+    // The PDD: a picture of each sub-process's map with its chapter.
+    let err = null, descr = null;
+    try {
+      const out = path.join(TMP_OUT, "pdd.docx");
+      await saveVia("#btn-session-pdd", out);
+      const xml = zipFiles(fs.readFileSync(out))["word/document.xml"].toString("utf8");
+      descr = [...xml.matchAll(/descr="([^"]+)"/g)].map((m) => m[1]);
+    } catch (e) { err = errText(e); }
+    const ok = !err && descr && ["As-Is process map", "As-Is process map, sub-process 3", "As-Is process map, sub-process 4",
+      "As-Is process map, sub-process 5"].every((d) => descr.includes(d));
+    record("the exported PDD carries the main map's picture and one per sub-process chapter (alt text \"As-Is process map, sub-process <n>\")",
+      ok, JSON.stringify({ err, descr }));
+  }
+  try { fs.rmSync(TMP_OUT, { recursive: true, force: true }); } catch (_) { /* temp */ }
 
   record("zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.length + " error(s): " + pageErrors.slice(0, 5).join(" | ") : "");

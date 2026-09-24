@@ -68,10 +68,12 @@ function resolveDefaultTaxonomy() {
 
 /* The normalize.py command line (after the interpreter) for one run. Pure, so
    the unit tests pin it. `namesPath` is the remembered-names store (contract
-   C4): passed as --names so drafts whose key it lists arrive named. */
+   C4): passed as --names so drafts whose key it lists arrive named.
+   `pddMapImages` is the manifest of the sub-processes' map pictures
+   (contract C19). */
 function buildNormalizeArgs(script, opts) {
   const {
-    sessionFolder, taxonomyPath, mine, pddOut, pddMapImage, pddTobeImage, namesPath,
+    sessionFolder, taxonomyPath, mine, pddOut, pddMapImage, pddTobeImage, pddMapImages, namesPath,
   } = opts || {};
   const args = [script, sessionFolder];
   if (taxonomyPath) args.push("--taxonomy", taxonomyPath);
@@ -79,6 +81,7 @@ function buildNormalizeArgs(script, opts) {
   if (pddOut) args.push("--pdd-out", pddOut);
   if (pddMapImage) args.push("--pdd-map-image", pddMapImage);
   if (pddTobeImage) args.push("--pdd-tobe-image", pddTobeImage);
+  if (pddMapImages) args.push("--pdd-map-images", pddMapImages);
   if (namesPath) args.push("--names", namesPath);
   return args;
 }

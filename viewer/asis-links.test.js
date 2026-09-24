@@ -85,10 +85,11 @@ async function elements() {
 
 test("a task of any kind opens the step panel: user tasks, manual tasks and the plain tasks drawn in the editor", async () => {
   const el = await elements();
-  assert.deepStrictEqual(L.elementAction(el.node_1_Save), { kind: "task", name: "Salesforce" + SEP + "Order: Save order" });
+  // On the main map: the level [] (C19).
+  assert.deepStrictEqual(L.elementAction(el.node_1_Save), { kind: "task", name: "Salesforce" + SEP + "Order: Save order", path: [] });
   // A name on two lines, or with doubled spaces, reads as one line.
-  assert.deepStrictEqual(L.elementAction(el.node_2_Call), { kind: "task", name: "Call the customer back" });
-  assert.deepStrictEqual(L.elementAction(el.Activity_0abc), { kind: "task", name: "Added in the editor" });
+  assert.deepStrictEqual(L.elementAction(el.node_2_Call), { kind: "task", name: "Call the customer back", path: [] });
+  assert.deepStrictEqual(L.elementAction(el.Activity_0abc), { kind: "task", name: "Added in the editor", path: [] });
   // Matched by type through the model (a user task is a task), never by a type string.
   assert.strictEqual(L.is(el.node_2_Call, "bpmn:Task"), true);
   assert.strictEqual(L.is(el.node_2_Call.businessObject, "bpmn:ManualTask"), true);
@@ -130,6 +131,104 @@ test("documentation: the entries on their own lines, Windows line ends read as o
   const bo = { documentation: [{ text: "one\r\ntwo" }, { text: "  " }, { text: "three" }] };
   assert.strictEqual(L.documentation(bo), "one\ntwo\nthree");
   assert.strictEqual(L.documentation({}), "");
+});
+
+/* ---- Contract C19: a sub-process and its plane ------------------------------- */
+
+// The pipeline writes a sub-process as a collapsed bpmn:subProcess named by
+// its node, its map drawn in a plane of its own, the ids inside it prefixed
+// "Sub<n>_" (bpmn_observed._sub_process_planes); bpmn-js draws that plane on
+// a root whose business object is the sub-process ("<id>_plane").
+const SUB_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://process-discovery-tracker/bpmn">
+  <bpmn:process id="Process_1" isExecutable="false">
+    <bpmn:userTask id="node_1_Search" name="Search" />
+    <bpmn:subProcess id="node_2_Save" name="Save order">
+      <bpmn:userTask id="Sub1_node_1_Enter" name="Enter Product code" />
+      <bpmn:subProcess id="Sub1_node_2_Check" name="Check the price">
+        <bpmn:manualTask id="Sub2_node_1_Call" name="Call the  supplier" />
+      </bpmn:subProcess>
+      <bpmn:dataObject id="Sub1_DataObject_att-1" />
+      <bpmn:dataObjectReference id="Sub1_DataObjectReference_att-1" name="Order spec" dataObjectRef="Sub1_DataObject_att-1">
+        <bpmn:documentation>attachments/order spec.txt</bpmn:documentation>
+      </bpmn:dataObjectReference>
+      <bpmn:textAnnotation id="Sub1_TextAnnotation_1">
+        <bpmn:text>Check the stock first.</bpmn:text>
+      </bpmn:textAnnotation>
+      <bpmn:textAnnotation id="Sub1_TextAnnotation_legend">
+        <bpmn:text>Colour by system
+Salesforce: blue</bpmn:text>
+      </bpmn:textAnnotation>
+    </bpmn:subProcess>
+  </bpmn:process>
+</bpmn:definitions>`;
+
+async function subElements() {
+  const { rootElement } = await new Moddle().fromXML(SUB_XML);
+  const out = {};
+  const walk = (bo) => {
+    out[bo.id] = { id: bo.id, type: bo.$type, businessObject: bo };
+    for (const c of [...(bo.flowElements || []), ...(bo.artifacts || [])]) walk(c);
+  };
+  walk(rootElement.rootElements[0]);
+  const sp = out.node_2_Save.businessObject;
+  // The root bpmn-js draws the sub-process's plane on.
+  out.plane = { id: sp.id + "_plane", type: sp.$type, businessObject: sp, di: { $instanceOf: (t) => t === "bpmndi:BPMNPlane" } };
+  out.planeNoDi = { id: sp.id + "_plane", type: sp.$type, businessObject: sp };
+  return out;
+}
+
+test("C19: a collapsed sub-process opens the panel on its node, at the level it is drawn on", async () => {
+  const el = await subElements();
+  assert.deepStrictEqual(L.elementAction(el.node_2_Save), { kind: "task", name: "Save order", path: [] });
+  assert.deepStrictEqual(L.elementAction(el.Sub1_node_2_Check), { kind: "task", name: "Check the price", path: ["Save order"] });
+});
+
+test("C19: a task in a sub-process's plane opens the panel at that level: the names of the sub-processes around it", async () => {
+  const el = await subElements();
+  assert.deepStrictEqual(L.elementAction(el.Sub1_node_1_Enter), { kind: "task", name: "Enter Product code", path: ["Save order"] });
+  assert.deepStrictEqual(L.elementAction(el.Sub2_node_1_Call), { kind: "task", name: "Call the supplier", path: ["Save order", "Check the price"] });
+});
+
+test("C19: a file and a note in a plane work as on the main map, their ids read without the plane's prefix; the plane's legend takes no click", async () => {
+  const el = await subElements();
+  assert.deepStrictEqual(L.elementAction(el["Sub1_DataObjectReference_att-1"]), { kind: "file", id: "att-1", file: "order spec.txt" });
+  assert.deepStrictEqual(L.elementAction(el.Sub1_TextAnnotation_1), { kind: "note", text: "Check the stock first." });
+  assert.strictEqual(L.isLegend(el.Sub1_TextAnnotation_legend), true);
+  assert.strictEqual(L.elementAction(el.Sub1_TextAnnotation_legend), null);
+  assert.strictEqual(L.isLegend(el.Sub1_TextAnnotation_1), false);
+});
+
+test("C19: a click on the canvas of a sub-process's plane (its root, whose business object is the sub-process) does nothing", async () => {
+  const el = await subElements();
+  assert.strictEqual(L.elementAction(el.plane), null);
+  assert.strictEqual(L.elementAction(el.planeNoDi), null, "known by its id too");
+});
+
+const sub = (id, name, subs, extra) => Object.assign({ step_id: id, name, process_label: name, state: "manually_authored",
+  time_range: null, order: 1 }, subs ? { sub_steps: subs } : {}, extra || {});
+
+test("C19: projectPath reads the names on the map as the project's sub-processes, level by level", () => {
+  const txs = [
+    [sub("a", "Search", null, { order: 1 }),
+      sub("b", "Save  order", [sub("b1", "Enter Product code", null, { order: 1 }),
+        sub("b2", "Check the price", [sub("b21", "Call the supplier")], { order: 2 })], { order: 2, process_label: "Save order" })],
+    [sub("c", "Save order", [sub("c1", "Look it up")], { order: 1, process_label: "Save order" })],
+  ];
+  assert.deepStrictEqual(L.projectPath([], txs), []);
+  assert.deepStrictEqual(L.projectPath(["Save order"], txs), ["Save order"]);
+  assert.deepStrictEqual(L.projectPath(["Save order", "Check the price"], txs), ["Save order", "Check the price"]);
+  // Whitespace as bpmn-js may keep it.
+  assert.deepStrictEqual(L.projectPath([" Save\norder "], txs), ["Save order"]);
+  // A name no sub-process of the project has at its level: added or renamed
+  // in the editor, a step that is no sub-process, or the wrong level.
+  assert.strictEqual(L.projectPath(["Save the order"], txs), null);
+  assert.strictEqual(L.projectPath(["Search"], txs), null);
+  assert.strictEqual(L.projectPath(["Check the price"], txs), null);
+  assert.strictEqual(L.projectPath(["Save order", "Enter Product code"], txs), null);
+  // A hidden sub-process has no map.
+  const hidden = [[sub("h", "Save order", [sub("h1", "x")], { state: "hidden" })]];
+  assert.strictEqual(L.projectPath(["Save order"], hidden), null);
 });
 
 /* ---- The task to its step: the node rule of the live map ------------------ */

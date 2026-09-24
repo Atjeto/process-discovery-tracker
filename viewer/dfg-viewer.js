@@ -113,10 +113,16 @@
      and a re-open, keyed by the exact node set: a different graph gets a fresh
      dagre layout and a changed node set self-heals (only matching nodes are
      repositioned). localStorage, because the DFG is built live and has no
-     .bpmn to save into like the Process diagram does. */
+     .bpmn to save into like the Process diagram does. C19: a sub-process's
+     map is keyed by its level too (opts.layoutScope), so two maps with the
+     same steps keep their own arrangement; the main map's key is as before. */
+  let _scope = "";
   function _hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
   function _layoutStore() { try { return window.localStorage; } catch (_) { return null; } }
-  function _layoutKey(c) { return "pdt.dfgLayout." + _hash(c.nodes().map((n) => n.id()).sort().join("")); }
+  function _layoutKey(c) {
+    const ids = c.nodes().map((n) => n.id()).sort().join("");
+    return "pdt.dfgLayout." + _hash(_scope ? _scope + SEP + ids : ids);
+  }
   function _restoreLayout(c) {
     const ls = _layoutStore(); if (!ls) return;
     let saved; try { saved = JSON.parse(ls.getItem(_layoutKey(c)) || "null"); } catch (_) { return; }
@@ -145,9 +151,20 @@
     return h + "h " + String(rm).padStart(2, "0") + "m";
   }
 
+  /* C19: the mark on a sub-process's box, as BPMN marks a collapsed
+     sub-process: a small square with a plus at the bottom of the box, in the
+     theme's colours (an image, so it keeps its size beside the label). */
+  function _subMark(tok) {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16">' +
+      '<rect x="0.9" y="0.9" width="14.2" height="14.2" rx="2.5" fill="' + tok.bg2 + '" stroke="' + tok.fg2 + '" stroke-width="1.3"/>' +
+      '<path d="M8 3.9v8.2M3.9 8h8.2" stroke="' + tok.fg + '" stroke-width="1.9" stroke-linecap="round"/></svg>';
+    return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+  }
+
   function render(host, dfg, opts) {
     opts = opts || {};
     host.innerHTML = "";
+    _scope = typeof opts.layoutScope === "string" ? opts.layoutScope : "";
     // C17: every edge of the map, the START and END events' included.
     const flow = Levels.flowEdges(dfg);
     if (!flow.length) {
@@ -155,6 +172,9 @@
       return;
     }
     const onNodeClick = opts.onNodeClick;
+    const onNodeDblClick = opts.onNodeDblClick;
+    // C19: the boxes that are sub-processes carry the mark.
+    const subs = new Set(Array.isArray(opts.subNodes) ? opts.subNodes : []);
     const stepNodes = [];
     const seen = new Set([START, END]);
     for (const e of flow) for (const n of [e.from, e.to]) if (!seen.has(n)) { seen.add(n); stepNodes.push(n); }
@@ -189,6 +209,7 @@
           label: system ? n + "\n" + system : n,
           system,
           role: isStart ? "start" : isEnd ? "end" : "activity",
+          sub: subs.has(n),
         },
       });
     }
@@ -264,6 +285,21 @@
             "background-color": tok.bg2,
             "border-color": tok.bad,
             "border-width": 1.5,
+          },
+        },
+        {
+          // C19: a sub-process's box: its mark at the bottom, below the
+          // label, which moves up to make room for it.
+          selector: "node[?sub]",
+          style: {
+            "background-image": _subMark(tok),
+            "background-width": 18,
+            "background-height": 18,
+            "background-position-x": "50%",
+            "background-position-y": "100%",
+            "background-offset-y": -4,
+            padding: "17px",
+            "text-margin-y": -9,
           },
         },
         {
@@ -376,6 +412,15 @@
         // Surface the original DOM event so the picker can position
         // itself near the cursor (P1.5).
         onNodeClick(e.target.data("id"), e.originalEvent || null);
+      });
+    }
+    // C19: a double-click on a sub-process's box opens its map. The map is
+    // drawn again for it, so the call waits until this event is done.
+    if (onNodeDblClick) {
+      cy.on("dbltap", "node", (e) => {
+        if (!e.target.data("sub")) return;
+        const id = e.target.data("id");
+        setTimeout(() => onNodeDblClick(id), 0);
       });
     }
     // Persist a dragged node arrangement so it survives a re-render / re-open.

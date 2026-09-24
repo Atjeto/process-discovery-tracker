@@ -25,6 +25,7 @@ const Session = require("./session.js");
 const RefStore = require("./reference-maps.js");
 const PdtBpmn = require("./bpmn-viewer.js");
 const AsIsView = require("./asis-view.js");
+const Planes = require("./map-planes.js");
 const SaveState = require("./save-state.js");
 const { toast, escapeHtml } = require("./dom.js");
 
@@ -123,7 +124,12 @@ function _setForkBusy() {
    drawn by bpmn-js read only and as linked as the map from the runs (a task
    opens the step panel, a file its attachment, a note its text:
    asis-view.js), with Edit beside it; the map from the runs is one click
-   away, and back. Per recording, for this window. */
+   away, and back. Per recording, for this window.
+   Contract C19: it shows the plane of the level the Map shows (the picker,
+   _deps.mapPath). A copy with no plane for that level (made before the
+   sub-process existed, or the sub-process renamed in the editor) leaves the
+   level to the map from the transactions, with one line saying so; that is
+   known once the copy is drawn. */
 let _mapView = { folder: null, which: "asis" };
 let _drawn = null;   // { id, mtime }: the As-Is map on screen
 
@@ -137,33 +143,44 @@ function syncMapView() {
   if (_mapView.folder !== folder) { _mapView = { folder, which: "asis" }; _drawn = null; AsIsView.clear(); }
   const asIs = _asIsMap(s);
   if (!asIs && _drawn) { _drawn = null; AsIsView.clear(); }
-  const showAsIs = !!asIs && _mapView.which === "asis";
+  const canvas = $("map-asis-canvas");
+  const mtime = asIs ? _fileMtime(s, asIs) : null;
+  const current = !!(asIs && _drawn && _drawn.id === asIs.map_id && _drawn.mtime === mtime && AsIsView.drawnIn(canvas));
+  const path = _deps.mapPath ? _deps.mapPath() : [];
+  const wanted = !!asIs && _mapView.which === "asis";
+  const missing = wanted && current && AsIsView.hasLevel(path) === false;
+  const showAsIs = wanted && !missing;
   const box = $("session-map-asis");
   const host = document.querySelector("#session-layout-map .map-host");
+  const liveWasHidden = !!host && host.style.display === "none";
   if (box) box.hidden = !showAsIs;
   if (host) host.style.display = showAsIs ? "none" : "";
+  const note = $("map-asis-missing");
+  if (note) note.hidden = !missing;
   // The Map's fit fits the As-Is map while it shows (initRefmapUI).
   const zoom = $("session-map-zoom");
   if (zoom && showAsIs) zoom.style.display = "";
   const back = $("btn-map-show-asis");
-  if (back) back.hidden = !(asIs && !showAsIs);
-  if (!showAsIs) { AsIsView.hideNote(); return; }
+  if (back) back.hidden = !(asIs && _mapView.which === "runs");
+  if (!showAsIs) {
+    AsIsView.hideNote();
+    // The map from the runs is laid out once its host shows.
+    if (liveWasHidden) { try { if (_deps.renderLiveMap) _deps.renderLiveMap(); } catch (_) {} }
+    return;
+  }
   const title = $("map-asis-title");
   if (title) title.textContent = asIs.name || "As-Is map";
   // Drawn where it shows: a Map level not on screen draws it when it shows.
-  const canvas = $("map-asis-canvas");
   if (!canvas || !canvas.clientWidth) return;
-  const mtime = _fileMtime(s, asIs);
-  if (_drawn && _drawn.id === asIs.map_id && _drawn.mtime === mtime && AsIsView.drawnIn(canvas)) return;
+  if (current) { AsIsView.showLevel(path); return; }
   _drawn = { id: asIs.map_id, mtime };
-  AsIsView.draw(canvas, RefStore.readBpmn(s.sessionFolder, asIs));
+  // Once drawn, the level it has (or lacks) decides what shows.
+  AsIsView.draw(canvas, RefStore.readBpmn(s.sessionFolder, asIs), path).then((ok) => { if (ok) syncMapView(); });
 }
 
 function _showMapView(which) {
   _mapView.which = which;
   syncMapView();
-  // The map from the runs is laid out once its host shows.
-  if (which === "runs") { try { if (_deps.renderLiveMap) _deps.renderLiveMap(); } catch (_) {} }
 }
 
 /* ---- gallery ------------------------------------------------------------ */
@@ -413,8 +430,10 @@ async function onEditorField(which) {
 
 /* ---- PDD image bridge ---------------------------------------------------
    Render the maps selected for the PDD (pdd_role) to PNG data URLs the export
-   path writes to tmp and passes as --pdd-map-image / --pdd-tobe-image. Uses a
-   throwaway off-screen bpmn-js so it never disturbs the live/editor viewer. */
+   path writes to tmp and passes as --pdd-map-image / --pdd-tobe-image (C19:
+   and the sub-processes' maps, renderPlanesToPng, in the manifest passed as
+   --pdd-map-images). Uses a throwaway off-screen bpmn-js so it never disturbs
+   the live/editor viewer. */
 async function renderPddMaps() {
   const out = { asis: null, tobe: null };
   const s = session();
@@ -440,19 +459,64 @@ async function renderBpmnToPng(xml) {
   if (!svg) return null;
   try { return await svgToPng(svg); } catch (_) { return null; }
 }
+/* The main map of a BPMN diagram as SVG, or null. */
 function xmlToSvg(xml) {
+  return _drawPlanes(xml, [[]]).then((r) => r.maps[0].svg);
+}
+/* Contract C19: the maps of one BPMN diagram (its planes, map-planes.js),
+   drawn by one off-screen bpmn-js and saved as SVG, the plane of each path of
+   `paths` ([] the main map) in turn (saveSVG saves the plane shown):
+   { drawn, maps: [{ svg, found }] }, found false for a map the file has no
+   plane for; drawn false (and every svg null) when the file could not be
+   drawn at all. */
+function _drawPlanes(xml, paths) {
+  const list = Array.isArray(paths) ? paths : [];
+  const none = () => ({ drawn: false, maps: list.map(() => ({ svg: null, found: false })) });
   return new Promise((resolve) => {
-    if (typeof BpmnJS === "undefined") { resolve(null); return; }
+    if (typeof BpmnJS === "undefined" || !xml) { resolve(none()); return; }
     const host = document.createElement("div");
     host.style.cssText = "position:absolute;left:-99999px;top:-99999px;width:1600px;height:1200px;";
     document.body.appendChild(host);
     const v = new BpmnJS({ container: host });
     v.importXML(xml)
-      .then(() => v.saveSVG())
-      .then(({ svg }) => resolve(svg || null))
-      .catch((e) => { console.error("[refmap-ui] a map could not be drawn:", e); resolve(null); })
+      .then(async () => {
+        const canvas = v.get("canvas");
+        const main = canvas.getRootElement();
+        const maps = [];
+        for (const p of list) {
+          const sub = Array.isArray(p) && p.length > 0;
+          const id = sub ? Planes.findPlane(v.getDefinitions(), p) : null;
+          const root = !sub ? main : id ? canvas.findRoot(id + "_plane") : null;
+          if (!root) { maps.push({ svg: null, found: false }); continue; }
+          if (canvas.getRootElement() !== root) canvas.setRootElement(root);
+          const { svg } = await v.saveSVG();
+          maps.push({ svg: svg || null, found: true });
+        }
+        resolve({ drawn: true, maps });
+      })
+      .catch((e) => { console.error("[refmap-ui] a map could not be drawn:", e); resolve(none()); })
       .finally(() => { try { v.destroy(); } catch (_) {} host.remove(); });
   });
+}
+/* The maps at `paths` of one BPMN diagram as PNG data URLs (null for one it
+   has no plane for, or that could not be drawn): the PDD's pictures of the
+   sub-processes' maps (renderer.js exportArtifact). */
+async function renderPlanesToPng(xml, paths) {
+  const r = await _drawPlanes(xml, paths);
+  const out = [];
+  for (const m of r.maps) {
+    let png = null;
+    if (m.svg) { try { png = await svgToPng(m.svg); } catch (_) { png = null; } }
+    out.push(png);
+  }
+  return out;
+}
+/* The map at `path` of one BPMN diagram as SVG (Export, Process map
+   (image)): { svg, missing }, missing when the file draws but has no plane
+   for that map. */
+async function renderPlaneToSvg(xml, path) {
+  const r = await _drawPlanes(xml, [Array.isArray(path) ? path : []]);
+  return { svg: r.maps[0].svg, missing: r.drawn && !r.maps[0].found };
 }
 function svgToPng(svg, scale) {
   scale = scale || 2;
@@ -496,10 +560,17 @@ function _showGallery(show) {
 }
 
 /* ---- init --------------------------------------------------------------- */
-/* deps = { renderLiveMap, sourceBpmnPath, analyze } (renderer.js); analyze
-   resolves true when the session was analyzed and reloaded. */
+/* deps = { renderLiveMap, sourceBpmnPath, analyze, mapPath, onAsIsLevel,
+   mainMapName } (renderer.js); analyze resolves true when the session was
+   analyzed and reloaded; mapPath is the level the Map shows (C19), and
+   onAsIsLevel hears the path of names of the plane the As-Is map's own drill
+   down went to; mainMapName names the main map. */
 function initRefmapUI(deps) {
   _deps = deps || {};
+  AsIsView.configure({
+    onLevel: (names) => { if (_deps.onAsIsLevel) _deps.onAsIsLevel(names); },
+    mainName: () => (_deps.mainMapName ? _deps.mainMapName() : ""),
+  });
   const forkBtn = $("btn-fork-refmap");
   if (forkBtn) forkBtn.addEventListener("click", () => onFork());
   const toggle = $("btn-toggle-refmaps");
@@ -536,6 +607,8 @@ module.exports = {
   initRefmapUI, refresh, renderPddMaps, showGallery: _showGallery,
   // The PDD export's map from the runs (renderer.js): the same renderer, and
   // the rule for when process_map_step.bpmn is older than the steps. Export,
-  // Process map (image) saves the same drawing as SVG.
+  // Process map (image) saves the same drawing as SVG. C19: the maps of the
+  // sub-processes, one plane each.
   renderBpmnToPng, renderBpmnToSvg: xmlToSvg, needsAnalyze: _needsAnalyze,
+  renderPlanesToPng, renderPlaneToSvg,
 };

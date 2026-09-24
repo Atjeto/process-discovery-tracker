@@ -150,7 +150,17 @@ container. The Overview is the default on load.
   changed after says what *Copy again* gives; the editor is a full-screen
   overlay (`#refmap-editor-overlay`). While the project is not analyzed, no
   transaction is marked or the transaction check could not run, the map
-  shows a message that says why instead.
+  shows a message that says why instead. With a sub-process (C19), the
+  picker beside the title (`#map-picker`, "Map: <name>") lists every map of
+  `mapTree` depth first, indented, each sub-process with its number, and
+  sets `State.mapPath`. The live map then draws that level from its traces;
+  a sub-process's box carries a + (a click opens the panel at that level, a
+  double-click its map), and dragged layouts are kept per level. The As-Is
+  copy shows the plane of that level (`map-planes.js` finds it by the path
+  of names); a copy with no such plane leaves the level to the live map with
+  one line (`#map-asis-missing`). bpmn-js's own drill down (its arrow, its
+  breadcrumbs) moves `State.mapPath` and the picker with it; a plane the
+  project has no map for leaves them as they are.
 
 **The step panel** (`#step-panel`,
 [`views/step-panel.js`](../../viewer/views/step-panel.js)) sits beside the
@@ -177,8 +187,9 @@ closed while rows are selected, until a door opens it again.
 [`sub-process-verbs.js`](../../viewer/sub-process-verbs.js)). A step with
 `sub_steps` is a sub-process, at any depth. The Steps list shows one level
 at a time: `State.mapPath`, the path of map nodes from the main map down
-(`[]` the main level), which the step panel and the Timeline's steps lane
-follow too (the Map level joins in lane SUB-V2). A sub-process row carries
+(`[]` the main level), which the step panel, the Timeline's steps lane and
+the Map follow too (a map chosen on the Map lets go of a step selected at
+another level, so Steps opens there). A sub-process row carries
 *▸ N sub-steps*, which opens its level; a double-click on the name still
 renames. Inside, a breadcrumb over the list (`#steps-crumbs`) names the way
 down, the document's title (else "Main process") first; each crumb goes up
@@ -234,7 +245,7 @@ their module as `<name>.test.js`.
 |---|---|
 | `main.js` | The main process: the window, every `viewer:*` handler (section 5), `loadSessionData()`, the path checks, the one-analysis lock, the write reports (`viewer:projectWrite`), the holding folder for removed files. |
 | `index.html` | The markup: the top bar, the four level containers, the step panel, the playback bar, Help, the map editor overlay. |
-| `renderer.js` | The wiring entry: the level switcher, the Map level's data source (`_sessionMapData`, the system per box), the state bus subscriptions, the keyboard shortcuts, Help, the playback bar, the New, Open and Export menus, the exports (section 10), the save state's mount, boot. |
+| `renderer.js` | The wiring entry: the level switcher, the Map level's data source (`_sessionMapData`, the system per box; C19: the level shown, `_mapLevel`, and its picker), the state bus subscriptions, the keyboard shortcuts, Help, the playback bar, the New, Open and Export menus, the exports (section 10), the save state's mount, boot. |
 | `save-state.js` | The save state in the top bar (section 9): its pure state (`applyWrite`, `view`) and the element it drives, fed by `Ipc.onProjectWrite` and by `noteWrite` for the map files the renderer writes. |
 | `styles.css` | Every style rule, the light and dark tokens ([DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)). |
 | `ipc.js` | One typed wrapper per `viewer:*` channel; nothing else touches `ipcRenderer`. |
@@ -286,13 +297,14 @@ their module as `<name>.test.js`.
 | File | Owns |
 |---|---|
 | `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, saved-name propagation. C19: Confirm and Reopen reach every level, a status reads every visible level (`patternConfirmed`, `holdsDraft`), and names propagate at every level (`propagateActionName`, `rememberKey`). |
-| `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`. |
+| `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`, `mainMapName`. |
 | `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
 | `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
 | `marker-edits.js` | The markers with `annotations.marker_edits` laid over them; which edits are pending until the next analysis. |
 | `process-map-levels.js` | The process map as a directly-follows graph from the runs' steps, with the Start and End events and the step flow of contract C17 (`buildAnnotationDfg`, `flowEdges`, `stepLinks`, `mapNodeLabel`, where a drafted step or sub-step, with a `draft_key` or an `action_key`, is its name; one rule with the step BPMN, pinned by `shared/flow-links-golden.json`), and the value-free `processLabel` and `screenType` from the shared rule files. |
 | `step-flow.js` | The pure half of the step flow (C17): what the Flow line and the step panel say (`linkReading`, `panelLine`, `inheritedLine`), the steps a link can go to, the edits, and the repairs when a target step is hidden, removed, merged or split. |
-| `asis-links.js` | What a click on the As-Is map does (C18): a task names its step's map box, a data object its attachment (`DataObjectReference_<id>`), a text annotation its note; the legend, the flows, the events and the gateways do nothing. |
+| `asis-links.js` | What a click on the As-Is map does (C18): a task names its step's map box, a data object its attachment (`DataObjectReference_<id>`), a text annotation its note; the legend, the flows, the events and the gateways do nothing. C19: a task and a collapsed sub-process carry their level (the names of the sub-processes around them), `projectPath` reads those names as the project's own sub-processes, and the ids in a plane are read without its `Sub<n>_` prefix. |
+| `map-planes.js` | The maps of one BPMN file (C19): each sub-process's plane found by its path of names (`findPlane`), the path of an element's level and of a plane's root, the `Sub<n>_` prefix (`baseId`), the PDD's map pictures (`pddMaps`, the manifest `pddManifest`) and an exported image's name (`imageName`). |
 | `system-names.js` | The one vocabulary of systems (C14) from `shared/system-names.json`: `systemName`, `whereOfStep`, the systems the System field offers. |
 | `step-facts.js` | What the step pane and the panel say about a step: the fact line ("Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19"), the fields typed, the drafted narration shown as a hint. |
 | `analyst-content.js` | The pure half of C16: where an untimed step goes and how it moves, the screenshots a step shows, the notes of a step or a moment, the implicit run's id. |
@@ -309,10 +321,10 @@ their module as `<name>.test.js`.
 | File | Owns |
 |---|---|
 | `step-editor.js` | The step rows of a run and the step pane: the fact line, Name, System, the fields typed, Description, "Said during this step", the Flow line (C17: "Always · then the next step", *Only when...*, *Go to...* with a dropdown of the transaction's steps and End the process), Waste, Watch, Hide, *Open as a sub-process* (or on a sub-process *Open sub-process* and *Dissolve sub-process*, C19), the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name, System, a condition and a link's "when" save on Enter or when the field is left, a link's target when it is picked, Description when it is left: there is no Save button. A double-click renames the row its first click landed on, even when that click's redraw moved the rows. |
-| `map-controller.js` | The Map's live process map: draws the data source once it has an edge (the Start's and the End's count), its fit control, a box click to the step panel. |
-| `dfg-viewer.js` | The live map on cytoscape, laid out left to right by `@dagrejs/dagre` with room for the condition labels and every line routed around the boxes (cytoscape-dagre is the fallback): the Start and End circles, time-weighted edges, the conditions on their lines, a dashed line for a path set in Steps that no transaction took, an edge tip in words; dragged layouts persist per node set. |
-| `refmap-ui.js` | The edited maps: which map the Map shows first and when the As-Is map is drawn again (`syncMapView`), the edit act (it analyzes first when the steps changed since the map file was written), the gallery (with what *Copy again* gives), the editor overlay, the map files it writes reported to the save state, and the off-screen renderer of the PDD's pictures and Export's map image (`renderBpmnToPng`, `renderBpmnToSvg`). |
-| `asis-view.js` | The As-Is map on the Map level (C18): bpmn-js's navigated viewer, read only and fitted, its clicks (`asis-links.js`: the step panel, an attachment, the note popover `#map-asis-note`). |
+| `map-controller.js` | The Map's live process map: draws the data source once it has an edge (the Start's and the End's count), its fit control, a box click to the step panel, a double-click on a sub-process's box to its map (C19). |
+| `dfg-viewer.js` | The live map on cytoscape, laid out left to right by `@dagrejs/dagre` with room for the condition labels and every line routed around the boxes (cytoscape-dagre is the fallback): the Start and End circles, time-weighted edges, the conditions on their lines, a dashed line for a path set in Steps that no transaction took, an edge tip in words; dragged layouts persist per node set (and per level, C19); a sub-process's box carries a + (a small square at its foot). |
+| `refmap-ui.js` | The edited maps: which map the Map shows first and when the As-Is map is drawn again (`syncMapView`), the edit act (it analyzes first when the steps changed since the map file was written), the gallery (with what *Copy again* gives), the editor overlay, the map files it writes reported to the save state, and the off-screen renderer of the PDD's pictures and Export's map image (`renderBpmnToPng`, `renderBpmnToSvg`; C19: a plane per path, `renderPlanesToPng`, `renderPlaneToSvg`). C19: the As-Is map shows the plane of the level the Map shows, or leaves that level to the live map with one line. |
+| `asis-view.js` | The As-Is map on the Map level (C18): bpmn-js's navigated viewer, read only and fitted, its clicks (`asis-links.js`: the step panel, an attachment, the note popover `#map-asis-note`). C19: the plane of a level (`hasLevel`, `showLevel`, each plane fitted the first time), bpmn-js's own drill down told to the Map (`configure`'s `onLevel`), the main map's crumb named. |
 | `bpmn-viewer.js` | The bpmn-js modeler in the editor overlay: the copy opens on its own saved layout; each edit, undo and redo is written back after a short delay and reported to the save state; `flush` writes a waiting edit when the editor closes or another map opens. |
 
 ## 4. The module graph
@@ -328,7 +340,8 @@ renderer.js
   initRecent({ onOpenSession })
   initStepsView({ ensureAnnoShape, persistAnnotations, jumpToStepInFlow,
                   watchStep, analyze })
-  RefmapUI.initRefmapUI({ renderLiveMap, sourceBpmnPath, analyze })
+  RefmapUI.initRefmapUI({ renderLiveMap, sourceBpmnPath, analyze,
+                          mapPath, onAsIsLevel, mainMapName })
 ```
 
 The same pattern repeats inside the Timeline: `flow-view.js` requires its
@@ -361,7 +374,7 @@ which the renderer shows.
 |---|---|---|
 | Session | `viewer:openSessionFolder` | The folder picker. |
 | | `viewer:loadSession` | Loads a folder (below). |
-| Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`; `--names` when the store exists); streams its log. |
+| Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`; `--names` when the store exists); streams its log. |
 | | `viewer:cancelNormalize` | Stops the run in progress. |
 | Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back. |
 | Saved names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName` | Save, read, forget a name. |
@@ -417,7 +430,7 @@ a topic bus; there is no framework.
 | `zoomFactor` | The Timeline's zoom. |
 | `selectionRange` | A Shift-drag range on the timeline. |
 | `pendingStepJump`, `pendingStepReveal` | A moment or a step the Steps level should show on arrival (at the step's own level, C19). |
-| `mapPath` | The level shown (C19): the path of map nodes from the main map down, `[]` the main level. The Steps list, the step panel and the Timeline's steps lane follow it; a project opened resets it. |
+| `mapPath` | The level shown (C19): the path of map nodes from the main map down, `[]` the main level. The Steps list, the step panel, the Timeline's steps lane and the Map follow it; a project opened resets it. |
 | `analysisRun` | `{ folder, status }` of the last run: `running`, `failed` or `cancelled` (null once one succeeds). |
 | undo and redo stacks | Annotation snapshots, at most 50 each, each pinned to its session folder. |
 
@@ -430,6 +443,7 @@ the bus. The topics and who listens (`renderer.js`):
 | `timeline` | the timeline |
 | `markers` | the Markers panel, the status line, the Overview |
 | `analysis` | the Overview |
+| `mapPath` | the Map (the step panel's *Open sub-process* on the Map) |
 
 **Kept on this machine** (`localStorage`, every key starts with `pdt.`):
 
@@ -442,7 +456,7 @@ the bus. The topics and who listens (`renderer.js`):
 | `pdt.timelineHeight`, `pdt.videoWidth` | `layout-controls.js` | The dragged pane sizes. |
 | `pdt.stepsSplit` | `pane-splitter.js` | The Steps level's divider: the transactions' share of the width. |
 | `pdt.analysis.<item>` | `analysis-view.js` | Whether an Observations item is open. |
-| `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes. |
+| `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes (and per level below the main map, C19). |
 
 ## 7. Render pipeline
 
@@ -491,9 +505,9 @@ itself:
   `annotations.json` cannot be read.
 - **After a change the drafts depend on**: *Leave apps out* and a range
   excluded from the analysis.
-- **Inside the acts that need a current map file**: *Edit as the As-Is map*
-  and the PDD export, when `process_map_step.bpmn` is missing or older than
-  the steps.
+- **Inside the acts that need a current map file**: *Edit as the As-Is map*,
+  the PDD export and the two map exports, when `process_map_step.bpmn` is
+  missing or older than the steps.
 
 Two runs are deliberate and ask first when the session has steps: *Apply N
 marker changes* (the status line) and *Re-analyze* (Help, Troubleshooting).
@@ -572,18 +586,25 @@ level they are on.
   To-Be copy, as PNG files passed with `--pdd-map-image` and
   `--pdd-tobe-image`. With no As-Is copy, the map from the transactions
   (`process_map_step.bpmn`, analyzed first when it is missing or older than
-  the steps) is drawn the same way. The pipeline writes the document to a
+  the steps) is drawn the same way. C19: each sub-process's map with a
+  number (`map-planes.pddMaps`) gets a picture too, the As-Is copy's plane
+  for its path when the copy has one, else the step BPMN's
+  (`RefmapUI.renderPlanesToPng`), listed in a manifest in a temp folder and
+  passed with `--pdd-map-images`. The pipeline writes the document to a
   temp path that was empty before the run, and the analyst is offered the
   file only when this run wrote it (`pddExportOutcome`). While the Map says
   why it draws nothing, the PDD says so too.
-- **Process map (image)** (`exportMapSvg`). The chosen As-Is copy, else
-  `process_map_step.bpmn` (analyzed first when it is missing or older than
-  the steps), drawn off screen by the PDD's renderer
-  (`RefmapUI.renderBpmnToSvg`) and saved as SVG: the picture the PDD
-  prints, whatever level is on screen. While the Map says why it draws no
-  map, nothing is saved and the toast says so.
+- **Process map (image)** (`exportMapSvg`). The map the Map shows (the main
+  map unless the picker chose a sub-process): its plane in the chosen As-Is
+  copy, else in `process_map_step.bpmn` (analyzed first when it is missing
+  or older than the steps), drawn off screen by the PDD's renderer
+  (`RefmapUI.renderPlaneToSvg`) and saved as SVG, offered as
+  `process-map.svg` or `as-is-map.svg`, with `-sub-process-<number>` for a
+  sub-process's. While the Map says why it draws no map, nothing is saved
+  and the toast says so.
 - **Process map (BPMN).** The chosen As-Is copy, else
-  `process_map_step.bpmn` (analyzed first when it is missing).
+  `process_map_step.bpmn` (analyzed first when it is missing or older than
+  the steps): one file with every map.
 - **Whole project (.zip)** (`exportProjectZip`). The main process zips the
   project folder next to it (`viewer:exportProjectZip`, `project-zip.js`):
   `<name>.zip`, or `<name> (2).zip` when that name is taken, so an earlier

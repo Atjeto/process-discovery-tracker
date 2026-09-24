@@ -320,6 +320,14 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
   `label` (the condition as drawn, cut short) and `fullLabel`. While the
   map cannot be drawn the host holds the message, with
   `[data-map-cta="mark-runs"]` when no transaction is marked.
+- The level shown (contract C19, `State.getMapPath()`): with a sub-process,
+  the picker `#map-picker` (hidden without one): `#btn-map-picker` reads
+  "Map: " and `#map-picker-name`, and opens `#map-picker-popup` with one
+  `.map-pick[data-map]` per map (`data-map` its path as JSON; `.map-pick-num`,
+  `.map-pick-name`, the depth in the `--map-depth` style, the one shown
+  `.current`). A sub-process's box carries `data("sub") === true` (the +);
+  a `dbltap` on it opens its map. `#map-asis-missing` is the one line over
+  the live map when the As-Is copy has no plane for the level.
 - The chosen As-Is map first: `#session-map-asis` (`#map-asis-title`,
   `#btn-map-asis-edit`, `#btn-map-show-runs`) and `#btn-map-show-asis` to
   come back to it. The map itself is `#map-asis-canvas`, a bpmn-js
@@ -327,7 +335,13 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
   `.djs-element[data-element-id]`, the ones a click opens marked
   `.pdt-link`, the legend `TextAnnotation_legend` marked `.pdt-inert`); a
   note opens the popover `#map-asis-note` (`.map-asis-pop-text`,
-  `.map-asis-pop-close`).
+  `.map-asis-pop-close`). C19: the plane shown is
+  `__bpmnViewer.get("canvas").getRootElement()` (a sub-process's id plus
+  `_plane`; the ids inside it start `Sub<n>_`); bpmn-js's crumbs above a
+  plane are `.bjs-breadcrumbs .bjs-crumb a`, its drill arrows
+  `.djs-overlays[data-container-id="<id>"] .bjs-drilldown`. Wait for the
+  canvas with `.djs-container > svg`: the arrows' icons are svgs that come
+  first in the page.
 - The edit act `#btn-fork-refmap`; `#btn-toggle-refmaps` (`#refmap-count`)
   shows `#refmap-panel`: `#refmap-list .refmap-row` with
   `[data-rm-act="edit"|"dup"|"refork"|"del"]` and, under a copy the

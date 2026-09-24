@@ -29,6 +29,14 @@ test("buildNormalizeArgs keeps the export flags and adds --names last", () => {
     ["n.py", "S", "--pdd-out", "o.docx", "--pdd-map-image", "m.png", "--pdd-tobe-image", "t.png", "--names", "N"]);
 });
 
+test("buildNormalizeArgs passes the sub-processes' map pictures as --pdd-map-images (contract C19), beside the main map's", () => {
+  assert.deepEqual(
+    buildNormalizeArgs("n.py", { sessionFolder: "S", pddOut: "o.docx", pddMapImage: "m.png", pddMapImages: "D/maps.json" }),
+    ["n.py", "S", "--pdd-out", "o.docx", "--pdd-map-image", "m.png", "--pdd-map-images", "D/maps.json"]);
+  assert.ok(!buildNormalizeArgs("n.py", { sessionFolder: "S", pddOut: "o.docx" }).includes("--pdd-map-images"),
+    "no manifest, no flag");
+});
+
 /* Contract C8: what the viewer makes of one transcript_import.py run. */
 test("transcriptImportResult: exit 0 is a success carrying the summary line", () => {
   assert.deepEqual(

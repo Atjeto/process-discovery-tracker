@@ -30,10 +30,11 @@
  * The node of a step is the map's node rule (process-map-levels.mapNodeLabel),
  * at every level: a drafted sub-step (action_key) is its name.
  *
- * With it, the helpers the Steps level, the step panel and the Timeline use
- * to work at one level: the tree finder, the places of each transaction at a
- * level (its visits, as the Steps level lists them), the visits of a node and
- * the path that is still there after an edit.
+ * With it, the helpers the Steps level, the step panel, the Timeline and the
+ * Map use to work at one level: the tree finder, the places of each
+ * transaction at a level (its visits, as the Steps level lists them), the
+ * visits of a node, the names the maps go by and the path that is still there
+ * after an edit.
  *
  * Pure: no DOM, no State. The verbs are sub-process-verbs.js.
  */
@@ -311,6 +312,15 @@ function nodeName(transactions, path, reference) {
   return nm || node;
 }
 
+/* The name the main map goes by (the first crumb, the Map's picker): the
+   process name the document gives (its title, C6: the first line), else
+   "Main process". */
+function mainMapName(annotations) {
+  const d = (annotations && annotations.document) || {};
+  const t = typeof d.title === "string" ? d.title.trim().split(/\r?\n/)[0].trim() : "";
+  return t || "Main process";
+}
+
 /* The longest start of `path` whose maps are still there (a sub-process
    dissolved, hidden or renamed since takes the level up to its parent). */
 function validPath(transactions, path) {
@@ -326,5 +336,5 @@ module.exports = {
   mapNodeLabel, isSubProcess, inOrder, visitsOf, placesAt, samePath,
   mapTree, numberOf,
   eachStep, allSteps, descendants, findStep, removeSteps,
-  levelVisits, placeOf, nodeVisits, levelStepsOfNode, isSubProcessNode, nodeName, validPath,
+  levelVisits, placeOf, nodeVisits, levelStepsOfNode, isSubProcessNode, nodeName, mainMapName, validPath,
 };

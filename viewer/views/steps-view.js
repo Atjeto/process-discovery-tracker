@@ -214,12 +214,10 @@ function _containerNow(stepId) {
 }
 
 /* The name of the process, the first crumb: the document's title (C6, the
-   PDD's title), else "Main process". */
+   PDD's title), else "Main process" (the Map's picker names it so too). */
 function _processName() {
   const s = State.getSession();
-  const d = (s && s.annotations && s.annotations.document) || {};
-  const t = typeof d.title === "string" ? d.title.trim().split(/\r?\n/)[0].trim() : "";
-  return t || "Main process";
+  return SPM.mainMapName(s && s.annotations);
 }
 
 /* The name a level goes by (its node's first step's name). */

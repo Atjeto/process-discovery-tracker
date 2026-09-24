@@ -27,7 +27,8 @@
  * Contract C19: the panel works at a level. A step inside a sub-process
  * opens it on that level: its occurrences are the steps of its node at that
  * level across every visit of the sub-process (sub-process-maps.js), and a
- * sub-process's panel has "Open sub-process" at its foot.
+ * sub-process's panel has "Open sub-process" at its foot (its steps, or on
+ * the Map its map).
  *
  * The panel is closed on the Overview and when a recording opens; its close
  * button is the inverse of every door (on Steps it then stays closed while
@@ -227,7 +228,8 @@ function render() {
       ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence"' +
         (lead.time_range && lead.time_range.start ? "" : " disabled") + '>Show on timeline</button>'
       : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its transaction">Open in Steps</button>') +
-      (isSub ? '<button type="button" id="btn-sp-open-sub" title="Show the steps of this sub-process">▸ Open sub-process</button>' : "") +
+      (isSub ? '<button type="button" id="btn-sp-open-sub" title="' + (State.getLevel() === "map"
+        ? "Show the map of this sub-process" : "Show the steps of this sub-process") + '">▸ Open sub-process</button>' : "") +
     "</div>";
   // The panel opened on this row (or its row is gone): the video goes to it.
   if (_state.focusId !== _cuedId) _cue(_state.focusId);
@@ -403,6 +405,12 @@ function refresh() {
       if (State.getLevel() === "flow") {
         State.setMapPath(to);
         State.emit("timeline");
+        return;
+      }
+      // On the Map, its map (the Map level follows the "mapPath" topic).
+      if (State.getLevel() === "map") {
+        State.setMapPath(to);
+        State.emit("mapPath");
         return;
       }
       const btn = document.querySelector('.view-mode-btn[data-level="steps"]');

@@ -18,6 +18,10 @@
  *                         runs, the run check failed, no steps yet).
  * A node click selects the node and calls config.onNodeClick(label): the step
  * panel opens beside the map (its steps, the video, what was said).
+ * Contract C19: the data may name the boxes that are sub-processes
+ * (`subNodes`, marked on the map; a double-click on one calls
+ * config.onNodeDblClick(label), which opens its map) and the level the map
+ * is of (`layoutScope`, so each level keeps its own dragged arrangement).
  */
 
 const PdtDfg = require("./dfg-viewer.js");
@@ -38,6 +42,7 @@ function createMapController(config) {
     zoomControls = null,
     dataSource,
     onNodeClick = null,
+    onNodeDblClick = null,
   } = config;
 
   function _setZoomVisible(visible) {
@@ -57,7 +62,10 @@ function createMapController(config) {
         if (onNodeClick) onNodeClick(label);
       },
       nodeSystems: (data && data.nodeSystems) || null,
+      subNodes: (data && data.subNodes) || [],
+      layoutScope: (data && data.layoutScope) || "",
     };
+    if (onNodeDblClick) opts.onNodeDblClick = onNodeDblClick;
     // §B2: the data source decides the edge-weight encoding ("time" for the
     // process map); the edge tooltip carries the numbers.
     if (data && data.edgeWeight) opts.edgeWeight = data.edgeWeight;

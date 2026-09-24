@@ -452,6 +452,8 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       pddOut: opts.pddOut || null,
       pddMapImage: opts.pddMapImage || null,
       pddTobeImage: opts.pddTobeImage || null,
+      // C19: the manifest of the sub-processes' map pictures.
+      pddMapImages: opts.pddMapImages || null,
       namesPath,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },

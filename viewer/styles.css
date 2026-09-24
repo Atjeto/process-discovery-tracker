@@ -858,6 +858,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .map-asis-mount { position: absolute; inset: 0; }
 /* A map that could not be drawn says why, on the white page in both themes. */
 .map-asis-canvas .map-empty-inline { color: #635848; }
+/* C19: bpmn-js's crumbs above a sub-process's plane: the plane shown reads in
+   the text colour it inherits, the page's, so it takes the document's dark
+   text on the white page in both themes. */
+.map-asis-canvas .bjs-breadcrumbs { color: #2c2418; }
 .map-asis-canvas .pdt-link > .djs-hit { cursor: pointer; }
 /* The legend is part of the picture: a click goes through it to the canvas. */
 .map-asis-canvas .pdt-inert > .djs-hit { pointer-events: none; }
@@ -870,6 +874,29 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 }
 .map-asis-pop-text { flex: 1 1 auto; min-width: 0; margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
 .map-asis-pop-close { flex: none; }
+/* C19: the Map's picker, beside the title when the project has a
+   sub-process: the top bar's dropdown (.project-btn, .project-menu-popup),
+   opening under its left edge; the list indented by depth, each sub-process
+   with its number. */
+.map-picker[hidden] { display: none; }
+.map-picker .project-btn { max-width: min(360px, 60vw); font-size: 12px; }
+.map-picker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-picker-name { color: var(--fg); font-weight: 600; }
+.map-picker .map-picker-popup {
+  left: 0; right: auto; width: max-content; min-width: 240px; max-width: min(460px, 80vw);
+  max-height: 360px; overflow-y: auto;
+}
+.map-picker-popup .map-pick {
+  display: flex; align-items: baseline; gap: 8px;
+  padding-left: calc(10px + var(--map-depth, 0) * 16px);
+}
+.map-pick-num { flex: none; min-width: 2.2em; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+.map-pick-name { min-width: 0; overflow-wrap: anywhere; }
+.map-picker-popup .map-pick.current { color: var(--fg); font-weight: 600; background: var(--bg-3); }
+/* An As-Is map with no map for the sub-process chosen: one line over the
+   map from the transactions, which shows that level instead. */
+.map-level-note { margin: 0 0 6px; font-size: 12px; color: var(--fg-2); }
+.map-level-note[hidden] { display: none; }
 
 /* ===== Overview view (lab-phase §A5 — the honesty redesign's landing) ===== */
 .session-layout-overview {

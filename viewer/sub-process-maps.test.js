@@ -197,6 +197,13 @@ test("nodeName: a level goes by the name of its node's first step, the reference
   assert.equal(SPM.nodeName(txs, [], 0), "");
 });
 
+test("mainMapName: the main map goes by the process name the document gives (its title's first line), else Main process", () => {
+  assert.equal(SPM.mainMapName({ document: { title: "  Order to cash\nsecond line" } }), "Order to cash");
+  assert.equal(SPM.mainMapName({ document: { title: "   " } }), "Main process");
+  assert.equal(SPM.mainMapName({ document: {} }), "Main process");
+  assert.equal(SPM.mainMapName(null), "Main process");
+});
+
 test("numberOf: the hierarchical number of a map through the reference transaction", () => {
   const txs = sample();
   assert.equal(SPM.numberOf(txs, ["B"], 0), "2");

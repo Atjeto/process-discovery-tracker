@@ -12,20 +12,33 @@
  *     (analyst-ui.openAttachment, then main's viewer:openAttachment);
  *   a note shows its whole text in a small popover (#map-asis-note);
  *   the legend is part of the picture: no pointer, no click.
+ * Contract C19: a map with sub-processes has one plane per sub-process
+ * (map-planes.js). The view shows the plane of the level chosen (showLevel;
+ * a plane shown for the first time is fitted, one shown before comes back as
+ * it was left), a task in a plane opens the panel at that level, a collapsed
+ * sub-process opens the panel on its node, and bpmn-js's own drill down (the
+ * arrow on a sub-process, the breadcrumbs above a plane) tells the Map the
+ * level it went to (configure's onLevel).
  * Editing stays in the editor (refmap-ui.js); refmap-ui.syncMapView decides
- * when this view draws.
+ * when this view draws and which level it shows.
  */
 
 const State = require("./state.js");
 const RunsModel = require("./runs-model.js");
 const Links = require("./asis-links.js");
+const SPM = require("./sub-process-maps.js");
+const Planes = require("./map-planes.js");
 const { toast } = require("./dom.js");
 
 let _viewer = null;     // the navigated viewer on screen
 let _host = null;       // its host (#map-asis-canvas)
 let _observer = null;   // the host's size, so the canvas knows it
 let _pop = null;        // the note popover
-let _fitted = null;     // the view right after the last fit: { x, y, scale }
+let _fitted = new Map(); // per plane (its root), the view right after its last fit: { x, y, scale }
+let _ready = false;     // the map is drawn (its import is done)
+let _main = null;       // the main map's root
+let _quiet = false;     // a plane this module shows: not the analyst's drill down
+let _cfg = {};          // { onLevel(names), mainName() } (configure)
 
 /* The bpmn-js navigated viewer. The page's global BpmnJS is the modeler (the
    editor); this is the read only viewer of the same bpmn-js version, loaded
@@ -38,15 +51,20 @@ function _viewerClass() {
 
 /* ---- Clicks ---------------------------------------------------------------- */
 
-/* A task: the step panel on its step (the node rule of the live map), or the
-   panel's one line when no step of the transactions has the task's name. */
-function _openTask(name) {
+/* A task (or a collapsed sub-process): the step panel on its step (the node
+   rule of the live map) at the level its plane is (C19: `names`, the names
+   of the sub-processes around it), or the panel's one line when no step of
+   the transactions has the task's name there. */
+function _openTask(name, names) {
   const s = State.getSession();
   if (!s) return;
   const runs = RunsModel.buildRuns(s.stats, (s.annotations && s.annotations.steps) || []).runs;
-  const node = Links.taskNode(name, runs.map((r) => r.visible));
+  const txs = runs.map((r) => r.members);
+  const path = Links.projectPath(names, txs);
+  const lists = !path ? [] : path.length ? SPM.levelVisits(txs, path).map((v) => v.visible) : runs.map((r) => r.visible);
+  const node = Links.taskNode(name, lists);
   const Panel = require("./views/step-panel.js");
-  if (node != null) Panel.openForNode(node);
+  if (node != null) Panel.openForNode(node, path);
   else Panel.openForMissing(name);
 }
 
@@ -63,7 +81,7 @@ function _onClick(e) {
   const action = Links.elementAction(e && e.element);
   if (!action || action.kind !== "note") hideNote();
   if (!action) return;
-  if (action.kind === "task") _openTask(action.name);
+  if (action.kind === "task") _openTask(action.name, action.path);
   else if (action.kind === "file") _openFile(action);
   else if (action.kind === "note") _showNote(action.text, e.originalEvent);
 }
@@ -119,7 +137,9 @@ function clear() {
   if (_viewer) { try { _viewer.destroy(); } catch (_) { /* gone */ } _viewer = null; }
   if (_host) { try { delete _host.__bpmnViewer; } catch (_) { /* a plain property */ } _host.innerHTML = ""; }
   _host = null;
-  _fitted = null;
+  _fitted = new Map();
+  _ready = false;
+  _main = null;
 }
 
 /* Whether the map is drawn (or drawing) in `host`. */
@@ -127,32 +147,99 @@ function drawnIn(host) {
   return !!(_viewer && _host && _host === host);
 }
 
-/* The whole map in view. */
+/* The plane on screen in view. */
 function fit() {
   if (!_viewer || !_host || !_host.clientWidth) return;
   try {
     const canvas = _viewer.get("canvas");
     canvas.zoom("fit-viewport", "auto");
     const vb = canvas.viewbox();
-    _fitted = { x: vb.x, y: vb.y, scale: vb.scale };
+    _fitted.set(canvas.getRootElement(), { x: vb.x, y: vb.y, scale: vb.scale });
   } catch (_) { /* no diagram yet */ }
 }
 
 /* The host changed size (the step panel beside it, the window, the Map
-   shown again): the canvas takes the new size, and a map nobody moved since
-   it was fitted (or never fitted, drawn while hidden) is fitted again. */
+   shown again): the canvas takes the new size, and a plane nobody moved
+   since it was fitted (or never fitted, drawn while hidden) is fitted again. */
 function _resized() {
   if (!_viewer) return;
   hideNote();
-  let vb = null;
+  let vb = null, root = null;
   try {
     const canvas = _viewer.get("canvas");
     canvas.resized();
     vb = canvas.viewbox();
+    root = canvas.getRootElement();
   } catch (_) { return; }
-  const still = _fitted && Math.abs(vb.x - _fitted.x) < 0.5 && Math.abs(vb.y - _fitted.y) < 0.5 &&
-    Math.abs(vb.scale - _fitted.scale) < 1e-6;
-  if (!_fitted || still) fit();
+  const f = _fitted.get(root);
+  const still = f && Math.abs(vb.x - f.x) < 0.5 && Math.abs(vb.y - f.y) < 0.5 && Math.abs(vb.scale - f.scale) < 1e-6;
+  if (!f || still) fit();
+}
+
+/* ---- The planes (C19) -------------------------------------------------------- */
+
+/* { onLevel(names), mainName() }: onLevel hears the path of names of the
+   plane bpmn-js's own drill down went to; mainName names the main map's
+   crumb above a plane when the process has no name of its own. */
+function configure(cfg) {
+  _cfg = cfg || {};
+}
+
+/* The root of the plane of the map at `path` ([] the main map), or null when
+   the map drawn has none (map-planes.findPlane) or is not drawn yet. */
+function _rootFor(path) {
+  if (!_viewer || !_ready) return null;
+  if (!Array.isArray(path) || !path.length) return _main;
+  const id = Planes.findPlane(_viewer.getDefinitions(), path);
+  return id ? _viewer.get("canvas").findRoot(id + "_plane") || null : null;
+}
+
+/* Whether the map drawn has a plane for the map at `path`: true or false;
+   null while no map is drawn. */
+function hasLevel(path) {
+  if (!_viewer || !_ready) return null;
+  return !!_rootFor(path);
+}
+
+/* bpmn-js names the main map's crumb above a plane by the process's id when
+   the process has no name ("Process_1"): it reads the main map's name. */
+function _nameCrumbs() {
+  const a = _host && _host.querySelector(".bjs-breadcrumbs li:first-child .bjs-crumb a");
+  const bo = _main && _main.businessObject;
+  if (!a || !bo || bo.name || a.textContent !== bo.id) return;
+  const name = typeof _cfg.mainName === "function" ? String(_cfg.mainName() || "") : "";
+  if (name) { a.textContent = name; a.title = name; }
+}
+
+/* Show the plane of the map at `path`: one shown for the first time is
+   fitted, one shown before comes back as it was left (bpmn-js keeps each
+   plane's view). False when the map drawn has no such plane. */
+function showLevel(path) {
+  const root = _rootFor(path);
+  if (!root) return false;
+  const canvas = _viewer.get("canvas");
+  if (canvas.getRootElement() !== root) {
+    _quiet = true;
+    try { canvas.setRootElement(root); } finally { _quiet = false; }
+    hideNote();
+    if (!_fitted.has(root)) fit();
+    _nameCrumbs();
+  }
+  return true;
+}
+
+/* bpmn-js's own drill down (the arrow on a collapsed sub-process, a crumb
+   above a plane): a plane shown for the first time is fitted, and the Map
+   hears the path of names it went to. */
+function _rootSet(e) {
+  if (_quiet) return;
+  hideNote();
+  const root = e && e.element;
+  if (root && !_fitted.has(root)) fit();
+  _nameCrumbs();
+  if (typeof _cfg.onLevel !== "function") return;
+  try { _cfg.onLevel(Planes.pathOfRoot(root)); }
+  catch (err) { console.error("[asis-view] the Map did not follow the plane shown:", err); }
 }
 
 /* Mark what a click opens (a pointer) and the legend (clicks go through it
@@ -165,10 +252,11 @@ function _mark(v) {
   }
 }
 
-/* Draw `xml` into `host`, read only and fitted. Resolves true once it is
+/* Draw `xml` into `host`, read only and fitted, on the plane of the map at
+   `path` when it has one (C19; else its main map). Resolves true once it is
    drawn; false when it could not be (the host says why), or when another
    draw or a clear came first. */
-async function draw(host, xml) {
+async function draw(host, xml, path) {
   clear();
   if (!host) return false;
   _host = host;
@@ -196,10 +284,13 @@ async function draw(host, xml) {
     return fail((e && e.message) || String(e));
   }
   if (_viewer !== v) return false;
+  _main = v.get("canvas").getRootElement();
+  _ready = true;
   _mark(v);
-  fit();
+  if (!(Array.isArray(path) && path.length && showLevel(path))) fit();
   v.on("element.click", _onClick);
   v.on("canvas.viewbox.changing", hideNote);
+  v.on("root.set", _rootSet);
   if (typeof ResizeObserver === "function") {
     _observer = new ResizeObserver(() => { if (_viewer === v) _resized(); });
     _observer.observe(host);
@@ -208,4 +299,4 @@ async function draw(host, xml) {
   return true;
 }
 
-module.exports = { draw, clear, drawnIn, fit, hideNote };
+module.exports = { draw, clear, drawnIn, fit, hideNote, configure, hasLevel, showLevel };

@@ -176,7 +176,8 @@ The viewer says *transaction* for one pass through the process and
   transaction that goes through it, compared with the reference
   transaction's. Every step verb works inside it, the flow stays inside it,
   Confirm transaction reaches every level, and *Dissolve sub-process* undoes
-  it. The step panel and the Timeline's steps lane follow the level shown.
+  it. The step panel, the Timeline's steps lane and the Map follow the level
+  shown.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
   Alt+Down), or *+ Step* at the video's playhead.
 - **Saved names and saved processes**: a name given once names the same
@@ -198,6 +199,13 @@ The viewer says *transaction* for one pass through the process and
 - **The As-Is map, linked**: the chosen copy shows first, drawn as the PDD
   prints it. A task opens the step panel on its step, a file opens its
   attachment, a note shows its whole text.
+- **A map per sub-process**: with a sub-process in the project, *Map:
+  <name>* picks the map shown, the main process or any sub-process (each
+  with its number, as the PDD numbers its chapter), and Steps shows the same
+  level. A sub-process's box carries a +: a click opens the step panel, a
+  double-click its map. The As-Is map shows the same sub-process, and its
+  own drill down moves the picker too; a copy made before the sub-process
+  existed says it has none, and the map from the transactions shows.
 
 **Everywhere**
 
@@ -208,9 +216,10 @@ The viewer says *transaction* for one pass through the process and
 - **Saved as you go**: every change saves itself to the project folder, and
   the top bar says *Saved* (the time and the folder on hover), *Saving...*
   or *Not saved* with the reason.
-- **Export**: the PDD, the process map as an image (SVG, the picture the
-  PDD prints) and as BPMN, and the *Whole project (.zip)*: one zip of the
-  folder, next to it, to hand the project to someone. Every export opens
-  its folder with the file selected.
+- **Export**: the PDD (with a picture of each sub-process's map in its
+  chapter), the process map as an image (SVG, the picture the PDD prints, of
+  the map the Map shows) and as BPMN (one file with every map), and the
+  *Whole project (.zip)*: one zip of the folder, next to it, to hand the
+  project to someone. Every export opens its folder with the file selected.
 - **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
   and a dark theme.

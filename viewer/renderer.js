@@ -35,6 +35,9 @@ const { buildAnnotationDfg, mapNodeLabel } = require("./process-map-levels.js");
 const RunsModel = require("./runs-model.js");
 const SystemNames = require("./system-names.js");
 const RefmapUI = require("./refmap-ui.js");
+const SPM = require("./sub-process-maps.js");
+const Planes = require("./map-planes.js");
+const AsIsLinks = require("./asis-links.js");
 const { pddExportOutcome } = require("./normalize-result.js");
 const SaveState = require("./save-state.js");
 
@@ -163,37 +166,77 @@ function _stepBpmnPath() {
   return (sess && sess.sessionFolder) ? path.join(sess.sessionFolder, "process_map_step.bpmn") : null;
 }
 
+/* The level the Map shows (contract C19): State.mapPath as far as its maps
+   are still there (a sub-process dissolved, hidden or renamed since takes the
+   level up, as the Steps level does), with the project's maps (mapTree:
+   depth first, numbered through the reference transaction). */
+function _mapLevel() {
+  const sess = State.getSession();
+  const runs = RunsModel.buildRuns(sess && sess.stats, (sess && sess.annotations && sess.annotations.steps) || []).runs;
+  const txs = runs.map((r) => r.members);
+  const want = State.getMapPath();
+  const path = SPM.validPath(txs, want);
+  if (!SPM.samePath(path, want)) State.setMapPath(path);
+  const pattern = RunsModel.patternRun((sess && sess.annotations) || {}, runs);
+  const ref = pattern.run ? Math.max(0, runs.indexOf(pattern.run)) : 0;
+  const tree = SPM.mapTree(txs, { reference: ref });
+  return { runs, txs, ref, path, tree, map: tree.find((m) => SPM.samePath(m.path, path)) || null };
+}
+
+/* The name a map goes by: the main map by the process name the document
+   gives, a sub-process's by its step's name (the Steps breadcrumb's names). */
+function _mapName(lv, mapPath) {
+  const sess = State.getSession();
+  return mapPath.length ? SPM.nodeName(lv.txs, mapPath, lv.ref) : SPM.mainMapName(sess && sess.annotations);
+}
+
+/* The boxes of the level shown that are sub-processes: their maps are one
+   level down. */
+function _subNodes(lv) {
+  return lv.tree.filter((m) => m.path.length === lv.path.length + 1 && SPM.samePath(m.path.slice(0, -1), lv.path))
+    .map((m) => m.path[m.path.length - 1]);
+}
+
+const NO_SUB_STEPS = "This sub-process has no steps to draw yet: add them in Steps.";
+
 /* The map's data: the lock message while the runs cannot be drawn
    (overview-view.mapLockHtml owns the sentences and the mark-runs verb),
    else the graph of every run's visible steps, the runs as the Steps level
-   builds them. */
+   builds them; C19: at a sub-process's level, the graph of its visits'
+   steps (mapTree's traces for that path, by the same edge rule). */
 function _sessionMapData() {
   const sess = State.getSession();
   if (!sess) return { emptyMessage: escapeHtml("Open a project to see its process map.") };
   const run = State.getAnalysisRun();
   const lock = mapLockHtml(sess.analysis, run && run.folder === sess.sessionFolder ? run : null);
   if (lock) return { emptyMessage: lock };
-  const runs = RunsModel.buildRuns(sess.stats, (sess.annotations && sess.annotations.steps) || []).runs;
+  const lv = _mapLevel();
+  const traces = lv.path.length ? (lv.map ? lv.map.traces : []) : lv.runs.map((r) => r.visible);
   return {
-    dfg: buildAnnotationDfg(runs.map((r) => r.visible)),
+    dfg: buildAnnotationDfg(traces),
     // AD-28: each box names the system its step happened in, under its name.
-    nodeSystems: _nodeSystems(sess, runs),
+    nodeSystems: _nodeSystems(sess, traces),
     // §B2: the map is TIME-weighted: edge thickness carries the time that
     // flowed along each path; the times and the count are in the tooltip.
     edgeWeight: "time",
+    // C19: the sub-processes' boxes carry the mark; each level keeps its own
+    // dragged arrangement.
+    subNodes: _subNodes(lv),
+    layoutScope: lv.path.length ? JSON.stringify(lv.path) : "",
     // A project with no steps yet says so; hidden steps are named as such.
-    emptyMessage: escapeHtml(mapEmptyText((sess.annotations && sess.annotations.steps) || [])),
+    emptyMessage: escapeHtml(lv.path.length ? NO_SUB_STEPS : mapEmptyText((sess.annotations && sess.annotations.steps) || [])),
   };
 }
 
-/* { map node: system } for the runs' visible steps: each node's most
-   frequent system (the one vocabulary, C14). */
-function _nodeSystems(sess, runs) {
+/* { map node: system } for the steps drawn (one list per run, or per visit
+   of a sub-process): each node's most frequent system (the one vocabulary,
+   C14). */
+function _nodeSystems(sess, lists) {
   const inter = {};
   for (const ev of sess.events || []) if (ev && ev.type === "interaction" && ev.event_id) inter[ev.event_id] = ev;
   const names = (sess.stats && sess.stats.meta && sess.stats.meta.app_names) || {};
   const counts = new Map();
-  for (const st of runs.flatMap((r) => r.visible)) {
+  for (const st of lists.flat()) {
     const system = SystemNames.whereOfStep(st, inter, names).system;
     if (!system) continue;
     const label = mapNodeLabel(st);
@@ -215,8 +258,15 @@ function _ensureSessionMapCtrl() {
       wrap: document.getElementById("session-map-zoom"),
     },
     dataSource: _sessionMapData,
-    // V2 item 4: a box opens the step panel beside the map.
-    onNodeClick: (label) => StepPanel.openForNode(label),
+    // V2 item 4: a box opens the step panel beside the map, at the level
+    // shown (C19).
+    onNodeClick: (label) => StepPanel.openForNode(label, _mapLevel().path),
+    // C19: a double-click on a sub-process's box opens its map.
+    onNodeDblClick: (label) => {
+      const lv = _mapLevel();
+      const next = lv.path.concat([label]);
+      if (lv.tree.some((m) => SPM.samePath(m.path, next))) setMapLevel(next);
+    },
   });
   // The lock message's call to action ("Mark runs in Flow", the same verb as
   // the Overview's). Delegated once, so innerHTML rewrites keep it alive.
@@ -233,8 +283,90 @@ function renderMapLevel() {
   // Cheap to call when the Map level isn't visible: its host is hidden anyway.
   // We early-return mainly to skip the layout when nothing's on screen.
   if (State.getLevel() !== "map") return;
+  if (State.getSession()) _renderMapPicker(_mapLevel());
   _ensureSessionMapCtrl().render();
   try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
+}
+
+/* Show the map at `path` (the picker, a double-click on a sub-process's box,
+   the As-Is map's own drill down, the step panel's Open sub-process): the
+   level the Steps list and the Timeline's steps lane show too (C19). A step
+   selected at another level is let go, as the Steps breadcrumb does
+   (steps-view goToLevel), so Steps opens on this level. */
+function setMapLevel(path) {
+  State.setMapPath(path);
+  const sess = State.getSession();
+  const sel = State.getSelectedStepId();
+  const loc = sel && sess ? SPM.findStep((sess.annotations && sess.annotations.steps) || [], sel) : null;
+  if (sel && !(loc && SPM.samePath(loc.path, State.getMapPath()))) State.setSelectedStepId(null);
+  State.getMultiSelectedStepIds().clear();
+  renderMapLevel();
+}
+
+/* ---- The Map's picker (contract C19) ----
+   Shown when the project has a sub-process: "Map: <name>", and a list of
+   every map depth first, indented, each sub-process's with its number (a map
+   without one is not in the reference transaction, so the PDD has no chapter
+   for it). Choosing one shows it. */
+function _renderMapPicker(lv) {
+  const wrap = document.getElementById("map-picker");
+  const popup = document.getElementById("map-picker-popup");
+  if (!wrap || !popup) return;
+  const show = lv.tree.length > 1;
+  wrap.hidden = !show;
+  if (!show) { popup.style.display = "none"; return; }
+  const name = _mapName(lv, lv.path);
+  const nameEl = document.getElementById("map-picker-name");
+  if (nameEl) nameEl.textContent = name;
+  const btn = document.getElementById("btn-map-picker");
+  if (btn) btn.title = "The map shown: " + name + ". Choose the main process or one of its sub-processes; Steps shows the same level.";
+  popup.innerHTML = lv.tree.map((m) => {
+    const here = SPM.samePath(m.path, lv.path);
+    const nm = _mapName(lv, m.path);
+    const tip = !m.path.length ? ""
+      : m.number != null ? "Sub-process " + m.number + ", with a chapter of its own in the PDD"
+        : "Not in the reference transaction, so the PDD has no chapter for it";
+    return '<button type="button" class="project-menu-item map-pick' + (here ? " current" : "") + '"' +
+      (here ? ' aria-current="true"' : "") + ' data-map="' + escapeAttr(JSON.stringify(m.path)) + '"' +
+      ' style="--map-depth:' + m.path.length + '"' + (tip ? ' title="' + escapeAttr(tip) + '"' : "") + ">" +
+      (m.number != null ? '<span class="map-pick-num">' + escapeHtml(m.number) + "</span>" : "") +
+      '<span class="map-pick-name">' + escapeHtml(nm) + "</span></button>";
+  }).join("");
+}
+(function wireMapPicker() {
+  const btn = document.getElementById("btn-map-picker");
+  const popup = document.getElementById("map-picker-popup");
+  if (!btn || !popup) return;
+  const toggle = (open) => {
+    popup.style.display = open ? "" : "none";
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); toggle(popup.style.display === "none"); });
+  popup.addEventListener("click", (e) => {
+    const item = e.target.closest(".map-pick");
+    if (!item) return;
+    toggle(false);
+    let path = [];
+    try { path = JSON.parse(item.dataset.map || "[]"); } catch (_) { /* the main map */ }
+    setMapLevel(Array.isArray(path) ? path : []);
+  });
+  document.addEventListener("click", (e) => {
+    if (!popup.contains(e.target) && !btn.contains(e.target)) toggle(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && popup.style.display !== "none") { toggle(false); btn.focus(); }
+  });
+})();
+
+/* The As-Is map's own drill down (bpmn-js's arrow on a sub-process, a crumb
+   above a plane) went to the plane at `names`: the Map shows that level when
+   the project has its map (a plane the project has no map for, one added or
+   renamed in the editor, leaves the level as it is). */
+function _onAsIsLevel(names) {
+  const lv = _mapLevel();
+  const p = AsIsLinks.projectPath(names, lv.txs);
+  if (!p || SPM.samePath(p, lv.path) || !lv.tree.some((m) => SPM.samePath(m.path, p))) return;
+  setMapLevel(p);
 }
 
 const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, steps: renderStepsLevel, map: renderMapLevel };
@@ -257,6 +389,8 @@ State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
 State.subscribe("steps",    renderMapLevel);
 State.subscribe("steps",    () => StepPanel.refresh());
+// C19: the step panel's Open sub-process on the Map shows that map.
+State.subscribe("mapPath",  () => setMapLevel(State.getMapPath()));
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
@@ -353,7 +487,8 @@ async function exportArtifact(kind) {
   // Process map (BPMN), P2.12: the As-Is copy chosen for the PDD when there is
   // one (the map the analyst finished), else the OBSERVED-FLOW map the viewer
   // shows (process_map_step.bpmn, mined from the annotations by
-  // bpmn_observed.py under --mine), mining it first if it is not there yet.
+  // bpmn_observed.py under --mine). One file with every map (C19: a plane
+  // per sub-process).
   if (kind === "step-bpmn") {
     const asIs = _chosenAsIsMap();
     if (asIs) {
@@ -365,11 +500,11 @@ async function exportArtifact(kind) {
       return;
     }
     const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
-    if (!fs.existsSync(sourcePath)) {
-      const r = await runPipeline({ sessionFolder: target.sessionFolder, mine: true }, UPDATING);
-      // r.error is the full sentence from main.js (C13: the pipeline's reason).
-      if (r.cancelled) { toast("Export cancelled."); return; }
-      if (!r.ok) { toast(r.error || "Export failed: the analysis did not answer.", "error"); return; }
+    // C19: the file holds every map (a plane per sub-process), so it is
+    // analyzed first when the steps are newer than it or it is missing, as
+    // Edit as the As-Is map does.
+    if (RefmapUI.needsAnalyze(target, sourcePath)) {
+      if (!(await analyzeSession())) return;   // the analysis said why
     }
     if (!fs.existsSync(sourcePath)) {
       toast("No process map to export: the transactions have no steps yet.", "error");
@@ -394,7 +529,7 @@ async function exportArtifact(kind) {
     if (e.code !== "ENOENT") { toast("Export failed: could not prepare " + tmpPath + ": " + e.message, "error"); return; }
   }
   const opts = { sessionFolder: target.sessionFolder, mine: false };
-  let mapImgPath = null, tobeImgPath = null;
+  let mapImgPath = null, tobeImgPath = null, picsDir = null;
   if (kind === "pdd") {
     opts.pddOut = tmpPath;
     const writePng = (dataUrl, tag) => {
@@ -422,19 +557,26 @@ async function exportArtifact(kind) {
     // AD-28: with no edited As-Is copy, the PDD's map is the map from the
     // runs: process_map_step.bpmn drawn by the same off-screen bpmn-js
     // renderer (laid out to print, never the one-row live map on the Map
-    // level, and whether or not the Map level was ever opened). That file
-    // changes only on an analysis, so when the steps are newer (a rename, a
-    // confirmed run) or it is missing, the analysis runs first, as the
-    // Map's edit act does. While the Map says why it draws nothing (no runs
-    // marked, a failed run check), there is no map and the PDD says so.
-    const sess = State.getSession();
-    if (!opts.pddMapImage && sess && !mapLockHtml(sess.analysis)) {
+    // level, and whether or not the Map level was ever opened); C19: so are
+    // the sub-processes' maps a copy has no plane for. That file changes only
+    // on an analysis, so when the steps are newer (a rename, a confirmed run)
+    // or it is missing, the analysis runs first, as the Map's edit act does.
+    // While the Map says why it draws nothing (no runs marked, a failed run
+    // check), there is no map and the PDD says so.
+    const before = State.getSession();
+    const locked = !before || !!mapLockHtml(before.analysis);
+    if (!locked && (!opts.pddMapImage || Planes.pddMaps(_mapLevel().tree).length)) {
       const src = _stepBpmnPath();
-      if (!src || RefmapUI.needsAnalyze(sess, src)) {
-        if (!(await analyzeSession())) return;   // the analysis said why
+      if ((!src || RefmapUI.needsAnalyze(before, src)) && !(await analyzeSession())) {
+        // The analysis said why; the pictures drawn so far go.
+        for (const p of [mapImgPath, tobeImgPath]) { if (p) { try { fs.unlinkSync(p); } catch (_) {} } }
+        return;
       }
+    }
+    if (!opts.pddMapImage && !locked) {
+      const src = _stepBpmnPath();
       // TD#1c: a map that cannot be drawn is said in the console, never dropped silently.
-      if (!fs.existsSync(src)) {
+      if (!src || !fs.existsSync(src)) {
         console.warn("[renderer] the analysis wrote no process map for these runs; exporting without it");
       } else {
         try {
@@ -446,10 +588,22 @@ async function exportArtifact(kind) {
         }
       }
     }
+    // C19: a picture of each sub-process's map the PDD gives a chapter,
+    // passed in a manifest (--pdd-map-images); the main map's stays above.
+    if (!locked && Planes.pddMaps(_mapLevel().tree).length) {
+      try {
+        picsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-pdd-maps-"));
+        const manifest = await _writeSubMapPictures(picsDir);
+        if (manifest) opts.pddMapImages = manifest;
+      } catch (e) {
+        console.error("[renderer] the sub-processes' maps could not be drawn; the PDD prints them as tables:", e);
+      }
+    }
   }
   const r = await runPipeline(opts, kind === "pdd" ? "Writing the PDD..." : UPDATING);
   if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
   if (tobeImgPath) { try { fs.unlinkSync(tobeImgPath); } catch (_) {} }
+  if (picsDir) { try { fs.rmSync(picsDir, { recursive: true, force: true }); } catch (_) {} }
   // RP-09 / C13: a non-zero exit (3 = the export failed) is a failure with
   // the pipeline's reason, and so is a "success" that wrote no document. The
   // analyst is offered the file only when this run wrote it.
@@ -490,6 +644,11 @@ RefmapUI.initRefmapUI({
   renderLiveMap: () => _ensureSessionMapCtrl().render(),
   sourceBpmnPath: () => _stepBpmnPath(),
   analyze: () => analyzeSession({ quiet: true }),
+  // C19: the As-Is map shows the plane of the level the Map shows, and its
+  // own drill down moves that level.
+  mapPath: () => (State.getSession() ? _mapLevel().path : []),
+  onAsIsLevel: (names) => _onAsIsLevel(names),
+  mainMapName: () => SPM.mainMapName((State.getSession() || {}).annotations),
 });
 
 /* ============ Exports ============================================= */
@@ -516,27 +675,76 @@ async function _svgSaved(r) {
   }
 }
 
+/* A map file's text, or null (missing; a file that cannot be read is said
+   in the console). */
+function _readMapFile(p) {
+  if (!p) return null;
+  try { return fs.readFileSync(p, "utf-8"); }
+  catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read " + p + ":", e); return null; }
+}
+
+/* C19: the pictures of the sub-processes' maps the PDD gives a chapter
+   (map-planes.pddMaps: the maps with a number), each the chosen As-Is copy's
+   plane for its path when the copy has one, else process_map_step.bpmn's,
+   written as PNG files into `dir` beside the manifest the pipeline reads
+   (--pdd-map-images). Returns the manifest's path, or null when there is no
+   such map or none could be drawn; a map without a picture prints as a table
+   (said in the console). */
+async function _writeSubMapPictures(dir) {
+  const maps = Planes.pddMaps(_mapLevel().tree);
+  if (!maps.length) return null;
+  const pics = maps.map(() => null);
+  const draw = async (xml, which) => {
+    if (!xml || !which.length) return;
+    const got = await RefmapUI.renderPlanesToPng(xml, which.map((i) => maps[i].path));
+    got.forEach((d, k) => { if (d) pics[which[k]] = d; });
+  };
+  const asIs = _chosenAsIsMap();
+  if (asIs) await draw(_readMapFile(asIs.path), maps.map((_, i) => i));
+  await draw(_readMapFile(_stepBpmnPath()), maps.map((_, i) => i).filter((i) => !pics[i]));
+  const pictures = [];
+  pics.forEach((d, i) => {
+    const comma = d ? d.indexOf("base64,") : -1;
+    if (comma === -1) {
+      console.warn("[renderer] the map of sub-process " + maps[i].number + " could not be drawn; the PDD prints it as a table");
+      return;
+    }
+    const png = "map-" + (i + 1) + ".png";
+    fs.writeFileSync(path.join(dir, png), Buffer.from(d.slice(comma + 7), "base64"));
+    pictures.push({ path: maps[i].path, png });
+  });
+  const manifest = Planes.pddManifest(pictures);
+  if (!manifest.maps.length) return null;
+  const file = path.join(dir, "maps.json");
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2), "utf-8");
+  return file;
+}
+
 /* AD-11: "Process map (image)" saves the process map as an SVG image, the
    format Figma, Lucidchart and browsers import, drawn off screen by the
-   PDD's map renderer (RefmapUI.renderBpmnToSvg), so the picture saved is the
+   PDD's map renderer (RefmapUI.renderPlaneToSvg), so the picture saved is the
    one the PDD prints: the As-Is copy chosen for the PDD when there is one
    (P2.12), else (AD-32) process_map_step.bpmn, analyzed first when the
    steps are newer than it or it is missing, as for the PDD (exportArtifact).
-   The analyst stays on the level they are on. While the Map says why it
-   draws no map (no transactions marked, a failed check), there is none to
-   save, and the export says so. */
+   C19: the map the Map level shows, the main map unless another is chosen
+   there: its plane in the As-Is copy, else (the copy has no map for that
+   sub-process, and the Map shows the one from the transactions) its plane in
+   process_map_step.bpmn. The analyst stays on the level they are on. While
+   the Map says why it draws no map (no transactions marked, a failed check),
+   there is none to save, and the export says so. */
 async function exportMapSvg() {
   const sess = State.getSession();
   if (!sess) { toast("Open a project first.", "error"); return; }
+  const shown = () => { const lv = _mapLevel(); return lv.map || { path: [], number: null }; };
   const asIs = _chosenAsIsMap();
   if (asIs) {
-    let xml = null;
-    try { xml = fs.readFileSync(asIs.path, "utf-8"); }
-    catch (e) { console.error("[renderer] could not read the As-Is map:", e); }
-    const asIsSvg = xml ? await RefmapUI.renderBpmnToSvg(xml) : null;
-    if (!asIsSvg) { toast("The As-Is map could not be drawn as an image.", "error"); return; }
-    await _svgSaved(await Ipc.saveSvgFile({ content: asIsSvg, suggestedName: "as-is-map.svg" }));
-    return;
+    const level = shown();
+    const r = await RefmapUI.renderPlaneToSvg(_readMapFile(asIs.path), level.path);
+    if (r.svg) {
+      await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName("as-is-map", level) }));
+      return;
+    }
+    if (!r.missing) { toast("The As-Is map could not be drawn as an image.", "error"); return; }
   }
   if (mapLockHtml(sess.analysis)) {
     toast("No process map to export: the Map says why.", "error");
@@ -546,13 +754,12 @@ async function exportMapSvg() {
   if (RefmapUI.needsAnalyze(sess, src)) {
     if (!(await analyzeSession())) return;   // the analysis said why
   }
-  let xml = null;
-  try { xml = fs.readFileSync(src, "utf-8"); }
-  catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read the process map:", e); }
+  const xml = _readMapFile(src);
   if (!xml) { toast("No process map to export: the transactions have no steps yet.", "error"); return; }
-  const svg = await RefmapUI.renderBpmnToSvg(xml);
-  if (!svg) { toast("The process map could not be drawn as an image.", "error"); return; }
-  await _svgSaved(await Ipc.saveSvgFile({ content: svg, suggestedName: "process-map.svg" }));
+  const level = shown();
+  const r = await RefmapUI.renderPlaneToSvg(xml, level.path);
+  if (!r.svg) { toast("The process map could not be drawn as an image.", "error"); return; }
+  await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName("process-map", level) }));
 }
 
 /* PDD export (the Export menu, and the Overview's last act). Its maps are
