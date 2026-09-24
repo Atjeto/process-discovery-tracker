@@ -39,7 +39,7 @@ video adds the SME's narration and what happened away from the keyboard.
 |                     |                   |  confirm, review, map,      |
 | events.jsonl        |                   |  export                     |
 | manifest.json       |                   +--------------+--------------+
-| screenshots/        |                                  | runs "Analyze"
+| screenshots/        |                                  | analyzes by itself
 | optional OBS video  |                                  v
 +---------------------+                   +-----------------------------+
                                           | NORMALIZATION (Python)      |
@@ -103,12 +103,13 @@ process-discovery-tracker/
    `session-integrity.json` lets the viewer flag files that did not arrive.
 3. **Open.** The viewer loads the folder. The analyst may attach a video and
    sync it to the session clock, and attach the meeting transcript (step 8).
-4. **Analyze.** The viewer runs `normalize.py` with the bundled taxonomy,
-   `--names` and (by default) `--mine`. The pipeline derives the runs from the markers,
+4. **Analysis.** The viewer runs `normalize.py` by itself when a folder opens
+   without a current analysis, and again when something it depends on changes,
+   with the bundled taxonomy, `--names` and `--mine`. The pipeline derives the runs from the markers,
    drafts each run's steps, merges them with the analyst's steps, and writes
    `stats.json`, `analysis.json`, `process_map_step.bpmn` and the updated
    `annotations.json` back into the folder.
-5. **Confirm and review.** The analyst confirms the pattern run, then reviews
+5. **Confirm and review.** The analyst confirms the reference run, then reviews
    how each other run differs from it. Edits save to `annotations.json`;
    renames also go to the remembered-names store on the analyst's machine.
 6. **Map.** The viewer draws the process map from the runs' steps. Fork copies
@@ -132,6 +133,6 @@ process-discovery-tracker/
 | The session files and the annotation model | [DATA-MODEL.md](./DATA-MODEL.md), [SCHEMA.md](../../shared/SCHEMA.md) |
 | How a session gets recorded | [CAPTURE.md](./CAPTURE.md) |
 | The Python pipeline | [NORMALIZATION.md](./NORMALIZATION.md) |
-| The viewer's internals (still the product-edition text) | [VIEWER.md](./VIEWER.md), [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) |
+| The viewer's internals | [VIEWER.md](./VIEWER.md), [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) |
 | UI styling and copy | [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) |
 | Why the light version looks the way it does | [ADR-0029](../adr/0029-ba-helper-refocus.md), [BA-HELPER-PLAN-2026-09-22.md](../To-Do/BA-HELPER-PLAN-2026-09-22.md) |

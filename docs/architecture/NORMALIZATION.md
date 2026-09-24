@@ -273,15 +273,16 @@ rule wins; a rule without a title pattern also names the application itself.
 The PDD and the step map name systems through `step_context.py`, which also
 derives a step's value-free screen from its window title and prefers a
 vocabulary's screen name when it contains the title's screen. A system the
-analyst set on a step (`step.system`, C16) wins. The viewer shows
-`meta.app_names`; it does not apply the title rules yet.
+analyst set on a step (`step.system`, C16) wins. The viewer applies the same
+rules from the same file (`viewer/system-names.js`).
 
 ## Sessions without a recording (contract C16)
 
 A session can also start from a video or from nothing: `manifest.source` is
 `"video"` or `"blank"` (absent means `"recorder"`), with an empty
-`events.jsonl`. The pipeline handles such sessions; the viewer does not
-create them yet. `session_io.has_recording` tells the stages apart:
+`events.jsonl`. The viewer creates them ("New from a video..." and "New
+without a recording..." in the Open menu). `session_io.has_recording` tells
+the stages apart:
 
 - **The implicit run.** While the derived stream has no start marker, the
   session has one open run covering it all (`case_assignment.add_implicit_run`,
@@ -305,8 +306,8 @@ screenshots added by hand (`screenshots/analyst/`,
 `annotations.analyst_screenshots`), the attachments (`attachments/`,
 `annotations.attachments`), the notes (`annotations.analyst_notes`) and a
 step's `system`, `pdd_screenshot`, `hidden_screenshots` and `order`. The
-pipeline reads them and never writes them; the viewer does not write them
-yet. Shapes: SCHEMA.md.
+pipeline reads them and never writes them; the viewer writes them. Shapes:
+SCHEMA.md.
 
 ## Module map (`normalization/`)
 
