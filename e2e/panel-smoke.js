@@ -298,7 +298,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   let twice = {};
   try {
     at("(g2) tap the map box (the evaluate)");
-    await page.evaluate((id) => document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"), CHECK);
+    // The block body returns nothing: returning the tapped collection made
+    // Playwright copy cytoscape's whole object graph, which never finished on
+    // the CI runner (BH13).
+    await page.evaluate((id) => { document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"); }, CHECK);
     at("(g2) tap the map box (the name shows)");
     await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, CHECK, { timeout: T });
     at("(g2) read the panel");
