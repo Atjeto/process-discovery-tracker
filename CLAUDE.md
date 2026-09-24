@@ -17,9 +17,9 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-32, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-33, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
-  Data contracts C1 to C18:
+  Data contracts C1 to C19:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
 - **Baseline** (health, CI history, code review RP-01 to RP-36):
   [docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
@@ -93,7 +93,7 @@ the folder.
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
 | `e2e/` | The in-repo Playwright gate: eight smokes against the real viewer, all run by `run-all.js`. |
-| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule). |
+| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
 | `sessions/example-aggregate/` | The committed demo: 10 sessions of one order-to-cash process. |
@@ -200,6 +200,22 @@ the folder.
   colour (`bioc:fill`, `bioc:stroke`) listed in a legend. Without a chosen
   As-Is copy, Export's map image and the PDD's map picture are this file
   drawn by bpmn-js.
+- **Sub-processes** (C19, AD-33).
+  - **Storage.** A step's `sub_steps` array holds its sub-steps, nested and
+    the same shape as steps. `annotations.steps` stays the main level, so a
+    reader that ignores `sub_steps` sees only that.
+  - **Creating one.** *Open as a sub-process* drafts one sub-step per
+    recorded action (`action_key`, never `draft_key`). *Group into a
+    sub-process* adds a parent with `group: true`. *Dissolve* undoes either.
+  - **The maps.** `mapTree` (`viewer/sub-process-maps.js`) and `map_tree`
+    (`normalization/sub_process_maps.py`) list the project's maps. They are
+    pinned by `shared/sub-process-maps-golden.json`: traces per visit, the
+    hierarchical numbers, the order.
+  - **Where it shows.** Steps and Map share `State.mapPath`. The step BPMN
+    draws each sub-process as a collapsed `bpmn:subProcess` with its own
+    plane (ids prefixed `Sub<n>_`). The PDD prints one chapter per numbered
+    sub-process (3.3 onwards), with pictures passed by the viewer through
+    `--pdd-map-images`.
 - **Saving and handing over.** Every change saves itself to the project
   folder; the top bar says *Saved*, *Saving...* or *Not saved*
   (`save-state.js`, fed by `viewer:projectWrite` and the map editor's

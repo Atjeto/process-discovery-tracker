@@ -144,6 +144,22 @@ implementation notes
 - **A durable record of dropped events**: a write batch that could not be
   saved is now counted and recorded on the recording's timeline instead of
   only appearing in a local log file.
+- **Sub-processes** (contract C19): a project holds one main map plus one
+  map per sub-process, at any depth.
+  - *Open as a sub-process* turns a step's recorded actions (each field
+    typed, each click) into sub-steps, in every transaction.
+  - *Group into a sub-process* gathers consecutive steps under a new step.
+  - Sub-steps can also be added by hand. *Dissolve* undoes either.
+  - Steps shows a breadcrumb and one block per visit, and the Map a picker
+    of every map.
+  - The As-Is copy shows each sub-process's own plane.
+  - The step BPMN carries collapsed sub-processes, and the PDD prints a
+    chapter per sub-process with its map and its steps (3.3 onwards).
+- **A divider between the transactions and the selected step**: drag it to
+  resize the Steps level's two panes; double-click resets it.
+- **The step panel explains itself**: a line says how often the step
+  happened and in which transactions. Each row reads "Transaction 1 · 0:39
+  into the recording · took 8s", and the Timeline names its lanes.
 
 ### Changed
 
