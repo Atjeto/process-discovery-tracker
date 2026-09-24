@@ -418,3 +418,23 @@ map editor. The default after a step is always the next step in its transaction.
   skipped, and a link without a `when` ends at the step's name).
 - **Removal**: a link whose target step is hidden or removed is dropped (the viewer says so
   once); Undo restores both.
+
+## C18. Richer maps (AD-32; lanes M-P and M-V)
+
+- **Step BPMN** (process_map_step.bpmn, so also the As-Is copy made from it and the PDD's map
+  image): end events named by outcome: the main end takes the first line of
+  `document.result` (else "End"); each C17 link to "end" gets its own end event named from its
+  `when` (for example "Order rejected" from "the order is rejected": the analyst's words, trimmed,
+  not rewritten). The analyst's notes on a step (`analyst_notes` with that `step_id`) become one
+  `textAnnotation` per step, joined by an `association` to its task. Attachments on a step become
+  a `dataObjectReference` named by the attachment's label, joined by a data association to its
+  task. Each task gets a fill and stroke per system through the bpmn-js colour attributes
+  (`bioc:fill`, `bioc:stroke`; ignored by other tools), from a fixed palette in system order,
+  with one legend `textAnnotation` listing the systems. Steps added by hand are
+  `bpmn:manualTask`, recorded steps `bpmn:userTask`. Task names stay the step names. Diagram
+  interchange covers every new element and the layout keeps them clear of boxes and lines.
+- **Illustrated map**: rendered by the viewer from the same data (the flow edges of C17, each
+  step's name, system, the screenshot the PDD prints, its description or first note), one PNG.
+  Export ▾ "Illustrated map (image)" saves it and opens Explorer; the PDD export passes it with
+  `--pdd-illustrated-image <png>`, printed as the last appendix ("Appendix: illustrated map"),
+  on its own landscape page, scaled to fit.
