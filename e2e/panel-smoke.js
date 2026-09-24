@@ -83,7 +83,7 @@ setInterval(async () => {
   if (stalled || Date.now() - lastMove < 180000) return;
   stalled = true;
   console.log("[panel-e2e] stalled for 3 min at: " + phase);
-  try { console.log("[panel-e2e] last calls in the page:\n" + fs.readFileSync(TRACE, "utf-8").trim().split("\n").slice(-25).map((l) => "    " + l).join("\n")); } catch (_) { /* no trace */ }
+  try { console.log("[panel-e2e] last calls in the page (when traced):\n" + fs.readFileSync(TRACE, "utf-8").trim().split("\n").slice(-25).map((l) => "    " + l).join("\n")); } catch (_) { /* no trace */ }
   if (live) await diagnose().catch((e) => console.log("[panel-e2e] could not look inside the viewer: " + e.message));
   process.exit(1);
 }, 5000).unref();
@@ -285,27 +285,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   let twice = {};
   try {
     at("(g2) tap the map box");
-    // What the page calls during the tap, written through as it goes: when
-    // the page stops answering (the CI runner), the watch prints the last ones.
-    await page.evaluate((file) => {
-      const fs = require("fs");
-      const log = (m) => { try { fs.appendFileSync(file, (performance.now() / 1000).toFixed(3) + " " + m + "\n"); } catch (_) { /* best effort */ } };
-      const P = HTMLMediaElement.prototype;
-      const ct = Object.getOwnPropertyDescriptor(P, "currentTime");
-      Object.defineProperty(P, "currentTime", { configurable: true, get() { return ct.get.call(this); },
-        set(v) { log("set currentTime " + v + " on #" + this.id); ct.set.call(this, v); log("  done"); } });
-      for (const k of ["play", "pause", "load"]) {
-        const f = P[k];
-        P[k] = function (...a) { log(k + " on #" + this.id); const r = f.apply(this, a); log("  done"); return r; };
-      }
-      const ih = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
-      Object.defineProperty(Element.prototype, "innerHTML", { configurable: true, get() { return ih.get.call(this); },
-        set(v) { log("innerHTML on #" + (this.id || this.className)); ih.set.call(this, v); log("  done"); } });
-      const sa = Element.prototype.setAttribute;
-      Element.prototype.setAttribute = function (n, v) { if (n === "src") log("src on #" + (this.id || this.tagName) + " " + String(v).slice(-40)); return sa.call(this, n, v); };
-      window.__pdtTrace = log;
-    }, TRACE);
-    await page.evaluate((id) => { window.__pdtTrace("tap " + id); document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"); window.__pdtTrace("tap done"); }, CHECK);
+    await page.evaluate((id) => document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"), CHECK);
     await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, CHECK, { timeout: T });
     at("(g2) read the panel");
     twice.st = await panelState(page);

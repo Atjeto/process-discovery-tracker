@@ -250,7 +250,10 @@ function _cue(stepId) {
   _stopAt = null;
   if (!video.paused) video.pause();
   const at = _videoSecs(step);
-  if (isFinite(at) && at >= 0) video.currentTime = at;
+  // The seek waits for the next turn: a seek in the same turn as the pause of
+  // a playing video froze the whole page on a machine without a GPU (the CI
+  // runner; BH13), and a later cue to another row cancels this one.
+  if (isFinite(at) && at >= 0) setTimeout(() => { if (_cuedId === stepId) video.currentTime = at; }, 0);
 }
 
 function _show(open) {
