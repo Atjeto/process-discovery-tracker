@@ -95,10 +95,9 @@ test("auto_end_on_idle defaults to true (G1)", () => {
   assert.strictEqual(config.auto_end_on_idle, true);
 });
 
-test("validateConfig flags a default engagement id (B2)", () => {
-  const problems = validateConfig({ engagement_id: "default" }, os.tmpdir());
-  assert.strictEqual(problems.length, 1);
-  assert.match(problems[0], /Engagement ID/);
+test("validateConfig does not flag the default project code: no toast at every start (B2)", () => {
+  assert.deepStrictEqual(validateConfig({ engagement_id: "default" }, os.tmpdir()), []);
+  assert.deepStrictEqual(validateConfig({}, os.tmpdir()), []);
 });
 
 test("validateConfig passes a configured engagement and a writable folder (B2)", () => {
@@ -112,5 +111,5 @@ test("validateConfig flags a missing / unwritable session folder (B2)", () => {
     { engagement_id: "ACME-2026" },
     path.join(os.tmpdir(), `pdt-nonexistent-${Date.now()}`));
   assert.strictEqual(problems.length, 1);
-  assert.match(problems[0], /not writable/);
+  assert.match(problems[0], /cannot be written to/);
 });

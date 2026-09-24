@@ -16,14 +16,20 @@
  *                     (until the consent text/version changes). Decline aborts.
  */
 
+/* The default text says exactly what is left out: only what is typed into
+   fields Windows marks as password fields (the recorder's IsPassword
+   redaction). Everything else typed is recorded as typed. Changing this
+   text means bumping DEFAULTS.consent.version in config.js, so a "once"
+   acknowledgement of the old text is asked again. */
 const DEFAULT_CONSENT_TEXT =
-  "This session records how you work: the applications and on-screen controls " +
-  "you interact with, periodic screenshots, and (if enabled) screen video. It is " +
-  "used only to map and improve this business process. Sensitive field values " +
-  "(passwords, card numbers, and similar) are redacted automatically. Recording " +
-  "stays on this device until an analyst collects the session folder; nothing is " +
-  "sent over the network. You can end the recording at any time from the tray. " +
-  "Do you consent to this recording?";
+  "This recording captures how you work: the programs and windows you use, " +
+  "your clicks and typing, screenshots and, if it is set up, a screen video. " +
+  "It is used only to map and improve this business process. What you type " +
+  "into password fields (fields Windows marks as password fields) is not " +
+  "recorded; everything else you type is recorded as you type it. The " +
+  "recording stays on this computer until you hand the recording folder to " +
+  "the analyst; nothing is sent over the network. You can stop recording at " +
+  "any time. Do you consent to this recording?";
 
 /* Whether the worker must be shown the consent window before this session
    starts. "off" never prompts; "per_session" always prompts; "once" prompts

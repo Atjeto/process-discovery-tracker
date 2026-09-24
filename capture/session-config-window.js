@@ -36,7 +36,7 @@ function showSessionConfigWindow(opts) {
   const win = new BrowserWindow({
     width: 580,
     height: 520,
-    title: "Session setup",
+    title: "Recording setup",
     resizable: true,
     autoHideMenuBar: true,
     backgroundColor: "#14141A",

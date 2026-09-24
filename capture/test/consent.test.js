@@ -67,9 +67,24 @@ test("acknowledgementKey varies by worker and version", () => {
 
 test("config DEFAULTS ship consent off with the default text", () => {
   assert.strictEqual(DEFAULTS.consent.mode, "off");
-  assert.strictEqual(DEFAULTS.consent.version, 1);
+  // Version 2: the text changed (F2), so a "once" acknowledgement of the
+  // version 1 text is asked again.
+  assert.strictEqual(DEFAULTS.consent.version, 2);
   assert.strictEqual(DEFAULTS.consent.text, DEFAULT_CONSENT_TEXT);
   assert.match(DEFAULT_CONSENT_TEXT, /consent/i);
+});
+
+test("F2: the consent text promises only the redaction the recorder does", () => {
+  // The recorder redacts values typed into fields Windows marks as password
+  // fields (UIA IsPassword) and nothing else, so the text must not promise
+  // card numbers or any other redaction.
+  assert.match(DEFAULT_CONSENT_TEXT, /password fields/i);
+  assert.match(DEFAULT_CONSENT_TEXT, /fields Windows marks as password fields/i);
+  assert.doesNotMatch(DEFAULT_CONSENT_TEXT, /card/i);
+  assert.doesNotMatch(DEFAULT_CONSENT_TEXT, /and similar/i);
+  assert.doesNotMatch(DEFAULT_CONSENT_TEXT, /redacted automatically/i);
+  // The SME's words: a recording, never a session.
+  assert.doesNotMatch(DEFAULT_CONSENT_TEXT, /\bsession\b/i);
 });
 
 test("createSession defaults manifest.consent to the not-required record", () => {

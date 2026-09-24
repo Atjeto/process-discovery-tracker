@@ -28,7 +28,7 @@ function buildHtml() {
 function showSettingsWindow(opts) {
   const win = new BrowserWindow({
     width: 600,
-    height: 760,
+    height: 690,
     title: "Settings",
     resizable: true,
     autoHideMenuBar: true,

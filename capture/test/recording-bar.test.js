@@ -1,0 +1,70 @@
+"use strict";
+// The recording bar (recording-bar.js): where it opens, that it stays on a
+// screen, and that its page carries the view model safely.
+
+const test = require("node:test");
+const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
+const { placeBar, clampIntoArea, buildBarHtml, barWidth, BAR_WIDTH, BAR_HEIGHT } = require("../recording-bar.js");
+
+const SIZE = { width: BAR_WIDTH, height: BAR_HEIGHT };
+// A 1366x768 laptop screen with a 40 px taskbar, and a second screen to its right.
+const LAPTOP = { x: 0, y: 0, width: 1366, height: 728 };
+const RIGHT = { x: 1366, y: 0, width: 1920, height: 1040 };
+
+test("the bar is small: one row, under 40% of a 1366 wide screen, a tenth of the old panel's area at most", () => {
+  for (const named of [false, true]) {
+    const w = barWidth(named);
+    assert.ok(w <= 0.41 * 1366, "width " + w);
+    assert.ok(BAR_HEIGHT <= 48, "height " + BAR_HEIGHT);
+    assert.ok(w * BAR_HEIGHT <= (460 * 720) / 10, "area against the 460x720 panel: " + w * BAR_HEIGHT);
+  }
+  assert.strictEqual(barWidth(true) - barWidth(false), 30, "the named-run caret");
+});
+
+test("with nothing saved, the bar opens at the bottom right of the main screen, above the taskbar", () => {
+  const p = placeBar({ saved: null, size: SIZE, workAreas: [LAPTOP], primary: LAPTOP });
+  assert.deepStrictEqual(p, { x: 1366 - BAR_WIDTH - 16, y: 728 - BAR_HEIGHT - 16 });
+});
+
+test("a saved place is kept (the bar remembers where it was put)", () => {
+  const saved = { x: 300, y: 12 };
+  assert.deepStrictEqual(placeBar({ saved, size: SIZE, workAreas: [LAPTOP, RIGHT], primary: LAPTOP }), saved);
+  const onSecond = { x: 2000, y: 900 };
+  assert.deepStrictEqual(placeBar({ saved: onSecond, size: SIZE, workAreas: [LAPTOP, RIGHT], primary: LAPTOP }), onSecond);
+});
+
+test("a saved place on a screen that is gone falls back to the main screen", () => {
+  const p = placeBar({ saved: { x: 2000, y: 900 }, size: SIZE, workAreas: [LAPTOP], primary: LAPTOP });
+  assert.deepStrictEqual(p, { x: 1366 - BAR_WIDTH - 16, y: 728 - BAR_HEIGHT - 16 });
+});
+
+test("a saved place partly off its screen is pulled back so the whole bar shows", () => {
+  const p = placeBar({ saved: { x: 1366 - BAR_WIDTH / 2 - 10, y: 700 }, size: SIZE, workAreas: [LAPTOP], primary: LAPTOP });
+  assert.deepStrictEqual(p, { x: 1366 - BAR_WIDTH, y: 728 - BAR_HEIGHT });
+});
+
+test("a bar that grows for a problem line near the bottom moves up to stay on screen", () => {
+  const x = 1366 - BAR_WIDTH - 16;   // the default place, 44 px tall until the problem line
+  const p = clampIntoArea({ x, y: 728 - 44 - 16, width: BAR_WIDTH, height: 82 }, LAPTOP);
+  assert.deepStrictEqual(p, { x, y: 728 - 82 });
+});
+
+test("the bar's page carries its first view model inert: a run name cannot break out of the script", () => {
+  const html = buildBarHtml({ state: "recording", runText: "</script><img src=x onerror=alert(1)>" });
+  const script = html.slice(html.lastIndexOf("<script>"));
+  assert.ok(!script.includes("<img"), "no raw markup from the view model");
+  assert.ok(!/\{\{INITIAL_VIEW\}\}/.test(html), "the slot is filled");
+});
+
+test("the bar's page has no counters, no event feed and no program or window title", () => {
+  // The raw page, not the built one: the built page inlines base64 fonts.
+  const html = fs.readFileSync(path.join(__dirname, "..", "ui", "recording-bar.html"), "utf-8");
+  for (const gone of ["counters", "feed", "Recent events", "interactions", "currentApp", "currentTitle", "recorder on", "Tracking"]) {
+    assert.ok(!html.includes(gone), "the bar still has: " + gone);
+  }
+  for (const kept of ["btn-next", "btn-pause", "btn-stop", "btn-start", "Keep recording", "Stop recording"]) {
+    assert.ok(html.includes(kept), "the bar lacks: " + kept);
+  }
+});

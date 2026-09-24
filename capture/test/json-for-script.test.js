@@ -1,8 +1,10 @@
 "use strict";
 /* HIGH (review) — script-context JSON injection / RCE.
  *
- * buildOperatorHtml (operator-panel.js) interpolates operator-influenced
- * label strings into an inline <script> of a nodeIntegration:true window.
+ * The recording bar (recording-bar.js: the first view model, which carries
+ * the open run's name, a configured named run) and the end summary
+ * (end-summary-window.js: the folder path and the summary words) interpolate
+ * data into an inline <script> of a nodeIntegration:true window.
  * Bare JSON.stringify does NOT escape "</script>", so a label like
  * "</script><img onerror=...>" breaks out and executes. jsonForScript
  * neutralizes the markup-significant characters. This pins the helper AND
@@ -47,11 +49,11 @@ test("undefined serializes to null, never a broken expression", () => {
   assert.strictEqual(jsonForScript(undefined), "null");
 });
 
-// Regression guard: the script-context builder must route its dynamic slots
-// through jsonForScript, never bare JSON.stringify (which would re-open the
-// breakout). We scan source rather than rendering (no electron in tests).
-test("buildOperatorHtml uses jsonForScript for script slots", () => {
-  for (const f of ["operator-panel.js"]) {
+// Regression guard: the script-context builders must route their dynamic
+// slots through jsonForScript, never bare JSON.stringify (which would re-open
+// the breakout). We scan source rather than rendering (no electron in tests).
+test("the recording bar and the end summary use jsonForScript for script slots", () => {
+  for (const f of ["recording-bar.js", "end-summary-window.js"]) {
     const src = fs.readFileSync(path.join(ROOT, f), "utf-8");
     assert.ok(
       src.includes("jsonForScript"),
@@ -60,6 +62,10 @@ test("buildOperatorHtml uses jsonForScript for script slots", () => {
     assert.ok(
       !/JSON\.stringify\(\s*(?:\(config && config\.)?(?:config\.)?process_labels/.test(src),
       `${f} must not feed process_labels through bare JSON.stringify into a <script>`
+    );
+    assert.ok(
+      !/\.join\(\s*JSON\.stringify\(/.test(src),
+      `${f} must not splice bare JSON.stringify output into its page`
     );
   }
 });

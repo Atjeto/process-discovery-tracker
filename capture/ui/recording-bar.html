@@ -1,0 +1,189 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Recording bar</title>
+<style>
+  :root {
+    color-scheme: dark;
+    /* The capture palette (see ../viewer/styles.css, stratified dark). */
+    --bg:        #14141A;
+    --bg-2:      #22222A;
+    --bg-3:      #2E2E37;
+    --bg-hover:  #3A3A44;
+    --border:    #424250;
+    --fg:        #D8D6CE;
+    --fg-2:      #A8A69E;
+    --fg-3:      #8E8C82;
+    --accent:    #6E8A66;
+    --accent-hi: #8AAB7E;
+    --on-accent: #11140F;
+    --warn:      #A08050;
+    --warn-fg:   #D9B77A;
+    --danger:    #903838;
+    --danger-fg: #E39A9A;
+    --rec:       #C24A4A;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; overflow: hidden;
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-ui); font-size: 12px;
+    user-select: none; -webkit-user-select: none;
+  }
+  body { border: 1px solid var(--border); }
+  [hidden] { display: none !important; }
+
+  /* The whole row drags the bar; the buttons stay clickable. */
+  .row {
+    display: flex; align-items: center; gap: 7px;
+    height: 42px; padding: 0 7px 0 12px;
+    -webkit-app-region: drag;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: var(--fg-3); }
+  .dot.recording { background: var(--rec); box-shadow: 0 0 0 3px rgba(194, 74, 74, 0.22); }
+  .dot.paused { background: var(--warn); }
+  .status {
+    flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--fg-2);
+  }
+  .status .state { color: var(--fg); font-weight: 600; }
+  .status .run { color: var(--fg); }
+  .status .time { font-family: var(--font-mono); font-size: 11px; }
+  .status .sep { color: var(--fg-3); margin: 0 4px; }
+
+  .controls { display: flex; gap: 6px; flex: 0 0 auto; }
+  button {
+    -webkit-app-region: no-drag;
+    display: inline-flex; align-items: center;
+    height: 28px; padding: 0 9px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--bg-3); color: var(--fg);
+    font-family: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
+  }
+  button:hover { background: var(--bg-hover); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button.primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); }
+  button.stop { background: transparent; border-color: var(--danger); color: var(--danger-fg); }
+  button.stop:hover { background: var(--danger); color: #F2EAE5; }
+  button.stop.solid { background: var(--danger); color: #F2EAE5; }
+  button.caret { padding: 0 8px; margin-left: -4px; font-size: 11px; }
+  kbd {
+    margin-left: 6px; padding: 0 3px; border-radius: 3px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 500; line-height: 15px;
+    border: 1px solid rgba(17, 20, 15, 0.4); background: rgba(17, 20, 15, 0.14); color: inherit;
+  }
+
+  /* A problem is one line under the row, in words. */
+  .problem {
+    padding: 0 12px 8px 30px;
+    color: var(--warn-fg); font-size: 11px; line-height: 1.35;
+    -webkit-app-region: drag;
+  }
+</style></head><body>
+
+<div class="row">
+  <span class="dot" id="dot"></span>
+  <div class="status" id="status"></div>
+  <div class="controls" id="controls-idle" hidden>
+    <button class="primary" id="btn-start">Start recording<kbd id="kbd-start"></kbd></button>
+  </div>
+  <div class="controls" id="controls-rec" hidden>
+    <button class="primary" id="btn-next">Next run<kbd id="kbd-next"></kbd></button>
+    <button class="caret" id="btn-named" title="Start a named run" aria-label="Start a named run" hidden>&#9662;</button>
+    <button id="btn-pause">Pause</button>
+    <button class="stop" id="btn-stop">Stop</button>
+  </div>
+  <div class="controls" id="controls-confirm" hidden>
+    <button id="btn-keep">Keep recording</button>
+    <button class="stop solid" id="btn-stop-yes">Stop recording</button>
+  </div>
+</div>
+<div class="problem" id="problem" hidden></div>
+
+<script>
+const { ipcRenderer } = require("electron");
+// The first view model, from main.js at creation; later ones come with
+// pdt:status once a second. The page only paints: every word is decided in
+// capture-guidance.js.
+let view = {{INITIAL_VIEW}};
+let confirming = false;
+let stopping = false;
+let lastHeight = 0;
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function fit() {
+  const h = Math.ceil(document.body.getBoundingClientRect().height);
+  if (h && h !== lastHeight) {
+    lastHeight = h;
+    ipcRenderer.invoke("pdt:barResize", { height: h }).catch(() => {});
+  }
+}
+
+function paint(next) {
+  if (next) view = next;
+  const idle = view.state === "idle";
+  if (idle) confirming = false;
+  $("dot").className = "dot " + (idle ? "" : view.state);
+  const status = $("status");
+  if (stopping) {
+    status.innerHTML = '<span class="state">Stopping the recording</span>';
+  } else if (confirming) {
+    status.innerHTML = '<span class="state">Stop the recording?</span>';
+  } else if (idle) {
+    status.innerHTML = '<span class="state">' + esc(view.stateText || "Not recording") + '</span>';
+  } else {
+    status.innerHTML =
+      '<span class="state">' + esc(view.stateText) + '</span>' +
+      '<span class="sep">&middot;</span><span class="run">' + esc(view.runText) + '</span>' +
+      '<span class="sep">&middot;</span><span class="time">' + esc(view.elapsed) + '</span>';
+  }
+  status.title = view.title || "";
+  $("controls-idle").hidden = !idle || confirming || stopping;
+  $("controls-rec").hidden = idle || confirming || stopping;
+  $("controls-confirm").hidden = !confirming || stopping;
+  for (const id of ["kbd-start", "kbd-next"]) {
+    $(id).textContent = view.key || "";
+    $(id).hidden = !view.key;
+  }
+  $("btn-pause").textContent = view.pauseLabel || "Pause";
+  $("btn-named").hidden = !view.namedRuns;
+  $("problem").textContent = view.problem || "";
+  $("problem").hidden = !view.problem;
+  fit();
+}
+
+async function tick() {
+  try {
+    const s = await ipcRenderer.invoke("pdt:status");
+    if (s && s.view) paint(s.view);
+  } catch (_) { /* the next tick tries again */ }
+}
+
+// Start recording and Next run are the same one start: it starts the
+// recording with Run 1 when nothing records, and the next run otherwise.
+$("btn-start").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:fireStart"); tick(); });
+$("btn-next").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:fireStart"); tick(); });
+$("btn-named").addEventListener("click", () => { ipcRenderer.invoke("pdt:namedRunMenu"); });
+$("btn-pause").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:togglePause"); tick(); });
+$("btn-stop").addEventListener("click", () => { confirming = true; paint(); });
+$("btn-keep").addEventListener("click", () => { confirming = false; paint(); });
+$("btn-stop-yes").addEventListener("click", async () => {
+  // The recording stops, the bar closes and the summary opens (main.js);
+  // until then the bar says so and offers nothing to click twice.
+  confirming = false;
+  stopping = true;
+  paint();
+  try { await ipcRenderer.invoke("pdt:endSession"); } finally { stopping = false; }
+  tick();
+});
+
+paint(view);
+tick();
+setInterval(tick, 1000);
+</script>
+</body></html>

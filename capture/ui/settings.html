@@ -67,7 +67,7 @@
   .hk-label { font-size: 11px; color: var(--fg-2); }
   .hk-input { font-family: var(--mono); font-size: 11px; text-align: center; }
   .hk-rec { padding: 6px 8px; font-size: 11px; }
-  .hk-rec.recording { border-color: var(--accent); color: var(--accent); }
+  .hk-rec.listening { border-color: var(--accent); color: var(--accent); }
 
   .pw-row { position: relative; }
   .pw-toggle {
@@ -102,7 +102,7 @@
 
 <header>
   <h1>Settings</h1>
-  <div class="sub">Persistent across sessions. Saved to your user profile, not into the per-session config.</div>
+  <div class="sub">Kept on this computer for every recording.</div>
 </header>
 
 <div class="scroll">
@@ -110,19 +110,19 @@
 <fieldset>
   <legend>Hotkeys</legend>
   <div class="hk-row">
-    <span class="hk-label">Start next run</span>
+    <span class="hk-label">Start recording, then the next run</span>
     <input type="text" id="hk-start" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-start">Record</button>
+    <button type="button" class="hk-rec" data-target="hk-start">Change</button>
   </div>
   <div class="hk-row">
     <span class="hk-label">End run</span>
     <input type="text" id="hk-end" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-end">Record</button>
+    <button type="button" class="hk-rec" data-target="hk-end">Change</button>
   </div>
   <div class="hk-row">
-    <span class="hk-label">Manual screenshot</span>
+    <span class="hk-label">Take a screenshot</span>
     <input type="text" id="hk-shot" class="hk-input" readonly />
-    <button type="button" class="hk-rec" data-target="hk-shot">Record</button>
+    <button type="button" class="hk-rec" data-target="hk-shot">Change</button>
   </div>
   <div class="restart-note">Hotkeys re-register on the next app launch.</div>
 </fieldset>
@@ -141,7 +141,7 @@
   </div>
   <label class="fld" for="obs-scene">Scene name</label>
   <input type="text" id="obs-scene" placeholder="Process Discovery -- Default" />
-  <label class="check"><input type="checkbox" id="obs-required" /><span>Require OBS for new sessions (refuse to start if it isn't reachable)</span></label>
+  <label class="check"><input type="checkbox" id="obs-required" /><span>Require OBS for new recordings (a recording does not start without it)</span></label>
   <label class="check"><input type="checkbox" id="obs-autoscene" /><span>Auto-create the scene if it doesn't exist yet</span></label>
 </fieldset>
 
@@ -171,12 +171,12 @@
 
 <fieldset>
   <legend>Storage &amp; recording limits</legend>
-  <label class="fld" for="store-warn">Warn when total recorded storage exceeds (GB)</label>
+  <label class="fld" for="store-warn">Flag the recordings on this computer above (GB)</label>
   <input type="number" id="store-warn" min="1" max="10000" step="1" />
-  <div class="help-hint">Toast at the end of a session if recorded sessions on this machine now exceed this size. Use the tray <strong>Storage → Prune old sessions</strong> tool to free space.</div>
-  <label class="fld" for="store-idle">Auto-stop recording after inactivity (minutes)</label>
+  <div class="help-hint">The tray's <strong>Setup (analyst)</strong> menu shows the size of all recordings and flags it above this limit, next to <strong>Delete recordings older than</strong>.</div>
+  <label class="fld" for="store-idle">End the open run after inactivity (minutes)</label>
   <input type="number" id="store-idle" min="1" max="480" step="1" />
-  <label class="check"><input type="checkbox" id="store-autoend" /><span>Actually auto-stop on long idle (uncheck for 8-hour passive recordings: idle is still logged either way)</span></label>
+  <label class="check"><input type="checkbox" id="store-autoend" /><span>End the open run after this long without activity (uncheck for all-day recordings; the inactivity is noted either way)</span></label>
 </fieldset>
 
 </div>
@@ -313,14 +313,14 @@ function accelFromEvent(e) {
   return parts.join("+");
 }
 
-let _recording = false;
+let _listening = false;
 document.querySelectorAll(".hk-rec").forEach((btn) => {
   btn.addEventListener("click", () => {
-    if (_recording) return;
-    _recording = true;
+    if (_listening) return;
+    _listening = true;
     const orig = btn.textContent;
     btn.textContent = "Press keys…";
-    btn.classList.add("recording");
+    btn.classList.add("listening");
     const onKey = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -330,8 +330,8 @@ document.querySelectorAll(".hk-rec").forEach((btn) => {
       if (inp) inp.value = accel;
       document.removeEventListener("keydown", onKey, true);
       btn.textContent = orig;
-      btn.classList.remove("recording");
-      _recording = false;
+      btn.classList.remove("listening");
+      _listening = false;
     };
     document.addEventListener("keydown", onKey, true);
   });

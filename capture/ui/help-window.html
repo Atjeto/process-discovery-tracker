@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>PDT Help</title>
+<title>How to record</title>
 <style>
   :root {
     color-scheme: dark;
@@ -12,197 +12,54 @@
     --fg:       #D8D6CE;
     --fg-2:     #A8A69E;
     --fg-3:     #8E8C82;
-    --accent:   #6E8A66;
-    --accent-2: #5A7488;
-    --mono: var(--font-mono);
   }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; height: 100%;
-    background: var(--bg); color: var(--fg);
-    font-family: var(--font-ui);
-    font-size: 13px; line-height: 1.55;
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--font-ui); font-size: 13px; line-height: 1.5;
   }
-  body { padding: 22px 28px; overflow-y: auto; max-width: 720px; }
-
-  h1 { font-size: 17px; margin: 0 0 4px; font-weight: 600; }
-  .sub { color: var(--fg-3); font-size: 12px; margin-bottom: 22px; }
-  h2 { font-size: 13px; font-weight: 600; color: var(--fg);
-       margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
-  p { margin: 6px 0 12px; color: var(--fg-2); }
-  ol, ul { margin: 6px 0 14px; padding-left: 22px; }
-  li { margin-bottom: 5px; color: var(--fg-2); }
-
-  code { font-family: var(--mono); font-size: 12px;
-         background: var(--bg-2); padding: 1px 5px; border-radius: 3px;
-         color: var(--fg); border: 1px solid var(--border); }
-  .kbd { display: inline-block; padding: 1px 6px; min-width: 18px; height: 18px;
-         font-family: var(--mono); font-size: 11px; line-height: 16px; text-align: center;
-         background: var(--bg-2); border: 1px solid var(--border); border-radius: 3px;
-         color: var(--fg); vertical-align: middle; }
-
-  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
-  td { padding: 7px 10px; border-bottom: 1px solid var(--border);
-       font-size: 12px; color: var(--fg-2); vertical-align: top; }
-  td:first-child { width: 180px; }
-
-  .hint { background: var(--bg-2); border-left: 2px solid var(--accent);
-          padding: 8px 12px; border-radius: 0 3px 3px 0;
-          color: var(--fg-2); font-size: 12px; margin: 8px 0 14px; }
-
-  dl dt { font-weight: 600; color: var(--fg); margin-top: 14px; font-size: 12px; }
-  dl dt:first-child { margin-top: 0; }
-  dl dd { margin: 4px 0 0; color: var(--fg-2); font-size: 12px; line-height: 1.55; }
-
-  hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
-  .footer { color: var(--fg-3); font-size: 11px; text-align: center; }
+  body { padding: 20px 26px 16px; }
+  [hidden] { display: none !important; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 16px 0 4px; color: var(--fg); }
+  ol { margin: 0; padding-left: 20px; }
+  li { margin-bottom: 7px; color: var(--fg-2); }
+  li::marker { color: var(--fg-3); }
+  li strong, p strong { color: var(--fg); font-weight: 600; }
+  p { margin: 0; color: var(--fg-2); }
+  kbd {
+    font-family: var(--font-mono); font-size: 11px; padding: 0 5px;
+    background: var(--bg-3); border: 1px solid var(--border); border-radius: 3px; color: var(--fg);
+  }
+  .path {
+    margin-top: 4px; padding: 6px 9px; border-radius: 4px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 11px; color: var(--fg); word-break: break-all;
+  }
+  .footer { margin-top: 16px; color: var(--fg-3); font-size: 11px; }
 </style></head><body>
 
-<h1>Process Discovery Tracker: Help</h1>
-<div class="sub">Capture side · v{{VERSION}}</div>
-
-<h2>What this app does</h2>
-<p>Polls the foreground window every 5 seconds and writes a per-session JSONL of window activity, runs, and system events.
-Optionally drives OBS to record the screen and writes a clock-sync file so the analyst's viewer can align timeline events with video.</p>
-
-<h2>Running a session</h2>
+<h1>How to record</h1>
 <ol>
-  <li>(Optional) Launch OBS with WebSocket enabled. <em>Tools → WebSocket Server Settings → Enable</em>, port 4455. (You can also configure this from tray → Settings → Video/OBS.)</li>
-  <li>(Optional) Tray → <em>Session setup…</em> to set the project code and task shortcuts for what you're about to record.</li>
-  <li>Right-click the tray icon → <em>Start capture session</em>. Or just press the run hotkey: recording starts with your first run.</li>
-  <li>Open the <strong>Live Session window</strong> from the tray to see what's being captured (or click the tray icon during a session).</li>
-  <li>Press the run hotkey each time you begin the process: one press per run. Tray → <em>End capture session</em> when done; a short summary shows what was recorded.</li>
+  <li><strong>Start.</strong> {{START_HOW}} Recording starts with Run 1, and a small recording bar appears.</li>
+  <li><strong>The next run.</strong> Each time you start the process again, {{NEXT_HOW}} The run before it ends by itself.</li>
+  <li><strong>Pause.</strong> Click Pause on the bar while you do something that is not part of the process, and Resume when you are back.</li>
+  <li><strong>Stop.</strong> Click Stop on the bar, then Stop recording. The summary shows where the recording is saved.</li>
+  <li><strong>Hand it over.</strong> In the summary, click Make a zip for the analyst and send the zip, or copy the recording folder.</li>
 </ol>
 
-<h2>Default hotkeys</h2>
-<table>
-  <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">S</span></td>
-      <td>Start the next run (Run 1, Run 2, ...). Ends the previous run first. Starts recording if it isn't running yet.</td></tr>
-  <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">E</span></td>
-      <td>End the current run.</td></tr>
-  <tr><td><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span></td>
-      <td>Manual screenshot: annotated as <code>screenshot_manual</code> in the event stream.</td></tr>
-</table>
-<p class="hint">All three are overridable in <code>config.yaml</code> under <code>hotkeys:</code>. The three are also surfaced in the <strong>hotkey overlay</strong>: a small click-through corner widget that stays visible across windows. Toggle from the tray (<em>Show / hide hotkey overlay</em>); visibility persists across launches.</p>
+<h2>What is recorded</h2>
+<p>The programs and windows you use, your clicks and typing, and screenshots. What you type into password fields is not recorded. Nothing is sent over the network: the recording stays on this computer until you hand it over.</p>
 
-<h2>Runs</h2>
-<p>A run is one pass through the process, from start to finish. Press the run hotkey at the start of each run: the app ends the previous run (if it is still open) and starts the next one, named Run 1, Run 2, and so on. Runs never overlap. Press the end hotkey when a run is finished, or simply start the next one. Ending the session also ends the open run.</p>
-<p>If task shortcuts (<code>process_labels</code>) are set up for this engagement, they appear as named-run buttons in the Live Session window and under <em>Start a named run</em> in the tray. Each one starts a run with that name instead of a number.</p>
+<h2>Where the recordings are</h2>
+<div class="path">{{FOLDER}}</div>
+<p style="margin-top: 4px">The tray menu opens it: Open recordings folder.</p>
 
-<h2>Live Session window</h2>
-<p>The tray entry <em>Show Live Session window</em> opens a 460×720 always-on-top window that is the single live-session surface:</p>
-<ul>
-  <li><strong>Start capture session</strong> button, shown while idle. Click it to begin a session; the run controls below dim until a session is running. (Starting a run also starts a session.)</li>
-  <li>Recording indicator + session timer</li>
-  <li>Currently-tracking app + title</li>
-  <li>The current run</li>
-  <li>Counters (events / runs / screenshots / interactions)</li>
-  <li>Recent-events feed</li>
-  <li><em>Start next run</em> and <em>End run</em> buttons, plus named-run buttons when task shortcuts are set up</li>
-  <li>Inline end-session confirm: no browser dialog</li>
-  <li>When the session ends: a one-screen summary (runs recorded, duration, interactions, screenshots) with a <em>Done</em> button</li>
-</ul>
+<div{{OTHER_HIDDEN}}>
+<h2>Other keys</h2>
+<p>{{OTHER_KEYS}}</p>
+</div>
 
-<h2>First-run welcome</h2>
-<p>The first launch on a machine pops a welcome window with three buttons: <em>Set up your profile</em> (recommended first step), open the Live Session window, open this help. After dismissal it never re-pops automatically. Reopenable any time via tray → Help → <em>Show welcome screen</em>.</p>
-
-<h2>Multi-monitor screenshot</h2>
-<p>By default, screenshots follow the foreground display rather than always capturing the primary monitor. Override via <code>screenshots.display</code> in your config:</p>
-<ul>
-  <li><code>active</code> (default): picks the display containing the focused window</li>
-  <li><code>primary</code>: legacy behaviour, always the primary display</li>
-  <li><code>all</code>: captures every display, emits one screenshot event per file with a <code>_d&lt;displayId&gt;.jpg</code> suffix</li>
-</ul>
-
-<h2>Tray menu (when a session is running)</h2>
-<ul>
-  <li><strong>Start next run</strong>: same as the run hotkey</li>
-  <li><strong>Start a named run</strong>: submenu of <code>process_labels</code> entries (hidden when none configured)</li>
-  <li><strong>End run</strong>: ends the current run</li>
-  <li><strong>Manual screenshot</strong>: capture regardless of trigger config</li>
-  <li><strong>Pause / Resume polling</strong></li>
-  <li><strong>End capture session</strong>: ends the open run, finalizes the manifest, stops OBS recording, then shows the session summary</li>
-  <li><strong>Live status → Show / Hide Live Session window</strong>: toggle the always-on-top dashboard</li>
-  <li><strong>Storage → Open sessions folder</strong>: jump to <code>%APPDATA%\process-discovery-tracker\sessions\</code></li>
-  <li><strong>Settings…</strong>: hotkeys, OBS, screenshots, storage limits (persists across sessions)</li>
-  <li><strong>Profile…</strong>: worker identity stamped onto every recording</li>
-</ul>
-
-<h2>Configuration</h2>
-<p>Configuration is split into three places, by lifetime:</p>
-<ul>
-  <li><strong>Settings</strong> (tray → <em>Settings…</em>), persistent across sessions: hotkeys, OBS, screenshots, storage / recording limits. Stored at <code>userData/user-config.json</code> and merged over any per-session YAML.</li>
-  <li><strong>Profile</strong> (tray → <em>Profile…</em>): worker identity (id, display name, role, team). Stamped onto every recording's manifest.</li>
-  <li><strong>Session setup</strong> (tray → <em>Session setup…</em>), per engagement: project code/name and task shortcuts. Stored at <code>userData/quick-config.yaml</code>.</li>
-  <li><strong>Manual YAML</strong> (advanced): set <code>PDT_CONFIG=path\to\config.yaml</code> before launch for the full schema (process labels, hotkeys, OBS settings, idle thresholds, screenshot triggers, engagement metadata). See <code>capture/sample-config.yaml</code> in the repo. Settings / Profile still layer on top.</li>
-</ul>
-
-<h2>OBS recording: first-time setup (5 minutes)</h2>
-<p>OBS is optional but recommended. With OBS running, the capture app automatically starts a screen recording when you start a session, stops it when you end, and writes a tiny <code>obs/sync.json</code> file so the analyst's viewer can sync the timeline to the video.</p>
-<ol>
-  <li><strong>Install OBS Studio</strong> from <code>obsproject.com</code> (version 28 or later). One-time.</li>
-  <li><strong>Open OBS</strong> and go to <em>Tools → WebSocket Server Settings</em>.</li>
-  <li><strong>Tick "Enable WebSocket server"</strong>. Leave the port at <code>4455</code>. Leave authentication disabled for ease of use on internal machines (or set a password and copy it into your config's <code>obs.websocket_password</code> field). Click OK. OBS doesn't need a restart.</li>
-  <li><strong>Leave OBS running</strong> when you start a capture session. The tracker connects automatically, creates a scene named "Process Discovery -- Default" the first time, starts recording on session start, and stops on session end.</li>
-</ol>
-<p>You don't need to click record in OBS yourself. The capture app does it. You also don't need to leave OBS in the foreground: minimize it after step 4 and you'll never need to look at it again unless you want to verify the recording.</p>
-<h2>OBS integration details</h2>
-<ul>
-  <li>Connection: <code>ws://127.0.0.1:4455</code> (localhost only). No network exposure.</li>
-  <li>Set <code>obs.required: true</code> in your per-session config to fail fast when OBS isn't reachable. Default is <code>false</code> so capture can run without OBS for ad-hoc testing.</li>
-  <li>First connection auto-creates a scene per config (default: "Process Discovery -- Default") with a timestamp overlay browser source. The burned-in clock helps you verify sync if anything ever drifts.</li>
-  <li>The recording's start timestamp and tracker↔OBS offset are written to <code>obs/sync.json</code> so the viewer can map any tracker event to a video seek position.</li>
-  <li>Where the video lands depends on OBS's own <em>Settings → Output → Recording Path</em>. The session's <code>manifest.json</code> records the absolute path so the analyst's viewer can find it after you move the session folder.</li>
-</ul>
-
-<h2>Output</h2>
-<p>Each session writes a self-contained folder under <code>%APPDATA%\process-discovery-tracker\sessions\&lt;engagement&gt;\&lt;YYYYMMDD-HHMMSS&gt;\</code>:</p>
-<ul>
-  <li><code>events.jsonl</code>: one JSON event per line, append-only, the durable artifact</li>
-  <li><code>manifest.json</code>: session metadata, status, OBS reference</li>
-  <li><code>config.yaml</code>: snapshot of the config used</li>
-  <li><code>screenshots/</code>: event-triggered captures</li>
-  <li><code>obs/sync.json</code>: clock-sync data (if OBS was connected)</li>
-</ul>
-
-<h2>Citrix and remote desktop notes</h2>
-<p>The <code>active-win</code> library that powers polling has known limitations on Citrix: the foreground window is reported as the Citrix client, not the inner app. If your worker runs an app inside Citrix:</p>
-<ul>
-  <li>Run the capture tracker <em>inside</em> the Citrix session so it polls inner windows. Requires the Citrix profile to permit running unsigned Electron apps.</li>
-  <li>If that is not possible, run capture on the local machine; you will get one band labelled <code>Citrix Workspace.exe</code> for the duration. OBS still records the visible content. Mark every run with the run hotkey; classification of inner apps must be done by the analyst.</li>
-  <li>Validate behavior on a representative machine before scoping a Citrix-heavy engagement.</li>
-</ul>
-
-<h2>Storage retention</h2>
-<p>Sessions accumulate in <code>%APPDATA%\process-discovery-tracker\sessions\</code> over time. The tray menu now shows the total count and disk usage, and offers two ways to clean up without leaving the app:</p>
-<ul>
-  <li><strong>Per session:</strong> tray &rarr; Recent sessions &rarr; pick one &rarr; <em>Delete...</em> (confirms, deletes that single folder).</li>
-  <li><strong>Bulk by age:</strong> tray &rarr; <em>Prune sessions older than...</em> &rarr; 30 / 90 / 365 days. Lists a sample of what will go, shows total bytes freed, confirms before deleting.</li>
-</ul>
-<p>The currently-recording session can never be deleted from these menus. For the analyst side (with Python available), <code>scripts/prune-sessions.py --older-than 90 [--apply]</code> still works and supports <code>--keep-recovered</code> to skip orphan-recovered sessions that may need attention.</p>
-
-<h2>Troubleshooting</h2>
-<dl>
-  <dt>Hotkey didn't register</dt>
-  <dd>Another app may have the same global shortcut. Enable <code>PDT_DEBUG=1</code> in the launch env and check <code>%APPDATA%\process-discovery-tracker\boot.log</code> for <code>hotkeys: start=false</code>. Edit your <code>config.yaml</code> to use different keys.</dd>
-
-  <dt>OBS won't connect</dt>
-  <dd>Make sure OBS is running with WebSocket Server enabled (Tools menu). Default port is 4455. If you enabled authentication, set <code>obs.websocket_password</code> in your config. Set <code>obs.required: false</code> to skip OBS entirely.</dd>
-
-  <dt>Tray icon doesn't appear at all</dt>
-  <dd>Enable <code>PDT_DEBUG=1</code>, relaunch, and check the boot log. Common causes: another instance already running (single-instance lock), missing tray icon file, antivirus blocking the executable.</dd>
-
-  <dt>Session shows up as "recovered" on next launch</dt>
-  <dd>The previous session ended without a clean close (crash, force-quit, power loss). Orphan sessions are auto-marked. A run that was still open stays open in <code>events.jsonl</code>; the analyst's tools close it at the end of the recording.</dd>
-
-  <dt>Where does my data go?</dt>
-  <dd><code>%APPDATA%\process-discovery-tracker\sessions\</code> on Windows. The tray has an "Open sessions folder" item.</dd>
-
-  <dt>BPMN export skipped during normalization</dt>
-  <dd>PM4Py's BPMN file writer invokes Graphviz <code>dot</code> for layout. Install Graphviz from graphviz.org and add its bin folder to PATH if you need BPMN files. The DFG view in the viewer renders without Graphviz; only the BPMN file generation requires it.</dd>
-</dl>
-
-<hr />
-<div class="footer">Full design doc: <code>process_discovery_tracker_design.md</code> in the repo root.</div>
+<div class="footer">Process Discovery Tracker {{VERSION}}</div>
 
 </body></html>

@@ -1,26 +1,19 @@
 /*
  * First-run welcome window.
  *
- * Shown the first time the user launches the capture app on a given
- * machine (a one-shot flag in userData/welcome-shown.json prevents
- * re-showing). Goal: take a fresh SME from "tray icon appeared, now
- * what?" to "I can record a session" in under 60 seconds.
- *
- * Three CTAs:
- *   1. Show the operator panel (the most useful guided surface)
- *   2. Open the help window (full how-to)
- *   3. Dismiss ("I know what I'm doing")
- *
- * Optionally takes a `force` flag so the user can reopen it from
- * the tray menu later ("Help > Show welcome again").
+ * Shown the first time the capture app starts on a machine (a one-shot flag
+ * in userData/welcome-shown.json). Three lines with the real keys, then
+ * Start recording (the one start: the recording begins with Run 1), Help
+ * and Close.
  */
 
 "use strict";
 
 const path = require("node:path");
 const fs = require("node:fs");
-const { BrowserWindow, app, ipcMain } = require("electron");
+const { BrowserWindow, app } = require("electron");
 const { injectTokens } = require("./ui/tokens.js");
+const { formatHotkey } = require("./capture-guidance.js");
 
 const FLAG_FILE = "welcome-shown.json";
 
@@ -55,8 +48,9 @@ function showWelcomeWindow(opts) {
     return welcomeWindow;
   }
   welcomeWindow = new BrowserWindow({
-    width: 560,
-    height: 540,
+    width: 540,
+    height: 262,
+    useContentSize: true,
     title: "Welcome to Process Discovery Tracker",
     resizable: false,
     minimizable: false,
@@ -82,18 +76,28 @@ function showWelcomeWindow(opts) {
   return welcomeWindow;
 }
 
+/* The two lines that name the run key. `opts.keys.start` is the key
+   actually registered (an Electron accelerator), or empty when another
+   program holds it; then the lines point at the tray and the bar instead. */
+function welcomeLines(opts) {
+  const key = formatHotkey(opts && opts.keys && opts.keys.start);
+  const k = key ? "<kbd>" + escapeHtml(key) + "</kbd>" : "";
+  return {
+    start: key
+      ? "Press " + k + " to start recording. It starts with Run 1."
+      : "Choose <strong>Start recording</strong> in the tray menu. It starts with Run 1.",
+    next: key
+      ? "Each time you start the process again, press " + k + " for the next run."
+      : "Each time you start the process again, click <strong>Next run</strong> on the recording bar.",
+  };
+}
+
 function buildHtml(opts) {
-  const hotkeys = (opts && opts.hotkeys) || {};
-  const start = hotkeys.start_picker || "Ctrl+Shift+S";
-  const end = hotkeys.end_innermost || "Ctrl+Shift+E";
-  const shot = hotkeys.manual_screenshot || "Ctrl+Shift+P";
-  /* Markup lives in ui/welcome.html; the three {{HK_*}} tokens carry
-     the (escaped) current hotkey bindings. */
+  const lines = welcomeLines(opts);
   return injectTokens(fs
     .readFileSync(path.join(__dirname, "ui", "welcome.html"), "utf-8")
-    .split("{{HK_START}}").join(escapeHtml(start))
-    .split("{{HK_END}}").join(escapeHtml(end))
-    .split("{{HK_SHOT}}").join(escapeHtml(shot)));
+    .split("{{LINE_START}}").join(lines.start)
+    .split("{{LINE_NEXT}}").join(lines.next));
 }
 
 function escapeHtml(s) {
@@ -106,4 +110,5 @@ module.exports = {
   shouldShowOnLaunch,
   markShown,
   buildHtml,
+  welcomeLines,
 };

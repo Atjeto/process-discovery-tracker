@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Session setup</title>
+<title>Recording setup</title>
 <style>
   :root {
     color-scheme: dark;
@@ -72,18 +72,18 @@
 </style></head><body>
 
 <header>
-  <h1>Session setup</h1>
-  <div class="sub">Per-session inputs. Stamps every recording so you can find it later.</div>
+  <h1>Recording setup</h1>
+  <div class="sub">Saved with every recording from the next app start, so the analyst can find it later.</div>
 </header>
 
 <div class="scroll">
 <div class="nav-hint">
-  Looking for hotkeys, OBS or screenshot options? Those are persistent and live in <strong>Settings</strong> (tray menu).
-  Worker identity is in <strong>Profile</strong>.
+  Keys, OBS video and screenshots are in <strong>Settings</strong>; who is recording is in <strong>Profile</strong>
+  (both under <strong>Setup (analyst)</strong> in the tray menu).
 </div>
 
 <fieldset>
-  <legend>Engagement</legend>
+  <legend>Project</legend>
   <div class="row2">
     <div>
       <label class="fld" for="eng-id">Project code</label>
@@ -99,9 +99,9 @@
 </fieldset>
 
 <fieldset>
-  <legend>Task shortcuts</legend>
+  <legend>Named runs</legend>
   <textarea id="labels" placeholder="Order entry&#10;Refund flow&#10;Identity check"></textarea>
-  <div class="help-hint">One task name per line. Surface as quick-pick buttons in the live session window and tray menu, so the worker labels what they're doing without typing.</div>
+  <div class="help-hint">One name per line. Each becomes a named run the person recording can start from the recording bar or the tray menu, instead of Run 1, Run 2.</div>
 </fieldset>
 </div>
 

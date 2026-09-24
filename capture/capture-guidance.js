@@ -1,26 +1,20 @@
 "use strict";
 
 /*
- * capture-guidance.js -- R4 (APPROACHABILITY-REDESIGN-2026-07-03 §5): the
- * capture control panel's single status-driven guidance line.
+ * capture-guidance.js: the words the SME reads while recording, derived from
+ * one pdt:status snapshot. Used by main.js for the recording bar
+ * (ui/recording-bar.html paints the model it is sent), the tray's status
+ * line and tooltip, the end summary and the toasts.
  *
- * One sentence that tells the worker what to do NOW, driven by the existing
- * session state machine (no new state, zero behaviour change). The run
- * hotkey is read from the existing config so the line always names the real
- * key, never a hardcoded default. The worker brackets each run with that one
- * key, so the copy speaks of runs.
- *
- * The panel's states (from pdt:status): not tracking = "not recording";
- * tracking && !paused = "recording"; tracking && paused = "paused". Anything
- * else falls back to the not-recording guidance.
+ * The SME's words: "Recording", "Paused", "Not recording", "Run 1",
+ * "between runs". Never "Tracking", "session", "events" or "interactions".
  *
  * Pure module: no DOM, no Electron, no IPC. Unit-tested in
- * test/capture-guidance.test.js and injected into ui/operator-panel.html.
+ * test/capture-guidance.test.js.
  */
 
-/* Normalise an Electron accelerator to the worker-facing form the hotkey
-   overlay uses ("Ctrl+Shift+S", not "Control+Shift+S"). Mirrors the overlay's
-   plain rendering so the guidance line and the overlay agree. */
+/* An Electron accelerator in the form people read ("Ctrl+Shift+S", not
+   "Control+Shift+S"). Empty when there is no key. */
 function formatHotkey(accel) {
   if (typeof accel !== "string" || !accel.trim()) return "";
   return accel
@@ -35,41 +29,121 @@ function formatHotkey(accel) {
     .join("+");
 }
 
-/* Derive the coarse guidance state from a pdt:status snapshot. Returns one of
-   "not-recording" | "recording" | "paused". Unknown/absent status → not-recording
-   (the safe "nothing is running yet" guidance). */
-function guidanceState(status) {
+/* Elapsed time on the one clock: m:ss under an hour, h:mm:ss from an hour. */
+function formatElapsed(ms) {
+  const total = Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 1000) : 0;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s);
+}
+
+/* "idle" | "recording" | "paused" from a pdt:status snapshot. */
+function recordingState(status) {
   const s = status || {};
-  if (!s.tracking) return "not-recording";
-  if (s.paused) return "paused";
-  return "recording";
+  if (!s.tracking) return "idle";
+  return s.paused ? "paused" : "recording";
 }
 
-/* The guidance sentence for the current state. `hotkey` is the raw run
-   (start) accelerator from config.hotkeys.start_picker; it is formatted here
-   and named so the worker knows the real key. Pressing it also starts
-   recording, hence the not-recording sentence names it too. With no key
-   configured, the sentences point at the panel instead.
-
-   `opts.state` may be passed directly (already-derived); otherwise `opts.status`
-   is a pdt:status snapshot this function derives the state from. */
-function guidanceLine(opts) {
-  const o = opts || {};
-  const state = o.state || guidanceState(o.status);
-  const key = formatHotkey(o.hotkey);
-  switch (state) {
-    case "recording":
-      return key
-        ? "Recording: press " + key + " at the start of each run."
-        : "Recording: press Start next run at the start of each run.";
-    case "paused":
-      return "Paused: resume to keep recording.";
-    case "not-recording":
-    default:
-      return key
-        ? "Not recording: press " + key + " to start recording and your first run."
-        : "Not recording: start recording, then start your first run.";
-  }
+/* The run in progress: the open run's name, or "between runs" after an
+   End run (or an idle stretch that ended it). Empty when not recording. */
+function runText(status) {
+  const s = status || {};
+  if (!s.tracking) return "";
+  const open = Array.isArray(s.openMarkers) ? s.openMarkers : [];
+  return open.length ? String(open[open.length - 1]) : "between runs";
 }
 
-module.exports = { formatHotkey, guidanceState, guidanceLine };
+const CLICKS_NOT_RECORDED =
+  "Clicks and typing are not being recorded. Keep going and tell the analyst.";
+
+/* The one problem the bar shows as a line of its own: the recorder that
+   captures clicks and typing has stopped for good, or has been silent past
+   the alarm threshold. Nothing when recording is fine, when clicks and
+   typing are switched off in setup, or when not recording. */
+function problemText(status) {
+  const s = status || {};
+  if (!s.tracking) return null;
+  if (s.recorder_state === "dead" || s.recorder_silent) return CLICKS_NOT_RECORDED;
+  return null;
+}
+
+/* Everything the recording bar paints, from one status snapshot, the run
+   key actually registered (hotkey: an Electron accelerator, or empty when
+   the key could not be registered) and whether named runs are set up. */
+function barModel({ status, hotkey, namedRuns } = {}) {
+  const state = recordingState(status);
+  const stateText = state === "idle" ? "Not recording" : state === "paused" ? "Paused" : "Recording";
+  const run = runText(status);
+  const elapsed = state === "idle" ? "" : formatElapsed(status && status.elapsedMs);
+  return {
+    state,
+    stateText,
+    runText: run,
+    elapsed,
+    key: formatHotkey(hotkey),
+    problem: problemText(status),
+    pauseLabel: state === "paused" ? "Resume" : "Pause",
+    namedRuns: !!namedRuns && state !== "idle",
+    title: state === "idle" ? stateText : stateText + ": " + run + ", " + elapsed,
+  };
+}
+
+/* The tray's first menu line (and, prefixed with the app name, its
+   tooltip): "Not recording", "Recording: Run 2", "Paused: between runs". */
+function trayStatusLine(status) {
+  const m = barModel({ status });
+  if (m.state === "idle") return m.stateText;
+  const line = m.stateText + ": " + m.runText;
+  return m.problem ? line + " (clicks and typing not recorded)" : line;
+}
+
+/* The end summary: runs and duration in one line, where the folder is, and
+   a warning when no run was marked. No counts of clicks, events or
+   screenshots: the SME acts on none of them. */
+function summaryModel({ runs, durationMs, sessionFolder, hotkey } = {}) {
+  const n = Number.isFinite(runs) && runs > 0 ? runs : 0;
+  const key = formatHotkey(hotkey);
+  const folder = sessionFolder || "";
+  const base = folder.split(/[\\/]/).filter(Boolean).pop() || "";
+  return {
+    headline: (n === 1 ? "1 run" : n + " runs") + ", " + formatElapsed(durationMs),
+    folder,
+    zipName: base ? base + ".zip" : "",
+    warning: n > 0 ? null
+      : "No run was marked, so the analyst cannot tell where each run starts. " +
+        "Tell the analyst, or record again and " +
+        (key ? "press " + key : "click Next run on the recording bar") +
+        " each time you start the process.",
+  };
+}
+
+/* A program name for a toast: browsers by their product name, anything else
+   without its ".exe". */
+const BROWSER_NAMES = {
+  "chrome.exe": "Chrome",
+  "msedge.exe": "Edge",
+  "brave.exe": "Brave",
+  "iexplore.exe": "Internet Explorer",
+  "opera.exe": "Opera",
+  "vivaldi.exe": "Vivaldi",
+};
+function friendlyAppName(app) {
+  const raw = typeof app === "string" ? app.trim() : "";
+  if (!raw) return "this program";
+  return BROWSER_NAMES[raw.toLowerCase()] || raw.replace(/\.exe$/i, "");
+}
+
+module.exports = {
+  formatHotkey,
+  formatElapsed,
+  recordingState,
+  runText,
+  problemText,
+  barModel,
+  trayStatusLine,
+  summaryModel,
+  friendlyAppName,
+  CLICKS_NOT_RECORDED,
+};

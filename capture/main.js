@@ -2,7 +2,8 @@
  * Process Discovery Tracker -- capture-side Electron main process.
  *
  * Wires up:
- *   - Tray UI + global hotkeys (start next run, end run, manual screenshot)
+ *   - Tray menu, the recording bar and the end summary; global keys (the
+ *     one start: start recording or the next run; end run; screenshot)
  *   - Session lifecycle with per-session config (YAML)
  *   - Active-window polling (tracker.js)
  *   - Idle detection via powerMonitor.getSystemIdleTime (§3.3)
@@ -39,8 +40,8 @@ const {
   writeSessionIntegrity,
   setSessionLabel,
   updateManifest,
+  isRecordingFolder,
 } = require("./session.js");
-const { spawn } = require("node:child_process");
 const { loadConfig, writeConfigSnapshot, validateConfig, deepMerge } = require("./config.js");
 const userConfig = require("./user-config.js");
 const {
@@ -52,7 +53,11 @@ const {
 } = require("./obs.js");
 const { captureScreenshot } = require("./screenshots.js");
 const { showHelpWindow } = require("./help-window.js");
-const { showOperatorPanel } = require("./operator-panel.js");
+const recordingBar = require("./recording-bar.js");
+const { showEndSummaryWindow } = require("./end-summary-window.js");
+const { zipFolder, describeZipError } = require("./zip-folder.js");
+const { createRecordingControl } = require("./recording-control.js");
+const guidance = require("./capture-guidance.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
 const { showSettingsWindow } = require("./settings-window.js");
 const { showProfileWindow } = require("./profile-window.js");
@@ -63,7 +68,6 @@ const {
   rememberAcknowledgement,
 } = require("./consent-window.js");
 const welcomeWin = require("./welcome-window.js");
-const hotkeyOverlay = require("./hotkey-overlay.js");
 const { createWindowManager } = require("./window-manager.js");
 const { createSessionStorage } = require("./session-storage.js");
 const { appLogger } = require("./log.js");
@@ -93,19 +97,30 @@ let lastStatus = null;
    containing this rect, so firing a marker from the recorder -- which moves
    focus to the recorder's monitor -- still captures the worker's monitor. */
 let lastWorkBounds = null;
-/* status, help, operator, obsSettings, sessionConfig — all single-instance
-   tray windows. */
+/* help, settings, profile, sessionConfig and one end summary per
+   recording: single-instance windows. The recording bar keeps its own
+   (recording-bar.js), because it opens without taking the focus. */
 const windows = createWindowManager();
 let obs = null;
 let obsConnected = false;
 let config = null;
 let configSourcePath = null;
 let baseDir = null;
-let recoveredCount = 0;
 /* The session's recorder supervisor (recorder.js superviseRecorder); its
    current() is the live recorder, null while restarting or after death. */
 let recorder = null;
 let recorderPermanentlyDead = false;
+
+/* The keys actually registered at launch: a key another program holds
+   falls back to its Ctrl+Alt variant, or is not registered at all. The
+   bar, the welcome, the help and the tray name these, never the configured
+   ones. Null until registration ran (the configured keys stand in). */
+let activeKeys = null;
+function keyFor(name) {
+  if (activeKeys) return activeKeys[name] || "";
+  const hk = (config && config.hotkeys) || {};
+  return { start: hk.start_picker, end: hk.end_innermost, shot: hk.manual_screenshot }[name] || "";
+}
 
 /* §E2 dead-man monitor: during an active session with interactions
    enabled, no interaction event AND no recorder_health for >2 minutes
@@ -183,7 +198,7 @@ async function fireScreenshot(kind, opts) {
       screenshotFailureNotified = true;
       notifyUser(
         "Process Discovery Tracker",
-        "Screenshots are failing. The session is still recording runs, video, and interactions, but screenshots will be missing until you restart the session.",
+        "Screenshots are failing. Runs, clicks and typing are still recorded. To get screenshots back, stop the recording and start a new one.",
         { urgency: "normal" }
       );
     }
@@ -228,12 +243,13 @@ function _checkBrowserForegroundWatchdog() {
   const sinceLastInt = Date.now() - _lastBrowserInteractionMs;
   if (since >= BROWSER_NO_EVENTS_MS && sinceLastInt >= BROWSER_NO_EVENTS_MS) {
     _browserToastShownThisSession = true;
+    // One plain line for the SME; the IT fix (the browser's
+    // AccessibilityModeEnabled policy) is in docs/architecture/CAPTURE.md.
     notifyUser(
       "Process Discovery Tracker",
-      status.currentApp + " is the front window but none of your clicks or " +
-      "typing are being recorded. Chrome / Edge may be blocking accessibility " +
-      "tools. Try closing and re-opening the browser, or ask IT to enable the " +
-      "AccessibilityModeEnabled policy. Runs and screenshots still record.",
+      "Clicks and typing in " + guidance.friendlyAppName(status.currentApp) +
+      " are not being recorded. Keep going and tell the analyst; runs and " +
+      "screenshots are still recorded.",
       { urgency: "normal" }
     );
   }
@@ -353,10 +369,9 @@ function checkDeadMan() {
     setTrayWarning(true);
     refreshTray();
     notifyUser(
-      "Recording may have stopped -- please check",
+      "Clicks and typing are not being recorded",
       "Nothing has been recorded for over 2 minutes. Runs and screenshots " +
-      "still work, but clicks and typing are no longer being captured. Open " +
-      "the tray and restart the session if this persists.",
+      "still work. Stop the recording, start a new one, and tell the analyst.",
       { urgency: "critical" }
     );
   } else if (r.transition === "recovered") {
@@ -427,46 +442,6 @@ function stopIdleMonitor() {
   isIdle = false;
   idleStartMs = null;
   autoEndedThisIdle = false;
-}
-
-function resolveViewerExe() {
-  /* The viewer ships either as a sibling app folder (in a packaged dist)
-     or as `npm start` in viewer/ (in dev). Probe a couple of layouts. */
-  const candidates = [
-    process.env.PDT_VIEWER_EXE,
-    // Sibling dist layout: dist/capture/... and dist/viewer/Process Discovery Viewer.exe
-    path.resolve(path.dirname(process.execPath), "..", "viewer", "Process Discovery Viewer.exe"),
-    // electron-packager layout: capture/dist/Process Discovery Tracker-win32-x64/... and viewer/dist/Process Discovery Viewer-win32-x64/...
-    path.resolve(path.dirname(process.execPath), "..", "..", "..", "viewer", "dist", "Process Discovery Viewer-win32-x64", "Process Discovery Viewer.exe"),
-  ].filter(Boolean);
-  for (const c of candidates) if (fs.existsSync(c)) return c;
-  return null;
-}
-
-function openInViewer(sessionFolder) {
-  const exe = resolveViewerExe();
-  if (!exe) {
-    dialog.showMessageBox({
-      type: "info",
-      title: "Viewer not found",
-      message: "Couldn't locate Process Discovery Viewer.exe.",
-      detail:
-        `Open it manually and pick the session folder:\n${sessionFolder}\n\n` +
-        `Set PDT_VIEWER_EXE to the viewer's executable path to enable one-click launch.`,
-      buttons: ["OK"],
-    });
-    return;
-  }
-  try {
-    const child = spawn(exe, [`--session=${sessionFolder}`], {
-      detached: true, stdio: "ignore", windowsHide: false,
-    });
-    child.unref();
-    bootLog(`launched viewer with session: ${sessionFolder}`);
-  } catch (e) {
-    bootLog(`viewer launch failed: ${e && e.message}`);
-    dialog.showErrorBox("Could not launch viewer", e && e.message);
-  }
 }
 
 function effectiveObsCfg() {
@@ -597,13 +572,12 @@ ipcMain.handle("pdt:settingsSave", (_e, partial) => {
   }
 });
 
-async function setupOBS(opts) {
-  /* `opts.silent` suppresses the per-failure toast -- used by the
-     background best-effort path in startSession(), which owns its own
-     once-only "no OBS" messaging so the operator doesn't get a fresh
-     "OBS not reachable" toast on every session start. Strict mode
-     still surfaces the failure (the operator opted into fail-fast). */
-  const silent = !!(opts && opts.silent);
+async function setupOBS() {
+  /* Connects to OBS for the video. Without OBS the recording simply goes
+     on without video and says nothing: SME laptops usually have no OBS,
+     and the analyst can add a video (a Teams recording) later. Only a
+     setup that requires OBS (obs.required) stops the start, with a
+     dialog. */
   const eff = effectiveObsCfg();
   if (!eff.websocket_url) return false;
   try {
@@ -631,22 +605,15 @@ async function setupOBS(opts) {
     obsConnected = false;
     if (config.obs.required) {
       dialog.showErrorBox(
-        "OBS not reachable",
-        `Could not connect to OBS at ${eff.websocket_url}.\n\n` +
-          `${e && e.message}\n\n` +
-          `Per session config, OBS is required. Launch OBS (with WebSocket enabled) and try again.\n\n` +
-          `If OBS has authentication enabled, set the password via tray menu -> Settings.`
+        "Recording not started",
+        "This setup needs OBS for the video, and OBS could not be reached " +
+          `(${eff.websocket_url}: ${e && e.message}).\n\n` +
+          "Start OBS with its WebSocket server on, then start recording again. " +
+          "A password for OBS goes in Setup (analyst), Settings."
       );
       return false;
     }
-    if (!silent) {
-      notifyUser(
-        "Process Discovery Tracker",
-        `OBS not reachable at ${eff.websocket_url}. Recording will continue without video.`,
-        { urgency: "low" }
-      );
-    }
-    return true; // proceed without OBS in non-strict mode
+    return true; // go on without video
   }
 }
 
@@ -678,37 +645,16 @@ async function attachObsRecording() {
   }
 }
 
-/* Once-only "recording without video" toast for best-effort mode when
-   OBS isn't reachable. The flag lives in userData/obs-hint-shown.json
-   so it persists across launches. Replaces the previous blocking
-   dialog.showMessageBox on the session-start path. */
-function showOnceNoObsHint() {
-  try {
-    const flagPath = path.join(app.getPath("userData"), "obs-hint-shown.json");
-    if (fs.existsSync(flagPath)) return;
-    fs.writeFileSync(flagPath, JSON.stringify({ shown_at: new Date().toISOString() }));
-    notifyUser(
-      "Recording without OBS video",
-      "You'll still get a full timeline, screenshots, and interactions. " +
-      "To add screen recording: install OBS Studio, enable Tools → WebSocket Server, " +
-      "then end this session and start a new one. Settings → Video/OBS in the tray.",
-      { urgency: "low" }
-    );
-  } catch (_e) { /* best-effort */ }
-}
-
 async function startSession() {
   if (session) return session;
   fs.mkdirSync(baseDir, { recursive: true });
 
-  /* B2: pre-flight config sanity check. Non-blocking now -- the start
-     path used to halt with a "Start anyway / Cancel" modal that froze
-     the worker in front of a recording they wanted. Surface problems
-     as a low-urgency toast and proceed; the operator can address them
-     between recordings via tray -> Session setup / Settings. */
+  /* B2: the pre-flight check, non-blocking: a recordings folder that
+     cannot be written to is told in a toast and the start goes on. The
+     default project code is no longer announced at every start. */
   const problems = validateConfig(config, baseDir);
   if (problems.length) {
-    notifyUser("Check the recording setup", problems.join(" "), { urgency: "low" });
+    notifyUser("The recording may not be saved", problems.join(" ") + " Tell the analyst.", { urgency: "normal" });
   }
 
   /* Strict-mode OBS preflight: connect synchronously so a failed
@@ -739,7 +685,7 @@ async function startSession() {
     }
     consent = consentRecord({ mode: cmode, version: cversion, workerId: cworker, granted });
     if (!granted) {
-      notifyUser("Recording not started", "Consent was declined.", { urgency: "normal" });
+      notifyUser("Recording not started", "Consent was declined, so nothing is recorded.", { urgency: "normal" });
       bootLog("session start aborted: consent declined");
       return null;
     }
@@ -779,10 +725,10 @@ async function startSession() {
      (~5s). The session is already live and recording markers/screens/
      interactions; if OBS connects, attachObsRecording() wires in the
      video-sync record and fires obs_recording_start. If it fails, the
-     once-only friendly hint is surfaced as a toast (not a modal). */
+     recording goes on without video, silently. */
   if (!obsConnected && config.obs && config.obs.websocket_url && !config.obs.required) {
     const sessionAtStart = session;
-    setupOBS({ silent: true }).then(async () => {
+    setupOBS().then(async () => {
       if (!session || session !== sessionAtStart || !tracker) {
         /* User ended the session before OBS finished connecting --
            disconnect the now-orphaned client so we don't leak it. */
@@ -798,8 +744,6 @@ async function startSession() {
         if (ok) {
           try { tracker.fireSystem("obs_recording_start"); } catch (_) {}
         }
-      } else {
-        showOnceNoObsHint();
       }
     }).catch((e) => bootLog(`background OBS connect failed: ${e && e.message}`));
   }
@@ -886,7 +830,7 @@ async function startRecorderForSession() {
         if (tracker) tracker.fireSystem("recorder_dead_permanent");
         notifyUser(
           "Process Discovery Tracker",
-          "Interaction recorder stopped. The session is still recording runs and screenshots, but no UI interaction events will be captured until you restart the session.",
+          "Clicks and typing are no longer recorded. Runs and screenshots still are. To fix it, stop the recording and start a new one.",
           { urgency: "critical" }
         );
       },
@@ -896,8 +840,9 @@ async function startRecorderForSession() {
     bootLog(`recorder spawn failed: ${e && e.message}`);
     if (config.interactions.required) {
       dialog.showErrorBox(
-        "Interaction recorder unavailable",
-        `${e && e.message}\n\nPer session config the recorder is required.`
+        "Recording not started",
+        "Clicks and typing cannot be recorded on this computer, and this setup " +
+          `requires them (${e && e.message}).\n\nTell the analyst.`
       );
       return false;
     }
@@ -917,58 +862,58 @@ function handleTrackerNotice(kind, payload) {
     bootLog(`tracker events_dropped notice: ${JSON.stringify(payload)}`);
     notifyUser(
       "Process Discovery Tracker",
-      "Some clicks and typing could not be saved to the session log. The gap is noted in the recording. If this keeps happening, check the session folder's disk space and permissions."
+      "Some clicks and typing could not be saved. The gap is noted in the recording. If this keeps happening, tell the analyst (the disk may be full)."
     );
     return;
   }
   if (kind === "write_error") {
     // H-6: a durability-critical batch (markers/system events) failed to
-    // write and was re-queued for retry. Surface it loudly -- the durable
-    // record is at risk and the worker should know before they walk away.
+    // write and was re-queued for retry. Surface it loudly: the durable
+    // record is at risk and the SME should know before walking away.
     bootLog(`tracker write_error notice: ${JSON.stringify(payload)}`);
     notifyUser(
       "Process Discovery Tracker",
-      "Couldn't write to the session log -- retrying. If this keeps happening, check the session folder's disk/permissions before relying on this recording."
+      "The recording could not be saved to disk; trying again. If this keeps happening, stop and tell the analyst (the disk may be full)."
     );
     return;
   }
   if (kind !== "uncaptured_app") return;
-  // Stay quiet when there is no live recorder -- its own failure toast
+  // Stay quiet when there is no live recorder: its own failure toast
   // (or the required-recorder dialog) already told the user.
   if (!recorder || !recorder.current() || recorderPermanentlyDead) return;
-  const app = (payload && payload.app) || "An application";
   notifyUser(
     "Process Discovery Tracker",
-    `${app} interactions aren't being recorded -- it may be running as administrator or may not expose UI Automation. Runs, screenshots and video are unaffected.`
+    "Clicks and typing in " + guidance.friendlyAppName(payload && payload.app) +
+    " are not being recorded. Keep going and tell the analyst; runs and screenshots are still recorded."
   );
 }
 
-/* The one-screen end summary (replaces the §E3 close-out wizard): the Live
-   Session window shows runs recorded, duration, interactions and
-   screenshots with a Done button. The window is opened when it is closed;
-   a window that is still loading gets the summary once its page is up. */
+/* The one-screen end summary (end-summary-window.js): "Recording saved",
+   the runs and the duration, a warning when no run was marked, the folder
+   with Show the folder and Make a zip for the analyst, and an optional
+   name. One window per recording, so a summary still open from an earlier
+   recording keeps its unsaved name. */
 function showEndSummary(summary) {
-  let created = false;
-  let win;
+  const model = guidance.summaryModel({ ...summary, hotkey: keyFor("start") });
   try {
-    win = windows.show("operator", () => { created = true; return showOperatorPanel(config); });
+    windows.show("summary:" + summary.sessionFolder, () => showEndSummaryWindow(model));
   } catch (e) {
-    bootLog(`end summary: could not open the Live Session window: ${e && (e.stack || e.message)}`);
-    return;
+    bootLog(`end summary: could not open it: ${e && (e.stack || e.message)}`);
   }
-  const send = () => {
-    if (win.isDestroyed()) {
-      bootLog("end summary: the Live Session window closed before the summary was shown");
-      return;
-    }
-    win.webContents.send("pdt:sessionSummary", summary);
-  };
-  if (created || win.webContents.isLoading()) win.webContents.once("did-finish-load", send);
-  else send();
 }
 
-async function endSession(opts) {
-  opts = opts || {};
+/* Stopping is single-flight: a second stop (the bar and the tray at once,
+   or Quit during a stop) waits for the first instead of tearing the
+   recording down twice. */
+let endingPromise = null;
+function endSession(opts) {
+  if (!endingPromise) {
+    endingPromise = endSessionNow(opts || {}).finally(() => { endingPromise = null; });
+  }
+  return endingPromise;
+}
+
+async function endSessionNow(opts) {
   if (!tracker) return null;
   stopIdleMonitor();
   stopDeadManMonitor();   // §E2: a clean end is not a silent death
@@ -1013,23 +958,8 @@ async function endSession(opts) {
   try { writeSessionIntegrity(session.sessionFolder); }
   catch (e) { bootLog(`session-integrity write failed: ${e && e.message}`); }
 
-  /* I25: at session end, warn once if total session storage has grown
-     large -- a nudge toward the tray's prune tool. */
-  try {
-    const total = sessionStorage.getSessionsTotal();
-    const warnGb = config.storage_warn_gb || 50;
-    if (total.bytes > warnGb * 1024 * 1024 * 1024) {
-      const { Notification } = require("electron");
-      if (Notification.isSupported()) {
-        new Notification({
-          title: "Session storage is getting large",
-          body: `Recorded sessions now use ${sessionStorage.humanSize(total.bytes)}. ` +
-                `Consider the tray "Prune old sessions" tool to free space.`,
-        }).show();
-      }
-    }
-  } catch (e) { bootLog(`storage check failed: ${e && e.message}`); }
-
+  /* The storage size is no longer a toast at the end of every recording:
+     the Setup (analyst) menu shows it and flags it over the limit. */
   bootLog(`session ended: ${session.sessionFolder}`);
   const oldFolder = session.sessionFolder;
   tracker = null;
@@ -1037,42 +967,66 @@ async function endSession(opts) {
   lastStatus = null;
   sessionStorage.invalidateSessionsCache();  // new session lands in the count + size
 
-  /* The end summary. Skipped on paths that must not pop UI (quit, a
-     failed-start teardown). */
+  /* The bar belongs to the recording and closes with it. The end summary
+     follows, except on paths that must not pop UI (quit, a failed-start
+     teardown). */
+  recordingBar.closeBar();
   if (!opts.skipCloseout) {
     showEndSummary({
       sessionFolder: oldFolder,
       runs: finalStatus.startMarkerCount,
       durationMs: finalStatus.elapsedMs,
-      interactions: finalStatus.interactionCount,
-      screenshots: finalStatus.screenshotCount,
     });
   }
   return oldFolder;
 }
 
-/* One-hotkey runs: the start hotkey starts the next run at once, labelled
-   "Run N" (a named run from the task shortcuts passes its own label). A
-   run that is still open is ended first, so runs never nest --
-   tracker.startRun owns that rule. Starts the session when none is
-   running, so the first press of the hotkey also starts recording. */
-async function fireStartMarker(label) {
-  if (!tracker) {
-    const s = await startSession();
-    if (!s) return;
-  }
-  if (!tracker) {
-    // startSession() returned the session object while another caller is
-    // still starting it (strict-OBS attach in flight): nothing to write to yet.
-    bootLog("run start ignored: the session is still starting");
-    return;
-  }
-  tracker.startRun(label);
+/* The next run: "Run N", or a named run's label. tracker.startRun ends a
+   run that is still open first, so runs never nest. Reached only through
+   the one start below, which starts the recording first when nothing
+   records. Returns the run's name. */
+function startRunNow(label) {
+  const ev = tracker.startRun(label);
   if (config.screenshots.enabled && config.screenshots.on_marker_fire) {
     fireScreenshot("screenshot");
   }
   lastStatus = tracker.getStatus();
   refreshTray();
+  return ev && ev.data ? ev.data.label : null;
+}
+
+/* The one start (recording-control.js). The Start recording button on the
+   bar, the tray item, the welcome's button, the run key and pdt:startSession
+   all call startFromUi: with nothing recording it starts the recording with
+   Run 1, while recording it starts the next run. Presses during a start or
+   a stop are absorbed. */
+const control = createRecordingControl({
+  isRecording: () => !!tracker,
+  startRecording: async () => {
+    const s = await startSession();
+    refreshTray();
+    return !!(s && tracker);
+  },
+  startRun: (label) => startRunNow(label),
+  stopRecording: async () => {
+    const folder = await endSession();
+    refreshTray();
+    return folder;
+  },
+});
+
+async function startFromUi(label) {
+  let r;
+  try {
+    r = await control.start(typeof label === "string" && label ? label : undefined);
+  } catch (e) {
+    bootLog(`start failed: ${e && (e.stack || e.message)}`);
+    return { started: false, reason: "error" };
+  }
+  if (r.started && r.newRecording) openRecordingBar();
+  if (!r.started) bootLog(`start absorbed: ${r.reason}`);
+  refreshTray();
+  return r;
 }
 
 function fireEndMarker() {
@@ -1091,9 +1045,9 @@ function fireManualScreenshot() {
   fireScreenshot("screenshot_manual", { force: true });
 }
 
-ipcMain.handle("pdt:fireStart", (_e, label) => fireStartMarker(label));
+ipcMain.handle("pdt:fireStart", (_e, label) => startFromUi(label));
 
-/* --- Status window IPC -------------------------------------------- */
+/* --- Status for the recording bar and the tray -------------------- */
 
 function recorderStateLabel(paused) {
   if (!config || !config.interactions || !config.interactions.enabled) return "disabled";
@@ -1102,40 +1056,45 @@ function recorderStateLabel(paused) {
   return paused ? "paused" : "on";
 }
 
-ipcMain.handle("pdt:status", () => {
+/* One status snapshot for the bar (pdt:status) and the tray's first line.
+   Only what they show: no counters, no program names, no window titles. */
+function currentStatus() {
   if (!tracker) {
-    return {
-      tracking: false,
-      paused: false,
-      obsConnected: false,
-      idle: false,
-      recovered: recoveredCount > 0,
-      screenshotsEnabled: !!(config && config.screenshots && config.screenshots.enabled),
-      recorder_state: recorderStateLabel(false),
-      interactionCount: 0,
-    };
+    return { tracking: false, paused: false, recorder_state: recorderStateLabel(false) };
   }
   const s = tracker.getStatus();
   return {
     tracking: true,
     paused: s.paused,
-    obsConnected,
     idle: isIdle,
-    recovered: recoveredCount > 0,
-    currentApp: s.currentApp,
-    currentTitle: s.currentTitle,
+    obsConnected,
     openMarkers: s.openMarkers,
     markerDepth: s.markerDepth,
-    eventCount: s.eventCount,
-    markerCount: s.markerCount,
     runCount: s.startMarkerCount,
-    screenshotCount: s.screenshotCount,
-    interactionCount: s.interactionCount || 0,
     elapsedMs: s.elapsedMs,
-    recentEvents: s.recentEvents,
     screenshotsEnabled: !!(config && config.screenshots && config.screenshots.enabled),
     recorder_state: recorderStateLabel(s.paused),
+    recorder_silent: !!(deadMan && deadMan.isSilent()),
   };
+}
+
+function hasNamedRuns() {
+  return !!(config && Array.isArray(config.process_labels) && config.process_labels.length);
+}
+
+/* What the bar paints (capture-guidance.barModel), sent with every status. */
+function barView(status) {
+  return guidance.barModel({
+    status: status || currentStatus(),
+    hotkey: keyFor("start"),
+    namedRuns: hasNamedRuns(),
+  });
+}
+
+ipcMain.handle("pdt:status", () => {
+  const status = currentStatus();
+  status.view = barView(status);
+  return status;
 });
 
 function togglePause() {
@@ -1153,46 +1112,166 @@ function togglePause() {
 
 ipcMain.handle("pdt:togglePause", () => togglePause());
 
-ipcMain.handle("pdt:manualScreenshot", () => fireManualScreenshot());
+/* Kept for drivers that start a recording over IPC: the same one start (the
+   recording, then Run 1), never a recording without a run. */
 ipcMain.handle("pdt:startSession", async () => {
-  const s = await startSession();
-  refreshTray();
-  return s ? { sessionFolder: s.sessionFolder } : null;
+  const r = await startFromUi();
+  return r.started && session ? { sessionFolder: session.sessionFolder } : null;
 });
 ipcMain.handle("pdt:endSession", async () => {
-  const f = await endSession();
+  const r = await control.stop();
   refreshTray();
-  return f;
+  return r.stopped ? r.result : null;
 });
 
 ipcMain.handle("pdt:fireEnd", () => { fireEndMarker(); });
+
+/* The end summary's acts. Each acts only on a recording folder under the
+   recordings folder (session.isRecordingFolder), never on another path. */
 ipcMain.handle("pdt:setSessionLabel", (_e, sessionFolder, label) => {
-  try { setSessionLabel(sessionFolder, label); }
-  catch (e) { bootLog(`setSessionLabel failed: ${e && e.message}`); }
+  if (!isRecordingFolder(baseDir, sessionFolder)) return false;
+  try {
+    setSessionLabel(sessionFolder, label);
+    return true;
+  } catch (e) {
+    bootLog(`setSessionLabel failed: ${e && e.message}`);
+    return false;
+  }
+});
+
+ipcMain.handle("pdt:showFolder", (_e, sessionFolder) => {
+  if (!isRecordingFolder(baseDir, sessionFolder)) return false;
+  shell.showItemInFolder(path.resolve(sessionFolder));
+  return true;
+});
+
+/* "Make a zip for the analyst": <folder>.zip next to the folder, then
+   Explorer with the zip selected, for the SME to attach to an email or a
+   Teams message by hand. Nothing is sent from here. */
+ipcMain.handle("pdt:zipFolder", async (_e, sessionFolder) => {
+  if (!isRecordingFolder(baseDir, sessionFolder)) {
+    return { ok: false, error: "This is not a recording folder." };
+  }
+  if (session && path.resolve(session.sessionFolder) === path.resolve(sessionFolder)) {
+    return { ok: false, error: "This recording is still running." };
+  }
+  try {
+    const r = await zipFolder(sessionFolder);
+    shell.showItemInFolder(r.zipPath);
+    sessionStorage.invalidateSessionsCache();
+    bootLog(`zip written: ${r.zipPath} (${r.bytes} bytes, ${r.entries} entries)`);
+    return { ok: true, zipName: path.basename(r.zipPath), size: sessionStorage.humanSize(r.bytes) };
+  } catch (e) {
+    bootLog(`zip failed for ${sessionFolder}: ${e && (e.stack || e.message)}`);
+    return { ok: false, error: describeZipError(e) };
+  }
+});
+
+/* The recording bar: its height follows its content (a problem line), and
+   the caret next to Next run offers the named runs. */
+ipcMain.handle("pdt:barResize", (_e, size) => {
+  recordingBar.fitHeight(size && size.height);
+});
+ipcMain.handle("pdt:namedRunMenu", (e) => {
+  if (!hasNamedRuns()) return;
+  const menu = Menu.buildFromTemplate(config.process_labels.map((label) => ({
+    label,
+    click: () => { startFromUi(label); },
+  })));
+  menu.popup({ window: BrowserWindow.fromWebContents(e.sender) || undefined });
 });
 
 function showHelp() {
-  windows.show("help", () => showHelpWindow());
+  windows.show("help", () => showHelpWindow({
+    keys: { start: keyFor("start"), end: keyFor("end"), shot: keyFor("shot") },
+    folder: baseDir,
+  }));
 }
 
-function toggleOperatorPanel() {
-  windows.toggle("operator", () => showOperatorPanel(config));
+function openRecordingBar() {
+  return recordingBar.openBar(barView(), { namedRuns: hasNamedRuns() });
 }
 
+function toggleRecordingBar() {
+  if (recordingBar.isOpen()) recordingBar.closeBar();
+  else openRecordingBar();
+  refreshTray();
+}
+
+function openRecordingsFolder() {
+  try { fs.mkdirSync(baseDir, { recursive: true }); } catch (_e) { /* openPath reports it */ }
+  shell.openPath(baseDir);
+}
+
+/* The tray's first line and tooltip: "Not recording", "Recording: Run 2". */
 function statusLine() {
-  if (!tracker) return "Idle -- click to start a session";
-  const runTag = lastStatus && lastStatus.markerDepth > 0 ? "run open" : "no run open";
-  if (lastStatus && lastStatus.paused) return `Paused (${runTag})`;
-  const appName = (lastStatus && lastStatus.currentApp) || "(no window)";
-  const obsTag = obsConnected ? " - OBS" : "";
-  const idleTag = isIdle ? " - idle" : "";
-  let recTag = "";
-  if (config && config.interactions && config.interactions.enabled) {
-    if (recorderPermanentlyDead) recTag = " - recorder DEAD";
-    else if (!recorder || !recorder.current()) recTag = " - recorder OFF";
-    else if (deadMan && deadMan.isSilent()) recTag = " - recorder SILENT";
+  return guidance.trayStatusLine(currentStatus());
+}
+
+/* "2026-09-24 10:15" in local time (started_at is stored in UTC). */
+function localStamp(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/* Everything the analyst (or IT) sets up, in one submenu: the recording
+   setup, settings, profile, the readiness check, and the recordings on
+   this computer. The recording setup and the readiness check are offered
+   only while nothing records (setup applies at the next launch; the check
+   runs its own recorder). */
+function buildSetupMenu() {
+  const items = [];
+  if (!tracker) items.push({ label: "Recording setup...", click: () => showSessionConfigDialog() });
+  items.push({ label: "Settings...", click: () => showSettingsDialog() });
+  items.push({ label: "Profile...", click: () => showProfileDialog() });
+  if (!tracker) items.push({ label: "Readiness check...", click: () => showReadinessDialog() });
+  items.push({ type: "separator" });
+
+  const recent = listRecentSessions(baseDir, 8);
+  const activeFolder = session ? session.sessionFolder : null;
+  if (recent.length) {
+    items.push({
+      label: "Recent recordings",
+      submenu: recent.map((r) => {
+        const when = localStamp(r.started_at);
+        const state = r.status === "active" ? "  (recording)" : (r.status === "recovered" ? "  (recovered)" : "");
+        const isCurrent = r.sessionFolder === activeFolder;
+        return {
+          label: when + "  " + r.engagement + state + "  (" + sessionStorage.folderSizeHuman(r.sessionFolder) + ")",
+          submenu: [
+            { label: "Show in folder", click: () => shell.showItemInFolder(r.sessionFolder) },
+            { type: "separator" },
+            {
+              label: isCurrent ? "Delete... (still recording)" : "Delete...",
+              enabled: !isCurrent,
+              click: () => sessionStorage.confirmAndDeleteSession(r.sessionFolder, r.label),
+            },
+          ],
+        };
+      }),
+    });
   }
-  return `Tracking: ${appName} - ${runTag}${obsTag}${idleTag}${recTag}`;
+  /* The storage warning lives here now (not a toast at every stop). */
+  const totals = sessionStorage.getSessionsTotal();
+  const limitGb = (config && config.storage_warn_gb) || 50;
+  const over = totals.bytes > limitGb * 1024 * 1024 * 1024;
+  items.push({
+    label: `Recordings on this computer: ${totals.count}, ${sessionStorage.humanSize(totals.bytes)}` +
+      (over ? ` (over the ${limitGb} GB limit)` : ""),
+    enabled: false,
+  });
+  if (totals.count > 0) {
+    items.push({
+      label: "Delete recordings older than",
+      submenu: [30, 90, 365].map((days) => ({
+        label: `${days} days`,
+        click: () => sessionStorage.confirmAndPruneByAge(days),
+      })),
+    });
+  }
+  return items;
 }
 
 function buildMenu() {
@@ -1202,23 +1281,24 @@ function buildMenu() {
   ];
   if (!tracker) {
     items.push({
-      label: "Start capture session",
-      click: async () => { await startSession(); refreshTray(); },
+      label: "Start recording",
+      accelerator: keyFor("start") || undefined,
+      click: () => { startFromUi(); },
     });
   } else {
     items.push({
-      label: "Start next run",
-      accelerator: config.hotkeys.start_picker,
-      click: () => fireStartMarker(),
+      label: "Next run",
+      accelerator: keyFor("start") || undefined,
+      click: () => { startFromUi(); },
     });
-    // Named runs from the configured task shortcuts (process_labels). Like
-    // the run hotkey, each one ends the open run first; runs never nest.
-    if (config.process_labels && config.process_labels.length) {
+    // Named runs from the recording setup (process_labels). Like the run
+    // key, each ends the open run first; runs never nest.
+    if (hasNamedRuns()) {
       items.push({
         label: "Start a named run",
         submenu: config.process_labels.map((label) => ({
           label,
-          click: () => fireStartMarker(label),
+          click: () => { startFromUi(label); },
         })),
       });
     }
@@ -1228,140 +1308,43 @@ function buildMenu() {
         : null;
     items.push({
       label: openRun ? `End run (${openRun})` : "End run",
-      accelerator: config.hotkeys.end_innermost,
+      accelerator: keyFor("end") || undefined,
       enabled: !!openRun,
       click: () => fireEndMarker(),
     });
     items.push({
-      label: "Manual screenshot",
-      accelerator: config.hotkeys.manual_screenshot,
+      label: "Take a screenshot",
+      accelerator: keyFor("shot") || undefined,
       enabled: !!config.screenshots.enabled,
       click: () => fireManualScreenshot(),
     });
     items.push({ type: "separator" });
     items.push({
-      label: lastStatus && lastStatus.paused ? "Resume polling" : "Pause polling",
+      label: lastStatus && lastStatus.paused ? "Resume recording" : "Pause recording",
       click: () => togglePause(),
     });
     items.push({
-      label: "End capture session",
-      // The end summary in the Live Session window is the post-end surface.
-      click: async () => { await endSession(); refreshTray(); },
+      label: "Stop recording",
+      // The end summary follows the stop.
+      click: () => { control.stop().then(() => refreshTray()); },
     });
+    items.push({ type: "separator" });
   }
-  items.push({ type: "separator" });
-  /* When idle, surface the per-session setup right next to "Start
-     capture session" -- it's where the operator is looking when they're
-     about to record. Hidden mid-session (edits only apply at next
-     launch, so showing it would just confuse). Persistent Settings and
-     Profile live further down and are reachable in either state. */
-  if (!tracker) {
-    items.push({
-      label: "Session setup...",
-      click: () => showSessionConfigDialog(),
-    });
-    /* §E1: run before any pilot day -- disk, recorder, UIA, per-app
-       trust tiers. Idle-only (spawns its own probe sidecar). */
-    items.push({
-      label: "Run readiness check...",
-      click: () => showReadinessDialog(),
-    });
-  }
-  // P2.13: group everything beyond the muscle-memory action items
-  // (Fire Start / End / Pause / End session) into named submenus so
-  // the flat tray fits even at small DPI.
-
-  // === Live status submenu ===
+  items.push({ label: "Open recordings folder", click: () => openRecordingsFolder() });
+  if (!tracker) items.push({ type: "separator" });
   items.push({
-    label: "Live status",
-    submenu: [
-      {
-        label: windows.isOpen("operator") ? "Hide Live Session window" : "Show Live Session window",
-        click: () => toggleOperatorPanel(),
-      },
-      {
-        label: hotkeyOverlay.isVisible() ? "Hide hotkey overlay" : "Show hotkey overlay",
-        click: () => {
-          hotkeyOverlay.toggleOverlay(config && config.hotkeys);
-          refreshTray();
-        },
-      },
-    ],
+    label: recordingBar.isOpen() ? "Hide recording bar" : "Show recording bar",
+    click: () => toggleRecordingBar(),
   });
-
-  // === Storage submenu ===
-  const recent = listRecentSessions(baseDir, 8);
-  const activeFolder = session ? session.sessionFolder : null;
-  const totals = sessionStorage.getSessionsTotal();
-  const storageItems = [];
-  if (recent.length) {
-    const recentItems = recent.map((r) => {
-      const when = (r.started_at || "").slice(0, 19).replace("T", " ");
-      const status = r.status === "active" ? "  (active)" : (r.status === "recovered" ? "  (recovered)" : "");
-      const size = sessionStorage.folderSizeHuman(r.sessionFolder);
-      const isCurrent = r.sessionFolder === activeFolder;
-      const childItems = [
-        { label: "Open in viewer", click: () => openInViewer(r.sessionFolder) },
-        { label: "Reveal in folder", click: () => shell.showItemInFolder(r.sessionFolder) },
-        { type: "separator" },
-        {
-          label: isCurrent ? "Delete... (currently recording)" : "Delete...",
-          enabled: !isCurrent,
-          click: () => sessionStorage.confirmAndDeleteSession(r.sessionFolder, r.label),
-        },
-      ];
-      return {
-        label: when + "  " + r.engagement + status + "  (" + size + ")",
-        submenu: childItems,
-      };
-    });
-    storageItems.push({ label: "Recent sessions", submenu: recentItems });
-  }
-  storageItems.push({ label: "Open sessions folder", click: () => shell.openPath(baseDir) });
-  storageItems.push({
-    label: `On disk: ${totals.count} / ${sessionStorage.humanSize(totals.bytes)}`,
-    enabled: false,
-  });
-  if (totals.count > 0) {
-    storageItems.push({
-      label: "Prune sessions older than...",
-      submenu: [
-        { label: "30 days", click: () => sessionStorage.confirmAndPruneByAge(30) },
-        { label: "90 days", click: () => sessionStorage.confirmAndPruneByAge(90) },
-        { label: "365 days", click: () => sessionStorage.confirmAndPruneByAge(365) },
-      ],
-    });
-  }
-  items.push({ label: "Storage", submenu: storageItems });
-
-  /* Top-level Settings + Profile -- the IA polish moved these out of
-     the old "Help & config" submenu so they're discoverable in one
-     click. Settings covers everything persistent (hotkeys, OBS,
-     screenshots, storage limits); Profile is just worker identity. */
-  items.push({ type: "separator" });
-  items.push({ label: "Settings...", click: () => showSettingsDialog() });
-  items.push({ label: "Profile...",  click: () => showProfileDialog() });
-
-  // === Help submenu (config no longer lives here) ===
-  const helpItems = [
-    { label: "How to use...", click: () => showHelp() },
-    { label: "Show welcome screen", click: () => welcomeWin.showWelcomeWindow({ hotkeys: config && config.hotkeys }) },
-    { type: "separator" },
-    {
-      label: configSourcePath
-        ? `Per-session YAML: ${path.basename(configSourcePath)}`
-        : "Per-session YAML: defaults (set PDT_CONFIG to override)",
-      enabled: false,
-    },
-  ];
-  items.push({ label: "Help", submenu: helpItems });
+  items.push({ label: "Help", click: () => showHelp() });
+  items.push({ label: "Setup (analyst)", submenu: buildSetupMenu() });
 
   items.push({ type: "separator" });
   items.push({
     label: "Quit",
     click: async () => {
-      // skipCloseout: the app is quitting -- the end summary would be torn
-      // down with it. The session data is intact either way.
+      // skipCloseout: the app is quitting, the end summary would be torn
+      // down with it. The recording is intact either way.
       if (tracker) await endSession({ skipCloseout: true });
       globalShortcut.unregisterAll();
       app.quit();
@@ -1372,7 +1355,7 @@ function buildMenu() {
 
 function refreshTray() {
   if (!tray) return;
-  tray.setToolTip(statusLine());
+  tray.setToolTip("Process Discovery Tracker · " + statusLine());
   /* Keep the menu in a variable; the click handlers show it via
      popUpContextMenu. We deliberately do NOT call setContextMenu --
      on Windows that auto-shows the menu on right-click, which then
@@ -1424,27 +1407,25 @@ app.whenReady().then(() => {
   );
 
   const orphans = findOrphanedSessions(baseDir);
-  recoveredCount = orphans.length;
   for (const o of orphans) {
     markSessionRecovered({ sessionFolder: o.sessionFolder });
     bootLog(`marked orphan recovered: ${o.sessionFolder}`);
   }
 
   tray = new Tray(trayIconImage());
-  tray.setToolTip("Process Discovery Tracker -- idle");
+  tray.setToolTip("Process Discovery Tracker · Not recording");
   refreshTray();
   // Left- and right-click both open the menu, symmetrically. Driven
   // explicitly (not via setContextMenu) so right-click does not
   // double-fire -- see refreshTray().
-  // D1: during an active session a left-click brings the Live Session window
-  // to the front (opening it if needed) so the operator can always get back
-  // to it -- to fire a marker or end the session -- without hunting for it
-  // behind other apps or falling back to hotkeys. Outside a session there is
-  // no panel to show, so left-click opens the tray menu (to start one).
-  // Right-click always opens the menu.
+  // D1: while recording, a left-click shows the recording bar again (if
+  // it was hidden) so the SME can always reach Next run, Pause and Stop.
+  // When nothing records, a left-click opens the menu (to start). Right
+  // click always opens the menu.
   tray.on("click", () => {
     if (tracker) {
-      windows.show("operator", () => showOperatorPanel(config));
+      openRecordingBar();
+      refreshTray();
     } else if (trayMenu) {
       tray.popUpContextMenu(trayMenu);
     }
@@ -1466,32 +1447,41 @@ app.whenReady().then(() => {
     return { ok: false, key: accelerator, fellBack: false };
   }
 
-  // One key per run: starts the next run (and the session, if needed).
-  const startHK = registerHotkey(config.hotkeys.start_picker, () => fireStartMarker());
+  // The one start: the recording with Run 1, then one press per run.
+  const startHK = registerHotkey(config.hotkeys.start_picker, () => { startFromUi(); });
   const endHK = registerHotkey(config.hotkeys.end_innermost, () => fireEndMarker());
   const shotHK = registerHotkey(config.hotkeys.manual_screenshot, () => fireManualScreenshot());
   bootLog(`hotkeys: start=${startHK.ok}(${startHK.key}) end=${endHK.ok}(${endHK.key}) shot=${shotHK.ok}(${shotHK.key})`);
+  activeKeys = {
+    start: startHK.ok ? startHK.key : "",
+    end: endHK.ok ? endHK.key : "",
+    shot: shotHK.ok ? shotHK.key : "",
+  };
+  refreshTray();
 
   /* P2.10 + B3: surface hotkey trouble to the operator via a toast --
      both bindings that fell back to an alternate, and bindings that
      could not be registered at all (boot.log alone is too quiet; some
      screen-recorder / password-manager combos grab Ctrl+Shift+S). */
   const hotkeyInfo = [
-    ["Start run", config.hotkeys.start_picker, startHK],
+    ["Start recording and the next run", config.hotkeys.start_picker, startHK],
     ["End run", config.hotkeys.end_innermost, endHK],
-    ["Screenshot", config.hotkeys.manual_screenshot, shotHK],
+    ["Take a screenshot", config.hotkeys.manual_screenshot, shotHK],
   ];
+  const fmt = guidance.formatHotkey;
   const fellBack = hotkeyInfo.filter((h) => h[2].fellBack);
   const failed = hotkeyInfo.filter((h) => !h[2].ok);
   if (fellBack.length) {
-    const list = fellBack.map((h) => `${h[0]}: ${h[1]} was taken, using ${h[2].key}`).join("; ");
-    notifyUser("Hotkey reassigned", list, { urgency: "low" });
+    const list = fellBack
+      .map((h) => `${h[0]}: ${fmt(h[2].key)} (another program uses ${fmt(h[1])})`)
+      .join("; ");
+    notifyUser("Keys changed", list + ".", { urgency: "low" });
   }
   if (failed.length) {
-    const list = failed.map((h) => `${h[0]} (${h[1]})`).join(", ");
+    const list = failed.map((h) => `${h[0]} (${fmt(h[1])})`).join(", ");
     notifyUser(
-      "Hotkey conflict",
-      `Couldn't register: ${list}. Another app is using these shortcuts. Use the tray menu, or change the bindings in tray → Settings → Hotkeys.`,
+      "Keys not available",
+      `Another program uses these keys: ${list}. Use the recording bar or the tray menu instead.`,
       { urgency: "low" }
     );
   }
@@ -1499,12 +1489,7 @@ app.whenReady().then(() => {
   // First-run welcome. shouldShowOnLaunch() returns true once per
   // machine (gated by userData/welcome-shown.json).
   if (welcomeWin.shouldShowOnLaunch()) {
-    welcomeWin.showWelcomeWindow({ hotkeys: config.hotkeys });
-  }
-
-  // Hotkey overlay -- restore if previously visible.
-  if (hotkeyOverlay.shouldRestoreOnLaunch()) {
-    hotkeyOverlay.showOverlay(config.hotkeys);
+    welcomeWin.showWelcomeWindow({ keys: { start: keyFor("start") } });
   }
 
   /* First-run recorder extraction. recorder.zip ships at >100 MB and was
@@ -1514,53 +1499,28 @@ app.whenReady().then(() => {
      exe is already present or the zip isn't shipped (dev box). */
   if (config.interactions && config.interactions.enabled) {
     const { ensureRecorderExtracted } = require("./recorder.js");
-    let notif = null;
-    ensureRecorderExtracted({
-      bootLog,
-      onStart: () => {
-        try {
-          const { Notification } = require("electron");
-          if (Notification.isSupported()) {
-            notif = new Notification({
-              title: "Preparing interaction recorder",
-              body: "Unpacking the recorder sidecar on first launch -- this takes a few seconds.",
-              silent: true,
-            });
-            notif.show();
-          }
-        } catch (_) {}
-      },
-    }).then((r) => {
-      if (notif) { try { notif.close(); } catch (_) {} }
-      if (r.ok && r.extracted) {
+    // Quiet unless it fails: unpacking is not the SME's business.
+    ensureRecorderExtracted({ bootLog }).then((r) => {
+      if (!r.ok && r.reason !== "no-zip") {
         notifyUser(
           "Process Discovery Tracker",
-          "Interaction recorder ready.",
-          { urgency: "low" }
-        );
-      } else if (!r.ok && r.reason !== "no-zip") {
-        notifyUser(
-          "Interaction recorder",
-          "Could not unpack recorder.exe. Runs and screenshots will still work; interactions will not be captured. See boot.log.",
+          "Clicks and typing cannot be recorded on this computer. Runs and screenshots still work; tell the analyst.",
           { urgency: "normal" }
         );
       }
-      /* reason === "no-zip" on a dev box is fine -- a hand-built
+      /* reason === "no-zip" on a dev box is fine: a hand-built
          recorder/publish/recorder.exe is already on disk, or the user
          doesn't have one yet. */
     }).catch((e) => bootLog(`recorder extraction failed: ${e && e.message}`));
   }
 }).catch((e) => bootLog(`whenReady failed: ${(e && e.stack) || e}`));
 
-// Welcome-window CTA dispatcher
-ipcMain.handle("pdt:welcomeAction", (_e, action) => {
-  if (action === "operator") {
-    toggleOperatorPanel();   // existing helper that handles show/hide + IPC
-  } else if (action === "help") {
-    showHelp();
-  } else if (action === "profile") {
-    showProfileDialog();
-  }
+// The welcome's buttons (and drivers): "start" is the one start.
+ipcMain.handle("pdt:welcomeAction", async (_e, action) => {
+  if (action === "start") return startFromUi();
+  if (action === "help") showHelp();
+  else if (action === "bar") openRecordingBar();
+  return null;
 });
 
 app.on("window-all-closed", (e) => {
@@ -1578,7 +1538,8 @@ app.on("before-quit", async (e) => {
     e.preventDefault();
     _quitting = true;
     bootLog("before-quit: stopping tracker");
-    try { await endSession(); } catch (err) { bootLog(`stop error: ${err}`); }
+    // skipCloseout: no end summary on the way out; the recording is intact.
+    try { await endSession({ skipCloseout: true }); } catch (err) { bootLog(`stop error: ${err}`); }
     app.quit();
   }
 });

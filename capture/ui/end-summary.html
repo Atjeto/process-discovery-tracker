@@ -1,0 +1,140 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Recording saved</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:        #14141A;
+    --bg-2:      #22222A;
+    --bg-3:      #2E2E37;
+    --bg-hover:  #3A3A44;
+    --border:    #424250;
+    --fg:        #D8D6CE;
+    --fg-2:      #A8A69E;
+    --fg-3:      #8E8C82;
+    --accent:    #6E8A66;
+    --accent-hi: #8AAB7E;
+    --on-accent: #11140F;
+    --warn:      #A08050;
+    --warn-fg:   #D9B77A;
+    --bad-fg:    #E39A9A;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--font-ui); font-size: 13px; line-height: 1.5;
+  }
+  body { padding: 20px 22px 18px; display: flex; flex-direction: column; gap: 12px; }
+  [hidden] { display: none !important; }
+  h1 { margin: 0; font-size: 17px; font-weight: 600; }
+  .headline { margin-top: -8px; color: var(--fg-2); }
+  .warning {
+    padding: 9px 12px; border-radius: 5px;
+    border: 1px solid var(--warn); background: rgba(160, 128, 80, 0.12);
+    color: var(--warn-fg); font-size: 12px;
+  }
+  .lbl { display: block; margin-bottom: -7px; font-size: 11px; color: var(--fg-3); letter-spacing: 0.3px; }
+  .folder {
+    padding: 8px 10px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--bg-2);
+    font-family: var(--font-mono); font-size: 11px; color: var(--fg);
+    word-break: break-all; user-select: text; -webkit-user-select: text;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  button {
+    padding: 8px 14px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--bg-3); color: var(--fg);
+    font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--bg-hover); }
+  button:disabled { opacity: 0.55; cursor: progress; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: var(--accent-hi); border-color: var(--accent-hi); }
+  .note { margin-top: -4px; font-size: 12px; color: var(--fg-2); }
+  .note.ok { color: var(--fg); }
+  .note.bad { color: var(--bad-fg); }
+  input {
+    width: 100%; padding: 8px 10px; border-radius: 4px; outline: none;
+    border: 1px solid var(--border); background: var(--bg-2); color: var(--fg);
+    font-family: inherit; font-size: 13px;
+  }
+  input:focus { border-color: var(--accent); }
+  .footer { display: flex; justify-content: flex-end; }
+</style></head><body>
+
+<h1>Recording saved</h1>
+<div class="headline" id="headline"></div>
+<div class="warning" id="warning" hidden></div>
+
+<div class="lbl">Saved in this folder</div>
+<div class="folder" id="folder"></div>
+<div class="actions">
+  <button class="primary" id="btn-zip">Make a zip for the analyst</button>
+  <button id="btn-show">Show the folder</button>
+</div>
+<div class="note" id="note">The zip is saved next to the folder, for you to send to the analyst. Nothing is sent from here.</div>
+
+<label class="lbl" for="name">Name this recording (optional)</label>
+<input id="name" placeholder="e.g. Order entry with Sam" autocomplete="off" />
+
+<div class="footer"><button id="btn-done">Done</button></div>
+
+<script>
+const { ipcRenderer } = require("electron");
+// The summary model from main.js (capture-guidance.summaryModel).
+const S = {{SUMMARY}};
+const $ = (id) => document.getElementById(id);
+
+$("headline").textContent = S.headline || "";
+if (S.warning) {
+  $("warning").textContent = S.warning;
+  $("warning").hidden = false;
+}
+$("folder").textContent = S.folder || "";
+
+// The optional name goes on the recording's manifest (the analyst sees it
+// in the viewer): saved on leaving the field, before a zip, and on Done.
+let savedName = "";
+function saveName() {
+  const v = $("name").value.trim();
+  if (v === savedName) return Promise.resolve();
+  savedName = v;
+  return ipcRenderer.invoke("pdt:setSessionLabel", S.folder, v).catch(() => {});
+}
+$("name").addEventListener("blur", saveName);
+
+$("btn-show").addEventListener("click", () => { ipcRenderer.invoke("pdt:showFolder", S.folder); });
+
+$("btn-zip").addEventListener("click", async () => {
+  const btn = $("btn-zip");
+  const note = $("note");
+  btn.disabled = true;
+  note.className = "note";
+  note.textContent = "Making the zip...";
+  try {
+    await saveName();
+    const r = await ipcRenderer.invoke("pdt:zipFolder", S.folder);
+    if (r && r.ok) {
+      note.className = "note ok";
+      note.textContent = "Zip saved: " + r.zipName + " (" + r.size + "). " +
+        "It is selected in the folder window; send it to the analyst.";
+    } else {
+      note.className = "note bad";
+      note.textContent = "Could not make the zip. " + ((r && r.error) || "") +
+        " Use Show the folder and copy the folder instead.";
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("btn-done").addEventListener("click", async () => {
+  await saveName();
+  window.close();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") saveName().then(() => window.close());
+});
+</script>
+</body></html>

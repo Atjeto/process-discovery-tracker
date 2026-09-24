@@ -354,3 +354,115 @@ variant at registration.
 | `interactions.verbose` | `false` | Forensic firehose — emit `focus_changed` / `text_changed` / per-keystroke `value_changed` (~3–5× events). |
 | `interactions.debounce_ms` | `750` | The recorder's `value_changed` coalescing window, passed to the sidecar in `hello`. |
 | `interactions.ocr` | `false` | §11e OCR last resort. When `true`, an identityless element's on-screen region is captured and OCR'd (`Windows.Media.Ocr`) for a `ocr_text` label. Off by default; enable only for a known low-UIA app. Passed to the sidecar in `hello`. |
+
+## Developer and IT reference
+
+Moved here from the capture app's Help window. The app's Help is now one
+screen for the SME (how to start, the next run, pause and stop, handing the
+recording over, what is recorded, where the recordings are); what follows
+is for whoever installs, configures or supports the app.
+
+### OBS video (optional)
+
+OBS Studio is optional. SME laptops usually have none, and the analyst can
+attach a video of the call in the viewer instead; without OBS the recording
+goes on without video and says nothing. With OBS running, a recording
+starts an OBS recording and Stop ends it, and `obs/sync.json` lets the
+viewer line the video up with the events.
+
+1. Install OBS Studio (version 28 or later).
+2. In OBS, open Tools, WebSocket Server Settings, and tick Enable WebSocket
+   server; leave the port at 4455. Authentication can stay off on an
+   internal machine; with a password, enter it under Setup (analyst),
+   Settings, Video / OBS (or `obs.websocket_password`).
+3. Leave OBS running (minimized is fine). The capture app creates the
+   configured scene (`obs.scene_name`) the first time, with a clock overlay
+   that helps check the sync.
+
+The connection is localhost only (`ws://127.0.0.1:4455`). With
+`obs.required: true` a start fails with a dialog when OBS cannot be
+reached; the default `false` records without video. The video lands where
+OBS's Settings, Output, Recording Path says, outside the recording folder;
+`manifest.json` records its absolute path.
+
+### Configuration layers
+
+- **Settings** (Setup (analyst), Settings): keys, OBS, screenshots, the
+  storage limit, the idle end of the open run. Stored in
+  `userData/user-config.json` and merged over any YAML.
+- **Profile** (Setup (analyst), Profile): who is recording (id, display
+  name, role, team), stamped on every manifest.
+- **Recording setup** (Setup (analyst), Recording setup, offered only while
+  nothing records): the project code and name, and the named runs. Stored
+  in `userData/quick-config.yaml` and read at the next launch.
+- **A full YAML**: set `PDT_CONFIG=path\to\config.yaml` before launch for
+  the whole schema (`capture/sample-config.yaml`); Settings and Profile
+  still layer on top.
+
+The three keys are `hotkeys.start_picker` (start recording, then the next
+run), `hotkeys.end_innermost` (end the current run) and
+`hotkeys.manual_screenshot`. A key another program already holds falls back
+to its Ctrl+Alt variant at launch (a "Keys changed" toast), or is not
+registered ("Keys not available"); the recording bar, the welcome, the Help
+window and the tray name the key actually registered. Key changes in
+Settings take effect at the next launch.
+
+### Screenshots on several monitors
+
+`screenshots.display`: `active` (the default: the display with the focused
+window), `primary`, or `all` (one screenshot per display, each file
+suffixed `_d<displayId>.jpg`).
+
+### The recording folder
+
+`%APPDATA%\process-discovery-tracker\sessions\<project>\<YYYYMMDD-HHMMSS>\`
+holds `events.jsonl` (append-only), `manifest.json`, `config.yaml` (the
+config used), `screenshots/`, `obs/sync.json` (when OBS was connected) and
+`session-integrity.json` (written at Stop). The end summary's "Make a zip
+for the analyst" writes `<YYYYMMDD-HHMMSS>.zip` next to the folder, with
+the folder as the zip's root, and shows it selected in Explorer; nothing is
+sent. Deleting a recording under Setup (analyst) deletes its zip too.
+
+### Citrix and remote desktops
+
+The foreground-window poll (`active-win`) sees the Citrix client, not the
+program inside it. Run the capture app inside the Citrix session when the
+Citrix profile allows unsigned Electron apps. Otherwise run it on the local
+machine: the recording shows one Citrix Workspace band for the whole time,
+the video (if any) still shows the content, runs are marked with the run
+key as usual, and the analyst names the inner programs. Check this on a
+representative machine before relying on it.
+
+### Storage
+
+Setup (analyst) shows the recordings on this computer (their number and
+size, flagged above `storage_warn_gb`), Recent recordings (Show in folder,
+Delete) and Delete recordings older than 30, 90 or 365 days; the running
+recording is never offered for deletion. On a machine with Python,
+`scripts/prune-sessions.py --older-than 90` lists the recording folders
+older than 90 days and `--apply` deletes them (`--keep-recovered` skips
+recovered recordings); it leaves zips alone.
+
+### Troubleshooting
+
+- **A key does nothing.** Another program may hold it. Launch with
+  `PDT_DEBUG=1` and read `<userData>\boot.log` for the `hotkeys:` line;
+  change the key under Setup (analyst), Settings, and relaunch.
+- **OBS does not connect.** OBS must be running with its WebSocket server
+  on (port 4455), and the password set in Settings when OBS asks for one.
+- **No tray icon.** Launch with `PDT_DEBUG=1` and read the boot log. Common
+  causes: a second instance already running (single-instance lock), a
+  missing tray icon file, antivirus blocking the executable.
+- **A recording shows as recovered.** The app did not stop cleanly (a
+  crash, a forced quit, a power loss); the next launch marks it recovered.
+  A run left open stays open in `events.jsonl`, and the pipeline closes it
+  at the end of the recording.
+- **Clicks and typing in Chrome or Edge are not recorded.** The recorder
+  wakes Chromium's accessibility tree itself; when a managed browser still
+  shows nothing, closing and reopening the browser can help, or IT can
+  enable the browser's `AccessibilityModeEnabled` policy. The SME's toast
+  only says to keep going and tell the analyst.
+- **Clicks and typing in another program are not recorded.** It may run as
+  administrator, or expose no UI Automation; runs and screenshots still
+  record, and the readiness check (Setup (analyst)) shows how much the
+  recorder sees per program before a recording.

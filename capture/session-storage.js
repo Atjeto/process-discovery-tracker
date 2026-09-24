@@ -4,7 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { dialog } = require("electron");
 const { bootLog } = require("./boot-log.js");
-const { listRecentSessions } = require("./session.js");
+const { listRecentSessions, removeSessionFolder } = require("./session.js");
+const { zipPathFor } = require("./zip-folder.js");
 
 /* Recursive byte total for a folder. Unreadable entries are skipped. */
 function folderBytes(folder) {
@@ -34,8 +35,18 @@ function humanSize(bytes) {
   return (n < 10 ? n.toFixed(1) : Math.round(n)) + " " + units[i];
 }
 
+/* A recording's bytes on disk: its folder plus the zip made for the
+   analyst next to it, if there is one. */
+function recordingBytes(folder) {
+  let zipBytes = 0;
+  try { zipBytes = fs.statSync(zipPathFor(folder)).size; } catch (_) { /* no zip */ }
+  return folderBytes(folder) + zipBytes;
+}
+
 /*
- * Session storage: disk-usage accounting and the delete / prune flows.
+ * Session storage: disk-usage accounting and the delete / prune flows,
+ * reached from the tray's Setup (analyst) menu. The words are the SME's:
+ * a recording, not a session.
  *
  * The base directory, the active-session guard, and the tray refresh
  * all live in the main process and change over a session's life, so
@@ -51,7 +62,7 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
   let cacheUntil = 0;
 
   function folderSizeHuman(folder) {
-    return humanSize(folderBytes(folder));
+    return humanSize(recordingBytes(folder));
   }
 
   function getSessionsTotal() {
@@ -72,7 +83,7 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
           const sFolder = path.join(engDir, s.name);
           if (!fs.existsSync(path.join(sFolder, "manifest.json"))) continue;
           count++;
-          bytes += folderBytes(sFolder);
+          bytes += recordingBytes(sFolder);
         }
       }
     }
@@ -92,16 +103,16 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
       await dialog.showMessageBox({
         type: "info",
         title: "Cannot delete",
-        message: "This session is currently being recorded. End it first via the tray menu.",
+        message: "This recording is still running. Stop it first.",
         buttons: ["OK"],
       });
       return;
     }
-    const bytes = folderBytes(sessionFolder);
+    const bytes = recordingBytes(sessionFolder);
     const r = await dialog.showMessageBox({
       type: "warning",
-      title: "Delete session?",
-      message: "Delete this session folder?",
+      title: "Delete recording?",
+      message: "Delete this recording folder (and its zip, if one was made)?",
       detail: `${label || sessionFolder}\n${sessionFolder}\n\nFrees ${humanSize(bytes)}. This cannot be undone.`,
       buttons: ["Delete", "Cancel"],
       defaultId: 1,
@@ -109,10 +120,10 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
     });
     if (r.response !== 0) return;
     try {
-      fs.rmSync(sessionFolder, { recursive: true, force: true });
+      removeSessionFolder(sessionFolder);
       invalidateSessionsCache();
       refreshTray();
-      bootLog(`deleted session ${sessionFolder} (${bytes} bytes)`);
+      bootLog(`deleted recording ${sessionFolder} (${bytes} bytes)`);
     } catch (e) {
       dialog.showErrorBox("Delete failed", `${e && e.message}\n\nThe folder may still exist; check Explorer.`);
     }
@@ -129,15 +140,15 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
       if (activeFolder && r.sessionFolder === activeFolder) continue;  // never the active one
       const startMs = r.started_at ? new Date(r.started_at).getTime() : 0;
       if (!startMs || startMs >= cutoff) continue;
-      const b = folderBytes(r.sessionFolder);
+      const b = recordingBytes(r.sessionFolder);
       candidates.push({ ...r, bytes: b });
       totalBytes += b;
     }
     if (!candidates.length) {
       await dialog.showMessageBox({
         type: "info",
-        title: "Nothing to prune",
-        message: `No sessions older than ${days} days.`,
+        title: "Nothing to delete",
+        message: `No recordings older than ${days} days.`,
         buttons: ["OK"],
       });
       return;
@@ -146,8 +157,8 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
     const more = candidates.length > 8 ? `\n  ...and ${candidates.length - 8} more` : "";
     const r = await dialog.showMessageBox({
       type: "warning",
-      title: "Prune old sessions?",
-      message: `Delete ${candidates.length} session${candidates.length === 1 ? "" : "s"} older than ${days} days?`,
+      title: "Delete old recordings?",
+      message: `Delete ${candidates.length} recording${candidates.length === 1 ? "" : "s"} older than ${days} days?`,
       detail: `Frees ${humanSize(totalBytes)} total. This cannot be undone.\n\n${sample}${more}`,
       buttons: ["Delete", "Cancel"],
       defaultId: 1,
@@ -158,27 +169,28 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
     let failed = 0;
     for (const c of candidates) {
       try {
-        fs.rmSync(c.sessionFolder, { recursive: true, force: true });
+        removeSessionFolder(c.sessionFolder);
         deleted++;
       } catch (e) {
         failed++;
-        bootLog(`prune failed for ${c.sessionFolder}: ${e && e.message}`);
+        bootLog(`delete by age failed for ${c.sessionFolder}: ${e && e.message}`);
       }
     }
     invalidateSessionsCache();
     refreshTray();
     await dialog.showMessageBox({
       type: failed ? "warning" : "info",
-      title: "Prune complete",
+      title: "Old recordings deleted",
       message: failed
-        ? `Deleted ${deleted}, ${failed} failed (see boot.log if PDT_DEBUG=1).`
-        : `Deleted ${deleted} session${deleted === 1 ? "" : "s"}.`,
+        ? `Deleted ${deleted}; ${failed} could not be deleted (see boot.log if PDT_DEBUG=1).`
+        : `Deleted ${deleted} recording${deleted === 1 ? "" : "s"}.`,
       buttons: ["OK"],
     });
   }
 
   return {
     folderBytes,
+    recordingBytes,
     humanSize,
     folderSizeHuman,
     getSessionsTotal,
@@ -188,4 +200,4 @@ function createSessionStorage({ getBaseDir, getActiveSessionFolder, refreshTray 
   };
 }
 
-module.exports = { createSessionStorage, folderBytes, humanSize };
+module.exports = { createSessionStorage, folderBytes, recordingBytes, humanSize };

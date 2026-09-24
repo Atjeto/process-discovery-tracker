@@ -4,60 +4,52 @@
 <title>Welcome</title>
 <style>
   :root {
+    color-scheme: dark;
     --bg: #14141A; --bg-2: #22222A; --bg-3: #2E2E37; --border: #424250;
     --fg: #D8D6CE; --fg-2: #A8A69E; --fg-3: #8E8C82;
-    --accent: #6E8A66; --accent-2: #5A7488;
+    --accent: #6E8A66; --accent-hi: #8AAB7E; --on-accent: #11140F;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 28px 30px; background: var(--bg); color: var(--fg);
-         font-family: var(--font-ui); font-size: 13px; line-height: 1.5; }
-  h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
-  .tag { font-size: 11px; color: var(--fg-3); letter-spacing: 1.5px;
-         text-transform: uppercase; margin: 0 0 24px; }
-  p { color: var(--fg-2); margin: 0 0 14px; }
-  ol { padding-left: 20px; margin: 0 0 18px; color: var(--fg-2); }
-  li { margin-bottom: 6px; }
-  .kbd { font-family: var(--font-mono); font-size: 11px;
-         padding: 2px 6px; background: var(--bg-3); border: 1px solid var(--border);
-         border-radius: 3px; color: var(--fg); margin: 0 2px; }
-  .row { display: flex; gap: 10px; margin-top: 22px; }
-  .row button { flex: 1; padding: 10px 14px; border: 1px solid var(--border);
+  body { margin: 0; padding: 24px 28px 22px; background: var(--bg); color: var(--fg);
+         font-family: var(--font-ui); font-size: 13px; line-height: 1.55; }
+  h1 { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
+  ol { margin: 0; padding-left: 20px; color: var(--fg-2); }
+  li { margin-bottom: 8px; }
+  li::marker { color: var(--fg-3); }
+  kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px;
+        background: var(--bg-3); border: 1px solid var(--border); border-radius: 3px; color: var(--fg); }
+  strong { color: var(--fg); font-weight: 600; }
+  .row { display: flex; gap: 10px; margin-top: 20px; }
+  .row button { padding: 9px 16px; border: 1px solid var(--border);
                 background: var(--bg-2); color: var(--fg-2); border-radius: 5px;
-                font-family: inherit; font-size: 12px; cursor: pointer; transition: all 0.12s; }
+                font-family: inherit; font-size: 13px; cursor: pointer; }
   .row button:hover { background: var(--bg-3); color: var(--fg); }
-  .row button.primary { background: var(--accent); color: var(--bg);
-                        border-color: var(--accent); font-weight: 500; }
-  .row button.primary:hover { background: #8AAB7E; border-color: #8AAB7E; }
-  .footer-hint { font-size: 11px; color: var(--fg-3); margin-top: 18px; text-align: center; }
+  .row button.primary { background: var(--accent); color: var(--on-accent);
+                        border-color: var(--accent); font-weight: 600; }
+  .row button.primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); }
+  .row .spacer { flex: 1; }
 </style></head><body>
 <h1>Welcome to Process Discovery Tracker</h1>
-<p class="tag">Capture · Mine · Synthesize</p>
-<p>This is the worker-side capture app. It runs in your system tray and records what you do (with screenshots) so an analyst can later study the process. Each time you perform the process is one run.</p>
-<p><strong>Three hotkeys to remember:</strong></p>
 <ol>
-  <li><span class="kbd">{{HK_START}}</span>: Start the next run. Press it each time you begin the process; it ends the previous run and starts recording if needed.</li>
-  <li><span class="kbd">{{HK_END}}</span>: End the current run.</li>
-  <li><span class="kbd">{{HK_SHOT}}</span>: Take a manual screenshot any time.</li>
+  <li>{{LINE_START}}</li>
+  <li>{{LINE_NEXT}}</li>
+  <li>When you are done, click <strong>Stop</strong> on the recording bar. The summary shows where the recording is saved.</li>
 </ol>
-<p>For guided walkthroughs (record + name + close in one panel), open the <strong>Live session window</strong>.</p>
-<p>First time? Tell us who's recording &mdash; it's stamped onto every session so the analyst can tell sessions apart.</p>
 <div class="row">
-  <button id="btn-profile" class="primary">Set up your profile</button>
-  <button id="btn-operator">Open Live session</button>
+  <button id="btn-start" class="primary">Start recording</button>
   <button id="btn-help">Help</button>
+  <span class="spacer"></span>
+  <button id="btn-close">Close</button>
 </div>
-<div class="footer-hint">Reopen this from the tray &rarr; Help. Profile and Settings live at the top level of the tray menu.</div>
 <script>
   const { ipcRenderer } = require("electron");
-  document.getElementById("btn-profile").addEventListener("click", () => {
-    ipcRenderer.invoke("pdt:welcomeAction", "profile");
+  document.getElementById("btn-start").addEventListener("click", async () => {
+    await ipcRenderer.invoke("pdt:welcomeAction", "start");
     window.close();
-  });
-  document.getElementById("btn-operator").addEventListener("click", () => {
-    ipcRenderer.invoke("pdt:welcomeAction", "operator");
   });
   document.getElementById("btn-help").addEventListener("click", () => {
     ipcRenderer.invoke("pdt:welcomeAction", "help");
   });
+  document.getElementById("btn-close").addEventListener("click", () => window.close());
 </script>
 </body></html>

@@ -80,10 +80,13 @@ const DEFAULTS = {
      records consent.required:false, preserving the pre-feature start flow.
      Set "per_session" (prompt every start) or "once" (prompt once per worker
      + version, remembered in user-config) to gate recording on consent;
-     declining aborts the start. `version` bumps invalidate a "once" ack. */
+     declining aborts the start. `version` bumps invalidate a "once" ack.
+     Version 2: the default text no longer promises that card numbers are
+     redacted (only password fields are), so an acknowledgement of the
+     version 1 text is asked again. */
   consent: {
     mode: "off",
-    version: 1,
+    version: 2,
     text: DEFAULT_CONSENT_TEXT,
   },
 };
@@ -119,22 +122,19 @@ function writeConfigSnapshot(folder, config) {
   return out;
 }
 
-/* B2: pre-flight sanity checks on the session config. Returns a list of
-   human-readable problems (empty when all good) -- run before the first
-   event is written so a mis-set engagement or an unwritable folder is
-   fixed rather than discovered after an 8-hour recording. */
+/* B2: the pre-flight check run before the first event is written, so a
+   recordings folder that cannot be written is told at the start rather
+   than discovered after an 8-hour recording. Returns plain sentences
+   (empty when all is well). The project code is not checked here: the
+   default one is a setup choice, not a problem to announce at every start
+   (it is set under Setup (analyst), Recording setup). */
 function validateConfig(config, baseDir) {
   const problems = [];
-  if (!config || !config.engagement_id || config.engagement_id === "default") {
-    problems.push(
-      "Engagement ID is still the default -- this recording will be filed under \"default\" and is easy to lose track of.",
-    );
-  }
   if (baseDir) {
     try {
       fs.accessSync(baseDir, fs.constants.W_OK);
     } catch (_) {
-      problems.push("The session folder is not writable: " + baseDir);
+      problems.push("The recordings folder cannot be written to: " + baseDir);
     }
   }
   return problems;

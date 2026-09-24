@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { zipPathFor } = require("./zip-folder.js");
 
 function pad(n) { return String(n).padStart(2, "0"); }
 
@@ -222,6 +223,25 @@ function setSessionLabel(sessionFolder, label) {
   });
 }
 
+/* A recording folder is <baseDir>/<project>/<timestamp> with a
+   manifest.json. The end summary's IPC (show, zip, name) acts only on such
+   a folder, never on a path the page could otherwise pass. */
+function isRecordingFolder(baseDir, folder) {
+  if (typeof folder !== "string" || !folder || typeof baseDir !== "string" || !baseDir) return false;
+  const rel = path.relative(path.resolve(baseDir), path.resolve(folder));
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return false;
+  if (rel.split(/[\\/]/).length !== 2) return false;
+  return fs.existsSync(path.join(folder, "manifest.json"));
+}
+
+/* Delete a recording: its folder and the zip made for the analyst next to
+   it (the end summary's "Make a zip for the analyst"), so no orphan zip is
+   left behind. */
+function removeSessionFolder(sessionFolder) {
+  fs.rmSync(sessionFolder, { recursive: true, force: true });
+  fs.rmSync(zipPathFor(sessionFolder), { force: true });
+}
+
 module.exports = {
   createSession,
   closeSession,
@@ -231,4 +251,6 @@ module.exports = {
   writeSessionIntegrity,
   setSessionLabel,
   updateManifest,
+  isRecordingFolder,
+  removeSessionFolder,
 };

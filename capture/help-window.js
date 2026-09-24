@@ -1,9 +1,13 @@
 /*
- * Capture-side help window. Toggled from the tray menu.
+ * Capture-side help window, opened from the tray's Help item and the
+ * welcome's Help button.
  *
- * Markup lives in ui/help-window.html and is loaded via a data: URL.
- * The content is a quick reference for tray actions, hotkeys, OBS
- * setup, config, and troubleshooting.
+ * One screen for the SME: how to start, how to mark the next run, how to
+ * pause and stop, how to hand the recording over, what is recorded and
+ * where the recordings are. The keys are the ones actually registered and
+ * the folder is the real one. The developer reference (OBS setup, the
+ * config files, the session folder's files, Citrix, troubleshooting) lives
+ * in docs/architecture/CAPTURE.md, not here.
  */
 
 "use strict";
@@ -12,18 +16,57 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
 const { injectTokens } = require("./ui/tokens.js");
+const { formatHotkey } = require("./capture-guidance.js");
 
-/* Read-only content from ui/help-window.html, with the app version injected. */
-function buildHelpHtml() {
-  const html = injectTokens(fs.readFileSync(path.join(__dirname, "ui", "help-window.html"), "utf-8"));
-  return html.replace("{{VERSION}}", require("./package.json").version);
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function showHelpWindow() {
+/* The sentences that name keys, from the keys actually registered
+   (`keys.start`, `keys.end`, `keys.shot`: Electron accelerators, or empty
+   when another program holds one). */
+function helpLines(keys) {
+  const k = (accel) => {
+    const key = formatHotkey(accel);
+    return key ? "<kbd>" + escapeHtml(key) + "</kbd>" : "";
+  };
+  const start = k(keys && keys.start);
+  const end = k(keys && keys.end);
+  const shot = k(keys && keys.shot);
+  const other = [];
+  if (end) other.push(end + " ends the current run without starting the next.");
+  if (shot) other.push(shot + " takes a screenshot.");
+  return {
+    start: start
+      ? "Press " + start + ", or choose Start recording in the tray menu."
+      : "Choose Start recording in the tray menu.",
+    next: start
+      ? "press " + start + " (or click Next run on the bar)."
+      : "click Next run on the bar.",
+    other: other.join(" "),
+  };
+}
+
+/* Static page from ui/help-window.html: keys, folder and version filled in. */
+function buildHelpHtml(opts) {
+  const o = opts || {};
+  const lines = helpLines(o.keys || {});
+  return injectTokens(fs.readFileSync(path.join(__dirname, "ui", "help-window.html"), "utf-8"))
+    .split("{{START_HOW}}").join(lines.start)
+    .split("{{NEXT_HOW}}").join(lines.next)
+    .split("{{OTHER_KEYS}}").join(lines.other)
+    .split("{{OTHER_HIDDEN}}").join(lines.other ? "" : " hidden")
+    .split("{{FOLDER}}").join(escapeHtml(o.folder || ""))
+    .split("{{VERSION}}").join(escapeHtml(require("./package.json").version));
+}
+
+function showHelpWindow(opts) {
   const win = new BrowserWindow({
-    width: 760,
-    height: 760,
-    title: "PDT Help",
+    width: 560,
+    height: 610,
+    useContentSize: true,
+    title: "How to record",
     autoHideMenuBar: true,
     backgroundColor: "#14141A",
     webPreferences: {
@@ -42,9 +85,9 @@ function showHelpWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.loadURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(buildHelpHtml())
+    "data:text/html;charset=utf-8," + encodeURIComponent(buildHelpHtml(opts))
   );
   return win;
 }
 
-module.exports = { showHelpWindow, buildHelpHtml };
+module.exports = { showHelpWindow, buildHelpHtml, helpLines };
