@@ -28,7 +28,16 @@ const VERSION = 1;
    window starts this long before the step. */
 const STEP_LEAD_MS = 10000;
 
-const NOT_SYNCED_LINE = "The transcript is not synced to the recording yet. Sync it in Flow.";
+const NOT_SYNCED_LINE = "The transcript is not synced to the recording yet. Sync it on the Timeline.";
+
+/* The tooltips of Attach (Replace) and Remove, on the Overview's recording
+   line and on the Timeline's Transcript lane label alike. */
+const ATTACH_TITLE = "Attach the meeting transcript Teams saved (.vtt or .docx). Its sentences show on the " +
+  "timeline, next to each step and beside the document fields.";
+const REPLACE_TITLE = "Replace the transcript with another Teams file (.vtt or .docx). Sync the new one again " +
+  "unless a video is attached.";
+const REMOVE_TITLE = "Take the transcript out of this recording. The original file stays in the recording's " +
+  "transcript folder.";
 
 /* Why a parsed transcript.json cannot be used, in one line, or null when it
    can: a version 1 object with a segments list. */
@@ -234,11 +243,11 @@ function attachedMessage(transcript, synced) {
   const n = speakersOf(segs).length;
   return "Transcript attached: " + _count(segs.length, "sentence", "sentences") + ", " +
     (n ? _count(n, "speaker", "speakers") : "no speaker names") + "." +
-    (synced ? "" : " Sync it in Flow to place it on the timeline.");
+    (synced ? "" : " Sync it on the Timeline to place it.");
 }
 
 module.exports = {
-  VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE,
+  VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE, ATTACH_TITLE, REPLACE_TITLE, REMOVE_TITLE,
   validateTranscript, segmentsOf, effectiveOffsetMs, wallMs, placeTranscript, forSession,
   overlaps, stepWindow, sentencesInWindow, sentencesForStep, runSpans, outsideRuns,
   normalizeSpace, isAdded, appendText, formatClock, speakersOf, filterSentences,

@@ -1,6 +1,7 @@
 /*
  * normalize-result.js: what the viewer tells the analyst about a finished
- * normalize.py run (contract C13; RP-04 and RP-09). Pure, so the mapping is
+ * normalize.py run (contract C13; RP-04 and RP-09), and whether a recording
+ * needs a run as it opens (analysisNeed, AD-22). Pure, so the mapping is
  * unit-tested without spawning Python.
  *
  * normalize.py exit codes (C13):
@@ -58,7 +59,7 @@ function resultFromRunnerError(err) {
   }
   if (err && err.signal) {
     return { ok: false, code: null, pipelineError: pipelineErrorLine(err.stderr),
-      error: "Analysis stopped before it finished (" + err.signal + "). Run Analyze again." };
+      error: "Analysis stopped before it finished (" + err.signal + "). Re-analyze from Help, Troubleshooting." };
   }
   return { ok: false, code: null, pipelineError: null,
     error: "Analysis could not start: " + ((err && err.message) || String(err)) };
@@ -80,6 +81,25 @@ function pddExportOutcome(result, file) {
   return { ok: true, message: null };
 }
 
+/* Whether a recording needs an analysis as it opens (AD-22): "missing" when
+   it has none (no stats.json or no analysis.json), "stale" when its analysis
+   came from an older version of the pipeline, else null. normalize.py stamps
+   no version number, so an older analysis is told by the blocks today's
+   pipeline always writes: analysis.json `stage_errors` (C12, empty when every
+   stage ran) and `case_quality` (or a stage error naming it), and stats.json
+   `meta.draft_summary` (the C1 drafting rule's numbers). */
+function analysisNeed(session) {
+  if (!session || !session.stats || !session.analysis) return "missing";
+  const a = session.analysis;
+  if (!Array.isArray(a.stage_errors)) return "stale";
+  const runCheckFailed = a.stage_errors.some((e) => e && e.stage === "case_quality");
+  if (!a.case_quality && !runCheckFailed) return "stale";
+  const ds = (session.stats.meta || {}).draft_summary;
+  if (!ds || typeof ds !== "object") return "stale";
+  return null;
+}
+
 module.exports = {
   ERROR_PREFIX, pipelineErrorLine, describeNormalizeFailure, resultFromRunnerError, pddExportOutcome,
+  analysisNeed,
 };

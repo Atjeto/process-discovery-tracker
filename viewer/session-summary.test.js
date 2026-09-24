@@ -155,3 +155,26 @@ test("detectMarkerProblems handles nested cases without false flags", () => {
   ];
   assert.deepEqual(detectMarkerProblems(events), []);
 });
+
+/* ---- The SME's name and the Recents entry ------------------------------- */
+
+test("smeName is the Profile's display name when it says more than the Windows login", () => {
+  const { smeName } = SessionSummary;
+  assert.equal(smeName({ config: { worker: { id: "anovak", name: "Ana Novak" } } }), "Ana Novak");
+  assert.equal(smeName({ config: { worker: { id: "anovak", name: "ANOVAK" } } }), null, "the login again is no name");
+  assert.equal(smeName({ config: { worker: { id: "anovak", name: null } } }), null, "the capture app's default");
+  assert.equal(smeName({}), null);
+  assert.equal(computeSummary(Object.assign(sampleSession(), {
+    manifest: { config: { worker: { id: "w", name: "Ana Novak" } } } })).smeName, "Ana Novak");
+});
+
+test("recentLabel is the document title once written, else the recording's label, else project and folder", () => {
+  const { recentLabel } = SessionSummary;
+  const sess = { manifest: { engagement_id: "demo-order-processing", label: "" }, annotations: { document: { title: "  " } } };
+  assert.equal(recentLabel(sess, "sess-1"), "demo-order-processing · sess-1");
+  sess.manifest.label = "Tuesday call";
+  assert.equal(recentLabel(sess, "sess-1"), "Tuesday call");
+  sess.annotations.document.title = "Order intake: e-mail to sales order";
+  assert.equal(recentLabel(sess, "sess-1"), "Order intake: e-mail to sales order");
+  assert.equal(recentLabel({ manifest: {} }, "sess-2"), "sess-2 · sess-2");
+});

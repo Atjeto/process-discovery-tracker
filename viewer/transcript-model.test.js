@@ -169,7 +169,7 @@ test("attachedMessage counts sentences and speakers, and points at Sync when not
   const t = transcript([seg("a", 1, 2, "SME", "x"), seg("b", 3, 4, "Analyst", "y"), seg("c", 5, 6, "SME", "z")]);
   assert.equal(TM.attachedMessage(t, true), "Transcript attached: 3 sentences, 2 speakers.");
   assert.equal(TM.attachedMessage(transcript([seg("a", 1, 2, null, "x")]), false),
-    "Transcript attached: 1 sentence, no speaker names. Sync it in Flow to place it on the timeline.");
+    "Transcript attached: 1 sentence, no speaker names. Sync it on the Timeline to place it.");
 });
 
 test("sentenceRowHtml escapes what the transcript says", () => {

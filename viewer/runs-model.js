@@ -485,6 +485,26 @@ function stepApp(step, interactionsById) {
   return "";
 }
 
+/* The readable name of an application token ("chrome", "chrome.exe",
+   "EXCEL.EXE"): the recording's own name for it (stats.json meta.app_names,
+   the names the findings and the PDD use), else the executable name without
+   its extension, capitalized when it is a machine token. Mirrors
+   normalization/app_names.display_name. Used by the Steps level and the
+   Overview's Where the time goes. */
+function readableApp(app, names) {
+  const raw = String(app || "").trim();
+  if (!raw || raw === "(app)") return "";
+  const map = (names && typeof names === "object") ? names : {};
+  if (typeof map[raw] === "string" && map[raw].trim()) return map[raw].trim();
+  const key = (v) => { const k = String(v || "").trim().toLowerCase(); return k.endsWith(".exe") ? k.slice(0, -4) : k; };
+  for (const [exe, nm] of Object.entries(map)) {
+    if (key(exe) === key(raw) && typeof nm === "string" && nm.trim()) return nm.trim();
+  }
+  const bare = raw.toLowerCase().endsWith(".exe") ? raw.slice(0, -4) : raw;
+  return (bare === bare.toUpperCase() || bare === bare.toLowerCase())
+    ? bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase() : bare;
+}
+
 /* Names to suggest while naming `step`: remembered names whose draft_key is
    for the same app (the key starts with "<app>|"; an app is a process name,
    which cannot contain "|"), the most recently remembered first, then the
@@ -571,6 +591,6 @@ module.exports = {
   byStart, runStatus, stepChip, buildRuns, runForRange, groupKeyOf, groupSteps, nextInGroup,
   emptyFixes, defaultPatternRun, patternRun, designatePattern, usePattern, recordFix, confirmRun,
   reopenRun, canReopen,
-  probeLine, propagateName, stepApp, nameSuggestions, dropDraftIdentity, renameDrafts, rememberedNameRows,
+  probeLine, propagateName, stepApp, readableApp, nameSuggestions, dropDraftIdentity, renameDrafts, rememberedNameRows,
   mergedDraftKeys, carriedMerges, sameKeyDraftsElsewhere, hideSteps, runCount,
 };

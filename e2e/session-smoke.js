@@ -16,14 +16,17 @@
  *   - the Session Export menu's "Process map (image)" and "Process map
  *     (BPMN)" items each write their file (no As-Is copy chosen yet: the map
  *     on the Map level),
- *   - the chrome: the Run select on Flow only, one Open menu, the version in
- *     Help, Analyze session secondary once analyzed, the active level legible
- *     under the mouse,
- *   - the automation candidates: every repeated sequence, by total time, with
- *     no Confirm or Dismiss and no rank (AD-20, P1.5),
- *   - Flow's side panel opens on Screenshots (no Notes), its thumbnails show
- *     local time, the More menu holds what it should with and without a video,
- *     and the Raw events drawer shows on Flow only,
+ *   - the chrome: one top bar (Open, the four levels, the status line,
+ *     Export, Help, theme; no actions bar, no Analyze button, no More menu),
+ *     the Run select on the Timeline only, the version in Help, the active
+ *     level legible under the mouse,
+ *   - the Overview's Where the time goes: every step of the runs with its time
+ *     per run and in how many runs, and every application (the automation
+ *     candidates fold in there); no dot strip, no total, no editor,
+ *   - the Timeline's side panel opens on Screenshots (no Notes), its
+ *     thumbnails show local time, the moved controls are where they are used
+ *     (with and without a video), and the Raw events drawer shows on the
+ *     Timeline only,
  *   - the one process map (built from the runs' steps) is one connected graph
  *     read left to right with every path drawn, and the Map's one act makes
  *     the PDD's As-Is map: after a rename it analyzes first so the copy
@@ -103,10 +106,8 @@ async function shot(page, name) {
   await page.screenshot({ path: p, fullPage: true }).catch((e) => console.log("shot fail", name, e.message));
 }
 
-// Per-level layout container that must become visible when its level is active.
-// R4: the Analysis level was retired -- its three modules moved into the
-// Overview's Evidence host (#overview-evidence). The evidence assertions below
-// navigate to Overview and read #overview-evidence instead of #analysis-content.
+// Per-level layout container that must become visible when its level is active
+// (data-level "flow" is the Timeline). The Overview is checked on its own below.
 const LEVEL_HOST = {
   flow: "#session-layout-flow",
   steps: "#session-layout-steps",
@@ -181,18 +182,34 @@ async function unreadableAnnotationsPin() {
     /was not saved/.test(saveMsg) && /cannot be read/.test(saveMsg) && afterSave,
     "toast=" + JSON.stringify(saveMsg.slice(0, 200)) + " filesUntouched=" + afterSave);
 
-  // Analyze rewrites annotations.json, so it is refused the same way.
-  let analyzeMsg = "";
+  // AD-22: no analysis starts by itself over an unreadable annotations.json
+  // (the banner says why; the pipeline would refuse). The one analysis by
+  // hand, Help's Re-analyze, is refused with the reason, and the log shows
+  // only now, its failure sentence first.
+  const noAuto = { stats: fs.existsSync(path.join(dir, "stats.json")), analysis: fs.existsSync(path.join(dir, "analysis.json")),
+    status: await p.$eval("#session-pills", (el) => (el.textContent || "").trim()).catch(() => "?"),
+    logShown: await p.$eval("#log-host", (el) => getComputedStyle(el).display !== "none").catch(() => null) };
+  // (The refused marker insert above stays on screen, so the status line may
+  // offer to apply it; no analysis may be running.)
+  record("AD-22: no analysis starts by itself on a recording whose annotations.json cannot be read (no update in the status line, no log, nothing written)",
+    !noAuto.stats && !noAuto.analysis && !/Updating/.test(noAuto.status) && noAuto.logShown === false, JSON.stringify(noAuto));
+  let analyzeMsg = "", failureFirst = "";
   try {
-    await p.locator("#btn-normalize").click({ timeout: T });
-    await p.waitForFunction(() => /Analysis stopped, nothing was changed/.test(
-      (document.getElementById("normalize-log") || {}).textContent || ""), null, { timeout: 60000 });
-    analyzeMsg = await p.$eval("#normalize-log", (el) => el.textContent || "");
-  } catch (e) { logActionError("RP-04 analyze", e); analyzeMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
+    await p.locator("#btn-help").click({ timeout: T });
+    await p.locator('.help-nav-item[data-section="trouble"]').click({ timeout: T });
+    await p.locator("#btn-help-reanalyze").click({ timeout: T });
+    await p.waitForFunction(() => {
+      const h = document.getElementById("log-host");
+      return !!h && getComputedStyle(h).display !== "none" && /Analysis stopped, nothing was changed/.test(h.textContent || "");
+    }, null, { timeout: 60000 });
+    analyzeMsg = await p.$eval("#log-host", (el) => el.textContent || "");
+    failureFirst = await p.$eval("#log-host > summary", (el) => (el.textContent || "").trim());
+  } catch (e) { logActionError("RP-04 re-analyze", e); analyzeMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
   const afterAnalyze = untouched();
-  record("RP-04: Analyze on that session is refused with the reason; annotations.json is untouched",
-    /Analysis stopped, nothing was changed: .*annotations\.json in this session folder cannot be read/.test(analyzeMsg) && afterAnalyze,
-    "log=" + JSON.stringify(analyzeMsg.slice(-220)) + " filesUntouched=" + afterAnalyze);
+  record("RP-04: Re-analyze (Help, Troubleshooting) on that session is refused with the reason, the log shows with the failure sentence first; annotations.json is untouched",
+    /Analysis stopped, nothing was changed: .*annotations\.json in this session folder cannot be read/.test(analyzeMsg) &&
+      /^Analysis stopped, nothing was changed: /.test(failureFirst) && afterAnalyze,
+    "first=" + JSON.stringify(failureFirst.slice(0, 120)) + " filesUntouched=" + afterAnalyze);
 
   // The refused save logs one console error by design ("[session]
   // annotations.json not saved"); anything else is a real page error.
@@ -323,34 +340,62 @@ async function unreadableAnnotationsPin() {
     first: ((document.querySelector("#case-scope-select option") || {}).textContent || "").trim(),
     playhead: document.querySelectorAll("#btn-scope-to-playhead").length,
   })).catch((e) => ({ err: e.message }));
-  record("P1.2: the Run select shows on Flow only (All runs); Scope to playhead is gone",
+  record("P1.2: the Run select shows on the Timeline only (All runs), in its header; Scope to playhead is gone",
     runSelect.flow === true && runSelect.overview === false && runSelect.steps === false && runSelect.map === false &&
       runSelectText.label === "Run:" && runSelectText.first === "All runs" && runSelectText.playhead === 0,
     JSON.stringify({ runSelect, runSelectText }));
 
   // P1.2 / P3.1 / P3.2 / P2.2: the chrome says each thing once. No VIEW label,
   // per-level hint, hidden level descriptions or top-bar date; the version is
-  // in Help; one Open menu holds the folder picker and the recent sessions.
-  // P1.11: once the session is analyzed, Analyze session is secondary, so the
+  // in Help; one Open menu holds the folder picker and the recent recordings.
+  // V1 (step-back review 4.2): ONE bar holds Open, the four levels, the status
+  // line, Export, Help and the theme, in that order; the actions bar, the
+  // level bar under it, "Analyze session" and "More" are gone, and the
   // Overview's one orange button is its next act.
   await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
   await wait(400);
   const chrome = await page.evaluate(() => {
     const n = (sel) => document.querySelectorAll(sel).length;
     const shown = (el) => !!(el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0);
+    const bar = document.querySelector("header.topbar");
+    const inBar = (sel) => [...document.querySelectorAll(sel)].every((el) => bar && bar.contains(el));
+    const order = ["#btn-recent-menu", '.view-mode-btn[data-level="overview"]', '.view-mode-btn[data-level="flow"]',
+      '.view-mode-btn[data-level="steps"]', '.view-mode-btn[data-level="map"]', "#session-pills",
+      "#btn-session-export-menu", "#btn-help", "#btn-theme-toggle"]
+      .map((sel) => { const el = document.querySelector(sel); return el && bar && bar.contains(el) ? el.getBoundingClientRect().left : null; });
+    const levelBtns = [...document.querySelectorAll(".view-mode-btn")];
     return {
       gone: n(".view-mode-label") + n("#view-mode-help") + n(".view-mode-desc") + n("#topbar-meta") + n("#onboarding-card"),
       version: ((document.getElementById("help-version") || {}).textContent || "").trim(),
       openMenu: ((document.querySelector("#btn-recent-menu span") || {}).textContent || "").trim(),
       openFolderInMenu: !!document.querySelector("#recent-menu-popup #btn-open-session"),
-      analyzeIsPrimary: document.getElementById("btn-normalize").classList.contains("primary"),
-      orangeOnOverview: [...document.querySelectorAll("#session-loaded button.primary")].filter(shown)
+      openFolderLabel: ((document.getElementById("btn-open-session") || {}).textContent || "").trim(),
+      analyzeButton: n("#btn-normalize") + [...document.querySelectorAll("button")].filter((b) => /Analyze session/.test(b.textContent || "")).length,
+      moreMenu: n("#session-more-menu, #btn-session-more-menu, #session-more-popup") +
+        [...document.querySelectorAll("button")].filter((b) => /More\b/.test(b.textContent || "") && /\u22ef/.test(b.textContent || "")).length,
+      actionsBar: n(".actions-bar"),
+      bars: [...document.querySelectorAll(".view-mode-bar")].map((el) => !!(bar && bar.contains(el))),
+      allInBar: inBar(".view-mode-btn") && inBar("#session-pills") && inBar("#btn-session-export-menu") &&
+        inBar("#btn-recent-menu") && inBar("#btn-help") && inBar("#btn-theme-toggle"),
+      inOrder: order.every((x) => x != null) && order.every((x, i) => i === 0 || x >= order[i - 1]),
+      levels: levelBtns.map((b) => (b.textContent || "").replace(/\s+/g, " ").trim()),
+      titles: levelBtns.map((b) => b.title),
+      barHeight: bar ? Math.round(bar.getBoundingClientRect().height) : null,
+      orangeOnOverview: [...document.querySelectorAll("#session-loaded button.primary, header.topbar button.primary")].filter(shown)
         .map((b) => (b.textContent || "").trim()),
     };
   }).catch((e) => ({ err: e.message }));
-  record("P1.2/P3.1/P2.2/P1.11: no VIEW label, level hint or top-bar date; the version is in Help; one Open menu; Analyze session secondary, one orange button on the Overview",
+  record("V1: one top bar holds Open, the four levels (Overview, Timeline, Steps, Map), the status line, Export, Help and the theme; no actions bar, no Analyze session, no More menu; one orange button on the Overview; the version is in Help",
     !!(chrome && !chrome.err && chrome.gone === 0 && /^Version \d+\.\d+\.\d+/.test(chrome.version) &&
-      chrome.openMenu === "Open" && chrome.openFolderInMenu && chrome.analyzeIsPrimary === false &&
+      chrome.openMenu === "Open" && chrome.openFolderInMenu && chrome.openFolderLabel === "Open recording..." &&
+      chrome.analyzeButton === 0 && chrome.moreMenu === 0 && chrome.actionsBar === 0 &&
+      JSON.stringify(chrome.bars) === "[true]" && chrome.allInBar && chrome.inOrder &&
+      JSON.stringify(chrome.levels) === JSON.stringify(["◈ Overview", "≡ Timeline", "▣ Steps", "◯ Map"]) &&
+      JSON.stringify(chrome.titles) === JSON.stringify(["What is left, the recording and the document",
+        "The recording: video, screenshots, runs and what was said",
+        "Each run's steps: confirm run 1, then review the others",
+        "The process map, and your As-Is and To-Be maps"]) &&
+      chrome.barHeight > 0 && chrome.barHeight < 60 &&
       chrome.orangeOnOverview.length === 1 && chrome.orangeOnOverview[0] === "Confirm Run 1 in Steps"),
     JSON.stringify(chrome));
 
@@ -543,177 +588,70 @@ async function unreadableAnnotationsPin() {
     !!(grainGone && !grainGone.err && grainGone.slider === 0 && grainGone.stateGrain === "undefined"),
     JSON.stringify(grainGone));
 
-  // R4: the Analysis modules now live in the Overview's Evidence host
-  // (#overview-evidence). Navigating to Evidence = go to Overview (the default)
-  // and read #overview-evidence.
-  async function goEvidence() {
-    const ob = await page.$('.view-mode-btn[data-level="overview"]');
-    if (ob) { await ob.click().catch(() => {}); await wait(900); }
-  }
-
-  // R1 (approachability redesign, 2026-07-03): "Process efficiency" and the
-  // resident "Waste by step/screen" module are GONE from the Analysis stack.
-  // The judgment editor relocated into a "Where the time goes" row's
-  // expand-in-place body -- reachable only at the element notch (the
-  // business-required override is process_label-scoped). At a coarser notch
-  // the same expansion shows a read-only "set the Detail slider to element"
-  // message instead. This IS the itemisation-follows-the-notch pin now.
-  await goEvidence();
-  const noResidentModules = await page.evaluate(() => {
-    const titles = Array.from(document.querySelectorAll("#overview-evidence .analysis-module-title"))
-      .map((e) => (e.textContent || "").trim());
-    return {
-      titles,
-      hasEfficiency: titles.some((t) => /process efficiency/i.test(t)),
-      hasWasteModule: titles.some((t) => /^waste by/i.test(t)),
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("(R1) 'Process efficiency' is not a resident module", !!(noResidentModules && !noResidentModules.hasEfficiency),
-    JSON.stringify(noResidentModules));
-  record("(R1) 'Waste by step/screen' is not a resident module", !!(noResidentModules && !noResidentModules.hasWasteModule),
-    JSON.stringify(noResidentModules));
-
-  // Item 1: the "Where the time goes" judgment editor is always editable (it
-  // was element-notch-gated). CI-4: the pin waits for each observable state
-  // (the Overview shown with the time module rendered and open, the row's
-  // expand button visible, the row body unhidden) with a generous timeout
-  // instead of fixed sleeps, and clicks through a locator that re-resolves if
-  // a re-render replaced the row. A wait that times out is recorded in the
-  // result (`waitFailed`), never swallowed.
+  // V1 (step-back review 4.4): the Overview's Observations. Where the time
+  // goes lists every step of the runs (the map's grouping) with its average
+  // time per run and in how many runs, then every application: the
+  // automation candidates fold in as time per application. No dot strip, no
+  // total over the runs, no business-required editor, no candidate cards.
   const STATE_TIMEOUT = 15000;
-  async function tsJudgeExpansion() {
-    const waits = [];
-    const waitFor = (label, p) => p.catch((e) => {
-      logActionError("(R1) time row: " + label, e);
-      waits.push(label + ": " + String(e.message).split("\n")[0]);
-    });
-    await waitFor("overview click", page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: STATE_TIMEOUT }));
-    await waitFor("time module rendered", page.waitForSelector(
-      '#overview-evidence .analysis-module[data-module="time"]', { state: "visible", timeout: STATE_TIMEOUT }));
-    await page.evaluate(() => {
-      const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
-      if (mod && !mod.open) mod.open = true;
-    });
-    const expand = page.locator("#overview-evidence .ts-row").first().locator(".ts-judge-expand");
-    await waitFor("expand visible", expand.waitFor({ state: "visible", timeout: STATE_TIMEOUT }));
-    await waitFor("expand click", expand.click({ timeout: STATE_TIMEOUT }));
-    await waitFor("row body shown", page.waitForFunction(() => {
-      const row = document.querySelector("#overview-evidence .ts-row");
-      const body = row && row.querySelector(".ts-judge-body");
-      return !!(body && !body.hidden);
-    }, null, { timeout: STATE_TIMEOUT }));
-    const probe = await page.evaluate(() => {
-      const row = document.querySelector("#overview-evidence .ts-row");
-      const body = row && row.querySelector(".ts-judge-body");
-      return {
-        rowPresent: !!row,
-        hidden: body ? body.hidden : null,
-        hasEditor: !!(body && body.querySelector(".waste-row.waste-row-editable")),
-        readOnlyNote: !!(body && /Detail slider/.test(body.textContent || "")),
-      };
-    }).catch((e) => ({ err: e.message }));
-    if (waits.length) probe.waitFailed = waits;
-    return probe;
-  }
-  const tsJudge = await tsJudgeExpansion();
-  record("(R1) 'Where the time goes' row expand-in-place opens the judgment editor, always editable (no Detail slider gate)",
-    !!(tsJudge && !tsJudge.err && tsJudge.rowPresent && tsJudge.hidden === false && tsJudge.hasEditor &&
-      !tsJudge.readOnlyNote),
-    JSON.stringify(tsJudge));
-  if (!(tsJudge && tsJudge.hasEditor)) await shot(page, "fail-ts-judge-editor.png");
-
-  // --- Automation candidates render as finding cards (R1 §5) ---
-  // The ranked table is gone; candidates render via the SAME shared
-  // finding-card component the Overview findings feed uses (finding-cards.js
-  // -- .ov-finding markup), one card per candidate, in rank order, with the
-  // Confirm/Dismiss decision preserved and reachable behind the card's
-  // expand-in-place evidence body.
-  await goEvidence();
-  const autoCardsProbe = await page.evaluate(() => {
-    const mod = document.querySelector('#overview-evidence .analysis-module[data-module="automation"]');
-    if (mod && !mod.open) mod.open = true;
-    const body = mod && mod.querySelector(".analysis-module-body");
-    if (!body) return { present: false };
-    const cards = body.querySelectorAll(".auto-cards .ov-finding");
+  await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: STATE_TIMEOUT }).catch(() => {});
+  await page.waitForSelector('#ov-observations .analysis-module[data-module="time"]', { timeout: STATE_TIMEOUT }).catch(() => {});
+  const timeGoes = await page.evaluate(() => {
+    const s = require("./state.js").getSession();
+    const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+    const label = require("./process-map-levels.js").mapNodeLabel;
+    const mod = document.querySelector('#ov-observations .analysis-module[data-module="time"]');
+    if (!mod) return { present: false };
+    const tables = [...mod.querySelectorAll("table.ov-time")];
+    const rows = (t) => [...t.querySelectorAll("tbody tr")].map((tr) => [...tr.children].map((td) => (td.textContent || "").trim()));
+    const timed = new Set();
+    for (const r of runs) for (const st of r.visible) {
+      const ms = Date.parse(st.time_range.end) - Date.parse(st.time_range.start);
+      if (ms > 0) timed.add(label(st));
+    }
+    const apps = new Set(((s.analysis || {}).automation_candidates || []).map((c) => c.app));
     return {
-      present: true,
-      cardCount: cards.length,
-      noOldTable: !body.querySelector("table.analysis-table"),
-      firstClaim: cards.length ? (cards[0].querySelector(".ov-finding-claim") || {}).textContent : null,
+      present: true, runs: runs.length,
+      heads: tables.map((t) => [...t.querySelectorAll("th")].map((th) => (th.textContent || "").trim())),
+      stepRows: tables[0] ? rows(tables[0]) : [],
+      appRows: tables[1] ? rows(tables[1]) : [],
+      timedSteps: [...timed].sort(),
+      candidateApps: apps.size,
+      gone: document.querySelectorAll("#overview-content .ts-dot, #overview-content .ts-strip, #overview-content .waste-row, " +
+        "#overview-content .auto-cards, #overview-content .ov-finding, #overview-evidence").length,
+      takeaway: ((mod.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim(),
+      items: [...document.querySelectorAll("#ov-observations .analysis-module")].map((m) => m.dataset.module),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(R1) automation candidates render as finding cards, not a ranked table",
-    !!(autoCardsProbe && !autoCardsProbe.err && autoCardsProbe.present &&
-      autoCardsProbe.cardCount > 0 && autoCardsProbe.noOldTable),
-    JSON.stringify(autoCardsProbe));
-  if (!(autoCardsProbe && autoCardsProbe.cardCount > 0)) await shot(page, "fail-automation-cards.png");
-  // AD-20: the automation candidates are the one home of a repeated step
-  // sequence. Every repeated sequence is a card, longest total time first (the
-  // order the PDD's 5.3 lists them in); each card leads with the pipeline's
-  // readable label (the application by its readable name, no raw process
-  // token); no line points at the findings any more.
-  const autoLabels = await page.evaluate(() => {
-    const a = require("./state.js").getSession().analysis || {};
-    const expected = (a.automation_candidates || []).filter((c) => c.data_sufficiency === "multi_instance")
-      .sort((x, y) => (y.total_elapsed_ms || 0) - (x.total_elapsed_ms || 0));
-    const claims = [...document.querySelectorAll("#overview-evidence .auto-cards .ov-finding-claim")]
-      .map((e) => (e.textContent || "").trim());
-    return {
-      expected: expected.length, cards: claims.length,
-      totals: expected.map((c) => c.total_elapsed_ms),
-      labelsLead: claims.length > 0 && claims.every((c, i) => !!expected[i] && c.startsWith(expected[i].label + ": ran ")),
-      rawToken: claims.some((c) => /\.exe\b/i.test(c)),
-      inFindingsNote: document.querySelectorAll("#overview-evidence .auto-in-findings").length,
-      takeaway: ((document.querySelector('#overview-evidence .analysis-module[data-module="automation"] .analysis-module-takeaway') || {}).textContent || "").trim(),
-      firstClaim: claims[0] || null,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("AD-20: every repeated sequence is an automation card, longest total time first, led by its readable label; no 'already in the findings' line",
-    !!(autoLabels && !autoLabels.err && autoLabels.expected >= 2 && autoLabels.cards === autoLabels.expected &&
-      autoLabels.labelsLead && !autoLabels.rawToken && autoLabels.inFindingsNote === 0 &&
-      /^\d+ candidates?, longest total time first$/.test(autoLabels.takeaway)),
-    JSON.stringify(autoLabels));
+  const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.runs === 4 &&
+    JSON.stringify(timeGoes.heads) === JSON.stringify([["Step", "Per run", "Runs"], ["Application", "Per run", "Runs"]]) &&
+    JSON.stringify(timeGoes.stepRows.map((r) => r[0]).sort()) === JSON.stringify(timeGoes.timedSteps) &&
+    timeGoes.stepRows.every((r) => /^\d/.test(r[1]) && /^in [1-4] of 4 runs$/.test(r[2])) &&
+    timeGoes.appRows.length >= timeGoes.candidateApps && timeGoes.appRows.every((r) => /^in [1-4] of 4 runs$/.test(r[2])) &&
+    timeGoes.gone === 0 && /^Most in .+: .+ per run$/.test(timeGoes.takeaway) &&
+    JSON.stringify(timeGoes.items) === JSON.stringify(["retyped", "time"]));
+  record("V1: the Observations' Where the time goes lists every timed step of the runs (time per run, in N of 4 runs) and every application; no dot strip, total, editor or candidate cards",
+    tgOk, JSON.stringify(timeGoes));
+  if (!tgOk) await shot(page, "fail-where-the-time-goes.png");
 
-  // P1.5: Confirm and Dismiss reached nothing downstream and the rank was an
-  // unexplained number: a candidate card is its claim, with no control, no
-  // rank and no caption above the cards.
-  const autoCard = await page.evaluate(() => {
-    const mod = document.querySelector('#overview-evidence .analysis-module[data-module="automation"]');
-    const cardsHost = mod && mod.querySelector(".auto-cards");
-    return {
-      cards: cardsHost ? cardsHost.querySelectorAll(".ov-finding").length : 0,
-      controls: cardsHost ? cardsHost.querySelectorAll("button, input, select, a").length : -1,
-      decisions: document.querySelectorAll(".auto-decision, .auto-btn, [data-confirm]").length,
-      ranks: document.querySelectorAll(".auto-card, [data-rank]").length,
-      captions: mod ? mod.querySelectorAll(".analysis-caption").length : -1,
-      chips: document.querySelectorAll("#overview-content .ov-finding-tier").length,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("P1.5 + P2.7: an automation card has no Confirm, Dismiss or rank; no card carries a tier chip",
-    !!(autoCard && !autoCard.err && autoCard.cards > 0 && autoCard.controls === 0 && autoCard.decisions === 0 &&
-      autoCard.ranks === 0 && autoCard.captions === 0 && autoCard.chips === 0),
-    JSON.stringify(autoCard));
-  if (!(autoCard && autoCard.cards > 0 && autoCard.decisions === 0)) await shot(page, "fail-automation-cards-controls.png");
-
-  // Item 21: the Evidence module collapse persists per analyst (localStorage,
-  // pdt.analysis.* keys — the module keys are unchanged by the R4 relocation).
-  // P1.10: collapsed is the default. Both directions, on the "time" module in
-  // #overview-evidence: opening it writes "1" and it comes back open after a
-  // re-render; collapsing it writes "0" and it comes back collapsed.
+  // Item 21: an Observations item's open state persists per analyst
+  // (localStorage, pdt.analysis.* keys); closed is the default. Both
+  // directions, on the "time" item: opening it writes "1" and it comes back
+  // open after a re-render; closing it writes "0" and it comes back closed.
   const toggleTime = (open) => page.evaluate(async (want) => {
-    const mod = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
+    const mod = document.querySelector('#ov-observations .analysis-module[data-module="time"]');
     if (!mod) return { present: false };
     if (mod.open !== want) mod.querySelector("summary").click();
     await new Promise((r) => setTimeout(r, 50));           // let the toggle event fire
     let stored = null;
     try { stored = localStorage.getItem("pdt.analysis.time"); } catch (_) {}
     require("./views/overview-view.js").renderOverviewLevel();
-    const after = document.querySelector('#overview-evidence .analysis-module[data-module="time"]');
+    const after = document.querySelector('#ov-observations .analysis-module[data-module="time"]');
     return { present: true, stored, afterRerender: after ? after.open : null };
   }, open).catch((e) => ({ err: e.message }));
   const opened = await toggleTime(true);
   const collapsed = await toggleTime(false);
-  record("(disclosure 21) Evidence module open and collapse both persist across a re-render",
+  record("(disclosure 21) an Observations item's open and closed states both persist across a re-render",
     !!(opened && opened.present && opened.stored === "1" && opened.afterRerender === true &&
       collapsed && collapsed.present && collapsed.stored === "0" && collapsed.afterRerender === false),
     JSON.stringify({ opened, collapsed }));
@@ -747,7 +685,7 @@ async function unreadableAnnotationsPin() {
   const videoBandOk = !!(videoBand && !videoBand.err && videoBand.present &&
     videoBand.collapsedClass && videoBand.videoHidden && videoBand.linkAffordance === "Attach video..." &&
     videoBand.paneH < videoBand.sideH);
-  record("(disclosure 1) no-recording video stage collapses to a slim band (the side panel gets the space; its verb is More's Attach video...)",
+  record("(disclosure 1) no-recording video stage collapses to a slim band (the side panel gets the space; its verb is Attach video...)",
     videoBandOk, JSON.stringify(videoBand));
   if (!videoBandOk) await shot(page, "fail-video-collapse.png");
 
@@ -790,30 +728,39 @@ async function unreadableAnnotationsPin() {
       (sidePanel && sidePanel.offsetMin === 0 ? " (UTC machine: local equals UTC here)" : ""));
   if (!(panelOk && stampsOk)) await shot(page, "fail-flow-side-panel.png");
 
-  // --- P2.1 / P2.8 / P2.11: the More menu without a video -------------------
-  // Attach video, the transcript item and the two dialogs Steps used to carry;
-  // no Build process map switch (the map is always built); Sync video and
-  // Flow's + Step show only once a video is linked (checked with one below).
-  const moreMenu = async () => {
-    await page.locator("#btn-session-more-menu").click({ timeout: STATE_TIMEOUT });
-    const items = await page.evaluate(() => [...document.querySelectorAll("#session-more-popup > *")]
-      .filter((el) => getComputedStyle(el).display !== "none").map((el) => el.id || (el.textContent || "").trim()));
-    await page.locator("#btn-session-more-menu").click({ timeout: STATE_TIMEOUT });
-    return items;
-  };
-  let moreNoVideo = null, addStepNoVideo = null;
-  try {
-    moreNoVideo = await moreMenu();
-    addStepNoVideo = await page.evaluate(() => {
-      const b = document.getElementById("btn-add-step");
-      return !!(b && getComputedStyle(b).display !== "none");
-    });
-  } catch (e) { logActionError("More menu", e); moreNoVideo = ["error: " + String(e.message).split("\n")[0]]; }
-  const WANT_MORE = ["btn-attach-video", "btn-attach-transcript", "btn-ignored-apps", "btn-remembered-names"];
-  const moreOk = JSON.stringify(moreNoVideo) === JSON.stringify(WANT_MORE) && addStepNoVideo === false &&
-    !(await page.$("#cb-mine")) && !(await page.$("#session-layout-steps #btn-ignored-apps, #session-layout-steps #btn-remembered-names"));
-  record("P2.1 + P2.8 + P2.11: without a video, More lists Attach video, Attach transcript, Ignored apps and Remembered names (no Sync video, no Build process map), and Flow has no + Step",
-    moreOk, JSON.stringify({ more: moreNoVideo, addStepShown: addStepNoVideo }));
+  // --- V1 (step-back review 4.2): "More" dissolved; each item is where it is
+  // used, with the ids its wiring and the tests use: Attach video on the
+  // video band (#btn-link-recording) and the Overview's recording line
+  // (#btn-attach-video); Attach transcript on the recording line; Leave apps
+  // out and Saved names in the Steps toolbar; Sync video in the video pane's
+  // header, only while a video is attached; + Step with a video only.
+  const placed = () => page.evaluate(() => {
+    const shown = (el) => !!(el && getComputedStyle(el).display !== "none" && !el.hidden);
+    const at = (id) => { const el = document.getElementById(id); return el ? { text: (el.textContent || "").trim(), shown: shown(el) } : null; };
+    const inside = (id, sel) => { const el = document.getElementById(id); return !!(el && el.closest(sel)); };
+    return {
+      more: document.querySelectorAll("#session-more-menu, #btn-session-more-menu, #session-more-popup").length,
+      linkRecording: Object.assign(at("btn-link-recording") || {}, { inBand: inside("btn-link-recording", "#no-video") }),
+      attachVideo: Object.assign(at("btn-attach-video") || {}, { inLine: inside("btn-attach-video", "#ov-summary") }),
+      attachTranscript: Object.assign(at("btn-attach-transcript") || {}, { inLine: inside("btn-attach-transcript", "#ov-summary") }),
+      ignoredApps: Object.assign(at("btn-ignored-apps") || {}, { inSteps: inside("btn-ignored-apps", "#session-layout-steps .editor-toolbar") }),
+      savedNames: Object.assign(at("btn-remembered-names") || {}, { inSteps: inside("btn-remembered-names", "#session-layout-steps .editor-toolbar") }),
+      syncVideo: Object.assign(at("btn-sync-video") || {}, { inHeader: inside("btn-sync-video", "#video-pane .video-controls") }),
+      addStep: shown(document.getElementById("btn-add-step")),
+    };
+  });
+  let noVideo = null;
+  try { noVideo = await placed(); } catch (e) { logActionError("V1 moved controls", e); noVideo = { err: String(e.message).split("\n")[0] }; }
+  const movedOk = !!(noVideo && !noVideo.err && noVideo.more === 0 &&
+    noVideo.linkRecording.text === "Attach video..." && noVideo.linkRecording.inBand &&
+    noVideo.attachVideo.text === "Attach" && noVideo.attachVideo.inLine &&
+    noVideo.attachTranscript.text === "Attach" && noVideo.attachTranscript.inLine &&
+    noVideo.ignoredApps.text === "Leave apps out..." && noVideo.ignoredApps.inSteps &&
+    noVideo.savedNames.text === "Saved names..." && noVideo.savedNames.inSteps &&
+    noVideo.syncVideo.inHeader && noVideo.syncVideo.shown === false && noVideo.addStep === false &&
+    !(await page.$("#cb-mine")));
+  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Leave apps out and Saved names in the Steps toolbar, Sync video in the video header, hidden without a video), and the Timeline has no + Step without a video",
+    movedOk, JSON.stringify(noVideo));
 
   // --- P2.10: the Raw events drawer is Flow's only ---------------------------
   // The machine layer shows on Flow and nowhere else; opened there, it sits
@@ -1367,8 +1314,8 @@ async function unreadableAnnotationsPin() {
   if (!edgeOk) await shot(page, "fail-edge-menu.png");
 
   // --- Item 6: an inserted marker shows at once as pending, with one call to
-  // action that runs Analyze; after it the marker is a real one and the case
-  // count follows. Runs Analyze into the session folder, so FRESH only.
+  // action, Apply marker changes; after it the marker is a real one and the
+  // case count follows. Analyzes into the session folder, so FRESH only.
   if (!FRESH) {
     record("item 6: pending marker insert (skipped: session not re-normalized)", true,
       "Analyze would write into the committed demo folder");
@@ -1442,16 +1389,26 @@ async function unreadableAnnotationsPin() {
     } catch (e) { logActionError("item 6 pending marker insert", e); err = String(e.message).split("\n")[0]; }
     const pendingOk = !!(pending && pending.row && pending.row.pending && pending.row.inserted &&
       pending.markersPanelShown && pending.pendingBars >= 1 && pending.pendingLabel === LABEL + " (pending)" &&
-      pending.cta === "Analyze to apply 1 marker change" && onDisk &&
+      pending.cta === "Apply 1 marker change" && onDisk &&
       pending.cases.analyzed === before.analyzed && pending.cases.bands === before.bands);
     record("item 6: a Start marker inserted from the timeline menu shows at once as pending (list + timeline + one call to action), before any Analyze",
       pendingOk, JSON.stringify({ before, pending, onDisk, err }));
     if (!pendingOk) await shot(page, "fail-marker-pending.png");
 
-    // The call to action runs Analyze (with its usual re-analyze confirmation).
+    // The call to action applies them, with its confirmation ("Update the
+    // drafts of the changed runs?"); meanwhile the top bar says "Updating
+    // steps and map..." with Cancel, and no log shows.
+    let confirmText = null, statusLine = null;
     try {
       await page.locator("#btn-apply-marker-edits").click({ timeout: T });
+      confirmText = await page.locator(".modal-confirm").textContent({ timeout: T });
       await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+      statusLine = await page.waitForFunction(() => {
+        const line = document.getElementById("run-status"), cancel = document.getElementById("btn-cancel-normalize");
+        const t = line && cancel ? (line.textContent || "").trim() + " | " + (cancel.textContent || "").trim() : "";
+        return t === "Updating steps and map... | Cancel" && !!line.closest("#session-pills") ? t : false;
+      }, null, { timeout: T }).then((h) => h.jsonValue(), () => null);
+      statusLine = { text: statusLine, logShown: await page.$eval("#log-host", (el) => getComputedStyle(el).display !== "none") };
       await page.waitForFunction((label) => !document.getElementById("btn-apply-marker-edits") &&
         [...document.querySelectorAll("#markers-list .marker-row")]
           .some((r) => (r.textContent || "").includes(label) && !r.classList.contains("pending")),
@@ -1471,7 +1428,7 @@ async function unreadableAnnotationsPin() {
         return { dangling: bands[i].dangling, top: Math.round(bands[i].r.top), right: Math.round(bands[i].r.right),
           nextLeft: next ? Math.round(next.r.left) : null, nextTop: next ? Math.round(next.r.top) : null };
       }, LABEL);
-    } catch (e) { logActionError("item 6 Analyze to apply", e); err = String(e.message).split("\n")[0]; }
+    } catch (e) { logActionError("item 6 Apply marker changes", e); err = String(e.message).split("\n")[0]; }
     const appliedOk = !!(applied && before && applied.row && !applied.row.pending && applied.row.inserted &&
       applied.pendingBars === 0 && applied.cta === null &&
       applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&
@@ -1479,8 +1436,10 @@ async function unreadableAnnotationsPin() {
       // analysis.
       applied.cases.runsLine === applied.cases.stepsRuns + " runs" &&
       before.runsLine === before.stepsRuns + " runs");
-    record("item 6: its call to action runs Analyze; the marker becomes a real one and the case count goes up by one",
-      appliedOk, JSON.stringify({ before: before && before.analyzed, applied, err }));
+    record("item 6: Apply 1 marker change asks \"Update the drafts of the changed runs?\", the top bar says Updating steps and map... with Cancel (no log), and the marker becomes a real one: the case count goes up by one",
+      appliedOk && /Update the drafts of the changed runs\?/.test(confirmText || "") && !!statusLine &&
+        statusLine.text === "Updating steps and map... | Cancel" && statusLine.logShown === false,
+      JSON.stringify({ before: before && before.analyzed, applied, confirmText, statusLine, err }));
     const rb = applied && applied.runBand;
     record("runs never nest on the timeline: the inserted run's band ends where the next run starts, on the same row (the pipeline's rule)",
       !!(rb && !rb.dangling && rb.nextLeft != null && Math.abs(rb.right - rb.nextLeft) <= 2 && rb.top === rb.nextTop),
@@ -1491,8 +1450,8 @@ async function unreadableAnnotationsPin() {
   // --- P2.11: Sync video and + Step come with a video ------------------------
   // A copy of the analyzed session with a video linked (annotations
   // external_video: any existing file, the check is the controls, not
-  // playback), opened in the same viewer: More offers Sync video and Flow
-  // offers + Step. Opened again without it, both go.
+  // playback), opened in the same viewer: the video pane's header offers Sync
+  // video and the Timeline offers + Step. Opened again without it, both go.
   if (FRESH) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-video-"));
     for (const f of fs.readdirSync(SESSION)) {
@@ -1510,22 +1469,14 @@ async function unreadableAnnotationsPin() {
       await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), dir);
       await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: STATE_TIMEOUT });
       vid.recording = await page.evaluate(() => !!require("./state.js").getSession().recordingAvailable);
-      vid.more = await moreMenu();
-      vid.addStep = await page.evaluate(() => {
-        const b = document.getElementById("btn-add-step");
-        return !!(b && getComputedStyle(b).display !== "none");
-      });
+      vid.with = await placed();
       await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), SESSION);
-      vid.moreAfter = await moreMenu();
-      vid.addStepAfter = await page.evaluate(() => {
-        const b = document.getElementById("btn-add-step");
-        return !!(b && getComputedStyle(b).display !== "none");
-      });
+      vid.after = await placed();
     } catch (e) { logActionError("P2.11 with a video", e); vid.err = String(e.message).split("\n")[0]; }
-    const WITH_VIDEO = ["btn-attach-video", "btn-sync-video", "btn-attach-transcript", "btn-ignored-apps", "btn-remembered-names"];
-    record("P2.11: with a video linked, More offers Sync video and Flow offers + Step; without one again, both go",
-      !!(!vid.err && vid.recording && JSON.stringify(vid.more) === JSON.stringify(WITH_VIDEO) && vid.addStep &&
-        JSON.stringify(vid.moreAfter) === JSON.stringify(WANT_MORE) && vid.addStepAfter === false),
+    record("P2.11: with a video linked, the video header offers Sync video, the recording line Replace, and the Timeline + Step; without one again, they go",
+      !!(!vid.err && vid.recording && vid.with.syncVideo.shown && vid.with.syncVideo.inHeader &&
+        vid.with.syncVideo.text === "Sync video..." && vid.with.addStep && vid.with.attachVideo.text === "Replace" &&
+        vid.after.syncVideo.shown === false && vid.after.addStep === false && vid.after.attachVideo.text === "Attach"),
       JSON.stringify(vid));
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
   }

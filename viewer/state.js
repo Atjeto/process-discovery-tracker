@@ -67,6 +67,11 @@ const _s = {
   // incidental re-render (select/rename/flag never set this, so they never
   // scroll). Mirrors pendingStepJumpTs's consume-once discipline.
   pendingStepReveal: false,
+  // The analysis of the recording on screen: { folder, status } while it runs
+  // ("running") or after it did not finish ("failed", "cancelled"); null when
+  // none ran or the last one succeeded. The pages that wait for an analysis
+  // (the Overview's note, the Map's lock) say which it is.
+  analysisRun: null,
 };
 
 /* ---- change-notification bus ------------------------------------- */
@@ -250,6 +255,11 @@ function getSelectionRange() { return _s.selectionRange; }
 /** @param {*} v */
 function setSelectionRange(v) { _s.selectionRange = v; }
 
+/* The analysis run of a recording: { folder, status } or null (see _s). */
+function getAnalysisRun() { return _s.analysisRun; }
+/** @param {*} v */
+function setAnalysisRun(v) { _s.analysisRun = v || null; }
+
 module.exports = {
   // change-notification bus
   subscribe, emit, batch,
@@ -271,4 +281,6 @@ module.exports = {
   getZoomFactor, setZoomFactor,
   // flow timeline range selection
   getSelectionRange, setSelectionRange,
+  // the analysis run of the recording on screen
+  getAnalysisRun, setAnalysisRun,
 };

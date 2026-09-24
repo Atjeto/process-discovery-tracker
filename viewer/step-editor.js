@@ -75,7 +75,7 @@
       host.innerHTML = o.emptyHtml || `
         <div class="empty-pane">
           <p><strong>No steps yet.</strong></p>
-          <p>Steps appear after you click <em>Analyze session</em>.</p>
+          <p>Steps appear once the recording is analyzed.</p>
         </div>`;
       return;
     }
@@ -277,7 +277,7 @@
         <div class="step-detail-more-body">
           <div class="evidence">${interListHtml}</div>
           <div class="actions">
-            <button id="btn-step-jump" title="Switch to Flow view and seek the video/timeline to the start of this step">Jump to in Flow</button>
+            <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
             ${watchBtn}
             <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
             <button id="btn-step-merge" title="Merge this step with the next step of its run (the inverse of Split)">Merge with next</button>

@@ -55,6 +55,7 @@ let persistAnnotations = async () => {};
 let videoTimeToSessionTs = () => null;
 let jumpToStepInFlow = () => {};
 let watchStep = () => {};
+let analyze = async () => false;
 
 /* A2: the analyst-chosen split boundary for the currently-selected step --
    { stepId, index } where index means "split AFTER this interaction". Null
@@ -370,7 +371,7 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
     host.innerHTML =
       '<div class="empty-pane">' +
         "<p><strong>No steps yet.</strong></p>" +
-        "<p>Steps appear after you click <em>Analyze session</em>: the app drafts each run's steps from the recording.</p>" +
+        "<p>Steps appear once the recording is analyzed: the app drafts each run's steps from it.</p>" +
       "</div>";
     return;
   }
@@ -567,7 +568,7 @@ function _probeEl(stats, model, run, rec) {
     ? "Drafted steps: how many steps the analysis drafted for this run."
     : p.source === "designation"
       ? "Drafted steps: the analysis file does not record how many steps it drafted, so this is the number of steps the run had when it became the pattern."
-      : "The drafted step count is not recorded; analyze the session again to record it.";
+      : "The drafted step count is not recorded; Re-analyze in Help, Troubleshooting records it.";
   const box = document.createElement("div");
   box.className = "run-probe";
   box.innerHTML = '<span class="run-probe-text" title="' + escapeAttr(why + " Boundary fixes: the merges, splits, " +
@@ -598,8 +599,8 @@ const GUIDE_CARRY =
 const GUIDE_PATTERN_DONE = "This run is confirmed: the other runs are compared with it.";
 const GUIDE_OTHER = "Fix a step where needed; Confirm run accepts the drafted steps that are left.";
 const GUIDE_OUTSIDE =
-  "These steps fall outside every marked run. To bring them into a run, add a start marker in Flow and " +
-  "analyze the session.";
+  "These steps fall outside every marked run. To bring them into a run, add a start marker on the Timeline " +
+  "and click Apply marker changes.";
 
 function renderRunGuide(host, model, pattern, ref) {
   if (!host) return;
@@ -628,24 +629,9 @@ function renderRunGuide(host, model, pattern, ref) {
     "<p" + (i ? ' class="meta"' : "") + ">" + escapeHtml(p) + "</p>").join("") + "</div>";
 }
 
-/* The readable name of an application token ("chrome", "chrome.exe",
-   "EXCEL.EXE"): the recording's own name for it (stats.json meta.app_names,
-   the names the findings and the PDD use), else the executable name without
-   its extension, capitalized when it is a machine token. Mirrors
-   normalization/app_names.display_name. */
-function readableApp(app, names) {
-  const raw = String(app || "").trim();
-  if (!raw || raw === "(app)") return "";
-  const map = (names && typeof names === "object") ? names : {};
-  if (typeof map[raw] === "string" && map[raw].trim()) return map[raw].trim();
-  const key = (v) => { const k = String(v || "").trim().toLowerCase(); return k.endsWith(".exe") ? k.slice(0, -4) : k; };
-  for (const [exe, nm] of Object.entries(map)) {
-    if (key(exe) === key(raw) && typeof nm === "string" && nm.trim()) return nm.trim();
-  }
-  const bare = raw.toLowerCase().endsWith(".exe") ? raw.slice(0, -4) : raw;
-  return (bare === bare.toUpperCase() || bare === bare.toLowerCase())
-    ? bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase() : bare;
-}
+/* The readable name of an application token: RunsModel.readableApp (shared
+   with the Overview's Where the time goes). */
+const readableApp = RunsModel.readableApp;
 
 function _appNames() {
   const s = State.getSession();
@@ -1546,11 +1532,11 @@ function confirmOpenRun() {
   return true;
 }
 
-/* ===== Ignored apps (step-noise denylist) =====
-   Apps the analyst checks here are written to annotations.json under
+/* ===== Leave apps out (step-noise denylist) =====
+   Apps the analyst ticks here are written to annotations.json under
    step_filters.ignored_processes; step_suggest.py drops their
-   interactions before step suggestion. Saving re-analyzes the session
-   so the step list refreshes immediately. */
+   interactions before step suggestion. Saving analyzes the recording again
+   by itself (AD-22), so the step list refreshes at once. */
 function distinctSessionApps() {
   const counts = new Map();
   for (const ev of (State.getSession() && State.getSession().events) || []) {
@@ -1577,15 +1563,15 @@ function openIgnoredAppsDialog() {
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML =
     '<div class="modal modal-simple" role="dialog">' +
-      '<header class="modal-header"><h2>Ignored apps</h2>' +
+      '<header class="modal-header"><h2>Leave apps out</h2>' +
         '<button class="icon-btn modal-close" id="ia-close" title="Close">✕</button></header>' +
       '<div class="modal-body">' +
-        '<p class="meta" style="margin-top:0">The apps you tick are left out of the drafted steps: for example the recorder itself, or anything that is not part of the process you are mapping. Saving analyzes the session again.</p>' +
+        '<p class="meta" style="margin-top:0">The apps you tick are left out of the drafted steps: for example the recorder itself, or anything that is not part of the process you are mapping. Saving updates the steps and the map.</p>' +
         '<div id="ia-list" style="margin-top:10px"></div>' +
       '</div>' +
       '<div class="modal-footer">' +
         '<button id="ia-cancel">Cancel</button>' +
-        '<button id="ia-save" class="primary">Save &amp; re-analyze</button>' +
+        '<button id="ia-save" class="primary">Save</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(backdrop);
@@ -1621,15 +1607,15 @@ function openIgnoredAppsDialog() {
     }
     close();
     toast(picked.length
-      ? "Ignoring " + picked.length + " app(s): re-analyzing..."
-      : "No apps ignored: re-analyzing...", "success");
-    // Re-analyze so the step list reflects the new denylist.
-    const normBtn = $("#btn-normalize");
-    if (normBtn) normBtn.click();
+      ? "Leaving " + _plural(picked.length, "app", "apps") + " out."
+      : "No app is left out.", "success");
+    // The steps depend on it: the analysis runs by itself (the status line
+    // in the top bar says so), and the step list follows.
+    analyze();
   });
 }
 
-/* ===== Remembered names (item 8, C4) =====
+/* ===== Saved names (item 8, C4; the button reads Saved names...) =====
    The names this computer remembers for drafted steps, those whose draft key
    occurs in this session first. Rename changes the remembered name and names
    this session's still-draft steps with that key; Forget removes it from the
@@ -1642,8 +1628,8 @@ function openRememberedNamesDialog() {
   backdrop.className = "modal-backdrop";
   backdrop.id = "remembered-names-dialog";
   backdrop.innerHTML =
-    '<div class="modal modal-simple" role="dialog" aria-label="Remembered names">' +
-      '<header class="modal-header"><h2>Remembered names</h2>' +
+    '<div class="modal modal-simple" role="dialog" aria-label="Saved names">' +
+      '<header class="modal-header"><h2>Saved names</h2>' +
         '<button class="icon-btn modal-close" data-act="close" title="Close">✕</button></header>' +
       '<div class="modal-body">' +
         '<p class="meta rn-intro">Names you gave drafted steps. Every analysis names the same drafted steps with them.</p>' +
@@ -1662,7 +1648,7 @@ function openRememberedNamesDialog() {
     try { r = await Ipc.readRememberedNames(); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
     if (!backdrop.isConnected) return;
     if (!r || !r.ok) {
-      list.innerHTML = '<p class="rn-error">' + escapeHtml("The remembered names cannot be read: " +
+      list.innerHTML = '<p class="rn-error">' + escapeHtml("The saved names cannot be read: " +
         ((r && r.error) || "no reason was given")) + "</p>";
       return;
     }
@@ -1691,7 +1677,7 @@ function openRememberedNamesDialog() {
 
   async function renameRemembered(key) {
     const cur = (names[key] && names[key].name) || "";
-    const next = await promptModal({ title: "Rename a remembered name", message: 'New name for "' + cur + '"',
+    const next = await promptModal({ title: "Rename a saved name", message: 'New name for "' + cur + '"',
       defaultValue: cur, okLabel: "Rename" });
     const nm = typeof next === "string" ? next.trim() : "";
     if (!nm || nm === cur || !State.getSession()) return;
@@ -1728,13 +1714,15 @@ function openRememberedNamesDialog() {
 }
 
 /* Wire the Steps surface. deps = { ensureAnnoShape, persistAnnotations,
-   videoTimeToSessionTs, jumpToStepInFlow, watchStep }. Call once at boot. */
+   videoTimeToSessionTs, jumpToStepInFlow, watchStep, analyze }. Call once at
+   boot. */
 function initStepsView(deps) {
   ensureAnnoShape = deps.ensureAnnoShape;
   persistAnnotations = deps.persistAnnotations;
   videoTimeToSessionTs = deps.videoTimeToSessionTs;
   jumpToStepInFlow = deps.jumpToStepInFlow;
   watchStep = deps.watchStep || (() => {});
+  analyze = deps.analyze || (async () => false);
 
   if ($("#btn-add-manual-step")) $("#btn-add-manual-step").addEventListener("click", addManualStep);
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
@@ -1846,7 +1834,7 @@ function showStepContextMenu(stepId, x, y) {
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
   addItem(step.state === "hidden" ? "Unhide" : "Hide step", () => toggleStepHidden(stepId));
-  addItem("Jump to in Flow", () => {
+  addItem("Show on timeline", () => {
     const s = (anno.steps || []).find(x => x.step_id === stepId);
     if (s) jumpToStepInFlow(s);
   });

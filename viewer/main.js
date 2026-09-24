@@ -70,6 +70,18 @@ const initialSessionArg = parseInitialSessionArg();
 // process. The runNormalize() caller registers here via onProc
 // so viewer:cancelNormalize can kill the one in flight.
 let _normalizeHandle = null;
+// The session folder that run is analyzing (resolved), or null. The analysis
+// starts by itself (on open, after Leave apps out, inside the As-Is act and
+// the PDD export), so a run can be under way while the analyst works: the
+// pipeline reads annotations.json when it starts and replaces it when it
+// drafts, so a save in between would be lost (or would overwrite the new
+// drafts). The annotations writers below refuse while it lasts.
+let _normalizeFolder = null;
+const ANALYSIS_RUNNING_ERROR = "the steps and the map are being updated. Make the change again once the update is done.";
+function _refuseWhileAnalyzing(root) {
+  return _normalizeFolder !== null && _normalizeFolder === root
+    ? { ok: false, code: "ANALYSIS_RUNNING", error: ANALYSIS_RUNNING_ERROR } : null;
+}
 
 /* Set of session-folder roots the main process has loaded (resolved,
    absolute). The session folder is UNTRUSTED input, so renderer-supplied
@@ -329,7 +341,9 @@ function translatePipelineError(text) {
   return text;
 }
 
-/* Result contract for the renderer: { ok: true, ...runner result } on
+/* One analysis at a time per viewer: while it runs, _normalizeFolder names its
+   session folder (the annotations writers refuse to write there, see above).
+   Result contract for the renderer: { ok: true, ...runner result } on
    success; { ok: false, error } on failure, where `error` is the full sentence
    to show the analyst (for a non-zero normalize.py exit it carries the
    pipeline's "[normalize] ERROR:" line, see normalize-result.js), plus `code`
@@ -360,6 +374,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
   } catch (e) {
     console.warn("[viewer:runNormalizeExtended] the remembered names store could not be located: " + e.message);
   }
+  _normalizeFolder = root;
   try {
     const result = await runNormalize({
       sessionFolder: root,
@@ -371,14 +386,15 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
     });
-    _normalizeHandle = null;
     if (result && result.cancelled) {
       return { ok: false, cancelled: true, error: "Analysis cancelled by user." };
     }
     return { ok: true, ...result };
   } catch (e) {
-    _normalizeHandle = null;
     return resultFromRunnerError(e);
+  } finally {
+    _normalizeHandle = null;
+    _normalizeFolder = null;
   }
 });
 
@@ -414,6 +430,8 @@ ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, 
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
       return { ok: false, error: "Not a session folder" };
     }
+    const busy = _refuseWhileAnalyzing(root);
+    if (busy) return busy;
     const current = AnnoStore.assertWritable(root);
     const anno = current.status === "ok" ? current.annotations : {};
     anno.external_video = {
@@ -504,6 +522,8 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
     if (!sessionFolder || !fs.existsSync(path.join(root, "manifest.json"))) {
       return { ok: false, code: null, error: "Refusing to write annotations: not a session folder." };
     }
+    const busy = _refuseWhileAnalyzing(root);
+    if (busy) return busy;
     const r = AnnoStore.writeAnnotationsFile(root, annotations);
     if (r.backupError) console.warn("[viewer:saveAnnotations] saved, but the backup copy failed: " + r.backupError);
     return { ok: true, path: r.path, backupError: r.backupError };

@@ -2,8 +2,9 @@
  * flow-view-markers.js -- the Flow level's marker side-panel:
  *   - the markers list: captured markers with annotations.marker_edits laid
  *     over them (marker-edits.js), including markers the analyst inserted,
- *     each change shown at once and tagged "pending" until an Analyze
- *     applies it (the call to action lives on the actions bar, flow-view.js),
+ *     each change shown at once and tagged "pending" until Apply marker
+ *     changes applies it (the call to action lives in the top bar's status
+ *     line, flow-view.js),
  *   - the per-marker move / delete / rename actions, for captured and
  *     inserted markers alike.
  *
@@ -34,7 +35,7 @@ function effectiveLabel(markerEvent) {
 
 /* ============ Markers list + per-marker edits ===================== */
 
-const APPLY_NOTE = "it applies to the runs when you analyze the session";
+const APPLY_NOTE = "it applies to the runs when you click Apply marker changes";
 
 function renderMarkersList() {
   const host = $("#markers-list");
@@ -58,7 +59,7 @@ function renderMarkersList() {
     const notes =
       (m.inserted ? ' <span class="meta">· added</span>' : (m.edited ? ' <span class="meta">· edited</span>' : "")) +
       (m.deleted ? ' <span class="meta bad">· deleted</span>' : "") +
-      (m.pending ? ' <span class="meta pending-tag" title="Not applied yet: analyze the session to apply this change">· pending</span>' : "");
+      (m.pending ? ' <span class="meta pending-tag" title="Not applied yet: Apply marker changes, in the top bar, applies it">· pending</span>' : "");
     row.innerHTML =
       '<span class="ts" title="' + escapeHtml(localClock(m.timestamp) ? new Date(m.timestamp).toLocaleString() : "") + '">' +
         escapeHtml(localClock(m.timestamp)) + '</span>' +

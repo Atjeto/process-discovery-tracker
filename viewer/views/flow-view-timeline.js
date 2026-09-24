@@ -363,7 +363,7 @@ function _showStepBandMenu(x, y, stepId, ts) {
    preference, not session data. */
 const LANE_KEY = "pdt.timelineLanes";
 const LANE_DEFAULTS = {
-  idle: true, markers: false, screenshots: false, cases: true, steps: false,
+  idle: true, screenshots: false, cases: true, steps: false,
   // C8: exists only while a transcript is attached; on when it does.
   transcript: true,
 };
@@ -655,14 +655,13 @@ function renderTimeline() {
         }
       }
 
-      // Marker bars (rendered above bands): the captured markers with the
-      // analyst's marker changes laid over them (marker-edits.js). A change
-      // that waits for Analyze is ALWAYS drawn, dashed and labelled pending,
-      // even with the Marker bars lane off: it is the immediate feedback for
-      // an insert / move / delete. Applied markers follow the lane toggle.
+      // Pending marker bars (rendered above bands): a marker change that
+      // waits for Apply marker changes (marker-edits.js) is drawn, dashed and
+      // labelled pending: it is the immediate feedback for an insert / move /
+      // delete. Applied markers are not drawn here (the Marker bars lane is
+      // cut): the Runs lane and the Markers tab show them.
       for (const m of markerRows) {
-        if (m.deleted && !m.pending) continue;          // an analyzed delete: gone
-        if (!m.pending && !lanes.markers) continue;
+        if (!m.pending) continue;
         const t = new Date(m.timestamp).getTime();
         if (!isFinite(t)) continue;
         const x = ((t - first) / span) * 100;
@@ -675,7 +674,7 @@ function renderTimeline() {
         bar.style.top = activityTop + "px";
         bar.title = m.markerType + ": " + (m.label || "") + (m.reason ? " (" + m.reason + ")" : "") +
           (m.pending ? "\nPending: " + (m.deleted ? "deleted" : m.inserted ? "added" : "changed") +
-            ", not applied yet. Analyze the session to apply it." : "");
+            ", not applied yet. Click Apply marker changes to update the runs." : "");
         host.appendChild(bar);
         if (m.markerType === "start" && m.label && !m.deleted) {
           const lbl = document.createElement("div");
@@ -804,7 +803,7 @@ function renderTimeline() {
   renderLegend(observedApps);
   const legendShows = {
     ".lg-idle": !!lanes.idle,
-    ".lg-marker": !!lanes.markers || markerRows.some((m) => m.pending),
+    ".lg-marker": markerRows.some((m) => m.pending),
     ".lg-screenshot": !!lanes.screenshots,
   };
   for (const [sel, on] of Object.entries(legendShows)) {

@@ -12,10 +12,11 @@
  * run 1, 2 between runs 1 and 2, 1 in run 2, 1 after the last run and 1 after
  * the recording. The main-process open dialog is replaced (as overview-smoke
  * replaces the save dialog). Checks:
- *   (a) before an import the only transcript UI is the menu item;
+ *   (a) before an import the only transcript UI is Attach on the Overview's
+ *       recording line (the "More" menu is gone, lane V1);
  *   (b) Attach transcript writes transcript.json and the copied original;
- *   (c) the not-synced state of the Flow lane, the step editor and the
- *       Overview;
+ *   (c) the not-synced state of the Timeline lane (its label carries Sync,
+ *       Replace and Remove), the step editor and the Overview;
  *   (d) Sync (pick a sentence, click its moment on the timeline) writes
  *       offset_ms and the lane then draws the sentences said while recording;
  *   (e) the step editor lists the sentences of a step's window, Add fills the
@@ -145,7 +146,7 @@ const S = {
   t0009: "That covers the normal case, thank you.",
   t0010: "Send me the document when it is ready.",
 };
-const NOT_SYNCED = "The transcript is not synced to the recording yet. Sync it in Flow.";
+const NOT_SYNCED = "The transcript is not synced to the recording yet. Sync it on the Timeline.";
 // t0004 starts 50 s into the call; the smoke places it at 09:00:20.
 const SYNC_AT = "2026-05-14T09:00:20Z";
 const WANT_OFFSET = -30000;
@@ -189,9 +190,10 @@ const WANT_OFFSET = -30000;
   const stubOpen = (file) => app.evaluate(({ dialog }, p) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] });
   }, file);
+  // Attach (Replace) and Remove live on the Overview's recording line.
   const menuItem = async (id) => {
-    await page.locator("#btn-session-more-menu").click({ timeout: T });
-    await page.locator("#" + id).click({ timeout: T });
+    await level("overview");
+    await page.locator("#ov-summary #" + id).click({ timeout: T });
   };
   const waitToast = (re) => page.waitForFunction((src) => {
     const el = document.getElementById("toast");
@@ -207,7 +209,9 @@ const WANT_OFFSET = -30000;
     const ov = q("#ov-tr");
     return {
       attach: (q("#btn-attach-transcript") || {}).textContent || null,
-      removeHidden: !!(q("#btn-remove-transcript") || {}).hidden,
+      lineState: ((q('#ov-summary [data-summary="transcript"]') || {}).textContent || "").trim(),
+      removeHidden: !q("#btn-remove-transcript"),
+      laneActs: label ? [...label.querySelectorAll("button")].map((b) => (b.textContent || "").trim()) : [],
       laneRowHidden: !!(q("#lane-transcript-row") || {}).hidden,
       label: label ? label.textContent.trim() : null,
       syncAction: !!(label && label.querySelector(".tl-tr-sync")),
@@ -255,9 +259,10 @@ const WANT_OFFSET = -30000;
       await level("flow");
       st = await surfaces();
     } catch (e) { err = errText(e); }
-    const ok = !err && st.attach === "Attach transcript..." && st.removeHidden && st.laneRowHidden &&
-      st.label === null && st.blocks.length === 0 && st.said === null && st.overview === null;
-    record("(a) before an import the only transcript UI is the More menu's Attach transcript...", ok, JSON.stringify({ err, st }));
+    const ok = !err && st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden &&
+      st.label === null && st.blocks.length === 0 && st.said === null && st.overview === null &&
+      !(await page.$("#btn-session-more-menu, #session-more-popup"));
+    record("(a) before an import the only transcript UI is Attach on the Overview's recording line (No transcript)", ok, JSON.stringify({ err, st }));
     if (!ok) await shot(page, "fail-transcript-before.png");
   }
 
@@ -275,9 +280,9 @@ const WANT_OFFSET = -30000;
     const copied = fs.existsSync(COPY) && fs.readFileSync(COPY).equals(fs.readFileSync(FIXTURE));
     const ok = !err && doc && doc.version === 1 && doc.offset_ms === null && doc.source_file === "transcript/meeting-transcript.vtt" &&
       (doc.segments || []).length === 10 && doc.segments.every((s) => S[s.id] === s.text) && copied &&
-      toast.text === "Transcript attached: 10 sentences, 2 speakers. Sync it in Flow to place it on the timeline." &&
-      st.attach === "Replace transcript..." && !st.removeHidden && !st.laneRowHidden;
-    record("(b) Attach transcript writes transcript.json (10 sentences, not synced) and the copied original; the menu offers Replace and Remove",
+      toast.text === "Transcript attached: 10 sentences, 2 speakers. Sync it on the Timeline to place it." &&
+      st.attach === "Replace" && st.lineState === "Transcript" && !st.removeHidden && !st.laneRowHidden;
+    record("(b) Attach transcript writes transcript.json (10 sentences, not synced) and the copied original; the recording line offers Replace and Remove",
       ok, JSON.stringify({ err, toast, copied, segments: doc && doc.segments.length, offset: doc && doc.offset_ms, menu: st && [st.attach, st.removeHidden] }));
     if (!ok) await shot(page, "fail-transcript-import.png");
   }
@@ -294,9 +299,10 @@ const WANT_OFFSET = -30000;
       ov = (await surfaces()).overview;
     } catch (e) { err = errText(e); }
     const ok = !err && /Transcript/.test(flow.label) && /Not synced/.test(flow.label) && flow.syncAction &&
+      JSON.stringify(flow.laneActs) === JSON.stringify(["Sync...", "Replace...", "Remove"]) &&
       flow.blocks.length === 0 && step && step.note === NOT_SYNCED && step.rows.length === 0 && step.buttons.length === 0 &&
       ov && ov.count === "(10)" && ov.rows.length === 10 && ov.note === NOT_SYNCED && !ov.during && ov.inDocUnderSummary;
-    record("(c) not synced: the lane says Not synced with Sync..., the step editor shows one line, the Overview lists all 10 with the line and no runs filter, in the document sections under the summary line",
+    record("(c) not synced: the lane says Not synced with Sync..., Replace... and Remove, the step editor shows one line, the Overview lists all 10 with the line and no runs filter, in the document under the recording line",
       ok, JSON.stringify({ err, label: flow && flow.label, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, rows: ov.rows.length, note: ov.note, during: ov.during, inDocUnderSummary: ov.inDocUnderSummary } }));
     if (!ok) await shot(page, "fail-transcript-not-synced.png");
   }
@@ -405,9 +411,9 @@ const WANT_OFFSET = -30000;
       JSON.stringify(search.rows) === JSON.stringify([S.t0007]) && search.count === "(1)" &&
       during.rows.length === 10 && during.count === "(10)" &&
       field === S.t0007 && disk && disk.document.business_rules === S.t0007 &&
-      JSON.stringify(menu.map((m) => m.key)) === JSON.stringify(["purpose", "scope", "business_rules", "exceptions", "notes"]) &&
+      JSON.stringify(menu.map((m) => m.key)) === JSON.stringify(["purpose", "scope", "trigger", "result", "business_rules", "exceptions", "improvement", "notes"]) &&
       br && br.disabled && br.text === "Business rules (added)" && menu.filter((m) => m.disabled).length === 1;
-    record("(f) the Overview lists the talk outside the runs (7); the speaker filter, the search and the runs checkbox narrow and widen it; Add to Business rules saves document.business_rules",
+    record("(f) the Overview lists the talk outside the runs (7); the speaker filter, the search and the runs checkbox narrow and widen it; Add to offers every field but the title and contacts (trigger, result and improvement included) and Business rules saves document.business_rules",
       ok, JSON.stringify({ err, def: def && { count: def.count, n: def.rows.length }, analyst: analyst && analyst.rows.length, search: search && search.rows, during: during && during.rows.length, field, menu }));
     if (!ok) await shot(page, "fail-transcript-overview.png");
   }
@@ -473,7 +479,7 @@ const WANT_OFFSET = -30000;
       ov = (await surfaces()).overview;
     } catch (e) { err = errText(e); }
     const ok = !err && !fs.existsSync(TRANSCRIPT) && fs.existsSync(COPY) &&
-      st.attach === "Attach transcript..." && st.removeHidden && st.laneRowHidden && st.label === null && st.blocks.length === 0 &&
+      st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden && st.label === null && st.blocks.length === 0 &&
       stepSaid === null && ov === null && !(await page.$("#transcript-sync-card"));
     record("(h) Remove transcript deletes transcript.json, keeps transcript/meeting-transcript.vtt, and every transcript surface is gone",
       ok, JSON.stringify({ err, json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY), st, stepSaid, ov }));
@@ -499,10 +505,10 @@ const WANT_OFFSET = -30000;
       await waitToast(/Transcript removed/);
       after = await surfaces();
     } catch (e) { err = errText(e); }
-    const ok = !err && toast.error && /^The transcript could not be read: it is not valid JSON \(.+\)\. Replace it from the More menu\.$/.test(toast.text) &&
-      st.attach === "Replace transcript..." && !st.removeHidden && st.laneRowHidden && st.label === null &&
+    const ok = !err && toast.error && /^The transcript could not be read: it is not valid JSON \(.+\)\. Replace it on the Overview's recording line\.$/.test(toast.text) &&
+      st.attach === "Replace" && st.lineState === "Transcript cannot be read" && !st.removeHidden && st.laneRowHidden && st.label === null &&
       st.said === null && st.overview === null && again === false &&
-      !fs.existsSync(TRANSCRIPT) && after.attach === "Attach transcript..." && after.removeHidden;
+      !fs.existsSync(TRANSCRIPT) && after.attach === "Attach" && after.removeHidden;
     record("(j) a transcript.json that cannot be read is said once on load, shows nowhere else, and Remove transcript clears it",
       ok, JSON.stringify({ err, toast, again, st, after: after && [after.attach, after.removeHidden] }));
     if (!ok) await shot(page, "fail-transcript-unreadable.png");

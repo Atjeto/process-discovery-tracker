@@ -93,3 +93,29 @@ test("PDD export: success only when the run succeeded AND wrote a non-empty docu
     { exists: true, size: 2048 }).ok, false);
   assert.equal(R.pddExportOutcome(null, { exists: true, size: 2048 }).ok, false);
 });
+
+/* ---- AD-22: which recordings are analyzed as they open --------------------- */
+
+test("analysisNeed: a recording with no stats.json or no analysis.json has no analysis", () => {
+  assert.equal(R.analysisNeed(null), "missing");
+  assert.equal(R.analysisNeed({ stats: null, analysis: null }), "missing");
+  assert.equal(R.analysisNeed({ stats: { meta: { draft_summary: {} } }, analysis: null }), "missing",
+    "the committed demo's shape: an old stats.json and no analysis.json");
+  assert.equal(R.analysisNeed({ stats: null, analysis: { stage_errors: [] } }), "missing");
+});
+
+test("analysisNeed: an analysis without the blocks today's pipeline always writes came from an older version", () => {
+  const current = { stats: { meta: { draft_summary: { runs: 4 } } },
+    analysis: { case_quality: { mode: "markers" }, stage_errors: [] } };
+  assert.equal(R.analysisNeed(current), null, "control: today's analysis needs no run");
+  const without = (fn) => { const s = JSON.parse(JSON.stringify(current)); fn(s); return R.analysisNeed(s); };
+  assert.equal(without((s) => { delete s.analysis.stage_errors; }), "stale", "before C12");
+  assert.equal(without((s) => { delete s.analysis.case_quality; }), "stale", "before the run check");
+  assert.equal(without((s) => { delete s.stats.meta.draft_summary; }), "stale", "before the C1 drafting rule");
+  assert.equal(without((s) => { s.stats.meta = undefined; }), "stale");
+});
+
+test("analysisNeed: a run check that failed is today's analysis, not an older one (C12)", () => {
+  assert.equal(R.analysisNeed({ stats: { meta: { draft_summary: {} } },
+    analysis: { case_quality: null, stage_errors: [{ stage: "case_quality", error: "TypeError" }] } }), null);
+});

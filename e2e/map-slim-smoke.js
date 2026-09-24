@@ -28,8 +28,8 @@
  *   (g) on a copy whose run check failed, the lock says the check could not
  *       run (never "not analyzed yet"), and so does the Overview;
  *   (i) AD-18: a ONE-run copy (the demo cut after its first run) gets its
- *       map, the edit act makes its As-Is map for the PDD, and the Overview's
- *       As-Is stage shows done;
+ *       map and the edit act makes its As-Is map for the PDD; AD-28: the
+ *       As-Is map is not a stage of the Overview's What is left line;
  *   (h) zero PAGE ERRORs across the launches.
  *
  * Screenshots land in this dir (gitignored): map-slim-default.png /
@@ -419,13 +419,15 @@ const lockProbe = () => {
     await page4.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
     await page4.locator('.view-mode-btn[data-level="overview"]').click({ timeout: 20000 });
     await wait(600);
-    one.stages = await page4.evaluate(() => [...document.querySelectorAll("#ov-next .ov-next-stage.done")].map((e) => e.dataset.stage));
+    one.stages = await page4.evaluate(() => [...document.querySelectorAll("#ov-next .ov-next-stage")].map((e) => e.dataset.stage));
+    one.done = await page4.evaluate(() => [...document.querySelectorAll("#ov-next .ov-next-stage.done")].map((e) => e.dataset.stage));
   } catch (e) { one.err = String(e.message).split("\n")[0]; }
   await shot(page4, "map-slim-one-run.png");
-  record("(i) AD-18: a one-run recording gets its map, the edit act makes its As-Is map for the PDD, and the As-Is stage shows done",
+  record("(i) AD-18: a one-run recording gets its map and the edit act makes its As-Is map for the PDD; AD-28: the line has no As-Is stage",
     !!(!one.err && one.runs === 1 && one.map && one.map.drawn && one.map.text === null &&
       JSON.stringify(one.copy) === JSON.stringify([{ name: "As-Is map", role: "as_is" }]) &&
-      Array.isArray(one.stages) && one.stages.includes("runs") && one.stages.includes("map")),
+      JSON.stringify(one.stages) === JSON.stringify(["runs", "pattern", "review", "document", "export"]) &&
+      Array.isArray(one.done) && one.done.includes("runs")),
     JSON.stringify(one));
   await close4();
 

@@ -13,7 +13,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { overviewHtml, mapLockHtml, STAGE_NOT_RUN, NO_RUNS_MARKED } = require("./views/overview-view.js");
+const { overviewHtml, mapLockHtml, waitingSentence, STAGE_NOT_RUN, NO_RUNS_MARKED } = require("./views/overview-view.js");
 
 const CQ = { mode: "markers", case_count: 4, coverage: 0.9, tier2_unlocked: true };
 const FACTS = {
@@ -25,9 +25,8 @@ const ZERO_FACTS = Object.assign({}, FACTS, {
   active_ms: 0, idle_ms: 0, app_switches: 0, switches_per_hour: 0, longest_focus_ms: 0,
   rekey_count: 0, repeated_sequence_count: 0,
 });
-const FINDING = { id: "f1", detector: "screen_time_sink", tier: 1, claim: "Most time went to Excel", evidence: { share: 0.5 } };
-// What the pipeline writes beside the findings (F2): the findings the PDD can print and prints by default.
-const PDD = { eligible: ["f1"], default: ["f1"] };
+const FINDING = { id: "f1", detector: "rekey_transfer", tier: 1, claim: "1 value was typed into more than one app.",
+  evidence: { rekey_count: 1, values: [] } };
 const STATS = {
   meta: { worker_id: "w1", normalization_run_at: "2026-05-17T10:00:00Z" },
   case_stats: [{ case_id: "c1", start_ts: "2026-05-17T09:00:00Z", end_ts: "2026-05-17T09:05:00Z" }],
@@ -35,60 +34,69 @@ const STATS = {
 
 const html = (analysis, anno) => overviewHtml({ analysis, annotations: anno || {}, stats: STATS });
 
-test("a failed facts stage says the facts could not be measured, never a zero", () => {
+test("the facts are no longer shown on the Overview, so a failed facts stage claims nothing there", () => {
   const out = html({ case_quality: CQ, facts: null, findings: [FINDING],
     stage_errors: [{ stage: "facts", error: "KeyError: 'duration_ms'" }] });
-  assert.ok(out.includes(STAGE_NOT_RUN + ": the measured facts"), "the facts gap is said");
-  assert.ok(out.includes("are missing, not zero."));
-  assert.ok(out.includes("Technical detail: KeyError: &#39;duration_ms&#39;"), "the reason is shown, escaped");
-  assert.ok(!out.includes("No idle time was measured"), "no idle-time gap is claimed from a failed stage");
+  assert.ok(!out.includes("the measured facts") && !out.includes("No idle time was measured"));
+  const control = html({ case_quality: CQ, facts: ZERO_FACTS, findings: [FINDING] });
+  assert.ok(!control.includes(STAGE_NOT_RUN), "control: nothing could-not-run when the checks ran");
+  assert.ok(!control.includes("To say more"));
 });
 
-test("control: facts that ran and measured zeros carry no could-not-run note", () => {
-  const out = html({ case_quality: CQ, facts: ZERO_FACTS, findings: [FINDING], pdd_findings: PDD });
-  assert.ok(!out.includes(STAGE_NOT_RUN));
-  // P1.4: the "To say more" box is gone, so a measured zero is not restated there either.
-  assert.ok(!out.includes("To say more") && !out.includes("No idle time was measured"));
-  assert.ok(out.includes("Most time went to Excel"), "the finding is shown");
-});
-
-test("a failed findings stage says the check could not run, never 'Nothing stood out'", () => {
+test("a failed findings stage makes Data typed twice say it could not run, never 'None seen'", () => {
   const out = html({ case_quality: CQ, facts: FACTS, findings: null,
     stage_errors: [{ stage: "findings", error: "not run: depends on failed stage(s) motifs" }] });
-  assert.ok(out.includes(STAGE_NOT_RUN + ", so it cannot say whether anything stood out."));
-  assert.ok(!/Nothing stood out/i.test(out));
-  assert.ok(out.includes("Technical detail: not run: depends on failed stage(s) motifs"));
+  assert.ok(out.includes(STAGE_NOT_RUN + ", so it cannot say whether data was typed twice."));
+  assert.ok(!/None seen/i.test(out));
 });
 
-test("control: findings that ran and found nothing still say 'Nothing stood out'", () => {
+test("control: findings that ran and found no re-typed data say 'None seen in this recording'", () => {
   const out = html({ case_quality: CQ, facts: FACTS, findings: [] });
-  assert.ok(/Nothing stood out/.test(out));
+  assert.ok(out.includes("None seen in this recording"));
   assert.ok(!out.includes(STAGE_NOT_RUN));
 });
 
 test("a failed run check is said on the Overview, not read as 'not analyzed'", () => {
-  const out = html({ case_quality: null, facts: FACTS, findings: [FINDING], pdd_findings: PDD,
+  const out = html({ case_quality: null, facts: FACTS, findings: [FINDING],
     stage_errors: [{ stage: "case_quality", error: "TypeError: bad marker" }] });
   assert.ok(out.includes("The run check could not run on this recording"));
   assert.ok(out.includes("Technical detail: TypeError: bad marker"));
-  assert.ok(!out.includes("No analysis yet"));
-  assert.ok(out.includes("Most time went to Excel"), "the findings that did run are still shown");
+  assert.ok(!out.includes("not analyzed yet"));
+  assert.ok(out.includes("Help, Troubleshooting has Re-analyze"), "where to run it again");
+  assert.ok(!out.includes("Analyze session"), "no global Analyze button to point at");
   const never = overviewHtml({ analysis: { meta: {} }, annotations: {} });
-  assert.ok(never.includes("No analysis yet"), "control: an analysis without the blocks is 'not analyzed yet'");
+  assert.ok(never.includes("This recording is not analyzed yet."), "control: an analysis without the blocks is 'not analyzed yet'");
+});
+
+test("before an analysis the Overview says where it is: running, failed, cancelled or not run; and keeps the recording line", () => {
+  const sess = { analysis: null, annotations: {}, manifest: { engagement_id: "eng-1",
+    config: { worker: { id: "w1" } } }, sessionFolder: "S" };
+  const running = overviewHtml(sess, { folder: "S", status: "running" });
+  assert.ok(running.includes("The steps and the map are being drafted from the recording."));
+  assert.ok(running.includes('id="ov-summary"') && running.includes('id="btn-attach-video"') &&
+    running.includes('id="btn-attach-transcript"'), "the recording line and its acts are there before the analysis");
+  assert.ok(!running.includes('id="ov-next"'), "no path before the runs are known");
+  assert.ok(overviewHtml(sess, { folder: "S", status: "failed" }).includes("The analysis failed, so the steps and the map are not drafted. The log at the top says why"));
+  assert.ok(overviewHtml(sess, { folder: "S", status: "cancelled" }).includes("The analysis was cancelled"));
+  assert.ok(overviewHtml(sess, null).includes("This recording is not analyzed yet. Help, Troubleshooting has Re-analyze."));
+  assert.ok(waitingSentence(null, true).startsWith("This recording was analyzed by an older version"));
 });
 
 /* ---- The Map level's lock message (item 2 fix) --------------------------- */
 
-test("the map lock says what actually happened: not analyzed, older analysis, or a failed run check", () => {
+test("the map lock says what actually happened: being analyzed, not analyzed, older analysis, or a failed run check", () => {
   const lead = "The process map is not shown because it draws how the runs flow.";
   const none = mapLockHtml(null);
-  assert.ok(none.startsWith(lead) && none.includes("has not been analyzed yet"), none);
+  assert.ok(none.startsWith(lead) && none.includes("not analyzed yet"), none);
+  assert.ok(mapLockHtml(null, { status: "running" }).includes("being drafted from the recording"));
+  assert.ok(mapLockHtml(null, { status: "failed" }).includes("The analysis failed"));
   const failed = mapLockHtml({ case_quality: null, stage_errors: [{ stage: "case_quality", error: "TypeError: x" }] });
   assert.ok(failed.includes("The run check could not run on this recording"), failed);
-  assert.ok(!failed.includes("not been analyzed"), "a failed check is not 'not analyzed yet'");
+  assert.ok(!failed.includes("not analyzed yet"), "a failed check is not 'not analyzed yet'");
   assert.ok(failed.includes("Technical detail: TypeError: x"));
   const older = mapLockHtml({ meta: {} });
-  assert.ok(older.includes("analyzed by an older version") && !older.includes("not been analyzed"), older);
+  assert.ok(older.includes("analyzed by an older version") && !older.includes("not analyzed yet"), older);
+  for (const out of [none, failed, older]) assert.ok(!out.includes("Analyze session"), "no global Analyze button to point at");
 });
 
 test("the map lock names the missing runs and offers the mark-runs verb; unlocked means no lock", () => {

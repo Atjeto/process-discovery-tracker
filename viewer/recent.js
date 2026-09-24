@@ -89,7 +89,7 @@ function renderRecent() {
   }
 
   if (!recents.length) {
-    host.innerHTML = '<li style="cursor:default;background:transparent;border:none;color:var(--fg-4)">No recent sessions yet.</li>';
+    host.innerHTML = '<li style="cursor:default;background:transparent;border:none;color:var(--fg-4)">No recent recordings yet.</li>';
     if (clearBtn) clearBtn.style.display = "none";
     return;
   }
@@ -173,7 +173,7 @@ function wireRecentClearAll() {
     const ok = await confirmModal({
       title: "Clear recents?",
       message: "Remove all entries from Recents?",
-      detail: "Only the list is cleared: the session folders are not touched.",
+      detail: "Only the list is cleared: the recording folders are not touched.",
       okLabel: "Clear",
       danger: true,
     });

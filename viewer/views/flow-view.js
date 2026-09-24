@@ -1,8 +1,8 @@
 /*
- * flow-view.js -- the Flow level of the Session view.
+ * flow-view.js: the Timeline level of the Session view (data-level "flow").
  *
- * Owns session load + analyze (loadSessionIntoView / openSessionFlow /
- * the normalize buttons), the Flow timeline and every lane, the minimap,
+ * Owns session load + analysis (loadSessionIntoView / openSessionFlow / the
+ * automatic analysis and its status line), the timeline and every lane, the minimap,
  * range selection, the video <-> timeline sync, the event table, the
  * screenshots / markers side panel (incl. the screenshot gallery and marker
  * CRUD), and case scope. The module wires its own controls at require()
@@ -23,8 +23,10 @@ const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotat
 const MarkerEdits = require("../marker-edits.js");
 const { caseScopeOptionsHtml } = require("../case-scope.js");
 const { pushRecent } = require("../recent.js");
+const { analysisNeed } = require("../normalize-result.js");
+const { recentLabel } = require("../session-summary.js");
 const { renderStepsLevel } = require("./steps-view.js");
-const { renderOverviewLevel } = require("./overview-view.js");
+const { renderOverviewLevel, hasAnalysisBlocks } = require("./overview-view.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
 const {
@@ -158,90 +160,139 @@ async function openSessionFlow() {
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
 
-/* Wire normalize button so the analysis-in-progress UI is visible:
-   log host expands (already open by default in the HTML), Cancel
-   button shows while running. Cancellation flows through
-   viewer:cancelNormalize which kills the python child. `quiet`: an analysis
-   another act runs for the analyst (the Map's edit act, whose button is busy
-   meanwhile) leaves the log closed unless it fails. */
-function showAnalysisLog() {
-  const logHost = $("#log-host");
-  if (logHost) { logHost.style.display = ""; logHost.open = true; }
+/* ============ Analysis: it runs by itself (AD-22) ===================
+   The pipeline runs on open when the recording has no analysis or one from an
+   older version, after Leave apps out and after a range is left out, inside
+   Edit as the As-Is map and inside the PDD export. The one manual act is
+   Apply N marker changes (it redrafts the changed runs, so it asks first);
+   Help, Troubleshooting has Re-analyze for a stuck state. While a run lasts
+   the top bar says so in one line with Cancel and the page stays as it is
+   (main refuses annotation writes meanwhile, so no edit is lost to the run);
+   the analysis log shows only when a run fails, its failure sentence first.
+   Runs go one at a time. */
+
+const UPDATING = "Updating steps and map...";
+let _running = null;                 // the status line's text while a run lasts
+let _runQueue = Promise.resolve();
+const _analyzedOnOpen = new Set();   // folders analyzed as they opened, in this window
+
+/* The analysis log: hidden unless the last run failed. */
+function hideAnalysisLog() {
+  const host = $("#log-host");
+  if (host) host.style.display = "none";
 }
-function setAnalysisRunning(running, quiet) {
-  $("#btn-normalize").disabled = running;
-  const cancelBtn = $("#btn-cancel-normalize");
-  if (cancelBtn) cancelBtn.style.display = running ? "" : "none";
-  if (running && !quiet) showAnalysisLog();
+function showAnalysisFailure(sentence) {
+  const host = $("#log-host");
+  if (!host) return;
+  $("#log-failure").textContent = sentence;
+  host.style.display = "";
+  host.open = true;
 }
 
-const btnCancelNormalize = $("#btn-cancel-normalize");
-if (btnCancelNormalize) {
-  btnCancelNormalize.addEventListener("click", async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    await Ipc.cancelNormalize();
-    toast("Cancelling analysis...");
-  });
+/* The pages that wait for an analysis (the Overview's note, the Map's lock,
+   the empty Steps list) say whether one is running, failed or was cancelled.
+   They are rendered again when that changes, and only while the recording has
+   no analysis to show (a rendered Overview is never replaced under the
+   analyst's hands). */
+function _rerenderWaiting() {
+  const sess = State.getSession();
+  if (sess && !hasAnalysisBlocks(sess.analysis)) rerenderActiveLevel();
 }
 
-/* Analyze: re-run normalization for the loaded session (always writing the
-   process map's BPMN file, the file the Map's edit act copies) and reload it.
-   Resolves true when the analysis ran and the session was reloaded. The
-   Analyze button and the pending-marker-changes call to action (item 6,
-   renderSessionPills) run it through runAnalyze, which asks first; the Map's
-   edit act runs it directly and quietly, as one act with the copy (AD-19).
-   opts = { confirm, quiet }. */
-async function analyzeSession(opts) {
-  if (!State.getSession()) return false;
-  if (opts && opts.confirm) {
-    /* H7: a re-analysis regenerates auto-detected steps and clears the
-       undo stack. Warn before that happens, but only when the session
-       already has steps, so a first-ever Analyze runs straight through. */
-    const _steps = (State.getSession().annotations && State.getSession().annotations.steps) || [];
-    if (_steps.length) {
-      const _auto = _steps.filter((s) =>
-        s.state === "auto_suggested" || s.state === "auto_matched").length;
-      const _kept = _steps.length - _auto;
-      const ok = await confirmModal({
-        title: "Re-analyze this session?",
-        message: `Re-analyzing regenerates the ${_auto} auto-detected step(s) and clears the undo history.`,
-        detail: _kept
-          ? `Your ${_kept} confirmed step(s) are kept.`
-          : "There are no confirmed steps to keep.",
-        okLabel: "Re-analyze",
-      });
-      if (!ok) return false;
+/* Run normalize.py once, after any run in progress, with the status line
+   showing `label`. Resolves the IPC result ({ ok, cancelled, error, ... }).
+   A failed run shows the log; a cancelled one does not (nothing failed). */
+function runPipeline(opts, label) {
+  const folder = opts.sessionFolder;
+  const job = _runQueue.then(async () => {
+    _running = label || UPDATING;
+    hideAnalysisLog();
+    $("#normalize-log").textContent = "";
+    State.setAnalysisRun({ folder, status: "running" });
+    renderSessionPills();
+    _rerenderWaiting();
+    let r;
+    try { r = await Ipc.runNormalizeExtended(opts); }
+    catch (e) { r = { ok: false, error: "Analysis could not start: " + ((e && e.message) || String(e)) }; }
+    if (!r) r = { ok: false, error: "The analysis did not answer." };
+    _running = null;
+    const onScreen = !!(State.getSession() && State.getSession().sessionFolder === folder);
+    if (r.cancelled) {
+      State.setAnalysisRun({ folder, status: "cancelled" });
+    } else if (!r.ok) {
+      State.setAnalysisRun({ folder, status: "failed" });
+      // r.error is the full sentence from main.js: for a failed normalize run
+      // it carries the pipeline's "[normalize] ERROR:" line (C13).
+      if (onScreen) showAnalysisFailure(r.error || "The analysis failed without a reason.");
+    } else {
+      State.setAnalysisRun(null);
     }
-  }
-  const quiet = !!(opts && opts.quiet);
-  setAnalysisRunning(true, quiet);
-  $("#normalize-log").textContent = "";
-  const r = await Ipc.runNormalizeExtended({
-    sessionFolder: State.getSession().sessionFolder,
-    mine: true,
+    renderSessionPills();
+    if (onScreen) _rerenderWaiting();
+    return r;
   });
-  setAnalysisRunning(false);
-  if (r.cancelled) {
-    $("#normalize-log").textContent += "\n[cancelled by user]";
-    toast("Analysis cancelled");
-    return false;
+  _runQueue = job.catch(() => {});
+  return job;
+}
+
+/* What the two deliberate analyses ask first, when the recording has steps. */
+const CONFIRMS = {
+  markers: (n) => ({
+    title: "Apply " + n + " marker change" + (n === 1 ? "" : "s"),
+    message: "Update the drafts of the changed runs?",
+    detail: "Your confirmed, edited, added and hidden steps are kept.",
+    okLabel: "Apply",
+  }),
+  reanalyze: () => ({
+    title: "Re-analyze",
+    message: "Draft the steps and the map again from the recording?",
+    detail: "Your confirmed, edited, added and hidden steps are kept.",
+    okLabel: "Re-analyze",
+  }),
+};
+
+/* Analyze the recording on screen: run the pipeline (always writing the
+   process map's BPMN file, the file the Map's edit act copies) and reload the
+   recording. Resolves true when it ran and the recording was reloaded.
+   opts.confirm: "markers" (Apply N marker changes) or "reanalyze" (Help's
+   Re-analyze) asks first when the recording has steps; the automatic runs
+   (on open, Leave apps out, a range left out, the Map's edit act) never ask. */
+async function analyzeSession(opts) {
+  const sess = State.getSession();
+  if (!sess) return false;
+  const kind = opts && opts.confirm;
+  if (kind && CONFIRMS[kind] && ((sess.annotations && sess.annotations.steps) || []).length) {
+    const n = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess));
+    const ok = await confirmModal(CONFIRMS[kind](n));
+    if (!ok) return false;
   }
-  if (!r.ok) {
-    // r.error is the full sentence from main.js: for a failed normalize run
-    // it carries the pipeline's "[normalize] ERROR:" line (C13 exit code 2:
-    // annotations.json unreadable, nothing written).
-    $("#normalize-log").textContent += "\nERROR: " + r.error;
-    if (quiet) showAnalysisLog();
-    toast(r.error, "error");
-    return false;
-  }
-  toast("Analysis complete", "success");
-  await loadSessionIntoView(State.getSession().sessionFolder);
+  const folder = sess.sessionFolder;
+  const r = await runPipeline({ sessionFolder: folder, mine: true }, UPDATING);
+  const onScreen = !!(State.getSession() && State.getSession().sessionFolder === folder);
+  if (!onScreen) return false;
+  if (r.cancelled) { toast("Update cancelled: the steps and the map are as they were."); return false; }
+  if (!r.ok) { toast(r.error, "error"); return false; }
+  toast("Steps and map updated.", "success");
+  await loadSessionIntoView(folder, { afterAnalysis: true });
   return true;
 }
-function runAnalyze() { return analyzeSession({ confirm: true }); }
-$("#btn-normalize").addEventListener("click", runAnalyze);
+
+/* The status line in the top bar (#session-pills): while a run lasts, what it
+   does and Cancel; else the one call to action that applies pending marker
+   changes. Delegated once, since each render replaces the buttons. */
+(function wireStatusLine() {
+  const host = $("#session-pills");
+  if (!host) return;
+  host.addEventListener("click", async (e) => {
+    if (e.target.closest("#btn-cancel-normalize")) {
+      e.preventDefault();
+      await Ipc.cancelNormalize();
+      toast("Cancelling the update...");
+    } else if (e.target.closest("#btn-apply-marker-edits")) {
+      analyzeSession({ confirm: "markers" });
+    }
+  });
+})();
 
 Ipc.onNormalizeLog((text) => {
   const pre = $("#normalize-log");
@@ -249,7 +300,7 @@ Ipc.onNormalizeLog((text) => {
   pre.scrollTop = pre.scrollHeight;
 });
 
-async function loadSessionIntoView(folder) {
+async function loadSessionIntoView(folder, opts) {
   const prevFolder = State.getSession() ? State.getSession().sessionFolder : null;
   try {
     State.setSession(await Ipc.loadSession(folder));
@@ -267,15 +318,17 @@ async function loadSessionIntoView(folder) {
   captureBaseline();
   $("#session-empty").style.display = "none";
   $("#session-loaded").style.display = "";
-  $("#btn-normalize").disabled = false;
+  // The top bar's levels, status line and Export show once a recording is open.
+  const shell = document.querySelector(".app");
+  if (shell) shell.classList.add("has-session");
   renderAnnotationsErrorBanner();
-  /* B1: a worker-given manifest label (set in the capture post-session
-     summary) names the Recents entry; else fall back to engagement. */
-  const _m = State.getSession().manifest || {};
-  const recentLabel = _m.label
-    ? _m.label
-    : (_m.engagement_id || path.basename(folder)) + " · " + path.basename(folder);
-  pushRecent(folder, recentLabel);
+  // A failed run's log belongs to the recording it ran on.
+  const _run = State.getAnalysisRun();
+  if (!_run || _run.folder !== State.getSession().sessionFolder || _run.status !== "failed") hideAnalysisLog();
+  /* The Recents entry is named by the document title once it is written,
+     else by the name given at the end of the recording, else by its project
+     and folder (session-summary.recentLabel). */
+  pushRecent(folder, recentLabel(State.getSession(), path.basename(folder)));
 
   renderSessionPills();
   // C8: the transcript's menu items follow the loaded file.
@@ -343,11 +396,23 @@ async function loadSessionIntoView(folder) {
   // P1.1: clear any range selection from the previous session.
   if (prevFolder !== folder) clearSelectionRange();
   installRangeSelection();
+  // AD-22: a recording with no analysis, or one from an older version, is
+  // analyzed as it opens, while the page stays readable. Once per folder in
+  // this window (a failing analysis does not start again on every reload;
+  // Help's Re-analyze is there for that), never from an analysis's own reload,
+  // and not while annotations.json cannot be read (the banner says why, and
+  // the pipeline would refuse).
+  const opened = State.getSession();
+  if (!(opts && opts.afterAnalysis) && !opened.annotationsError && analysisNeed(opened) &&
+      !_analyzedOnOpen.has(opened.sessionFolder)) {
+    _analyzedOnOpen.add(opened.sessionFolder);
+    analyzeSession().catch((e) => console.error("[flow-view] the automatic analysis failed:", e));
+  }
 }
 
 /* The controls that act on the video show only while one is linked: the
-   Flow toolbar's + Step (a step at the playhead) and the More menu's Sync
-   video. Without a video they could only answer with an error. */
+   Timeline toolbar's + Step (a step at the playhead) and Sync video in the
+   video pane's header. Without a video they could only answer with an error. */
 function syncVideoControls() {
   const hasVideo = !!(State.getSession() && State.getSession().recordingAvailable);
   for (const id of ["btn-add-step", "btn-sync-video"]) {
@@ -381,35 +446,38 @@ function renderAnnotationsErrorBanner() {
   const video = document.getElementById("video");
   if (!video) return;
   video.addEventListener("timeupdate", positionPlayhead);
+  // A video without a length in its file (a recorded .webm) reports Infinity.
   video.addEventListener("loadedmetadata", () =>
-    setVideoOverlay(`${formatDuration(video.duration * 1000)} loaded`));
+    setVideoOverlay(isFinite(video.duration) ? `${formatDuration(video.duration * 1000)} loaded` : "loaded"));
 })();
 
-/* The actions bar's one session-state call to action (item 6) and the
-   first-run guidance card. The session facts that used to ride here as chips
-   are the Overview's one-line session summary (overview-view.js). */
+/* The top bar's status line (#session-pills): while the pipeline runs, one
+   line saying so with Cancel; else, when marker changes wait (item 6), the
+   ONE call to action that applies them, visible from every level. It goes
+   once an analysis applied them. The clicks are delegated (wireStatusLine). */
 function renderSessionPills() {
-  if (!State.getSession()) return;
-  // Item 6: marker changes that wait for an analysis (marker-edits.js). They
-  // already show in the Markers list and on the timeline as pending; this is
-  // the ONE call to action that applies them, on the actions bar so it is
-  // visible from every level. It disappears once an analysis applied them.
+  const host = $("#session-pills");
+  if (!host) return;
+  if (_running) {
+    host.innerHTML = '<span class="run-status" id="run-status"><span class="run-status-dot" aria-hidden="true"></span>' +
+      escapeHtml(_running) + "</span>" +
+      '<button type="button" class="link-btn run-cancel" id="btn-cancel-normalize" ' +
+      'title="Stop the update: the steps and the map stay as they were">Cancel</button>';
+    return;
+  }
   const sess = State.getSession();
+  if (!sess) { host.innerHTML = ""; return; }
+  // Marker changes that wait for an analysis (marker-edits.js). They already
+  // show in the Markers list and on the timeline as pending.
   const pending = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits,
     MarkerEdits.lastAnalysisMs(sess));
-  const toolbar = $("#session-pills");
-  if (toolbar) {
-    toolbar.innerHTML = pending > 0
-      ? '<button type="button" class="pending-cta" id="btn-apply-marker-edits" title="' +
-        escapeHtml("Your marker changes already show on the timeline and in the Markers list. " +
-          "The cases, steps and map use them after the session is analyzed.") + '">' +
-        escapeHtml("Analyze to apply " + pending + " marker change" + (pending === 1 ? "" : "s")) +
-        "</button>"
-      : "";
-    const cta = toolbar.querySelector("#btn-apply-marker-edits");
-    if (cta) cta.addEventListener("click", () => runAnalyze());
-  }
-
+  host.innerHTML = pending > 0
+    ? '<button type="button" class="pending-cta" id="btn-apply-marker-edits" title="' +
+      escapeHtml("Your marker changes already show on the timeline and in the Markers list. " +
+        "The runs, the steps and the map use them once you apply them.") + '">' +
+      escapeHtml("Apply " + pending + " marker change" + (pending === 1 ? "" : "s")) +
+      "</button>"
+    : "";
 }
 
 /* Queue a marker deletion into annotations.json.marker_edits. Mirrors
@@ -431,7 +499,7 @@ async function queueMarkerDelete(eventId) {
   } catch (_) {
     return false;
   }
-  toast("Marker deleted (pending): analyze the session to apply it.", "success");
+  toast("Marker deleted. Click Apply marker changes to update the runs.", "success");
   return true;
 }
 
@@ -591,7 +659,7 @@ function renderSelectionStats() {
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
     (topApps ? '<div class="row"><span>Top apps</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
     '<button class="summary-fix" id="tl-selection-case">Insert run from selection</button>' +
-    '<button class="summary-fix" id="tl-selection-exclude" title="Skip the events in this range during step suggestion and statistics on the next analysis.">Exclude from analysis</button>' +
+    '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without the events in this range.">Exclude from analysis</button>' +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
   document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
@@ -693,8 +761,9 @@ document.addEventListener("contextmenu", (e) => {
 });
 
 /* Item 6: an inserted marker shows AT ONCE, marked pending, in the Markers
-   list (brought forward) and on the timeline, and the actions bar offers the
-   one call to action that applies it (Analyze). Resolves true when saved. */
+   list (brought forward) and on the timeline, and the top bar offers the one
+   call to action that applies it (Apply marker changes). Resolves true when
+   saved. */
 async function queueSyntheticMarker(ts, markerType) {
   if (!State.getSession()) return false;
   let label = null;
@@ -702,7 +771,7 @@ async function queueSyntheticMarker(ts, markerType) {
     label = await promptModal({
       title: "Insert Start marker",
       message: "Label for the new Start marker",
-      detail: "It shows at once as pending, and applies to the runs when you analyze the session.",
+      detail: "It shows at once as pending, and applies to the runs when you click Apply marker changes.",
       placeholder: "For example: Send email",
       okLabel: "Insert",
     });
@@ -726,7 +795,7 @@ async function queueSyntheticMarker(ts, markerType) {
     return false;
   }
   activateAnnoTab("markers");
-  toast(`${markerType === "start" ? "Start" : "End"} marker added (pending): analyze the session to apply it.`, "success");
+  toast(`${markerType === "start" ? "Start" : "End"} marker added. Click Apply marker changes to update the runs.`, "success");
   return true;
 }
 
@@ -741,7 +810,7 @@ async function queueCaseFromSelection() {
   let label = await promptModal({
     title: "Insert run from selection",
     message: "Label for the new run",
-    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the runs when you analyze the session.",
+    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the runs when you click Apply marker changes.",
     placeholder: "For example: Order entry",
     okLabel: "Insert run",
   });
@@ -775,21 +844,23 @@ async function queueCaseFromSelection() {
     return;   // already shown to the analyst by session.js
   }
   activateAnnoTab("markers");
-  toast("Run markers added (pending): analyze the session to apply them.", "success");
+  toast("Run markers added. Click Apply marker changes to update the runs.", "success");
 }
 
 /* H6: mark the current timeline range as excluded from analysis. The
-   range is stored in annotations.json.excluded_ranges; on the next
-   analysis, step suggestion and statistics skip every event inside it.
-   Lets the analyst cut a lunch break or an unrelated detour out of a
-   long passive recording without touching the raw event log. */
+   range is stored in annotations.json.excluded_ranges; the analysis skips
+   every event inside it when it drafts the steps and computes the
+   statistics. Lets the analyst cut a lunch break or an unrelated detour out
+   of a long passive recording without touching the raw event log. The steps
+   depend on it, so the analysis runs by itself right after (AD-22), as it
+   does after Leave apps out. */
 async function queueExcludeRange() {
   const range = State.getSelectionRange();
   if (!range || !State.getSession()) return;
   const ok = await confirmModal({
     title: "Exclude this range from analysis?",
-    message: "Events inside the selected range will be skipped during step suggestion and statistics on the next analysis.",
-    detail: "The raw events are kept; re-run Analyze to apply.",
+    message: "The steps and the map are drafted again without the events in the selected range.",
+    detail: "The recording itself keeps them.",
     okLabel: "Exclude range",
   });
   if (!ok) return;
@@ -803,19 +874,21 @@ async function queueExcludeRange() {
   try {
     await saveAnnotationsWithUndo(a, "exclude range from analysis");
     State.getSession().annotations = a;
-    toast("Range excluded: analyze the session to apply it.", "success");
-    clearSelectionRange();
   } catch (err) {
-    toast("Failed to save annotation: " + (err && err.message), "error");
+    return;   // already shown to the analyst by session.js
   }
+  toast("Range excluded.", "success");
+  clearSelectionRange();
+  analyzeSession();
 }
 
 /* The timeline lane toggles, renderTimeline (the lane stack), its lane
    helpers (layoutCaseLanes / isUserActivityEvent / monitorBadgeFor), and
    the minimap all live in flow-view-timeline.js (god-file split). */
 
-/* Right-click on a run band: offer scope + jump actions. Uses the
-   same context-menu construction pattern as showMarkerInsertMenu. */
+/* Right-click on a run band: jump to its start or end (the Run select in the
+   timeline header dims the other runs). Uses the same context-menu
+   construction pattern as showMarkerInsertMenu. */
 function showCaseContextMenu(x, y, c) {
   const prior = document.getElementById("tl-ctx-menu");
   if (prior) prior.remove();
@@ -835,22 +908,6 @@ function showCaseContextMenu(x, y, c) {
     item.addEventListener("click", () => { menu.remove(); handler(); });
     menu.appendChild(item);
   }
-  addItem("Scope view to this run", () => {
-    /* Find the case by start timestamp -- the case scope dropdown
-       keys cases by case_id derived from normalization, but visually
-       we map by startMs which is stable. */
-    const cases = State.getSession() ? deriveCases(State.getSession()) : [];
-    const match = cases.find(x => Math.abs(x.startMs - c.startMs) < 5);
-    if (match) {
-      State.setCaseScope(match.id);
-      const sel = $("#case-scope-select");
-      if (sel) { sel.value = match.id; sel.dispatchEvent(new Event("change")); }
-      else { renderTimeline(); }
-      toast(`Scoped to: ${match.label || match.id}`);
-    } else {
-      toast("This run has no steps yet: analyze the session first.", "error");
-    }
-  });
   addItem("Jump to start", () => seekToTimestamp(new Date(c.startMs).toISOString()));
   if (!c.dangling) {
     addItem("Jump to end", () => seekToTimestamp(new Date(c.endMs).toISOString()));
@@ -1068,7 +1125,9 @@ function initFlowView(deps) {
 module.exports = {
   initFlowView,
   loadSessionIntoView, renderTimeline, renderMarkersList,
-  renderSessionPills, analyzeSession,
+  // The analysis: automatic runs, the deliberate ones (confirm), and the
+  // pipeline runner the exports share (one status line, one log).
+  renderSessionPills, analyzeSession, runPipeline, UPDATING,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // The Overview's marker-problem fixes (overview-view.js).

@@ -41,9 +41,35 @@ function computeSummary(session) {
       meta.worker_id ||
       (manifest.config && manifest.config.worker && manifest.config.worker.id) ||
       "unknown worker",
+    /* The SME's name: the display name set in the capture app's Profile
+       window (manifest config.worker.name), when it says more than the
+       Windows login; else null and the login stands in. */
+    smeName: smeName(manifest),
     durationMs: eventSpanMs(events),
     analyzedAt: meta.normalization_run_at || null,
   };
+}
+
+/* The name the capture app's Profile recorded for the SME (config.worker.name,
+   the display name; id is the Windows login), or null when none was set or it
+   only repeats the login. */
+function smeName(manifest) {
+  const w = (manifest && manifest.config && manifest.config.worker) || {};
+  const name = typeof w.name === "string" ? w.name.trim() : "";
+  const login = typeof w.id === "string" ? w.id.trim() : "";
+  return name && name.toLowerCase() !== login.toLowerCase() ? name : null;
+}
+
+/* The Recents entry's name: the document title once it is written, else the
+   name given at the end of the recording (manifest.label), else the project
+   and the folder name. `folderName` is the session folder's last part. */
+function recentLabel(session, folderName) {
+  const doc = session && session.annotations && session.annotations.document;
+  const title = doc && typeof doc.title === "string" ? doc.title.trim() : "";
+  if (title) return title;
+  const m = (session && session.manifest) || {};
+  if (typeof m.label === "string" && m.label.trim()) return m.label.trim();
+  return (m.engagement_id || folderName) + " · " + folderName;
 }
 
 /* Walk the marker stream and flag the three problems an analyst inherits
@@ -100,5 +126,7 @@ function detectMarkerProblems(events, opts) {
 module.exports = {
   eventSpanMs,
   computeSummary,
+  smeName,
+  recentLabel,
   detectMarkerProblems,
 };

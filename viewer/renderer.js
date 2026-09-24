@@ -23,11 +23,11 @@ const PdtSteps = require("./step-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
-const { promptModal } = require("./modals.js");
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead, analyzeSession } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead, analyzeSession, runPipeline, UPDATING } = require("./views/flow-view.js");
+const Video = require("./views/flow-view-video.js");
 const { renderOverviewLevel, openMarkersInFlow, mapLockHtml } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg } = require("./process-map-levels.js");
@@ -167,7 +167,8 @@ function _stepBpmnPath() {
 function _sessionMapData() {
   const sess = State.getSession();
   if (!sess) return { emptyMessage: escapeHtml("Open a session to see its process map.") };
-  const lock = mapLockHtml(sess.analysis);
+  const run = State.getAnalysisRun();
+  const lock = mapLockHtml(sess.analysis, run && run.folder === sess.sessionFolder ? run : null);
   if (lock) return { emptyMessage: lock };
   const runs = RunsModel.buildRuns(sess.stats, (sess.annotations && sess.annotations.steps) || []).runs;
   return {
@@ -218,7 +219,7 @@ const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, s
 State.subscribe("steps",    renderStepsLevel);
 State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
-// Item 6: the actions bar's "Analyze to apply N marker changes" call to action.
+// Item 6: the top bar's "Apply N marker changes" call to action.
 State.subscribe("markers",  renderSessionPills);
 // Lab-phase §A5 + R4: the Overview renders the what-is-left line, the
 // findings AND (R4) the Evidence modules retired from the Analysis level, so
@@ -248,10 +249,8 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
-  // The run select dims the other runs on the Flow timeline and changes
-  // nothing on the other levels, so it shows on Flow only (P1.2).
-  const caseScope = document.getElementById("case-scope");
-  if (caseScope) caseScope.style.display = (name === "flow") ? "" : "none";
+  // (The run select dims the other runs on the timeline and changes nothing
+  // on the other levels: it sits in the Timeline's own header, P1.2.)
   const layouts = ["overview", "flow", "steps", "map"];
   for (const l of layouts) {
     const el = document.getElementById("session-layout-" + l);
@@ -309,6 +308,7 @@ initStepsView({
   videoTimeToSessionTs: (t) => videoTimeToSessionTs(t),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   watchStep: (s) => watchStep(s),
+  analyze: () => analyzeSession(),
 });
 
 /* (Steps CRUD and ignored apps -> views/steps-view.js) */
@@ -335,12 +335,13 @@ async function exportArtifact(kind) {
     }
     const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
     if (!fs.existsSync(sourcePath)) {
-      const r = await Ipc.runNormalizeExtended({ sessionFolder: target.sessionFolder, mine: true });
+      const r = await runPipeline({ sessionFolder: target.sessionFolder, mine: true }, UPDATING);
       // r.error is the full sentence from main.js (C13: the pipeline's reason).
-      if (!r || !r.ok) { toast((r && r.error) || "Export failed: the analysis did not answer.", "error"); return; }
+      if (r.cancelled) { toast("Export cancelled."); return; }
+      if (!r.ok) { toast(r.error || "Export failed: the analysis did not answer.", "error"); return; }
     }
     if (!fs.existsSync(sourcePath)) {
-      toast("No step-level flow to export. Analyze a session that has steps first.", "error");
+      toast("No process map to export: the runs have no steps yet.", "error");
       return;
     }
     const out = await Ipc.exportFile({ sourcePath, suggestedName: "process-map.bpmn" });
@@ -365,43 +366,20 @@ async function exportArtifact(kind) {
   let mapImgPath = null, tobeImgPath = null;
   if (kind === "pdd") {
     opts.pddOut = tmpPath;
-    // Embed the process map on screen as the PDD's As-Is map. cytoscape
-    // rasterises cleanly; when the Map shows a message instead (locked, no
-    // steps) there is no graph (map-controller clears it), so the embed is
-    // skipped and the PDD keeps its placeholder.
-    try {
-      const dataUrl = (PdtDfg && PdtDfg.exportPng) ? PdtDfg.exportPng() : null;
+    const writePng = (dataUrl, tag) => {
       const comma = dataUrl ? dataUrl.indexOf("base64,") : -1;
-      if (comma !== -1) {
-        mapImgPath = path.join(os.tmpdir(), "pdt-pddmap-" + Date.now() + ".png");
-        fs.writeFileSync(mapImgPath, Buffer.from(dataUrl.slice(comma + 7), "base64"));
-        opts.pddMapImage = mapImgPath;
-      }
-    } catch (e) {
-      // TD#1c: don't drop the map embed silently -- a caught error here
-      // leaves the PDD showing its placeholder map with no explanation.
-      // Log so the failure is diagnosable (cf. map-controller.js, which
-      // logs + shows a fallback rather than swallowing).
-      console.error("[renderer] PDD map embed failed; exporting without process map:", e);
-      mapImgPath = null;
-    }
-    // ADR-0019: an analyst-selected reference map can override the mined As-Is
-    // image and/or supply a proposed To-Be map. Rendered off-screen to PNG.
+      if (comma === -1) return null;
+      const p = path.join(os.tmpdir(), "pdt-pdd" + tag + "-" + Date.now() + ".png");
+      fs.writeFileSync(p, Buffer.from(dataUrl.slice(comma + 7), "base64"));
+      return p;
+    };
+    // ADR-0019: the maps the analyst chose for the PDD, the edited As-Is copy
+    // and a proposed To-Be map, each drawn off screen by bpmn-js to a PNG.
     try {
       const refImgs = await RefmapUI.renderPddMaps();
-      const writePng = (dataUrl, tag) => {
-        const comma = dataUrl ? dataUrl.indexOf("base64,") : -1;
-        if (comma === -1) return null;
-        const p = path.join(os.tmpdir(), "pdt-pdd" + tag + "-" + Date.now() + ".png");
-        fs.writeFileSync(p, Buffer.from(dataUrl.slice(comma + 7), "base64"));
-        return p;
-      };
       if (refImgs && refImgs.asis) {
         const p = writePng(refImgs.asis, "asis");
-        if (p) {
-          if (mapImgPath && mapImgPath !== p) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
-          mapImgPath = p; opts.pddMapImage = p;   // analyst As-Is wins over the mined DFG
-        }
+        if (p) { mapImgPath = p; opts.pddMapImage = p; }
       }
       if (refImgs && refImgs.tobe) {
         const p = writePng(refImgs.tobe, "tobe");
@@ -410,8 +388,35 @@ async function exportArtifact(kind) {
     } catch (e) {
       console.error("[renderer] reference-map PDD embed failed; continuing:", e);
     }
+    // AD-28: with no edited As-Is copy, the PDD's map is the map from the
+    // runs: process_map_step.bpmn drawn by the same off-screen bpmn-js
+    // renderer (laid out to print, never the one-row live map on the Map
+    // level, and whether or not the Map level was ever opened). That file
+    // changes only on an analysis, so when the steps are newer (a rename, a
+    // confirmed run) or it is missing, the analysis runs first, as the
+    // Map's edit act does. While the Map says why it draws nothing (no runs
+    // marked, a failed run check), there is no map and the PDD says so.
+    const sess = State.getSession();
+    if (!opts.pddMapImage && sess && !mapLockHtml(sess.analysis)) {
+      const src = _stepBpmnPath();
+      if (!src || RefmapUI.needsAnalyze(sess, src)) {
+        if (!(await analyzeSession())) return;   // the analysis said why
+      }
+      // TD#1c: a map that cannot be drawn is said in the console, never dropped silently.
+      if (!fs.existsSync(src)) {
+        console.warn("[renderer] the analysis wrote no process map for these runs; exporting without it");
+      } else {
+        try {
+          const p = writePng(await RefmapUI.renderBpmnToPng(fs.readFileSync(src, "utf-8")), "map");
+          if (p) { mapImgPath = p; opts.pddMapImage = p; }
+          else console.error("[renderer] the map from the runs could not be drawn; exporting without it");
+        } catch (e) {
+          console.error("[renderer] the map from the runs could not be read; exporting without it:", e);
+        }
+      }
+    }
   }
-  const r = await Ipc.runNormalizeExtended(opts);
+  const r = await runPipeline(opts, kind === "pdd" ? "Writing the PDD..." : UPDATING);
   if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
   if (tobeImgPath) { try { fs.unlinkSync(tobeImgPath); } catch (_) {} }
   // RP-09 / C13: a non-zero exit (3 = the export failed) is a failure with
@@ -522,28 +527,14 @@ async function exportMapSvg() {
   else if (r && r.error) toast("Export failed: " + r.error, "error");
 }
 
-/* PDD export from Session view -- new in v0.18.1. The PDD's As-Is process
-   map is rasterised from the process map on the Map level; to embed THIS
-   session's map (not a blank canvas), the Map level is shown (which draws
-   it) and cytoscape settles before the shared exportArtifact("pdd") path
-   runs. Item 7: the Map shows while the map is drawn (with the level bar
-   saying so), and afterwards the analyst is returned to the level they
-   started from (the Overview when its what-is-left line started the
-   export), unless they moved on meanwhile. */
+/* PDD export (the Export menu, and the Overview's last act). Its maps are
+   drawn off screen (exportArtifact), so the analyst stays on the level they
+   are on. */
 if ($("#btn-session-pdd")) {
   $("#btn-session-pdd").addEventListener("click", async () => {
-    if (!State.getSession()) { toast("Open a session first.", "error"); return; }
-    const from = State.getLevel();
-    toast("Preparing PDD: drawing the process map...", "info");
-    selectLevel("map");
-    try {
-      // Let cytoscape paint + layout settle so PdtDfg.exportPng() captures the
-      // rendered diagram and not a blank canvas.
-      await new Promise((r) => setTimeout(r, 900));
-      await exportArtifact("pdd");
-    } finally {
-      if (from !== "map" && State.getLevel() === "map") selectLevel(from);
-    }
+    if (!State.getSession()) { toast("Open a recording first.", "error"); return; }
+    toast("Preparing the PDD...", "info");
+    await exportArtifact("pdd");
   });
 }
 
@@ -687,6 +678,16 @@ document.addEventListener("click", (e) => {
   openHelp(t.dataset.helpSection || "stepsphases");
 });
 $("#btn-help-close").addEventListener("click", closeHelp);
+/* Help, Troubleshooting: Re-analyze, the one way to run the analysis by hand
+   (AD-22: it runs by itself otherwise). It asks first when the recording has
+   steps, like Apply marker changes. */
+if ($("#btn-help-reanalyze")) {
+  $("#btn-help-reanalyze").addEventListener("click", () => {
+    if (!State.getSession()) { toast("Open a recording first.", "error"); return; }
+    closeHelp();
+    analyzeSession({ confirm: "reanalyze" });
+  });
+}
 $$(".help-nav-item").forEach((b) =>
   b.addEventListener("click", () => selectHelpSection(b.dataset.section))
 );
@@ -775,79 +776,27 @@ Ipc.onOpenInitialSession((folder) => {
   if (folder) loadSessionIntoView(folder);
 });
 
-/* ============ Attach external video (Teams recording, etc.) ======= */
+/* ============ Attach video ====================================== */
 
-function parseHmsToMs(s) {
-  if (typeof s !== "string") return null;
-  s = s.trim();
-  const sign = s.startsWith("-") ? -1 : 1;
-  if (s.startsWith("-") || s.startsWith("+")) s = s.slice(1);
-  const m = s.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
-  if (!m) return null;
-  const ms = (Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])) * 1000
-           + (m[4] ? Number(m[4].padEnd(3, "0").slice(0, 3)) : 0);
-  return sign * ms;
-}
-
-async function attachExternalVideo() {
-  if (!State.getSession()) return;
-  const r = await Ipc.attachExternalVideo({
-    sessionFolder: State.getSession().sessionFolder,
-  });
-  if (!r) return;
-  const m = State.getSession().manifest || {};
-  const started_at = m.started_at;
-  if (!started_at) {
-    toast("Session manifest has no started_at; can't compute video offset", "error");
-    return;
-  }
-  const ans = await promptModal({
-    title: "Align video to session",
-    message: "When did the recording start, relative to the session?",
-    detail: "Session started at " + started_at + ". Format HH:MM:SS, signed (-00:00:05 means recording started 5 sec before the session).",
-    placeholder: "00:00:00",
-    defaultValue: "00:00:00",
-    okLabel: "Attach"
-  });
-  if (ans == null) return;
-  const offsetMs = parseHmsToMs(ans);
-  if (offsetMs === null) {
-    toast("Couldn't parse offset; try 00:00:05 or -00:01:30", "error");
-    return;
-  }
-  const saved = await Ipc.saveExternalVideoSync({
-    sessionFolder: State.getSession().sessionFolder,
-    videoPath: r.path,
-    offsetMs,
-  });
-  if (!saved || !saved.ok) {
-    toast("Video attach failed: " + ((saved && saved.error) || "unknown"), "error");
-    return;
-  }
-  toast("Video attached - reloading session", "success");
-  await loadSessionIntoView(State.getSession().sessionFolder);
-}
-
-if ($("#btn-attach-video")) {
-  $("#btn-attach-video").addEventListener("click", attachExternalVideo);
-}
-// Item 1: the "Link recording…" affordance on the slim no-recording band is
-// the same verb as "Attach video…" — keep the inverse verb reachable there.
+/* The Timeline's no-video band carries Attach video... (the Overview's
+   recording line carries the same act, wired there). Both run the
+   click-to-sync flow: choose the file, then click a moment in the video and
+   the same moment on the timeline (flow-view-video.attachVideo). */
 if ($("#btn-link-recording")) {
-  $("#btn-link-recording").addEventListener("click", attachExternalVideo);
+  $("#btn-link-recording").addEventListener("click", () => Video.attachVideo());
 }
 
-/* ===== Open menu (top-bar) =====
-   One menu for opening a session (P2.2): "Open session folder..." (its
-   click is flow-view's openSessionFlow), then the recent sessions, reachable
-   from every level. */
+/* ===== Open menu (top bar) =====
+   One menu for opening a recording (P2.2): "Open recording..." (its click is
+   flow-view's openSessionFlow), then the recent recordings, reachable from
+   every level. */
 function renderRecentMenu() {
   const host = document.getElementById("recent-menu-content");
   if (!host) return;
   let html = "";
   const sessions = getRecent();
   if (sessions.length) {
-    html += '<div class="recent-menu-heading">Recent sessions</div>';
+    html += '<div class="recent-menu-heading">Recent recordings</div>';
     html += sessions.map((r) => {
       let missing = false;
       try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
@@ -860,7 +809,7 @@ function renderRecentMenu() {
     }).join("");
   }
   if (!html) {
-    html = '<div class="recent-menu-empty">No recent sessions yet.</div>';
+    html = '<div class="recent-menu-empty">No recent recordings yet.</div>';
   }
   host.innerHTML = html;
   host.querySelectorAll(".recent-menu-item").forEach((item) => {
@@ -892,8 +841,8 @@ function toggleRecentMenu(force) {
   });
 })();
 
-/* Generic dropdown menu (button + popup) -- used by the session's Export
-   and More menus. Mirrors wireRecentMenu: the button toggles the popup,
+/* Generic dropdown menu (button + popup), used by the Export menu. Mirrors
+   wireRecentMenu: the button toggles the popup,
    an outside click closes it, and clicking any enabled menu item closes
    it after the item's own handler runs. */
 function wireDropdownMenu(btnId, popupId) {
@@ -913,4 +862,3 @@ function wireDropdownMenu(btnId, popupId) {
   });
 }
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");
-wireDropdownMenu("btn-session-more-menu", "session-more-popup");

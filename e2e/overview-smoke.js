@@ -1,41 +1,50 @@
 "use strict";
 /*
- * Overview e2e smoke: the home of a loaded session (BA-helper cycle).
+ * Overview e2e smoke: the home of a loaded recording (BA-helper cycle; lane
+ * V1 of the step-back review).
  *
- * Launches the REAL viewer twice and asserts the Overview end to end:
+ * Launches the REAL viewer three times and asserts the Overview end to end:
  *   (a) the DEFAULT level is Overview (#session-layout-overview visible,
- *       its view-mode button active, the Flow layout hidden), laid out at its
+ *       its level button active, the Timeline layout hidden), laid out at its
  *       full height (the Session view scrolls; L5b small-screen fix);
- *   (b) the home leads with the "What is left" line (one button), the
- *       one-line session summary and, right under it, the document sections;
- *       the fact tiles, the badge, the separate mark-runs line and the export
- *       bar are gone, and the run count is said once;
- *   (c) the findings feed (methodology once per group, expand-in-place
- *       evidence, no repeated-sequence group: AD-20) and the Evidence modules
- *       (collapsed to their takeaway lines); F2: the "include in PDD" boxes
- *       show the PDD's default findings ticked, unticking one stores the
- *       others, unticking the last returns to the default with one toast
- *       line, and the exported PDD prints no finding (its findings section
- *       is cut, lane LUX-P);
+ *   (b) the home leads with the "What is left" line (five stages, one
+ *       button), the recording line (the reference run's steps, not every
+ *       run's; the video and the transcript with their Attach), the document,
+ *       then the Observations; the findings feed, its evidence and the
+ *       "include in PDD" ticks are gone, and no "More" menu or "Analyze
+ *       session" button exists anywhere;
+ *   (c) the Observations: Data typed twice (per field) and Where the time
+ *       goes (per step and per application, in N of 4 runs);
+ *   (c2) the moved controls are where they are used (ids kept);
+ *   (c3) "Apply 1 marker change" and its confirmation; Cancel and Ctrl+Z;
  *   (d) the analyst path, walked on the demo: every next act lands where it
- *       says (the pattern run open in Steps, each other run open in Steps,
- *       the document sections open on their first empty field, the Map), a
- *       done stage shows done, a document field saves undoably, and the last
- *       act exports the PDD, whose word/document.xml carries the Purpose the
- *       analyst wrote (contract C6, end to end) and the As-Is and To-Be maps
- *       chosen in the reference-map gallery; the Export menu's map items then
- *       save the As-Is copy chosen for the PDD (P2.12);
- *   (e) on a marker-STRIPPED re-normalized copy the line says no runs are
- *       marked, and its button opens Flow with the Markers panel showing;
- *   (f) zero PAGE ERRORs across both launches.
+ *       says (the reference run open in Steps, each other run open in Steps,
+ *       the document open on its first empty field), a done stage shows done,
+ *       a field saves undoably, the nine fields (trigger, result and
+ *       improvement included) save to annotations.json, the line then shrinks
+ *       to one line, the Recents entry takes the title; the export with no
+ *       As-Is copy hands the PDD the map from the runs (AD-28), then with an
+ *       As-Is and a To-Be copy hands both; the Export menu's map items save
+ *       the As-Is copy (P2.12);
+ *   (h) Attach video syncs with two clicks (click-to-sync), no typed offset;
+ *       Cancel leaves the recording as it was;
+ *   (e) on a marker-STRIPPED copy the line says no runs are marked, and its
+ *       button opens the Timeline with the Markers panel showing;
+ *   (g) on a copy never analyzed, the analysis runs by itself on open with
+ *       one status line (Updating steps and map... with Cancel) and no log;
+ *       an analysis keeps confirmed, edited, added and hidden steps (Leave
+ *       apps out runs one by itself); the log shows only when an analysis
+ *       fails, its failure sentence first; Cancel stops one;
+ *   (f) zero PAGE ERRORs across the launches.
  *
- * Screenshots of BOTH Overview states land in this dir (gitignored):
+ * Screenshots of the Overview land in this dir (gitignored):
  *   overview-markers-state.png / overview-unsegmented-state.png.
  *
- * Like session-smoke.js it re-normalizes into TEMP copies so the committed
- * demo is never regenerated in place, and reuses the viewer's own Electron.
- * Unlike session-smoke, a missing deps-bearing Python is a HARD FAIL here:
- * every assertion depends on current pipeline output.
+ * Like session-smoke.js it works on TEMP copies so the committed demo is
+ * never regenerated in place, and reuses the viewer's own Electron. Unlike
+ * session-smoke, a missing deps-bearing Python is a HARD FAIL here: every
+ * assertion depends on current pipeline output. It asserts nothing about the
+ * PDD's text beyond the document fields it wrote (the PDD lane owns the text).
  */
 
 const path = require("path");
@@ -105,7 +114,7 @@ function normalize(sessionDir) {
   return false;
 }
 
-async function launch(sessionDir, pageErrors) {
+async function launch(sessionDir, pageErrors, ready) {
   // RP-36: a throwaway profile per launch, never the developer's UI state.
   const { app, close } = await launchViewer(electron, {
     executablePath: electronPath,
@@ -118,7 +127,7 @@ async function launch(sessionDir, pageErrors) {
   await page.waitForLoadState("domcontentloaded").catch(() => {});
   await page.waitForSelector("#session-loaded", { state: "visible", timeout: 15000 });
   // The window size is launchViewer's (1500x950, or PDT_E2E_WINDOW).
-  await wait(1500);
+  if (ready !== false) await wait(1500);
   return { app, page, close };
 }
 
@@ -127,11 +136,11 @@ async function shot(page, name) {
     .catch((e) => console.log("shot fail", name, e.message));
 }
 
-/* One entry of a .zip (a .docx is one), read with Node's zlib: the central
+/* The entries of a .zip (a .docx is one), read with Node's zlib: the central
    directory names each entry and where its local header sits; the data is
-   stored (method 0) or deflated (method 8). Returns the text, or null when
-   the entry is absent. */
-function readZipEntry(buf, name) {
+   stored (method 0) or deflated (method 8). zipEntry returns one entry's
+   text (null when absent); zipNames lists the entry names. */
+function zipCentral(buf, fn) {
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
     if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
@@ -141,26 +150,38 @@ function readZipEntry(buf, name) {
   let p = buf.readUInt32LE(eocd + 16);
   for (let k = 0; k < count; k++) {
     if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error("not a zip: bad central directory entry");
-    const method = buf.readUInt16LE(p + 10);
-    const csize = buf.readUInt32LE(p + 20);
     const nlen = buf.readUInt16LE(p + 28), xlen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32);
-    const local = buf.readUInt32LE(p + 42);
-    if (buf.toString("utf8", p + 46, p + 46 + nlen) === name) {
-      const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
-      const data = buf.subarray(start, start + csize);
-      return (method === 0 ? data : zlib.inflateRawSync(data)).toString("utf8");
-    }
+    const r = fn(buf.toString("utf8", p + 46, p + 46 + nlen), p);
+    if (r !== undefined) return r;
     p += 46 + nlen + xlen + clen;
   }
-  return null;
+  return undefined;
+}
+function readZipEntry(buf, name) {
+  const r = zipCentral(buf, (n, p) => {
+    if (n !== name) return undefined;
+    const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), local = buf.readUInt32LE(p + 42);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const data = buf.subarray(start, start + csize);
+    return (method === 0 ? data : zlib.inflateRawSync(data)).toString("utf8");
+  });
+  return r === undefined ? null : r;
+}
+function zipNames(buf) {
+  const names = [];
+  zipCentral(buf, (n) => { names.push(n); return undefined; });
+  return names;
 }
 
 const T = 20000;   // the bound on every wait for an observable state
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 (async () => {
-  // ---- Prepare both sessions (hard prerequisite) --------------------------
+  // ---- Prepare the sessions (hard prerequisite) ---------------------------
   const SESSION_MARKED = makeTempSession({ stripMarkers: false });
   const SESSION_STRIPPED = makeTempSession({ stripMarkers: true });
+  // Never analyzed: events, manifest and annotations only (launch 3).
+  const SESSION_RAW = makeTempSession({ stripMarkers: false });
   if (!normalize(SESSION_MARKED) || !normalize(SESSION_STRIPPED)) {
     record("re-normalize temp sessions (prerequisite)", false, "no deps-bearing Python");
     process.exit(1);
@@ -196,7 +217,7 @@ const T = 20000;   // the bound on every wait for an observable state
         btn === btn.parentElement.querySelector(".view-mode-btn")),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(a) default level is Overview (visible, button active+first, Flow hidden)",
+  record("(a) default level is Overview (visible, button active+first, Timeline hidden)",
     !!(def && !def.err && def.overviewVisible && def.flowHidden && def.btnActive && def.btnFirst),
     JSON.stringify(def));
 
@@ -208,11 +229,11 @@ const T = 20000;   // the bound on every wait for an observable state
     return { boxH: ov.clientHeight, contentH: ov.scrollHeight, viewScrolls: view.scrollHeight > view.clientHeight };
   }).catch((e) => ({ err: e.message }));
   record("(a2) the Overview is laid out at its full height (the Session view scrolls instead)",
-    !!(fullHeight && !fullHeight.err && fullHeight.contentH > 300 && fullHeight.contentH <= fullHeight.boxH + 1),
+    !!(fullHeight && !fullHeight.err && fullHeight.contentH > 200 && fullHeight.contentH <= fullHeight.boxH + 1),
     JSON.stringify(fullHeight));
 
-  // (b) The home: the what-is-left line first (one button), the one-line
-  // summary next; the removed surfaces are gone and nothing is said twice.
+  // (b) The home: the what-is-left line first (five stages, one button), the
+  // recording line next, then the document and the Observations.
   const home = await page.evaluate(() => {
     const host = document.getElementById("overview-content");
     const kids = [...host.children].map((c) => c.id || c.className);
@@ -222,216 +243,162 @@ const T = 20000;   // the bound on every wait for an observable state
     const text = host.textContent || "";
     const sum = document.querySelector("#ov-summary .ov-summary-line");
     return {
-      first: kids[0], second: kids[1], third: kids[2],
+      kids,
       next: line ? line.dataset.next : null,
       buttons: line ? line.querySelectorAll("button").length : 0,
       button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
       stages,
-      summary: sum ? (sum.textContent || "").trim() : null,
+      labels: line ? [...line.querySelectorAll(".ov-next-stage")].map((li) => (li.textContent || "").replace("✓", "").trim()) : [],
+      summary: sum ? (sum.textContent || "").replace(/\s+/g, " ").trim() : null,
       summaryH: sum ? Math.round(sum.getBoundingClientRect().height) : null,
       removed: document.querySelectorAll(".ov-tile, .ov-facts, .ov-badge, #ov-mark-runs, .ov-export-bar, " +
         "#btn-ov-export-pdd, #session-summary, .ov-tier2").length,
-      runsSaid: (text.match(/\b4 runs\b/g) || []).length,
+      // "in N of 4 runs" in Where the time goes is a time's frequency, not the run count.
+      runsSaid: (text.match(/(?<!of )\b4 runs\b/g) || []).length,
       casesSaid: (text.match(/\b4 cases\b/g) || []).length,
+      everyRunCount: /\b30 steps\b|steps confirmed/.test(text),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(b) the home leads with the What is left line (runs done, next: the pattern run, one button), then the one-line summary, then the document sections (P1.10)",
-    !!(home && !home.err && home.first === "ov-next" && home.second === "ov-summary" && home.third === "ov-doc" &&
-      home.next === "pattern" &&
-      home.buttons === 1 && home.button === "Confirm Run 1 in Steps" &&
-      home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,map:-,export:-"),
+  record("(b) the home leads with the What is left line (Runs, Reference run, Other runs, Document, PDD; runs done, next the reference run, one button), then the recording line, the document and the Observations",
+    !!(home && !home.err && same(home.kids, ["ov-next", "ov-summary", "ov-doc", "ov-observations"]) &&
+      home.next === "pattern" && home.buttons === 1 && home.button === "Confirm Run 1 in Steps" &&
+      home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,export:-" &&
+      same(home.labels, ["Runs", "Reference run", "Other runs", "Document", "PDD"])),
     JSON.stringify(home));
-  record("(b2) the fact tiles, the badge, the mark-runs line and the export bar are gone; the summary is one line and the run count is said once",
+  record("(b2) the recording line: the name, who recorded it, the runs said once and the reference run's 7 steps (not 30 over every run), then the video and the transcript with Attach; the removed surfaces stay gone",
     !!(home && !home.err && home.removed === 0 && home.summaryH > 0 && home.summaryH < 40 &&
-      home.runsSaid === 1 && home.casesSaid === 0 && /^demo-order-processing · recorded by demo-worker · /.test(home.summary || "")),
+      home.summary === "demo-order-processing · recorded by demo-worker · 4 runs · 7 steps in run 1 · No video Attach · No transcript Attach" &&
+      home.runsSaid === 1 && home.casesSaid === 0 && !home.everyRunCount),
     JSON.stringify(home && { removed: home.removed, summary: home.summary, summaryH: home.summaryH,
-      runsSaid: home.runsSaid, casesSaid: home.casesSaid }));
+      runsSaid: home.runsSaid, everyRunCount: home.everyRunCount }));
 
-  // (c) R4: the Evidence modules (retired Analysis) render below the findings,
-  // collapsed to their one-line takeaways on a fresh profile (P1.10).
-  const evidence = await page.evaluate(() => {
-    const host = document.querySelector("#overview-content #overview-evidence");
+  // (b3) No findings feed, no evidence, no ticks; no More menu and no Analyze
+  // session button anywhere in the window.
+  const gone = await page.evaluate(() => {
+    const n = (sel) => document.querySelectorAll(sel).length;
+    const text = (document.body.textContent || "");
+    return {
+      findings: n(".ov-finding, .ov-finding-group, #overview-evidence, .ov-evidence-section"),
+      ticks: n('[data-act="memo"], .ov-memo-check') + n("#overview-content input[type=checkbox]"),
+      words: ["include in PDD", "Findings: measured", "Time sinks", "Fragmented attention", "how this was measured"]
+        .filter((w) => text.includes(w)),
+      more: n("#session-more-menu, #btn-session-more-menu, #session-more-popup") +
+        [...document.querySelectorAll("button")].filter((b) => /⋯/.test(b.textContent || "")).length,
+      analyze: n("#btn-normalize") + [...document.querySelectorAll("button")].filter((b) => /Analyze session/.test(b.textContent || "")).length,
+      actionsBar: n(".actions-bar"),
+      log: getComputedStyle(document.getElementById("log-host")).display,
+      status: ((document.getElementById("session-pills") || {}).textContent || "").trim(),
+    };
+  }).catch((e) => ({ err: e.message }));
+  record("(b3) no findings, evidence or 'include in PDD' ticks; no More menu, no Analyze session button, no actions bar; an analyzed recording shows no status line and no log",
+    !!(gone && !gone.err && gone.findings === 0 && gone.ticks === 0 && gone.words.length === 0 && gone.more === 0 &&
+      gone.analyze === 0 && gone.actionsBar === 0 && gone.log === "none" && gone.status === ""),
+    JSON.stringify(gone));
+
+  // (c) The Observations: two items, closed on a fresh profile with their
+  // takeaways; opened, Data typed twice speaks per field and Where the time
+  // goes per step and per application.
+  const obs = await page.evaluate(async () => {
+    const host = document.getElementById("ov-observations");
     if (!host) return { present: false };
-    const all = [...host.querySelectorAll(".analysis-module[data-module]")];
-    return {
-      present: true,
-      modules: all.map((m) => m.getAttribute("data-module")),
-      open: all.filter((m) => m.open).length,
-      takeaways: all.map((m) => ((m.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim()),
-      captions: host.querySelectorAll(".analysis-caption").length,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("R4 + P1.10: Evidence modules (time / automation) render below the findings, collapsed with their takeaways showing; no ROI module, no caption",
-    !!(evidence && !evidence.err && evidence.present &&
-      evidence.modules.includes("time") && evidence.modules.includes("automation") &&
-      !evidence.modules.includes("roi") && evidence.open === 0 && evidence.captions === 0 &&
-      evidence.takeaways.every((t) => t.length > 0)),
-    JSON.stringify(evidence));
-
-  // Findings feed sanity on the demo (claims + an "include in PDD" checkbox on
-  // every card; the checkbox still writes annotations.memo_selection).
-  const feed = await page.evaluate(() => {
-    // The Evidence host below the feed reuses the .ov-finding component for
-    // automation candidate cards (no PDD checkbox): count the feed only.
-    const inFeed = (el) => el.closest("#overview-evidence") === null;
-    const findings = [...document.querySelectorAll("#overview-content .ov-finding")].filter(inFeed);
-    const pddChecks = [...document.querySelectorAll('#overview-content [data-act="memo"]')].filter(inFeed);
-    const showBtns = [...document.querySelectorAll('#overview-content [data-act="show"]')].filter(inFeed);
-    const labels = pddChecks.map((c) => ((c.closest("label") || {}).textContent || "").trim());
-    return {
-      findings: findings.length, pddChecks: pddChecks.length, showBtns: showBtns.length,
-      allSayPdd: labels.length > 0 && labels.every((t) => t === "include in PDD"),
-      firstLabel: labels[0] || null,
-    };
-  }).catch((e) => ({ err: e.message }));
-  record("findings feed renders with an 'include in PDD' checkbox on every finding",
-    !!(feed && !feed.err && feed.findings > 0 && feed.pddChecks === feed.findings && feed.allSayPdd),
-    JSON.stringify(feed));
-
-  // F2 + AD-20: the "include in PDD" boxes show exactly what the PDD prints.
-  // With nothing ticked they show the PDD's default findings, the ids the
-  // pipeline wrote into analysis.json from the PDD's own selection; the feed
-  // holds the printable findings, and a repeated step sequence is not one.
-  const feedState = () => page.evaluate(() => {
-    const inFeed = (el) => el.closest("#overview-evidence") === null;
-    const cards = [...document.querySelectorAll("#overview-content .ov-finding")].filter(inFeed);
-    const box = (c) => c.querySelector('[data-act="memo"]');
-    return {
-      ids: cards.map((c) => c.dataset.fid),
-      ticked: cards.filter((c) => box(c) && box(c).checked).map((c) => c.dataset.fid),
-      groups: [...document.querySelectorAll("#overview-content .ov-finding-group")].map((g) => g.dataset.detector),
-    };
-  });
-  const f2 = {};
-  try {
-    Object.assign(f2, await page.evaluate(() => {
-      const an = require("./state.js").getSession().analysis || {};
-      return {
-        pdd: an.pdd_findings || null,
-        claims: Object.fromEntries((an.findings || []).map((f) => [f.id, f.claim])),
-        repetitionInAnalysis: (an.findings || []).some((f) => f.detector === "repetition"),
-      };
+    const items = [...host.querySelectorAll(".analysis-module[data-module]")];
+    const closed = items.filter((m) => !m.open).length;
+    const takeaways = items.map((m) => ((m.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim());
+    for (const m of items) if (!m.open) m.querySelector("summary").click();
+    await new Promise((r) => setTimeout(r, 100));
+    const retyped = [...host.querySelectorAll('[data-module="retyped"] .ov-retyped li')].map((li) => li.textContent.trim());
+    const tables = [...host.querySelectorAll('[data-module="time"] table.ov-time')].map((t) => ({
+      head: [...t.querySelectorAll("th")].map((th) => th.textContent.trim()),
+      rows: [...t.querySelectorAll("tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent.trim())),
     }));
-    f2.start = await feedState();
-    f2.selBefore = readAnno().memo_selection || [];
-  } catch (e) {
-    logActionError("F2 default ticks", e);
-    f2.err = String(e.message).split("\n")[0];
-  }
-  const D = (f2.pdd && f2.pdd.default) || [];
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  record("F2 + AD-20: with nothing ticked the boxes show the PDD's default findings; the feed is the printable findings, with no repeated-sequence group",
-    !!(!f2.err && D.length >= 2 && f2.selBefore.length === 0 && same(f2.start.ticked, D) &&
-      same(f2.start.ids, f2.pdd.eligible) && f2.repetitionInAnalysis && !f2.start.groups.includes("repetition")),
-    JSON.stringify({ pdd: f2.pdd, start: f2.start, selBefore: f2.selBefore, repetitionInAnalysis: f2.repetitionInAnalysis, err: f2.err }));
-
-  // Untick every box in turn: each untick stores the others explicitly; the
-  // last one returns to the default and says so in one toast line. Then untick
-  // the first one again and keep that for the export below.
-  const untick = async (fid, expectSel) => {
-    // One real click. Not uncheck(): unticking the last box ticks the default
-    // again by design, which uncheck() reads as a click that did not take.
-    await page.locator('#overview-content .ov-finding[data-fid="' + fid + '"] [data-act="memo"]').click({ timeout: T });
-    const deadline = Date.now() + T;
-    let sel = null;
-    while (Date.now() < deadline) {
-      try { sel = readAnno().memo_selection; } catch (_) { sel = null; }
-      if (same(sel, expectSel)) break;
-      await wait(150);
-    }
-    return { sel, feed: await feedState() };
-  };
-  const steps2 = [];
-  let toastLine = null;
-  try {
-    for (let i = 0; i < D.length; i++) {
-      const expect = D.slice(i + 1);
-      const r = await untick(D[i], expect);
-      if (i === D.length - 1) {
-        // The toast and the re-render that ticks the default again come
-        // together once the save is done: read the boxes after the toast.
-        await page.waitForFunction(() => /PDD prints its default findings/.test((document.getElementById("toast") || {}).textContent || ""),
-          null, { timeout: T });
-        toastLine = (await page.$eval("#toast", (el) => el.textContent || "")).trim();
-        r.feed = await feedState();
-      }
-      steps2.push({ unticked: D[i], stored: r.sel, ticked: r.feed.ticked });
-    }
-    f2.kept = D.slice(1);
-    f2.dropped = D[0];
-    const r = await untick(D[0], f2.kept);
-    f2.final = { stored: r.sel, ticked: r.feed.ticked };
-  } catch (e) {
-    logActionError("F2 untick", e);
-    f2.untickErr = String(e.message).split("\n")[0];
-  }
-  const partialOk = steps2.length === D.length && steps2.slice(0, -1).every((s, i) =>
-    same(s.stored, D.slice(i + 1)) && same(s.ticked, D.slice(i + 1)));
-  record("F2: unticking a box stores the other ticked findings, and the boxes show just those",
-    !!(!f2.untickErr && partialOk && f2.final && same(f2.final.stored, f2.kept) && same(f2.final.ticked, f2.kept)),
-    JSON.stringify({ steps: steps2.slice(0, -1), final: f2.final, err: f2.untickErr }));
-  const last = steps2[steps2.length - 1];
-  record("F2: unticking the last box returns to the PDD's default (nothing stored, the default ticked again) and says so in one toast line",
-    !!(last && same(last.stored, []) && same(last.ticked, D) &&
-      toastLine === "No finding is ticked, so the PDD prints its default findings."),
-    JSON.stringify({ last, toastLine }));
-
-  // Item 4a: the "how this was measured" methodology sentence renders AT MOST
-  // ONCE per detector group.
-  const method = await page.evaluate(() => {
-    const groups = [...document.querySelectorAll("#overview-content .ov-finding-group")];
-    const perGroup = groups.map((g) => ({
-      det: g.dataset.detector,
-      cards: g.querySelectorAll(".ov-finding").length,
-      methodEls: g.querySelectorAll(".ov-finding-method").length,
-    }));
+    for (const m of items) m.querySelector("summary").click();   // close again (the default)
+    await new Promise((r) => setTimeout(r, 50));
+    try { for (const k of ["retyped", "time"]) localStorage.removeItem("pdt.analysis." + k); } catch (_) {}
     return {
-      groups: groups.length,
-      perCardNotes: document.querySelectorAll("#overview-content .ov-finding .ov-finding-note").length,
-      maxMethodPerGroup: perGroup.reduce((m, g) => Math.max(m, g.methodEls), 0),
-      repetition: perGroup.find((g) => g.det === "repetition") || null,
+      present: true, title: ((host.querySelector(".ov-section-title") || {}).textContent || "").trim(),
+      modules: items.map((m) => m.dataset.module),
+      titles: items.map((m) => ((m.querySelector(".analysis-module-title") || {}).textContent || "").trim()),
+      closed, takeaways, retyped, tables,
     };
   }).catch((e) => ({ err: e.message }));
-  record("(c) methodology sentence renders at most once per detector group; no Repeated sequences group (AD-20)",
-    !!(method && !method.err && method.groups > 0 && method.maxMethodPerGroup <= 1 &&
-      method.perCardNotes === 0 && method.repetition === null),
-    JSON.stringify(method));
+  const stepsTable = obs && obs.tables && obs.tables[0];
+  const appsTable = obs && obs.tables && obs.tables[1];
+  record("(c) Observations: two items, Data typed twice and Where the time goes, closed by default with their takeaways",
+    !!(obs && !obs.err && obs.present && obs.title === "Observations" && same(obs.modules, ["retyped", "time"]) &&
+      same(obs.titles, ["Data typed twice", "Where the time goes"]) && obs.closed === 2 &&
+      obs.takeaways.every((t) => t.length > 0)),
+    JSON.stringify(obs && { title: obs.title, modules: obs.modules, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
+  record("(c) Data typed twice says the field pair: Product code in Google Chrome (browser) typed again as Material number in SAP GUI",
+    !!(obs && Array.isArray(obs.retyped) &&
+      obs.retyped[0] === "Product code in Google Chrome (browser) typed again as Material number in SAP GUI"),
+    JSON.stringify(obs && obs.retyped));
+  record("(c) Where the time goes: per step and per application, each with its time per run and in N of 4 runs (the Notepad lookup in 1 of 4)",
+    !!(stepsTable && appsTable && same(stepsTable.head, ["Step", "Per run", "Runs"]) &&
+      same(appsTable.head, ["Application", "Per run", "Runs"]) && stepsTable.rows.length >= 5 &&
+      stepsTable.rows.every((r) => /^\d/.test(r[1]) && /^in [1-4] of 4 runs$/.test(r[2])) &&
+      appsTable.rows.some((r) => r[0] === "SAP GUI" && r[2] === "in 4 of 4 runs") &&
+      appsTable.rows.some((r) => r[0] === "Notepad" && r[2] === "in 1 of 4 runs")),
+    JSON.stringify(obs && obs.tables));
 
-  // Item 4b + 5: a finding card is resident claim + expand chevron; the
-  // evidence body (with the screenshot chip, not a raw path) is one click in.
-  const cardStruct = await page.evaluate(() => {
-    const shotChips = document.querySelectorAll('#overview-content [data-act="shot"]');
-    const rawPathLeak = /screenshots\/shot_\d+\.png/.test(
-      (document.querySelector("#overview-content") || {}).textContent || "");
-    const card = [...document.querySelectorAll("#overview-content .ov-finding")]
-      .find((c) => c.querySelector(".ov-finding-body"));
-    let expandedOk = null;
-    if (card) {
-      const body = card.querySelector(".ov-finding-body");
-      const before = body.hidden;
-      const btn = card.querySelector('[data-act="expand"]');
-      if (btn) btn.click();
-      expandedOk = before === true && body.hidden === false;
-    }
-    return { shotChips: shotChips.length, rawPathLeak, expandedOk };
+  // (c2) The moved controls, where they are used, with their ids.
+  const moved = await page.evaluate(() => {
+    const at = (id, sel) => { const el = document.getElementById(id); return el ? { text: (el.textContent || "").trim(), where: !!el.closest(sel) } : null; };
+    return {
+      attachVideo: at("btn-attach-video", "#ov-summary"),
+      attachTranscript: at("btn-attach-transcript", "#ov-summary"),
+      linkRecording: at("btn-link-recording", "#video-pane #no-video"),
+      syncVideo: at("btn-sync-video", "#video-pane .video-controls"),
+      ignoredApps: at("btn-ignored-apps", "#session-layout-steps .editor-toolbar"),
+      savedNames: at("btn-remembered-names", "#session-layout-steps .editor-toolbar"),
+      runSelect: !!(document.getElementById("case-scope") || { closest: () => null }).closest("#session-layout-flow .timeline-header"),
+    };
   }).catch((e) => ({ err: e.message }));
-  record("(4b/5) findings are resident claim + expand-in-place evidence; screenshot is a chip",
-    !!(cardStruct && !cardStruct.err && cardStruct.shotChips >= 1 &&
-      cardStruct.rawPathLeak === false && cardStruct.expandedOk === true),
-    JSON.stringify(cardStruct));
+  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the recording line, Attach video... on the video band, Sync video... in the video header, Leave apps out... and Saved names... in the Steps toolbar, the Run select in the Timeline's header",
+    !!(moved && !moved.err && same(moved.attachVideo, { text: "Attach", where: true }) &&
+      same(moved.attachTranscript, { text: "Attach", where: true }) &&
+      same(moved.linkRecording, { text: "Attach video...", where: true }) &&
+      same(moved.syncVideo, { text: "Sync video...", where: true }) &&
+      same(moved.ignoredApps, { text: "Leave apps out...", where: true }) &&
+      same(moved.savedNames, { text: "Saved names...", where: true }) && moved.runSelect),
+    JSON.stringify(moved));
 
-  // BA-helper cut: no next-act rail, data sharing select, Copy for AI review,
-  // memo export or ROI module.
-  const cutSurfaces = await page.evaluate(() => ({
-    rail: document.querySelectorAll("#ov-rail").length,
-    sharingSelect: document.querySelectorAll("#ov-posture-select").length,
-    copyForAi: document.querySelectorAll("#btn-ov-copy-llm").length,
-    memoExport: document.querySelectorAll("#btn-ov-export-memo").length,
-    roiModule: document.querySelectorAll('#overview-evidence .analysis-module[data-module="roi"]').length,
-  })).catch((e) => ({ err: e.message }));
-  record("cut Overview surfaces are gone (next-act rail, data sharing, Copy for AI review, memo export, ROI)",
-    !!(cutSurfaces && !cutSurfaces.err && Object.values(cutSurfaces).every((n) => n === 0)),
-    JSON.stringify(cutSurfaces));
+  // (c3) "Apply N marker changes" (the one manual analysis act) and its
+  // confirmation; Cancel runs nothing, Ctrl+Z takes the marker back.
+  const apply = {};
+  try {
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+    await page.waitForSelector("#timeline .tl-band", { state: "visible", timeout: T });
+    await page.locator("#timeline").scrollIntoViewIfNeeded({ timeout: T });
+    apply.before = readAnno().marker_edits || [];
+    await page.evaluate(() => {
+      const tl = document.getElementById("timeline");
+      const r = tl.getBoundingClientRect();
+      tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true,
+        clientX: r.left + r.width * 0.27, clientY: r.top + 4 }));
+    });
+    await page.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
+    await page.locator(".modal-prompt .modal-input").fill("E2E apply check", { timeout: T });
+    await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
+    await page.waitForSelector("#btn-apply-marker-edits", { state: "visible", timeout: T });
+    apply.cta = ((await page.locator("#btn-apply-marker-edits").textContent({ timeout: T })) || "").trim();
+    apply.inBar = await page.evaluate(() => !!document.getElementById("btn-apply-marker-edits").closest("header.topbar"));
+    await page.locator("#btn-apply-marker-edits").click({ timeout: T });
+    apply.confirm = ((await page.locator(".modal-confirm").textContent({ timeout: T })) || "").replace(/\s+/g, " ").trim();
+    await page.locator(".modal-confirm .modal-cancel").click({ timeout: T });
+    await wait(500);
+    apply.runAfterCancel = ((await page.locator("#session-pills").textContent({ timeout: T })) || "").trim();
+    await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction(() => !document.getElementById("btn-apply-marker-edits"), null, { timeout: T });
+    apply.after = readAnno().marker_edits || [];
+  } catch (e) { logActionError("(c3) Apply marker changes", e); apply.err = String(e.message).split("\n")[0]; }
+  record("(c3) a marker change shows 'Apply 1 marker change' in the top bar; it asks 'Update the drafts of the changed runs?'; Cancel runs nothing and Ctrl+Z takes the marker back",
+    !!(!apply.err && apply.cta === "Apply 1 marker change" && apply.inBar &&
+      /^Apply 1 marker change.*Update the drafts of the changed runs\?.*Your confirmed, edited, added and hidden steps are kept\./.test(apply.confirm) &&
+      apply.runAfterCancel === "Apply 1 marker change" && same(apply.after, apply.before)),
+    JSON.stringify(apply));
+  await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: T }).catch(() => {});
+  await wait(400);
 
   await shot(page, "overview-markers-state.png");
 
@@ -440,8 +407,11 @@ const T = 20000;   // the bound on every wait for an observable state
     const line = document.getElementById("ov-next");
     return line ? {
       next: line.dataset.next,
+      ready: line.classList.contains("ov-next-ready"),
       button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
       done: [...line.querySelectorAll(".ov-next-stage.done")].map((li) => li.dataset.stage),
+      stages: line.querySelectorAll(".ov-next-stage").length,
+      height: Math.round(line.getBoundingClientRect().height),
     } : null;
   });
   const goOverview = async () => {
@@ -465,7 +435,7 @@ const T = 20000;   // the bound on every wait for an observable state
   });
   const walk = { landings: {} };
   try {
-    // 1. The pattern run: the button opens Steps on Run 1 (the pattern).
+    // 1. The reference run: the button opens Steps on Run 1.
     await page.locator("#btn-ov-next").click({ timeout: T });
     await page.waitForSelector("#step-list .run-group.open", { state: "visible", timeout: T });
     walk.landings.pattern = await stepsLanding();
@@ -489,8 +459,8 @@ const T = 20000;   // the bound on every wait for an observable state
       await goOverview();
     }
     walk.afterReview = await lineState();
-    // 3. The document sections: the button opens the panel on its first
-    // empty field, with the cursor in it.
+    // 3. The document: the button opens it on its first empty field, with
+    // the cursor in it.
     await page.locator("#btn-ov-next").click({ timeout: T });
     await page.waitForFunction(() => {
       const d = document.getElementById("ov-doc");
@@ -500,17 +470,18 @@ const T = 20000;   // the bound on every wait for an observable state
       open: document.getElementById("ov-doc").open,
       focused: document.activeElement.dataset.doc,
       status: (document.getElementById("ov-doc-status") || {}).textContent,
+      button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
     }));
   } catch (e) {
     logActionError("(d) path walk", e);
     walk.err = String(e.message).split("\n")[0];
   }
   const L = walk.landings;
-  record("(d1) 'Confirm Run 1 in Steps' lands on Steps with the pattern run open and its first step selected",
+  record("(d1) 'Confirm Run 1 in Steps' lands on Steps with the reference run open and its first step selected",
     !!(L.pattern && L.pattern.onSteps && L.pattern.openRuns === 1 && L.pattern.openTitle === "Run 1" &&
       L.pattern.openIsPattern && L.pattern.selectedInOpenRun),
     JSON.stringify({ landing: L.pattern, err: walk.err }));
-  record("(d2) a confirmed pattern run shows done; the next act is the first run still drafted",
+  record("(d2) a confirmed reference run shows done; the next act is the first run still drafted",
     !!(walk.afterPattern && walk.afterPattern.next === "review" && walk.afterPattern.done.includes("pattern") &&
       walk.afterPattern.button === "Review Run 2 in Steps"),
     JSON.stringify(walk.afterPattern));
@@ -520,18 +491,26 @@ const T = 20000;   // the bound on every wait for an observable state
   record("(d3) 'Review Run N in Steps' lands on Steps with that run open, for runs 2 to 4; then the review shows done",
     !!(reviewOk && walk.afterReview && walk.afterReview.next === "document" && walk.afterReview.done.includes("review")),
     JSON.stringify({ review: L.review, after: walk.afterReview }));
-  record("(d4) 'Fill the document sections' opens the collapsed panel with the cursor in its first empty field",
-    !!(L.document && L.document.open && L.document.focused === "title" && L.document.status === "0 of 6 filled"),
+  record("(d4) 'Write the document' opens the collapsed document with the cursor in its first empty field ('Document · 0 of 9 written')",
+    !!(L.document && L.document.open && L.document.focused === "title" && L.document.status === "0 of 9 written" &&
+      walk.afterReview && walk.afterReview.button === "Write the document"),
     JSON.stringify(L.document));
 
-  // 4. A document field saves through the one write path, undoably.
+  // 4. A document field saves through the one write path, undoably; then the
+  // nine fields, trigger, result and improvement among them.
   const PURPOSE = "E2E purpose: settle the monthly supplier invoices";
+  const values = {
+    title: "E2E order intake", purpose: PURPOSE, scope: "From the order e-mail to the order confirmation",
+    trigger: "An order e-mail arrives in the shared mailbox", result: "A sales order in SAP and a confirmation to the customer",
+    contacts: "Process owner: E2E Owner", business_rules: "Orders above the credit limit need a check",
+    exceptions: "A blocked customer stops the run", improvement: "Automate the customer lookup and the SAP entry",
+  };
   const docProbe = {};
   try {
     const purpose = page.locator('#ov-doc [data-doc="purpose"]');
     await purpose.fill(PURPOSE, { timeout: T });
     await purpose.press("Tab");                          // change fires on leaving the field
-    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "1 of 6 filled",
+    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "1 of 9 written",
       null, { timeout: T });
     docProbe.saved = (readAnno().document || {}).purpose;
     // Undo: Ctrl+Z outside a field is the app's undo.
@@ -541,26 +520,26 @@ const T = 20000;   // the bound on every wait for an observable state
       const t = document.querySelector('#ov-doc [data-doc="purpose"]');
       return !!(t && t.value === "");
     }, null, { timeout: T });
-    // The Purpose is gone from disk again (the document had no Purpose before).
     docProbe.afterUndoOnDisk = (readAnno().document || {}).purpose || "";
     docProbe.panelStayedOpen = await page.evaluate(() => document.getElementById("ov-doc").open);
-    // Write every section again (Purpose, then the other five).
-    const values = {
-      title: "E2E order intake", purpose: PURPOSE, scope: "From the order e-mail to the order confirmation",
-      contacts: "Process owner: E2E Owner", business_rules: "Orders above the credit limit need a check",
-      exceptions: "A blocked customer stops the run",
-    };
     for (const [k, v] of Object.entries(values)) {
       const el = page.locator('#ov-doc [data-doc="' + k + '"]');
       await el.fill(v, { timeout: T });
       await el.press("Tab");
     }
-    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "6 of 6 filled",
+    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "9 of 9 written",
       null, { timeout: T });
     docProbe.onDisk = readAnno().document || {};
     docProbe.line = await lineState();
     docProbe.summaryName = await page.evaluate(() =>
       ((document.querySelector("#ov-summary .ov-summary-name") || {}).textContent || "").trim());
+    // The Recents entry is named by the document title once it is written.
+    await page.locator("#btn-recent-menu").click({ timeout: T });
+    docProbe.recent = await page.evaluate(() => ({
+      heading: ((document.querySelector("#recent-menu-content .recent-menu-heading") || {}).textContent || "").trim(),
+      first: ((document.querySelector("#recent-menu-content .recent-menu-item .ri-label") || {}).textContent || "").trim(),
+    }));
+    await page.locator("#btn-recent-menu").click({ timeout: T });
   } catch (e) {
     logActionError("(d5) document fields", e);
     docProbe.err = String(e.message).split("\n")[0];
@@ -569,52 +548,22 @@ const T = 20000;   // the bound on every wait for an observable state
     !!(!docProbe.err && docProbe.saved === PURPOSE && docProbe.afterUndoOnDisk === "" && docProbe.panelStayedOpen),
     JSON.stringify({ saved: docProbe.saved, afterUndoOnDisk: docProbe.afterUndoOnDisk,
       panelStayedOpen: docProbe.panelStayedOpen, err: docProbe.err }));
-  record("(d6) with the six sections written the document stage shows done; the next act is the As-Is map",
-    !!(docProbe.line && docProbe.line.next === "map" && docProbe.line.done.includes("document") &&
-      docProbe.onDisk && docProbe.onDisk.purpose === PURPOSE && docProbe.onDisk.notes === ""),
-    JSON.stringify({ line: docProbe.line, onDisk: docProbe.onDisk }));
-  record("(P3.9) once written, the document title names the recording on the summary line",
-    docProbe.summaryName === "E2E order intake", JSON.stringify({ summaryName: docProbe.summaryName }));
+  record("(d6) the nine fields save to annotations.json, Trigger, Result and Improvement and automation scope under the keys trigger, result and improvement",
+    !!(docProbe.onDisk && Object.entries(values).every(([k, v]) => docProbe.onDisk[k] === v) &&
+      docProbe.onDisk.notes === "" && docProbe.onDisk.trigger === values.trigger &&
+      docProbe.onDisk.result === values.result && docProbe.onDisk.improvement === values.improvement),
+    JSON.stringify({ onDisk: docProbe.onDisk }));
+  record("(d6) with the document written, the What is left line shrinks to one short line: no stage list, the next act Export PDD (AD-28: no As-Is stage)",
+    !!(docProbe.line && docProbe.line.next === "export" && docProbe.line.ready && docProbe.line.stages === 0 &&
+      docProbe.line.button === "Export PDD" && docProbe.line.height > 0 && docProbe.line.height < 60),
+    JSON.stringify({ line: docProbe.line }));
+  record("(P3.9) once written, the document title names the recording on the recording line and in Recent recordings",
+    docProbe.summaryName === "E2E order intake" && !!docProbe.recent &&
+      docProbe.recent.heading === "Recent recordings" && docProbe.recent.first === "E2E order intake",
+    JSON.stringify({ summaryName: docProbe.summaryName, recent: docProbe.recent }));
 
-  // 5. The As-Is map: the button lands on the Map; Fork, choose the copy as
-  // the PDD's As-Is map, and the stage shows done.
-  const mapProbe = {};
-  try {
-    await page.locator("#btn-ov-next").click({ timeout: T });
-    await page.waitForSelector("#session-layout-map", { state: "visible", timeout: T });
-    mapProbe.landed = await page.evaluate(() => ({
-      onMap: !!document.querySelector('.view-mode-btn[data-level="map"].active'),
-      mapDrawn: !!((document.getElementById("session-map-dfg-host") || {}).__cy),
-      fork: !!document.getElementById("btn-fork-refmap"),
-    }));
-    await page.locator("#btn-fork-refmap").click({ timeout: T });
-    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: T });
-    await page.locator("#refmap-editor-pdd").selectOption("as_is", { timeout: T });
-    await wait(500);
-    await page.locator("#btn-refmap-editor-close").click({ timeout: T });
-    // A second copy, chosen as the PDD's To-Be map (the gallery is open after
-    // the fork): Duplicate, then the copy's PDD select.
-    await page.locator('#refmap-list [data-rm-act="dup"]').first().click({ timeout: T });
-    await page.waitForFunction(() => document.querySelectorAll("#refmap-list .refmap-row").length === 2, null, { timeout: T });
-    await page.locator("#refmap-list .refmap-row").nth(1).locator("[data-rm-pdd]").selectOption("to_be", { timeout: T });
-    await wait(500);
-    mapProbe.roles = (readAnno().reference_maps || []).map((m) => m && m.pdd_role);
-    await goOverview();
-    mapProbe.line = await lineState();
-    mapProbe.asIs = (readAnno().reference_maps || []).filter((m) => m && m.pdd_role === "as_is").length;
-  } catch (e) {
-    logActionError("(d7) As-Is map", e);
-    mapProbe.err = String(e.message).split("\n")[0];
-  }
-  record("(d7) 'Finish the As-Is map in Map' lands on the Map; a fork chosen as the PDD's As-Is map shows the stage done",
-    !!(!mapProbe.err && mapProbe.landed && mapProbe.landed.onMap && mapProbe.landed.mapDrawn && mapProbe.landed.fork &&
-      mapProbe.asIs === 1 && JSON.stringify(mapProbe.roles) === '["as_is","to_be"]' &&
-      mapProbe.line && mapProbe.line.next === "export" && mapProbe.line.done.includes("map") &&
-      mapProbe.line.button === "Export PDD"),
-    JSON.stringify(mapProbe));
-
-  // The export renders the maps chosen for the PDD off screen; record what it
-  // handed over (the As-Is and To-Be images), so the embed is pinned too.
+  // The export renders the maps chosen for the PDD off screen and hands the
+  // pipeline an image; record both, so the embed is pinned too (AD-28).
   await page.evaluate(() => {
     const RefmapUI = require("./refmap-ui.js");
     const orig = RefmapUI.renderPddMaps;
@@ -623,36 +572,68 @@ const T = 20000;   // the bound on every wait for an observable state
       window.__pddMaps = { asis: !!(out && out.asis), tobe: !!(out && out.tobe) };
       return out;
     };
+    const Ipc = require("./ipc.js");
+    const run = Ipc.runNormalizeExtended;
+    Ipc.runNormalizeExtended = (opts) => {
+      if (opts && opts.pddOut) {
+        const fs = require("fs");
+        const size = (p) => { try { return p ? fs.statSync(p).size : 0; } catch (_) { return -1; } };
+        window.__pddOpts = { map: size(opts.pddMapImage), tobe: size(opts.pddTobeImage),
+          level: require("./state.js").getLevel() };
+      }
+      return run(opts);
+    };
+    // The map from the runs is process_map_step.bpmn drawn by bpmn-js off
+    // screen (renderer.js), never the live map on the Map level.
+    const render = RefmapUI.renderBpmnToPng;
+    RefmapUI.renderBpmnToPng = async (xml) => {
+      const fs = require("fs"), path = require("path");
+      const s = require("./state.js").getSession();
+      let stepBpmn = false;
+      try { stepBpmn = xml === fs.readFileSync(path.join(s.sessionFolder, "process_map_step.bpmn"), "utf-8"); } catch (_) {}
+      (window.__bpmnRenders = window.__bpmnRenders || []).push({ stepBpmn, level: require("./state.js").getLevel() });
+      return render(xml);
+    };
   }).catch((e) => console.log("spy", e.message));
 
-  // 6. The last act: Export PDD. It runs the Session menu's PDD export
-  // (#btn-session-pdd). Stub the save dialog to a temp path and the shell
-  // reveal (no Explorer window in a gate), poll for a real .docx (a zip: "PK"
-  // magic). Item 7: the shared path shows the Map while it draws the map
-  // image, then returns the analyst to the Overview with the level bar in
-  // sync. Contract C6 end to end: the document carries the Purpose written
-  // above, in place of the placeholder.
-  const pddOut = path.join(os.tmpdir(), "pdt-ov-e2e-" + Date.now() + ".docx");
-  await app.evaluate(({ dialog, shell }, p) => {
-    dialog.showSaveDialog = async () => ({ canceled: false, filePath: p });
-    shell.showItemInFolder = () => {};
-  }, pddOut).catch((e) => console.log("stub dialog", e.message));
-  await page.click("#btn-ov-next").catch((e) => console.log("export click", e.message));
-  let pddOk = false, pddDetail = "", docXml = null;
-  const deadline = Date.now() + 180000;
-  while (Date.now() < deadline) {
-    if (fs.existsSync(pddOut)) {
-      const buf = fs.readFileSync(pddOut);
-      if (buf.length > 1000 && buf[0] === 0x50 && buf[1] === 0x4b) {
-        pddOk = true;
-        pddDetail = buf.length + " bytes, zip (docx) magic";
-        try { docXml = readZipEntry(buf, "word/document.xml"); } catch (e) { pddDetail += "; unzip failed: " + e.message; }
-        break;
+  /* Export PDD from the What is left line: the Session menu's PDD path. The
+     save dialog is stubbed to a temp path, the shell reveal to a no-op. */
+  const exportPdd = async (tag) => {
+    const out = path.join(os.tmpdir(), "pdt-ov-e2e-" + tag + "-" + Date.now() + ".docx");
+    await app.evaluate(({ dialog, shell }, p) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: p });
+      shell.showItemInFolder = () => {};
+    }, out).catch((e) => console.log("stub dialog", e.message));
+    await page.evaluate(() => { window.__pddMaps = null; window.__pddOpts = null; window.__bpmnRenders = []; });
+    await goOverview();
+    await page.click("#btn-ov-next").catch((e) => console.log("export click", e.message));
+    let buf = null;
+    const deadline = Date.now() + 180000;
+    while (Date.now() < deadline) {
+      if (fs.existsSync(out)) {
+        const b = fs.readFileSync(out);
+        if (b.length > 1000 && b[0] === 0x50 && b[1] === 0x4b) { buf = b; break; }
       }
+      await wait(500);
     }
-    await wait(500);
-  }
-  if (!pddOk) pddDetail = "no .docx at the stubbed save path after 180s";
+    await page.waitForFunction(() => {
+      const el = document.getElementById("session-layout-overview");
+      return el && getComputedStyle(el).display !== "none";
+    }, null, { timeout: 30000 }).catch(() => {});
+    const r = { bytes: buf ? buf.length : 0, xml: null, media: [] };
+    if (buf) {
+      try { r.xml = readZipEntry(buf, "word/document.xml"); r.media = zipNames(buf).filter((n) => n.startsWith("word/media/")); }
+      catch (e) { r.zipErr = e.message; }
+    }
+    r.handed = await page.evaluate(() => ({ maps: window.__pddMaps || null, opts: window.__pddOpts || null,
+      renders: window.__bpmnRenders || null })).catch(() => null);
+    r.status = await page.evaluate(() => ({ text: ((document.getElementById("session-pills") || {}).textContent || "").trim(),
+      log: getComputedStyle(document.getElementById("log-host")).display })).catch(() => null);
+    try { fs.unlinkSync(out); } catch (_) {}
+    return r;
+  };
+
+  // 5. The last act with no As-Is copy: the PDD's map is the map from the runs.
   const levelProbe = () => {
     const shown = ["overview", "flow", "steps", "map"].filter((l) => {
       const el = document.getElementById("session-layout-" + l);
@@ -661,46 +642,67 @@ const T = 20000;   // the bound on every wait for an observable state
     const lit = [...document.querySelectorAll(".view-mode-btn.active")].map((b) => b.dataset.level);
     return { shown, lit, level: require("./state.js").getLevel() };
   };
-  await page.waitForFunction(() => {
-    const el = document.getElementById("session-layout-overview");
-    return el && getComputedStyle(el).display !== "none";
-  }, null, { timeout: 30000 }).catch(() => {});
+  const first = await exportPdd("runs-map");
   const after = await page.evaluate(levelProbe).catch((e) => ({ err: e.message }));
   const backInSync = !!(after && !after.err && after.level === "overview" &&
     JSON.stringify(after.shown) === '["overview"]' && JSON.stringify(after.lit) === '["overview"]');
-  record("(d8) 'Export PDD' writes a .docx through the Session menu's PDD path, then returns to the Overview with the level bar in sync",
-    pddOk && backInSync, pddDetail + " after=" + JSON.stringify(after));
-  if (!(pddOk && backInSync)) await shot(page, "fail-overview-pdd.png");
-  const handed = await page.evaluate(() => window.__pddMaps || null).catch(() => null);
+  record("(d8) 'Export PDD' writes a .docx through the Session menu's PDD path, then returns to the Overview with the level bar in sync; no status line or log left",
+    first.bytes > 1000 && backInSync && first.status && first.status.text === "" && first.status.log === "none",
+    "bytes=" + first.bytes + " after=" + JSON.stringify(after) + " status=" + JSON.stringify(first.status));
+  if (!(first.bytes > 1000 && backInSync)) await shot(page, "fail-overview-pdd.png");
+  record("AD-28: with no As-Is copy the export hands the PDD the map from the runs: process_map_step.bpmn drawn off screen by bpmn-js (not the live map; the Map level was never opened), no To-Be",
+    !!(first.handed && first.handed.opts && first.handed.opts.map > 1000 && first.handed.opts.tobe === 0 &&
+      first.handed.opts.level === "overview" && first.handed.maps && first.handed.maps.asis === false &&
+      Array.isArray(first.handed.renders) && first.handed.renders.length === 1 && first.handed.renders[0].stepBpmn &&
+      first.handed.renders[0].level === "overview" && first.media.length >= 1),
+    JSON.stringify({ handed: first.handed, media: first.media.length }));
   const docChecks = {
-    handed,
-    // Each map picture carries its alternative text (lane LUX-P); the To-Be
-    // map has its own heading in the improvement section.
-    asIsEmbedded: !!(docXml && docXml.includes('descr="As-Is process map"')),
-    toBeEmbedded: !!(docXml && docXml.includes('descr="To-Be process map"') &&
-      docXml.includes("7.1 To-Be process map")),
-    purpose: !!(docXml && docXml.includes(PURPOSE)),
-    title: !!(docXml && docXml.includes("E2E order intake")),
-    purposePlaceholderGone: !!(docXml && !docXml.includes("the business need this process serves")),
+    purpose: !!(first.xml && first.xml.includes(PURPOSE)),
+    title: !!(first.xml && first.xml.includes("E2E order intake")),
+    purposePlaceholderGone: !!(first.xml && !first.xml.includes("the business need this process serves")),
     keptAfterExport: (readAnno().document || {}).purpose === PURPOSE,
   };
   record("(d9) contract C6 end to end: the exported PDD (word/document.xml) carries the Purpose written on the Overview, in place of its placeholder",
     !!(docChecks.purpose && docChecks.title && docChecks.purposePlaceholderGone && docChecks.keptAfterExport),
-    JSON.stringify(Object.assign({ xmlBytes: docXml ? docXml.length : 0 }, docChecks)));
-  record("(d10) the reference maps chosen as the PDD's As-Is and To-Be maps are embedded in the export",
-    !!(handed && handed.asis && handed.tobe && docChecks.asIsEmbedded && docChecks.toBeEmbedded),
-    JSON.stringify({ handed, asIsEmbedded: docChecks.asIsEmbedded, toBeEmbedded: docChecks.toBeEmbedded }));
-  try { fs.unlinkSync(pddOut); } catch (_) {}
+    JSON.stringify(Object.assign({ xmlBytes: first.xml ? first.xml.length : 0 }, docChecks)));
 
-  // F2, end to end, after lane LUX-P cut the PDD's findings section: the
-  // export prints no finding, neither the ones still ticked above nor the
-  // unticked one (the boxes stay until the viewer lane removes them).
-  const xmlText = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const inDoc = (fid) => !!(docXml && f2.claims && f2.claims[fid] && docXml.includes(xmlText(f2.claims[fid])));
-  const printedKept = (f2.kept || []).map(inDoc);
-  record("F2: the exported PDD prints no finding, ticked or not (its findings section is cut)",
-    !!(docXml && f2.kept && f2.kept.length && !printedKept.some(Boolean) && !inDoc(f2.dropped)),
-    JSON.stringify({ kept: f2.kept, printedKept, dropped: f2.dropped, droppedPrinted: inDoc(f2.dropped) }));
+  // 6. The As-Is map is the Map's own act (no stage): an edited As-Is copy
+  // and a To-Be copy, then the export hands both.
+  const mapProbe = {};
+  try {
+    await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
+    await page.waitForSelector("#session-layout-map", { state: "visible", timeout: T });
+    await page.locator("#btn-fork-refmap").click({ timeout: T });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    mapProbe.role = await page.locator("#refmap-editor-pdd").inputValue({ timeout: T });
+    await page.locator("#btn-refmap-editor-close").click({ timeout: T });
+    await page.locator('#refmap-list [data-rm-act="dup"]').first().click({ timeout: T });
+    await page.waitForFunction(() => document.querySelectorAll("#refmap-list .refmap-row").length === 2, null, { timeout: T });
+    await page.locator("#refmap-list .refmap-row").nth(1).locator("[data-rm-pdd]").selectOption("to_be", { timeout: T });
+    await wait(500);
+    mapProbe.roles = (readAnno().reference_maps || []).map((m) => m && m.pdd_role);
+    await goOverview();
+    mapProbe.line = await lineState();
+  } catch (e) {
+    logActionError("(d7) As-Is map", e);
+    mapProbe.err = String(e.message).split("\n")[0];
+  }
+  record("(d7) Edit as the As-Is map makes the PDD's As-Is copy (the Map's act); the What is left line does not change (no As-Is stage)",
+    !!(!mapProbe.err && mapProbe.role === "as_is" && JSON.stringify(mapProbe.roles) === '["as_is","to_be"]' &&
+      mapProbe.line && mapProbe.line.ready && mapProbe.line.next === "export" && mapProbe.line.button === "Export PDD"),
+    JSON.stringify(mapProbe));
+  const second = await exportPdd("as-is");
+  // (What the PDD prints around the images is the PDD lane's: only the
+  // images handed over are pinned here.)
+  record("(d10) with an As-Is and a To-Be copy chosen, the export hands the PDD both images (the As-Is copy in place of the map from the runs)",
+    !!(second.bytes > 1000 && second.handed && second.handed.maps && second.handed.maps.asis && second.handed.maps.tobe &&
+      second.handed.opts && second.handed.opts.map > 1000 && second.handed.opts.tobe > 1000 && second.media.length >= 1 &&
+      Array.isArray(second.handed.renders) && second.handed.renders.length === 0),
+    JSON.stringify({ handed: second.handed, media: [first.media.length, second.media.length] }));
+  record("(d11) the exported PDD embeds the As-Is and To-Be pictures with their alternative text, the To-Be under its own heading (lane LUX-P)",
+    !!(second.xml && second.xml.includes('descr="As-Is process map"') &&
+      second.xml.includes('descr="To-Be process map"') && second.xml.includes("7.1 To-Be process map")),
+    JSON.stringify({ xmlBytes: second.xml ? second.xml.length : 0 }));
 
   // P2.12: with an As-Is copy chosen for the PDD, the Export menu's map items
   // save that copy (the map the analyst finished), not the process map.
@@ -749,6 +751,76 @@ const T = 20000;   // the bound on every wait for an observable state
       JSON.stringify(mapExport.labels) === '["Process map (image)","Process map (BPMN)"]'),
     JSON.stringify(mapExport));
 
+  // (h) Attach video: choose the file, then two clicks (a moment in the
+  // video, the same moment on the timeline), never a typed offset. Nothing is
+  // written before the second click; Cancel leaves the recording as it was.
+  const VIDEO = path.join(SESSION_MARKED, "call-recording.webm");
+  fs.writeFileSync(VIDEO, Buffer.alloc(64));
+  const SYNC_AT = "2026-05-14T09:00:30Z";
+  const attach = {};
+  const noExternal = () => !readAnno().external_video;
+  try {
+    await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, VIDEO);
+    // First Cancel: nothing written, the video band back.
+    await goOverview();
+    await page.locator("#ov-summary #btn-attach-video").click({ timeout: T });
+    await page.waitForSelector("#video-sync-card", { state: "visible", timeout: T });
+    attach.cancelPhase = await page.evaluate(() => ({
+      onTimeline: require("./state.js").getLevel() === "flow",
+      card: ((document.getElementById("video-sync-card") || {}).textContent || "").trim(),
+      prompt: document.querySelectorAll(".modal-prompt").length,
+      videoShown: getComputedStyle(document.getElementById("video")).display !== "none",
+    }));
+    attach.cancelPhase.nothingYet = noExternal();
+    await page.locator("#video-sync-card .vs-cancel").click({ timeout: T });
+    attach.afterCancel = await page.evaluate(() => ({
+      card: !!document.getElementById("video-sync-card"),
+      band: document.getElementById("video-pane").classList.contains("no-recording"),
+      noVideo: getComputedStyle(document.getElementById("no-video")).display !== "none",
+    }));
+    attach.afterCancel.nothingWritten = noExternal();
+    // Then the real one.
+    await goOverview();
+    await page.locator("#ov-summary #btn-attach-video").click({ timeout: T });
+    await page.waitForSelector("#video-sync-card .vs-mark", { state: "visible", timeout: T });
+    await page.locator("#video-sync-card .vs-mark").click({ timeout: T });
+    attach.step2 = ((await page.locator("#video-sync-card").textContent({ timeout: T })) || "").trim();
+    attach.stillNothing = noExternal();
+    await page.locator("#timeline").scrollIntoViewIfNeeded({ timeout: T });
+    const at = await page.evaluate((iso) => {
+      const tl = document.getElementById("timeline");
+      const evs = require("./state.js").getSession().events;
+      const f = Date.parse(evs[0].timestamp), l = Date.parse(evs[evs.length - 1].timestamp);
+      const r = tl.getBoundingClientRect();
+      return { x: r.left + ((Date.parse(iso) - f) / (l - f)) * r.width, y: r.top + 60, inView: r.top + 60 < innerHeight };
+    }, SYNC_AT);
+    attach.at = at;
+    await page.mouse.click(at.x, at.y);
+    await page.waitForFunction(() => /Video attached and synced/.test((document.getElementById("toast") || {}).textContent || ""),
+      null, { timeout: T });
+    const ev = readAnno().external_video || null;
+    attach.saved = ev ? { path: ev.path, offset: ev.offset_ms } : null;
+    attach.wantOffset = Date.parse(SYNC_AT) - Date.parse(JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "manifest.json"), "utf-8")).started_at);
+    attach.after = await page.evaluate(() => ({
+      line: ((document.querySelector('#ov-summary [data-summary="video"]') || {}).textContent || "").trim(),
+      button: ((document.getElementById("btn-attach-video") || {}).textContent || "").trim(),
+      sync: getComputedStyle(document.getElementById("btn-sync-video")).display !== "none",
+    }));
+  } catch (e) {
+    logActionError("(h) attach video", e);
+    attach.err = String(e.message).split("\n")[0];
+  }
+  const cp = attach.cancelPhase || {}, ac = attach.afterCancel || {};
+  record("(h) Attach video opens the Timeline with the chosen video and the two-click sync card, never a typed offset; Cancel writes nothing and brings the no-video band back",
+    !!(!attach.err && cp.onTimeline && /^Step 1 of 2: pause the video at a recognizable moment, then click Mark frame\./.test(cp.card) &&
+      cp.prompt === 0 && cp.videoShown && cp.nothingYet && !ac.card && ac.band && ac.noVideo && ac.nothingWritten),
+    JSON.stringify({ cancelPhase: cp, afterCancel: ac, err: attach.err }));
+  record("(h) Mark frame, then a click on the timeline, attaches the video with the offset of that moment; the recording line then says Video with Replace and the video header offers Sync video",
+    !!(!attach.err && /^Step 2 of 2: click the matching moment on the timeline/.test(attach.step2 || "") && attach.stillNothing &&
+      attach.saved && attach.saved.path === VIDEO && Math.abs(attach.saved.offset - attach.wantOffset) <= 3000 &&
+      attach.after && attach.after.line === "Video" && attach.after.button === "Replace" && attach.after.sync),
+    JSON.stringify({ step2: attach.step2, saved: attach.saved, wantOffset: attach.wantOffset, at: attach.at, after: attach.after }));
+
   await close();
 
   // ================= Launch 2: the marker-stripped copy (no runs marked) ==
@@ -771,16 +843,16 @@ const T = 20000;   // the bound on every wait for an observable state
       badges: document.querySelectorAll("#overview-content .ov-badge, #ov-mark-runs").length,
     };
   }).catch((e) => ({ err: e.message }));
-  record("(e) marker-stripped session: the What is left line says no runs are marked, with the instruction and 'Mark runs in Flow'",
+  record("(e) marker-stripped session: the What is left line says no runs are marked, with the instruction and 'Mark runs on the Timeline'",
     !!(markRuns && !markRuns.err && markRuns.next === "runs" && /no runs marked/i.test(markRuns.lineText || "") &&
-      /start marker/i.test(markRuns.lineText || "") && markRuns.button === "Mark runs in Flow" && markRuns.badges === 0),
+      /start marker/i.test(markRuns.lineText || "") && /Apply marker changes/.test(markRuns.lineText || "") &&
+      markRuns.button === "Mark runs on the Timeline" && markRuns.badges === 0),
     JSON.stringify(markRuns));
   if (!(markRuns && markRuns.next === "runs")) await shot(page2, "fail-overview-mark-runs.png");
 
   await shot(page2, "overview-unsegmented-state.png");
 
-  // (e2) The button LANDS: Flow shows, with the Markers panel (pre-state: the
-  // Notes tab is the active annotation tab).
+  // (e2) The button LANDS: the Timeline shows, with the Markers panel.
   const markersTabBefore = await page2.evaluate(() => {
     const t = document.querySelector('.anno-tab[data-anno="markers"]');
     return !!(t && t.classList.contains("active"));
@@ -799,38 +871,186 @@ const T = 20000;   // the bound on every wait for an observable state
       panelOnScreen: !!(r && r.height > 0 && r.top < window.innerHeight && r.bottom > 0),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(e2) 'Mark runs in Flow' lands on Flow with the Markers panel showing on screen",
+  record("(e2) 'Mark runs on the Timeline' lands on the Timeline with the Markers panel showing on screen",
     !!(landed && !landed.err && markersTabBefore === false && landed.flowVisible &&
       landed.markersTabActive && landed.markersPanelVisible && landed.panelOnScreen),
     JSON.stringify({ markersTabBefore, landed }));
   if (!(landed && landed.markersPanelVisible)) await shot(page2, "fail-overview-mark-runs-land.png");
 
-  // The existing levels must still be reachable from the new default.
-  await page2.click('.view-mode-btn[data-level="overview"]').catch(() => {});
-  await wait(500);
-  const flowStillWorks = await (async () => {
-    const btn = await page2.$('.view-mode-btn[data-level="flow"]');
-    if (!btn) return false;
-    await btn.click().catch(() => {});
-    await wait(900);
-    return page2.$eval("#session-layout-flow", (el) =>
-      getComputedStyle(el).display !== "none").catch(() => false);
-  })();
-  record("levels still switch from the new default (Flow renders)", flowStillWorks,
-    flowStillWorks ? "" : "#session-layout-flow did not show after click");
-
   await close2();
 
-  // (f) Zero page errors across both launches.
+  // ================= Launch 3: a copy never analyzed (AD-22) ===============
+  const RAW_ANNO = path.join(SESSION_RAW, "annotations.json");
+  const RAW_STATS = path.join(SESSION_RAW, "stats.json");
+  const readRaw = () => JSON.parse(fs.readFileSync(RAW_ANNO, "utf-8"));
+  let app3, page3, close3;
+  try {
+    ({ app: app3, page: page3, close: close3 } = await launch(SESSION_RAW, pageErrors, false));
+  } catch (e) {
+    console.error("FATAL: could not launch viewer (not analyzed):", e && e.stack ? e.stack : e);
+    process.exit(2);
+  }
+  const statusNow = (pg) => pg.evaluate(() => ({
+    status: ((document.getElementById("session-pills") || {}).textContent || "").replace(/\s+/g, " ").trim(),
+    line: ((document.getElementById("run-status") || {}).textContent || "").trim(),
+    cancelText: ((document.getElementById("btn-cancel-normalize") || {}).textContent || "").trim(),
+    cancel: !!document.getElementById("btn-cancel-normalize"),
+    log: getComputedStyle(document.getElementById("log-host")).display,
+    failure: ((document.getElementById("log-failure") || {}).textContent || "").trim(),
+  }));
+  // (g1) On open: no button to press; the analysis runs by itself with one
+  // status line, the page readable, no log.
+  const g = {};
+  try {
+    g.running = await page3.waitForFunction(() => {
+      const s = document.getElementById("session-pills");
+      return !!s && /^Updating steps and map\.\.\./.test((s.textContent || "").trim());
+    }, null, { timeout: T }).then(() => true, () => false);
+    g.during = Object.assign(await statusNow(page3), await page3.evaluate(() => ({
+      note: ((document.getElementById("ov-waiting") || {}).textContent || "").trim(),
+      analyze: document.querySelectorAll("#btn-normalize").length,
+      overviewShown: getComputedStyle(document.getElementById("session-layout-overview")).display !== "none",
+    })));
+    await page3.waitForFunction(() => /Steps and map updated/.test((document.getElementById("toast") || {}).textContent || ""),
+      null, { timeout: 180000 });
+    await page3.waitForSelector("#ov-next", { state: "visible", timeout: T });
+    g.after = await statusNow(page3);
+    g.files = { stats: fs.existsSync(RAW_STATS), analysis: fs.existsSync(path.join(SESSION_RAW, "analysis.json")),
+      bpmn: fs.existsSync(path.join(SESSION_RAW, "process_map_step.bpmn")) };
+  } catch (e) { logActionError("(g1) automatic analysis", e); g.err = String(e.message).split("\n")[0]; }
+  record("(g1) AD-22: a recording never analyzed is analyzed by itself on open: no button; the top bar says 'Updating steps and map...' with Cancel, the Overview says so, no log",
+    !!(!g.err && g.running && g.during && g.during.cancel && g.during.log === "none" && g.during.analyze === 0 &&
+      g.during.line === "Updating steps and map..." && g.during.cancelText === "Cancel" && g.during.overviewShown &&
+      g.during.note === "The steps and the map are being drafted from the recording."),
+    JSON.stringify({ during: g.during, err: g.err }));
+  record("(g1) when it is done the Overview shows the What is left line, the analysis files are written, and the status line and the log are gone",
+    !!(!g.err && g.after && g.after.status === "" && g.after.log === "none" && g.files && g.files.stats && g.files.analysis && g.files.bpmn),
+    JSON.stringify({ after: g.after, files: g.files }));
+  if (g.err) await shot(page3, "fail-overview-auto-analysis.png");
+
+  // (g2) No analysis discards analyst work: a confirmed reference run, an
+  // edited, an added and a hidden step (made through the app's own write
+  // path) survive the analysis Leave apps out runs by itself.
+  const work = {};
+  try {
+    work.ids = await page3.evaluate(async () => {
+      const State = require("./state.js"), RM = require("./runs-model.js"), S = require("./session.js");
+      const sess = State.getSession();
+      const anno = S.ensureAnnoShape(sess.annotations);
+      const runs = RM.buildRuns(sess.stats, anno.steps).runs;
+      RM.confirmRun(anno, runs, runs[0].caseId, new Date().toISOString());
+      const edited = runs[1].visible[0];
+      edited.name = "E2E edited step";
+      edited.state = "edited";
+      const hidden = runs[3].visible[1];
+      hidden._prev_state = hidden.state;
+      hidden.state = "hidden";
+      const host = runs[2].visible[0];
+      const added = {
+        step_id: "e2e-added-step", session_id: sess.manifest.session_id, case_id: runs[2].caseId,
+        name: "E2E added step", description: "", state: "manually_authored",
+        time_range: { start: host.time_range.end, end: host.time_range.end },
+        evidence: { interaction_event_ids: [], screenshot_refs: [] }, flags: { waste: false },
+      };
+      anno.steps.push(added);
+      await S.persistAnnotations(anno, "e2e analyst work");
+      return { confirmed: runs[0].members.map((s) => s.step_id), edited: edited.step_id, hidden: hidden.step_id, added: added.step_id };
+    });
+    work.before = fs.statSync(RAW_STATS).mtimeMs;
+    await page3.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+    await page3.locator("#session-layout-steps .editor-toolbar #btn-ignored-apps").click({ timeout: T });
+    await page3.waitForSelector("#ia-save", { state: "visible", timeout: T });
+    work.dialog = await page3.evaluate(() => ({
+      title: ((document.getElementById("ia-save").closest(".modal").querySelector(".modal-header h2") || {}).textContent || "").trim(),
+      save: ((document.getElementById("ia-save") || {}).textContent || "").trim(),
+    }));
+    await page3.locator("#ia-save").click({ timeout: T });
+    work.statusSeen = await page3.waitForFunction(() => /^Updating steps and map\.\.\./.test(
+      ((document.getElementById("session-pills") || {}).textContent || "").trim()), null, { timeout: T }).then(() => true, () => false);
+    await page3.waitForFunction(() => /Steps and map updated/.test((document.getElementById("toast") || {}).textContent || ""),
+      null, { timeout: 180000 });
+    work.ran = fs.statSync(RAW_STATS).mtimeMs > work.before;
+    const disk = readRaw();
+    const byId = Object.fromEntries((disk.steps || []).map((s) => [s.step_id, s]));
+    work.after = {
+      confirmed: work.ids.confirmed.map((id) => (byId[id] || {}).state),
+      edited: [(byId[work.ids.edited] || {}).state, (byId[work.ids.edited] || {}).name],
+      added: [(byId[work.ids.added] || {}).state, (byId[work.ids.added] || {}).name],
+      hidden: (byId[work.ids.hidden] || {}).state,
+      patternConfirmed: !!(disk.pattern_run && disk.pattern_run.confirmed_at),
+    };
+  } catch (e) { logActionError("(g2) analyst work survives", e); work.err = String(e.message).split("\n")[0]; }
+  const wa = work.after || {};
+  record("(g2) Leave apps out (Steps toolbar) saves and the analysis runs by itself with the status line; confirmed, edited, added and hidden steps all survive it",
+    !!(!work.err && work.dialog && work.dialog.title === "Leave apps out" && work.dialog.save === "Save" && work.statusSeen && work.ran &&
+      wa.confirmed && wa.confirmed.length > 0 && wa.confirmed.every((st) => st === "confirmed") && wa.patternConfirmed &&
+      same(wa.edited, ["edited", "E2E edited step"]) && same(wa.added, ["manually_authored", "E2E added step"]) &&
+      wa.hidden === "hidden"),
+    JSON.stringify({ dialog: work.dialog, statusSeen: work.statusSeen, ran: work.ran, after: work.after, err: work.err }));
+
+  // (g3) The log only on failure, its failure sentence first: Re-analyze
+  // (Help, Troubleshooting) with events.jsonl moved away fails; with it back
+  // the next Re-analyze succeeds and the log goes. (g4) Cancel stops one.
+  const EVENTS = path.join(SESSION_RAW, "events.jsonl");
+  const reanalyze = async () => {
+    await page3.locator("#btn-help").click({ timeout: T });
+    await page3.locator('.help-nav-item[data-section="trouble"]').click({ timeout: T });
+    await page3.locator("#btn-help-reanalyze").click({ timeout: T });
+    await page3.locator(".modal-confirm .modal-ok").click({ timeout: T });
+  };
+  const fail = {};
+  try {
+    fs.renameSync(EVENTS, EVENTS + ".away");
+    await reanalyze();
+    await page3.waitForFunction(() => getComputedStyle(document.getElementById("log-host")).display !== "none", null, { timeout: 120000 });
+    fail.failed = await statusNow(page3);
+    fail.logFirst = await page3.evaluate(() => {
+      const host = document.getElementById("log-host");
+      return { first: host.firstElementChild && host.firstElementChild.tagName, open: host.open,
+        top: Math.round(host.getBoundingClientRect().top), text: (host.textContent || "").slice(0, 300) };
+    });
+    fs.renameSync(EVENTS + ".away", EVENTS);
+    await reanalyze();
+    await page3.waitForFunction(() => /Steps and map updated/.test((document.getElementById("toast") || {}).textContent || ""),
+      null, { timeout: 180000 });
+    fail.recovered = await statusNow(page3);
+    // (g4) Cancel.
+    await reanalyze();
+    await page3.waitForSelector("#btn-cancel-normalize", { state: "visible", timeout: T });
+    await page3.locator("#btn-cancel-normalize").click({ timeout: T });
+    await page3.waitForFunction(() => /Update cancelled/.test((document.getElementById("toast") || {}).textContent || ""),
+      null, { timeout: 60000 });
+    fail.cancelled = await statusNow(page3);
+  } catch (e) {
+    logActionError("(g3) the log on failure", e);
+    fail.err = String(e.message).split("\n")[0];
+    if (fs.existsSync(EVENTS + ".away")) fs.renameSync(EVENTS + ".away", EVENTS);
+  }
+  record("(g3) the analysis log shows only when an analysis fails, at the top, its failure sentence first; the next analysis that succeeds takes it away",
+    !!(!fail.err && fail.failed && fail.failed.log !== "none" && /^Analysis failed \(exit code \d+\): /.test(fail.failed.failure) &&
+      /events\.jsonl/.test(fail.failed.failure) && fail.failed.status === "" &&
+      fail.logFirst && fail.logFirst.first === "SUMMARY" && fail.logFirst.open &&
+      fail.recovered && fail.recovered.log === "none" && fail.recovered.status === ""),
+    JSON.stringify({ failed: fail.failed, logFirst: fail.logFirst, recovered: fail.recovered, err: fail.err }));
+  record("(g4) Cancel in the status line stops the analysis: the status line goes, no log (nothing failed)",
+    !!(!fail.err && fail.cancelled && fail.cancelled.status === "" && fail.cancelled.log === "none"),
+    JSON.stringify(fail.cancelled));
+
+  await close3();
+
+  // (f) Zero page errors across the launches.
   record("(f) zero PAGE ERRORs", pageErrors.length === 0,
     pageErrors.length ? pageErrors.length + " error(s): " + pageErrors.slice(0, 5).join(" | ") : "");
 
+  for (const dir of [SESSION_MARKED, SESSION_STRIPPED, SESSION_RAW]) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
+  }
   const pass = results.filter((r) => r.ok).length;
-  const fail = results.filter((r) => !r.ok).length;
-  console.log("\n[e2e] " + pass + "/" + results.length + " checks passed, " + fail + " failed");
-  if (fail) {
+  const failCount = results.filter((r) => !r.ok).length;
+  console.log("\n[e2e] " + pass + "/" + results.length + " checks passed, " + failCount + " failed");
+  if (failCount) {
     console.log("[e2e] FAILURES:");
     for (const r of results) if (!r.ok) console.log("   - " + r.name + ": " + (r.detail || ""));
   }
-  process.exit(fail ? 1 : 0);
+  process.exit(failCount ? 1 : 0);
 })().catch((e) => { console.error("[e2e] driver crash:", e && e.stack ? e.stack : e); process.exit(2); });

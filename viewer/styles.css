@@ -188,24 +188,14 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 /* ===== Layout ===== */
 .app { display: flex; flex-direction: column; height: 100%; }
 
-.topbar { display: grid; grid-template-columns: 1fr auto; align-items: center;
-  gap: 24px; padding: 8px 20px; background: var(--bg-2);
+/* The one bar (step-back review 4.2): Open, the four levels, the status
+   line, Export, Help and the theme, in one row; it wraps only when the window
+   is too narrow for it. */
+.topbar { display: flex; align-items: center; flex-wrap: wrap;
+  gap: 6px 12px; padding: 6px 16px; background: var(--bg-2);
   border-bottom: 1px solid var(--rule); box-shadow: var(--shadow); z-index: 5; }
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand .logo { width: 28px; height: 28px; border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-  position: relative; }
-.brand .logo::after { content: ""; position: absolute; inset: 5px;
-  border: 1.5px solid var(--bg); border-radius: 3px; }
-.brand .tagline { font-size: 10px; color: var(--fg-3); letter-spacing: 1.5px;
-  text-transform: uppercase; font-family: var(--font-mono); }
-/* Narrow / laptop widths: drop the decorative tagline so the header stays a
-   single row instead of wrapping (clutter pass). */
-@media (max-width: 1200px) {
-  .brand .tagline { display: none; }
-}
-.topbar-meta { justify-self: end; color: var(--fg-3); font-size: 11px;
-  font-family: var(--font-mono); display: flex; align-items: center; gap: 10px; }
+/* The levels, the status line and Export exist only with a recording open. */
+.app:not(.has-session) .session-only { display: none; }
 .help-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%;
   font-family: var(--font-mono); font-weight: 600; font-size: 13px;
   color: var(--accent); border-color: var(--accent); background: transparent; }
@@ -215,6 +205,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   color: var(--fg-2); border-color: var(--rule); background: transparent; }
 .theme-toggle:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .help-cta { color: var(--fg-3); font-size: 11px; margin-top: 16px; }
+.help-action { margin-top: 8px; }
 
 /* The app shell fills the window: <main> is a flex column and the
    active view flex-fills it, scrolling internally only when its own
@@ -263,13 +254,16 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .map-empty-inline { padding: 20px; text-align: center; color: var(--fg-3);
   font-size: 12px; font-style: italic; }
 
-/* ===== Actions bar ===== */
-.actions-bar { display: flex; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
-.actions-bar input[type=search] { min-width: 220px; max-width: 360px; flex: 0 1 auto; }
-.actions-bar input[type=search]::-webkit-search-cancel-button { filter: invert(0.5); }
-.session-pills { display: flex; gap: 6px; flex-wrap: wrap; }
-/* Demoted keyboard-shortcut hint: a quiet hover affordance, not a permanent
-   wall of single-key shortcuts that analysts won't use (clutter pass). */
+/* ===== The status line (top bar) ===== */
+/* While the analysis runs: one line with Cancel; else the call to action that
+   applies pending marker changes (flow-view.js renderSessionPills). */
+.session-pills { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.run-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px;
+  color: var(--fg-2); white-space: nowrap; }
+.run-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  animation: run-pulse 1.2s ease-in-out infinite; }
+@keyframes run-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.session-pills .run-cancel { font-size: 12px; }
 
 /* ===== Session view -- full-width timeline + lower video|annotations row ===== */
 /* flex:1 so the layout fills the viewport, but no min-height:0 -- that
@@ -318,7 +312,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   background-size: 48px 48px; }
 .nv-icon { font-size: 36px; color: var(--fg-4); }
 .nv-text { color: var(--fg-2); }
-.nv-hint { font-size: 11px; color: var(--fg-3); }
 .nv-link { color: var(--accent); }
 .video-pane video[src] ~ .no-video { display: none; }
 
@@ -357,6 +350,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 3px; color: #c0c4d0;
   cursor: pointer; display: flex; align-items: center; line-height: 0; }
 .video-controls button:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.video-controls button[hidden] { display: none; }
+/* Sync video..., a text button beside the two icon buttons. */
+.video-controls .vc-text-btn { line-height: 1.2; font-family: var(--font-ui); font-size: 11px; padding: 3px 8px; }
 
 /* Drag-resize handles */
 .resize-v { cursor: row-resize; height: 8px; width: 100%; flex-shrink: 0;
@@ -371,7 +367,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .resize-h:hover::after, .resize-h.dragging::after { background: var(--fg-4); }
 .timeline-header { display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 10px; gap: 12px; }
-.timeline-header strong { font-size: 12px; }
 .timeline-controls { display: flex; gap: 4px; }
 /* The Flow timeline sizes to fit its lane stack: `min-height` (not a fixed
    `height`) keeps the strip at least the drag-set --timeline-height while
@@ -526,7 +521,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .markers-list .marker-row.pending { box-shadow: inset 3px 0 0 var(--warn); }
 .markers-list .marker-row .pending-tag { color: var(--fg); font-weight: 600; text-decoration: none; }
 /* Item 6: the one call to action that applies pending marker changes (the
-   actions bar's #session-pills slot). */
+   top bar's status line, #session-pills). */
 .pending-cta {
   border: 1px solid var(--warn); color: var(--fg); font-weight: 600;
   background: color-mix(in srgb, var(--warn) 16%, transparent);
@@ -535,28 +530,23 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 
 .icon-btn.xs { width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 1; }
 
-.actions-bar input[type=date] { background: var(--bg-3); color: var(--fg);
-  border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: 5px 8px;
-  font-family: inherit; font-size: 11px; color-scheme: light; }
-.actions-bar .cb input[type=date] { margin-left: 6px; }
 
 /* ===== Event table ===== */
 /* Bottom collapsible panels keep their natural height (flex:0 0 auto)
    so the flex column never shrinks them or the layout above into an
    overlap -- the session view scrolls instead. */
-.event-table-host, .log-host { margin-top: 18px; flex: 0 0 auto; }
-.event-table-host > summary, .log-host > summary { cursor: pointer; padding: 8px 0;
+.event-table-host { margin-top: 18px; flex: 0 0 auto; }
+.event-table-host > summary { cursor: pointer; padding: 8px 0;
   color: var(--fg-3); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
   font-family: var(--font-mono); }
-.log-host > summary { display: flex; align-items: center; gap: 10px; }
-.log-host > summary .log-summary-text { flex: 1; }
-.log-host .log-cancel-btn {
-  background: transparent; color: var(--rec); border: 1px solid var(--rec);
-  padding: 2px 10px; font-size: 10px; font-family: var(--font-ui);
-  letter-spacing: 0.5px; text-transform: uppercase; border-radius: 3px;
-  cursor: pointer;
-}
-.log-host .log-cancel-btn:hover { background: var(--rec); color: #F2EAE5; }
+/* The analysis log shows only when an analysis failed: the failure sentence
+   is its summary line (first), the pipeline's lines under it. */
+.log-host { flex: 0 0 auto; margin: 0 0 12px; padding: 8px 14px;
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  border-left: 3px solid var(--bad); border-radius: 0 3px 3px 0; }
+.log-host > summary { cursor: pointer; font-size: 12px; line-height: 1.5; color: var(--fg);
+  overflow-wrap: anywhere; }
+.log-host > summary .log-summary-text { font-weight: 600; }
 .event-filter { display: flex; gap: 10px; padding: 10px 0; align-items: center; flex-wrap: wrap; }
 .event-filter input[type=text] { flex: 1; min-width: 180px; }
 .event-table-scroll { max-height: 60vh; overflow: auto; border: 1px solid var(--rule);
@@ -582,8 +572,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .event-table .ev-act:hover { background: var(--bg-4); color: var(--fg); border-color: var(--accent); }
 
 .log-host pre { background: var(--bg-3); padding: 12px; border-radius: var(--radius-sm);
-  font-family: var(--font-mono); font-size: 11px; max-height: 300px; overflow: auto;
-  border: 1px solid var(--rule); color: var(--fg-2); }
+  font-family: var(--font-mono); font-size: 11px; max-height: 240px; overflow: auto;
+  border: 1px solid var(--rule); color: var(--fg-2); margin: 8px 0 2px; white-space: pre-wrap; }
 
 /* ===== Panels + process map ===== */
 .panel { background: var(--bg-2); border-radius: var(--radius); padding: 14px 18px;
@@ -732,15 +722,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   .lower-workspace .resize-h { display: none; }
 }
 
-/* ===== View-mode bar (compact toolbar, not a hero block) ===== */
-.view-mode-bar {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 4px 10px; margin: 0 0 10px;
-  background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius-sm);
-}
+/* ===== The four levels, in the top bar ===== */
+.view-mode-bar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
 .view-mode-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px;
+  padding: 4px 11px;
   background: transparent; color: var(--fg-2);
   border: 1px solid transparent; border-radius: 4px;
   font-family: inherit; font-size: 12px; cursor: pointer; transition: all 0.12s;
@@ -836,6 +822,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .ov-next-mark { margin-right: 4px; }
 .ov-next > button { flex: 0 0 auto; }
 .ov-next-say { flex-basis: 100%; font-size: 13px; color: var(--fg); line-height: 1.5; }
+/* Every stage before the export done: one short line, the document leads. */
+.ov-next.ov-next-ready { padding: 6px 14px; }
+.ov-next-ready-text { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--fg-2); }
+/* Before the analysis: where it is, on one line under the top bar. */
+.analysis-empty.ov-waiting { padding: 24px 16px 12px; }
 /* The session summary: one line, plus warning lines only when needed. */
 .ov-summary { display: flex; flex-direction: column; gap: 6px; padding: 0 2px; }
 .ov-summary-line { font-size: 12px; color: var(--fg-2); line-height: 1.5; }
@@ -853,67 +844,20 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   margin-top: 6px; font-style: normal; color: var(--fg-2); }
 .ov-stage-detail { margin-top: 4px; font-size: 11px; color: var(--fg-3);
   font-family: var(--font-mono); overflow-wrap: anywhere; }
-/* R4 (Task 2): the Evidence section — the retired Analysis modules, below the
-   findings feed. The modules keep their own .analysis-module styling. */
-.ov-evidence-section #overview-evidence { display: flex; flex-direction: column; gap: 10px; }
+/* Observations: two items, each an .analysis-module inside the section. */
+.ov-observations { display: flex; flex-direction: column; gap: 8px; }
+.ov-observations .ov-section-title { margin-bottom: 2px; }
+.ov-obs-item { box-shadow: none; border: 1px solid var(--rule-soft); }
+.ov-retyped { margin: 0; padding-left: 18px; font-size: 13px; color: var(--fg); line-height: 1.6; }
+.ov-time { width: 100%; border-collapse: collapse; font-size: 12px; margin: 0 0 10px; }
+.ov-time:last-child { margin-bottom: 0; }
+.ov-time th { text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--fg-3); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); }
+.ov-time td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule-soft); color: var(--fg-2); white-space: nowrap; }
+.ov-time td.ov-time-name { color: var(--fg); white-space: normal; width: 60%; }
+.ov-time .num { text-align: right; font-family: var(--font-mono); font-size: 11px; }
 
-/* Findings feed. Grouped by detector (rule 3: methodology once per group). */
-.ov-finding-group { margin-top: 12px; }
-.ov-finding-group:first-of-type { margin-top: 0; }
-.ov-finding-group-head {
-  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  padding-bottom: 2px;
-}
-.ov-finding-group-title {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
-  text-transform: uppercase; color: var(--fg-3);
-}
-.ov-finding-method-btn {
-  margin-left: auto; font: inherit; font-size: 11px; color: var(--fg-3);
-  background: none; border: none; cursor: pointer; padding: 0;
-}
-.ov-finding-method-btn:hover { color: var(--fg); text-decoration: underline; }
-.ov-finding-method {
-  flex-basis: 100%; font-size: 11px; color: var(--fg-3); font-style: italic;
-  line-height: 1.45; margin-top: 4px;
-}
-.ov-finding {
-  border-top: 1px solid var(--rule-soft); padding: 8px 2px;
-}
-.ov-finding-group .ov-finding:first-of-type { border-top: none; }
-.ov-finding-head { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
-.ov-finding-claim { flex: 1; font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.45; }
-.ov-finding-expand {
-  flex: 0 0 auto; font: inherit; font-size: 12px; color: var(--fg-3);
-  background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1;
-}
-.ov-finding-expand:hover { color: var(--accent); }
-.ov-finding-memo { margin: 4px 0 0; }
-.ov-finding-body { margin-top: 2px; }
-.ov-finding-evidence {
-  font-size: 11px; color: var(--fg-2); font-family: var(--font-mono);
-  margin: 4px 0 0;
-}
-.ov-finding-refs { font-size: 11px; color: var(--fg-2); margin: 3px 0 0; }
-/* Item 5: screenshot evidence as a chip that opens the image (never a raw path). */
-.ov-finding-shot {
-  display: inline-flex; align-items: center; gap: 4px;
-  font: inherit; font-size: 11px; color: var(--fg-2); cursor: pointer;
-  background: var(--bg-3); border: 1px solid var(--rule);
-  border-radius: var(--radius-sm); padding: 2px 8px;
-}
-.ov-finding-shot:hover { border-color: var(--accent); color: var(--fg); }
-.ov-shot-star { color: var(--warn); }
-.ov-finding-note { font-size: 11px; color: var(--fg-3); font-style: italic; margin: 3px 0 0; line-height: 1.45; }
-.ov-finding-actions {
-  display: flex; align-items: center; gap: 14px; margin: 6px 0 0;
-}
-.ov-memo-check {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; color: var(--fg-2); cursor: pointer;
-}
-.ov-memo-check input { margin: 0; }
-/* Document sections (contract C6): the Evidence modules' disclosure
+/* The document (contract C6): the Observations' disclosure
    (.analysis-module) around a grid of the PDD's document fields. */
 .ov-doc-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 16px; }
 .ov-doc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -922,12 +866,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .ov-doc-input { width: 100%; box-sizing: border-box; font-family: var(--font-ui); font-size: 13px; }
 textarea.ov-doc-input { min-height: 64px; }
 
-/* ===== Analysis view (Cluster N / ADR-0008) ===== */
-.session-layout-analysis {
-  display: flex; flex-direction: column;
-  flex: 1; min-height: 0; overflow-y: auto;
-}
-#analysis-content { display: flex; flex-direction: column; gap: 14px; }
+/* ===== Analysis states and modules (the Overview) ===== */
 .analysis-empty {
   color: var(--fg-3); font-size: 13px; padding: 32px; text-align: center;
 }
@@ -964,114 +903,6 @@ details.analysis-module { padding: 0; }
 .analysis-module[open] .analysis-module-chevron::before { content: "▾"; }
 .analysis-module-body { padding: 12px 14px; }
 .analysis-module[open] .analysis-module-body { padding-top: 12px; }
-/* R1: the judgment editor relocated from the removed "Waste by step/screen"
-   resident module into a "Where the time goes" row's expand-in-place body
-   (.ts-judge-body) -- this chrome is reused there, unchanged. */
-.waste-legend {
-  display: flex; gap: 14px; margin-bottom: 8px;
-  font-size: 11px; color: var(--fg-3);
-}
-.waste-legend .swatch {
-  display: inline-block; width: 10px; height: 10px;
-  border-radius: 2px; margin-right: 4px; vertical-align: middle;
-}
-.waste-row { display: flex; align-items: center; gap: 10px; }
-.waste-name {
-  flex: 0 0 180px; font-size: 12px; color: var(--fg);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.waste-bar {
-  flex: 1; display: flex; height: 14px;
-  background: var(--bg-4); border-radius: 2px; overflow: hidden;
-}
-.waste-seg { height: 100%; }
-/* Item 2: the unjudged placeholder — a neutral measured-time chip, not a
-   green (value-add) bar, so nothing reads as a measured "all value-add". */
-.waste-bar-unjudged {
-  height: auto; background: none; overflow: visible;
-  font-size: 11px; color: var(--fg-3); font-family: var(--font-mono);
-  display: flex; align-items: center;
-}
-.waste-tags { flex: 0 0 auto; display: flex; gap: 4px; }
-.waste-tag {
-  font-size: 10px; color: var(--fg-2); background: var(--bg-3);
-  border: 1px solid var(--rule); border-radius: 2px; padding: 1px 5px;
-}
-.seg-va { background: var(--va); }
-.seg-bnva { background: var(--bnva); }
-.seg-nva { background: var(--nva); }
-/* §B1 "Where the time goes" — the instance strip: one row per step group,
-   one clickable dot per observed instance on a shared duration axis. */
-.ts-axis {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 10px; color: var(--fg-3); font-family: var(--font-mono);
-  margin: 6px 0 4px;
-}
-.ts-axis-lbl {
-  font-family: var(--font-ui); text-transform: uppercase;
-  letter-spacing: 0.3px; color: var(--fg-4); font-size: 9px;
-}
-.ts-axis-line { flex: 1; border-top: 1px dashed var(--rule); }
-.ts-rows { display: flex; flex-direction: column; }
-.ts-row { padding: 4px 0; border-bottom: 1px solid var(--rule-soft); }
-.ts-row-line {
-  display: grid;
-  grid-template-columns: minmax(140px, 220px) 40px 76px minmax(80px, 1fr) minmax(0, 260px) 16px;
-  gap: 10px; align-items: center;
-}
-.ts-name {
-  font-size: 12px; color: var(--fg);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.ts-n { font-size: 11px; color: var(--fg-3); text-align: right; }
-.ts-total {
-  font-family: var(--font-mono); font-size: 11px; color: var(--fg-2);
-  text-align: right;
-}
-.ts-strip { position: relative; height: 16px; min-width: 120px; }
-.ts-strip::before {
-  content: ""; position: absolute; left: 0; right: 0; top: 50%;
-  border-top: 1px solid var(--rule-soft);
-}
-.ts-dot {
-  position: absolute; top: 50%; width: 9px; height: 9px;
-  margin: -4.5px 0 0 -4.5px; border-radius: 50%;
-  background: var(--accent); opacity: 0.55;
-  border: none; padding: 0; cursor: pointer;
-}
-.ts-dot:hover, .ts-dot:focus-visible {
-  opacity: 1; outline: none; box-shadow: 0 0 0 2px var(--accent-muted);
-}
-.ts-dot[disabled] { cursor: default; background: var(--fg-4); }
-.ts-stats {
-  font-family: var(--font-mono); font-size: 10px;
-  color: var(--fg-3); padding: 2px 0 0;
-}
-/* Item 2 (relocated): the inline judgment summary on a "Where the time goes"
-   row line, and the expand-in-place trigger that opens the judgment editor
-   (the SAME editor that used to live in the resident "Waste by step" module). */
-.ts-judgment {
-  font-size: 11px; color: var(--fg-3); text-align: right;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.ts-judge-expand {
-  flex: 0 0 auto; background: none; border: none; cursor: pointer;
-  color: var(--fg-3); font-size: 12px; line-height: 1; padding: 2px;
-}
-.ts-judge-expand:hover { color: var(--accent); }
-.ts-judge-body { padding: 8px 0 4px; }
-/* Analyst-correction affordances (ANALYSIS-LAYER-FOLLOWUPS.md). */
-.waste-row-editable {
-  cursor: pointer; padding: 2px 4px; margin: 0 -4px;
-  border-radius: var(--radius-sm);
-}
-.waste-row-editable:hover { background: var(--bg-3); }
-.waste-edit { flex: 0 0 auto; font-size: 10px; color: var(--fg-4); }
-.waste-row-editable:hover .waste-edit { color: var(--accent); }
-/* Automation-candidate finding cards (R1 §5): reuses .ov-finding chrome
-   (finding-cards.js), longest total time first. */
-.auto-cards { display: flex; flex-direction: column; gap: 2px; }
-
 /* Multi-line prompt modal (project notes) */
 .modal-textarea {
   width: 100%; min-height: 140px; resize: vertical;
@@ -1101,10 +932,14 @@ details.analysis-module { padding: 0; }
 .editor-split > .editor-list-pane,
 .editor-split > .editor-detail-pane { min-height: 0; max-height: 100%; overflow-y: auto; }
 @media (max-width: 1100px) {
-  .editor-split { grid-template-columns: 1fr; }
+  /* One column: the list over the selected step, each pinned to half the
+     height (B1's rule for both rows). With the detail row left at its content
+     height, selecting a row grew it and shrank the list under the pointer, so
+     the second click of a double-click (rename) landed on the detail pane. */
+  .editor-split { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
 }
-/* The run select in the view-mode bar, shown on Flow only: it dims the
-   other runs on the Flow timeline. */
+/* The run select in the Timeline's header: it dims the other runs on the
+   timeline. */
 .case-scope {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--fg-3);
@@ -1709,7 +1544,7 @@ button.danger:disabled {
   border: 1px solid var(--bg);
 }
 
-/* ===== Dropdown menus (Recent, More, Export) ======================== */
+/* ===== Dropdown menus (Open, Export) =============================== */
 .project-menu { position: relative; display: inline-block; }
 .project-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1735,9 +1570,6 @@ button.danger:disabled {
 .project-menu-item:hover { background: var(--bg-3); color: var(--fg); }
 .project-menu-item:disabled { opacity: 0.4; cursor: default; }
 .project-menu-item:disabled:hover { background: transparent; color: var(--fg-2); }
-/* The "More" menu sits at the LEFT of the session actions bar, so open it
-   rightward -- the shared popup anchors to the right, which suits Export. */
-#session-more-popup { right: auto; left: 0; }
 /* A setting (checkbox) living among the menu's action items. */
 .project-menu-item.cb { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .project-menu-item.cb input { margin: 0; }
@@ -1747,6 +1579,7 @@ button.danger:disabled {
 
 /* Recent dropdown (top-bar) -- sessions + projects reachable any time */
 .recent-menu-section { max-height: 380px; overflow-y: auto; }
+#recent-menu-popup { right: auto; left: 0; }
 .recent-menu-heading {
   font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
   color: var(--fg-4); font-family: var(--font-mono);

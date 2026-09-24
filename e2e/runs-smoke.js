@@ -21,8 +21,9 @@
  *     on a step the list does not show (RP-12);
  *   - Confirm run: the states, the Confirmed status and the probe line, which
  *     Copy puts on the clipboard;
- *   - Analyze (its confirm dialog answered and the run awaited, never assumed):
- *     the confirmed and edited steps survive with their names, and re-drafted
+ *   - Re-analyze (Help, Troubleshooting: the one analysis by hand, AD-22; its
+ *     confirm dialog answered and the run awaited, never assumed): the
+ *     confirmed and edited steps survive with their names, and re-drafted
  *     steps carry the remembered names (the viewer passed --names);
  *   - item 8: a Start marker inserted from an activity band's menu lands at the
  *     clicked moment, and the Markers list shows local times.
@@ -37,8 +38,8 @@
  *   - Reopen run and its Ctrl+Z; Save as this process (the profile's
  *     processes.json) and the toast's Undo;
  *   - a drafted step is hidden, never deleted (no Delete for it, the bulk
- *     button hides), and the hidden drafts survive Analyze;
- *   - the Remembered names dialog (opened from the More menu): its order,
+ *     button hides), and the hidden drafts survive the analysis;
+ *   - the Saved names dialog (opened from the Steps toolbar): its order,
  *     Rename and Forget;
  *   - a SECOND temp copy of the demo, SEEDED with an extra step and a skipped
  *     step in run 4, opened in the same viewer: it is compared with the saved
@@ -753,22 +754,24 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     if (!ok) await shot(page, "fail-runs-hide-not-delete.png");
   }
 
-  // ---- 9. Analyze: the confirm dialog answered, the run awaited --------------
+  // ---- 9. Re-analyze (Help, Troubleshooting): the confirm dialog answered, the run awaited
   {
     const before = readJson(STATS).meta.normalization_run_at;
     let err = null, dialogGone = false;
     try {
-      await page.locator("#btn-normalize").click({ timeout: T });
+      await page.locator("#btn-help").click({ timeout: T });
+      await page.locator('.help-nav-item[data-section="trouble"]').click({ timeout: T });
+      await page.locator("#btn-help-reanalyze").click({ timeout: T });
       await page.waitForSelector(".modal-confirm", { state: "visible", timeout: T });
       await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
       await page.waitForSelector(".modal-confirm", { state: "detached", timeout: T });
       dialogGone = true;
-      await page.waitForFunction(() => /Analysis complete/.test((document.getElementById("toast") || {}).textContent || ""),
+      await page.waitForFunction(() => /Steps and map updated/.test((document.getElementById("toast") || {}).textContent || ""),
         null, { timeout: 180000 });
     } catch (e) { err = errText(e); }
     const after = await waitDisk(STATS, (s) => s.meta && s.meta.normalization_run_at !== before, 5000);
     const ran = !!(after && after.meta && after.meta.normalization_run_at !== before);
-    record("Analyze: its confirm dialog is answered and closes, and the session is really re-analyzed (stats.json rewritten)",
+    record("Re-analyze (Help, Troubleshooting): its confirm dialog is answered and closes, and the recording is really analyzed again (stats.json rewritten)",
       !err && dialogGone && ran, JSON.stringify({ err, dialogGone, before, after: after && after.meta && after.meta.normalization_run_at }));
     if (!ran) await shot(page, "fail-runs-analyze.png");
 
@@ -787,7 +790,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const g1 = await group(R1);
     const ok1 = JSON.stringify(names1) === JSON.stringify(want1) && g1 && g1.status === "Confirmed" && g1.probe === PROBE &&
       disk.pattern_run && disk.pattern_run.confirmed_at;
-    record("after Analyze: run 1's confirmed and edited steps survived with their names; it still reads Confirmed with the same probe line",
+    record("after Re-analyze: run 1's confirmed and edited steps survived with their names; it still reads Confirmed with the same probe line",
       ok1, JSON.stringify({ names1, status: g1 && g1.status, probe: g1 && g1.probe }));
 
     const re = (r, key) => stepsOf(disk, r).find((s) => s.draft_key === key) || {};
@@ -796,11 +799,11 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const ok2 = redrafted.every((s) => s.state === "auto_suggested" && s.name_source === "remembered") &&
       redrafted.slice(0, 3).every((s) => s.name === NAME_SEARCH) && redrafted.slice(3).every((s) => s.name === NAME_EXCEL) &&
       summary.remembered >= 5;
-    record("after Analyze: re-drafted steps in runs 2 to 4 carry the remembered names with name_source remembered (the viewer passed --names)",
+    record("after Re-analyze: re-drafted steps in runs 2 to 4 carry the remembered names with name_source remembered (the viewer passed --names)",
       ok2, JSON.stringify({ redrafted: redrafted.map((s) => [s.state, s.name, s.name_source]), draft_summary_name_source: summary }));
 
     const np = re(R2, KEY_NOTEPAD);
-    record("after Analyze: the rename saved while the store was broken survived (edited, its name)",
+    record("after Re-analyze: the rename saved while the store was broken survived (edited, its name)",
       np.state === "edited" && np.name === NAME_NOTEPAD, JSON.stringify([np.state, np.name]));
     if (!(ok1 && ok2)) await shot(page, "fail-runs-after-analyze.png");
 
@@ -810,17 +813,17 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const sameKey = (k) => r4.filter((s) => s.draft_key === k).map((s) => s.state);
     const okHidden = hiddenIds.length === 3 && hiddenIds.every((id) => (r4.find((s) => s.step_id === id) || {}).state === "hidden") &&
       [KEY_OUTLOOK, KEY_OPEN, KEY_SAVE_ORDER].every((k) => JSON.stringify(sameKey(k)) === '["hidden"]');
-    record("after Analyze (L12b item 5): the 3 hidden drafts of run 4 are still hidden and none of them was drafted again",
+    record("after Re-analyze (L12b item 5): the 3 hidden drafts of run 4 are still hidden and none of them was drafted again",
       okHidden, JSON.stringify({ outlook: sameKey(KEY_OUTLOOK), open: sameKey(KEY_OPEN), saveOrder: sameKey(KEY_SAVE_ORDER) }));
 
     // The carried merges (edited) survived too, and their drafts were not drafted again.
     const carriedAfter = RUNS.map((r) => stepsOf(disk, r).filter(isCarried).length).join();
     const redraftedPair = disk.steps.filter((s) => s.draft_key === KEY_CHECK || s.draft_key === KEY_CREATE).length;
-    record("after Analyze (L12b item 2): the carried merges of runs 2 to 4 survived and their drafts were not drafted again",
+    record("after Re-analyze (L12b item 2): the carried merges of runs 2 to 4 survived and their drafts were not drafted again",
       carriedAfter === "1,2,1,1" && redraftedPair === 0, JSON.stringify({ carriedAfter, redraftedPair }));
   }
 
-  // ---- 9b. L12b item 8: the Remembered names dialog --------------------------
+  // ---- 9b. L12b item 8: the Saved names dialog (Steps toolbar) --------------
   {
     const OTHER_KEY = "excel|Excel - Other book.xlsx|Button:save-workbook";
     const RENAMED = "Update the tracker";
@@ -833,8 +836,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       const store = readJson(STORE);
       store.names[OTHER_KEY] = { name: "Save the other book", updated_at: "2026-09-01T10:00:00.000Z" };
       fs.writeFileSync(STORE, JSON.stringify(store, null, 2));
-      await page.locator("#btn-session-more-menu").click({ timeout: T });
-      await page.locator("#btn-remembered-names").click({ timeout: T });
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+      await page.locator("#session-layout-steps .editor-toolbar #btn-remembered-names").click({ timeout: T });
       await page.waitForSelector("#remembered-names-dialog .rn-row", { timeout: T });
       rowsBefore = await dialogRows();
       // Rename: the store and this session's drafts with that key.
@@ -857,7 +860,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const excelOf = (a, r) => stepsOf(a || { steps: [] }, r).find((s) => s.draft_key === KEY_EXCEL) || {};
     const okOrder = !err && JSON.stringify((rowsBefore || []).map((r) => [r.name, r.where])) === JSON.stringify([
       [NAME_SEARCH, "4 steps in this session"], [NAME_EXCEL, "4 steps in this session"], ["Save the other book", "Not in this session"]]);
-    record("L12b item 8: the Remembered names dialog lists the names whose key is in this session first, then the others",
+    record("L12b item 8: the Saved names dialog lists the names whose key is in this session first, then the others",
       okOrder, JSON.stringify({ err, rows: rowsBefore }));
     const okRename = !err && storeRename && storeRename.names[KEY_EXCEL].name === RENAMED &&
       [R3, R4].every((r) => excelOf(afterRename, r).state === "auto_suggested" && excelOf(afterRename, r).name === RENAMED &&

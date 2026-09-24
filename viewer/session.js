@@ -96,8 +96,10 @@ async function writeAnnotations(sessionFolder, annotations, what) {
   }
   if (!r || r.ok !== true) {
     const reason = (r && r.error) || "no reason was given";
+    // While the steps and the map are updated (ANALYSIS_RUNNING) the page is
+    // reloaded when the update ends, so the change does not stay on screen.
     const msg = "Your change" + (what ? " (" + what + ")" : "") + " was not saved: " + reason +
-      (r && r.code === "ANNOTATIONS_UNREADABLE"
+      (r && (r.code === "ANNOTATIONS_UNREADABLE" || r.code === "ANALYSIS_RUNNING")
         ? ""
         : " The change is still on screen; it is saved with your next change once the problem is fixed.");
     console.error("[session] annotations.json not saved:", reason);

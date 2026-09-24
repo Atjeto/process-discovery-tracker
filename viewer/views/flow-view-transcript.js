@@ -1,18 +1,22 @@
 /*
- * flow-view-transcript.js: the meeting transcript on the Flow level and in
- * the session's More menu (contract C8, plan section 7). Nothing here reads
- * meaning into the text; transcript-model.js holds the time rule and every
- * computation.
+ * flow-view-transcript.js: the meeting transcript on the Timeline level and
+ * on the Overview's recording line (contract C8, plan section 7). Nothing
+ * here reads meaning into the text; transcript-model.js holds the time rule
+ * and every computation.
  *   1. The Transcript lane (a plugin flow-view-timeline.js stacks), present
  *      only while a transcript is attached. Synced: one row of sentence
  *      blocks at their wall times (hover: time, speaker, text; click: seek).
- *      Not synced: the label says so. The label carries Sync in both states.
+ *      Not synced: the label says so. The label carries Sync, Replace and
+ *      Remove in both states.
  *   2. Sync, the H4 video re-sync pattern (a non-blocking card, Cancel,
  *      Escape cancels): step 1 picks a sentence from a searchable list, step
  *      2 is a click on the timeline where it was said. The offset goes to
  *      transcript.json; running Sync again is the correction.
- *   3. The More menu: Attach transcript (Replace once one is attached) and
- *      Remove transcript, its inverse.
+ *   3. Attach transcript (#btn-attach-transcript, Replace once one is
+ *      attached) and Remove transcript (#btn-remove-transcript), its inverse,
+ *      on the Overview's recording line (overview-view.js renders them), and
+ *      Replace and Remove on the lane label. The clicks are delegated, so the
+ *      buttons may be rendered again at any time.
  * Cross-surface glue (loadSessionIntoView, renderTimeline) is injected by
  * flow-view.js through initTranscript(), so this module never requires it.
  */
@@ -33,12 +37,6 @@ let renderTimeline = () => {};
 const LABEL_ROW_H = 20;
 const BLOCK_H = 10;
 const LANE_H_SYNCED = LABEL_ROW_H + BLOCK_H + 4;
-
-/* The session carries a transcript file (usable or not): the menu then
-   offers Replace and Remove. Every other surface needs a usable one. */
-function _hasFile(sess) {
-  return !!(sess && (sess.transcript || sess.transcriptError));
-}
 
 function _sentenceTitle(s) {
   return TM.formatClock(s.startS) + (s.speaker ? " · " + s.speaker : "") + "\n" + s.text;
@@ -94,9 +92,13 @@ function transcriptLane(env) {
       label.innerHTML = '<span class="tl-tr-name">Transcript</span>' +
         (placed.synced ? "" : '<span class="tl-tr-state">Not synced</span>') +
         '<button type="button" class="link-btn tl-tr-sync" title="Place the transcript on the recording: ' +
-        'pick a sentence, then click the moment on the timeline where it was said.">Sync...</button>';
+        'pick a sentence, then click the moment on the timeline where it was said.">Sync...</button>' +
+        '<button type="button" class="link-btn tl-tr-replace" title="' + escapeAttr(TM.REPLACE_TITLE) + '">Replace...</button>' +
+        '<button type="button" class="link-btn tl-tr-remove" title="' + escapeAttr(TM.REMOVE_TITLE) + '">Remove</button>';
       label.addEventListener("click", (e) => e.stopPropagation());
       label.querySelector(".tl-tr-sync").addEventListener("click", startTranscriptSync);
+      label.querySelector(".tl-tr-replace").addEventListener("click", attachTranscript);
+      label.querySelector(".tl-tr-remove").addEventListener("click", removeTranscript);
       host.appendChild(label);
       _placeLabel();
     },
@@ -236,23 +238,13 @@ async function _applySync(sess, offsetMs) {
   renderTimeline();
 }
 
-/* ---- The More menu --------------------------------------------------------- */
+/* ---- Attach, Replace, Remove ------------------------------------------------ */
 
-/* The More menu follows the file; the Lanes menu lists the lane only while a
-   usable transcript is attached. */
+/* The Lanes menu lists the lane only while a usable transcript is attached.
+   (The recording line follows the file itself: overview-view.js.) */
 function renderTranscriptMenu() {
   const sess = State.getSession();
-  const has = _hasFile(sess);
-  const attach = document.getElementById("btn-attach-transcript");
-  const remove = document.getElementById("btn-remove-transcript");
   const laneRow = document.getElementById("lane-transcript-row");
-  if (attach) {
-    attach.textContent = has ? "Replace transcript..." : "Attach transcript...";
-    attach.title = has
-      ? "Replace the transcript with another Teams file (.vtt or .docx). Sync the new one again unless a video is attached."
-      : "Attach the meeting transcript Teams saved (.vtt or .docx). Its sentences show on the timeline, next to each step and beside the document sections.";
-  }
-  if (remove) remove.hidden = !has;
   if (laneRow) laneRow.hidden = !(sess && sess.transcript);
 }
 
@@ -299,7 +291,7 @@ function onSessionLoaded() {
   const err = sess && sess.transcriptError;
   const key = err ? sess.sessionFolder + "\n" + err : null;
   if (key && key !== _errorShown) {
-    toast("The transcript could not be read: " + err + ". Replace it from the More menu.", "error");
+    toast("The transcript could not be read: " + err + ". Replace it on the Overview's recording line.", "error");
   }
   _errorShown = key;
 }
@@ -310,9 +302,14 @@ function initTranscript(deps) {
   renderTimeline = (deps && deps.renderTimeline) || (() => {});
 }
 
-// Self-wire the require()-time listeners (the DOM is parsed by then).
-if ($("#btn-attach-transcript")) $("#btn-attach-transcript").addEventListener("click", attachTranscript);
-if ($("#btn-remove-transcript")) $("#btn-remove-transcript").addEventListener("click", removeTranscript);
+// Self-wire the require()-time listeners (the DOM is parsed by then). Attach
+// and Remove are delegated by id: the recording line renders them again.
+document.addEventListener("click", (e) => {
+  const t = e.target && e.target.closest ? e.target : null;
+  if (!t) return;
+  if (t.closest("#btn-attach-transcript")) attachTranscript();
+  else if (t.closest("#btn-remove-transcript")) removeTranscript();
+});
 if (document.getElementById("timeline-scroll")) {
   document.getElementById("timeline-scroll").addEventListener("scroll", _placeLabel);
 }

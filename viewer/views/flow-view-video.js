@@ -182,9 +182,10 @@ function _watchStepGuard() {
 /* H4: interactive video re-sync. The analyst clicks a recognizable
    moment in the video, then the matching point on the timeline; the
    wall-clock gap becomes the external-video offset (annotations.json
-   external_video.offset_ms, the same field the Attach video flow
-   writes). The instruction card is non-blocking so the video and
-   timeline stay clickable underneath it. */
+   external_video.offset_ms). The instruction card is non-blocking so the
+   video and timeline stay clickable underneath it. Attach video runs the
+   same two clicks on the file just chosen (attachVideo below): nothing is
+   saved until the second click, and Cancel leaves the recording as it was. */
 let _videoSync = null;
 function _videoSyncCard(text, primaryLabel, primaryFn) {
   let card = document.getElementById("video-sync-card");
@@ -207,6 +208,7 @@ function _videoSyncCard(text, primaryLabel, primaryFn) {
   card.querySelector(".vs-cancel").addEventListener("click", cancelVideoSync);
 }
 function cancelVideoSync() {
+  const pending = _videoSync && _videoSync.pendingPath;
   if (_videoSync) {
     const tl = document.getElementById("timeline");
     if (tl) {
@@ -218,11 +220,62 @@ function cancelVideoSync() {
   _videoSync = null;
   const card = document.getElementById("video-sync-card");
   if (card) card.remove();
+  // An attach that did not finish: the player goes back to what the recording has.
+  if (pending) _showVideo(null);
 }
-function startVideoSync() {
+
+/* The video pane on the Timeline shows `file` (an attach in progress), or,
+   with null, the recording's own video or the slim no-video band, as
+   flow-view's session load leaves it. */
+function _showVideo(file) {
   const session = State.getSession();
   const video = $("#video");
-  if (!session || !session.recordingAvailable || !video || !video.src) {
+  if (!video) return;
+  const src = file || (session && session.recordingAvailable ? session.recordingPath : null);
+  const shown = !!src;
+  if (src) video.src = "file:///" + String(src).replace(/\\/g, "/");
+  else { video.removeAttribute("src"); video.load(); }
+  video.style.display = shown ? "" : "none";
+  const noVid = $("#no-video"), overlay = $("#video-overlay");
+  if (noVid) noVid.style.display = shown ? "none" : "";
+  if (overlay) overlay.style.display = shown ? "" : "none";
+  for (const id of ["lower-workspace", "video-pane"]) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("no-recording", !shown);
+  }
+}
+
+/* Attach video (item 5): choose the file, then place it the way Sync video
+   does, with two clicks: pause the video at a moment you recognize and Mark
+   frame, then click the same moment on the timeline. Nothing is written
+   until the second click; Cancel (or Escape) leaves the recording as it was.
+   Opens the Timeline, where the video and the timeline are. */
+async function attachVideo() {
+  const session = State.getSession();
+  if (!session) return;
+  if (!session.manifest || !session.manifest.started_at) {
+    toast("This recording has no start time, so a video cannot be placed on it.", "error");
+    return;
+  }
+  const r = await Ipc.attachExternalVideo({ sessionFolder: session.sessionFolder });
+  if (!r || !r.path || State.getSession() !== session) return;
+  const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
+  if (flowBtn) flowBtn.click();
+  cancelVideoSync();
+  // One sync at a time: a transcript sync in progress ends (lazy require, the
+  // transcript module requires this one).
+  require("./flow-view-transcript.js").cancelTranscriptSync();
+  _showVideo(r.path);
+  startVideoSync({ pendingPath: r.path });
+}
+
+/* opts.pendingPath: the video an attach in progress placed in the player; it
+   is saved with the offset the two clicks give. */
+function startVideoSync(opts) {
+  const session = State.getSession();
+  const video = $("#video");
+  const pendingPath = (opts && typeof opts.pendingPath === "string") ? opts.pendingPath : null;
+  if (!session || (!pendingPath && !session.recordingAvailable) || !video || !video.src) {
     toast("No video is linked to this session.", "error");
     return;
   }
@@ -230,7 +283,7 @@ function startVideoSync() {
     toast("Session has no start time: cannot compute a video offset.", "error");
     return;
   }
-  cancelVideoSync();
+  if (!pendingPath) cancelVideoSync();
   const onKey = (e) => {
     if (e.key === "Escape") { e.preventDefault(); cancelVideoSync(); }
   };
@@ -264,29 +317,34 @@ function startVideoSync() {
     // wall-clock at video t=0, so: offset = clicked wall-clock - the
     // video time at that moment - session start.
     const offsetMs = Math.round(eventMs - startedAt - (_videoSync.videoTime || 0) * 1000);
-    applyVideoSync(offsetMs);
+    applyVideoSync(offsetMs, _videoSync.pendingPath);
   }
-  _videoSync = { videoTime: null, step: 1, onTimelineClick, onKey };
+  _videoSync = { videoTime: null, step: 1, onTimelineClick, onKey, pendingPath };
   const tl = document.getElementById("timeline");
   if (tl) tl.addEventListener("click", onTimelineClick, true);
   document.addEventListener("keydown", onKey, true);
   _videoSyncCard("Step 1 of 2: pause the video at a recognizable moment, then click Mark frame.",
     "Mark frame", markFrame);
 }
-async function applyVideoSync(offsetMs) {
+/* Save the offset (and, for an attach, the video's path), then reload. */
+async function applyVideoSync(offsetMs, pendingPath) {
   const session = State.getSession();
+  // The sync is over: forget the attach before cancelVideoSync would restore the player.
+  if (_videoSync) _videoSync.pendingPath = null;
   cancelVideoSync();
   if (!session) return;
   const r = await Ipc.saveExternalVideoSync({
     sessionFolder: session.sessionFolder,
-    videoPath: session.recordingPath,
+    videoPath: pendingPath || session.recordingPath,
     offsetMs,
   });
   if (!r || !r.ok) {
-    toast("Could not save the video sync: " + ((r && r.error) || "unknown"), "error");
+    toast((pendingPath ? "The video was not attached: " : "Could not save the video sync: ") +
+      ((r && r.error) || "no reason was given"), "error");
+    if (pendingPath) _showVideo(null);
     return;
   }
-  toast("Video re-synced: reloading session", "success");
+  toast(pendingPath ? "Video attached and synced." : "Video synced.", "success");
   await loadSessionIntoView(session.sessionFolder);
 }
 /* Wall-clock ms at a clicked x on the Flow timeline. #timeline spans the
@@ -322,5 +380,5 @@ module.exports = {
   setVideoOverlay, positionPlayhead,
   videoStartTs, formatPlayback, videoTimeToSessionTs,
   seekToTimestamp, movePlayheadToTimestamp, jumpToStepInFlow,
-  watchStep, startVideoSync, cancelVideoSync,
+  watchStep, startVideoSync, cancelVideoSync, attachVideo,
 };

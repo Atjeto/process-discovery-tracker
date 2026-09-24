@@ -320,7 +320,13 @@ async function renderPddMaps() {
   return out;
 }
 async function renderEntryToPng(sessionFolder, entry) {
-  const xml = RefStore.readBpmn(sessionFolder, entry);
+  return renderBpmnToPng(RefStore.readBpmn(sessionFolder, entry));
+}
+/* A BPMN diagram drawn by an off-screen bpmn-js and saved as a PNG data URL,
+   or null. The one renderer of the PDD's map images: the As-Is and To-Be
+   copies above, and (AD-28) the map from the runs, process_map_step.bpmn,
+   when no As-Is copy exists (renderer.js exportArtifact). */
+async function renderBpmnToPng(xml) {
   if (!xml) return null;
   const svg = await xmlToSvg(xml);
   if (!svg) return null;
@@ -406,4 +412,9 @@ function initRefmapUI(deps) {
   });
 }
 
-module.exports = { initRefmapUI, refresh, renderPddMaps, showGallery: _showGallery };
+module.exports = {
+  initRefmapUI, refresh, renderPddMaps, showGallery: _showGallery,
+  // The PDD export's map from the runs (renderer.js): the same renderer, and
+  // the rule for when process_map_step.bpmn is older than the steps.
+  renderBpmnToPng, needsAnalyze: _needsAnalyze,
+};
