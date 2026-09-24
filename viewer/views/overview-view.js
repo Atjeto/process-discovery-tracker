@@ -28,11 +28,12 @@
 "use strict";
 
 const State = require("../state.js");
-const { escapeHtml, escapeAttr, toast, placeMenu } = require("../dom.js");
+const { escapeHtml, escapeAttr, toast, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
 const TM = require("../transcript-model.js");
 const { persistAnnotations } = require("../session.js");
 const { observationsHtml, wireObservations } = require("./analysis-view.js");
 const RunsModel = require("../runs-model.js");
+const RunDiff = require("../run-differences.js");
 const SessionSummary = require("../session-summary.js");
 const { pushRecent } = require("../recent.js");
 
@@ -168,31 +169,39 @@ const PATH_STAGES = [
 ];
 
 /* The analyst path's state, derived from the session data alone (pure: the
-   runs as the Steps level builds them, the reference run record, the
-   document fields). Each stage is done or not on its own; the next act is the
-   first stage that is not done. Exporting leaves no record in the session, so
-   the export stage is never shown done: it is the last act.
+   runs as the Steps level builds them, the reference run record, the runs
+   opened, the document fields). Each stage is done or not on its own; the
+   next act is the first stage that is not done. Exporting leaves no record in
+   the session, so the export stage is never shown done: it is the last act.
      runs:     at least one run is marked.
      pattern:  the reference run is confirmed (pattern_run.confirmed_at).
-     review:   no other run still has drafted steps (each is confirmed).
+     review:   every other run has been opened in Steps, where its
+               differences show (annotations.opened_runs; AD-28: the other
+               runs are not confirmed).
      document: every document field that fills a PDD placeholder is written.
-   `ready`: every stage before the export is done (the line shrinks). */
+   `ready`: every stage before the export is done (the line shrinks).
+   `nextOther` is the first other run not opened yet, `differing` how many of
+   the other runs differ from the reference run. */
 function pathState(sess) {
   const anno = (sess && sess.annotations) || {};
   const runs = RunsModel.buildRuns(sess && sess.stats, anno.steps || []).runs;
   const pattern = RunsModel.patternRun(anno, runs);
   const patternId = pattern.run ? pattern.run.caseId : null;
-  const draftOther = runs.find((r) => r.caseId !== patternId && r.status === "draft") || null;
+  const opened = new Set(Array.isArray(anno.opened_runs) ? anno.opened_runs : []);
+  const others = runs.filter((r) => r.caseId !== patternId);
+  const nextOther = others.find((r) => !opened.has(r.caseId)) || null;
+  const differing = pattern.run
+    ? others.filter((r) => RunDiff.differences(pattern.run.visible, r.visible).length > 0).length : 0;
   const doc = documentStatus(anno.document);
   const done = {
     runs: runs.length > 0,
     pattern: !!(pattern.run && pattern.record && pattern.record.confirmed_at),
-    review: runs.length > 0 && !draftOther,
+    review: runs.length > 0 && !nextOther,
     document: doc.filled === doc.total,
     export: false,
   };
   const next = PATH_STAGES.find((st) => !done[st.key]).key;
-  return { done, next, ready: next === "export", runs, pattern: pattern.run, draftOther, doc };
+  return { done, next, ready: next === "export", runs, pattern: pattern.run, nextOther, differing, doc };
 }
 
 /* The one button for the next act: its text and, where the text alone does
@@ -205,8 +214,11 @@ function _nextAct(state) {
       return { button: state.pattern ? "Confirm " + state.pattern.title + " in Steps" : "Open the runs in Steps",
         title: "Check the reference run's drafted steps, fix their boundaries and names, then click Confirm run." };
     case "review":
-      return { button: "Review " + state.draftOther.title + " in Steps",
-        title: "Check how this run differs from the reference run, then click Confirm run." };
+      return { button: "Review " + state.nextOther.title + " in Steps",
+        title: "Open the run to see how it differs from the reference run. The other runs are not confirmed.",
+        say: state.differing
+          ? _plural(state.differing, "run differs", "runs differ") + " from the reference run."
+          : "No other run differs from the reference run." };
     case "document":
       return { button: "Write the document",
         title: "Purpose, scope, trigger, result, contacts, rules, exceptions and the improvement and automation scope: the PDD prints them in place of its placeholders." };
@@ -269,7 +281,7 @@ function _goNext(act) {
   const state = pathState(sess);
   if (act === "runs") { openMarkersInFlow(); return; }
   if (act === "pattern") { _openRunInSteps(state.pattern); return; }
-  if (act === "review") { _openRunInSteps(state.draftOther); return; }
+  if (act === "review") { _openRunInSteps(state.nextOther); return; }
   if (act === "document") { _openDocument(); return; }
   _exportPdd();
 }
@@ -340,8 +352,10 @@ function _summaryLine(sess, state) {
 function _summaryWarnings(sess) {
   const out = [];
   const problems = SessionSummary.detectMarkerProblems((sess && sess.events) || []);
+  const origin = recordingStartMs(sess);
   for (const p of problems) {
-    const time = (p.timestamp || "").slice(11, 19);
+    // The one clock: the time since the recording started, as the Timeline shows it.
+    const time = sinceStart(p.timestamp, origin);
     const label = p.label ? '"' + escapeHtml(p.label) + '"' : "(unlabeled)";
     let text = "", fix = "";
     if (p.kind === "dangling_start") {
@@ -453,12 +467,13 @@ function _transcriptView(sess) {
       list = TM.outsideRuns(list, TM.runSpans(runs, endMs));
     }
   }
-  return { synced: placed.synced, speakers, list: TM.filterSentences(list, _tr.speaker, _tr.query) };
+  return { synced: placed.synced, speakers, list: TM.filterSentences(list, _tr.speaker, _tr.query),
+    originMs: recordingStartMs(sess) };
 }
 
 function _transcriptListHtml(view) {
   if (!view.list.length) return '<p class="tr-note">No sentence matches.</p>';
-  return '<ol class="tr-list">' + view.list.map((s) => '<li class="tr-row">' + TM.sentenceRowHtml(s) +
+  return '<ol class="tr-list">' + view.list.map((s) => '<li class="tr-row">' + TM.sentenceRowHtml(s, view.originMs) +
     '<button type="button" class="tr-add tr-add-to" data-seg="' + escapeAttr(s.id) + '" ' +
     'title="Add this sentence to a document field">Add to</button></li>').join("") + "</ol>";
 }

@@ -40,6 +40,9 @@ const { processLabel } = require("./process-map-levels.js");
 
 const PATTERN_REFERENCE = "the pattern run";
 const SAVED_REFERENCE = "the saved process";
+/* The Steps level's word for the run the others are compared with (the
+   glossary's); the shared golden and the PDD still print PATTERN_REFERENCE. */
+const REFERENCE_RUN = "the reference run";
 
 /* A list of draft keys: a non-empty array of non-empty strings, else null. */
 function _keyList(v) {
@@ -263,7 +266,7 @@ function processStepsFrom(steps) {
 }
 
 module.exports = {
-  PATTERN_REFERENCE, SAVED_REFERENCE, MATCH_MIN,
+  PATTERN_REFERENCE, SAVED_REFERENCE, REFERENCE_RUN, MATCH_MIN,
   stepKeys, mergeKey, alignKey, stepName, collapseToReference, firstOccurrences, commonOrder, differences,
   draftKeySet, jaccard, matchSavedProcess, processStepsFrom,
 };

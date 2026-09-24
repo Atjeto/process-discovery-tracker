@@ -4,9 +4,9 @@
   const PdtRecognize = require("./recognition.js");
   const { stepChip } = require("./runs-model.js");
   const TM = require("./transcript-model.js");
-  // Shared escapers and the local clock (step and screenshot times show the
-  // Flow timeline's local time, never a UTC slice of the ISO string).
-  const { escapeHtml, escapeAttr, localClock: localTime } = require("./dom.js");
+  const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
+  // A step's time on screen ("42s", "2:17", "1h04"), the fact line's too.
+  const { duration: stepDuration } = require("./step-facts.js");
   // One composed human identity line per element (App Library pass, R1). Reused
   // here for the step-detail interaction rows so a control with no accessible
   // name reads as `<ControlType> · "<best identity>" · <window>` with the
@@ -14,44 +14,13 @@
   // window title. The matcher stays ground truth; this is presentation only.
   const { identityLine } = require("./identity-line.js");
 
-  /* Compact duration for a step's time range -- "42s", "2:17", "1h04". */
-  function stepDuration(tr) {
-    if (!tr || !tr.start || !tr.end) return "";
-    const ms = new Date(tr.end).getTime() - new Date(tr.start).getTime();
-    if (!isFinite(ms) || ms < 0) return "";
-    const secs = Math.round(ms / 1000);
-    if (secs < 60) return secs + "s";
-    const mins = Math.floor(secs / 60);
-    if (mins < 60) return mins + ":" + String(secs % 60).padStart(2, "0");
-    return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
-  }
-
-  /* Why the recorder drafted this step, short: how many interactions it
-     groups, on which screen, and where it ends ("4 interactions on
-     Salesforce - Account lookup, ended at Search"). Read from the pipeline's
-     draft reason (step_suggest._draft_reason), so the words are the ones the
-     drafting used. Only while the step is still that draft: a split or a merge
-     drops end_reason (runs-model.dropDraftIdentity), and then the reason no
-     longer describes the step. "" when there is nothing to say. */
-  function draftWhy(step) {
-    const reason = step && typeof step.suggestion_reason === "string" ? step.suggestion_reason.trim() : "";
-    if (!reason || !step.end_reason) return "";
-    const m = /^Drafted from (\d+) interactions? on (.+?); ended (.+?)\.?$/.exec(reason);
-    if (!m) return reason;   // a reason worded otherwise is shown as written
-    const n = Number(m[1]);
-    const what = n + " interaction" + (n === 1 ? "" : "s") + (m[2] === "(screen)" ? "" : " on " + m[2]);
-    const tail = m[3];
-    const commit = /^at the commit "(.+)"$/.exec(tail);
-    if (commit) return what + ", ended at " + commit[1];
-    if (tail === "because the next interaction was on another screen") return what + ", ended where the screen changed";
-    if (tail === "at the end of the run") return what + ", ended with the run";
-    if (tail === "at the last interaction outside a run") return what + ", outside the runs";
-    return what + ", ended " + tail;
-  }
+  /* True while the step pane is being drawn again: a field removed from the
+     page then must not save what it held (a blur during the redraw). */
+  let _rendering = false;
 
   /* What each step chip means, on hover. */
   const CHIP_TITLES = {
-    draft: "Draft: the recorder drafted this step and it has not been checked yet. Confirm run accepts it as it is.",
+    draft: "Draft: the recorder drafted this step and it has not been checked yet. On the reference run, Confirm run accepts it as it is.",
     confirmed: "Confirmed: you accepted the drafted step as it is.",
     edited: "Edited: you changed this step (its name, its boundaries or its flags).",
     added: "Added: you added this step by hand.",
@@ -60,9 +29,9 @@
 
   /* The step rows of one run (steps-view.js renders the runs around them).
      A row: the multi-select tick (shown on hover or once ticked), the name
-     (double-click to rename, with the shared name suggestions), a
-     remembered-name tag on a draft that took a name given before, the waste
-     badge, the state chip and the duration. P1.9: a row carries a chip only
+     (double-click to rename, with the shared name suggestions), the waste
+     tag, the state chip and the duration (the run says in one line which
+     names came from saved names). P1.9: a row carries a chip only
      where it differs from its run: `opts.baseline` is the chip class the run's
      status stands for ("draft" or "confirmed"), and a row whose chip is that
      class shows none (the run's own status says it). Without a baseline (the
@@ -87,24 +56,13 @@
       row.className = "step-row" +
         (isSel ? " selected" : "") +
         (isMulti ? " multi-selected" : "") +
-        (s.state === "hidden" ? " step-hidden" : "") +
-        (s.flags && s.flags.waste ? " step-flag-waste" : "");
+        (s.state === "hidden" ? " step-hidden" : "");
       row.dataset.stepId = s.step_id;
       row.dataset.state = s.state || "";
-      // A3: analyst flag badges -- marking a step now visibly shows in the list.
-      const _f = s.flags || {};
-      // Only the value-add judgment is a genuine PER-STEP property. Exception
-      // path / automation candidate / conditional were retired (ADR-0027): they
-      // describe a PATH or a multi-step SEGMENT, not a single step — exceptions
-      // come from the observed variants, automation candidacy from coherent
-      // segments (ADR-0016), conditionality from the map's branch frequency.
-      const flagBadges =
-        (_f.waste ? '<span class="step-flag flag-waste" title="Waste: should not be needed">W</span>' : "");
-      // RP-11: a draft that took a name the analyst gave before says where its
-      // name came from, so it is not mistaken for a name given here.
-      const remembered = (s.name_source === "remembered" && (s.state === "auto_suggested" || s.state === "confirmed"))
-        ? '<span class="step-remembered" title="Named from a name you gave before">remembered</span>'
-        : "";
+      // Waste is the only per-step flag (ADR-0027): a small tag, never a
+      // strikethrough (which read as removed).
+      const flagBadges = (s.flags && s.flags.waste)
+        ? '<span class="step-tag-waste" title="Flagged as waste: this step should not be needed">Waste</span>' : "";
       const chip = stepChip(s.state);
       const chipHtml = (o.baseline && chip.cls === o.baseline) ? ""
         : `<span class="step-chip step-chip-${escapeAttr(chip.cls)}" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>`;
@@ -117,7 +75,7 @@
       row.innerHTML = `
         <span class="multi-check" title="Click to select for merge or to hide several steps at once"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${remembered}${flagBadges}${chipHtml}
+        ${flagBadges}${chipHtml}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
       `;
       row.addEventListener("click", (e) => {
@@ -201,23 +159,36 @@
     input.addEventListener("blur", () => commit("stay"));
   }
 
-  /* The selected step's editor (P1.7): what the analyst edits and what the
-     PDD prints, resident; the rest one click away.
-       resident: one fact line (duration, application, and the screen, or
-         for a draft why it was drafted: draftWhy), the name, the
-         Description (the note the PDD prints under the step once it is
-         edited, C7) with "Said during this step" under it while a transcript
-         is attached, the Waste flag, Save and Hide, and the step's
-         screenshots (P2.16: the review medium when there is no video);
+  /* The fields typed in the step, as a compact list: [{ field, value }]. */
+  function stepFieldsHtml(fields) {
+    if (!Array.isArray(fields) || !fields.length) return "";
+    return `<div class="step-fields"><span class="step-fields-title">Fields typed</span><dl>` +
+      fields.map((f) => `<dt title="${escapeAttr(f.field)}">${escapeHtml(f.field)}</dt><dd title="${escapeAttr(f.value)}">${escapeHtml(f.value)}</dd>`).join("") +
+      `</dl></div>`;
+  }
+
+  /* The selected step's editor (P1.7; companion critique, section 3): what
+     the analyst edits and what the PDD prints, resident; the rest one click
+     away. Nothing waits for a Save button: the name saves on Enter or when
+     the field is left, the description when it is left, Waste on its click;
+     each is one undoable edit.
+       resident: one fact line (the system, the screen, the time, where a
+         draft ends, where the step is in the recording), the name, the
+         fields typed, the Description (the text the PDD prints under the
+         step, C7; the drafting's own narration is its hint, not its text)
+         with "Said during this step" under it while a transcript is
+         attached, Waste, Watch (with a video: it plays the step in the step
+         panel) and Hide, and the step's screenshots;
        "More" (a native <details>, collapsed on every selection): the
-         interactions the step is made of, Jump to in Flow, Watch (with a
-         video), Split, Merge with next, Merge selected, Delete (added steps
-         only).
-     The disclosure mirrors .analysis-module: native <details>, the marker
-     suppressed via list-style:none + ::-webkit-details-marker, one CSS
-     chevron. Callbacks (steps-view.js stepDetailCallbacks) carry the verbs,
-     the fact values and the step's screenshots. */
+         interactions the step is made of, Show on timeline, Split, Merge with
+         next, Merge selected, Delete (added steps only).
+     Callbacks (steps-view.js stepDetailCallbacks) carry the verbs, the fact
+     line, the fields, the description and its hint, and the screenshots. */
   function renderStepDetail(host, step, callbacks) {
+    _rendering = true;
+    try { _renderStepDetail(host, step, callbacks || {}); } finally { _rendering = false; }
+  }
+  function _renderStepDetail(host, step, callbacks) {
     const flags = step.flags || {};
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
@@ -226,7 +197,7 @@
     const splitAfterIndex = (callbacks && Number.isInteger(callbacks.splitAfterIndex))
       ? callbacks.splitAfterIndex : null;
     const interListHtml = renderInteractionList(resolvedInter, interIds.length,
-      { splittable: true, splitAfterIndex });
+      { splittable: true, splitAfterIndex, originMs: callbacks.originMs });
     const _hasSplitPoint = splitAfterIndex !== null;
     const splitBtnLabel = _hasSplitPoint ? "Split here" : "Split";
     const splitBtnTitle = _hasSplitPoint
@@ -240,35 +211,33 @@
     const mergeSelectedBtn = mergeSelCount >= 2
       ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
       : "";
-    // One fact line: the duration, the application by its readable name, and
-    // the screen (steps-view.js resolves both; a missing one is left out). A
-    // step that is still a draft says why instead of the bare screen: what it
-    // groups on that screen and where it ends (draftWhy).
-    const why = draftWhy(step);
-    const fact = [stepDuration(step.time_range), (callbacks && callbacks.appName) || "",
-      why || (callbacks && callbacks.screenName) || ""].filter(Boolean).join(" · ");
+    const fact = callbacks.factLine || "";
     // C4: the name input suggests remembered and already-used names.
-    const nameList = (callbacks && callbacks.nameListId) ? ` list="${escapeAttr(callbacks.nameListId)}"` : "";
+    const nameList = callbacks.nameListId ? ` list="${escapeAttr(callbacks.nameListId)}"` : "";
     const isHidden = step.state === "hidden";
     // Item 5 (L12b): a drafted step is hidden, never deleted (the next Analyze
     // would draft it again; a hidden one stays out). Only a step the analyst
     // added has Delete.
     const isAdded = step.state === "manually_authored";
-    const watchBtn = (callbacks && callbacks.recordingAvailable)
-      ? `<button id="btn-step-watch" title="Play the recording across this step's time range">▶ Watch</button>` : "";
+    // The analyst's description; a draft's narration is only its hint.
+    const desc = typeof callbacks.description === "string" ? callbacks.description : (step.description || "");
+    const hint = callbacks.descriptionHint || "The text the PDD prints under this step";
+    const watchBtn = callbacks.recordingAvailable
+      ? `<button id="btn-step-watch" title="Play this step in the video of the step panel">▶ Watch</button>` : "";
     host.innerHTML = `
-      ${fact ? `<p class="step-fact"${why ? ` title="Why the recorder drafted this step: the interactions it groups on one screen, and where it ends"` : ""}>${escapeHtml(fact)}</p>` : ""}
-      <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"${nameList}></label>
-      <label>Description <textarea id="step-desc" placeholder="The note the PDD prints under this step">${escapeHtml(step.description || "")}</textarea></label>
-      ${saidDuringStepHtml(callbacks && callbacks.transcriptSaid, step.description || "")}
+      ${fact ? `<p class="step-fact">${escapeHtml(fact)}</p>` : ""}
+      <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"${nameList} title="Saved when you press Enter or leave the field"></label>
+      ${stepFieldsHtml(callbacks.fields)}
+      <label>Description <textarea id="step-desc" placeholder="${escapeAttr(hint)}" title="Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
+      ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
       <div class="flags">
         <label title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
       <div class="actions">
-        <button id="btn-step-save" class="primary">Save</button>
+        ${watchBtn}
         <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its run lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
       </div>
-      ${stepShotsHtml(callbacks && callbacks.screenshots)}
+      ${stepShotsHtml(callbacks.screenshots)}
       <details class="step-detail-more">
         <summary class="step-detail-more-head">
           <span class="step-detail-more-title">More</span>
@@ -278,7 +247,6 @@
           <div class="evidence">${interListHtml}</div>
           <div class="actions">
             <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
-            ${watchBtn}
             <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
             <button id="btn-step-merge" title="Merge this step with the next step of its run (the inverse of Split)">Merge with next</button>
             ${mergeSelectedBtn}
@@ -286,21 +254,34 @@
           </div>
         </div>
       </details>`;
-    document.getElementById("btn-step-save").addEventListener("click", () => {
-      if (!callbacks.onSave) return;
-      const descEl = document.getElementById("step-desc");
-      callbacks.onSave({
-        ...step,
-        name: document.getElementById("step-name").value.trim(),
-        description: descEl ? descEl.value.trim() : (step.description || ""),
-        flags: {
-          ...flags,
-          waste: document.getElementById("flag-waste").checked,
-        },
-        state: step.state === "manually_authored" ? "manually_authored" : "edited",
-      });
+    // The name saves on Enter or when the field is left; Escape puts it back.
+    const nameEl = document.getElementById("step-name");
+    const commitName = () => {
+      if (_rendering || !nameEl.isConnected) return;
+      const v = nameEl.value.trim();
+      if (!v) { nameEl.value = step.name || ""; return; }
+      if (v !== String(step.name || "").trim() && callbacks.onRename) callbacks.onRename(step.step_id, v);
+    };
+    nameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commitName(); }
+      else if (e.key === "Escape") { e.preventDefault(); nameEl.value = step.name || ""; }
     });
-    wireSaidDuringStep(host, callbacks && callbacks.transcriptSaid);
+    nameEl.addEventListener("blur", commitName);
+    // The description saves when the field is left, and when a sentence of
+    // the transcript is added to it.
+    const descEl = document.getElementById("step-desc");
+    let shownDesc = desc.trim();
+    const commitDesc = () => {
+      if (_rendering || !descEl.isConnected) return;
+      const v = descEl.value.trim();
+      if (v === shownDesc || !callbacks.onDescription) return;
+      shownDesc = v;
+      callbacks.onDescription(step.step_id, v);
+    };
+    descEl.addEventListener("blur", commitDesc);
+    document.getElementById("flag-waste").addEventListener("change", () =>
+      callbacks.onToggleWaste && callbacks.onToggleWaste(step.step_id));
+    wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
     host.querySelectorAll(".step-shot[data-ref]").forEach((b) => {
       b.addEventListener("click", () => callbacks.onOpenScreenshot && callbacks.onOpenScreenshot(b.dataset.ref));
     });
@@ -352,12 +333,12 @@
 
   /* C8: "Said during this step", under the Description, only while a
      transcript is attached. `said` is null (no transcript), { synced: false }
-     or { synced: true, sentences } (the sentences of the step's window,
-     transcript-model.sentencesForStep). Add puts a sentence's text in the
-     Description box; the editor's own Save keeps it, like typed text. */
+     or { synced: true, sentences, originMs } (the sentences of the step's
+     window, transcript-model.sentencesForStep, timed from the recording's
+     start). Add puts a sentence's text in the Description box and saves it. */
   function _addTitle(added) {
     return added ? "The description already holds this sentence"
-      : "Add this sentence to the description. Edit it there, then click Save.";
+      : "Add this sentence to the description. You can edit it there.";
   }
   function saidDuringStepHtml(said, description) {
     if (!said) return "";
@@ -367,7 +348,7 @@
     else {
       body = `<ol class="tr-list">` + said.sentences.map((s) => {
         const added = TM.isAdded(description, s.text);
-        return `<li class="tr-row">${TM.sentenceRowHtml(s)}` +
+        return `<li class="tr-row">${TM.sentenceRowHtml(s, said.originMs)}` +
           `<button type="button" class="tr-add" data-seg="${escapeAttr(s.id)}" title="${escapeAttr(_addTitle(added))}"${added ? " disabled" : ""}>${added ? "Added" : "Add"}</button></li>`;
       }).join("") + `</ol>`;
     }
@@ -376,7 +357,7 @@
       `<span class="tr-more-chevron" aria-hidden="true"></span></summary>` +
       `<div class="tr-more-body">${body}</div></details>`;
   }
-  function wireSaidDuringStep(host, said) {
+  function wireSaidDuringStep(host, said, save) {
     const desc = document.getElementById("step-desc");
     if (!said || !said.synced || !desc) return;
     const byId = new Map(said.sentences.map((s) => [s.id, s]));
@@ -393,6 +374,7 @@
       if (!s) return;
       desc.value = TM.appendText(desc.value, s.text);
       refresh();
+      if (save) save();
     }));
     desc.addEventListener("input", refresh);
   }
@@ -506,7 +488,7 @@
     const splittable = !!opts.splittable && events.length >= 2;
     const splitAfter = Number.isInteger(opts.splitAfterIndex) ? opts.splitAfterIndex : null;
     const rows = events.map((ev, i) => {
-      const t = localTime(ev.timestamp);
+      const t = sinceStart(ev.timestamp, opts.originMs);
       const isBoundary = splittable && splitAfter === i;
       const splitBtn = (splittable && i < events.length - 1)
         ? `<button type="button" class="si-split-btn${isBoundary ? " active" : ""}" data-after="${i}" tabindex="-1" title="Split the step here, after this interaction">&#9988;</button>`
@@ -533,6 +515,6 @@
 
   module.exports = {
     renderStepList, renderStepDetail,
-    describeInteraction, renderInteractionList, siKindClass, draftWhy,
+    describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml,
   };
 })();

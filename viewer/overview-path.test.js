@@ -52,6 +52,11 @@ function confirmRun(sess, caseId) {
   for (const s of sess.annotations.steps) if (s.case_id === caseId) s.state = "confirmed";
 }
 
+/* AD-28: the other runs are reviewed by opening them in Steps. */
+function openRuns(sess, ...caseIds) {
+  sess.annotations.opened_runs = (sess.annotations.opened_runs || []).concat(caseIds);
+}
+
 const FULL_DOC = { title: "Order intake", purpose: "Why", scope: "What", trigger: "An order e-mail",
   result: "A sales order", contacts: "Who", business_rules: "Rules", exceptions: "Exceptions",
   improvement: "Automate the lookup", notes: "" };
@@ -83,33 +88,50 @@ test("a pattern run is done only when it is confirmed (confirmed_at), not merely
   const st = pathState(sess);
   assert.equal(st.done.pattern, true);
   assert.equal(st.next, "review");
-  assert.equal(st.draftOther.caseId, "c2", "the first other run still drafted");
+  assert.equal(st.nextOther.caseId, "c2", "the first other run not opened yet");
 });
 
-test("the other runs are reviewed once none of them has drafted steps left", () => {
+test("AD-28: the other runs are reviewed once each has been opened; confirming them is not asked, and drafts stay drafts", () => {
   const sess = session({});
   confirmRun(sess, "c1");
   sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
   confirmRun(sess, "c2");
-  assert.equal(pathState(sess).draftOther.caseId, "c3");
-  sess.annotations.steps.find((s) => s.case_id === "c3").state = "edited";   // edited counts as reviewed
+  assert.equal(pathState(sess).nextOther.caseId, "c2", "a confirmed run that was never opened is not reviewed");
+  openRuns(sess, "c2");
+  assert.equal(pathState(sess).nextOther.caseId, "c3");
+  assert.equal(pathState(sess).done.review, false);
+  openRuns(sess, "c3");
   const st = pathState(sess);
-  assert.equal(st.done.review, true);
+  assert.equal(st.done.review, true, "c3 is still all drafts, and reviewed");
+  assert.equal(st.nextOther, null);
   assert.equal(st.next, "document");
 });
 
-test("the pattern run follows 'Use as pattern': run 1 is then one of the other runs", () => {
+test("the line says how many other runs differ from the reference run", () => {
+  const sess = session({});
+  sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
+  const st = pathState(sess);
+  assert.equal(st.differing, 2, "runs 2 and 3 have other steps than run 1");
+  const html = overviewHtml(sess);
+  assert.ok(html.includes(">Review Run 2 in Steps</button>"));
+  assert.ok(html.includes('<div class="ov-next-say">2 runs differ from the reference run.</div>'));
+  assert.ok(!/click Confirm run/.test(html.slice(0, html.indexOf("</div>"))), "the review act asks for no Confirm");
+});
+
+test("the reference run follows 'Use as reference run': run 1 is then one of the other runs", () => {
   const sess = session({});
   confirmRun(sess, "c2");
   sess.annotations.pattern_run = { case_id: "c2", confirmed_at: "2026-05-17T11:00:00Z" };
+  openRuns(sess, "c2");
   const st = pathState(sess);
   assert.equal(st.done.pattern, true);
-  assert.equal(st.draftOther.caseId, "c1");
+  assert.equal(st.nextOther.caseId, "c1", "opening the reference run itself counts for nothing");
 });
 
 test("the document stage is done when every field that fills a PDD placeholder is written, trigger, result and improvement included", () => {
   const sess = session({});
-  for (const c of ["c1", "c2", "c3"]) confirmRun(sess, c);
+  confirmRun(sess, "c1");
+  openRuns(sess, "c2", "c3");
   sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
   sess.annotations.document = Object.assign({}, FULL_DOC, { exceptions: "   " });
   assert.equal(pathState(sess).next, "document", "a blank field is not written");
@@ -129,7 +151,8 @@ test("AD-28: the stages are Runs, Reference run, Other runs, Document and PDD; a
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-ov-path-"));
   try {
     const sess = session({ sessionFolder: dir });
-    for (const c of ["c1", "c2", "c3"]) confirmRun(sess, c);
+    confirmRun(sess, "c1");
+    openRuns(sess, "c2", "c3");
     sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
     sess.annotations.document = Object.assign({}, FULL_DOC);
     const before = pathState(sess);
@@ -178,7 +201,8 @@ test("the Overview leads with the what-is-left line and its one button", () => {
 
 test("once every stage before the export is done, the line shrinks to one short line with Export PDD, and the document opens", () => {
   const sess = session({});
-  for (const c of ["c1", "c2", "c3"]) confirmRun(sess, c);
+  confirmRun(sess, "c1");
+  openRuns(sess, "c2", "c3");
   sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
   sess.annotations.document = Object.assign({}, FULL_DOC);
   const html = overviewHtml(sess);

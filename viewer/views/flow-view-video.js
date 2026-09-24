@@ -3,10 +3,11 @@
  *
  * Extracted from flow-view.js (god-file split). Owns the "video start
  * timestamp" derivation, video<->session-time conversion, the playhead,
- * seeking (and the no-video playhead fallback), watch-a-step playback, and
- * the interactive video re-sync flow. Wires its own #video timeupdate guard
- * and the #btn-sync-video button at require() time (the DOM is parsed when
- * renderer.js pulls flow-view.js in, which require()s this).
+ * seeking (and the no-video playhead fallback), attaching a video (a re-link
+ * keeps the stored sync) and the interactive video re-sync flow. Wires the
+ * #btn-sync-video button at require() time (the DOM is parsed when
+ * renderer.js pulls flow-view.js in, which require()s this). Watching a step
+ * is the step panel's (views/step-panel.js).
  *
  * Cross-surface glue (loadSessionIntoView, called after a re-sync) is
  * injected via initVideo() so this module never require()s flow-view.js back.
@@ -136,48 +137,8 @@ function videoTimeToSessionTs(seconds) {
   return new Date(new Date(obsStartTs).getTime() + seconds * 1000).toISOString();
 }
 
-/* H5: play the recording across a step's time range. Seeks to the step
-   start and plays; a timeupdate guard pauses once the step end is hit
-   so the analyst sees exactly the step and no more. */
-let _watchStepStopAt = null;
-function watchStep(step) {
-  if (!step || !step.time_range || !step.time_range.start) return;
-  const session = State.getSession();
-  const video = $("#video");
-  if (!session || !session.recordingAvailable || !video || !video.src) {
-    toast("No video is linked to this session.", "error");
-    return;
-  }
-  const startTs = videoStartTs();
-  if (!startTs) {
-    toast("Cannot line the video up with the timeline: no video start time.", "error");
-    return;
-  }
-  // Make sure the video is on screen.
-  const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
-  if (flowBtn) flowBtn.click();
-  const base = new Date(startTs).getTime();
-  const startS = (new Date(step.time_range.start).getTime() - base) / 1000;
-  if (!isFinite(startS) || startS < 0) {
-    toast("This step starts before the recording does.", "error");
-    return;
-  }
-  const endS = step.time_range.end
-    ? (new Date(step.time_range.end).getTime() - base) / 1000
-    : null;
-  _watchStepStopAt = (endS != null && endS > startS) ? endS : null;
-  video.currentTime = startS;
-  video.play().catch(() => {});
-}
-/* timeupdate guard for watchStep -- pauses once the step end is hit. */
-function _watchStepGuard() {
-  if (_watchStepStopAt == null) return;
-  const video = $("#video");
-  if (video && video.currentTime >= _watchStepStopAt) {
-    video.pause();
-    _watchStepStopAt = null;
-  }
-}
+/* (Watch a step plays it in the step panel's own video now, beside the steps:
+   views/step-panel.js, V2 item 4.) */
 
 /* H4: interactive video re-sync. The analyst clicks a recognizable
    moment in the video, then the matching point on the timeline; the
@@ -259,6 +220,16 @@ async function attachVideo() {
   }
   const r = await Ipc.attachExternalVideo({ sessionFolder: session.sessionFolder });
   if (!r || !r.path || State.getSession() !== session) return;
+  // A re-link (V2 item 5): the video this recording was synced with is not
+  // found (a moved or received folder); the file chosen takes its place with
+  // the stored sync, which Sync video can still change.
+  const stored = session.annotations && session.annotations.external_video;
+  const storedOffset = stored && stored.path && stored.offset_ms != null && isFinite(Number(stored.offset_ms))
+    ? Number(stored.offset_ms) : null;
+  if (!session.recordingAvailable && storedOffset !== null) {
+    await applyVideoSync(storedOffset, r.path, true);
+    return;
+  }
   const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
   if (flowBtn) flowBtn.click();
   cancelVideoSync();
@@ -326,13 +297,17 @@ function startVideoSync(opts) {
   _videoSyncCard("Step 1 of 2: pause the video at a recognizable moment, then click Mark frame.",
     "Mark frame", markFrame);
 }
-/* Save the offset (and, for an attach, the video's path), then reload. */
-async function applyVideoSync(offsetMs, pendingPath) {
+/* Save the offset (and, for an attach, the video's path), then reload. The
+   main process copies a video from outside the folder into its video/
+   folder first (V2 item 5), which takes a moment for a long video.
+   `relink`: the stored sync was kept for a video found again. */
+async function applyVideoSync(offsetMs, pendingPath, relink) {
   const session = State.getSession();
   // The sync is over: forget the attach before cancelVideoSync would restore the player.
   if (_videoSync) _videoSync.pendingPath = null;
   cancelVideoSync();
   if (!session) return;
+  if (pendingPath) toast("Attaching the video...", "info");
   const r = await Ipc.saveExternalVideoSync({
     sessionFolder: session.sessionFolder,
     videoPath: pendingPath || session.recordingPath,
@@ -344,7 +319,13 @@ async function applyVideoSync(offsetMs, pendingPath) {
     if (pendingPath) _showVideo(null);
     return;
   }
-  toast(pendingPath ? "Video attached and synced." : "Video synced.", "success");
+  if (r.copyError) {
+    toast("The video is attached, but it could not be copied into the recording folder (" + r.copyError +
+      "), so a copy of the folder will not carry it.", "error");
+  } else {
+    toast((relink ? "Video found: it keeps its sync (Sync video changes it)." : pendingPath ? "Video attached and synced." : "Video synced.") +
+      (r.copied ? " It is copied into the recording folder." : ""), "success");
+  }
   await loadSessionIntoView(session.sessionFolder);
 }
 /* Wall-clock ms at a clicked x on the Flow timeline. #timeline spans the
@@ -368,9 +349,7 @@ function initVideo(deps) {
   loadSessionIntoView = (deps && deps.loadSessionIntoView) || (async () => {});
 }
 
-// Self-wire the require()-time listeners (mirrors the originals in
-// flow-view.js: the timeupdate watch-step guard + the re-sync button).
-if ($("#video")) $("#video").addEventListener("timeupdate", _watchStepGuard);
+// Self-wire the require()-time listener of the re-sync button.
 if ($("#btn-sync-video")) {
   $("#btn-sync-video").addEventListener("click", startVideoSync);
 }
@@ -380,5 +359,5 @@ module.exports = {
   setVideoOverlay, positionPlayhead,
   videoStartTs, formatPlayback, videoTimeToSessionTs,
   seekToTimestamp, movePlayheadToTimestamp, jumpToStepInFlow,
-  watchStep, startVideoSync, cancelVideoSync, attachVideo,
+  startVideoSync, cancelVideoSync, attachVideo,
 };

@@ -428,15 +428,30 @@ test("rememberedNameRows: names whose key is in this session first, then the oth
   assert.deepEqual(RM.rememberedNameRows({}, list), []);
 });
 
-test("renameDrafts: the session's still-drafts with the key take the name; confirmed, edited and hidden ones keep theirs", () => {
+test("renameSavedName: the drafts of the key and the analyst's steps that carry the old name take the new one; hidden steps and other names keep theirs", () => {
   const list = [
     step("a", "c1", "00:00", "00:05", { draft_key: KEY }),
     step("b", "c2", "02:00", "02:05", { draft_key: KEY, state: "confirmed", name: "Kept" }),
-    step("c", "c2", "02:10", "02:15", { draft_key: KEY, state: "hidden", name: "Hidden kept" }),
+    step("c", "c2", "02:10", "02:15", { draft_key: KEY, state: "hidden", name: "Save" }),
     step("d", "c3", "04:00", "04:05", { draft_key: KEY }),
     step("e", "c3", "04:10", "04:15", { draft_key: "other" }),
+    step("f", "c4", "05:00", "05:05", { draft_key: KEY, state: "edited", name: "Save" }),
   ];
-  assert.equal(RM.renameDrafts(list, KEY, " Save it "), 2);
+  assert.equal(RM.renameSavedName(list, KEY, "Save", " Save it "), 3);
+  assert.deepEqual(list.map((s) => [s.name, s.state, s.name_source || null]), [
+    ["Save it", "auto_suggested", "remembered"], ["Kept", "confirmed", null], ["Save", "hidden", null],
+    ["Save it", "auto_suggested", "remembered"], ["Step e", "auto_suggested", null], ["Save it", "edited", null]]);
+});
+
+test("forgetSavedName: the steps that carry the forgotten name take their drafted name back; a name that cannot be told stays", () => {
+  const list = [
+    step("a", "c1", "00:00", "00:05", { draft_key: KEY, name: "Save", name_source: "remembered" }),
+    step("b", "c2", "02:00", "02:05", { draft_key: KEY, state: "edited", name: "Save" }),
+    step("c", "c3", "04:00", "04:05", { draft_key: KEY, state: "confirmed", name: "Other name" }),
+    step("d", "c4", "05:00", "05:05", { draft_key: KEY, state: "confirmed", name: "Save" }),
+  ];
+  const drafted = (s) => (s.step_id === "d" ? "" : "Order: Save");
+  assert.equal(RM.forgetSavedName(list, KEY, "Save", drafted), 2);
   assert.deepEqual(list.map((s) => [s.name, s.name_source || null]), [
-    ["Save it", "remembered"], ["Kept", null], ["Hidden kept", null], ["Save it", "remembered"], ["Step e", null]]);
+    ["Order: Save", "draft"], ["Order: Save", null], ["Other name", null], ["Save", null]]);
 });

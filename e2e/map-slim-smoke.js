@@ -305,7 +305,7 @@ const lockProbe = () => {
     await page.locator("#step-list .run-group.open .step-row", { hasText: "Salesforce - Account lookup: Search" })
       .first().click({ timeout: 20000 });
     await page.locator("#step-name").fill(RENAMED, { timeout: 20000 });
-    await page.locator("#btn-step-save").click({ timeout: 20000 });
+    await page.locator("#step-name").press("Enter");   // no Save button: Enter saves the name
     await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")]
       .some((e) => e.textContent.trim() === n), RENAMED, { timeout: 20000 });
     renamed.stamped = await page.evaluate((n) => {

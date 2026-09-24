@@ -6,27 +6,33 @@
  * TEMP copy of the committed demo session sess-2026-0514-0900, re-analyzed
  * with the current pipeline (4 marked runs, 30 drafted steps), and pins the
  * verbs of the Steps level the way an analyst uses them:
- *   - the runs list: 4 runs in time order, run 1 the pattern, open with its
- *     drafted steps (a row carries a chip only where it differs from its
- *     run); "Use as pattern" (the run's right-click menu) and its Ctrl+Z;
- *   - names (C4): a rename of a run-1 draft names the same-key drafts of the
- *     other runs at once (still drafts, name_source "remembered") and lands in
- *     the profile's remembered-names store; a broken store shows an error and
- *     still saves the session rename; the name box suggests the name;
+ *   - the runs list: 4 runs in time order, run 1 the reference run (the only
+ *     run with a status), open with its drafted steps (a row carries a chip
+ *     only where it differs from its run); "Use as reference run" (the run's
+ *     right-click menu) and its Ctrl+Z;
+ *   - names (C4): a rename of a run-1 draft in the step pane (Enter saves it,
+ *     no Save button) names the same-key drafts of the other runs at once
+ *     (still drafts, name_source "remembered"; the run says in one line that
+ *     names came from saved names) and lands in the profile's
+ *     remembered-names store; a broken store shows an error and still saves
+ *     the session rename; the name box suggests the name;
  *   - the draft-fix count (C3, pattern_run.draft_fixes in annotations.json;
  *     the list shows no live counter, P2.9): merge / split / add / hide each
  *     count on the pattern run, renames do not, and Ctrl+Z, Unhide and
  *     deleting an added step take a count back;
  *   - the keyboard: Up / Down / Enter on the open run, and no shortcut acting
  *     on a step the list does not show (RP-12);
- *   - Confirm run: the states, the Confirmed status and the probe line, which
- *     Copy puts on the clipboard;
+ *   - Confirm run: the states, the Confirmed status and the probe line in the
+ *     reference run's right-click menu, whose click puts it on the clipboard;
+ *     runs 2 to 4 offer no Confirm (AD-28), and opening them records them in
+ *     annotations.opened_runs;
  *   - Re-analyze (Help, Troubleshooting: the one analysis by hand, AD-22; its
  *     confirm dialog answered and the run awaited, never assumed): the
  *     confirmed and edited steps survive with their names, and re-drafted
  *     steps carry the remembered names (the viewer passed --names);
  *   - item 8: a Start marker inserted from an activity band's menu lands at the
- *     clicked moment, and the Markers list shows local times.
+ *     clicked moment, and the Markers list shows the time since the recording
+ *     started (the one clock).
  * Lane L12b adds:
  *   - a merge in the pattern run carries to the same consecutive drafts of
  *     runs 2 to 4 (draft_keys, the pattern step's name), the toast says so in
@@ -140,6 +146,9 @@ const KEY_EXCEL = "excel|Excel - Order Tracking.xlsx|Button:save-workbook";
 const KEY_OUTLOOK = "outlook|Outlook - Order confirmation|Button:send";
 const KEY_NOTEPAD = "notepad|Notepad - Internal mappings.txt|(visit)";
 const NAME_SEARCH = "Look up the customer";
+// A window title's separator, built so the added lines hold no dash punctuation.
+const TITLE_SEP = " " + String.fromCharCode(45) + " ";
+const SEARCH_DRAFTED = "Salesforce" + TITLE_SEP + "Account lookup: Search";
 const NAME_EXCEL = "Update the order tracker";
 const NAME_NOTEPAD = "Look up the plant code";
 const MERGED = "va01: Check document + va01: Create sales order";
@@ -184,7 +193,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     title: ((g.querySelector(".run-title") || {}).textContent || "").trim(),
     status: ((g.querySelector(".run-status") || {}).textContent || "").trim(),
     fixes: ((g.querySelector(".run-fixes") || {}).textContent || "").trim(),
-    probe: ((g.querySelector(".run-probe-text") || {}).textContent || "").trim(),
+    namesNote: ((g.querySelector(".run-names-note") || {}).textContent || "").trim(),
     meta: ((g.querySelector(".run-meta") || {}).textContent || "").trim(),
     diffs: [...g.querySelectorAll(".run-diffs li")].map((li) => li.textContent.trim()),
     acts: [...g.querySelectorAll(".run-actions > button")].map((b) => b.dataset.act),
@@ -193,12 +202,22 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       id: r.dataset.stepId, state: r.dataset.state,
       name: ((r.querySelector(".step-name") || {}).textContent || "").trim(),
       chip: ((r.querySelector(".step-chip") || {}).textContent || "").trim(),
-      remembered: !!r.querySelector(".step-remembered"),
+      tags: r.querySelectorAll(".step-remembered").length,
       selected: r.classList.contains("selected"),
     })),
   })));
   const group = async (caseId) => (await runsState()).find((g) => g.caseId === caseId) || null;
   const groupSel = (caseId) => '#step-list .run-group[data-case-id="' + caseId + '"]';
+  // The probe line lives in the confirmed reference run's right-click menu
+  // ("Copy: <line>"); "" when the run's menu offers none.
+  const probeOf = async (caseId) => {
+    await page.locator(groupSel(caseId) + " > .run-row").click({ button: "right", timeout: T });
+    const item = page.locator('#run-ctx-menu [data-act="copy-probe"]');
+    const shown = await item.waitFor({ state: "visible", timeout: 1500 }).then(() => true, () => false);
+    const text = shown ? ((await item.textContent()) || "").trim().replace(/^Copy: /, "") : "";
+    await page.keyboard.press("Escape");
+    return text;
+  };
   async function openRun(caseId) {
     const g = await group(caseId);
     if (g && g.open) return;
@@ -243,13 +262,15 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   {
     const st = await runsState();
     const r1 = st[0] || {};
+    const badge = await page.$eval(groupSel(RUNS[0]) + " .run-pattern-badge", (b) => (b.textContent || "").trim()).catch(() => null);
     const ok = st.length === 4 && st.map((g) => g.caseId).join() === RUNS.join() &&
       st.map((g) => g.title).join() === "Run 1,Run 2,Run 3,Run 4" &&
       r1.pattern && st.filter((g) => g.pattern).length === 1 && r1.open && st.filter((g) => g.open).length === 1 &&
-      r1.rows.length === 7 && r1.rows.every((r) => r.chip === "") && st.every((g) => g.status === "Draft") &&
+      r1.rows.length === 7 && r1.rows.every((r) => r.chip === "") && r1.status === "Draft" &&
+      st.slice(1).every((g) => g.status === "") && badge === "Reference" &&
       r1.fixes === "" && !r1.acts.includes("use-pattern");
-    record("Steps shows the 4 runs in time order; run 1 is the pattern, open with its 7 drafted steps (no chip on a row that matches its Draft run, no live fix counter)", ok,
-      JSON.stringify(st.map((g) => ({ t: g.title, pattern: g.pattern, open: g.open, status: g.status, rows: g.rows.length, fixes: g.fixes }))));
+    record("Steps shows the 4 runs in time order; run 1 is the reference run (its badge reads Reference, the only run with a status), open with its 7 drafted steps (no chip on a row that matches its Draft run, no live fix counter)", ok,
+      JSON.stringify({ badge, runs: st.map((g) => ({ t: g.title, pattern: g.pattern, open: g.open, status: g.status, rows: g.rows.length, fixes: g.fixes })) }));
     if (!ok) await shot(page, "fail-runs-list.png");
   }
 
@@ -302,7 +323,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       diskMoved.confirmed_at === null && diskMoved.drafted_steps === 6 &&
       JSON.stringify(diskMoved.draft_fixes) === JSON.stringify({ merge: 0, split: 0, add: 0, drop: 0 }) &&
       JSON.stringify(back) === JSON.stringify([R1]) && diskBack === undefined;
-    record("C3 + P3.8: Use as pattern (the run's right-click menu, no button on the open run) makes run 3 the pattern (pattern_run written); Ctrl+Z makes run 1 the pattern again",
+    record("C3 + P3.8: Use as reference run (the run's right-click menu, no button on the open run) makes run 3 the reference run (pattern_run written); Ctrl+Z makes run 1 the reference run again",
       ok, JSON.stringify({ err, moved, diskMoved, back, diskBack }));
     if (!ok) await shot(page, "fail-runs-use-pattern.png");
   }
@@ -314,8 +335,9 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     try {
       await openRun(R1);
       await rowByName(R1, "Salesforce - Account lookup: Search").click({ timeout: T });
+      // No Save button: Enter saves the name.
       await page.locator("#step-name").fill(NAME_SEARCH, { timeout: T });
-      await page.locator("#btn-step-save").click({ timeout: T });
+      await page.locator("#step-name").press("Enter");
       await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")].some((e) => e.textContent.trim() === n),
         NAME_SEARCH, { timeout: T });
     } catch (e) { err = errText(e); }
@@ -333,9 +355,10 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     await openRun(R2);
     const g2 = await group(R2);
     const row2 = g2.rows.find((r) => r.id === searchIds[R2]) || {};
-    const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && row2.remembered;
-    record("C4: run 2 shows the new name on its draft right away (remembered tag; no chip, it matches its Draft run), without a re-analysis",
-      ok2, JSON.stringify(row2));
+    const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && g2.rows.every((r) => r.tags === 0) &&
+      g2.namesNote === "Names from saved names: 1 of 10 steps";
+    record("C4: run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row: one line on the run says names came from saved names), without a re-analysis",
+      ok2, JSON.stringify({ row2, namesNote: g2.namesNote }));
     if (!(ok && ok2)) await shot(page, "fail-runs-rename.png");
 
     // Item 6: the name box suggests the remembered name and the session's names.
@@ -565,23 +588,24 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   // ---- 7. Confirm run and the probe line --------------------------------------
   const PROBE = "Run 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)";
   {
-    let err = null;
+    let err = null, probe = null;
     try {
       await page.locator(groupSel(R1) + ' [data-act="confirm-run"]').click({ timeout: T });
-      await page.waitForFunction((sel) => { const p = document.querySelector(sel + " .run-probe-text"); return !!(p && p.textContent.trim()); },
+      await page.waitForFunction((sel) => ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Confirmed",
         groupSel(R1), { timeout: T });
+      probe = await probeOf(R1);
     } catch (e) { err = errText(e); }
     const disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.confirmed_at);
     const r1 = stepsOf(disk, R1).filter((s) => s.state !== "hidden");
     const states = r1.map((s) => s.state).sort().join(",");
     const g = await group(R1);
     const ok = !err && states === "confirmed,confirmed,confirmed,confirmed,edited,edited" &&
-      g.status === "Confirmed" && g.probe === PROBE && !g.fixes &&
+      g.status === "Confirmed" && probe === PROBE && !g.fixes &&
       typeof disk.pattern_run.confirmed_at === "string" && !isNaN(Date.parse(disk.pattern_run.confirmed_at)) &&
       JSON.stringify(disk.pattern_run.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 }) &&
       !(await group(R2)).rows.some((r) => r.state === "confirmed");
-    record("C2/C3: Confirm run turns run 1's remaining drafts into confirmed, reads Confirmed, and shows the probe line \"" + PROBE + "\"",
-      ok, JSON.stringify({ err, states, status: g.status, probe: g.probe, pattern_run: disk.pattern_run }));
+    record("C2/C3: Confirm run turns run 1's remaining drafts into confirmed, reads Confirmed, and its right-click menu holds the probe line \"" + PROBE + "\"",
+      ok, JSON.stringify({ err, states, status: g.status, probe, pattern_run: disk.pattern_run }));
     if (!ok) await shot(page, "fail-runs-confirm.png");
     // P1.9: a row carries a chip only where it differs from its run. In the
     // confirmed run the confirmed rows carry none; the edited ones stand out.
@@ -593,11 +617,12 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
 
     let clip = null;
     try {
-      await page.locator(groupSel(R1) + ' [data-act="copy-probe"]').click({ timeout: T });
+      await page.locator(groupSel(R1) + " > .run-row").click({ button: "right", timeout: T });
+      await page.locator('#run-ctx-menu [data-act="copy-probe"]').click({ timeout: T });
       await wait(300);
       clip = await app.evaluate(({ clipboard }) => clipboard.readText());
     } catch (e) { clip = "error: " + errText(e); }
-    record("C3: Copy puts the probe line on the clipboard", clip === PROBE, JSON.stringify(clip));
+    record("C3: the menu's probe line, clicked, puts the line on the clipboard", clip === PROBE, JSON.stringify(clip));
     await shot(page, "runs-smoke-confirmed.png");
   }
 
@@ -607,54 +632,66 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   {
     const WANT = {
       [R2]: ["Extra step: " + NAME_NOTEPAD + " (after " + MERGED + ")."],
-      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the pattern run)."],
+      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the reference run)."],
       [R4]: [],
     };
     let err = null;
-    const seen = {};
+    const seen = {}, acts = {};
     try {
       for (const r of [R2, R3, R4]) {
         await openRun(r);
-        seen[r] = (await group(r)).diffs;
+        const g = await group(r);
+        seen[r] = g.diffs;
+        acts[r] = g.acts;
       }
     } catch (e) { err = errText(e); }
     const st = await runsState();
     const metas = RUNS.map((r) => metaDiffs((st.find((g) => g.caseId === r) || {}).meta));
     const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
       metas.join() === ",1 difference,1 difference,no differences";
-    record("L12b item 3: each other run lists its differences from the confirmed pattern run (run 2: an extra step, run 3: a skipped step, run 4: none) and its line counts them",
+    record("L12b item 3: each other run lists its differences from the confirmed reference run (run 2: an extra step, run 3: a skipped step, run 4: none) and its line counts them",
       ok, JSON.stringify({ err, seen: [R2, R3, R4].map((r) => seen[r]), metas }));
     if (!ok) await shot(page, "fail-runs-differences.png");
+    // AD-28: only the reference run is confirmed; opening another run is its
+    // review, kept in annotations.opened_runs (the Overview's Other runs).
+    const opened = await waitDisk(ANNO, (a) => [R2, R3, R4].every((r) => (a.opened_runs || []).includes(r)));
+    const okNoConfirm = !err && [R2, R3, R4].every((r) => Array.isArray(acts[r]) &&
+      !acts[r].includes("confirm-run") && !acts[r].includes("reopen-run")) &&
+      [R2, R3, R4].every((r) => (opened.opened_runs || []).includes(r)) && !(opened.opened_runs || []).includes(R1);
+    record("AD-28: runs 2 to 4 offer no Confirm run (nor Reopen); opening each is recorded in annotations.opened_runs, never the reference run",
+      okNoConfirm, JSON.stringify({ acts: [R2, R3, R4].map((r) => acts[r]), opened: opened && opened.opened_runs }));
     await openRun(R2);
     await shot(page, "runs-smoke-differences.png");
   }
 
   // ---- 7c. L12b item 4: Reopen run, the inverse of Confirm run ------------------
   {
-    let err = null, g = null, disk = null, back = null, gBack = null;
+    let err = null, g = null, disk = null, back = null, gBack = null, probeGone = null, probeBack = null;
     try {
       await openRun(R1);
       await page.locator(groupSel(R1) + ' [data-act="reopen-run"]').click({ timeout: T });
       disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.confirmed_at === null);
-      await page.waitForFunction((sel) => !document.querySelector(sel + " .run-probe-text") &&
-        ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Draft",
-      groupSel(R1), { timeout: T });
+      await page.waitForFunction((sel) => ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Draft",
+        groupSel(R1), { timeout: T });
       g = await group(R1);
+      probeGone = await probeOf(R1);
       await page.keyboard.press("Control+z");
       back = await waitDisk(ANNO, (a) => a.pattern_run && typeof a.pattern_run.confirmed_at === "string");
-      await page.waitForSelector(groupSel(R1) + " .run-probe-text", { timeout: T });
+      await page.waitForFunction((sel) => ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Confirmed",
+        groupSel(R1), { timeout: T });
       gBack = await group(R1);
+      probeBack = await probeOf(R1);
     } catch (e) { err = errText(e); }
     const states = (a) => stepsOf(a || { steps: [] }, R1).filter((s) => s.state !== "hidden").map((s) => s.state).sort().join(",");
     const ok = !err && states(disk) === "auto_suggested,auto_suggested,auto_suggested,auto_suggested,edited,edited" &&
       JSON.stringify(disk.pattern_run.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 }) &&
-      g && g.status === "Draft" && !g.probe && g.fixes === "" &&
+      g && g.status === "Draft" && probeGone === "" && g.fixes === "" &&
       g.acts.includes("confirm-run") && !g.acts.includes("reopen-run") && !g.acts.includes("save-process") &&
       states(back) === "confirmed,confirmed,confirmed,confirmed,edited,edited" &&
-      gBack && gBack.status === "Confirmed" && gBack.probe === PROBE && gBack.acts.includes("reopen-run");
-    record("L12b item 4: Reopen run turns run 1's confirmed steps back into drafts (the edited ones stay), clears confirmed_at, hides the probe line and keeps the count; Ctrl+Z confirms it again",
+      gBack && gBack.status === "Confirmed" && probeBack === PROBE && gBack.acts.includes("reopen-run");
+    record("L12b item 4: Reopen run turns run 1's confirmed steps back into drafts (the edited ones stay), clears confirmed_at, takes the probe line out of its menu and keeps the count; Ctrl+Z confirms it again",
       ok, JSON.stringify({ err, reopened: states(disk), fixes: g && g.fixes, status: g && g.status, acts: g && g.acts,
-        back: states(back), probeBack: gBack && gBack.probe }));
+        probeGone, back: states(back), probeBack }));
     if (!ok) await shot(page, "fail-runs-reopen.png");
   }
 
@@ -786,12 +823,14 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       "confirmed:Excel - Order Tracking.xlsx: Save workbook",
       "confirmed:Outlook - Order confirmation: Send",
     ];
-    await page.waitForSelector(groupSel(R1) + " .run-probe-text", { timeout: T }).catch(() => {});
+    await page.waitForFunction((sel) => ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Confirmed",
+      groupSel(R1), { timeout: T }).catch(() => {});
     const g1 = await group(R1);
-    const ok1 = JSON.stringify(names1) === JSON.stringify(want1) && g1 && g1.status === "Confirmed" && g1.probe === PROBE &&
+    const probe1 = await probeOf(R1).catch((e) => "error: " + errText(e));
+    const ok1 = JSON.stringify(names1) === JSON.stringify(want1) && g1 && g1.status === "Confirmed" && probe1 === PROBE &&
       disk.pattern_run && disk.pattern_run.confirmed_at;
     record("after Re-analyze: run 1's confirmed and edited steps survived with their names; it still reads Confirmed with the same probe line",
-      ok1, JSON.stringify({ names1, status: g1 && g1.status, probe: g1 && g1.probe }));
+      ok1, JSON.stringify({ names1, status: g1 && g1.status, probe: probe1 }));
 
     const re = (r, key) => stepsOf(disk, r).find((s) => s.draft_key === key) || {};
     const redrafted = [re(R2, KEY_SEARCH), re(R3, KEY_SEARCH), re(R4, KEY_SEARCH), re(R3, KEY_EXCEL), re(R4, KEY_EXCEL)];
@@ -840,21 +879,23 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await page.locator("#session-layout-steps .editor-toolbar #btn-remembered-names").click({ timeout: T });
       await page.waitForSelector("#remembered-names-dialog .rn-row", { timeout: T });
       rowsBefore = await dialogRows();
-      // Rename: the store and this session's drafts with that key.
+      // Rename: the store, and this session's steps with that key that carry
+      // the name (its drafts, and run 2's edited step named with it).
       await page.locator(rowSel(KEY_EXCEL) + ' [data-act="rename-name"]').click({ timeout: T });
       await page.locator(".modal-prompt .modal-input").fill(RENAMED, { timeout: T });
       await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
       await waitToast(/^Renamed/);
-      afterRename = await waitDisk(ANNO, (a) => [R3, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_EXCEL && s.name === RENAMED)));
+      afterRename = await waitDisk(ANNO, (a) => [R2, R3, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_EXCEL && s.name === RENAMED)));
       storeRename = readJson(STORE);
-      // Forget: the store entry goes, the session's names stay.
+      // Forget: the store entry goes, and the steps that carry the name get
+      // their drafted names back (else the next analysis would restore it, C4).
       await page.locator(rowSel(KEY_SEARCH) + ' [data-act="forget-name"]').click({ timeout: T });
       await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
       await waitToast(/^Forgot/);
       storeForget = await waitDisk(STORE, (s) => s && s.names && !s.names[KEY_SEARCH]);
       await page.waitForFunction(() => document.querySelectorAll("#remembered-names-dialog .rn-row").length === 2, null, { timeout: T });
       rowsAfter = await dialogRows();
-      afterForget = readJson(ANNO);
+      afterForget = await waitDisk(ANNO, (a) => RUNS.every((r) => (stepsOf(a, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name === SEARCH_DRAFTED));
       await page.locator('#remembered-names-dialog .modal-footer [data-act="close"]').click({ timeout: T });
     } catch (e) { err = errText(e); }
     const excelOf = (a, r) => stepsOf(a || { steps: [] }, r).find((s) => s.draft_key === KEY_EXCEL) || {};
@@ -865,19 +906,21 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const okRename = !err && storeRename && storeRename.names[KEY_EXCEL].name === RENAMED &&
       [R3, R4].every((r) => excelOf(afterRename, r).state === "auto_suggested" && excelOf(afterRename, r).name === RENAMED &&
         excelOf(afterRename, r).name_source === "remembered") &&
-      excelOf(afterRename, R2).state === "edited" && excelOf(afterRename, R2).name === NAME_EXCEL &&
+      excelOf(afterRename, R2).state === "edited" && excelOf(afterRename, R2).name === RENAMED &&
       excelOf(afterRename, R1).state === "confirmed" && excelOf(afterRename, R1).name === "Excel - Order Tracking.xlsx: Save workbook";
-    record("L12b item 8: Rename changes the remembered name and names this session's drafts with that key (runs 3 and 4), not the edited or confirmed steps",
+    record("L12b item 8 + V2 item 9: Rename changes the saved name and every step of this session that carries it for that key (the drafts of runs 3 and 4, run 2's edited step); run 1's confirmed step with another name keeps it",
       okRename, JSON.stringify({ err, store: storeRename && storeRename.names[KEY_EXCEL], steps: RUNS.map((r) => [excelOf(afterRename, r).state, excelOf(afterRename, r).name]) }));
     const okForget = !err && storeForget && !storeForget.names[KEY_SEARCH] && storeForget.names[OTHER_KEY] &&
       JSON.stringify((rowsAfter || []).map((r) => r.name)) === JSON.stringify([RENAMED, "Save the other book"]) &&
-      [R2, R3, R4].every((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name === NAME_SEARCH);
-    record("L12b item 8: Forget removes the name from the store (the list follows) while the session's steps keep it",
-      okForget, JSON.stringify({ err, keys: storeForget && Object.keys(storeForget.names), rows: rowsAfter && rowsAfter.map((r) => r.name) }));
+      RUNS.every((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name === SEARCH_DRAFTED) &&
+      [R2, R3, R4].every((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name_source === "draft");
+    record("L12b item 8 + V2 item 9: Forget removes the name from the store (the list follows), and the session's steps that carried it get their drafted name back",
+      okForget, JSON.stringify({ err, keys: storeForget && Object.keys(storeForget.names), rows: rowsAfter && rowsAfter.map((r) => r.name),
+        search: RUNS.map((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name) }));
     if (!(okOrder && okRename && okForget)) await shot(page, "fail-runs-names-dialog.png");
   }
 
-  // ---- 10. item 8: marker at the clicked moment; local times in the Markers list --
+  // ---- 10. item 8: marker at the clicked moment; the one clock in the Markers list --
   {
     let err = null, info = null, edit = null;
     const LABEL = "E2E clicked moment";
@@ -932,15 +975,13 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         }));
       });
     } catch (e) { rows = [{ err: errText(e) }]; }
-    const pad = (n) => String(n).padStart(2, "0");
-    const local = (iso) => { const d = new Date(iso); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
-    const offsetMin = new Date(Date.parse("2026-05-14T09:00:00Z")).getTimezoneOffset();
-    const bad = (rows || []).filter((r) => r.err || r.shown !== local(r.ts));
-    const differsFromUtc = (rows || []).filter((r) => r.ts && r.shown !== String(r.ts).slice(11, 19)).length;
-    const ok2 = rows && rows.length >= 9 && bad.length === 0 && (offsetMin === 0 || differsFromUtc === rows.length);
-    record("item 8: the Markers list shows local clock times (the timeline's clock), not UTC",
-      ok2, "rows=" + (rows || []).length + " mismatched=" + JSON.stringify(bad.slice(0, 3)) +
-        " utcOffsetMinutes=" + (-offsetMin) + (offsetMin === 0 ? " (UTC machine: local equals UTC, so this check cannot tell them apart here)" : ""));
+    // V2 item 6: the one clock, the time since the recording started (m:ss).
+    const origin = Date.parse(readJson(path.join(SESSION, "manifest.json")).started_at);
+    const since = (iso) => { const t = Math.floor((Date.parse(iso) - origin) / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
+    const bad = (rows || []).filter((r) => r.err || r.shown !== since(r.ts));
+    const ok2 = rows && rows.length >= 9 && bad.length === 0;
+    record("item 8 + V2 item 6: the Markers list shows the time since the recording started (the timeline's clock), never a time of day",
+      ok2, "rows=" + (rows || []).length + " mismatched=" + JSON.stringify(bad.slice(0, 3)));
   }
 
   // ---- 11. L12b items 3 and 7: a second session of the same process ---------
@@ -994,13 +1035,13 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       ok, JSON.stringify({ err, line, seen: RUNS.map((r) => seen[r]), metas: metas(st) }));
     const WANT_STOP = {
       [R2]: ["Extra step: Notepad - Internal mappings.txt (after va01: Create sales order)."],
-      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 7 of the pattern run)."],
+      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 7 of the reference run)."],
       [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
-        "Skipped: Salesforce - Order: Save order (step 3 of the pattern run)."],
+        "Skipped: Salesforce - Order: Save order (step 3 of the reference run)."],
     };
     const okStop = !err && [R2, R3, R4].every((r) => JSON.stringify(after[r]) === JSON.stringify(WANT_STOP[r])) &&
       metas(stopped)[0] === null;
-    record("L12b item 7: Stop comparing removes the line and compares the runs with the session's own pattern run",
+    record("L12b item 7: Stop comparing removes the line and compares the runs with the session's own reference run",
       okStop, JSON.stringify({ err, after: [R2, R3, R4].map((r) => after[r]), metas: metas(stopped) }));
     if (!(ok && okStop)) await shot(page, "fail-runs-saved-process.png");
 
@@ -1011,8 +1052,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     try {
       await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), SESSION);
       await page.waitForFunction((n) => {
-        const g = document.querySelector("#step-list .run-group.pattern .run-probe-text");
-        return !!(g && g.textContent.trim()) && document.querySelectorAll("#step-list .run-group").length === n;
+        const g = document.querySelector("#step-list .run-group.pattern .run-status");
+        return !!(g && g.textContent.trim() === "Confirmed") && document.querySelectorAll("#step-list .run-group").length === n;
       }, RUNS.length, { timeout: T });
       control = await page.evaluate(async (name) => {
         const saved = await require("./ipc.js").readProcesses();

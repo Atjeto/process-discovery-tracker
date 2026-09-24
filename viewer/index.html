@@ -240,7 +240,20 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                      chosen as the PDD's As-Is map when none is chosen yet. -->
                 <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the session again never changes it.">Edit as the As-Is map</button>
                 <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the session again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
+                <!-- V2 item 7: back to the As-Is map, while the map from the runs shows. -->
+                <button class="link-btn" id="btn-map-show-asis" type="button" hidden title="Show the As-Is map chosen for the PDD">Show the As-Is map</button>
               </div>
+            </div>
+            <!-- V2 item 7: the As-Is map chosen for the PDD shows first, read
+                 only, with Edit beside it (refmap-ui.js syncMapView). -->
+            <div class="map-asis" id="session-map-asis" hidden>
+              <div class="map-asis-bar">
+                <span class="map-asis-title" id="map-asis-title">As-Is map</span>
+                <span class="map-asis-note">Read only; the PDD prints this map.</span>
+                <button type="button" id="btn-map-asis-edit" title="Open this map in the editor">Edit</button>
+                <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the process map drawn from the runs' steps">Show the map from the runs</button>
+              </div>
+              <div class="map-asis-img" id="map-asis-img"></div>
             </div>
             <div class="map-host" title="Scroll to zoom · drag to pan · hover an arrow for its times">
               <div class="map-pane active" id="session-map-dfg-host"></div>
@@ -273,6 +286,19 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
       </div>
     </section>
+
+    <!-- The step panel (V2 item 4, views/step-panel.js): opened beside the
+         map, the timeline or the Steps list by a map box, a timeline step
+         band or a Steps row; its video plays one occurrence at a time. -->
+    <aside class="step-panel" id="step-panel" hidden aria-label="Step">
+      <div class="sp-top">
+        <h3 class="sp-name" id="sp-name"></h3>
+        <button type="button" class="icon-btn sp-close" id="btn-sp-close" title="Close the panel">✕</button>
+      </div>
+      <div class="sp-about" id="sp-about"></div>
+      <video class="sp-video" id="sp-video" preload="metadata" controls hidden></video>
+      <div class="sp-body" id="sp-body"></div>
+    </aside>
 
   </main>
 
@@ -322,9 +348,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <ol class="help-steps">
             <li><strong>Runs.</strong> Open the recording: the app analyzes it by itself and drafts each run's steps and the map (the bar at the top says so while it works). Each run starts at a start marker; if one is missing, add it on the Timeline (right-click the timeline at that moment) and click <em>Apply marker changes</em>.</li>
             <li><strong>Reference run.</strong> In Steps, check run 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm run</em>.</li>
-            <li><strong>Other runs.</strong> The other runs arrive drafted and named like the reference run. Review the differences each one lists (extra, skipped or reordered steps) and confirm it.</li>
+            <li><strong>Other runs.</strong> The other runs arrive drafted and named like the reference run. Open each one in Steps: it lists how it differs from the reference run (extra, skipped or reordered steps). Fix a step where needed; the other runs are not confirmed.</li>
             <li><strong>Document.</strong> On the Overview, write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
-            <li><strong>PDD.</strong> Export the PDD (.docx). Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the runs. <em>Save as this process</em> on the confirmed pattern run lets the next recording of the same process arrive drafted and named.</li>
+            <li><strong>PDD.</strong> Export the PDD (.docx). Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the runs. <em>Save as this process</em> on the confirmed reference run lets the next recording of the same process arrive drafted and named.</li>
           </ol>
           <h3>Optional inputs</h3>
           <ul class="help-list">
@@ -336,23 +362,23 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <section class="help-section" data-section="stepsphases">
           <h3>Runs and drafted steps</h3>
           <p>A <strong>run</strong> is one pass through the process, from a start marker to its end marker. The app drafts every run's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the work moves to another screen. Steps lists the runs in time order; open a run to see its steps. Steps outside every run are listed under <em>Outside runs</em>.</p>
-          <h3>Confirm the pattern run first</h3>
+          <h3>Confirm the reference run</h3>
           <ol class="help-steps">
-            <li>Open the <strong>pattern</strong> run: run 1, marked <em>Pattern</em>, unless you choose another one.</li>
+            <li>Open the <strong>reference</strong> run: run 1, marked <em>Reference</em>, unless you choose another one (right-click a run, <em>Use as reference run</em>).</li>
             <li>Check its steps against the screenshots or the video. Where a boundary is wrong, <strong>merge</strong>, <strong>split</strong>, <strong>add</strong> or <strong>hide</strong> steps (right-click a step, or use the step pane).</li>
-            <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. A step's description is printed with it in the PDD.</li>
+            <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. In the step pane the name is saved when you press Enter or leave the field, the description when you leave it; there is no Save button, and Ctrl+Z undoes each change. A step's description is printed with it in the PDD.</li>
             <li>Click <strong>Confirm run</strong>: the steps you did not change are accepted as they are. <em>Reopen run</em> takes the confirmation back.</li>
           </ol>
           <h3>Fixes that carry to the other runs</h3>
-          <p>A merge in the pattern run is also made in the other runs wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every run. Splits and added steps are made in each run that needs them.</p>
+          <p>A merge in the reference run is also made in the other runs wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every run. Splits and added steps are made in each run that needs them.</p>
           <h3>Differences between runs</h3>
-          <p>Every other run is compared with the pattern run step by step, the way the PDD compares them: an open run lists its extra steps (and where they happen), its skipped steps and the steps done in a different order.</p>
+          <p>Every other run is compared with the reference run step by step, the way the PDD compares them: an open run lists its extra steps (and where they happen), its skipped steps and the steps done in a different order. The other runs are not confirmed: once each has been opened, the Overview counts them as reviewed.</p>
           <h3>Saved names</h3>
-          <p>A name you give a drafted step goes at once to the same drafted steps in the other runs, and this computer saves it: the next analysis of this recording or a later one drafts those steps with it (a small <em>remembered</em> tag). <em>Saved names</em>, in the Steps toolbar, lists them: rename one, or forget it.</p>
+          <p>A name you give a drafted step goes at once to the same drafted steps in the other runs, and this computer saves it: the next analysis of this recording or a later one drafts those steps with it (each run says in one line how many of its names came from saved names). <em>Saved names</em>, in the Steps toolbar, lists them: rename one, or forget it.</p>
           <h3>Saved processes</h3>
-          <p>Once the pattern run is confirmed, <em>Save as this process</em> keeps its steps on this computer. A later session of the same process is compared with the saved process until its own pattern run is confirmed.</p>
+          <p>Once the reference run is confirmed, <em>Save as this process</em> keeps its steps on this computer. A later session of the same process is compared with the saved process until its own reference run is confirmed.</p>
           <h3>What the step labels mean</h3>
-          <p>A step shows its label only where it differs from its run: the run's status (Draft or Confirmed) says it for the others. Steps outside every run show theirs.</p>
+          <p>A step shows its label only where it differs from its run: the reference run's status (Draft or Confirmed) says it for the others, and a drafted step of another run shows none. Steps outside every run show theirs.</p>
           <ul class="help-list">
             <li><span class="step-chip step-chip-draft">Draft</span> drafted by the app and not checked yet; every analysis drafts it again.</li>
             <li><span class="step-chip step-chip-confirmed">Confirmed</span> you accepted the draft as it is.</li>
@@ -402,7 +428,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> (Steps)</td><td>Previous or next step of the open run</td></tr>
             <tr><td><span class="kbd">Enter</span> (Steps)</td><td>Rename the selected step</td></tr>
             <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step, or merge it with the next step of its run</td></tr>
-            <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the open run</td></tr>
+            <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the reference run, when it is open</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>

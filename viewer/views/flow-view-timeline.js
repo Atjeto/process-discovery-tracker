@@ -23,7 +23,7 @@
 
 const TimelineCore = require("../timeline/timeline-core.js");
 const State = require("../state.js");
-const { $, formatDuration, placeMenu } = require("../dom.js");
+const { $, formatDuration, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
 const MarkerEdits = require("../marker-edits.js");
@@ -286,9 +286,9 @@ function renderTimelineSummary() {
   if (!evs.length) { $("#timeline-summary").textContent = ""; return; }
   const first = new Date(evs[0].timestamp);
   const last = new Date(evs[evs.length - 1].timestamp);
-  $("#timeline-summary").textContent =
-    first.toLocaleTimeString() + " → " + last.toLocaleTimeString() +
-    " · " + formatDuration(last - first);
+  // The one place the time of day shows: the recording's date and start.
+  $("#timeline-summary").textContent = "Recorded " + first.toLocaleDateString() + " " +
+    first.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " · " + formatDuration(last - first);
 }
 
 /* NAV-AUDIT §A3: the labeled Flow→Steps affordance for a steps-lane band. A
@@ -363,7 +363,9 @@ function _showStepBandMenu(x, y, stepId, ts) {
    preference, not session data. */
 const LANE_KEY = "pdt.timelineLanes";
 const LANE_DEFAULTS = {
-  idle: true, screenshots: false, cases: true, steps: false,
+  // V2 item 8: the Steps lane is on by default (the Timeline's link to Steps
+  // and to the step panel).
+  idle: true, screenshots: false, cases: true, steps: true,
   // C8: exists only while a transcript is attached; on when it does.
   transcript: true,
 };
@@ -413,12 +415,15 @@ function renderTimeline() {
   const first = new Date(evs[0].timestamp).getTime();
   const last = new Date(evs[evs.length - 1].timestamp).getTime();
   const span = Math.max(1, last - first);
+  // One clock (AD-26): the axis, the tooltips and the screenshots read the
+  // time since the recording started.
+  const origin = recordingStartMs(State.getSession());
   // C8: the Transcript lane exists only while a transcript is attached
   // (flow-view-transcript.js; it also shows the lane's row in the Lanes menu).
   const transcriptLane = makeTranscriptLane({ first, last, span, on: !!lanes.transcript });
 
   /* Lane stack (top to bottom):
-       ticks:        HH:MM:SS labels at sensible intervals
+       ticks:        m:ss labels (the time since the recording started)
        cases:        one labelled band per run (header)
        activity:     per-app coloured bands (the hero lane)
        transcript:   the meeting transcript, when one is attached
@@ -455,9 +460,11 @@ function renderTimeline() {
   const screenshotsH = lanes.screenshots ? 26 : 0;
   const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
 
-  // Apps observed while drawing the activity lane feed the legend; the case
-  // scope range dims out-of-scope activity bands. Both computed once.
-  const observedApps = new Set();
+  // The systems drawn on the activity lane feed the legend (each with the
+  // application its bands came from, for the colour); the case scope range
+  // dims out-of-scope activity bands. Both computed once.
+  const observedApps = new Map();
+  const appNames = ((State.getSession().stats || {}).meta || {}).app_names || {};
   const scopeRange = currentScopeRange();
 
   // ===== Time-axis ticks =====
@@ -473,7 +480,7 @@ function renderTimeline() {
       const act = ctx.slots.get("activity");
       const activityTop = act.top;
       const activityH = act.height;
-      for (const tk of TimelineCore.chooseTicks(first, last, 12)) {
+      for (const tk of TimelineCore.chooseTicks(first, last, 12, origin)) {
         const x = tk.xPct;
         const tick = document.createElement("div");
         tick.className = "tl-flow-tick";
@@ -582,9 +589,11 @@ function renderTimeline() {
         band.style.height = activityH + "px";
         band.style.background = appColor(ev.data.app);
         band.dataset.app = ev.data.app || "";
-        if (ev.data.app) observedApps.add(ev.data.app);
-        band.title = (ev.data.app || "") + " - " + (ev.data.title || "") +
-          "\n" + new Date(t).toLocaleTimeString() + " (" + formatDuration(dur) + ")";
+        // The system the band names (C14): Salesforce, not the browser.
+        const system = appLabel(ev.data.app, ev.data.title, appNames);
+        if (ev.data.app && !observedApps.has(system)) observedApps.set(system, ev.data.app);
+        band.title = system + (ev.data.title ? "\n" + ev.data.title : "") +
+          "\n" + sinceStart(ev.timestamp, origin) + " (" + formatDuration(dur) + ")";
 
         // Label: app name (top line, bold-ish) + window title (second line, dim).
         // Duration pinned to bottom-right. CSS hides children that don't fit.
@@ -592,7 +601,7 @@ function renderTimeline() {
         lbl.className = "tl-activity-label";
         const appName = document.createElement("span");
         appName.className = "tl-act-app";
-        appName.textContent = appLabel(ev.data.app);
+        appName.textContent = system;
         const titleEl = document.createElement("span");
         titleEl.className = "tl-act-title";
         titleEl.textContent = ev.data.title || "";
@@ -724,8 +733,7 @@ function renderTimeline() {
         dot.style.left = "calc(" + x + "% - 8px)";
         dot.style.top = markY + "px";
         dot.innerHTML = camSvg;
-        dot.title = ev.data.kind + " - " + new Date(t).toLocaleTimeString() +
-          "\n" + (ev.data.path || "");
+        dot.title = "Screenshot at " + sinceStart(ev.timestamp, origin) + "\n" + (ev.data.path || "");
         dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
         host.appendChild(dot);
       }
@@ -756,7 +764,7 @@ function renderTimeline() {
         const lbl = s.label || s.step_id || "";
         band.textContent = lbl;
         band.title = lbl + " · " + formatDuration(sEnd - sStart) +
-          "\nClick: select + seek · Right-click: Open in Steps";
+          "\nClick: the step panel, and seek · Right-click: Open in Steps";
         if (s.step_id) band.dataset.stepId = s.step_id;
         if (s.step_id && s.step_id === State.getSelectedStepId()) {
           band.classList.add("tl-step-selected");
@@ -774,6 +782,10 @@ function renderTimeline() {
             .forEach((b) => b.classList.remove("tl-step-selected"));
           band.classList.add("tl-step-selected");
           if (s.time_range && s.time_range.start) seekToTimestamp(s.time_range.start);
+          // V2 item 4: the step panel opens beside the timeline (lazy: the
+          // panel requires the video module this one requires too).
+          const step = (_anno.steps || []).find((x) => x.step_id === s.step_id);
+          if (step) require("./step-panel.js").openForStep(step);
         });
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();

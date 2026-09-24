@@ -11,11 +11,13 @@
  *
  * The controller owns the control wiring; it does NOT own the data. The
  * caller's `dataSource()` resolves the graph for the loaded session:
- *   { dfg, edgeWeight }   a graph to draw ("time" weights the edges by the
- *                         time that flowed along them), or
- *   { emptyMessage }      HTML shown in the host instead (not analyzed, no
+ *   { dfg, edgeWeight, nodeSystems }  a graph to draw ("time" weights the
+ *                         edges by the time that flowed along them;
+ *                         nodeSystems names each box's system under its name),
+ *   or { emptyMessage }   HTML shown in the host instead (not analyzed, no
  *                         runs, the run check failed, no steps yet).
- * A node click selects the node and reveals its counts; nothing drills.
+ * A node click selects the node and calls config.onNodeClick(label): the step
+ * panel opens beside the map (its steps, the video, what was said).
  */
 
 const PdtDfg = require("./dfg-viewer.js");
@@ -34,6 +36,7 @@ function createMapController(config) {
     hostDfg,
     zoomControls = null,
     dataSource,
+    onNodeClick = null,
   } = config;
 
   function _setZoomVisible(visible) {
@@ -47,8 +50,12 @@ function createMapController(config) {
     if (!hostDfg || !PdtDfg) return;
     const dfg = data && data.dfg;
     const opts = {
-      // NAV-AUDIT §E1: a node click selects the node and reveals its counts.
-      onNodeClick: (label) => { if (typeof PdtDfg.selectNode === "function") PdtDfg.selectNode(label); },
+      // A node click selects the node and opens the step panel (V2 item 4).
+      onNodeClick: (label) => {
+        if (typeof PdtDfg.selectNode === "function") PdtDfg.selectNode(label);
+        if (onNodeClick) onNodeClick(label);
+      },
+      nodeSystems: (data && data.nodeSystems) || null,
     };
     // §B2: the data source decides the edge-weight encoding ("time" for the
     // process map); the edge tooltip carries the numbers.

@@ -624,13 +624,14 @@ async function unreadableAnnotationsPin() {
     };
   }).catch((e) => ({ err: e.message }));
   const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.runs === 4 &&
-    JSON.stringify(timeGoes.heads) === JSON.stringify([["Step", "Per run", "Runs"], ["Application", "Per run", "Runs"]]) &&
+    JSON.stringify(timeGoes.heads) === JSON.stringify([["Step", "Per run", "Runs"], ["System", "Per run", "Runs"]]) &&
     JSON.stringify(timeGoes.stepRows.map((r) => r[0]).sort()) === JSON.stringify(timeGoes.timedSteps) &&
     timeGoes.stepRows.every((r) => /^\d/.test(r[1]) && /^in [1-4] of 4 runs$/.test(r[2])) &&
     timeGoes.appRows.length >= timeGoes.candidateApps && timeGoes.appRows.every((r) => /^in [1-4] of 4 runs$/.test(r[2])) &&
+    timeGoes.appRows.some((r) => r[0] === "Salesforce") && !timeGoes.appRows.some((r) => /Chrome/.test(r[0])) &&
     timeGoes.gone === 0 && /^Most in .+: .+ per run$/.test(timeGoes.takeaway) &&
     JSON.stringify(timeGoes.items) === JSON.stringify(["retyped", "time"]));
-  record("V1: the Observations' Where the time goes lists every timed step of the runs (time per run, in N of 4 runs) and every application; no dot strip, total, editor or candidate cards",
+  record("V1 + V2 item 3: the Observations' Where the time goes lists every timed step of the runs (time per run, in N of 4 runs) and every system; no dot strip, total, editor or candidate cards",
     tgOk, JSON.stringify(timeGoes));
   if (!tgOk) await shot(page, "fail-where-the-time-goes.png");
 
@@ -698,8 +699,9 @@ async function unreadableAnnotationsPin() {
     const tabs = [...document.querySelectorAll("#session-layout-flow .anno-tab")].map((t) => ({
       anno: t.dataset.anno, active: t.classList.contains("active") }));
     const screens = document.querySelector('.anno-panel[data-panel="screens"]');
-    const pad = (n) => String(n).padStart(2, "0");
-    const local = (iso) => { const d = new Date(iso); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+    // One clock (V2 item 6): the time since the recording started, m:ss.
+    const origin = Date.parse(require("./state.js").getSession().manifest.started_at);
+    const local = (iso) => { const t = Math.floor((Date.parse(iso) - origin) / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
     const shots = (require("./state.js").getSession().events || []).filter((e) => e.type === "system" &&
       (e.data.kind === "screenshot" || e.data.kind === "screenshot_manual"));
     const stamps = [...document.querySelectorAll("#screenshots-grid .thumb .stamp")].map((s) => s.textContent);
@@ -721,12 +723,20 @@ async function unreadableAnnotationsPin() {
       notesGone: sidePanel.notesGone, overlayGone: sidePanel.overlayGone, err: sidePanel.err }));
   const stampsOk = !!(sidePanel && !sidePanel.err && sidePanel.stamps.length > 0 &&
     JSON.stringify(sidePanel.stamps) === JSON.stringify(sidePanel.localStamps) &&
-    (sidePanel.offsetMin === 0 || sidePanel.stamps.every((s, i) => s !== sidePanel.utcStamps[i])));
-  record("F4: the screenshot thumbnails show local time, the timeline's clock (not the UTC slice of the timestamp)",
-    stampsOk, JSON.stringify(sidePanel && { stamps: sidePanel.stamps, local: sidePanel.localStamps, utc: sidePanel.utcStamps,
-      utcOffsetMinutes: sidePanel && -sidePanel.offsetMin }) +
-      (sidePanel && sidePanel.offsetMin === 0 ? " (UTC machine: local equals UTC here)" : ""));
+    sidePanel.stamps.every((s, i) => s !== sidePanel.utcStamps[i]));
+  record("F4 + V2 item 6: the screenshot thumbnails show the one clock, the time since the recording started (m:ss), never a time of day",
+    stampsOk, JSON.stringify(sidePanel && { stamps: sidePanel.stamps, sinceStart: sidePanel.localStamps, timeOfDay: sidePanel.utcStamps }));
   if (!(panelOk && stampsOk)) await shot(page, "fail-flow-side-panel.png");
+  // V2 item 6: the timeline's axis reads the same clock (0:00 at the start),
+  // and the time of day shows only in the summary with the recording's date.
+  const axis = await page.evaluate(() => ({
+    ticks: [...document.querySelectorAll("#timeline .tl-flow-tick-label")].map((l) => (l.textContent || "").trim()),
+    summary: ((document.getElementById("timeline-summary") || {}).textContent || "").trim(),
+  })).catch((e) => ({ err: e.message }));
+  record("V2 item 6: the timeline's tick labels read the time since the recording started (m:ss); the summary carries the date",
+    !!(axis && !axis.err && axis.ticks.length >= 3 && axis.ticks.every((t) => /^\d+:\d{2}(:\d{2})?$/.test(t)) &&
+      axis.ticks.includes("1:00") && /^Recorded .+ · \d/.test(axis.summary)),
+    JSON.stringify(axis));
 
   // --- V1 (step-back review 4.2): "More" dissolved; each item is where it is
   // used, with the ids its wiring and the tests use: Attach video on the
@@ -967,8 +977,9 @@ async function unreadableAnnotationsPin() {
       Object.assign(detail, await page.evaluate((sid) => {
         const s = require("./state.js").getSession();
         const step = ((s.annotations || {}).steps || []).find((x) => x.step_id === sid);
-        const pad = (n) => String(n).padStart(2, "0");
-        const local = (iso) => { const d = new Date(iso); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+        // One clock: the time since the recording started (m:ss).
+        const origin = Date.parse(s.manifest.started_at);
+        const local = (iso) => { const t = Math.floor((Date.parse(iso) - origin) / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
         const at = {};
         for (const e of s.events || []) if (e.type === "system" && e.data && e.data.path) at[e.data.path] = e.timestamp;
         const more = document.querySelector("#step-detail .step-detail-more");
@@ -982,20 +993,30 @@ async function unreadableAnnotationsPin() {
             ref: b.dataset.ref, loaded: (b.querySelector("img") || {}).naturalWidth > 0,
             stamp: ((b.querySelector(".stamp") || {}).textContent || "").trim() })),
           wantStamps: (step.evidence.screenshot_refs || []).map((r) => (at[r] ? local(at[r]) : "")),
-          // The draft's why, short, from the pipeline's reason (the step is a
-          // draft that ended at a commit in the demo).
-          wantWhy: (() => {
-            const r = /^Drafted from (\d+) interactions? on (.+?); ended at the commit "(.+)"\.$/.exec(step.suggestion_reason || "");
-            return step.end_reason === "commit" && r ? r[1] + " interaction" + (r[1] === "1" ? "" : "s") + " on " + r[2] + ", ended at " + r[3] : null;
+          // Where the draft ends, as the pipeline's reason names its commit
+          // (the viewer builds it from end_reason and the last interaction).
+          wantEnds: (() => {
+            const r = /; ended at the commit "(.+)"\.$/.exec(step.suggestion_reason || "");
+            return step.end_reason === "commit" && r ? "ends at " + r[1] : null;
+          })(),
+          fields: [...document.querySelectorAll("#step-detail .step-fields dt")].length,
+          saveButton: !!document.getElementById("btn-step-save"),
+          // Where the step is: its run's number and its start on the one clock.
+          wantWhere: (() => {
+            const runs = ((s.stats && s.stats.case_stats) || []).filter((c) => !c.parent_case_id)
+              .sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts));
+            return "Run " + (runs.findIndex((c) => c.case_id === step.case_id) + 1) + " at " + local(step.time_range.start);
           })(),
         };
       }, detail.stepId));
     } catch (e) { logActionError("P1.7 + P2.16 step detail", e); detail.err = String(e.message).split("\n")[0]; }
-    const detailOk = !!(!detail.err && /^\d+(s|:\d{2}) · \S/.test(detail.fact || "") && detail.tiles === 0 && detail.descResident &&
-      detail.wantWhy && (detail.fact || "").endsWith(" · " + detail.wantWhy) &&
+    const detailOk = !!(!detail.err && /^(Salesforce|SAP|Excel|Outlook|Notepad) · \S.* · \d+(s|:\d{2}) · ends at .+ · Run [1-4] at \d+:\d{2}$/.test(detail.fact || "") &&
+      detail.tiles === 0 && detail.descResident && !detail.saveButton &&
+      detail.wantEnds && (detail.fact || "").includes(" · " + detail.wantEnds + " · ") &&
+      (detail.fact || "").endsWith(" · " + detail.wantWhere) && !detail.saveButton &&
       detail.shots && detail.shots.length === detail.refs && detail.refs > 0 && detail.shots.every((x) => x.loaded) &&
       JSON.stringify(detail.shots.map((x) => x.stamp)) === JSON.stringify(detail.wantStamps));
-    record("P1.7 + P2.16: the step detail shows one fact line ending in the draft's why (its interactions on the screen, ended at its commit), the Description resident, and the step's own screenshots (loaded, in local time); no Start, End or Run tiles",
+    record("P1.7 + P2.16 + V2 item 1: the step detail shows one fact line led by the system (system · screen · time · ends at its commit · Run N at m:ss), no Save button, the Description resident, and the step's own screenshots (loaded, stamped with the time since the recording started); no Start, End or Run tiles",
       detailOk, JSON.stringify(detail));
     if (!detailOk) await shot(page, "fail-step-detail.png");
 
@@ -1019,7 +1040,7 @@ async function unreadableAnnotationsPin() {
       await page.waitForSelector("#step-list .run-group.pattern.open .step-row", { timeout: STATE_TIMEOUT });
       await page.locator("#step-list .run-group.pattern.open .step-row", { hasText: OLD }).first().click({ timeout: STATE_TIMEOUT });
       await page.locator("#step-name").fill(RENAMED, { timeout: STATE_TIMEOUT });
-      await page.locator("#btn-step-save").click({ timeout: STATE_TIMEOUT });
+      await page.locator("#step-name").press("Enter");   // no Save button: Enter saves the name
       await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")]
         .some((e) => e.textContent.trim() === n), RENAMED, { timeout: STATE_TIMEOUT });
       f1.bpmnHadOld = fs.readFileSync(stepBpmn, "utf-8").includes(OLD);

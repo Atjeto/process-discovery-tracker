@@ -104,18 +104,21 @@ test("analysisNeed: a recording with no stats.json or no analysis.json has no an
   assert.equal(R.analysisNeed({ stats: null, analysis: { stage_errors: [] } }), "missing");
 });
 
-test("analysisNeed: an analysis without the blocks today's pipeline always writes came from an older version", () => {
-  const current = { stats: { meta: { draft_summary: { runs: 4 } } },
-    analysis: { case_quality: { mode: "markers" }, stage_errors: [] } };
+test("analysisNeed (V2 item 10): the format number the pipeline writes tells an older analysis, not the keys it has", () => {
+  const current = { stats: { meta: {} }, analysis: { format: R.ANALYSIS_FORMAT } };
+  assert.equal(R.ANALYSIS_FORMAT, 2);
   assert.equal(R.analysisNeed(current), null, "control: today's analysis needs no run");
-  const without = (fn) => { const s = JSON.parse(JSON.stringify(current)); fn(s); return R.analysisNeed(s); };
-  assert.equal(without((s) => { delete s.analysis.stage_errors; }), "stale", "before C12");
-  assert.equal(without((s) => { delete s.analysis.case_quality; }), "stale", "before the run check");
-  assert.equal(without((s) => { delete s.stats.meta.draft_summary; }), "stale", "before the C1 drafting rule");
-  assert.equal(without((s) => { s.stats.meta = undefined; }), "stale");
+  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: R.ANALYSIS_FORMAT + 1 } }), null, "a newer one is read as it is");
+  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 1 } }), "stale");
+  assert.equal(R.analysisNeed({ stats: { meta: { draft_summary: { runs: 4 } } },
+    analysis: { case_quality: { mode: "markers" }, stage_errors: [] } }), "stale", "every key of today, but no format: an older pipeline");
+  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: "2" } }), null, "read as a number");
 });
 
-test("analysisNeed: a run check that failed is today's analysis, not an older one (C12)", () => {
-  assert.equal(R.analysisNeed({ stats: { meta: { draft_summary: {} } },
-    analysis: { case_quality: null, stage_errors: [{ stage: "case_quality", error: "TypeError" }] } }), null);
+test("analysisNeed: the pipeline writes the same format number the viewer reads", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "normalization", "pipeline_stages.py"), "utf-8");
+  const m = /^ANALYSIS_FORMAT = ([0-9]+)\r?$/m.exec(src);
+  assert.ok(m, "pipeline_stages.py defines ANALYSIS_FORMAT");
+  assert.equal(Number(m[1]), R.ANALYSIS_FORMAT);
+  assert.ok(src.includes('analysis_result["format"] = ANALYSIS_FORMAT'), "and writes it into analysis.json");
 });

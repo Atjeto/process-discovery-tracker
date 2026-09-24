@@ -26,12 +26,15 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep, addStepAtPlayhead, analyzeSession, runPipeline, UPDATING } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, runPipeline, UPDATING } = require("./views/flow-view.js");
+// V2 item 4: the step panel beside the map, the timeline and the Steps list.
+const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
 const { renderOverviewLevel, openMarkersInFlow, mapLockHtml } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
-const { buildAnnotationDfg } = require("./process-map-levels.js");
+const { buildAnnotationDfg, mapNodeLabel } = require("./process-map-levels.js");
 const RunsModel = require("./runs-model.js");
+const SystemNames = require("./system-names.js");
 const RefmapUI = require("./refmap-ui.js");
 const { pddExportOutcome } = require("./normalize-result.js");
 
@@ -173,11 +176,33 @@ function _sessionMapData() {
   const runs = RunsModel.buildRuns(sess.stats, (sess.annotations && sess.annotations.steps) || []).runs;
   return {
     dfg: buildAnnotationDfg(runs.map((r) => r.visible)),
+    // AD-28: each box names the system its step happened in, under its name.
+    nodeSystems: _nodeSystems(sess, runs),
     // §B2: the map is TIME-weighted: edge thickness carries the time that
     // flowed along each path; the times and the count are in the tooltip.
     edgeWeight: "time",
     emptyMessage: escapeHtml("No steps to draw yet: the runs have no visible steps. Add or unhide steps in the Steps view."),
   };
+}
+
+/* { map node: system } for the runs' visible steps: each node's most
+   frequent system (the one vocabulary, C14). */
+function _nodeSystems(sess, runs) {
+  const inter = {};
+  for (const ev of sess.events || []) if (ev && ev.type === "interaction" && ev.event_id) inter[ev.event_id] = ev;
+  const names = (sess.stats && sess.stats.meta && sess.stats.meta.app_names) || {};
+  const counts = new Map();
+  for (const st of runs.flatMap((r) => r.visible)) {
+    const system = SystemNames.whereOfStep(st, inter, names).system;
+    if (!system) continue;
+    const label = mapNodeLabel(st);
+    const c = counts.get(label) || new Map();
+    c.set(system, (c.get(system) || 0) + 1);
+    counts.set(label, c);
+  }
+  const out = {};
+  for (const [label, c] of counts) out[label] = [...c].sort((a, b) => b[1] - a[1])[0][0];
+  return out;
 }
 
 function _ensureSessionMapCtrl() {
@@ -189,6 +214,8 @@ function _ensureSessionMapCtrl() {
       wrap: document.getElementById("session-map-zoom"),
     },
     dataSource: _sessionMapData,
+    // V2 item 4: a box opens the step panel beside the map.
+    onNodeClick: (label) => StepPanel.openForNode(label),
   });
   // The lock message's call to action ("Mark runs in Flow", the same verb as
   // the Overview's). Delegated once, so innerHTML rewrites keep it alive.
@@ -228,6 +255,7 @@ State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
 State.subscribe("steps",    renderMapLevel);
+State.subscribe("steps",    () => StepPanel.refresh());
 
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
@@ -249,6 +277,8 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
+  // The step panel closes on the Overview; elsewhere its foot follows.
+  StepPanel.onLevel(name);
   // (The run select dims the other runs on the timeline and changes nothing
   // on the other levels: it sits in the Timeline's own header, P1.2.)
   const layouts = ["overview", "flow", "steps", "map"];
@@ -307,7 +337,8 @@ initStepsView({
   persistAnnotations: (a, label) => persistAnnotations(a, label),
   videoTimeToSessionTs: (t) => videoTimeToSessionTs(t),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
-  watchStep: (s) => watchStep(s),
+  // Watch plays the step in the step panel, beside the steps (V2 item 4).
+  watchStep: (s) => StepPanel.watch(s),
   analyze: () => analyzeSession(),
 });
 

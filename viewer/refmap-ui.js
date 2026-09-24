@@ -87,11 +87,58 @@ function _setForkBusy() {
   btn.title = "Analyzing the session first, so the copy carries your latest step names";
 }
 
+/* ---- the Map level's first view (V2 item 7) ------------------------------ */
+/* When an As-Is copy is chosen for the PDD, the Map level shows it first,
+   read only (a picture drawn by bpmn-js), with Edit beside it; the map from
+   the runs is one click away, and back. Per recording, for this window. */
+let _mapView = { folder: null, which: "asis" };
+let _drawn = null;   // { id, mtime }: the As-Is picture on screen
+
+function _fileMtime(s, e) {
+  try { return require("node:fs").statSync(RefStore.absPath(s.sessionFolder, e)).mtimeMs; } catch (_) { return null; }
+}
+
+function syncMapView() {
+  const s = session();
+  const folder = s ? s.sessionFolder : null;
+  if (_mapView.folder !== folder) { _mapView = { folder, which: "asis" }; _drawn = null; }
+  const asIs = _asIsMap(s);
+  const showAsIs = !!asIs && _mapView.which === "asis";
+  const box = $("session-map-asis");
+  const host = document.querySelector("#session-layout-map .map-host");
+  if (box) box.hidden = !showAsIs;
+  if (host) host.style.display = showAsIs ? "none" : "";
+  const zoom = $("session-map-zoom");
+  if (zoom && showAsIs) zoom.style.display = "none";
+  const back = $("btn-map-show-asis");
+  if (back) back.hidden = !(asIs && !showAsIs);
+  if (!showAsIs) return;
+  const title = $("map-asis-title");
+  if (title) title.textContent = asIs.name || "As-Is map";
+  const mtime = _fileMtime(s, asIs);
+  if (_drawn && _drawn.id === asIs.map_id && _drawn.mtime === mtime) return;
+  _drawn = { id: asIs.map_id, mtime };
+  const img = $("map-asis-img");
+  if (!img) return;
+  xmlToSvg(RefStore.readBpmn(s.sessionFolder, asIs)).then((svg) => {
+    if (!svg || session() !== s) { img.textContent = svg ? "" : "The As-Is map could not be drawn."; return; }
+    img.innerHTML = '<img alt="As-Is process map" src="data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '">';
+  });
+}
+
+function _showMapView(which) {
+  _mapView.which = which;
+  syncMapView();
+  // The map from the runs is laid out once its host shows.
+  if (which === "runs") { try { if (_deps.renderLiveMap) _deps.renderLiveMap(); } catch (_) {} }
+}
+
 /* ---- gallery ------------------------------------------------------------ */
 function refresh() {
   const s = session();
   const maps = s ? RefStore.list(s.annotations) : [];
   syncForkButton();
+  syncMapView();
   const countEl = $("refmap-count");
   if (countEl) countEl.textContent = maps.length ? "(" + maps.length + ")" : "";
   const listEl = $("refmap-list");
@@ -402,6 +449,14 @@ function initRefmapUI(deps) {
   });
   const closeBtn = $("btn-refmap-editor-close");
   if (closeBtn) closeBtn.addEventListener("click", () => closeEditor());
+  // V2 item 7: the As-Is map first, read only; Edit beside it; the map from
+  // the runs one click away, and back.
+  const editAsIs = $("btn-map-asis-edit");
+  if (editAsIs) editAsIs.addEventListener("click", () => { const e = _asIsMap(session()); if (e) openEditor(e.map_id); });
+  const showRuns = $("btn-map-show-runs");
+  if (showRuns) showRuns.addEventListener("click", () => _showMapView("runs"));
+  const showAsIs = $("btn-map-show-asis");
+  if (showAsIs) showAsIs.addEventListener("click", () => _showMapView("asis"));
   const nameInput = $("refmap-editor-name");
   if (nameInput) nameInput.addEventListener("change", () => onEditorField("name"));
   const pddSel = $("refmap-editor-pdd");

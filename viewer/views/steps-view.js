@@ -5,12 +5,14 @@
  * The list pane shows the runs in time order (the cases from the markers).
  * One group is open at a time: a run, which lists its steps in time order,
  * or the collapsed-by-default "Outside runs" group for the steps no run
- * contains. The analyst confirms the PATTERN run first (fix its boundaries,
- * name its steps, Confirm run); the app counts the boundary fixes made to it
- * (merge, split, add, hide) and, once it is confirmed, shows the probe line.
- * Renaming a step that carries a draft_key remembers the name (main-process
- * store, passed as --names on every Analyze) and names the same-key drafts of
- * the session at once. The Detail slider does not change this view.
+ * contains. The analyst confirms the REFERENCE run (annotations.pattern_run,
+ * C3; fix its boundaries, name its steps, Confirm run); the other runs are
+ * reviewed, never confirmed (AD-28): a run counts as reviewed once it was
+ * opened (annotations.opened_runs). The app counts the boundary fixes made to
+ * the reference run (merge, split, add, hide); once it is confirmed, the
+ * probe line is in its right-click menu. Renaming a step that carries a
+ * draft_key remembers the name (main-process store, passed as --names on
+ * every Analyze) and names the same-key drafts of the session at once.
  *
  * Lane L12b: a merge made in the pattern run carries to the same consecutive
  * drafts of the other runs (one undo), and a draft hidden there can be hidden
@@ -36,7 +38,7 @@
 
 const path = require("node:path");
 const fs = require("node:fs");
-const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu, localClock } = require("../dom.js");
+const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
@@ -45,7 +47,10 @@ const PdtSteps = require("../step-editor.js");
 const RunsModel = require("../runs-model.js");
 const RunDiff = require("../run-differences.js");
 const TM = require("../transcript-model.js");
-const { screenType, resolveStepGrainKeys, processLabel } = require("../process-map-levels.js");
+const SystemNames = require("../system-names.js");
+const StepFacts = require("../step-facts.js");
+const StepPanel = require("./step-panel.js");
+const { processLabel } = require("../process-map-levels.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -86,6 +91,10 @@ let _rememberedLoad = null;
 
 /* The one datalist the step name inputs (detail and inline rename) share. */
 const NAME_LIST_ID = "step-name-suggestions";
+
+/* The step the detail pane shows, so a redraw of the same step keeps the
+   field being typed in. */
+let _detailStepId = null;
 
 function getSpan() {
   const evs = (State.getSession() && State.getSession().events) || [];
@@ -144,6 +153,30 @@ function _openGroup(key) {
   State.getMultiSelectedStepIds().clear();
   const s = _findStep(State.getSelectedStepId());
   if (s && (key == null || RunsModel.groupKeyOf(s, _model().runs) !== key)) State.setSelectedStepId(null);
+  _markOpened(key);
+}
+
+/* AD-28: a run other than the reference run is reviewed once it has been
+   opened after the reference run was confirmed (its differences from the
+   confirmed steps show when it opens); it is not confirmed itself. The run
+   is kept in annotations.opened_runs (its case_id), written directly: opening
+   a run is not an edit, so it is not undone (session.js keeps the list across
+   an undo) and the analysis keeps the key as it is (C10). Nothing is written
+   while an analysis runs (it reloads the file when it ends). */
+function _markOpened(caseId) {
+  const s = State.getSession();
+  const anno = s && s.annotations;
+  if (!anno || typeof caseId !== "string" || caseId === OUTSIDE) return;
+  const model = _model();
+  const p = RunsModel.patternRun(anno, model.runs);
+  if (!p.record || !p.record.confirmed_at) return;
+  if (!model.runs.some((r) => r.caseId === caseId) || (p.run && p.run.caseId === caseId)) return;
+  const opened = Array.isArray(anno.opened_runs) ? anno.opened_runs : [];
+  if (opened.includes(caseId)) return;
+  const run = State.getAnalysisRun();
+  if (run && run.folder === s.sessionFolder && run.status === "running") return;
+  anno.opened_runs = opened.concat([caseId]);
+  Session.saveAnnotationsDirect(anno, "open a run").catch(() => { /* already shown */ });
 }
 
 /* Select a step and make sure it is on screen: its group opens, and hidden
@@ -229,7 +262,7 @@ function _reference(pattern) {
       noun: RunDiff.SAVED_REFERENCE, caseId: null };
   }
   if (pattern.run) {
-    return { kind: "pattern", steps: pattern.run.visible, noun: RunDiff.PATTERN_REFERENCE, caseId: pattern.run.caseId };
+    return { kind: "pattern", steps: pattern.run.visible, noun: RunDiff.REFERENCE_RUN, caseId: pattern.run.caseId };
   }
   return null;
 }
@@ -246,7 +279,7 @@ function _runDiffs(ref, run) {
 function stopComparingAction() {
   _ui.compareStopped = true;
   renderStepsLevel();
-  toast("Stopped comparing: the runs are compared with the pattern run.", "success");
+  toast("Stopped comparing: the runs are compared with the reference run.", "success");
 }
 
 /* ===== The Steps level ================================================== */
@@ -295,7 +328,7 @@ function renderStepsLevel() {
   const revealStep = (pendingTs || arriveReveal) ? _findStep(State.getSelectedStepId()) : null;
   if (revealStep) {
     const key = RunsModel.groupKeyOf(revealStep, model.runs);
-    if (_ui.open !== key) { _ui.open = key; State.getMultiSelectedStepIds().clear(); }
+    if (_ui.open !== key) { _ui.open = key; State.getMultiSelectedStepIds().clear(); _markOpened(key); }
     if (revealStep.state === "hidden") _ui.showHidden = true;
   }
   const openIsGone = _ui.open === undefined ||
@@ -325,12 +358,30 @@ function renderStepsLevel() {
   const selId = State.getSelectedStepId();
   const selected = selId && visibleIds.has(selId) ? allSteps.find((s) => s.step_id === selId) : null;
   const title = $("#step-detail-title");
+  // The name or the description being typed in keeps what was typed and the
+  // cursor across a redraw (an autosave redraws the pane); leaving the field
+  // then saves it, as always.
+  const detail = $("#step-detail");
+  const active = document.activeElement;
+  const typing = selected && detail && active && detail.contains(active) && _detailStepId === selected.step_id &&
+    (active.id === "step-name" || active.id === "step-desc")
+    ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   if (selected) {
     if (title) title.textContent = "Selected step";
     _fillNameList(selected, interactionsById);
-    PdtSteps.renderStepDetail($("#step-detail"), selected, stepDetailCallbacks(selected, interactionsById));
+    PdtSteps.renderStepDetail(detail, selected, stepDetailCallbacks(selected, interactionsById));
+    _detailStepId = selected.step_id;
+    const el = typing && document.getElementById(typing.id);
+    if (el) {
+      if (el.value !== typing.value) el.value = typing.value;
+      el.focus();
+      try { el.setSelectionRange(typing.start, typing.end); } catch (_) { /* not a text field */ }
+    }
+    // V2 item 4: the step panel beside the list follows the selected row.
+    if (State.getLevel() === "steps") StepPanel.followSteps(selected);
   } else {
-    renderRunGuide($("#step-detail"), model, pattern, ref);
+    _detailStepId = null;
+    renderRunGuide(detail, model, pattern, ref);
   }
 
   if (revealStep && visibleIds.has(revealStep.step_id)) {
@@ -362,7 +413,7 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
     line.className = "runs-compare";
     line.innerHTML = '<span class="runs-compare-text">Compared with saved process <strong>' + escapeHtml(ref.name) + "</strong></span>";
     line.appendChild(_actionBtn("stop-comparing", "Stop comparing", "",
-      "Compare the runs with this session's pattern run instead", stopComparingAction));
+      "Compare the runs with this recording's reference run instead", stopComparingAction));
     line.appendChild(_actionBtn("forget-process", "Forget this saved process", "",
       "Remove this saved process from this computer. The toast's Undo brings it back.", forgetProcessAction));
     host.appendChild(line);
@@ -388,8 +439,8 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
   if (model.outside.length) host.appendChild(_outsideGroupEl(model, visible));
 }
 
-const PATTERN_TITLE = "The pattern run: confirm it first. Its step names carry over to the other runs.";
-const OTHER_RUN_TITLE = "Right-click to use this run as the pattern";
+const PATTERN_TITLE = "The reference run: confirm it. Its step names carry over to the other runs, which are compared with it.";
+const OTHER_RUN_TITLE = "Right-click to use this run as the reference run";
 
 function _groupHead(isOpen, innerHtml, titleAttr) {
   return '<div class="run-row" role="button" tabindex="0" aria-expanded="' + (isOpen ? "true" : "false") + '"' +
@@ -469,44 +520,45 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   g.dataset.caseId = run.caseId;
   const n = run.visible.length;
   // Item 3: the run's differences from its reference, counted in its meta
-  // (no count on the pattern run the others are compared with).
+  // (no count on the reference run the others are compared with).
   const diffs = _runDiffs(ref, run);
   const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + formatDuration(run.durationMs) : "") +
     (diffs ? " · " + (diffs.length ? _plural(diffs.length, "difference", "differences") : "no differences") : "");
-  // P3.8: "Use as pattern" is a once-a-session choice, so it lives in the
-  // run's right-click menu, not on every open run.
+  // AD-28: only the reference run is confirmed, so only it carries a status,
+  // read from its confirmation (C3); the other runs are reviewed by opening
+  // them. P3.8: "Use as reference run" is a once-a-session choice, so it
+  // lives in the run's right-click menu, as the probe line of the confirmed
+  // reference run does.
+  const status = !isPattern ? null : !run.visible.length ? "empty" : patternConfirmed ? "confirmed" : "draft";
   const canUsePattern = !isPattern && run.members.length > 0;
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
-    (isPattern ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Pattern</span>' : "") +
-    '<span class="run-status run-status-' + run.status + '">' + escapeHtml(RunsModel.STATUS_LABELS[run.status]) + "</span>" +
+    (isPattern ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Reference</span>' : "") +
+    (status ? '<span class="run-status run-status-' + status + '">' + escapeHtml(RunsModel.STATUS_LABELS[status]) + "</span>" : "") +
     '<span class="run-meta">' + escapeHtml(meta) + "</span>", canUsePattern ? OTHER_RUN_TITLE : "");
   _wireHead(g, run.caseId);
-  if (canUsePattern) {
+  if (canUsePattern || (isPattern && patternConfirmed)) {
     g.querySelector(".run-row").addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      showRunContextMenu(run.caseId, e.clientX, e.clientY);
+      if (canUsePattern) showRunContextMenu(run.caseId, e.clientX, e.clientY);
+      else _showProbeMenu(RunsModel.probeLine(stats, model.runs, run, rec), e.clientX, e.clientY);
     });
   }
-
-  // The P1 probe line sits on the pattern run once it is confirmed, open or
-  // not: the number the owner reads and copies.
-  if (isPattern && patternConfirmed) g.appendChild(_probeEl(stats, model, run, rec));
   if (!isOpen) return g;
 
   const body = _groupBody(visible, run.hiddenCount,
-    run.hiddenCount ? "Every step of this run is hidden." : "No steps in this run.", run.status);
+    run.hiddenCount ? "Every step of this run is hidden." : "No steps in this run.", status || run.status);
   const acts = body.querySelector(".run-actions");
-  const canConfirm = run.status === "draft" || (isPattern && !patternConfirmed && run.visible.length > 0);
+  const canConfirm = isPattern && !patternConfirmed && run.visible.length > 0;
   const buttons = [];
   if (canConfirm) {
     buttons.push(_actionBtn("confirm-run", "Confirm run", "primary",
       "Accept this run's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
       () => confirmRunAction(run.caseId)));
   }
-  if (RunsModel.canReopen(run, rec, isPattern)) {
+  if (isPattern && RunsModel.canReopen(run, rec, isPattern)) {
     buttons.push(_actionBtn("reopen-run", "Reopen run", "",
       "Turn this run's confirmed steps back into drafts; the steps you edited or added stay as they are. Ctrl+Z undoes it.",
       () => reopenRunAction(run.caseId)));
@@ -517,11 +569,22 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
       () => saveAsProcessAction(run.caseId)));
   }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
+  // One line per run says which names came from saved names (this computer's
+  // or this recording's own, C4), in place of a tag on every row.
+  const saved = run.visible.filter((s) => s.name_source === "remembered" &&
+    (RunsModel.DRAFT_STATES.has(s.state) || s.state === "confirmed")).length;
+  if (saved) {
+    const line = document.createElement("p");
+    line.className = "run-names-note";
+    line.title = "These steps took the name you gave the same drafted step before, in this recording or on this computer";
+    line.textContent = "Names from saved names: " + saved + " of " + _plural(n, "step", "steps");
+    acts.appendChild(line);
+  }
   const after = acts;
   if (diffs && diffs.length) {
     const list = document.createElement("ul");
     list.className = "run-diffs";
-    list.title = "How this run differs from " + (ref.kind === "saved" ? "the saved process" : "the pattern run");
+    list.title = "How this run differs from " + (ref.kind === "saved" ? "the saved process" : "the reference run");
     for (const d of diffs) {
       const li = document.createElement("li");
       li.dataset.kind = d.kind;
@@ -561,22 +624,17 @@ function _actionBtn(act, label, cls, title, onClick) {
   return b;
 }
 
-/* The probe line, readable and copyable (the owner's P1 instrument). */
-function _probeEl(stats, model, run, rec) {
-  const p = RunsModel.probeLine(stats, model.runs, run, rec);
+/* The probe line (the owner's P1 instrument), in the confirmed reference
+   run's right-click menu: the line itself, which a click copies. */
+function _showProbeMenu(p, x, y) {
   const why = p.source === "analysis"
     ? "Drafted steps: how many steps the analysis drafted for this run."
     : p.source === "designation"
-      ? "Drafted steps: the analysis file does not record how many steps it drafted, so this is the number of steps the run had when it became the pattern."
+      ? "Drafted steps: the analysis file does not record how many steps it drafted, so this is the number of steps the run had when it became the reference run."
       : "The drafted step count is not recorded; Re-analyze in Help, Troubleshooting records it.";
-  const box = document.createElement("div");
-  box.className = "run-probe";
-  box.innerHTML = '<span class="run-probe-text" title="' + escapeAttr(why + " Boundary fixes: the merges, splits, " +
-    "added steps and hidden drafts made to the run from when it became the pattern until you confirmed it.") + '">' +
-    escapeHtml(p.text) + "</span>";
-  box.appendChild(_actionBtn("copy-probe", "Copy", "run-probe-copy", "Copy this line",
-    () => { if (_copyText(p.text)) toast("Copied: " + p.text, "success"); else toast("Could not copy the line.", "error"); }));
-  return box;
+  _runMenu([{ act: "copy-probe", label: "Copy: " + p.text, title: why + " Boundary fixes: the merges, splits, " +
+    "added steps and hidden drafts made to the run from when it became the reference run until you confirmed it.",
+  run: () => { if (_copyText(p.text)) toast("Copied: " + p.text, "success"); else toast("Could not copy the line.", "error"); } }], x, y);
 }
 
 function _copyText(text) {
@@ -592,12 +650,12 @@ function _copyText(text) {
 
 /* The detail pane when no step is selected: what to do with the open group. */
 const GUIDE_PATTERN =
-  "Confirm this run first. Check its steps against the video or the screenshots, fix the boundaries " +
+  "This is the reference run. Check its steps against the video or the screenshots, fix the boundaries " +
   "(merge, split, add, hide) and name the steps, then click Confirm run.";
 const GUIDE_CARRY =
-  "A merge carries to the same drafted steps in the other runs, and every name you give is remembered.";
+  "A merge carries to the same drafted steps in the other runs, and every name you give is saved.";
 const GUIDE_PATTERN_DONE = "This run is confirmed: the other runs are compared with it.";
-const GUIDE_OTHER = "Fix a step where needed; Confirm run accepts the drafted steps that are left.";
+const GUIDE_OTHER = "Check how this run differs from the reference run, and fix a step where needed. It is not confirmed: the reference run is.";
 const GUIDE_OUTSIDE =
   "These steps fall outside every marked run. To bring them into a run, add a start marker on the Timeline " +
   "and click Apply marker changes.";
@@ -618,7 +676,7 @@ function renderRunGuide(host, model, pattern, ref) {
     paras = isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
     const diffs = run ? _runDiffs(ref, run) : null;
     if (diffs && !diffs.length) {
-      const noun = ref.kind === "saved" ? RunDiff.SAVED_REFERENCE : RunDiff.PATTERN_REFERENCE;
+      const noun = ref.kind === "saved" ? RunDiff.SAVED_REFERENCE : RunDiff.REFERENCE_RUN;
       paras.unshift("It has no differences from " + noun + ".");
     }
   } else {
@@ -638,24 +696,11 @@ function _appNames() {
   return (s && s.stats && s.stats.meta && s.stats.meta.app_names) || {};
 }
 
-/* The step's application (its readable name) and screen for the detail
-   pane's one fact line. Prefers the pipeline-stamped grain_keys (the screen
-   gets screenType again, the read-only helper the map's screen axis uses);
-   falls back to resolving them from the step's interactions for older or
-   hand-authored steps. */
-function stepAppAndScreen(step, interactionsById) {
-  if (!step) return { app: "", screen: "" };
-  const keys = (step.grain_keys && typeof step.grain_keys === "object")
-    ? step.grain_keys
-    : resolveStepGrainKeys(step, interactionsById || {});
-  const screen = screenType(keys.screen || "").trim();
-  return { app: readableApp(keys.app, _appNames()), screen: screen === "(screen)" ? "" : screen };
-}
-
-/* P2.16: the step's screenshots, for its editor: [{ ref, url, time }]. A ref
-   comes from annotations.json (untrusted): only a session-relative image
-   path that stays inside the session folder and exists is shown. `time` is
-   the screenshot's local clock time, from its capture event. */
+/* P2.16: the step's screenshots, for its editor and the step panel:
+   [{ ref, url, time }]. A ref comes from annotations.json (untrusted): only a
+   session-relative image path that stays inside the session folder and
+   exists is shown. `time` is when it was taken, as the time since the
+   recording started (the one clock). */
 const _IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 function stepScreenshots(step) {
   const s = State.getSession();
@@ -675,25 +720,53 @@ function stepScreenshots(step) {
     const full = path.resolve(base, ref);
     const rel = path.relative(base, full);
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || !fs.existsSync(full)) continue;
-    out.push({ ref, url: "file:///" + full.replace(/\\/g, "/"), time: timeOf[ref] ? localClock(timeOf[ref]) : "" });
+    out.push({ ref, url: "file:///" + full.replace(/\\/g, "/"), time: timeOf[ref] ? sinceStart(timeOf[ref], recordingStartMs(s)) : "" });
   }
   return out;
 }
 
 /* C8: what the step editor's "Said during this step" shows: null without a
    transcript, else whether it is synced and the sentences of the step's
-   window (transcript-model.js). */
+   window (transcript-model.js), timed from the recording's start. */
 function _transcriptSaid(step) {
-  const placed = TM.forSession(State.getSession());
+  const s = State.getSession();
+  const placed = TM.forSession(s);
   if (!placed) return null;
-  return { synced: placed.synced, sentences: placed.synced ? TM.sentencesForStep(placed.sentences, step) : [] };
+  return { synced: placed.synced, sentences: placed.synced ? TM.sentencesForStep(placed.sentences, step) : [],
+    originMs: recordingStartMs(s) };
+}
+
+/* The step pane's fact line, fields and description (companion critique,
+   section 3), from the step's own fields and interactions: the system first
+   (the one vocabulary, C14), the screen, the time, where a draft ends (its
+   end_reason and commit) and where it is in the recording. */
+function stepFacts(step, interactionsById) {
+  const s = State.getSession();
+  const origin = recordingStartMs(s);
+  const datas = StepFacts.stepDatas(step, interactionsById);
+  const known = ((step.evidence && step.evidence.interaction_event_ids) || [])
+    .map((id) => interactionsById[id]).filter(Boolean).map((ev) => ev.data || {});
+  const where = SystemNames.whereOfStep(step, interactionsById, _appNames());
+  const drafted = StepFacts.isDraftedDescription(step.description, datas);
+  return {
+    factLine: StepFacts.factLine({ system: where.system, screen: where.screen, duration: StepFacts.duration(step.time_range),
+      ends: StepFacts.endsAt(step, datas || []), pointer: StepFacts.pointer(step, _model().runs, origin) }),
+    fields: StepFacts.typedFields(known),
+    // A draft's narration is the description's hint, never its text: the PDD
+    // leaves it out, so the pane does not pretend it is written.
+    description: drafted ? "" : (step.description || ""),
+    descriptionHint: drafted ? String(step.description).trim() : "",
+    system: where.system, originMs: origin,
+  };
 }
 
 /* The callbacks the per-step detail editor needs. */
 function stepDetailCallbacks(selected, interactionsById) {
-  const where = stepAppAndScreen(selected, interactionsById);
+  const facts = stepFacts(selected, interactionsById);
   return {
-    onSave: saveStep,
+    onRename: (stepId, name) => inlineRenameStep(stepId, name, false),
+    onDescription: describeStepAction,
+    onToggleWaste: (stepId) => toggleStepFlag(stepId, "waste"),
     onDelete: deleteStep,
     onSplit: splitStep,
     onMerge: mergeStepWithNext,
@@ -715,9 +788,8 @@ function stepDetailCallbacks(selected, interactionsById) {
       }
       renderStepsLevel();
     },
-    // P1.7: the one fact line (the duration comes from the step itself).
-    appName: where.app,
-    screenName: where.screen,
+    factLine: facts.factLine, fields: facts.fields, description: facts.description,
+    descriptionHint: facts.descriptionHint, originMs: facts.originMs,
     // P2.16: the step's screenshots, opened full size on a click (a lazy
     // require: the Flow module wires its own buttons when it loads).
     screenshots: stepScreenshots(selected),
@@ -744,7 +816,7 @@ function stepDetailCallbacks(selected, interactionsById) {
    or null). */
 function _applyRename(anno, step, name) {
   step.name = name;
-  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
+  _markEdited(step);
   const pl = (typeof step.draft_key === "string" && step.draft_key) ? String(name).trim() : processLabel(name);
   if (pl) step.process_label = pl;
   const key = typeof step.draft_key === "string" && step.draft_key ? step.draft_key : null;
@@ -814,20 +886,26 @@ function beginRenameOnSelected() {
   nameEl.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
 }
 
-async function saveStep(updatedStep) {
+/* A step the analyst changed is theirs (edited; one they added stays
+   added). A hidden step stays hidden, and Unhide brings it back edited. */
+function _markEdited(step) {
+  if (step.state === "hidden") {
+    if (step._prev_state !== "manually_authored") step._prev_state = "edited";
+  } else if (step.state !== "manually_authored") {
+    step.state = "edited";
+  }
+}
+
+/* The description, saved when its field is left (no Save button): one
+   undoable edit, the text the PDD prints under the step (C7). */
+async function describeStepAction(stepId, text) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const idx = anno.steps.findIndex(s => s.step_id === updatedStep.step_id);
-  const before = idx >= 0 ? anno.steps[idx] : null;
-  const newName = String(updatedStep.name || "").trim();
-  const renamed = !!(before && newName && newName !== String(before.name || "").trim());
-  if (idx >= 0) anno.steps[idx] = updatedStep;
-  else anno.steps.push(updatedStep);
-  const r = renamed ? _applyRename(anno, updatedStep, newName) : { key: null, propagated: 0 };
-  let saved = true;
-  try { await persistAnnotations(anno, 'save step'); } catch (_) { saved = false; }   // already shown
-  if (r.key) await _rememberName(r.key, newName);
-  if (saved) toast(renamed ? "Step saved. " + _renamedToast(r.propagated) : "Step saved", "success");
+  const step = anno.steps.find((s) => s.step_id === stepId);
+  if (!step) return;
+  step.description = text;
+  _markEdited(step);
+  try { await persistAnnotations(anno, "edit step description"); } catch (_) { /* already shown */ }
 }
 
 /* ===== Boundary verbs (counted on the pattern run, C3) ================ */
@@ -1474,17 +1552,17 @@ async function usePatternAction(caseId) {
   const f = cur.record ? RunsModel.probeLine(session.stats, model.runs, cur.run, cur.record) : null;
   if (cur.record && cur.run && (cur.record.confirmed_at || (f && f.total > 0))) {
     const ok = await confirmModal({
-      title: "Use " + run.title + " as the pattern?",
-      message: cur.run.title + " is the pattern run now. Its boundary fix count" +
+      title: "Use " + run.title + " as the reference run?",
+      message: cur.run.title + " is the reference run now. Its boundary fix count" +
         (cur.record.confirmed_at ? " and its confirmation are" : " is") + " replaced.",
       detail: "Ctrl+Z undoes it.",
-      okLabel: "Use as pattern",
+      okLabel: "Use as reference run",
     });
     if (!ok) return;
   }
   RunsModel.usePattern(anno, model.runs, caseId);
-  try { await persistAnnotations(anno, "use run as pattern"); } catch (_) { return; }   // already shown
-  toast(run.title + " is now the pattern run. The boundary fix count starts at zero.", "success");
+  try { await persistAnnotations(anno, "use run as reference run"); } catch (_) { return; }   // already shown
+  toast(run.title + " is now the reference run. The boundary fix count starts at zero.", "success");
 }
 
 /* ===== Keyboard (renderer.js) ========================================= */
@@ -1617,9 +1695,11 @@ function openIgnoredAppsDialog() {
 
 /* ===== Saved names (item 8, C4; the button reads Saved names...) =====
    The names this computer remembers for drafted steps, those whose draft key
-   occurs in this session first. Rename changes the remembered name and names
-   this session's still-draft steps with that key; Forget removes it from the
-   store, and the names already in this session stay. */
+   occurs in this session first. Rename changes the remembered name and the
+   session's steps with that key that carry it (its drafts, and the steps
+   named with it); Forget removes it from the store and gives those steps
+   their drafted names back. Both are one undoable edit of the session: the
+   next analysis names drafts with the session's own names first (C4). */
 function openRememberedNamesDialog() {
   if (!State.getSession()) { toast("Open a session first.", ""); return; }
   const prior = document.getElementById("remembered-names-dialog");
@@ -1685,12 +1765,14 @@ function openRememberedNamesDialog() {
     try { r = await Ipc.rememberStepName({ draftKey: key, name: nm }); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
     if (!r || !r.ok) { toast("The name was not renamed: " + ((r && r.error) || "no reason was given"), "error"); return; }
     _remembered[key] = { name: nm, updated_at: new Date().toISOString() };
+    // The session's own steps with that name take the new one too: the next
+    // analysis names drafts with this session's names first (C4).
     const anno = ensureAnnoShape(State.getSession().annotations);
-    const n = RunsModel.renameDrafts(anno.steps, key, nm);
+    const n = RunsModel.renameSavedName(anno.steps, key, cur, nm);
     let saved = true;
-    if (n) { try { await persistAnnotations(anno, "rename a remembered name"); } catch (_) { saved = false; } }   // already shown
+    if (n) { try { await persistAnnotations(anno, "rename a saved name"); } catch (_) { saved = false; } }   // already shown
     if (saved) {
-      toast("Renamed" + (n ? ": " + _plural(n, "drafted step in this session took", "drafted steps in this session took") +
+      toast("Renamed" + (n ? ": " + _plural(n, "step in this session took", "steps in this session took") +
         " the new name" : "") + ".", "success");
     }
     await render();
@@ -1699,14 +1781,25 @@ function openRememberedNamesDialog() {
   async function forgetRemembered(key) {
     const cur = (names[key] && names[key].name) || "";
     const ok = await confirmModal({ title: "Forget this name?", message: 'Forget "' + cur + '"?',
-      detail: "A later analysis gives these drafted steps their own names again. The names in this session stay.",
+      detail: "The steps of this recording with this name get their drafted names back, and later analyses no longer use it. Ctrl+Z gives this recording its names back.",
       okLabel: "Forget" });
-    if (!ok) return;
+    if (!ok || !State.getSession()) return;
     let r;
     try { r = await Ipc.forgetStepName({ draftKey: key }); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
     if (!r || !r.ok) { toast("The name was not forgotten: " + ((r && r.error) || "no reason was given"), "error"); return; }
     delete _remembered[key];
-    toast('Forgot "' + cur + '". The names in this session stay.', "success");
+    // Otherwise the next analysis names the drafts with this session's own
+    // steps that still carry it (C4).
+    const anno = ensureAnnoShape(State.getSession().annotations);
+    const inter = _interactionsById();
+    const n = RunsModel.forgetSavedName(anno.steps, key, cur,
+      (s) => StepFacts.draftedName(s, StepFacts.stepDatas(s, inter)));
+    let saved = true;
+    if (n) { try { await persistAnnotations(anno, "forget a saved name"); } catch (_) { saved = false; } }   // already shown
+    if (saved) {
+      toast('Forgot "' + cur + '".' + (n ? " " + _plural(n, "step in this session has its drafted name",
+        "steps in this session have their drafted names") + " again." : ""), "success");
+    }
     await render();
   }
 
@@ -1740,15 +1833,16 @@ async function toggleStepFlag(stepId, flagKey) {
   if (!step) return;
   step.flags = step.flags || {};
   step.flags[flagKey] = !step.flags[flagKey];
-  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
+  _markEdited(step);
   await persistAnnotations(anno, (step.flags[flagKey] ? "flag " : "unflag ") + flagKey);
   toast(step.flags[flagKey] ? "Flagged" : "Flag cleared", "success");
 }
 
-/* P3.8: a run's right-click menu: "Use as pattern", the once-a-session
-   choice that used to sit on every open run. The same inline-styled menu as
-   the step menu below. */
-function showRunContextMenu(caseId, x, y) {
+/* A run's right-click menu (P3.8): on another run "Use as reference run",
+   the once-a-session choice; on the confirmed reference run its probe line.
+   items = [{ act, label, title, run }]. The same inline-styled menu as the
+   step menu below. */
+function _runMenu(items, x, y) {
   const prior = document.getElementById("run-ctx-menu");
   if (prior) prior.remove();
   const menu = document.createElement("div");
@@ -1756,17 +1850,7 @@ function showRunContextMenu(caseId, x, y) {
   menu.style.cssText =
     "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
     "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
-    "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:180px;cursor:default;user-select:none;";
-  const item = document.createElement("div");
-  item.dataset.act = "use-pattern";
-  item.textContent = "Use as pattern";
-  item.title = "Make this the run you confirm first. The boundary fix count starts again at zero.";
-  item.style.cssText = "padding:6px 14px;cursor:pointer;";
-  item.addEventListener("mouseenter", () => { item.style.background = "var(--accent)"; });
-  item.addEventListener("mouseleave", () => { item.style.background = ""; });
-  menu.appendChild(item);
-  document.body.appendChild(menu);
-  placeMenu(menu, x, y);   // at (x, y), kept inside the window
+    "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:180px;max-width:560px;cursor:default;user-select:none;";
   const close = () => {
     menu.remove();
     document.removeEventListener("mousedown", dismiss, true);
@@ -1778,11 +1862,29 @@ function showRunContextMenu(caseId, x, y) {
     if (e.type === "mousedown" && menu.contains(e.target)) return;
     close();
   };
-  item.addEventListener("click", async () => { close(); await usePatternAction(caseId); });
-  setTimeout(() => {
-    document.addEventListener("mousedown", dismiss, true);
-    document.addEventListener("keydown", dismiss, true);
-  }, 0);
+  for (const it of items) {
+    const item = document.createElement("div");
+    item.dataset.act = it.act;
+    item.textContent = it.label;
+    item.title = it.title;
+    item.style.cssText = "padding:6px 14px;cursor:pointer;";
+    item.addEventListener("mouseenter", () => { item.style.background = "var(--accent)"; });
+    item.addEventListener("mouseleave", () => { item.style.background = ""; });
+    item.addEventListener("click", async () => { close(); await it.run(); });
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+  placeMenu(menu, x, y);   // at (x, y), kept inside the window
+  // At once: the right-click's own mousedown came before its contextmenu
+  // event, and an Escape pressed right away must close the menu.
+  document.addEventListener("mousedown", dismiss, true);
+  document.addEventListener("keydown", dismiss, true);
+}
+
+function showRunContextMenu(caseId, x, y) {
+  _runMenu([{ act: "use-pattern", label: "Use as reference run",
+    title: "Make this the run you confirm, the one the other runs are compared with. The boundary fix count starts again at zero.",
+    run: () => usePatternAction(caseId) }], x, y);
 }
 
 /* A5: right-click context menu for a step, from its list row. Mirrors the

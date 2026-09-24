@@ -14,7 +14,7 @@
  *       "include in PDD" ticks are gone, and no "More" menu or "Analyze
  *       session" button exists anywhere;
  *   (c) the Observations: Data typed twice (per field) and Where the time
- *       goes (per step and per application, in N of 4 runs);
+ *       goes (per step and per system, in N of 4 runs);
  *   (c2) the moved controls are where they are used (ids kept);
  *   (c3) "Apply 1 marker change" and its confirmation; Cancel and Ctrl+Z;
  *   (d) the analyst path, walked on the demo: every next act lands where it
@@ -297,7 +297,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // (c) The Observations: two items, closed on a fresh profile with their
   // takeaways; opened, Data typed twice speaks per field and Where the time
-  // goes per step and per application.
+  // goes per step and per system.
   const obs = await page.evaluate(async () => {
     const host = document.getElementById("ov-observations");
     if (!host) return { present: false };
@@ -328,15 +328,17 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       same(obs.titles, ["Data typed twice", "Where the time goes"]) && obs.closed === 2 &&
       obs.takeaways.every((t) => t.length > 0)),
     JSON.stringify(obs && { title: obs.title, modules: obs.modules, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
-  record("(c) Data typed twice says the field pair: Product code in Google Chrome typed again as Material number in SAP (the app names of lane LUX-P)",
+  record("(c) Data typed twice says the field pair, each place named by its system: Product code in Salesforce typed again as Material number in SAP (V2 item 3)",
     !!(obs && Array.isArray(obs.retyped) &&
-      obs.retyped[0] === "Product code in Google Chrome typed again as Material number in SAP"),
+      obs.retyped[0] === "Product code in Salesforce typed again as Material number in SAP"),
     JSON.stringify(obs && obs.retyped));
-  record("(c) Where the time goes: per step and per application, each with its time per run and in N of 4 runs (the Notepad lookup in 1 of 4)",
+  record("(c) Where the time goes: per step and per system (V2 item 3: Salesforce, never the browser), each with its time per run and in N of 4 runs (the Notepad lookup in 1 of 4)",
     !!(stepsTable && appsTable && same(stepsTable.head, ["Step", "Per run", "Runs"]) &&
-      same(appsTable.head, ["Application", "Per run", "Runs"]) && stepsTable.rows.length >= 5 &&
+      same(appsTable.head, ["System", "Per run", "Runs"]) && stepsTable.rows.length >= 5 &&
       stepsTable.rows.every((r) => /^\d/.test(r[1]) && /^in [1-4] of 4 runs$/.test(r[2])) &&
       appsTable.rows.some((r) => r[0] === "SAP" && r[2] === "in 4 of 4 runs") &&
+      appsTable.rows.some((r) => r[0] === "Salesforce" && r[2] === "in 4 of 4 runs") &&
+      !appsTable.rows.some((r) => /Chrome/.test(r[0])) &&
       appsTable.rows.some((r) => r[0] === "Notepad" && r[2] === "in 1 of 4 runs")),
     JSON.stringify(obs && obs.tables));
 
@@ -409,6 +411,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       next: line.dataset.next,
       ready: line.classList.contains("ov-next-ready"),
       button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
+      say: ((line.querySelector(".ov-next-say") || {}).textContent || "").trim(),
       done: [...line.querySelectorAll(".ov-next-stage.done")].map((li) => li.dataset.stage),
       stages: line.querySelectorAll(".ov-next-stage").length,
       height: Math.round(line.getBoundingClientRect().height),
@@ -444,21 +447,22 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       || {}).textContent) || ""), null, { timeout: T });
     await goOverview();
     walk.afterPattern = await lineState();
-    // 2. The other runs: each click opens the first run still drafted.
+    // 2. The other runs (AD-28): each click opens the first run not opened
+    // yet; opening it is its review (no Confirm run on runs 2 to 4).
     walk.landings.review = [];
     for (let i = 0; i < 3; i++) {
       const before = await lineState();
       if (!before || before.next !== "review") break;
       await page.locator("#btn-ov-next").click({ timeout: T });
       await page.waitForSelector("#step-list .run-group.open", { state: "visible", timeout: T });
-      const landed = Object.assign(await stepsLanding(), { button: before.button });
+      const landed = Object.assign(await stepsLanding(), { button: before.button, say: before.say,
+        confirm: await page.$$eval('#step-list .run-group.open [data-act="confirm-run"]', (b) => b.length) });
       walk.landings.review.push(landed);
-      await page.locator('#step-list .run-group.open [data-act="confirm-run"]').click({ timeout: T });
-      await page.waitForFunction(() => /Confirmed/.test(((document.querySelector("#step-list .run-group.open .run-status")
-        || {}).textContent) || ""), null, { timeout: T });
       await goOverview();
     }
     walk.afterReview = await lineState();
+    for (let k = 0; k < 40 && (readAnno().opened_runs || []).length < 3; k++) await wait(125);   // the save is asynchronous
+    walk.opened = readAnno().opened_runs || [];
     // 3. The document: the button opens it on its first empty field, with
     // the cursor in it.
     await page.locator("#btn-ov-next").click({ timeout: T });
@@ -487,10 +491,12 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     JSON.stringify(walk.afterPattern));
   const reviewOk = Array.isArray(L.review) && L.review.length === 3 && L.review.every((l, i) =>
     l.onSteps && l.openRuns === 1 && l.openTitle === "Run " + (i + 2) && !l.openIsPattern &&
-    l.selectedInOpenRun && l.button === "Review Run " + (i + 2) + " in Steps");
-  record("(d3) 'Review Run N in Steps' lands on Steps with that run open, for runs 2 to 4; then the review shows done",
-    !!(reviewOk && walk.afterReview && walk.afterReview.next === "document" && walk.afterReview.done.includes("review")),
-    JSON.stringify({ review: L.review, after: walk.afterReview }));
+    l.selectedInOpenRun && l.button === "Review Run " + (i + 2) + " in Steps" && l.confirm === 0) &&
+    L.review[0].say === "2 runs differ from the reference run.";
+  record("(d3) AD-28: 'Review Run N in Steps' lands on Steps with that run open (no Confirm run there), for runs 2 to 4; the line says how many runs differ; once each was opened the review shows done (annotations.opened_runs)",
+    !!(reviewOk && walk.afterReview && walk.afterReview.next === "document" && walk.afterReview.done.includes("review") &&
+      walk.opened.length === 3),
+    JSON.stringify({ review: L.review, after: walk.afterReview, opened: walk.opened }));
   record("(d4) 'Write the document' opens the collapsed document with the cursor in its first empty field ('Document · 0 of 9 written')",
     !!(L.document && L.document.open && L.document.focused === "title" && L.document.status === "0 of 9 written" &&
       walk.afterReview && walk.afterReview.button === "Write the document"),
@@ -815,9 +821,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(!attach.err && cp.onTimeline && /^Step 1 of 2: pause the video at a recognizable moment, then click Mark frame\./.test(cp.card) &&
       cp.prompt === 0 && cp.videoShown && cp.nothingYet && !ac.card && ac.band && ac.noVideo && ac.nothingWritten),
     JSON.stringify({ cancelPhase: cp, afterCancel: ac, err: attach.err }));
-  record("(h) Mark frame, then a click on the timeline, attaches the video with the offset of that moment; the recording line then says Video with Replace and the video header offers Sync video",
+  record("(h) Mark frame, then a click on the timeline, attaches the video with the offset of that moment (stored relative to the folder it sits in, V2 item 5); the recording line then says Video with Replace and the video header offers Sync video",
     !!(!attach.err && /^Step 2 of 2: click the matching moment on the timeline/.test(attach.step2 || "") && attach.stillNothing &&
-      attach.saved && attach.saved.path === VIDEO && Math.abs(attach.saved.offset - attach.wantOffset) <= 3000 &&
+      attach.saved && attach.saved.path === path.basename(VIDEO) && Math.abs(attach.saved.offset - attach.wantOffset) <= 3000 &&
       attach.after && attach.after.line === "Video" && attach.after.button === "Replace" && attach.after.sync),
     JSON.stringify({ step2: attach.step2, saved: attach.saved, wantOffset: attach.wantOffset, at: attach.at, after: attach.after }));
 

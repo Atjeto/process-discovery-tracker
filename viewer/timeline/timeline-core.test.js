@@ -41,6 +41,15 @@ test("chooseTicks places round, evenly-spaced ticks across the span", () => {
   for (const tick of ticks) assert.equal(tick.tMs % 10000, 0);
 });
 
+test("chooseTicks with an origin counts from it and reads the time since it (the one clock)", () => {
+  const origin = Date.UTC(2026, 4, 14, 9, 0, 0);
+  const ticks = tc.chooseTicks(origin + 4000, origin + 64000, 6, origin);   // 10 s ticks
+  assert.deepEqual(ticks.map((t) => t.label), ["0:10", "0:20", "0:30", "0:40", "0:50", "1:00"]);
+  assert.equal(ticks[0].tMs, origin + 10000, "counted from the origin, not from the epoch");
+  const hours = tc.chooseTicks(origin, origin + 3 * 3600000, 3, origin);
+  assert.deepEqual(hours.map((t) => t.label), ["0:00", "1:00:00", "2:00:00", "3:00:00"]);
+});
+
 test("chooseTicks widens the interval as the span grows", () => {
   const ticks = tc.chooseTicks(0, 3600000, 6); // target 600000ms -> 10m interval
   for (let i = 1; i < ticks.length; i++) {

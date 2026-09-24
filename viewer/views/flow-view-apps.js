@@ -1,13 +1,19 @@
 /*
- * flow-view-apps.js -- per-app colour, display label, and the timeline
- * legend for the Flow level. Extracted from flow-view.js (god-file split):
- * pure presentation helpers with no back-references into the Flow view, so
- * flow-view.js just destructures these in place of the old local functions.
+ * flow-view-apps.js: per-app colour, the system a timeline band names, and
+ * the timeline legend for the Flow level. Extracted from flow-view.js
+ * (god-file split): pure presentation helpers with no back-references into
+ * the Flow view.
+ *
+ * A band is coloured by its application and named by its system: the one
+ * vocabulary of systems (shared/system-names.json, contract C14), so a
+ * Chrome window on Salesforce reads "Salesforce", as in the step pane, the
+ * map and the PDD.
  */
 
 "use strict";
 
 const PdtTheme = require("../theme.js");
+const { systemName } = require("../system-names.js");
 
 /* Per-app colour. Known apps get fixed assignments so the same colour
    is stable across sessions; unknown apps get a deterministic slot via
@@ -24,29 +30,27 @@ function appColor(app) {
   return palette[h % palette.length];
 }
 
-/* Friendly display name for known executables; falls back to the raw
-   process name so unmapped apps remain identifiable in the legend. */
-const APP_LABELS = {
-  "chrome.exe": "Chrome", "msedge.exe": "Edge", "firefox.exe": "Firefox",
-  "SAPGUI.exe": "SAP", "saplogon.exe": "SAP",
-  "EXCEL.EXE": "Excel", "OUTLOOK.EXE": "Outlook",
-  "winword.exe": "Word", "powerpnt.exe": "PowerPoint", "Teams.exe": "Teams",
-};
-function appLabel(app) { return APP_LABELS[app] || (app || "unknown").replace(/\.exe$/i, ""); }
+/* The system a band of `app` with window title `title` names; `names` is the
+   recording's own names (stats.json meta.app_names). */
+function appLabel(app, title, names) {
+  return systemName(app, title, names) || String(app || "unknown").replace(/\.exe$/i, "");
+}
 
-function renderLegend(observedApps) {
+/* The legend: one entry per system the timeline draws, with its band's
+   colour. `observed` maps a system to the application its bands came from. */
+function renderLegend(observed) {
   const host = document.getElementById("legend-apps");
   if (!host) return;
   host.innerHTML = "";
-  const apps = Array.from(observedApps || []).sort();
-  for (const app of apps) {
+  const entries = [...(observed || new Map())].sort((a, b) => a[0].localeCompare(b[0]));
+  for (const [system, app] of entries) {
     const span = document.createElement("span");
     span.className = "legend-app";
     const sw = document.createElement("span");
     sw.className = "legend-swatch";
     sw.style.background = appColor(app);
     span.appendChild(sw);
-    span.appendChild(document.createTextNode(appLabel(app)));
+    span.appendChild(document.createTextNode(system));
     host.appendChild(span);
   }
 }

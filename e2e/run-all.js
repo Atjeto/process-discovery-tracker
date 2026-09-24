@@ -19,7 +19,7 @@
 const { spawn } = require("child_process");
 const path = require("path");
 
-const SMOKES = ["session-smoke.js", "overview-smoke.js", "runs-smoke.js", "map-slim-smoke.js", "transcript-smoke.js"];
+const SMOKES = ["session-smoke.js", "overview-smoke.js", "runs-smoke.js", "map-slim-smoke.js", "transcript-smoke.js", "panel-smoke.js"];
 
 function runOne(file) {
   return new Promise((resolve) => {

@@ -81,25 +81,22 @@ function pddExportOutcome(result, file) {
   return { ok: true, message: null };
 }
 
+/* The analysis.json format this viewer reads: the number the pipeline writes
+   as analysis.json `format` (normalization/pipeline_stages.py
+   ANALYSIS_FORMAT; V2 item 10). */
+const ANALYSIS_FORMAT = 2;
+
 /* Whether a recording needs an analysis as it opens (AD-22): "missing" when
    it has none (no stats.json or no analysis.json), "stale" when its analysis
-   came from an older version of the pipeline, else null. normalize.py stamps
-   no version number, so an older analysis is told by the blocks today's
-   pipeline always writes: analysis.json `stage_errors` (C12, empty when every
-   stage ran) and `case_quality` (or a stage error naming it), and stats.json
-   `meta.draft_summary` (the C1 drafting rule's numbers). */
+   came from an older version of the pipeline (its analysis.json `format` is
+   missing or lower than ANALYSIS_FORMAT), else null. */
 function analysisNeed(session) {
   if (!session || !session.stats || !session.analysis) return "missing";
-  const a = session.analysis;
-  if (!Array.isArray(a.stage_errors)) return "stale";
-  const runCheckFailed = a.stage_errors.some((e) => e && e.stage === "case_quality");
-  if (!a.case_quality && !runCheckFailed) return "stale";
-  const ds = (session.stats.meta || {}).draft_summary;
-  if (!ds || typeof ds !== "object") return "stale";
-  return null;
+  const f = Number(session.analysis.format);
+  return Number.isFinite(f) && f >= ANALYSIS_FORMAT ? null : "stale";
 }
 
 module.exports = {
   ERROR_PREFIX, pipelineErrorLine, describeNormalizeFailure, resultFromRunnerError, pddExportOutcome,
-  analysisNeed,
+  analysisNeed, ANALYSIS_FORMAT,
 };

@@ -32,6 +32,8 @@
  * the three ladders previously hard-coded across the timelines; `chooseTicks`
  * picks the smallest rung that keeps the tick count at or below the target.
  */
+const { clock } = require("../dom.js");
+
 const TICK_LADDER_MS = [
   1000, 2000, 5000, 10000, 15000, 30000,
   60000, 120000, 300000, 600000, 900000, 1800000,
@@ -75,9 +77,11 @@ function formatAxisLabel(tMs, intervalMs) {
  * @param {number} startMs      Span start (ms since epoch).
  * @param {number} endMs        Span end (ms since epoch).
  * @param {number} targetCount  Desired approximate tick count (>= 1).
+ * @param {number} [originMs]   When given, the ticks count from it and read the
+ *   time since it ("0:30", "1:00:00", the one clock) instead of the time of day.
  * @returns {Tick[]} Ticks ordered by time; empty when the span is non-positive.
  */
-function chooseTicks(startMs, endMs, targetCount) {
+function chooseTicks(startMs, endMs, targetCount, originMs) {
   const spanMs = endMs - startMs;
   if (!(spanMs > 0)) return [];
   const target = spanMs / Math.max(1, targetCount);
@@ -85,11 +89,13 @@ function chooseTicks(startMs, endMs, targetCount) {
   for (const rung of TICK_LADDER_MS) {
     if (rung >= target) { intervalMs = rung; break; }
   }
+  const elapsed = Number.isFinite(originMs);
+  const base = elapsed ? originMs : 0;
   /** @type {Tick[]} */
   const ticks = [];
-  const firstTick = Math.ceil(startMs / intervalMs) * intervalMs;
+  const firstTick = base + Math.ceil((startMs - base) / intervalMs) * intervalMs;
   for (let t = firstTick; t <= endMs; t += intervalMs) {
-    ticks.push({ tMs: t, label: formatAxisLabel(t, intervalMs), xPct: timeToXPct(t, startMs, spanMs) });
+    ticks.push({ tMs: t, label: elapsed ? clock(t - base) : formatAxisLabel(t, intervalMs), xPct: timeToXPct(t, startMs, spanMs) });
   }
   return ticks;
 }

@@ -20,8 +20,9 @@
  *   (d) Sync (pick a sentence, click its moment on the timeline) writes
  *       offset_ms and the lane then draws the sentences said while recording;
  *   (e) the step editor lists the sentences of a step's window, Add fills the
- *       Description, Save keeps it in annotations.json, and the button then
- *       reads Added; a step with no talk says so;
+ *       Description (empty, the draft's narration only its hint) and saves it
+ *       in annotations.json, and the button then reads Added; a step with no
+ *       talk says so;
  *   (f) the Overview lists the talk outside the runs by default; the speaker
  *       filter, the search and "Include talk during the runs" narrow and widen
  *       it; Add to Business rules lands in document.business_rules;
@@ -343,13 +344,15 @@ const WANT_OFFSET = -30000;
 
   // ---- (e) the step editor ------------------------------------------------
   {
-    let err = null, listed = null, desc = null, after = null, empty = null;
+    let err = null, listed = null, desc = null, after = null, empty = null, hint = null;
     try {
       await openStep(SAVE.step_id);
       listed = (await surfaces()).said;
+      // Item 1: the drafting's narration is the description's hint, not its text.
+      hint = await page.$eval("#step-desc", (el) => ({ value: el.value, placeholder: el.placeholder }));
+      // Add saves the description at once (no Save button).
       await page.locator('#step-said .tr-add[data-seg="t0005"]').click({ timeout: T });
       desc = await page.$eval("#step-desc", (el) => el.value);
-      await page.locator("#btn-step-save").click({ timeout: T });
       await waitDisk(ANNO, (a) => ((a.steps || []).find((s) => s.step_id === SAVE.step_id) || {}).description === desc.trim());
       await page.waitForFunction(() => {
         const b = document.querySelector('#step-said .tr-add[data-seg="t0005"]');
@@ -360,8 +363,9 @@ const WANT_OFFSET = -30000;
       empty = (await surfaces()).said;
     } catch (e) { err = errText(e); }
     const saved = ((readJson(ANNO).steps || []).find((s) => s.step_id === SAVE.step_id) || {});
-    // The drafted step already has a description: the sentence goes on a new line after it.
-    const appended = typeof desc === "string" && (desc === S.t0005 || desc.endsWith("\n" + S.t0005));
+    // The draft's narration is only the hint, so the description holds the sentence alone.
+    const appended = typeof desc === "string" && desc === S.t0005;
+    const hintOk = !!hint && hint.value === "" && hint.placeholder === String(SAVE.description || "").trim() && hint.placeholder.length > 0;
     const button = (list, seg) => ((list && list.buttons) || []).find((b) => b.seg === seg) || {};
     const resident = await page.evaluate(() => {
       const more = document.querySelector("#step-detail .step-detail-more");
@@ -371,12 +375,12 @@ const WANT_OFFSET = -30000;
     }).catch((e) => ({ err: e.message }));
     const ok = !err && resident.moreClosed && resident.saidOutsideMore && resident.descOutsideMore &&
       !!listed && JSON.stringify(listed.rows) === JSON.stringify([S.t0004, S.t0005]) &&
-      listed.buttons.every((b) => b.text === "Add" && !b.disabled) && appended &&
-      typeof saved.description === "string" && saved.description.endsWith(S.t0005) && saved.state === "edited" &&
+      listed.buttons.every((b) => b.text === "Add" && !b.disabled) && appended && hintOk &&
+      typeof saved.description === "string" && saved.description === S.t0005 && saved.state === "edited" &&
       button(after, "t0005").text === "Added" && button(after, "t0004").text === "Add" &&
       !!empty && empty.note === "Nothing was said during this step." && empty.rows.length === 0;
-    record("(e) the step editor lists the sentences of the step's window (10 s lead) under the resident Description (More stays closed), Add fills it, Save keeps it, the button reads Added; a quiet step says so",
-      ok, JSON.stringify({ err, resident, listed, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
+    record("(e) the step editor lists the sentences of the step's window (10 s lead) under the resident Description (More stays closed; the draft's narration is its hint, not its text), Add fills it and saves it (no Save button), the button reads Added; a quiet step says so",
+      ok, JSON.stringify({ err, resident, listed, hint, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
     if (!ok) await shot(page, "fail-transcript-step.png");
   }
 

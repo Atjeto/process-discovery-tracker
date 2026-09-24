@@ -164,6 +164,12 @@ function _revert(which) {
     if (State.getSession() !== session) return;   // another session was opened meanwhile
     const popped = which === "undo" ? State.popUndo(session.sessionFolder) : State.popRedo(session.sessionFolder);
     if (!popped) { Dom.toast(which === "undo" ? "Nothing to undo" : "Nothing to redo"); return; }
+    // Opening a run is not an edit (steps-view.js _markOpened): the runs
+    // opened so far stay opened across an undo or a redo.
+    const opened = (session.annotations && session.annotations.opened_runs) || [];
+    if (opened.length && popped.annotations) {
+      popped.annotations.opened_runs = [...new Set([...(popped.annotations.opened_runs || []), ...opened])];
+    }
     try {
       await writeAnnotations(popped.sessionFolder, popped.annotations, which + ": " + popped.label);
     } catch (_) {

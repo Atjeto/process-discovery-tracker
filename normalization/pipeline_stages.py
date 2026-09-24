@@ -232,6 +232,11 @@ def _visible_steps(existing_anno: dict) -> list[dict[str, Any]]:
             if s.get("state") != "hidden"]
 
 
+# The format number analysis.json carries: raised when the layout of the
+# analysis outputs changes, so the viewer knows an older analysis for what it
+# is (viewer/normalize-result.js ANALYSIS_FORMAT reads the same number).
+ANALYSIS_FORMAT = 2
+
 # The analysis.json keys the step-grained analysis layer (analysis.run_analysis)
 # writes. When the layer fails as a whole, each is written as null (C12).
 _STEP_ANALYSIS_KEYS = ("waste_classification", "time_study", "segments",
@@ -473,8 +478,11 @@ def _run_analysis(
 
 def _write_analysis(session_folder: Path, analysis_result: dict,
                     stage_errors: list[dict[str, str]]) -> dict:
-    """Write analysis.json with its stage_errors; returns the result."""
+    """Write analysis.json with its stage_errors and the format number the
+    viewer checks (normalize-result.js analysisNeed analyzes a recording again
+    when it finds an older layout); returns the result."""
     analysis_result["stage_errors"] = stage_errors
+    analysis_result["format"] = ANALYSIS_FORMAT
     try:
         analysis_path = session_folder / "analysis.json"
         with open(analysis_path, "w", encoding="utf-8") as f:

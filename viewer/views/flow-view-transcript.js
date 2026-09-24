@@ -26,7 +26,7 @@
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const TM = require("../transcript-model.js");
-const { $, escapeAttr, toast } = require("../dom.js");
+const { $, escapeAttr, toast, recordingStartMs } = require("../dom.js");
 const Video = require("./flow-view-video.js");
 
 let loadSessionIntoView = async () => {};
@@ -38,8 +38,10 @@ const LABEL_ROW_H = 20;
 const BLOCK_H = 10;
 const LANE_H_SYNCED = LABEL_ROW_H + BLOCK_H + 4;
 
-function _sentenceTitle(s) {
-  return TM.formatClock(s.startS) + (s.speaker ? " · " + s.speaker : "") + "\n" + s.text;
+/* A block's tooltip: when it was said (the time since the recording started,
+   the one clock), who said it and what. */
+function _sentenceTitle(s, originMs) {
+  return TM.sentenceClock(s, originMs) + (s.speaker ? " · " + s.speaker : "") + "\n" + s.text;
 }
 const sentenceRowHtml = TM.sentenceRowHtml;
 
@@ -79,7 +81,7 @@ function transcriptLane(env) {
         block.style.width = Math.max(0.15, ((b - a) / env.span) * 100) + "%";
         block.style.top = (top + LABEL_ROW_H) + "px";
         block.style.height = BLOCK_H + "px";
-        block.title = _sentenceTitle(s);
+        block.title = _sentenceTitle(s, recordingStartMs(State.getSession()));
         block.addEventListener("click", (e) => {
           e.stopPropagation();
           Video.seekToTimestamp(new Date(s.startMs).toISOString());

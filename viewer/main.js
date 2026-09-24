@@ -33,6 +33,7 @@ const AnnoStore = require("./annotations-store.js");
 const TranscriptStore = require("./transcript-store.js");
 const NamesStore = require("./names-store.js");
 const ProcessesStore = require("./processes-store.js");
+const VideoPath = require("./video-path.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 
 /* Contract C4: the remembered-names store, one per analyst machine, under the
@@ -271,13 +272,17 @@ function loadSessionData(sessionFolder) {
   /* Locate the recording. Priority: an analyst-attached external video
      (annotations.external_video, set via the Attach video flow for
      Teams recordings etc.) wins over the manifest's OBS path. The OBS
-     path is the auto-captured default. */
+     path is the auto-captured default. V2 item 5: the stored path is
+     relative to the folder when the video travels in it; an absolute one
+     still works, and a missing one falls back to a file of its name in the
+     folder (video-path.js). */
   let recordingPath = manifest.obs && manifest.obs.recording_path;
   let externalVideoOffsetMs = null;
   if (annotations && annotations.external_video && annotations.external_video.path) {
     const ext = annotations.external_video;
-    if (fs.existsSync(ext.path)) {
-      recordingPath = ext.path;
+    const found = VideoPath.resolveStored(sessionFolder, ext.path, fs.existsSync);
+    if (found) {
+      recordingPath = found;
       externalVideoOffsetMs = ext.offset_ms || 0;
     }
   }
@@ -419,28 +424,49 @@ ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder }) => {
   return { path: r.filePaths[0] };
 });
 
-ipcMain.handle("viewer:saveExternalVideoSync", (_e, { sessionFolder, videoPath, offsetMs }) => {
+ipcMain.handle("viewer:saveExternalVideoSync", async (_e, { sessionFolder, videoPath, offsetMs }) => {
   /* Write to annotations.json under external_video; preserve all other
      annotation state. A read-modify-write: RP-04 refuses it when the current
      file exists but cannot be read (it used to start from {} and replace the
      analyst's work), and writes through the same backup + atomic path as
-     every other save. */
+     every other save. V2 item 5: a video outside the folder is copied into
+     its video/ folder first and stored relative to the folder, so the
+     folder carries it; when the copy fails, the absolute path is stored and
+     the result says why (copyError). Result { ok, stored, copied, copyError }. */
   try {
     const root = path.resolve(sessionFolder);
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
       return { ok: false, error: "Not a session folder" };
     }
-    const busy = _refuseWhileAnalyzing(root);
+    let busy = _refuseWhileAnalyzing(root);
+    if (busy) return busy;
+    AnnoStore.assertWritable(root);   // refused before anything is copied
+    const plan = VideoPath.storePlan(root, videoPath, {
+      exists: fs.existsSync,
+      size: (p) => { try { return fs.statSync(p).size; } catch (_) { return null; } },
+    });
+    let stored = plan.stored, copyError = null;
+    if (plan.copyTo) {
+      try {
+        await fs.promises.mkdir(path.dirname(plan.copyTo), { recursive: true });
+        await fs.promises.copyFile(videoPath, plan.copyTo);
+      } catch (e) {
+        copyError = (e && e.message) || String(e);
+        stored = path.resolve(videoPath);
+        try { fs.unlinkSync(plan.copyTo); } catch (_) { /* nothing was written */ }
+      }
+    }
+    busy = _refuseWhileAnalyzing(root);
     if (busy) return busy;
     const current = AnnoStore.assertWritable(root);
     const anno = current.status === "ok" ? current.annotations : {};
     anno.external_video = {
-      path: videoPath,
+      path: stored,
       offset_ms: offsetMs || 0,
       attached_at: new Date().toISOString(),
     };
     AnnoStore.writeAnnotationsFile(root, anno);
-    return { ok: true };
+    return { ok: true, stored, copied: !!plan.copyTo && !copyError, copyError };
   } catch (e) {
     return { ok: false, error: e.message };
   }

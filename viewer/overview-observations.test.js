@@ -4,12 +4,12 @@
  * items in place of the findings feed, the evidence modules and the
  * "include in PDD" ticks.
  *   Data typed twice: the re-typed values finding, said per field where the
- *     events name the fields ("Product code in Google Chrome (browser) typed
- *     again as Material number in SAP GUI"); a failed findings stage is said
- *     (C12), never read as "none".
+ *     events name the fields ("Product code in Salesforce typed again as
+ *     Material number in SAP", each place named by its system, C14); a failed
+ *     findings stage is said (C12), never read as "none".
  *   Where the time goes: per step (the map's grouping) its average time per
- *     run and "in N of M runs"; per application the same (where the
- *     automation candidates fold in); no dot strip, no total over the runs,
+ *     run and "in N of M runs"; per system the same (where the automation
+ *     candidates fold in); no dot strip, no total over the runs,
  *     no business-required editor.
  * The viewer no longer reads analysis.json pdd_findings or
  * annotations.memo_selection.
@@ -21,6 +21,8 @@ const { overviewHtml } = require("./views/overview-view.js");
 const { observationsHtml, retypedLines, timePerStep } = require("./views/analysis-view.js");
 
 const t = (sec) => new Date(Date.UTC(2026, 4, 14, 9, 0, sec)).toISOString();
+// A window title's separator, built so this file holds no dash punctuation.
+const SF_ORDER = "Salesforce" + " " + String.fromCharCode(45) + " " + "Order";
 
 /* Two runs of the demo's shape: run 1 types SKU-1 into Salesforce's Product
    code (in Chrome) and SAP's Material number; run 2 does the same and looks
@@ -28,11 +30,11 @@ const t = (sec) => new Date(Date.UTC(2026, 4, 14, 9, 0, sec)).toISOString();
 const EVENTS = [
   { type: "activity", timestamp: t(0), data: {} },
   { type: "interaction", event_id: "e1", timestamp: t(10), data: { kind: "value_changed", process_name: "chrome.exe",
-    name: "Product code", automation_id: "product-code", value: "SKU-1" } },
+    window_title: SF_ORDER, name: "Product code", automation_id: "product-code", value: "SKU-1" } },
   { type: "interaction", event_id: "e2", timestamp: t(20), data: { kind: "value_changed", process_name: "SAPGUI.exe",
     name: "Material number", automation_id: "material-number", value: "SKU-1" } },
   { type: "interaction", event_id: "e3", timestamp: t(40), data: { kind: "value_changed", process_name: "chrome.exe",
-    name: "Product code", automation_id: "product-code", value: "SKU-1" } },
+    window_title: SF_ORDER, name: "Product code", automation_id: "product-code", value: "SKU-1" } },
   { type: "interaction", event_id: "e4", timestamp: t(45), data: { kind: "text_changed", process_name: "notepad.exe",
     name: "", automation_id: "mapping-search", value: "SKU-1" } },
   { type: "interaction", event_id: "e5", timestamp: t(50), data: { kind: "value_changed", process_name: "SAPGUI.exe",
@@ -46,7 +48,7 @@ const REKEY = { id: "rekey-1", detector: "rekey_transfer", tier: 1,
 
 function step(id, caseId, name, fromSec, toSec, app, extra) {
   return Object.assign({ step_id: id, case_id: caseId, name, state: "auto_suggested",
-    draft_key: app + "|screen|" + name, grain_keys: { app, screen: "screen", element: "e" },
+    draft_key: app + "|screen|" + name, grain_keys: { app, screen: app === "chrome" ? SF_ORDER : "screen", element: "e" },
     time_range: { start: t(fromSec), end: t(toSec) } }, extra || {});
 }
 
@@ -78,12 +80,12 @@ function session(over) {
 
 /* ---- Data typed twice ------------------------------------------------------ */
 
-test("data typed twice is said per field: the first place the value went, then each other application it was typed into again", () => {
+test("data typed twice is said per field: the first place the value went, then each other system it was typed into again, named by the one vocabulary of systems", () => {
   const r = retypedLines(session().analysis, EVENTS, APP_NAMES);
   assert.equal(r.status, "ok");
   assert.deepEqual(r.lines, [
-    "Product code in Google Chrome (browser) typed again as Material number in SAP GUI",
-    "Product code in Google Chrome (browser) typed again as mapping-search in Notepad",
+    "Product code in Salesforce typed again as Material number in SAP",
+    "Product code in Salesforce typed again as mapping-search in Notepad",
   ]);
 });
 
@@ -114,11 +116,26 @@ test("where the time goes: per step, the average time per run and in how many ru
   ]);
 });
 
-test("where the time goes: per application too, by the recording's own names (the automation candidates fold in here)", () => {
+test("where the time goes: per system too, the browser named by the web system its window shows (the automation candidates fold in here)", () => {
   const r = timePerStep(session().stats, session().annotations.steps, APP_NAMES);
   assert.deepEqual(r.apps.map((x) => [x.label, x.avgMs, x.runs]), [
-    ["SAP GUI", 8000, 2],
-    ["Google Chrome (browser)", 5000, 2],
+    ["SAP", 8000, 2],
+    ["Salesforce", 5000, 2],
+    ["Notepad", 2000, 1],
+  ]);
+});
+
+test("where the time goes: a system the analyst set on a step wins over the derived one (C16)", () => {
+  const s = session();
+  s.annotations.steps.push({ step_id: "p", case_id: "c1", name: "Call the customer", state: "manually_authored",
+    system: "Phone", time_range: { start: t(26), end: t(29) } });
+  s.annotations.steps[0].system = "CRM";
+  const r = timePerStep(s.stats, s.annotations.steps, APP_NAMES);
+  assert.deepEqual(r.apps.map((x) => [x.label, x.avgMs, x.runs]), [
+    ["SAP", 8000, 2],
+    ["CRM", 6000, 1],
+    ["Salesforce", 4000, 1],
+    ["Phone", 3000, 1],
     ["Notepad", 2000, 1],
   ]);
 });

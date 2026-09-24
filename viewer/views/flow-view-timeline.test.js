@@ -3,7 +3,8 @@
 /*
  * Unit tests for the Flow timeline's pure helpers: the case-label-density
  * decision (NAV-AUDIT §J/§9), timeAtClientX, the run pairing
- * (layoutCaseLanes) and the markers' time-of-day move (timeOfDayOn).
+ * (layoutCaseLanes) and the markers' move by a typed time since the
+ * recording started (sinceStartToIso).
  *
  * flow-view-timeline.js self-wires DOM controls at require() time, so a minimal
  * browser stub is installed BEFORE the require — enough for the top-level
@@ -143,17 +144,19 @@ test("layoutCaseLanes: an End with no open run starts nothing and closes nothing
   assert.equal(layoutCaseLanes([], T0, T1).cases.length, 0);
 });
 
-/* ---- timeOfDayOn: Move without a video asks for a time of day (P3.3) ------ */
+/* ---- sinceStartToIso: Move without a video asks for the time since the
+   recording started (P3.3; the one clock, V2 item 6) ---------------------- */
 
-const { timeOfDayOn } = require("./flow-view-markers.js");
+const { sinceStartToIso } = require("./flow-view-markers.js");
 
-test("timeOfDayOn puts a typed local time of day on the marker's own day; anything else is refused", () => {
-  const day = new Date(2026, 4, 14, 11, 0, 19);   // local 11:00:19
-  const at = (h, m, s) => new Date(2026, 4, 14, h, m, s).toISOString();
-  assert.equal(timeOfDayOn(day.toISOString(), "11:02:07"), at(11, 2, 7));
-  assert.equal(timeOfDayOn(day.toISOString(), " 9:05 "), at(9, 5, 0), "seconds are optional");
-  for (const bad of ["", "11", "25:00", "11:60", "11:02:61", "2026-05-14T09:23:11Z", "noon"]) {
-    assert.equal(timeOfDayOn(day.toISOString(), bad), null, JSON.stringify(bad));
+test("sinceStartToIso puts a typed time since the recording started on the recording; anything else is refused", () => {
+  const origin = Date.UTC(2026, 4, 14, 9, 0, 0);
+  const at = (s) => new Date(origin + s * 1000).toISOString();
+  assert.equal(sinceStartToIso(origin, "2:07"), at(127));
+  assert.equal(sinceStartToIso(origin, " 0:19 "), at(19));
+  assert.equal(sinceStartToIso(origin, "1:02:03"), at(3723), "hours from an hour on");
+  for (const bad of ["", "11", "1:60", "11:02:61", "2026-05-14T09:23:11Z", "noon"]) {
+    assert.equal(sinceStartToIso(origin, bad), null, JSON.stringify(bad));
   }
-  assert.equal(timeOfDayOn("not a date", "11:02"), null);
+  assert.equal(sinceStartToIso(NaN, "0:19"), null);
 });

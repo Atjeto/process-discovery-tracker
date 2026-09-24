@@ -20,7 +20,7 @@
 "use strict";
 
 const State = require("../state.js");
-const { $, escapeHtml, cryptoRandomId, toast, localClock } = require("../dom.js");
+const { $, escapeHtml, cryptoRandomId, toast, recordingStartMs, sinceStart, parseClock } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { persistAnnotations } = require("../session.js");
 const { seekToTimestamp, videoStartTs } = require("./flow-view-video.js");
@@ -45,10 +45,12 @@ function renderMarkersList() {
     host.innerHTML = '<p class="hint">No markers yet. To mark a run, right-click the timeline at its first moment and choose Insert Start marker here.</p>';
     return;
   }
-  // Story order: by the time shown (moves applied). How to edit them is the
-  // list's tooltip (index.html).
+  // Story order: by the time shown (moves applied), the time since the
+  // recording started (the one clock). How to edit them is the list's
+  // tooltip (index.html).
   const moveTitle = State.getSession().recordingAvailable
     ? "Move to the current video time" : "Move to another time";
+  const origin = recordingStartMs(State.getSession());
   for (const m of all) {
     const row = document.createElement("div");
     row.className = "marker-row " + m.markerType + (m.deleted ? " deleted" : "") +
@@ -61,8 +63,7 @@ function renderMarkersList() {
       (m.deleted ? ' <span class="meta bad">· deleted</span>' : "") +
       (m.pending ? ' <span class="meta pending-tag" title="Not applied yet: Apply marker changes, in the top bar, applies it">· pending</span>' : "");
     row.innerHTML =
-      '<span class="ts" title="' + escapeHtml(localClock(m.timestamp) ? new Date(m.timestamp).toLocaleString() : "") + '">' +
-        escapeHtml(localClock(m.timestamp)) + '</span>' +
+      '<span class="ts">' + escapeHtml(sinceStart(m.timestamp, origin)) + '</span>' +
       '<span class="dir">' + (m.markerType === "start" ? "▶" : "■") + '</span>' +
       '<span class="lbl">' + escapeHtml(lbl) +
         (m.reason ? ' <span class="meta">(' + escapeHtml(m.reason) + ')</span>' : '') +
@@ -102,17 +103,12 @@ function _insertEdit(anno, m) {
   return m.editId ? anno.marker_edits.find((e) => e && e.op === "insert" && e.id === m.editId) || null : null;
 }
 
-/* The moment a time of day ("11:02" or "11:02:07", as the timeline and this
-   list show it, local time) names on the day of `iso`, as an ISO string; null
-   when the text is not a time of day. Pure (exported for the unit tests). */
-function timeOfDayOn(iso, text) {
-  const m = /^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/.exec(String(text || ""));
-  const day = new Date(iso);
-  if (!m || !isFinite(day.getTime())) return null;
-  const h = Number(m[1]), min = Number(m[2]), sec = Number(m[3] || 0);
-  if (h > 23 || min > 59 || sec > 59) return null;
-  day.setHours(h, min, sec, 0);
-  return day.toISOString();
+/* The moment a typed time since the recording started ("1:05", "1:02:03",
+   as the timeline and this list show it) names, as an ISO string; null when
+   the text is not such a time. Pure (exported for the unit tests). */
+function sinceStartToIso(originMs, text) {
+  const ms = parseClock(text);
+  return ms != null && isFinite(originMs) ? new Date(originMs + ms).toISOString() : null;
 }
 
 async function adjustMarkerToVideoTime(m) {
@@ -123,14 +119,16 @@ async function adjustMarkerToVideoTime(m) {
   if (obsStartTs && video && video.src) {
     newTs = new Date(new Date(obsStartTs).getTime() + (video.currentTime || 0) * 1000).toISOString();
   } else {
-    // No video to take the time from: ask for the time of day, as the
-    // timeline shows it.
-    const input = await promptModal({ title: "Move marker", message: "New time of day",
-      detail: "As the timeline shows it, for example " + localClock(m.timestamp) + ".",
-      defaultValue: localClock(m.timestamp), okLabel: "Move" });
+    // No video to take the time from: ask for the time since the recording
+    // started, as the timeline shows it.
+    const origin = recordingStartMs(State.getSession());
+    const now = sinceStart(m.timestamp, origin);
+    const input = await promptModal({ title: "Move marker", message: "New time",
+      detail: "The time since the recording started, as the timeline shows it, for example " + now + ".",
+      defaultValue: now, okLabel: "Move" });
     if (input == null) return;
-    newTs = timeOfDayOn(m.timestamp, input);
-    if (!newTs) { toast("Type a time of day such as " + localClock(m.timestamp) + ".", "error"); return; }
+    newTs = sinceStartToIso(origin, input);
+    if (!newTs) { toast("Type a time such as " + now + ".", "error"); return; }
   }
   const anno = _annotations();
   const now = new Date().toISOString();
@@ -208,5 +206,5 @@ async function renameMarker(m, newLabel) {
 }
 
 module.exports = {
-  effectiveLabel, renderMarkersList, timeOfDayOn,
+  effectiveLabel, renderMarkersList, sinceStartToIso,
 };

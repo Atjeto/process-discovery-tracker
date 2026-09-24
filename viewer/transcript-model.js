@@ -23,6 +23,8 @@
 
 "use strict";
 
+const { clock } = require("./dom.js");
+
 const VERSION = 1;
 /* Talk that leads into an action usually comes just before it: a step's
    window starts this long before the step. */
@@ -227,9 +229,16 @@ function _esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* When a placed sentence starts, as the time since the recording started
+   (the one clock, AD-26); an unplaced one (or no `originMs`) keeps the time
+   from the transcript's own start. */
+function sentenceClock(s, originMs) {
+  return Number.isFinite(s.startMs) && Number.isFinite(originMs) ? clock(s.startMs - originMs) : formatClock(s.startS);
+}
+
 /* One sentence as every list shows it (HTML): time, speaker, text. */
-function sentenceRowHtml(s) {
-  return '<span class="tr-time">' + _esc(formatClock(s.startS)) + "</span>" +
+function sentenceRowHtml(s, originMs) {
+  return '<span class="tr-time">' + _esc(sentenceClock(s, originMs)) + "</span>" +
     (s.speaker ? '<span class="tr-speaker">' + _esc(s.speaker) + "</span>" : "") +
     '<span class="tr-text">' + _esc(s.text) + "</span>";
 }
@@ -251,5 +260,5 @@ module.exports = {
   validateTranscript, segmentsOf, effectiveOffsetMs, wallMs, placeTranscript, forSession,
   overlaps, stepWindow, sentencesInWindow, sentencesForStep, runSpans, outsideRuns,
   normalizeSpace, isAdded, appendText, formatClock, speakersOf, filterSentences,
-  offsetForSync, attachedMessage, sentenceRowHtml,
+  offsetForSync, attachedMessage, sentenceRowHtml, sentenceClock,
 };

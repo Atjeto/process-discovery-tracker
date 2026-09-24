@@ -31,7 +31,7 @@ const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
 const {
   setVideoOverlay, positionPlayhead, videoStartTs, videoTimeToSessionTs,
-  seekToTimestamp, jumpToStepInFlow, watchStep,
+  seekToTimestamp, jumpToStepInFlow,
 } = Video;
 const { renderScreenshots, openScreenshot } = require("./flow-view-screenshots.js");
 const FlowMarkers = require("./flow-view-markers.js");
@@ -636,10 +636,12 @@ function renderSelectionStats() {
   });
   const appCounts = {};
   let markerCount = 0, screenshotCount = 0;
+  const appNames = ((State.getSession().stats || {}).meta || {}).app_names || {};
   for (const ev of inRange) {
     if (ev.type === "activity") {
-      const app = ev.data.app || "unknown";
-      appCounts[app] = (appCounts[app] || 0) + 1;
+      // Counted by system (C14): a Chrome window on Salesforce is Salesforce.
+      const system = appLabel(ev.data.app, ev.data.title, appNames);
+      appCounts[system] = (appCounts[system] || 0) + 1;
     } else if (ev.type === "marker") markerCount++;
     else if (ev.type === "system" &&
              (ev.data.kind === "screenshot" || ev.data.kind === "screenshot_manual")) {
@@ -648,7 +650,7 @@ function renderSelectionStats() {
   }
   const topApps = Object.entries(appCounts)
     .sort((a, b) => b[1] - a[1]).slice(0, 4)
-    .map(([app, n]) => appLabel(app) + " (" + n + ")")
+    .map(([system, n]) => system + " (" + n + ")")
     .join(", ");
   const dur = State.getSelectionRange().endMs - State.getSelectionRange().startMs;
   card.innerHTML =
@@ -657,7 +659,7 @@ function renderSelectionStats() {
     '<div class="row"><span>Events</span><span>' + inRange.length + '</span></div>' +
     '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
-    (topApps ? '<div class="row"><span>Top apps</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
+    (topApps ? '<div class="row"><span>Systems</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
     '<button class="summary-fix" id="tl-selection-case">Insert run from selection</button>' +
     '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without the events in this range.">Exclude from analysis</button>' +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
@@ -1128,7 +1130,7 @@ module.exports = {
   // The analysis: automatic runs, the deliberate ones (confirm), and the
   // pipeline runner the exports share (one status line, one log).
   renderSessionPills, analyzeSession, runPipeline, UPDATING,
-  seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, watchStep,
+  seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // The Overview's marker-problem fixes (overview-view.js).
   queueSyntheticMarker, queueMarkerDelete,

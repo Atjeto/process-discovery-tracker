@@ -548,20 +548,45 @@ function dropDraftIdentity(step) {
   return step;
 }
 
-/* A remembered name renamed in the Remembered names dialog (item 8): the
-   session's still-draft steps that carry `draftKey` take `name`, the way a
-   propagated name lands (state kept, name_source "remembered"). Steps the
-   analyst confirmed, edited or hid keep their names. Returns how many took
-   it. */
-function renameDrafts(steps, draftKey, name) {
+/* The session's visible steps with `draftKey` that the Saved names dialog
+   renames or forgets with a saved name: every draft of the key, and the steps
+   the analyst confirmed, edited or added that carry the old name. The next
+   analysis names a draft with this session's own names first (C4), so a
+   saved name changed in the store only would come back from them. */
+function _carriers(steps, draftKey, oldName) {
+  const old = typeof oldName === "string" ? oldName.trim() : "";
+  return (steps || []).filter((s) => s && s.draft_key === draftKey && s.state !== "hidden" &&
+    (DRAFT_STATES.has(s.state) || (old && String(s.name || "").trim() === old)));
+}
+
+/* A saved name renamed in the Saved names dialog (item 8): the carriers take
+   the new name (a draft as a propagated name lands: state kept, name_source
+   "remembered"). Returns how many took it. */
+function renameSavedName(steps, draftKey, oldName, name) {
   const nm = typeof name === "string" ? name.trim() : "";
   if (typeof draftKey !== "string" || !draftKey || !nm) return 0;
-  let n = 0;
-  for (const s of steps || []) {
-    if (!s || s.draft_key !== draftKey || !DRAFT_STATES.has(s.state)) continue;
+  const hit = _carriers(steps, draftKey, oldName);
+  for (const s of hit) {
     s.name = nm;
-    s.name_source = "remembered";
+    if (DRAFT_STATES.has(s.state)) s.name_source = "remembered";
     s.process_label = nm;
+  }
+  return hit.length;
+}
+
+/* A saved name forgotten in the Saved names dialog: the carriers that hold
+   it take their drafted name back (`draftedName(step)`, "" when it cannot be
+   told, and then the step keeps its name). Returns how many changed. */
+function forgetSavedName(steps, draftKey, oldName, draftedName) {
+  const old = typeof oldName === "string" ? oldName.trim() : "";
+  if (typeof draftKey !== "string" || !draftKey || !old) return 0;
+  let n = 0;
+  for (const s of _carriers(steps, draftKey, old)) {
+    const back = typeof draftedName === "function" ? String(draftedName(s) || "").trim() : "";
+    if (String(s.name || "").trim() !== old || !back) continue;
+    s.name = back;
+    if (DRAFT_STATES.has(s.state)) s.name_source = "draft";
+    s.process_label = back;
     n++;
   }
   return n;
@@ -591,6 +616,7 @@ module.exports = {
   byStart, runStatus, stepChip, buildRuns, runForRange, groupKeyOf, groupSteps, nextInGroup,
   emptyFixes, defaultPatternRun, patternRun, designatePattern, usePattern, recordFix, confirmRun,
   reopenRun, canReopen,
-  probeLine, propagateName, stepApp, readableApp, nameSuggestions, dropDraftIdentity, renameDrafts, rememberedNameRows,
+  probeLine, propagateName, stepApp, readableApp, nameSuggestions, dropDraftIdentity, renameSavedName, forgetSavedName,
+  rememberedNameRows,
   mergedDraftKeys, carriedMerges, sameKeyDraftsElsewhere, hideSteps, runCount,
 };

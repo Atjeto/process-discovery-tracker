@@ -18,7 +18,7 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
-const { $, toast, localClock } = require("../dom.js");
+const { $, toast, recordingStartMs, sinceStart } = require("../dom.js");
 const Ipc = require("../ipc.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
 
@@ -39,6 +39,7 @@ function renderScreenshots() {
     host.innerHTML = '<p class="hint">No screenshots captured in this session.</p>';
     return;
   }
+  const origin = recordingStartMs(State.getSession());
   for (const s of shots) {
     const card = document.createElement("div");
     card.className = "thumb";
@@ -48,11 +49,11 @@ function renderScreenshots() {
       img.src = "file:///" + fullPath.replace(/\\/g, "/");
       card.appendChild(img);
     }
-    // F4: local time, the timeline's and the markers' clock (a slice of the
-    // ISO string showed UTC).
+    // One clock (AD-26): the time since the recording started, as the
+    // timeline, the markers and the step pane show it.
     const stamp = document.createElement("div");
     stamp.className = "stamp";
-    stamp.textContent = localClock(s.timestamp);
+    stamp.textContent = sinceStart(s.timestamp, origin);
     card.appendChild(stamp);
     if (s.data.kind === "screenshot_manual") {
       const b = document.createElement("div");
@@ -60,7 +61,7 @@ function renderScreenshots() {
       b.textContent = "manual";
       card.appendChild(b);
     }
-    card.title = new Date(s.timestamp).toLocaleString() + "\n" + s.data.path;
+    card.title = "Taken at " + sinceStart(s.timestamp, origin) + "\n" + s.data.path;
     card.addEventListener("click", () => { seekToTimestamp(s.timestamp); openScreenshot(s.data.path); });
     host.appendChild(card);
   }
@@ -203,7 +204,7 @@ function _galleryRenderFrame() {
   img.style.display = "";
   img.src = "file:///" + fullPath.replace(/\\/g, "/");
   document.getElementById("gallery-pos").textContent = `${_galleryState.idx + 1} / ${list.length}`;
-  document.getElementById("gallery-ts").textContent = localClock(s.timestamp);
+  document.getElementById("gallery-ts").textContent = sinceStart(s.timestamp, recordingStartMs(State.getSession()));
   const reasonEl = document.getElementById("gallery-reason");
   reasonEl.textContent =
     s.data.kind === "screenshot_manual" ? "manual" : (s.data.reason || "automatic");

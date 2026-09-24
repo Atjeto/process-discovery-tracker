@@ -22,15 +22,40 @@ function escapeAttr(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 }
 
-/* A moment's local clock time, "HH:MM:SS": the time the Flow timeline's axis,
-   its markers and its screenshots all show (slicing the ISO string showed
-   UTC, which disagreed with them by the time zone offset). "" when the
-   timestamp cannot be read. */
-function localClock(iso) {
-  const d = new Date(iso);
-  if (!iso || !isFinite(d.getTime())) return "";
+/* One clock (AD-26): a moment is shown as the time since the recording
+   started, "0:19", "12:05", "1:02:03" (the PDD's pointers, step_context.clock);
+   a moment before the start reads "-0:30". The timeline, the markers, the
+   screenshots, the transcript, the step pane and the step panel all use it;
+   the time of day shows only with the recording's date. "" when the value
+   cannot be read. */
+function clock(ms) {
+  if (typeof ms !== "number" || !isFinite(ms)) return "";
+  const total = Math.floor(Math.abs(ms) / 1000);
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
   const pad = (n) => String(n).padStart(2, "0");
-  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  return (ms < 0 && total > 0 ? "-" : "") + (h ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s));
+}
+
+/* When the recording started, in ms: manifest.started_at, else its first
+   event. NaN when neither can be read. */
+function recordingStartMs(sess) {
+  const started = Date.parse(sess && sess.manifest && sess.manifest.started_at);
+  if (isFinite(started)) return started;
+  const evs = (sess && sess.events) || [];
+  return evs.length ? Date.parse(evs[0].timestamp) : NaN;
+}
+
+/* The time since the recording started of an ISO moment ("" when unknown). */
+function sinceStart(iso, originMs) {
+  const t = Date.parse(iso);
+  return isFinite(t) && isFinite(originMs) ? clock(t - originMs) : "";
+}
+
+/* A typed position ("1:05", "0:07", "1:02:03") in ms, or null. */
+function parseClock(text) {
+  const m = /^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$/.exec(String(text || ""));
+  if (!m || Number(m[3]) > 59 || (m[1] !== undefined && Number(m[2]) > 59)) return null;
+  return ((Number(m[1] || 0) * 60 + Number(m[2])) * 60 + Number(m[3])) * 1000;
 }
 
 function formatDuration(ms) {
@@ -125,5 +150,5 @@ function placeMenu(menu, x, y) {
   menu.style.top = p.top + "px";
 }
 
-module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, localClock, fillTable, cryptoRandomId, toast,
-  fitMenuPosition, placeMenu };
+module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, clock, recordingStartMs, sinceStart, parseClock,
+  fillTable, cryptoRandomId, toast, fitMenuPosition, placeMenu };

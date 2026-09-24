@@ -12,7 +12,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { describeInteraction, renderInteractionList, siKindClass, draftWhy } = require("./step-editor.js");
+const { describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml } = require("./step-editor.js");
 
 /* ---- ADR-0027 regression guard ------------------------------------- */
 // The aligned reading's "apply to all" curate form (removed with the aligned
@@ -306,28 +306,26 @@ test("renderInteractionList: a strong named control renders no marker", () => {
   assert.ok(!html.includes("si-marker-"), "a stable named control needs no marker");
 });
 
-/* ---- draftWhy: the draft's why in the step's fact line -------------- */
-// P1.7 keeps the draft reason visible, short, in the fact line: from the
-// pipeline's C1 reason (step_suggest._draft_reason), only while the step is
-// still that draft (end_reason present).
-test("draftWhy shortens each of the pipeline's draft reasons", () => {
-  const why = (reason, end) => draftWhy({ suggestion_reason: reason, end_reason: end });
-  assert.equal(why('Drafted from 4 interactions on Salesforce - Account lookup; ended at the commit "Search".', "commit"),
-    "4 interactions on Salesforce - Account lookup, ended at Search");
-  assert.equal(why("Drafted from 1 interaction on Notepad - notes.txt; ended because the next interaction was on another screen.", "screen_change"),
-    "1 interaction on Notepad - notes.txt, ended where the screen changed");
-  assert.equal(why("Drafted from 3 interactions on SAP; ended at the end of the run.", "run_end"),
-    "3 interactions on SAP, ended with the run");
-  assert.equal(why("Drafted from 2 interactions on Excel; ended at the last interaction outside a run.", "run_end"),
-    "2 interactions on Excel, outside the runs");
-  assert.equal(why("Drafted from 2 interactions on (screen); ended at the end of the run.", "run_end"),
-    "2 interactions, ended with the run");
+/* ---- the step pane: no Save button, the fields typed ----------------- */
+// The draft's why moved into the structured fact line (step-facts.js endsAt,
+// pinned in step-facts.test.js). The pane saves as the analyst goes: the name
+// on Enter or when the field is left, the description when it is left, Waste
+// on its click (steps-view.js makes each one undoable edit). The forms need a
+// DOM, so the wiring is pinned by scanning the source.
+test("the step pane has no Save button: the name saves on Enter and blur, the description on blur, Waste on change", () => {
+  const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
+  assert.ok(!src.includes("btn-step-save"), "no Save button");
+  assert.ok(src.includes('nameEl.addEventListener("blur", commitName)'));
+  assert.ok(src.includes('if (e.key === "Enter") { e.preventDefault(); commitName(); }'), "Enter commits the name");
+  assert.ok(src.includes('descEl.addEventListener("blur", commitDesc)'));
+  assert.ok(src.includes('getElementById("flag-waste").addEventListener("change"'));
+  assert.ok(!src.includes("step-remembered"), "no remembered tag on a row: the run says it in one line");
 });
 
-test("draftWhy says nothing once the step is no longer the draft, and shows other wording as written", () => {
-  // A split or a merge drops end_reason (runs-model.dropDraftIdentity).
-  assert.equal(draftWhy({ suggestion_reason: 'Drafted from 4 interactions on SAP; ended at the commit "Save".' }), "");
-  assert.equal(draftWhy({ end_reason: "commit" }), "");
-  assert.equal(draftWhy(null), "");
-  assert.equal(draftWhy({ suggestion_reason: "Grouped by hand.", end_reason: "commit" }), "Grouped by hand.");
+test("the fields typed show as a compact list of field and value, escaped", () => {
+  assert.equal(stepFieldsHtml([]), "");
+  const html = stepFieldsHtml([{ field: "Quantity", value: "29" }, { field: "<b>", value: "a & b" }]);
+  assert.ok(html.includes('<span class="step-fields-title">Fields typed</span>'));
+  assert.ok(html.includes('<dt title="Quantity">Quantity</dt><dd title="29">29</dd>'));
+  assert.ok(html.includes("&lt;b&gt;") && html.includes("a &amp; b"), "escaped");
 });

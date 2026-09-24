@@ -77,6 +77,14 @@ function screenType(name) {
   return s || String(name).trim();   // never blank a screen that was all-value
 }
 
+/* The same rules without the fallback (step_suggest._value_free): "" when
+   nothing but values remains, so a caller moves on to its next choice. */
+function valueFree(text) {
+  let s = (text == null ? "" : String(text)).trim();
+  for (const rule of _SCREEN_RULES) s = s.replace(rule.re, rule.replacement);
+  return s.replace(/[\s#:\-\u2013\u2014|]+$/, "").replace(/^[\s#:\-\u2013\u2014|]+/, "").trim();
+}
+
 // Most frequent non-empty string, ties broken by first appearance -- the JS
 // twin of step_suggest._most_common (keep them in sync).
 function _mostCommon(values) {
@@ -206,5 +214,5 @@ module.exports = {
   buildAnnotationDfg, mapNodeLabel, processLabel,
   // Used by the Steps level (steps-view.js): the value-free screen label and
   // the view-time fallback for a step's screen / app keys.
-  screenType, resolveStepGrainKeys,
+  screenType, resolveStepGrainKeys, valueFree,
 };

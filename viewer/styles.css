@@ -212,9 +212,42 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
    content genuinely exceeds the viewport. This is what lets each
    screen's working panels size to the real screen instead of a stack
    of minimums -- spare space goes to the content, not to dead scroll. */
-main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hidden; }
 .view { display: none; padding: 18px 20px 28px; }
-.view.active { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+.view.active { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+
+/* The step panel (V2 item 4): beside the content, which keeps its place. */
+.step-panel {
+  flex: 0 0 clamp(290px, 26vw, 380px); min-width: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 16px;
+  background: var(--bg-2); border-left: 1px solid var(--rule); box-shadow: var(--shadow);
+}
+.step-panel[hidden] { display: none; }
+.sp-top { display: flex; align-items: flex-start; gap: 8px; }
+.sp-name {
+  flex: 1 1 auto; min-width: 0; margin: 0; font-family: var(--font-ui); font-size: 15px; font-weight: 600;
+  letter-spacing: 0; text-transform: none; color: var(--fg); overflow-wrap: anywhere;
+}
+.sp-close { flex: none; }
+.sp-about p { margin: 0 0 4px; font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
+.sp-about .sp-system { color: var(--fg); font-weight: 600; }
+.sp-about .sp-count { color: var(--fg-3); }
+.sp-video { width: 100%; max-height: 240px; background: #000; border-radius: var(--radius-sm); }
+.sp-video[hidden] { display: none; }
+.sp-occs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sp-occ { padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg-1); }
+.sp-occ.focus { border-color: var(--accent); }
+.sp-occ-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg); }
+.sp-at { flex: 1 1 auto; min-width: 0; }
+.sp-dur { flex: none; font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+.sp-play { flex: none; padding: 1px 8px; font-size: 11px; }
+.sp-shots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.sp-shot { padding: 0; width: 84px; height: 52px; overflow: hidden; cursor: zoom-in; background: var(--bg-3);
+  border: 1px solid var(--rule); border-radius: 3px; }
+.sp-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.sp-said { list-style: none; margin: 6px 0 0; padding: 0; }
+.sp-said .tr-row { font-size: 11px; }
+.sp-foot { margin-top: 8px; }
 .view.active > .loaded { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 /* ===== Empty states ===== */
@@ -280,8 +313,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 /* Lower workspace: video + annotations side-by-side */
 .lower-workspace { display: flex; gap: 0; align-items: stretch;
   flex: 1; min-height: 200px; }
-.lower-workspace .video-pane { flex: 0 0 var(--video-width, 600px); min-width: 200px; }
+.lower-workspace .video-pane { flex: 0 1 var(--video-width, 600px); min-width: 200px; }
 .lower-workspace .annotations-pane { flex: 1 1 auto; min-width: 280px; }
+/* The screenshots scroll inside their pane instead of stretching the row,
+   so the video's own controls stay in view when the step panel narrows
+   the content (V2 items 4 and 8). */
+.lower-workspace:not(.no-recording) .annotations-pane { contain: size; }
 
 /* Video expanded: takes 70% of workspace */
 .session-layout.video-expanded .lower-workspace { min-height: 380px; }
@@ -336,7 +373,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   text-align: left; background-image: none; color: var(--fg-3);
 }
 .video-pane.no-recording .nv-icon { font-size: 14px; }
-.video-overlay { position: absolute; bottom: 8px; left: 8px; padding: 4px 10px;
+/* Under the video's header bar: at the bottom it covered the player's own
+   controls (V2 item 8). */
+.video-overlay { position: absolute; top: 46px; left: 8px; padding: 4px 10px;
   background: rgba(0, 0, 0, 0.55); border-radius: 4px; font-family: var(--font-mono);
   font-size: 11px; color: rgba(255, 255, 255, 0.82); pointer-events: none; z-index: 2; }
 
@@ -602,15 +641,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   color: var(--fg-2); font-family: var(--font-ui); font-size: 11px;
   box-shadow: var(--shadow); max-width: 320px; line-height: 1.4;
 }
-/* NAV-AUDIT §E1: the node select+info tip. Same family as the edge tip; the
-   accent border echoes the selected-node highlight so the two read as one act. */
-.dfg-node-tip {
-  position: absolute; z-index: 5; pointer-events: none;
-  padding: 3px 8px; border-radius: var(--radius-sm);
-  background: var(--bg); border: 1px solid var(--accent);
-  color: var(--fg-2); font-family: var(--font-mono); font-size: 10px;
-  box-shadow: var(--shadow); white-space: nowrap;
-}
 .bpmn-warning { position: absolute; bottom: 8px; right: 8px; padding: 4px 10px;
   background: var(--warn); color: var(--bg); font-size: 11px; border-radius: 3px; }
 /* ===== Toast ===== */
@@ -720,6 +750,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
   .lower-workspace { flex-direction: column; }
   .lower-workspace .video-pane { flex: 0 0 auto; min-height: 240px; }
   .lower-workspace .resize-h { display: none; }
+  .lower-workspace:not(.no-recording) .annotations-pane { contain: none; }
 }
 
 /* ===== The four levels, in the top bar ===== */
@@ -781,6 +812,17 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: 
 .session-layout-map .map-host {
   flex: 1; min-height: 360px; height: auto;
 }
+/* V2 item 7: the As-Is map chosen for the PDD, first, read only. */
+.map-asis { flex: 1; display: flex; flex-direction: column; min-height: 360px; }
+.map-asis[hidden] { display: none; }
+.map-asis-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 6px; font-size: 12px; }
+.map-asis-title { font-weight: 600; color: var(--fg); }
+.map-asis-note { color: var(--fg-3); }
+.map-asis-img {
+  flex: 1; min-height: 320px; overflow: auto; padding: 8px;
+  background: #fff; border: 1px solid var(--rule); border-radius: var(--radius-sm);
+}
+.map-asis-img img { display: block; max-width: 100%; height: auto; }
 
 /* ===== Overview view (lab-phase §A5 — the honesty redesign's landing) ===== */
 .session-layout-overview {
@@ -1039,9 +1081,6 @@ details.analysis-module { padding: 0; }
 .step-chip-edited { color: var(--fg); border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
 .step-chip-added { color: var(--fg); border-color: var(--accent); background: var(--accent-muted); }
 .step-chip-hidden { border-style: dashed; }
-.step-remembered {
-  flex: none; font-size: 10px; font-style: italic; color: var(--fg-3); white-space: nowrap;
-}
 
 /* ===== Steps: the runs and their steps (BA helper, contracts C1 to C4) =====
    One group per run; the open one lists its steps. The pattern run carries
@@ -1084,15 +1123,8 @@ details.analysis-module { padding: 0; }
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-3); cursor: pointer;
 }
 .run-steps-empty { margin: 4px 0; font-size: 11px; color: var(--fg-3); }
-.run-probe {
-  display: flex; align-items: center; gap: 8px; margin: 0 8px 6px 26px; padding: 5px 8px;
-  border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-muted);
-}
-.run-probe-text {
-  flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); font-size: 11px; color: var(--fg);
-  user-select: text; overflow-wrap: anywhere;
-}
-.run-probe-copy { flex: none; padding: 2px 10px; font-size: 11px; }
+/* One line per run: how many names came from saved names. */
+.run-names-note { flex: 1 1 100%; margin: 0; font-size: 11px; color: var(--fg-3); }
 .run-guide p { margin: 0 0 10px; }
 
 /* L12b: the open run's differences from its reference (one plain line each),
@@ -1116,12 +1148,24 @@ details.analysis-module { padding: 0; }
 .rn-error { color: var(--bad); }
 
 /* ===== Step detail editor (compact) ===== */
-/* P1.7: one fact line above the name: duration, application, and the screen
-   or a draft's why. It wraps rather than cutting the why off. */
+/* P1.7: one fact line above the name: the system, the screen, the time,
+   where a draft ends and where the step is. It wraps rather than cutting. */
 .step-fact {
   margin: 0 0 10px; font-size: 12px; color: var(--fg-2);
   overflow-wrap: anywhere;
 }
+/* The fields typed in the step: a compact two-column list. */
+.step-fields { margin: 0 0 10px; }
+.step-fields-title {
+  display: block; margin-bottom: 4px; font-size: 10px;
+  letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3);
+}
+.step-fields dl {
+  display: grid; grid-template-columns: minmax(80px, max-content) minmax(0, 1fr); gap: 2px 12px;
+  margin: 0; font-size: 12px;
+}
+.step-fields dt { color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.step-fields dd { margin: 0; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* P2.16: the step's screenshots, large enough to check the step against. */
 .step-shots {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1154,7 +1198,7 @@ details.analysis-module { padding: 0; }
 .editor-detail-pane label textarea:focus {
   outline: none; border-color: var(--accent);
 }
-.editor-detail-pane textarea { min-height: 52px; resize: vertical; }
+.editor-detail-pane textarea { min-height: 76px; resize: vertical; }
 .editor-detail-pane .flags {
   display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0;
   padding: 8px 10px; background: var(--bg-2); border-radius: 3px;
@@ -1269,19 +1313,13 @@ details.analysis-module { padding: 0; }
 .step-detail-more-chevron::before { content: "▸"; }
 .step-detail-more[open] .step-detail-more-chevron::before { content: "▾"; }
 .step-detail-more-body { padding-top: 4px; }
-/* A3: analyst flag badges in the step list. Marking a step visibly shows
-   here (and waste also strikes the name). Hues are theme-neutral. */
-.step-flag {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 14px; height: 14px; padding: 0 3px; margin-left: 4px;
-  border-radius: 3px; font-size: 9px; font-weight: 700; line-height: 1;
-  font-family: var(--font-mono); color: #fff; flex: none;
+/* The waste flag in the step list: a small tag in the chips' shape, never a
+   strikethrough (it read as removed). */
+.step-tag-waste {
+  flex: none; display: inline-flex; align-items: center; height: 16px;
+  padding: 0 6px; border-radius: 8px; font-size: 10px; line-height: 1; white-space: nowrap;
+  color: var(--fg); border: 1px solid var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent);
 }
-.step-flag.flag-waste { background: #B0563C; }
-.step-flag.flag-auto  { background: #4A78B0; }
-.step-flag.flag-cond  { background: #7C7A72; }
-.step-flag.flag-exc   { background: #C8862A; }
-.step-row.step-flag-waste .step-name { text-decoration: line-through; opacity: 0.72; }
 
 /* ===== Anno-tab badge ===== */
 .badge {

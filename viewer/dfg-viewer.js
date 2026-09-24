@@ -23,7 +23,6 @@
   }
 
   let cy = null;
-  let _host = null;   // the container of the current render — for the node-info tip
 
   const PdtTheme = require("./theme.js");
 
@@ -65,8 +64,6 @@
 
   function render(host, dfg, opts) {
     opts = opts || {};
-    _host = host;
-    _hideNodeTip();
     host.innerHTML = "";
     if (!dfg || !dfg.edges || !dfg.edges.length) {
       host.innerHTML = '<div class="map-empty-inline">no DFG data</div>';
@@ -88,13 +85,17 @@
     const maxMs = dfg.edges.reduce((m, e) => Math.max(m, e.total_ms || 0), 0);
     const timeWeighted = opts.edgeWeight === "time" && maxMs > 0;
     const elements = [];
+    // AD-28: a box names its step and, under it, the system it happened in.
+    const systems = opts.nodeSystems || {};
     for (const n of nodes) {
       const isStart = dfg.start_activities && dfg.start_activities[n];
       const isEnd = dfg.end_activities && dfg.end_activities[n];
+      const system = typeof systems[n] === "string" ? systems[n] : "";
       elements.push({
         data: {
           id: n,
-          label: n,
+          label: system ? n + "\n" + system : n,
+          system,
           role: isStart ? "start" : isEnd ? "end" : "activity",
         },
       });
@@ -239,65 +240,28 @@
   /* Take the drawn graph down (the host then shows a message instead), so no
      export can read a map that is no longer on screen. */
   function clear() {
-    _hideNodeTip();
-    if (cy) { try { cy.destroy(); } catch (_) {} cy = null; }
-    if (_host) { try { delete _host.__cy; } catch (_) {} }
+    if (cy) {
+      try { delete cy.container().__cy; } catch (_) {}
+      try { cy.destroy(); } catch (_) {}
+      cy = null;
+    }
   }
 
   function fit() { if (cy) { try { cy.fit(undefined, 24); } catch (_) {} } }
 
-  /* ---- Node select + info reveal (NAV-AUDIT §E1) --------------------------
-     A node click on the process map is a SELECT + REVEAL, never a view change:
-     the node is selected (the accent `node:selected` style) and a small info
-     tip — label, role, and how many times the flow enters/leaves it — is shown
-     beside it. Built from the graph the viewer already has (no new data), and
-     styled to mirror the existing `.dfg-edge-tip` so it reads as one family. */
-  function _hideNodeTip() {
-    if (_host) {
-      const t = _host.querySelector(".dfg-node-tip");
-      if (t) t.style.display = "none";
-    }
-  }
-  /* Select a node by id and reveal its info tip. Returns true when the node was
-     found and revealed, false otherwise (caller can fall back). */
+  /* The host changed size (the step panel opened or closed beside it). */
+  function resize() { if (cy) { try { cy.resize(); } catch (_) {} } }
+
+  /* A node click selects the node (the accent `node:selected` style); the
+     step panel beside the map says what the box stands for (V2 item 4; the
+     old tip, "step · entered 5x · left 5x", is gone). Returns true when the
+     node was found. */
   function selectNode(id) {
-    if (!cy || !_host || id == null) return false;
+    if (!cy || id == null) return false;
     const node = cy.getElementById(String(id));
     if (!node || node.empty()) return false;
     cy.nodes().unselect();
     node.select();
-
-    // Throughput from the live edges: sum the traversal counts in / out.
-    let inCount = 0, outCount = 0;
-    node.connectedEdges().forEach((e) => {
-      const f = e.data("freq") || 0;
-      if (e.data("target") === node.id()) inCount += f;
-      if (e.data("source") === node.id()) outCount += f;
-    });
-    const role = node.data("role");
-    const roleWord = role === "start" ? "start of the flow"
-      : role === "end" ? "end of the flow" : "step";
-
-    if (getComputedStyle(_host).position === "static") _host.style.position = "relative";
-    let tip = _host.querySelector(".dfg-node-tip");
-    if (!tip) {
-      tip = document.createElement("div");
-      tip.className = "dfg-node-tip";
-      _host.appendChild(tip);
-    }
-    const parts = [String(node.data("label") || node.id()), roleWord];
-    if (inCount) parts.push("entered " + inCount + "×");
-    if (outCount) parts.push("left " + outCount + "×");
-    tip.textContent = parts.join(" · ");
-    const p = node.renderedPosition();
-    const rh = (node.renderedHeight && node.renderedHeight()) || 0;
-    tip.style.display = "";
-    // Position under the node; clamp into the host.
-    tip.style.left = Math.max(0, Math.round(p.x - tip.offsetWidth / 2)) + "px";
-    tip.style.top = Math.max(0, Math.round(p.y + rh / 2 + 6)) + "px";
-    // Any pan/zoom invalidates the anchored position — hide it (same as edges).
-    cy.off("pan zoom", _hideNodeTip);
-    cy.on("pan zoom", _hideNodeTip);
     return true;
   }
 
@@ -347,9 +311,13 @@
       parts.push('<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
         '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) +
         '" rx="6" fill="#ffffff" stroke="' + border + '" stroke-width="1.5"/>');
-      parts.push('<text x="' + (p.x + ox).toFixed(1) + '" y="' + (p.y + oy + 4).toFixed(1) +
-        '" font-family="sans-serif" font-size="11" fill="#2c2418" ' +
-        'text-anchor="middle">' + esc(n.data("label") || "") + '</text>');
+      // One line per label line (the step name, then its system).
+      const lines = String(n.data("label") || "").split("\n");
+      const top = p.y + oy + 4 - (lines.length - 1) * 6.5;
+      parts.push('<text x="' + (p.x + ox).toFixed(1) + '" y="' + top.toFixed(1) +
+        '" font-family="sans-serif" font-size="11" fill="#2c2418" text-anchor="middle">' +
+        lines.map((l, i) => '<tspan x="' + (p.x + ox).toFixed(1) + '"' + (i ? ' dy="13"' : "") + ">" + esc(l) + "</tspan>").join("") +
+        '</text>');
     });
     parts.push('</svg>');
     return parts.join("\n");
@@ -367,5 +335,5 @@
     }
   }
 
-  module.exports = { render, clear, fit, selectNode, exportSvg, exportPng };
+  module.exports = { render, clear, fit, resize, selectNode, exportSvg, exportPng };
 })();
