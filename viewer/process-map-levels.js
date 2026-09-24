@@ -10,13 +10,26 @@
  * times" rather than one line per run. Consecutive steps with the same node
  * collapse into one visit.
  *
+ * Contract C17 (step flow): the process starts at the START node and ends at
+ * the END node, and the analyst's conditions (step.only_when) and links
+ * (step.links) add edges and labels, by the rule shared/flow-links-golden.json
+ * pins for this map and for the pipeline's step BPMN.
+ *
  * Pure (no DOM, no cytoscape) so it is unit-testable. The output shape
- * matches dfg-viewer.js's input: { edges, start_activities, end_activities }.
+ * matches dfg-viewer.js's input: { edges, start_activities, end_activities,
+ * start_edges, end_edges }.
  */
 
 // A separator that cannot appear in a step name. Built from a char code so no
 // literal control byte sits in the source.
 const SEP = String.fromCharCode(1);
+
+// The map's two event nodes (C17): their ids start with SEP, so no step name
+// can take them.
+const START = SEP + "start";
+const END = SEP + "end";
+// The label of the path around a conditional step (C17 rule 2).
+const OTHERWISE = "otherwise";
 
 // Value-free step label so repeated work across cases collapses to ONE node
 // instead of one-per-instance (every case's order #, customer id, SKU, qty
@@ -156,69 +169,179 @@ function _byOrder(a, b) {
   return (x[0] - y[0]) || (x[1] - y[1]) || (a.i - b.i);
 }
 
+/* An analyst's text as one line, whitespace collapsed ("" for a non-string):
+   the pipeline's step_flow._line. */
+function _line(v) { return typeof v === "string" ? v.replace(/\s+/g, " ").trim() : ""; }
+
+/* A step's links (C17): [{ to, when }] with `to` a step_id or "end"; an entry
+   without a target is left out. */
+function stepLinks(step) {
+  return (Array.isArray(step && step.links) ? step.links : [])
+    .filter((l) => l && typeof l.to === "string" && l.to.trim());
+}
+
 /**
- * The process map of a session: one trace per run.
+ * The process map of a session: one trace per run, plus the step flow the
+ * analyst set (contract C17).
  *
  * @param {Array<Array>} runs  one array of steps per run (a run's steps, in any
  *   order; hidden steps are left out here too). Steps outside every run are
  *   not passed: the map shows the runs.
- * @returns {{edges: Array, start_activities: Object, end_activities: Object}}
- *   edges carry `frequency` (how many times a run took the path) and
- *   `total_ms` (the time that flowed along it, summed over those times).
+ * @returns {{edges: Array, start_activities: Object, end_activities: Object,
+ *   start_edges: Array, end_edges: Array}}
+ *   edges join two steps; start_edges leave the START node ({ target }) and
+ *   end_edges enter the END node ({ source }; an edge from START to END is a
+ *   start edge). Every edge carries `frequency` (how many times a run took
+ *   the path), `total_ms` (the time that flowed along it, summed over those
+ *   times), `observed` (the steps of a run follow it) and `label` (the
+ *   analyst's condition text on it, "otherwise" on the path around a
+ *   conditional step, several joined with " or " in step order; null when
+ *   none).
  */
 function buildAnnotationDfg(runs) {
-  const edgeMap = new Map();
+  // (from, to) -> the edge's record; `order` keeps the first-seen order.
+  const byFrom = new Map();
+  const order = [];
+  const edge = (from, to) => {
+    let m = byFrom.get(from);
+    if (!m) { m = new Map(); byFrom.set(from, m); }
+    let rec = m.get(to);
+    if (!rec) {
+      rec = { from, to, freq: 0, ms: 0, observed: false, labels: [] };
+      m.set(to, rec);
+      order.push(rec);
+    }
+    return rec;
+  };
+  const addLabel = (rec, text) => {
+    const t = _line(text);
+    if (t && !rec.labels.includes(t)) rec.labels.push(t);
+  };
   const startAct = {};
   const endAct = {};
 
+  // Each run's visible steps in order, as visits: consecutive steps with the
+  // same node are one visit, which keeps its ENTRY time so the edges can
+  // accumulate transition time (§B2).
+  const runVisits = [];
   for (const run of runs || []) {
     const steps = (Array.isArray(run) ? run : [])
       .filter((st) => st && st.state !== "hidden")
       .map((st, i) => ({ st, i }))
       .sort(_byOrder)
       .map((x) => x.st);
-    // Collapse consecutive duplicates (a run of same-node steps = one visit),
-    // keeping each visit's ENTRY time so the edges can accumulate transition
-    // time (§B2).
-    const labels = [];
-    const entries = [];
+    const visits = [];
     for (const st of steps) {
-      const label = mapNodeLabel(st);
-      if (!labels.length || labels[labels.length - 1] !== label) {
-        labels.push(label);
-        entries.push(_stepStart(st));
-      }
+      const node = mapNodeLabel(st);
+      const last = visits[visits.length - 1];
+      if (last && last.node === node) last.steps.push(st);
+      else visits.push({ node, entry: _stepStart(st), steps: [st] });
     }
-    if (!labels.length) continue;
+    if (visits.length) runVisits.push(visits);
+  }
 
-    startAct[labels[0]] = (startAct[labels[0]] || 0) + 1;
-    endAct[labels[labels.length - 1]] = (endAct[labels[labels.length - 1]] || 0) + 1;
-    for (let i = 0; i < labels.length - 1; i++) {
-      const k = labels[i] + SEP + labels[i + 1];
-      const cur = edgeMap.get(k) || { freq: 0, ms: 0 };
+  // C17 rule 1, the observed edges: consecutive visits of each run, start to
+  // the first and the last to end.
+  for (const visits of runVisits) {
+    const first = visits[0].node, last = visits[visits.length - 1].node;
+    startAct[first] = (startAct[first] || 0) + 1;
+    endAct[last] = (endAct[last] || 0) + 1;
+    const s = edge(START, first);
+    s.observed = true;
+    s.freq += 1;
+    for (let i = 0; i < visits.length - 1; i++) {
+      const cur = edge(visits[i].node, visits[i + 1].node);
+      cur.observed = true;
       cur.freq += 1;
       // §B2 time-weighted edges: the time that flows along A->B is
       // entering A -> entering B (A's dwell, trailing gap included), so
       // a thick edge reads "this hand-off carried the time". Summed over
       // every traversal; a missing timestamp contributes 0, never a guess.
-      const a = entries[i];
-      const b = entries[i + 1];
+      const a = visits[i].entry;
+      const b = visits[i + 1].entry;
       if (a && b && b > a) cur.ms += (b - a);
-      edgeMap.set(k, cur);
+    }
+    const e = edge(last, END);
+    e.observed = true;
+    e.freq += 1;
+  }
+
+  // C17 rule 2: a step's condition makes its node conditional in every run
+  // where the node appears (the conditions in step order, each once). A
+  // link's target is the node of a visible step of any run (the pipeline's
+  // step_flow.flow_edges); a hidden or unknown step draws nothing.
+  const conditions = new Map();
+  const nodeOf = new Map();
+  for (const visits of runVisits) {
+    for (const v of visits) {
+      for (const st of v.steps) {
+        if (typeof st.step_id === "string" && st.step_id && !nodeOf.has(st.step_id)) nodeOf.set(st.step_id, v.node);
+        const c = _line(st.only_when);
+        if (!c) continue;
+        const list = conditions.get(v.node) || [];
+        if (!list.includes(c)) list.push(c);
+        conditions.set(v.node, list);
+      }
     }
   }
 
-  const edges = [...edgeMap.entries()].map(([k, v]) => {
-    const [source, target] = k.split(SEP);
-    // `total_ms` is ADDITIVE next to the traversal count -- dfg-viewer keeps
+  // The declarations, walked in step order so the labels of one edge join
+  // in step order (rule 4).
+  for (const visits of runVisits) {
+    visits.forEach((v, i) => {
+      const conds = conditions.get(v.node);
+      if (conds) {
+        // The edge entering the step from its previous step carries the
+        // condition, and a path around it reads "otherwise".
+        const prev = i > 0 ? visits[i - 1].node : START;
+        const next = i < visits.length - 1 ? visits[i + 1].node : END;
+        const into = edge(prev, v.node);
+        for (const c of conds) addLabel(into, c);
+        if (prev !== next) addLabel(edge(prev, next), OTHERWISE);
+      }
+      // Rule 3: a link goes from the step to its target, or to the end.
+      for (const st of v.steps) {
+        for (const l of stepLinks(st)) {
+          const id = l.to.trim();
+          if (id === st.step_id) continue;   // a link never points at its own step
+          const to = id === "end" ? END : nodeOf.get(id);
+          if (!to) continue;
+          addLabel(edge(v.node, to), l.when);
+        }
+      }
+    });
+  }
+
+  const edges = [], startEdges = [], endEdges = [];
+  for (const r of order) {
+    // `total_ms` is ADDITIVE next to the traversal count: dfg-viewer keeps
     // rendering count-weighted when asked (or when no time was measurable).
-    return { source, target, frequency: v.freq, total_ms: Math.round(v.ms) };
-  });
-  return { edges, start_activities: startAct, end_activities: endAct };
+    const out = { frequency: r.freq, total_ms: Math.round(r.ms), observed: r.observed,
+      label: r.labels.length ? r.labels.join(" or ") : null };
+    if (r.from === START) startEdges.push(Object.assign({ target: r.to }, out));
+    else if (r.to === END) endEdges.push(Object.assign({ source: r.from }, out));
+    else edges.push(Object.assign({ source: r.from, target: r.to }, out));
+  }
+  return { edges, start_activities: startAct, end_activities: endAct, start_edges: startEdges, end_edges: endEdges };
+}
+
+/* Every edge of a map as { from, to, label, observed, frequency, total_ms },
+   the start edges first and the end edges last (from START, to END): the
+   list the map draws and the flow-links golden pins. */
+function flowEdges(dfg) {
+  const d = dfg || {};
+  const pick = (e) => ({ label: e.label == null ? null : e.label, observed: !!e.observed,
+    frequency: e.frequency || 0, total_ms: e.total_ms || 0 });
+  return [
+    ...(d.start_edges || []).map((e) => Object.assign({ from: START, to: e.target }, pick(e))),
+    ...(d.edges || []).map((e) => Object.assign({ from: e.source, to: e.target }, pick(e))),
+    ...(d.end_edges || []).map((e) => Object.assign({ from: e.source, to: END }, pick(e))),
+  ];
 }
 
 module.exports = {
-  buildAnnotationDfg, mapNodeLabel, processLabel,
+  buildAnnotationDfg, flowEdges, stepLinks, mapNodeLabel, processLabel,
+  START, END, OTHERWISE,
   // Used by the Steps level (steps-view.js): the value-free screen label and
   // the view-time fallback for a step's screen / app keys.
   screenType, resolveStepGrainKeys, valueFree,

@@ -4,8 +4,9 @@
  * map, the timeline or the Steps list stays visible:
  *   a click on a map box, a click on a timeline step band, a selected Steps
  *   row (and Watch in the step pane, which plays its step here).
- * It names the step, its system and description, says "In N of M
- * transactions, about Xs each", and lists one row per occurrence:
+ * It names the step, its system and description, its flow in one short
+ * line when set (C17: "Only when ... · Goes back to step 2 when ..."), says
+ * "In N of M transactions, about Xs each", and lists one row per occurrence:
  * "Transaction 1 at 0:39" (the
  * time since the recording started, the PDD's pointer) with a play button
  * that plays that occurrence in the panel's small video (when the recording
@@ -28,6 +29,7 @@ const { mapNodeLabel } = require("../process-map-levels.js");
 const SystemNames = require("../system-names.js");
 const StepFacts = require("../step-facts.js");
 const TM = require("../transcript-model.js");
+const StepFlow = require("../step-flow.js");
 const Video = require("./flow-view-video.js");
 const AnalystUI = require("./analyst-ui.js");
 
@@ -120,10 +122,15 @@ function render() {
   const datas = StepFacts.stepDatas(lead, inter);
   const desc = StepFacts.isDraftedDescription(lead.description, datas) ? "" : String(lead.description || "").trim();
   const hasVideo = !!(s.recordingAvailable && s.recordingPath);
+  // C17: the step's condition and links, in one short line when set (the
+  // condition set on any step of this box: it holds in every transaction).
+  const leadRun = runs.find((r) => r.caseId === lead.case_id);
+  const flow = StepFlow.panelLine(leadRun ? leadRun.visible : [], lead, occ.map((o) => StepFlow.onlyWhen(o.step)));
   $("sp-name").textContent = lead.name || "(unnamed step)";
   $("sp-about").innerHTML =
     ((where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
     (desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
+    (flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
     '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length)) + "</p>";
   const video = $("sp-video");
   const src = hasVideo ? "file:///" + String(s.recordingPath).replace(/\\/g, "/") : "";

@@ -21,6 +21,7 @@
  */
 
 const PdtDfg = require("./dfg-viewer.js");
+const { flowEdges } = require("./process-map-levels.js");
 
 /**
  * Create the map controller bound to its DOM nodes and data source.
@@ -61,7 +62,9 @@ function createMapController(config) {
     // process map); the edge tooltip carries the numbers.
     if (data && data.edgeWeight) opts.edgeWeight = data.edgeWeight;
 
-    if (dfg && dfg.edges && dfg.edges.length) {
+    // C17: a map is drawn once it has an edge, those from the start and to
+    // the end included (one step alone is start, the step, end).
+    if (flowEdges(dfg).length) {
       PdtDfg.render(hostDfg, dfg, opts);
       _setZoomVisible(true);
       return;

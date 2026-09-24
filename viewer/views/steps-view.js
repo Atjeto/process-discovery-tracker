@@ -54,7 +54,8 @@ const StepPanel = require("./step-panel.js");
 const AC = require("../analyst-content.js");
 const AnalystUI = require("./analyst-ui.js");
 const Video = require("./flow-view-video.js");
-const { processLabel } = require("../process-map-levels.js");
+const StepFlow = require("../step-flow.js");
+const { processLabel, mapNodeLabel } = require("../process-map-levels.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -367,7 +368,8 @@ function renderStepsLevel() {
   const detail = $("#step-detail");
   const active = document.activeElement;
   const typing = selected && detail && active && detail.contains(active) && _detailStepId === selected.step_id &&
-    (active.id === "step-name" || active.id === "step-desc" || active.id === "step-system")
+    (active.id === "step-name" || active.id === "step-desc" || active.id === "step-system" ||
+      active.id === "step-only-when" || /^flow-link-when-\d+$/.test(active.id))
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   if (selected) {
     if (title) title.textContent = "Selected step";
@@ -799,7 +801,72 @@ function stepDetailCallbacks(selected, interactionsById) {
     // C4: the name input suggests remembered and already-used names.
     nameListId: NAME_LIST_ID,
     transcriptSaid: _transcriptSaid(selected),
+    // C17: the Flow line (its condition and its links) and its edits.
+    flow: _flowFor(selected),
+    onFlowCondition: (id, text) => _flowEdit(id, text ? "set the step's condition" : "remove the step's condition",
+      (s) => StepFlow.setOnlyWhen(s, text)),
+    onFlowAddLink: (id, to) => _flowEdit(id, "add a link", (s) => StepFlow.addLink(s, to, "")),
+    onFlowLinkTarget: (id, i, to) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkTarget(s, i, to)),
+    onFlowLinkWhen: (id, i, when) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkWhen(s, i, when)),
+    onFlowRemoveLink: (id, i) => _flowEdit(id, "remove a link", (s) => StepFlow.removeLink(s, i)),
   };
+}
+
+/* ===== Step flow (C17) ================================================= */
+
+/* The Flow line of a step: its condition, its links (each with the sentence
+   it reads) and the steps a link can go to, its transaction's visible steps
+   in order. A condition holds for the step's box in every transaction, so a
+   step without one of its own lists the ones set on its box elsewhere
+   (`inherited`). Null for a step outside every transaction: the map draws
+   the transactions. */
+function _flowFor(step) {
+  const model = _model();
+  const run = model.runs.find((r) => r.caseId === RunsModel.groupKeyOf(step, model.runs));
+  if (!run) return null;
+  const list = run.visible;
+  const inherited = [];
+  if (!StepFlow.onlyWhen(step)) {
+    const node = mapNodeLabel(step);
+    for (const r of model.runs) {
+      for (const s of r.visible) {
+        const c = s.step_id !== step.step_id && mapNodeLabel(s) === node ? StepFlow.onlyWhen(s) : "";
+        if (c && !inherited.some((x) => x.text === c)) inherited.push({ text: c, where: r.title });
+      }
+    }
+  }
+  return {
+    onlyWhen: StepFlow.onlyWhen(step),
+    inherited,
+    links: StepFlow.links(step).map((l) => ({
+      to: l.to, when: typeof l.when === "string" ? l.when : "",
+      reading: StepFlow.linkReading(list, step, l),
+      missing: StepFlow.linkPlace(list, step, l).kind === "missing",
+    })),
+    choices: StepFlow.linkChoices(list, step),
+  };
+}
+
+/* One change of a step's flow is one undoable edit, and the step becomes the
+   analyst's (a draft becomes edited). `edit(step)` returns true when it
+   changed the step. */
+async function _flowEdit(stepId, label, edit) {
+  if (!State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const step = anno.steps.find((s) => s.step_id === stepId);
+  if (!step || !edit(step)) return;
+  _markEdited(step);
+  try { await persistAnnotations(anno, label); } catch (_) { /* already shown */ }
+}
+
+/* The toast's sentence when taking steps out dropped the links that went to
+   them (C17: said once; Undo brings the steps and the links back). "" when
+   none was dropped. */
+function _linksDroppedText(n, several) {
+  if (!n) return "";
+  const to = several ? "them" : "it";
+  return (n === 1 ? "The link to " + to + " was removed" : "The " + n + " links to " + to + " were removed") +
+    "; Ctrl+Z brings " + (n === 1 && !several ? "both" : "them") + " back.";
 }
 
 /* ===== Names: rename, remember, propagate (C4) ======================== */
@@ -936,9 +1003,11 @@ async function deleteStep(stepId) {
     RunsModel.recordFix(anno, _model().runs, step.case_id, f.kind, f.delta);
   }
   anno.steps = anno.steps.filter(s => s.step_id !== stepId);
+  // C17: the links that went to it go too (Ctrl+Z brings both back).
+  const dropped = StepFlow.dropLinksTo(anno.steps, [stepId]).length;
   if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
   await persistAnnotations(anno, 'delete step');
-  toast("Step deleted", "success");
+  toast(dropped ? "Step deleted. " + _linksDroppedText(dropped, false) : "Step deleted", "success");
 }
 
 /* Toggle a step's "hidden" state. Hidden steps drop out of the list (unless
@@ -965,18 +1034,21 @@ async function toggleStepHidden(stepId) {
     RunsModel.recordFix(anno, runs, step.case_id, f.kind, f.delta);
     step._prev_state = step.state;
     step.state = "hidden";
+    // C17: the links that went to it go too, in the same edit.
+    const dropped = StepFlow.dropLinksTo(anno.steps, [stepId]).length;
     if (State.getSelectedStepId() === stepId && !_ui.showHidden) State.setSelectedStepId(null);
     await persistAnnotations(anno, "hide step");
+    const linksText = dropped ? " " + _linksDroppedText(dropped, false) : "";
     // Item 2: a draft hidden in the pattern run is offered for every run.
     const p = RunsModel.patternRun(anno, runs);
     const others = p.run && step.case_id === p.run.caseId
       ? RunsModel.sameKeyDraftsElsewhere(_model(), p.run.caseId, step.draft_key) : [];
     if (others.length) {
-      toast("Step hidden. " + _plural(RunsModel.runCount(others), "other transaction has", "other transactions have") +
+      toast("Step hidden." + linksText + " " + _plural(RunsModel.runCount(others), "other transaction has", "other transactions have") +
         " the same drafted step.", "success",
         { action: { label: "Hide in all transactions", act: "hide-all-runs", onClick: () => hideInAllRuns(stepId) } });
     } else {
-      toast('Step hidden. "Show hidden steps" on its transaction lists it again.', "success");
+      toast("Step hidden." + (linksText || ' "Show hidden steps" on its transaction lists it again.'), "success");
     }
   }
 }
@@ -996,8 +1068,10 @@ async function hideInAllRuns(stepId) {
   const others = RunsModel.sameKeyDraftsElsewhere(model, p.run.caseId, step.draft_key);
   if (!others.length) return;
   RunsModel.hideSteps(others);
+  const dropped = StepFlow.dropLinksTo(anno.steps, others.map((s) => s.step_id)).length;
   await persistAnnotations(anno, "hide in all transactions");
-  toast("Hidden here and in " + _plural(RunsModel.runCount(others), "other transaction", "other transactions") + ". Ctrl+Z undoes it.", "success");
+  toast("Hidden here and in " + _plural(RunsModel.runCount(others), "other transaction", "other transactions") + "." +
+    (dropped ? " " + _linksDroppedText(dropped, true) : " Ctrl+Z undoes it."), "success");
 }
 
 async function splitStep(stepId) {
@@ -1038,6 +1112,8 @@ async function splitStep(stepId) {
     time_range: { start: firstEvents[0].timestamp, end: firstEvents[firstEvents.length - 1].timestamp },
     evidence: { ...s.evidence, interaction_event_ids: firstIds },
     state: "edited" });
+  // C17: the condition stays with the first half, the links leave the second.
+  StepFlow.splitFlow(first, second);
   anno.steps.splice(idx, 1, first, second);
   _splitAfter = { stepId: null, index: null };
   await persistAnnotations(anno, 'split step');
@@ -1100,6 +1176,7 @@ async function addStepAtTimestamp(tsISO) {
       time_range: { start: tISO, end: s.time_range.end },
       evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) >= t) },
       state: "edited" });
+    StepFlow.splitFlow(first, second);   // C17, as in splitStep
     anno.steps.splice(idx, 1, first, second);
     await persistAnnotations(anno, "Add step at playhead");
     toast('Added "' + newName + '"', "success");
@@ -1173,7 +1250,9 @@ function stripSplitSuffix(name) {
    must not produce a paragraph. The merged step is no longer one draft: it
    carries no draft_key, and when every member was drafted it keeps their
    keys in order as draft_keys (item 1), so it still matches the same drafts
-   in the other runs. */
+   in the other runs. C17: it keeps the first member's condition and every
+   member's links (commitMerge then points the links to the members at the
+   merged step). */
 function mergeStepObjects(toMerge) {
   const first = toMerge[0];
   const parts = [];
@@ -1200,14 +1279,17 @@ function mergeStepObjects(toMerge) {
     state: "edited",
   });
   if (keys) merged.draft_keys = keys;
+  const links = StepFlow.mergedLinks(toMerge);
+  if (links.length) merged.links = links; else delete merged.links;
   return merged;
 }
 
 /* Item 2: a merge of drafts made in the pattern run is repeated on every
    other run's consecutive still-draft steps with the same keys; each carried
    merge takes the pattern step's name. It is part of the same edit (one
-   Ctrl+Z) and not a fix of the pattern run. Returns how many runs took it. */
-function _carryMerge(anno, runs, model, merged) {
+   Ctrl+Z) and not a fix of the pattern run. Each merged step's id goes into
+   `idMap` (C17). Returns how many runs took it. */
+function _carryMerge(anno, runs, model, merged, idMap) {
   const p = RunsModel.patternRun(anno, runs);
   if (!p.run || merged.case_id !== p.run.caseId || !merged.draft_keys) return 0;
   const stretches = RunsModel.carriedMerges(model, p.run.caseId, merged.draft_keys);
@@ -1215,6 +1297,7 @@ function _carryMerge(anno, runs, model, merged) {
     const m = mergeStepObjects(st.steps);
     m.name = merged.name;
     const ids = new Set(st.steps.map((s) => s.step_id));
+    for (const id of ids) idMap.set(id, m.step_id);
     anno.steps = anno.steps.filter((s) => !ids.has(s.step_id));
     anno.steps.push(m);
   }
@@ -1228,15 +1311,25 @@ async function commitMerge(anno, toMerge, undoLabel) {
   const mergedIds = new Set(toMerge.map(s => s.step_id));
   anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
   anno.steps.push(merged);
-  const carriedRuns = _carryMerge(anno, model.runs, model, merged);
+  const idMap = new Map([...mergedIds].map((id) => [id, merged.step_id]));
+  const carriedRuns = _carryMerge(anno, model.runs, model, merged, idMap);
+  // C17: a link to a merged step goes to the step it became part of; one
+  // between two steps of the same merge would point at its own step, so it
+  // goes.
+  const selfLinks = StepFlow.retargetLinks(anno.steps, idMap);
   State.setSelectedStepId(merged.step_id);
   await persistAnnotations(anno, undoLabel);
-  return { merged, carriedRuns };
+  return { merged, carriedRuns, selfLinks };
 }
 
 /* The one-line toast of a merge that carried to other runs (item 2). */
 function _carriedToast(carriedRuns) {
   return "Merged here and in " + _plural(carriedRuns, "other transaction", "other transactions") + ". Ctrl+Z undoes it.";
+}
+
+/* C17: a merge that dropped links between its own steps says so. */
+function _selfLinksText(n) {
+  return n ? " " + (n === 1 ? "A link between the merged steps was removed." : n + " links between the merged steps were removed.") : "";
 }
 
 /* P0.1: merge the clicked step with the NEXT step of the same run, the row
@@ -1254,7 +1347,8 @@ async function mergeStepWithNext(stepId) {
   if (!next) { toast("This is the last step of its transaction: there is no next step to merge with.", "error"); return; }
   const toMerge = [step, next];
   const r = await commitMerge(anno, toMerge, 'merge step with next');
-  toast(r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"', "success");
+  toast((r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"') +
+    _selfLinksText(r.selfLinks), "success");
 }
 
 /* P0.1: merge exactly the ticked steps (time order), the inverse of split for
@@ -1274,7 +1368,8 @@ async function mergeSelectedSteps() {
   const r = await commitMerge(anno, toMerge, 'merge selected steps');
   multi.clear();
   syncMultiSelectButtons();
-  toast(r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged ' + toMerge.length + ' steps into "' + r.merged.name + '"', "success");
+  toast((r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged ' + toMerge.length + ' steps into "' + r.merged.name + '"') +
+    _selfLinksText(r.selfLinks), "success");
 }
 
 /* Keep the two multi-selection toolbar actions (delete / merge) in lockstep
@@ -1394,13 +1489,16 @@ async function deleteSelectedSteps() {
   RunsModel.hideSteps(hide);
   const removeIds = new Set(remove.map((s) => s.step_id));
   anno.steps = anno.steps.filter(s => !removeIds.has(s.step_id));
+  // C17: the links that went to them go too, in the same edit.
+  const dropped = StepFlow.dropLinksTo(anno.steps, hide.concat(remove).map((s) => s.step_id)).length;
   const idSet = new Set(ids);
   if (idSet.has(State.getSelectedStepId()) && !_ui.showHidden) State.setSelectedStepId(null);
   State.getMultiSelectedStepIds().clear();
   await persistAnnotations(anno, what);
   syncMultiSelectButtons();
   toast([hide.length ? _plural(hide.length, "step", "steps") + " hidden" : "",
-    remove.length ? _plural(remove.length, "step", "steps") + " deleted" : ""].filter(Boolean).join(", "), "success");
+    remove.length ? _plural(remove.length, "step", "steps") + " deleted" : ""].filter(Boolean).join(", ") +
+    (dropped ? ". " + _linksDroppedText(dropped, true) : ""), "success");
 }
 
 /* ===== Run verbs: confirm, use as pattern (C2, C3) ==================== */

@@ -141,14 +141,15 @@ async function openMapLevel(page) {
   if (btn) { await btn.click().catch(() => {}); await wait(1500); }
 }
 
-/* The live map (cytoscape on the host) as plain data. */
+/* The live map (cytoscape on the host) as plain data: its step boxes (the
+   Start and End events, C17, are not steps) and every edge. */
 const mapProbe = () => {
   const host = document.getElementById("session-map-dfg-host");
   const cy = host && host.__cy;
   if (!cy) return { drawn: false, text: host ? (host.textContent || "").trim() : null };
   return {
     drawn: true,
-    nodes: cy.nodes().map((n) => n.id()).sort(),
+    nodes: cy.nodes().filter((n) => n.data("kind") !== "event").map((n) => n.id()).sort(),
     edges: cy.edges().map((e) => ({ label: e.style("label"), freq: e.data("freq"), totalMs: e.data("totalMs") })),
   };
 };
@@ -249,7 +250,9 @@ const lockProbe = () => {
   const paths = await page.evaluate(() => {
     const s = require("./state.js").getSession();
     const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
-    const want = require("./process-map-levels.js").buildAnnotationDfg(runs.map((r) => r.visible)).edges.length;
+    // Every edge, those of the Start and End events included (C17).
+    const L = require("./process-map-levels.js");
+    const want = L.flowEdges(L.buildAnnotationDfg(runs.map((r) => r.visible))).length;
     const cy = document.getElementById("session-map-dfg-host").__cy;
     return {
       drawn: cy ? cy.edges().length : null, want,

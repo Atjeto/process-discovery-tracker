@@ -4,6 +4,7 @@
   const PdtRecognize = require("./recognition.js");
   const { stepChip } = require("./runs-model.js");
   const TM = require("./transcript-model.js");
+  const StepFlow = require("./step-flow.js");
   const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
   // A step's time on screen ("42s", "2:17", "1h04"), the fact line's too.
   const { duration: stepDuration } = require("./step-facts.js");
@@ -177,8 +178,9 @@
          fields typed, the Description (the text the PDD prints under the
          step, C7; the drafting's own narration is its hint, not its text)
          with "Said during this step" under it while a transcript is
-         attached, Waste, Watch (with a video: it plays the step in the step
-         panel) and Hide, and the step's screenshots;
+         attached, the Flow line (C17: Only when and Go to), Waste, Watch
+         (with a video: it plays the step in the step panel) and Hide, and
+         the step's screenshots;
        "More" (a native <details>, collapsed on every selection): the
          interactions the step is made of, Show on timeline, Split, Merge with
          next, Merge selected, Delete (added steps only).
@@ -232,6 +234,7 @@
       ${stepFieldsHtml(callbacks.fields)}
       <label>Description <textarea id="step-desc" placeholder="${escapeAttr(hint)}" title="Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
       ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
+      ${flowSectionHtml(step, callbacks.flow)}
       <div class="flags">
         <label title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
       </div>
@@ -284,6 +287,7 @@
     document.getElementById("flag-waste").addEventListener("change", () =>
       callbacks.onToggleWaste && callbacks.onToggleWaste(step.step_id));
     wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
+    wireFlow(host, step, callbacks);
     // C16: the System field, the screenshots, notes and attachments.
     if (callbacks.wireExtras) callbacks.wireExtras(host, () => _rendering);
     const deleteBtn = document.getElementById("btn-step-delete");
@@ -316,6 +320,224 @@
     if (watchEl) {
       watchEl.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       watchEl.disabled = !(step.time_range && step.time_range.start);
+    }
+  }
+
+  /* C17: the Flow line, under the description. The default after a step is
+     the next step of its transaction, so a step with nothing set reads one
+     line, "Always · then the next step", with its two acts: "Only when..."
+     opens a text field for the step's condition (step.only_when) and "Go
+     to..." adds a row: a dropdown of the transaction's steps in order,
+     numbered, and "End the process" (the step itself is not offered), with a
+     "when" field; the row reads where it goes ("Goes back to step 4, ...,
+     when ..."). A condition or a link saves when its field is left or Enter
+     is pressed, a target when it is picked; each has Remove. The steps view
+     makes each change one undoable edit (callbacks.onFlow*); `callbacks.flow`
+     is { onlyWhen, inherited, links: [{ to, when, reading, missing }],
+     choices } for a step in a transaction, else null (no Flow line); a step
+     without a condition of its own reads the one set on its box in another
+     transaction (`inherited`, step-flow.inheritedLine).
+     A field opened but not saved yet (Only when... or Go to... clicked) is
+     kept here per step, so a redraw of the pane keeps it open. */
+  let _flowOpen = { stepId: null, condition: false, link: false };
+  let _flowFocus = null;   // { stepId, id }: a field to focus once drawn
+  function _flowOpenFor(step) {
+    if (_flowOpen.stepId !== step.step_id) {
+      _flowOpen = { stepId: step.step_id, condition: false, link: false };
+      _flowFocus = null;
+    }
+    return _flowOpen;
+  }
+
+  const FLOW_TITLES = {
+    onlyWhen: "This step happens only under a condition. The map draws a decision: the condition on the way into the step and an \"otherwise\" path around it.",
+    goTo: "After this step, when a condition holds, the process goes back to an earlier step, skips to a later one or ends.",
+    condition: "The condition under which this step happens. Saved when you press Enter or leave the field; empty removes it.",
+    removeCondition: "Remove the condition: the step always happens",
+    target: "Where the process goes after this step",
+    when: "When the process goes there. Saved when you press Enter or leave the field.",
+    removeLink: "Remove this link: the next step follows",
+    inherited: "A condition holds for this step in every transaction. Change it on the step where it is set.",
+  };
+
+  function _targetOptions(choices, selected, missing) {
+    const opt = (value, label, on, disabled) => '<option value="' + escapeAttr(value) + '"' +
+      (on ? " selected" : "") + (disabled ? " disabled" : "") + ">" + escapeHtml(label) + "</option>";
+    let html = selected == null ? opt("", "Choose a step or the end", true, true)
+      : missing ? opt(selected, "A step no longer in this transaction", true, true) : "";
+    for (const c of choices || []) html += opt(c.value, c.label, c.value === selected, false);
+    return html + opt(StepFlow.END, "End the process", selected === StepFlow.END, false);
+  }
+
+  function _linkRowHtml(i, link, choices) {
+    const isNew = link == null;
+    const key = isNew ? "new" : String(i);
+    const reading = isNew ? "Choose where the process goes after this step." : link.reading;
+    return '<li class="flow-link' + (isNew ? " pending" : "") + '" data-i="' + key + '">' +
+      '<span class="flow-link-text">' + escapeHtml(reading) + "</span>" +
+      '<span class="flow-link-edit">' +
+        '<select class="flow-link-to" id="flow-link-to-' + key + '" aria-label="Goes to" title="' + escapeAttr(FLOW_TITLES.target) + '">' +
+          _targetOptions(choices, isNew ? null : link.to, !isNew && link.missing) + "</select>" +
+        '<label class="flow-when-label" for="flow-link-when-' + key + '">when</label>' +
+        '<input type="text" class="flow-link-when" id="flow-link-when-' + key + '" value="' + escapeAttr(isNew ? "" : link.when) + '"' +
+          ' placeholder="for example: the check fails" title="' + escapeAttr(FLOW_TITLES.when) + '"' + (isNew ? " disabled" : "") + ">" +
+        '<button type="button" class="link-btn flow-link-remove" title="' + escapeAttr(FLOW_TITLES.removeLink) + '">Remove</button>' +
+      "</span></li>";
+  }
+
+  function flowSectionHtml(step, flow) {
+    if (!flow || !step) return "";
+    const open = _flowOpenFor(step);
+    const cond = flow.onlyWhen || "";
+    const showCond = !!cond || open.condition;
+    const links = flow.links || [];
+    // A condition set on the same step in another transaction holds here too
+    // (C17): it reads as set there, and is changed there.
+    const inherited = showCond ? "" : StepFlow.inheritedLine(flow.inherited);
+    const lineAttrs = ' id="step-flow-line"' + (inherited ? ' title="' + escapeAttr(FLOW_TITLES.inherited) + '"' : "");
+    const line = escapeHtml(inherited || StepFlow.DEFAULT_LINE);
+    const onlyBtn = showCond || inherited ? "" : '<button type="button" class="link-btn" id="btn-flow-only-when" title="' +
+      escapeAttr(FLOW_TITLES.onlyWhen) + '">Only when…</button>';
+    const goBtn = '<button type="button" class="link-btn" id="btn-flow-go-to" title="' + escapeAttr(FLOW_TITLES.goTo) + '">Go to…</button>';
+    // Nothing set on the step: one line.
+    if (!showCond && !links.length && !open.link) {
+      return '<div class="step-sect step-flow" id="step-flow"><div class="step-sect-head step-flow-head">' +
+        '<span class="step-sect-title">Flow</span>' +
+        '<span class="flow-line"' + lineAttrs + ">" + line + "</span>" +
+        onlyBtn + goBtn + "</div></div>";
+    }
+    const condHtml = showCond
+      ? '<div class="flow-cond"><label class="flow-cond-label" for="step-only-when">Only when</label>' +
+        '<input type="text" id="step-only-when" value="' + escapeAttr(cond) + '" placeholder="for example: a new customer" title="' +
+          escapeAttr(FLOW_TITLES.condition) + '">' +
+        '<button type="button" class="link-btn" id="btn-flow-remove-condition" title="' + escapeAttr(FLOW_TITLES.removeCondition) + '">Remove</button></div>' +
+        '<p class="flow-line" id="step-flow-line">Then the next step</p>'
+      : '<p class="flow-line"' + lineAttrs + ">" + line + "</p>";
+    const rows = links.map((l, i) => _linkRowHtml(i, l, flow.choices)).join("") +
+      (open.link ? _linkRowHtml(links.length, null, flow.choices) : "");
+    return '<div class="step-sect step-flow" id="step-flow"><div class="step-sect-head step-flow-head">' +
+      '<span class="step-sect-title">Flow</span>' + onlyBtn + goBtn + "</div>" +
+      condHtml + (rows ? '<ol class="flow-links">' + rows + "</ol>" : "") + "</div>";
+  }
+
+  /* Wire the Flow line just drawn. A click that only opens or closes a field
+     draws the section again by itself; a saved change comes back through the
+     steps view's redraw. */
+  function wireFlow(host, step, callbacks) {
+    const sect = host.querySelector("#step-flow");
+    const flow = callbacks.flow;
+    if (!sect || !flow) return;
+    const open = _flowOpenFor(step);
+    const id = step.step_id;
+    const redraw = () => {
+      const cur = host.querySelector("#step-flow");
+      if (!cur) return;
+      _rendering = true;
+      try {
+        const box = document.createElement("div");
+        box.innerHTML = flowSectionHtml(step, flow);
+        cur.replaceWith(box.firstElementChild);
+      } finally { _rendering = false; }
+      wireFlow(host, step, callbacks);
+    };
+    const live = (el) => !_rendering && el && el.isConnected;
+    const onClick = (sel, fn) => { const el = sect.querySelector(sel); if (el) el.addEventListener("click", fn); };
+
+    onClick("#btn-flow-only-when", () => {
+      open.condition = true;
+      _flowFocus = { stepId: id, id: "step-only-when" };
+      redraw();
+    });
+    onClick("#btn-flow-go-to", () => {
+      open.link = true;
+      _flowFocus = { stepId: id, id: "flow-link-to-new" };
+      redraw();
+    });
+
+    // The condition: saved on Enter or when left; empty removes it.
+    const saved = flow.onlyWhen || "";
+    const condEl = sect.querySelector("#step-only-when");
+    if (condEl) {
+      const commit = () => {
+        if (!live(condEl)) return;
+        const v = condEl.value.trim();
+        if (v === saved) {
+          if (!v && open.condition) { open.condition = false; redraw(); }
+          return;
+        }
+        open.condition = false;
+        if (callbacks.onFlowCondition) callbacks.onFlowCondition(id, v);
+      };
+      condEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        else if (e.key === "Escape") {
+          e.preventDefault();
+          condEl.value = saved;
+          if (!saved) { open.condition = false; redraw(); }
+        }
+      });
+      condEl.addEventListener("blur", commit);
+    }
+    // Remove clears the condition, including one the field saved a moment
+    // ago when the click took the focus from it (a pending field just closes).
+    onClick("#btn-flow-remove-condition", () => {
+      open.condition = false;
+      redraw();
+      if (callbacks.onFlowCondition) callbacks.onFlowCondition(id, "");
+    });
+
+    // The links, and the row being added.
+    for (const row of sect.querySelectorAll(".flow-link")) {
+      const key = row.dataset.i;
+      const isNew = key === "new";
+      const i = isNew ? -1 : parseInt(key, 10);
+      const link = isNew ? null : (flow.links || [])[i];
+      const sel = row.querySelector(".flow-link-to");
+      const whenEl = row.querySelector(".flow-link-when");
+      const takeTarget = () => {
+        if (!live(sel) || !sel.value) return;
+        if (isNew) {
+          open.link = false;
+          _flowFocus = { stepId: id, id: "flow-link-when-" + (flow.links || []).length };
+          if (callbacks.onFlowAddLink) callbacks.onFlowAddLink(id, sel.value);
+        } else if (link && sel.value !== link.to && callbacks.onFlowLinkTarget) {
+          callbacks.onFlowLinkTarget(id, i, sel.value);
+        }
+      };
+      // A pick with the mouse is taken at once. The arrows change a closed
+      // dropdown's value as they move, so after a key the pick is taken on
+      // Enter or when the dropdown is left; Escape puts it back.
+      let keyed = false;
+      sel.addEventListener("mousedown", () => { keyed = false; });
+      sel.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); keyed = false; takeTarget(); }
+        else if (e.key === "Escape") { e.preventDefault(); keyed = false; sel.value = isNew ? "" : link.to; }
+        else if (!e.altKey && !e.ctrlKey && !e.metaKey) keyed = true;
+      });
+      sel.addEventListener("change", () => { if (!keyed) takeTarget(); });
+      sel.addEventListener("blur", () => { if (keyed) { keyed = false; takeTarget(); } });
+      if (!isNew && whenEl) {
+        const was = (link && link.when) || "";
+        const commitWhen = () => {
+          if (!live(whenEl)) return;
+          const v = whenEl.value.trim();
+          if (v !== was && callbacks.onFlowLinkWhen) callbacks.onFlowLinkWhen(id, i, v);
+        };
+        whenEl.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commitWhen(); }
+          else if (e.key === "Escape") { e.preventDefault(); whenEl.value = was; }
+        });
+        whenEl.addEventListener("blur", commitWhen);
+      }
+      row.querySelector(".flow-link-remove").addEventListener("click", () => {
+        if (isNew) { open.link = false; redraw(); return; }
+        if (callbacks.onFlowRemoveLink) callbacks.onFlowRemoveLink(id, i);
+      });
+    }
+
+    if (_flowFocus && _flowFocus.stepId === id) {
+      const el = sect.querySelector("#" + _flowFocus.id);
+      if (el) { _flowFocus = null; el.focus(); }
     }
   }
 

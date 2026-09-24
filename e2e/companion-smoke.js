@@ -33,6 +33,19 @@
  *         playhead; (k) a frame of the video captured as a screenshot; (l) a
  *         note at a moment, in the Notes lane; (m) the PDD carries the steps
  *         and the frame.
+ *   Step flow (contract C17), in another empty project with four steps:
+ *     (o) each step's Flow line reads "Always · then the next step";
+ *     (p) "Only when" on step 2; "Go to" step 2 on step 4 (the dropdown lists
+ *         the transaction's other steps in order, numbered, and End the
+ *         process); "Go to" End the process on step 3; each row reads where it
+ *         goes, and annotations.json holds only_when and links with the step
+ *         ids; (q) the step panel shows step 4's flow in one line;
+ *     (r) the live map draws the Start and End events, the decision (the
+ *         condition on the line into step 2, "otherwise" around it), the loop
+ *         and the early end, labelled, the labels clear of the boxes and of
+ *         each other; (s) Ctrl+Z takes the early end's when, then the link,
+ *         back (the map follows), Ctrl+Y redoes both; (t) hiding step 2 drops
+ *         the link to it with one toast, and Ctrl+Z brings both back.
  *   Zero page errors. Exits 0 when every check passed, 1 on a failed check,
  *   2 when it could not run.
  */
@@ -555,6 +568,223 @@ function zipFiles(buf) {
   } catch (x) { m.err = errText(x); }
   record("(m) the video project's PDD carries its steps and the captured frame, and no note",
     !m.err && m.steps.length === 2 && m.steps.every(Boolean) && m.frame && !m.note, JSON.stringify(m));
+
+  // ================= C. Step flow (contract C17) =================
+  // The analyst sets the flow while adding steps: a condition and links on
+  // steps, drawn by the live map. (The exported PDD's flow lines are the
+  // pipeline lane's, checked there.)
+  const FLOWP = path.join(TMP, "Flow check");
+  const FN = ["Receive the order email", "Check the customer", "Enter the sales order in SAP", "Send the confirmation"];
+  const LOOP = "the customer details are missing";
+  const ids = {};
+  const flowStep = (id) => page.evaluate((sid) => {
+    const st = (require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === sid) || {};
+    return { only_when: st.only_when, links: st.links, state: st.state };
+  }, id);
+  // Wait until the step's flow passes `pred` (read from the page, tested here).
+  const untilStep = async (id, pred) => {
+    const deadline = Date.now() + T;
+    for (;;) {
+      const st = await flowStep(id);
+      if (pred(st)) return st;
+      if (Date.now() > deadline) throw new Error("step " + id + " stayed " + JSON.stringify(st));
+      await wait(100);
+    }
+  };
+  const flowPane = () => page.evaluate(() => {
+    const sect = document.getElementById("step-flow");
+    return sect ? {
+      line: ((document.getElementById("step-flow-line") || {}).textContent || "").trim(),
+      cond: !!document.getElementById("step-only-when"),
+      rows: [...sect.querySelectorAll(".flow-link .flow-link-text")].map((x) => x.textContent.trim()),
+      acts: [...sect.querySelectorAll(".step-sect-head .link-btn")].map((x) => x.textContent.trim()),
+    } : null;
+  });
+  // The drawn map: its events, and every edge with its label as drawn.
+  const flowMap = () => page.evaluate(() => {
+    const L = require("./process-map-levels.js");
+    const cy = document.getElementById("session-map-dfg-host").__cy;
+    if (!cy) return null;
+    const nm = (id) => (id === L.START ? "start" : id === L.END ? "end" : id);
+    const box = (e) => e.boundingBox({ includeLabels: true, includeMainLabels: true, includeNodes: false, includeEdges: false,
+      includeSourceLabels: false, includeTargetLabels: false });
+    const hit = (a, b) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+    const labelled = cy.edges().filter((e) => !!e.data("label"));
+    const overlaps = [];
+    labelled.forEach((e) => {
+      cy.nodes().forEach((n) => { if (hit(box(e), n.boundingBox({ includeLabels: true }))) overlaps.push(e.data("label") + " / " + nm(n.id())); });
+      labelled.forEach((f) => { if (f !== e && hit(box(e), box(f))) overlaps.push(e.data("label") + " / " + f.data("label")); });
+    });
+    return {
+      events: cy.nodes().filter((n) => n.data("kind") === "event").map((n) => nm(n.id())).sort(),
+      edges: cy.edges().map((e) => ({ from: nm(e.data("source")), to: nm(e.data("target")), label: e.data("label") || null,
+        full: e.data("fullLabel") || null, observed: !!e.data("observed"), drawn: String(e.style("label") || ""),
+        dashed: e.style("line-style") === "dashed", font: parseFloat(e.style("font-size")) })),
+      // The label boxes the overlap test uses (an empty box would pass it vacuously).
+      boxes: labelled.map((e) => { const b = box(e); return [Math.round(b.w), Math.round(b.h)]; }),
+      overlaps,
+    };
+  });
+  const edgeIn = (mp, a, b) => ((mp && mp.edges) || []).find((e) => e.from === a && e.to === b) || null;
+
+  let o = {};
+  try {
+    await stubSave(FLOWP);
+    await newProject("#btn-new-blank");
+    await opened(FLOWP);
+    await settled();
+    await level("steps");
+    for (const n of FN) {
+      await page.click("#btn-add-manual-step");
+      await prompt(n);
+      await page.waitForFunction((name) => [...document.querySelectorAll("#step-list .step-row .step-name")].some((x) => x.textContent === name), n, { timeout: T });
+    }
+    const all = (await session()).anno.steps;
+    for (const n of FN) ids[n] = (all.find((x) => x.name === n) || {}).step_id;
+    o.panes = [];
+    for (const n of FN) { await selectStep(ids[n]); o.panes.push(await flowPane()); }
+  } catch (x) { o.err = errText(x); }
+  record("(o) C17: four steps added by hand; each step's Flow line is one line, Always · then the next step, with Only when and Go to",
+    !o.err && o.panes.length === 4 && o.panes.every((q) => q && q.line === "Always · then the next step" && !q.cond && !q.rows.length &&
+      JSON.stringify(q.acts) === JSON.stringify(["Only when…", "Go to…"])),
+    JSON.stringify(o));
+
+  let p = {};
+  try {
+    // Only when, on step 2.
+    await selectStep(ids[FN[1]]);
+    await page.click("#btn-flow-only-when");
+    await page.fill("#step-only-when", "the customer is new");
+    await page.press("#step-only-when", "Enter");
+    await untilStep(ids[FN[1]], (st) => st.only_when === "the customer is new");
+    p.step2 = await flowPane();
+    // Go to step 2, on step 4: the dropdown lists the other steps and the end.
+    await selectStep(ids[FN[3]]);
+    await page.click("#btn-flow-go-to");
+    p.options = await page.$$eval("#flow-link-to-new option", (os) => os.map((x) => ({ value: x.value, text: x.textContent, disabled: x.disabled })));
+    await page.selectOption("#flow-link-to-new", ids[FN[1]]);
+    await page.waitForSelector("#flow-link-when-0", { timeout: T });
+    await page.fill("#flow-link-when-0", LOOP);
+    await page.press("#flow-link-when-0", "Enter");
+    await untilStep(ids[FN[3]], (st) => (st.links || []).some((l) => l.when === LOOP));
+    p.step4 = await flowPane();
+    // Go to End the process, on step 3.
+    await selectStep(ids[FN[2]]);
+    await page.click("#btn-flow-go-to");
+    await page.selectOption("#flow-link-to-new", "end");
+    await page.waitForSelector("#flow-link-when-0", { timeout: T });
+    await page.fill("#flow-link-when-0", "the order is rejected");
+    await page.press("#flow-link-when-0", "Enter");
+    await untilStep(ids[FN[2]], (st) => (st.links || []).some((l) => l.when === "the order is rejected"));
+    p.step3 = await flowPane();
+    await page.screenshot({ path: path.join(__dirname, "companion-smoke-flow-steps.png") }).catch(() => {});
+    // annotations.json on disk (written before the pane is drawn again).
+    const deadline = Date.now() + T;
+    const onDisk = () => {
+      const steps = readJson(path.join(FLOWP, "annotations.json")).steps;
+      return FN.map((n) => { const st = steps.find((x) => x.step_id === ids[n]) || {};
+        return { only_when: st.only_when || null, links: st.links || null, state: st.state }; });
+    };
+    while (!(p.disk = onDisk())[2].links && Date.now() < deadline) await wait(200);
+  } catch (x) { p.err = errText(x); }
+  record("(p) C17: Only when on step 2, Go to step 2 on step 4 and Go to End the process on step 3: the dropdown lists the transaction's other steps in order, numbered, and End the process; each row reads where it goes; annotations.json holds only_when and the links by step id, and the steps stay added",
+    !p.err && p.step2.cond && p.step2.line === "Then the next step" &&
+      JSON.stringify(p.options.map((x) => x.text)) === JSON.stringify(["Choose a step or the end", "1. Receive the order email",
+        "2. Check the customer", "3. Enter the sales order in SAP", "End the process"]) && p.options[0].disabled &&
+      JSON.stringify(p.step4.rows) === JSON.stringify(["Goes back to step 2, Check the customer, when " + LOOP]) &&
+      JSON.stringify(p.step3.rows) === JSON.stringify(["Ends here when the order is rejected"]) &&
+      JSON.stringify(p.disk) === JSON.stringify([
+        { only_when: null, links: null, state: "manually_authored" },
+        { only_when: "the customer is new", links: null, state: "manually_authored" },
+        { only_when: null, links: [{ to: "end", when: "the order is rejected" }], state: "manually_authored" },
+        { only_when: null, links: [{ to: ids[FN[1]], when: LOOP }], state: "manually_authored" },
+      ]),
+    JSON.stringify(p));
+
+  // (q) The step panel beside the list: the selected step's flow in one line.
+  let q = {};
+  try {
+    await selectStep(ids[FN[3]]);
+    await page.waitForSelector("#step-panel:not([hidden]) #sp-flow", { timeout: T });
+    q.line = await page.evaluate(() => document.getElementById("sp-flow").textContent.trim());
+  } catch (x) { q.err = errText(x); }
+  record("(q) C17: the step panel shows the step's flow in one short line",
+    !q.err && q.line === "Goes back to step 2 when " + LOOP, JSON.stringify(q));
+
+  // (r) The live map.
+  let r = {};
+  try {
+    await level("map");
+    await page.waitForFunction(() => { const h = document.getElementById("session-map-dfg-host"); return !!(h && h.__cy && h.__cy.edges().length); }, null, { timeout: T });
+    await wait(600);
+    r = await flowMap();
+  } catch (x) { r.err = errText(x); }
+  await page.screenshot({ path: path.join(__dirname, "companion-smoke-flow-map.png") }).catch(() => {});
+  const into2 = edgeIn(r, FN[0], FN[1]), around2 = edgeIn(r, FN[0], FN[2]), loop = edgeIn(r, FN[3], FN[1]), early = edgeIn(r, FN[2], "end");
+  record("(r) C17: the live map draws Start and End, the decision (the condition on the line into step 2, a dashed otherwise around it), the loop back from step 4 and the early end from step 3, each labelled on its line (whole in the tooltip), and no label lies over a box or another label",
+    !r.err && JSON.stringify(r.events) === '["end","start"]' && r.edges.length === 8 &&
+      into2 && into2.label === "the customer is new" && into2.observed && !into2.dashed &&
+      around2 && around2.label === "otherwise" && !around2.observed && around2.dashed &&
+      loop && loop.full === LOOP && !loop.observed && loop.dashed &&
+      early && early.label === "the order is rejected" && !early.observed && early.dashed &&
+      !!edgeIn(r, "start", FN[0]) && !!edgeIn(r, FN[3], "end") &&
+      r.edges.filter((e) => e.label).every((e) => e.drawn === e.label && e.font >= 10) &&
+      r.boxes.length === 4 && r.boxes.every(([w, h]) => w > 20 && h > 8) && r.overlaps.length === 0,
+    JSON.stringify(r));
+
+  // (s) Undo covers every change: the early end's when, then the link.
+  let su = {};
+  try {
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press("Control+Z");
+    await untilStep(ids[FN[2]], (st) => (st.links || []).length === 1 && st.links[0].when === "");
+    su.one = await flowStep(ids[FN[2]]);
+    await page.keyboard.press("Control+Z");
+    await untilStep(ids[FN[2]], (st) => !st.links);
+    su.two = await flowStep(ids[FN[2]]);
+    await wait(500);
+    su.map = edgeIn(await flowMap(), FN[2], "end");
+    await page.keyboard.press("Control+Y");
+    await untilStep(ids[FN[2]], (st) => (st.links || []).length === 1);
+    await page.keyboard.press("Control+Y");
+    await untilStep(ids[FN[2]], (st) => (st.links || []).length === 1 && st.links[0].when === "the order is rejected");
+    await wait(500);
+    su.back = edgeIn(await flowMap(), FN[2], "end");
+  } catch (x) { su.err = errText(x); }
+  record("(s) C17: Ctrl+Z takes the early end's when back, then its link, and the map loses the path; Ctrl+Y redoes both",
+    !su.err && su.one.links[0].to === "end" && su.two.links === undefined && su.map === null &&
+      su.back && su.back.label === "the order is rejected",
+    JSON.stringify(su));
+
+  // (t) Hiding a step that a link goes to drops the link, said once.
+  let t = {};
+  try {
+    await level("steps");
+    await selectStep(ids[FN[1]]);
+    await page.evaluate(() => {
+      const el = document.getElementById("toast");
+      window.__flowToasts = [];
+      window.__flowToastObs = new MutationObserver(() => {
+        const tx = el.classList.contains("show") ? el.textContent : "";
+        if (tx && window.__flowToasts[window.__flowToasts.length - 1] !== tx) window.__flowToasts.push(tx);
+      });
+      window.__flowToastObs.observe(el, { childList: true, characterData: true, subtree: true, attributes: true });
+    });
+    await page.click("#btn-step-hide");
+    await untilStep(ids[FN[1]], (st) => st.state === "hidden");
+    await wait(500);
+    t.toasts = await page.evaluate(() => { window.__flowToastObs.disconnect(); return window.__flowToasts.slice(); });
+    t.link = (await flowStep(ids[FN[3]])).links;
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press("Control+Z");
+    await untilStep(ids[FN[1]], (st) => st.state === "manually_authored");
+    t.back = (await flowStep(ids[FN[3]])).links;
+  } catch (x) { t.err = errText(x); }
+  record("(t) C17: hiding step 2 drops step 4's link to it, with one toast that says so; Ctrl+Z brings the step and the link back",
+    !t.err && t.link === undefined && t.toasts.length === 1 &&
+      t.toasts[0] === "Step hidden. The link to it was removed; Ctrl+Z brings both back." &&
+      JSON.stringify(t.back) === JSON.stringify([{ to: ids[FN[1]], when: LOOP }]),
+    JSON.stringify(t));
 
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   await v.close();

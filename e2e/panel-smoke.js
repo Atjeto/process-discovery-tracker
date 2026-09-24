@@ -165,7 +165,9 @@ const panelState = (page) => page.evaluate(() => {
     map = await page.evaluate((id) => {
       const cy = document.getElementById("session-map-dfg-host").__cy;
       const n = cy.getElementById(id);
-      const all = cy.nodes().map((x) => ({ id: x.id(), system: x.data("system"), label: x.data("label") }));
+      // The step boxes (the Start and End events, C17, are no step).
+      const all = cy.nodes().filter((x) => x.data("kind") !== "event")
+        .map((x) => ({ id: x.id(), system: x.data("system"), label: x.data("label") }));
       n.emit("tap");
       return { all, save: { system: n.data("system"), label: n.data("label") } };
     }, SAVE.name);

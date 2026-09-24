@@ -859,14 +859,18 @@ async function unreadableAnnotationsPin() {
   // claim that every run ends in the same place. We drive the live cytoscape
   // graph (dfg-viewer exposes host.__cy). P2.3: every path is drawn (no
   // filter can hide the branches the PDD needs): the drawn edges are exactly
-  // the runs' edges.
+  // the runs' edges. C17: the map also draws the process's Start and End
+  // events, joined to every first and last step; they would join islands
+  // too, so the pin reads the step boxes and the lines between them only.
   if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(1200); }
   const connProbe = await page.evaluate(() => {
     const host = document.getElementById("session-map-dfg-host");
     const cy = host && host.__cy;
     if (!cy) return { rendered: false, text: host ? (host.textContent || "").slice(0, 200) : null };
-    const nodes = cy.nodes().map((n) => n.id());
-    const edges = cy.edges().map((e) => ({ s: e.data("source"), t: e.data("target") }));
+    const isStep = (n) => n.data("kind") !== "event";
+    const nodes = cy.nodes().filter(isStep).map((n) => n.id());
+    const edges = cy.edges().filter((e) => isStep(e.source()) && isStep(e.target()))
+      .map((e) => ({ s: e.data("source"), t: e.data("target") }));
     const parent = {}; nodes.forEach((n) => (parent[n] = n));
     const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
     edges.forEach((e) => { if (parent[e.s] != null && parent[e.t] != null) parent[find(e.s)] = find(e.t); });
@@ -898,6 +902,14 @@ async function unreadableAnnotationsPin() {
         const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
         return require("./process-map-levels.js").buildAnnotationDfg(runs.map((r) => r.visible)).edges.length;
       })(),
+      // Every edge, those of the Start and End events included (C17).
+      allDrawn: cy.edges().length,
+      allEdges: (() => {
+        const s = require("./state.js").getSession();
+        const L = require("./process-map-levels.js");
+        const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+        return L.flowEdges(L.buildAnnotationDfg(runs.map((r) => r.visible))).length;
+      })(),
       filterControls: document.querySelectorAll("#session-rng-rare, #session-hide-rare-wrap, #session-map-zoom-pct").length,
       leftToRight: srcLeftmost && sinkRightmost && bb.w >= bb.h,
       aspect: Math.round((bb.w / Math.max(1, bb.h)) * 10) / 10,
@@ -911,9 +923,10 @@ async function unreadableAnnotationsPin() {
     await shot(page, "fail-map-connectivity.png");
   } else {
     const ok = connProbe.components === 1 && connProbe.sources === 1 && connProbe.sinks === 1 &&
-      connProbe.edges === connProbe.runEdges && connProbe.filterControls === 0;
+      connProbe.edges === connProbe.runEdges && connProbe.allDrawn === connProbe.allEdges && connProbe.filterControls === 0;
     record("the process map is one connected graph (1 component, 1 entry step, 1 final step), every path drawn", ok,
-      "nodes=" + connProbe.nodes + " edges=" + connProbe.edges + "/" + connProbe.runEdges + " components=" + connProbe.components +
+      "nodes=" + connProbe.nodes + " edges=" + connProbe.edges + "/" + connProbe.runEdges +
+      " all=" + connProbe.allDrawn + "/" + connProbe.allEdges + " components=" + connProbe.components +
       " filterControls=" + connProbe.filterControls +
       " sources=" + JSON.stringify(connProbe.sourceIds) + " sinks=" + JSON.stringify(connProbe.sinkIds) +
       " runEndings=" + JSON.stringify(connProbe.runEndings) + " (a value in the node key would split the runs into islands)");

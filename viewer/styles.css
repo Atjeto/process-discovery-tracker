@@ -232,6 +232,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .sp-about p { margin: 0 0 4px; font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
 .sp-about .sp-system { color: var(--fg); font-weight: 600; }
 .sp-about .sp-count { color: var(--fg-3); }
+/* C17: the step's condition and links, one short line (whole on hover). */
+.sp-about .sp-flow { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-video { width: 100%; max-height: 240px; background: #000; border-radius: var(--radius-sm); }
 .sp-video[hidden] { display: none; }
 .sp-occs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -2022,6 +2024,30 @@ button.danger:disabled {
 .step-note, .att-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--fg); min-width: 0; }
 .step-note-text { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .step-note-at, .att-file, .att-step { flex: none; font-size: 11px; color: var(--fg-3); }
+/* C17: the step pane's Flow line (step-editor.js flowSectionHtml): one line
+   when nothing is set; a condition row and link rows (the sentence each
+   reads, then its dropdown and "when" field) when something is. */
+.step-flow-head { flex-wrap: wrap; row-gap: 2px; }
+.step-flow .link-btn { font-size: 11px; }
+.flow-line { margin: 4px 0 0; font-size: 12px; color: var(--fg-2); }
+.step-flow-head .flow-line { margin: 0; }
+.flow-cond, .flow-link-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+.flow-cond { margin-top: 6px; }
+.editor-detail-pane .step-flow label {
+  display: inline; margin: 0; font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--fg-2);
+}
+.step-flow input[type=text], .step-flow select {
+  min-width: 0; padding: 3px 6px; background: var(--bg-2); color: var(--fg);
+  border: 1px solid var(--rule); border-radius: 3px; font-family: inherit; font-size: 12px;
+}
+.step-flow input[type=text]:focus, .step-flow select:focus { outline: none; border-color: var(--accent); }
+.step-flow input[type=text]:disabled { opacity: 0.55; }
+#step-only-when, .flow-link-when { flex: 1 1 140px; }
+.flow-link-to { flex: 0 1 auto; max-width: 100%; }
+.flow-links { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.flow-link { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.flow-link-text { font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
+.flow-link.pending .flow-link-text { color: var(--fg-3); }
 .att-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-row .link-btn, .step-note .link-btn { flex: none; font-size: 11px; }
 .att-file, .att-step { max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

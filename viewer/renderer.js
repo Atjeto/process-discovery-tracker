@@ -640,6 +640,9 @@ document.addEventListener("keydown", (e) => {
       .some((m) => getComputedStyle(m).display !== "none");
     if (dialogOpen) {
       // Nothing: the dialog's own keys apply.
+    } else if (tag === "select") {
+      // Nothing: a dropdown (the step pane's Go to) keeps its keys, so the
+      // arrows and a typed letter pick an option, not a step or a verb.
     } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.altKey) {
       if (confirmOpenRun()) e.preventDefault();
     } else if (e.key === "Enter" && plain && !onControl) {

@@ -10,14 +10,16 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
-  buildAnnotationDfg, mapNodeLabel, processLabel,
-  resolveStepGrainKeys, screenType,
+  buildAnnotationDfg, flowEdges, mapNodeLabel, processLabel,
+  resolveStepGrainKeys, screenType, START, END,
 } = require("./process-map-levels.js");
 
 const GOLDEN = JSON.parse(fs.readFileSync(
   path.join(__dirname, "..", "shared", "process-label-golden.json"), "utf8"));
 const SCREEN_GOLDEN = JSON.parse(fs.readFileSync(
   path.join(__dirname, "..", "shared", "screen-label-golden.json"), "utf8"));
+const FLOW_GOLDEN = JSON.parse(fs.readFileSync(
+  path.join(__dirname, "..", "shared", "flow-links-golden.json"), "utf8"));
 
 // An em dash, built from its code so this file itself carries none.
 const EM = String.fromCharCode(0x2014);
@@ -209,6 +211,121 @@ test("the same drafted step in several runs is one node (runs join into one grap
   assert.deepEqual(dfg.end_activities, { "Confirmation: Send": 2, "Tracker: Save workbook": 1 });
   // A frequency counts traversals: run 2 takes Order -> Tracker twice (its detour).
   assert.equal(dfg.edges.find((e) => e.source === "Order: Save order" && e.target === "Tracker: Save workbook").frequency, 4);
+});
+
+/* ---- Step flow (contract C17) ------------------------------------------ */
+
+/* Runs of hand-added steps (no time, ordered by `order`) from lists of
+   { name, only_when?, links? } where a link names its target step by name
+   within its own run, as shared/flow-links-golden.json does; real data links
+   by step_id. The node of each step is its name. */
+function flowRuns(transactions) {
+  return transactions.map((tx, t) => {
+    const ids = new Map(tx.map((s, i) => [s.name, "t" + t + "s" + i]));
+    return tx.map((s, i) => Object.assign({
+      step_id: "t" + t + "s" + i, name: s.name, process_label: s.name, case_id: "t" + t,
+      state: s.state || "manually_authored", time_range: null, order: i + 1,
+    }, s.only_when ? { only_when: s.only_when } : {},
+    s.links ? { links: s.links.map((l) => ({ to: l.to === "end" ? "end" : (ids.get(l.to) || l.to), when: l.when })) } : {}));
+  });
+}
+
+/* The map's edges as the golden writes them: the event nodes as "start" and
+   "end", in a stable order. */
+function goldenEdges(dfg) {
+  const name = (n) => (n === START ? "start" : n === END ? "end" : n);
+  return flowEdges(dfg)
+    .map((e) => ({ from: name(e.from), to: name(e.to), label: e.label, observed: e.observed }))
+    .sort((a, b) => (a.from + ">" + a.to).localeCompare(b.from + ">" + b.to));
+}
+
+test("C17: the map's edges match every case of the shared flow-links golden (the pipeline's step BPMN pins the same file)", () => {
+  assert.ok(FLOW_GOLDEN.cases.length >= 7, "precondition: the golden has its cases");
+  for (const c of FLOW_GOLDEN.cases) {
+    const want = c.expected_edges.slice()
+      .sort((a, b) => (a.from + ">" + a.to).localeCompare(b.from + ">" + b.to));
+    assert.deepEqual(goldenEdges(buildAnnotationDfg(flowRuns(c.transactions))), want, c.name);
+  }
+});
+
+test("C17: a plain run starts at START and ends at END; its step edges are unchanged", () => {
+  const dfg = buildAnnotationDfg([[step("a", "Open", "c1", 1000), step("b", "Close", "c1", 2000)]]);
+  assert.equal(dfg.edges.length, 1, "one edge between the two steps");
+  assert.deepEqual(dfg.start_edges.map((e) => [e.target, e.frequency, e.observed, e.label]), [["Open", 1, true, null]]);
+  assert.deepEqual(dfg.end_edges.map((e) => [e.source, e.frequency, e.observed, e.label]), [["Close", 1, true, null]]);
+  // One step alone still has a map: start, the step, end.
+  const one = buildAnnotationDfg([[step("a", "Only", "c1", 1000)]]);
+  assert.deepEqual(one.edges, []);
+  assert.deepEqual(flowEdges(one).map((e) => [e.from, e.to]), [[START, "Only"], ["Only", END]]);
+  // A step may be called "Start" or "End": the event ids begin with a
+  // character no step name has.
+  assert.ok(START.charCodeAt(0) === 1 && END.charCodeAt(0) === 1, "the event ids are no step name");
+});
+
+test("C17: a condition labels the edge into its step in every transaction where the step's box appears", () => {
+  // The step "Check" is conditional in transaction 1; in transaction 2 the
+  // same box follows another step, and that edge carries the condition too.
+  const dfg = buildAnnotationDfg(flowRuns([
+    [{ name: "Receive" }, { name: "Check", only_when: "a new customer" }, { name: "Enter" }],
+    [{ name: "Call" }, { name: "Check" }, { name: "Enter" }],
+  ]));
+  const got = goldenEdges(dfg).filter((e) => e.label);
+  assert.deepEqual(got, [
+    { from: "Call", to: "Check", label: "a new customer", observed: true },
+    { from: "Call", to: "Enter", label: "otherwise", observed: false },
+    { from: "Receive", to: "Check", label: "a new customer", observed: true },
+    { from: "Receive", to: "Enter", label: "otherwise", observed: false },
+  ]);
+});
+
+test("C17: different labels on one edge join with \" or \" in step order", () => {
+  // Receive links to Enter ("known customer"), and Check (after Receive) is
+  // conditional, so its path around also runs from Receive to Enter.
+  const dfg = buildAnnotationDfg(flowRuns([[
+    { name: "Receive", links: [{ to: "Enter", when: "known customer" }] },
+    { name: "Check", only_when: "a new customer" },
+    { name: "Enter" },
+  ]]));
+  const e = dfg.edges.find((x) => x.source === "Receive" && x.target === "Enter");
+  assert.equal(e.label, "known customer or otherwise");
+  assert.equal(e.observed, false);
+  assert.equal(e.frequency, 0, "a declared path was taken no time");
+});
+
+test("C17: a link to a hidden step, to an unknown id or to its own step draws nothing; to a step of another transaction, it goes to that step's box", () => {
+  const runs = flowRuns([
+    [{ name: "A" }, { name: "B" }, { name: "C", links: [{ to: "B", when: "hidden target" }, { to: "zzz", when: "unknown" }] }],
+    [{ name: "X" }, { name: "Y" }],
+  ]);
+  runs[0][1].state = "hidden";
+  runs[0][2].links.push({ to: runs[0][2].step_id, when: "itself" }, { to: " " + runs[1][0].step_id + " ", when: "other transaction" });
+  // As the pipeline's step_flow.flow_edges: a step any transaction holds is a
+  // target (its id trimmed), whatever transaction the link is set in.
+  assert.deepEqual(flowEdges(buildAnnotationDfg(runs)).filter((e) => e.label).map((e) => [e.from, e.to, e.label]),
+    [["C", "X", "other transaction"]]);
+  // A link without its `when` still draws its path, unlabelled.
+  const plain = flowRuns([[{ name: "A" }, { name: "B", links: [{ to: "end" }] }, { name: "C" }]]);
+  const toEnd = buildAnnotationDfg(plain).end_edges.find((e) => e.source === "B");
+  assert.deepEqual([toEnd.observed, toEnd.label], [false, null]);
+});
+
+test("C17: a condition or a when is one line on the map (whitespace collapsed, as the pipeline's)", () => {
+  const dfg = buildAnnotationDfg(flowRuns([[
+    { name: "A" },
+    { name: "B", only_when: "  a new\n customer ", links: [{ to: "end", when: "\tthe order\t is rejected " }] },
+    { name: "C" },
+  ]]));
+  assert.equal(dfg.edges.find((e) => e.source === "A" && e.target === "B").label, "a new customer");
+  assert.equal(dfg.end_edges.find((e) => e.source === "B").label, "the order is rejected");
+});
+
+test("C17: a transaction whose only step is conditional gets a path from START to END", () => {
+  const dfg = buildAnnotationDfg(flowRuns([[{ name: "Approve", only_when: "over the limit" }]]));
+  assert.deepEqual(goldenEdges(dfg), [
+    { from: "Approve", to: "end", label: null, observed: true },
+    { from: "start", to: "Approve", label: "over the limit", observed: true },
+    { from: "start", to: "end", label: "otherwise", observed: false },
+  ]);
 });
 
 /* ---- Shared value rules (the Steps level uses these too) ---------------- */
