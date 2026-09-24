@@ -37,7 +37,7 @@ python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
 | `--names` | The remembered-names store (contract C4). A draft whose `draft_key` the session's own analyst steps do not name takes the store's name. A missing or unreadable file prints one warning and drafting goes on without it. The viewer passes it on every run when the store exists. |
 
 Exit codes (contract C13): **0** success; **1** a usage error or a folder
-that is not a session folder (an unexpected crash also exits 1, with a
+that is not a project folder (an unexpected crash also exits 1, with a
 traceback); **2** `annotations.json` exists but cannot be read, and nothing
 was written, `normalize.log` included; **3** a requested export failed after
 every analysis output was written. Errors are one stderr line starting
@@ -58,7 +58,7 @@ Parses a Teams `.vtt` or `.docx` transcript into timestamped, speaker-tagged
 segments with the standard library only, copies the original byte for byte
 to `transcript/<original name>`, and writes `transcript.json` atomically. It
 only reads `events.jsonl` and `annotations.json`. Exit codes: 0 imported (one
-summary line on stdout); 1 bad arguments or not a session folder; 2 the
+summary line on stdout); 1 bad arguments or not a project folder; 2 the
 transcript is unreadable or its layout unsupported (nothing written); 3
 `annotations.json` unreadable or the write failed (the previous transcript
 is kept). `parse(path)` is the reusable entry point and writes nothing. The
@@ -180,12 +180,12 @@ print its labels below 8.5 pt on a landscape page, every flow routed around
 the boxes. What a BPMN tool receives besides the shapes:
 
 - each task's `<bpmn:documentation>`: the step's analyst description (the
-  pattern run's first), then one line "System, screen. In N of M runs, T on
-  average." (no run count for the implicit run, no time when no step of the
-  task has one);
+  pattern run's first), then one line "System, screen. In N of M
+  transactions, T on average." (no run count for the implicit run, no time
+  when no step of the task has one);
 - the start and end events named from the first line of the document's
   `trigger` and `result` (unnamed while those are empty);
-- each flow leaving a branching gateway named "N of M runs".
+- each flow leaving a branching gateway named "N of M transactions".
 
 It is the file Edit as the As-Is map copies (a reference map, ADR-0019) and
 the map the PDD prints when no As-Is copy is chosen. The pipeline never
@@ -202,10 +202,11 @@ allows). Hidden steps never appear. The analyst's document fields (C6,
 field prints a "[To be completed: ...]" gap, and only those fields leave
 gaps. The sections, in the reader's order:
 
-1. **Document control.** The process (the document title), the session
+1. **Document control.** The process (the document title), the project
    folder, when it was recorded and by whom (the SME's profile name, else
-   the Windows login), the runs, whether a video is attached, the project
-   when one was set, the date generated, "Draft".
+   the Windows login), the transactions recorded, whether a video is
+   attached, the request when one was set (AD-30), the date generated,
+   "Draft".
 2. **Purpose and scope.** 2.1 Purpose, 2.2 Scope, 2.3 Trigger, 2.4 Result,
    2.5 Key contacts.
 3. **As-Is process.** 3.1 the As-Is map: the picture passed with
@@ -238,11 +239,11 @@ gaps. The sections, in the reader's order:
    files stay in the session folder's `attachments/`.
 
 **The step context line** under each step heading: system and screen, the
-average time, "in N of M runs", and where it is in the recording ("Run 1 at
-0:19", the time since the recording started, plus the video time when the
-video's start is known; in a video session, the video time). Each part is
-left out when it is unknown; a step without a time prints no time, never a
-zero.
+average time, "in N of M transactions", and where it is in the recording
+("Transaction 1 at 0:19", the time since the recording started, plus the
+video time when the video's start is known; in a video session, the video
+time). Each part is left out when it is unknown; a step without a time
+prints no time, never a zero.
 
 **Screenshots.** A step prints the screenshot the analyst chose for the PDD
 (`step.pdd_screenshot`), else all of its screenshots (its recorder
@@ -280,8 +281,8 @@ rules from the same file (`viewer/system-names.js`).
 
 A session can also start from a video or from nothing: `manifest.source` is
 `"video"` or `"blank"` (absent means `"recorder"`), with an empty
-`events.jsonl`. The viewer creates them ("New from a video..." and "New
-without a recording..." in the Open menu). `session_io.has_recording` tells
+`events.jsonl`. The viewer creates them ("New project from a video..." and
+"New empty project..." in the New menu). `session_io.has_recording` tells
 the stages apart:
 
 - **The implicit run.** While the derived stream has no start marker, the

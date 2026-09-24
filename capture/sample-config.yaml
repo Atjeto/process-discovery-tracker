@@ -2,6 +2,8 @@
 # Copy to a known location and set PDT_CONFIG=path/to/this.yaml before launch.
 # Anything omitted falls back to defaults in config.js.
 
+# The request this recording is for (Recording setup shows these as Request
+# code and Request name). The code is the folder name above the recordings.
 engagement_id: "demo-2026-05"
 engagement_name: "Demo engagement"
 
@@ -17,7 +19,7 @@ idle_threshold_seconds: 60
 
 # Named transactions ("task shortcuts") offered on the recording bar (the
 # caret next to Next transaction) and in the tray's "Start a named
-# transaction" submenu. Set per project. Leave empty and the transaction key
+# transaction" submenu. Set per request. Leave empty and the transaction key
 # labels them "Transaction 1", "Transaction 2", ...
 process_labels: []
 

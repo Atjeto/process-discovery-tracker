@@ -30,7 +30,7 @@ const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, re
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
-const { renderOverviewLevel, openMarkersInFlow, mapLockHtml } = require("./views/overview-view.js");
+const { renderOverviewLevel, openMarkersInFlow, mapLockHtml, mapEmptyText } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, mapNodeLabel } = require("./process-map-levels.js");
 const RunsModel = require("./runs-model.js");
@@ -181,7 +181,8 @@ function _sessionMapData() {
     // §B2: the map is TIME-weighted: edge thickness carries the time that
     // flowed along each path; the times and the count are in the tooltip.
     edgeWeight: "time",
-    emptyMessage: escapeHtml("No steps to draw yet: the transactions have no visible steps. Add or unhide steps in the Steps view."),
+    // A project with no steps yet says so; hidden steps are named as such.
+    emptyMessage: escapeHtml(mapEmptyText((sess.annotations && sess.annotations.steps) || [])),
   };
 }
 

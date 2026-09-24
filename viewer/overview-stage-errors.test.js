@@ -13,7 +13,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { overviewHtml, mapLockHtml, waitingSentence, STAGE_NOT_RUN, NO_RUNS_MARKED } = require("./views/overview-view.js");
+const { overviewHtml, mapLockHtml, mapEmptyText, waitingSentence, STAGE_NOT_RUN, NO_RUNS_MARKED, NO_STEPS_YET } =
+  require("./views/overview-view.js");
 
 const CQ = { mode: "markers", case_count: 4, coverage: 0.9, tier2_unlocked: true };
 const FACTS = {
@@ -113,4 +114,17 @@ test("AD-18: one marked run is enough for the map, and so is any coverage", () =
     "runs that cover half the recording still draw");
   assert.ok(mapLockHtml({ case_quality: { mode: "markers", case_count: 0, coverage: 0, tier2_unlocked: false } })
     .includes(NO_RUNS_MARKED), "no run counted is still no runs marked");
+});
+
+test("a project with no steps yet: the Map says to add steps, never that the transactions are not marked", () => {
+  // A blank project (C16) has its one implicit transaction, so the lock is
+  // off and the Map's empty text is what shows.
+  assert.equal(mapLockHtml({ case_quality: { mode: "implicit", case_count: 1, coverage: null, tier2_unlocked: false } }), null);
+  assert.equal(NO_STEPS_YET, "No steps yet: add steps in Steps to build the map.");
+  assert.equal(mapEmptyText([]), NO_STEPS_YET);
+  assert.equal(mapEmptyText(undefined), NO_STEPS_YET);
+  assert.ok(!/marked/i.test(mapEmptyText([])));
+  // Steps that exist but cannot be drawn (all hidden) are named as such.
+  const hidden = mapEmptyText([{ step_id: "a", state: "hidden" }]);
+  assert.ok(hidden.includes("the transactions have no visible steps") && hidden !== NO_STEPS_YET, hidden);
 });

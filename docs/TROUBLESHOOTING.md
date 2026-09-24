@@ -69,8 +69,8 @@ security scan flags it, see [Security-QA.md](Security-QA.md).
 
 ### A key does nothing
 
-**Symptom:** the run key does nothing, but the tray's Start recording or
-Next run works.
+**Symptom:** the transaction key does nothing, but the tray's Start
+recording or Next transaction works.
 
 **Check:**
 1. Another program holds the key (ShareX, OBS itself, Snip & Sketch are
@@ -90,8 +90,8 @@ antivirus blocking the executable, or a YAML syntax error in the file
 
 ### `PDT_CONFIG` is not picked up
 
-**Symptom:** the named runs (the caret on the bar, the tray's Start a named
-run) or the project are the defaults.
+**Symptom:** the named transactions (the caret on the bar, the tray's Start
+a named transaction) or the request are the defaults.
 
 **Check:**
 1. `setx PDT_CONFIG ...` affects programs started afterwards, not a running
@@ -103,21 +103,21 @@ run) or the project are the defaults.
 ### A recording shows as recovered
 
 The app did not stop cleanly (a crash, a forced quit, a power loss), and the
-next launch marked it recovered. The recording is usable; a run left open
-stays open, and its elapsed time is not measured.
+next launch marked it recovered. The recording is usable; a transaction
+left open stays open, and its elapsed time is not measured.
 
 ## Analysis side (the pipeline)
 
-### "Not a session folder"
+### "Not a project folder"
 
 The folder must hold `manifest.json` and `events.jsonl` directly, not in a
-subfolder (a session started from a video or from nothing has an empty
+subfolder (a project started from a video or from nothing has an empty
 `events.jsonl`). The viewer says "Analysis could not start: this is not a
-session folder (no manifest.json)." From a shell, a folder that does not
-exist exits 1 with `[normalize] ERROR: <folder> is not a session folder`; a
+project folder (no manifest.json)." From a shell, a folder that does not
+exist exits 1 with `[normalize] ERROR: <folder> is not a project folder`; a
 folder without `events.jsonl` exits 1 with a traceback ending in
 `FileNotFoundError: events.jsonl not found in <folder>` (the viewer adds:
-"The events file is missing: was the session folder copied completely?").
+"The events file is missing: was the project folder copied completely?").
 
 ### `annotations.json` cannot be read
 
@@ -196,7 +196,7 @@ on an element order or a namespace. That is a known swap point: see
 Open the recording folder itself: the one that holds `manifest.json`. A zip
 made by the capture app has the recording folder as its root, so after
 Explorer's Extract All the recording is the folder inside the extracted one.
-A folder without it shows "Failed to load: Not a session folder (no
+A folder without it shows "Failed to load: Not a project folder (no
 manifest.json)". The viewer has no developer tools to look further. Files
 that did not survive the copy from the SME's machine are named in a warning
 on the Overview (from `session-integrity.json`).
@@ -213,10 +213,10 @@ in the top bar.
 
 ### The Map is empty
 
-The Map says why: the recording has no runs marked (add a start marker on
-the Timeline at the start of each run: right-click the timeline at that
-moment, then Apply marker changes), the analysis has not run yet, or the
-run check could not run.
+The Map says why: no transactions are marked (right-click the Timeline
+where each transaction starts, choose Start a transaction here, then
+Apply marker changes), the project has no steps yet (add them in Steps),
+the analysis has not run yet, or the transaction check could not run.
 
 ### The transcript does not line up
 

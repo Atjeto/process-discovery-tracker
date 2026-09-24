@@ -95,9 +95,18 @@ test("auto_end_on_idle defaults to true (G1)", () => {
   assert.strictEqual(config.auto_end_on_idle, true);
 });
 
-test("validateConfig does not flag the default project code: no toast at every start (B2)", () => {
+test("validateConfig does not flag the default request code: no toast at every start (B2)", () => {
   assert.deepStrictEqual(validateConfig({ engagement_id: "default" }, os.tmpdir()), []);
   assert.deepStrictEqual(validateConfig({}, os.tmpdir()), []);
+});
+
+test("Recording setup shows the engagement as the Request (AD-30); its keys stay engagement_id and engagement_name", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "ui", "session-config.html"), "utf-8");
+  assert.ok(html.includes("<legend>Request</legend>"));
+  assert.ok(html.includes('<label class="fld" for="eng-id">Request code</label>'));
+  assert.ok(html.includes('<label class="fld" for="eng-name">Request name</label>'));
+  assert.ok(!/\bproject\b/i.test(html), "project means only what the analyst opens");
+  assert.ok(html.includes("engagement_id:") && html.includes("engagement_name:"), "the data keys are unchanged");
 });
 
 test("validateConfig passes a configured engagement and a writable folder (B2)", () => {

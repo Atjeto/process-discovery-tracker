@@ -676,6 +676,10 @@ const GUIDE_CARRY =
   "A merge carries to the same drafted steps in the other transactions, and every name you give is saved.";
 const GUIDE_PATTERN_DONE = "This transaction is confirmed: the other transactions are compared with it.";
 const GUIDE_OTHER = "Check how this transaction differs from the reference transaction, and fix a step where needed. It is not confirmed: the reference transaction is.";
+// A transaction with no step that nothing compares it with: an empty
+// project's one transaction before its first step (C16), or an empty
+// reference transaction.
+const GUIDE_FIRST_STEP = "Add the first step with + Add step.";
 const GUIDE_OUTSIDE =
   "These steps fall outside every marked transaction. To bring them into a transaction, right-click the " +
   "Timeline where it starts, choose Start a transaction here, and click Apply marker changes.";
@@ -693,8 +697,12 @@ function renderRunGuide(host, model, pattern, ref) {
     const isPattern = !!(run && pattern.run && pattern.run.caseId === key);
     const done = isPattern && pattern.record && pattern.record.confirmed_at;
     head = run ? run.title + (run.label ? " (" + run.label + ")" : "") : "Transaction";
-    paras = isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
-    const diffs = run ? _runDiffs(ref, run) : null;
+    // No step yet and no reference transaction to compare it with (or it is
+    // the reference): the one act is adding the first step.
+    const firstStep = !!(run && !run.members.length && (!pattern.run || isPattern));
+    paras = firstStep ? [GUIDE_FIRST_STEP]
+      : isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
+    const diffs = run && !firstStep ? _runDiffs(ref, run) : null;
     if (diffs && !diffs.length) {
       const noun = ref.kind === "saved" ? RunDiff.SAVED_REFERENCE : RunDiff.REFERENCE_RUN;
       paras.unshift("It has no differences from " + noun + ".");

@@ -39,7 +39,7 @@ Default keys:
 - `Ctrl+Shift+P`: take a screenshot.
 
 Setup for the analyst or IT sits in the tray's Setup (analyst) menu:
-Recording setup (the project and the named transactions,
+Recording setup (the request and the named transactions,
 `userData/quick-config.yaml`), Settings (keys, OBS, screenshots, the storage
 limit, the idle end of the open transaction, `userData/user-config.json`),
 Profile (who is recording), the readiness check, and the recordings on this
@@ -50,7 +50,7 @@ top.
 ## Output
 
 ```
-%APPDATA%\process-discovery-tracker-capture\sessions\<project>\<YYYYMMDD-HHMMSS>\
+%APPDATA%\process-discovery-tracker-capture\sessions\<request code>\<YYYYMMDD-HHMMSS>\
   events.jsonl            one JSON event per line, append-only
   manifest.json           recording metadata, status, consent, the OBS video's path
   config.yaml             the configuration used

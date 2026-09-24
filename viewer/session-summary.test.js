@@ -168,7 +168,21 @@ test("smeName is the Profile's display name when it says more than the Windows l
     manifest: { config: { worker: { id: "w", name: "Ana Novak" } } } })).smeName, "Ana Novak");
 });
 
-test("recentLabel is the document title once written, else the recording's label, else project and folder", () => {
+test("requestOf is the capture's request (AD-30): name and code when set, never the capture app's defaults", () => {
+  const { requestOf } = SessionSummary;
+  assert.equal(requestOf({ engagement_id: "ENG-7", engagement_name: "Order intake" }), "Order intake (ENG-7)");
+  assert.equal(requestOf({ engagement_id: "ENG-7", config: { engagement_name: "Order intake" } }), "Order intake (ENG-7)",
+    "an older recording keeps the name in its config");
+  assert.equal(requestOf({ engagement_id: "default", engagement_name: "Order intake" }), "Order intake");
+  assert.equal(requestOf({ engagement_id: "ENG-7", engagement_name: "Default engagement" }), "ENG-7");
+  assert.equal(requestOf({ engagement_id: "ENG-7", engagement_name: " ENG-7 " }), "ENG-7", "a name that repeats the code");
+  assert.equal(requestOf({ engagement_id: "default", engagement_name: "Default engagement" }), null, "the defaults");
+  assert.equal(requestOf({ engagement_id: "default" }), null);
+  assert.equal(requestOf({}), null);
+  assert.equal(requestOf(null), null);
+});
+
+test("recentLabel is the document title once written, else the recording's label, else the request code and folder", () => {
   const { recentLabel } = SessionSummary;
   const sess = { manifest: { engagement_id: "demo-order-processing", label: "" }, annotations: { document: { title: "  " } } };
   assert.equal(recentLabel(sess, "sess-1"), "demo-order-processing · sess-1");

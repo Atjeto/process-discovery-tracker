@@ -48,7 +48,7 @@ test("the summary's acts touch only a recording folder under the recordings fold
   try {
     const s = createSession({ baseDir: base, engagementId: "default", config: {} });
     assert.strictEqual(isRecordingFolder(base, s.sessionFolder), true);
-    assert.strictEqual(isRecordingFolder(base, path.dirname(s.sessionFolder)), false, "the project folder");
+    assert.strictEqual(isRecordingFolder(base, path.dirname(s.sessionFolder)), false, "the request folder");
     assert.strictEqual(isRecordingFolder(base, base), false, "the recordings folder itself");
     assert.strictEqual(isRecordingFolder(base, path.join(s.sessionFolder, "screenshots")), false, "a subfolder");
     assert.strictEqual(isRecordingFolder(base, path.join(base, "..", "elsewhere", "x")), false, "outside");

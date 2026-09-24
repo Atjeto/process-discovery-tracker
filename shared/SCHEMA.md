@@ -8,6 +8,11 @@ Contract numbers (C1 to C16) refer to
 `.claude/agent-findings/2026-09-23_ba-helper-contracts.md`; the decisions
 behind the light version are in [ADR-0029](../docs/adr/0029-ba-helper-refocus.md).
 
+The apps say *transaction* for one pass through the process and *project*
+for the folder the analyst opens (AD-29), and *request* for the capture
+app's engagement (AD-30); the keys, and this reference, keep run, case,
+session and engagement.
+
 ## Folder layout
 
 ```
@@ -94,18 +99,19 @@ omits window bounds leave the field off.
 ```json
 {
   "marker_type": "start" | "end",
-  "label": "Run 1" | null,
+  "label": "Transaction 1" | null,
   "reason": "auto_end_idle" | "auto_close_for_sibling"
 }
 ```
 
-A start marker's `label` is the run's name ("Run N", or a named run from
-the capture app's Recording setup). End markers carry a `null` label.
-`reason` is present only when an end was fired automatically:
-`auto_close_for_sibling` when the next run started (the run key, Next run or
-a named run) while the run was open, `auto_end_idle` when an idle stretch
-past `auto_end_idle_minutes` ended it. An end with no `reason` was fired by
-the SME (End run) or by stopping the recording.
+A start marker's `label` is the run's name: "Transaction N" ("Run N" in
+recordings made before 2.0.0), or a named transaction from the capture
+app's Recording setup. End markers carry a `null` label. `reason` is
+present only when an end was fired automatically: `auto_close_for_sibling`
+when the next run started (the transaction key, Next transaction or a
+named transaction) while the run was open, `auto_end_idle` when an idle
+stretch past `auto_end_idle_minutes` ended it. An end with no `reason` was
+fired by the SME (End transaction) or by stopping the recording.
 
 Capture writes no `case_id`. Normalization derives the runs from the markers
 (see "Marker events: runs and `case_ids`" in the data dictionary). In the
@@ -285,12 +291,12 @@ instrument:
 - The default pattern run is the first run by start time with at least one
   step; it is computed, not stored, until the analyst makes a change that
   needs the record. The analyst can pick another run.
-- "Confirm run" turns that run's remaining `auto_suggested` steps into
-  `confirmed` and sets `confirmed_at`. "Reopen run" is the inverse: the run's
-  `confirmed` steps become drafts again (edited and added steps keep their
-  state), `confirmed_at` goes back to `null`, and `draft_fixes` is kept. A
-  run reads as confirmed once every non-hidden step is in an analyst state
-  (`confirmed`, `edited`, `manually_authored`).
+- "Confirm transaction" turns that run's remaining `auto_suggested` steps
+  into `confirmed` and sets `confirmed_at`. "Reopen transaction" is the
+  inverse: the run's `confirmed` steps become drafts again (edited and added
+  steps keep their state), `confirmed_at` goes back to `null`, and
+  `draft_fixes` is kept. A run reads as confirmed once every non-hidden step
+  is in an analyst state (`confirmed`, `edited`, `manually_authored`).
 - `draft_fixes` counts the boundary fixes made to the pattern run's drafts
   before it is confirmed (merge, split, add, drop; renames are not counted).
   Carrying a merge to the other runs, or hiding the same draft in the other
@@ -423,7 +429,7 @@ key. An absent or empty block reproduces the default output exactly.
     { "id": "uuid", "event_id": "<marker_event_id>", "field": "label",     "value": "New label",    "previous": "Old", "ts": "..." },
     { "id": "uuid", "event_id": "<marker_event_id>", "field": "timestamp", "value": "<new ISO>",    "previous": "...", "ts": "..." },
     { "id": "uuid", "event_id": "<marker_event_id>", "op":    "delete",                                                  "ts": "..." },
-    { "id": "uuid", "op": "insert", "marker_type": "start", "label": "Run 2", "timestamp": "<ISO>", "ts": "..." }
+    { "id": "uuid", "op": "insert", "marker_type": "start", "label": "Transaction 2", "timestamp": "<ISO>", "ts": "..." }
   ]
 }
 ```
@@ -822,7 +828,7 @@ Entries a reader skips are kept on disk as they are.
   "session_id": "uuid",
   "source": "recorder | video | blank (optional; absent means recorder)",
   "engagement_id": "default",
-  "engagement_name": "project name from setup (optional; null until set)",
+  "engagement_name": "request name from setup (optional; null until set)",
   "started_at": "ISO 8601",
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
@@ -908,14 +914,14 @@ is a one-element list.
 `label` is an optional name for the recording, typed in the capture app's
 end summary ("Name this recording"); absent until set. The viewer's Recent
 list names a session by its document title (`annotations.document.title`),
-else this label, else the project and the folder name.
+else this label, else the request code and the folder name.
 
-`engagement_name` is the project name typed in the capture app's Recording
-setup, lifted out of `config` to the top level at session creation so lists
-can show it without reading the nested config; `null` when never set. Older
-sessions carry it inside `config.engagement_name`, and consumers fall back to
-that. The PDD's Document control prints it as the project (else
-`engagement_id`), unless it is the capture app's default.
+`engagement_name` is the request name typed in the capture app's Recording
+setup (AD-30), lifted out of `config` to the top level at session creation
+so lists can show it without reading the nested config; `null` when never
+set. Older sessions carry it inside `config.engagement_name`, and consumers
+fall back to that. The PDD's Document control prints it as the Request
+(else `engagement_id`), unless it is the capture app's default.
 
 `purpose` is always `"process"`. The field is kept so the shape stays
 stable. Before ADR-0029 a session could also be `"app_prep"` (an App
@@ -1009,7 +1015,7 @@ python transcript_import.py <session_folder> <transcript_file>
 | Exit code | Meaning |
 |---|---|
 | 0 | Imported. One summary line on stdout (segment count, speakers, duration, clock), UTF-8. |
-| 1 | Bad arguments (not exactly two), or the folder is not a session folder (no `events.jsonl`). |
+| 1 | Bad arguments (not exactly two), or the folder is not a project folder (no `events.jsonl`). |
 | 2 | The transcript file cannot be read, or its layout is not a supported one. Nothing was written. |
 | 3 | The session folder cannot be used: `annotations.json` exists but cannot be read (so the clock cannot be chosen), or the output write failed. The previous transcript, if any, is kept. |
 
@@ -1230,7 +1236,7 @@ range: they have no time to measure.
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
 | `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
-| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. Each task's documentation carries its description, system, screen, run count and average time; the start and end events take the first line of `document.trigger` and `document.result`; each branch says "N of M runs" (C15). "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
+| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. Each task's documentation carries its description, system, screen, run count and average time; the start and end events take the first line of `document.trigger` and `document.result`; each branch says "N of M transactions" (C15). "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 
 The PDD goes to the path given with `--pdd-out`; the viewer writes it to a
@@ -1257,7 +1263,7 @@ python normalize.py <session_folder> [--taxonomy path/to/taxonomy.yaml] [--mine]
 | Code | Meaning |
 |---|---|
 | 0 | Success. |
-| 1 | Usage error (bad arguments), or the folder is not a session folder. |
+| 1 | Usage error (bad arguments), or the folder is not a project folder. |
 | 2 | `annotations.json` exists but cannot be parsed; nothing was written. |
 | 3 | A requested export (`--pdd-out`) failed; the analysis outputs (stats, analysis, step BPMN) were already written, the export was not. |
 
@@ -1350,7 +1356,7 @@ Each step's `state` says how it got into `annotations.json`:
 | State | Set by | Survives re-normalization |
 |---|---|---|
 | `auto_suggested` | The drafting rule ([step_suggest.py](../normalization/step_suggest.py) `auto_suggest_steps`, contract C1): one drafted step per screen visit, ending at its commit action. | No: replaced by the next run's drafts. |
-| `confirmed` | "Confirm run" on the step's run, the draft left unchanged (C3). "Reopen run" turns it back into a draft. | Yes, exactly like `edited`. |
+| `confirmed` | "Confirm transaction" on the step's run, the draft left unchanged (C3). "Reopen transaction" turns it back into a draft. | Yes, exactly like `edited`. |
 | `manually_authored` | The analyst added a step by hand. | Yes. |
 | `edited` | The analyst changed a draft (renamed, merged, split, or otherwise). | Yes. |
 | `hidden` | The analyst hid the step (its previous state is kept in `_prev_state`). | Yes: a re-analysis does not bring it back as a fresh draft. |

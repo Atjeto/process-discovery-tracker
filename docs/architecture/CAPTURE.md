@@ -280,7 +280,7 @@ Settings come in layers, each merged over the one before:
    `storage_warn_gb`, read with an inline fallback of 50).
 2. A YAML file: `PDT_CONFIG=path\to\config.yaml` set before launch (the whole
    schema: `capture/sample-config.yaml`), else `userData/quick-config.yaml`,
-   written by Setup (analyst), Recording setup (the project code and name,
+   written by Setup (analyst), Recording setup (the request code and name,
    the named transactions; offered only while nothing records, read at
    the next launch).
 3. `userData/user-config.json`: Setup (analyst), Settings (keys, OBS,
@@ -291,7 +291,7 @@ Settings come in layers, each merged over the one before:
 
 | Key | Default | Purpose |
 |---|---|---|
-| `engagement_id`, `engagement_name` | `"default"`, `"Default engagement"` | The project code and name, stamped on the manifest; the code is the folder above the recordings. |
+| `engagement_id`, `engagement_name` | `"default"`, `"Default engagement"` | The request code and name (Recording setup's Request, AD-30), stamped on the manifest; the code is the folder above the recordings. |
 | `worker` | the Windows login | Who is recording: `id`, `name`, `role`, `bu` (team). |
 | `process_labels` | `[]` | The named transactions: the caret next to Next transaction on the bar, and the tray's Start a named transaction. |
 | `auto_end_idle_minutes` | `30` | Inactivity that ends the open transaction. |

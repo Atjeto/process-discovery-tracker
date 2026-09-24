@@ -226,7 +226,9 @@ def test_the_outline_is_in_the_readers_order():
     assert blocks[0] == ("Title", "Process Definition Document")
 
 
-def test_document_control_names_the_folder_the_sme_the_video_and_the_project():
+def test_document_control_names_the_folder_the_sme_the_video_and_the_request():
+    """AD-30: the capture's engagement prints as the Request, only when set;
+    "project" names only the folder the analyst opens."""
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
@@ -236,22 +238,24 @@ def test_document_control_names_the_folder_the_sme_the_video_and_the_project():
     rows = _section(blocks, "1. Document control")
     assert rows[:7] == ["Process | Not named yet", f"Project folder | {folder}",
                         "Recorded | 2026-05-14", "Recorded by | Ana Silva",
-                        "Transactions recorded | 2", "Video | None", "Project | ENG-1"]
+                        "Transactions recorded | 2", "Video | None", "Request | ENG-1"]
     assert rows[7].startswith("Document generated | ") and rows[8] == "Version | Draft"
+    assert [r for r in rows if r.startswith("Project")] == [f"Project folder | {folder}"]
 
     # The login when the profile has no name; an attached video; the capture's
-    # default project prints no row.
+    # default request prints no row.
     manifest["config"]["worker"] = {"id": "w1"}
     manifest["engagement_id"] = "default"
     annotations["external_video"] = {"path": "D:/call.mp4", "offset_ms": 0}
     rows = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                     "1. Document control")
     assert "Recorded by | w1" in rows and "Video | Attached" in rows
-    assert not any(r.startswith("Project | ") for r in rows)   # "Project folder" stays
+    assert not any(r.startswith("Request | ") or r.startswith("Project | ") for r in rows)
     manifest["engagement_name"] = "Order desk review"
     rows = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                     "1. Document control")
-    assert "Project | Order desk review" in rows
+    assert "Request | Order desk review" in rows
+    assert not any(r.startswith("Project | ") for r in rows)
 
 
 def test_document_fields_replace_their_gaps():
@@ -417,6 +421,9 @@ def test_the_document_says_transaction_and_project_never_run_or_session():
             "Transactions were not marked in this project, so every step is listed in order.",
             "Transactions recorded | Not marked",
             "No steps have been added to this project yet.",
+            "Transactions were not marked in this recording, so there is no map.",
+            "None of the transactions has steps, so there is no map.",
+            "No steps have been added to this project yet, so there is no map.",
             "The files are in the project folder's attachments folder."):
         assert sentence in said, sentence
     for name, text in states:
@@ -895,6 +902,46 @@ def test_without_a_map_picture_the_map_from_the_runs_is_a_table():
         "The map file is process_map_step.bpmn in the project folder.",
     ]
     assert "7.1 To-Be process map" not in [t for _k, t in blocks]
+
+
+def test_without_a_map_the_as_is_section_says_why():
+    """No map: the transactions were not marked (a recording without start
+    markers), or none of them has a step. A project without a recording
+    always has its one implicit transaction, so a blank project with no
+    steps yet is told it has no steps, never that its transactions were not
+    marked."""
+    if not _HAVE_DOCX:
+        return
+
+    def as_is(change):
+        manifest, annotations, stats, analysis, events = _session()
+        change(manifest, annotations, stats)
+        return _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                        "3.1 As-Is process map")
+
+    def no_runs(m, a, s):
+        s["case_stats"] = []
+        for st in a["steps"]:
+            st["case_id"] = None
+
+    def all_hidden(m, a, s):
+        del a["pattern_run"]
+        for st in a["steps"]:
+            st["state"] = "hidden"
+
+    def blank_without_steps(m, a, s):
+        m["source"] = "blank"
+        s["case_stats"] = [{"case_id": "implicit-run", "implicit": True, "label": None,
+                            "parent_case_id": None, "start_ts": None, "end_ts": None,
+                            "wall_clock_ms": None, "active_ms": None}]
+        a.pop("pattern_run", None)
+        a["steps"] = []
+
+    assert as_is(no_runs) == [
+        "Transactions were not marked in this recording, so there is no map."]
+    assert as_is(all_hidden) == ["None of the transactions has steps, so there is no map."]
+    assert as_is(blank_without_steps) == [
+        "No steps have been added to this project yet, so there is no map."]
 
 
 def test_document_notes_render_as_a_last_section_only_when_written():

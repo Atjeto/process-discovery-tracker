@@ -125,7 +125,7 @@ function writeConfigSnapshot(folder, config) {
 /* B2: the pre-flight check run before the first event is written, so a
    recordings folder that cannot be written is told at the start rather
    than discovered after an 8-hour recording. Returns plain sentences
-   (empty when all is well). The project code is not checked here: the
+   (empty when all is well). The request code is not checked here: the
    default one is a setup choice, not a problem to announce at every start
    (it is set under Setup (analyst), Recording setup). */
 function validateConfig(config, baseDir) {

@@ -150,8 +150,10 @@ silently.
 
 **Top bar** (the levels, the status line and Export show once a session is
 open, `.app.has-session`):
-- Open: `#btn-recent-menu` opens `#recent-menu-popup`: `#btn-open-session`,
-  `#btn-new-from-video`, `#btn-new-blank`, and the recent recordings
+- New: `#btn-new-menu` opens `#new-menu-popup`: `#btn-new-from-video`
+  (New project from a video...), `#btn-new-blank` (New empty project...).
+- Open: `#btn-recent-menu` opens `#recent-menu-popup`: `#btn-open-session`
+  (Open project...) and the recent projects
   `#recent-menu-content .recent-menu-item[data-folder]`.
 - Levels: `.view-mode-btn[data-level="overview"|"flow"|"steps"|"map"]`
   (the Timeline is `flow`); each shows `#session-layout-<level>`. The
@@ -171,10 +173,10 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
 
 **Overview** (`#overview-content`, `views/overview-view.js`):
 - Before the first analysis: `#ov-waiting` (`data-run` = the run state).
-- What is left `#ov-next` (`data-next` = the next stage; stages
+- The Checklist `#ov-next` (`data-next` = the next stage; stages
   `.ov-next-stage[data-stage="runs"|"pattern"|"review"|"document"|"export"]`,
   `.done` when done) and its one button `#btn-ov-next` (`data-next-act`).
-- The recording line `#ov-summary`: `[data-summary="runs"|"steps"|"video"|"transcript"]`,
+- The project line `#ov-summary`: `[data-summary="runs"|"steps"|"video"|"transcript"]`,
   `#btn-attach-video`, `#btn-attach-transcript`, `#btn-remove-transcript`,
   the marker fixes `.summary-fix[data-fix]`.
 - The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"improvement"|"notes"]`
@@ -185,7 +187,7 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
 - Observations `#ov-observations details[data-module="retyped"|"time"]`.
 
 **Timeline** (`#session-layout-flow`; [VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md)):
-- Header: `#timeline-summary`, the Run select `#case-scope-select`,
+- Header: `#timeline-summary`, the Transaction select `#case-scope-select`,
   `#btn-add-step` (only with a video), `#btn-lanes` opening `#lanes-popup`
   (`input[data-lane="idle"|"screenshots"|"cases"|"steps"|"transcript"|"notes"]`),
   `#btn-zoom-out`, `#btn-zoom-reset`, `#btn-zoom-in`.
@@ -199,7 +201,7 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   playhead `#tl-playhead`. A blank project shows `#tl-empty` with
   `#btn-tl-attach-video`.
 - Menus: every timeline right-click menu is `#tl-ctx-menu` (items by their
-  text: "Insert Start marker here…", "Insert End marker here", "Add note
+  text: "Start a transaction here…", "End the transaction here", "Add note
   here…", "Jump to step here"; on a step band "Open in Steps"). A Shift-drag
   range shows `#tl-selection-stats` (`#tl-selection-case`,
   `#tl-selection-exclude`, `#tl-selection-clear`).
@@ -220,10 +222,11 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`),
   `#btn-remembered-names` (the dialog `#remembered-names-dialog`,
   `[data-act="rename-name"|"forget-name"|"close"]`).
-- The runs `#step-list .run-group[data-case-id]`: the head `.run-row` (a
-  click opens the run; a right-click opens `#run-ctx-menu`: "Use as
-  reference run" on another run, the probe line `[data-act="copy-probe"]` on
-  the confirmed reference run); `.run-pattern-badge` (Reference),
+- The transactions `#step-list .run-group[data-case-id]`: the head
+  `.run-row` (a click opens the transaction; a right-click opens
+  `#run-ctx-menu`: "Use as reference transaction" on another transaction,
+  the probe line `[data-act="copy-probe"]` on the confirmed reference
+  transaction); `.run-pattern-badge` (Reference),
   `.run-status`; `.run-actions [data-act="confirm-run"|"reopen-run"|"save-process"]`;
   `.run-diffs li[data-kind]`; `.run-names-note`; `.run-show-hidden`. The
   comparison with a saved process: `.runs-compare [data-act="stop-comparing"|"forget-process"]`.

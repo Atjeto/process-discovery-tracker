@@ -652,7 +652,7 @@ async function startSession() {
 
   /* B2: the pre-flight check, non-blocking: a recordings folder that
      cannot be written to is told in a toast and the start goes on. The
-     default project code is no longer announced at every start. */
+     default request code is no longer announced at every start. */
   const problems = validateConfig(config, baseDir);
   if (problems.length) {
     notifyUser("The recording may not be saved", problems.join(" ") + " Tell the analyst.", { urgency: "normal" });

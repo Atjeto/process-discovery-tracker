@@ -32,9 +32,10 @@ function computeSummary(session) {
   const manifest = session.manifest || {};
   return {
     engagement: manifest.engagement_id || "-",
-    /* D4: the analyst-entered project name. Prefer the top-level field (new
-       sessions) and fall back to the config snapshot (sessions captured before
-       the field was lifted out of config). Null when never set. */
+    /* D4: the request name entered at setup (AD-30). Prefer the top-level
+       field (new sessions) and fall back to the config snapshot (sessions
+       captured before the field was lifted out of config). Null when never
+       set. */
     engagementName: manifest.engagement_name
       || (manifest.config && manifest.config.engagement_name) || null,
     worker:
@@ -60,9 +61,25 @@ function smeName(manifest) {
   return name && name.toLowerCase() !== login.toLowerCase() ? name : null;
 }
 
+/* The capture's request (AD-30): the engagement set in the capture app's
+   Recording setup, shown as its Request code and Request name so that
+   "project" only ever means what the analyst opens. "Order intake (ENG-7)",
+   the name or the code alone, or null when the capture app's defaults were
+   left (the PDD's Request row follows the same rule). */
+function requestOf(manifest) {
+  const m = manifest || {};
+  const text = (v) => (typeof v === "string" ? v.trim() : "");
+  const setName = text(m.engagement_name) || text(m.config && m.config.engagement_name);
+  const name = setName === "Default engagement" ? "" : setName;
+  const code = text(m.engagement_id) === "default" ? "" : text(m.engagement_id);
+  if (name && code && name !== code) return name + " (" + code + ")";
+  return name || code || null;
+}
+
 /* The Recents entry's name: the document title once it is written, else the
-   name given at the end of the recording (manifest.label), else the project
-   and the folder name. `folderName` is the session folder's last part. */
+   name given at the end of the recording (manifest.label), else the request
+   code (AD-30) and the folder name. `folderName` is the session folder's
+   last part. */
 function recentLabel(session, folderName) {
   const doc = session && session.annotations && session.annotations.document;
   const title = doc && typeof doc.title === "string" ? doc.title.trim() : "";
@@ -127,6 +144,7 @@ module.exports = {
   eventSpanMs,
   computeSummary,
   smeName,
+  requestOf,
   recentLabel,
   detectMarkerProblems,
 };

@@ -1,6 +1,7 @@
 /*
  * Session-setup window. Edits the per-session inputs only:
- *   - engagement_id, engagement_name (project code + plain-English name)
+ *   - engagement_id, engagement_name (the request code and its plain-English
+ *     name, shown as Request, AD-30)
  *   - process_labels (the quick-pick task list)
  *
  * Hotkeys, OBS, screenshots and storage / lifecycle limits are no longer

@@ -134,6 +134,19 @@ function mapLockHtml(analysis, run) {
     escapeHtml(MARK_RUNS_BUTTON) + "</button>";
 }
 
+/* What the Map says (plain text) when the transactions are known but no
+   step can be drawn. A project with no steps yet (a blank one, C16, has its
+   one transaction from the start) is told to add them, never that its
+   transactions are not marked; one whose steps are all hidden, or all
+   outside the transactions, is told none is visible. `steps`:
+   annotations.steps. */
+const NO_STEPS_YET = "No steps yet: add steps in Steps to build the map.";
+const NO_VISIBLE_STEPS = "No steps to draw yet: the transactions have no visible steps. " +
+  "Add or unhide steps in the Steps view.";
+function mapEmptyText(steps) {
+  return Array.isArray(steps) && steps.length ? NO_VISIBLE_STEPS : NO_STEPS_YET;
+}
+
 /* ---- 1. The Checklist ------------------------------------------------------ */
 
 /* The document fields (contract C6, with trigger, result and improvement as
@@ -368,10 +381,14 @@ function _summaryLine(sess, state) {
     }
   }
   parts.push(..._mediaParts(sess));
+  // AD-30: the tooltip names the capture's engagement as the request (only
+  // when one was set), never as the project: that word is what is opened.
+  const request = SessionSummary.requestOf(m);
   const analyzed = s && s.analyzedAt ? new Date(s.analyzedAt).toLocaleString() : "";
-  const title = "Project " + (s && s.engagementName ? s.engagementName + " (" + s.engagement + ")" : project) +
-    (analyzed ? " · analyzed " + analyzed : "");
-  return '<div class="ov-summary-line" title="' + escapeAttr(title) + '">' + parts.join(" · ") + "</div>";
+  const title = [request ? "Request: " + request : "", analyzed ? "Analyzed " + analyzed : ""]
+    .filter(Boolean).join(" · ");
+  return '<div class="ov-summary-line"' + (title ? ' title="' + escapeAttr(title) + '"' : "") + ">" +
+    parts.join(" · ") + "</div>";
 }
 
 /* The warning lines, each only when there is something to say: the marker
@@ -385,19 +402,22 @@ function _summaryWarnings(sess) {
   for (const p of problems) {
     // The one clock: the time since the recording started, as the Timeline shows it.
     const time = sinceStart(p.timestamp, origin);
-    const label = p.label ? '"' + escapeHtml(p.label) + '"' : "(unlabeled)";
+    // AD-29: each line names the transaction. A label that only numbers it
+    // ("Transaction 2", or "Run 2" in a recording made before 2.0.0) says
+    // nothing the line does not, so it is left out, as in Steps.
+    const named = p.label && !RunsModel.numberOnlyLabel(p.label) ? ' "' + escapeHtml(p.label) + '"' : "";
     let text = "", fix = "";
     if (p.kind === "dangling_start") {
-      text = "Start " + label + " at " + time + " has no matching End.";
+      text = "The transaction" + named + " at " + time + " has no end marker.";
       fix = '<button class="summary-fix" data-fix="close-start">End it where the recording ends</button>';
     } else if (p.kind === "orphan_end") {
-      text = "End marker at " + time + " has no open Start to close.";
+      text = "The end marker at " + time + " has no open transaction to end.";
       if (p.eventId) {
         fix = '<button class="summary-fix" data-fix="delete-end" data-event-id="' +
           escapeAttr(p.eventId) + '">Remove this marker</button>';
       }
     } else if (p.kind === "short_case") {
-      text = "Transaction " + label + " at " + time + " is only " + Math.round((p.durationMs || 0) / 1000) +
+      text = "The transaction" + named + " at " + time + " is only " + Math.round((p.durationMs || 0) / 1000) +
         "s long (accidental?)";
     }
     out.push('<div class="summary-problem"><span class="p-text">⚠ ' + text + "</span>" + fix + "</div>");
@@ -800,6 +820,6 @@ function renderOverviewLevel() {
 
 module.exports = {
   renderOverviewLevel, openMarkersInFlow, overviewHtml, pathState, documentStatus, mapLockHtml,
-  hasAnalysisBlocks, waitingSentence,
-  DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN,
+  mapEmptyText, hasAnalysisBlocks, waitingSentence,
+  DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN, NO_STEPS_YET,
 };

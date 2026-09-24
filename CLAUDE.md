@@ -43,10 +43,11 @@ A Windows tool in three layers that never talk over a network:
 
 1. **Capture** (`capture/`): the SME's tray app (Electron) with a small
    recording bar, plus a C# .NET 8 UI Automation recorder sidecar. One start:
-   the bar, the tray, the welcome and the run key all start the recording
-   with Run 1, then each press starts the next run. It writes an append-only
-   `events.jsonl`, a `manifest.json` and screenshots (OBS video optional);
-   the end summary makes a zip for the analyst.
+   the bar, the tray, the welcome and the transaction key all start the
+   recording with Transaction 1, then each press starts the next
+   transaction. It writes an append-only `events.jsonl`, a `manifest.json`
+   and screenshots (OBS video optional); the end summary makes a zip for
+   the analyst.
 2. **Normalization** (`normalization/`): the Python pipeline: runs from the
    markers, drafted steps, statistics and the analysis, the step-level map
    (`--mine`) and the PDD (`--pdd-out`).
@@ -60,15 +61,16 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 
 ## The analyst path
 
-1. **Open** a recording folder, or *New from a video...* or *New without a
-   recording...* (Open menu). The analysis runs by itself (on open when it
-   is missing or older, after Leave apps out, inside Edit as the As-Is map,
-   before a PDD export), with one status line and Cancel. *Apply N marker
-   changes* stays deliberate; Help, Troubleshooting has Re-analyze.
+1. **Open** a recording folder (*Open project...*, Open menu), or start a
+   project with *New project from a video...* or *New empty project...*
+   (New menu). The analysis runs by itself (on open when it is missing or
+   older, after Leave apps out, inside Edit as the As-Is map, before a PDD
+   export), with one status line and Cancel. *Apply N marker changes*
+   stays deliberate; Help, Troubleshooting has Re-analyze.
 2. **Attach** a video (copied into the folder, synced with two clicks) and a
    transcript, if any.
 3. **Confirm the reference run** (run 1 unless another is picked): fix and
-   name its steps, write descriptions, Confirm run.
+   name its steps, write descriptions, Confirm transaction.
 4. **Review the other runs**: each lists its differences; they are not
    confirmed.
 5. **Write the document** on the Overview (trigger, result and improvement
@@ -84,7 +86,7 @@ notes, attachments, a step's system.
 
 | Path | What |
 |---|---|
-| `capture/` | SME side: tray app, recording bar, end summary, run key; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
+| `capture/` | SME side: tray app, recording bar, end summary, transaction key; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
 | `e2e/` | The in-repo Playwright gate: seven smokes against the real viewer, all run by `run-all.js`. |
@@ -128,9 +130,10 @@ notes, attachments, a step's system.
   `manually_authored`, `hidden`. All but drafts survive re-analysis; drafts
   are hidden, not deleted, so an analysis cannot bring them back.
 - **The reference run** (`annotations.pattern_run`, C3): default the first
-  run with a step; *Use as reference run* picks another. Confirm run turns
-  its drafts into `confirmed`; Reopen run is the inverse. The other runs are
-  reviewed, never confirmed (AD-28; `annotations.opened_runs`).
+  run with a step; *Use as reference transaction* picks another. Confirm
+  transaction turns its drafts into `confirmed`; Reopen transaction is the
+  inverse. The other runs are reviewed, never confirmed (AD-28;
+  `annotations.opened_runs`).
   `draft_fixes` counts its merges, splits, adds and drops: the P1 probe.
 - **Saved names** (C4, `<viewer userData>/pdt-library/remembered-names.json`,
   keyed by `draft_key`): a rename is saved and names the session's other

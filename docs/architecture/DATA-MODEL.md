@@ -4,6 +4,9 @@
 > This doc is the working summary: the session folder, the raw stream, the
 > annotation model, the analyst's library on their own machine, and how the
 > viewer holds a session in memory.
+>
+> The apps say *transaction* for a run and *project* for a session (AD-29);
+> the data, and this summary, keep run, case and session.
 
 ## The session folder
 
@@ -62,7 +65,7 @@ Every line is one JSON object with a fixed envelope; only `data` varies by
 | `type` | Produced by | `data` carries |
 |---|---|---|
 | `activity` | foreground-window polling (every 5 s) | `app`, `title`, `pid`, `duration_ms`, `bounds` |
-| `marker` | the run key, the recording bar and the tray (Next run, a named run, End run), stopping the recording, a long idle stretch | `marker_type` (`start` / `end`), `label`, `reason` |
+| `marker` | the transaction key, the recording bar and the tray (Next transaction, a named transaction, End transaction), stopping the recording, a long idle stretch | `marker_type` (`start` / `end`), `label`, `reason` |
 | `system` | session lifecycle | `kind` (`session_start`, `idle_start`, `screenshot`, `recorder_died`, `events_dropped`, ...) plus a kind-specific payload |
 | `interaction` | the C# UI Automation recorder | `kind`, `control_type`, `automation_id`, `name`, `window_title`, `process_name`, `value` (never a password), capture-confidence fields |
 
@@ -129,7 +132,7 @@ exits 2 without writing anything.
 | State | Set by | Survives re-analysis |
 |---|---|---|
 | `auto_suggested` | the drafting rule | No: replaced by the next drafts |
-| `confirmed` | Confirm run, on a draft left unchanged | Yes |
+| `confirmed` | Confirm transaction, on a draft left unchanged | Yes |
 | `edited` | the analyst changed a draft (rename, merge, split) | Yes |
 | `manually_authored` | the analyst added a step | Yes |
 | `hidden` | the analyst hid a step | Yes, so a hidden draft never comes back |

@@ -16,31 +16,33 @@ AI ships inside.
 The SME's tray app; see [architecture/CAPTURE.md](architecture/CAPTURE.md).
 
 - **One start.** The recording bar's button, the tray, the welcome and the
-  run key (Ctrl+Shift+S) start the recording with Run 1; each later press
-  starts the next run and ends the open one first, so runs never nest.
-  Ctrl+Shift+E ends a run, Ctrl+Shift+P takes a screenshot; a key another
-  program holds falls back to Ctrl+Alt and the SME is told.
+  transaction key (Ctrl+Shift+S) start the recording with Transaction 1;
+  each later press starts the next transaction and ends the open one
+  first, so transactions never nest. Ctrl+Shift+E ends a transaction,
+  Ctrl+Shift+P takes a screenshot; a key another program holds falls back
+  to Ctrl+Alt and the SME is told.
 - **The recording bar.** A small strip that stays on top without taking the
   keyboard focus and stays out of shared screens and screenshots: the state,
-  the run in progress, the elapsed time, Next run (with named runs when they
-  are set up), Pause and Stop.
+  the transaction in progress, the elapsed time, Next transaction (with
+  named transactions when they are set up), Pause and Stop.
 - **What it records.** The foreground window every 5 s, the clicks and
   typing through a C# UI Automation sidecar (password fields are never
-  recorded), a start and an end marker per run, screenshots on an app switch,
-  at a run's start and end, after a long idle stretch and by hand, and
-  optionally an OBS video.
-- **The end summary.** After Stop: where the recording is, its runs and
-  length, a warning when no run was marked, and *Make a zip for the
-  analyst* (nothing is sent from the app).
+  recorded), a start and an end marker per transaction, screenshots on an
+  app switch, at a transaction's start and end, after a long idle stretch
+  and by hand, and optionally an OBS video.
+- **The end summary.** After Stop: where the recording is, its
+  transactions and length, a warning when no transaction was marked, and
+  *Make a zip for the analyst* (nothing is sent from the app).
 - **Trustworthy recordings.** The sidecar is restarted a few times per
   recording and then reported dead; a silent recorder is flagged within
   minutes; a lost write, a program the recorder cannot see and failing
   screenshots each tell the SME; a crashed recording is recovered at the
   next launch.
-- **Setup (analyst).** Recording setup (the project and the named runs),
-  Settings (keys, OBS, screenshots, the storage limit, the idle end of a
-  run), Profile (who is recording), a readiness check, the recordings on
-  this computer and their deletion. An optional consent window.
+- **Setup (analyst).** Recording setup (the request and the named
+  transactions), Settings (keys, OBS, screenshots, the storage limit, the
+  idle end of a transaction), Profile (who is recording), a readiness
+  check, the recordings on this computer and their deletion. An optional
+  consent window.
 
 ## The pipeline and the PDD
 
@@ -66,18 +68,20 @@ The Python pipeline the viewer runs by itself; see
   of the runs, the data typed again in another system, and how much of each
   application the recorder could see. A check that could not run says so,
   never shows zero.
-- **The step map.** A BPMN 2.0 file of the runs' steps (`process_map_step.bpmn`)
-  that prints legibly: left to right, wrapped into rows, each task carrying
-  its description, system and run count, the branches labelled "N of M
-  runs", the start and end named after the trigger and the result.
+- **The step map.** A BPMN 2.0 file of the transactions' steps
+  (`process_map_step.bpmn`) that prints legibly: left to right, wrapped into
+  rows, each task carrying its description, system and transaction count,
+  the branches labelled "N of M transactions", the start and end named
+  after the trigger and the result.
 - **The PDD (.docx).** Tool-neutral, in the reader's order: document
   control; purpose, scope, trigger, result and contacts; the As-Is map and
-  the reference run's steps (each with its system, screen, average time, "in
-  N of M runs", "Run 1 at 0:19", its description, the fields it entered, its
-  screenshots and attachments, a waste flag); variations, business rules and
-  exceptions; one data table; applications and time; improvement and
-  automation scope with the To-Be map; notes; attachments. The analyst's
-  fields survive every re-export; an empty field leaves a visible gap.
+  the reference transaction's steps (each with its system, screen, average
+  time, "in N of M transactions", "Transaction 1 at 0:19", its
+  description, the fields it entered, its screenshots and attachments, a
+  waste flag); variations, business rules and exceptions; one data table;
+  applications and time; improvement and automation scope with the To-Be
+  map; notes; attachments. The analyst's fields survive every re-export;
+  an empty field leaves a visible gap.
 - **Meeting transcripts.** A Teams `.vtt` or `.docx` transcript is parsed
   into timed, speaker-tagged sentences; nothing interprets what was said.
 

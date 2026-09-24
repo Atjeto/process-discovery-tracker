@@ -9,6 +9,8 @@
  *         gives it one implicit run; the Timeline says in one line that there
  *         is no recording or video, with Attach video; the Steps list says
  *         the whole project is one transaction until the Timeline marks more;
+ *     (a2) before the first step, the Steps pane says to add it and the Map
+ *         says there are no steps yet;
  *     (b) four steps added by hand (no time, order 1 to 4, the implicit run),
  *         two with a system, one moved down with Alt+Down;
  *     (c) a screenshot from a file and one pasted with Ctrl+V; the pasted one
@@ -213,6 +215,21 @@ function zipFiles(buf) {
       a.steps.note === "The whole project is one transaction until you mark where each one starts on the Timeline.",
     JSON.stringify(a));
   const implicitId = a.runs && a.runs[0] && a.runs[0].id;
+
+  // (a2) Before the first step: the Steps pane and the Map give the reason
+  // that holds (no steps yet), never the one meant for other transactions
+  // or for a recording without markers.
+  let a2 = {};
+  try {
+    await level("steps");
+    a2.guide = await page.evaluate(() => ((document.getElementById("step-detail") || {}).textContent || "").replace(/\s+/g, " ").trim());
+    await level("map");
+    a2.map = await page.evaluate(() => ((document.getElementById("session-map-dfg-host") || {}).textContent || "").replace(/\s+/g, " ").trim());
+  } catch (e) { a2.err = errText(e); }
+  record("(a2) Before the first step: the Steps pane says Add the first step with + Add step, and the Map says there are no steps yet (not that the transactions are not marked)",
+    !a2.err && a2.guide === "Add the first step with + Add step." &&
+      a2.map === "No steps yet: add steps in Steps to build the map." && !/marked|reference/i.test(a2.guide + " " + a2.map),
+    JSON.stringify(a2));
 
   // (b) Four steps added by hand, two systems, one moved down.
   const NAMES = ["Receive the order email", "Check the customer", "Enter the sales order", "Send the confirmation"];

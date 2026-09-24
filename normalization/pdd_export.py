@@ -7,7 +7,7 @@ in the reader's order:
 
   1. Document control: the process, the project folder (a developer's way
      into the recording), who recorded it, the transactions, whether a video
-     is attached.
+     is attached, and the request when the capture app set one (AD-30).
   2. Purpose and scope: the analyst's document fields (annotations.document,
      contract C6): purpose, scope, trigger, result and key contacts.
   3. As-Is process: the systems the process runs through, the As-Is map on
@@ -34,7 +34,9 @@ in the reader's order:
 
 The words (AD-29): one pass through the process is a "transaction" and what
 the analyst opens is a "project"; the code and the data keep run, case and
-session (case_id, pattern_run, the run_* names below).
+session (case_id, pattern_run, the run_* names below). The capture app's
+engagement (engagement_id, engagement_name) is a "request" (AD-30), so
+"project" never means anything else.
 
 A "[To be completed: ...]" gap stands only for a document field the analyst
 fills in the app. Every number is measured from the recording. Hidden steps
@@ -341,9 +343,10 @@ class _Session:
         value = doc.get(key) if isinstance(doc, dict) else None
         return value.strip() if isinstance(value, str) else ""
 
-    def project(self) -> str:
-        """The capture's project, only when one was set: its name, else its
-        code; the capture app's defaults print nothing."""
+    def request(self) -> str:
+        """The capture's request (its engagement, AD-30), only when one was
+        set: its name, else its code; the capture app's defaults print
+        nothing."""
         config = self.manifest.get("config")
         config = config if isinstance(config, dict) else {}
         name = _text_of(self.manifest.get("engagement_name")) or _text_of(config.get("engagement_name"))
@@ -786,9 +789,11 @@ def _write_document_control(doc, s):
         ("Transactions recorded", "Not marked" if s.implicit else str(len(s.runs))),
         ("Video", "Attached" if s.has_video else "None"),
     ]
-    project = s.project()
-    if project:
-        rows.append(("Project", project))
+    # AD-30: the capture's engagement is the Request; "project" is only
+    # what the analyst opens (the Project folder row above).
+    request = s.request()
+    if request:
+        rows.append(("Request", request))
     rows += [("Document generated", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
              ("Version", "Draft")]
     _kv_table(doc, rows)
@@ -882,11 +887,21 @@ def _write_as_is(doc, s, process_map_image):
                               else "Each step and the steps that followed it in the transactions:")
             _table(doc, ("Step", "Followed by"), rows, widths=(2.4, 3.6))
         else:
-            doc.add_paragraph("Transactions were not marked in this recording, "
-                              "so there is no map.")
+            doc.add_paragraph(_no_map_reason(s))
         if (s.folder / "process_map_step.bpmn").exists():
             doc.add_paragraph("The map file is process_map_step.bpmn in the project folder.")
     _write_steps(doc, s)
+
+
+def _no_map_reason(s) -> str:
+    """Why 3.1 has no map: the transactions were not marked, or they hold no
+    step. A project without a recording (C16) always has its one implicit
+    transaction, so its reason is never the markers: it has no steps yet."""
+    if not s.runs:
+        return "Transactions were not marked in this recording, so there is no map."
+    if not s.recorded and not s.steps:
+        return "No steps have been added to this project yet, so there is no map."
+    return "None of the transactions has steps, so there is no map."
 
 
 def _write_steps(doc, s):
