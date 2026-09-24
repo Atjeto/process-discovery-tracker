@@ -1,9 +1,9 @@
-# ADR-0027: Retire the per-step path/segment flags — keep only `waste`
+# ADR-0027: Retire the per-step path/segment flags: keep only `waste`
 
 **Status:** Accepted
 **Date:** 2026-05-31
 **Deciders:** Project owner, analyst (process-discovery lead)
-**Related:** [ADR-0016](0016-segment-level-automation-candidacy.md) (automation candidacy at the coherent-segment grain), [ADR-0008](0008-build-the-analysis-layer.md) (the waste / value-add classifier), [ADR-0013](0013-value-free-grouping-and-map-readability.md) + [ADR-0024](0024-step-grain-as-view-time-rollup.md) (the map's branch frequency / variants). Supersedes the four-flag per-step model from [ADR-0009](0009-normalization-redesign-v0.13.md).
+**Related:** [ADR-0016](0016-segment-level-automation-candidacy.md) (automation candidacy at the coherent-segment grain), [ADR-0008](0008-build-the-analysis-layer.md) (the waste / value-add classifier), [ADR-0013](0013-value-free-grouping-and-map-readability.md) + [ADR-0024](0024-step-grain-as-view-time-rollup.md) (the map's branch frequency / variants). Supersedes the four-flag per-step model from [ADR-0009](0009-normalization-redesign-v013.md).
 
 ## Context
 

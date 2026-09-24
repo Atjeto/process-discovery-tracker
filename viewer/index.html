@@ -355,12 +355,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Reference run.</strong> In Steps, check run 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm run</em>.</li>
             <li><strong>Other runs.</strong> The other runs arrive drafted and named like the reference run. Open each one in Steps: it lists how it differs from the reference run (extra, skipped or reordered steps). Fix a step where needed; the other runs are not confirmed.</li>
             <li><strong>Document.</strong> On the Overview, write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
-            <li><strong>PDD.</strong> Export the PDD (.docx). Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the runs. <em>Save as this process</em> on the confirmed reference run lets the next recording of the same process arrive drafted and named.</li>
+            <li><strong>PDD.</strong> Export the PDD (.docx). Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the runs. <em>Save as this process</em>, on the confirmed reference run, keeps its steps on this computer: a later recording of the same process is compared with them.</li>
           </ol>
           <h3>Optional inputs</h3>
           <ul class="help-list">
-            <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview's recording line or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, then click the same moment on the timeline.</li>
-            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview's recording line. Its sentences show next to each step and beside the document fields, ready to add to a step's description or a field.</li>
+            <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview's recording line or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. It is copied into the recording folder, so the folder carries it.</li>
+            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview's recording line. Its sentences show beside the document fields, and with each step once the transcript is placed in time: a synced video places it, or use <em>Sync</em> on the Timeline's Transcript lane (pick a sentence, then click where it was said). A sentence you add to a step's description or a field is printed in the PDD.</li>
           </ul>
           <h3>Starting without a recording</h3>
           <p>In the Open menu, <em>New from a video</em> makes a project from a video of the process (a Teams recording, a screen video): the video is copied into the new folder and the Timeline follows it. <em>New without a recording</em> makes an empty project. Either has one run until you mark runs on the Timeline. Add its steps in Steps with <em>+ Add step</em> (Alt+Up and Alt+Down move a step without a time), or on the Timeline with <em>+ Step</em> at the video's playhead. The step pane's <em>System</em> field says which system a step happens in.</p>
@@ -378,6 +378,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. In the step pane the name is saved when you press Enter or leave the field, the description when you leave it; there is no Save button, and Ctrl+Z undoes each change. A step's description is printed with it in the PDD.</li>
             <li>Click <strong>Confirm run</strong>: the steps you did not change are accepted as they are. <em>Reopen run</em> takes the confirmation back.</li>
           </ol>
+          <h3>The step panel</h3>
+          <p>Select a step in Steps, click a box on the Map or a step band on the Timeline: the step panel opens beside it. It shows every time the step happens in the runs, each with its moment (&#9654; plays it in the panel's own video), its screenshots, what was said and its notes. <em>Watch</em> in the step pane plays the step there.</p>
           <h3>Fixes that carry to the other runs</h3>
           <p>A merge in the reference run is also made in the other runs wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every run. Splits and added steps are made in each run that needs them.</p>
           <h3>Differences between runs</h3>
@@ -402,18 +404,18 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Hide step</strong>: takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
           <h3>Waste</h3>
-          <p>Flag a step as <strong>Waste</strong> when it should not be needed (rework, duplicate effort). The PDD prints the flag with the step. Branches, exceptions and automation candidates are not flags: they come from the recorded runs.</p>
+          <p>Flag a step as <strong>Waste</strong> when it should not be needed (rework, duplicate effort). The PDD prints the flag with the step. Branches and exceptions are not flags: the map and the differences between the runs show them.</p>
         </section>
 
         <section class="help-section" data-section="markers">
           <h3>Working with markers</h3>
-          <p>A run starts at a start marker and ends at its end marker; the SME places them with the recording keys. An edited marker changes the runs once you apply it; the recording itself never changes.</p>
+          <p>A run starts at a start marker and ends at its end marker; the SME places them with the recording bar or the recording keys. An edited marker changes the runs once you apply it; the recording itself never changes.</p>
           <ul class="help-list">
             <li><strong>Add</strong>: right-click the timeline at that moment and insert a Start or End marker.</li>
             <li><strong>Rename, move or delete</strong>: in the Timeline's Markers panel. Double-click a Start marker to rename it.</li>
             <li><strong>Apply</strong>: a changed marker shows at once as pending. <em>Apply marker changes</em>, in the bar at the top, updates the runs, the steps and the map.</li>
           </ul>
-          <p class="help-hint">To join two runs, delete the End of the first and the Start of the second. To split a run, move its End earlier and insert a new Start after it.</p>
+          <p class="help-hint">To join two runs, delete the End of the first and the Start of the second. To split a run, insert a Start where its second part begins: a Start ends the run before it.</p>
         </section>
 
         <section class="help-section" data-section="capture">
@@ -424,6 +426,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>End the current run.</td></tr>
             <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Take a screenshot by hand.</td></tr>
           </table>
+          <p class="help-hint">The recording bar on the SME's screen does the same without the keys: <em>Start recording</em>, then <em>Next run</em> for each run, <em>Pause</em> and <em>Stop</em>. <em>End run</em> is in the capture app's tray menu.</p>
         </section>
 
         <section class="help-section" data-section="shortcuts">
@@ -437,6 +440,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> (Steps)</td><td>Previous or next step of the open run</td></tr>
             <tr><td><span class="kbd">Enter</span> (Steps)</td><td>Rename the selected step</td></tr>
             <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step, or merge it with the next step of its run</td></tr>
+            <tr><td><span class="kbd">N</span> (Steps)</td><td>Add a step by hand, without a time</td></tr>
+            <tr><td><span class="kbd">S</span> (Timeline, with a video)</td><td>Add a step at the video's playhead</td></tr>
             <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the reference run, when it is open</td></tr>
             <tr><td><span class="kbd">Alt+↑</span> <span class="kbd">Alt+↓</span> (Steps)</td><td>Move a step without a time up or down in its run</td></tr>
             <tr><td><span class="kbd">Ctrl+V</span> (step pane)</td><td>Add the image on the clipboard as a screenshot of the step</td></tr>
@@ -446,7 +451,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p class="help-hint">Undo covers every edit (steps, markers, document fields, maps), up to 50, until you open another recording.</p>
           <h3>Clicks</h3>
           <ul class="help-list">
-            <li>Click a band, a marker or a screenshot on the timeline to go to that moment.</li>
+            <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>
+            <li>Click a step band on the timeline to open the step panel beside it.</li>
             <li>Right-click the timeline to insert a Start or End marker there, or to add a note at that moment.</li>
             <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>.</li>
           </ul>
@@ -456,10 +462,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Common issues</h3>
           <dl class="help-dl">
             <dt>A recording key did nothing</dt>
-            <dd>Another program on the SME's computer may use the same keys. Close it and press the key again, or use <em>Start next run</em> and <em>End run</em> in the capture app's tray menu.</dd>
+            <dd>Another program on the SME's computer may hold the same key. The capture app says so when it starts: <em>Keys changed</em> names the key it uses instead, <em>Keys not available</em> means there is none. Use the recording bar (<em>Start recording</em>, then <em>Next run</em>) or the tray menu (<em>Next run</em>, <em>End run</em>), or close that program and start the capture app again.</dd>
 
             <dt>A Citrix or remote desktop window shows as one app</dt>
-            <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the run markers and a video for that part.</dd>
+            <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the run markers and a video for that part and add its steps by hand in Steps.</dd>
 
             <dt>The steps or the map are missing or out of date</dt>
             <dd>The app analyzes a recording by itself when it opens. If that stopped (it was cancelled, or it failed and the log at the top says why), analyze it again. Your confirmed, edited, added and hidden steps are kept.

@@ -1,174 +1,146 @@
-# Viewer — Timeline Subsystem
+# Viewer: the timeline
 
-> **Deep reference.** The timeline was the original refactor target. ADR-0003
-> Phase 1 extracted the shared core and migrated all three timelines — Steps,
-> Phases, and (in commit `faed9f6`) Flow — onto it; Phase 3 moved the Flow
-> timeline into its view module. Read [VIEWER.md](./VIEWER.md) first for the
-> surrounding architecture.
+> The Timeline level (`data-level="flow"`): the one timeline of a session,
+> its lanes, its clock, and the video beside it. Read
+> [VIEWER.md](./VIEWER.md) first for the modules around it.
 
-## The shared core
+## Where it lives
 
-The viewer renders a horizontal time-band strip in three places — the Flow
-timeline, the Steps mini-timeline, and the Phases mini-timeline. They are **no
-longer three separately written renderers**: tick maths, axis-label formatting,
-position mapping, lane packing, and band/axis DOM construction all live once, in
-[`timeline/timeline-core.js`](../../viewer/timeline/timeline-core.js):
-
-| Export | Responsibility |
+| File | Owns |
 |---|---|
-| `timeToXPct(tMs, startMs, spanMs)` | Map a timestamp to a percent X position |
-| `formatAxisLabel(tMs, intervalMs)` | Wall-clock axis label at the right precision |
-| `chooseTicks(startMs, endMs, targetCount)` | Pick tick interval + positions |
-| `packLanes(items, opts)` | Sweep-line lane assignment for overlapping bands |
-| `renderBand(host, spec)` / `renderAxis(host, ticks)` | Band / axis DOM primitives |
-| `renderMiniTimeline(host, opts)` | Whole mini-timeline render (lanes + axis) |
-| `layoutLaneStack(lanes)` / `renderLaneStack(host, lanes, opts)` | Lay out and render a stack of lane plugins (`{ key, height, gapBefore, render }`) — used by the Flow timeline |
+| [`views/flow-view-timeline.js`](../../viewer/views/flow-view-timeline.js) | `renderTimeline()`: the lane stack, the legend, the playhead, a background click that seeks; the minimap; the lanes menu; zoom, scroll and their persistence; the summary line. |
+| [`timeline/timeline-core.js`](../../viewer/timeline/timeline-core.js) | Pure layout: `chooseTicks` (the tick positions and labels), `packLanes`, `layoutLaneStack` and `renderLaneStack` (a stack of lane plugins). Unit-tested. |
+| [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | `timelineSpan()` (the stretch of time the timeline lays out), the playhead's place, seeking, Attach video and Sync video. |
+| [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane and the transcript's Sync. |
+| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click inserts a marker, adds a note, jumps to a step; a run band's menu), range selection, the Run select. |
+| [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
 
-`timeline-core.js` is a CommonJS module with **pure, unit-tested** layout maths
-([`timeline/timeline-core.test.js`](../../viewer/timeline/timeline-core.test.js),
-`npm test`). A fix to tick spacing or lane packing now lands once and reaches all
-three timelines — the mechanism behind the old recurring "fixed it here, still
-broken there" regressions is gone.
+## The one clock
 
-## The three timelines today
+Every time the Timeline shows is the time since the recording started
+(AD-26): the tick labels, the tooltips of activity bands, screenshots and
+notes, the Markers panel, the screenshot stamps and the transcript rows, as m:ss, or
+h:mm:ss from an hour. The origin is `manifest.started_at`, else the first
+event (`dom.recordingStartMs`); `chooseTicks(start, end, count, origin)`
+counts its ticks from it. The step pane, the step panel and the PDD's
+pointers ("Run 1 at 0:19") use the same clock. The time of day shows in one
+place only: the summary line above the timeline, "Recorded <date> <time> ·
+<length>".
 
-| | Flow timeline | Steps mini-timeline | Phases mini-timeline |
-|---|---|---|---|
-| Entry point | `renderTimeline()` | `renderStepTimeline()` | `renderPhaseTimeline()` |
-| File | [`views/flow-view-timeline.js`](../../viewer/views/flow-view-timeline.js) | [`step-editor.js`](../../viewer/step-editor.js) | [`phase-editor.js`](../../viewer/phase-editor.js) |
-| Core use | `TimelineCore.renderLaneStack` with lane plugins | `TimelineCore.renderMiniTimeline` | `TimelineCore.renderMiniTimeline` |
-| Host element | `#timeline` inside `#timeline-scroll` | `#timeline-steps` inside `.mini-timeline-scroll` | `#timeline-phases` inside `.mini-timeline-scroll` |
-| Zoom state | `State.zoomFactor` | `State.stepZoom` | `State.phaseZoom` |
-| Height / resize | `--timeline-height` (`#resize-timeline`) | `--mini-timeline-height` | `--mini-timeline-height` |
+## The span
 
-**Narrow-band label hiding (design critique item 13).** A block/band's width is
-data-driven (a percent of the timeline span), so whether its text label fits is
-only knowable after layout — handled in CSS, not JS, via a `container-type:
-inline-size` container query on the block/band class itself: below a px
-threshold the label `display: none`s (color-only chip; the native `title`
-tooltip still carries the full name), and it reappears once zooming widens the
-block past the threshold. `.tl-activity` (Flow, `@container (max-width: 36px)`
-hides `.tl-act-app`, `70px` hides `.tl-act-title`/`.tl-act-dur`) and
-`.step-block` (Steps mini-timeline, `@container (max-width: 40px)` hides
-`.step-block-label`) share this technique — a fix to the threshold or the
-approach applies to both by touching one rule per class, same spirit as the
-shared `timeline-core.js` core.
+`timelineSpan()` decides what the timeline lays out:
 
-The Steps and Phases mini-timelines are thin: each gathers its lane items, then
-hands them to `TimelineCore.renderMiniTimeline`, which does lane packing, the
-axis, and band DOM. The Flow timeline is richer — it has the optional lanes
-below — but is also a caller of the core: it builds an array of lane plugins and
-hands them to `TimelineCore.renderLaneStack` (commit `faed9f6` completed this
-migration — ADR-0003 items 4-5).
+- **A recording** runs from its first event to its last.
+- **A video project** (`manifest.source: "video"`, contract C16) has no
+  events: the timeline runs on the video, from the video's start for the
+  video's length, once the player has read the length (a recorded `.webm`
+  with no length in its file is measured by one seek past its end). The
+  summary line reads "Video · <length>".
+- **A blank project** (nothing recorded, no video) has no span: the
+  timeline shows one line, "No recording and no video in this session.",
+  with *Attach video...* (`#tl-empty`). The legend and the minimap hide.
 
-## The Flow timeline — `renderTimeline()` (`flow-view-timeline.js`)
+## The lanes
 
-`renderTimeline()` builds an ordered array of **lane plugins** — each an object
-`{ key, height, gapBefore, render(host, ctx) }` — and hands it to
-`TimelineCore.renderLaneStack`, which lays the lanes out (running-sum tops, total
-`minHeight`) and calls each lane's `render`. The lane stack, top to bottom:
+`renderTimeline()` builds lane plugins, each `{ key, height, gapBefore,
+render(host, ctx) }`, and hands them to `TimelineCore.renderLaneStack`,
+which stacks them, sets the zoomed width and calls each lane's `render`. A
+lane of height 0 is skipped. From top to bottom:
 
-```
-tick labels        wall-clock HH:MM:SS axis, via chooseTicks
-case header        labelled lane of concurrent-case bands (packLanes-packed)
-activity bands     per-app coloured runs; idle bands, real marker bars, and
-                   dashed suggested-marker bars overlay here
-screenshot rail    dedicated rail of screenshot marks
-density histogram  optional — ~120-bucket event-count strip
-window-title runs  optional — one band per (app, value-free title) run
-per-step lane      optional — step bands rolled up to the current Grain
-                   notch, click → Steps view
-note lane          optional — numbered note dots
-playhead           overlay — 1px line synced to the <video>
-```
+| Lane | Shows | Clicks |
+|---|---|---|
+| Ticks | The time since the recording started; tick lines run down through the activity lane. | |
+| Runs | One band per run, labelled with its Start marker's label (else "Run N") when the band is wide enough; a run with no end runs to the end with a dashed edge. The runs are paired the way the pipeline pairs them: a Start while a run is open ends it (runs never nest), and the bands follow the markers the last analysis used. | Click: go to the run's start. Right-click: Jump to start, Jump to end. |
+| Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. Idle stretches and pending marker bars lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. |
+| Transcript | Only while a transcript is attached: the sentences said while the recording ran, at their times, once the transcript is placed (its own sync, else the synced video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
+| Notes | Only while a note is pinned to a moment (`annotations.analyst_notes`, C16): one pin per note. | Click: go there. Right-click: Edit note, Delete note. |
+| Screenshots | A rail of the recorder's screenshots. | Click: open it in the image viewer. |
+| Steps | One band per visible step with a time, named as in Steps. | Click: select the step, go to its start, open the step panel. Right-click: Open in Steps, Select + seek here. |
 
-The four optional lanes (density / window-title / per-step / note) toggle via the
-Lanes menu (`getLaneToggles()`, persisted to `pdt.timelineLanes`) — they are
-simply omitted from the lane array when off. `layoutCaseLanes()` walks the marker
-stream into closed/dangling cases and delegates row assignment to
-`TimelineCore.packLanes`.
+The playhead (`#tl-playhead`) lies over every lane; it follows the video,
+and without a video a seek moves it and scrolls it into view.
 
-**Suggested markers** ([ADR-0017](../adr/0017-suggested-markers.md)) ride the same
-marker overlay: when the markers lane is on, `annotations.marker_suggestions[]`
-render as dashed `.tl-marker.tl-suggested` bars (a higher-confidence
-`.tl-suggested-hi` variant for `score ≥ 0.75`), filtered to drop any suggestion the
-analyst has already Accepted. They are not a separate toggle — they share the
-real markers' visibility — and the side-panel markers list carries the matching
-Accept/Dismiss rows.
+**Idle** is not a lane of its own: the idle stretches lie on the activity
+row (an "at desk" idle, where the recorder still saw input, looks
+different from "away"). **Pending markers**: a marker change waiting for
+*Apply marker changes* is drawn at once as a dashed bar, labelled
+"(pending)" on a Start; applied markers show as run bands and in the
+Markers panel.
 
-**Grain and the step lane** ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)).
-The per-step lane rolls up to the shared **Grain** notch (`State.grain`: element /
-screen / app / phase / case, default screen) — one band per consecutive run of
-steps sharing that notch's key, with a fold count; the `element` notch reproduces
-every raw step band. The single Grain slider in the view-mode bar drives this lane
-in lock-step with the Steps list and the Map; it is a *view-time* control, so a
-notch change re-renders the lane without re-normalizing — raw `events.jsonl` is
-untouched. The `window-title` lane's grouping key is **value-free** (record ids
-stripped via `screenType` / `shared/screen-label-patterns.json`), so one logical
-screen is one band across cases.
+**The lanes menu** (`#btn-lanes`) turns lanes on and off: Idle, Screenshots,
+Runs, Steps, and Transcript and Notes while they exist. A fresh profile
+shows Idle, Runs and Steps (and Transcript and Notes when there is one);
+Screenshots starts off. The choice persists in `pdt.timelineLanes`. The
+activity lane has no toggle.
 
-The case header *above* the activity bands and the dedicated screenshot rail
-*below* them are the Warm Editorial lane re-order — see
-[ADR-0004](../adr/0004-flow-timeline-steps-rework.md).
+**The legend** under the timeline names the systems drawn and explains only
+the marks on screen: idle, a pending marker, a screenshot, a note.
 
-## Zoom, scroll, and persistence
+## The timeline menu
 
-- **Flow zoom** — `State.zoomFactor`. `#btn-zoom-in/out/reset` multiply by 1.5 /
-  divide by 1.5 (floor 1) / reset to 1, then `renderTimeline()`. Zoom is applied
-  as `host.style.width = (100 * zoomFactor) + "%"`.
-- **Mini-timeline zoom** — `State.stepZoom` / `State.phaseZoom`, wired by
-  `bindMiniTimelineZoom()` in `renderer.js` to the per-view zoom buttons; same
-  1.5× contract.
-- **Persistence** — `persistTimelineForCurrent()` / `restoreTimelineForCurrent()`
-  (`flow-view-timeline.js`) store `{ zoomFactor, scrollLeft, ts }` per
-  `sessionFolder` in the single `localStorage` key `pdt.timelineState`. Scroll
-  writes are throttled 250 ms (`_wireTimelineScrollPersist`). The mini-timelines
-  do **not** persist zoom.
+A right-click on the activity row or on the timeline's background opens one
+menu at the moment clicked:
 
-## Minimap, playhead, range selection (Flow only)
+- *Insert Start marker here...* and *Insert End marker here*: a marker edit,
+  shown at once as pending; *Apply N marker changes* in the top bar updates
+  the runs, the steps and the map.
+- *Add note here...*: a note pinned to that moment (the Notes lane turns on).
+- *Jump to step here*: the Steps level, on the step at that moment.
 
-The minimap lives in `flow-view-timeline.js` with `renderTimeline`; the playhead
-is created by `renderTimeline` but positioned from `flow-view-video.js`; range
-selection stays in `flow-view.js` (it pairs with the queue-from-selection /
-exclude-range marker actions):
+**Range selection.** Shift-drag on the background selects a range; a card
+shows its length, events, markers, screenshots and systems, with *Insert
+run from selection* (a Start and an End marker, pending), *Exclude from
+analysis* (the range goes into `annotations.excluded_ranges` and the
+analysis runs again) and *Clear selection*. Esc clears it.
 
-- **Minimap** (`flow-view-timeline.js`) — `renderMinimap()` builds
-  `#timeline-minimap`: compressed activity bands plus a `.tl-mm-viewport`
-  rectangle. `syncMinimapViewport()` keeps the rectangle aligned to
-  `#timeline-scroll`; a `wireMinimap()` IIFE handles click-to-jump and
-  viewport-drag.
-- **Playhead** — created inside `renderTimeline()` as `#tl-playhead`
-  (`flow-view-timeline.js`), positioned by `positionPlayhead()`
-  (`flow-view-video.js`) on every `<video>` `timeupdate`, using the OBS / video
-  start timestamp (`videoStartTs()`).
-- **Range selection** (`flow-view.js`) — `installRangeSelection()`: Shift-drag on
-  the `#timeline` background sets `State.selectionRange`; `renderSelectionStats()`
-  draws a stats card. Wired once via a `host._pdtSelWired` flag.
+## The video beside it
 
-## Resize handles
+The video pane below the timeline plays the session's video: the one the
+analyst attached (copied into the folder's `video/`, contract C16 and
+`video-path.js`), else the OBS recording. Without one the pane collapses to
+a slim band with *Attach video...*.
 
-[`layout-controls.js`](../../viewer/layout-controls.js) (a CommonJS module that
-self-initialises at `require()` time) owns all drag-resize:
+- **Attach video** (the band, the Overview's recording line, or the empty
+  timeline) chooses the file, then syncs it with two clicks: pause the video
+  at a moment you recognize and click *Mark frame*, then click the same
+  moment on the timeline. The offset is saved in
+  `annotations.external_video.offset_ms`. A session with nothing recorded
+  takes the video at offset 0 without the clicks. When the stored video is
+  not found (a folder received from another machine without it), the video
+  chosen with Attach video takes its place and keeps the stored sync.
+- **Sync video...** (the pane's header, only with a video) runs the two
+  clicks again.
+- **+ Step** (the timeline's header, only with a video; or the S key) adds a
+  step at the playhead.
+- A step's own playback is in the step panel (Watch), beside the steps.
+- The playback bar at the bottom of the window mirrors the video: play,
+  back and forward 5 s, a scrub bar and the times.
 
-| Handle id | CSS variable | Min–Max–Default | Drives |
-|---|---|---|---|
-| `#resize-timeline` | `--timeline-height` | 80–360–160 | Flow `.timeline-scroll` height |
-| `#resize-steps-timeline` | `--mini-timeline-height` | 56–260–120 | Steps strip height |
-| `#resize-phases-timeline` | `--mini-timeline-height` | 56–260–120 | Phases strip height (shared var) |
-| `#resize-video` | `--video-width` | 240–900–420 | video pane width |
+## Zoom, scroll, minimap
 
-Sizes persist to `pdt.timelineHeight`, `pdt.miniTimelineHeight`, `pdt.videoWidth`.
-The mini-timeline `.timeline` element fills its strip via `height:100%` plus a
-`minHeight` floor, and lane bands use `calc()` so resizing reflows with no JS
-re-render.
+- **Zoom**: `#btn-zoom-in`, `#btn-zoom-out`, `#btn-zoom-reset` (and `+`, `-`,
+  `0`) multiply or divide `State.zoomFactor` by 1.5 (never below 1) or reset
+  it; the timeline is that many times as wide as its pane.
+- **Scroll**: a middle-button drag pans the timeline. The zoom and the scroll
+  persist per session folder in `pdt.timelineState`. On the first open of a
+  session the timeline scrolls to the first run when it starts later.
+- **Minimap** (`#timeline-minimap`): shown only while zoomed in; a
+  compressed view of the activity with the visible stretch marked. Click to
+  jump there, drag the marked stretch to scroll.
+- **Resize**: `#resize-timeline` sets the timeline's height (80 to 360 px,
+  default 160, `pdt.timelineHeight`); `#resize-video` the video pane's width
+  (240 to 1200 px, default 600, `pdt.videoWidth`). The video pane can also be
+  expanded to 70% of the width, or full screen.
 
 ## Render triggers
 
 | Trigger | Re-renders |
 |---|---|
-| Session load (`loadSessionIntoView`) | all three (whichever level is visible) |
-| `applyLevel()` view switch | the incoming level's timeline |
-| Zoom button | that level's timeline |
-| Annotation edit | the `timeline` state topic → `renderTimeline()` (targeted, in place) |
-| Lanes menu toggle | `renderTimeline()` |
-| Window resize | *(none — the timelines do not re-render on window resize)* |
+| Session load | the timeline, its summary, the side panels |
+| Switching to the Timeline | the timeline, with the zoom and scroll carried over |
+| A zoom button or key | the timeline |
+| An annotation edit | the `timeline` topic: the timeline, in place |
+| A lane toggle | the timeline |
+| The video's length becomes known (a video project) | the timeline, its summary and the playhead |
+| A transcript or video sync | the session, reloaded |

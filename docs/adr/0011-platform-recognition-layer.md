@@ -72,9 +72,11 @@ semantic class (`form_field`, `grid_cell`, `rich_text`, `primary_action`,
 - Recognition transfers across apps/engagements with zero per-session selector
   reverse-engineering. A new deployment works out of the box for the common
   frameworks.
-- The alignment signature ([step-alignment.js](../../viewer/step-alignment.js))
-  now keys on the semantic `category`, not `automation_id` — the same step
-  aligns across tickets despite differing ids/values.
+- The alignment signature
+  ([step-alignment.js](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/viewer/step-alignment.js),
+  on branch `product-edition`; the light version aligns runs by draft key
+  instead) now keys on the semantic `category`, not `automation_id`, so the
+  same step aligns across tickets despite differing ids/values.
 - Interaction phrasing ([step-editor.js](../../viewer/step-editor.js)
   `describeInteraction`) falls back to the recognised type ("a data-grid
   cell") instead of "a control" when an element has no visible name.
@@ -87,7 +89,7 @@ semantic class (`form_field`, `grid_cell`, `rich_text`, `primary_action`,
 - Recognition gives type, not the case *boundary*. "A search happened"
   (form field → primary action → record loads) is a recognisable *pattern*,
   but "each search = a new ticket" still needs analyst/SME confirmation or the
-  video — recognition narrows that judgement, it does not remove it.
+  video: recognition narrows that judgement, it does not remove it.
 
 ### Follow-ups
 1. **Cross-language sharing.** The Python capture/normalization pipeline
@@ -98,9 +100,9 @@ semantic class (`form_field`, `grid_cell`, `rich_text`, `primary_action`,
    class list) should be replaced by `recognize().isChrome`.
 3. **Reframe classification (Seam 2).** Activity/step classification can lead
    with framework recognition (semantic type) and use window-title taxonomy
-   only for business labelling — reducing the empty-map problem.
+   only for business labelling, reducing the empty-map problem.
 4. **Calibrate** the framework table and the alignment categories against more
-   — and more representative — real captures.
+   real captures, and more representative ones.
 
 ## Action Items
 1. [x] `viewer/recognition.js` + tests, grounded in documented invariants, verified against the real capture signatures.

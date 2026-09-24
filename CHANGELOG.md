@@ -29,16 +29,17 @@ plan's implementation notes
   and across later sessions. Names given in a session travel with its
   folder, so the session drafts the same names on another machine. The
   Saved names list, in the Steps toolbar, renames or forgets a name.
-- **Differences between runs**: every run after the pattern run lists how
-  it differs from it (a skipped step, an extra step, a different order),
-  or says it has none. The PDD's differences section uses the same rule.
-- **Fixes carry across runs**: merging drafted steps in the pattern run
+- **Differences between runs**: every run other than the reference run
+  lists how it differs from it (a skipped step, an extra step, a different
+  order), or says it has none. The PDD's differences section uses the same
+  rule.
+- **Fixes carry across runs**: merging drafted steps in the reference run
   repeats the merge on the same drafts in every other run (one undo), and
-  a draft hidden in the pattern run can be hidden in all runs at once.
+  a draft hidden in the reference run can be hidden in all runs at once.
 - **Reopen run**, the inverse of Confirm run.
-- **Saved processes**: "Save as this process" stores the confirmed pattern
-  run. A later session of the same process that has no confirmed pattern
-  run yet is compared with the closest saved process, with "Stop
+- **Saved processes**: "Save as this process" stores the confirmed
+  reference run. A later session of the same process that has no confirmed
+  reference run yet is compared with the closest saved process, with "Stop
   comparing" to turn that off and "Forget this saved process" to remove it
   (Undo brings it back).
 - **The Overview is the home**: a "What is left" line names the next thing
@@ -60,8 +61,41 @@ plan's implementation notes
 - **Business system names**: the PDD and the step map name the system a
   step happened in (SAP, Excel, Outlook, and Salesforce for a Chrome window
   on Salesforce) from one shared rule list instead of an executable name
-  like `EXCEL.EXE`; the viewer shows the application names from the same
-  list.
+  like `EXCEL.EXE`. The viewer uses the same list: the timeline's bands and
+  legend, the step pane, the Observations, the step panel, and the map,
+  where each box names its system under the step's name. A system set by
+  hand on a step wins.
+- **The step panel**: a click on a map box or on a step band on the
+  Timeline, or a step selected in Steps, opens one panel beside it: the
+  step's system and description, "in N of M runs, about 8s each", and
+  every occurrence with its moment ("Run 1 at 0:39"), played in the
+  panel's own small video, with its screenshots and what was said. Watch
+  in the step pane plays the step there, beside the steps.
+- **The video travels with the recording folder**: attaching a video copies
+  it into the folder and stores where it is relative to the folder, so
+  whoever receives the folder has the video too. A video the folder names
+  but no longer finds keeps its sync when it is attached again.
+- **Projects without a recording**: the Open menu starts a project from a
+  video (the video is copied into a new folder and the Timeline runs on its
+  length) or from nothing. Such a project has one run until runs are
+  marked, and the map and the PDD work as for a recording.
+- **Steps added by hand**: "+ Add step" adds a step without a time after
+  the selected step (Alt+Up and Alt+Down move it); on the Timeline, "+ Step"
+  adds one at the video's playhead. The step pane's System field says which
+  system a step happens in.
+- **Screenshots added by hand**: a frame of the video, a pasted image
+  (Ctrl+V in the step pane) or an image file. "Use in PDD" picks the one
+  screenshot the PDD prints under the step; "Remove" takes a recorded
+  screenshot off the step (the recording keeps it) or deletes one you
+  added. Ctrl+Z brings it back.
+- **Attachments**: any file (an example email, an input spreadsheet, an
+  SOP) attached to the session on the Overview, or to a step in the step
+  pane, is copied into the recording folder and opens from the app; the PDD
+  lists the attachments, and a step's under that step.
+- **Notes**: a note on a step (the step pane) or at a moment (right-click
+  the Timeline, "Add note here"), shown in the step pane, the step panel
+  and a Notes lane on the Timeline. Notes stay in the app; the PDD does not
+  print them.
 - **The recording bar**: a small strip replaces the capture app's Live
   Session window and hotkey overlay. It shows the run in progress and the
   elapsed time, with Next run, Pause and Stop, and a problem line only when
@@ -78,13 +112,6 @@ plan's implementation notes
 - **A durable record of dropped events**: a write batch that could not be
   saved is now counted and recorded on the session timeline instead of
   only appearing in a local log file.
-- **Groundwork for sessions without a recording**: the analysis accepts a
-  session started from a video or from nothing (one run covering it until
-  runs are marked, hand-added steps without a time kept in their order)
-  and what the analyst adds by hand (screenshots, notes, attachments, a
-  step's system); the PDD prints the screenshot chosen for a step and lists
-  the attachments. The viewer cannot create such sessions or add those
-  items yet.
 
 ### Changed
 
@@ -109,9 +136,25 @@ plan's implementation notes
   Flow is now called the Timeline.
 - **Observations instead of findings** on the Overview: the data typed
   twice (per field, where the recording says which) and where the time
-  goes (per step and per application).
+  goes (per step and per system).
 - **Attaching a video goes straight into syncing it**: pause at a moment
   you recognize, then click the same moment on the timeline.
+- **Only the reference run is confirmed**: the other runs are reviewed, not
+  confirmed. The "What is left" line counts them done once each was opened
+  in Steps, and says how many differ from the reference run.
+- **A step pane that leads with the system**: its fact line reads
+  "Salesforce · Account lookup · 6s · ends at Search · Run 1 at 0:19"; it
+  lists the fields typed in the step; the name, the system and the
+  description save as you go (no Save button, and Ctrl+Z undoes each
+  change); waste is a tag; the drafted narration is a hint, no longer
+  prefilled as the description.
+- **One clock**: the timeline, the markers, the screenshots, the transcript
+  rows, the step pane and the panel show the time since the recording
+  started (0:39), the same pointer the PDD prints. The time of day shows
+  only in the timeline's summary.
+- **The As-Is map first**: once an As-Is copy is chosen for the PDD, the
+  Map shows it first, read only, with Edit and a way back to the map from
+  the runs.
 - **Case identity is stable across re-analysis**: a confirmed or edited
   step no longer loses its place after a re-analyze.
 - **A failed export or analysis stage is reported honestly**: the viewer

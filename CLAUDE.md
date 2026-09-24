@@ -5,23 +5,24 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
 
 ## Start here
 
-- **Direction (since 2026-09-23).** PDT is an internal helper for a business
-  analyst / process manager, not a product. An SME records a process a few
-  times (alone or during a call), the recorder drafts the steps, the analyst
-  confirms run 1, and the app produces a process map and a tool-neutral PDD.
+- **Direction (since 2026-09-23).** PDT is an internal business process
+  companion for a business analyst / process manager, not a product. An SME
+  records a process a few times (alone or during a call), the recorder
+  drafts the steps, the analyst confirms one reference run, and the app
+  produces a process map and a tool-neutral PDD. A project can also start
+  from a video or from nothing.
 - **Plan of record** (approved 2026-09-23):
   [docs/To-Do/BA-HELPER-PLAN-2026-09-22.md](docs/To-Do/BA-HELPER-PLAN-2026-09-22.md).
-  Decisions and the list of what was cut:
-  [ADR-0029](docs/adr/0029-ba-helper-refocus.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-21, the merge
+  Decisions and what was cut: [ADR-0029](docs/adr/0029-ba-helper-refocus.md).
+  The reviews that reshaped the viewer:
+  [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
+  [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-28, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
-  Data contracts C1 to C13:
+  Data contracts C1 to C16:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
-- **Baseline** the refocus started from (health, CI history, code review
-  RP-01 to RP-36): [docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
-- **Not landed yet:** the UI subtraction (lanes LUX-A and LUX-B) that applies
-  [docs/To-Do/UI-CLARITY-AUDIT-2026-09-23.md](docs/To-Do/UI-CLARITY-AUDIT-2026-09-23.md).
-  Viewer layout details will change with it.
+- **Baseline** (health, CI history, code review RP-01 to RP-36):
+  [docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
 - **Owner-gated:** the P1 draft probe
   ([runbook](docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md)) and the P5 real-session
   gate ([runbook](docs/To-Do/P5-REAL-SESSION-GATE.md)). Demo data never
@@ -32,67 +33,66 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   light version is being prepared as **2.0.0** and is not released yet (see
   `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md)).
 
-History: from 2026-05 to 2026-07 PDT was built as a process-mining product:
-0.x releases, then 1.x from the 2026-06-09 1.0 milestone (tag `v1.0.0-clean`;
-an ML edition is parked on branch `project-vision-ai-ml`, tag `v1.0.0-ml`) up
-to v1.5.0 on 2026-07-03. [CHANGELOG.md](CHANGELOG.md) holds the per-release
-history; its headers, not internal cycle names, are the source of truth for
-tags.
+History: PDT was a process-mining product from 2026-05 to v1.5.0
+(2026-07-03); an ML edition is parked on branch `project-vision-ai-ml`.
+[CHANGELOG.md](CHANGELOG.md) headers are the source of truth for tags.
 
 ## What this is
 
 A Windows tool in three layers that never talk over a network:
 
-1. **Capture** (`capture/`): the SME's tray app (Electron) plus a C# .NET 8
-   UI Automation recorder sidecar. One run hotkey brackets each run of the
-   process. It writes an append-only `events.jsonl`, a `manifest.json` and
-   screenshots; OBS video is optional.
-2. **Normalization** (`normalization/`): the Python pipeline. It turns the
-   markers into runs, drafts each run's steps, computes statistics and
-   findings, mines the step-level map (`--mine`) and writes the PDD
-   (`--pdd-out`).
-3. **Viewer** (`viewer/`): the analyst's Electron app. It bundles its own
-   Python and runs the pipeline on "Analyze". Four levels: Overview, Flow,
-   Steps, Map.
+1. **Capture** (`capture/`): the SME's tray app (Electron) with a small
+   recording bar, plus a C# .NET 8 UI Automation recorder sidecar. One start:
+   the bar, the tray, the welcome and the run key all start the recording
+   with Run 1, then each press starts the next run. It writes an append-only
+   `events.jsonl`, a `manifest.json` and screenshots (OBS video optional);
+   the end summary makes a zip for the analyst.
+2. **Normalization** (`normalization/`): the Python pipeline: runs from the
+   markers, drafted steps, statistics and the analysis, the step-level map
+   (`--mine`) and the PDD (`--pdd-out`).
+3. **Viewer** (`viewer/`): the analyst's Electron app, with its own Python;
+   it runs the pipeline by itself. Four levels: Overview, Timeline, Steps,
+   Map.
 
 The hand-off is the **session folder**, copied from the SME's machine to the
-analyst's. The analyst may add a video (the SME's own OBS recording, or a
-recording of the call; one active video per session) and a Teams transcript.
-No AI ships inside the product.
+analyst's; what the analyst adds (a video, a transcript, screenshots, notes,
+attachments, edited maps) lives in it too. No AI ships inside the product.
 
 ## The analyst path
 
-Plan section 5, as it stands in the code:
+1. **Open** a recording folder, or *New from a video...* or *New without a
+   recording...* (Open menu). The analysis runs by itself (on open when it
+   is missing or older, after Leave apps out, inside Edit as the As-Is map,
+   before a PDD export), with one status line and Cancel. *Apply N marker
+   changes* stays deliberate; Help, Troubleshooting has Re-analyze.
+2. **Attach** a video (copied into the folder, synced with two clicks) and a
+   transcript, if any.
+3. **Confirm the reference run** (run 1 unless another is picked): fix and
+   name its steps, write descriptions, Confirm run.
+4. **Review the other runs**: each lists its differences; they are not
+   confirmed.
+5. **Write the document** on the Overview (trigger, result and improvement
+   among its fields).
+6. **Check the map**; optionally *Edit as the As-Is map* (and a To-Be copy).
+7. **Export the PDD**: its map is the edited As-Is copy when one exists, else
+   the map from the runs.
 
-1. **Open** the session folder.
-2. **Attach a video** if there is one, and the meeting transcript if there is
-   one. Its sentences line up with the recording (through the video's sync,
-   or by matching one sentence to one moment).
-3. **Confirm run 1**, the pattern run: rename, merge, split, hide, or add
-   steps against the video or the screenshots. A missed run marker is added
-   by hand in Flow. Every rename is remembered.
-4. **Review runs 2 to N**: each shows its differences from the pattern run.
-5. **Check the map** built from the runs' steps.
-6. **Finish the map**: fork an editable As-Is copy (and a To-Be when wanted);
-   the copies chosen for the PDD embed in it.
-7. **Read the findings.**
-8. **Export the PDD.** Optionally "Save as this process": a later session of
-   the same process is then compared with it, and its drafts already carry
-   the remembered names.
+Along the way the analyst adds what the recording lacks: steps, screenshots,
+notes, attachments, a step's system.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `capture/` | SME side: tray app, Live Session window, run hotkey; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
+| `capture/` | SME side: tray app, recording bar, end summary, run key; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
-| `e2e/` | The in-repo Playwright gate: smokes against the real viewer, all run by `run-all.js`. |
-| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule). |
+| `e2e/` | The in-repo Playwright gate: seven smokes against the real viewer, all run by `run-all.js`. |
+| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
 | `sessions/example-aggregate/` | The committed demo: 10 sessions of one order-to-cash process. |
-| `corpus/` | Product-era test scenarios (scripts, events, expected outputs); no test or gate reads them. |
+| `corpus/` | Product-era test scenarios; no test or gate reads them. |
 | `.claude/agent-findings/` | Cycle records: contracts, resume state, findings register, cut map. |
 | `sessions/` (rest), `dist/` | Gitignored: captured sessions and build output. |
 
@@ -104,7 +104,8 @@ Plan section 5, as it stands in the code:
 | [docs/architecture/DATA-MODEL.md](docs/architecture/DATA-MODEL.md), [shared/SCHEMA.md](shared/SCHEMA.md) | Session files, the annotation model. Touching session data: read SCHEMA. |
 | [docs/architecture/CAPTURE.md](docs/architecture/CAPTURE.md) | The capture app and the recorder. |
 | [docs/architecture/NORMALIZATION.md](docs/architecture/NORMALIZATION.md) | The pipeline: CLI, stages, modules. |
-| [docs/architecture/VIEWER.md](docs/architecture/VIEWER.md), [VIEWER-TIMELINE.md](docs/architecture/VIEWER-TIMELINE.md) | The viewer's internals. Both still describe the product viewer; the rewrite waits for the subtraction lane. |
+| [docs/architecture/VIEWER.md](docs/architecture/VIEWER.md), [VIEWER-TIMELINE.md](docs/architecture/VIEWER-TIMELINE.md) | The viewer: modules, levels, state, IPC, the timeline. |
+| [docs/FEATURES.md](docs/FEATURES.md) | What the light version does, by component. |
 | [docs/architecture/DESIGN-SYSTEM.md](docs/architecture/DESIGN-SYSTEM.md) | CSS tokens, themes, contrast, the UI copy style guide. |
 | [docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) | The discipline every new verb passes. |
 | [docs/adr/](docs/adr/README.md) | Decisions; the registry is CI-enforced. |
@@ -113,86 +114,83 @@ Plan section 5, as it stands in the code:
 
 ## Key concepts
 
-- **The drafting rule** (contract C1, `step_suggest.auto_suggest_steps`).
-  Within a run, walk the interactions in time order: a step is a stretch on
-  one screen, ending at a commit interaction (a button, split button, menu
-  item or link invocation, or a vocab entry with `completion: true`),
-  inclusive; or at the first interaction on another screen, exclusive; or at
-  the end of the run. Interactions outside every run are drafted the same way
-  with `case_id: null`. Each draft carries `draft_key`
-  (`"<app>|<screen>|<commit>"`, value-free), `name_source` (`remembered` or
-  `draft`) and `end_reason` (`commit`, `screen_change`, `run_end`).
-- **Merged steps keep `draft_keys`**: the members' keys in order. A merge in
-  the pattern run is carried to the same drafts in the other runs, and the
-  differences view and the PDD's section 6.1 align on one rule (draft key,
-  merge key, else label), pinned by `shared/run-differences-golden.json`.
+- **The drafting rule** (C1, `step_suggest.py`). Within a run, a step is a
+  stretch on one screen ending at a commit (a button, menu item or link
+  invocation, or a vocab `completion: true`), inclusive; at the first
+  interaction on another screen; or at the run's end. Each draft carries
+  `draft_key` (`"<app>|<screen>|<commit>"`), `name_source` and `end_reason`;
+  merged steps keep `draft_keys`.
 - **Step states:** `auto_suggested` (a draft), `confirmed`, `edited`,
-  `manually_authored`, `hidden`. Everything except `auto_suggested` survives
-  re-analysis. Drafts are hidden, not deleted, so Analyze cannot bring them
-  back.
-- **The pattern run** (`annotations.pattern_run`, C3): the run the analyst
-  confirms first (default: the first run with a step). Confirm run turns its
-  remaining drafts into `confirmed`; Reopen run is the inverse.
-  `draft_fixes` counts merge, split, add and drop on it: the P1 probe number.
-- **Remembered names** (light vocab, C4):
-  `<viewer userData>/pdt-library/remembered-names.json`, keyed by
-  `draft_key`. A rename is remembered, applied at once to the session's other
-  drafts with that key, and read by the pipeline through `--names` on every
-  Analyze. The Remembered names dialog renames or forgets one.
-- **Saved processes** (light template, C5):
-  `<viewer userData>/pdt-library/processes.json`, written by "Save as this
-  process". A session with no confirmed pattern run is compared with the
-  closest saved process (distinct `draft_key` overlap, Jaccard, at least 0.5).
-  Viewer only; the pipeline never reads it.
-- **Runs.** Case detection is markers only. Runs never nest: a Start that
-  arrives while a run is open ends that run first (the derived start marker
-  names it in `ends_case_id`). Case ids are deterministic (C9:
-  `uuid5(namespace, "<session_id>:<start marker event_id>")`), so analyst
-  steps stay attached across re-analysis. A session with no run markers has
-  no runs.
-- **The map.** The Map level draws one process map from the runs' visible
-  steps. `--mine` writes the matching step-level BPMN,
-  `process_map_step.bpmn`, which Fork copies into an editable As-Is or To-Be
-  map (`annotations.reference_maps[]`, blob in `derived_maps/`; ADR-0019).
-  The pipeline never touches a fork.
-- **The PDD** (`pdd_export.py`) is tool-neutral and built around the
-  confirmed pattern run. Document sections (C6, `annotations.document`:
-  title, purpose, scope, contacts, business rules, exceptions, notes) fill its
-  placeholders and survive re-export; a step's `description` (C7) is its text
-  in the detailed steps. Section 1 holds the findings.
-- **The meeting transcript** (C8). The viewer's Attach transcript runs
-  `transcript_import.py`, which writes `transcript.json`. A sentence's wall
-  time is `manifest.started_at + offset + start_s`; the offset is
-  `transcript.offset_ms` once the analyst synced it, else the attached
-  video's offset, else the sentence is not placed. Sync writes `offset_ms`, a
-  re-import resets it to `null`, Remove deletes `transcript.json` only. A
-  sentence added to a step's description or a document field reaches the
-  PDD. Nothing interprets the text.
-- **Raw data is immutable.** `events.jsonl` is append-only; every analyst edit
-  lives in `annotations.json`. Both writers replace that file atomically
-  (temp file, then rename); the viewer first copies the current file into
-  `annotations.json.2` (newest) to `.5`. An unreadable `annotations.json` is
-  reported and never overwritten. Keys of cut features round-trip untouched
-  (C10).
-- **Honest failures.** A failed analysis stage writes its key as `null` and
-  one entry in `analysis.json.stage_errors` (C12); renderers say "this check
-  could not run on this recording", never a measured zero.
-- **`normalize.py` exit codes** (C13): 0 success; 1 usage error or not a
-  session folder (also an unexpected crash); 2 unreadable `annotations.json`,
-  nothing written; 3 a requested export failed after the analysis outputs
-  were written. Errors are one stderr line starting `[normalize] ERROR:`.
-- **Value-free labels.** `process_label` (the grouping key) and the screen
-  string strip record numbers and case values with the rules in
-  `shared/process-label-patterns.json` and `shared/screen-label-patterns.json`,
-  loaded by both Python (`step_suggest`) and JS (`process-map-levels.js`).
-  Nothing to hand-sync. A vocab `screen_id` wins when present.
-- **Recognition layer** ([ADR-0011](docs/adr/0011-platform-recognition-layer.md)):
-  interactions are typed by documented platform signatures in
-  `shared/recognition-patterns.json`, read by `viewer/recognition.js` and
-  `normalization/recognition.py`.
-- **Classification** is an internal engine with no editing UI (AD-16).
-  Drafting does not use it; the analysis stages and the PDD findings do,
-  fed by the bundled `taxonomy.yaml` the viewer always passes.
+  `manually_authored`, `hidden`. All but drafts survive re-analysis; drafts
+  are hidden, not deleted, so an analysis cannot bring them back.
+- **The reference run** (`annotations.pattern_run`, C3): default the first
+  run with a step; *Use as reference run* picks another. Confirm run turns
+  its drafts into `confirmed`; Reopen run is the inverse. The other runs are
+  reviewed, never confirmed (AD-28; `annotations.opened_runs`).
+  `draft_fixes` counts its merges, splits, adds and drops: the P1 probe.
+- **Saved names** (C4, `<viewer userData>/pdt-library/remembered-names.json`,
+  keyed by `draft_key`): a rename is saved and names the session's other
+  drafts of that key at once. The pipeline reads it through `--names`, after
+  the session's own names, which travel with the folder. The Saved names
+  dialog renames or forgets one.
+- **Saved processes** (C5, `<viewer userData>/pdt-library/processes.json`):
+  *Save as this process* stores the confirmed reference run; a session
+  without one is compared with the closest saved process (`draft_key`
+  overlap). Viewer only.
+- **Runs.** Markers only, never nested: a Start while a run is open ends
+  that run first. Case ids are deterministic (C9), so analyst steps stay
+  attached across re-analysis. A recording without run markers has no runs.
+- **Sessions without a recording** (C16): `manifest.source` `video` or
+  `blank`, an empty `events.jsonl`, one implicit run until a Start is
+  inserted; a video project's Timeline runs on the video's length. Steps
+  added by hand have `time_range: null` and an `order` (Alt+Up and Alt+Down
+  move one), listed after the timed steps, with no duration.
+- **What the analyst adds** (C16), inside the folder: screenshots in
+  `screenshots/analyst/` (a video frame, a pasted image or a file;
+  `step.pdd_screenshot` picks the one the PDD prints), notes in
+  `analyst_notes` (on a step or a moment; never printed; the old `notes`
+  key round-trips), attachments in `attachments/` (listed in the PDD), and
+  `step.system`. Removing one deletes its entry and file; Undo restores both.
+- **System names** (C14): `shared/system-names.json` turns an application
+  and a window title into the business system (Salesforce for a Chrome
+  window on Salesforce), read by `app_names.py` and `system-names.js` for
+  the legend, the fact line, the map boxes, the panel and the PDD. A
+  `step.system` set by the analyst wins.
+- **The video travels with the folder.** Attach video copies it into
+  `video/` and stores its path relative to the folder; a missing absolute
+  path falls back to a file of that name in the folder (`video-path.js`).
+- **One clock.** The viewer's times and the PDD's pointers read the time
+  since the recording started (m:ss or h:mm:ss); the time of day shows only
+  in the Timeline's summary.
+- **The step panel** (`views/step-panel.js`): three doors (a map box, a
+  timeline step band, a Steps row) open one panel with every occurrence of
+  the step: its moment, a small video, screenshots, what was said, notes.
+- **The map.** One process map from the runs' visible steps, each box naming
+  its system. `--mine` writes `process_map_step.bpmn`, which *Edit as the
+  As-Is map* copies into an editable As-Is or To-Be map (ADR-0019; the
+  pipeline never touches a copy). The chosen As-Is map shows first.
+- **The PDD** (`pdd_export.py`): tool-neutral, built around the confirmed
+  reference run. The document fields (C6) fill their places and survive
+  re-export; a step's `description` (C7) is its text.
+- **The meeting transcript** (C8): `transcript_import.py` writes
+  `transcript.json`. A sentence is placed through its own sync, else the
+  attached video's; added to a description or a document field, it reaches
+  the PDD.
+- **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 2 now):
+  the viewer analyzes a folder on open when it is missing or lower.
+- **Raw data is immutable.** `events.jsonl` is append-only; analyst edits
+  live in `annotations.json`, replaced atomically, the viewer keeping
+  `annotations.json.2` (newest) to `.5`. An unreadable one is reported and
+  never overwritten. Keys of cut features round-trip (C10).
+- **Honest failures.** A failed stage writes its key as `null` plus one
+  `stage_errors` entry (C12), shown as "could not run", never as zero.
+  `normalize.py` exits (C13) 0, 1 usage or crash, 2 unreadable
+  `annotations.json` (nothing written), 3 a failed export.
+- **Shared rules.** `process_label` and the screen string strip case values
+  (`shared/*-label-patterns.json`, loaded by Python and JS); interactions
+  are typed by platform signatures (`shared/recognition-patterns.json`,
+  [ADR-0011](docs/adr/0011-platform-recognition-layer.md)). Classification is
+  an internal engine with no UI (AD-16).
 
 ## Commands
 
@@ -225,9 +223,7 @@ Re-analyze a session the way the viewer does:
 viewer/python/python.exe normalization/normalize.py <session_folder> --taxonomy normalization/taxonomy.yaml --mine --names "<viewer userData>/pdt-library/remembered-names.json"
 ```
 
-Import a Teams transcript (exit 0 imported, 1 bad arguments or not a session
-folder, 2 unreadable or unsupported transcript, 3 session read or write
-failure):
+Import a Teams transcript (exit codes in NORMALIZATION.md):
 
 ```
 viewer/python/python.exe normalization/transcript_import.py <session_folder> <transcript.vtt|.docx>
@@ -254,26 +250,26 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 ```
 
 `publish-release.ps1` refuses unless the tree is clean and HEAD equals
-`origin/master` (`gh release create` tags the default branch's HEAD);
-`-Prerelease` marks a pre-release. Detail:
+`origin/master`; `-Prerelease` marks a pre-release. Detail:
 [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md).
 
 ## Verification
 
 - UI bugs are invisible to the unit suites: validate behaviour in the real
-  viewer through the e2e smokes. `e2e/session-smoke.js` holds the map
-  connectivity pin (one component, one entry step, one final step).
+  viewer. `e2e/run-all.js` runs seven smokes: `session`, `overview`, `runs`,
+  `map-slim`, `transcript`, `panel` and `companion` (each `<name>-smoke.js`;
+  [e2e/README.md](e2e/README.md) says what each covers). `session-smoke.js`
+  holds the map connectivity pin (one component, one entry, one end).
 - The gates before any merge to master (resume state, "Gates"): full-deps
   pytest, the golden, `node --test` in `viewer/` and `capture/`,
   `node run-all.js` in `e2e/`, and `dotnet test` when `capture/recorder/`
   changed.
 - CI runs `pytest.yml`, `js.yml` and `e2e.yml` on `windows-latest`. Check
-  `gh run list --branch master --limit 6` at session start: CI once stayed red
-  for months while local runs looked green.
-- Agents read [docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md) for the hard
-  invariants and how to launch the viewer. Its command list and DOM-handle map
-  predate the light viewer (rewrite queued); the commands in this file are
-  current.
+  `gh run list --branch master --limit 6` after every push: CI once stayed
+  red for months while local runs looked green.
+- Agents read [docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md) first: the
+  hard invariants with the guard for each, how to launch the viewer, and the
+  DOM handles of every surface.
 - Released-build claims are validated on the packaged app (it bundles its own
   Python), not the dev box.
 - The skills pack lives in `~/.claude/skills/` (user-global);

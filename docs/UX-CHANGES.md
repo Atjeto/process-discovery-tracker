@@ -1,5 +1,11 @@
 # UX overhaul (post-v0.2.0)
 
+> **Product-era history.** This is the log of one UX pass on the product
+> edition, shipped in v0.3.0 (2026-05-15), kept as it was written. Most of
+> the surfaces it names have since changed or gone (the Live Session window,
+> the hotkey overlay, phases, the density lane). What the app does now:
+> [FEATURES.md](FEATURES.md); every release since: [CHANGELOG.md](../CHANGELOG.md).
+
 This document describes the UX changes made in a single pass following
 a thorough audit. They live in the working tree (not yet committed,
 built, or released) so a follow-up session can review, test, and ship.

@@ -10,14 +10,14 @@
 
 | Source | Holds |
 |---|---|
-| [`viewer/styles.css`](../../viewer/styles.css) | Every rule — one global stylesheet, no preprocessor, no modules. `:root` holds the light tokens, `:root[data-theme="dark"]` the dark overrides; `@font-face` blocks load the self-hosted fonts |
-| [`viewer/theme.js`](../../viewer/theme.js) | Theme state, persistence (`localStorage` `pdt.theme`), the `onChange` bus, and the light/dark JS palettes (app / step / phase) + the DFG token snapshot |
-| [`viewer/fonts/`](../../viewer/fonts/) | Self-hosted woff2 — `plus-jakarta-sans.woff2`, `jetbrains-mono.woff2` (variable fonts) |
-| [`viewer/views/flow-view.js`](../../viewer/views/flow-view.js) `appColor()` | Per-app activity-band colours — palette from `theme.js` |
-| [`viewer/step-editor.js`](../../viewer/step-editor.js) / [`phase-editor.js`](../../viewer/phase-editor.js) | Per-step / per-phase band colours — palettes from `theme.js` |
+| [`viewer/styles.css`](../../viewer/styles.css) | Every rule: one global stylesheet, no preprocessor, no modules. `:root` holds the light tokens, `:root[data-theme="dark"]` the dark overrides; `@font-face` blocks load the self-hosted fonts |
+| [`viewer/theme.js`](../../viewer/theme.js) | Theme state, persistence (`localStorage` `pdt.theme`), the `onChange` bus, and the two JS palettes: the per-app band colours and the process map's colour snapshot |
+| [`viewer/fonts/`](../../viewer/fonts/) | Self-hosted woff2: `plus-jakarta-sans.woff2`, `jetbrains-mono.woff2` (variable fonts) |
+| [`viewer/views/flow-view-apps.js`](../../viewer/views/flow-view-apps.js) `appColor()` | The timeline's per-app band colours, from `theme.js` |
+| [`viewer/dfg-viewer.js`](../../viewer/dfg-viewer.js) | The process map's colours, from `theme.js` |
 
 Colour is split: a CSS token layer for chrome (both themes), plus JS
-palettes for data marks that cannot read CSS variables — all owned by
+palettes for data marks that cannot read CSS variables, all owned by
 `theme.js`, so a theme switch has one source of truth.
 
 ## The themes
@@ -55,39 +55,43 @@ property names with the dark (Studio Dark) values. Every other rule
 consumes `var(--token)`, so the dark block is the only place dark chrome
 is defined. The hex tables below are the **light** values.
 
-**Backgrounds** — warm surface stairway (stage → white cards → elevated):
+**Backgrounds**, a warm surface stairway (stage, white cards, elevated):
 
 | Token | Hex | Typical use |
 |---|---|---|
 | `--bg` | `#faf8f4` | app stage / base |
 | `--bg-1` | `#f4f1eb` | low panels |
-| `--bg-2` | `#ffffff` | cards, panels, the topbar |
-| `--bg-3` | `#f0ebe2` | timeline track, inputs, tab strip |
+| `--bg-2` | `#ffffff` | cards, panels, the top bar |
+| `--bg-3` | `#f0ebe2` | timeline track, inputs, hovers |
 | `--bg-4` | `#e6e0d5` | raised fills, scrollbar thumb |
 | `--bg-5` | `#dbd4c8` | top elevation |
 
-**Foreground** — warm neutral scale, near-black down to muted taupe:
+**Foreground**, a warm neutral scale from near-black to muted taupe:
 
 | Token | Hex | Use |
 |---|---|---|
 | `--fg` | `#2c2418` | primary text |
 | `--fg-2` | `#635848` | secondary text |
-| `--fg-3` | `#786c5a` | tertiary / muted labels (≥4.5:1 on `--bg`/`--bg-1`; darkened from `#9a8e7e`, which was 3.03:1) |
-| `--fg-4` | `#c0b5a5` | faintest text, disabled — decorative only (below AA; never load-bearing text) |
+| `--fg-3` | `#786c5a` | tertiary / muted labels (at least 4.5:1 on `--bg`/`--bg-1`; darkened from `#9a8e7e`, which was 3.03:1) |
+| `--fg-4` | `#c0b5a5` | faintest text, disabled: decorative only (below AA; never load-bearing text) |
 
-**Accents & functional:**
+**Accents and functional:**
 
 | Token | Hex | Meaning |
 |---|---|---|
-| `--accent` | `#c07830` | amber — primary accent |
-| `--accent-hover` | `#a86828` | amber, darker — hover on accent fills |
-| `--accent-muted` | `rgba(192,120,48,.10)` | faint amber wash — selection / range overlays |
-| `--accent-text` | `#fff8f0` | text/icons on an accent fill |
-| `--accent-2` | `#5a7a8a` | slate blue — secondary accent |
-| `--accent-3` | `#b08040` | amber-gold — tertiary |
-| `--warn` | `#b08040` | amber-gold — markers / warnings |
-| `--bad` | `#a05a3a` | rust — errors / destructive |
-| `--rec` | `#c04040` | red — recording / danger buttons |
+| `--accent` | `#c07830` | amber: the primary accent (the active level, primary buttons, the next act) |
+| `--accent-hover` | `#a86828` | darker amber: hover on accent fills |
+| `--accent-muted` | `rgba(192,120,48,.10)` | faint amber wash: selection and range overlays |
+| `--accent-text` | `#fff8f0` | text and icons on an accent fill |
+| `--accent-2` | `#5a7a8a` | slate blue: the secondary accent |
+| `--accent-3` | `#b08040` | amber-gold: tertiary |
+| `--warn` | `#b08040` | amber-gold: markers, warnings |
+| `--bad` | `#a05a3a` | rust: errors, destructive |
+| `--rec` | `#c04040` | red: recording, danger buttons |
+| `--va` | `#5a8f6a` | green: a done stage of What is left, the Confirmed chip and status |
+
+`--bnva` and `--nva` are still defined next to `--va` (the product
+edition's waste bars) and nothing reads them.
 
 **Rules, shadow, geometry:** `--rule` `#e5ddd0` and `--rule-soft`
 `#ede7dc` are warm hairlines; `--shadow` `0 1px 3px rgba(40,30,10,.05),
@@ -95,57 +99,65 @@ is defined. The hex tables below are the **light** values.
 rgba(40,30,10,.08)`. Corners are **sharp**: `--radius` `4px`,
 `--radius-sm` `3px`, `--radius-x` `2px`. `--transition` is `0.15s ease`.
 
-**Fonts:** `--font-ui` Plus Jakarta Sans, `--font-mono` JetBrains Mono —
+**Fonts:** `--font-ui` Plus Jakarta Sans, `--font-mono` JetBrains Mono,
 both self-hosted variable woff2, declared via `@font-face` at the top of
 `styles.css`.
 
 ### Type scale (both apps)
 
-Every font-size in the product sits on this ladder — don't invent
-in-between steps on new surfaces:
+Every font-size sits on this ladder; don't invent in-between steps on new
+surfaces:
 
 | Step | Use | Weight |
 |---|---|---|
-| 8–9px | micro mono badges (state glyphs, axis ticks) | 400–600 |
-| 10px | **overline labels** — uppercase, `letter-spacing: 0.4px`, 600, `--fg-3` (section titles, tile labels) | 600 |
+| 8 to 9px | micro mono badges (state glyphs, axis ticks, the screenshot rail label) | 400 to 600 |
+| 10px | **overline labels**: uppercase, `letter-spacing: 0.4px`, 600, `--fg-3` (section titles) | 600 |
 | 11px | secondary text, mono data values, hints | 400 |
 | 12px | controls, buttons, body-secondary | 400 |
 | 13px | **body** (the `html` base) and emphasized labels | 400 / 600 |
-| 14px | emphasized mono (timers) | 400–600 |
-| 15–16px | pane / dialog titles (`h2`, window headers) | 600 |
-| 20px | **stat values** in tiles — `--font-mono`, `line-height: 1.2` | 700 |
-| 34px | the single hero stat (Analysis efficiency figure) | 700 |
+| 14px | icon buttons (mono glyphs), dialog titles | 400 to 600 |
+| 15 to 16px | pane titles (the step panel's step name, `h2`) | 600 |
+
+Larger sizes are glyphs only, never text: the empty state's icon, the
+no-video icon, a list's remove cross.
 
 ### Capture windows share the same stack
 
-The capture app's windows (operator panel, wizard, welcome, settings,
-consent, label picker, …) consume the **same two font tokens** via
-[`capture/ui/tokens.js`](../../capture/ui/tokens.js), which injects an
-`@font-face` + `:root { --font-ui; --font-mono }` block (fonts inlined as
-`data:` URIs — capture windows load via `data:` URLs where `file:` fetches
-are CSP-blocked) into every window's markup. The token values are
-**duplicated verbatim** from `styles.css` — capture and viewer are
-separate apps with no cross-imports, so when the stack changes here,
-update `capture/ui/tokens.js` (and the `capture/ui/fonts/` byte-copies)
-by hand in the same commit.
+The capture app's windows (the recording bar, the end summary, the welcome,
+Help, consent, Settings, Profile, Recording setup) consume the **same two
+font tokens** via [`capture/ui/tokens.js`](../../capture/ui/tokens.js),
+which injects an `@font-face` + `:root { --font-ui; --font-mono }` block
+into every window's markup, the fonts inlined as `data:` URIs (most capture
+windows load from `data:` URLs, where `file:` fetches are CSP-blocked). The
+token values are **duplicated verbatim** from `styles.css`: capture and
+viewer are separate apps with no cross-imports, so when the stack changes
+here, update `capture/ui/tokens.js` (and the `capture/ui/fonts/`
+byte-copies) by hand in the same commit.
 
 ## Component conventions
 
-- **Cards / panels** — `--bg-2` (white) fill, `var(--shadow)`, sharp
-  `var(--radius)` corners. The timeline pane, annotations pane, aggregate
-  panels, and the editor panes all follow this.
-- **Buttons** — default: white `--bg-2` fill, `--rule` border, `--fg`
-  label. Primary: `--accent` fill, `--accent-text` label,
-  `--accent-hover` on hover. Danger: `--rec` fill.
-- **Topbar / tab strip** — the topbar is white with a soft shadow; the
-  tab strip is a `--bg-3` trough with the active tab lifted to white +
-  shadow.
-- **Bottom playback bar** — a global video transport pinned below the
-  Session view as a flex sibling of `<main>` (`--bg-2`, top hairline);
-  the `.hidden` class collapses it off the Session tab / when no
-  recording is loaded.
-- **Video pane** — stays dark (`#0a0908`) regardless of theme; video is
-  dark by nature, and its overlay controls use light-on-dark colours.
+- **Cards and panels**: `--bg-2` (white) fill, `var(--shadow)`, sharp
+  `var(--radius)` corners. The timeline pane, the Timeline's side panel,
+  the Steps panes, the Map panel and the Overview's sections follow this;
+  the step panel is a white column with a hairline on its left. The
+  Overview's What is left line is the exception: an amber wash
+  (`--accent-muted`) inside an `--accent` border.
+- **Buttons**: default, a white `--bg-2` fill, `--rule` border, `--fg`
+  label, `--bg-3` with an accent border on hover. Primary: `--accent`
+  fill, `--accent-text` label, `--accent-hover` on hover (one primary
+  button per surface: the next act). Danger: `--rec` fill, and the plain
+  look again while disabled. Link buttons (`.link-btn`) carry the small
+  acts inside text (Attach, Replace, Remove).
+- **The top bar and the level buttons**: the top bar is white with a soft
+  shadow; a level button is transparent until hovered (`--bg-3`); the
+  active level is filled with `--accent`, and keeps its colours under the
+  mouse.
+- **Bottom playback bar**: a video transport pinned below the levels as a
+  flex sibling of `<main>` (`--bg-2`, top hairline); the `.hidden` class
+  collapses it while no video is loaded.
+- **Video pane**: stays dark (`#0a0908` under a radial glow) whatever the
+  theme; video is dark by nature, and its overlay controls use light on
+  dark. Without a video it collapses to a slim band.
 
 ## UI copy style guide (lab Phase F)
 
@@ -200,44 +212,40 @@ v1.1.0 walk-through ([docs/To-Do/ui-copy-feedback.md](../To-Do/ui-copy-feedback.
 
 ## JS colour palettes (data marks)
 
-Activity bands, step / phase blocks, and the DFG render colours into
-inline styles or a `<canvas>` — none can read CSS variables. Those
+The timeline's activity bands and the process map render colours into
+inline styles or a `<canvas>`, where CSS variables cannot be read. Those
 palettes therefore live in `theme.js`, each with a light and a dark
 variant, reached through accessors that return the active theme's set:
 
 | Accessor | Consumer | Holds |
 |---|---|---|
-| `appColors()` | `flow-view.js` `appColor()` | per-app cycling palette + fixed assignments for known executables |
-| `stepPalette()` | `step-editor.js` | per-step block colours |
-| `phasePalette()` | `phase-editor.js` | per-phase band colours |
-| `bandAlphas()` | `step-editor.js` / `phase-editor.js` | step / phase tint + border alpha (raised on dark so the tint clears the dark track) |
-| `dfgStyleTokens()` | `dfg-viewer.js` | DFG hex snapshot mirroring the `:root` tokens |
+| `appColors()` | `views/flow-view-apps.js` `appColor()` | per-app cycling palette + fixed colours for known executables |
+| `dfgStyleTokens()` | `dfg-viewer.js` | the map's hex snapshot, mirroring the `:root` tokens |
 
-Flow-timeline **activity bands** are painted with the solid per-app
-colour and carry white labels — each palette colour is deep enough that
-white text clears a comfortable contrast margin. **Step / phase**
-mini-timeline blocks are painted with a translucent tint of the palette
-colour (`timeline/timeline-core.js` `tintAlpha` / `borderAlpha`) plus a
-stronger border and full-strength text. The dark variants are brighter
-and use a higher tint alpha so the mark still reads on the dark `--bg-3`
-track.
+Timeline **activity bands** are painted with the solid per-app colour and
+carry white labels; each palette colour is deep enough that white text
+clears a comfortable contrast margin. The dark variants are brighter and
+cooler, so the bands read on the dark base. A band is coloured by its
+application and named by its business system (a Chrome band on Salesforce
+reads "Salesforce"), so two systems in one browser share a colour.
 
 ## Notes
 
-- The DFG (Flow diagram) graph in `dfg-viewer.js` reads its colours from
-  `theme.js` `dfgStyleTokens()` — cytoscape renders to a `<canvas>` and
-  cannot read CSS variables, so the active theme's hex snapshot is read
-  fresh on each `render()`. Keep `dfgStyleTokens()` aligned with the
-  `:root` token blocks if the palette ever changes.
+- The process map (the directly-follows graph on the Map level,
+  `dfg-viewer.js`) reads its colours from `theme.js` `dfgStyleTokens()`:
+  cytoscape renders to a `<canvas>` and cannot read CSS variables, so the
+  active theme's hex snapshot is read fresh on each `render()`. Keep
+  `dfgStyleTokens()` aligned with the `:root` token blocks if the palette
+  ever changes.
 - `dfg-viewer.js` `exportSvg()` stays hardcoded to the **light** palette
-  regardless of the active theme — an exported diagram goes into a
-  document, which expects a light background.
-- The **BPMN** diagram (vendored `bpmn-js`) is styled by the library's
-  own CSS and is **not** themed; it stays light in both themes. The DFG
-  is the fully themeable process-map tab.
-- Studio Dark replaces the earlier abandoned "stratified-dark" theme.
-  That theme's low-contrast translucent-tint problem (issues D1–D3 in
-  the ARCHITECTURE-ISSUES register) is addressed here: the dark step /
-  phase palettes are brighter and use a higher tint alpha, and `--fg-3`
-  is held lighter than the source spec so muted labels keep ≥4.5:1
-  contrast on `--bg-2`.
+  whatever the theme: an exported map goes into a document, which expects
+  a light background.
+- The **BPMN** maps (the vendored `bpmn-js`: the As-Is map shown on the Map
+  level, the map editor, the pictures in the PDD) are drawn in the
+  library's own document colours (black lines and text, white shapes) and
+  are **not** themed: the editor's canvas stays light in the dark theme too.
+- Studio Dark replaces the earlier abandoned "stratified-dark" theme. That
+  theme's low-contrast translucent-tint problem (issues D1 to D3 in the
+  ARCHITECTURE-ISSUES register) is addressed here: `--fg-3` is held lighter
+  than the source spec so muted labels keep at least 4.5:1 contrast on
+  `--bg-2`.

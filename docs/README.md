@@ -58,8 +58,8 @@ The index has two parts:
 | [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) | The pipeline: CLI, stages, modules, outputs |
 | [interaction-recorder.md](interaction-recorder.md) | Design of the C# UI Automation recorder |
 | [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, the two themes, contrast rules, the UI copy style guide |
-| [architecture/VIEWER.md](architecture/VIEWER.md) | Viewer modules, state, IPC. Still describes the product viewer; rewritten after the viewer lanes |
-| [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline subsystem. Same status as VIEWER.md |
+| [architecture/VIEWER.md](architecture/VIEWER.md) | The viewer: its modules, the four levels, the step panel, state, IPC, the automatic analysis, the exports |
+| [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline: its lanes, the one clock, a video project's timeline, the video beside it |
 
 ### Principles that still bind
 
@@ -105,9 +105,9 @@ enforces the numbering). The decisions that shape the light version:
 | [DEPLOY.md](DEPLOY.md) | Installing on an SME's or an analyst's machine |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Error messages and diagnostics |
 | [../SECURITY.md](../SECURITY.md), [Security-QA.md](Security-QA.md) | Threat model; one-page Q&A for a corporate security review |
-| [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | Agents read first: the hard invariants and how to drive the viewer. Its command list and DOM-handle map predate the light viewer (rewritten after the viewer lanes) |
-| [FEATURES.md](FEATURES.md) | Capability catalogue. Still the product edition's; rewritten after the viewer lanes |
-| `User-Guide.docx` | Generated end-user guide (binary, built by `build-user-guide.js`). Same status as FEATURES.md |
+| [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | Agents read first: the hard invariants and the guard for each, how to drive the viewer, the DOM handles of every surface |
+| [FEATURES.md](FEATURES.md) | What the light version does, by component (the product edition's catalogue is on its branch) |
+| `User-Guide.docx` | Generated end-user guide (binary, built by `build-user-guide.js`). Still describes the product edition; the in-app Help is the light version's guide |
 | [../capture/README.md](../capture/README.md), [../viewer/README.md](../viewer/README.md), [../normalization/README.md](../normalization/README.md), [../e2e/README.md](../e2e/README.md) | Component quick-starts |
 | [claude-skills/README.md](claude-skills/README.md) | Frozen 2026-07-03 snapshot of the skills pack (the live copy is user-global) |
 

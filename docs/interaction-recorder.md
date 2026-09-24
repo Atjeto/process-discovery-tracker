@@ -1,9 +1,9 @@
-# Interaction Recorder — Feature Design
+# Interaction Recorder: Feature Design
 
-**Status:** Implemented — the recorder shipped; see [CAPTURE.md](architecture/CAPTURE.md) and [ADR-0001](adr/0001-click-recorder-sidecar-language.md)
+**Status:** Implemented (the recorder shipped); see [CAPTURE.md](architecture/CAPTURE.md) and [ADR-0001](adr/0001-click-recorder-sidecar-language.md)
 **Date:** 2026-05-14
 **Decisions of record:** [ADR-0001](adr/0001-click-recorder-sidecar-language.md)
-**Tool-wide design:** [`process_discovery_tracker_design.md`](../../process_discovery_tracker_design.md)
+**Tool-wide design:** `process_discovery_tracker_design.md`, the v0.2 design, kept outside the repository (at the workspace root, one level above it)
 
 ## 1. Purpose
 

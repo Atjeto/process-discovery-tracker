@@ -1,416 +1,455 @@
-# Viewer Architecture
+# Viewer
 
-> **Deep reference.** The viewer's structural refactor (ADR-0003) is **complete** —
-> the renderer is now a graph of CommonJS modules. This document and
-> [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md) are the maps for that structure. The
-> design-system pass (ADR-0003 Phase 4) was superseded by the Warm Editorial
-> redesign — see [ADR-0004](../adr/0004-flow-timeline-steps-rework.md) and
-> [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
+> The analyst's app in the light version ([ADR-0029](../adr/0029-ba-helper-refocus.md)):
+> how it is built, module by module. The timeline has its own page,
+> [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md); styling is in
+> [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md); the files it reads and writes are
+> in [SCHEMA.md](../../shared/SCHEMA.md). The product edition's viewer is on
+> branch `product-edition`.
 
 ## Contents
 
 1. [Process model](#1-process-model)
-2. [Module map](#2-module-map)
-3. [The module graph](#3-the-module-graph)
-4. [IPC surface](#4-ipc-surface)
-5. [View system](#5-view-system)
-6. [State model](#6-state-model)
+2. [The shell and the four levels](#2-the-shell-and-the-four-levels)
+3. [Module map](#3-module-map)
+4. [The module graph](#4-the-module-graph)
+5. [IPC surface](#5-ipc-surface)
+6. [State](#6-state)
 7. [Render pipeline](#7-render-pipeline)
-8. [Annotations editing & undo](#8-annotations-editing--undo)
-9. [Compare Sessions (Aggregate) view](#9-compare-sessions-aggregate-view)
-10. [Project layer](#10-project-layer)
+8. [The automatic analysis](#8-the-automatic-analysis)
+9. [Edits, undo and saving](#9-edits-undo-and-saving)
+10. [Exports](#10-exports)
 
 ## 1. Process model
 
-The Viewer is an Electron app: one **main process** ([`main.js`](../../viewer/main.js))
-and one **renderer** ([`index.html`](../../viewer/index.html) + a graph of
-`require()`d modules).
+The viewer is an Electron app: one **main process**
+([`main.js`](../../viewer/main.js)) and one **renderer**
+([`index.html`](../../viewer/index.html), its entry script
+[`renderer.js`](../../viewer/renderer.js) and the modules that entry
+`require()`s). There is no bundler: every module is plain CommonJS.
 
-- **One window**, 1400×900, created in `createMainWindow()`. A `--session=<path>`
-  argv entry is parsed at startup and pushed to the renderer as
-  `viewer:openInitialSession`.
-- `webPreferences` deliberately set `nodeIntegration: true`, `contextIsolation: false`.
-  This is why the renderer scripts call `require("electron")`, `require("node:fs")`,
-  and `require("./<module>.js")` directly. The risk is mitigated by `webSecurity`,
-  a deny-all `setWindowOpenHandler`, and a `will-navigate` guard.
-- The main process is thin: window lifecycle, file dialogs, the normalization
-  subprocess, and file I/O. **All UI logic lives in the renderer.**
+- **One window**, 1400x900, no application menu. A `--session=<folder>`
+  argument (the folder must hold a `manifest.json`) is sent to the renderer
+  once, after the page's first `did-finish-load`, as
+  `viewer:openInitialSession`. A page reload therefore opens nothing: a
+  driver relaunches instead.
+- **The renderer has Node** (`nodeIntegration: true`,
+  `contextIsolation: false`), so modules `require()` each other and
+  `node:fs` directly. The risk is contained around it: a Content Security
+  Policy in `index.html` (no network connections, no frames, no objects),
+  a window-open handler that denies everything, a `will-navigate` guard,
+  and checks in the main process on every path the renderer hands it
+  (below).
+- **The main process is thin**: the window, the file dialogs, the Python
+  runs (`normalize.py` and `transcript_import.py`, through
+  [`python-runner.js`](../../viewer/python-runner.js) with the bundled
+  Python), and the file writes. Everything on screen is the renderer's.
+- **Paths from session data are untrusted.** The main process remembers the
+  session folders it loaded. It opens a screenshot only when the path is
+  inside `screenshots/` of such a folder and has an image extension; an
+  attachment only when it is a file in `attachments/` of such a folder (a
+  document, an image or a mail opens in its program; any other type is
+  shown in its folder); it writes `annotations.json` only into a folder
+  with a `manifest.json`.
+- **One analysis at a time.** While `normalize.py` runs on a folder, the
+  main process refuses annotation writes to that folder (the pipeline
+  rewrites `annotations.json`): the analyst is told to make the change again
+  once the update is done.
+- **Removed files wait for an Undo.** A screenshot or an attachment the
+  analyst removed moves to `<userData>/pdt-removed/`, and back when an Undo
+  names it again; that folder is emptied when the viewer starts.
+- **Vendored libraries** load as globals from `index.html`: cytoscape with
+  cytoscape-dagre (the live map) and the bpmn-js modeler (the As-Is view,
+  the map editor and the off-screen map pictures).
 
-## 2. Module map
+## 2. The shell and the four levels
 
-`index.html` loads three vendored-library `<script src>` tags
-(cytoscape, cytoscape-dagre, bpmn-js — consumed as globals) plus the single
-`renderer.js` entry. The maintained **`@dagrejs/dagre`** layout engine now ships
-*inside* `cytoscape-dagre` 3.0 (the standalone `dagre` 0.8.5 `<script>` tag was
-dropped) and is `require()`d directly where the BPMN layout needs it
-(`bpmn-viewer.js`). Everything else is reached through `renderer.js`'s `require()`
-graph — there is no bundler (ADR-0003: the renderer already used CommonJS, so real
-modules need no build step). The apps run on **Electron 42**.
+**The top bar** (`index.html` `.topbar`) is the one bar: the Open menu, the
+four level buttons, the status line, the Export menu, Help and the theme
+toggle. The levels, the status line and Export show once a session is open
+(`.app.has-session`).
 
-**Entry + cross-cutting infrastructure** (flat in `viewer/`):
+- **Open** (`#btn-recent-menu`): *Open recording...*, *New from a video...*,
+  *New without a recording...* (contract C16), then the recent recordings.
+- **The status line** (`#session-pills`): "Updating steps and map..." with
+  Cancel while the pipeline runs; else, when marker changes wait, the one
+  call to action *Apply N marker changes*; else nothing.
+- **Export**: *PDD (.docx)*, *Process map (image)*, *Process map (BPMN)*
+  (section 10).
 
-| File | Role |
+**The four levels** are `.view-mode-btn[data-level]` buttons; each shows one
+container. The Overview is the default on load.
+
+| Level | `data-level` | Container | Render entry |
+|---|---|---|---|
+| Overview | `overview` | `#session-layout-overview` | `renderOverviewLevel()`, [`views/overview-view.js`](../../viewer/views/overview-view.js) |
+| Timeline | `flow` | `#session-layout-flow` | `renderTimeline()`, [`views/flow-view-timeline.js`](../../viewer/views/flow-view-timeline.js) |
+| Steps | `steps` | `#session-layout-steps` | `renderStepsLevel()`, [`views/steps-view.js`](../../viewer/views/steps-view.js) |
+| Map | `map` | `#session-layout-map` | `renderMapLevel()` in `renderer.js`, with [`map-controller.js`](../../viewer/map-controller.js) and [`refmap-ui.js`](../../viewer/refmap-ui.js) |
+
+- **Overview**: the "What is left" line (five stages: Runs, Reference run,
+  Other runs, Document, PDD, each done or not from the session data alone,
+  and one button for the next act; it shrinks to one line once only the
+  export is left); the recording line (its name, who recorded it, its runs,
+  the reference run's steps, the video and the transcript with their
+  Attach, Replace and Remove, and warning lines only when a marker problem,
+  a missing file, a check that could not run or an app recorded with less
+  detail needs one); the Document (the ten fields of contract C6, the
+  Attachments list, and "From the transcript" while one is attached); the
+  Observations ([`views/analysis-view.js`](../../viewer/views/analysis-view.js):
+  Data typed twice, and Where the time goes per step and per system). Until
+  the session is analyzed it shows one note that says where the analysis is.
+- **Timeline**: the timeline with its lanes, the video pane, the side panel
+  (Screenshots, Markers) and the Raw events drawer, which shows on this
+  level only. Detail: [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md).
+- **Steps**: the runs in time order, one open at a time (the reference run
+  with Confirm run or Reopen run and Save as this process; each other run
+  with its differences; "Outside runs"), and the step pane beside them.
+  The toolbar has *+ Add step*, the bulk Hide and Merge buttons (shown when
+  two or more rows are ticked), *Leave apps out...* and *Saved names...*.
+- **Map**: the process map drawn from the runs' steps, each box naming its
+  system under its name; when an As-Is copy is chosen for the PDD it shows
+  first, read only, with Edit and a way back to the map from the runs. The
+  one act is *Edit as the As-Is map*; *Edited maps* opens the gallery of
+  copies; the editor is a full-screen overlay (`#refmap-editor-overlay`).
+  While the session is not analyzed, no run is marked or the run check
+  could not run, the map shows a message that says why instead.
+
+**The step panel** (`#step-panel`,
+[`views/step-panel.js`](../../viewer/views/step-panel.js)) sits beside the
+level on screen. It has three doors: a click on a map box, a click on a
+timeline step band, and a selected Steps row (Watch in the step pane opens
+it and plays the step). It names the step, its system and screen, its
+description and "In N of M runs, about Xs each", then lists one row per
+occurrence across the runs: "Run 1 at 0:39" with a play button for its own
+small video, the step's screenshots, what was said then and its notes. Its
+foot says *Open in Steps*, or *Show on timeline* on the Steps level. It
+closes on the Overview; closed on Steps, it stays closed while rows are
+selected, until a door opens it again.
+
+**Switching levels.** `selectLevel(name)` marks the level button and calls
+`applyLevel(name)` (`renderer.js`): it records the level in `state.js`,
+shows one container, tells the step panel, shows the Raw events drawer on
+the Timeline only, and carries the viewport through `MODE_VIEWPORT` (the
+Timeline's zoom and scroll; the Steps level keeps the Timeline's viewport
+while the analyst is on it, so a return lands where it was). Arriving on
+Steps with a selected step scrolls its row into view once.
+
+**Help** (`#help-modal`) holds the analyst's guide in six sections (Getting
+started, Steps, Markers, Recording keys, Shortcuts, Troubleshooting), the
+version, and *Re-analyze* (Troubleshooting) for an analysis that stopped.
+
+## 3. Module map
+
+Every file below is in `viewer/` unless it says `views/`. Tests sit next to
+their module as `<name>.test.js`.
+
+**Entry and shell**
+
+| File | Owns |
 |---|---|
-| `renderer.js` | **Thin wiring entry** — tab routing, the session-view level switcher (Flow / Steps / Phases / **Map** / **Analysis**), the state-bus subscriptions, global keyboard shortcuts, the project menu, export buttons, boot. Owns the lazily-created Session-view map controller (`_sessionMapCtrl`). Wires modules together; holds no view logic. |
-| `state.js` | Central state store + topic pub/sub bus + undo/redo stacks (Phase 2). |
-| `session.js` | Annotations persistence + the undo/redo round-trip (Phase 3). |
-| `ipc.js` | Typed wrappers over every `viewer:*` IPC channel (Phase 3). |
-| `dom.js` | DOM helpers: `$`, `$$`, `escapeHtml`, `formatDuration`, `fillTable`, `toast`, … |
-| `modals.js` | `promptModal`, `confirmModal`, `formModal`, `checklistModal` (opt-in `selectAll` master toggle), help-modal open/close. |
-| `posture.js` | The engagement **data posture** (lab-phase §C4): `sealed \| reviewable \| open`, persisted like `pdt.theme` (localStorage `pdt.dataPosture`, default reviewable) + a change bus. `sealed` ⇒ `copyForLlmAllowed()` is false and every Copy-for-LLM button is REMOVED from the DOM (code-enforced egress promise). |
-| `llm-export.js` | The **"Copy for LLM"** export + suggestions import (lab-phase §C3, authoring-time only): builds ONE human-readable JSON from the DERIVED stream (vocab skeleton rows + auto-semantics, fact strip, scrubbed findings — values tokenized join-preservingly, screenshot refs/id lists stripped, titles through the shared value-free strip — and value-free step groups), shows it in a line-by-line review modal (Copy / Save to file…), and parses/matches/applies the LLM's `{suggestions: {row_key: {name/object/means}}}` reply behind a per-row approval checklist. Pure builders exported for `node:test`; clipboard/file only — no network. |
-| `recent.js` | Recent-sessions localStorage + bundled examples. |
-| `project.js` | Project-file layer — capture/validate, recents (collector-callback pattern). |
-| `timeline/timeline-core.js` | Shared timeline core: lane packing, tick choice, band primitives (Phase 1). |
+| `main.js` | The main process: the window, every `viewer:*` handler (section 5), `loadSessionData()`, the path checks, the one-analysis lock, the holding folder for removed files. |
+| `index.html` | The markup: the top bar, the four level containers, the step panel, the playback bar, Help, the map editor overlay. |
+| `renderer.js` | The wiring entry: the level switcher, the Map level's data source (`_sessionMapData`, the system per box), the state bus subscriptions, the keyboard shortcuts, Help, the playback bar, the Open and Export menus, the exports (section 10), boot. |
+| `styles.css` | Every style rule, the light and dark tokens ([DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)). |
+| `ipc.js` | One typed wrapper per `viewer:*` channel; nothing else touches `ipcRenderer`. |
+| `state.js` | The central store, the topic bus, the undo and redo stacks (section 6). |
+| `session.js` | Annotation saves with undo, `persistAnnotations`, undo and redo in place, `ensureAnnoShape` (section 9). |
+| `dom.js` | `$`, `$$`, escaping, `formatDuration`, the one clock (`clock`, `recordingStartMs`, `sinceStart`, `parseClock`), `toast`, `placeMenu` (a menu kept inside the window). |
+| `modals.js` | `promptModal`, `confirmModal`, `formModal`: themed dialogs. |
+| `theme.js` | The light and dark theme, its persistence, the per-app band colours and the map's colour snapshot. |
+| `recent.js` | The recent recordings (`pdt.recentSessions`): the list on the empty state; the Open menu reads it too. |
+| `layout-controls.js` | The Timeline's resize handles and video modes (expanded, full screen); wires itself when required. |
+| `python-runner.js` | Main process: finds the Python (`PDT_PYTHON`, the bundled one, else `python`), runs `normalize.py` (always with the bundled taxonomy) and `transcript_import.py`. |
+| `normalize-result.js` | What a finished run means for the analyst: the failure sentence (exit codes, contract C13), the PDD export outcome, and `analysisNeed()` with `ANALYSIS_FORMAT` (section 8). |
+| `build-package.js` | The electron-packager wrapper for releases. |
 
-**Per-view modules** (`viewer/views/`):
+**Main-process stores** (plain `fs`, each testable with a fake file system)
 
-| File | Surface |
+| File | Owns |
 |---|---|
-| `views/overview-view.js` | **Overview level — the default on session load** (lab-phase spec §A5, honesty redesign). One column: case-quality badge (3 states from `analysis.case_quality` + a Tier-2 lock chip, plus the §C4 **data-posture chip + selector** `#ov-posture-select` on the header line) → anchor hero on unsegmented sessions (Accept/Dismiss **reuse** `flow-view-markers`' exported accept/dismiss — one wiring) → 6-tile fact strip (`analysis.facts`) → findings feed (`analysis.findings[]`: claim + evidence + "Show on timeline" + an include-in-memo checkbox persisting `annotations.memo_selection[]`) → "to say more" box → memo export (`--memo-out` through `runNormalizeExtended`, then reveal) + the §C3 `#btn-ov-copy-llm` (absent from the DOM under a sealed posture). Pinned by `e2e/overview-smoke.js`. |
-| `views/flow-view.js` | Flow level — session load + analyze, range selection, event table, case scope, command-palette provider, session pills/summary, the marker-insert menu + queue actions. The hub; it `require()`s the five `flow-view-*` helper modules below and re-exports their public entry points so its surface (`renderTimeline`, `seekToTimestamp`, `renderMarkersList`, …) is unchanged for `renderer.js`/`steps-view.js`/`analysis-view.js`. |
-| `views/flow-view-apps.js` | Pure per-app colour (`appColor`), display label (`appLabel`), and the timeline legend (`renderLegend`). No DOM/state coupling back into the Flow view. |
-| `views/flow-view-timeline.js` | The Flow timeline subsystem — `renderTimeline` (the lane stack: ticks / cases / activity+idle+markers+suggested / screenshots / density / titles / steps / notes via `TimelineCore.renderLaneStack`), its lane helpers (`layoutCaseLanes` / `isUserActivityEvent` / `monitorBadgeFor`), the minimap + middle-drag-pan, the lane-visibility toggles, per-session zoom/scroll persistence, and the timeline summary. `require()`s apps/video/markers/screenshots one-way; the flow-view glue its lanes call (`currentScopeRange`, `showMarkerInsertMenu`, `showCaseContextMenu`, `activateAnnoTab`) is injected via `initTimeline()`. flow-view re-exports `renderTimeline` and feeds it to `initMarkers()`. |
-| `views/flow-view-video.js` | The video↔timeline bridge — video-start derivation, video↔session-time conversion, the playhead, seeking (+ the no-video playhead fallback), watch-a-step playback, and the interactive video re-sync. Self-wires `#video` timeupdate + `#btn-sync-video`; `loadSessionIntoView` injected via `initVideo()`. Required by flow-view + the screenshots/markers modules (`seekToTimestamp`). |
-| `views/flow-view-screenshots.js` | The screenshot surfaces — side-panel thumbnail grid, full-pane gallery (arrow-key stepping, auto-advance, aHash near-duplicate folding), star-for-report, the lazy hover thumb, and the guarded open-in-OS-viewer path. Owns its own state; self-wires `#btn-open-gallery`; `require()`s `flow-view-video.js`. |
-| `views/flow-view-markers.js` | The markers side-panel + unbracketed-session recovery — marker-edit resolution (effective label/timestamp/deleted), the markers list, **suggested markers** (dashed `.tl-suggested` bars + Accept/Dismiss rows, [ADR-0017](../adr/0017-suggested-markers.md)), the **anchor-candidates** panel ([ADR-0018](../adr/0018-anchor-candidates.md)), and per-marker adjust/delete/rename. flow-view consumes `effectiveLabel`/`visibleMarkerSuggestions` (the timeline overlay); `renderTimeline` injected via `initMarkers()`. |
-| `views/steps-view.js` | Steps level — step list/detail, step CRUD, the **Flat / Aligned** reading toggle (consensus backbone, curate-one→propagate, exceptions — [ADR-0015](../adr/0015-intra-session-repetition-alignment.md)), the ignored-apps dialog. |
-| `views/phases-view.js` | Phases level — phase list/detail, phase CRUD. The heuristic "Suggest groupings..." button exists only behind the `autoPhaseSuggest` flag (§D3 — default off; phases come from the template or the analyst). |
-| `views/analysis-view.js` | Analysis level — per-session heuristic waste / automation / efficiency findings ([ADR-0008](../adr/0008-build-the-analysis-layer.md)), the **"Where the time goes" instance strip** (lab-phase §B1: one row per step group, one clickable dot per observed instance on a shared duration axis → `jumpToStepInFlow`; summary stats render only at ≥ 10 instances), plus the €-ROI panel (§11c) rendering `analysis.json`'s `roi` band with the `roi_inputs` analyst-assumption + per-segment "tune" forms (persisted via the undo path; re-analyze recomputes the €). |
-| `views/aggregate-view.js` | Compare Sessions — **leads with the §D2 cross-session findings feed** (`#agg-findings-panel`, `variant_divergence` cards via the shared `finding-cards.js` component; below the precondition, one resident sentence + a collapsed `▸ Why these sessions don't compare yet` disclosure holding the mechanics + a real `[data-agg-cta="overview"]` button — item 11 — that jumps to the first loaded session's Overview via `onDrillToSession(folder, null, { level: "overview" })`) **and the Aligned reading** (`#agg-aligned-panel`, the pooled consensus backbone with per-unit hit counts, read-only), then the demoted notation × level process-map matrix, drill-down scoping, cross-session statistics + analysis, exports. `getAggregateFindings()` feeds the Markdown report so the panel and the export cannot disagree. |
-| `views/template-view.js` | Process Template tab — step list editor, exemplar match; the raw YAML editor + version compare live in the collapsed **Machine-layer drawer** (`#template-machine-drawer`, §D3 — the byproduct path Steps → "Export as Process Template" is primary). |
-| `views/vocab-view.js` | App Library (Vocabulary editor) tab. Hosts **"Discover from window"** ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md)): point at a prepared app window → the recorder snapshots its live UI → the volatility picker + `bootstrap_from_snapshot` return a stable-signature skeleton merged into the editor. Each discovered entry shows *why* its signature was picked (`identity_source` + ADR-0023 confidence, and any rejected volatile id); re-discovery **merges** (analyst-named entries are preserved, never overwritten); discovery-provenance fields are stripped on save. Lab-phase §C1/§C2: every row renders a **semantics strip** (verb select + object/means text + completion/carries_value/case-id-source flags, persisted on save) and discovered rows form a **review checklist** (per-row `reviewed` tick `_reviewed` — stripped on save — + `#vocab-review-progress` + `#btn-vocab-approve-all`). The raw signature inputs (`control_type`/`class_name`/`automation_id`/`name`/`window_title_regex`) sit behind a per-row `.vocab-int-sig-details` disclosure (item 17) — collapsed by default, **auto-open on a discovered row** so §C2 review stays one-click-free; the meaningful-name field + semantics strip stay resident. §C3/§C4: the toolbar's `#btn-vocab-copy-llm` / `#btn-vocab-import-llm` exist only under a permitting posture (`renderVocabLlmButtons`, re-run on posture change; anchors on `#vocab-llm-anchor`) — "Reload list" / "Open YAML in editor" moved into a `#vocab-more-menu` "⋯ More" popup (item 18, same `wireDropdownMenu` mechanism as the session toolbar). |
-| `views/identity-picker.js` | The per-step **Match rules** picker modal (Process Template tab) — composes a step's match rules from the App Library, a coarse app/window rule, or an interaction lifted from a captured session. |
+| `annotations-store.js` | Reading `annotations.json` (an unreadable file is reported, never treated as absent), the backups `.2` to `.5`, the temp-file-then-rename write. |
+| `names-store.js` | The saved names, `<userData>/pdt-library/remembered-names.json` (contract C4). |
+| `processes-store.js` | The saved processes, `<userData>/pdt-library/processes.json` (C5): save, undo, forget. |
+| `transcript-store.js` | `transcript.json`: read, save the sync offset, remove (C8). |
+| `analyst-files.js` | The files the analyst adds (C16): screenshots in `screenshots/analyst/`, attachments in `attachments/` (a free name when one is taken), the move of removed files and back, which attachment opens. |
+| `new-project.js` | A session without a recording (C16): `manifest.json` (`session_id`, `source`, `started_at`, `label`), an empty `events.jsonl`, `annotations.json`, and for a video project the video copied into `video/` at offset 0. |
+| `video-path.js` | Pure: where an attached video is kept (copied into `video/`, stored relative to the folder) and how a stored path is found again on another machine. |
 
-**Feature modules** — all CommonJS `module.exports` since Phase 3 Stage A (the
-former `window.Pdt*` globals were converted; the globals are gone):
+**Views** (`views/`)
 
-| File | Exports | Role |
-|---|---|---|
-| `charts.js` | `renderBarChart`, `fmtDurationS` | Inline-SVG bar charts |
-| `dfg-viewer.js` | `render`, `fit`, `zoomIn/Out`, `getZoom`, `exportSvg` | Directly-Follows Graph (cytoscape + dagre); persists dragged layout per node set. `exportSvg` is a **hand-written cytoscape→SVG serializer** (cytoscape has no native SVG export) — emits nodes/edges/labels as SVG primitives, driving the "Process map SVG" export |
-| `bpmn-viewer.js` | `render`, `fit`, `exportSvg`, `exportXml`, `editable` mode | BPMN 2.0 diagram (bpmn-js Modeler — scroll-zoom, drag-pan, draggable boxes saved back to the `.bpmn`; re-lays out via `require("@dagrejs/dagre")`). An `editable` mode un-hides the full palette off a non-`.map-host` host for **Reference Maps** ([ADR-0019](../adr/0019-reference-maps.md)) |
-| `reference-maps.js` | (pure store) | **Reference Maps** store ([ADR-0019](../adr/0019-reference-maps.md)) — the `annotations.json reference_maps[]` model: fork (snapshot the live laid-out XML), kind (As-Is/To-Be/Reference), PDD-role (exclusive per slot), drift (blake2b hash of the source cell vs. now), Re-fork; every verb persists through `session.saveAnnotationsWithUndo` so app-level Ctrl+Z reverts it. Pure (no DOM) |
-| `refmap-ui.js` | (DOM/state) | Reference Maps UI — the **⑂ Fork map** action, the per-session gallery (kind / PDD-role / drift chips), the full-screen editor overlay (bpmn-js `editable`, dagre-on-open skipped to honour the hand-layout), and the To-Be→PDD image bridge (`exportSvg` → off-screen PNG → `--pdd-tobe-image`) |
-| `process-map-levels.js` | `buildAnnotationDfg`, `rollUpSteps`, `grainKey`/`grainLabel`, `resolveStepGrainKeys`, `processLabel`, `dropRareEdges` | Pure DFG + view-time grain roll-up from annotations (the `element ⊂ screen ⊂ app ⊂ phase ⊂ case` ladder), value-free step label, rare-path thinning — unit-tested ([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md), [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)). §B2: edges carry an additive `total_ms` (accumulated transition time) next to `frequency` — the grain-ladder maps render time-weighted by default (`edgeWeight: "time"` from the data source; the count stays in the dfg-viewer edge tooltip) |
-| `map-controller.js` | `createMapController` | The shared process-map UI controller (notation × level matrix, drill-down scoping, rare-path slider, BPMN/DFG render + zoom). Extracted from the Aggregate view so the **same** controller mounts in both Compare Sessions and the Session view's in-view **Map** level — each caller passes its own host elements + a session-set provider. §B2 slims the SESSION matrix: the step/element BPMN cell gates on `case_quality.tier2_unlocked` (locked = the replace-pattern line + Overview CTA, built in `renderer.js`'s data source), and the activity-taxonomy cells + per-case BPMNs live behind the collapsed **Expert drawer** (`#map-expert-drawer`) |
-| `recognition.js` | `recognize`, `isChrome`, … | Semantic interaction category from documented platform/framework signatures (`shared/recognition-patterns.json`); twin of the Python `recognition.py` ([ADR-0011](../adr/0011-platform-recognition-layer.md)) |
-| `step-alignment.js` | `alignCases`, `alignSteps`, `groupForStep`, `representativeCuration`, … | Intra-session repetition alignment ([ADR-0015](../adr/0015-intra-session-repetition-alignment.md)). `alignCases` builds the consensus **backbone** across detected cases (Needleman–Wunsch over value-free `process_label` tokens) with per-position frequency + exceptions — behind the Steps view's Aligned reading; `alignSteps`/`groupForStep` are the older signature-based repeat grouping (per-row badges + "Apply to N repeats"). Pure, fuzz-tested |
-| `analysis-aggregate.js` | `aggregateAnalysis` | Pure cross-session rollup of per-session `analysis.json` (time study / per-worker / automation / efficiency) for the Compare-Sessions Analysis panel |
-| `variant-divergence.js` | `detectVariantDivergence`, `sameProcessGroups`, `pooledAlignment` | The §D1 **`variant_divergence` detector** (Tier 2, ≥ 2 sessions): groups loaded sessions into same-process groups (template id ∪ accepted-anchor identity), aligns the pooled per-case token sequences on the `step-alignment.js` backbone, and emits comparative findings (median steps / median active per worker-or-session unit, first divergence position, off-backbone extras) into the in-memory aggregate `findings[]` — same shape as `analysis.findings[]`. Pure, unit-tested |
-| `finding-cards.js` | `findingCardHtml`, `evidenceNumbers` | The shared **finding-card component** (§D2, re-altituded by the disclosure pass — DISCLOSURE-MODEL rule 1) — resident = tier chip + claim sentence + include-in-memo checkbox + an expand chevron; the evidence numbers, the screenshot **chip** (opens the image via the security-hardened `openScreenshot`, never a raw path), Show-on-timeline and the per-card methodology note collapse into an **expand-in-place** body. `opts.omitMethodology` drops the per-card note when the caller renders it once per detector group; `opts.screenshots:false` omits the chip. Same component on the Overview feed + the Compare divergence feed. Pure string builders |
-| `flags.js` | `flagEnabled`, `setFlag` | Viewer feature flags (config switches, **default off**; localStorage `pdt.flag.*` like `pdt.theme`) — §D3 re-enables a cargo-cut heuristic deliberately (currently: `autoPhaseSuggest`). Headless-safe |
-| `session-summary.js` | `summarize`, `detectDurationOutliers` | Pure per-session summary + duration-outlier detection |
-| `theme.js` | `stepPalette`, `dfgStyleTokens`, … | Light/dark theme tokens + chart/DFG colour palettes |
-| `report-md.js` | `buildSessionReport`, `buildAggregateReport` | Markdown report generation (Activity **and** Step statistics tables) |
-| `report-html.js` | `generateFindingsReport` | Self-contained **HTML findings report** (Phase D) — process summary, inline process-map SVG, steps table, waste/automation/efficiency findings, notes, starred screenshots; opens in any browser, no external assets |
-| `canonical-author.js` | (pure authoring helpers) | Pure functions for **authoring** Process Templates — the canonical step + match-rule shapes; shared by the Steps view and the Template tab, unit-testable (no DOM) |
-| `step-editor.js` | `renderStepList`, `renderStepDetail`, `renderStepTimeline`, … | Steps list/detail + Steps mini-timeline |
-| `phase-editor.js` | `renderPhaseList`, `renderPhaseDetail`, `renderPhaseTimeline` | Phases list/detail + Phases mini-timeline |
-| `layout-controls.js` | (side-effect import) | Drag-resize handles + video modes; self-inits at `require()` time |
-| `command-palette.js` | `open`, `close`, `toggle`, `setProvider` | Ctrl+K command palette |
-| `python-runner.js` | `runNormalize`, `runDiscoverVocab`, `resolvePython`, … | Spawns the bundled Python pipeline (`require`d by `main.js`); `runDiscoverVocab` feeds a window snapshot to `normalization/discover_vocab.py` (ADR-0025) |
-| `recorder-snapshot.js` | `snapshotWindow`, `resolveRecorderExe` | Drives the C# recorder's one-shot `snapshot` command for App-Library discovery (ADR-0025) — spawns the recorder, runs a two-pass UIA snapshot of the target window, resolves with the controls + window title. Transient; nothing written to disk |
-| `main.js` | — | Electron main process (see §4) |
+| File | Owns |
+|---|---|
+| `overview-view.js` | The Overview: What is left (`pathState`), the recording line, the Document fields and their saves, "From the transcript", the Map's lock message (`mapLockHtml`), the note shown while the analysis is missing. |
+| `analysis-view.js` | The Overview's Observations: Data typed twice, Where the time goes. |
+| `flow-view.js` | The Timeline hub: session load (`loadSessionIntoView`), the automatic analysis and the status line (section 8), New from a video and New without a recording, the Run select, range selection, the timeline menus (insert a marker, add a note, jump to a step), the Raw events table. |
+| `flow-view-timeline.js` | The timeline: the lane stack, the minimap, the lanes menu, zoom and scroll persistence, the summary line. |
+| `flow-view-video.js` | The video and the timeline: the span a video project runs on, the playhead, seeking, Attach video and Sync video (two clicks). |
+| `flow-view-screenshots.js` | The Screenshots panel, the gallery, and the guarded open of a screenshot. |
+| `flow-view-markers.js` | The Markers panel: the markers with the analyst's changes laid over them, move, delete, rename. |
+| `flow-view-transcript.js` | The Transcript lane, the transcript's Sync, Attach, Replace and Remove. |
+| `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
+| `steps-view.js` | The Steps level: the runs and their steps, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste), Confirm run and Reopen run, Use as reference run, Save as this process, the comparison with a saved process, the Leave apps out and Saved names dialogs. |
+| `step-panel.js` | The step panel (section 2). |
+| `analyst-ui.js` | What the analyst adds, on screen (C16): the System field, the screenshots (Add screenshot, Use in PDD, Remove, Ctrl+V), notes on a step or a moment, attachments on a step and on the Overview. |
 
-`step-editor.js` / `phase-editor.js` are the list/detail + mini-timeline
-**widgets**; `views/steps-view.js` / `views/phases-view.js` are the
-renderer-side orchestration that *calls* them — different files, different
-layers.
+**Models** (pure: no DOM, no state; the unit tests drive them)
 
-## 3. The module graph
+| File | Owns |
+|---|---|
+| `runs-model.js` | The runs and their steps as the Steps level shows them: the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, saved-name propagation. |
+| `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. |
+| `marker-edits.js` | The markers with `annotations.marker_edits` laid over them; which edits are pending until the next analysis. |
+| `process-map-levels.js` | The process map as a directly-follows graph from the runs' steps (`buildAnnotationDfg`, `mapNodeLabel`), and the value-free `processLabel` and `screenType` from the shared rule files. |
+| `system-names.js` | The one vocabulary of systems (C14) from `shared/system-names.json`: `systemName`, `whereOfStep`, the systems the System field offers. |
+| `step-facts.js` | What the step pane and the panel say about a step: the fact line ("Salesforce · Account lookup · 6s · ends at Search · Run 1 at 0:19"), the fields typed, the drafted narration shown as a hint. |
+| `analyst-content.js` | The pure half of C16: where an untimed step goes and how it moves, the screenshots a step shows, the notes of a step or a moment, the implicit run's id. |
+| `transcript-model.js` | The transcript's time rule (its own sync, else the video's) and every pick of sentences (for a step, outside the runs, by speaker or search). |
+| `session-summary.js` | The recording line's facts, the name in Recents, the marker problems. |
+| `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`. |
+| `case-scope.js` | The Run select's options, escaped. |
+| `recognition.js` | Platform recognition of an interaction (ADR-0011), for the step pane's interaction list. |
+| `identity-line.js` | The one readable line per captured control in that list. |
+| `timeline/timeline-core.js` | Ticks, lane packing and the lane stack ([VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md)). |
 
-`renderer.js` `require()`s the infrastructure modules and the six view modules,
-then wires them together. Modules never reach back into `renderer.js` by name:
-cross-surface glue is **injected** at boot through an `init<Module>({...})` call,
-passed as lazy arrow wrappers so load order does not matter. Examples:
+**Widgets**
+
+| File | Owns |
+|---|---|
+| `step-editor.js` | The step rows of a run and the step pane: the fact line, Name, System, the fields typed, Description, "Said during this step", Waste, Watch, Hide, the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name and System save on Enter or when the field is left, Description when it is left: there is no Save button. |
+| `map-controller.js` | The Map's live process map: draws the data source, its fit control, a box click to the step panel. |
+| `dfg-viewer.js` | The directly-follows graph on cytoscape and dagre, left to right, time-weighted edges with an edge tip in words; dragged layouts persist per node set; `exportSvg` for the map image. |
+| `refmap-ui.js` | The edited maps: the As-Is map shown first, the edit act (it analyzes first when the steps changed since the map file was written), the gallery, the editor overlay, and the off-screen pictures of the maps for the PDD. |
+| `bpmn-viewer.js` | The bpmn-js modeler in the editor overlay: the copy opens on its own saved layout and each edit saves back into it. |
+
+## 4. The module graph
+
+`renderer.js` requires the views and wires them together. A module never
+requires `renderer.js`: the glue it needs is injected at boot as lazy
+wrappers, so the load order does not matter.
 
 ```
-renderer.js ─ initFlowView({ renderShortcutsOverlay, rerenderActiveLevel,
-                             applyLevel, activateTab })
-            ─ initSession({ renderAnnotations, renderSessionPills })
-            ─ initStepsView({ ensureAnnoShape, persistAnnotations,
-                              videoTimeToSessionTs, jumpToStepInFlow })
-            ─ initPhasesView({ ensureAnnoShape, persistAnnotations,
-                               activateAnnoTab })
-            ─ initAggregateView({ onDrillToSession })
-            ─ initRecent({ onOpenSession })
+renderer.js
+  initFlowView({ rerenderActiveLevel, addStepAtTimestamp })
+  initSession({ renderSessionPills })
+  initRecent({ onOpenSession })
+  initStepsView({ ensureAnnoShape, persistAnnotations, jumpToStepInFlow,
+                  watchStep, analyze })
+  RefmapUI.initRefmapUI({ renderLiveMap, sourceBpmnPath, analyze })
 ```
 
-A module may also wire its own DOM controls at `require()` time — the document is
-already parsed when `renderer.js` pulls it in (`flow-view.js`, `template-view.js`,
-`layout-controls.js` all do this). Functions a sibling still calls are re-exported
-and destructured by `renderer.js` so call sites stay unchanged (e.g.
-`renderTimeline` / `renderMarkersList` from `flow-view.js` are wired into the
-level switcher and the state bus).
+The same pattern repeats inside the Timeline: `flow-view.js` requires its
+`flow-view-*` helpers and hands them what lives back in the hub
+(`initVideo({ loadSessionIntoView })`, `initTimeline({ currentScopeRange,
+showMarkerInsertMenu, showCaseContextMenu })`,
+`initTranscript({ loadSessionIntoView, renderTimeline })`). The helpers
+require each other one way only. Where a later module needs an earlier one
+back, it requires it lazily at the call (the timeline's step band opens
+`step-panel.js`, the notes lane calls `analyst-ui.js`, the Overview's
+buttons reach `flow-view.js`), so the graph stays acyclic.
 
-The **same injection pattern is used one level down**, inside the Flow view:
-`flow-view.js` `require()`s its five `flow-view-*` helpers and, where a helper
-needs a function that lives back in the hub, injects it at boot rather than
-`require()`ing the hub (which would cycle) — `initVideo({ loadSessionIntoView })`,
-`initMarkers({ renderTimeline })`, and `initTimeline({ currentScopeRange,
-showMarkerInsertMenu, showCaseContextMenu, activateAnnoTab })`. The helpers in
-turn `require()` each other only one-way (`screenshots`→`video`,
-`markers`→`video`, `timeline`→`apps`/`video`/`markers`/`screenshots`), so the
-graph stays acyclic. `flow-view.js` re-exports the helpers' public entry points
-(`seekToTimestamp`, `renderMarkersList`, `renderAnchorCandidates`,
-`videoTimeToSessionTs`, `watchStep`, …) on its own surface, so `renderer.js` /
-`steps-view.js` / `analysis-view.js` import them from `flow-view.js` exactly as
-before.
+A module may wire its own controls when it is required: the page is already
+parsed when `renderer.js` loads it (`flow-view.js`, `flow-view-timeline.js`,
+`flow-view-video.js`, `step-panel.js`, `analyst-ui.js` and
+`layout-controls.js` do).
 
-`ipc.js` centralises the `viewer:*` channel strings: a typo'd channel is a
-missing export, caught at the call site instead of failing silently at runtime.
+## 5. IPC surface
 
-## 4. IPC surface
+The renderer reaches the main process only through `ipc.js`, one wrapper per
+channel over `ipcRenderer.invoke`, answered by `ipcMain.handle` in
+`main.js`. The handlers that write answer `{ ok: false, error }` with a
+sentence the analyst can read instead of throwing, and `null` when the
+analyst cancelled a dialog; `viewer:loadSession` rejects with its reason,
+which the renderer shows.
 
-`renderer.js` and the view modules talk to `main.js` over Electron IPC, always
-through `ipc.js` — one typed async wrapper per channel over
-`ipcRenderer.invoke("viewer:…")`, against `ipcMain.handle` in `main.js`:
-
-| Group | Channels |
-|---|---|
-| Session load | `viewer:openSessionFolder`, `viewer:openMultipleSessions`, `viewer:loadSession`, `viewer:loadMultipleSessions` |
-| Normalization | `viewer:runNormalize`, `viewer:runNormalizeExtended`, `viewer:testCanonicalMatch`, `viewer:bootstrapAppVocab`, `viewer:cancelNormalize` |
-| Export / shell | `viewer:exportFile`, `viewer:saveSvgFile`, `viewer:revealFile`, `viewer:openExternal` |
-| Canonical templates | `viewer:openCanonicalFile`, `viewer:saveCanonicalFile`, `viewer:listTemplateVersions`, `viewer:readTemplateFile` |
-| App Vocabularies | `viewer:saveAppVocab`, `viewer:listAppVocabs`, `viewer:openVocabFile`, `viewer:readVocab`, `viewer:writeVocab`, `viewer:newVocabFile` |
-| External video | `viewer:attachExternalVideo`, `viewer:saveExternalVideoSync` |
-| Projects | `viewer:saveProjectAs`, `viewer:saveProject`, `viewer:openProject`, `viewer:loadProjectFile` |
-| Annotations | `viewer:saveAnnotations` |
-
-Main→renderer messages (`webContents.send`) are exposed by `ipc.js` as
-`onOpenInitialSession(fn)` (startup `--session=`) and `onNormalizeLog(fn)`
-(streamed normalization output).
-
-`loadSessionData()` in `main.js` assembles the session object the renderer holds
-(via `State.setSession`): `{ sessionFolder, manifest, events, stats, dfg,
-annotations, obsSync, recordingPath, recordingAvailable, externalVideoOffsetMs }`.
-All normalization IPC funnels through `runNormalize()` and shares one module-scope
-kill handle, so `viewer:cancelNormalize` stops whichever run is in flight.
-
-## 5. View system
-
-The renderer has **four top-level surfaces** (containers in `index.html`):
-
-| Container | Surface | Module |
+| Group | Channel | Does |
 |---|---|---|
-| `#view-session` | One session — video + timeline + annotations | `views/flow-view.js` (+ steps/phases) |
-| `#view-aggregate` | Compare Sessions — process maps, statistics, exports | `views/aggregate-view.js` |
-| `#view-canonical` | Process Template editor | `views/template-view.js` |
-| `#view-vocabularies` | App Library (App Vocabulary editor) | `views/vocab-view.js` |
+| Session | `viewer:openSessionFolder` | The folder picker. |
+| | `viewer:loadSession` | Loads a folder (below). |
+| Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`; `--names` when the store exists); streams its log. |
+| | `viewer:cancelNormalize` | Stops the run in progress. |
+| Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back. |
+| Saved names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName` | Save, read, forget a name. |
+| Saved processes (C5) | `viewer:readProcesses`, `viewer:saveProcess`, `viewer:undoSaveProcess`, `viewer:forgetProcess` | Read, save, undo a save, forget. |
+| Export and shell | `viewer:exportFile` | A save dialog, then a copy of the given file. |
+| | `viewer:saveSvgFile` | A save dialog, then the SVG text. |
+| | `viewer:revealFile` | Shows a file in its folder. |
+| | `viewer:openExternal` | Opens a screenshot, after the path checks (section 1). |
+| Video | `viewer:attachExternalVideo` | The video file picker. |
+| | `viewer:saveExternalVideoSync` | Copies the video into `video/` when it is outside the folder, then writes `external_video` (relative path, offset). |
+| Transcript (C8) | `viewer:importTranscript` | The file picker, then `transcript_import.py`. |
+| | `viewer:removeTranscript` | Deletes `transcript.json` (the copied original stays). |
+| | `viewer:saveTranscriptSync` | Writes the sync offset. |
+| New projects (C16) | `viewer:chooseNewProject` | For a video project the video, then one save dialog for the project's name and folder. |
+| | `viewer:createProject` | Makes the folder chosen last. |
+| Analyst files (C16) | `viewer:addScreenshot` | Writes `screenshots/analyst/<id>.<png\|jpg>` from a file, a video frame or a pasted image. |
+| | `viewer:addAttachment` | The file picker, then a copy into `attachments/`. |
+| | `viewer:openAttachment` | Opens an attachment of a loaded session, or shows it in its folder. |
 
-Inside `#view-session` there are **six levels**, switched by the `.view-mode-btn`
-buttons → `applyLevel(name)` in `renderer.js`. **`overview` is the default on
-session load** (lab-phase spec §A5):
+Two messages go the other way: `viewer:openInitialSession` (the
+`--session` folder, once at startup) and `viewer:normalizeLog` (the
+pipeline's output as it runs), exposed as `onOpenInitialSession(fn)` and
+`onNormalizeLog(fn)`.
 
-| Level | Layout container | Render entry |
-|---|---|---|
-| `overview` | `#session-layout-overview` | `renderOverviewLevel()` — `overview-view.js` |
-| `flow` | `#session-layout-flow` | `renderTimeline()` — `flow-view.js` |
-| `steps` | `#session-layout-steps` | `renderStepsLevel()` — `steps-view.js` |
-| `phases` | `#session-layout-phases` | `renderPhasesLevel()` — `phases-view.js` |
-| `map` | `#session-layout-map` | `renderMapLevel()` — `renderer.js` (drives a lazily-created `map-controller.js` over the single focused session) |
-| `analysis` | `#session-layout-analysis` | `renderAnalysisLevel()` — `analysis-view.js` |
+`loadSessionData()` in `main.js` assembles the session the renderer holds:
 
-The **Map** level (v0.18.0) puts the full interactive process map — the same
-notation × level matrix as Compare Sessions — inline for one session, so an analyst
-reaches a single session's map without entering the Aggregate view (the Aggregate
-view also offers a one-click **"View map"** that opens this level for the focused
-session). It is backed by the shared `map-controller.js` (above). Clicking an
-activity node seeks the Flow timeline rather than opening a drill-to-session picker.
+```
+{ sessionFolder, manifest, events, stats, analysis, annotations,
+  annotationsError, obsSync, recordingPath, recordingAvailable,
+  externalVideoOffsetMs, integrity, transcript, transcriptError }
+```
 
-`applyLevel()` keeps the level in `state.js` (`State.getLevel`/`setLevel`),
-toggles `display` on the `#session-layout-*` containers, and snapshots /
-restores the outgoing and incoming levels' viewport (zoom + scroll fraction) via
-`_viewportSnapshotForMode` / `_viewportApplyToMode`. The `MODE_VIEWPORT` table and
-`LEVEL_RENDERERS` map in `renderer.js` replace what used to be a hand-written
-3-way `if (currentLevel === …)` block repeated across the renderer.
+`events` are sorted by time (malformed lines skipped). The video is the
+analyst's attached one when its stored path resolves on this machine, else
+the OBS recording the manifest names. `integrity.missing` lists the files
+`session-integrity.json` declares that did not arrive.
 
-**Disclosure pass (2026-07-01, [DISCLOSURE-MODEL.md](DISCLOSURE-MODEL.md)).** Three
-levels tightened so a default surface never renders zero-information or duplicated
-content as if it were a measured result:
+## 6. State
 
-- **Overview.** The case-quality badge carries the "case analysis on/locked" clause
-  as its **subtitle** (`.ov-badge-sub`), not a second chip. The findings feed groups
-  by detector: one methodology sentence per group behind an ⓘ (`.ov-finding-method`),
-  and each card is resident claim + include-in-memo with the evidence one click
-  behind an expand chevron (`_wireFindings` in `overview-view.js`).
-- **Flow.** When the session has no linked recording, `loadSessionIntoView` adds
-  `no-recording` to `#lower-workspace` / `#video-pane`; CSS collapses the video stage
-  to a slim one-line band (keeping a `#btn-link-recording` "Link recording…"
-  affordance) and gives the freed height to the timeline + notes.
-- **Analysis.** Each section renders inside a **collapsible module** (`_moduleShell`
-  in `analysis-view.js`) with a uniform header — title + one-line takeaway + chevron;
-  collapse state persists per analyst in `localStorage` (`pdt.analysis.*`). A tier gate
-  always wins: the "Process efficiency" and "Waste by step/screen" modules withhold
-  their figure/bars behind a call-to-action until a step's business-required time is
-  judged, and that CTA renders even when the module is expanded. The €-ROI hero is
-  floored — below 1 h/yr expected saving a sentence carries the number.
-
-The static session chips (EVENTS / STATUS / VIDEO / ANALYZED / VOCABS) no longer ride
-the toolbar; `renderSessionPills` stashes them and `renderSessionSummary` folds them
-into the collapsed **Session summary** band (`flow-view.js`) — only the dynamic
-pending-edits chip stays on the toolbar row.
-
-## 6. State model
-
-State lives in [`state.js`](../../viewer/state.js) — a single store with explicit
-getters/setters and a topic pub/sub bus (no framework, no reactivity):
+[`state.js`](../../viewer/state.js) is one store with getters and setters and
+a topic bus; there is no framework.
 
 | State | Holds |
 |---|---|
-| `session` | the loaded session object (§4) |
-| `aggregateSessions` | array of sessions for the Compare view |
-| `level` | `"flow"` \| `"steps"` \| `"phases"` \| `"map"` \| `"analysis"` |
-| `zoomFactor` / `stepZoom` / `phaseZoom` | per-timeline zoom |
-| `caseScope` | case-id filter, or `""` for all |
-| `selectedStepId`, `selectedPhaseId`, `multiSelectedStepIds` | editor selection |
-| `canonicalState`, `vocabState`, `listFilters` | tab-local state |
-| undo / redo stacks | annotation undo history (§8) |
+| `session` | The loaded session (section 5). |
+| `level` | `overview`, `flow`, `steps` or `map`. |
+| `selectedStepId`, `multiSelectedStepIds` | The step selection on the Steps level. |
+| `caseScope` | The Run select: a run id, or `""` for all runs (it dims the other runs on the timeline only). |
+| `zoomFactor` | The Timeline's zoom. |
+| `selectionRange` | A Shift-drag range on the timeline. |
+| `pendingStepJump`, `pendingStepReveal` | A moment or a step the Steps level should show on arrival. |
+| `analysisRun` | `{ folder, status }` of the last run: `running`, `failed` or `cancelled` (null once one succeeds). |
+| undo and redo stacks | Annotation snapshots, at most 50 each, each pinned to its session folder. |
 
-`State.subscribe(topic, fn)` / `State.emit(topic)` / `State.batch(fn)` are the
-change bus: an annotation edit emits the topics it touched and the subscribed
-view re-renders itself.
+`State.subscribe(topic, fn)`, `State.emit(topic)` and `State.batch(fn)` are
+the bus. The topics and who listens (`renderer.js`):
 
-**Persistence** is `localStorage`, all keys prefixed `pdt.`:
+| Topic | Re-renders |
+|---|---|
+| `steps` | the Steps level, the Overview, the Map, the step panel |
+| `timeline` | the timeline |
+| `markers` | the Markers panel, the status line, the Overview |
+| `analysis` | the Overview |
+
+**Kept on this machine** (`localStorage`, every key starts with `pdt.`):
 
 | Key | Written by | Holds |
 |---|---|---|
-| `pdt.recentSessions` | `recent.js` | recent session folders |
-| `pdt.recentProjects` | `project.js` | recent project files |
-| `pdt.timelineHeight`, `pdt.videoWidth`, `pdt.miniTimelineHeight` | `layout-controls.js` | drag-resized pane sizes |
-| `pdt.timelineState` | `flow-view.js` | per-session timeline zoom + scroll (one key, a map) |
-| `pdt.timelineLanes` | `flow-view.js` | which Flow-timeline lanes are toggled on |
-| `pdt.shortcutsOverlayHidden` | `renderer.js` | dismiss state of the shortcuts card |
+| `pdt.recentSessions` | `recent.js` | The recent recordings. |
+| `pdt.theme` | `theme.js` | `light` or `dark` (the inline script in `index.html` reads it before the first paint). |
+| `pdt.timelineState` | `flow-view-timeline.js` | Per session folder, the timeline's zoom and scroll. |
+| `pdt.timelineLanes` | `flow-view-timeline.js` | Which lanes are shown. |
+| `pdt.timelineHeight`, `pdt.videoWidth` | `layout-controls.js` | The dragged pane sizes. |
+| `pdt.analysis.<item>` | `analysis-view.js` | Whether an Observations item is open. |
+| `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes. |
 
 ## 7. Render pipeline
 
-**Load.** `loadSessionIntoView(folder)` in `flow-view.js`:
+**Load.** `loadSessionIntoView(folder)` (`flow-view.js`):
 
 ```
-open folder → Ipc.loadSession() → State.setSession(result)
-            → wire <video>
-            → renderTimeline() · renderEventTable() · renderAnnotations()
-              renderScreenshots() · renderMarkersList() · renderTimelineSummary()
-              renderStepsLevel() · renderPhasesLevel() · updateProcessMapStatus()
-              populateCaseScope() · restoreTimelineForCurrent() · installRangeSelection()
+Ipc.loadSession(folder) -> State.setSession(...)
+  -> undo stack reset (another folder) and a new undo baseline
+  -> the top bar's levels show; the annotations error banner; Recents
+  -> the video (or the slim no-video band), + Step and Sync video only with a video
+  -> renderTimeline, the Raw events table, the Screenshots and Markers panels,
+     the timeline summary, renderStepsLevel, renderOverviewLevel, the Run select
+  -> the remembered timeline zoom and scroll
+  -> the automatic analysis when the session needs one (section 8)
 ```
 
-Every surface is re-rendered on load regardless of which level is visible.
+The Overview, the Timeline and the Steps level are rendered on load,
+whichever is on screen; the Map renders only while it is on screen.
 
-**Edit.** Annotation edits do **not** trigger a full session reload (Phase 2
-fixed this — issue S6). They route through `session.js`:
+**Edit.** An edit never reloads the session:
 
 ```
-edit → persistAnnotations(annotations, label, topics)   (session.js)
-     → saveAnnotationsWithUndo → Ipc.saveAnnotations()
-     → State.emit(topic) for each touched topic
-     → the subscribed view re-renders itself, in place
+edit -> persistAnnotations(annotations, label, topics)     (session.js)
+     -> saveAnnotationsWithUndo -> viewer:saveAnnotations
+     -> State.emit(topic) for each topic the edit touched
+     -> the views that listen re-render in place
 ```
 
-## 8. Annotations editing & undo
+**Analysis.** A finished analysis reloads the session from disk
+(`loadSessionIntoView(folder, { afterAnalysis: true })`): the pipeline has
+rewritten `annotations.json`, `stats.json`, `analysis.json` and the map
+file.
 
-All step / phase / marker / note mutations funnel through `session.js`:
+## 8. The automatic analysis
 
-- `saveAnnotationsWithUndo(annotations, label)` snapshots the **previous**
-  `annotations` onto the undo stack (in `state.js`) before writing.
-- Undo / redo stacks are in-memory, capped, and each entry is pinned to a
-  `sessionFolder`. `resetUndoStack()` runs on session switch.
-- `performUndo()` / `performRedo()` write the snapshot back via
-  `viewer:saveAnnotations`, then patch `session.annotations` **in place** and emit
-  the change topics — no full reload, no scroll jump (issue S6).
+There is no Analyze button (AD-22). `flow-view.js` runs the pipeline by
+itself:
 
-Step CRUD (`splitStep`, `mergeStepWithNext`, `addManualStep`, …) lives in
-`steps-view.js`; phase CRUD (`groupIntoPhase`, …) in `phases-view.js`; marker CRUD
-in `flow-view.js`. All end at `session.js`.
+- **On open**, when `normalize-result.analysisNeed(session)` says so: no
+  `stats.json` or `analysis.json`, or an `analysis.json` whose `format` is
+  missing or lower than `ANALYSIS_FORMAT` (the number
+  `normalization/pipeline_stages.py` writes, 2 now). Once per folder in a
+  window, never from an analysis's own reload, and not while
+  `annotations.json` cannot be read.
+- **After a change the drafts depend on**: *Leave apps out* and a range
+  excluded from the analysis.
+- **Inside the acts that need a current map file**: *Edit as the As-Is map*
+  and the PDD export, when `process_map_step.bpmn` is missing or older than
+  the steps.
 
-## 9. Compare Sessions (Aggregate) view
+Two runs are deliberate and ask first when the session has steps: *Apply N
+marker changes* (the status line) and *Re-analyze* (Help, Troubleshooting).
+Every analysis passes `--mine` (the PDD export's own run does not); every
+run passes `--names` when the saved names store exists.
 
-[`views/aggregate-view.js`](../../viewer/views/aggregate-view.js) drives
-`#view-aggregate`: activity-frequency and case-duration bar charts (`charts.js`),
-trace-variant / outlier / rework tables, the cross-session **Analysis panel**
-(`analysis-aggregate.js` rolls up each loaded session's `analysis.json` into a
-pooled time study / per-worker / automation / efficiency view), and the process
-map.
+Runs go one at a time (`runPipeline` queues them). While one lasts the
+status line says "Updating steps and map..." with Cancel, the page stays as
+it is, and the main process refuses annotation writes to that folder. A
+failed run opens the analysis log (`#log-host`) with its failure sentence
+first; a cancelled one does not. Confirmed, edited, added and hidden steps
+survive every run.
 
-**The process map is a notation × level matrix**
-([ADR-0012](../adr/0012-active-case-stamping-and-map-matrix.md)):
+## 9. Edits, undo and saving
 
-- **Notation** — *Process diagram* (**BPMN**, `bpmn-viewer.js`) or *Flow diagram*
-  (**DFG**, `dfg-viewer.js`), as panel tabs.
-- **Level / Grain** — the **Grain** ladder `element ⊂ screen ⊂ app ⊂ phase ⊂ case`
-  ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)) via the
-  `#session-map-level` dropdown — synced with the shared **Grain** slider in the
-  view-mode bar (`State.getGrain()`, default `screen`). The old fixed
-  Activity/Step/Phase levels fold into this ladder (`step` == the `element`
-  notch's map collapse). BPMN is mined only at the Element/Phase grains; for
-  screen/app/case the map falls back to the Flow diagram (no dead host).
+Every annotation write in the renderer goes through `session.js`:
 
-In the **Session view** the matrix is slimmed (lab-phase §B2): the default cell
-is the screen-grain Flow diagram with **time-weighted** edges (accumulated
-transition time as thickness/label; traversal count in the edge hover tooltip);
-the step/element-grain Process diagram gates on
-`analysis.case_quality.tier2_unlocked` (locked = the replace-pattern line + a
-"Review on Overview" CTA); and the off-contract cells — the **Activity**
-taxonomy level (whose BPMN is the inductive-miner `process_map.bpmn`) and the
-per-case BPMN files — sit behind the collapsed **Expert drawer**
-(`#map-expert-drawer`) under the map host. Files and CLI flags are unchanged.
-Pinned by `e2e/map-slim-smoke.js`.
+- `saveAnnotationsWithUndo(annotations, label)` writes, and only a write that
+  reached the disk becomes an undo entry (the state before the edit).
+- `persistAnnotations(annotations, label, topics)` saves with undo and emits
+  the topics (default `steps` and `timeline`).
+- `saveAnnotationsDirect` writes without an undo entry: opening a run
+  (`opened_runs`) and *Leave apps out* (an analysis follows at once).
+- A failed write shows one error toast and rejects, so the caller's success
+  message never follows an unsaved edit; the edit stays in memory and the
+  next successful save writes it.
+- `performUndo()` and `performRedo()` write the snapshot back and re-render
+  in place. Opening a run is not an edit: the runs opened so far stay
+  opened across an undo. The stacks are reset when another folder opens.
 
-The axes are independent — changing level never swaps notation and vice versa. As
-of v0.18.0 the matrix, drill-down scoping, rare-path slider, and BPMN/DFG render
-all live in the shared **`map-controller.js`** (`createMapController`), which the
-Aggregate view and the Session-view Map level both instantiate against their own
-host elements — so there is one process-map implementation, not two. The activity DFG is the merged taxonomy
-graph; the step/phase DFG is built **live** from annotations
-(`process-map-levels.buildAnnotationDfg`), collapsing value-laden step names via
-`processLabel` so repeated work is one node
-([ADR-0013](../adr/0013-value-free-grouping-and-map-readability.md)). The step/phase
-*Process diagram* is the observed-flow file mined by `bpmn_observed.py`.
+The main process writes `annotations.json` through `annotations-store.js`:
+the current file is copied to `annotations.json.2` (the older copies move to
+`.3`, `.4`, `.5`), the new content goes to a temp file that is renamed over
+it, and a file that cannot be read is never replaced.
 
-**Grain is a view-time roll-up** ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)).
-A single **Grain** slider in the view-mode bar (`State.getGrain()`, notches
-`element/screen/app/phase/case`, default `screen`) sets a shared notch that the
-Steps list, the Flow timeline, and the Map all read. `rollUpSteps(steps, notch)`
-folds a session's steps into one group per run of consecutive (per-case) steps
-sharing the notch's key — `element` is identity (every step shown, the fine
-count preserved), `screen`/`app` read the step's `grain_keys` (stamped by
-`step_suggest.step_grain_keys`, with a JS `resolveStepGrainKeys` fallback for
-older sessions), and `phase`/`case` read `phase_id`/`case_id`. The `screen` key/label
-is passed through `screenType` (shared rules `shared/screen-label-patterns.json`) so a
-window title that embeds a record value (`Create INC0010010 | Incident`) collapses to
-one value-free node instead of fanning out per case (ADR-0024 §6a/§6b). It is a **view**:
-no re-normalization, raw `events.jsonl` untouched, sliding back restores the
-detail. The €-ROI total is computed once in Python from event-stream segments
-and so is **invariant** across notches — the slider re-itemises the Steps/Map
-but never moves the headline figure.
+What each level edits: the Steps level the steps, `pattern_run`,
+`opened_runs` and `step_filters`; the Timeline `marker_edits`,
+`excluded_ranges`, `external_video` and the notes at a moment; the step
+pane a step's fields, its screenshots, notes and attachments; the Overview
+`document` and the attachments; the Map `reference_maps`. Written by the
+main process directly, not through the undo stack: `external_video` (Attach
+and Sync video), the transcript's sync, and the two stores on the analyst's
+machine (saved names, saved processes, whose Undo is a toast action).
 
-**Map interaction (Flow diagram):**
+## 10. Exports
 
-- **Drill-down scoping** — clicking a phase node descends to the step level
-  *filtered to that phase's steps*; a step node descends to the activity level
-  *filtered to that step's activity labels*. A "scoped: ‹parent› · show all" chip
-  in the header is the inverse. The BPMN is a static mined file, so a click there
-  descends *unfiltered*.
-- **Hide rare paths** — a toggle drops one-off (frequency-1) edges so the dominant
-  flow is readable on a dense recording (`dropRareEdges`); the hidden count shows
-  in the label, reversible.
-- **Conformance overlay** — when loaded sessions matched a Process Template, DFG
-  nodes are coloured green (matches a canonical step) / amber (off-template).
-- **Drill to source** — clicking an *activity* node opens a picker of the loaded
-  sessions that contain it (drill-to-session injected by `renderer.js` via
-  `initAggregateView({ onDrillToSession })`); the picker also offers a
-  **Reclassify** action that writes a classification override and re-analyzes.
+The Export menu and the Overview's last act share one path
+(`exportArtifact` in `renderer.js`):
 
-Zoom/pan and dragged node layout persist — `dfg-viewer.js` per node set in
-`localStorage`, `bpmn-viewer.js` by saving XML back to the `.bpmn`.
-
-## 10. Project layer
-
-[`project.js`](../../viewer/project.js) bundles the analyst's working set — loaded
-aggregate sessions, focus session, active template, current tab / view-mode / case
-scope, timeline state — into a single `.pdt-project.json` file. It is a CommonJS
-module `require()`d by `renderer.js`, persists recents under `pdt.recentProjects`,
-validates the `format` / `version` pair on load, and uses **collector callbacks**
-so it never references `renderer.js` variables directly — the seam pattern the
-rest of the viewer now follows.
+- **PDD (.docx).** The maps are drawn off screen by bpmn-js
+  (`RefmapUI.renderPddMaps`): the As-Is copy chosen for the PDD and the
+  To-Be copy, as PNG files passed with `--pdd-map-image` and
+  `--pdd-tobe-image`. With no As-Is copy, the map from the runs
+  (`process_map_step.bpmn`, analyzed first when it is missing or older than
+  the steps) is drawn the same way. The pipeline writes the document to a
+  temp path that was empty before the run, and the analyst is offered the
+  file only when this run wrote it (`pddExportOutcome`). While the Map says
+  why it draws nothing, the PDD says so too.
+- **Process map (image).** The chosen As-Is copy as SVG (bpmn-js), else the
+  map on the Map level (`dfg-viewer.exportSvg`, opening the Map first).
+- **Process map (BPMN).** The chosen As-Is copy, else
+  `process_map_step.bpmn` (analyzed first when it is missing).
