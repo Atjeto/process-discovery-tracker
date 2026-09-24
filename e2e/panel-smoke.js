@@ -55,10 +55,34 @@ const results = [];
    after the owner's review checks) says which one before run-all stops it. */
 let phase = "start";
 let lastMove = Date.now();
+let live = null;          // { v, page } once the viewer is open
+let stalled = false;
 const at = (p) => { phase = p; lastMove = Date.now(); };
-setInterval(() => {
-  if (Date.now() - lastMove < 180000) return;
+const within = (promise, ms) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error("no answer in " + ms + " ms")), ms))]);
+/* What the viewer was doing: its processes' load, and the renderer's
+   JavaScript stack (the debugger pauses a page that loops). */
+async function diagnose() {
+  const info = await within(live.v.app.evaluate(async ({ app, BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows()[0];
+    app.getAppMetrics();                      // CPU use is measured between two calls
+    await new Promise((r) => setTimeout(r, 1000));
+    return { crashed: w ? w.webContents.isCrashed() : null,
+      cpu: app.getAppMetrics().map((m) => m.type + " " + Math.round(m.cpu.percentCPUUsage) + "%") };
+  }), 10000);
+  console.log("[panel-e2e] viewer: " + JSON.stringify(info));
+  const cdp = live.cdp;
+  if (!cdp) throw new Error("no debugger session");
+  const paused = new Promise((r) => cdp.once("Debugger.paused", r));
+  await within(cdp.send("Debugger.pause"), 10000);
+  const ev = await within(paused, 10000);
+  console.log("[panel-e2e] renderer stack:\n" + ev.callFrames.slice(0, 15).map((f) =>
+    "    " + (f.functionName || "(anonymous)") + " " + String(f.url).split("/").slice(-2).join("/") + ":" + (f.location.lineNumber + 1)).join("\n"));
+}
+setInterval(async () => {
+  if (stalled || Date.now() - lastMove < 180000) return;
+  stalled = true;
   console.log("[panel-e2e] stalled for 3 min at: " + phase);
+  if (live) await diagnose().catch((e) => console.log("[panel-e2e] could not look inside the viewer: " + e.message));
   process.exit(1);
 }, 5000).unref();
 function record(name, ok, detail) {
@@ -124,6 +148,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   const errs = [];
   const temps = [S];
   let { v, page } = await open(S, errs).catch((e) => { console.error("FATAL:", e); process.exit(2); });
+  live = { v, page };
+  // A debugger session from the start: one opened on a page that already
+  // loops gets no answer, one enabled before can pause it.
+  try { live.cdp = await page.context().newCDPSession(page); await live.cdp.send("Debugger.enable"); } catch (_) { live.cdp = null; }
 
   // The synthetic video: 32 s, each frame showing its own time.
   if (!fs.existsSync(VIDEO)) {

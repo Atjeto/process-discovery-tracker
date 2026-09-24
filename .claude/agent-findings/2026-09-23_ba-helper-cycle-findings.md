@@ -142,6 +142,17 @@ CI run passed without needing the retry, so the failure is intermittent and the 
 will name its cause. RULE (the restart point's CI lesson, again): check CI after every
 push to master before the next merge, not at the end of the night.
 
+### BH13: a CI e2e job hung for 50 minutes over three pushes before anyone looked (coordinator)
+After the P-W merge (9d95d4e), CI's panel smoke stopped after its (g1) check and never
+printed again; the splitter and SUB-P merges were pushed on top while the first job still
+showed "in progress", which reads like "still running", not "stuck" (a normal run takes
+about 6 minutes). Every local run passed at both sizes. No smoke and no job had a time
+limit, so a wait without its own timeout (a page.evaluate, for example) could hold the
+runner for the default 6 hours. Correction (ae86382): run-all stops a smoke after
+PDT_E2E_SMOKE_MINUTES (default 10) with its whole process tree and fails it as a timeout,
+the e2e job stops after 60 minutes, and the panel smoke names the step it stalled on.
+RULE: a CI run older than twice its usual time is a failure; look at it before the next push.
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
