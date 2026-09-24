@@ -1,155 +1,206 @@
 # Deployment
 
-How to get Process Discovery Tracker onto a fresh worker or analyst machine, and how upgrades and rollbacks work in practice. For build mechanics (how zips are produced), see [BUILD-AND-DIST.md](BUILD-AND-DIST.md).
+How to get Process Discovery Tracker onto an SME's machine and an analyst's
+machine, and how upgrades and rollbacks work. For how the zips are built,
+see [BUILD-AND-DIST.md](BUILD-AND-DIST.md).
 
 ## SmartScreen / unsigned binaries
 
-The release `.exe`s are **unsigned by design** ([ADR-0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md) — PDT is the owner's IP and is not signed under the employer's certificate). On first launch from a fresh machine, Windows SmartScreen may show **"Windows protected your PC"**: click **More info → Run anyway**. This is expected for an internal, unzip-and-run tool; there is no installer to "trust" and nothing is fetched at runtime. The prompt does not reappear once Windows has seen the file run.
+The release `.exe` files are **unsigned by design**
+([ADR-0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md):
+PDT is the owner's IP and is not signed under the employer's certificate).
+On first launch on a fresh machine, Windows SmartScreen may show "Windows
+protected your PC": click **More info**, then **Run anyway**. This is
+expected for an internal, unzip-and-run tool; there is no installer and
+nothing is fetched at runtime. The prompt does not come back once Windows
+has seen the file run.
 
-## Capture (worker machine)
+## Capture (the SME's machine)
 
-Prereqs: OBS Studio 28+ with WebSocket enabled (the team standard). No admin rights, no installer, no PATH changes.
+No admin rights, no installer, no PATH changes. OBS is optional.
 
 1. Download `capture-vX.Y.Z.zip` from the [Releases page](../../../releases).
-2. Unzip wherever the worker prefers — `C:\Users\<user>\PDT\capture\` is the usual place.
-3. (First time only) Set `PDT_CONFIG` to the engagement YAML path so the tray picks up labels, idle threshold, OBS scene. Either:
-   - User env var: `setx PDT_CONFIG "C:\Users\<user>\PDT\config\engagement.yaml"` (takes effect on next shell)
-   - Or launch via a shortcut whose `Start in` field sets the env var
-4. Run `Process Discovery Tracker.exe`. Tray icon appears. Verify OBS reachability via the tray menu's `Set up OBS recording...` test button.
+2. Unzip it where the SME prefers (`C:\Users\<user>\PDT\capture\` is the
+   usual place).
+3. Run `Process Discovery Tracker.exe`. The tray icon appears, and the first
+   launch shows a short welcome.
+4. Before the first real recording, run Setup (analyst), Readiness check in
+   the tray menu (or `"Process Discovery Tracker.exe" --readiness`, which
+   prints the summary and exits 0 ready, 2 not ready, 3 crashed). It checks
+   free disk, starts the recorder, and shows how much the recorder sees of
+   each open program; the report lands in `readiness-report.json` next to
+   the recordings.
+5. Optional set-up, all in the tray's Setup (analyst) menu: Recording setup
+   (the project and the named runs), Settings (keys, OBS, screenshots, the
+   storage limit, the idle end of the open run), Profile (who is recording).
+   For a project-wide YAML instead, set `PDT_CONFIG` before launch (`setx
+   PDT_CONFIG "C:\Users\<user>\PDT\config\project.yaml"`, which takes effect
+   for programs started afterwards); Settings and Profile still layer on
+   top. The keys are in [CAPTURE.md](architecture/CAPTURE.md#configuration).
 
-Sessions land under `%APPDATA%\process-discovery-tracker\sessions\<engagement>\<timestamp>\`. The capture app never writes to its install folder, so the install is read-only at runtime.
+Recordings land under
+`%APPDATA%\process-discovery-tracker-capture\sessions\<project>\<timestamp>\`.
+The capture app never writes to its install folder, so the install is read
+only at runtime. The recorder is a large single-file .NET executable that
+unpacks itself to `%TEMP%` on first run; on a nearly full C: drive it
+records nothing, so set `DOTNET_BUNDLE_EXTRACT_BASE_DIR` to a folder on
+another drive (the readiness check tests the drive it will use).
+
+The SME hands the recording over with the end summary's **Make a zip for
+the analyst** (a zip next to the folder; nothing is sent) or by copying the
+folder.
+
+### Video (optional)
+
+OBS Studio is not needed. With OBS installed and its WebSocket server on,
+the capture app records a video alongside and syncs it; set-up steps are in
+[CAPTURE.md](architecture/CAPTURE.md#obs-video-optional). Without OBS, the
+analyst can attach a recording of the call (a Teams recording, for example)
+in the viewer.
 
 ### Browser-based processes (Chrome / Edge)
 
-Most modern enterprise processes (Salesforce, ServiceNow, web-based ERPs)
-run inside Chrome or Edge. The recorder reads those interactions through
-Windows UI Automation (UIA). Chromium browsers build their accessibility
-tree **lazily** — without an external tool asking for it, web content is
-invisible to UIA and the recorder sees only the omnibox.
+Most enterprise processes (Salesforce, ServiceNow, web-based ERPs) run in
+Chrome or Edge. The recorder reads those interactions through Windows UI
+Automation. Chromium browsers build their accessibility tree lazily: until
+something asks for it, web content is invisible to UI Automation and the
+recorder sees only the address bar.
 
-The recorder wakes this up automatically: on session start it touches
-every Chromium top-level window's accessibility tree, then keeps a
-1 s background poller doing the same so newly-opened windows / tabs
-get woken too. The result is that **stock Chrome and Edge work out of
-the box** — no special launch flag, no extension, no admin rights.
+The recorder wakes it up itself: it touches every Chromium window's
+accessibility tree every second, so new windows and tabs are woken too.
+Stock Chrome and Edge therefore work out of the box: no launch flag, no
+extension, no admin rights.
 
-If you ever see the in-app toast "<browser> is foreground but no
-interactions are reaching the recorder" during a session, two safe
-fallbacks exist:
+If the SME sees the toast "Clicks and typing in Chrome are not being
+recorded" during a recording, two fallbacks exist:
 
-- **Per-launch flag**: start the browser with `--force-renderer-accessibility`. Mainly useful as a one-off diagnostic.
-- **Persistent registry policy** (managed environments):
+- **Per launch**: start the browser with `--force-renderer-accessibility`.
+  Mostly a one-off diagnostic.
+- **Registry policy** (managed machines, needs admin; survives browser
+  updates):
 
   ```
   reg add "HKLM\Software\Policies\Google\Chrome" /v AccessibilityModeEnabled /t REG_DWORD /d 1 /f
   reg add "HKLM\Software\Policies\Microsoft\Edge" /v AccessibilityModeEnabled /t REG_DWORD /d 1 /f
   ```
 
-  Needs admin and policy-friendly Chrome/Edge (most enterprise builds are). Survives browser updates.
+The wake-up is described for engineers in
+[CAPTURE.md](architecture/CAPTURE.md#the-c-recorder-sidecar-capturerecorder).
 
-The wake-up is also documented in [docs/architecture/CAPTURE.md](architecture/CAPTURE.md#chromium-accessibility-wake-up) for the engineering side.
+### Remote and virtualized apps (Citrix, RDP, VMware)
 
-### Remote / virtualized apps (Citrix / RDP / VMware) — §11e
+A program running inside a Citrix published app, an RDP session or a VMware
+Horizon desktop is, from the local machine, a video stream: UI Automation on
+the client sees only the remoting window, and the real controls are pixels
+inside it. The recorder flags this: interactions from such a window carry
+`framework: "remote"` and a low `confidence`. A recording that is mostly
+`framework: "remote"` means the recorder ran on the wrong side.
 
-A process running inside a **Citrix** published app, an **RDP** session, or a
-**VMware Horizon** desktop is, from the local machine's point of view, just a
-**video stream**. UIA on the client sees only the remoting host window — the
-real controls (buttons, fields, grids) are pixels inside it, with no structured
-identity. The recorder flags this: interactions from such a window carry
-`framework: "remote"` and a low `confidence` (see [CAPTURE.md](architecture/CAPTURE.md)).
-A capture that is mostly `framework: "remote"` is the signal you are **on the
-wrong side of the glass**.
+**Run the capture app inside the remote session**, on the Citrix server, RDP
+host or virtual desktop where the program runs, when its profile allows
+unsigned Electron apps. Inside, the program's UI Automation tree is local and
+rich again, exactly as on a physical machine.
 
-**The rule: run the recorder INSIDE the remote session, not on the local client.**
-Install the worker app on the Citrix server / RDP host / virtual desktop where
-the application actually runs, and capture there. Inside the session the
-application's UIA tree is local and rich again, exactly as if it ran on a
-physical machine. (Same posture as the browser case above: capture where the
-accessibility tree lives.)
+Where that is not possible, run it locally and rely on the video: runs and
+screenshots still record, the video shows the content, and the analyst
+names the inner programs. The same holds for terminal and console windows
+(`framework: "terminal"`) and for legacy controls with no UI Automation
+support. The per-program `framework` and `confidence` tally
+(`scripts/inspect-events.js`, structure only) shows which stretches need
+the video.
 
-Where running inside the session isn't possible, fall back to the **local video
-backstop** below — you lose structured interactions for those spans but keep a
-reviewable recording.
+## Viewer (the analyst's machine)
 
-### Video backstop — when structured capture can't reach (§11e)
-
-PDT's target is **graceful, honest degradation**, not 100% structured capture.
-Some surfaces expose little or nothing to UIA even when captured correctly:
-remote sessions captured from the client side, terminal/console windows
-(`framework: "terminal"`), and legacy custom controls that implement no UIA
-provider. The recorder reports these honestly (low `framework` coverage / low
-`confidence`; an identityless element can be OCR-labelled only with
-`interactions.ocr` opted in, and even then weakly).
-
-For those spans the **local OBS video recording is the backstop**: enable OBS
-for the session (the team standard; tray → `Set up OBS recording…`), and the
-analyst reviews the video over the low-confidence regions the structured stream
-couldn't resolve. The video stays **on the device** — it is a local sidecar,
-never transmitted — preserving the air-gapped moat. Use the per-process
-`framework`/`confidence` tally (`scripts/inspect-events.js`) to find which spans
-need the video.
-
-## Viewer (analyst machine)
-
-No prereqs. Python is bundled in the zip via Python embeddable — no host Python install required, no `pip install`.
+No prerequisites: Python is bundled in the zip, so there is no Python
+install and no `pip install`.
 
 1. Download `viewer-vX.Y.Z.zip` from the [Releases page](../../../releases).
-2. Unzip wherever. Common: `C:\Users\<user>\PDT\viewer\`. **Pick a short
-   destination path** — the bundled Python's deepest paths reach ~175 characters
-   (PM4Py inductive-variant filenames), and Windows' 260-char MAX_PATH limit means
-   that extracting into a deeply-nested folder (an indexed OneDrive sync path, a
-   long project tree under `Documents\…`) can cause Shell "Extract All" (and
-   PowerShell `Expand-Archive`) to silently fail mid-rollback with no error
-   shown. Anything under ~80 chars is safe; `C:\Tools\pdt\` or a folder directly
-   under your user profile is fine.
-3. Run `Process Discovery Viewer.exe`. Use `Open session folder...` to load a session pulled from a worker machine.
+2. Unzip it. **Pick a short destination path**: the bundled Python's deepest
+   paths reach about 175 characters, and with Windows' 260-character limit,
+   extracting into a deep folder (a OneDrive sync path, a long tree under
+   `Documents\`) can make Explorer's Extract All (and PowerShell's
+   `Expand-Archive`) fail part way with no error shown. Anything under about
+   80 characters is safe; `C:\Tools\pdt\` or a folder directly under the
+   user profile is fine.
+3. Run `Process Discovery Viewer.exe` and click **Open recording...** to open a
+   recording folder (unzip a zip first).
 
-The viewer never modifies the session folder it opens — normalization writes new files (`events.xes`, `events.csv`, `stats.json`, `process_map.bpmn`, etc.) alongside `events.jsonl`, but `events.jsonl` itself is immutable. Re-running normalization is always safe.
-
-> **App Library "Discover from window" needs the capture app alongside.** The viewer ships without `recorder.exe` by design (it lives in the capture app), so the **only** viewer feature that reaches outside its own folder is the App Library's point-and-learn discovery — it drives the C# recorder to snapshot a window. Extract the `viewer/` and `capture/` release zips into the **same parent folder** (e.g. `C:\Tools\pdt\viewer\` and `C:\Tools\pdt\capture\`) and the viewer finds the recorder in its sibling. `PDT_RECORDER_PATH` overrides the lookup. Everything else in the viewer — analysis, normalization, HTML report, PDD export — is fully standalone and needs no capture install.
+The viewer analyzes a recording by itself when it opens without a current
+analysis. It writes into the recording folder (`annotations.json` and its
+backups, `stats.json`, `analysis.json`, `process_map_step.bpmn`,
+`normalize.log`, `derived_maps/` for the edited maps, `transcript.json`
+when a transcript is attached) but never changes `events.jsonl`, so
+analyzing again is always safe. The viewer needs no capture install.
 
 ## Upgrades
 
 The install is a folder. Upgrading is replacing that folder.
 
-1. Quit the running app (tray exit for capture, close window for viewer).
-2. Rename the existing folder to `<name>.old`. (Faster than deleting; lets you roll back instantly.)
-3. Unzip the new release in place.
-4. Restart.
+1. Quit the running app (tray Quit for capture, which stops a running
+   recording first; close the window for the viewer).
+2. Rename the existing folder to `<name>.old` (faster than deleting, and it
+   allows an instant rollback).
+3. Unzip the new release in its place.
+4. Start the app again.
 
 **What survives an upgrade:**
 
 | State | Location | Notes |
 |---|---|---|
-| Captured sessions | `%APPDATA%\process-discovery-tracker\sessions\` | Outside the install dir — untouched. |
-| Per-machine OBS settings | `%APPDATA%\process-discovery-tracker\obs-settings.json` | Untouched. |
-| Engagement config YAML | Wherever `PDT_CONFIG` points | Owned by the analyst, not the install. |
-| Boot log / app log | `%APPDATA%\process-discovery-tracker\` (`boot.log`, `app.log`) | Untouched; append-only. |
+| Recordings | `%APPDATA%\process-discovery-tracker-capture\sessions\` | Outside the install folder. |
+| Capture settings | `%APPDATA%\process-discovery-tracker-capture\` (`user-config.json`, `quick-config.yaml`, `recording-bar.json`) | Settings, Profile, Recording setup, the bar's place. |
+| Capture logs | `%APPDATA%\process-discovery-tracker-capture\` (`boot.log`, `app.log`) | Append-only. |
+| The analyst's library | `%APPDATA%\process-discovery-tracker-viewer\pdt-library\` (`remembered-names.json`, `processes.json`) | The saved names and saved processes. |
+| A project YAML | Wherever `PDT_CONFIG` points | Owned by the analyst, not the install. |
 
-**What does NOT survive:** the bundled Python embeddable, the recorder sidecar, the central taxonomy that ships with the build. Anything inside the unzipped folder is replaced. If the analyst customized the shipped taxonomy in-place (don't), changes are lost — track engagement-specific taxonomies separately.
+**What does not survive:** anything inside the unzipped folder: the bundled
+Python, the recorder, the shipped `taxonomy.yaml` and app vocabularies.
 
 ## Rollback
 
-The previous install is sitting next to the new one as `<name>.old`. Quit the running app, delete or move the new folder, rename `<name>.old` back. No data migration is involved because none of the runtime state lives inside the install.
+The previous install sits next to the new one as `<name>.old`. Quit the
+running app, move the new folder away, and rename `<name>.old` back. No
+data migration is involved, because no runtime state lives in the install.
 
-If `<name>.old` is gone, re-download the prior `capture-vX.Y.Z.zip` / `viewer-vX.Y.Z.zip` from the [Releases page](../../../releases) and unzip. Sessions remain compatible across releases — `events.jsonl` schema is versioned in `manifest.json`.
+If `<name>.old` is gone, download the earlier `capture-vX.Y.Z.zip` or
+`viewer-vX.Y.Z.zip` from the [Releases page](../../../releases) and unzip it.
+Recording folders do not depend on the install: raw events never change, and
+keys a release does not know are kept as they are.
 
 ## BPMN export pivot (Adonis swap-and-go)
 
-The default BPMN exporter goes through PM4Py's `discover_bpmn_inductive`. The output is BPMN 2.0 XML, intended to import cleanly into Adonis. **Adonis compatibility is not load-bearing.** If a future Adonis version rejects PM4Py's BPMN structure, the export path is the swap point — not the design.
+The step map (`process_map_step.bpmn`) is BPMN 2.0 with diagram
+interchange: pm4py's inductive miner (`mining.discover_inductive`) builds the
+model from two or more runs, and `mining.export_bpmn` writes it with its own
+pure-Python layout. The edited As-Is and To-Be copies are saved by the
+viewer's BPMN editor (bpmn-js). The output is meant to import cleanly into a
+BPMN tool such as Adonis, but **that compatibility is not load-bearing**: if
+a tool rejects the file, the export is the place to change, not the design.
 
-Swap options, in order of effort:
+Options, in order of effort:
 
-1. **Tweak the existing BPMN serializer.** [mining.py](../normalization/mining.py) `export_bpmn` wraps PM4Py's writer; namespace tweaks or attribute filtering often resolve Adonis quirks without changing the upstream model.
-2. **Add a post-processor.** Write an XSLT or Python pass that runs after `export_bpmn` and rewrites whatever Adonis dislikes. Plug into [normalize.py](../normalization/normalize.py) immediately after the existing `mining_mod.export_bpmn(...)` call.
-3. **Switch the export format.** If BPMN itself isn't the right shape, emit Adonis-native XML or fall back to image+CSV. The viewer's `process_map.bpmn` is one of many session artifacts; downstream consumers can switch to another file without affecting capture, normalization, or mining.
+1. **Adjust the writer.** [mining.py](../normalization/mining.py)
+   `export_bpmn` serializes the model; namespace or attribute changes often
+   resolve a tool's quirks without touching the model.
+2. **Add a post-processor.** An XSLT or Python pass over
+   `process_map_step.bpmn`, run after `bpmn_observed.write_observed_bpmn` in
+   [pipeline_stages.py](../normalization/pipeline_stages.py)
+   (`_run_mining_exports`).
+3. **Change the format.** Emit the tool's native format beside the BPMN
+   file; the PDD prints a picture of the map, so nothing else depends on the
+   file's shape.
 
-In all three cases, `events.xes` and `events.csv` are unchanged — they're the durable analyst-side artifacts. BPMN is a derived view.
+In every case `events.jsonl` and `annotations.json` stay the durable
+artifacts; the BPMN file is derived from them.
 
-## Multi-machine setup
+## Several SMEs
 
-For an IE shift review across N machines, each worker machine gets the capture zip and a shared `engagement.yaml` (typically on a network share or pasted into each machine). Sessions from each worker are gathered on the analyst machine via copy/paste or a shared folder. There is no central coordinator service — the session package is the only integration seam (§2.1 of the design doc).
+Each SME gets the capture zip and records on their own machine; each
+recording folder reaches the analyst on its own (a zip or a copy). A shared
+project YAML can go to every machine (`PDT_CONFIG`). There is no central
+service: the recording folder is the only hand-off.
 
 ## Troubleshooting
 
-If something goes wrong during deploy or upgrade, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+If something goes wrong during an install or an upgrade, see
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md).

@@ -7,8 +7,9 @@
 > **Authority:** extends the Honesty Redesign ([LAB-PHASE-SPEC.md](../LAB-PHASE-SPEC.md) §1).
 > Memo / Evidence / Machine and the tier gates stay supreme; this doc adds a
 > **use gate** on top of them. No new taxonomy. The 2026-07-01 disclosure pass
-> ([DESIGN-CRITIQUE-2026-07-01.md](DESIGN-CRITIQUE-2026-07-01.md)) stands; it
-> polished presentation — this cycle fixes what is presented.
+> ([DESIGN-CRITIQUE-2026-07-01.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md),
+> on branch `product-edition`) stands; it polished presentation, and this
+> cycle fixes what is presented.
 
 ## 1. The bug
 
@@ -40,18 +41,20 @@ trace down.
   bug"). Even with perfect L0 keys, the consecutive-run roll-up
   ([ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)) splits on every
   app bounce, so interleaved work can never fold to memory-sized units.
-- **L2 — Surfaces.** Views render fragments at full volume with per-fragment
+- **L2: Surfaces.** Views render fragments at full volume with per-fragment
   asks: a 500-row step list navigable by nothing the analyst remembers, a
   detail editor whose empty fields read as 500 × N owed answers, a timeline
   painting five lanes of confetti at 1-hour scale, a vocab editor made of
   blank UIA-schema inputs disconnected from the captured evidence
-  ([vocab-view.js](../../viewer/views/vocab-view.js) is "self-contained" by
+  ([vocab-view.js](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/viewer/views/vocab-view.js),
+  on branch `product-edition`, is "self-contained" by
   design), and destination-nouns (Templates) nothing in any workflow ever
   hands you.
-- **L3 — Analytics.** Consulting furniture rendered without earning it at
+- **L3: Analytics.** Consulting furniture rendered without earning it at
   observed N: a nine-column ROI table of manufactured zeros under its own
   "nothing to see" floor sentence, a flat config constant
-  (`automatable_fraction` 0.7, [analysis_roi.py](../../normalization/analysis_roi.py))
+  (`automatable_fraction` 0.7, [analysis_roi.py](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/normalization/analysis_roi.py)
+  on branch `product-edition`)
   rendered as a per-row AUTO% column, a ranked candidate table duplicating
   the findings feed in a second vocabulary, waste/efficiency modules that are
   input-starved forms, and a Compare surface (~20 blocks) that **merges**
@@ -207,7 +210,7 @@ decisions, and zero capture instructions across all three memos is cut or
 Machine-demoted**, with COHERENCE-AUDIT inverses. Update CLAUDE.md's active
 direction; cut the release.
 
-Runbook: [R5-SITDOWN-RUNBOOK.md](R5-SITDOWN-RUNBOOK.md).
+Runbook: [R5-SITDOWN-RUNBOOK.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/R5-SITDOWN-RUNBOOK.md) (on branch `product-edition`).
 
 ## 6. Process rules (new, permanent)
 

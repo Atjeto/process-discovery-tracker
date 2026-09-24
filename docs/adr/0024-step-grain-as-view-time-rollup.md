@@ -1,6 +1,6 @@
 # ADR-0024: Step grain is a view-time roll-up over the UI-containment hierarchy (§11b, reframed)
 
-**Status:** Accepted — built out 2026-05-31 (P1–P4, see *Build-out* below); shipped behind the in-app **Grain** slider (default notch = screen). Supersedes the standing §11b recommendation to *flip a global default* ([SEGMENTATION-CALIBRATION-FINDINGS.md](../To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)).
+**Status:** Accepted, built out 2026-05-31 (P1 to P4, see *Build-out* below); shipped behind the in-app **Grain** slider (default notch = screen). Supersedes the standing §11b recommendation to *flip a global default* ([SEGMENTATION-CALIBRATION-FINDINGS.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md), on branch `product-edition`).
 **Note (2026-09-23):** Narrowed by [ADR-0029](0029-ba-helper-refocus.md): the in-app Grain slider and the multi-notch view are cut. The `grain_keys` data model (`element` / `screen` / `app`, stamped on every step) stays; the drafting rule's screen component is built on it.
 **Date:** 2026-05-30
 **Deciders:** Project owner (steered the reframing), analyst (process-discovery lead)

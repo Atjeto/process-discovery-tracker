@@ -1,42 +1,54 @@
-# Session-level golden gate (Wave 0 / F2)
+# Session golden
 
-These `*.projection.json` files are the **regression baseline** for the whole
-normalization pipeline. The gate (`normalization/golden_check.py`) re-normalizes a
-committed reference session into a temp dir and diffs a *lightweight projection* of
-the output against the golden here.
+These `*.projection.json` files are the regression baseline for the whole
+pipeline. The gate, `normalization/golden_check.py`, copies each committed
+demo session in `sessions/example-aggregate/` to a temp folder, analyzes it
+there (`normalize.py --mine`) and compares a projection of the output with
+the golden here.
 
-## What's pinned (and why a projection)
+## What is pinned
 
-A curated set of stable scalars, the distinct `process_label` set, and the DFG shape
-— not the full artifacts. Full-artifact diffs drift on every timestamp; pixel diffs
-are theme-fragile. The projection diffs cleanly and survives benign churn. See
-[PDT-ROADMAP-CODEBASE-FIT.md §11](../../docs/To-Do/PDT-ROADMAP-CODEBASE-FIT.md).
+A projection, not the full outputs: the full files change on every run
+(timestamps), and pixel diffs break with the theme. Per session:
+
+- the stable `stats.json` meta counts (raw events, dropped lines, activities
+  after the collapse, interactions, runs, marker edits applied, vocabulary
+  matches, steps and the steps per state);
+- the step count and the distinct `process_label` set;
+- the step map (`process_map_step.bpmn`): its task names, and its one start
+  and one end event.
+
+Gateway and flow counts are left out on purpose. They come from pm4py's
+inductive miner, which CI installs unpinned while the app bundles its own
+copy, so they can move with the miner version. The e2e connectivity check in
+`e2e/session-smoke.js` pins the map's shape instead (one connected graph,
+one entry step, one final step).
 
 ## Semantics
 
-- The golden pins **what the current pipeline produces from the committed
-  `events.jsonl`** — it is a *change detector*, not an oracle of correctness. When a
-  pipeline change intentionally alters output, regenerate: `python golden_check.py
-  --update` (run with a deps-bearing Python — the bundled `viewer/python/python.exe`
-  or a CI env with `requirements.txt`).
-- The reference input is normalized in a **temp copy**, so the committed
-  `sessions/example-aggregate/` demo data is never regenerated in place.
+- The golden pins what the current pipeline produces from the committed
+  `events.jsonl`. It detects change; it does not judge correctness. After a
+  pipeline change that alters the output on purpose, regenerate with a
+  Python that has the pipeline dependencies (the bundled
+  `viewer/python/python.exe`, or a CI environment with `requirements.txt`):
+  `python golden_check.py --update`. Say so in the commit.
+- The analysis runs in a temp copy, so the committed demo sessions are never
+  regenerated in place.
 
-## History: the pre-drafting-rule over-segmentation finding
+## History
 
-Before [ADR-0029](../../docs/adr/0029-ba-helper-refocus.md), this section
-recorded a day-one over-segmentation finding against the old free-running
-step auto-suggester (the "308-step" class): the committed demo's
-hand-curated step counts were much lower than what a fresh `--mine`
-produced. That auto-suggester is gone. Steps are now produced by the
-drafting rule (contract C1, `step_suggest.auto_suggest_steps`): one step per
-screen visit, ending at its commit action. This is a fixed rule, not a
-tunable segmenter, so there is no calibration knob left to re-baseline
-against. The golden here pins whatever the drafting rule currently produces; regenerate
-it (`--update`, below) whenever a change to the rule is intentional.
+Before [ADR-0029](../../docs/adr/0029-ba-helper-refocus.md) this golden also
+pinned the activity-level map's shape (`dfg.json`), and an early version of
+this file recorded the old step suggester's over-segmentation (the
+"308-step" class). Both are gone. Steps are drafted by one fixed rule now
+(contract C1, `step_suggest.auto_suggest_steps`: one step per screen visit,
+ending at its commit action), with no calibration knob to re-baseline
+against.
 
 ## CI
 
-`normalization/test/test_golden_projection.py` runs this gate under pytest. It **skips**
-where the pipeline deps (pandas/pm4py) are absent (e.g. a bare dev Python) and **gates**
-where they're present (the `pytest.yml` CI job installs `requirements.txt`).
+`normalization/test/test_golden_projection.py` runs this gate under pytest.
+It skips where the pipeline dependencies (pandas, pm4py) are missing, as on a
+bare dev Python, and gates where they are present (the `pytest.yml` CI job
+installs `requirements.txt`, and the full-deps recipe in
+[CONTRIBUTING.md](../../CONTRIBUTING.md) runs it locally).

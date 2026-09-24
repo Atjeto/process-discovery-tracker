@@ -5,7 +5,8 @@
 > as *mechanical* placement rules, so disclosure is uniform instead of
 > re-invented per surface. It introduces no new taxonomy; tier gates always
 > outrank everything here. Companion worklist:
-> [To-Do/DESIGN-CRITIQUE-2026-07-01.md](../To-Do/DESIGN-CRITIQUE-2026-07-01.md).
+> [DESIGN-CRITIQUE-2026-07-01.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md)
+> (on branch `product-edition`).
 
 ## The model
 

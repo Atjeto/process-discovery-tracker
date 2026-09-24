@@ -19,9 +19,9 @@ session. Earlier specs live in git history and [Archive/](Archive/).
 > R1–R5). Start there. This file remains the historical record of the
 > pre-redesign waves; its §3 real-data items land inside R2/R5.
 
-> **Update — 2026-06-27 (reconcile to v0.22.2 + lab phases A–H).** This file
+> **Update, 2026-06-27 (reconcile to v0.22.2 + lab phases A to H).** This file
 > predates the lab-phase cycle; the **live** sources are CLAUDE.md's *Active
-> direction* block + [LAB-PHASE-SPEC.md](LAB-PHASE-SPEC.md) + CHANGELOG. The
+> direction* block + [LAB-PHASE-SPEC.md](../LAB-PHASE-SPEC.md) + CHANGELOG. The
 > §0.x / §1 / §2 blocks below are the **historical record** of the Wave-0 /
 > Wave-1 work (all landed). Current state:
 > - **Released v0.22.2** — the v0.20.0 internal-rollout cycle + the
@@ -134,13 +134,15 @@ signatures. Landed on `master`:
   incident, create account, send email, mail-merge — validated through `canonical_match`.
 - **Excel proven end-to-end** through the real C# recorder (it emits the probed
   ids; the vocab enriches them). Lookups + golden + fuzzers all green.
-- **§11b root-caused** — the over-segmentation is `step_split_on_element` (64→15
+- **§11b root-caused**: the over-segmentation is `step_split_on_element` (64→15
   steps when off); flip gated on real-corpus + UI validation
-  ([SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md)).
+  ([SEGMENTATION-CALIBRATION-FINDINGS.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md),
+  on branch `product-edition`).
 
-**Next (owner-gated):** **[SUPERSEDED → [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)]** — the §11b "flip" is replaced by a view-time grain roll-up (see §0.8/§0.10); build that out against a real recorder-driven corpus +
+**Next (owner-gated):** **[SUPERSEDED → [ADR-0024](../adr/0024-step-grain-as-view-time-rollup.md)]**: the §11b "flip" is replaced by a view-time grain roll-up (see §0.8/§0.10); build that out against a real recorder-driven corpus +
 viewer/analysis validation; cover **SAP / Jira / Zendesk** (need driving) per
-[APP-COVERAGE-LIST.md](APP-COVERAGE-LIST.md); decide whether to make the demo real
+[APP-COVERAGE-LIST.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/APP-COVERAGE-LIST.md)
+(on branch `product-edition`); decide whether to make the demo real
 (regenerate `example-aggregate` with probed ids so it re-enriches under the real vocabs).
 
 ---
@@ -251,14 +253,15 @@ captures committed under [`corpus/`](../../corpus/README.md).
   markers** synced off stdout sentinels, filters to in-case target-app
   interactions, and re-normalizes under both calibrations via the F3
   `annotations['calibration']` override.
-- **Result — over-seg reproduces on real data; candidate fixes it:** Outlook
+- **Result: over-seg reproduces on real data; candidate fixes it:** Outlook
   compose **9→3** (1 step/field → 1 step/draft), Excel data-prep **8→3**, Word
   Mailings **8→4**. Same direction/magnitude as the synthetic 64→15. Committed as
   `corpus/narrow/over-segmentation-outlook-compose` +
   `corpus/bounded/over-segmentation-{excel-dataprep,word-ribbon}` (each with
   `events.jsonl`, a calibration-aware `expected.json`, a bug-class README, and the
   `script.ps1` driver). Evidence table + mechanism:
-  [SEGMENTATION-CALIBRATION-FINDINGS.md](SEGMENTATION-CALIBRATION-FINDINGS.md).
+  [SEGMENTATION-CALIBRATION-FINDINGS.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)
+  (on branch `product-edition`).
 - **Mechanism confirmed:** in the production (non-verbose) stream
   `focus_changed`/`text_changed` are verbose-gated (`UiaSubscriber.cs:147`), so
   multi-field/cell entry arrives as bare consecutive `value_changed` and the
@@ -349,10 +352,10 @@ working-tree files (`app_vocabularies/{jira,zendesk}.yaml`, `process_templates/{
 zendesk-create-ticket}.yaml`, `docs/To-Do/JIRA-ZENDESK-PROBE-CHEATSHEET.md`) — they belong to the
 running session and were left untouched.
 
-**The two new ADRs are the next big build chunks — specs, not builds, both owner-gated on one
+**The two new ADRs are the next big build chunks (specs, not builds), both owner-gated on one
 decision before coding:** ADR-0024 (lock the default grain notch + whether analysis itemisation
-follows the slider) and ADR-0025 / [SELF-SERVICE-VOCAB-DISCOVERY-SPEC](SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md)
-(trigger placement: viewer App Library vs capture tray).
+follows the slider) and ADR-0025 / [SELF-SERVICE-VOCAB-DISCOVERY-SPEC](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md)
+(on branch `product-edition`; trigger placement: viewer App Library vs capture tray).
 
 ---
 
@@ -392,9 +395,10 @@ total unchanged across notches; `e2e/session-smoke.js` 12/12 green.
   raw step band. So the single Grain control now drives Flow / Steps / Map /
   Analysis and Compare alike.
 
-**Real-app validation + map regression FIX — DONE 2026-05-31** (branch
+**Real-app validation + map regression FIX: DONE 2026-05-31** (branch
 `real-app-map-validation`; full report:
-[REAL-APP-MAP-VALIDATION-2026-05-31.md](REAL-APP-MAP-VALIDATION-2026-05-31.md)):
+[REAL-APP-MAP-VALIDATION-2026-05-31.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/REAL-APP-MAP-VALIDATION-2026-05-31.md),
+on branch `product-edition`):
 - ✅ **Headline map regression confirmed + fixed.** The default (screen) grain
   fanned out into a per-case hairball because the screen key fell back to the raw
   `window_title`, which embeds the case value (`Salesforce - Order #10900`,

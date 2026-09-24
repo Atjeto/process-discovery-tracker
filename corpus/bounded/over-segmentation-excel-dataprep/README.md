@@ -46,5 +46,6 @@ with ExpandCollapse) in `script.ps1`.
 See the Outlook narrow scenario's README and
 [docs/REAL-VALUE-TESTING.md](../../../docs/REAL-VALUE-TESTING.md). `script.ps1`
 (+ `uia-lib.ps1`) is the driver; re-normalize this folder under both calibrations
-to reproduce the 8→3. Do **not** flip the default — owner-gated
-([docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md](../../../docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)).
+to reproduce the 8→3. Do **not** flip the default: owner-gated
+([SEGMENTATION-CALIBRATION-FINDINGS.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md),
+on branch `product-edition`).

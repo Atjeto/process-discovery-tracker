@@ -1,58 +1,61 @@
 # Normalization
 
-Python pipeline that turns a captured session into XES + CSV + statistics + (optional) mined BPMN.
+The analyst-side Python pipeline. It turns a session folder into runs,
+drafted steps, statistics and the analysis, writes the step-level process
+map (`--mine`) and renders the PDD (`--pdd-out`). The viewer runs it with
+its bundled Python, by itself when a session opens without a current
+analysis; it also runs from a shell.
 
-Runs on the analyst's machine. Re-runnable against an updated taxonomy without recapture (§6.3).
+Architecture, stages and modules:
+[docs/architecture/NORMALIZATION.md](../docs/architecture/NORMALIZATION.md).
+File formats: [shared/SCHEMA.md](../shared/SCHEMA.md).
 
 ## Install
 
-Python 3.10+. From this folder:
+Python 3.10 or later. From this folder:
 
 ```
 pip install -r requirements.txt
 ```
 
-Per §11.5 the production install will be a python-embeddable folder shipped alongside the viewer (no admin install required); for development plain `pip` is fine.
+The released viewer ships its own Python with these packages
+(`viewer/python/`), so the analyst's machine needs no install.
 
 ## Usage
 
+Analyze a session the way the viewer does (from the repo root):
+
 ```
-python normalize.py path/to/session/folder \
-    --taxonomy sample-taxonomy.yaml \
-    --mine
+python normalization/normalize.py <session_folder> --taxonomy normalization/taxonomy.yaml --mine --names "<viewer userData>/pdt-library/remembered-names.json"
 ```
 
-Outputs land alongside the input:
-
-| File | Contents |
+| Flag | Effect |
 |---|---|
-| `events.xes` | IEEE 1849-2016 event log, one trace per top-level case |
-| `events.csv` | Flat CSV of activity events for Excel / non-XES tooling |
-| `stats.json` | Per-activity + per-case + variants + outliers + rework |
-| `process_map.bpmn` | (--mine only) PM4Py inductive miner output, BPMN 2.0 XML |
-| `dfg.json` | (--mine only) Directly-Follows Graph for the viewer's first-pass map |
+| `--taxonomy` | The classification rules. The analysis stages use them; drafting does not. |
+| `--mine` | Also write `process_map_step.bpmn`, the step-level map. |
+| `--names` | The remembered-names store: drafts whose `draft_key` it lists take the remembered name. |
+| `--pdd-out` | Render the PDD to this `.docx` path. |
+| `--pdd-map-image`, `--pdd-tobe-image` | Pictures of the As-Is and To-Be maps for the PDD. |
 
-`events.jsonl` is never modified. Re-run with a different taxonomy whenever the classification rules improve.
+Outputs land in the session folder: `stats.json`, `analysis.json`, the
+updated `annotations.json`, `process_map_step.bpmn` (with `--mine`) and
+`normalize.log`. `events.jsonl` is never changed, so re-running is always
+safe; the analyst's steps survive it.
 
-## Pipeline
+Exit codes: 0 success; 1 a usage error, a folder that is not a session
+folder, or a crash; 2 `annotations.json` cannot be read (nothing written);
+3 a requested export failed after the analysis outputs were written.
 
-1. Load `events.jsonl`, sort by timestamp (defensive).
-2. Walk the marker stream, build the case tree, stamp every activity event with `case_ids` (innermost first).
-3. Apply taxonomy classification -- first match wins; unmatched events get `Unclassified -- <app>`.
-4. Extract `transaction_id` from window titles where the rule defines one.
-5. Collapse adjacent identical activity events (same app, title, label, case_ids) with summed duration.
-6. Emit XES (PM4Py exporter) + CSV (pandas).
-7. Compute statistics.
-8. (Optional) Run PM4Py inductive miner, emit BPMN + DFG.
+Import a Teams meeting transcript (separate entry point):
 
-## Code map
+```
+python normalization/transcript_import.py <session_folder> <transcript.vtt|.docx>
+```
 
-| File | Role |
-|---|---|
-| `normalize.py` | CLI entry; orchestrates the pipeline |
-| `case_assignment.py` | Marker stream walk + case_id stamping (§5.2) |
-| `classification.py` | Taxonomy rules + collapse |
-| `xes_export.py` | XES + CSV emission |
-| `mining.py` | PM4Py wrappers (inductive, heuristics, DFG, BPMN) |
-| `statistics.py` | Per-activity, per-case, variants, outliers, rework |
-| `sample-taxonomy.yaml` | Example classification rules |
+## Tests
+
+`python -m pytest normalization/test/` on a Python without pandas and pm4py
+skips the pipeline tests and still looks green. Run the full-deps recipe in
+[CONTRIBUTING.md](../CONTRIBUTING.md) instead. The session golden
+(`golden_check.py`, see [golden/README.md](golden/README.md)) re-analyzes the
+committed demo sessions and compares the result with `golden/`.

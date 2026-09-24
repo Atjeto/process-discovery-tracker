@@ -9,12 +9,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Draft notes for everything landed so far in the BA-helper refocus; a later
 release pass finalizes the version number and date. The app is refocused
 from a product for a buyer into a tool for the owner's own work as a
-process manager / business analyst: record a process a few times with a
-single run hotkey, confirm the recorder's drafted steps for one run, and
-get a process map and a tool-neutral PDD. The complete prior product is
-preserved on the `product-edition` branch, tagged `product-edition-v1.5.0`,
-not deleted. Full rationale and the complete list of what changed:
-[ADR-0029](docs/adr/0029-ba-helper-refocus.md).
+process manager / business analyst: an SME records a process a few times,
+one run each time, the analyst confirms the recorder's drafted steps for
+one run, and the app gives a process map and a tool-neutral PDD. The
+complete prior product is preserved on the `product-edition` branch, tagged
+`product-edition-v1.5.0`, not deleted. Full rationale and the complete list
+of what changed: [ADR-0029](docs/adr/0029-ba-helper-refocus.md) and the
+plan's implementation notes
+([BA-HELPER-PLAN-2026-09-22.md](docs/To-Do/BA-HELPER-PLAN-2026-09-22.md)).
 
 ### Added
 
@@ -24,8 +26,9 @@ not deleted. Full rationale and the complete list of what changed:
   reviews how the other runs differ.
 - **Names are remembered**: naming a drafted step once applies that name to
   every future draft of the same control and screen, within the session
-  and across later sessions. A Remembered names list renames or forgets
-  a name.
+  and across later sessions. Names given in a session travel with its
+  folder, so the session drafts the same names on another machine. The
+  Saved names list, in the Steps toolbar, renames or forgets a name.
 - **Differences between runs**: every run after the pattern run lists how
   it differs from it (a skipped step, an extra step, a different order),
   or says it has none. The PDD's differences section uses the same rule.
@@ -36,41 +39,79 @@ not deleted. Full rationale and the complete list of what changed:
 - **Saved processes**: "Save as this process" stores the confirmed pattern
   run. A later session of the same process that has no confirmed pattern
   run yet is compared with the closest saved process, with "Stop
-  comparing" to turn that off.
+  comparing" to turn that off and "Forget this saved process" to remove it
+  (Undo brings it back).
 - **The Overview is the home**: a "What is left" line names the next thing
-  to do (mark the runs, confirm the pattern run, review the other runs,
-  fill in the document, finish the As-Is map, export the PDD) with one
-  button for it.
-- **Document sections**: a Document panel edits the title, purpose,
-  scope, contacts, business rules, exceptions and notes the PDD prints;
-  every change can be undone.
-- **Meeting transcript import**: a Teams `.vtt` or `.docx` transcript is
-  parsed into timestamped, speaker-tagged segments and stored with the
-  session; nothing in the app interprets what was said.
-- **Readable application names**: exports and findings show "Microsoft
-  Excel" or a recording's own window-title wording instead of a raw
-  executable name like `EXCEL.EXE`.
-- **Runs, not markers**: the capture app's tray, hotkey guidance, and Live
-  Session window speak of starting and ending runs. One hotkey starts the
-  next run (auto-ending whichever run is still open); stopping the
-  session ends the last open run on its own. A one-screen end summary
-  (run count, duration, interaction count) replaces the previous
-  multi-question close-out.
+  to do (mark the runs, confirm the reference run, review the other runs,
+  write the document, export the PDD) with one button for it, and shrinks
+  to one line once only the export is left. The recording line says who
+  recorded it, its runs and the reference run's steps; Recent names a
+  session by its document title.
+- **Document fields**: the Overview's document panel edits the title,
+  purpose, scope, trigger, result, key contacts, business rules,
+  exceptions, improvement and automation scope, and notes. Each prints in
+  its own place in the PDD, survives a re-export, and can be undone.
+- **Meeting transcript**: attach a Teams `.vtt` or `.docx` transcript. Its
+  sentences show on a Transcript lane on the Timeline, under "Said during
+  this step" in the step pane, and beside the document fields; one sentence
+  and one click on the timeline sync it (a synced video syncs it too). A
+  sentence can be added to a step's description or, with "Add to", to a
+  document field. Nothing in the app interprets what was said.
+- **Business system names**: the PDD and the step map name the system a
+  step happened in (SAP, Excel, Outlook, and Salesforce for a Chrome window
+  on Salesforce) from one shared rule list instead of an executable name
+  like `EXCEL.EXE`; the viewer shows the application names from the same
+  list.
+- **The recording bar**: a small strip replaces the capture app's Live
+  Session window and hotkey overlay. It shows the run in progress and the
+  elapsed time, with Next run, Pause and Stop, and a problem line only when
+  clicks and typing are not being recorded. It takes no keyboard focus,
+  stays out of screen captures and shared screens, and remembers its place.
+- **One way to start**: the recording bar's button, the tray, the welcome
+  and the run key all start the recording with Run 1; each later press
+  starts the next run, ending the open one first. Stopping ends the last
+  run by itself.
+- **An end summary with a zip for the analyst**: after Stop, one screen
+  says where the recording is saved and how many runs it has, warns when no
+  run was marked, and can make a zip of the recording next to its folder
+  for the SME to send by hand (nothing is sent from the app).
 - **A durable record of dropped events**: a write batch that could not be
   saved is now counted and recorded on the session timeline instead of
   only appearing in a local log file.
+- **Groundwork for sessions without a recording**: the analysis accepts a
+  session started from a video or from nothing (one run covering it until
+  runs are marked, hand-added steps without a time kept in their order)
+  and what the analyst adds by hand (screenshots, notes, attachments, a
+  step's system); the PDD prints the screenshot chosen for a step and lists
+  the attachments. The viewer cannot create such sessions or add those
+  items yet.
 
 ### Changed
 
-- **The PDD is tool-neutral** and is built around the run the analyst
-  confirmed: that run's steps, in order, are the detailed process
-  description; the differences between it and the other runs are the
-  observed variations; one table holds every run's measured timings; and
-  the analyst's own purpose / scope / contacts / business-rules /
-  exceptions / notes fill the document's front matter and survive a
+- **The PDD is a document a process manager can hand over**: tool-neutral
+  and in the reader's order (document control; purpose and scope with the
+  trigger and the result; the As-Is map and the reference run's steps;
+  variations, rules and exceptions; the data; applications and time;
+  improvement and automation scope; notes; attachments). Each step says its
+  system and screen, its average time, in how many runs it happened and
+  where it is in the recording ("Run 1 at 0:19"). One data table marks the
+  values typed again in another system; tables have a grid; each map gets a
+  page of its own, landscape when it is wide. The analyst's fields survive a
   re-export.
-- **The findings memo's content now renders inside the PDD** (as its
-  opening section) instead of as a separate document.
+- **The analysis runs by itself**: a recording is analyzed when it opens
+  without a current analysis, after Leave apps out and after a time range
+  is left out, when making the As-Is map and before a PDD export. One line
+  in the top bar says so, with Cancel; the log shows only when a run fails.
+  Apply marker changes stays deliberate, and Help, Troubleshooting has
+  Re-analyze.
+- **One top bar and no More menu**: the video and transcript actions sit on
+  the recording line, Leave apps out and Saved names in the Steps toolbar.
+  Flow is now called the Timeline.
+- **Observations instead of findings** on the Overview: the data typed
+  twice (per field, where the recording says which) and where the time
+  goes (per step and per application).
+- **Attaching a video goes straight into syncing it**: pause at a moment
+  you recognize, then click the same moment on the timeline.
 - **Case identity is stable across re-analysis**: a confirmed or edited
   step no longer loses its place after a re-analyze.
 - **A failed export or analysis stage is reported honestly**: the viewer
@@ -81,19 +122,33 @@ not deleted. Full rationale and the complete list of what changed:
   of restarting forever unnoticed; a spawn failure is now reported and
   retried the same way a crash is.
 - **One process map**: the Map shows one left-to-right map built from the
-  runs' steps, and Fork copies it into an editable As-Is or To-Be map. The
-  BPMN file behind it now covers the runs only and ends in a real end
-  event instead of a task named "end".
-- **Drafts are hidden, not deleted**, so an Analyze cannot bring them
+  runs' steps, from a single run on. "Edit as the As-Is map" copies it
+  into the map editor as the PDD's As-Is map, analyzing first so the copy
+  carries the current step names. The PDD prints the edited As-Is copy
+  when there is one, else the map from the runs. The BPMN file behind it
+  covers the runs only, ends in a real end event, wraps into rows to print
+  legibly, and carries each step's description, system and run count; its
+  start and end are named after the trigger and the result.
+- **Less on every screen** (the UI clarity audit): the step detail shows
+  one fact line that ends with why the draft ends where it does, then the
+  description and the step's screenshots; chips show only where a step
+  differs from its run; Screenshots is the Timeline's default tab; Open
+  merges opening another recording with Recent.
+- **The capture app speaks the SME's words**: Recording, Paused, Run 2,
+  Next run, Stop recording; setup items sit in one Setup (analyst) menu,
+  where the storage size is flagged instead of a toast after every
+  recording; the noise toasts are gone and Help fits one screen.
+- **The consent text says what is really left out**: only what is typed
+  into password fields (consent text version 2, so a remembered consent to
+  the old text is asked again).
+- **Drafts are hidden, not deleted**, so an analysis cannot bring them
   back; steps added by hand can still be deleted.
 - **Runs never nest**: a run start that arrives while a run is open ends
-  that run first, the way the capture app's run hotkey does. A start
-  inserted in the viewer used to nest every later run inside the open one.
+  that run first, the way the capture app's run key does. A start inserted
+  in the viewer used to nest every later run inside the open one.
 - **The Overview fits small screens**: it stays usable at 1366x768 and
   1024x768 instead of being squeezed out by the Session summary, and
-  right-click menus stay inside the window. The fact tiles and the
-  Session summary panel are gone; each repeated a finding on the same
-  screen.
+  right-click menus stay inside the window.
 - **Analyst work is safer on disk**: an `annotations.json` that cannot be
   read is reported, with its backups, and never overwritten; every save
   goes through a temporary file first.
@@ -127,8 +182,21 @@ Preserved in full on the `product-edition` branch.
   wizard's observed-value questions, and the per-marker label picker.
 - **Team taxonomy, the project layer, the command palette, and "Copy for
   LLM."** No AI ships inside the product.
-- **The standalone findings memo document and the HTML findings report**;
-  their content now serves the PDD instead (see Changed, above).
+- **The standalone findings memo document and the HTML findings report**,
+  and later the PDD's findings section with the "include in PDD" ticks:
+  the PDD prints no findings.
+- **The Analyze button and the More menu** (the analysis runs by itself,
+  above).
+- **Clutter the UI clarity audit found**: the fact tiles and the Session
+  summary panel, the shortcuts overlay, the Steps mini-timeline, the Flow
+  Notes tab, the rare-path slider, the zoom readouts, the lanes nobody
+  read, the marker filter, tier chips, duplicate totals, the
+  business-required split editor, and the automation Confirm and Dismiss
+  buttons.
+- **The capture app's Live Session window and hotkey overlay** (replaced by
+  the recording bar), with their counters and event feed, and the
+  interaction count in the end summary.
+- **The example sessions in the viewer release.**
 
 ## [1.5.0] - 2026-07-03 — approachability redesign
 
@@ -178,7 +246,8 @@ validation is still pending; this build is its instrument.**
 
 ### Added — R5: the sit-down runbook
 
-- **[docs/To-Do/R5-SITDOWN-RUNBOOK.md](docs/To-Do/R5-SITDOWN-RUNBOOK.md)** — the
+- **[R5-SITDOWN-RUNBOOK.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/R5-SITDOWN-RUNBOOK.md)**
+  (now on branch `product-edition`), the
   owner-run instrument that closes the redesign: three real sessions → three
   timed 2-page memos → a border ledger that cuts any surface producing no memo
   sentence, decision, or capture instruction. The suites are the floor; the
@@ -247,7 +316,7 @@ validation is still pending; this build is its instrument.**
   evidence in step detail renders through the same **identity line** as the App
   Library. Returning from "Jump to in Flow" now reveals the still-selected step.
 
-### Fixed — the navigation contract ([NAV-AUDIT-2026-07-03](docs/To-Do/NAV-AUDIT-2026-07-03.md))
+### Fixed: the navigation contract ([NAV-AUDIT-2026-07-03](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/NAV-AUDIT-2026-07-03.md), on branch `product-edition`)
 
 A read-only audit of every navigation edge against a five-law contract (one click
 semantic; arrivals reveal / returns restore; disclosure is local; scale degrades
@@ -303,7 +372,8 @@ Polish where default viewer surfaces rendered zero-information or duplicated
 content that read as a measured result. All changes stay inside the Honesty
 Redesign (Memo / Evidence / Machine + tier gates) and follow the presentation
 ruleset in [docs/architecture/DISCLOSURE-MODEL.md](docs/architecture/DISCLOSURE-MODEL.md).
-Item numbers are from [docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md](docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md).
+Item numbers are from [DESIGN-CRITIQUE-2026-07-01.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/DESIGN-CRITIQUE-2026-07-01.md)
+(on branch `product-edition`).
 
 - **Flow view — collapse the video stage when no recording is linked (item 1).**
   The tall black "No recording linked" box becomes a slim one-line band (keeping
@@ -1266,11 +1336,11 @@ advisories); click-to-RCE hardening on the screenshot-open path. Distribution st
   must be one component with one start and one end); short transaction codes like
   `va01` are preserved (the digit-run threshold is 3+).
 
-- **In-app vocabulary discovery — "point-and-learn" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md), [build spec](docs/To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md)).**
+- **In-app vocabulary discovery: "point-and-learn" ([ADR-0025](docs/adr/0025-in-app-vocabulary-discovery.md), [build spec](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md) on branch `product-edition`).**
   Turns the manual real-value UIA probing ([REAL-VALUE-TESTING.md](docs/REAL-VALUE-TESTING.md))
   into a shipped, on-device, self-service feature: the analyst points at a
   prepared window and gets a named-able, stable-signature App Vocabulary
-  skeleton — no dev box, no off-box agent, nothing leaves the machine.
+  skeleton (no dev box, no off-box agent, nothing leaves the machine).
   - **P1 — recorder `snapshot` command.** A new stdio command alongside
     `hello`/`pause`/`resume`/`shutdown`: `{cmd:"snapshot", target:"foreground"|<hwnd>, passes:2}`
     walks the target window's UIA subtree once per pass and streams every
@@ -3406,8 +3476,8 @@ keep working. Highlights:
 UX overhaul (capture + viewer) plus structured logging and CI from a
 parallel work stream. See [docs/UX-CHANGES.md](docs/UX-CHANGES.md) for
 the full UX changeset rationale and
-[docs/SPEC-DEFERRED.md](docs/SPEC-DEFERRED.md) for items intentionally
-deferred to v0.4+.
+[SPEC-DEFERRED.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/SPEC-DEFERRED.md)
+(on branch `product-edition`) for items intentionally deferred to v0.4+.
 
 ### Added (UX overhaul)
 

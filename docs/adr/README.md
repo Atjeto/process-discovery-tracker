@@ -18,33 +18,33 @@ distinct branch — see [CONTRIBUTING](../../CONTRIBUTING.md)).
 
 | #    | Title | Status |
 |------|-------|--------|
-| 0001 | Click recorder — capture mechanism and language | Accepted |
-| 0002 | App vocabularies — per-app interaction annotations | Accepted |
-| 0003 | Viewer architecture refactor — incremental modularization | Accepted |
+| 0001 | Click recorder: capture mechanism and language | Accepted |
+| 0002 | App vocabularies: per-app interaction annotations | Accepted |
+| 0003 | Viewer architecture refactor: incremental modularization | Accepted |
 | 0004 | Flow timeline + Steps view rework (Warm Editorial) | Accepted |
-| 0005 | Capture app tech-debt remediation (C1–C8) | Accepted |
+| 0005 | Capture app tech-debt remediation (C1 to C8) | Accepted |
 | 0006 | Sequencing the improvements backlog | Accepted |
-| 0007 | Activity-event granularity — title in the run key | Accepted |
+| 0007 | Activity-event granularity: title in the run key | Accepted |
 | 0008 | Build the analysis layer now | Accepted |
 | 0009 | Normalization redesign (v0.13) | Superseded in part (canonical/template matching further cut by ADR-0029) |
-| 0010 | UX overhaul — viewer interaction model + recorder usability | Accepted |
+| 0010 | UX overhaul: viewer interaction model + recorder usability | Accepted |
 | 0011 | Platform/framework recognition layer | Accepted |
 | 0012 | Active-case stamping & the notation × level map matrix | Narrowed by ADR-0029 (anchor-based case detection and the map matrix cut; marker-based stamping stays) |
 | 0013 | Value-free step grouping (`process_label`) & map readability | Accepted |
-| 0014 | Distribution model — GitHub Releases + electron-packager | Accepted |
-| 0015 | Intra-session repetition alignment — curate one, propagate | Accepted |
+| 0014 | Distribution model: GitHub Releases + electron-packager | Accepted |
+| 0015 | Intra-session repetition alignment: curate one, propagate | Superseded by ADR-0029 (the alignment engine removed in L7b; runs are compared by draft key, contract C3) |
 | 0016 | Segment-level automation candidacy | Narrowed by ADR-0029 (the EUR-ROI extension cut; segment-grain candidacy stays) |
 | 0017 | Suggested markers: change-point detection | Superseded by ADR-0029 (cut) |
 | 0018 | Anchor candidates: transaction-ID auto-extraction | Superseded by ADR-0029 (cut) |
-| 0019 | Reference Maps — decoupled, editable BPMN copies | Accepted |
-| 0020 | — | **Gap (never reuse)** |
-| 0021 | — | **Gap (never reuse)** |
-| 0022 | — | **Gap (never reuse)** |
+| 0019 | Reference Maps: decoupled, editable BPMN copies | Accepted |
+| 0020 | (none) | **Gap (never reuse)** |
+| 0021 | (none) | **Gap (never reuse)** |
+| 0022 | (none) | **Gap (never reuse)** |
 | 0023 | Recorder capture-confidence model + OCR last resort (§11e) | Accepted |
 | 0024 | Step grain as a view-time roll-up (§11b, reframed) | Narrowed by ADR-0029 (the grain slider cut; the `grain_keys` data model stays) |
 | 0025 | In-app vocabulary discovery ("point-and-learn") | Superseded by ADR-0029 (cut; light vocab replaces it) |
-| 0026 | Ship unsigned by design; services-boutique scope | Accepted |
-| 0027 | Retire the per-step path/segment flags — keep only `waste` | Accepted |
+| 0026 | Ship unsigned by design; services-boutique scope | Accepted; the scope narrowed by ADR-0029 (an internal BA helper, not a services offering); ship unsigned stands |
+| 0027 | Retire the per-step path/segment flags: keep only `waste` | Accepted |
 | 0028 | Case-scoped screen visit: the analyst-facing unit of work | Superseded by ADR-0029 (cut; the runs-and-steps view replaces it) |
 | 0029 | BA-helper refocus | Accepted |
 

@@ -41,7 +41,9 @@ The index has two parts:
 | [To-Do/BA-HELPER-PLAN-2026-09-22.md](To-Do/BA-HELPER-PLAN-2026-09-22.md) | Plan of record (approved 2026-09-23): the scenario, the analyst path, the feature verdicts, the phases |
 | [adr/0029-ba-helper-refocus.md](adr/0029-ba-helper-refocus.md) | ADR for the refocus: the key choices and everything that was cut |
 | [To-Do/RESTART-POINT-2026-09-22.md](To-Do/RESTART-POINT-2026-09-22.md) | The baseline the refocus started from: health, CI history, code review RP-01 to RP-36 |
-| [To-Do/UI-CLARITY-AUDIT-2026-09-23.md](To-Do/UI-CLARITY-AUDIT-2026-09-23.md) | Element-by-element audit of the light viewer; the subtraction lanes LUX-A and LUX-B apply it (not landed) |
+| [To-Do/UI-CLARITY-AUDIT-2026-09-23.md](To-Do/UI-CLARITY-AUDIT-2026-09-23.md) | Element-by-element audit of the light viewer; the subtraction lanes LUX-A and LUX-B applied it |
+| [To-Do/STEP-BACK-REVIEW-2026-09-23.md](To-Do/STEP-BACK-REVIEW-2026-09-23.md) | The concept-level step back: the PDD, the capture app and the viewer from the reader's side; its lanes are the plan's AD-24 and AD-26 |
+| [To-Do/COMPANION-CRITIQUE-2026-09-23.md](To-Do/COMPANION-CRITIQUE-2026-09-23.md) | Screen-by-screen critique of the light viewer as a business process companion (AD-28) |
 | [To-Do/P1-DRAFT-PROBE-RUNBOOK.md](To-Do/P1-DRAFT-PROBE-RUNBOOK.md) | The owner's probe of draft quality on a real recording (plan risk R1) |
 | [To-Do/P5-REAL-SESSION-GATE.md](To-Do/P5-REAL-SESSION-GATE.md) | The owner's real-session gate for the whole path |
 
@@ -56,7 +58,7 @@ The index has two parts:
 | [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) | The pipeline: CLI, stages, modules, outputs |
 | [interaction-recorder.md](interaction-recorder.md) | Design of the C# UI Automation recorder |
 | [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, the two themes, contrast rules, the UI copy style guide |
-| [architecture/VIEWER.md](architecture/VIEWER.md) | Viewer modules, state, IPC. Still describes the product viewer; rewritten after the subtraction lane |
+| [architecture/VIEWER.md](architecture/VIEWER.md) | Viewer modules, state, IPC. Still describes the product viewer; rewritten after the viewer lanes |
 | [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline subsystem. Same status as VIEWER.md |
 
 ### Principles that still bind
@@ -87,7 +89,7 @@ enforces the numbering). The decisions that shape the light version:
 | [0019](adr/0019-reference-maps.md) | Reference maps: editable As-Is and To-Be copies |
 | [0023](adr/0023-recorder-capture-confidence.md) | Recorder capture confidence |
 | [0024](adr/0024-step-grain-as-view-time-rollup.md) | Step grain keys (narrowed: the grain slider is cut, `grain_keys` stay) |
-| [0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md) | Ship unsigned |
+| [0026](adr/0026-distribution-unsigned-and-services-boutique-scope.md) | Ship unsigned (its scope half is narrowed by ADR-0029) |
 | [0027](adr/0027-retire-per-step-path-flags.md) | `waste` is the only per-step flag |
 
 ### Operate
@@ -100,11 +102,11 @@ enforces the numbering). The decisions that shape the light version:
 | [../CHANGELOG.md](../CHANGELOG.md) | Release history; `[Unreleased]` is the 2.0.0 draft |
 | [BUILD-AND-DIST.md](BUILD-AND-DIST.md) | Build pipeline and release zips |
 | [To-Do/BUILD-BOX-VALIDATION.md](To-Do/BUILD-BOX-VALIDATION.md) | Open since 2026-05: a maintained bundled Python, packaged Electron 42 checks |
-| [DEPLOY.md](DEPLOY.md) | Installing on a worker or analyst machine |
+| [DEPLOY.md](DEPLOY.md) | Installing on an SME's or an analyst's machine |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Error messages and diagnostics |
 | [../SECURITY.md](../SECURITY.md), [Security-QA.md](Security-QA.md) | Threat model; one-page Q&A for a corporate security review |
-| [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | Agents read first: the hard invariants and how to drive the viewer. Its command list and DOM-handle map predate the light viewer (rewrite queued) |
-| [FEATURES.md](FEATURES.md) | Capability catalogue. Still the product edition's; rewritten after the subtraction lane |
+| [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | Agents read first: the hard invariants and how to drive the viewer. Its command list and DOM-handle map predate the light viewer (rewritten after the viewer lanes) |
+| [FEATURES.md](FEATURES.md) | Capability catalogue. Still the product edition's; rewritten after the viewer lanes |
 | `User-Guide.docx` | Generated end-user guide (binary, built by `build-user-guide.js`). Same status as FEATURES.md |
 | [../capture/README.md](../capture/README.md), [../viewer/README.md](../viewer/README.md), [../normalization/README.md](../normalization/README.md), [../e2e/README.md](../e2e/README.md) | Component quick-starts |
 | [claude-skills/README.md](claude-skills/README.md) | Frozen 2026-07-03 snapshot of the skills pack (the live copy is user-global) |
@@ -112,7 +114,12 @@ enforces the numbering). The decisions that shape the light version:
 ## Product edition, historical
 
 Kept for reference; the code these describe lives on branch
-`product-edition`. Nothing here is deleted.
+`product-edition`. Docs that described only cut features (the vocabulary
+discovery spec and app coverage list, the segmentation calibration and
+real-app map validation findings, the R5 sit-down runbook, the 2026-07
+design critique and navigation audit, the deferred-work list and the doc
+coverage audit) were deleted from `master` on 2026-09-24; they are on
+branch `product-edition`.
 
 ### Architecture and strategy
 
@@ -143,18 +150,12 @@ Kept for reference; the code these describe lives on branch
 | [To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md](To-Do/APPROACHABILITY-REDESIGN-2026-07-03.md) | Plan of record before the refocus (superseded by the BA-helper plan) |
 | [To-Do/NEXT-SESSION-SPEC.md](To-Do/NEXT-SESSION-SPEC.md) | Operational plan of record, 2026-06 |
 | [To-Do/PDT-MASTER-ASSESSMENT.md](To-Do/PDT-MASTER-ASSESSMENT.md), [To-Do/PDT-ROADMAP-CODEBASE-FIT.md](To-Do/PDT-ROADMAP-CODEBASE-FIT.md) | Product strategy and the roadmap fit analysis |
-| [To-Do/R5-SITDOWN-RUNBOOK.md](To-Do/R5-SITDOWN-RUNBOOK.md) | Superseded by the P1 and P5 runbooks |
 | [To-Do/DELIVERABLE-AUDIT-2026-07-03.md](To-Do/DELIVERABLE-AUDIT-2026-07-03.md) | Audit of the memo and the PDD (the plan's fix list cites its gaps 2 to 10) |
-| [To-Do/DESIGN-CRITIQUE-2026-07-01.md](To-Do/DESIGN-CRITIQUE-2026-07-01.md), [To-Do/NAV-AUDIT-2026-07-03.md](To-Do/NAV-AUDIT-2026-07-03.md) | Design and navigation audits of the product viewer |
 | [To-Do/PERF-CEILING-2026-07-03.md](To-Do/PERF-CEILING-2026-07-03.md), [To-Do/REAL-DATA-VITALS-2026-07-03.md](To-Do/REAL-DATA-VITALS-2026-07-03.md) | Performance ceiling and structure-only vitals of real captures |
 | [To-Do/real-session-findings.md](To-Do/real-session-findings.md), [To-Do/ui-copy-feedback.md](To-Do/ui-copy-feedback.md) | The first real company session (2026-06-10) and the owner's copy feedback |
 | [To-Do/AGENT-DELEGATION-POSTMORTEM-2026-07-02.md](To-Do/AGENT-DELEGATION-POSTMORTEM-2026-07-02.md) | Delegation postmortem of the v1.4.0 pass |
-| [To-Do/APP-COVERAGE-LIST.md](To-Do/APP-COVERAGE-LIST.md), [To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md](To-Do/SELF-SERVICE-VOCAB-DISCOVERY-SPEC.md) | Vocabulary mapping worklist and the discovery spec |
-| [To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md](To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md), [To-Do/REAL-APP-MAP-VALIDATION-2026-05-31.md](To-Do/REAL-APP-MAP-VALIDATION-2026-05-31.md) | Segmenter calibration and the screen-grain map validation |
 | [To-Do/IMPLEMENTATION-SPEC-v0.13-normalization-redesign.md](To-Do/IMPLEMENTATION-SPEC-v0.13-normalization-redesign.md) | Build spec for the v0.13 pipeline redesign |
 | [To-Do/CONSOLIDATED-REVIEW-2026-05.md](To-Do/CONSOLIDATED-REVIEW-2026-05.md), [To-Do/tech-debt-findings.md](To-Do/tech-debt-findings.md), [CODE-REVIEW-2026-05.md](CODE-REVIEW-2026-05.md), [security-review-session-findings.md](security-review-session-findings.md) | Code, tech-debt and security reviews of v0.19.0 |
-| [DOC-COVERAGE-AUDIT.md](DOC-COVERAGE-AUDIT.md) | Documentation coverage worklist, last reconciled to v0.22.2 |
-| [SPEC-DEFERRED.md](SPEC-DEFERRED.md) | Deferred UX work from the v0.2 to v0.17 era |
 | [IMPLEMENTATION_SPEC.md](IMPLEMENTATION_SPEC.md), [UX-CHANGES.md](UX-CHANGES.md) | The phase A to G build spec and the v0.3 feature narrative |
 | `To-Do/Archive/` | Older specs and plans |
 

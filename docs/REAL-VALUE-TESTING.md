@@ -20,10 +20,11 @@ this: bootstrapped from the demo's synthetic controls, not from any real app.
 **Real-value testing** closes the gap with two techniques that operate on *real*
 applications, and feeds two workstreams:
 
-- **§11d — real App Vocabularies + process templates.** Harvest the actual UIA
+- **§11d: real App Vocabularies + process templates.** Harvest the actual UIA
   control identities a real app exposes, then hand-author
   [`normalization/app_vocabularies/*.yaml`](../normalization/app_vocabularies/) and
-  [`canonical_process`](../normalization/canonical_match.py) templates keyed to them.
+  [`canonical_process`](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/normalization/canonical_match.py)
+  templates keyed to them (canonical matching is on branch `product-edition`).
 - **§11b — calibration.** Drive the real recorder against real apps to produce a
   **ground-truth corpus** ([`corpus/`](../corpus/README.md)), then sweep the
   segmentation / marker / anchor knobs against known-correct output (fixes the
@@ -77,9 +78,10 @@ a WebView2 web app → same constraint, web a11y tree. **Classic Outlook**
 | **C** | **Documentation-derived** — no reachable free instance; derive identities from public developer/admin/UI docs, ship the vocab **flagged doc-derived**, refine later | gated enterprise SaaS |
 
 The owner **cannot run Claude on the locked-down work laptop**, so a gated SaaS is
-reached via a *free public instance Claude can hit from the dev box* — never via
-the laptop. The live per-app worklist (which app is in which tier, with the
-canonical processes to template) is [`docs/To-Do/APP-COVERAGE-LIST.md`](To-Do/APP-COVERAGE-LIST.md).
+reached via a *free public instance Claude can hit from the dev box*, never via
+the laptop. The per-app worklist (which app is in which tier, with the
+canonical processes to template) is [`APP-COVERAGE-LIST.md`](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/APP-COVERAGE-LIST.md)
+on branch `product-edition`.
 
 ## Invariants this honors
 

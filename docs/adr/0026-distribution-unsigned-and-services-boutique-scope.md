@@ -1,6 +1,6 @@
 # ADR-0026: Ship unsigned, by design; scope as a services boutique, not an enterprise product
 
-**Status:** Accepted — recorded 2026-05-31
+**Status:** Accepted, recorded 2026-05-31. Decision 1 (ship unsigned) stands. Decision 2 (the scope) is narrowed by [ADR-0029](0029-ba-helper-refocus.md): PDT is an internal helper for the owner's own work as a process manager, not a services-boutique offering.
 **Date:** 2026-05-31
 **Deciders:** Project owner
 **Related:** [ADR-0014](0014-distribution-model.md) (the distribution model this constrains), [BUILD-AND-DIST.md](../BUILD-AND-DIST.md) + [DEPLOY.md](../DEPLOY.md) (where the unsigned posture surfaces), [NEXT-SESSION-SPEC](../To-Do/NEXT-SESSION-SPEC.md) (the plan of record this prunes), [VALUE-CHAIN-REVIEW](../architecture/VALUE-CHAIN-REVIEW.md) (the strategic frame).

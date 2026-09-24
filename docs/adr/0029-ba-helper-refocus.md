@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-09-23
 **Deciders:** Project owner
-**Related:** [ADR-0026](0026-distribution-unsigned-and-services-boutique-scope.md) (the services-boutique scope this narrows further), [ADR-0028](0028-case-screen-work-items.md) (the case-scoped screen visit this replaces), [ADR-0025](0025-in-app-vocabulary-discovery.md) (the discovery workbench this replaces with light vocab), [ADR-0017](0017-suggested-markers.md) and [ADR-0018](0018-anchor-candidates.md) (the unbracketed-session detectors this cuts), [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (the anchor case-detection mode and map matrix this narrows), [ADR-0016](0016-segment-level-automation-candidacy.md) (the automation-candidacy layer whose ROI extension this cuts), [ADR-0024](0024-step-grain-as-view-time-rollup.md) (the grain slider this narrows), [ADR-0013](0013-value-free-grouping-and-map-readability.md) and [ADR-0015](0015-intra-session-repetition-alignment.md) (the value-free labels and the alignment engine this reuses), [docs/To-Do/BA-HELPER-PLAN-2026-09-22.md](../To-Do/BA-HELPER-PLAN-2026-09-22.md) (the plan of record this closes out), [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](../../.claude/agent-findings/2026-09-23_ba-helper-contracts.md) (the data-shape contracts C1 to C13 this records).
+**Related:** [ADR-0026](0026-distribution-unsigned-and-services-boutique-scope.md) (the services-boutique scope this narrows further), [ADR-0028](0028-case-screen-work-items.md) (the case-scoped screen visit this replaces), [ADR-0025](0025-in-app-vocabulary-discovery.md) (the discovery workbench this replaces with light vocab), [ADR-0017](0017-suggested-markers.md) and [ADR-0018](0018-anchor-candidates.md) (the unbracketed-session detectors this cuts), [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (the anchor case-detection mode and map matrix this narrows), [ADR-0016](0016-segment-level-automation-candidacy.md) (the automation-candidacy layer whose ROI extension this cuts), [ADR-0024](0024-step-grain-as-view-time-rollup.md) (the grain slider this narrows), [ADR-0013](0013-value-free-grouping-and-map-readability.md) (the value-free labels this reuses), [ADR-0015](0015-intra-session-repetition-alignment.md) (the alignment engine this supersedes: the runs are compared by draft key instead), [docs/To-Do/BA-HELPER-PLAN-2026-09-22.md](../To-Do/BA-HELPER-PLAN-2026-09-22.md) (the plan of record this closes out), [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](../../.claude/agent-findings/2026-09-23_ba-helper-contracts.md) (the data-shape contracts, C1 to C16 as of 2026-09-24).
 
 ## Context
 
@@ -26,7 +26,9 @@ shelved. This ADR records the decisions behind the rebuild that follows,
 consolidating the plan's decisions (D1 to D9) and the cycle's implementation
 choices (AD-1 to AD-15, recorded in
 [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](../../.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md))
-into one place, as the release documentation.
+into one place, as the release documentation. The later decisions, AD-16
+to AD-28 and what the owner parked, are summarized in the plan's
+implementation notes.
 
 ## Decision
 
@@ -115,9 +117,14 @@ confirmed pattern run, the viewer matches it against saved processes by
 `draft_key` overlap (Jaccard similarity, minimum 0.5) and offers the closest
 one as the comparison pattern, visibly and reversibly. `canonical_match.py`,
 the Process Template editor, and `viewer/canonical-author.js` are cut: there
-is no second segmentation path, and within a session the existing alignment
-engine (`viewer/step-alignment.js` `alignCases`, [ADR-0015](0015-intra-session-repetition-alignment.md))
-already aligns runs 2..N against the confirmed pattern run.
+is no second segmentation path. Within a session, runs 2 to N are compared
+with the confirmed pattern run by draft key (a merged step by its members'
+keys, a step added by hand by its label; contract C3): the viewer's
+differences view (`viewer/run-differences.js`) and the PDD use that one
+rule, pinned by `shared/run-differences-golden.json`. The earlier alignment
+engine (`viewer/step-alignment.js`,
+[ADR-0015](0015-intra-session-repetition-alignment.md)) was removed in lane
+L7b.
 
 **D7. No privacy masking for internal use; password redaction stays.**
 Structural PII masking (`normalization/pii_masking.py`, the derived-stream
@@ -132,8 +139,10 @@ gate stays configurable (`off` / `per_session` / `once` in
 
 **D8. Two supported input modes.** Recorder only, and recorder plus video
 (plus an optional transcript). A video-only mode (steps marked by hand
-against a video, no recorder) is a deferred fallback, built only if a real
-SME turns out unable to run the recorder.
+against a video, no recorder) was a deferred fallback, built only if a real
+SME turned out unable to run the recorder. AD-25 and AD-27 reversed this:
+sessions started from a video or from nothing are part of the release
+(contract C16; the pipeline half has landed, the viewer half has not).
 
 **AD-9.** The view-time grain slider ([ADR-0024](0024-step-grain-as-view-time-rollup.md))
 and the notation-by-level map matrix ([ADR-0012](0012-active-case-stamping-and-map-matrix.md))
@@ -143,8 +152,9 @@ data model (`element` / `screen` / `app`, stamped on every step) stays: the
 drafting rule's `screen` component and `draft_key` are built on it.
 
 **AD-14.** A session with no run markers shows an instruction to mark runs
-in Flow, in place of the anchor-candidate hero and the anchor-based lock
-copy: case detection is markers only now (see "What was cut" below).
+on the Timeline (the level was then called Flow), in place of the
+anchor-candidate hero and the anchor-based lock copy: case detection is
+markers only now (see "What was cut" below).
 
 ## What was cut
 
@@ -173,9 +183,10 @@ Removed from `master` (preserved in full on `product-edition`):
   replaces the work-item case tree, so `group_annotations[]` is now a legacy
   key (contract C10).
 - **Exports**: the standalone findings memo (`.docx`), the HTML findings
-  report, and their CLI flags. The memo's fact and finding computation
-  (`normalization/memo_export.py`) is not deleted: it now feeds the PDD's
-  section 1 instead of a separate document.
+  report, and their CLI flags. The memo's findings first moved into the
+  PDD's section 1; AD-24 then cut that section, so the PDD prints no
+  findings. `normalization/memo_export.py` keeps the helpers the PDD still
+  uses (the run rows).
 - **Capture**: cross-machine sync markers, app-vocabulary prep sessions, the
   worker close-out wizard's observed-value questions (`self_annotations`,
   `manifest.worker_review`), and the label picker. The recorder's own

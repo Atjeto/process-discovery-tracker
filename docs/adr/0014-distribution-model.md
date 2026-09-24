@@ -75,9 +75,10 @@ downloads without any of that.
   `recorder.js` guards against a missing unzipped `.exe`.
 
 **Revisit when:**
-- An EV code-signing certificate becomes available — fold `signtool` into
+- An EV code-signing certificate becomes available: fold `signtool` into
   `build-distribution.ps1` so SmartScreen stops prompting (tracked in
-  [SPEC-DEFERRED.md](../SPEC-DEFERRED.md) P2.17).
+  [SPEC-DEFERRED.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/SPEC-DEFERRED.md)
+  P2.17, on branch `product-edition`).
 
 ## Action items
 

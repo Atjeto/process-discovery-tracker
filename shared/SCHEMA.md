@@ -20,7 +20,6 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   attachments/            # files the analyst attached (C16)
   obs/sync.json           # tracker to OBS clock offset, when OBS recorded
   session-integrity.json  # file manifest (name and size) written at session end
-  capture.log             # the capture app's per-session log
   annotations.json        # analyst sidecar (written by the viewer and the pipeline)
   annotations.json.2..5   # the viewer's rotating backups of it
   derived_maps/           # forked, editable reference maps (ADR-0019)
@@ -35,12 +34,16 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
 Two small stores live outside any session folder, on the analyst's machine:
 see "Analyst library" below.
 
-**Sessions without a recording (C16).** The viewer can also start a session
-from a video or from nothing (`manifest.source` `"video"` or `"blank"`): a
-new folder with `manifest.json`, an empty `events.jsonl` and
-`annotations.json`. Everything the analyst adds (steps, screenshots, notes,
-attachments) lives in the folder, so it travels with it. The capture files
-(`config.yaml`, `obs/`, `session-integrity.json`, `capture.log`) are absent.
+**Sessions without a recording (C16).** A session can also start from a
+video or from nothing (`manifest.source` `"video"` or `"blank"`): a new
+folder with `manifest.json`, an empty `events.jsonl` and `annotations.json`,
+without the capture files (`config.yaml`, `obs/`, `session-integrity.json`,
+the recorder's screenshots). Everything the analyst adds (steps,
+screenshots, notes, attachments) lives in the folder, so it travels with it.
+Today only the pipeline half of C16 exists: the pipeline reads such sessions
+and every key the analyst adds (screenshots, notes, attachments, a step's
+`system`, `order`, `pdd_screenshot`, `hidden_screenshots`), while the viewer
+neither creates such sessions nor writes those keys yet.
 
 ## events.jsonl envelope
 
@@ -96,12 +99,13 @@ omits window bounds leave the field off.
 }
 ```
 
-A start marker's `label` is the run's name ("Run N", or a configured task
-shortcut). End markers carry a `null` label. `reason` is present only when an
-end was fired automatically: `auto_close_for_sibling` when the run hotkey
-ended the open run to start the next one, `auto_end_idle` when an idle
-stretch past the threshold ended it. An end with no `reason` was fired by
-the SME or by stopping the session.
+A start marker's `label` is the run's name ("Run N", or a named run from
+the capture app's Recording setup). End markers carry a `null` label.
+`reason` is present only when an end was fired automatically:
+`auto_close_for_sibling` when the next run started (the run key, Next run or
+a named run) while the run was open, `auto_end_idle` when an idle stretch
+past `auto_end_idle_minutes` ended it. An end with no `reason` was fired by
+the SME (End run) or by stopping the recording.
 
 Capture writes no `case_id`. Normalization derives the runs from the markers
 (see "Marker events: runs and `case_ids`" in the data dictionary). In the
@@ -229,7 +233,6 @@ assigns runs and drafts steps, and writes the merged steps back.
   "external_video": null,
   "step_filters": { "ignored_processes": [], "ignored_window_titles": [] },
   "excluded_ranges": [],
-  "memo_selection": [],
   "analysis_overrides": [],
   "analyst_screenshots": [],
   "analyst_notes": [],
@@ -302,14 +305,30 @@ instrument:
 document-level sections, as fields that survive re-export:
 
 ```json
-"document": { "title": "", "purpose": "", "scope": "", "contacts": "",
-              "business_rules": "", "exceptions": "", "notes": "" }
+"document": { "title": "", "purpose": "", "scope": "", "trigger": "", "result": "",
+              "contacts": "", "business_rules": "", "exceptions": "",
+              "improvement": "", "notes": "" }
 ```
 
-Plain multi-line strings. The PDD renders each non-empty field in place of
-the matching placeholder (`notes` becomes section 8, followed only by the
-attachments, C16); an empty field keeps the export's placeholder text. The
-pipeline preserves this key verbatim.
+Plain multi-line strings, edited in the Overview's document panel. The PDD
+prints each non-empty field in its place:
+
+| Field | Prints as |
+|---|---|
+| `title` | The document's title and Document control's "Process" |
+| `purpose`, `scope` | 2.1 Purpose, 2.2 Scope |
+| `trigger` | 2.3 Trigger: what starts the process. Its first line also names the step map's start event |
+| `result` | 2.4 Result: what the process has produced when it ends. Its first line also names the step map's end event |
+| `contacts` | 2.5 Key contacts |
+| `business_rules` | 4.2 Business rules |
+| `exceptions` | 4.3 Exceptions, the application errors included |
+| `improvement` | 7 Improvement and automation scope |
+| `notes` | 8 Notes, printed only when written (the attachments, C16, follow it) |
+
+An empty field prints a "[To be completed: ...]" gap in its place, except
+`title` (the document is then titled "Process Definition Document") and
+`notes` (left out). Only these fields leave gaps, so every gap is one the
+analyst can close in the app. The pipeline preserves this key verbatim.
 
 **`analyst_screenshots`** *(array; contract C16, viewer-written)*: the
 screenshots the analyst added by hand (a video frame, a pasted image, a
@@ -370,13 +389,6 @@ spreadsheet, an SOP, a form):
   name. Nothing is embedded.
 - Removing one deletes its entry and its copied file. The pipeline never
   writes this key and round-trips it untouched.
-
-**`memo_selection`** *(string array)*: the `findings[].id` values the analyst
-picked for the PDD's findings section (section 1; before the refocus this
-fed a standalone memo, which is cut: see `memo_export.build_memo_model`).
-When it is empty, or no listed id matches the regenerated findings, the PDD
-prints the top findings in feed order. Analyst-owned; never written by the
-pipeline.
 
 **`step_filters`** *(object)*: apps and windows the analyst left out of the
 analysis. `ignored_processes` is written by the viewer's ignored-apps
@@ -461,12 +473,11 @@ first match wins.
 ### Analysis override (`analysis_overrides[]`)
 
 The analyst's corrections to the step-based estimates
-([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md)). The waste and
-automation estimates are provisional: the value-add versus business-required
-split is left to the analyst (`bnva_ms` is `0` by default), and one recording
-cannot confirm an automation candidate. Corrections live here, **not** in
-`analysis.json`, which is regenerated on every run; the analysis stage reads
-them while it recomputes.
+([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md)). No viewer
+surface writes them anymore: the business-required split editor and the
+automation Confirm and Dismiss buttons are cut. The analysis stage still
+applies the entries an older file carries while it recomputes; corrections
+live here, **not** in `analysis.json`, which is regenerated on every run.
 
 ```json
 {
@@ -521,8 +532,9 @@ ignored rather than failing the run.
 
 ### Reference maps (`reference_maps[]`)
 
-Analyst-authored, **decoupled** BPMN copies (ADR-0019). Fork copies the
-step-level map the pipeline writes with `--mine` (`process_map_step.bpmn`)
+Analyst-authored, **decoupled** BPMN copies (ADR-0019). The Map's edit act
+("Edit as the As-Is map", the fork) copies the step-level map the pipeline
+writes with `--mine` (`process_map_step.bpmn`)
 into a standalone `.bpmn` the analyst edits freely; the pipeline **never**
 re-mines, merges or regenerates it. The metadata row lives here; the diagram
 lives at `derived_maps/<map_id>.bpmn`.
@@ -546,24 +558,30 @@ lives at `derived_maps/<map_id>.bpmn`.
 }
 ```
 
-- **`kind`**: `as_is` | `to_be` | `reference` (a fresh fork is `reference`).
+- **`kind`**: `as_is` | `to_be` | `reference`. The Map's first copy is
+  `as_is` (named "As-Is map"); a later one is `to_be` (named "To-Be map").
+  When a copy gets a PDD role, its `kind` follows the role. `reference`
+  remains on older entries.
 - **`file`**: path relative to the session folder, forward slashes. Written
   and read by `viewer/reference-maps.js`.
 - **`source`**: what was forked; always the step-level BPMN now.
 - **`forked_from_hash`**: a short hash (blake2b, sha256 fallback) of the
   source `.bpmn` at fork time. When the current source hashes differently the
-  viewer shows "source changed" and offers **Re-fork**, which makes a new copy
-  and never merges.
+  copy's row offers **Copy again**, which makes a new copy (the same name and
+  kind, no role) and never merges.
 - **`pdd_role`**: `null` | `as_is` | `to_be`: which PDD slot the map fills
   (one map per slot). At export the viewer renders the copy to PNG and passes
-  it as `--pdd-map-image` (As-Is, in place of the on-screen map) or
-  `--pdd-tobe-image` (the proposed To-Be section, 5.4).
+  it as `--pdd-map-image` (As-Is, section 3.1) or `--pdd-tobe-image` (To-Be,
+  section 7.1). With no As-Is copy, the viewer draws `process_map_step.bpmn`
+  the same way and passes that picture instead. The Map's "Edit as the As-Is
+  map" gives its copy the role `as_is` when no copy has it.
 
 **Re-analysis:** `pipeline_stages._init_existing_anno` only makes sure the
 key exists, and no stage writes it, so `reference_maps[]` and the
 `derived_maps/*.bpmn` files survive every run. Created after capture, they
 are not in `session-integrity.json`. Every change goes through the viewer's
-undo, so Ctrl+Z reverts a fork, rename, kind, PDD role or delete.
+undo, so Ctrl+Z reverts a copy, a rename, a PDD role, a duplicate or a
+delete.
 
 ### Step entity (`steps[]`)
 
@@ -676,8 +694,14 @@ drafted step carries:
   the shared value rules), or the literal `"(visit)"` when the step did not
   end on a commit. The remembered names (C4) and saved processes (C5) match
   on it. A key is used whole, never split (a screen label can contain `|`).
-- **`name_source`**: `"remembered"` when the name came from the
-  remembered-names store, else `"draft"`.
+- **`name_source`**: `"remembered"` when the name is one the analyst gave
+  before, else `"draft"`. A draft takes, in this order, the name of a step
+  the analyst named in this session with the same key (typed names, in
+  `edited` or `manually_authored` steps, before accepted ones in `confirmed`
+  steps; the pattern run's first), then the remembered-names store's name
+  (`--names`), then the default name. So names travel with the session
+  folder: the same session analyzed on another machine drafts the same
+  names.
 - **`end_reason`**: `"commit"`, `"screen_change"` or `"run_end"`, the three
   ways the rule ends a step.
 
@@ -692,7 +716,7 @@ result is no longer one draft. A merge of drafted steps then stores
 `draft_keys`: each member's `draft_key` (a merged member's `draft_keys`
 flattened) in order. It lets a merge in the pattern run be carried to the
 same consecutive drafts in the other runs, and it is the step's alignment
-key in the differences view and in the PDD's section 6.1:
+key in the differences view and in the PDD's section 4.1:
 `"merge:"` plus the keys as a JSON array. A step with `draft_key` aligns as
 `"draft:<draft_key>"`, any other step as `"label:<process_label>"`.
 `shared/run-differences-golden.json` pins that one rule for both the viewer
@@ -703,22 +727,24 @@ carries none of these fields.
 its own label (its name, whatever its state); any other step's name passes
 through the shared rules in `shared/process-label-patterns.json`.
 
-**`grain_keys`** are the UI-containment keys stamped on every step, which
-the Steps level groups on (`element` inside `screen` inside `app`;
+**`grain_keys`** are the UI-containment keys stamped on every step
+(`element` inside `screen` inside `app`;
 [ADR-0024](../docs/adr/0024-step-grain-as-view-time-rollup.md)). The grain
 slider they once fed is cut; the keys stay and are recomputed on every run,
-so they track the current evidence. The drafting rule's `screen` is the same
-value-free label. A step with no interactions carries `(element)`,
-`(screen)` and `(app)` placeholders.
+so they track the current evidence. The viewer reads a step's `app` and
+`screen` from them (the step pane's fact line, the time per application on
+the Overview). The drafting rule's `screen` is the same value-free label. A
+step with no interactions carries `(element)`, `(screen)` and `(app)`
+placeholders.
 
 ### Legacy keys (contract C10)
 
-ADR-0029 cut the features behind the keys below. Re-normalization
-round-trips each of them verbatim (`pipeline_stages._init_existing_anno`
-never seeds or regenerates them), so an old `annotations.json` loads without
-error. Nothing reads them. The viewer still adds empty `phases` and
-`drift_markers` arrays when it saves a file that lacks them. The pre-cut
-shape of each is in git history (the revision before ADR-0029).
+ADR-0029 and the later lanes cut the features behind the keys below.
+Re-normalization round-trips each of them verbatim
+(`pipeline_stages._init_existing_anno` never seeds or regenerates them), so
+an old `annotations.json` loads without error. Nothing reads them, and
+neither writer seeds them. The pre-cut shape of each is in git history (the
+revision before ADR-0029) and on branch `product-edition`.
 
 | Key | Was | Cut because |
 |---|---|---|
@@ -731,7 +757,8 @@ shape of each is in git history (the revision before ADR-0029).
 | `group_annotations[]` | Name, note, waste, hidden on a case-scoped screen visit ([ADR-0028](../docs/adr/0028-case-screen-work-items.md)) | The runs-and-steps view replaces the work-item case tree |
 | `self_annotations[]` | The worker's answers to the close-out wizard's questions | The questions are cut; the end summary asks nothing |
 | `matched_against` | Which Process Template a session was matched against | Template matching is cut; saved-process matching (C5) writes nothing here |
-| `starred_screenshots[]` | Screenshots the analyst starred for the HTML findings report | The report is cut and nothing reads or writes the key; the PDD's findings embed each finding's own evidence screenshots (up to two) instead |
+| `starred_screenshots[]` | Screenshots the analyst starred for the HTML findings report | The report is cut; the PDD's findings section that later embedded evidence screenshots is cut too (AD-24) |
+| `memo_selection[]` | The findings the analyst ticked for the PDD's findings section ("include in PDD") | The PDD prints no findings (AD-24) and the ticks are gone (lane V1) |
 
 ## Analyst library (outside the session folder)
 
@@ -751,13 +778,16 @@ Entries a reader skips are kept on disk as they are.
 
 - Written when the analyst renames a step that carries a `draft_key`; the
   rename also applies at once to every still-draft step in the session with
-  the same key. The Remembered names dialog renames an entry (and the
-  session's drafts with that key) or forgets it (the entry is deleted).
-- Read by the pipeline through `normalize.py --names <path>` at draft time;
-  the viewer passes it on every analysis it runs when the file exists. A
-  missing or unreadable file is not a failure there: one stderr warning, and
-  drafting uses the default names. Both readers skip an entry without a
-  non-blank `name`.
+  the same key. The Saved names dialog (Steps toolbar) renames an entry
+  (and the session's still-draft steps with that key) or forgets it (the
+  entry is deleted). It does not rename the session's edited or confirmed
+  steps of that key, and their name comes first at the next analysis (see
+  `name_source`).
+- Read by the pipeline through `normalize.py --names <path>` at draft time,
+  after the session's own names; the viewer passes it on every analysis it
+  runs when the file exists. A missing or unreadable file is not a failure
+  there: one stderr warning, and drafting goes on without it. Both readers
+  skip an entry without a non-blank `name`.
 
 ### `pdt-library/processes.json` (contract C5, light template)
 
@@ -775,8 +805,9 @@ Entries a reader skips are kept on disk as they are.
   `draft_keys` (merged drafts), or neither (a step added by hand), plus its
   name, description and waste flag. Saving under a name that already exists
   (case does not matter) replaces that entry and keeps its `id`; Undo
-  restores the previous entry. There is no way to delete a saved process in
-  the app yet.
+  restores the previous entry. "Forget this saved process", on the Steps
+  level's "Compared with saved process" line, deletes the entry; the toast's
+  Undo brings it back.
 - When a session opens with no confirmed pattern run, the viewer compares it
   with the saved process whose distinct draft keys overlap the session's
   visible steps' the most (Jaccard, at least 0.5; ties go to the most
@@ -795,7 +826,7 @@ Entries a reader skips are kept on disk as they are.
   "started_at": "ISO 8601",
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
-  "label": "analyst-given session name (optional; absent until set)",
+  "label": "the name given in the capture app's end summary (optional; absent until set)",
   "purpose": "process",
   "config": { ...snapshot of session config... },
   "obs": {
@@ -810,7 +841,7 @@ Entries a reader skips are kept on disk as they are.
     "required": false,
     "granted": null,
     "mode": "off" | "per_session" | "once",
-    "version": 1,
+    "version": 2,
     "worker_id": "alice",
     "acknowledged_at": "ISO 8601 or null"
   },
@@ -822,14 +853,14 @@ Entries a reader skips are kept on disk as they are.
 transcript's `offset_ms` are relative to it.
 
 `source` (contract C16) says how the session was made. The capture app
-writes none, which means `"recorder"`. The viewer writes `"video"` for a
-session started from a video (`started_at` is the moment the analyst says
-the video starts, by default the file's creation time; `annotations.json`
-gets `external_video` with the path relative to the folder and `offset_ms:
-0`) and `"blank"` for a session started from nothing (`started_at` is the
-creation time). Both have an empty `events.jsonl` and no capture fields
-(`config`, `obs`, `consent` and the rest are absent). The pipeline reads
-them as sessions without a recording:
+writes none, which means `"recorder"`. A session started from a video has
+`"video"` (`started_at` is the moment the analyst says the video starts, by
+default the file's creation time; `annotations.json` gets `external_video`
+with the path relative to the folder and `offset_ms: 0`); a session started
+from nothing has `"blank"` (`started_at` is the creation time). Both have an
+empty `events.jsonl` and no capture fields (`config`, `obs`, `consent` and
+the rest are absent). The viewer does not create them yet. The pipeline
+reads them as sessions without a recording:
 
 - **One implicit run.** While the derived stream has no start marker (the
   marker edits applied), the session has one implicit run covering the
@@ -845,7 +876,8 @@ them as sessions without a recording:
   measure the recording are `null` in `analysis.json` without a
   `stage_errors` entry (see analysis.json).
 
-`consent` is the worker-consent record (section 11f), always present. With
+`consent` is the worker-consent record (section 11f), present in every
+recording. With
 no consent gate configured (`config.consent.mode: "off"`, the default) it is
 the not-required shape `{ required: false, granted: null, mode: "off" }` and
 the recording starts unconditionally. With `"per_session"` (prompt at every
@@ -854,7 +886,10 @@ user config) the worker sees a consent window at session start; declining
 **aborts the start** (no session folder is created), so a session on disk
 with `mode` other than `"off"` always has `granted: true`. `version`,
 `worker_id` and `acknowledged_at` are present only for a gated session. The
-C# recorder is unchanged; consent is purely a capture-app gate.
+default consent text is version 2: it says that only what is typed into
+password fields is left out (the recorder's redaction), so a `"once"`
+acknowledgement of the version 1 text is asked again. The C# recorder is
+unchanged; consent is purely a capture-app gate.
 
 `displays` is the monitor geometry at session start
 (`Electron screen.getAllDisplays()`). The viewer uses it with each activity
@@ -870,16 +905,17 @@ is a one-element list.
 - `recovered`: the session was orphaned and reopened at the next launch.
   Open markers in `events.jsonl` are handled by normalization.
 
-`label` is an optional analyst-facing name set from the capture app's
-post-session summary; absent until set. The viewer's Recents list shows it
-in place of the folder timestamp.
+`label` is an optional name for the recording, typed in the capture app's
+end summary ("Name this recording"); absent until set. The viewer's Recent
+list names a session by its document title (`annotations.document.title`),
+else this label, else the project and the folder name.
 
-`engagement_name` is the project name typed in the session-setup window,
-lifted out of `config` to the top level at session creation so lists can
-show it without reading the nested config; `null` when never set. Older
+`engagement_name` is the project name typed in the capture app's Recording
+setup, lifted out of `config` to the top level at session creation so lists
+can show it without reading the nested config; `null` when never set. Older
 sessions carry it inside `config.engagement_name`, and consumers fall back to
-that. Display precedence: `label`, then `engagement_name`, then the
-engagement folder's name.
+that. The PDD's Document control prints it as the project (else
+`engagement_id`), unless it is the capture app's default.
 
 `purpose` is always `"process"`. The field is kept so the shape stays
 stable. Before ADR-0029 a session could also be `"app_prep"` (an App
@@ -1076,7 +1112,8 @@ a session without steps too (the step-based blocks are empty there).
                     "screenshot_refs": ["screenshots/shot_01.png"] },
       "tier": 1,
       "confidence_note": "how the number was measured and its limits" }
-  ]
+  ],
+  "pdd_findings": { "eligible": ["finding id"], "default": ["finding id"] }
 }
 ```
 
@@ -1101,13 +1138,18 @@ a session without steps too (the step-based blocks are empty there).
   interaction timestamps when the capture is too old to emit activity
   durations, capture v0.9.0), or `none` (no usable signal; consumers render
   "not available from this recording", never a confident 0).
-- **`findings[]`**: the detector library's claims, shown on the viewer's
-  Overview and printed in the PDD's section 1. Claims are comparative or
+- **`findings[]`**: the detector library's claims. Claims are comparative or
   factual; each carries its evidence (numbers plus `step_ids`, `event_ids`
   and up to two `screenshot_refs` from the finding's own time window) and a
   `confidence_note` stating the measurement's limits. `tier` is 1 for
   detectors that need no runs, 2 for run-based ones (`repetition`). Ids are
-  stable across re-runs (detector plus a content hash).
+  stable across re-runs (detector plus a content hash). The viewer's
+  Overview reads two of them: `rekey_transfer` (Data typed twice) and
+  `coverage_caveat` (a warning line). The PDD prints none.
+- **`pdd_findings`**: the findings the PDD's former findings section could
+  print (`eligible`) and printed by default (`default`), for the "include in
+  PDD" ticks. The section and the ticks are cut; the key is still written
+  and nothing reads it.
 
 `waste_classification` has one entry per step. `time_study` has one entry
 per *logical* step: instances are grouped by `step_group_key`
@@ -1130,11 +1172,11 @@ repeatability. Candidates are ordered multi-instance first, then by
 `rank_score = instance_count x mean_elapsed_ms x automatable_fraction`, with
 a flat `automatable_fraction` of `0.7`. `rank` is the 1-based position among
 multi-instance candidates (`null` for single-instance rows, whose
-`rank_score` is `0`); the PDD's automation-candidates list follows that
-order. `automation_confirmed` carries the analyst's verdict from
-`analysis_overrides[]`. `estimated_savings_ms` is always `null`: the savings
-estimate went with the EUR-ROI layer, and the business-case formula lives in
-the owner's QB app (ADR-0029 D3).
+`rank_score` is `0`). `automation_confirmed` carries the verdict of an older
+`analysis_overrides[]` entry. `estimated_savings_ms` is always `null`: the
+savings estimate went with the EUR-ROI layer, and the business-case formula
+lives in the owner's QB app (ADR-0029 D3). The findings detectors read the
+step-based blocks; the viewer and the PDD do not.
 
 **`stage_errors`** (contract C12, RP-10): always present, empty when every
 stage ran. When a stage fails, its own output key is written `null` (never
@@ -1145,14 +1187,17 @@ names it:
 "stage_errors": [ { "stage": "facts", "error": "KeyError: 'duration_ms'" } ]
 ```
 
-The stages that can fail independently: `step_analysis` (the step-based
-block: waste, time study, segments, automation candidates and efficiency
-go `null` together), `case_quality`, `motifs` (the repeated-sequence input to
-`facts`), `facts`, and `findings`, which does not run when `step_analysis`,
-`motifs`, `facts` or the segment and automation stages failed, since its
-detectors read all of them and a partial run would under-report. Every
-renderer (Overview, PDD) shows a failed stage as "this check could not run
-on this recording", never as a measured negative.
+The stages that can fail independently: each step-based block
+(`waste_classification`, `time_study`, `segments`, `automation_candidates`,
+and `efficiency`, which does not run without the waste split);
+`step_analysis`, when the whole step-based layer fails and its blocks go
+`null` together; `case_quality`; `motifs` (the repeated-sequence input to
+`facts`); `facts`; `findings`, which does not run when `step_analysis`,
+`motifs`, `facts`, `time_study`, `segments` or `automation_candidates`
+failed, since its detectors read all of them and a partial run would
+under-report; and `pdd_findings`. The viewer's Overview shows a failed stage
+as "this check could not run on this recording", never as a measured
+negative. The PDD reads no analysis stage.
 
 **Nothing recorded (C16).** A session without a recording
 (`manifest.source` `"video"` or `"blank"`) has nothing for the measurements
@@ -1183,18 +1228,18 @@ range: they have no time to measure.
 | File | Contents |
 |---|---|
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
-| `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings }` |
+| `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
-| `process_map_step.bpmn` | With `--mine`: the step-level BPMN mined from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`), ending in a real end event. Fork copies it. |
+| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. Each task's documentation carries its description, system, screen, run count and average time; the start and end events take the first line of `document.trigger` and `document.result`; each branch says "N of M runs" (C15). "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 
 The PDD goes to the path given with `--pdd-out`; the viewer writes it to a
 temporary file and offers it for saving. Other writers: the capture app
 (`events.jsonl`, `manifest.json`, `config.yaml`, `screenshots/`,
 `obs/sync.json` `{ tracker_session_start_ts, obs_recording_start_ts,
-offset_ms, recording_path }`, `session-integrity.json`, `capture.log`), the
-viewer (`annotations.json` and its backups, `derived_maps/`) and
-`transcript_import.py` (`transcript.json`, `transcript/`).
+offset_ms, recording_path }`, `session-integrity.json`), the viewer
+(`annotations.json` and its backups, `derived_maps/`, the transcript's
+`offset_ms`) and `transcript_import.py` (`transcript.json`, `transcript/`).
 
 **No longer written:** `events.xes`, `events.csv`, `dfg.json`, the
 activity-level `process_map.bpmn` and the per-case maps in `process_maps/`
@@ -1371,7 +1416,7 @@ field") instead of the signature's default.
 | `draft_summary` | The drafting rule's own structure-only numbers (the P1 probe instrument), counted on the fresh drafts before the merge with the analyst's steps: `{ runs, steps_per_run, out_of_run_steps, end_reason: {commit, screen_change, run_end}, name_source: {remembered, draft}, commit_identity: {automation_id, name, class_name, "?"} }`. `steps_per_run` follows run start order. On a session with no runs, `runs` is 0 and every draft counts in `out_of_run_steps`. The [P1 draft-probe runbook](../docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md) reads it. |
 | `app_vocabularies`, `app_vocabulary_matches`, `app_vocabulary_hits_by_id` | Vocabularies loaded, interactions matched, hits per vocabulary. |
 | `vocab_coverage` | Per app `{ total_interactions, enriched, coverage_pct }`: how much of each app's interactions a vocabulary could name. The viewer does not show it. |
-| `app_names` | `{ executable as recorded: readable name }` for every application in the recording (`normalization/app_names.py`): a vocabulary's name, else a window-title segment naming the executable as a word, else the capitalized executable name; never an invented product name. The findings, the automation-candidate labels and the PDD read display names through it. |
+| `app_names` | `{ executable as recorded: readable name }` for every application in the recording (`normalization/app_names.py`): the `shared/system-names.json` rule for that application alone (a rule without a title: "SAP", "Excel", "Google Chrome"), else a vocabulary's name, else a window-title segment naming the executable as a word, else the capitalized executable name; never an invented product name. The viewer, the findings and the automation-candidate labels read application names through it. The PDD and the step map name the business system through `app_names.system_name`, which also applies the title rules (a Chrome window on Salesforce is "Salesforce"; C14). |
 | `annotations_present`, `session_folder`, `worker_id` | Bookkeeping. |
 
 `canonical_process_id`, `canonical_version`, `drift_count`, `phase_count`,

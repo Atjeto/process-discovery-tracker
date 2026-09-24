@@ -1,368 +1,314 @@
 # Capture
 
-> Overview-level. Capture is production-stable; for depth see
-> [`capture/README.md`](../../capture/README.md),
-> [`docs/interaction-recorder.md`](../interaction-recorder.md),
-> [ADR-0001](../adr/0001-click-recorder-sidecar-language.md), and — for the v0.5.0
-> tech-debt remediation — [ADR-0005](../adr/0005-capture-architecture-remediation.md).
+> The capture app: what the SME uses, how it records, and how to install,
+> configure and support it. Depth:
+> [`capture/README.md`](../../capture/README.md) (quick start),
+> [`docs/interaction-recorder.md`](../interaction-recorder.md) (the recorder's
+> design), [ADR-0001](../adr/0001-click-recorder-sidecar-language.md) (why a C#
+> sidecar) and [ADR-0005](../adr/0005-capture-architecture-remediation.md)
+> (the v0.5.0 module split).
 
-## Purpose & runtime
+## Purpose and runtime
 
-The Capture app runs on the **worker's** machine and records a session while they
-perform a business process. It is an **Electron** app with no meaningful renderer
-logic — it lives in the tray and in small utility windows — plus a separate
-**C# .NET 8 recorder sidecar** process for UI interactions.
+The capture app runs on the SME's machine and records the SME performing a
+business process a few times, one run each time
+([ADR-0029](../adr/0029-ba-helper-refocus.md)). It is an **Electron** app that
+lives in the tray, with a small recording bar and a few utility windows,
+plus a separate **C# .NET 8 recorder sidecar** process for UI interactions.
+Nothing is sent over a network: the recording stays on the machine until the
+SME hands it to the analyst.
 
-Output: one session folder under
-`%APPDATA%\process-discovery-tracker\sessions\<engagement>\<YYYYMMDD-HHMMSS>\`
-(see [DATA-MODEL.md](./DATA-MODEL.md)).
+Output: one recording folder per recording, under the app's user data
+folder:
+`%APPDATA%\process-discovery-tracker-capture\sessions\<project>\<YYYYMMDD-HHMMSS>\`
+(file by file below, "The recording folder"; formats in
+[SCHEMA.md](../../shared/SCHEMA.md)).
+
+## What the SME sees
+
+- **The tray icon.** While recording, a left click shows the recording bar
+  again; otherwise a left click opens the menu. A right click always opens
+  the menu. The tooltip and the menu's first line say the state: "Not
+  recording", "Recording: Run 2", "Paused: between runs".
+- **The tray menu.** Not recording: Start recording (with its key), Open
+  recordings folder, Show recording bar, Help, Setup (analyst), Quit.
+  Recording: Next run, Start a named run (when named runs are set up), End
+  run (naming the open run), Take a screenshot, Pause or Resume recording,
+  Stop recording, then the same items as above. Quit stops a running
+  recording first, without the end summary.
+- **The recording bar** (`recording-bar.js`), the SME's one window while
+  recording. One small frameless strip, always on top: the state
+  (Recording, Paused, Not recording), the run in progress ("Run 2", or
+  "between runs" after End run), the elapsed time (m:ss, h:mm:ss from an
+  hour), Next run with its key, a caret with the named runs when they are
+  set up, Pause or Resume, and Stop with an inline confirm (Keep recording,
+  Stop recording). A problem line appears under it only when clicks and
+  typing are not being recorded. Made for recording during a Teams call: it
+  appears without taking the keyboard focus, asks Windows to leave it out of
+  screen captures (a shared screen, the OBS video and the recording's own
+  screenshots show the work, not the bar), can be dragged anywhere by its
+  text, and remembers its place (`userData/recording-bar.json`; a place on a
+  monitor that is gone falls back to the bottom right of the main screen).
+  It opens when a recording starts and closes when it stops; the tray's
+  Hide recording bar and Show recording bar toggle it.
+- **The welcome** (first launch only, flagged in
+  `userData/welcome-shown.json`): three lines with the real run key, then
+  Start recording, Help and Close.
+- **Help**: one screen for the SME: how to start, the next run, pause, stop,
+  handing the recording over, what is recorded (password fields are not),
+  where the recordings are, the other keys, the version. Everything for
+  whoever installs or supports the app is in this document instead.
+- **The end summary** (`end-summary-window.js`), the one screen after Stop:
+  "Recording saved", the runs and the duration in one line ("3 runs,
+  12:04"), a warning when no run was marked, the folder, **Make a zip for
+  the analyst**, **Show the folder**, an optional "Name this recording", and
+  Done. No counts of clicks, events or screenshots. One window per
+  recording, so a summary still open from an earlier recording keeps its
+  unsaved name.
+- **Toasts**, only for something the SME should act on or tell the analyst:
+  clicks and typing not recorded (in one program, in a browser, or at all),
+  screenshots failing, the recording could not be saved to disk, keys that
+  changed or are not available at launch, a recordings folder that cannot be
+  written to, a declined consent. Each says what still works and what to do.
+
+The SME reads "recording" and "run": "Recording", "Paused", "Not
+recording", "Run 2", "between runs". `capture-guidance.js` holds the words
+of the bar, the tray's status line and the end summary, and they never say
+"session", "events", "interactions" or "Tracking".
+
+## One start, one key per run
+
+Every way of starting calls one rule (`recording-control.js`): the Start
+recording button on the bar, the tray item, the welcome's button, the run
+key and `pdt:startSession`. With nothing recording it starts the recording
+and then Run 1; while recording it starts the next run. So a recording
+without a run is not a state the SME can reach by starting. A press that
+arrives while a start or a stop is still in progress (the consent window
+open, OBS connecting, the recorder draining) is absorbed, not queued.
+
+- **Runs never nest.** A new run first ends the open one (`tracker.startRun`,
+  end reason `auto_close_for_sibling`). A run is named "Run N" (N counts
+  every start in the recording) or, from the bar's caret or the tray's Start
+  a named run, a named run from the Recording setup (`process_labels`).
+- **End run** (the second key, or the tray) ends the open run without
+  starting another; the bar then reads "between runs". It never has to be
+  pressed: stopping ends the open run by itself.
+- **Pause** pauses the tracker and the recorder until Resume; the idle
+  monitor skips while paused.
+- **Idle.** After `auto_end_idle_minutes` (default 30) without mouse or
+  keyboard input, the open run ends (end reason `auto_end_idle`, at most
+  once per idle stretch) and the recording goes on. With
+  `auto_end_on_idle: false` the run stays open through idle; the idle
+  stretch is recorded either way.
+- **Keys.** Three global keys (`hotkeys`): start recording, then the next
+  run (default Ctrl+Shift+S); end run (Ctrl+Shift+E); take a screenshot
+  (Ctrl+Shift+P). A key another program already holds falls back to its
+  Ctrl+Alt variant at launch (a "Keys changed" toast) or is not registered
+  ("Keys not available"). The bar, the welcome, Help and the tray name the
+  keys actually registered, never the configured ones.
 
 ## What it records
 
 | Source | Mechanism | Produces |
 |---|---|---|
 | Foreground window | `active-win` polled every 5 s | `activity` events |
-| UI interactions | C# UI Automation recorder sidecar | `interaction` events |
-| Runs | The one **run hotkey**, pressed once per run; optional auto-end on idle | `marker` events (`start` / `end`) |
-| Lifecycle | session start/end, idle, OBS, recorder health, dropped-batch loss | `system` events |
-| Screen | Electron `desktopCapturer` (app-switch / marker / idle / manual) | screenshots |
-| Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | external recording + `obs/sync.json` |
+| UI interactions | The C# UI Automation recorder sidecar | `interaction` events |
+| Runs | One start per run, End run, Stop, a long idle stretch | `marker` events (`start` / `end`) |
+| Lifecycle | Start and stop, pause, idle, OBS, recorder health, dropped writes, programs the recorder cannot see | `system` events |
+| Screen | Electron `desktopCapturer`: on an app switch, when a run starts or ends, on resume after a long idle stretch, and by hand | screenshots |
+| Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | a video file and `obs/sync.json` |
 
-**One-hotkey runs.** The scenario ([ADR-0029](../adr/0029-ba-helper-refocus.md))
-is: the worker performs the business process a few times, bracketing each
-run with one hotkey (`config.hotkeys.start_picker`, default
-`Control+Shift+S`). Pressing it: starts the session if none is running;
-ends whatever run is still open (`reason: "auto_close_for_sibling"`, so
-runs never nest); and starts the next one, auto-named `"Run N"` (or a
-configured task-shortcut label, `config.process_labels`, offered as named
-buttons in the Live Session window and a tray submenu). A second hotkey,
-`end_innermost` (default `Control+Shift+E`), ends the current run without
-starting another (useful to end the last run before stopping), though it
-does not have to be pressed: stopping the session ends any still-open run
-by itself (see *Close-based stop* below). The guidance line on the
-operator panel (`capture-guidance.js`) always names the real configured
-key, never a hardcoded default, and reads "press &lt;key&gt; at the start
-of each run" while recording.
+Events are appended to `events.jsonl` through a small batching queue:
+activity polls and interactions flush on a 500 ms timer, while `marker` and
+`system` events flush the whole pending queue at once, so a run boundary or
+a lifecycle event is never left only in memory, and a clean stop drains the
+queue. A crash therefore loses at most the activity and interaction events
+queued at that moment (under 500 ms). Each event carries a monotonic `_seq`
+(its 0-based append ordinal), so normalization can order events that share
+a millisecond. Screenshot triggers are coalesced by a 2 second leading-edge
+debounce, so coincident triggers (an app switch landing with a run start)
+collapse to one capture; a screenshot taken by hand is never suppressed.
 
-Events are appended to `events.jsonl` through a small batching queue: high-volume
-events (activity polls, interactions) flush on a 500 ms timer, while `marker` and
-`system` events flush the whole pending queue immediately — so a case boundary or
-lifecycle event is never left only in memory, and a clean shutdown drains the queue.
-A crash therefore loses at most the activity/interaction events queued at that
-moment (under 500 ms of low-stakes data). Each event carries a monotonic
-`_seq` — its 0-based append ordinal — so normalization can resolve events that
-share a millisecond timestamp into true order. Screenshot triggers are coalesced by
-a 2-second leading-edge debounce, so coincident triggers (an app switch landing
-with a marker fire) collapse to a single capture; a manual screenshot is never
-suppressed.
+## Recording lifecycle
+
+- **Start.** A pre-flight check (`validateConfig`) warns with a toast when
+  the recordings folder cannot be written to, and the start goes on. When OBS
+  is required (`obs.required`) it must connect first, or the start stops
+  with a dialog. When a consent gate is configured, the consent window
+  comes next; declining stops the start and nothing is created. Then
+  `session.js` creates the folder and `manifest.json` (`status: active`), the
+  config snapshot is written, the tracker starts polling, the display
+  geometry is stamped on the manifest, the recorder sidecar starts, the
+  dead-man monitor is armed, and Run 1 starts. Without `obs.required`, OBS
+  connects in the background; without OBS the recording goes on without
+  video and says nothing.
+- **Stop** (single-flight: the bar and the tray at once stop it only once).
+  The recorder stops and drains its last values; OBS stops; the tracker
+  ends the open run (`endOpenRuns`) before `session_end`; `manifest.json`
+  gets `status: closed` and `ended_at`; `session-integrity.json` is written
+  last, so the viewer can tell an incomplete copy. The bar closes and the
+  end summary opens (not on Quit, and not when a failed start is torn down).
+- **Crash recovery.** At the next launch, `session.js` marks every recording
+  still `active` with no `ended_at` as `recovered`. A run left open stays
+  open in `events.jsonl`; the pipeline treats it as running to the end of
+  the recording, and its elapsed time is not measured.
+
+## Handing the recording over
+
+The end summary's **Make a zip for the analyst** writes
+`<YYYYMMDD-HHMMSS>.zip` next to the recording folder (`zip-folder.js`: plain
+PKZIP with UTF-8 names, the folder as the zip's root, already compressed
+files such as screenshots and videos stored as they are, written to a
+`.partial` file and renamed at the end) and shows it selected in Explorer.
+Nothing is sent: the SME attaches the zip to an email or a Teams message by
+hand, or copies the folder. A recording over 4 GB, or with more than 65,535
+files and folders, cannot be zipped (the summary says so; copy the folder
+instead). A recording still running cannot be zipped. Deleting a recording
+under Setup (analyst) deletes its zip too.
+
+## The recording folder
+
+| File | What |
+|---|---|
+| `events.jsonl` | The raw event stream, append-only |
+| `manifest.json` | Recording metadata: ids, project, start and end, status, the optional name, the config snapshot, consent, the OBS video's path, the displays |
+| `config.yaml` | The configuration the recording used |
+| `screenshots/` | The screenshots (`_d<displayId>` suffix per display when `screenshots.display` is `all`) |
+| `obs/sync.json` | The OBS video's clock offset, when OBS recorded |
+| `session-integrity.json` | Every file's name and size, written at Stop |
+
+The OBS video itself lands where OBS's Settings, Output, Recording Path
+says, outside the recording folder; `manifest.json` records its absolute
+path. The analyst can also attach a video of the call in the viewer.
 
 ## Module map (`capture/`)
 
-`main.js` is the Electron main process and the app's orchestration core. The
-v0.5.0 remediation ([ADR-0005](../adr/0005-capture-architecture-remediation.md))
-extracted four cross-cutting modules out of it; it remains the largest file — it
-holds the tray menu, global hotkeys, the session lifecycle, the idle monitor, the
-screenshot triggers, and the `pdt:*` IPC handlers. The free-text label picker
-that used to prompt the worker for a marker's name at fire time is gone
-([ADR-0029](../adr/0029-ba-helper-refocus.md)): a run is named from a
-configured task shortcut (`config.process_labels`) or auto-numbered
-("Run N").
-
-**Core / cross-cutting:**
+`main.js` is the Electron main process and the orchestration core: the tray
+menu, the global keys, the recording lifecycle, the idle monitor, the
+screenshot triggers and the `pdt:*` IPC handlers. The v0.5.0 remediation
+([ADR-0005](../adr/0005-capture-architecture-remediation.md)) extracted the
+cross-cutting modules out of it.
 
 | File | Role |
 |---|---|
-| `main.js` | Electron main process: tray menu, global hotkeys, session lifecycle, idle monitor, screenshot triggers, IPC handlers. |
-| `boot-log.js` | `bootLog()` — diagnostic log, opt-in via the `PDT_DEBUG=1` environment variable. |
-| `notify.js` | `notifyUser()` — native OS toast for failures the operator must see (recorder dead, OBS dropped, screenshots failing); also `trayIconImage()`. |
-| `session-storage.js` | Session disk-usage accounting and the delete / prune-by-age flows. |
-| `window-manager.js` | Shared singleton-window helper — `createWindowManager()` exposing `show` / `toggle` / `isOpen` / `get`, keyed per window. |
-| `capture-guidance.js` | Pure module (no DOM/Electron/IPC): the operator panel's single status-driven guidance line ("Recording: press &lt;key&gt; at the start of each run.") from a `pdt:status` snapshot and the configured run hotkey. Injected into `ui/operator-panel.html`. |
-| `tracker.js` | The 5-second active-window polling loop; run/marker bookkeeping (`startRun`, one-hotkey close-then-open, `endOpenRuns`), event-append, `_seq` stamping, live counters, dropped-batch loss accounting (`events_dropped`, RP-21), and uncaptured-app detection. |
-| `session.js` | Session-folder creation, `manifest.json` I/O (fixed `purpose: "process"`), orphan detection / recovery. |
-| `events.js` | Event-envelope factories — `activityEvent`, `markerEvent`, `systemEvent`, `interactionEvent`. |
-| `config.js` | Loads + deep-merges per-session YAML over `DEFAULTS` — the single source of default values. |
-| `user-config.js` | The persistent `userData/user-config.json` overlay (Settings / Profile / a `"once"` consent acknowledgement) shared by the top-level windows. |
-| `recorder.js` | Spawns the C# `recorder.exe` sidecar (`spawnRecorder`); parses its NDJSON output; runs a stdout-quiet liveness watchdog; **`superviseRecorder`** owns per-session crash supervision (below). |
-| `dead-man.js` | §E2 dead-man monitor (pure, injectable clock): no interaction event AND no `recorder_health` heartbeat for >2 min during an active session ⇒ main.js flips the tray to a warning icon, fires an OS notification, and lands a durable `recorder_silent` system event (`recorder_silent_end` on recovery). |
-| `readiness.js` | §E1 pre-pilot readiness probe — free disk on the session target + the recorder's self-extract drive, recorder starts + UIA answers, per-running-app trust tier (rich/basic/minimal/wall) from a short snapshot probe of each visible window. Tray item **Run readiness check…** (idle-only) and the `--readiness` CLI both write `readiness-report.json` into the sessions base dir; CLI exit codes 0 ready / 2 not ready / 3 crashed. |
-| `obs.js` | OBS WebSocket integration — scene bootstrap, start/stop recording, clock-offset sync. |
-| `screenshots.js` | Desktop capture via `desktopCapturer`; multi-monitor handling. |
-| `log.js` | Per-session `capture.log` writer. |
+| `main.js` | The main process (above). |
+| `recording-control.js` | The one start (pure, injectable): starts the recording with Run 1, or the next run; absorbs presses during a start or a stop. |
+| `capture-guidance.js` | Pure module: the words of the recording bar (`barModel`), the tray's status line and the end summary (`summaryModel`), from one status snapshot, and the program names in toasts. |
+| `tracker.js` | The 5 second active-window polling loop; runs (`startRun` ends the open run first, `endOpenRuns`); event append with `_seq`; the write queue and dropped-batch accounting (RP-21); programs the recorder cannot see (`uncaptured_app`). |
+| `session.js` | Recording folder creation, `manifest.json` I/O (`updateManifest` is one read-modify-write), orphan recovery, the integrity file, the optional name, `isRecordingFolder` (the end summary acts only on a real recording folder), `removeSessionFolder` (the folder and its zip). |
+| `zip-folder.js` | One recording folder as one zip next to it; local only (`node:fs`, `node:zlib`). |
+| `session-storage.js` | The recordings' sizes (a zip next to a folder counts) and the delete flows under Setup (analyst). |
+| `events.js` | Event-envelope factories. |
+| `config.js` | Loads and deep-merges the YAML over `DEFAULTS`, the one source of default values; the pre-flight check. |
+| `user-config.js` | The persistent `userData/user-config.json` overlay (Settings, Profile, a remembered "once" consent), merged over the YAML at launch. |
+| `recorder.js` | Spawns the C# `recorder.exe` sidecar, parses its NDJSON, runs the stdout-quiet watchdog, and `superviseRecorder` restarts it per recording (below). |
+| `dead-man.js` | The dead-man monitor (pure, injectable clock): no interaction and no recorder heartbeat for over 2 minutes means the recorder went silent (below). |
+| `readiness.js` | The readiness check: free disk on the recordings folder and on the drive the recorder extracts to, the recorder starts and answers, and how much it sees of each open program (rich, basic, minimal, wall). Setup (analyst), Readiness check (only while nothing records), or the `--readiness` command line; both write `readiness-report.json` next to the recordings. Exit codes: 0 ready, 2 not ready, 3 crashed. |
+| `obs.js` | OBS WebSocket: scene set-up, start and stop recording, the clock offset. |
+| `screenshots.js` | Screen capture with `desktopCapturer`, across monitors. |
+| `notify.js` | `notifyUser()` (the OS toast) and the tray icons, the warning one included. |
+| `window-manager.js` | Keeps each utility window to one instance. |
+| `json-for-script.js` | Serializes a value safely into a window's inline `<script>` (a run name or a path can never break out of it). |
+| `boot-log.js` | `bootLog()`: the launch and lifecycle log, `userData/boot.log`, on with `PDT_DEBUG=1`. |
+| `log.js` | `appLogger()`: the always-on `userData/app.log` (OBS connection, config saves). Its per-recording logger is not called, so no recording folder holds a log. |
 
-The worker close-out wizard (`self-annotation/`: observed-value questions,
-`manifest.worker_review`) is gone ([ADR-0029](../adr/0029-ba-helper-refocus.md)):
-session end now shows only the one-screen end summary (below), unauthored.
-
-**Windows.** Each window module builds a `BrowserWindow` and loads its markup from
-a sibling file in `capture/ui/` — the HTML was extracted from the JS modules in
-v0.5.0 (C8):
+**Windows.** Each window module builds a `BrowserWindow` and loads its
+markup from `capture/ui/`; `ui/tokens.js` inlines the fonts and type tokens
+shared with the viewer.
 
 | Module | `ui/` file | Window |
 |---|---|---|
-| `operator-panel.js` | `operator-panel.html` | The **Live Session** window, trimmed to the path: recording indicator, timer, open-marker stack, counters, recent-events feed, inline marker firing, named-run task shortcuts, the guidance line (`capture-guidance.js`), and the one-screen end summary. |
-| `hotkey-overlay.js` | `hotkey-overlay.html` | Always-on-top click-through corner widget showing the primary hotkeys. |
-| `settings-window.js` | `settings.html` | Top-level **Settings…** — persistent settings split by concern (Hotkeys / Video-OBS / Screenshots / Storage). Subsumes the former standalone OBS-settings dialog (v0.17.0). Writes the `userData/user-config.json` overlay. |
-| `profile-window.js` | `profile.html` | Top-level **Profile…** — worker identity (id, display name, role, team), stamped onto every recording's manifest. Persists to the user-config overlay. |
-| `session-config-window.js` | `session-config.html` | The slim **Session setup…** — per-engagement code/name and process labels only (shown when idle); identity and persistent settings moved to Profile/Settings in v0.17.0. |
-| `welcome-window.js` | `welcome.html` | First-run onboarding (with a "Set up your profile" CTA). |
-| `help-window.js` | `help-window.html` | Reopenable help. |
-| `consent-window.js` | `consent.html` | Worker-consent gate (§11f) shown at session start when `config.consent.mode` is `"per_session"`/`"once"`; returns the decision over IPC and remembers a `"once"` acknowledgement in user-config. Pure record/decision logic is in the electron-free `consent.js`. Declining aborts the start; the decision is written to `manifest.consent`. The C# recorder is unchanged. |
+| `recording-bar.js` | `recording-bar.html` | The recording bar (above). |
+| `end-summary-window.js` | `end-summary.html` | The end summary (above). |
+| `welcome-window.js` | `welcome.html` | The first-launch welcome. |
+| `help-window.js` | `help-window.html` | Help, one screen, static and sandboxed. |
+| `consent-window.js` | `consent.html` | The consent gate (below). The pure decision and record logic is in `consent.js`. |
+| `settings-window.js` | `settings.html` | Setup (analyst), Settings: keys, OBS, screenshots, the storage limit and the idle end of the open run. |
+| `profile-window.js` | `profile.html` | Setup (analyst), Profile: who is recording. |
+| `session-config-window.js` | `session-config.html` | Setup (analyst), Recording setup: the project and the named runs. |
 
-`window-manager.js` keeps each of these to a single live instance.
-
-**Other:**
-
-| File | Role |
-|---|---|
-| `build-package.js` | Custom `electron-packager` wrapper for distribution builds. |
-| `test/` | `node:test` suite over `config`, `events`, `session`, `tracker`, `consent`, and `window-manager`; run with `npm test`. |
-| `ui/` | The extracted window HTML files (see the Windows table above). |
-| `recorder/` | The C# recorder sidecar — see below. |
-
-## The C# recorder sidecar (`capture/recorder/`)
-
-A separate single-file, self-contained `.NET 8` executable. It exists as its own
-process (not Node) because UI Automation is a first-party Windows API best consumed
-from .NET — see [ADR-0001](../adr/0001-click-recorder-sidecar-language.md).
-
-- `Program.cs` — entry point; an **NDJSON control loop** over stdin/stdout.
-  Electron sends `hello` / `pause` / `resume` / `snapshot` / `shutdown` (the
-  `hello` carries `verbose`, `debounce_ms`, `ocr`, and `host_process` — the
-  capture app's own exe, so the recorder never records PDT's own windows as
-  interactions); the recorder emits
-  `ready`, `interaction`, `stats`, and `warning` lines. The `stats` line carries
-  throughput counters plus an `errors` count and a `last_error` snapshot.
-- **The `snapshot` command (§11e / [ADR-0025](../adr/0025-in-app-vocabulary-discovery.md), narrowed by [ADR-0029](../adr/0029-ba-helper-refocus.md)).**
-  `{cmd:"snapshot", target:"foreground"|<hwnd>, passes:2}` walks the target
-  window's UIA subtree **once per pass** (reusing the same `ControlView` walk
-  and the ADR-0023 identity/framework/confidence ladder) and streams **every
-  identifiable control** as a `snapshot_control` line, then a `snapshot_done`
-  per pass, instead of waiting for interaction events. The walk is bounded
-  (~2000 controls), skips pure decoration (no `automation_id`/`name`/
-  `class_name`), and wakes a Chromium renderer's lazily-built accessibility
-  tree first (a browser window is UIA-dark until queried). These lines are
-  **transient**: never written to `events.jsonl`. Before ADR-0029 two
-  passes ≥1s apart let the analyst-side volatility picker
-  (`normalization/signature_pick.py`) diff the controls for the viewer's App
-  Library "Discover from window" flow; that flow and the picker are cut
-  (light vocab, a remembered-names store keyed by a drafted step's
-  `draft_key`, replaced it), so the recorder still answers a `snapshot`
-  command the same way but nothing in the current viewer sends one. The
-  pure traversal (`SnapshotWalker` over the `ISnapshotElement` seam) is
-  unit-tested with a synthetic tree in `Recorder.Tests`; the live
-  `AutomationElement` adapter is the thin UIA seam. See `Snapshotter.cs`.
-- `UiaSubscriber.cs` — subscribes to UI Automation events (invoke, selection,
-  toggle, value), filters noise (drops `focus_changed` / `text_changed`, coalesces
-  rapid `value_changed` within a configurable debounce window, drops low-signal
-  Win32 *and* Chromium internal-DOM control types), and extracts fields safely
-  (a property that throws is omitted, not nulled). The first interaction per
-  process carries a `coverage_hint` (`rich` / `basic` / `minimal`); a clamped
-  256-char value is flagged `value_truncated`.
-- **Framework detection (§11e).** Every interaction also carries a normalized
-  `framework` — `win32` / `winforms` / `wpf` / `winui` / `chromium` / `java` /
-  `javafx` / `qt` / `remote` / `terminal` / `unknown` — re-derived in
-  `UiaSubscriber.DetectFramework` from the raw `framework_id` **and** the window
-  `class_name`. The point is the toolkits that *misreport* their UIA
-  `framework_id`: Java (Swing/AWT) and Qt windows report `Win32`, and a Citrix/RDP
-  host wraps a foreign session — the window class (`SunAwtFrame`, `Qt…QWindowIcon`,
-  `wfica32`, `ConsoleWindowClass`) is the reliable tell, so class signatures win
-  over `framework_id`. This is *desktop-coverage hardening*: a `java`/`qt` tally
-  tells the analyst to enable the Java Access Bridge / Qt a11y plugin, and a
-  `remote`/`terminal` tally says structured UIA will be thin there so the
-  run-inside-the-session rule + the local video backstop carry it (operational
-  rules in [DEPLOY.md](../DEPLOY.md#remote--virtualized-apps-citrix--rdp--vmware--11e)).
-  It is distinct from the recognition layer's *web-app*
-  `framework` axis (`chromium` / `ag-grid` / `office365`), which is mined from
-  class-name signatures downstream in `recognition.py` / `recognition.js`.
-- **Identity ladder + per-element confidence (§11e).** Each interaction also
-  carries `identity_source` — the rung of the identity ladder that gave the
-  element a stable identity (`automation_id` → `name` → `class_name` → `none`,
-  descending reliability) — and a `confidence` score in `[0,1]`
-  (`UiaSubscriber.ResolveIdentitySource` / `ComputeConfidence`). Confidence blends
-  the rung with the detected `framework`: a strong rung is still capped at `0.30`
-  on a `remote`/`terminal` surface, where the captured field is an unreliable
-  proxy for the real (pixel) control. This is the *honest-degradation* signal — it
-  lets the analyst flag low-trust captures rather than silently trusting a thin
-  one, and a `none` rung at low confidence is precisely the element the OCR
-  last-resort bridge ([ADR-0023](../adr/0023-recorder-capture-confidence.md))
-  targets.
-- **Value recovery (§11e).** A `value_changed` whose primary UIA ValuePattern
-  value comes through empty — a rich-text or document control that signals the
-  change but exposes its text through `TextPattern`, not `ValuePattern` — is
-  recovered via `TextPattern.DocumentRange.GetText` (`UiaSubscriber.RecoverValue` /
-  `TryReadTextValue`), generalizing the AG-Grid typed-value fix. The recovery is
-  flagged with `value_source: "text_pattern"` so it's transparent, never overrides
-  a real primary value, is length-bounded, and adds no UIA reads on the common
-  (non-empty) path. `RecoverValue` takes the source label as a parameter so the OCR
-  last rung reuses it unchanged (`value_source: "ocr"`). *Edit-element descent* and
-  *clipboard* recovery are deliberately **not** done — descent would walk the tree
-  on the interaction hot path, and clipboard scraping is a privacy hazard at odds
-  with the air-gapped, structured-only moat.
-- **Secret redaction at capture (security).** Before any of the above runs, a
-  `value_changed` on a control UIA-flagged `IsPassword` (`UiaSubscriber.IsSecretValueElement`
-  / `ShouldRedactValue`) is redacted: the recorder omits the `value`, sets
-  `value_redacted: true`, and **skips** the `TextPattern` recovery and the OCR rung
-  for that element (`ShouldOcr`'s `isSecret` gate). Windows already blanks a password
-  field's `ValuePattern` value; without this gate the recovery rungs would actively
-  reconstruct it. The plaintext secret therefore never reaches the immutable
-  `events.jsonl` — the analyst-side `pii_masking` layer is only a second net over the
-  derived stream. See [SECURITY.md](../../SECURITY.md).
-- **OCR last rung (§11e, default-off).** The bottom of the identity ladder: when an
-  element exposes **no** structured identity (`identity_source == "none"`) on a
-  session that opted in (`interactions.ocr: true`), the recorder captures the
-  element's on-screen region and recovers a text label via `Windows.Media.Ocr` — a
-  Win10+ **system API** (on-device, free, no bundle inflation, *not* Tesseract; see
-  [ADR-0023](../adr/0023-recorder-capture-confidence.md)). The label rides as
-  `ocr_text` and lifts the rung to `ocr` (confidence ≈ 0.25). `OcrBridge` exposes a
-  testable core (`RecognizePng`, pinned headlessly by rendering known text) and the
-  production `RecognizeScreenRegion` (GDI+ capture → core; its live end-to-end is
-  validated against real low-UIA apps later). It is **off by default** — the
-  screen-capture + OCR cost never touches an ordinary capture, and is only worth
-  enabling for a known low-UIA app (legacy custom controls, un-bridged Java/Qt).
-  `ocr_text` is captured content, so the structure-only `inspect-events.js` never
-  prints it.
-- **Chromium accessibility wake-up.** Chrome / Edge / Electron-based apps build
-  their UIA accessibility tree **lazily** — without an external query, web
-  content fires no UIA events and the recorder sees only the omnibox / native
-  browser chrome. `UiaSubscriber.Start()` therefore kicks off a background
-  `Timer` (1 s period) whose only job is to walk every top-level window whose
-  `ClassName` begins with `Chrome_` or whose `FrameworkId` is `Chrome`, read
-  its `Name` / `ControlType` / `LocalizedControlType`, and descend to find a
-  `ControlType.Document` (the web-content root) and read its `Name`. The act of
-  asking is what flips Chrome into accessibility-on mode for that window — the
-  same mechanism NVDA / Narrator / inspect.exe rely on. Without this poller, a
-  stock user-launched Chrome captures only browser-chrome events; with it, the
-  recorder sees the labelled HTML form fields (`Customer name:`, `E-mail
-  address:`) and the typed values as `value_changed` interactions. This is
-  important because most modern enterprise processes (Salesforce, ServiceNow,
-  web-based ERPs) run in Chrome.
-
-`recorder.js` resolves the executable (packaged `resources/recorder/`, source tree,
-or auto-extracted `recorder.zip`), spawns it, and restarts it up to a configured
-limit. It also runs a **liveness watchdog**: the sidecar emits a `stats` line every
-30 s, so if its stdout falls silent for 90 s the process is presumed hung — it is
-killed and recovered through the normal exit/restart path. Each `stats` line is
-also written to `events.jsonl` as a `recorder_health` `system` event, so drops
-and errors stay visible against the session timeline. Recorder death surfaces
-as a `recorder_died` / `recorder_dead_permanent` `system` event and a native OS
-notification.
-
-## Session lifecycle
-
-- **Start** — a pre-flight `validateConfig()` first warns the operator if the
-  engagement ID is unset or the session folder is unwritable, with a
-  Start-anyway prompt. Then `session.js` creates the folder + `manifest.json`
-  (`status: active`); `tracker.js` begins polling; the recorder sidecar and
-  (if configured) OBS start. Firing the first marker auto-starts a session; an
-  explicit green **Start** button also exists.
-- **End**: polling stops; the tracker ends any run still open
-  (`endOpenRuns()`, no explicit End-run hotkey needed for the last one)
-  before firing `session_end`, so a run is never left dangling by a worker
-  who just closes the session; the recorder and OBS stop; `manifest.json`
-  is updated (`status: closed`, `ended_at`); a `session-integrity.json`
-  file manifest is written so the viewer can detect an incomplete copy;
-  and the Live Session window shows the **one-screen end summary**
-  (`showEndSummary`: runs, duration, interactions, screenshots) with an
-  optional field to label the session. The worker close-out wizard's
-  observed-value questions are gone ([ADR-0029](../adr/0029-ba-helper-refocus.md));
-  the end summary is the only thing the worker sees at session end, and it
-  asks nothing.
-- **Crash recovery** — on next launch, `session.js` finds sessions still marked
-  `active` with no `ended_at`, marks them `recovered`; the normalization layer
-  reconciles any markers left open.
-
-App-vocabulary prep sessions (a separate `"app_prep"` session `purpose`,
-filed under `engagement_id: "vocab-prep"`, to bootstrap an App Vocabulary
-from a throwaway walkthrough) are gone with the in-app vocabulary discovery
-flow they fed. `manifest.json.purpose` is now always `"process"`; there is
-no `startAppPrepSession()` and no `manifest.prep_app`.
-
-## Reliability
-
-Capture runs unattended on a machine the analyst does not control, so
-several behaviors exist purely to make a recording trustworthy rather than
-silently thin or lost:
-
-- **Per-session recorder supervision (RP-20).** `recorder.superviseRecorder`
-  owns one restart budget per session: it spawns the sidecar, and on a
-  crash (non-zero/signalled exit, or a spawn failure) re-spawns it after a
-  delay, up to `interactions.max_restarts_per_session` (default 3) times.
-  A successful re-spawn never refills the budget (before this fix, `main.js`
-  reset the restart count on every successful spawn, including
-  auto-restarts), so the cap was never reached and a crash-looping recorder
-  restarted forever with no `recorder_dead_permanent` ever firing.
-- **Dropped-batch accounting (RP-21).** `tracker.js`'s write queue flushes
-  markers and system events synchronously (durability-critical) but defers
-  activity/interaction events on a 500 ms timer. If a deferred flush fails
-  and the batch held no critical event, the batch is dropped rather than
-  retried. The loss is folded into a pending record and queued as a
-  durable `events_dropped` system event ahead of the next event, instead of
-  only a `boot.log` line. `getStatus().droppedEventCount` and
-  `writeErrorCount` surface the running totals to the tray/status window.
-- **Spawn-error handling (RP-22).** `recorder.js` listens for the child
-  process's `'error'` event, not just `'exit'`: a spawn failure (a blocked
-  path, an execution policy) used to be an uncaught exception with no
-  `recorder_died` and no restart, while `events.jsonl` already recorded
-  `recorder_start`. It now reports through the same exit/restart path as a
-  crash.
-- **Close-based stop (RP-23).** `recorder.js`'s `stop()` waits for the
-  child's `'close'` event, not `'exit'`: `'close'` fires only after the
-  stdio streams have fully drained, so the last typed values the sidecar
-  flushes on shutdown are never dropped by the caller moving on too early.
-- **Liveness watchdog.** The sidecar emits a `stats` line every 30 s
-  regardless of UI activity; if stdout falls silent past 90 s the sidecar
-  is presumed hung, killed, and recovered through the normal restart path
-  (distinct from §E2's dead-man monitor, which watches for silence on the
-  *interaction* signal during an active session, not the process's own
-  liveness).
+**Other:** `build-package.js` (the `electron-packager` wrapper for
+releases), `test/` (the `node:test` suite: `npm test`), `recorder/` (the C#
+sidecar, below).
 
 ## IPC surface
 
-The tray/main process exposes `pdt:*` IPC handlers consumed by the utility
-windows: `pdt:status`, `pdt:fireStart`, `pdt:fireEnd`, `pdt:setSessionLabel`,
-`pdt:manualScreenshot`, `pdt:startSession`, `pdt:endSession`,
-`pdt:togglePause`, `pdt:obsTest`, `pdt:sessionConfigGet/Save`,
-`pdt:profileGet/Save`, `pdt:settingsGet/Save`, `pdt:welcomeAction`.
-`pdt:fireSync` (cross-machine sync markers) is gone with the feature
-([ADR-0029](../adr/0029-ba-helper-refocus.md)).
+The main process answers these `pdt:*` channels from the windows:
+
+| Channel | Used by | Does |
+|---|---|---|
+| `pdt:status` | recording bar | The status snapshot plus the bar's view model |
+| `pdt:fireStart` | recording bar | The one start (a named run's label optional) |
+| `pdt:namedRunMenu` | recording bar | Pops up the named runs under the caret |
+| `pdt:togglePause` | recording bar | Pause or Resume |
+| `pdt:endSession` | recording bar | Stop (the end summary follows) |
+| `pdt:barResize` | recording bar | The bar's height follows its content (a problem line) |
+| `pdt:fireEnd` | drivers | End run |
+| `pdt:startSession` | drivers | The one start; returns the folder |
+| `pdt:showFolder` | end summary | Explorer with the recording folder selected |
+| `pdt:zipFolder` | end summary | Make a zip for the analyst: `{ ok, zipName, size }` or `{ ok: false, error }` |
+| `pdt:setSessionLabel` | end summary | The optional name, on the manifest |
+| `pdt:welcomeAction` | welcome | `start` (the one start), `help`, `bar` |
+| `pdt:consentDecision` | consent window | The SME's decision |
+| `pdt:obsTest` | Settings | Test OBS connection |
+| `pdt:settingsGet`, `pdt:settingsSave` | Settings | The Settings slices |
+| `pdt:profileGet`, `pdt:profileSave` | Profile | Who is recording |
+| `pdt:sessionConfigGet`, `pdt:sessionConfigSave` | Recording setup | `userData/quick-config.yaml` |
+
+The end summary's channels act only on a recording folder under the
+recordings folder (`session.isRecordingFolder`). Gone: `pdt:manualScreenshot`
+(a screenshot by hand is the key or the tray item), `pdt:sessionSummary`
+(the end summary is its own window), `pdt:fireSync` (cross-machine sync
+markers are cut).
 
 ## Configuration
 
-Per-session config is YAML, deep-merged over the `DEFAULTS` object in `config.js`
-— which, since v0.5.0 (C3), is the **single source** of default values (one
-exception: `storage_warn_gb` is read in `main.js` with an inline `|| 50` fallback,
-not from `DEFAULTS`). Point the app at a file with `PDT_CONFIG`, or edit via the
-session config window (which writes `quick-config.yaml` for the next launch). A
-hotkey whose binding is already held by another app falls back to its `Ctrl+Alt+`
-variant at registration.
+Settings come in layers, each merged over the one before:
+
+1. `DEFAULTS` in `config.js`, the one source of default values (except
+   `storage_warn_gb`, read with an inline fallback of 50).
+2. A YAML file: `PDT_CONFIG=path\to\config.yaml` set before launch (the whole
+   schema: `capture/sample-config.yaml`), else `userData/quick-config.yaml`,
+   written by Setup (analyst), Recording setup (the project code and name,
+   the named runs; offered only while nothing records, read at the next
+   launch).
+3. `userData/user-config.json`: Setup (analyst), Settings (keys, OBS,
+   screenshots, the storage limit, the idle end of the open run) and Profile
+   (id, display name, role, team, stamped on every manifest). Saved settings
+   apply at once, except keys, which register at the next launch.
 
 | Key | Default | Purpose |
 |---|---|---|
-| `engagement_id` / `engagement_name` / `worker` | `"default"` / … | Identity stamped on the session + manifest. |
-| `auto_end_idle_minutes` | `30` | Idle span that auto-ends the session (when `auto_end_on_idle`). |
-| `auto_end_on_idle` | `true` | Set `false` to keep a session running through idle — 8-hour passive recordings. |
-| `poll_interval_seconds` | `5` | Active-window poll cadence. |
-| `idle_threshold_seconds` | `60` | OS-idle threshold before an `idle_start` is logged. |
-| `taxonomy_version` | `"v0"` | Taxonomy generation stamped into `stats.json.meta`. |
-| `storage_warn_gb` | `50` | Total stored-sessions size that triggers a cleanup-reminder toast (read in `main.js`). |
-| `process_labels` | `[]` | Task-shortcut names: shown as named-run buttons in the Live Session window and a "Start a named run" tray submenu, each starting a run with that name via the one run hotkey instead of an auto-numbered "Run N". |
-| `obs` / `hotkeys` | … | OBS WebSocket config + the three global-hotkey bindings (`start_picker` / `end_innermost` / `manual_screenshot`; the cross-machine sync-marker hotkey is gone with the feature). |
-| `screenshots.enabled` / `.quality` / `.on_app_switch` / `.on_marker_fire` / `.on_idle_resume_minutes` / `.display` | `true` / `60` / `true` / `true` / `5` / `"active"` | Screenshot triggers, JPEG quality, and multi-monitor selection (`active` / `primary` / `all`). |
-| `interactions.enabled` / `.required` / `.auto_restart` / `.max_restarts_per_session` | `true` / `false` / `true` / `3` | Recorder-sidecar lifecycle. |
-| `interactions.exclude_processes` | `[]` | Extra process names (exe, `.exe`-insensitive) to drop from the analysis. Applied by normalization (`process_filter`) on the derived stream — unioned with PDT's own self-exclusion and the analyst's `step_filters.ignored_processes` / `ignored_window_titles`. (PDT's own windows are excluded automatically; this is for additional apps.) |
-| `interactions.verbose` | `false` | Forensic firehose — emit `focus_changed` / `text_changed` / per-keystroke `value_changed` (~3–5× events). |
-| `interactions.debounce_ms` | `750` | The recorder's `value_changed` coalescing window, passed to the sidecar in `hello`. |
-| `interactions.ocr` | `false` | §11e OCR last resort. When `true`, an identityless element's on-screen region is captured and OCR'd (`Windows.Media.Ocr`) for a `ocr_text` label. Off by default; enable only for a known low-UIA app. Passed to the sidecar in `hello`. |
+| `engagement_id`, `engagement_name` | `"default"`, `"Default engagement"` | The project code and name, stamped on the manifest; the code is the folder above the recordings. |
+| `worker` | the Windows login | Who is recording: `id`, `name`, `role`, `bu` (team). |
+| `process_labels` | `[]` | The named runs: the caret next to Next run on the bar, and the tray's Start a named run. |
+| `auto_end_idle_minutes` | `30` | Inactivity that ends the open run. |
+| `auto_end_on_idle` | `true` | `false` keeps the run open through idle (all-day recordings); idle is recorded either way. |
+| `poll_interval_seconds` | `5` | Not read: the active-window poll is fixed at 5 s (`tracker.js`). |
+| `idle_threshold_seconds` | `60` | OS idle time before an `idle_start` is recorded. |
+| `storage_warn_gb` | `50` | Setup (analyst) flags the recordings on this computer when their total size is above it. |
+| `hotkeys.start_picker`, `.end_innermost`, `.manual_screenshot` | `Control+Shift+S`, `Control+Shift+E`, `Control+Shift+P` | Start recording, then the next run; End run; Take a screenshot. |
+| `screenshots.enabled`, `.quality`, `.on_app_switch`, `.on_marker_fire`, `.on_idle_resume_minutes`, `.display` | `true`, `60`, `true`, `true`, `5`, `"active"` | The screenshot triggers, JPEG quality, and the monitor: `active` (the display with the focused window), `primary`, or `all` (one screenshot per display). |
+| `obs.required`, `.websocket_url`, `.websocket_password`, `.scene_name`, `.auto_create_scene` | `false`, `ws://127.0.0.1:4455`, none, the default scene named in `config.js`, `true` | OBS (below). |
+| `consent.mode`, `.version`, `.text` | `"off"`, `2`, the default text | The consent gate (below). |
+| `interactions.enabled`, `.required`, `.auto_restart`, `.max_restarts_per_session` | `true`, `false`, `true`, `3` | The recorder sidecar's lifecycle. |
+| `interactions.exclude_processes` | `[]` | More programs to leave out, applied by the pipeline on its derived stream (PDT's own windows are always left out). |
+| `interactions.verbose` | `false` | The forensic firehose: `focus_changed`, `text_changed`, a `value_changed` per keystroke (three to five times the events). |
+| `interactions.debounce_ms` | `750` | The recorder's `value_changed` coalescing window, sent in `hello`. |
+| `interactions.ocr` | `false` | The OCR last rung (below). Off by default; turn on only for a program known to expose little to UI Automation. |
+| `taxonomy_version` | `"v0"` | Stamped into the config snapshot; nothing reads it. |
 
-## Developer and IT reference
+**Consent** (`consent.js`, `consent-window.js`). Off by default: the
+manifest records `{ required: false, granted: null, mode: "off" }` and the
+recording starts. `per_session` asks at every start; `once` asks once per
+worker and consent version (remembered in `user-config.json`). Declining
+stops the start. The default text says what is recorded, that what is typed
+into password fields is not, and that nothing is sent over the network; it
+is version 2, because version 1 promised that card numbers were left out,
+which the recorder does not do. A `once` acknowledgement of version 1 is
+asked again.
 
-Moved here from the capture app's Help window. The app's Help is now one
-screen for the SME (how to start, the next run, pause and stop, handing the
-recording over, what is recorded, where the recordings are); what follows
-is for whoever installs, configures or supports the app.
-
-### OBS video (optional)
+## OBS video (optional)
 
 OBS Studio is optional. SME laptops usually have none, and the analyst can
 attach a video of the call in the viewer instead; without OBS the recording
@@ -379,90 +325,197 @@ viewer line the video up with the events.
    configured scene (`obs.scene_name`) the first time, with a clock overlay
    that helps check the sync.
 
-The connection is localhost only (`ws://127.0.0.1:4455`). With
-`obs.required: true` a start fails with a dialog when OBS cannot be
-reached; the default `false` records without video. The video lands where
-OBS's Settings, Output, Recording Path says, outside the recording folder;
-`manifest.json` records its absolute path.
+The connection is localhost only. Test OBS connection in Settings runs the
+same handshake and shows the error. With `obs.required: true` a start fails
+with a dialog when OBS cannot be reached; the default `false` records
+without video.
 
-### Configuration layers
+## Reliability
 
-- **Settings** (Setup (analyst), Settings): keys, OBS, screenshots, the
-  storage limit, the idle end of the open run. Stored in
-  `userData/user-config.json` and merged over any YAML.
-- **Profile** (Setup (analyst), Profile): who is recording (id, display
-  name, role, team), stamped on every manifest.
-- **Recording setup** (Setup (analyst), Recording setup, offered only while
-  nothing records): the project code and name, and the named runs. Stored
-  in `userData/quick-config.yaml` and read at the next launch.
-- **A full YAML**: set `PDT_CONFIG=path\to\config.yaml` before launch for
-  the whole schema (`capture/sample-config.yaml`); Settings and Profile
-  still layer on top.
+The capture app runs unattended on a machine the analyst does not control,
+so several behaviors exist to make a recording trustworthy rather than
+silently thin or lost:
 
-The three keys are `hotkeys.start_picker` (start recording, then the next
-run), `hotkeys.end_innermost` (end the current run) and
-`hotkeys.manual_screenshot`. A key another program already holds falls back
-to its Ctrl+Alt variant at launch (a "Keys changed" toast), or is not
-registered ("Keys not available"); the recording bar, the welcome, the Help
-window and the tray name the key actually registered. Key changes in
-Settings take effect at the next launch.
+- **Per-recording recorder supervision (RP-20).** `recorder.superviseRecorder`
+  owns one restart budget per recording: on a crash (a non-zero or signalled
+  exit, or a spawn failure) it starts the sidecar again after 5 s, at most
+  `interactions.max_restarts_per_session` (default 3) times. A successful
+  restart never refills the budget, so a crash-looping recorder reaches
+  `recorder_dead_permanent` and a toast instead of restarting forever.
+- **Spawn errors (RP-22).** `recorder.js` listens for the child's `error`
+  event as well as `exit`, so a spawn failure (a blocked path, an execution
+  policy) goes through the same restart path as a crash.
+- **Close-based stop (RP-23).** `stop()` waits for the child's `close`
+  event, which fires only after its output has drained, so the last typed
+  values the sidecar flushes on shutdown are never lost.
+- **Liveness watchdog.** The sidecar writes a `stats` line every 30 s, also
+  recorded as a `recorder_health` system event. When its output stays
+  silent for 90 s it is presumed hung, killed and restarted.
+- **Dead-man monitor.** During a recording with interactions on, no
+  interaction and no heartbeat for over 2 minutes fires one
+  `recorder_silent` system event, turns the tray icon amber, shows a toast
+  and a problem line on the bar; `recorder_silent_end` marks the recovery.
+  (The watchdog watches the process; the dead-man watches the signal.)
+- **Dropped writes (RP-21).** Markers and system events are written at once
+  and retried on failure (a "could not be saved to disk" toast). A failed
+  batch of activity and interaction events is dropped rather than retried;
+  the loss is recorded as one durable `events_dropped` system event ahead
+  of the next event, and the SME sees one toast per loss stretch.
+- **Programs the recorder cannot see.** A program in front for a sustained
+  stretch with no interaction from it (often one running as administrator,
+  or one with no UI Automation) gets one `uncaptured_app` system event and
+  a toast. A browser in front for 8 s with no interaction from any browser
+  gets one toast per recording. Runs and screenshots still record.
 
-### Screenshots on several monitors
+## The C# recorder sidecar (`capture/recorder/`)
 
-`screenshots.display`: `active` (the default: the display with the focused
-window), `primary`, or `all` (one screenshot per display, each file
-suffixed `_d<displayId>.jpg`).
+A separate single-file, self-contained .NET 8 executable. It is its own
+process (not Node) because UI Automation is a first-party Windows API best
+used from .NET ([ADR-0001](../adr/0001-click-recorder-sidecar-language.md)).
 
-### The recording folder
+- `Program.cs`: the entry point, an **NDJSON control loop** over stdin and
+  stdout. The capture app sends `hello`, `pause`, `resume`, `snapshot` and
+  `shutdown` (`hello` carries `verbose`, `debounce_ms`, `ocr` and
+  `host_process`, the capture app's own executable, so the recorder never
+  records PDT's own windows); the recorder answers with `ready`,
+  `interaction`, `stats` and `warning` lines. A `stats` line carries
+  throughput counters plus an `errors` count and a `last_error` snapshot.
+- **The `snapshot` command** ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md),
+  narrowed by [ADR-0029](../adr/0029-ba-helper-refocus.md)).
+  `{cmd:"snapshot", target:"foreground"|<hwnd>, passes:2}` walks the target
+  window's UIA subtree once per pass and streams every identifiable control
+  as a `snapshot_control` line, then a `snapshot_done` per pass. The walk is
+  bounded (about 2000 controls), skips pure decoration, and wakes a
+  Chromium renderer's accessibility tree first. The lines are never written
+  to `events.jsonl`. The viewer's "Discover from window" that sent it is
+  cut, so nothing sends it now; the recorder still answers. The traversal
+  (`SnapshotWalker` over the `ISnapshotElement` seam) is unit-tested with a
+  synthetic tree in `Recorder.Tests`. See `Snapshotter.cs`.
+- `UiaSubscriber.cs` subscribes to UI Automation events (invoke, selection,
+  toggle, value), filters noise (drops `focus_changed` and `text_changed`,
+  coalesces rapid `value_changed` within the debounce window, drops
+  low-signal Win32 and Chromium internal control types), and reads fields
+  safely (a property that throws is omitted, not nulled). The first
+  interaction per process carries a `coverage_hint` (`rich`, `basic`,
+  `minimal`); a value clamped at 256 characters is flagged
+  `value_truncated`.
+- **Framework detection (section 11e).** Every interaction carries a
+  normalized `framework` (`win32`, `winforms`, `wpf`, `winui`, `chromium`,
+  `java`, `javafx`, `qt`, `remote`, `terminal`, `unknown`), derived in
+  `UiaSubscriber.DetectFramework` from the raw `framework_id` and the window
+  `class_name`. Java (Swing, AWT) and Qt windows report `Win32`, and a Citrix
+  or RDP host wraps a foreign session, so the window class (`SunAwtFrame`,
+  `Qt...QWindowIcon`, `wfica32`, `ConsoleWindowClass`) wins over
+  `framework_id`. A `java` or `qt` tally tells the analyst to enable the Java
+  Access Bridge or the Qt accessibility plugin; a `remote` or `terminal`
+  tally says UI Automation will be thin there (see "Citrix and remote
+  desktops" below). This is distinct from the recognition layer's web-app
+  `framework` axis (`chromium`, `ag-grid`, `office365`), mined downstream in
+  `recognition.py` and `recognition.js`.
+- **Identity ladder and confidence (section 11e).** Each interaction carries
+  `identity_source`, the rung that gave the element a stable identity
+  (`automation_id`, then `name`, then `class_name`, then `none`), and a
+  `confidence` in `[0,1]` (`UiaSubscriber.ResolveIdentitySource`,
+  `ComputeConfidence`). Confidence blends the rung with the `framework`: a
+  strong rung is still capped at `0.30` on a `remote` or `terminal` surface,
+  where the captured field is an unreliable proxy for the real control. A
+  `none` rung at low confidence is the element the OCR last rung
+  ([ADR-0023](../adr/0023-recorder-capture-confidence.md)) targets.
+- **Value recovery (section 11e).** A `value_changed` whose UIA ValuePattern
+  value comes through empty (a rich-text or document control that exposes
+  its text through `TextPattern`) is recovered through
+  `TextPattern.DocumentRange.GetText` (`UiaSubscriber.RecoverValue`,
+  `TryReadTextValue`) and flagged `value_source: "text_pattern"`. It never
+  overrides a real value, is length-bounded, and adds no UIA reads on the
+  common path. Descending into edit elements and reading the clipboard are
+  deliberately not done.
+- **Password redaction at capture (security).** Before any of the above, a
+  `value_changed` on a control UIA flags `IsPassword`
+  (`UiaSubscriber.IsSecretValueElement`, `ShouldRedactValue`) is redacted:
+  the recorder omits the `value`, sets `value_redacted: true`, and skips the
+  `TextPattern` and OCR recovery for that element. The plaintext secret never
+  reaches `events.jsonl`. This is the only redaction: nothing is masked
+  downstream ([ADR-0029](../adr/0029-ba-helper-refocus.md) D7). See
+  [SECURITY.md](../../SECURITY.md).
+- **OCR last rung (section 11e, off by default).** When an element exposes
+  no structured identity (`identity_source` `none`) and the recording opted
+  in (`interactions.ocr: true`), the recorder captures the element's region
+  and reads a label with `Windows.Media.Ocr`, a Windows 10+ system API (on
+  the device, no bundle growth, not Tesseract; see
+  [ADR-0023](../adr/0023-recorder-capture-confidence.md)). The label rides as
+  `ocr_text` and lifts the rung to `ocr` (confidence about 0.25). `OcrBridge`
+  has a testable core (`RecognizePng`) and the production
+  `RecognizeScreenRegion`. `ocr_text` is captured content, so the
+  structure-only `inspect-events.js` never prints it.
+- **Chromium accessibility wake-up.** Chrome, Edge and Electron apps build
+  their UIA accessibility tree lazily: without an outside query, web content
+  fires no UIA events and the recorder sees only the browser's own controls.
+  `UiaSubscriber.Start()` therefore runs a 1 s background timer that walks
+  every top-level window whose `ClassName` begins with `Chrome_` or whose
+  `FrameworkId` is `Chrome`, reads its name and type, and descends to the
+  web content root. Asking is what switches Chrome's accessibility on for
+  that window, the same mechanism screen readers rely on. With it, a stock
+  Chrome shows its labelled form fields and typed values as interactions,
+  which matters because most enterprise processes (Salesforce, ServiceNow,
+  web ERPs) run in a browser.
 
-`%APPDATA%\process-discovery-tracker\sessions\<project>\<YYYYMMDD-HHMMSS>\`
-holds `events.jsonl` (append-only), `manifest.json`, `config.yaml` (the
-config used), `screenshots/`, `obs/sync.json` (when OBS was connected) and
-`session-integrity.json` (written at Stop). The end summary's "Make a zip
-for the analyst" writes `<YYYYMMDD-HHMMSS>.zip` next to the folder, with
-the folder as the zip's root, and shows it selected in Explorer; nothing is
-sent. Deleting a recording under Setup (analyst) deletes its zip too.
+`recorder.js` finds the executable (the packaged `resources/recorder/`, the
+source tree, or an auto-extracted `recorder.zip`; the first launch extracts
+it in the background), starts it, and restarts it per the supervision rules
+above. Each crash is recorded as a `recorder_died` system event; when the
+restart budget is spent, `recorder_dead_permanent` and a toast follow.
 
-### Citrix and remote desktops
+## Citrix and remote desktops
 
 The foreground-window poll (`active-win`) sees the Citrix client, not the
-program inside it. Run the capture app inside the Citrix session when the
-Citrix profile allows unsigned Electron apps. Otherwise run it on the local
-machine: the recording shows one Citrix Workspace band for the whole time,
-the video (if any) still shows the content, runs are marked with the run
-key as usual, and the analyst names the inner programs. Check this on a
-representative machine before relying on it.
+program inside it, and UI Automation on the client sees only the remote
+window (`framework: "remote"`, low confidence). Run the capture app inside
+the Citrix session, RDP host or virtual desktop when its profile allows
+unsigned Electron apps: inside, the program's UI Automation tree is local
+and rich again. Otherwise run it on the local machine: the recording shows
+one Citrix Workspace band for the whole time, the video (if any) still shows
+the content, runs are marked with the run key as usual, and the analyst
+names the inner programs. Check this on a representative machine before
+relying on it. More in [DEPLOY.md](../DEPLOY.md).
 
-### Storage
+## Storage
 
 Setup (analyst) shows the recordings on this computer (their number and
-size, flagged above `storage_warn_gb`), Recent recordings (Show in folder,
-Delete) and Delete recordings older than 30, 90 or 365 days; the running
-recording is never offered for deletion. On a machine with Python,
-`scripts/prune-sessions.py --older-than 90` lists the recording folders
-older than 90 days and `--apply` deletes them (`--keep-recovered` skips
-recovered recordings); it leaves zips alone.
+total size, flagged above `storage_warn_gb`), Recent recordings (Show in
+folder, Delete) and Delete recordings older than 30, 90 or 365 days; the
+running recording is never offered for deletion, and a deleted recording
+takes its zip with it. On a machine with Python,
+`scripts/prune-sessions.py --root "%APPDATA%\process-discovery-tracker-capture\sessions" --older-than 90`
+lists the recording folders older than 90 days and `--apply` deletes them
+(`--keep-recovered` skips recovered recordings); it leaves zips alone. Pass
+`--root`: the script's default folder is not the capture app's.
 
-### Troubleshooting
+## Troubleshooting
 
 - **A key does nothing.** Another program may hold it. Launch with
-  `PDT_DEBUG=1` and read `<userData>\boot.log` for the `hotkeys:` line;
-  change the key under Setup (analyst), Settings, and relaunch.
-- **OBS does not connect.** OBS must be running with its WebSocket server
-  on (port 4455), and the password set in Settings when OBS asks for one.
+  `PDT_DEBUG=1` and read `%APPDATA%\process-discovery-tracker-capture\boot.log`
+  for the `hotkeys:` line; change the key under Setup (analyst), Settings,
+  and relaunch. The bar and the tray work without keys.
+- **OBS does not connect.** OBS must be running with its WebSocket server on
+  (port 4455), and the password set in Settings when OBS asks for one.
+  Settings, Test OBS connection shows the error; `app.log` records it too.
 - **No tray icon.** Launch with `PDT_DEBUG=1` and read the boot log. Common
   causes: a second instance already running (single-instance lock), a
-  missing tray icon file, antivirus blocking the executable.
-- **A recording shows as recovered.** The app did not stop cleanly (a
-  crash, a forced quit, a power loss); the next launch marks it recovered.
-  A run left open stays open in `events.jsonl`, and the pipeline closes it
-  at the end of the recording.
+  missing tray icon file, antivirus blocking the executable, a YAML syntax
+  error in the config file (the boot log says `whenReady failed`).
+- **A recording shows as recovered.** The app did not stop cleanly (a crash,
+  a forced quit, a power loss); the next launch marks it recovered. A run
+  left open stays open in `events.jsonl`; the pipeline treats it as running
+  to the end of the recording.
 - **Clicks and typing in Chrome or Edge are not recorded.** The recorder
   wakes Chromium's accessibility tree itself; when a managed browser still
   shows nothing, closing and reopening the browser can help, or IT can
-  enable the browser's `AccessibilityModeEnabled` policy. The SME's toast
-  only says to keep going and tell the analyst.
+  enable the browser's `AccessibilityModeEnabled` policy (commands in
+  [DEPLOY.md](../DEPLOY.md)). The SME's toast only says to keep going and
+  tell the analyst.
 - **Clicks and typing in another program are not recorded.** It may run as
   administrator, or expose no UI Automation; runs and screenshots still
   record, and the readiness check (Setup (analyst)) shows how much the
   recorder sees per program before a recording.
+- **The recorder never starts.** See [TROUBLESHOOTING.md](../TROUBLESHOOTING.md)
+  ("The recorder does not start").

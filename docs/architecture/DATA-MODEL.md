@@ -9,8 +9,9 @@
 
 One recording is one self-contained folder. The capture app creates it on
 the SME's machine (under its user data folder, in
-`sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/`); it is then copied to the
-analyst's machine.
+`sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/`); it then reaches the
+analyst's machine as a copy of the folder, or as the zip the capture app's
+end summary makes next to it (the folder is the zip's root).
 
 ```
 events.jsonl            raw event stream: append-only, never edited       capture
@@ -19,13 +20,14 @@ config.yaml             the session's configuration snapshot              captur
 screenshots/            event-triggered screenshots                       capture
 obs/sync.json           tracker to OBS clock offset (OBS runs only)       capture
 session-integrity.json  every file's name and size, written at the end    capture
-capture.log             the capture app's per-session log                 capture
 annotations.json        the analyst sidecar                               viewer and pipeline
 annotations.json.2..5   rotating backups, newest first                    viewer
-derived_maps/           forked, editable BPMN maps                        viewer
+derived_maps/           the editable As-Is and To-Be map copies           viewer
+screenshots/analyst/    screenshots the analyst adds by hand (C16)        viewer (not yet)
+attachments/            files the analyst attaches (C16)                  viewer (not yet)
 stats.json              statistics, the runs, draft_summary               pipeline
 analysis.json           facts, findings, analysis, stage_errors           pipeline
-process_map_step.bpmn   the step-level map, the Fork source (--mine)      pipeline
+process_map_step.bpmn   the step-level map (--mine)                       pipeline
 normalize.log           the pipeline's log                                pipeline
 transcript/             an imported transcript file, byte for byte        transcript_import.py
 transcript.json         its parsed segments and sync offset               transcript_import.py, viewer
@@ -34,6 +36,13 @@ transcript.json         its parsed segments and sync offset               transc
 The viewer never writes `transcript.json` itself except to set its
 `offset_ms` on Sync and to delete it on Remove transcript; attaching one runs
 `transcript_import.py`.
+
+A session can also start from a video or from nothing (`manifest.source`
+`"video"` or `"blank"`, contract C16): a folder with `manifest.json`, an
+empty `events.jsonl` and `annotations.json`, none of the capture files. The
+pipeline already analyzes such sessions and reads everything the analyst
+adds (screenshots, notes, attachments, a step's system); the viewer does not
+create them or write those keys yet.
 
 Older folders, the committed demo sessions included, may also hold
 `events.xes`, `events.csv`, `dfg.json`, `process_map.bpmn` and
@@ -53,7 +62,7 @@ Every line is one JSON object with a fixed envelope; only `data` varies by
 | `type` | Produced by | `data` carries |
 |---|---|---|
 | `activity` | foreground-window polling (every 5 s) | `app`, `title`, `pid`, `duration_ms`, `bounds` |
-| `marker` | the run hotkey and the Live Session window | `marker_type` (`start` / `end`), `label`, `reason` |
+| `marker` | the run key, the recording bar and the tray (Next run, a named run, End run), stopping the recording, a long idle stretch | `marker_type` (`start` / `end`), `label`, `reason` |
 | `system` | session lifecycle | `kind` (`session_start`, `idle_start`, `screenshot`, `recorder_died`, `events_dropped`, ...) plus a kind-specific payload |
 | `interaction` | the C# UI Automation recorder | `kind`, `control_type`, `automation_id`, `name`, `window_title`, `process_name`, `value` (never a password), capture-confidence fields |
 
@@ -73,8 +82,11 @@ The pipeline derives the runs:
   step whose run disappeared moves to the run that contains it in time.
 - Every activity and interaction gets `case_ids`: `[]` outside any run, or
   the one open run's id.
-- A session with no markers has no runs. A missed marker is added by hand in
-  the viewer (a `marker_edits` insert).
+- A recording with no markers has no runs. A missed marker is added by hand
+  in the viewer (a `marker_edits` insert).
+- A session without a recording (C16) that has no start marker has one
+  implicit run covering the whole session, so steps can be added at once; a
+  start marker inserted by hand replaces it.
 
 ## annotations.json: the analyst sidecar
 
@@ -86,23 +98,24 @@ survives every re-analysis.
 |---|---|---|
 | `steps[]` | pipeline (drafts), viewer (analyst edits) | The step entities (below) |
 | `pattern_run` | viewer | The run confirmed as the reference, and the draft-fix counts (contract C3) |
-| `document` | viewer | The PDD's document sections: title, purpose, scope, contacts, business rules, exceptions, notes (C6) |
+| `document` | viewer | The PDD's document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions, improvement, notes (C6) |
 | `marker_edits[]` | viewer | Rename, re-time, delete or insert a run marker; replayed on a derived stream, the raw marker stays |
-| `reference_maps[]` | viewer | Forked, editable maps and which one the PDD uses as As-Is or To-Be; the `.bpmn` files live in `derived_maps/` |
+| `reference_maps[]` | viewer | The editable map copies and which one the PDD uses as As-Is or To-Be; the `.bpmn` files live in `derived_maps/` |
 | `external_video` | viewer | The attached video: `{ path, offset_ms, attached_at }` |
 | `step_filters` | viewer | Apps (and window titles) left out of the analysis |
 | `excluded_ranges[]` | viewer | Time spans left out of drafting and statistics |
-| `memo_selection[]` | viewer | Which findings the PDD's section 1 prints (empty: the top findings) |
-| `analysis_overrides[]` | viewer | The analyst's corrections to the waste and automation estimates |
-| `notes[]` | viewer | Timestamped notes; the PDD does not print them |
+| `analyst_screenshots[]`, `analyst_notes[]`, `attachments[]` | viewer (not yet) | What the analyst adds by hand (C16): screenshots, notes pinned to a step or a moment, attached files. The PDD prints the screenshots and lists the attachments; notes stay in the viewer |
+| `notes[]` | nobody now | The product edition's timestamped Flow notes; both writers seed it empty and round-trip old entries |
+| `analysis_overrides[]` | nobody now | Corrections to the waste and automation estimates; applied when an older file carries them |
 | `process_exclusions` | pipeline | What the self and ignored-app filter dropped; regenerated every run |
 | `calibration` | nobody (hand-edited only) | Two tuning knobs; absent means the defaults |
 | `classification_overrides[]` | nobody now | Applied when an older file carries them; classification has no editing UI (AD-16) |
 | `version`, `session_id`, `last_modified` | both | Bookkeeping |
 
-Keys of cut features (`phases`, `group_annotations`, `roi_inputs`, the anchor
-and suggestion keys, and others, contract C10) round-trip verbatim: nothing
-reads, rewrites or deletes them. SCHEMA.md lists them.
+Keys of cut features (`phases`, `group_annotations`, `roi_inputs`,
+`memo_selection`, the anchor and suggestion keys, and others, contract C10)
+round-trip verbatim: nothing reads, rewrites or deletes them. SCHEMA.md
+lists them.
 
 **Safe writes.** Both writers replace `annotations.json` atomically: a temp
 file in the same folder, then a rename. Before each save the viewer copies
@@ -131,8 +144,19 @@ A drafted step carries its identity: `draft_key`
 `end_reason` (`commit`, `screen_change`, `run_end`). A merge or a split drops
 those. A merge of drafted steps then keeps `draft_keys`, the members' keys in
 order, so the merge still matches the same drafts in other runs and in saved
-processes. A step added by hand carries none of them. Drafts outside every run have `case_id: null`;
-the map and the step BPMN leave them out.
+processes. A step added by hand carries none of them. Drafts outside every
+run have `case_id: null`; the map and the step BPMN leave them out.
+
+A draft is named, in this order, by a step the analyst named in this session
+with the same `draft_key`, then by the remembered-names store below, then by
+the drafting rule. The session's own names come first, so they travel with
+the folder: the same session drafts the same names on another machine.
+
+Contract C16 adds keys a step may carry: `system` (set by the analyst; wins
+over the derived system), `order` (for a step without a time,
+`time_range: null`), `pdd_screenshot` (the one screenshot the PDD prints)
+and `hidden_screenshots` (recorder screenshots taken off the step). The
+pipeline reads them; the viewer does not write them yet.
 
 ## The analyst's library
 
@@ -141,8 +165,8 @@ in `<viewer userData>/pdt-library/`:
 
 | File | Holds | Read by |
 |---|---|---|
-| `remembered-names.json` | A name per `draft_key`, written on every rename of a drafted step and by the Remembered names dialog (rename, forget) | the pipeline (`--names`, on every analysis the viewer runs) and the viewer |
-| `processes.json` | Saved processes: a confirmed pattern run's steps (`draft_key` or `draft_keys`, name, description, waste), written by "Save as this process" | the viewer only, to compare a session that has no confirmed pattern run with the closest saved process |
+| `remembered-names.json` | A name per `draft_key`, written on every rename of a drafted step and by the Saved names dialog in the Steps toolbar (rename, forget) | the pipeline (`--names`, on every analysis the viewer runs, after the session's own names) and the viewer |
+| `processes.json` | Saved processes: a confirmed pattern run's steps (`draft_key` or `draft_keys`, name, description, waste), written by "Save as this process" and removed by "Forget this saved process" | the viewer only, to compare a session that has no confirmed pattern run with the closest saved process |
 
 Both follow the annotation rules: a file that cannot be read is never
 replaced, and writes go through a temp file and a rename.
@@ -187,8 +211,8 @@ edit -> persistAnnotations(annotations, label, topics)          (session.js)
 - Undo and redo are in memory only: annotation snapshots, at most 50, pinned
   to the session folder and cleared when another session opens.
 - Only an analysis (the pipeline) re-reads the folder; edits never reload it.
-- Renames and "Save as this process" also write the library stores above,
-  through their own IPC calls.
+- Renames, "Save as this process" and "Forget this saved process" also
+  write the library stores above, through their own IPC calls.
 
 ## Conventions
 

@@ -1,6 +1,6 @@
-# ADR-0015: Intra-session repetition alignment — curate one, propagate to all
+# ADR-0015: Intra-session repetition alignment: curate one, propagate to all
 
-**Status:** Accepted — phases 1–4 implemented (alignment engine + aligned reading + curate-once-propagate + exceptions, 2026-05-24); the fuzzy edit-distance threshold (fork F4) remains, data-blocked
+**Status:** Superseded by [ADR-0029](0029-ba-helper-refocus.md). Phases 1 to 4 were implemented (alignment engine, aligned reading, curate once and propagate, exceptions; 2026-05-24). Lane L7b of the BA-helper cycle (2026-09-23) removed the engine (`viewer/step-alignment.js`) and the Aligned reading: the runs are now compared with the confirmed pattern run by draft key (contract C3), with one rule for the viewer's differences view (`viewer/run-differences.js`) and the PDD, pinned by `shared/run-differences-golden.json`. The fuzzy threshold (fork F4) is moot.
 **Date:** 2026-05-23 (consolidates the 2026-05-22 redirect of [ADR-0009](0009-normalization-redesign-v013.md) and Decision 1 of [VALUE-CHAIN-REVIEW.md](../architecture/VALUE-CHAIN-REVIEW.md))
 **Deciders:** Analyst (process-discovery lead), project owner
 

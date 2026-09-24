@@ -68,7 +68,7 @@ The operational plan of record is
 | R2 Match workbench | Built (v1.5.0); its owner real-session gate never ran |
 | R3 Case x screen work items (ADR-0028) | Built (v1.5.0); real-session gate never ran; see RP-01, the headline defect of this baseline |
 | R4 Workflow spine (next-act rail) | Built (v1.5.0); real-session gate never ran |
-| R5 Prove and prune | **Not started.** Needs three real captures, timed sit-downs, and the border ledger ([R5-SITDOWN-RUNBOOK.md](R5-SITDOWN-RUNBOOK.md)) |
+| R5 Prove and prune | **Not started.** Needs three real captures, timed sit-downs, and the border ledger ([R5-SITDOWN-RUNBOOK.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/R5-SITDOWN-RUNBOOK.md), on branch `product-edition`) |
 
 **Why R5 never started:** the only "real" captures on the dev box are two e2e
 plumbing runs of about 25 seconds each

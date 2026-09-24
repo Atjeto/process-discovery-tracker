@@ -48,5 +48,6 @@ three real scenarios precisely because the recorder cannot see the business work
 
 `script.ps1` (+ `uia-lib.ps1`) is the driver; method in
 [docs/REAL-VALUE-TESTING.md](../../../docs/REAL-VALUE-TESTING.md). Re-normalize
-under both calibrations for the 8→4. Do **not** flip the default — owner-gated
-([docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md](../../../docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)).
+under both calibrations for the 8→4. Do **not** flip the default: owner-gated
+([SEGMENTATION-CALIBRATION-FINDINGS.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md),
+on branch `product-edition`).

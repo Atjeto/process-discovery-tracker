@@ -60,5 +60,6 @@ markers off the script's stdout sentinels, and filters to in-case `outlook.exe`
 interactions. Method: [docs/REAL-VALUE-TESTING.md](../../../docs/REAL-VALUE-TESTING.md).
 Measurement: re-normalize this folder twice (default vs the `calibration`
 override) and diff `stats.json.meta.step_count`. Do **not** flip the default
-here — that is owner-gated (see
-[docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md](../../../docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)).
+here: that is owner-gated (see
+[SEGMENTATION-CALIBRATION-FINDINGS.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/SEGMENTATION-CALIBRATION-FINDINGS.md)
+on branch `product-edition`).

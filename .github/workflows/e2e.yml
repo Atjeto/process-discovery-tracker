@@ -1,4 +1,4 @@
-name: e2e (Session-view smoke)
+name: e2e (all smokes)
 
 # Wave 0 / F1: the in-repo Playwright merge gate. Successor to the out-of-repo
 # _pdt_verify harness. It launches the REAL viewer Electron app pre-loaded with

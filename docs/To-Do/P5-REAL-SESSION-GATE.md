@@ -5,8 +5,9 @@ phase that claims usefulness closes on demo data, and this is where that
 rule is cashed in. Plan of record:
 [BA-HELPER-PLAN-2026-09-22.md](BA-HELPER-PLAN-2026-09-22.md) section 11
 (phase P5) and section 13. Supersedes
-[R5-SITDOWN-RUNBOOK.md](R5-SITDOWN-RUNBOOK.md), whose R2 to R4 approachability
-surfaces this plan cut or reworked; see that file's superseded note.
+[R5-SITDOWN-RUNBOOK.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/To-Do/R5-SITDOWN-RUNBOOK.md)
+(kept on branch `product-edition`), whose R2 to R4 approachability surfaces
+this plan cut or reworked.
 
 ## Preconditions
 

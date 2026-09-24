@@ -298,7 +298,8 @@ Analyst-side Electron app; see [architecture/VIEWER.md](architecture/VIEWER.md).
 ## What's deferred
 
 Capabilities intentionally out of scope are tracked in
-[SPEC-DEFERRED.md](SPEC-DEFERRED.md) — notably the local ML stack (variant
+[SPEC-DEFERRED.md](https://github.com/Atjeto/process-discovery-tracker/blob/product-edition/docs/SPEC-DEFERRED.md)
+(on branch `product-edition`), notably the local ML stack (variant
 merging, learned case-boundary inference) and multi-analyst concurrent editing.
 The **non-ML** Phase 0 of the case-boundary work has shipped (suggested markers +
 anchor candidates, ADR-0017 / ADR-0018); the ML-backed Phase 1+ stays deferred.

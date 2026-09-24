@@ -161,10 +161,15 @@ engines, drop the workbenches.
 
 **Light template: "run 1 is the pattern".** (Revised in implementation: see
 AD-8 in "Implementation notes" below.)
-- Within a session: confirmed run 1 is aligned against runs 2..N with the
-  existing alignment engine (`viewer/step-alignment.js` `alignCases`: backbone,
-  gaps, exceptions). Names, notes, and flags carry over; steps that do not align
-  are shown as differences.
+- Within a session: runs 2..N are compared with confirmed run 1 by draft key
+  (a merged step by its members' keys, a step added by hand by its label;
+  contract C3), the one rule the viewer's differences view and the PDD share
+  (`shared/run-differences-golden.json`). A rename carries to the same drafts
+  in the other runs, a merge in run 1 is repeated on the same drafts, and a
+  draft hidden in run 1 can be hidden in every run; steps that do not match
+  are shown as differences. (Revised in implementation: the plan named the
+  existing alignment engine, `viewer/step-alignment.js` `alignCases`; lane L7b
+  removed it.)
 - Across sessions: "Save as this process" stores run 1's confirmed pattern
   (its steps' `draft_key`s, names, descriptions, and waste flags) in a
   saved-process store (`<viewer userData>/pdt-library/processes.json`). On
@@ -176,7 +181,7 @@ AD-8 in "Implementation notes" below.)
   drawer, no version compare, no import-from-session panel.
 
 **One engine per job (intended design, confirmed in P1):** within a session,
-names propagate by alignment in the viewer; across sessions, light vocab
+names propagate by draft key in the viewer; across sessions, light vocab
 propagates through the pipeline's `--names` flag at draft time, and light
 template propagates through viewer-side matching only. The viewer-side
 advisory vocab matcher (`viewer/vocab-match.js`) is then no longer needed,
@@ -291,7 +296,7 @@ changes it; **Cut** removes it from master.
 | Feature | Phase | Shape |
 |---|---|---|
 | Drafting rule (screen visit ending at its commit action) | P1 | Pipeline; probed on a real recording before anything else is built |
-| Runs and steps view (confirm run 1, differences for runs 2..N) | P4 | Viewer; reuses the alignment engine |
+| Runs and steps view (confirm run 1, differences for runs 2..N) | P4 | Viewer; compares runs by draft key (the alignment engine the plan named was removed in L7b) |
 | Remembered names + small list | P4 | Light vocab (D6) |
 | "Save as this process", applied on open | P4 | Light template (D6); today's "Save as reference for this process" |
 | Transcript import, lane, pull into notes | P6 | Section 7 |
@@ -377,11 +382,13 @@ them, never left red. Every phase ends with the owner's go.
 
 ## Implementation notes (2026-09-23)
 
-Decisions made while implementing this plan, autonomously (the owner was
-asleep; see `.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md`
-for the full record and reasoning). Consolidated as the release documentation
-in [ADR-0029](../adr/0029-ba-helper-refocus.md), which this section points to
-rather than duplicates.
+Decisions made while implementing this plan: autonomously while the owner
+was asleep, or on the owner's word where a quote says so (the full record
+and reasoning: `.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md`).
+AD-7 to AD-15 are consolidated in
+[ADR-0029](../adr/0029-ba-helper-refocus.md), which this section points to
+rather than duplicates; AD-16 to AD-28 and what the owner parked are
+recorded here.
 
 - **AD-7.** Light vocab is a remembered-names store keyed by a drafted
   step's `draft_key`, not app-vocab YAML entries (revises section 6).
@@ -399,13 +406,136 @@ rather than duplicates.
 - **AD-12.** The Markdown session report and starred screenshots were
   planned to go with the HTML findings report; in the PDD rework (P4/L10)
   starred screenshots ended up embedded in the PDD's findings section
-  instead of being cut (see [shared/SCHEMA.md](../../shared/SCHEMA.md)).
+  instead of being cut. AD-24 then cut that section, so
+  `starred_screenshots` is a legacy key nothing reads (see
+  [shared/SCHEMA.md](../../shared/SCHEMA.md)).
 - **AD-13.** The Overview CTA becomes "Export PDD"; "include in memo"
-  becomes "include in PDD" (`memo_selection` keeps feeding the PDD's
-  section 1, since the memo itself is cut and the PDD is the deliverable).
+  becomes "include in PDD" (`memo_selection` fed the PDD's section 1).
+  AD-24 cut that section and lane V1 removed the ticks, so `memo_selection`
+  is a legacy key too.
 - **AD-14.** A session with no run markers shows an instruction to mark
-  runs in Flow, replacing the anchor hero and the anchor-based lock copy
-  (anchors are cut).
+  runs on the Timeline (then called Flow), replacing the anchor hero and
+  the anchor-based lock copy (anchors are cut).
 - **AD-15.** Canonical matching is cut with its drift markers and
   `--canonical`; activity classification and `--taxonomy` stay until open
-  question Q4 is settled.
+  question Q4 is settled (AD-16).
+- **AD-16 (Q4 settled).** Drafting uses no activity classification; the
+  analysis stages do (statistics, waste, efficiency, the findings), fed by
+  the bundled `taxonomy.yaml` the viewer always passes. Classification stays
+  an internal engine with no editing UI. The viewer's screen keys and
+  `recognition.js` stay, both in use. Why: keep the engines that create
+  value, cut the editing screens.
+- **AD-17.** The UI clarity audit
+  ([UI-CLARITY-AUDIT-2026-09-23.md](UI-CLARITY-AUDIT-2026-09-23.md)) became
+  the scope of the subtraction lanes, LUX-A (the Overview and the chrome)
+  and LUX-B (Flow, Steps and the Map). It departed from section 8.3 by
+  deleting the Flow Notes tab, whose notes never reached the PDD. AD-27
+  reversed the notes half: notes pinned to a step or a moment are back as
+  `annotations.analyst_notes` (contract C16), which the pipeline keeps and
+  the PDD does not print; the viewer does not show them yet.
+- **AD-18.** The map and its As-Is copy work from one run. The plan's gate
+  (two runs, 70% coverage) left a one-run session with no way to a PDD. A
+  session with no runs marked still has no map, and says how to mark them.
+- **AD-19.** Forking is one act: "Edit as the As-Is map" analyzes first
+  when the steps changed since the map file was written, so the copy
+  carries the current step names, and makes the copy the PDD's As-Is map
+  when none is chosen. Why: the PDD's As-Is picture contradicted its own
+  step list after renames.
+- **AD-20.** The "repeated sequences" findings merged into the automation
+  candidates, ordered by total time, in the viewer and in the PDD's section
+  1: one fact, one home, and the runs are deliberate repeats anyway. AD-24
+  then cut section 1, and lane V1 replaced the Overview's findings with two
+  observations (data typed twice, where the time goes), in which the time
+  per application takes the candidates' place.
+- **AD-21.** The docs were split to use a free agent slot: the top-level
+  docs (L12b-1: SCHEMA, CLAUDE.md, README, OVERVIEW, DATA-MODEL,
+  NORMALIZATION, the docs index, the CHANGELOG) beside the transcript UI,
+  the rest later. On 2026-09-24 a docs lane brought the capture, pipeline,
+  schema, deploy, troubleshooting and ADR docs up to date; the viewer docs,
+  FEATURES, CHIP-GUARDRAILS, the e2e README, the in-app Help and CLAUDE.md
+  are still to be updated after the viewer lanes.
+- **AD-22.** A concept-level step back (lane LUX-2) ran before the release,
+  with the owner's test: an element must give meaningful or valuable
+  information, give control, or be a feature. Its two phases are in
+  [STEP-BACK-REVIEW-2026-09-23.md](STEP-BACK-REVIEW-2026-09-23.md). Two
+  outcomes change section 8.3: the analysis runs by itself (on open when it
+  is missing or older, after the changes it depends on, before a PDD
+  export; no Analyze button), and the More menu is gone.
+- **AD-23.** The integrated navigation is core value, not only the outputs
+  (owner): a process manager matches steps to the video and the
+  transcript; a developer opens the folder and goes from the map to the
+  video, the transcript and the screenshots instead of juggling files. The
+  plan did not name this. It is lane V2's scope (one step panel opened from
+  a map box, a timeline band or a Steps row, with a small video; the video
+  stored relative to the folder so the session travels); not landed yet.
+  The draft's reason ("ended at Save order") stays in the step pane's fact
+  line (landed in LUX-B).
+- **AD-24.** The step-back review's first phase was adopted for the PDD and
+  the pipeline (lane LUX-P): the findings section is cut (re-keyed data
+  moved into the data section, as requirements); a context line per step;
+  names travel with the session (a draft takes the session's own names
+  before the remembered-names store); grid tables and a map printed on a
+  page of its own; the document fields trigger, result and improvement;
+  Applications and time in place of the application and candidate tables;
+  one data table; variations with their descriptions and run counts; the
+  reader's order; BPMN tasks carry descriptions, and the start and end
+  events take the trigger and the result. Why: the owner wants outputs a
+  process manager can hand over, practical over analytical. Deferred: step
+  time measured from the end of the previous step.
+- **AD-25.** Sessions without a recorder are built before the release,
+  reversing D8 (owner: "We ship when it's ready, there is no value in
+  shipping something that... has no value"). A session can start from a
+  video or from nothing (`manifest.source`, contract C16), with one implicit
+  run until runs are marked, and steps placed by hand. The pipeline half
+  has landed (lane V3-P); the viewer half (New from video, a timeline on the
+  video clock, frames as step screenshots) has not. The release has no
+  date: it ships when every lane is in and checked.
+- **AD-26.** The step-back review became lanes: P (the PDD, AD-24), V1
+  (the viewer shell and home), V2 (navigation), C (the capture app), then
+  docs. Landed: P; V1 (the analysis runs by itself, one top bar, no More
+  menu, two observations on the Overview, the trigger, result and
+  improvement fields, a video synced by clicking, Recent named by the
+  document title, Flow renamed the Timeline); C (a small recording bar in
+  place of the Live Session window, one start that begins with Run 1, an
+  end summary with a local zip for the analyst, consent text version 2).
+  V2 has not landed. Exceptions: the step time from the end of the previous
+  step stays deferred with the parked timing items. One clock: times are
+  shown and printed as the time since the recording started (m:ss,
+  h:mm:ss), the time of day only where the date matters; the PDD and the
+  recording bar use it, the viewer's time labels do not yet. Open owner
+  fact: whether a developer who receives the folder may change it.
+- **AD-27.** Owner correction ("I feel you are overcomplicating it
+  again... creating a product again"): the proposal for telling the whole
+  process story was withdrawn, except what the owner named (the system on
+  steps and map boxes; the application list and the data table in the PDD,
+  both in AD-24). Dropped: recorded versus stated marks, error detection,
+  value matching, open-question lists, search, roles. The new direction is
+  a business process companion that holds all the context in one place and
+  lets the analyst add what the recording lacks. Lane V3, "companion
+  basics", replaced the story lane and absorbed the video-only lane: a
+  project from a video or from nothing; screenshots added by hand (a video
+  frame, a pasted image, a file) and the one the PDD prints; notes pinned to
+  a step or a moment; attachments of any file on the project or a step,
+  kept in the folder and listed in the PDD; the system of a hand-added
+  step. The pipeline half (V3-P, contract C16) has landed; the viewer half
+  has not.
+- **AD-28.** The companion critique
+  ([COMPANION-CRITIQUE-2026-09-23.md](COMPANION-CRITIQUE-2026-09-23.md)) was
+  adopted. Landed: the As-Is map is no longer a stage of What is left (the
+  PDD prints the edited As-Is copy when one exists, else the map from the
+  runs); one shared rule for system names (`shared/system-names.json`) in
+  the pipeline and the PDD; the summary line counts the reference run's
+  steps; the PDD says the runs were recorded as a walkthrough. Not landed
+  (lane V2): no Confirm on runs 2 to N (the Other runs stage completes once
+  each run's differences were opened); the system names on the viewer's
+  legend, fact line and map boxes; a step pane led by the system, with the
+  fields typed and no Save button; the probe line moved to the reference
+  run's menu.
+- **Parked by the owner (2026-09-23)**, "practical, but no current value.
+  We'll see how the adoption goes": a project link and a document status or
+  sign-off; optional timed runs with a measured handling time (the business
+  case data comes from the QB intake form and is only validated; recordings
+  are full of stops and explanations); stable step ids; the time saved
+  derived from the To-Be map; a before and after comparison; deep links from
+  the PDD; a list of documented processes; merging several SMEs'
+  recordings; a test scenario export.
