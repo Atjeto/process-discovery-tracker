@@ -132,6 +132,16 @@ function zipFiles(buf) {
     return !!s && String(s.sessionFolder).toLowerCase() === f.toLowerCase();
   }, path.resolve(folder), { timeout: 60000 });
   const level = async (l) => { await page.locator('.view-mode-btn[data-level="' + l + '"]').click({ timeout: T }); await wait(300); };
+  // Lane MV: the Map opens on the map the PDD prints and analyzes first when
+  // the steps are newer than it; showRuns waits for that analysis (and any
+  // other), then shows how the transactions ran: the live map the flow checks
+  // read (and on which a change analyzes nothing).
+  const showRuns = async () => {
+    await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(),
+      null, { timeout: 180000 });
+    const link = page.locator("#btn-map-show-runs");
+    if (await link.isVisible()) await link.click({ timeout: T });
+  };
   const prompt = async (text) => {
     await page.waitForSelector(".modal-prompt .modal-input", { timeout: T });
     await page.fill(".modal-prompt .modal-input", text);
@@ -744,7 +754,8 @@ function zipFiles(buf) {
   let r = {};
   try {
     await level("map");
-    await page.waitForFunction(() => { const h = document.getElementById("session-map-dfg-host"); return !!(h && h.__cy && h.__cy.edges().length); }, null, { timeout: T });
+    await showRuns();
+    await page.waitForFunction(() => { const h = document.getElementById("session-map-dfg-host"); return !!(h && h.__cy && h.__cy.edges().length && h.getClientRects().length); }, null, { timeout: T });
     await wait(600);
     r = await flowMap();
   } catch (x) { r.err = errText(x); }

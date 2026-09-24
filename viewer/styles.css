@@ -881,24 +881,29 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .session-layout-map .map-host {
   flex: 1; min-height: 360px; height: auto;
 }
-/* V2 item 7: the As-Is map chosen for the PDD, first, read only. C18: drawn
-   by bpmn-js (asis-view.js) on a white page in both themes, the document
-   colours the PDD prints; a task, a file and a note take a click. */
+/* Lane MV: the Map's one header line, which map shows (the process map or
+   the As-Is map, each printed by the PDD, or how the transactions ran) and
+   the way to the other view. */
+.map-view-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 6px; font-size: 12px; }
+.map-view-bar[hidden] { display: none; }
+.map-view-title { font-weight: 600; color: var(--fg); }
+.map-view-note { color: var(--fg-3); }
+/* The map the PDD prints, first, read only (lane MV; C18): drawn by bpmn-js
+   (asis-view.js) in the document colours, on the editor's page in both
+   themes and with no frame around it, so it reads as the editor shows it; a
+   task, a file and a note take a click. */
 .map-asis { flex: 1; display: flex; flex-direction: column; min-height: 360px; }
 .map-asis[hidden] { display: none; }
-.map-asis-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 6px; font-size: 12px; }
-.map-asis-title { font-weight: 600; color: var(--fg); }
-.map-asis-note { color: var(--fg-3); }
 .map-asis-canvas {
   position: relative; flex: 1; min-height: 320px; overflow: hidden;
-  background: #fff; border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  background: #f4f1eb; border-radius: var(--radius-sm);
 }
 .map-asis-mount { position: absolute; inset: 0; }
-/* A map that could not be drawn says why, on the white page in both themes. */
+/* A map that could not be drawn says why, on the light page in both themes. */
 .map-asis-canvas .map-empty-inline { color: #635848; }
 /* C19: bpmn-js's crumbs above a sub-process's plane: the plane shown reads in
    the text colour it inherits, the page's, so it takes the document's dark
-   text on the white page in both themes. */
+   text on the light page in both themes. */
 .map-asis-canvas .bjs-breadcrumbs { color: #2c2418; }
 .map-asis-canvas .pdt-link > .djs-hit { cursor: pointer; }
 /* The legend is part of the picture: a click goes through it to the canvas. */
@@ -931,8 +936,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .map-pick-num { flex: none; min-width: 2.2em; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
 .map-pick-name { min-width: 0; overflow-wrap: anywhere; }
 .map-picker-popup .map-pick.current { color: var(--fg); font-weight: 600; background: var(--bg-3); }
-/* An As-Is map with no map for the sub-process chosen: one line over the
-   map from the transactions, which shows that level instead. */
+/* Why the map the PDD prints does not show (not drawn yet, being drawn, or
+   C19: no map for the sub-process chosen): one line over what shows
+   instead (map-view.js WHY). */
 .map-level-note { margin: 0 0 6px; font-size: 12px; color: var(--fg-2); }
 .map-level-note[hidden] { display: none; }
 

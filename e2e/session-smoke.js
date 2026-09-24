@@ -110,6 +110,25 @@ async function shot(page, name) {
   await page.screenshot({ path: p, fullPage: true }).catch((e) => console.log("shot fail", name, e.message));
 }
 
+/* Lane MV: the Map opens on the map the PDD prints, and analyzes first when
+   the steps are newer than it. mapSettled waits until that analysis (and any
+   other queued or running) has ended; showRuns then shows how the
+   transactions ran, the live map the checks that read cytoscape read. */
+async function mapSettled(page) {
+  await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(),
+    null, { timeout: 180000 });
+}
+async function showRuns(page) {
+  await mapSettled(page);
+  const link = page.locator("#btn-map-show-runs");
+  if (await link.isVisible()) await link.click({ timeout: 20000 });
+  await page.waitForFunction(() => {
+    const h = document.getElementById("session-map-dfg-host");
+    return !!(h && h.getClientRects().length && (h.__cy || h.querySelector(".map-empty-inline")));
+  }, null, { timeout: 20000 });
+  await wait(600);
+}
+
 // Per-level layout container that must become visible when its level is active
 // (data-level "flow" is the Timeline). The Overview is checked on its own below.
 const LEVEL_HOST = {
@@ -862,7 +881,12 @@ async function unreadableAnnotationsPin() {
   // the runs' edges. C17: the map also draws the process's Start and End
   // events, joined to every first and last step; they would join islands
   // too, so the pin reads the step boxes and the lines between them only.
-  if (mapBtn) { await mapBtn.click().catch(() => {}); await wait(1200); }
+  // Lane MV: the live map is the Map's second view, how the transactions ran.
+  if (mapBtn) {
+    await mapBtn.click().catch(() => {});
+    await wait(1200);
+    await showRuns(page).catch((e) => console.log("[e2e] the live map did not show:", String(e.message).split("\n")[0]));
+  }
   const connProbe = await page.evaluate(() => {
     const host = document.getElementById("session-map-dfg-host");
     const cy = host && host.__cy;
@@ -1095,8 +1119,9 @@ async function unreadableAnnotationsPin() {
     // F1 + AD-19: the Map's one act makes the As-Is map from the step names as
     // they are now. A pattern-run draft is renamed in Steps first (the
     // analyst's verb, the detail form), so the steps are newer than the map's
-    // BPMN file: the act must analyze first (busy meanwhile), and the copy
-    // must carry the new name, not the draft's.
+    // BPMN file: the act analyzes first (busy meanwhile), and the editor opens
+    // on the process map with the new name, not the draft's. Lane MV: the
+    // copy is kept at its first change.
     const RENAMED = "Look up the customer";
     const OLD = "Salesforce - Account lookup: Search";
     const f1 = {};
@@ -1116,7 +1141,7 @@ async function unreadableAnnotationsPin() {
       f1.bpmnHadOld = fs.readFileSync(stepBpmn, "utf-8").includes(OLD);
       f1.annoNewer = fs.statSync(path.join(SESSION, "annotations.json")).mtimeMs > fs.statSync(stepBpmn).mtimeMs;
       await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: STATE_TIMEOUT });
-      await wait(700);
+      f1.mapBusy = await page.evaluate(() => require("./refmap-ui.js").mapBusy());
       f1.button = await page.evaluate(() => {
         const b = document.getElementById("btn-fork-refmap");
         return { text: (b.textContent || "").trim(), primary: b.classList.contains("primary") };
@@ -1127,47 +1152,53 @@ async function unreadableAnnotationsPin() {
         return b.getAttribute("aria-busy") === "true" && b.disabled && /Updating/.test(b.textContent || "");
       }, null, { timeout: 5000 }).then(() => true, () => false);
       await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+      await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: STATE_TIMEOUT });
       await wait(900);
     } catch (e) { logActionError("F1 rename, then the Map's edit act", e); f1.err = String(e.message).split("\n")[0]; }
-    // The act's analysis rewrote the map's file; from here on nothing may
+    // The Map's analysis rewrote the map's file; from here on nothing may
     // touch it (the one-way leaf check below).
     const stepXml = fs.existsSync(stepBpmn) ? fs.readFileSync(stepBpmn, "utf-8") : null;
     const minedBefore = stepXml != null ? fs.statSync(stepBpmn).size + ":" + stepXml.length : null;
-    const forked = await page.evaluate((a) => {
+    const derivedCount = () => (fs.existsSync(path.join(SESSION, "derived_maps")) ? fs.readdirSync(path.join(SESSION, "derived_maps")).length : 0);
+    // The editor on the new copy, before any change: nothing is kept yet.
+    const opened = await page.evaluate((a) => {
       const State = require("./state.js"), RM = require("./reference-maps.js");
-      const s = State.getSession(), e = RM.list(s.annotations)[0] || null;
+      const s = State.getSession();
       const host = document.getElementById("refmap-editor-host");
       const overlay = document.getElementById("refmap-editor-overlay");
       const palette = host && host.querySelector(".djs-palette");
-      const xml = e ? RM.readBpmn(s.sessionFolder, e) : null;
+      const v = host && host.__bpmnViewer;
+      const names = v ? v.get("elementRegistry").filter((e) => /Task$/.test(e.type)).map((e) => e.businessObject.name || "") : [];
       return {
         count: RM.list(s.annotations).length,
-        fileOnDisk: e ? RM.fileExists(s.sessionFolder, e) : false,
-        copyOfStepBpmn: !!(e && a.src != null && xml === a.src),
-        sourceLevel: e && e.source ? e.source.level : null,
-        hasHash: !!(e && e.forked_from_hash),
-        name: e && e.name, pddRole: e && e.pdd_role,
         editorPdd: (document.getElementById("refmap-editor-pdd") || {}).value,
+        editorName: (document.getElementById("refmap-editor-name") || {}).value,
         editorControls: ["refmap-editor-kind", "refmap-editor-badge", "refmap-editor-prov"].filter((id) => document.getElementById(id)),
-        newName: !!(xml && xml.includes(a.renamed)), oldName: !!(xml && xml.includes(a.old)),
+        newName: names.includes(a.renamed), oldName: names.includes(a.old),
         editorOpen: !!(overlay && overlay.style.display !== "none"),
         editorSvg: !!(host && host.querySelector("svg")),
         paletteVisible: palette ? getComputedStyle(palette).display !== "none" : false,
       };
-    }, { src: stepXml, renamed: RENAMED, old: OLD }).catch((e) => ({ err: e.message }));
-    const forkOk = !!(forked && !forked.err && forked.count === 1 && forked.fileOnDisk && forked.copyOfStepBpmn &&
-      forked.sourceLevel === "step" && forked.hasHash && forked.editorOpen && forked.editorSvg && forked.paletteVisible &&
-      forked.name === "As-Is map" && forked.pddRole === "as_is" && forked.editorPdd === "as_is" &&
-      forked.editorControls.length === 0 && f1.button && f1.button.text === "Edit as the As-Is map" && f1.button.primary);
-    record("AD-19 + P1.12: the Map's one act, Edit as the As-Is map, copies the process map into the editor as the PDD's As-Is map (one role control)",
-      forkOk, JSON.stringify({ button: f1.button, forked }));
-    const f1Ok = !!(!f1.err && f1.bpmnHadOld && f1.annoNewer && f1.busy && forked && forked.newName && !forked.oldName);
-    record("F1: after a rename the act analyzes first (the button busy meanwhile), and the copy's BPMN carries the new step name, not the draft's",
-      f1Ok, JSON.stringify({ err: f1.err, bpmnHadOld: f1.bpmnHadOld, annoNewer: f1.annoNewer, busy: f1.busy,
-        newName: forked && forked.newName, oldName: forked && forked.oldName }));
-    if (!(forkOk && f1Ok)) await shot(page, "fail-refmap-fork.png");
+    }, { renamed: RENAMED, old: OLD }).catch((e) => ({ err: e.message }));
+    opened.files = derivedCount();
+    const openOk = !!(opened && !opened.err && opened.editorOpen && opened.editorSvg && opened.paletteVisible &&
+      opened.editorName === "As-Is map" && opened.editorPdd === "as_is" && opened.editorControls.length === 0 &&
+      opened.count === 0 && opened.files === 0 && f1.button && f1.button.text === "Edit as the As-Is map" && f1.button.primary);
+    record("AD-19 + P1.12 + lane MV: the Map's one act, Edit as the As-Is map, opens the process map in the editor as the PDD's As-Is map (one role control); nothing is kept before a change",
+      openOk, JSON.stringify({ button: f1.button, opened }));
+    // The Map shows how the transactions ran here (the connectivity pin chose
+    // that view), which needs no analysis: the act analyzes itself. On the
+    // process map the Map analyzes as it opens and the act waits for it
+    // (map-slim-smoke.js (m2)); busy either way.
+    const f1Ok = !!(!f1.err && f1.bpmnHadOld && f1.annoNewer && f1.busy &&
+      opened && opened.newName && !opened.oldName && !!stepXml && stepXml.includes(RENAMED));
+    record("F1 + lane MV: after a rename the act analyzes first (busy meanwhile; or waits for the Map's own update), and the editor opens on the process map with the new step name, not the draft's",
+      f1Ok, JSON.stringify({ err: f1.err, bpmnHadOld: f1.bpmnHadOld, annoNewer: f1.annoNewer, mapBusy: f1.mapBusy,
+        busy: f1.busy, newName: opened && opened.newName, oldName: opened && opened.oldName }));
+    if (!(openOk && f1Ok)) await shot(page, "fail-refmap-fork.png");
 
-    // Edit: a real, undoable bpmn-js label change fires the debounced disk save.
+    // Edit: a real, undoable bpmn-js label change keeps the copy and fires
+    // the debounced disk save.
     const edited = await page.evaluate((probe) => {
       const host = document.getElementById("refmap-editor-host");
       const v = host && host.__bpmnViewer;
@@ -1189,6 +1220,25 @@ async function unreadableAnnotationsPin() {
       const xml = e ? RM.readBpmn(s.sessionFolder, e) : null;
       return !!(xml && xml.indexOf(probe) !== -1);
     }, PROBE).catch(() => false);
+    // Lane MV: the first change kept the copy, made from the step map as it
+    // is now (its provenance), as the PDD's As-Is map.
+    const kept = await page.evaluate((src) => {
+      const State = require("./state.js"), RM = require("./reference-maps.js");
+      const s = State.getSession(), e = RM.list(s.annotations)[0] || null;
+      return {
+        count: RM.list(s.annotations).length,
+        fileOnDisk: e ? RM.fileExists(s.sessionFolder, e) : false,
+        sourceLevel: e && e.source ? e.source.level : null,
+        fromStepMap: !!(e && e.forked_from_hash && e.forked_from_hash === RM.fileHash(src)),
+        name: e && e.name, pddRole: e && e.pdd_role,
+      };
+    }, stepBpmn).catch((e) => ({ err: e.message }));
+    kept.onDisk = (JSON.parse(fs.readFileSync(path.join(SESSION, "annotations.json"), "utf-8")).reference_maps || []).length;
+    kept.files = derivedCount();
+    record("lane MV: the first change keeps the copy: one entry, on disk too (As-Is map, the PDD's As-Is map, made from the step map as it is now), its one file carrying the change",
+      !!(edited.ok && kept && !kept.err && kept.count === 1 && kept.onDisk === 1 && kept.files === 1 && kept.fileOnDisk &&
+        kept.sourceLevel === "step" && kept.fromStepMap && kept.name === "As-Is map" && kept.pddRole === "as_is" && savedToDisk),
+      JSON.stringify({ edited: edited.ok, kept, savedToDisk }));
 
     // Reload: close + reopen the editor from the gallery row (re-reads the
     // blob) -> the edit survives. The gallery is open after a fork; the reopen
@@ -1338,8 +1388,8 @@ async function unreadableAnnotationsPin() {
       JSON.stringify(delUndo));
     if (!invOk) await shot(page, "fail-refmap-undo.png");
 
-    // Decoupled leaf: after the act's own analysis, nothing above touched the
-    // step-level BPMN on disk.
+    // Decoupled leaf: after the Map's own analysis (lane MV), nothing above
+    // touched the step-level BPMN on disk.
     const minedAfter = fs.existsSync(stepBpmn)
       ? fs.statSync(stepBpmn).size + ":" + fs.readFileSync(stepBpmn, "utf-8").length : null;
     record("reference map: the step-level BPMN it was forked from is untouched (one-way leaf)",

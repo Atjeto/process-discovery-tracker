@@ -697,7 +697,15 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page.waitForSelector("#session-layout-map", { state: "visible", timeout: T });
     await page.locator("#btn-fork-refmap").click({ timeout: T });
     await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: T });
     mapProbe.role = await page.locator("#refmap-editor-pdd").inputValue({ timeout: T });
+    // Lane MV: a new copy is kept at its first change (the legend moved a
+    // little), after the editor's delayed write.
+    await page.evaluate(() => {
+      const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
+      ed.get("modeling").moveElements([ed.get("elementRegistry").get("TextAnnotation_legend")], { x: 0, y: 8 });
+    });
+    await wait(1400);
     await page.locator("#btn-refmap-editor-close").click({ timeout: T });
     await page.locator('#refmap-list [data-rm-act="dup"]').first().click({ timeout: T });
     await page.waitForFunction(() => document.querySelectorAll("#refmap-list .refmap-row").length === 2, null, { timeout: T });
@@ -710,7 +718,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     logActionError("(d7) As-Is map", e);
     mapProbe.err = String(e.message).split("\n")[0];
   }
-  record("(d7) Edit as the As-Is map makes the PDD's As-Is copy (the Map's act); the What is left line does not change (no As-Is stage)",
+  record("(d7) Edit as the As-Is map, with a change, makes the PDD's As-Is copy (the Map's act; lane MV: kept at its first change); the What is left line does not change (no As-Is stage)",
     !!(!mapProbe.err && mapProbe.role === "as_is" && JSON.stringify(mapProbe.roles) === '["as_is","to_be"]' &&
       mapProbe.line && mapProbe.line.ready && mapProbe.line.next === "export" && mapProbe.line.button === "Export PDD"),
     JSON.stringify(mapProbe));

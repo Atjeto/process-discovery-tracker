@@ -25,13 +25,13 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, runPipeline, UPDATING } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, runPipeline, UPDATING } = require("./views/flow-view.js");
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
 const { renderOverviewLevel, openMarkersInFlow, mapLockHtml, mapEmptyText } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
-const { buildAnnotationDfg, mapNodeLabel } = require("./process-map-levels.js");
+const { buildAnnotationDfg, mapNodeLabel, flowEdges } = require("./process-map-levels.js");
 const RunsModel = require("./runs-model.js");
 const SystemNames = require("./system-names.js");
 const RefmapUI = require("./refmap-ui.js");
@@ -153,10 +153,13 @@ function _viewportApplyToMode(mode, snap) {
 
 /* ============ Map level (Session view) ============================ */
 
-/* The Map level shows the one process map: a Flow diagram built from the
-   runs' steps (process-map-levels.buildAnnotationDfg), bound to the loaded
-   session through map-controller.js. Created on first render so its lookups
-   land after the DOM is ready. */
+/* The Map level shows the map the PDD prints (lane MV, refmap-ui.js and
+   map-view.js: the As-Is copy chosen for the PDD, else
+   process_map_step.bpmn, drawn by bpmn-js), and one click away how the
+   transactions ran: the live map, a Flow diagram built from the runs' steps
+   (process-map-levels.buildAnnotationDfg), bound to the loaded session
+   through map-controller.js. The controller is created on first render so
+   its lookups land after the DOM is ready. */
 let _sessionMapCtrl = null;
 
 /* The step-level BPMN the pipeline writes with --mine: the source Fork copies
@@ -228,6 +231,15 @@ function _sessionMapData() {
   };
 }
 
+/* Whether the live map draws: locked while it says why it draws no map at
+   all (not analyzed, no transaction marked, a failed check), drawable when
+   the level shown has a step to draw (the picture the PDD prints shows only
+   then, map-view.js). */
+function _liveMapState() {
+  const data = _sessionMapData();
+  return { locked: !data.dfg, drawable: !!(data.dfg && flowEdges(data.dfg).length) };
+}
+
 /* { map node: system } for the steps drawn (one list per run, or per visit
    of a sub-process): each node's most frequent system (the one vocabulary,
    C14). */
@@ -284,8 +296,9 @@ function renderMapLevel() {
   // We early-return mainly to skip the layout when nothing's on screen.
   if (State.getLevel() !== "map") return;
   if (State.getSession()) _renderMapPicker(_mapLevel());
-  _ensureSessionMapCtrl().render();
-  try { RefmapUI.refresh(); } catch (_) {}   // ADR-0019: keep the reference-maps gallery + count fresh
+  // Which picture shows, and the live map drawn while it shows (lane MV);
+  // ADR-0019: the edited maps' gallery and count stay fresh.
+  try { RefmapUI.refresh(); } catch (e) { console.error("[renderer] the Map was not drawn:", e); }
 }
 
 /* Show the map at `path` (the picker, a double-click on a sub-process's box,
@@ -600,7 +613,10 @@ async function exportArtifact(kind) {
       }
     }
   }
-  const r = await runPipeline(opts, kind === "pdd" ? "Writing the PDD..." : UPDATING);
+  // The PDD's run rewrites annotations.json from the same steps and writes
+  // no map, so the map it printed stays current (lane MV: opening the Map
+  // afterwards does not analyze again).
+  const r = await RefmapUI.keepingStepMapCurrent(() => runPipeline(opts, kind === "pdd" ? "Writing the PDD..." : UPDATING));
   if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
   if (tobeImgPath) { try { fs.unlinkSync(tobeImgPath); } catch (_) {} }
   if (picsDir) { try { fs.rmSync(picsDir, { recursive: true, force: true }); } catch (_) {} }
@@ -642,6 +658,11 @@ if ($("#btn-session-map-svg"))   $("#btn-session-map-svg").addEventListener("cli
    analysis when the steps changed since that file was written (AD-19). */
 RefmapUI.initRefmapUI({
   renderLiveMap: () => _ensureSessionMapCtrl().render(),
+  // Lane MV: the Map draws the picture the PDD prints; it analyzes first when
+  // the steps are newer than process_map_step.bpmn, and draws again after.
+  renderMap: () => renderMapLevel(),
+  liveMap: () => _liveMapState(),
+  analysisBusy: () => analysisBusy(),
   sourceBpmnPath: () => _stepBpmnPath(),
   analyze: () => analyzeSession({ quiet: true }),
   // C19: the As-Is map shows the plane of the level the Map shows, and its
@@ -827,6 +848,12 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
+  // The map editor (refmap-ui.js) covers the app and has its own keys: its
+  // Ctrl+Z and Ctrl+Y undo and redo the map's changes (bpmn-viewer.js). None
+  // of the viewer's shortcuts act underneath it (an annotations undo there
+  // once took the As-Is copy away and left the map edit in place).
+  const mapEditor = document.getElementById("refmap-editor-overlay");
+  if (mapEditor && mapEditor.style.display !== "none") return;
   // Don't intercept other shortcuts while typing in inputs
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;

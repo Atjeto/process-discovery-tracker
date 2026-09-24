@@ -273,9 +273,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
         </div>
 
-        <!-- ========= MAP view: the one process map, a Flow diagram built from
-             the transactions' steps (viewer/map-controller.js), and the
-             reference maps forked from it (ADR-0019) ========= -->
+        <!-- ========= MAP view (lane MV): the map the PDD prints (the As-Is
+             copy chosen for it, else process_map_step.bpmn, drawn by bpmn-js:
+             viewer/asis-view.js, refmap-ui.js, map-view.js), how the
+             transactions ran one click away (the live map,
+             viewer/map-controller.js), and the edited copies (ADR-0019) ========= -->
         <div class="session-layout-map" id="session-layout-map" style="display:none">
           <div class="panel panel-wide map-panel">
             <div class="panel-header">
@@ -296,30 +298,33 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <!-- The Map's one act (refmap-ui.js syncForkButton sets its
                      label and style): a copy of the process map in the editor,
                      chosen as the PDD's As-Is map when none is chosen yet. -->
-                <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it.">Edit as the As-Is map</button>
+                <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it. A copy you leave unchanged is not kept.">Edit as the As-Is map</button>
                 <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the project again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
-                <!-- V2 item 7: back to the As-Is map, while the map from the transactions shows. -->
-                <button class="link-btn" id="btn-map-show-asis" type="button" hidden title="Show the As-Is map chosen for the PDD">Show the As-Is map</button>
               </div>
             </div>
-            <!-- V2 item 7: the As-Is map chosen for the PDD shows first, read
-                 only, with Edit beside it (refmap-ui.js syncMapView). C18: it
-                 is drawn by bpmn-js and linked like the map from the
-                 transactions (asis-view.js): a task opens the step panel, a
-                 file its attachment, a note its whole text. -->
+            <!-- Lane MV: the one line that says which map shows (refmap-ui.js
+                 syncMapView, map-view.js line): the process map or the As-Is
+                 copy, each printed by the PDD, with the copy's Edit; or how
+                 the transactions ran. Each view has the way to the other.
+                 Hidden while the live map says why it draws no map. -->
+            <div class="map-view-bar" id="map-view-bar" hidden>
+              <span class="map-view-title" id="map-view-title">Process map</span>
+              <span class="map-view-note" id="map-view-note">(the PDD prints this map)</span>
+              <button type="button" id="btn-map-asis-edit" hidden title="Open this map in the editor">Edit</button>
+              <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the map drawn from the transactions' steps as they ran: hover a line for how often it was taken and its time; a dashed line is a path set in Steps that no transaction took. The PDD does not print it.">Show how the transactions ran</button>
+              <button type="button" class="link-btn" id="btn-map-show-map" hidden title="Show the process map, the map the PDD prints">Show the process map</button>
+            </div>
+            <!-- Why the map the PDD prints does not show, when it does not (not
+                 drawn yet, being drawn, or C19: no map for the sub-process
+                 chosen): one line over what shows instead. -->
+            <p class="map-level-note" id="map-view-why" hidden></p>
+            <!-- The map the PDD prints, read only (refmap-ui.js syncMapView).
+                 C18: drawn by bpmn-js and linked like the live map
+                 (asis-view.js): a task opens the step panel, a file its
+                 attachment, a note its whole text. -->
             <div class="map-asis" id="session-map-asis" hidden>
-              <div class="map-asis-bar">
-                <span class="map-asis-title" id="map-asis-title">As-Is map</span>
-                <span class="map-asis-note">Read only; the PDD prints this map.</span>
-                <button type="button" id="btn-map-asis-edit" title="Open this map in the editor">Edit</button>
-                <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the process map drawn from the transactions' steps">Show the map from the transactions</button>
-              </div>
               <div class="map-asis-canvas" id="map-asis-canvas" title="Drag to pan, Ctrl and scroll to zoom. Click a task for its step, a file to open it, a note for its whole text."></div>
             </div>
-            <!-- C19: an As-Is map with no map for the sub-process chosen (made
-                 before it existed, or renamed in the editor): the map from
-                 the transactions shows that level instead, and says so. -->
-            <p class="map-level-note" id="map-asis-missing" hidden>Your As-Is map has no map for this sub-process, so this is the map from the transactions.</p>
             <div class="map-host" title="Scroll to zoom · drag to pan · hover an arrow for its times and its condition; a dashed arrow is a path set in Steps; double-click a box marked + to open its sub-process">
               <div class="map-pane active" id="session-map-dfg-host"></div>
             </div>
@@ -520,7 +525,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
-          <p class="help-hint">Undo covers every edit (steps, markers, document fields, maps), up to 50, until you open another project.</p>
+          <p class="help-hint">Undo covers every edit (steps, markers, document fields, the list of edited maps), up to 50, until you open another project. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the map there.</p>
           <h3>Clicks</h3>
           <ul class="help-list">
             <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>

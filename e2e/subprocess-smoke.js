@@ -70,6 +70,14 @@ async function shot(page, name) {
 }
 const errText = (e) => { logActionError("subprocess-smoke", e); return String((e && e.message) || e).split("\n")[0]; };
 
+/* Lane MV: the Map opens on the map the PDD prints and analyzes first when
+   the steps are newer than it; mapSettled waits until that analysis (and any
+   other queued or running) has ended. */
+async function mapSettled(page) {
+  await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(),
+    null, { timeout: 180000 });
+}
+
 /* The demo, copied to temp and analyzed with the current pipeline. */
 function freshSession() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-subproc-"));
@@ -487,6 +495,9 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       marked: cy ? cy.nodes().filter((n) => n.data("sub")).map((n) => n.id()).sort() : null,
       asis: !document.getElementById("session-map-asis").hidden,
       root: root ? { id: root.id, name: (root.businessObject && root.businessObject.name) || "" } : null,
+      // Lane MV: the header line names the picture shown.
+      title: ((document.getElementById("map-view-title") || {}).textContent || "").trim(),
+      why: document.getElementById("map-view-why").hidden ? null : document.getElementById("map-view-why").textContent,
     };
   });
   const pickMap = async (name) => {
@@ -516,10 +527,19 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
   const TMP_OUT = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-subproc-out-"));
   const EXCEL = "Excel" + " " + String.fromCharCode(45) + " " + "Order Tracking.xlsx: Save workbook";
   {
-    let err = null, main = null, sub = null, dbl = null, steps = null;
+    let err = null, main = null, sub = null, dbl = null, steps = null, first = null, plane = null;
     try {
       await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
       await page.waitForFunction(() => !document.getElementById("map-picker").hidden, null, { timeout: T });
+      // Lane MV: the Map opens on the process map (analyzed first: the steps
+      // changed since), on its main plane.
+      await mapSettled(page);
+      await page.waitForSelector("#map-asis-canvas .djs-container > svg", { timeout: T });
+      await wait(400);
+      first = await mapState();
+      // The checks below read the live map's boxes: how the transactions ran.
+      await page.locator("#btn-map-show-runs").click({ timeout: T });
+      await page.waitForFunction(() => { const h = document.getElementById("session-map-dfg-host"); return !!(h && h.__cy && h.getClientRects().length); }, null, { timeout: T });
       await page.locator("#btn-map-picker").click({ timeout: T });
       main = await mapState();
       await page.locator("#btn-map-picker").click({ timeout: T });
@@ -536,7 +556,25 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       await page.waitForFunction((n) => (document.getElementById("map-picker-name") || {}).textContent === n, GROUP, { timeout: T });
       await wait(600);
       dbl = await mapState();
+      // Lane MV: the process map again, with Save order chosen: the step
+      // BPMN's plane of it.
+      await pickMap(SAVE);
+      await page.locator("#btn-map-show-map").click({ timeout: T });
+      await mapSettled(page);
+      await page.waitForFunction((n) => {
+        const bv = (document.getElementById("map-asis-canvas") || {}).__bpmnViewer;
+        const r = bv && bv.get("canvas").getRootElement();
+        return !!(r && /_plane$/.test(r.id) && r.businessObject && r.businessObject.name === n);
+      }, SAVE, { timeout: T });
+      plane = await mapState();
+      await shot(page, "subproc-map-step-plane.png");
     } catch (e) { err = errText(e); }
+    const okFirst = !err && !!first && first.asis && first.title === "Process map" && !!first.root && !/_plane$/.test(first.root.id);
+    const okPlane0 = !err && !!plane && plane.asis && plane.title === "Process map" && JSON.stringify(plane.path) === JSON.stringify([SAVE]) &&
+      !plane.why && !!plane.root && plane.root.name === SAVE && /_plane$/.test(plane.root.id);
+    record("lane MV: the Map opens on the process map (the step BPMN drawn by bpmn-js, its main plane), and with Save order chosen shows the step BPMN's plane of it",
+      okFirst && okPlane0,
+      JSON.stringify({ err, first: first && { asis: first.asis, title: first.title, root: first.root }, plane: plane && { asis: plane.asis, title: plane.title, path: plane.path, root: plane.root, why: plane.why } }));
     const okPicker = !err && main && main.picker && main.name === "Main process" &&
       JSON.stringify(main.items.map((i) => [i.num, i.name, i.depth, i.current])) ===
         JSON.stringify([["", "Main process", "0", true], ["3", SAVE, "1", false], ["4", GROUP, "1", false], ["5", EXCEL, "1", false]]) &&
@@ -576,7 +614,15 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     try {
       await page.locator("#btn-fork-refmap").click({ timeout: T });
       await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+      await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: T });
       await wait(800);
+      // Lane MV: a new copy is kept at its first change (here the main map's
+      // legend moved a little).
+      await page.evaluate(() => {
+        const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
+        ed.get("modeling").moveElements([ed.get("elementRegistry").get("TextAnnotation_legend")], { x: 0, y: 8 });
+      });
+      await wait(1400);
       await page.locator("#btn-refmap-editor-close").click({ timeout: T });
       // The canvas's own svg (the drill down arrows' icons come first in the page).
       await page.waitForSelector("#map-asis-canvas .djs-container > svg", { timeout: T });
@@ -617,10 +663,10 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       r = await saveVia("#btn-session-map-svg", path.join(TMP_OUT, "asis-sub.svg"));
       svg = fs.existsSync(path.join(TMP_OUT, "asis-sub.svg")) ? fs.readFileSync(path.join(TMP_OUT, "asis-sub.svg"), "utf-8") : "";
     } catch (e) { err = errText(e); }
-    const okPlane = !err && shown && shown.asis && shown.root && shown.root.name === SAVE && /_plane$/.test(shown.root.id) &&
+    const okPlane = !err && shown && shown.asis && shown.title === "As-Is map" && shown.root && shown.root.name === SAVE && /_plane$/.test(shown.root.id) &&
       panel && panel.occ === 4 && /once in each transaction/.test(panel.explain);
     record("an As-Is copy made after the sub-process shows Save order's plane when the picker chooses it, and a task there opens the panel on its sub-step (4 occurrences)",
-      okPlane, JSON.stringify({ err, root: shown && shown.root, asis: shown && shown.asis, panel }));
+      okPlane, JSON.stringify({ err, root: shown && shown.root, asis: shown && shown.asis, title: shown && shown.title, panel }));
     if (!okPlane) await shot(page, "fail-subproc-map-asis.png");
     const okDrill = !err && up && JSON.stringify(up.path) === "[]" && up.root && !/_plane$/.test(up.root.id) &&
       down && JSON.stringify(down.path) === JSON.stringify([GROUP]) && down.root && down.root.name === GROUP &&

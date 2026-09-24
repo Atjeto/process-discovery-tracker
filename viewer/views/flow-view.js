@@ -203,7 +203,14 @@ if ($("#btn-new-blank")) $("#btn-new-blank").addEventListener("click", () => new
 const UPDATING = "Updating steps and map...";
 let _running = null;                 // the status line's text while a run lasts
 let _runQueue = Promise.resolve();
+let _pendingRuns = 0;                // runs asked for and not ended (queued or running)
 const _analyzedOnOpen = new Set();   // folders analyzed as they opened, in this window
+
+/* Whether a run is queued or running: from the moment it is asked for, so
+   the Map (refmap-ui.js) never asks for a second one meanwhile. */
+function analysisBusy() {
+  return _pendingRuns > 0;
+}
 
 /* The analysis log: hidden unless the last run failed. */
 function hideAnalysisLog() {
@@ -233,6 +240,7 @@ function _rerenderWaiting() {
    A failed run shows the log; a cancelled one does not (nothing failed). */
 function runPipeline(opts, label) {
   const folder = opts.sessionFolder;
+  _pendingRuns += 1;
   const job = _runQueue.then(async () => {
     _running = label || UPDATING;
     hideAnalysisLog();
@@ -260,6 +268,7 @@ function runPipeline(opts, label) {
     if (onScreen) _rerenderWaiting();
     return r;
   });
+  job.then(() => { _pendingRuns -= 1; }, () => { _pendingRuns -= 1; });
   _runQueue = job.catch(() => {});
   return job;
 }
@@ -441,6 +450,10 @@ async function loadSessionIntoView(folder, opts) {
     _analyzedOnOpen.add(opened.sessionFolder);
     analyzeSession().catch((e) => console.error("[flow-view] the automatic analysis failed:", e));
   }
+  // The Map is drawn only while it shows: a project opened, or reloaded after
+  // an analysis, while the Map is on screen is drawn again (after the
+  // analysis above is asked for, so the Map does not ask for another).
+  if (State.getLevel() === "map") rerenderActiveLevel();
 }
 
 /* The controls that act on the video show only while one is linked: the
@@ -1179,7 +1192,7 @@ module.exports = {
   loadSessionIntoView, renderTimeline, renderMarkersList,
   // The analysis: automatic runs, the deliberate ones (confirm), and the
   // pipeline runner the exports share (one status line, one log).
-  renderSessionPills, analyzeSession, runPipeline, UPDATING,
+  renderSessionPills, analyzeSession, analysisBusy, runPipeline, UPDATING,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // The Overview's marker-problem fixes (overview-view.js).

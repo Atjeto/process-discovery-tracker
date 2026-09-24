@@ -77,6 +77,28 @@ test("fork writes blob under derived_maps/, stamps provenance, upserts row", () 
   assert.ok(entry.forked_from_hash); // hashed from xml when no source path
 });
 
+test("lane MV: forkEntry makes a new copy's row with its provenance and writes nothing (Edit keeps it at its first change)", () => {
+  const sf = tmpSession();
+  const srcFile = path.join(sf, "process_map_step.bpmn");
+  fs.writeFileSync(srcFile, "<source/>");
+  const e = RM.forkEntry({
+    xml: "<source/>", source: { notation: "bpmn", level: "step" }, sourceBpmnPath: srcFile,
+    name: "As-Is map", kind: "as_is", nowIso: "2026-09-24T00:00:00.000Z",
+  });
+  assert.match(e.file, /^derived_maps\/rm_.+\.bpmn$/);
+  assert.equal(e.forked_from_hash, RM.fileHash(srcFile));
+  assert.equal(e.name, "As-Is map");
+  assert.equal(e.kind, "as_is");
+  assert.equal(e.pdd_role, null);
+  assert.equal(e.forked_at, "2026-09-24T00:00:00.000Z");
+  assert.equal(fs.existsSync(path.join(sf, "derived_maps")), false, "no folder, no file");
+  // Kept: the file and the row, as fork makes them at once.
+  const anno = {};
+  RM.writeBpmn(sf, e, "<source/>");
+  RM.upsert(anno, e);
+  assert.equal(RM.readBpmn(sf, RM.find(anno, e.map_id)), "<source/>");
+});
+
 test("fork prefers the on-disk source hash; drift fires when the source changes", () => {
   const sf = tmpSession();
   const srcFile = path.join(sf, "process_map_step.bpmn");

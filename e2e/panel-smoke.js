@@ -130,6 +130,22 @@ async function open(folder, errs) {
   return { v, page };
 }
 
+/* Lane MV: the Map opens on the map the PDD prints and analyzes first when
+   the steps are newer than it. showRuns waits for that analysis (and any
+   other), then shows how the transactions ran: the live map, whose boxes the
+   checks tap. */
+async function showRuns(page) {
+  await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(),
+    null, { timeout: 180000 });
+  const link = page.locator("#btn-map-show-runs");
+  if (await link.isVisible()) await link.click({ timeout: T });
+  await page.waitForFunction(() => {
+    const h = document.getElementById("session-map-dfg-host");
+    return !!(h && h.getClientRects().length && h.__cy);
+  }, null, { timeout: T });
+  await wait(600);
+}
+
 /* The panel's state, and where its video is. A row's `at` is what it reads
    ("Transaction 1 · 0:39 into the recording · took 8s"); `focus` and
    `current` say it is the highlighted row, the one the video is at. */
@@ -254,10 +270,12 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   };
 
   // (b) + (c1) The map: every box names its system; a box opens the panel.
+  // Lane MV: the boxes of how the transactions ran (the live map).
   let map = {}, fromMap = null;
   try {
     await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
     await wait(1500);
+    await showRuns(page);
     map = await page.evaluate((id) => {
       const cy = document.getElementById("session-map-dfg-host").__cy;
       const n = cy.getElementById(id);
@@ -499,11 +517,18 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   });
 
   await part("f2", true, async () => {
-    // The Map's act makes the As-Is copy; the Map then shows it.
+    // The Map's act makes the As-Is copy (lane MV: kept at its first change,
+    // here the legend moved a little); the Map then shows it.
     await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
     await page.locator("#btn-fork-refmap").click({ timeout: T });
     await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: T });
     await wait(800);
+    await page.evaluate(() => {
+      const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
+      ed.get("modeling").moveElements([ed.get("elementRegistry").get("TextAnnotation_legend")], { x: 0, y: 8 });
+    });
+    await wait(1400);   // the editor's delayed write (600 ms)
     await page.locator("#btn-refmap-editor-close").click({ timeout: T });
     await page.waitForSelector("#map-asis-canvas .djs-container svg", { timeout: T });
     await wait(500);

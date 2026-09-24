@@ -1,11 +1,13 @@
 "use strict";
 
 /*
- * asis-view.js: the As-Is map on the Map level (contract C18, AD-32; V2
- * item 7). The copy chosen for the PDD is drawn by bpmn-js, read only (its
- * navigated viewer: drag to pan, Ctrl and the wheel to zoom, as in the
- * editor), fitted when drawn, and as linked as the map from the transactions
- * (asis-links.js says what each click does):
+ * asis-view.js: the map the PDD prints, on the Map level (contract C18,
+ * AD-32; lane MV): the As-Is copy chosen for the PDD, else
+ * process_map_step.bpmn (map-view.js decides which). It is drawn by bpmn-js,
+ * read only (its navigated viewer: drag to pan, Ctrl and the wheel to zoom,
+ * as in the editor), fitted when drawn, with the exclusive gateways' marker
+ * as the editor and the PDD's picture draw it, and as linked as the map from
+ * the transactions (asis-links.js says what each click does):
  *   a task opens the step panel on the step it stands for, or says in the
  *     panel that no step has its name;
  *   a data object opens its attachment through the safe open path
@@ -252,6 +254,28 @@ function _mark(v) {
   }
 }
 
+/* An exclusive gateway whose diagram says nothing of its marker shows the
+   marker, as the editor and the PDD's picture draw it (both are bpmn-js's
+   modeler, which sets it on import; its viewer leaves the diamond empty). */
+function _gatewayMarkers(v) {
+  const reg = v.get("elementRegistry");
+  const graphics = v.get("graphicsFactory");
+  for (const el of reg.filter((e) => e.type === "bpmn:ExclusiveGateway")) {
+    const di = el.di;
+    if (!di || Object.prototype.hasOwnProperty.call(di, "isMarkerVisible")) continue;
+    di.isMarkerVisible = true;
+    const gfx = reg.getGraphics(el);
+    if (gfx) graphics.update("shape", el, gfx);
+  }
+}
+
+/* The drawn map's definitions (bpmn-moddle's objects, which outlive the
+   view: map-planes.js finds a plane in them), or null while none is drawn. */
+function definitions() {
+  if (!_viewer || !_ready) return null;
+  try { return _viewer.getDefinitions() || null; } catch (_) { return null; }
+}
+
 /* Draw `xml` into `host`, read only and fitted, on the plane of the map at
    `path` when it has one (C19; else its main map). Resolves true once it is
    drawn; false when it could not be (the host says why), or when another
@@ -286,6 +310,7 @@ async function draw(host, xml, path) {
   if (_viewer !== v) return false;
   _main = v.get("canvas").getRootElement();
   _ready = true;
+  try { _gatewayMarkers(v); } catch (e) { console.error("[asis-view] the gateways' markers were not drawn:", e); }
   _mark(v);
   if (!(Array.isArray(path) && path.length && showLevel(path))) fit();
   v.on("element.click", _onClick);
@@ -299,4 +324,4 @@ async function draw(host, xml, path) {
   return true;
 }
 
-module.exports = { draw, clear, drawnIn, fit, hideNote, configure, hasLevel, showLevel };
+module.exports = { draw, clear, drawnIn, fit, hideNote, configure, hasLevel, showLevel, definitions };

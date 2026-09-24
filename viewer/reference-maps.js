@@ -322,19 +322,27 @@ function deleteBpmn(sessionFolder, entry) {
   try { fs.unlinkSync(p); } catch (_) { /* already gone */ }
 }
 
-/* Compose a fork: snapshot `xml` (the live view, WYSIWYF) into a new copy,
-   stamp provenance (the source's hash and process signature), write the
-   blob, upsert the row. Returns the entry. */
-function fork({ sessionFolder, anno, xml, source, sourceBpmnPath, name, kind, nowIso }) {
+/* The row of a new copy of `xml`, with its provenance (the source's hash and
+   process signature), and nothing written: the Map's Edit opens a new copy
+   this way and keeps it (writeBpmn, upsert) only once the analyst changes
+   it (refmap-ui.js). */
+function forkEntry({ xml, source, sourceBpmnPath, name, kind, nowIso }) {
   const map_id = genId();
   const file = path.posix.join(DERIVED_DIR, map_id + ".bpmn");
   const marks = sourceBpmnPath
     ? sourceMarks(sourceBpmnPath)
     : (xml ? _marks(Buffer.from(xml, "utf-8")) : null);
-  const entry = buildEntry({
+  return buildEntry({
     map_id, name, kind, file, source,
     forked_from_hash: marks && marks.hash, forked_from_sig: marks && marks.sig, forked_at: nowIso || null,
   });
+}
+
+/* Compose a fork: snapshot `xml` (the live view, WYSIWYF) into a new copy,
+   stamp provenance (the source's hash and process signature), write the
+   blob, upsert the row. Returns the entry. */
+function fork({ sessionFolder, anno, xml, source, sourceBpmnPath, name, kind, nowIso }) {
+  const entry = forkEntry({ xml, source, sourceBpmnPath, name, kind, nowIso });
   writeBpmn(sessionFolder, entry, xml || "");
   upsert(anno, entry);
   return entry;
@@ -372,5 +380,5 @@ module.exports = {
   hashContent, fileHash, processSignature, sourceMarks, genId,
   ensure, list, find, buildEntry, upsert, remove, rename, setPddRole, setRole, pddPick, isStale, predatesRichMap,
   derivedDir, absPath, fileExists, writeBpmn, readBpmn, deleteBpmn,
-  fork, duplicate, destroy,
+  forkEntry, fork, duplicate, destroy,
 };

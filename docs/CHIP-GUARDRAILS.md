@@ -27,8 +27,9 @@ every push.
 
 ## Hard invariants, and the guard that fails for each
 
-1. **The process map is one connected graph.** The map the Map level draws
-   from the runs' steps has one component, one entry step and one final
+1. **The process map is one connected graph.** The live map the Map level
+   draws from the runs' steps (how the transactions ran, its second view)
+   has one component, one entry step and one final
    step, reads left to right, and draws every path. The pin counts the step
    boxes and the lines between them only: the Start and End circles join
    every first and last step, so they would hide islands. *Guard:*
@@ -317,10 +318,26 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
 (`.sp-play`, `.sp-at`, `.sp-shot`), the foot `#btn-sp-steps` or
 `#btn-sp-timeline` and, for a sub-process, `#btn-sp-open-sub`, `#btn-sp-close`.
 
-**Map** (`#session-layout-map`):
-- The map host `#session-map-dfg-host`; its cytoscape instance is
+**Map** (`#session-layout-map`; lane MV: the map the PDD prints first, how
+the transactions ran one click away):
+- The one header line `#map-view-bar` (hidden while the live map says why
+  it draws nothing): `#map-view-title` ("Process map", the As-Is copy's
+  name, or "How the transactions ran"), `#map-view-note` ("(the PDD prints
+  this map)", "(edited; the PDD prints this map)"), `#btn-map-asis-edit`
+  (the chosen copy's Edit), `#btn-map-show-runs` (Show how the transactions
+  ran) and `#btn-map-show-map` (the way back: Show the process map, or Show
+  the As-Is map). `#map-view-why` is the one line saying why the map the PDD
+  prints does not show. The Map analyzes first when that map is
+  `process_map_step.bpmn` and older than the steps:
+  `require("./refmap-ui.js").mapBusy()` is true while it runs and
+  `require("./views/flow-view.js").analysisBusy()` while any run is queued or
+  running; wait for both false before reading the map. The view chosen holds
+  per project in a window: a smoke that reads cytoscape clicks
+  `#btn-map-show-runs` first.
+- How the transactions ran: the host `#session-map-dfg-host`, drawn while it
+  shows; its cytoscape instance is
   `host.__cy`, the edge tip `.dfg-edge-tip`; `#btn-session-map-zoom-fit`
-  (it fits the As-Is map while that shows). The Start and End circles are
+  (it fits the picture the PDD prints while that shows). The Start and End circles are
   nodes with `data("kind") === "event"` and `role` `start-event` or
   `end-event` (their ids start with the character `\u0001`, so no step
   name takes them); a box is any other node. An edge carries `observed`
@@ -334,11 +351,12 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
   `.map-pick[data-map]` per map (`data-map` its path as JSON; `.map-pick-num`,
   `.map-pick-name`, the depth in the `--map-depth` style, the one shown
   `.current`). A sub-process's box carries `data("sub") === true` (the +);
-  a `dbltap` on it opens its map. `#map-asis-missing` is the one line over
-  the live map when the As-Is copy has no plane for the level.
-- The chosen As-Is map first: `#session-map-asis` (`#map-asis-title`,
-  `#btn-map-asis-edit`, `#btn-map-show-runs`) and `#btn-map-show-asis` to
-  come back to it. The map itself is `#map-asis-canvas`, a bpmn-js
+  a `dbltap` on it opens its map. At a level the chosen As-Is copy has no
+  plane for, the picture is the process map's plane and `#map-view-why`
+  says so.
+- The map the PDD prints first: `#session-map-asis`, the chosen As-Is copy,
+  else `process_map_step.bpmn` (`#map-view-title` says which). The map
+  itself is `#map-asis-canvas`, a bpmn-js
   navigated viewer (`host.__bpmnViewer`; shapes
   `.djs-element[data-element-id]`, the ones a click opens marked
   `.pdt-link`, the legend `TextAnnotation_legend` marked `.pdt-inert`); a
@@ -350,7 +368,12 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
   `.djs-overlays[data-container-id="<id>"] .bjs-drilldown`. Wait for the
   canvas with `.djs-container > svg`: the arrows' icons are svgs that come
   first in the page.
-- The edit act `#btn-fork-refmap`; `#btn-toggle-refmaps` (`#refmap-count`)
+- The edit act `#btn-fork-refmap`: the editor opens on a new copy, kept at
+  its first change (a change in the map, its name or its role; a smoke that
+  needs the copy makes one, for example moves `TextAnnotation_legend` with
+  `modeling.moveElements`, and waits for the 600 ms delayed write); closed
+  without one, nothing is kept (no `reference_maps` entry, no file in
+  `derived_maps/`). `#btn-toggle-refmaps` (`#refmap-count`)
   shows `#refmap-panel`: `#refmap-list .refmap-row` with
   `[data-rm-act="edit"|"dup"|"refork"|"del"]` and, under a copy the
   process map changed after, `.refmap-row-note` (what Copy again gives);
@@ -358,7 +381,9 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
 - The editor overlay `#refmap-editor-overlay`: `#refmap-editor-name`,
   `#refmap-editor-pdd` (None, As-Is map, To-Be map), `#refmap-editor-host`
   (bpmn-js shapes `.djs-element[data-element-id]`),
-  `#btn-refmap-editor-close`.
+  `#btn-refmap-editor-close`. While it shows, `page.keyboard.press("Control+Z")`
+  (and `Control+Y`) undoes (redoes) a map edit there; the viewer's own
+  shortcuts do nothing underneath.
 
 **Help** `#help-modal`: `.help-nav-item[data-section="start"|"stepsphases"|"markers"|"capture"|"shortcuts"|"trouble"]`,
 `.help-section[data-section]`, `#btn-help-reanalyze` (Troubleshooting),
@@ -376,7 +401,10 @@ levels; the map's notation tabs, level select, rare-path slider and Expert
 drawer; the data posture and Copy for LLM; the Flow Notes tab; the
 shortcuts overlay. Replaced since: the As-Is picture `#map-asis-img` (now
 the linked `#map-asis-canvas`) and `dfg-viewer.js` `exportSvg` (Export's
-map image draws the step BPMN); *New from a video* and *New without a
+map image draws the step BPMN); lane MV: `#map-asis-title`,
+`#btn-map-show-asis` and `#map-asis-missing` (now `#map-view-title`,
+`#btn-map-show-map` and `#map-view-why`), and the live map as the Map's
+first view (now the second, how the transactions ran); *New from a video* and *New without a
 recording* in the Open menu are the New menu's two items. Gone since
 2026-09-24 (owner: a process is recorded once): the saved processes (C5),
 with *Save as this process*, the "Compared with saved process" line

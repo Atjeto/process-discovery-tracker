@@ -64,9 +64,10 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 1. **Open** a recording folder (*Open project...*, Open menu), or start a
    project with *New project from a video...* or *New empty project...*
    (New menu). The analysis runs by itself (on open when it is missing or
-   older, after Apps outside the process, inside Edit as the As-Is map,
-   before a PDD export), with one status line and Cancel. *Apply N marker
-   changes* stays deliberate; Help, Troubleshooting has Re-analyze.
+   older, after Apps outside the process, on the Map when the steps are
+   newer than its map, inside Edit as the As-Is map, before a PDD export),
+   with one status line and Cancel. *Apply N marker changes* stays
+   deliberate; Help, Troubleshooting has Re-analyze.
 2. **Attach** a video (copied into the folder, synced with two clicks) and a
    transcript, if any.
 3. **Confirm the reference run** (run 1 unless another is picked): fix and
@@ -76,7 +77,10 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
    confirmed.
 5. **Write the document** on the Overview (trigger, result and improvement
    among its fields).
-6. **Check the map**; optionally *Edit as the As-Is map* (and a To-Be copy).
+6. **Check the map**: the Map shows the map the PDD prints (the process map,
+   or the edited As-Is map), with *Show how the transactions ran* one click
+   away; optionally *Edit as the As-Is map* (and a To-Be copy), kept once
+   something in it is changed.
 7. **Export the PDD**: its map is the edited As-Is copy when one exists, else
    the map from the runs. Export also saves the map (image, BPMN) and the
    *Whole project (.zip)*; each export opens Explorer at the file.
@@ -180,15 +184,22 @@ the folder.
   since the recording started (m:ss or h:mm:ss); the time of day shows only
   in the Timeline's summary.
 - **The step panel** (`views/step-panel.js`): three doors (a map box, a
-  timeline step band, a Steps row; a task of the As-Is map is a map box
+  timeline step band, a Steps row; a task of the Map's picture is a map box
   too) open one panel with every occurrence of the step: its moment, a
   small video, screenshots, what was said, notes.
-- **The map.** One process map from the runs' visible steps, each box naming
-  its system. `--mine` writes `process_map_step.bpmn`, which *Edit as the
-  As-Is map* copies into an editable As-Is or To-Be map (ADR-0019; the
-  pipeline never touches a copy). The chosen As-Is map shows first, drawn by
-  bpmn-js and linked (`asis-view.js`): a task opens the step panel, a file
-  its attachment, a note its text.
+- **The map** (lane MV, `map-view.js`, `refmap-ui.js`). The Map shows the map
+  the PDD prints: the As-Is copy chosen for the PDD, else
+  `process_map_step.bpmn` (written by `--mine`), drawn by bpmn-js and linked
+  (`asis-view.js`): a task opens the step panel, a file its attachment, a
+  note its text; one header line says which. When that file is older than
+  `annotations.json` the Map analyzes first, once per change, keeping its
+  picture meanwhile. *Show how the transactions ran* is the second view: the
+  live map from the runs' visible steps, each box naming its system, with
+  frequencies and the paths no transaction took. *Edit as the As-Is map*
+  copies the process map into an editable As-Is or To-Be map (ADR-0019; the
+  pipeline never touches a copy), kept at its first change: leaving the
+  editor without one keeps nothing. In the editor, Ctrl+Z and Ctrl+Y are the
+  map's own (bpmn-js's keyboard, bound while it is open).
 - **The richer step map** (C18, AD-32). `process_map_step.bpmn` names its
   main end after the Result and each early end after its `when`; a step done
   in a system is a plain task and a step done outside every system (added by
@@ -196,8 +207,8 @@ the folder.
   marker on every box said nothing); a step's notes are a text annotation and
   its attachments data objects; each system has a colour (`bioc:fill`,
   `bioc:stroke`) listed in a legend, which also says what the hand means.
-  Without a chosen As-Is copy, Export's map image and the PDD's map picture
-  are this file drawn by bpmn-js.
+  Without a chosen As-Is copy, the Map's picture, Export's map image and the
+  PDD's map picture are this file drawn by bpmn-js.
 - **Sub-processes** (C19, AD-33).
   - **Storage.** A step's `sub_steps` array holds its sub-steps, nested and
     the same shape as steps. `annotations.steps` stays the main level, so a

@@ -13,9 +13,18 @@
  * One act (AD-19): the Map's primary button copies the process map into the
  * editor, after an analysis when the steps changed since the map's BPMN file
  * was written (so the copy carries the current step names, F1), and makes the
- * copy the PDD's As-Is map when none is chosen. A copy never follows the
+ * copy the PDD's As-Is map when none is chosen. The copy is kept at its first
+ * change (in the map, its name or its role): leaving the editor without one
+ * keeps nothing, no row and no file (lane MV). A copy never follows the
  * analysis afterwards; the PDD's caption says it is hand-edited
  * (pdd_export._write_tobe_map).
+ *
+ * The Map level's picture (lane MV, map-view.js): the map the PDD prints, the
+ * As-Is copy chosen for it, else process_map_step.bpmn, drawn by bpmn-js
+ * (asis-view.js); how the transactions ran (the live map) one click away.
+ * That file changes only when the project is analyzed, so the Map analyzes
+ * first when annotations.json is newer, once per change, keeping the
+ * picture it had meanwhile.
  */
 
 "use strict";
@@ -26,6 +35,7 @@ const RefStore = require("./reference-maps.js");
 const PdtBpmn = require("./bpmn-viewer.js");
 const AsIsView = require("./asis-view.js");
 const Planes = require("./map-planes.js");
+const MapView = require("./map-view.js");
 const SaveState = require("./save-state.js");
 const { toast, escapeHtml } = require("./dom.js");
 
@@ -40,10 +50,59 @@ function fmtDate(iso) {
   try { return new Date(iso).toLocaleString(); } catch (_) { return String(iso); }
 }
 function session() { return State.getSession(); }
+
+/* ---- the step map's freshness --------------------------------------------- */
+/* process_map_step.bpmn is current when it is newer than annotations.json.
+   A write that changes only the edited maps (a copy kept, renamed, given a
+   role, duplicated, deleted) or the analysis's own rewrite of
+   annotations.json for the PDD leaves it current: such a write marks the
+   annotations.json it left as current (_current), so no analysis follows it.
+   Any other write gives annotations.json another time, which the mark does
+   not name. */
+let _current = null;   // { folder, mtime }: annotations.json at that time is current for the map
+function _fileMtime(p) {
+  if (!p) return null;
+  try { return require("node:fs").statSync(p).mtimeMs; } catch (_) { return null; }
+}
+function _annoMtime(folder) {
+  return folder ? _fileMtime(require("node:path").join(folder, "annotations.json")) : null;
+}
+function _markCurrent(s) {
+  if (s && s.sessionFolder) _current = { folder: s.sessionFolder, mtime: _annoMtime(s.sessionFolder) };
+}
+/* Whether process_map_step.bpmn (`srcPath`) needs an analysis before it is
+   shown or copied: missing, or older than annotations.json. */
+function _needsAnalyze(s, srcPath) {
+  const bpmnMs = _fileMtime(srcPath);
+  if (bpmnMs == null) return true;
+  const annoMs = s ? _annoMtime(s.sessionFolder) : null;
+  if (annoMs == null || annoMs <= bpmnMs) return false;
+  return !(_current && _current.folder === s.sessionFolder && _current.mtime === annoMs);
+}
+function _stepMapCurrent(s) {
+  const src = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
+  return !!(s && src && !_needsAnalyze(s, src));
+}
+/* Run `write`, a write of annotations.json that leaves the steps as they
+   are (the analysis that writes the PDD, renderer.js), and keep the step map
+   current when it was. */
+async function keepingStepMapCurrent(write) {
+  const s = session();
+  const was = _stepMapCurrent(s);
+  const out = await write();
+  const now = session();
+  if (was && now && s && now.sessionFolder === s.sessionFolder) _markCurrent(now);
+  return out;
+}
+
+/* The edited maps' own saves: they change no step, so a step map current
+   before stays current. */
 async function persist(label) {
   const s = session();
   if (!s) return;
+  const was = _stepMapCurrent(s);
   await Session.saveAnnotationsWithUndo(s.annotations, label);
+  if (was) _markCurrent(s);
 }
 
 /* A write of a map file of the project at `folder`, reported to the save
@@ -107,8 +166,8 @@ function syncForkButton() {
   btn.textContent = done ? FORK_AGAIN : FORK_ASIS;
   btn.classList.toggle("primary", !done);
   btn.title = done
-    ? "Copy the process map into the editor again, for example to start over. The As-Is map chosen for the PDD stays as it is."
-    : "Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it.";
+    ? "Copy the process map into the editor again, for example to start over. The As-Is map chosen for the PDD stays as it is. A copy you leave unchanged is not kept."
+    : "Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it. A copy you leave unchanged is not kept.";
 }
 function _setForkBusy() {
   const btn = $("btn-fork-refmap");
@@ -119,68 +178,161 @@ function _setForkBusy() {
   btn.title = "Analyzing the project first, so the copy carries your latest step names";
 }
 
-/* ---- the Map level's first view (V2 item 7, C18) --------------------------- */
-/* When an As-Is copy is chosen for the PDD, the Map level shows it first,
-   drawn by bpmn-js read only and as linked as the map from the runs (a task
-   opens the step panel, a file its attachment, a note its text:
-   asis-view.js), with Edit beside it; the map from the runs is one click
-   away, and back. Per recording, for this window.
-   Contract C19: it shows the plane of the level the Map shows (the picker,
-   _deps.mapPath). A copy with no plane for that level (made before the
-   sub-process existed, or the sub-process renamed in the editor) leaves the
-   level to the map from the transactions, with one line saying so; that is
-   known once the copy is drawn. */
-let _mapView = { folder: null, which: "asis" };
-let _drawn = null;   // { id, mtime }: the As-Is map on screen
+/* ---- the Map level's picture (lane MV; C18, C19) --------------------------- */
+/* The Map shows the map the PDD prints (map-view.js pick): the As-Is copy
+   chosen for the PDD, else process_map_step.bpmn, drawn by bpmn-js read only
+   and linked (a task opens the step panel, a file its attachment, a note its
+   text: asis-view.js); how the transactions ran (the live map) is the second
+   view, one click away, and back. The view chosen holds per project, for
+   this window. Contract C19: the plane of the level the Map shows (the
+   picker, _deps.mapPath), the copy's when it has one, else the step map's;
+   whether a file has a plane is known once it has been drawn (_defs). One
+   header line (#map-view-bar) says which picture shows; one line over the
+   map (#map-view-why) says why the picture the PDD prints does not show,
+   when it does not. */
+let _mapView = { folder: null, which: "map" };
+let _drawn = null;         // { key, mtime }: the file on the canvas
+let _defs = new Map();     // key => { mtime, defs }: the planes of each file drawn
+let _tried = null;         // { folder, mtime }: annotations.json the Map last analyzed for
+let _analysis = null;      // the Map's own analysis while it runs (a promise)
 
-function _fileMtime(s, e) {
-  try { return require("node:fs").statSync(RefStore.absPath(s.sessionFolder, e)).mtimeMs; } catch (_) { return null; }
+/* A file the canvas can draw: { key, file, mtime } (mtime null when it is
+   not on disk). */
+function _source(key, file) {
+  return { key, file, mtime: _fileMtime(file) };
+}
+
+/* Whether `src` has a map for the level at `path`: true for the main map;
+   true or false once the file has been drawn at this time; else null. */
+function _planeOf(src, path) {
+  if (!src || src.mtime == null) return null;
+  if (!Array.isArray(path) || !path.length) return true;
+  const d = _defs.get(src.key);
+  if (!d || d.mtime !== src.mtime || !d.defs) return null;
+  return !!Planes.findPlane(d.defs, path);
+}
+
+/* The Map's own analysis: process_map_step.bpmn is needed and older than
+   the steps. It runs once per change of annotations.json (_tried), also
+   when it fails or writes no map, and the Map draws again when it ends. */
+function _analyzeForMap(s) {
+  if (_analysis || !_deps.analyze) return;
+  const folder = s.sessionFolder;
+  _tried = { folder, mtime: _annoMtime(folder) };
+  _analysis = Promise.resolve()
+    .then(() => _deps.analyze())
+    .catch((e) => { console.error("[refmap-ui] the process map was not updated:", e); return false; })
+    .then((ok) => {
+      _analysis = null;
+      const now = session();
+      // What the analysis left in annotations.json is analyzed too.
+      if (now && now.sessionFolder === folder) _tried = { folder, mtime: _annoMtime(folder) };
+      try { if (_deps.renderMap) _deps.renderMap(); } catch (e) { console.error("[refmap-ui] the Map was not drawn again:", e); }
+      return ok;
+    });
+}
+
+/* The header line: which picture shows (MapView.line), or nothing while the
+   live map says why it draws no map. */
+function _setBar(p, copy, copyName) {
+  const bar = $("map-view-bar");
+  if (!bar) return;
+  const show = !!p && (p.view === "bpmn" || p.back || !!p.why);
+  bar.hidden = !show;
+  if (!show) return;
+  const l = MapView.line(p, copy, copyName);
+  const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+  set("map-view-title", l.title);
+  set("map-view-note", l.note);
+  const edit = $("btn-map-asis-edit");
+  if (edit) edit.hidden = !l.edit;
+  const toRuns = $("btn-map-show-runs");
+  if (toRuns) { toRuns.hidden = !l.toRuns; if (l.toRuns) toRuns.textContent = l.toRuns; }
+  const toMap = $("btn-map-show-map");
+  if (toMap) {
+    toMap.hidden = !l.toMap;
+    if (l.toMap) {
+      toMap.textContent = l.toMap;
+      toMap.title = l.toMap === MapView.TO_COPY ? "Show your As-Is map, the map the PDD prints" : "Show the process map, the map the PDD prints";
+    }
+  }
+}
+
+function _setWhy(text) {
+  const why = $("map-view-why");
+  if (!why) return;
+  why.hidden = !text;
+  why.textContent = text || "";
 }
 
 function syncMapView() {
   const s = session();
   const folder = s ? s.sessionFolder : null;
-  if (_mapView.folder !== folder) { _mapView = { folder, which: "asis" }; _drawn = null; AsIsView.clear(); }
-  const asIs = _asIsMap(s);
-  if (!asIs && _drawn) { _drawn = null; AsIsView.clear(); }
-  const canvas = $("map-asis-canvas");
-  const mtime = asIs ? _fileMtime(s, asIs) : null;
-  const current = !!(asIs && _drawn && _drawn.id === asIs.map_id && _drawn.mtime === mtime && AsIsView.drawnIn(canvas));
-  const path = _deps.mapPath ? _deps.mapPath() : [];
-  const wanted = !!asIs && _mapView.which === "asis";
-  const missing = wanted && current && AsIsView.hasLevel(path) === false;
-  const showAsIs = wanted && !missing;
+  if (_mapView.folder !== folder) {
+    _mapView = { folder, which: "map" };
+    _drawn = null; _defs = new Map(); _tried = null; _current = null;
+    AsIsView.clear();
+  }
   const box = $("session-map-asis");
   const host = document.querySelector("#session-layout-map .map-host");
-  const liveWasHidden = !!host && host.style.display === "none";
-  if (box) box.hidden = !showAsIs;
-  if (host) host.style.display = showAsIs ? "none" : "";
-  const note = $("map-asis-missing");
-  if (note) note.hidden = !missing;
-  // The Map's fit fits the As-Is map while it shows (initRefmapUI).
+  const canvas = $("map-asis-canvas");
+  if (!s) { if (box) box.hidden = true; _setBar(null); _setWhy(null); return; }
+  const path = _deps.mapPath ? _deps.mapPath() : [];
+  const live = _deps.liveMap ? _deps.liveMap() : { locked: false, drawable: true };
+  const asIs = _asIsMap(s);
+  const copySrc = asIs ? _source("copy:" + asIs.map_id, RefStore.absPath(folder, asIs)) : null;
+  const stepPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
+  const stepSrc = _source("step", stepPath);
+  const copy = copySrc ? { plane: _planeOf(copySrc, path) } : null;
+  const annoMs = _annoMtime(folder);
+  const p = MapView.pick({
+    want: _mapView.which,
+    live,
+    copy,
+    step: { exists: stepSrc.mtime != null, stale: !stepPath || _needsAnalyze(s, stepPath), plane: _planeOf(stepSrc, path) },
+    busy: !!_analysis || !!(_deps.analysisBusy && _deps.analysisBusy()),
+    tried: !!(_tried && _tried.folder === folder && _tried.mtime === annoMs),
+  });
+  if (p.analyze) _analyzeForMap(s);
+  _setBar(p, copy, asIs && asIs.name);
+  _setWhy(p.why);
+  const showMap = p.view === "bpmn";
+  if (box) box.hidden = !showMap;
+  if (host) host.style.display = showMap ? "none" : "";
+  // The Map's fit fits the picture while it shows (initRefmapUI); the live
+  // map's controller shows it or not with its own drawing.
   const zoom = $("session-map-zoom");
-  if (zoom && showAsIs) zoom.style.display = "";
-  const back = $("btn-map-show-asis");
-  if (back) back.hidden = !(asIs && _mapView.which === "runs");
-  if (!showAsIs) {
+  if (zoom && showMap) zoom.style.display = "";
+  if (!showMap) {
     AsIsView.hideNote();
-    // The map from the runs is laid out once its host shows.
-    if (liveWasHidden) { try { if (_deps.renderLiveMap) _deps.renderLiveMap(); } catch (_) {} }
+    // The live map is drawn while it shows (its host has its size then).
+    try { if (_deps.renderLiveMap) _deps.renderLiveMap(); } catch (e) { console.error("[refmap-ui] the live map was not drawn:", e); }
     return;
   }
-  const title = $("map-asis-title");
-  if (title) title.textContent = asIs.name || "As-Is map";
+  const src = p.source === "copy" ? copySrc : stepSrc;
   // Drawn where it shows: a Map level not on screen draws it when it shows.
   if (!canvas || !canvas.clientWidth) return;
+  const current = !!(_drawn && _drawn.key === src.key && _drawn.mtime === src.mtime && AsIsView.drawnIn(canvas));
   if (current) { AsIsView.showLevel(path); return; }
-  _drawn = { id: asIs.map_id, mtime };
-  // Once drawn, the level it has (or lacks) decides what shows.
-  AsIsView.draw(canvas, RefStore.readBpmn(s.sessionFolder, asIs), path).then((ok) => { if (ok) syncMapView(); });
+  _drawn = { key: src.key, mtime: src.mtime };
+  let xml = null;
+  try { xml = require("node:fs").readFileSync(src.file, "utf-8"); } catch (e) { console.error("[refmap-ui] the map file could not be read:", e); }
+  // Once drawn, the planes it has (or lacks) decide what shows.
+  AsIsView.draw(canvas, xml, path).then((ok) => {
+    if (!ok) return;
+    _defs.set(src.key, { mtime: src.mtime, defs: AsIsView.definitions() });
+    syncMapView();
+  });
 }
 
 function _showMapView(which) {
   _mapView.which = which;
   syncMapView();
+}
+
+/* Whether the Map's own analysis runs (the e2e smokes wait for it). */
+function mapBusy() {
+  return !!_analysis;
 }
 
 /* ---- gallery ------------------------------------------------------------ */
@@ -303,22 +455,22 @@ async function onRowPdd(id, role) {
    pipeline writes on every Analyze (process_map_step.bpmn). That file only
    changes on an Analyze, so when annotations.json is newer than it (a rename,
    a merge, a confirmed run since) or it is missing, the session is analyzed
-   first: the copy then carries the current step names (F1) and the PDD's
+   first (_needsAnalyze, above; the Map's own update, when one runs, is waited
+   for): the copy then carries the current step names (F1) and the PDD's
    As-Is image agrees with its own step list. The button is busy meanwhile.
    While the Map shows its lock message there is nothing to copy, and Fork
-   says so; a failure is said, never a silent no-op. */
-function _needsAnalyze(s, srcPath) {
-  const fs = require("node:fs");
-  const path = require("node:path");
-  let bpmnMs;
-  try { bpmnMs = fs.statSync(srcPath).mtimeMs; } catch (_) { return true; }
-  try { return fs.statSync(path.join(s.sessionFolder, "annotations.json")).mtimeMs > bpmnMs; }
-  catch (_) { return false; }
-}
+   says so; a failure is said, never a silent no-op.
+   The copy opens in the editor unsaved and is kept at its first change
+   (lane MV, _keepCopy): Edit and leaving without a change keeps nothing. */
+
+/* The editing of a new copy (Edit, not Copy again): { folder, entry, xml,
+   label, kept, touched }. `entry` is its row, written with its file at the
+   first change; `touched`: its name or role was changed in the editor. */
+let _edit = null;
 
 /* `like`: the copy "Copy again" was clicked on; the new copy takes its name
    and kind, and no role (the analyst moves the role when the new copy is
-   ready). */
+   ready). Copy again is asked for, so its copy is kept at once. */
 async function onFork(like) {
   const s = session();
   if (!s || !s.sessionFolder) { toast("Open a project first.", "error"); return; }
@@ -330,15 +482,21 @@ async function onFork(like) {
     return;
   }
   const fs = require("node:fs");
+  // The Map's own update of the process map runs: the copy waits for it.
+  if (_analysis) {
+    _forking = true;
+    _setForkBusy();
+    try { await _analysis; } finally { _forking = false; syncForkButton(); }
+  }
   let srcPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
-  if (srcPath && _deps.analyze && _needsAnalyze(s, srcPath)) {
+  if (srcPath && _deps.analyze && _needsAnalyze(session(), srcPath)) {
     _forking = true;
     _setForkBusy();
     let analyzed = false;
     try { analyzed = await _deps.analyze(); }
     finally { _forking = false; syncForkButton(); }
     if (!analyzed) return;   // the analysis said why (its log and toast)
-    try { if (_deps.renderLiveMap) _deps.renderLiveMap(); } catch (_) { /* the map redraws on its next render */ }
+    try { if (_deps.renderMap) _deps.renderMap(); } catch (_) { /* the map redraws on its next render */ }
     srcPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
   }
   const cur = session();
@@ -355,26 +513,75 @@ async function onFork(like) {
   // what the next map usually is, the To-Be map, and waits for the analyst
   // to choose its role (the As-Is map already chosen stays).
   const asIs = !like && !_asIsMap(cur);
-  let entry;
+  const made = {
+    xml, source: { notation: "bpmn", level: "step", scope: null }, sourceBpmnPath: srcPath,
+    name: like ? like.name : (asIs ? "As-Is map" : "To-Be map"),
+    kind: like ? like.kind : (asIs ? "as_is" : "to_be"),
+    nowIso: new Date().toISOString(),
+  };
+  if (like) {
+    let entry;
+    try {
+      entry = _writeMap(cur.sessionFolder, () => RefStore.fork(Object.assign({ sessionFolder: cur.sessionFolder, anno: cur.annotations }, made)));
+    } catch (e) {
+      toast("The map was not copied: " + ((e && e.message) || e), "error");
+      return;
+    }
+    await persist("Copy the process map");
+    _showGallery(true);
+    openEditor(entry.map_id);
+    return;
+  }
+  const entry = RefStore.forkEntry(made);
+  if (asIs) { entry.pdd_role = "as_is"; entry.kind = "as_is"; }
+  _edit = { folder: cur.sessionFolder, entry, xml, label: asIs ? "Make the As-Is map" : "Copy the process map", kept: false, touched: false };
+  await _openEditorOn(cur, entry, xml);
+}
+
+/* The new copy's first change keeps it: its file (the process map as it was
+   copied; the editor writes the change over it a moment later), its row,
+   its role, and one undo entry. */
+async function _keepCopy() {
+  const t = _edit;
+  if (!t || t.kept) return;
+  const s = session();
+  if (!s || s.sessionFolder !== t.folder) return;
+  t.kept = true;
   try {
-    entry = _writeMap(cur.sessionFolder, () => RefStore.fork({
-      sessionFolder: cur.sessionFolder, anno: cur.annotations, xml,
-      source: { notation: "bpmn", level: "step", scope: null }, sourceBpmnPath: srcPath,
-      name: like ? like.name : (asIs ? "As-Is map" : "To-Be map"),
-      kind: like ? like.kind : (asIs ? "as_is" : "to_be"),
-      nowIso: new Date().toISOString(),
-    }));
+    _writeMap(t.folder, () => RefStore.writeBpmn(t.folder, t.entry, t.xml));
   } catch (e) {
+    t.kept = false;
     toast("The map was not copied: " + ((e && e.message) || e), "error");
     return;
   }
-  if (asIs) RefStore.setRole(cur.annotations, entry.map_id, "as_is");
-  await persist(asIs ? "Make the As-Is map" : "Copy the process map");
-  _showGallery(true);
-  openEditor(entry.map_id);
+  RefStore.upsert(s.annotations, t.entry);
+  if (t.entry.pdd_role) RefStore.setRole(s.annotations, t.entry.map_id, t.entry.pdd_role);
+  try { await persist(t.label); } catch (_) { /* the save said why; the next save writes it */ }
+}
+
+/* A new copy kept at its first change whose changes were all undone before
+   the editor closed keeps nothing either: its keeping is taken back (its
+   undo entry, its row, its file). When something else was saved since (its
+   undo entry is not the last), it stays, since taking it back would undo
+   that too. */
+async function _takeBack(t) {
+  const s = session();
+  if (!s || s.sessionFolder !== t.folder) return false;
+  const entry = RefStore.find(s.annotations, t.entry.map_id);
+  if (!entry) return false;
+  const last = State.popUndo(t.folder);
+  if (!last || last.label !== t.label) { if (last) State.pushUndo(last); return false; }
+  const was = _stepMapCurrent(s);
+  RefStore.remove(s.annotations, entry.map_id);
+  RefStore.deleteBpmn(t.folder, entry);
+  try { await Session.saveAnnotationsDirect(s.annotations, "the unchanged copy removed"); }
+  catch (_) { /* the save said why; the next save writes it */ }
+  if (was) _markCurrent(s);
+  return true;
 }
 
 /* ---- editor overlay ----------------------------------------------------- */
+/* Open a copy that is kept (the Map's Edit, a gallery row). */
 async function openEditor(id) {
   const s = session();
   if (!s) return;
@@ -384,19 +591,30 @@ async function openEditor(id) {
     toast("This map's file is missing: remove the entry, or make a new copy.", "error");
     return;
   }
-  _editingId = id;
-  const full = RefStore.absPath(s.sessionFolder, e);
+  _edit = null;
+  await _openEditorOn(s, e, null);
+}
+/* The editor overlay on `entry`: its file, or `xml` for a new copy whose
+   file is written at its first change. */
+async function _openEditorOn(s, entry, xml) {
+  _editingId = entry.map_id;
+  const full = RefStore.absPath(s.sessionFolder, entry);
   const nameInput = $("refmap-editor-name");
   const pddSel = $("refmap-editor-pdd");
-  if (nameInput) nameInput.value = e.name || "";
-  if (pddSel) pddSel.value = e.pdd_role || "";
+  if (nameInput) nameInput.value = entry.name || "";
+  if (pddSel) pddSel.value = entry.pdd_role || "";
   const overlay = $("refmap-editor-overlay");
   if (overlay) overlay.style.display = "";
   const host = $("refmap-editor-host");
   if (!host) return;
   try {
-    // Its saves report to the save state in the top bar.
-    await PdtBpmn.render(host, full, { editable: true, report: _mapReport(s.sessionFolder) });
+    // Its saves report to the save state in the top bar; a new copy is kept
+    // at its first change.
+    await PdtBpmn.render(host, full, {
+      editable: true, report: _mapReport(s.sessionFolder),
+      xml: xml == null ? undefined : xml,
+      onChange: () => { _keepCopy().catch((e) => console.error("[refmap-ui] the new copy was not kept:", e)); },
+    });
     setTimeout(() => { try { PdtBpmn.fit && PdtBpmn.fit(); } catch (_) {} }, 60);
   } catch (err) {
     toast("Could not open the map: " + ((err && err.message) || err), "error");
@@ -405,17 +623,44 @@ async function openEditor(id) {
 async function closeEditor() {
   const overlay = $("refmap-editor-overlay");
   if (overlay) overlay.style.display = "none";
+  // Ctrl+Z and Ctrl+Y are the viewer's again (bpmn-viewer.js bound them to
+  // the map while the editor showed).
+  PdtBpmn.unbindKeys();
   _editingId = null;
+  const t = _edit;
+  _edit = null;
   // An edit still waiting for its delayed write is written first, so the
-  // As-Is map drawn from the file shows it.
+  // map drawn from the file shows it.
   await PdtBpmn.flush();
-  // Redraw the process map the overlay covered, so it is laid out at its size.
-  try { _deps.renderLiveMap && _deps.renderLiveMap(); } catch (_) {}
+  if (t && t.kept) {
+    // A new copy: kept when it differs from the process map (or was named
+    // or given a role); one whose changes were all undone is taken back.
+    const dropped = !t.touched && !(await PdtBpmn.changed()) && await _takeBack(t);
+    if (!dropped) { _mapView.which = "map"; _showGallery(true); }
+  }
+  // A new copy never changed left nothing: no row, no file, and the Map
+  // shows what it showed before.
   refresh();
 }
 async function onEditorField(which) {
   const s = session();
   if (!s || !_editingId) return;
+  const t = _edit && _edit.entry.map_id === _editingId ? _edit : null;
+  if (t) t.touched = true;
+  if (t && !t.kept) {
+    // A name or a role given to a new copy keeps it, with them.
+    if (which === "name") {
+      const v = (($("refmap-editor-name") || {}).value || "").trim();
+      if (v) t.entry.name = v;
+    } else if (which === "pdd") {
+      const v = ($("refmap-editor-pdd") || {}).value || null;
+      t.entry.pdd_role = v;
+      if (v) t.entry.kind = v;
+    }
+    await _keepCopy();
+    refresh();
+    return;
+  }
   if (which === "name") {
     const v = ($("refmap-editor-name") || {}).value || "";
     RefStore.rename(s.annotations, _editingId, v);
@@ -560,11 +805,15 @@ function _showGallery(show) {
 }
 
 /* ---- init --------------------------------------------------------------- */
-/* deps = { renderLiveMap, sourceBpmnPath, analyze, mapPath, onAsIsLevel,
-   mainMapName } (renderer.js); analyze resolves true when the session was
-   analyzed and reloaded; mapPath is the level the Map shows (C19), and
-   onAsIsLevel hears the path of names of the plane the As-Is map's own drill
-   down went to; mainMapName names the main map. */
+/* deps = { renderLiveMap, renderMap, liveMap, sourceBpmnPath, analyze,
+   analysisBusy, mapPath, onAsIsLevel, mainMapName } (renderer.js);
+   renderLiveMap draws the live map, renderMap the whole Map level while it
+   shows; liveMap says whether the live map draws ({ locked, drawable });
+   analyze resolves true when the session was analyzed and reloaded, and
+   analysisBusy is true while an analysis is queued or running; mapPath is
+   the level the Map shows (C19), and onAsIsLevel hears the path of names of
+   the plane the picture's own drill down went to; mainMapName names the
+   main map. */
 function initRefmapUI(deps) {
   _deps = deps || {};
   AsIsView.configure({
@@ -581,16 +830,16 @@ function initRefmapUI(deps) {
   });
   const closeBtn = $("btn-refmap-editor-close");
   if (closeBtn) closeBtn.addEventListener("click", () => closeEditor());
-  // V2 item 7: the As-Is map first, read only; Edit beside it; the map from
-  // the runs one click away, and back.
+  // The map the PDD prints first, read only; the As-Is copy's Edit beside
+  // it; how the transactions ran one click away, and back.
   const editAsIs = $("btn-map-asis-edit");
   if (editAsIs) editAsIs.addEventListener("click", () => { const e = _asIsMap(session()); if (e) openEditor(e.map_id); });
   const showRuns = $("btn-map-show-runs");
   if (showRuns) showRuns.addEventListener("click", () => _showMapView("runs"));
-  const showAsIs = $("btn-map-show-asis");
-  if (showAsIs) showAsIs.addEventListener("click", () => _showMapView("asis"));
-  // The Map's fit fits the As-Is map while it shows (map-controller.js fits
-  // the map from the runs).
+  const showMap = $("btn-map-show-map");
+  if (showMap) showMap.addEventListener("click", () => _showMapView("map"));
+  // The Map's fit fits the picture while it shows (map-controller.js fits
+  // the live map).
   const fitBtn = $("btn-session-map-zoom-fit");
   if (fitBtn) fitBtn.addEventListener("click", () => { const box = $("session-map-asis"); if (box && !box.hidden) AsIsView.fit(); });
   const nameInput = $("refmap-editor-name");
@@ -611,4 +860,7 @@ module.exports = {
   // sub-processes, one plane each.
   renderBpmnToPng, renderBpmnToSvg: xmlToSvg, needsAnalyze: _needsAnalyze,
   renderPlanesToPng, renderPlaneToSvg,
+  // Lane MV: the PDD's own run keeps the step map current; the Map's own
+  // analysis while it runs.
+  keepingStepMapCurrent, mapBusy,
 };

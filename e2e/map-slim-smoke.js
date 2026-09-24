@@ -1,15 +1,24 @@
 "use strict";
 /*
- * Map e2e smoke: the Map level's one process map (BA-helper cycle).
+ * Map e2e smoke: the Map level's one process map (BA-helper cycle; lane MV).
  *
  * Launches the REAL viewer four times on re-normalized TEMP copies of the
  * demo and asserts:
- *   (a) the Map shows ONE diagram: the Flow diagram built from the runs'
+ *   (m1) lane MV: the Map opens on the map the PDD prints,
+ *       process_map_step.bpmn drawn by bpmn-js (the live map hidden), under
+ *       one header line ("Process map (the PDD prints this map)", "Show how
+ *       the transactions ran"), with no participant, lane or frame around
+ *       it, and each exclusive gateway with its marker as the editor draws
+ *       it; the link shows how the transactions ran and its way back the
+ *       map again;
+ *   (a) how the transactions ran (the live map, the second view) is ONE
+ *       diagram: the Flow diagram built from the runs'
  *       steps, a node per drafted step name (the node rule), time-weighted
  *       edges with no number drawn on them, and only its own controls (fit,
  *       the edit act, Edited maps): no zoom buttons or percentage, no
  *       rare-path slider, no notation tabs, level select, drill scope, file
- *       status line, Advanced views drawer or BPMN view;
+ *       status line, Advanced views drawer or the product edition's BPMN
+ *       view host;
  *   (b) hovering an edge says in words how often the runs took it and its
  *       time (and hides on mouseout);
  *   (c) every path is drawn: the map's edges are the runs' edges, the
@@ -21,6 +30,20 @@
  *       value rules would cut, the step stays ONE node across the runs (its
  *       name), never an extra node of the cut name, and its grouping label is
  *       the name as typed (the pipeline's rule for a drafted step);
+ *   (m2) lane MV: the step map is now older than the steps, so showing the
+ *       process map again analyzes once (the status line says so), then
+ *       draws the renamed step; the Map shown again analyzes nothing;
+ *   (m3) Edit, then leaving the editor without a change, keeps nothing: no
+ *       reference_maps entry, no file in derived_maps/, annotations.json and
+ *       the step map untouched, and the Map shows the same picture;
+ *   (m4) Edit with a change keeps the copy (the PDD's As-Is map, its file
+ *       carrying the change) and the Map shows it, with its Edit;
+ *   (m5) the map editor's own keys: on the kept copy an edit, then Ctrl+Z,
+ *       is gone (in the editor and its file), Ctrl+Y brings it back, and the
+ *       viewer's own undo does not run underneath (the copy stays,
+ *       annotations.json untouched);
+ *   (m6) a new copy changed, then the change undone with Ctrl+Z before
+ *       leaving, keeps nothing either (its entry and file taken back);
  *   (f) on a marker-STRIPPED copy the map is withheld: the lock message says
  *       why (no runs marked) with the mark-runs instruction, its button lands
  *       on Flow with the Markers panel, and the edit act says why it makes no
@@ -28,12 +51,15 @@
  *   (g) on a copy whose run check failed, the lock says the check could not
  *       run (never "not analyzed yet"), and so does the Overview;
  *   (i) AD-18: a ONE-run copy (the demo cut after its first run) gets its
- *       map and the edit act makes its As-Is map for the PDD; AD-28: the
- *       As-Is map is not a stage of the Overview's What is left line;
+ *       map and the edit act, with a change, makes its As-Is map for the
+ *       PDD; AD-28: the As-Is map is not a stage of the Overview's What is
+ *       left line;
  *   (h) zero PAGE ERRORs across the launches.
  *
- * Screenshots land in this dir (gitignored): map-slim-default.png /
- * map-slim-locked.png. Re-normalizes into TEMP copies (the committed demo
+ * Screenshots land in this dir (gitignored): map-slim-map.png,
+ * map-slim-default.png (how the transactions ran), map-slim-edit-unchanged.png,
+ * map-slim-edit-changed.png, map-slim-locked.png, map-slim-one-run.png.
+ * Re-normalizes into TEMP copies (the committed demo
  * is never regenerated in place) and reuses the viewer's own Electron.
  * Like overview-smoke, a missing deps-bearing Python is a HARD FAIL.
  */
@@ -141,6 +167,67 @@ async function openMapLevel(page) {
   if (btn) { await btn.click().catch(() => {}); await wait(1500); }
 }
 
+/* Lane MV: until the Map's own analysis (and any other queued or running)
+   has ended. */
+async function mapSettled(page) {
+  await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(),
+    null, { timeout: 180000 });
+}
+
+/* The second view, how the transactions ran (the live map), once the Map
+   has settled; the checks that read cytoscape read it there. */
+async function showRuns(page) {
+  await mapSettled(page);
+  const link = page.locator("#btn-map-show-runs");
+  if (await link.isVisible()) await link.click({ timeout: 20000 });
+  await page.waitForFunction(() => {
+    const h = document.getElementById("session-map-dfg-host");
+    return !!(h && h.getClientRects().length && (h.__cy || h.querySelector(".map-empty-inline")));
+  }, null, { timeout: 20000 });
+  await wait(600);
+}
+
+/* The Map's picture and its header line as plain data. */
+const pictureProbe = () => {
+  const $ = (id) => document.getElementById(id);
+  const vis = (el) => !!el && !el.hidden && getComputedStyle(el).display !== "none";
+  const canvas = $("map-asis-canvas");
+  const bv = canvas && canvas.__bpmnViewer;
+  const reg = bv ? bv.get("elementRegistry") : null;
+  const s = require("./state.js").getSession();
+  return {
+    shown: vis($("session-map-asis")) && !!(canvas && canvas.querySelector(".djs-container > svg")),
+    live: vis(document.querySelector("#session-layout-map .map-host")),
+    bar: vis($("map-view-bar")),
+    title: (($("map-view-title") || {}).textContent || "").trim(),
+    note: (($("map-view-note") || {}).textContent || "").trim(),
+    toRuns: vis($("btn-map-show-runs")) ? $("btn-map-show-runs").textContent.trim() : null,
+    toMap: vis($("btn-map-show-map")) ? $("btn-map-show-map").textContent.trim() : null,
+    edit: vis($("btn-map-asis-edit")),
+    why: vis($("map-view-why")) ? $("map-view-why").textContent.trim() : null,
+    root: bv ? bv.get("canvas").getRootElement().type : null,
+    rootId: bv ? bv.get("canvas").getRootElement().id : null,
+    names: reg ? reg.filter((e) => e.businessObject && /Task$/.test(e.type)).map((e) => e.businessObject.name || "").sort() : [],
+    pools: reg ? reg.filter((e) => /Participant|Lane|Group/.test(e.type)).length : null,
+    gateways: reg ? reg.filter((e) => e.type === "bpmn:ExclusiveGateway").map((e) =>
+      canvas.querySelectorAll('.djs-element[data-element-id="' + e.id + '"] .djs-visual path').length) : [],
+    border: canvas ? ["Top", "Right", "Bottom", "Left"].map((k) => getComputedStyle(canvas)["border" + k + "Width"]) : null,
+    outline: canvas ? getComputedStyle(canvas).outlineStyle : null,
+    maps: ((s.annotations || {}).reference_maps || []).map((m) => ({ name: m.name, role: m.pdd_role, file: m.file })),
+  };
+};
+
+/* One change in the map editor (a task renamed), so the new copy is kept;
+   then long enough for its delayed write (600 ms). */
+async function editorChange(page, name) {
+  await page.evaluate((n) => {
+    const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
+    const task = ed.get("elementRegistry").filter((e) => /Task$/.test(e.type))[0];
+    ed.get("modeling").updateLabel(task, n);
+  }, name);
+  await wait(1400);
+}
+
 /* The live map (cytoscape on the host) as plain data: its step boxes (the
    Start and End events, C17, are not steps) and every edge. */
 const mapProbe = () => {
@@ -159,11 +246,15 @@ const lockProbe = () => {
   const host = document.getElementById("session-map-dfg-host");
   const empty = host && host.querySelector(".map-empty-inline");
   const zoom = document.getElementById("session-map-zoom");
+  const vis = (el) => !!el && !el.hidden && getComputedStyle(el).display !== "none";
   return {
     drawn: !!(host && host.__cy),
     text: empty ? (empty.textContent || "").trim() : null,
     cta: !!(empty && empty.querySelector('[data-map-cta="mark-runs"]')),
     zoomHidden: !!(zoom && getComputedStyle(zoom).display === "none"),
+    // Lane MV: while the live map says why, no picture and no header line.
+    picture: vis(document.getElementById("session-map-asis")),
+    bar: vis(document.getElementById("map-view-bar")),
   };
 };
 
@@ -191,6 +282,45 @@ const lockProbe = () => {
 
   await openMapLevel(page);
 
+  // (m1) Lane MV: the Map opens on the map the PDD prints, the step BPMN
+  // drawn by bpmn-js, under one header line, with no pool or frame around it.
+  const STEP_BPMN = path.join(SESSION_MARKED, "process_map_step.bpmn");
+  const m1 = {};
+  try {
+    await mapSettled(page);
+    await page.waitForSelector("#map-asis-canvas .djs-container > svg", { timeout: 30000 });
+    await wait(500);
+    m1.pic = await page.evaluate(pictureProbe);
+    const xml = fs.readFileSync(STEP_BPMN, "utf-8");
+    m1.fileProcess = (/<(?:\w+:)?process\s[^>]*\bid="([^"]+)"/.exec(xml) || [])[1] || null;
+    m1.fileHasPool = /<(?:\w+:)?(?:participant|collaboration|laneSet)\b/.test(xml);
+    await shot(page, "map-slim-map.png");
+    await page.locator("#btn-map-show-runs").click({ timeout: 20000 });
+    await page.waitForFunction(() => { const h = document.getElementById("session-map-dfg-host"); return !!(h && h.__cy && h.getClientRects().length); }, null, { timeout: 20000 });
+    m1.runs = await page.evaluate(pictureProbe);
+    await page.locator("#btn-map-show-map").click({ timeout: 20000 });
+    await page.waitForSelector("#map-asis-canvas .djs-container > svg", { timeout: 20000 });
+    m1.back = await page.evaluate(pictureProbe);
+  } catch (e) { m1.err = String(e.message).split("\n")[0]; }
+  const p1 = m1.pic || {};
+  record("(m1) lane MV: the Map opens on the map the PDD prints (process_map_step.bpmn drawn by bpmn-js, the live map hidden) under one header line, Process map (the PDD prints this map), with Show how the transactions ran",
+    !!(!m1.err && p1.shown && !p1.live && p1.bar && p1.title === "Process map" && p1.note === "(the PDD prints this map)" &&
+      p1.toRuns === "Show how the transactions ran" && !p1.toMap && !p1.edit && !p1.why && p1.rootId === m1.fileProcess && p1.names.length >= 7),
+    JSON.stringify({ err: m1.err, pic: m1.pic && Object.assign({}, p1, { names: p1.names.length }), fileProcess: m1.fileProcess }));
+  record("(m1) lane MV: no participant, lane or frame around the map (the file has none, the canvas root is the process, the canvas has no border or outline); each exclusive gateway shows its marker, as the editor and the PDD draw it",
+    !!(!m1.err && !m1.fileHasPool && p1.pools === 0 && p1.root === "bpmn:Process" &&
+      Array.isArray(p1.border) && p1.border.every((w) => w === "0px") && p1.outline === "none" &&
+      p1.gateways.length >= 1 && p1.gateways.every((n) => n >= 1)),
+    JSON.stringify({ err: m1.err, fileHasPool: m1.fileHasPool, pools: p1.pools, root: p1.root, border: p1.border, outline: p1.outline, gateways: p1.gateways }));
+  const r1 = m1.runs || {}, b1 = m1.back || {};
+  record("(m1) lane MV: Show how the transactions ran shows the live map under its own line (How the transactions ran), and Show the process map brings the map back",
+    !!(!m1.err && !r1.shown && r1.live && r1.bar && r1.title === "How the transactions ran" && /how often it was taken/.test(r1.note) &&
+      r1.toMap === "Show the process map" && !r1.toRuns && b1.shown && !b1.live && b1.title === "Process map"),
+    JSON.stringify({ err: m1.err, runs: { shown: r1.shown, live: r1.live, title: r1.title, note: r1.note, toMap: r1.toMap }, back: { shown: b1.shown, title: b1.title } }));
+
+  // The checks below read the live map: how the transactions ran.
+  await showRuns(page);
+
   // (a) One diagram: the Flow diagram of the runs' steps. The node rule: a
   // drafted step is its own name, so the nodes are exactly the drafted names
   // of the runs' visible steps (the value rules would cut "Salesforce - Order:
@@ -217,11 +347,11 @@ const lockProbe = () => {
       hosts: document.querySelectorAll("#session-layout-map .map-host .map-pane").length,
     };
   }, drawnMap).catch((e) => ({ err: e.message }));
-  record("(a) the Map shows one diagram: the Flow diagram of the runs' steps, a node per drafted step name, time-weighted edges with no number drawn on them",
+  record("(a) how the transactions ran is one diagram: the Flow diagram of the runs' steps, a node per drafted step name, time-weighted edges with no number drawn on them",
     !!(def && !def.err && def.drawn && def.drafted && def.nodesAreNames && def.noArrowLabels && def.countsKept && def.anyTime),
     JSON.stringify(def && { nodes: def.nodes, nodesAreNames: def.nodesAreNames, drafted: def.drafted,
       noArrowLabels: def.noArrowLabels, anyTime: def.anyTime, err: def.err }));
-  record("(a2) only the map's own controls (fit, the edit act, Edited maps): no zoom buttons or percentage, no rare-path slider, no notation tabs, level select, drill scope, file status line, Advanced views or BPMN view",
+  record("(a2) only the map's own controls (fit, the edit act, Edited maps): no zoom buttons or percentage, no rare-path slider, no notation tabs, level select, drill scope, file status line, Advanced views or the product edition's BPMN view host",
     !!(def && !def.err && def.removed === 0 && def.controls.length === 0 && def.hosts === 1),
     JSON.stringify(def && { removed: def.removed, missingControls: def.controls, hosts: def.hosts }));
   if (!(def && def.drawn)) await shot(page, "fail-map-slim-default.png");
@@ -329,6 +459,175 @@ const lockProbe = () => {
       Array.isArray(renamed.stamped) && renamed.stamped.length >= 4 && renamed.stamped.every((x) => x.endsWith(":" + RENAMED))),
     JSON.stringify({ stamped: renamed.stamped, nodes: rn.nodes, starts: renamed.starts, err: renamed.err }));
 
+  // (m2) Lane MV: the rename made the step map older than the steps. The
+  // live view needs no analysis; showing the process map again analyzes once
+  // (the status line says so), then draws the renamed step.
+  const m2 = {};
+  try {
+    m2.before = { stale: fs.statSync(path.join(SESSION_MARKED, "annotations.json")).mtimeMs > fs.statSync(STEP_BPMN).mtimeMs,
+      hasNew: fs.readFileSync(STEP_BPMN, "utf-8").includes(RENAMED) };
+    m2.busyOnRuns = await page.evaluate(() => require("./refmap-ui.js").mapBusy());
+    await page.evaluate(() => {
+      window.__mvPills = [];
+      const pills = document.getElementById("session-pills");
+      window.__mvObs = new MutationObserver(() => {
+        const t = (pills.textContent || "").replace(/\s+/g, " ").trim();
+        if (t && window.__mvPills[window.__mvPills.length - 1] !== t) window.__mvPills.push(t);
+      });
+      window.__mvObs.observe(pills, { childList: true, subtree: true, characterData: true });
+    });
+    await page.locator("#btn-map-show-map").click({ timeout: 20000 });
+    m2.busy = await page.evaluate(() => require("./refmap-ui.js").mapBusy());
+    await mapSettled(page);
+    await page.waitForFunction((n) => {
+      const bv = (document.getElementById("map-asis-canvas") || {}).__bpmnViewer;
+      return !!bv && bv.get("elementRegistry").filter((e) => e.businessObject && e.businessObject.name === n).length > 0;
+    }, RENAMED, { timeout: 30000 });
+    m2.pic = await page.evaluate(pictureProbe);
+    m2.pills = await page.evaluate(() => { window.__mvObs.disconnect(); return window.__mvPills; });
+    m2.after = { hasNew: fs.readFileSync(STEP_BPMN, "utf-8").includes(RENAMED), mtime: fs.statSync(STEP_BPMN).mtimeMs };
+    // Another level and back: nothing to analyze.
+    await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: 20000 });
+    await openMapLevel(page);
+    m2.again = { busy: await page.evaluate(() => require("./refmap-ui.js").mapBusy()), same: fs.statSync(STEP_BPMN).mtimeMs === m2.after.mtime };
+  } catch (e) { m2.err = String(e.message).split("\n")[0]; }
+  record("(m2) lane MV: a step map older than the steps is analyzed when the process map shows (once, the status line says so; never for the live view), then the Map draws the renamed step; shown again, nothing is analyzed",
+    !!(!m2.err && m2.before.stale && !m2.before.hasNew && m2.busyOnRuns === false && m2.busy === true &&
+      m2.pills.some((t) => /^Updating steps and map/.test(t)) && m2.after.hasNew && m2.pic.shown && m2.pic.names.includes(RENAMED) &&
+      m2.again.busy === false && m2.again.same),
+    JSON.stringify({ err: m2.err, before: m2.before, busyOnRuns: m2.busyOnRuns, busy: m2.busy, pills: m2.pills, after: m2.after && { hasNew: m2.after.hasNew }, drawn: m2.pic && m2.pic.names.includes(RENAMED), again: m2.again }));
+
+  // (m3) Lane MV: Edit, then leaving the editor without a change, keeps
+  // nothing, and the Map shows what it showed before.
+  const DERIVED = path.join(SESSION_MARKED, "derived_maps");
+  const derivedFiles = () => (fs.existsSync(DERIVED) ? fs.readdirSync(DERIVED) : []);
+  const m3 = {};
+  try {
+    await mapSettled(page);
+    m3.before = await page.evaluate(pictureProbe);
+    m3.annoBefore = fs.readFileSync(path.join(SESSION_MARKED, "annotations.json"), "utf-8");
+    m3.bpmnBefore = fs.statSync(STEP_BPMN).mtimeMs;
+    await page.locator("#btn-fork-refmap").click({ timeout: 20000 });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: 20000 });
+    await wait(900);
+    m3.editorPdd = await page.locator("#refmap-editor-pdd").inputValue({ timeout: 20000 });
+    await page.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
+    await wait(1200);
+    m3.after = await page.evaluate(pictureProbe);
+    m3.inMemory = await page.evaluate(() => ((require("./state.js").getSession().annotations || {}).reference_maps || []).length);
+    m3.onDisk = (JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "annotations.json"), "utf-8")).reference_maps || []).length;
+    m3.annoSame = fs.readFileSync(path.join(SESSION_MARKED, "annotations.json"), "utf-8") === m3.annoBefore;
+    m3.bpmnSame = fs.statSync(STEP_BPMN).mtimeMs === m3.bpmnBefore;
+    m3.files = derivedFiles();
+    m3.fork = await page.evaluate(() => (document.getElementById("btn-fork-refmap").textContent || "").trim());
+  } catch (e) { m3.err = String(e.message).split("\n")[0]; }
+  await shot(page, "map-slim-edit-unchanged.png");
+  const same = (a, b) => !!a && !!b && a.shown === b.shown && a.title === b.title && a.rootId === b.rootId && JSON.stringify(a.names) === JSON.stringify(b.names);
+  record("(m3) lane MV: Edit, then leaving without a change, keeps nothing (no reference_maps entry in memory or on disk, no file in derived_maps/, annotations.json and the step map untouched), and the Map shows the same picture",
+    !!(!m3.err && m3.editorPdd === "as_is" && m3.inMemory === 0 && m3.onDisk === 0 && m3.files.length === 0 && m3.annoSame && m3.bpmnSame &&
+      same(m3.before, m3.after) && m3.after.title === "Process map" && !m3.after.edit && m3.fork === "Edit as the As-Is map"),
+    JSON.stringify({ err: m3.err, editorPdd: m3.editorPdd, inMemory: m3.inMemory, onDisk: m3.onDisk, files: m3.files, annoSame: m3.annoSame,
+      bpmnSame: m3.bpmnSame, before: m3.before && m3.before.title, after: m3.after && m3.after.title, same: same(m3.before, m3.after), fork: m3.fork }));
+
+  // (m4) Lane MV: Edit with a change keeps the copy, and the Map shows it.
+  const EDITED = "Look up the customer, edited in the map";
+  const m4 = {};
+  try {
+    await page.locator("#btn-fork-refmap").click({ timeout: 20000 });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: 20000 });
+    await wait(900);
+    await editorChange(page, EDITED);
+    await page.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
+    await page.waitForFunction((n) => {
+      const bv = (document.getElementById("map-asis-canvas") || {}).__bpmnViewer;
+      return !!bv && bv.get("elementRegistry").filter((e) => e.businessObject && e.businessObject.name === n).length > 0;
+    }, EDITED, { timeout: 30000 });
+    await wait(500);
+    m4.pic = await page.evaluate(pictureProbe);
+    const anno = JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "annotations.json"), "utf-8"));
+    m4.onDisk = (anno.reference_maps || []).map((m) => ({ name: m.name, role: m.pdd_role, file: m.file }));
+    m4.files = derivedFiles();
+    m4.fileHasEdit = m4.onDisk.length === 1 && fs.readFileSync(path.join(SESSION_MARKED, m4.onDisk[0].file), "utf-8").includes(EDITED);
+  } catch (e) { m4.err = String(e.message).split("\n")[0]; }
+  await shot(page, "map-slim-edit-changed.png");
+  const p4 = m4.pic || {};
+  record("(m4) lane MV: Edit with a change keeps the copy (one reference_maps entry, the PDD's As-Is map, its one file in derived_maps/ carrying the change), and the Map shows it: As-Is map (edited; the PDD prints this map), with its Edit",
+    !!(!m4.err && JSON.stringify(m4.onDisk.map((m) => [m.name, m.role])) === '[["As-Is map","as_is"]]' && m4.files.length === 1 &&
+      m4.onDisk[0].file === "derived_maps/" + m4.files[0] && m4.fileHasEdit &&
+      p4.shown && p4.title === "As-Is map" && p4.note === "(edited; the PDD prints this map)" && p4.edit && p4.names.includes(EDITED)),
+    JSON.stringify({ err: m4.err, onDisk: m4.onDisk, files: m4.files, fileHasEdit: m4.fileHasEdit, pic: { shown: p4.shown, title: p4.title, note: p4.note, edit: p4.edit } }));
+
+  // (m5) Lane MV: the map editor's own keys. On the kept As-Is copy, an
+  // edit, then Ctrl+Z: the edit is gone (in the editor and in its file) and
+  // the copy stays (the viewer's own undo does not run underneath).
+  const ANNO_MARKED = path.join(SESSION_MARKED, "annotations.json");
+  const UNDONE = "An edit undone with Ctrl+Z";
+  const inEditor = (n) => page.evaluate((name) => {
+    const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
+    return ed.get("elementRegistry").filter((e) => e.businessObject && e.businessObject.name === name).length;
+  }, n);
+  const mapsNow = () => page.evaluate(() => ((require("./state.js").getSession().annotations || {}).reference_maps || [])
+    .map((m) => m.name + ":" + (m.pdd_role || "none")));
+  const mapsOnDisk = () => (JSON.parse(fs.readFileSync(ANNO_MARKED, "utf-8")).reference_maps || []).map((m) => m.name + ":" + (m.pdd_role || "none"));
+  const m5 = {};
+  try {
+    const copyFile = path.join(SESSION_MARKED, (m4.onDisk && m4.onDisk[0] && m4.onDisk[0].file) || "derived_maps/none.bpmn");
+    m5.annoBefore = fs.readFileSync(ANNO_MARKED, "utf-8");
+    await page.locator("#btn-map-asis-edit").click({ timeout: 20000 });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 20000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: 20000 });
+    await wait(800);
+    await editorChange(page, UNDONE);
+    m5.edited = { editor: await inEditor(UNDONE), file: fs.readFileSync(copyFile, "utf-8").includes(UNDONE) };
+    await page.keyboard.press("Control+Z");
+    await wait(1400);   // the editor writes the undo too, after its delay
+    m5.undone = { editor: await inEditor(UNDONE), file: fs.readFileSync(copyFile, "utf-8").includes(UNDONE), back: await inEditor(EDITED) };
+    m5.maps = await mapsNow();
+    m5.onDisk = mapsOnDisk();
+    m5.annoSame = fs.readFileSync(ANNO_MARKED, "utf-8") === m5.annoBefore;
+    await page.keyboard.press("Control+Y");
+    await wait(300);
+    m5.redone = await inEditor(UNDONE);
+    await page.keyboard.press("Control+Z");
+    await wait(1400);
+    await page.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
+    await wait(1000);
+    m5.after = await page.evaluate(pictureProbe);
+  } catch (e) { m5.err = String(e.message).split("\n")[0]; }
+  record("(m5) lane MV: in the map editor, Ctrl+Z undoes the map's own edit (gone in the editor and in the copy's file) and Ctrl+Y redoes it; the viewer's undo does not run underneath: the As-Is copy stays, in memory and on disk, and annotations.json is untouched",
+    !!(!m5.err && m5.edited.editor === 1 && m5.edited.file && m5.undone.editor === 0 && !m5.undone.file && m5.undone.back === 1 &&
+      m5.redone === 1 && JSON.stringify(m5.maps) === '["As-Is map:as_is"]' && JSON.stringify(m5.onDisk) === '["As-Is map:as_is"]' && m5.annoSame &&
+      m5.after.shown && m5.after.title === "As-Is map" && m5.after.names.includes(EDITED) && !m5.after.names.includes(UNDONE)),
+    JSON.stringify({ err: m5.err, edited: m5.edited, undone: m5.undone, redone: m5.redone, maps: m5.maps, onDisk: m5.onDisk, annoSame: m5.annoSame,
+      after: m5.after && { title: m5.after.title, edited: m5.after.names.includes(EDITED), undone: m5.after.names.includes(UNDONE) } }));
+
+  // (m6) Lane MV: a new copy (Edit a new copy) changed, then the change
+  // undone with Ctrl+Z before leaving: nothing is kept either.
+  const m6 = {};
+  try {
+    m6.before = { maps: mapsOnDisk(), files: derivedFiles() };
+    m6.label = await page.evaluate(() => (document.getElementById("btn-fork-refmap").textContent || "").trim());
+    await page.locator("#btn-fork-refmap").click({ timeout: 20000 });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: 20000 });
+    await wait(800);
+    await editorChange(page, "A change taken back");
+    m6.whileEdited = await mapsNow();
+    await page.keyboard.press("Control+Z");
+    await wait(1400);
+    await page.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
+    await wait(1500);
+    m6.after = { maps: await mapsNow(), onDisk: mapsOnDisk(), files: derivedFiles(), pic: await page.evaluate(pictureProbe) };
+  } catch (e) { m6.err = String(e.message).split("\n")[0]; }
+  record("(m6) lane MV: a new copy changed, then the change undone with Ctrl+Z before leaving, keeps nothing (its entry and its file taken back); the As-Is copy stays and shows",
+    !!(!m6.err && m6.label === "Edit a new copy" && JSON.stringify(m6.whileEdited) === '["As-Is map:as_is","To-Be map:none"]' &&
+      JSON.stringify(m6.after.maps) === '["As-Is map:as_is"]' && JSON.stringify(m6.after.onDisk) === '["As-Is map:as_is"]' &&
+      JSON.stringify(m6.after.files) === JSON.stringify(m6.before.files) && m6.after.pic.title === "As-Is map"),
+    JSON.stringify({ err: m6.err, label: m6.label, before: m6.before, whileEdited: m6.whileEdited,
+      after: m6.after && { maps: m6.after.maps, onDisk: m6.after.onDisk, files: m6.after.files, title: m6.after.pic.title } }));
+
   await close();
 
   // ================= Launch 2: the marker-stripped copy (no runs) ==========
@@ -341,8 +640,8 @@ const lockProbe = () => {
   }
   await openMapLevel(page2);
   const locked = await page2.evaluate(lockProbe).catch((e) => ({ err: e.message }));
-  record("(f) no transactions marked: the map is withheld with the lock message (why + the mark-transactions instruction + its button)",
-    !!(locked && !locked.err && !locked.drawn && locked.zoomHidden &&
+  record("(f) no transactions marked: the map is withheld with the lock message (why + the mark-transactions instruction + its button), and no picture or header line shows",
+    !!(locked && !locked.err && !locked.drawn && locked.zoomHidden && !locked.picture && !locked.bar &&
       /^The process map is not shown because it draws how the transactions flow\./.test(locked.text || "") &&
       /This recording has no transactions marked\./.test(locked.text || "") &&
       /right-click where each transaction starts and choose Start a transaction here/i.test(locked.text || "") && locked.cta),
@@ -411,10 +710,17 @@ const lockProbe = () => {
   try {
     one.runs = await page4.evaluate(() => ((require("./state.js").getSession().analysis || {}).case_quality || {}).case_count);
     await openMapLevel(page4);
+    await mapSettled(page4);
+    await page4.waitForSelector("#map-asis-canvas .djs-container > svg", { timeout: 30000 });
+    one.picture = await page4.evaluate(pictureProbe);
+    await showRuns(page4);
     one.map = await page4.evaluate(lockProbe);
     await page4.locator("#btn-fork-refmap").click({ timeout: 20000 });
     await page4.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page4.waitForSelector("#refmap-editor-host .djs-container", { timeout: 20000 });
     await wait(800);
+    // Lane MV: a copy is kept at its first change.
+    await editorChange(page4, "Look up the customer");
     one.copy = await page4.evaluate(() => {
       const maps = ((require("./state.js").getSession().annotations || {}).reference_maps || []);
       return maps.map((m) => ({ name: m.name, role: m.pdd_role }));
@@ -426,8 +732,9 @@ const lockProbe = () => {
     one.done = await page4.evaluate(() => [...document.querySelectorAll("#ov-next .ov-next-stage.done")].map((e) => e.dataset.stage));
   } catch (e) { one.err = String(e.message).split("\n")[0]; }
   await shot(page4, "map-slim-one-run.png");
-  record("(i) AD-18: a one-run recording gets its map and the edit act makes its As-Is map for the PDD; AD-28: the line has no As-Is stage",
-    !!(!one.err && one.runs === 1 && one.map && one.map.drawn && one.map.text === null &&
+  record("(i) AD-18: a one-run recording gets its map (the process map, and how its one transaction ran) and the edit act, with a change, makes its As-Is map for the PDD; AD-28: the line has no As-Is stage",
+    !!(!one.err && one.runs === 1 && one.picture && one.picture.shown && one.picture.title === "Process map" &&
+      one.map && one.map.drawn && one.map.text === null &&
       JSON.stringify(one.copy) === JSON.stringify([{ name: "As-Is map", role: "as_is" }]) &&
       JSON.stringify(one.stages) === JSON.stringify(["runs", "pattern", "review", "document", "export"]) &&
       Array.isArray(one.done) && one.done.includes("runs")),

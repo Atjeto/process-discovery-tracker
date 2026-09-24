@@ -190,38 +190,47 @@ The viewer says *transaction* for one pass through the process and
 
 **Map**
 
-- **The process map** drawn from the transactions' steps, left to right,
-  from a Start to an End circle, each box naming its system, the arrows
-  weighted by the time along them (hover one for how often the
-  transactions took it and its times, in words). The flow set in Steps
-  shows too: the conditions on their lines, and a dashed line for a path no
+- **The map the PDD prints, first**: the process map drawn from the
+  transactions' steps as BPMN (each system in its colour with a legend, the
+  decisions as gateways, the notes and files beside their steps), or the
+  edited As-Is map once there is one, under one line that says which
+  ("Process map (the PDD prints this map)", "As-Is map (edited; the PDD
+  prints this map)"). It is linked: a task opens the step panel on its
+  step, a file opens its attachment, a note shows its whole text. After a
+  change to the steps the Map updates the process map first, once, keeping
+  the picture meanwhile; one line says why when it cannot be drawn.
+- **How the transactions ran**, one click away (and back): the same steps
+  left to right from a Start to an End circle, each box naming its system,
+  the arrows weighted by the time along them (hover one for how often the
+  transactions took it and its times, in words). The flow set in Steps shows
+  too: the conditions on their lines, and a dashed line for a path no
   transaction took.
 - **Edit as the As-Is map**: an editable BPMN copy for the PDD (and a To-Be
-  copy). An analysis never changes a copy; a copy made before the step map
-  had its colours, notes and attachments offers *Copy again* for them.
-- **The As-Is map, linked**: the chosen copy shows first, drawn as the PDD
-  prints it. A task opens the step panel on its step, a file opens its
-  attachment, a note shows its whole text.
+  copy), kept once something is changed in it: leaving the editor without a
+  change keeps nothing. An analysis never changes a copy; a copy made before
+  the step map had its colours, notes and attachments offers *Copy again*
+  for them.
 - **A map per sub-process**: with a sub-process in the project, *Map:
   <name>* picks the map shown, the main process or any sub-process (each
   with its number, as the PDD numbers its chapter), and Steps shows the same
-  level. A sub-process's box carries a +: a click opens the step panel, a
-  double-click its map. The As-Is map shows the same sub-process, and its
-  own drill down moves the picker too; a copy made before the sub-process
-  existed says it has none, and the map from the transactions shows.
+  level. The picture shows that sub-process's map (the As-Is map's when it
+  has one, else the process map's, as the PDD prints it), and its own drill
+  down moves the picker too. On how the transactions ran, a sub-process's
+  box carries a +: a click opens the step panel, a double-click its map.
 
 **Everywhere**
 
-- **The step panel**: from a map box, an As-Is task, a timeline step band
-  or a Steps row, every occurrence of the step with its moment in a small
+- **The step panel**: from a task of the map (or a box of how the
+  transactions ran), a timeline step band or a Steps row, every occurrence of the step with its moment in a small
   video, its screenshots, what was said and its notes, and its flow in one
   line when one is set.
 - **Saved as you go**: every change saves itself to the project folder, and
   the top bar says *Saved* (the time and the folder on hover), *Saving...*
   or *Not saved* with the reason.
 - **Export**: the PDD (with a picture of each sub-process's map in its
-  chapter), the process map as an image (SVG, the picture the PDD prints, of
-  the map the Map shows) and as BPMN (one file with every map), and the
+  chapter), the process map as an image (SVG, the picture the PDD prints and
+  the Map shows first, of the level the Map shows) and as BPMN (one file
+  with every map), and the
   *Whole project (.zip)*: one zip of the folder, next to it, to hand the
   project to someone. Every export opens its folder with the file selected.
 - **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
