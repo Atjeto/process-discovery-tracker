@@ -691,8 +691,10 @@ async function unreadableAnnotationsPin() {
   if (!videoBandOk) await shot(page, "fail-video-collapse.png");
 
   // --- P1.6 + AD-17 / F4 / P1.1: Flow's side panel --------------------------
-  // The Notes tab and its lane are gone (notes never reached the PDD);
-  // Screenshots is the panel's first and default tab, next to Markers. The
+  // The Notes tab and its note field are gone (AD-17); notes pinned to a
+  // moment came back as a lane (AD-27, C16), listed only while such a note
+  // exists (none here). Screenshots is the panel's first and default tab,
+  // next to Markers. The
   // thumbnails show local time, the timeline's and the markers' clock (F4).
   // The shortcuts overlay is gone from every level (Help keeps the list).
   const sidePanel = await page.evaluate(() => {
@@ -708,7 +710,8 @@ async function unreadableAnnotationsPin() {
     return {
       tabs,
       screensShown: !!(screens && getComputedStyle(screens).display !== "none"),
-      notesGone: document.querySelectorAll('.anno-tab[data-anno="notes"], .anno-panel[data-panel="notes"], #anno-note, #btn-save-note, #annotations-list, #lanes-popup input[data-lane="notes"]').length === 0,
+      notesGone: document.querySelectorAll('.anno-tab[data-anno="notes"], .anno-panel[data-panel="notes"], #anno-note, #btn-save-note, #annotations-list').length === 0 &&
+        !!document.getElementById("lane-notes-row") && document.getElementById("lane-notes-row").hidden,
       overlayGone: !document.getElementById("shortcuts-overlay") && !document.querySelector(".kbd-hint"),
       stamps, localStamps: shots.map((e) => local(e.timestamp)),
       utcStamps: shots.map((e) => String(e.timestamp).slice(11, 19)),
@@ -718,7 +721,7 @@ async function unreadableAnnotationsPin() {
   const panelOk = !!(sidePanel && !sidePanel.err &&
     JSON.stringify(sidePanel.tabs) === JSON.stringify([{ anno: "screens", active: true }, { anno: "markers", active: false }]) &&
     sidePanel.screensShown && sidePanel.notesGone && sidePanel.overlayGone);
-  record("P1.6 (AD-17) + P1.1: Flow's side panel opens on Screenshots next to Markers; no Notes tab, note field or note lane; no shortcuts overlay",
+  record("P1.6 (AD-17, AD-27) + P1.1: Flow's side panel opens on Screenshots next to Markers; no Notes tab or note field, and no Notes lane without a note pinned to a moment; no shortcuts overlay",
     panelOk, JSON.stringify(sidePanel && { tabs: sidePanel.tabs, screensShown: sidePanel.screensShown,
       notesGone: sidePanel.notesGone, overlayGone: sidePanel.overlayGone, err: sidePanel.err }));
   const stampsOk = !!(sidePanel && !sidePanel.err && sidePanel.stamps.length > 0 &&

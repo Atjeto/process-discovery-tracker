@@ -160,4 +160,10 @@ function _derivedWhere(step, interactionsById, names) {
   return (a || t) ? whereData(a, t, names) : { system: "", screen: "" };
 }
 
-module.exports = { appKey, displayName, systemName, screenOf, whereData, whereOfStep, fallbackName };
+/* Every system the shared list names, each once, in its order (the step
+   pane's System field offers them, C16). */
+function knownSystems() {
+  return [...new Set(RULES.map((r) => r.system))];
+}
+
+module.exports = { appKey, displayName, systemName, screenOf, whereData, whereOfStep, fallbackName, knownSystems };

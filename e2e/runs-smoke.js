@@ -513,7 +513,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         hidden: [R2, R4].map((r) => (outlookOf(hideAll.disk, r)[0] || {}).state), undone: [R2, R4].map((r) => (outlookOf(hideAll.undone, r)[0] || {}).state) }));
     if (!okAll) await shot(page, "fail-runs-hide-all.png");
 
-    // + Add step lands in the open run after the selected step: an add; deleting it takes the add back.
+    // + Add step lands in the open run: an add; deleting it takes the add back.
+    // C16: a step added by hand has no time; it follows the run's timed steps.
     let err5 = null, added = null, addedDisk = null;
     try {
       await rowById(searchIds[R1]).click({ timeout: T });
@@ -523,7 +524,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await waitRows(R1, 7);
       await waitFixes(fx(1, 0, 1, 0));
       const g1 = await group(R1);
-      added = { index: g1.rows.findIndex((r) => r.name === "Check the stock"), row: g1.rows.find((r) => r.name === "Check the stock") };
+      added = { index: g1.rows.findIndex((r) => r.name === "Check the stock"), rows: g1.rows.length,
+        row: g1.rows.find((r) => r.name === "Check the stock") };
       addedDisk = (await waitDisk(ANNO, (a) => (a.steps || []).some((s) => s.name === "Check the stock")))
         .steps.find((s) => s.name === "Check the stock");
       await page.locator(".step-detail-more > summary").click({ timeout: T });
@@ -532,13 +534,12 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await waitRows(R1, 6);
       await waitFixes(fx(1, 0, 0, 0));
     } catch (e) { err5 = errText(e); }
-    const searchStep = stepsOf(pre, R1)[0];
-    const ok5 = !err5 && added && added.index === 1 && added.row.chip === "Added" && addedDisk &&
+    const ok5 = !err5 && added && added.index === added.rows - 1 && added.row.chip === "Added" && addedDisk &&
       addedDisk.case_id === R1 && addedDisk.state === "manually_authored" &&
-      addedDisk.time_range.start === new Date(searchStep.time_range.end).toISOString() &&
-      Date.parse(addedDisk.time_range.end) <= Date.parse(stepsOf(pre, R1)[1].time_range.start);
-    record("C3: + Add step lands in the open run right after the selected step (Added chip, run 1, ends before the next step) and counts an add; deleting it takes the add back",
-      ok5, JSON.stringify({ err: err5, added, disk: addedDisk && { case_id: addedDisk.case_id, state: addedDisk.state, time_range: addedDisk.time_range } }));
+      addedDisk.time_range === null && addedDisk.order === 1;
+    record("C3 + C16: + Add step lands in the open run as a step without a time (Added chip, run 1, order 1, after the run's timed steps) and counts an add; deleting it takes the add back",
+      ok5, JSON.stringify({ err: err5, added, disk: addedDisk && { case_id: addedDisk.case_id, state: addedDisk.state,
+        time_range: addedDisk.time_range, order: addedDisk.order } }));
     if (!(ok4 && ok5)) await shot(page, "fail-runs-fixes.png");
   }
 

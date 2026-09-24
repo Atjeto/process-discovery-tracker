@@ -150,6 +150,42 @@ function saveTranscriptSync(payload) {
   return ipcRenderer.invoke("viewer:saveTranscriptSync", payload);
 }
 
+/* ---- Projects without a recording, and what the analyst adds (C16) ---- */
+
+/** Choose a new project: the video (kind "video"), then its name and folder.
+ *  @param {{kind: "video"|"blank"}} payload
+ *  @returns {Promise<null|{ok: boolean, name?: string, folder?: string, error?: string}>} null when cancelled */
+function chooseNewProject(payload) {
+  return ipcRenderer.invoke("viewer:chooseNewProject", payload);
+}
+
+/** Make the project chosen last.
+ *  @returns {Promise<{ok: boolean, folder?: string, error?: string}>} */
+function createProject() {
+  return ipcRenderer.invoke("viewer:createProject");
+}
+
+/** Add a screenshot (source "file" asks for it; "video_frame" and "paste" pass `data`, base64).
+ *  @param {{sessionFolder: string, source: string, data?: string}} payload
+ *  @returns {Promise<null|{ok: boolean, id?: string, file?: string, error?: string}>} null when cancelled */
+function addScreenshot(payload) {
+  return ipcRenderer.invoke("viewer:addScreenshot", payload);
+}
+
+/** Attach a file (an open dialog, then a copy into attachments/).
+ *  @param {{sessionFolder: string}} payload
+ *  @returns {Promise<null|{ok: boolean, file?: string, label?: string, error?: string}>} null when cancelled */
+function addAttachment(payload) {
+  return ipcRenderer.invoke("viewer:addAttachment", payload);
+}
+
+/** Open an attachment (or show it in its folder).
+ *  @param {{sessionFolder: string, file: string}} payload
+ *  @returns {Promise<{ok: boolean, shown?: boolean, error?: string}>} */
+function openAttachment(payload) {
+  return ipcRenderer.invoke("viewer:openAttachment", payload);
+}
+
 /* ---- Main -> renderer subscriptions ---- */
 
 /** @param {Function} fn called with each streamed normalization log line */
@@ -171,5 +207,6 @@ module.exports = {
   exportFile, saveSvgFile, revealFile, openExternal,
   attachExternalVideo, saveExternalVideoSync,
   importTranscript, removeTranscript, saveTranscriptSync,
+  chooseNewProject, createProject, addScreenshot, addAttachment, openAttachment,
   onNormalizeLog, onOpenInitialSession,
 };

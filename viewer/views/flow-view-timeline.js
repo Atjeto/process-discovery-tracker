@@ -25,7 +25,8 @@ const TimelineCore = require("../timeline/timeline-core.js");
 const State = require("../state.js");
 const { $, formatDuration, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
-const { seekToTimestamp } = require("./flow-view-video.js");
+const { seekToTimestamp, timelineSpan, attachVideo } = require("./flow-view-video.js");
+const AC = require("../analyst-content.js");
 const MarkerEdits = require("../marker-edits.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
@@ -160,11 +161,11 @@ function renderMinimap() {
   const scroll = document.getElementById("timeline-scroll");
   if (!mm || !scroll || !State.getSession() || !State.getSession().events) return;
   const evs = State.getSession().events;
-  if (!evs.length || !(State.getZoomFactor() > 1)) { mm.style.display = "none"; mm.innerHTML = ""; return; }
+  const sp = timelineSpan();
+  if (!sp || !(State.getZoomFactor() > 1)) { mm.style.display = "none"; mm.innerHTML = ""; return; }
   mm.style.display = "";
-  const first = new Date(evs[0].timestamp).getTime();
-  const last  = new Date(evs[evs.length - 1].timestamp).getTime();
-  const span  = Math.max(1, last - first);
+  const first = sp.startMs;
+  const span  = Math.max(1, sp.endMs - first);
   // Build / reset content.
   mm.innerHTML = "";
   // Activity bands (compressed). Skip very short ones for clarity.
@@ -283,7 +284,12 @@ function syncMinimapViewport() {
 
 function renderTimelineSummary() {
   const evs = State.getSession().events;
-  if (!evs.length) { $("#timeline-summary").textContent = ""; return; }
+  if (!evs.length) {
+    // A video project (C16): the Timeline follows its video.
+    const sp = timelineSpan();
+    $("#timeline-summary").textContent = sp ? "Video · " + formatDuration(sp.endMs - sp.startMs) : "";
+    return;
+  }
   const first = new Date(evs[0].timestamp);
   const last = new Date(evs[evs.length - 1].timestamp);
   // The one place the time of day shows: the recording's date and start.
@@ -351,6 +357,43 @@ function _showStepBandMenu(x, y, stepId, ts) {
   }, 0);
 }
 
+/* A small context menu at (x, y): items = [[label, act], ...] (the notes
+   lane's). The same look and dismissal as the menus above. */
+function _menu(x, y, items) {
+  const prior = document.getElementById("tl-ctx-menu");
+  if (prior) prior.remove();
+  const menu = document.createElement("div");
+  menu.id = "tl-ctx-menu";
+  menu.style.cssText = "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
+    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
+    "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:160px;cursor:default;user-select:none;";
+  const close = () => {
+    menu.remove();
+    document.removeEventListener("mousedown", dismiss, true);
+    document.removeEventListener("keydown", dismiss, true);
+  };
+  const dismiss = (e) => {
+    if (e.type === "keydown" && e.key !== "Escape") return;
+    if (e.type === "mousedown" && menu.contains(e.target)) return;
+    close();
+  };
+  for (const [label, act] of items) {
+    const item = document.createElement("div");
+    item.textContent = label;
+    item.style.cssText = "padding:6px 14px;cursor:pointer;";
+    item.addEventListener("mouseenter", () => { item.style.background = "var(--accent)"; });
+    item.addEventListener("mouseleave", () => { item.style.background = ""; });
+    item.addEventListener("click", () => { close(); act(); });
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+  placeMenu(menu, x, y);
+  setTimeout(() => {
+    document.addEventListener("mousedown", dismiss, true);
+    document.addEventListener("keydown", dismiss, true);
+  }, 0);
+}
+
 /* P2.D / R1 timeline-defaults pass: lane visibility. The timeline's job is
    find-the-moment (DISCLOSURE-MODEL "Flow / Steps / Phases" = Evidence), so a
    fresh profile opens with only the apps/activity lane (always on, no toggle)
@@ -368,6 +411,8 @@ const LANE_DEFAULTS = {
   idle: true, screenshots: false, cases: true, steps: true,
   // C8: exists only while a transcript is attached; on when it does.
   transcript: true,
+  // C16: exists only while a note is pinned to a moment; on when one is.
+  notes: true,
 };
 function getLaneToggles() {
   try {
@@ -406,14 +451,31 @@ function renderTimeline() {
   const host = $("#timeline");
   host.innerHTML = "";
   const evs = State.getSession().events;
-  if (!evs.length) {
+  // C16: the notes pinned to a moment; the Lanes menu lists their lane only
+  // while there are some.
+  const allNotes = AC.momentNotes((State.getSession().annotations || {}).analyst_notes);
+  const notesRow = document.getElementById("lane-notes-row");
+  if (notesRow) notesRow.hidden = !allNotes.length;
+  const sp = timelineSpan();
+  // The legend explains marks; with nothing drawn there is nothing to explain.
+  const legend = document.getElementById("timeline-legend");
+  if (legend) legend.style.display = sp ? "" : "none";
+  if (!sp) {
     const mm = document.getElementById("timeline-minimap");
     if (mm) mm.style.display = "none";
+    // A session with nothing recorded and no video says so, in one line.
+    if (!evs.length && !State.getSession().recordingAvailable) {
+      host.style.width = "";
+      host.style.minHeight = "";
+      host.innerHTML = '<div class="tl-empty" id="tl-empty">No recording and no video in this session. ' +
+        '<button type="button" class="link-btn" id="btn-tl-attach-video" title="Attach a video of the process: the Timeline then follows it.">Attach video...</button></div>';
+      host.querySelector("#btn-tl-attach-video").addEventListener("click", () => attachVideo());
+    }
     return;
   }
   const lanes = getLaneToggles();
-  const first = new Date(evs[0].timestamp).getTime();
-  const last = new Date(evs[evs.length - 1].timestamp).getTime();
+  const first = sp.startMs;
+  const last = sp.endMs;
   const span = Math.max(1, last - first);
   // One clock (AD-26): the axis, the tooltips and the screenshots read the
   // time since the recording started.
@@ -456,9 +518,13 @@ function renderTimeline() {
   // render and (with gapBefore) collapses the spacing. These mirror the
   // pre-core geometry; gapBefore values below reproduce the lane cascade.
   const casesH = lanes.cases ? caseLanes.lanesNeeded * caseRowH : 0;
-  const activityH = 60;
+  // A video project (C16) has no activity bands: a low lane keeps the
+  // pending marker bars and a place to right-click.
+  const activityH = evs.length ? 60 : 28;
   const screenshotsH = lanes.screenshots ? 26 : 0;
   const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
+  const notes = allNotes.filter((n) => { const t = Date.parse(n.at); return t >= first && t <= last; });
+  const notesH = (lanes.notes && notes.length) ? 18 : 0;
 
   // The systems drawn on the activity lane feed the legend (each with the
   // application its bands came from, for the colour); the case scope range
@@ -797,12 +863,39 @@ function renderTimeline() {
     },
   };
 
+  // ===== Notes lane (C16) =====
+  // A note pinned to a moment: click goes there, right-click edits or deletes.
+  const notesLane = {
+    key: "notes",
+    height: notesH,
+    gapBefore: 4,
+    render(host, ctx) {
+      for (const n of notes) {
+        const pin = document.createElement("div");
+        pin.className = "tl-note";
+        pin.dataset.noteId = n.id;
+        pin.style.left = "calc(" + (((Date.parse(n.at) - first) / span) * 100) + "% - 7px)";
+        pin.style.top = (ctx.slot.top + 2) + "px";
+        pin.textContent = "✎";
+        pin.title = "Note at " + sinceStart(n.at, origin) + "\n" + n.text + "\nClick: go to this moment. Right-click: edit or delete it.";
+        pin.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(n.at); });
+        pin.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const UI = require("./analyst-ui.js");   // lazy: it requires this module
+          _menu(e.clientX, e.clientY, [["Edit note…", () => UI.editNote(n.id)], ["Delete note", () => UI.deleteNote(n.id)]]);
+        });
+        host.appendChild(pin);
+      }
+    },
+  };
+
   // Stack and render every lane through the shared timeline core. The core
   // owns the vertical layout maths, the zoom width, and the minHeight; each
   // lane plugin owns its own DOM. tailPx (14) + the 120 floor reproduce the
   // pre-core host.style.minHeight.
   TimelineCore.renderLaneStack(host, {
-    lanes: [ticksLane, casesLane, activityLane, transcriptLane, screenshotsLane, stepsLane],
+    lanes: [ticksLane, casesLane, activityLane, transcriptLane, notesLane, screenshotsLane, stepsLane],
     span: { startMs: first, endMs: last },
     zoom: State.getZoomFactor(),
     tailPx: 14,
@@ -814,9 +907,10 @@ function renderTimeline() {
   // hidden (a pending marker is drawn whatever its lane says).
   renderLegend(observedApps);
   const legendShows = {
-    ".lg-idle": !!lanes.idle,
+    ".lg-idle": !!lanes.idle && evs.length > 0,
     ".lg-marker": markerRows.some((m) => m.pending),
-    ".lg-screenshot": !!lanes.screenshots,
+    ".lg-screenshot": !!lanes.screenshots && evs.length > 0,
+    ".lg-note": notesH > 0,
   };
   for (const [sel, on] of Object.entries(legendShows)) {
     const el = document.querySelector("#timeline-legend " + sel);

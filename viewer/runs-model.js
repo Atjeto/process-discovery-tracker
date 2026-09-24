@@ -64,12 +64,24 @@ function _ms(iso) {
 function stepStartMs(s) { return _ms(s && s.time_range && s.time_range.start); }
 function stepEndMs(s) { return _ms(s && s.time_range && s.time_range.end); }
 
-/* Time order, stable on ties (step_id breaks them). A step without a readable
-   start sorts last. */
+/* A step's place in its run (contract C16, the pipeline's step_sort_key):
+   [0, start] for a step with a time, [1, order] for a step without one that
+   has an order, [2, 0] for a step with neither. */
+function _placeKey(s) {
+  const t = stepStartMs(s);
+  if (Number.isFinite(t)) return [0, t];
+  const o = s && s.order;
+  return typeof o === "number" && Number.isFinite(o) ? [1, o] : [2, 0];
+}
+
+/* The order of a run's steps: the steps with a time in time order (step_id
+   breaks a tie), then the steps without one by their `order`, then any step
+   with neither in list order (the sort is stable). */
 function byStart(a, b) {
-  const x = stepStartMs(a), y = stepStartMs(b);
-  const xs = Number.isFinite(x) ? x : Infinity, ys = Number.isFinite(y) ? y : Infinity;
-  if (xs !== ys) return xs < ys ? -1 : 1;
+  const x = _placeKey(a), y = _placeKey(b);
+  if (x[0] !== y[0]) return x[0] - y[0];
+  if (x[1] !== y[1]) return x[1] < y[1] ? -1 : 1;
+  if (x[0] !== 0) return 0;
   return String((a && a.step_id) || "").localeCompare(String((b && b.step_id) || ""));
 }
 
@@ -105,7 +117,8 @@ function buildRuns(stats, steps) {
       .map((c) => {
         const startMs = _ms(c.start_ts);
         const endMs = _ms(c.end_ts);
-        const wall = Number(c.wall_clock_ms);
+        // An open run (C16: the implicit run, a run with no end) has none: null is not 0.
+        const wall = c.wall_clock_ms == null ? NaN : Number(c.wall_clock_ms);
         return {
           caseId: c.case_id,
           label: typeof c.label === "string" ? c.label.trim() : "",

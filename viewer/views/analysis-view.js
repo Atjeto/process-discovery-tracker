@@ -72,11 +72,16 @@ function _fieldName(data) {
 
 /* The re-keyed data as lines, per field where the events allow. Returns
    { status, lines }: status "not-run" when the findings stage failed (C12:
-   said, never read as "none"), "none" when nothing was typed twice, else
-   "ok". Pure. */
+   null with a stage_errors entry, said, never read as "none"), "nothing"
+   when there was nothing to check (C16: null without an entry, a session
+   without a recording), "none" when nothing was typed twice, else "ok".
+   Pure. */
 function retypedLines(analysis, events, appNames) {
   const findings = analysis ? analysis.findings : undefined;
-  if (findings === null) return { status: "not-run", lines: [] };
+  if (findings === null) {
+    const failed = (Array.isArray(analysis.stage_errors) ? analysis.stage_errors : []).some((e) => e && e.stage === "findings");
+    return { status: failed ? "not-run" : "nothing", lines: [] };
+  }
   const f = (Array.isArray(findings) ? findings : []).find((x) => x && x.detector === "rekey_transfer");
   if (!f) return { status: "none", lines: [] };
   const values = Array.isArray((f.evidence || {}).values) ? f.evidence.values : [];
@@ -118,6 +123,10 @@ function _retypedItem(sess) {
       body: '<p class="analysis-note ov-stage-not-run">' + escapeHtml(STAGE_NOT_RUN +
         ", so it cannot say whether data was typed twice.") + "</p>" };
   }
+  if (r.status === "nothing") {
+    return { title: "Data typed twice", takeaway: "Nothing recorded",
+      body: '<p class="analysis-note">Nothing was recorded in this session, so there is no typed data to compare.</p>' };
+  }
   if (r.status === "none") {
     return { title: "Data typed twice", takeaway: "None seen in this recording",
       body: '<p class="analysis-note">No value was typed into more than one application in this recording.</p>' };
@@ -138,8 +147,9 @@ function _stepMs(st) {
 }
 
 /* Per step (the map's grouping) and per system (C14): the time in each run
-   that has it, averaged over those runs, and how many runs they are. Rows
-   with no measured time are left out; the most time first. Pure.
+   that has it, averaged over those runs, and how many runs they are. A step
+   without a time range has no time (C16) and is left out, and so are rows
+   with no measured time; the most time first. Pure.
    `interactionsById` (optional) names a step's system from its own
    interactions, else from its grain keys.
    Returns { runCount, steps: [row], apps: [row] }, row = { label, avgMs,
@@ -156,6 +166,7 @@ function timePerStep(stats, steps, appNames, interactionsById) {
   for (const r of runs) {
     const stepMs = new Map(), appMs = new Map();
     for (const st of r.visible) {
+      if (!Number.isFinite(Date.parse((st.time_range || {}).start))) continue;
       const ms = _stepMs(st);
       const label = mapNodeLabel(st);
       stepMs.set(label, (stepMs.get(label) || 0) + ms);

@@ -44,6 +44,7 @@ const {
   maybeAutoScrollToFirstCase, _wireTimelineScrollPersist, setLaneToggle,
 } = Timeline;
 const Transcript = require("./flow-view-transcript.js");
+const AnalystUI = require("./analyst-ui.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -159,6 +160,23 @@ async function openSessionFlow() {
 
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
+
+/* New from a video / New without a recording (C16): the main process asks
+   for the video, then the project's name and folder, makes the folder and
+   copies the video in; the project opens and is analyzed by itself (one
+   implicit run until runs are marked). */
+async function newProject(kind) {
+  let r = await Ipc.chooseNewProject({ kind });
+  if (!r) return;
+  if (!r.ok) { toast("The project was not made: " + (r.error || "no reason was given"), "error"); return; }
+  toast(kind === "video" ? "Copying the video into the new project..." : "Making the project...", "info");
+  r = await Ipc.createProject();
+  if (!r || !r.ok) { toast("The project was not made: " + ((r && r.error) || "no reason was given"), "error"); return; }
+  await loadSessionIntoView(r.folder);
+  toast("Project made: " + path.basename(r.folder) + ". Add its steps in Steps.", "success");
+}
+if ($("#btn-new-from-video")) $("#btn-new-from-video").addEventListener("click", () => newProject("video"));
+if ($("#btn-new-blank")) $("#btn-new-blank").addEventListener("click", () => newProject("blank"));
 
 /* ============ Analysis: it runs by itself (AD-22) ===================
    The pipeline runs on open when the recording has no analysis or one from an
@@ -414,11 +432,15 @@ async function loadSessionIntoView(folder, opts) {
    Timeline toolbar's + Step (a step at the playhead) and Sync video in the
    video pane's header. Without a video they could only answer with an error. */
 function syncVideoControls() {
-  const hasVideo = !!(State.getSession() && State.getSession().recordingAvailable);
+  const sess = State.getSession();
+  const hasVideo = !!(sess && sess.recordingAvailable);
   for (const id of ["btn-add-step", "btn-sync-video"]) {
     const el = document.getElementById(id);
     if (el) el.hidden = !hasVideo;
   }
+  // A video project (C16) has nothing to sync the video with: the Timeline is the video.
+  const sync = document.getElementById("btn-sync-video");
+  if (sync && !(sess && (sess.events || []).length)) sync.hidden = true;
 }
 
 /* RP-04: an annotations.json that exists but cannot be read is an error the
@@ -449,6 +471,12 @@ function renderAnnotationsErrorBanner() {
   // A video without a length in its file (a recorded .webm) reports Infinity.
   video.addEventListener("loadedmetadata", () =>
     setVideoOverlay(isFinite(video.duration) ? `${formatDuration(video.duration * 1000)} loaded` : "loaded"));
+  // C16: a video project's Timeline runs on its video's length.
+  const lengthKnown = () => {
+    if (Video.noteVideoLength(video)) { renderTimeline(); renderTimelineSummary(); positionPlayhead(); }
+  };
+  video.addEventListener("loadedmetadata", lengthKnown);
+  video.addEventListener("durationchange", lengthKnown);
 })();
 
 /* The top bar's status line (#session-pills): while the pipeline runs, one
@@ -550,10 +578,9 @@ function installRangeSelection() {
   host._pdtSelWired = true;
   let startX = null, startMs = null, overlay = null;
   function spanInfo() {
-    if (!State.getSession() || !State.getSession().events.length) return null;
-    const first = new Date(State.getSession().events[0].timestamp).getTime();
-    const last  = new Date(State.getSession().events[State.getSession().events.length - 1].timestamp).getTime();
-    return { first, last, span: Math.max(1, last - first) };
+    const sp = Video.timelineSpan();
+    if (!sp) return null;
+    return { first: sp.startMs, last: sp.endMs, span: Math.max(1, sp.endMs - sp.startMs) };
   }
   function pxToMs(clientX) {
     const info = spanInfo();
@@ -705,6 +732,8 @@ function showMarkerInsertMenu(x, y, ts) {
 
   addItem("Insert Start marker here…", () => queueSyntheticMarker(ts, "start"));
   addItem("Insert End marker here",    () => queueSyntheticMarker(ts, "end"));
+  // C16: a note pinned to this moment (the Notes lane; never printed).
+  addItem("Add note here…",            () => AnalystUI.addNote(null, ts));
   addItem("Jump to step here",         () => {
     State.setPendingStepJump(ts);
     const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
@@ -746,15 +775,14 @@ function showMarkerInsertMenu(x, y, ts) {
 document.addEventListener("contextmenu", (e) => {
   const tl = document.getElementById("timeline");
   if (!tl || !tl.contains(e.target)) return;
-  if (e.target.closest(".tl-activity, .tl-case-band, .tl-marker, .tl-screenshot")) return;
+  if (e.target.closest(".tl-activity, .tl-case-band, .tl-marker, .tl-screenshot, .tl-note")) return;
   if (!State.getSession()) return;
-  const evs = State.getSession().events || [];
-  if (!evs.length) return;
+  const sp = Video.timelineSpan();
+  if (!sp) return;
   const rect = tl.getBoundingClientRect();
   if (rect.width <= 0) return;
-  const first = new Date(evs[0].timestamp).getTime();
-  const last = new Date(evs[evs.length - 1].timestamp).getTime();
-  const span = last - first;
+  const first = sp.startMs;
+  const span = sp.endMs - first;
   if (span <= 0) return;
   e.preventDefault();
   const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));

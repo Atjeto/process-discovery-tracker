@@ -96,11 +96,27 @@ test("without field names in the events the finding's own sentence stands; nothi
 });
 
 test("a failed findings stage says the check could not run, never 'none' (C12)", () => {
-  assert.deepEqual(retypedLines({ findings: null }, EVENTS, APP_NAMES), { status: "not-run", lines: [] });
+  assert.deepEqual(retypedLines({ findings: null, stage_errors: [{ stage: "findings", error: "x" }] }, EVENTS, APP_NAMES),
+    { status: "not-run", lines: [] });
   const html = observationsHtml(session({ analysis: { case_quality: {}, findings: null,
     stage_errors: [{ stage: "findings", error: "x" }] } }));
   assert.ok(html.includes("This check could not run on this recording, so it cannot say whether data was typed twice."));
   assert.ok(!html.includes("None seen"));
+});
+
+test("a session without a recording says nothing was recorded, never that the check could not run (C16)", () => {
+  assert.deepEqual(retypedLines({ findings: null, stage_errors: [] }, [], APP_NAMES), { status: "nothing", lines: [] });
+  const html = observationsHtml(session({ events: [], analysis: { case_quality: {}, findings: null, stage_errors: [] } }));
+  assert.ok(html.includes(">Nothing recorded<"));
+  assert.ok(!html.includes("could not run") && !html.includes("None seen"));
+});
+
+test("where the time goes leaves out a step without a time (C16)", () => {
+  const s = session();
+  s.annotations.steps.push({ step_id: "u", case_id: "c1", name: "Find the material number", state: "manually_authored",
+    time_range: null, order: 1 });
+  const row = timePerStep(s.stats, s.annotations.steps, APP_NAMES).steps.find((x) => x.label === "Find the material number");
+  assert.deepEqual([row.avgMs, row.runs], [2000, 1]);
 });
 
 /* ---- Where the time goes ----------------------------------------------------- */

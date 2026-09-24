@@ -30,13 +30,53 @@ function setVideoOverlay(text) {
   o.textContent = text;
 }
 
+/* The span the Timeline lays out, { startMs, endMs }, or null. A recording
+   runs from its first event to its last. A session without events (a video
+   or blank project, C16) runs on its video: from the video's start for the
+   video's length, once the length is read (noteVideoLength). */
+const _videoLength = new Map();   // recordingPath -> ms
+function timelineSpan() {
+  const s = State.getSession();
+  if (!s) return null;
+  const evs = s.events || [];
+  if (evs.length) {
+    const a = Date.parse(evs[0].timestamp), b = Date.parse(evs[evs.length - 1].timestamp);
+    return isFinite(a) && isFinite(b) ? { startMs: a, endMs: b } : null;
+  }
+  const len = s.recordingAvailable ? _videoLength.get(s.recordingPath) : null;
+  const start = Date.parse(videoStartTs());
+  return len && isFinite(start) ? { startMs: start, endMs: start + len } : null;
+}
+
+/* Read the video's length for the Timeline of a session without events. A
+   video whose file holds no length (a recorded .webm reports Infinity) is
+   measured by one seek far past its end, then put back at 0. Returns true
+   when the known length changed. */
+let _measuringSrc = null;
+function noteVideoLength(video) {
+  const s = State.getSession();
+  if (!s || (s.events || []).length || !s.recordingAvailable || !video || !video.src) return false;
+  let shown = "";
+  try { shown = decodeURIComponent(new URL(video.currentSrc || video.src).pathname).replace(/^\/+/, ""); } catch (_) { return false; }
+  if (shown.toLowerCase() !== String(s.recordingPath).replace(/\\/g, "/").toLowerCase()) return false;
+  if (!isFinite(video.duration)) {
+    if (_measuringSrc !== video.src && video.readyState >= 1) { _measuringSrc = video.src; video.currentTime = 1e101; }
+    return false;
+  }
+  if (_measuringSrc === video.src) { _measuringSrc = null; video.currentTime = 0; }
+  const ms = Math.round(video.duration * 1000);
+  if (!(ms > 0) || _videoLength.get(s.recordingPath) === ms) return false;
+  _videoLength.set(s.recordingPath, ms);
+  return true;
+}
+
 function positionPlayhead() {
   const video = $("#video");
   const ph = $("#tl-playhead");
-  if (!ph || !State.getSession() || !State.getSession().events.length) return;
-  const first = new Date(State.getSession().events[0].timestamp).getTime();
-  const last = new Date(State.getSession().events[State.getSession().events.length - 1].timestamp).getTime();
-  const span = Math.max(1, last - first);
+  const sp = timelineSpan();
+  if (!ph || !sp) return;
+  const first = sp.startMs;
+  const span = Math.max(1, sp.endMs - first);
   const obsStartTs = videoStartTs();
   if (!obsStartTs) { ph.style.display = "none"; return; }
   const playT = new Date(obsStartTs).getTime() + video.currentTime * 1000;
@@ -96,13 +136,11 @@ function seekToTimestamp(ts) {
    the timeline so it is on screen. Gives no-video sessions a working
    seek -- the playhead is otherwise driven only by video playback. */
 function movePlayheadToTimestamp(ts) {
-  const sess = State.getSession();
-  if (!sess || !sess.events || !sess.events.length) return;
+  const sp = timelineSpan();
   const ph = $("#tl-playhead");
-  if (!ph) return;
-  const first = new Date(sess.events[0].timestamp).getTime();
-  const last = new Date(sess.events[sess.events.length - 1].timestamp).getTime();
-  const span = Math.max(1, last - first);
+  if (!sp || !ph) return;
+  const first = sp.startMs;
+  const span = Math.max(1, sp.endMs - first);
   const frac = Math.min(1, Math.max(0, (new Date(ts).getTime() - first) / span));
   ph.style.left = (frac * 100) + "%";
   ph.style.display = "";
@@ -230,6 +268,12 @@ async function attachVideo() {
     await applyVideoSync(storedOffset, r.path, true);
     return;
   }
+  // A session without a recording (C16) has no events to sync with: the
+  // video starts with the session and the Timeline follows it.
+  if (!(session.events || []).length) {
+    await applyVideoSync(0, r.path);
+    return;
+  }
   const flowBtn = document.querySelector('.view-mode-btn[data-level="flow"]');
   if (flowBtn) flowBtn.click();
   cancelVideoSync();
@@ -323,7 +367,9 @@ async function applyVideoSync(offsetMs, pendingPath, relink) {
     toast("The video is attached, but it could not be copied into the recording folder (" + r.copyError +
       "), so a copy of the folder will not carry it.", "error");
   } else {
-    toast((relink ? "Video found: it keeps its sync (Sync video changes it)." : pendingPath ? "Video attached and synced." : "Video synced.") +
+    const plain = !(session.events || []).length;
+    toast((relink ? "Video found: it keeps its sync (Sync video changes it)." : plain && pendingPath ? "Video attached."
+      : pendingPath ? "Video attached and synced." : "Video synced.") +
       (r.copied ? " It is copied into the recording folder." : ""), "success");
   }
   await loadSessionIntoView(session.sessionFolder);
@@ -333,12 +379,10 @@ async function applyVideoSync(offsetMs, pendingPath, relink) {
    plain clientX-to-fraction read is correct without a scroll term. */
 function _timelineClickToMs(clientX) {
   const host = document.getElementById("timeline");
-  const session = State.getSession();
-  const evs = (session && session.events) || [];
-  if (!host || !evs.length) return null;
-  const first = new Date(evs[0].timestamp).getTime();
-  const last = new Date(evs[evs.length - 1].timestamp).getTime();
-  const span = Math.max(1, last - first);
+  const sp = timelineSpan();
+  if (!host || !sp) return null;
+  const first = sp.startMs;
+  const span = Math.max(1, sp.endMs - first);
   const rect = host.getBoundingClientRect();
   const frac = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)));
   return first + frac * span;
@@ -355,7 +399,7 @@ if ($("#btn-sync-video")) {
 }
 
 module.exports = {
-  initVideo,
+  initVideo, timelineSpan, noteVideoLength,
   setVideoOverlay, positionPlayhead,
   videoStartTs, formatPlayback, videoTimeToSessionTs,
   seekToTimestamp, movePlayheadToTimestamp, jumpToStepInFlow,

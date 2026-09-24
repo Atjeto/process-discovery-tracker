@@ -20,8 +20,6 @@
 
 "use strict";
 
-const path = require("node:path");
-const fs = require("node:fs");
 const State = require("../state.js");
 const { escapeHtml, escapeAttr, toast, recordingStartMs, sinceStart } = require("../dom.js");
 const RunsModel = require("../runs-model.js");
@@ -30,6 +28,7 @@ const SystemNames = require("../system-names.js");
 const StepFacts = require("../step-facts.js");
 const TM = require("../transcript-model.js");
 const Video = require("./flow-view-video.js");
+const AnalystUI = require("./analyst-ui.js");
 
 /* { label, focusId }: the map box shown and the occurrence the foot's act
    and a play act on; null while closed. */
@@ -76,29 +75,13 @@ function _interactions() {
   return m;
 }
 
-/* The screenshots of a step inside the session folder: [{ ref, url, time }]. */
-function _shots(step, origin) {
-  const s = _session();
-  const refs = (step.evidence && step.evidence.screenshot_refs) || [];
-  if (!s || !s.sessionFolder || !Array.isArray(refs)) return [];
-  const base = path.resolve(s.sessionFolder);
-  const at = {};
-  for (const ev of s.events || []) if (ev.type === "system" && ev.data && ev.data.path) at[ev.data.path] = ev.timestamp;
-  const out = [];
-  for (const ref of refs) {
-    if (typeof ref !== "string" || path.isAbsolute(ref) || !/\.(png|jpe?g|gif|webp|bmp)$/i.test(ref)) continue;
-    const full = path.resolve(base, ref);
-    const rel = path.relative(base, full);
-    if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || !fs.existsSync(full)) continue;
-    out.push({ ref, url: "file:///" + full.replace(/\\/g, "/"), time: at[ref] ? sinceStart(at[ref], origin) : "" });
-  }
-  return out;
-}
-
 function _rowHtml(o, origin, placed, hasVideo, focusId) {
   const st = o.step;
   const where = StepFacts.pointer(st, o.run ? [o.run] : [], origin) || "(no time)";
-  const shots = _shots(st, origin);
+  // C16: the screenshots the step shows (recorded less the hidden ones, then
+  // the ones added) and its notes (its own and those at a moment inside it).
+  const shots = AnalystUI.shotsOf(st);
+  const notes = AnalystUI.notesOf(st);
   const said = placed && placed.synced ? TM.sentencesForStep(placed.sentences, st) : [];
   return '<li class="sp-occ' + (st.step_id === focusId ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '">' +
     '<div class="sp-occ-head">' +
@@ -107,10 +90,13 @@ function _rowHtml(o, origin, placed, hasVideo, focusId) {
       '<span class="sp-dur">' + escapeHtml(StepFacts.duration(st.time_range)) + "</span>" +
     "</div>" +
     (shots.length ? '<div class="sp-shots">' + shots.map((sh) =>
-      '<button type="button" class="sp-shot" data-ref="' + escapeAttr(sh.ref) + '" title="' +
+      '<button type="button" class="sp-shot" data-ref="' + escapeAttr(sh.rel) + '" title="' +
         escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size") + '"><img src="' + escapeAttr(sh.url) +
         '" alt="' + escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : "")) + '"></button>').join("") + "</div>" : "") +
     (said.length ? '<ol class="sp-said">' + said.map((x) => '<li class="tr-row">' + TM.sentenceRowHtml(x, origin) + "</li>").join("") + "</ol>" : "") +
+    (notes.length ? '<ul class="sp-notes" title="Notes stay in the app: the PDD does not print them.">' + notes.map((n) =>
+      '<li class="sp-note">' + (n.at ? '<span class="sp-note-at">' + escapeHtml(sinceStart(n.at, origin)) + "</span> " : "") +
+      escapeHtml(n.text) + "</li>").join("") + "</ul>" : "") +
     "</li>";
 }
 
@@ -149,7 +135,8 @@ function render() {
   const onSteps = State.getLevel() === "steps";
   $("sp-body").innerHTML = '<ol class="sp-occs">' + occ.map((o) => _rowHtml(o, origin, TM.forSession(s), hasVideo, _state.focusId)).join("") + "</ol>" +
     '<div class="sp-foot">' + (onSteps
-      ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence">Show on timeline</button>'
+      ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence"' +
+        (lead.time_range && lead.time_range.start ? "" : " disabled") + '>Show on timeline</button>'
       : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its run">Open in Steps</button>') + "</div>";
 }
 

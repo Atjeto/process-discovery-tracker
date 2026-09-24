@@ -30,15 +30,13 @@
  * bulk hide or delete / confirm run / reopen run / use as pattern / save as
  * this process) and the ignored-apps and remembered-names dialogs.
  * Cross-surface helpers (ensureAnnoShape, persistAnnotations,
- * videoTimeToSessionTs, jumpToStepInFlow, watchStep) are injected by
+ * jumpToStepInFlow, watchStep) are injected by
  * renderer.js via initStepsView().
  */
 
 "use strict";
 
-const path = require("node:path");
-const fs = require("node:fs");
-const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
+const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu, recordingStartMs } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
@@ -50,6 +48,9 @@ const TM = require("../transcript-model.js");
 const SystemNames = require("../system-names.js");
 const StepFacts = require("../step-facts.js");
 const StepPanel = require("./step-panel.js");
+const AC = require("../analyst-content.js");
+const AnalystUI = require("./analyst-ui.js");
+const Video = require("./flow-view-video.js");
 const { processLabel } = require("../process-map-levels.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
@@ -57,7 +58,6 @@ const OUTSIDE = RunsModel.OUTSIDE;
 /* Injected by renderer.js (functions that still live there / in session). */
 let ensureAnnoShape = (a) => a;
 let persistAnnotations = async () => {};
-let videoTimeToSessionTs = () => null;
 let jumpToStepInFlow = () => {};
 let watchStep = () => {};
 let analyze = async () => false;
@@ -96,13 +96,9 @@ const NAME_LIST_ID = "step-name-suggestions";
    field being typed in. */
 let _detailStepId = null;
 
+/* The Timeline's span (the recording's events, or a video project's video). */
 function getSpan() {
-  const evs = (State.getSession() && State.getSession().events) || [];
-  if (!evs.length) return null;
-  return {
-    startMs: new Date(evs[0].timestamp).getTime(),
-    endMs:   new Date(evs[evs.length - 1].timestamp).getTime(),
-  };
+  return Video.timelineSpan();
 }
 
 function _interactionsById() {
@@ -136,11 +132,13 @@ function _rowFor(stepId) {
 }
 
 /* The group to open by default: the pattern run; without runs, the steps
-   outside runs. */
+   outside runs. With neither (a session not analyzed yet), undefined: the
+   first render that has runs opens one (a new project opens before its
+   analysis gives it its run). */
 function _defaultOpen(model, pattern) {
   if (pattern && pattern.run) return pattern.run.caseId;
   if (model.runs.length) return model.runs[0].caseId;
-  return model.outside.length ? OUTSIDE : null;
+  return model.outside.length ? OUTSIDE : undefined;
 }
 
 /* Open a group (a run's case_id, OUTSIDE, or null to close it). The
@@ -364,7 +362,7 @@ function renderStepsLevel() {
   const detail = $("#step-detail");
   const active = document.activeElement;
   const typing = selected && detail && active && detail.contains(active) && _detailStepId === selected.step_id &&
-    (active.id === "step-name" || active.id === "step-desc")
+    (active.id === "step-name" || active.id === "step-desc" || active.id === "step-system")
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   if (selected) {
     if (title) title.textContent = "Selected step";
@@ -548,8 +546,10 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   }
   if (!isOpen) return g;
 
+  const recorded = ((State.getSession() || {}).events || []).length > 0;
   const body = _groupBody(visible, run.hiddenCount,
-    run.hiddenCount ? "Every step of this run is hidden." : "No steps in this run.", status || run.status);
+    run.hiddenCount ? "Every step of this run is hidden." : recorded ? "No steps in this run."
+      : "No steps yet: + Add step adds one after the selected step.", status || run.status);
   const acts = body.querySelector(".run-actions");
   const canConfirm = isPattern && !patternConfirmed && run.visible.length > 0;
   const buttons = [];
@@ -696,35 +696,6 @@ function _appNames() {
   return (s && s.stats && s.stats.meta && s.stats.meta.app_names) || {};
 }
 
-/* P2.16: the step's screenshots, for its editor and the step panel:
-   [{ ref, url, time }]. A ref comes from annotations.json (untrusted): only a
-   session-relative image path that stays inside the session folder and
-   exists is shown. `time` is when it was taken, as the time since the
-   recording started (the one clock). */
-const _IMG_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
-function stepScreenshots(step) {
-  const s = State.getSession();
-  const refs = (step && step.evidence && step.evidence.screenshot_refs) || [];
-  if (!s || !s.sessionFolder || !Array.isArray(refs) || !refs.length) return [];
-  const base = path.resolve(s.sessionFolder);
-  const timeOf = {};
-  for (const ev of s.events || []) {
-    const d = ev && ev.data;
-    if (ev && ev.type === "system" && d && (d.kind === "screenshot" || d.kind === "screenshot_manual") && d.path) {
-      timeOf[d.path] = ev.timestamp;
-    }
-  }
-  const out = [];
-  for (const ref of refs) {
-    if (typeof ref !== "string" || !ref || path.isAbsolute(ref) || !_IMG_EXT.test(ref)) continue;
-    const full = path.resolve(base, ref);
-    const rel = path.relative(base, full);
-    if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || !fs.existsSync(full)) continue;
-    out.push({ ref, url: "file:///" + full.replace(/\\/g, "/"), time: timeOf[ref] ? sinceStart(timeOf[ref], recordingStartMs(s)) : "" });
-  }
-  return out;
-}
-
 /* C8: what the step editor's "Said during this step" shows: null without a
    transcript, else whether it is synced and the sentences of the step's
    window (transcript-model.js), timed from the recording's start. */
@@ -747,6 +718,8 @@ function stepFacts(step, interactionsById) {
   const known = ((step.evidence && step.evidence.interaction_event_ids) || [])
     .map((id) => interactionsById[id]).filter(Boolean).map((ev) => ev.data || {});
   const where = SystemNames.whereOfStep(step, interactionsById, _appNames());
+  // The system the recording gives, the System field's placeholder (C16).
+  const derived = SystemNames.whereOfStep(Object.assign({}, step, { system: "" }), interactionsById, _appNames()).system;
   const drafted = StepFacts.isDraftedDescription(step.description, datas);
   return {
     factLine: StepFacts.factLine({ system: where.system, screen: where.screen, duration: StepFacts.duration(step.time_range),
@@ -756,7 +729,7 @@ function stepFacts(step, interactionsById) {
     // leaves it out, so the pane does not pretend it is written.
     description: drafted ? "" : (step.description || ""),
     descriptionHint: drafted ? String(step.description).trim() : "",
-    system: where.system, originMs: origin,
+    system: where.system, derived, originMs: origin,
   };
 }
 
@@ -790,10 +763,11 @@ function stepDetailCallbacks(selected, interactionsById) {
     },
     factLine: facts.factLine, fields: facts.fields, description: facts.description,
     descriptionHint: facts.descriptionHint, originMs: facts.originMs,
-    // P2.16: the step's screenshots, opened full size on a click (a lazy
-    // require: the Flow module wires its own buttons when it loads).
-    screenshots: stepScreenshots(selected),
-    onOpenScreenshot: (ref) => require("./flow-view-screenshots.js").openScreenshot(ref),
+    // C16: the System field, then the step's screenshots (recorded and
+    // added), notes and attachments (views/analyst-ui.js).
+    systemHtml: AnalystUI.systemFieldHtml(selected, facts.derived),
+    extrasHtml: AnalystUI.stepExtrasHtml(selected),
+    wireExtras: (host, isRendering) => AnalystUI.wireStepPane(host, selected, isRendering),
     // C4: the name input suggests remembered and already-used names.
     nameListId: NAME_LIST_ID,
     transcriptSaid: _transcriptSaid(selected),
@@ -888,13 +862,7 @@ function beginRenameOnSelected() {
 
 /* A step the analyst changed is theirs (edited; one they added stays
    added). A hidden step stays hidden, and Unhide brings it back edited. */
-function _markEdited(step) {
-  if (step.state === "hidden") {
-    if (step._prev_state !== "manually_authored") step._prev_state = "edited";
-  } else if (step.state !== "manually_authored") {
-    step.state = "edited";
-  }
-}
+const _markEdited = AC.markEdited;
 
 /* The description, saved when its field is left (no Save button): one
    undoable edit, the text the PDD prints under the step (C7). */
@@ -1072,8 +1040,9 @@ async function addStepAtTimestamp(tsISO) {
   const tISO = new Date(t).toISOString();
   const runAt = (a, b) => { const r = RunsModel.runForRange(runs, a, b); return r ? r.caseId : null; };
 
-  // No steps yet: carve the whole session in two at the playhead.
-  if (!anno.steps.length) {
+  // No steps yet in a recording: carve the whole session in two at the
+  // playhead. (A video project gets one step from the playhead, below.)
+  if (!anno.steps.length && (State.getSession().events || []).length) {
     const span = getSpan();
     if (!span) { toast("No events to anchor a step to", "error"); return; }
     const before = inter.filter(e => new Date(e.timestamp).getTime() < t).map(e => e.event_id);
@@ -1140,7 +1109,8 @@ function makeStep(name, startISO, endISO, eventIds, caseId) {
     case_id: caseId || null,
     name,
     description: "",
-    time_range: { start: startISO, end: endISO },
+    // C16: a step added without a time has none (its `order` places it).
+    time_range: startISO ? { start: startISO, end: endISO } : null,
     evidence: { interaction_event_ids: eventIds, screenshot_refs: [], video_timecode_range: null, manual_notes: "" },
     state: "manually_authored",
     canonical_step_id: null,
@@ -1178,7 +1148,6 @@ function stripSplitSuffix(name) {
    in the other runs. */
 function mergeStepObjects(toMerge) {
   const first = toMerge[0];
-  const last = toMerge[toMerge.length - 1];
   const parts = [];
   for (const s of toMerge) {
     const n = stripSplitSuffix(s.name);
@@ -1187,10 +1156,14 @@ function mergeStepObjects(toMerge) {
   let mergedName = parts.join(" + ") || stripSplitSuffix(first.name);
   if (mergedName.length > 120) mergedName = mergedName.slice(0, 119) + "…";
   const keys = RunsModel.mergedDraftKeys(toMerge);
+  // C16: the timed members' span; with none timed, no time (the first
+  // member's order keeps the place).
+  const timedMembers = toMerge.filter((s) => AC.hasTime(s));
   const merged = RunsModel.dropDraftIdentity({
     ...first,
     name: mergedName,
-    time_range: { start: first.time_range.start, end: last.time_range.end },
+    time_range: timedMembers.length ? { start: timedMembers[0].time_range.start,
+      end: (timedMembers[timedMembers.length - 1].time_range.end || timedMembers[timedMembers.length - 1].time_range.start) } : null,
     evidence: {
       ...first.evidence,
       interaction_event_ids: toMerge.flatMap(s => (s.evidence && s.evidence.interaction_event_ids) || []),
@@ -1309,67 +1282,59 @@ function _removalSplit(ids) {
   };
 }
 
-/* Where a step added from the toolbar goes when no video playhead places
-   it: into the open run, right after the selected step (or after the run's
-   last step), ending before the next step so it never covers a drafted
-   step. Returns { startMs, endMs, caseId } or null. */
-function _anchorInOpenRun(model) {
-  const run = model.runs.find((r) => r.caseId === _ui.open);
-  if (!run) return null;
-  const list = run.visible;
-  const after = list.find((s) => s.step_id === State.getSelectedStepId()) || list[list.length - 1] || null;
-  let startMs = after ? new Date(after.time_range && after.time_range.end).getTime() : run.startMs;
-  if (!isFinite(startMs)) startMs = run.startMs;
-  if (!isFinite(startMs)) return null;
-  const later = run.members
-    .map((s) => new Date(s.time_range && s.time_range.start).getTime())
-    .filter((ms) => isFinite(ms) && ms > startMs);
-  let endMs = startMs + 5000;
-  if (later.length) endMs = Math.min(endMs, Math.min(...later));
-  if (run.endMs != null) endMs = Math.min(endMs, run.endMs);
-  return { startMs, endMs: Math.max(startMs, endMs), caseId: run.caseId };
-}
-
+/* "+ Add step" (C16): a step added by hand has no time (a time range is read
+   as measured). It goes into the open run (else the implicit run of a
+   session without a recording, else outside the runs), right after the
+   selected step, or at the end; its `order` places it among the run's steps
+   without a time. The Timeline's + Step places one at the video playhead. */
 async function addManualStep() {
   if (!State.getSession()) return;
   const name = await promptModal({ title: "Add step", message: "Name this step", placeholder: "For example: Search customer in CRM", okLabel: "Add step" });
-  if (!name) return;
+  if (!name || !name.trim() || !State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const model = _model();
-  const video = $("#video");
-  const tsNow = video ? videoTimeToSessionTs(video.currentTime) : null;   // #video may be absent
-  let startMs, endMs, caseId;
-  if (tsNow) {
-    // The video playhead places it; it belongs to the run that contains it.
-    startMs = new Date(tsNow).getTime();
-    endMs = startMs + 5000;
-    const r = RunsModel.runForRange(model.runs, startMs, endMs);
-    caseId = r ? r.caseId : null;
-  } else {
-    const a = _anchorInOpenRun(model);
-    if (a) {
-      ({ startMs, endMs, caseId } = a);
-    } else {
-      // No video and no open run: drop the step at the end of the recorded
-      // span (after any existing step) rather than wall-clock now, which
-      // would land far past the timeline.
-      const span = getSpan();
-      startMs = span ? span.endMs : Date.now();
-      for (const s of anno.steps) {
-        const end = s.time_range && s.time_range.end && new Date(s.time_range.end).getTime();
-        if (end && end > startMs) startMs = end;
-      }
-      endMs = startMs + 5000;
-      caseId = null;
-    }
-  }
-  const step = makeStep(name.trim(), new Date(startMs).toISOString(), new Date(endMs).toISOString(), [], caseId);
+  const open = model.runs.find((r) => r.caseId === _ui.open);
+  const caseId = open ? open.caseId : _ui.open === OUTSIDE ? null : AC.implicitRunId(State.getSession().stats);
+  const members = caseId ? ((model.runs.find((r) => r.caseId === caseId) || {}).members || []) : model.outside;
+  const step = makeStep(name.trim(), null, null, [], caseId);
+  AC.placeUntimed(members, step, members.find((s) => s.step_id === State.getSelectedStepId()) || null);
   RunsModel.recordFix(anno, model.runs, caseId, "add");
   anno.steps.push(step);
   if (caseId && _ui.open !== caseId) _openGroup(caseId);
   State.setSelectedStepId(step.step_id);
   await persistAnnotations(anno, 'add step');
   toast("Step added", "success");
+}
+
+/* Move a step without a time up (-1) or down (+1) in its run (the step menu,
+   Alt+Up and Alt+Down): its `order` and its neighbours' are written again.
+   A step with a time keeps its place (its time orders it). */
+async function moveStep(stepId, delta) {
+  if (!State.getSession()) return false;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const step = anno.steps.find((s) => s.step_id === stepId);
+  if (!step) return false;
+  const model = _model();
+  const key = RunsModel.groupKeyOf(step, model.runs);
+  const members = key === OUTSIDE ? model.outside : (model.runs.find((r) => r.caseId === key) || {}).members;
+  if (!AC.moveUntimed(members || [], step, delta, (s) => _ui.showHidden || s.state !== "hidden")) {
+    toast(AC.hasTime(step) ? "A step with a time keeps its place: its time orders it."
+      : delta < 0 ? "It cannot move further up." : "It cannot move further down.");
+    return false;
+  }
+  await persistAnnotations(anno, delta < 0 ? "move step up" : "move step down");
+  return true;
+}
+
+/* Alt+Up / Alt+Down on the Steps level: move the selected step when its row
+   is on screen. Returns true when the key was used. */
+function moveSelectedStep(delta) {
+  const sid = visibleSelectedStepId();
+  if (!sid) return false;
+  const step = _findStep(sid);
+  if (!step || AC.hasTime(step)) return false;
+  moveStep(sid, delta);
+  return true;
 }
 
 /* Take the ticked steps out (item 5): the drafted ones are hidden (the next
@@ -1807,12 +1772,11 @@ function openRememberedNamesDialog() {
 }
 
 /* Wire the Steps surface. deps = { ensureAnnoShape, persistAnnotations,
-   videoTimeToSessionTs, jumpToStepInFlow, watchStep, analyze }. Call once at
+   jumpToStepInFlow, watchStep, analyze }. Call once at
    boot. */
 function initStepsView(deps) {
   ensureAnnoShape = deps.ensureAnnoShape;
   persistAnnotations = deps.persistAnnotations;
-  videoTimeToSessionTs = deps.videoTimeToSessionTs;
   jumpToStepInFlow = deps.jumpToStepInFlow;
   watchStep = deps.watchStep || (() => {});
   analyze = deps.analyze || (async () => false);
@@ -1935,6 +1899,11 @@ function showStepContextMenu(stepId, x, y) {
     addItem("Merge " + _multiSel.size + " selected steps", () => mergeSelectedSteps());
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
+  // C16: a step without a time moves among its run's steps (Alt+Up, Alt+Down).
+  if (!AC.hasTime(step)) {
+    addItem("Move up", () => moveStep(stepId, -1));
+    addItem("Move down", () => moveStep(stepId, 1));
+  }
   addItem(step.state === "hidden" ? "Unhide" : "Hide step", () => toggleStepHidden(stepId));
   addItem("Show on timeline", () => {
     const s = (anno.steps || []).find(x => x.step_id === stepId);
@@ -1972,7 +1941,7 @@ module.exports = {
   deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp,
   // Keyboard: act only on what the list shows (RP-12).
-  visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun,
+  visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep, moveStep,
   // G-4 label hygiene -- pure, exported for unit testing.
   stripSplitSuffix, mergeStepObjects,
 };

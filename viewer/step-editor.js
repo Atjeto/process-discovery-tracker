@@ -183,7 +183,8 @@
          interactions the step is made of, Show on timeline, Split, Merge with
          next, Merge selected, Delete (added steps only).
      Callbacks (steps-view.js stepDetailCallbacks) carry the verbs, the fact
-     line, the fields, the description and its hint, and the screenshots. */
+     line, the fields, the description and its hint, and (C16) the System
+     field and the screenshots, notes and attachments (views/analyst-ui.js). */
   function renderStepDetail(host, step, callbacks) {
     _rendering = true;
     try { _renderStepDetail(host, step, callbacks || {}); } finally { _rendering = false; }
@@ -227,6 +228,7 @@
     host.innerHTML = `
       ${fact ? `<p class="step-fact">${escapeHtml(fact)}</p>` : ""}
       <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"${nameList} title="Saved when you press Enter or leave the field"></label>
+      ${callbacks.systemHtml || ""}
       ${stepFieldsHtml(callbacks.fields)}
       <label>Description <textarea id="step-desc" placeholder="${escapeAttr(hint)}" title="Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
       ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
@@ -237,7 +239,7 @@
         ${watchBtn}
         <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its run lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
       </div>
-      ${stepShotsHtml(callbacks.screenshots)}
+      ${callbacks.extrasHtml || ""}
       <details class="step-detail-more">
         <summary class="step-detail-more-head">
           <span class="step-detail-more-title">More</span>
@@ -282,9 +284,8 @@
     document.getElementById("flag-waste").addEventListener("change", () =>
       callbacks.onToggleWaste && callbacks.onToggleWaste(step.step_id));
     wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
-    host.querySelectorAll(".step-shot[data-ref]").forEach((b) => {
-      b.addEventListener("click", () => callbacks.onOpenScreenshot && callbacks.onOpenScreenshot(b.dataset.ref));
-    });
+    // C16: the System field, the screenshots, notes and attachments.
+    if (callbacks.wireExtras) callbacks.wireExtras(host, () => _rendering);
     const deleteBtn = document.getElementById("btn-step-delete");
     if (deleteBtn) deleteBtn.addEventListener("click", () =>
       callbacks.onDelete && callbacks.onDelete(step.step_id));
@@ -316,19 +317,6 @@
       watchEl.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       watchEl.disabled = !(step.time_range && step.time_range.start);
     }
-  }
-
-  /* P2.16: the step's screenshots in its editor, the review medium of a
-     recording without a video. `shots` = [{ ref, url, time }] (steps-view.js
-     resolves the step's screenshot_refs inside the session folder); a click
-     opens the screenshot full size. Nothing when the step has none. */
-  function stepShotsHtml(shots) {
-    if (!Array.isArray(shots) || !shots.length) return "";
-    return `<div class="step-shots">` + shots.map((sh) =>
-      `<button type="button" class="step-shot" data-ref="${escapeAttr(sh.ref)}" title="${escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size")}">` +
-        `<img src="${escapeAttr(sh.url)}" alt="${escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : ""))}">` +
-        (sh.time ? `<span class="stamp">${escapeHtml(sh.time)}</span>` : "") +
-      `</button>`).join("") + `</div>`;
   }
 
   /* C8: "Said during this step", under the Description, only while a

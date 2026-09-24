@@ -1989,3 +1989,40 @@ button.danger:disabled {
    be seen. */
 .refmap-editor-host { position: relative; flex: 1; min-height: 0; background: var(--bg-1); }
 :root[data-theme="dark"] .refmap-editor-host { background: #f4f1eb; }
+
+/* ===== C16: what the analyst adds (views/analyst-ui.js) ===== */
+#step-detail:focus { outline: none; }
+/* The step pane's Screenshots, Notes and Attachments: a small title with its
+   add act on the same line. */
+.step-sect { margin-top: 12px; }
+.step-sect-head { display: flex; align-items: baseline; gap: 8px; }
+.step-sect-title { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3); }
+.step-sect .step-shots { margin-top: 6px; }
+.step-shot-card { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.step-shot-acts { display: flex; gap: 6px; font-size: 11px; }
+.step-shot-acts .link-btn { font-size: 11px; }
+.link-btn.on { color: var(--fg); font-weight: 600; }
+.step-unhide-shots { font-size: 11px; margin-top: 4px; }
+.step-notes, .att-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.step-note, .att-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--fg); min-width: 0; }
+.step-note-text { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.step-note-at, .att-file, .att-step { flex: none; font-size: 11px; color: var(--fg-3); }
+.att-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-row .link-btn, .step-note .link-btn { flex: none; font-size: 11px; }
+.att-file, .att-step { max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The Overview's Attachments, under the document fields. */
+.ov-attach { grid-column: 1 / -1; min-width: 0; }
+.ov-attach .att-label-input { flex: 1 1 auto; min-width: 120px; font-family: var(--font-ui); font-size: 12px; }
+.ov-attach-empty { margin: 4px 0 0; font-size: 12px; color: var(--fg-3); }
+.project-menu-popup.shot-src-menu { position: fixed; right: auto; top: auto; min-width: 180px; }
+/* The Timeline of a session with nothing recorded and no video. */
+.tl-empty { padding: 14px 12px; font-size: 12px; color: var(--fg-2); }
+/* A note pinned to a moment (the Notes lane). */
+.tl-note { position: absolute; width: 14px; height: 14px; line-height: 14px; text-align: center;
+  font-size: 10px; color: var(--bg); background: var(--accent); border-radius: 3px; cursor: pointer; z-index: 3; }
+.tl-note:hover { transform: scale(1.2); }
+.lg-note::before { background: var(--accent); border-radius: 2px !important; }
+/* The step panel's notes of an occurrence. */
+.sp-notes { list-style: none; margin: 6px 0 0; padding: 0; }
+.sp-note { font-size: 11px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sp-note-at { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }

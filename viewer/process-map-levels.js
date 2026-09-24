@@ -142,11 +142,18 @@ function mapNodeLabel(step) {
   return (step && step.process_label) || processLabel(name) || "(unnamed step)";
 }
 
-/* Time order within a run; a step without a readable start sorts last and the
-   sort is stable, the same order the Steps list shows (runs-model byStart). */
+/* The order within a run, the one the Steps list shows (runs-model byStart,
+   contract C16): the steps with a time in time order, then the steps without
+   one by their `order`, then any step with neither; the sort is stable. */
 function _orderKey(st) {
   const n = _stepStart(st);
-  return n > 0 ? n : Infinity;
+  if (n > 0) return [0, n];
+  const o = st && st.order;
+  return typeof o === "number" && Number.isFinite(o) ? [1, o] : [2, 0];
+}
+function _byOrder(a, b) {
+  const x = _orderKey(a.st), y = _orderKey(b.st);
+  return (x[0] - y[0]) || (x[1] - y[1]) || (a.i - b.i);
 }
 
 /**
@@ -168,7 +175,7 @@ function buildAnnotationDfg(runs) {
     const steps = (Array.isArray(run) ? run : [])
       .filter((st) => st && st.state !== "hidden")
       .map((st, i) => ({ st, i }))
-      .sort((a, b) => (_orderKey(a.st) - _orderKey(b.st)) || (a.i - b.i))
+      .sort(_byOrder)
       .map((x) => x.st);
     // Collapse consecutive duplicates (a run of same-node steps = one visit),
     // keeping each visit's ENTRY time so the edges can accumulate transition

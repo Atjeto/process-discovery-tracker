@@ -24,9 +24,9 @@ require("./layout-controls.js"); // side-effect import: self-wires resize handle
 
 const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
-const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun } = require("./views/steps-view.js");
+const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, runPipeline, UPDATING } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, runPipeline, UPDATING } = require("./views/flow-view.js");
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
@@ -335,7 +335,6 @@ function applyLevel(name) {
 initStepsView({
   ensureAnnoShape: (a) => ensureAnnoShape(a),
   persistAnnotations: (a, label) => persistAnnotations(a, label),
-  videoTimeToSessionTs: (t) => videoTimeToSessionTs(t),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   // Watch plays the step in the step panel, beside the steps (V2 item 4).
   watchStep: (s) => StepPanel.watch(s),
@@ -637,6 +636,9 @@ document.addEventListener("keydown", (e) => {
       if (confirmOpenRun()) e.preventDefault();
     } else if (e.key === "Enter" && plain && !onControl) {
       if (renameSelectedStep()) e.preventDefault();
+    } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.altKey && !e.ctrlKey && !e.metaKey && !onControl) {
+      // C16: move a step without a time up or down in its run.
+      if (moveSelectedStep(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
     } else if ((e.key === "j" || e.key === "ArrowDown") && plain) {
       if (moveSelection(1)) e.preventDefault();
     } else if ((e.key === "k" || e.key === "ArrowUp") && plain) {
@@ -819,8 +821,9 @@ if ($("#btn-link-recording")) {
 
 /* ===== Open menu (top bar) =====
    One menu for opening a recording (P2.2): "Open recording..." (its click is
-   flow-view's openSessionFlow), then the recent recordings, reachable from
-   every level. */
+   flow-view's openSessionFlow), "New from a video..." and "New without a
+   recording..." (C16, flow-view's newProject), then the recent recordings,
+   reachable from every level. */
 function renderRecentMenu() {
   const host = document.getElementById("recent-menu-content");
   if (!host) return;
@@ -865,8 +868,10 @@ function toggleRecentMenu(force) {
     e.stopPropagation();
     toggleRecentMenu();
   });
-  const openFolder = document.getElementById("btn-open-session");
-  if (openFolder) openFolder.addEventListener("click", () => toggleRecentMenu(false));
+  for (const id of ["btn-open-session", "btn-new-from-video", "btn-new-blank"]) {
+    const item = document.getElementById(id);
+    if (item) item.addEventListener("click", () => toggleRecentMenu(false));
+  }
   document.addEventListener("click", (e) => {
     if (!popup.contains(e.target) && e.target !== btn) toggleRecentMenu(false);
   });

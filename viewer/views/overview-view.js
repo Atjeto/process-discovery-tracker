@@ -36,6 +36,7 @@ const RunsModel = require("../runs-model.js");
 const RunDiff = require("../run-differences.js");
 const SessionSummary = require("../session-summary.js");
 const { pushRecent } = require("../recent.js");
+const AnalystUI = require("./analyst-ui.js");
 
 /* ---- Stage failures (contract C12, RP-10) -------------------------------- */
 
@@ -328,8 +329,11 @@ function _summaryLine(sess, state) {
     : (m.engagement_name || (m.config && m.config.engagement_name) || m.engagement_id || "This recording");
   const login = s ? s.worker : ((m.config && m.config.worker && m.config.worker.id) || "");
   const sme = SessionSummary.smeName(m) || login;
-  const parts = ['<strong class="ov-summary-name">' + escapeHtml(docTitle || project) + "</strong>"];
-  if (sme) parts.push("recorded by " + escapeHtml(sme));
+  // The analyst-given name (manifest.label: a project made in the viewer, C16) before the project.
+  const label = typeof m.label === "string" ? m.label.trim() : "";
+  const parts = ['<strong class="ov-summary-name">' + escapeHtml(docTitle || label || project) + "</strong>"];
+  // A project made from a video or from nothing (C16) was not recorded by anyone.
+  if (sme && !["video", "blank"].includes(m.source)) parts.push("recorded by " + escapeHtml(sme));
   if (state) {
     const runs = state.runs.length;
     parts.push('<span data-summary="runs">' + (runs ? _plural(runs, "run", "runs") : "No runs") + "</span>");
@@ -601,7 +605,8 @@ function _documentHtml(anno, sess, open) {
       '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st)) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
-    '<div class="analysis-module-body ov-doc-body">' + fields + _transcriptHtml(sess) + "</div></details>";
+    '<div class="analysis-module-body ov-doc-body">' + fields + AnalystUI.overviewAttachmentsHtml(anno) +
+      _transcriptHtml(sess) + "</div></details>";
 }
 
 /* Save one field through the one write path (persistAnnotations: undoable,
@@ -732,6 +737,7 @@ function renderOverviewLevel() {
 
   _wireNextLine(host);
   _wireDocument(host);
+  AnalystUI.wireOverviewAttachments(host);
   _wireTranscript(host);
   wireObservations(host);
   if (typing) {

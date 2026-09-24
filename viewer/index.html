@@ -35,6 +35,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       </button>
       <div class="project-menu-popup" id="recent-menu-popup" style="display:none; min-width: 280px;">
         <button class="project-menu-item" id="btn-open-session" type="button">Open recording...</button>
+        <button class="project-menu-item" id="btn-new-from-video" type="button" title="Start a project from a video of the process: the video is copied into a new folder, and the Timeline follows it.">New from a video...</button>
+        <button class="project-menu-item" id="btn-new-blank" type="button" title="Start an empty project: you add its steps by hand in Steps.">New without a recording...</button>
         <div class="recent-menu-section" id="recent-menu-content"></div>
       </div>
     </div>
@@ -134,6 +136,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                     <label class="cb"><input type="checkbox" data-lane="cases" /> Runs</label>
                     <label class="cb"><input type="checkbox" data-lane="steps" /> Steps</label>
                     <label class="cb" id="lane-transcript-row" hidden><input type="checkbox" data-lane="transcript" /> Transcript</label>
+                    <label class="cb" id="lane-notes-row" hidden><input type="checkbox" data-lane="notes" /> Notes</label>
                   </div>
                 </div>
                 <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)">−</button>
@@ -151,6 +154,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span class="lg-idle">idle</span>
               <span class="lg-marker">pending marker</span>
               <span class="lg-screenshot">screenshot</span>
+              <span class="lg-note">note</span>
             </div>
           </div>
 
@@ -201,7 +205,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- ========= STEPS view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
           <div class="editor-toolbar">
-            <button id="btn-add-manual-step" title="Add a step by hand: after the selected step of the open run, or at the video playhead">+ Add step</button>
+            <button id="btn-add-manual-step" title="Add a step by hand, without a time: after the selected step of the open run, or at its end. Alt+Up and Alt+Down move it. The Timeline's + Step adds one at the video playhead.">+ Add step</button>
             <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
                  syncMultiSelectButtons() toggles `hidden`. -->
             <button id="btn-delete-selected-steps" hidden title="Hide the ticked drafted steps and delete the ticked steps you added">Hide selected</button>
@@ -219,7 +223,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             </div>
             <div class="editor-detail-pane">
               <div class="editor-pane-title" id="step-detail-title">Selected step</div>
-              <div id="step-detail"></div>
+              <!-- tabindex: a click in the pane focuses it, so Ctrl+V pastes an image as a screenshot (C16). -->
+              <div id="step-detail" tabindex="-1"></div>
             </div>
           </div>
         </div>
@@ -357,6 +362,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview's recording line or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, then click the same moment on the timeline.</li>
             <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview's recording line. Its sentences show next to each step and beside the document fields, ready to add to a step's description or a field.</li>
           </ul>
+          <h3>Starting without a recording</h3>
+          <p>In the Open menu, <em>New from a video</em> makes a project from a video of the process (a Teams recording, a screen video): the video is copied into the new folder and the Timeline follows it. <em>New without a recording</em> makes an empty project. Either has one run until you mark runs on the Timeline. Add its steps in Steps with <em>+ Add step</em> (Alt+Up and Alt+Down move a step without a time), or on the Timeline with <em>+ Step</em> at the video's playhead. The step pane's <em>System</em> field says which system a step happens in.</p>
+          <h3>Screenshots, notes and attachments</h3>
+          <p>In the step pane, <em>Add screenshot</em> takes a frame of the video, a pasted image (Ctrl+V in the pane) or an image file. <em>Use in PDD</em> picks the one the PDD prints under the step; <em>Remove</em> takes one off (a recorded screenshot stays in the recording). A note belongs to a step (the step pane) or to a moment (right-click the Timeline, <em>Add note here</em>); notes stay in the app, the PDD does not print them. <em>Attach file</em> in the step pane and <em>Add file</em> under the Overview's document fields copy a file (an example email, a spreadsheet, an SOP) into the session folder, and the PDD lists them. Ctrl+Z undoes each of these.</p>
         </section>
 
         <section class="help-section" data-section="stepsphases">
@@ -429,6 +438,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">Enter</span> (Steps)</td><td>Rename the selected step</td></tr>
             <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step, or merge it with the next step of its run</td></tr>
             <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the reference run, when it is open</td></tr>
+            <tr><td><span class="kbd">Alt+↑</span> <span class="kbd">Alt+↓</span> (Steps)</td><td>Move a step without a time up or down in its run</td></tr>
+            <tr><td><span class="kbd">Ctrl+V</span> (step pane)</td><td>Add the image on the clipboard as a screenshot of the step</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
@@ -436,7 +447,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Clicks</h3>
           <ul class="help-list">
             <li>Click a band, a marker or a screenshot on the timeline to go to that moment.</li>
-            <li>Right-click the timeline to insert a Start or End marker there.</li>
+            <li>Right-click the timeline to insert a Start or End marker there, or to add a note at that moment.</li>
             <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>.</li>
           </ul>
         </section>

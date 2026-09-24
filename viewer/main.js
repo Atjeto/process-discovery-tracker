@@ -34,6 +34,8 @@ const TranscriptStore = require("./transcript-store.js");
 const NamesStore = require("./names-store.js");
 const ProcessesStore = require("./processes-store.js");
 const VideoPath = require("./video-path.js");
+const AnalystFiles = require("./analyst-files.js");
+const NewProject = require("./new-project.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 
 /* Contract C4: the remembered-names store, one per analyst machine, under the
@@ -526,6 +528,119 @@ ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {
   }
 });
 
+/* --- Projects without a recording, and what the analyst adds (C16) --- */
+
+const VIDEO_FILTER = [{ name: "Video", extensions: ["mp4", "mkv", "webm", "mov", "avi"] }];
+
+/* Where removed screenshots and attachments of one session wait for an Undo
+   (outside the folder; emptied when the viewer starts). */
+function _holdDir(root) {
+  const key = require("node:crypto").createHash("sha1").update(root.toLowerCase()).digest("hex").slice(0, 16);
+  return path.join(app.getPath("userData"), "pdt-removed", key);
+}
+
+/* The project chosen by the last chooseNewProject, made by createProject. */
+let _newProjectPlan = null;
+
+/* New from a video / New without a recording: the video (for a video
+   project), then one save dialog for the project's name and where its folder
+   goes (default: a folder named after the video next to it, or in the
+   user's Documents). Result null (cancelled), { ok: true, name, folder } or
+   { ok: false, error }. Nothing is made until createProject. */
+ipcMain.handle("viewer:chooseNewProject", async (_e, { kind } = {}) => {
+  _newProjectPlan = null;
+  const video = kind === "video";
+  let videoPath = null;
+  if (video) {
+    const r = await dialog.showOpenDialog(mainWindow, { title: "New from a video: choose the video", properties: ["openFile"], filters: VIDEO_FILTER });
+    if (r.canceled || !r.filePaths.length) return null;
+    videoPath = r.filePaths[0];
+  }
+  const base = video ? path.dirname(videoPath) : app.getPath("documents");
+  const s = await dialog.showSaveDialog(mainWindow, {
+    title: "Name the project: its folder is made here",
+    defaultPath: path.join(base, video ? path.parse(videoPath).name : "New process"),
+    buttonLabel: "Create",
+  });
+  if (s.canceled || !s.filePath) return null;
+  const folder = path.resolve(s.filePath);
+  const why = NewProject.folderProblem(folder);
+  if (why) return { ok: false, error: why + " (" + folder + ")." };
+  _newProjectPlan = { kind: video ? "video" : "blank", videoPath, folder, name: path.basename(folder) };
+  return { ok: true, name: _newProjectPlan.name, folder };
+});
+
+/* Make the project chosen last (the renderer passes no path). Result
+   { ok: true, folder } or { ok: false, error }. */
+ipcMain.handle("viewer:createProject", async () => {
+  const plan = _newProjectPlan;
+  _newProjectPlan = null;
+  if (!plan) return { ok: false, error: "no project was chosen." };
+  try {
+    const r = await NewProject.createProject(Object.assign({ id: require("node:crypto").randomUUID(), now: new Date().toISOString() }, plan));
+    return { ok: true, folder: r.folder };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+/* Add a screenshot to the session: source "file" (a PNG or JPEG chosen
+   here), or "video_frame" / "paste" with `data` (the image, base64). It is
+   written as screenshots/analyst/<id>.<png|jpg>. Result null (cancelled),
+   { ok: true, id, file } or { ok: false, error }. The renderer then adds the
+   analyst_screenshots entry (an undoable edit). */
+ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data } = {}) => {
+  try {
+    const root = _sessionRoot(sessionFolder);
+    if (!root) return { ok: false, error: "this is not a session folder." };
+    let buf;
+    if (source === "file") {
+      const r = await dialog.showOpenDialog(mainWindow, { title: "Add a screenshot", properties: ["openFile"],
+        filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg"] }] });
+      if (r.canceled || !r.filePaths.length) return null;
+      buf = fs.readFileSync(r.filePaths[0]);
+    } else if (source === "video_frame" || source === "paste") {
+      buf = Buffer.from(String(data || ""), "base64");
+    } else {
+      return { ok: false, error: "unknown screenshot source." };
+    }
+    const id = require("node:crypto").randomUUID();
+    const w = AnalystFiles.writeScreenshot(root, id, buf);
+    return { ok: true, id, file: w.file };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+/* Attach a file: an open dialog, then a copy into attachments/ (a numeric
+   suffix when the name is taken). Result null (cancelled), { ok: true, file,
+   label } (label: the original file name) or { ok: false, error }. */
+ipcMain.handle("viewer:addAttachment", async (_e, { sessionFolder } = {}) => {
+  try {
+    const root = _sessionRoot(sessionFolder);
+    if (!root) return { ok: false, error: "this is not a session folder." };
+    const r = await dialog.showOpenDialog(mainWindow, { title: "Attach a file", properties: ["openFile"] });
+    if (r.canceled || !r.filePaths.length) return null;
+    const c = AnalystFiles.copyAttachment(root, r.filePaths[0]);
+    return { ok: true, file: c.file, label: path.basename(r.filePaths[0]) };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+/* Open an attachment of a loaded session: a document, image or mail opens in
+   its program; any other type is shown in its folder. Result { ok, shown }
+   or { ok: false, error }. */
+ipcMain.handle("viewer:openAttachment", async (_e, { sessionFolder, file } = {}) => {
+  const root = _sessionRoot(sessionFolder);
+  if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "this is not an open session." };
+  const t = AnalystFiles.attachmentTarget(root, file, fs.existsSync);
+  if (!t.ok) return t;
+  if (!t.open) { shell.showItemInFolder(t.path); return { ok: true, shown: true }; }
+  const err = await shell.openPath(t.path);
+  return err ? { ok: false, error: err } : { ok: true, shown: false };
+});
+
 /* --- Annotations write-back --------------------------------------- */
 
 /* H8 + RP-04: every save keeps five versions (annotations.json.2 newest to
@@ -550,8 +665,16 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
     }
     const busy = _refuseWhileAnalyzing(root);
     if (busy) return busy;
+    const before = AnnoStore.readAnnotationsFile(root);
     const r = AnnoStore.writeAnnotationsFile(root, annotations);
     if (r.backupError) console.warn("[viewer:saveAnnotations] saved, but the backup copy failed: " + r.backupError);
+    // C16: a screenshot or attachment the analyst removed leaves the folder;
+    // Undo (a save that names it again) brings it back (analyst-files.js).
+    if (before.status === "ok") {
+      const moved = AnalystFiles.moveRemoved(root, AnalystFiles.namedFiles(before.annotations),
+        AnalystFiles.namedFiles(annotations), _holdDir(root));
+      if (moved.errors.length) console.warn("[viewer:saveAnnotations] files not moved: " + moved.errors.join("; "));
+    }
     return { ok: true, path: r.path, backupError: r.backupError };
   } catch (e) {
     console.error("[viewer:saveAnnotations] not saved:", e && e.message);
@@ -675,6 +798,10 @@ ipcMain.handle("viewer:forgetProcess", (_e, payload) => {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  // Removed screenshots and attachments waited there for an Undo of the
+  // last run; its undo history is gone (C16, analyst-files.js).
+  try { fs.rmSync(path.join(app.getPath("userData"), "pdt-removed"), { recursive: true, force: true }); }
+  catch (e) { console.warn("[viewer] the removed files of the last run were not cleared: " + e.message); }
   createMainWindow();
 });
 
