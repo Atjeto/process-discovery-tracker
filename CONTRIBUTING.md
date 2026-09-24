@@ -140,7 +140,7 @@ Full procedure: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md).
   and the platform signatures (`shared/recognition-patterns.json`) are loaded
   by both Python and JS; their goldens in `shared/` pin both sides. The
   run-differences alignment is implemented in both languages and pinned by
-  `shared/run-differences-golden.json`: change one side only together with
+  `shared/run-differences-golden.json` and `shared/flow-links-golden.json`: change one side only together with
   the other and the golden.
 - **Raw capture data is immutable.** `events.jsonl` is append-only; every
   analyst decision is an `annotations.json` entry. Re-analysis stays

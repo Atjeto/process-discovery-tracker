@@ -3,7 +3,7 @@
 An internal Windows tool for a business analyst or process manager. A
 subject-matter expert (SME) records a business process a few times on their
 own PC. The analyst opens the recording, confirms the steps the recorder
-drafted for one run, reviews how the other runs differ, and gets a process
+drafted for one transaction, reviews how the other transactions differ, and gets a process
 map and a tool-neutral process definition document (PDD).
 
 > **Status.** The light version (2.0.0) is in progress and not released yet.
@@ -25,22 +25,22 @@ the tool.
 ## What it does
 
 - **Records.** A UI Automation recorder logs every click, field and window,
-  with screenshots. The SME brackets each run of the process with one hotkey
+  with screenshots. The SME brackets each transaction of the process with one hotkey
   (Ctrl+Shift+S by default). An OBS video is optional.
-- **Drafts.** The pipeline drafts each run's steps: one step per screen
+- **Drafts.** The pipeline drafts each transaction's steps: one step per screen
   visit, ending at its commit action (a button, menu command or link such as
   Save or Submit).
-- **Confirms.** The analyst confirms one run (the pattern run), fixing names
+- **Confirms.** The analyst confirms one transaction (the reference transaction), fixing names
   and boundaries against the video or the screenshots. Names given once are
   remembered for later sessions.
-- **Compares.** The other runs show only their differences from the pattern
-  run. "Save as this process" keeps the pattern for the next session of the
+- **Compares.** The other transactions show only their differences from the reference
+  transaction. "Save as template" keeps it for the next project of the
   same process.
-- **Maps.** A process map built from the runs, and an editable As-Is (and
+- **Maps.** A process map built from the transactions, with the conditions and loops set on steps, and an editable As-Is (and
   To-Be) copy for the PDD.
 - **Documents.** A PDD (.docx) built around the confirmed run, with the
   analyst's purpose, scope, contacts, rules, exceptions and notes, the
-  measured timings, the differences between runs, and the findings.
+  measured timings and the differences between transactions.
 - **Transcripts.** A Teams `.vtt` or `.docx` meeting transcript can be
   attached. Its sentences line up with the recording, and a sentence can be
   added to a step's description or to the document, so the SME's own words
