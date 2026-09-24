@@ -18,9 +18,9 @@ const DEFAULTS = {
     role: null,
   },
   auto_end_idle_minutes: 30,
-  /* When false, an idle stretch past auto_end_idle_minutes no longer
-     ends the session -- idle is still recorded, but the worker (or the
-     end of the shift) ends it. Set false for 8-hour passive recordings. */
+  /* An idle stretch past auto_end_idle_minutes ends the open run (not the
+     recording). When false, idle is still recorded but no run is ended by
+     it. Set false for 8-hour passive recordings. */
   auto_end_on_idle: true,
   poll_interval_seconds: 5,
   idle_threshold_seconds: 60,

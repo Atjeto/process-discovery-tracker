@@ -2,7 +2,7 @@
 /*
  * Syntax-check every first-party .js file in viewer/ and capture/ via
  * `node --check` -- a fast parse gate that catches a file broken by a bad edit
- * before it ships (SPEC-DEFERRED P2.16; the viewer/capture apps are bundler-free,
+ * before it ships (the viewer and capture apps are bundler-free,
  * so a parse error otherwise only surfaces at runtime in the renderer). Skips
  * node_modules and build output. Exits non-zero if any file fails to parse.
  *

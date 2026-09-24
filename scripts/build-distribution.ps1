@@ -365,7 +365,7 @@ Built: $builtAt
 ### capture/
 Process Discovery Tracker (worker-side). Tray app, no install required.
 - Run ``Process Discovery Tracker.exe`` from this folder.
-- Sessions land in ``%APPDATA%\process-discovery-tracker\sessions\``.
+- Recordings land in ``%APPDATA%\process-discovery-tracker-capture\sessions\``.
 - Size on disk: $([math]::Round($captureSize / 1MB, 1)) MB.
 
 ### viewer/

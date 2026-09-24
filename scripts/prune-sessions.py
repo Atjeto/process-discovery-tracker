@@ -8,7 +8,7 @@ Usage:
     python scripts/prune-sessions.py --older-than 90 --apply
 
     # Custom sessions root (e.g. when running on the worker machine)
-    python scripts/prune-sessions.py --root "%APPDATA%/process-discovery-tracker/sessions" --older-than 30 --apply
+    python scripts/prune-sessions.py --root "%APPDATA%/process-discovery-tracker-capture/sessions" --older-than 30 --apply
 
 The default root resolves to the standard capture output location on
 the current OS.
@@ -27,10 +27,10 @@ from pathlib import Path
 
 def default_sessions_root() -> Path:
     if sys.platform == "win32":
-        return Path(os.environ.get("APPDATA", "")) / "process-discovery-tracker" / "sessions"
+        return Path(os.environ.get("APPDATA", "")) / "process-discovery-tracker-capture" / "sessions"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "process-discovery-tracker" / "sessions"
-    return Path.home() / ".config" / "process-discovery-tracker" / "sessions"
+        return Path.home() / "Library" / "Application Support" / "process-discovery-tracker-capture" / "sessions"
+    return Path.home() / ".config" / "process-discovery-tracker-capture" / "sessions"
 
 
 def collect_sessions(root: Path) -> list[dict]:

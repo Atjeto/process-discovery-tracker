@@ -11,7 +11,7 @@
 #
 # This is CLASSIC Outlook. New Outlook for Windows (Microsoft.OutlookForWindows) is
 # a WebView2 web app with a different (web a11y) tree — a separate vocab (Tier C /
-# doc-derived) per APP-COVERAGE-LIST.md.
+# doc-derived).
 #
 # Explorer (main-window) actions below are marked idMso-derived: the idMso<->
 # automation_id mapping was *proven* against this app's compose ribbon, so these

@@ -2,9 +2,8 @@ name: e2e (all smokes)
 
 # Wave 0 / F1: the in-repo Playwright merge gate. Successor to the out-of-repo
 # _pdt_verify harness. It launches the REAL viewer Electron app pre-loaded with
-# the committed demo session and ASSERTS (zero page errors, all 5 Session-view
-# levels render, the map/raw-events no-overlap regression stays fixed), exiting
-# non-zero on any regression. Unlike js.yml this job must NOT set
+# the committed demo session and ASSERTS through every smoke that e2e/run-all.js
+# runs, exiting non-zero on any regression. Unlike js.yml this job must NOT set
 # ELECTRON_SKIP_BINARY_DOWNLOAD — it needs the real Electron binary to launch.
 # Once stable, this job is allowed to be marked a required status check.
 on:
@@ -23,8 +22,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The smoke re-normalizes the demo to current pipeline output (so the
-      # §11c roi panel renders); that needs the pipeline deps on PATH `python`.
+      # The smokes re-normalize the demo to current pipeline output; that needs
+      # the pipeline deps on PATH `python`.
       - name: Install pipeline deps
         run: pip install -r normalization/requirements.txt
 
@@ -38,6 +37,6 @@ jobs:
         working-directory: e2e
         run: npm ci
 
-      - name: Run Session-view smoke
+      - name: Run all smokes
         working-directory: e2e
         run: npm test
