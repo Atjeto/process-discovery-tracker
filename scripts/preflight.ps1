@@ -86,18 +86,25 @@ function Test-ChangelogHeaders([string]$repoRoot) {
   }
   $latestTag = $latestTag.Trim()
 
+  # Decode git's output and the file as UTF-8 both: under Windows PowerShell
+  # 5.1 a native command's output uses the console code page and Get-Content
+  # uses ANSI, so a header with a non-ASCII character (the 1.5.0 header has an
+  # em dash) decoded two different ways and was reported missing.
   $prevPref = $ErrorActionPreference
+  $prevEnc = [Console]::OutputEncoding
   $ErrorActionPreference = "Continue"
   try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     $oldChangelog = (& git -C $repoRoot show "${latestTag}:CHANGELOG.md" 2>$null) -join "`n"
   } finally {
+    [Console]::OutputEncoding = $prevEnc
     $ErrorActionPreference = $prevPref
   }
   if ([string]::IsNullOrWhiteSpace($oldChangelog)) {
     return [PSCustomObject]@{ Skipped = $true; Reason = "tag $latestTag has no CHANGELOG.md" }
   }
 
-  $newChangelog = Get-Content $changelogPath -Raw
+  $newChangelog = Get-Content $changelogPath -Raw -Encoding UTF8
   $pattern = '(?m)^## \[\d[^\]]+\][^\r\n]*'
   $oldHeaders = [regex]::Matches($oldChangelog, $pattern) | ForEach-Object { $_.Value.Trim() }
   $newHeaders = [regex]::Matches($newChangelog, $pattern) | ForEach-Object { $_.Value.Trim() }
