@@ -152,3 +152,16 @@ push to master before the next merge, not at the end of the night.
   reversing its own edit, never git checkout); reproduced the CI-only
   cancellation locally with an old Node 18 binary it found on the machine;
   exercised the new run flow on the real app over IPC; kept scope to capture/.
+
+- The step-back reviews (UI clarity audit, step-back review, companion critique) grounded
+  every design call in screenshots and exported PDDs of the real app, and the owner's
+  corrections (concept level, functional gaps, navigation as the core value) were
+  recorded as decisions and memories the same hour they came in.
+- Parallel lanes in separate worktrees with disjoint file sets, merged by cherry-pick
+  with every gate re-run on the merged tree, landed about twenty lanes with only small
+  conflicts (renderer.js, overview-smoke.js, pipeline_stages.py), each resolved by keeping
+  both lanes' intent.
+- Four spend-limit kills were recovered without respawning: tree inventory, parse checks,
+  resume the same agent with its state named.
+- The packaged-app smoke (bundled Python analysis, transcript import, PDD export, a blank
+  project) caught nothing new but proves the build, not just the dev tree.
